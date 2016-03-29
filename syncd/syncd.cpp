@@ -4,6 +4,8 @@
 swss::Table *g_vidToRid = NULL;
 swss::Table *g_ridToVid = NULL;
 
+swss::Counter *g_vidCounter = NULL;
+
 void sai_diag_shell()
 {
     sai_status_t status;
@@ -20,6 +22,122 @@ void sai_diag_shell()
         }
 
         sleep(1);
+    }
+}
+
+sai_object_id_t redis_create_virtual_object_id(
+        _In_ sai_object_type_t object_type)
+{
+    uint64_t virtual_id = (uint64_t)g_vidCounter->incr();
+
+    return (((sai_object_id_t)object_type) << 48) | virtual_id;
+}
+
+sai_object_id_t translate_rid_to_vid(
+        _In_ sai_object_id_t rid)
+{
+    if (rid == SAI_NULL_OBJECT_ID)
+        return SAI_NULL_OBJECT_ID;
+
+    sai_object_id_t vid;
+
+    std::string str_rid;
+    std::string str_vid;
+
+    sai_serialize_primitive(rid, str_rid);
+
+    if (g_ridToVid->getField(std::string(), str_rid, str_vid))
+    {
+        // object exists
+
+        int index = 0;
+        sai_deserialize_primitive(str_vid, index, vid);
+
+        return vid;
+    }
+
+    SYNCD_LOG_DBG("rid is missing from db");
+
+    sai_object_type_t object_type = sai_object_type_query(rid);
+
+    if (object_type == SAI_OBJECT_TYPE_NULL)
+    {
+        SYNCD_LOG_ERR("sai_object_type_query returned NULL type");
+        throw std::runtime_error("sai_object_type_query returned NULL type");
+    }
+
+    vid = redis_create_virtual_object_id(object_type);
+
+    sai_serialize_primitive(vid, str_vid);
+
+    g_ridToVid->setField(std::string(), str_rid, str_vid);
+    g_vidToRid->setField(std::string(), str_vid, str_rid);
+
+    return vid;
+}
+
+template <typename T>
+void translate_list_rid_to_vid(
+        _In_ T &element)
+{
+    for (uint32_t i = 0; i < element.count; i++)
+    {
+        element.list[i] = translate_rid_to_vid(element.list[i]);
+    }
+}
+
+void translate_rid_to_vid(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    // we receive real id's here, if they are new then create new id
+    // for them and put in db, if entry exists in db, use it
+
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        sai_attribute_t &attr = attr_list[i];
+
+        sai_attr_serialization_type_t serialization_type;
+        sai_status_t status = sai_get_serialization_type(object_type, attr.id, serialization_type);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            throw std::runtime_error("unable to find serialization type");
+        }
+
+        switch (serialization_type)
+        {
+            case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+                attr.value.oid = translate_rid_to_vid(attr.value.oid);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+                translate_list_rid_to_vid(attr.value.objlist);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+                attr.value.aclfield.data.oid = translate_rid_to_vid(attr.value.aclfield.data.oid);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+                translate_list_rid_to_vid(attr.value.aclfield.data.objlist);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+                attr.value.aclaction.parameter.oid = translate_rid_to_vid(attr.value.aclaction.parameter.oid);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+                translate_list_rid_to_vid(attr.value.aclaction.parameter.objlist);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
+                translate_list_rid_to_vid(attr.value.portbreakout.port_list);
+
+            default:
+                break;
+        }
     }
 }
 
@@ -113,6 +231,8 @@ void internal_syncd_get_send(
 
     if (status == SAI_STATUS_SUCCESS)
     {
+        translate_rid_to_vid(object_type, attr_count, attr_list);
+
         // XXX: normal serialization + translate reverse
         entry = SaiAttributeList::serialize_attr_list(
                 object_type,
@@ -546,6 +666,8 @@ int main(int argc, char **argv)
 
     g_vidToRid = new swss::Table(db, "VIDTORID");
     g_ridToVid = new swss::Table(db, "RIDTOVID");
+
+    g_vidCounter = new swss::Counter(db, "VIDCOUNTER");
 
     swss::ConsumerTable *asicState = new swss::ConsumerTable(db, "ASIC_STATE");
 

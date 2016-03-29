@@ -17,6 +17,7 @@ extern "C" {
 #include "swss/select.h"
 #include "swss/scheme.h"
 #include "swss/logger.h"
+#include "swss/counter.h"
 
 extern service_method_table_t           g_services;
 extern swss::DBConnector               *g_db;
@@ -28,6 +29,8 @@ extern swss::ConsumerTable             *g_redisNotifications;
 
 extern swss::Table *g_vidToRid;
 extern swss::Table *g_ridToVid;
+
+extern swss::Counter *g_vidCounter;
 
 extern const sai_acl_api_t              redis_acl_api;
 extern const sai_buffer_api_t           redis_buffer_api;

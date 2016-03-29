@@ -170,8 +170,6 @@ void handle_packet_event(
 
     SaiAttributeList list(SAI_OBJECT_TYPE_PACKET, values, false);
 
-    translate_rid_to_vid(SAI_OBJECT_TYPE_PACKET, list.get_attr_count(), list.get_attr_list());
-
     auto on_packet_event = redis_switch_notifications.on_packet_event;
 
     if (on_packet_event != NULL)

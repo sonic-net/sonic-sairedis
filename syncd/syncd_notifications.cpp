@@ -134,6 +134,19 @@ void on_packet_event(
             attr_list,
             false);
 
+    // since attr_list is const, we can't replace rid's
+    // we need to create copy of that list
+
+    SaiAttributeList copy(SAI_OBJECT_TYPE_PACKET, entry, false);
+
+    translate_rid_to_vid(SAI_OBJECT_TYPE_PACKET, copy.get_attr_count(), copy.get_attr_list());
+
+    entry = SaiAttributeList::serialize_attr_list(
+            SAI_OBJECT_TYPE_PACKET,
+            copy.get_attr_count(),
+            copy.get_attr_list(),
+            false);
+
     send_notification("packet_event", s, entry);
 
     SYNCD_LOG_EXIT();

@@ -1,7 +1,5 @@
 #include "sai_redis.h"
 
-uint64_t object_id_counter = 0;
-
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_type_t object_type)
 {
@@ -16,10 +14,8 @@ sai_object_id_t redis_create_virtual_object_id(
     // in future we could change this to find "holes" after delted
     // objects, but can be tricky since this information would need
     // to be stored somewhere in case of oa restart
-    //
-    // TODO make this atomic
 
-    uint64_t virtual_id = object_id_counter++;
+    uint64_t virtual_id = (uint64_t)g_vidCounter->incr();
 
     return (((sai_object_id_t)object_type) << 48) | virtual_id;
 }

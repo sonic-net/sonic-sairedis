@@ -16,6 +16,8 @@ swss::ConsumerTable   *g_redisNotifications = NULL;
 swss::Table           *g_vidToRid = NULL;
 swss::Table           *g_ridToVid = NULL;
 
+swss::Counter         *g_vidCounter = NULL;
+
 sai_status_t sai_api_initialize(
         _In_ uint64_t flags,
         _In_ const service_method_table_t* services)
@@ -67,6 +69,11 @@ sai_status_t sai_api_initialize(
 
     g_vidToRid = new swss::Table(g_db, "VIDTORID");
     g_ridToVid = new swss::Table(g_db, "RIDTOVID");
+
+    if (g_vidCounter != NULL)
+        delete g_vidCounter;
+
+    g_vidCounter = new swss::Counter(g_db, "VIDCOUNTER");
 
     g_initialized = true;
 

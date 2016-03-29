@@ -20,6 +20,7 @@ extern "C" {
 #include "swss/scheme.h"
 #include "swss/logger.h"
 #include "swss/table.h"
+#include "swss/counter.h"
 
 #define UNREFERENCED_PARAMETER(X)
 
@@ -40,6 +41,8 @@ extern swss::ProducerTable *notifications;
 extern swss::Table *g_vidToRid;
 extern swss::Table *g_ridToVid;
 
+extern swss::Counter *g_vidCounter;
+
 sai_object_id_t translate_vid_to_rid(
         _In_ sai_object_id_t vid);
 
@@ -57,6 +60,11 @@ void translate_list_vid_to_rid(
         element.list[i] = translate_vid_to_rid(element.list[i]);
     }
 }
+
+void translate_rid_to_vid(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list);
 
 typedef sai_status_t (*create_fn)(
         _Out_ sai_object_id_t *stp_id,

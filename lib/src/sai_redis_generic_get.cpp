@@ -1,108 +1,5 @@
 #include "sai_redis.h"
 
-sai_object_id_t translate_rid_to_vid(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t rid)
-{
-    if (rid == SAI_NULL_OBJECT_ID)
-        return SAI_NULL_OBJECT_ID;
-
-    // get from syncd should always return real id
-    sai_object_id_t vid;
-
-    std::string str_rid;
-    std::string str_vid;
-
-    sai_serialize_primitive(rid, str_rid);
-
-    if (g_ridToVid->getField(std::string(), str_rid, str_vid))
-    {
-        // object exists
-
-        int index = 0;
-        sai_deserialize_primitive(str_vid, index, vid);
-
-        return vid;
-    }
-
-    REDIS_LOG_DBG("rid is missing from db");
-
-    vid = redis_create_virtual_object_id(object_type);
-
-    sai_serialize_primitive(vid, str_vid);
-
-    g_ridToVid->setField(std::string(), str_rid, str_vid);
-    g_vidToRid->setField(std::string(), str_vid, str_rid);
-
-    return vid;
-}
-
-template <typename T>
-void translate_list_rid_to_vid(
-        _In_ sai_object_type_t object_type,
-        _In_ T &element)
-{
-    for (uint32_t i = 0; i < element.count; i++)
-    {
-        element.list[i] = translate_rid_to_vid(object_type, element.list[i]); 
-    }
-}
-
-void translate_rid_to_vid(
-        _In_ sai_object_type_t object_type,
-        _In_ uint32_t attr_count,
-        _In_ sai_attribute_t *attr_list)
-{
-    // we receive real id's here, if they are new then create new id 
-    // for them and put in db, if entry exists in db, use it
-
-    for (uint32_t i = 0; i < attr_count; i++)
-    {
-        sai_attribute_t &attr = attr_list[i];
-
-        sai_attr_serialization_type_t serialization_type;
-        sai_status_t status = sai_get_serialization_type(object_type, attr.id, serialization_type);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            throw std::runtime_error("unable to find serialization type");
-        }
-
-        switch (serialization_type)
-        {
-            case SAI_SERIALIZATION_TYPE_OBJECT_ID:
-                attr.value.oid = translate_rid_to_vid(object_type, attr.value.oid);
-                break;
-
-            case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
-                translate_list_rid_to_vid(object_type, attr.value.objlist);
-                break;
-
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
-                attr.value.aclfield.data.oid = translate_rid_to_vid(object_type, attr.value.aclfield.data.oid);
-                break;
-
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
-                translate_list_rid_to_vid(object_type, attr.value.aclfield.data.objlist);
-                break;
-
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
-                attr.value.aclaction.parameter.oid = translate_rid_to_vid(object_type, attr.value.aclaction.parameter.oid);
-                break;
-
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
-                translate_list_rid_to_vid(object_type, attr.value.aclaction.parameter.objlist);
-                break;
-
-            case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
-                translate_list_rid_to_vid(object_type, attr.value.portbreakout.port_list);
-
-            default:
-                break;
-        }
-    }
-}
-
 sai_status_t internal_redis_get_process(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t attr_count,
@@ -129,8 +26,6 @@ sai_status_t internal_redis_get_process(
         SaiAttributeList list(object_type, values, false);
 
         transfer_attributes(object_type, attr_count, list.get_attr_list(), attr_list, false);
-
-        translate_rid_to_vid(object_type, attr_count, attr_list);
     }
     else if (status == SAI_STATUS_BUFFER_OVERFLOW)
     {
