@@ -24,6 +24,7 @@ syncd_SOURCES = syncd.cpp \
 		syncd_notifications.cpp \
 		../common/redisclient.cpp \
 		../common/saiserialize.cpp \
+		../common/saiattribute.cpp \
 		../common/saiattributelist.cpp
 
 syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) \

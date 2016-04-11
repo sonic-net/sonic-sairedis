@@ -584,6 +584,8 @@ sai_status_t handle_route(
 
     route_entry.vr_id = translate_vid_to_rid(route_entry.vr_id);
 
+    SWSS_LOG_DEBUG("route: %s", str_object_id.c_str());
+
     switch(api)
     {
         case SAI_COMMON_API_CREATE:
