@@ -4,6 +4,8 @@
 swss::Table *g_vidToRid = NULL;
 swss::Table *g_ridToVid = NULL;
 
+std::map<std::string, std::string> gProfileMap;
+
 void sai_diag_shell()
 {
     sai_status_t status;
@@ -160,10 +162,13 @@ const char* dummy_profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
 {
-    UNREFERENCED_PARAMETER(profile_id);
-    UNREFERENCED_PARAMETER(variable);
+    auto it = gProfileMap.find(variable);
 
-    return NULL;
+    if (it == gProfileMap.end())
+        return NULL;
+
+    return it->second.c_str();
+
 }
 
 int dummy_profile_get_next_value(
@@ -554,6 +559,11 @@ int main(int argc, char **argv)
     // also "remove" from response queue will also trigger another "response"
     getRequest = new swss::ConsumerTable(db, "GETREQUEST");
     getResponse  = new swss::ProducerTable(db, "GETRESPONSE");
+
+#ifdef MLNXSAI
+    std::string mlnx_config_file = "/etc/ssw/ACS-MSN2700/sai_2700.xml";
+    gProfileMap[SAI_KEY_INIT_CONFIG_FILE] = mlnx_config_file;
+#endif /* MLNX_SAI */
 
     sai_api_initialize(0, (service_method_table_t*)&test_services);
 
