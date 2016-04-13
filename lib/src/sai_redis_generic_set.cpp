@@ -18,6 +18,8 @@ sai_status_t internal_redis_generic_set(
         _In_ const std::string &serialized_object_id,
         _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
 
     std::vector<swss::FieldValueTuple> entry = SaiAttributeList::serialize_attr_list(

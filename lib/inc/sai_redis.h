@@ -1,6 +1,8 @@
 #ifndef __SAI_REDIS__
 #define __SAI_REDIS__
 
+#include <mutex>
+
 #include "stdint.h"
 #include "stdio.h"
 
@@ -31,6 +33,8 @@ extern swss::Table *g_vidToRid;
 extern swss::Table *g_ridToVid;
 
 extern swss::RedisClient               *g_redisClient;
+
+extern std::mutex g_mutex;
 
 extern const sai_acl_api_t              redis_acl_api;
 extern const sai_buffer_api_t           redis_buffer_api;

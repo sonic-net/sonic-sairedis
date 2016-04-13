@@ -68,6 +68,8 @@ sai_status_t redis_initialize_switch(
     _In_reads_opt_z_(SAI_MAX_FIRMWARE_PATH_NAME_LEN) char* firmware_path_name,
     _In_ sai_switch_notification_t* switch_notifications)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
 
     if (g_initialised)
@@ -115,6 +117,8 @@ sai_status_t redis_initialize_switch(
 void  redis_shutdown_switch(
     _In_ bool warm_restart_hint)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
 
     if (!g_initialised)
@@ -152,7 +156,11 @@ sai_status_t redis_connect_switch(
     _In_reads_z_(SAI_MAX_HARDWARE_ID_LEN) char* switch_hardware_id,
     _In_ sai_switch_notification_t* switch_notifications)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
@@ -168,7 +176,11 @@ sai_status_t redis_connect_switch(
  */
 void redis_disconnect_switch(void)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
 }
 
 /**

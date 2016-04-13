@@ -4,6 +4,8 @@ sai_status_t internal_redis_generic_remove(
         _In_ sai_object_type_t object_type,
         _In_ const std::string &serialized_object_id)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
 
     std::string str_object_type;
