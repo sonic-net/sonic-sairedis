@@ -103,7 +103,7 @@ sai_status_t internal_redis_generic_get(
             const std::string &op = kfvOp(kco); 
             const std::string &key = kfvKey(kco);
 
-            SWSS_LOG_DEBUG("response: %s op = %s, key = %s", key.c_str(), op.c_str());
+            SWSS_LOG_DEBUG("response: op = %s, key = %s", key.c_str(), op.c_str());
 
             if (op != "getresponse") // ignore non response messages
                 continue;

@@ -5,16 +5,18 @@
 std::mutex g_mutex;
 
 service_method_table_t g_services;
-bool                   g_initialized = false;
+bool                   g_apiInitialized = false;
 
 swss::DBConnector     *g_db = NULL;
 swss::DBConnector     *g_dbNtf = NULL;
 swss::ProducerTable   *g_asicState = NULL;
 
 // we probably don't need those to tables to access GET requests
+swss::ProducerTable   *g_notifySyncdProducer = NULL;
 swss::ProducerTable   *g_redisGetProducer = NULL;
 swss::ConsumerTable   *g_redisGetConsumer = NULL;
 swss::ConsumerTable   *g_redisNotifications = NULL;
+swss::ConsumerTable   *g_notifySyncdConsumer = NULL;
 
 swss::RedisClient     *g_redisClient = NULL;
 
@@ -28,7 +30,7 @@ sai_status_t sai_api_initialize(
 
     if ((NULL == services) || (NULL == services->profile_get_next_value) || (NULL == services->profile_get_value))
     {
-        SWSS_LOG_ERROR("Invalid services handle passed to SAI API initialize\n");
+        SWSS_LOG_ERROR("Invalid services handle passed to SAI API initialize");
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
@@ -36,7 +38,7 @@ sai_status_t sai_api_initialize(
 
     if (0 != flags)
     {
-        SWSS_LOG_ERROR("Invalid flags passed to SAI API initialize\n");
+        SWSS_LOG_ERROR("Invalid flags passed to SAI API initialize");
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
@@ -55,10 +57,20 @@ sai_status_t sai_api_initialize(
 
     g_asicState = new swss::ProducerTable(g_db, "ASIC_STATE");
 
+    if (g_notifySyncdProducer != NULL)
+        delete g_notifySyncdProducer;
+
+    g_notifySyncdProducer = new swss::ProducerTable(g_db, "NOTIFYSYNCDREQUERY", false);
+
     if (g_redisGetProducer != NULL)
         delete g_redisGetProducer;
 
     g_redisGetProducer = new swss::ProducerTable(g_db, "GETREQUEST");
+
+    if (g_notifySyncdConsumer != NULL)
+        delete g_notifySyncdConsumer;
+
+    g_notifySyncdConsumer = new swss::ConsumerTable(g_db, "NOTIFYSYNCRESPONSE", false);
 
     if (g_redisGetConsumer != NULL)
         delete g_redisGetConsumer;
@@ -75,13 +87,13 @@ sai_status_t sai_api_initialize(
 
     g_redisClient = new swss::RedisClient(g_db);
 
-    g_initialized = true;
+    g_apiInitialized = true;
 
     return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t sai_log_set(
-        _In_ sai_api_t sai_api_id, 
+        _In_ sai_api_t sai_api_id,
         _In_ sai_log_level_t log_level)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -109,11 +121,11 @@ sai_status_t sai_log_set(
             break;
 
         default:
-            SWSS_LOG_ERROR("Invalid log level %d\n", log_level);
+            SWSS_LOG_ERROR("Invalid log level %d", log_level);
             return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    switch (sai_api_id) 
+    switch (sai_api_id)
     {
         case SAI_API_SWITCH:
             break;
@@ -164,7 +176,7 @@ sai_status_t sai_log_set(
             break;
 
         default:
-            SWSS_LOG_ERROR("Invalid API type %d\n", sai_api_id);
+            SWSS_LOG_ERROR("Invalid API type %d", sai_api_id);
             return SAI_STATUS_INVALID_PARAMETER;
     }
 
@@ -172,22 +184,22 @@ sai_status_t sai_log_set(
 }
 
 sai_status_t sai_api_query(
-        _In_ sai_api_t sai_api_id, 
+        _In_ sai_api_t sai_api_id,
         _Out_ void** api_method_table)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
 
-    if (NULL == api_method_table) 
+    if (NULL == api_method_table)
     {
-        SWSS_LOG_ERROR("NULL method table passed to SAI API initialize\n");
+        SWSS_LOG_ERROR("NULL method table passed to SAI API initialize");
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    if (!g_initialized) 
+    if (!g_apiInitialized)
     {
-        SWSS_LOG_ERROR("SAI API not initialized before calling API query\n");
+        SWSS_LOG_ERROR("SAI API not initialized before calling API query");
         return SAI_STATUS_UNINITIALIZED;
     }
 
@@ -293,7 +305,7 @@ sai_status_t sai_api_query(
             return SAI_STATUS_SUCCESS;
 
         default:
-            SWSS_LOG_ERROR("Invalid API type %d\n", sai_api_id);
+            SWSS_LOG_ERROR("Invalid API type %d", sai_api_id);
             return SAI_STATUS_INVALID_PARAMETER;
     }
 }
@@ -303,6 +315,8 @@ sai_status_t sai_api_uninitialize(void)
     std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
+
+    g_apiInitialized = false;
 
     SWSS_LOG_ERROR("not implemented");
 

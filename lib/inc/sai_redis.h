@@ -25,9 +25,11 @@ extern service_method_table_t           g_services;
 extern swss::DBConnector               *g_db;
 extern swss::ProducerTable             *g_asicState;
 
+extern swss::ProducerTable             *g_notifySyncdProducer;
 extern swss::ProducerTable             *g_redisGetProducer;
 extern swss::ConsumerTable             *g_redisGetConsumer;
 extern swss::ConsumerTable             *g_redisNotifications;
+extern swss::ConsumerTable             *g_notifySyncdConsumer;
 
 extern swss::Table *g_vidToRid;
 extern swss::Table *g_ridToVid;

@@ -2,7 +2,9 @@
 #include "syncd.h"
 
 std::mutex g_mutex;
-swss::RedisClient *g_redisClient = NULL;
+
+swss::RedisClient   *g_redisClient = NULL;
+swss::ProducerTable *notifySyncdResponse = NULL;
 
 std::map<std::string, std::string> gProfileMap;
 
@@ -842,6 +844,57 @@ void updateLogLevel()
     }
 }
 
+void sendResponse(sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    std::string strStatus;
+
+    sai_serialize_primitive(status, strStatus);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    SWSS_LOG_INFO("sending response: %s", strStatus.c_str());
+
+    notifySyncdResponse->set("", entry, strStatus);
+}
+
+void notifySyncd(swss::ConsumerTable &consumer)
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    SWSS_LOG_ENTER();
+
+    swss::KeyOpFieldsValuesTuple kco;
+    consumer.pop(kco);
+
+    const std::string &op = kfvOp(kco);
+
+    sai_status_t status = SAI_STATUS_FAILURE;
+
+    if (op == "compile")
+    {
+        // TODO
+        SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
+
+        status = SAI_STATUS_NOT_IMPLEMENTED;
+    }
+
+    if (op == "switch")
+    {
+        // TODO
+        SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
+
+        status = SAI_STATUS_NOT_IMPLEMENTED;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("unknown operation: %s", op.c_str());
+    }
+
+    sendResponse(status);
+}
+
 int main(int argc, char **argv)
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -858,6 +911,7 @@ int main(int argc, char **argv)
     updateLogLevel();
 
     swss::ConsumerTable *asicState = new swss::ConsumerTable(db, "ASIC_STATE");
+    swss::ConsumerTable *notifySyncdQuery = new swss::ConsumerTable(db, "NOTIFYSYNCDREQUERY", false);
 
     // at the end we cant use producer consumer concept since
     // if one proces will restart there may be something in the queue
@@ -865,6 +919,7 @@ int main(int argc, char **argv)
     getRequest = new swss::ConsumerTable(db, "GETREQUEST");
     getResponse  = new swss::ProducerTable(db, "GETRESPONSE");
     notifications = new swss::ProducerTable(dbNtf, "NOTIFICATIONS");
+    notifySyncdResponse = new swss::ProducerTable(db, "NOTIFYSYNCDRESPONSE", false);
 
 #ifdef MLNXSAI
     std::string mlnx_config_file = "/etc/ssw/ACS-MSN2700/sai_2700.xml";
@@ -921,6 +976,7 @@ int main(int argc, char **argv)
 
         s.addSelectable(getRequest);
         s.addSelectable(asicState);
+        s.addSelectable(notifySyncdQuery);
 
         while(true)
         {
@@ -930,13 +986,16 @@ int main(int argc, char **argv)
 
             int result = s.select(&sel, &fd);
 
+            if (sel == notifySyncdQuery)
+            {
+                notifySyncd(*notifySyncdQuery);
+                continue;
+            }
+
             if (result == swss::Select::OBJECT)
             {
                 processEvent(*(swss::ConsumerTable*)sel);
             }
-
-            // TODO may be not efficient to do it here
-            updateLogLevel();
         }
     }
     catch(const std::exception &e)

@@ -1,9 +1,17 @@
 #include "sai_redis.h"
 #include <thread>
 
+// if we will not get response in 60 seconds when
+// notify syncd to compile new state or to switch
+// to compiled state, then there is something wrong
+#define NOTIFY_SYNCD_TIMEOUT (60*1000)
+
+#define NOTIFY_COMPILE  "compile"
+#define NOTIFY_SWITCH   "switch"
+
 sai_switch_notification_t redis_switch_notifications;
 
-bool g_initialised = false;
+bool g_switchInitialized = false;
 volatile bool g_run = false;
 
 std::shared_ptr<std::thread> notification_thread;
@@ -47,6 +55,49 @@ void ntf_thread()
     }
 }
 
+sai_status_t notify_syncd(const std::string &op)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    g_notifySyncdProducer->set("", entry, op);
+
+    swss::Select s;
+
+    s.addSelectable(g_notifySyncdConsumer);
+
+    SWSS_LOG_DEBUG("wait for response after: %s", op.c_str());
+
+    swss::Selectable *sel;
+
+    int fd;
+
+    int result = s.select(&sel, &fd, NOTIFY_SYNCD_TIMEOUT);
+
+    if (result == swss::Select::OBJECT)
+    {
+        swss::KeyOpFieldsValuesTuple kco;
+
+        g_notifySyncdConsumer->pop(kco);
+
+        const std::string &strStatus = kfvOp(kco);
+
+        sai_status_t status;
+
+        int index = 0;
+        sai_deserialize_primitive(strStatus, index, status);
+
+        SWSS_LOG_INFO("%s status: %d", op.c_str(), status);
+
+        return status;
+    }
+
+    SWSS_LOG_ERROR("%s get response failed, result: %d", op.c_str(), result);
+
+    return SAI_STATUS_FAILURE;
+}
+
 /**
 * Routine Description:
 *   SDK initialization. After the call the capability attributes should be
@@ -72,14 +123,52 @@ sai_status_t redis_initialize_switch(
 
     SWSS_LOG_ENTER();
 
-    if (g_initialised)
+    if (firmware_path_name == NULL)
+    {
+        SWSS_LOG_ERROR("firmware path name is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::string op = std::string(firmware_path_name);
+
+    SWSS_LOG_INFO("operation: '%s'", op.c_str());
+
+    if (op == NOTIFY_COMPILE || op == NOTIFY_SWITCH)
+    {
+        sai_status_t status = notify_syncd(op);
+
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_NOTICE("sending %s to syncd succeeded", op.c_str());
+
+            if (g_switchInitialized)
+            {
+                return status;
+            }
+
+            // proceed with proper initialization
+        }
+        else
+        {
+            SWSS_LOG_ERROR("sending %s to syncd failed: %d", op.c_str(), status);
+
+            return status;
+        }
+    }
+    else
+    {
+        SWSS_LOG_WARN("unknown operation: '%s'", op.c_str());
+    }
+
+    if (g_switchInitialized)
     {
         SWSS_LOG_ERROR("switch is already initialized");
 
         return SAI_STATUS_FAILURE;
     }
 
-    g_initialised = true;
+    g_switchInitialized = true;
 
     if (switch_notifications != NULL)
     {
@@ -121,7 +210,7 @@ void  redis_shutdown_switch(
 
     SWSS_LOG_ENTER();
 
-    if (!g_initialised)
+    if (!g_switchInitialized)
     {
         SWSS_LOG_ERROR("not initialized");
 
@@ -132,7 +221,7 @@ void  redis_shutdown_switch(
 
     notification_thread->join();
 
-    g_initialised = false;
+    g_switchInitialized = false;
 
     memset(&redis_switch_notifications, 0, sizeof(sai_switch_notification_t));
 }
