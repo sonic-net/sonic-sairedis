@@ -582,8 +582,10 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+#ifdef BRCMSAI
     std::thread bcm_diag_shell_thread = std::thread(sai_diag_shell);
     bcm_diag_shell_thread.detach();
+#endif /* BRCMSAI */
 #else
     sai_switch_api->initialize_switch(
             0,  // profile id
