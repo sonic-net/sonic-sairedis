@@ -20,6 +20,16 @@ AC_ARG_ENABLE(debug,
 esac],[debug=false])
 AM_CONDITIONAL(DEBUG, test x$debug = xtrue)
 
+AC_ARG_WITH(sai,
+[  --with-sai        Compiling against specific SAI],
+[case "${withval}" in
+	bcm)  sai=bcm ;;
+	mlnx) sai=mlnx ;;
+	*) AC_MSG_ERROR(bad value ${withval} for --with-sai) ;;
+esac])
+AM_CONDITIONAL(SAIBCM,  test x$sai = xbcm)
+AM_CONDITIONAL(SAIMLNX, test x$sai = xmlnx)
+
 CFLAGS_COMMON="-std=c++11 -Wall -fPIC -Wno-write-strings"
 AC_SUBST(CFLAGS_COMMON)
 

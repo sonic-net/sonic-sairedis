@@ -4,6 +4,8 @@
 std::mutex g_mutex;
 swss::RedisClient *g_redisClient = NULL;
 
+std::map<std::string, std::string> gProfileMap;
+
 void sai_diag_shell()
 {
     SWSS_LOG_ENTER();
@@ -324,10 +326,13 @@ const char* dummy_profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
 {
-    UNREFERENCED_PARAMETER(profile_id);
-    UNREFERENCED_PARAMETER(variable);
+    auto it = gProfileMap.find(variable);
 
-    return NULL;
+    if (it == gProfileMap.end())
+        return NULL;
+
+    return it->second.c_str();
+
 }
 
 int dummy_profile_get_next_value(
@@ -861,6 +866,11 @@ int main(int argc, char **argv)
     getResponse  = new swss::ProducerTable(db, "GETRESPONSE");
     notifications = new swss::ProducerTable(dbNtf, "NOTIFICATIONS");
 
+#ifdef MLNXSAI
+    std::string mlnx_config_file = "/etc/ssw/ACS-MSN2700/sai_2700.xml";
+    gProfileMap[SAI_KEY_INIT_CONFIG_FILE] = mlnx_config_file;
+#endif /* MLNX_SAI */
+
     sai_api_initialize(0, (service_method_table_t*)&test_services);
 
     populate_sai_apis();
@@ -877,6 +887,8 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+#ifdef BRCMSAI
+
     for (int i = 0; i < argc; i++)
     {
         if (strcmp(argv[i],"--diag") == 0)
@@ -886,6 +898,8 @@ int main(int argc, char **argv)
             break;
         }
     }
+
+#endif /* BRCMSAI */
 
 #else
     sai_switch_api->initialize_switch(

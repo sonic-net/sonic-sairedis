@@ -9,6 +9,14 @@ else
 DBGFLAGS = -g
 endif
 
+if SAIBCM
+SAIFLAGS = -DBRCMSAI
+endif
+
+if SAIMLNX
+SAIFLAGS = -DMLNXSAI
+endif
+
 syncd_SOURCES = syncd.cpp \
 		syncd_init.cpp \
 		syncd_reinit.cpp \
@@ -20,6 +28,6 @@ syncd_SOURCES = syncd.cpp \
 
 syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) \
 				 -I$(top_srcdir)/lib/inc \
-				 -I/usr/include/sai
+				 -I/usr/include/sai $(SAIFLAGS)
 syncd_LDADD = -lhiredis -lswsscommon -lsai -lpthread
 
