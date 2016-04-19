@@ -35,6 +35,9 @@ class SaiAttributeList
 
     private:
 
+        SaiAttributeList(const SaiAttributeList&);
+        SaiAttributeList& operator=(const SaiAttributeList&);
+
         std::vector<sai_attribute_t> m_attr_list;
         std::vector<sai_attr_serialization_type_t> m_serialization_type_list;
 };
