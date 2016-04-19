@@ -16,6 +16,7 @@ include /usr/share/dpkg/default.mk
 # package maintainers to append LDFLAGS
 #export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 
+DEB_SAI_FLAVOR ?= "bcm"
 
 # main packaging script based on dh7 syntax
 %:
@@ -28,7 +29,7 @@ include /usr/share/dpkg/default.mk
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
 override_dh_auto_configure:
-	dh_auto_configure --
+	dh_auto_configure -- --with-sai=$(DEB_SAI_FLAVOR)
 
 override_dh_auto_install:
 	dh_auto_install
