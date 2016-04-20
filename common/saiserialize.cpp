@@ -59,6 +59,8 @@ sai_serialization_map_t sai_get_serialization_map()
     map[SAI_OBJECT_TYPE_VLAN_MEMBER][SAI_VLAN_MEMBER_ATTR_PORT_ID] = SAI_SERIALIZATION_TYPE_OBJECT_ID;
 
     map[SAI_OBJECT_TYPE_TRAP][SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TRAP][SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TRAP][SAI_HOSTIF_TRAP_ATTR_TRAP_PRIORITY] = SAI_SERIALIZATION_TYPE_UINT32;
 
     return map;
 }
@@ -146,7 +148,7 @@ sai_status_t sai_get_serialization_type(
 
     if (mit == map.end())
     {
-        SWSS_LOG_ERROR("serialization attribute id not found %u", attr_id);
+        SWSS_LOG_ERROR("serialization attribute id not found %u for object type : %u", attr_id, object_type);
 
         return SAI_STATUS_NOT_IMPLEMENTED;
     }
