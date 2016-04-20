@@ -60,7 +60,7 @@ sai_status_t sai_api_initialize(
     if (g_notifySyncdProducer != NULL)
         delete g_notifySyncdProducer;
 
-    g_notifySyncdProducer = new swss::ProducerTable(g_db, "NOTIFYSYNCDREQUERY", false);
+    g_notifySyncdProducer = new swss::ProducerTable(g_db, "NOTIFYSYNCDREQUERY");
 
     if (g_redisGetProducer != NULL)
         delete g_redisGetProducer;
@@ -70,7 +70,7 @@ sai_status_t sai_api_initialize(
     if (g_notifySyncdConsumer != NULL)
         delete g_notifySyncdConsumer;
 
-    g_notifySyncdConsumer = new swss::ConsumerTable(g_db, "NOTIFYSYNCRESPONSE", false);
+    g_notifySyncdConsumer = new swss::ConsumerTable(g_db, "NOTIFYSYNCRESPONSE");
 
     if (g_redisGetConsumer != NULL)
         delete g_redisGetConsumer;

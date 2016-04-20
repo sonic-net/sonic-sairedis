@@ -913,7 +913,7 @@ int main(int argc, char **argv)
     updateLogLevel();
 
     swss::ConsumerTable *asicState = new swss::ConsumerTable(db, "ASIC_STATE");
-    swss::ConsumerTable *notifySyncdQuery = new swss::ConsumerTable(db, "NOTIFYSYNCDREQUERY", false);
+    swss::ConsumerTable *notifySyncdQuery = new swss::ConsumerTable(db, "NOTIFYSYNCDREQUERY");
 
     // at the end we cant use producer consumer concept since
     // if one proces will restart there may be something in the queue
@@ -921,7 +921,7 @@ int main(int argc, char **argv)
     getRequest = new swss::ConsumerTable(db, "GETREQUEST");
     getResponse  = new swss::ProducerTable(db, "GETRESPONSE");
     notifications = new swss::ProducerTable(dbNtf, "NOTIFICATIONS");
-    notifySyncdResponse = new swss::ProducerTable(db, "NOTIFYSYNCDRESPONSE", false);
+    notifySyncdResponse = new swss::ProducerTable(db, "NOTIFYSYNCDRESPONSE");
 
 #ifdef MLNXSAI
     std::string mlnx_config_file = "/etc/ssw/ACS-MSN2700/sai_2700.xml";
