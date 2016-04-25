@@ -3,8 +3,8 @@
 
 std::mutex g_mutex;
 
-swss::RedisClient   *g_redisClient = NULL;
-swss::ProducerTable *notifySyncdResponse = NULL;
+swss::RedisClient           *g_redisClient = NULL;
+swss::NotificationProducer  *notifySyncdResponse = NULL;
 
 std::map<std::string, std::string> gProfileMap;
 
@@ -320,9 +320,9 @@ void internal_syncd_get_send(
 }
 
 
-swss::ConsumerTable *getRequest = NULL;
-swss::ProducerTable *getResponse = NULL;
-swss::ProducerTable *notifications = NULL;
+swss::ConsumerTable         *getRequest = NULL;
+swss::ProducerTable         *getResponse = NULL;
+swss::NotificationProducer  *notifications = NULL;
 
 const char* dummy_profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
@@ -858,23 +858,24 @@ void sendResponse(sai_status_t status)
 
     SWSS_LOG_INFO("sending response: %s", strStatus.c_str());
 
-    notifySyncdResponse->set("", entry, strStatus);
+    notifySyncdResponse->send(strStatus, "", entry);
 }
 
-void notifySyncd(swss::ConsumerTable &consumer)
+void notifySyncd(swss::NotificationConsumer &consumer)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
 
-    swss::KeyOpFieldsValuesTuple kco;
-    consumer.pop(kco);
+    std::string op;
+    std::string data;
+    std::vector<swss::FieldValueTuple> values;
 
-    const std::string &op = kfvOp(kco);
+    consumer.pop(op, data, values);
 
     sai_status_t status = SAI_STATUS_FAILURE;
 
-    if (op == "compile")
+    if (op == NOTIFY_SAI_COMPILE_VIEW)
     {
         // TODO
         SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
@@ -882,7 +883,7 @@ void notifySyncd(swss::ConsumerTable &consumer)
         status = SAI_STATUS_NOT_IMPLEMENTED;
     }
 
-    if (op == "switch")
+    if (op == NOTIFY_SAI_SWITCH_VIEW)
     {
         // TODO
         SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
@@ -913,15 +914,15 @@ int main(int argc, char **argv)
     updateLogLevel();
 
     swss::ConsumerTable *asicState = new swss::ConsumerTable(db, "ASIC_STATE");
-    swss::ConsumerTable *notifySyncdQuery = new swss::ConsumerTable(db, "NOTIFYSYNCDREQUERY");
+    swss::NotificationConsumer *notifySyncdQuery = new swss::NotificationConsumer(db, "NOTIFYSYNCDREQUERY");
 
     // at the end we cant use producer consumer concept since
     // if one proces will restart there may be something in the queue
     // also "remove" from response queue will also trigger another "response"
     getRequest = new swss::ConsumerTable(db, "GETREQUEST");
     getResponse  = new swss::ProducerTable(db, "GETRESPONSE");
-    notifications = new swss::ProducerTable(dbNtf, "NOTIFICATIONS");
-    notifySyncdResponse = new swss::ProducerTable(db, "NOTIFYSYNCDRESPONSE");
+    notifications = new swss::NotificationProducer(dbNtf, "NOTIFICATIONS");
+    notifySyncdResponse = new swss::NotificationProducer(db, "NOTIFYSYNCDRESPONSE");
 
 #ifdef MLNXSAI
     std::string mlnx_config_file = "/etc/ssw/ACS-MSN2700/sai_2700.xml";

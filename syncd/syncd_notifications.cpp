@@ -1,31 +1,28 @@
 #include "syncd.h"
 
 void send_notification(
-        _In_ std::string key,
+        _In_ std::string op,
         _In_ std::string data,
         _In_ std::vector<swss::FieldValueTuple> &entry)
 {
     SWSS_LOG_ENTER();
 
-    key = key + ":" + data;
+    SWSS_LOG_DEBUG("sending notification: %s:%s", op.c_str(), data.c_str());
 
-    SWSS_LOG_DEBUG("sending notification: %s", key.c_str());
-
-    notifications->set(key, entry, "ntf");
-    notifications->del(key, "delntf");
+    notifications->send(op, data, entry);
 
     SWSS_LOG_DEBUG("notification send successfull");
 }
 
 void send_notification(
-        _In_ std::string key,
+        _In_ std::string op,
         _In_ std::string data)
 {
     SWSS_LOG_ENTER();
 
     std::vector<swss::FieldValueTuple> entry;
 
-    send_notification(key, data, entry);
+    send_notification(op, data, entry);
 }
 
 void on_switch_state_change(

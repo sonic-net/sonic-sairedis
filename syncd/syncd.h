@@ -22,6 +22,8 @@ extern "C" {
 #include "swss/dbconnector.h"
 #include "swss/producertable.h"
 #include "swss/consumertable.h"
+#include "swss/notificationconsumer.h"
+#include "swss/notificationproducer.h"
 #include "swss/select.h"
 #include "swss/scheme.h"
 #include "swss/logger.h"
@@ -37,6 +39,9 @@ extern "C" {
 #define DEFAULT_VIRTUAL_ROUTER_ID   "DEFAULT_VIRTUAL_ROUTER_ID"
 #define CPU_PORT_ID                 "CPU_PORT_ID"
 
+#define NOTIFY_SAI_COMPILE_VIEW  "sai_compile_view"
+#define NOTIFY_SAI_SWITCH_VIEW   "sai_switch_view"
+
 extern std::mutex g_mutex;
 
 void onSyncdStart();
@@ -50,9 +55,9 @@ sai_object_id_t redisGetDefaultVirtualRouterId();
 void redisClearVidToRidMap();
 void redisClearRidToVidMap();
 
-extern swss::ConsumerTable *getRequest;
-extern swss::ProducerTable *getResponse;
-extern swss::ProducerTable *notifications;
+extern swss::ConsumerTable         *getRequest;
+extern swss::ProducerTable         *getResponse;
+extern swss::NotificationProducer  *notifications;
 
 extern swss::RedisClient   *g_redisClient;
 

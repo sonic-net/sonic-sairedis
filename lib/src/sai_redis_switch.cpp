@@ -6,8 +6,8 @@
 // to compiled state, then there is something wrong
 #define NOTIFY_SYNCD_TIMEOUT (60*1000)
 
-#define NOTIFY_COMPILE  "compile"
-#define NOTIFY_SWITCH   "switch"
+#define NOTIFY_SAI_COMPILE_VIEW  "sai_compile_view"
+#define NOTIFY_SAI_SWITCH_VIEW   "sai_switch_view"
 
 sai_switch_notification_t redis_switch_notifications;
 
@@ -36,21 +36,15 @@ void ntf_thread()
         {
             swss::KeyOpFieldsValuesTuple kco;
 
-            g_redisNotifications->pop(kco);
+            std::string op;
+            std::string data;
+            std::vector<swss::FieldValueTuple> values;
 
-            const std::string &op = kfvOp(kco);
-            const std::string &key = kfvKey(kco);
-            const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+            g_redisNotifications->pop(op, data, values);
 
-            SWSS_LOG_DEBUG("notification: op = %s, key = %s", op.c_str(), key.c_str());
+            SWSS_LOG_DEBUG("notification: op = %s, data = %s", op.c_str(), data.c_str());
 
-            if (op != "ntf")
-                continue;
-
-            const std::string &ntf = key.substr(0, key.find_first_of(":"));
-            const std::string &data = key.substr(key.find_last_of(":") + 1);
-
-            handle_notification(ntf, data, values);
+            handle_notification(op, data, values);
         }
     }
 }
@@ -61,7 +55,7 @@ sai_status_t notify_syncd(const std::string &op)
 
     std::vector<swss::FieldValueTuple> entry;
 
-    g_notifySyncdProducer->set("", entry, op);
+    g_notifySyncdProducer->send(op, "", entry);
 
     swss::Select s;
 
@@ -79,9 +73,13 @@ sai_status_t notify_syncd(const std::string &op)
     {
         swss::KeyOpFieldsValuesTuple kco;
 
-        g_notifySyncdConsumer->pop(kco);
+        std::string op;
+        std::string data;
+        std::vector<swss::FieldValueTuple> values;
 
-        const std::string &strStatus = kfvOp(kco);
+        g_notifySyncdConsumer->pop(op, data, values);
+
+        const std::string &strStatus = op;
 
         sai_status_t status;
 
@@ -134,7 +132,7 @@ sai_status_t redis_initialize_switch(
 
     SWSS_LOG_INFO("operation: '%s'", op.c_str());
 
-    if (op == NOTIFY_COMPILE || op == NOTIFY_SWITCH)
+    if (op == NOTIFY_SAI_COMPILE_VIEW || op == NOTIFY_SAI_SWITCH_VIEW)
     {
         sai_status_t status = notify_syncd(op);
 
