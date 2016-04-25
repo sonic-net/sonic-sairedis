@@ -774,40 +774,6 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
     return status;
 }
 
-void handler(int sig) 
-{
-    signal(SIGSEGV, SIG_DFL);
-
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_ERROR("SIGNAL %d", sig);
-
-    void *array[10];
-    char **strings;
-    size_t size;
-
-    size = backtrace(array, 10);
-
-    SWSS_LOG_ERROR("backtrace() returned %d addresses", size);
-
-    strings = backtrace_symbols(array, size);
-
-    if (strings == NULL) 
-    {
-        SWSS_LOG_ERROR("backtrace_sumbols() returned NULL");
-        exit(EXIT_FAILURE);
-    }
-
-    for (size_t j = 0; j < size; j++)
-        SWSS_LOG_ERROR("backtrace stack: %s", strings[j]);
-
-    free(strings);
-
-    backtrace_symbols_fd(array, size, STDERR_FILENO);
-
-    exit(EXIT_FAILURE);
-}
-
 swss::Logger::Priority redisGetLogLevel()
 {
     SWSS_LOG_ENTER();
@@ -903,8 +869,6 @@ int main(int argc, char **argv)
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     SWSS_LOG_ENTER();
-
-    signal(SIGSEGV, handler);
 
     swss::DBConnector *db = new swss::DBConnector(ASIC_DB, "localhost", 6379, 0);
     swss::DBConnector *dbNtf = new swss::DBConnector(ASIC_DB, "localhost", 6379, 0);
@@ -1005,14 +969,6 @@ int main(int argc, char **argv)
     {
         SWSS_LOG_ERROR("Runtime error: %s", e.what());
     }
-    catch(...)
-    {
-        SWSS_LOG_ERROR("Runtime error: unhandled exception");
-
-        handler(SIGSEGV);
-    }
 
     sai_api_uninitialize();
 }
-
-
