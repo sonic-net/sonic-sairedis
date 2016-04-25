@@ -1,6 +1,8 @@
 #include "sai_redis.h"
 #include <thread>
 
+#include "selectableevent.h"
+
 // if we will not get response in 60 seconds when
 // notify syncd to compile new state or to switch
 // to compiled state, then there is something wrong
@@ -16,6 +18,9 @@ volatile bool g_run = false;
 
 std::shared_ptr<std::thread> notification_thread;
 
+// this event is used to nice end notifications thread
+swss::SelectableEvent g_redisNotificationTrheadEvent;
+
 void ntf_thread()
 {
     SWSS_LOG_ENTER();
@@ -23,6 +28,7 @@ void ntf_thread()
     swss::Select s;
 
     s.addSelectable(g_redisNotifications);
+    s.addSelectable(&g_redisNotificationTrheadEvent);
 
     while (g_run)
     {
@@ -30,7 +36,13 @@ void ntf_thread()
 
         int fd;
 
-        int result = s.select(&sel, &fd, 500);
+        int result = s.select(&sel, &fd);
+
+        if (sel == &g_redisNotificationTrheadEvent)
+        {
+            // user requested shutdown_switch
+            break;
+        }
 
         if (result == swss::Select::OBJECT)
         {
@@ -216,6 +228,9 @@ void  redis_shutdown_switch(
     }
 
     g_run = false;
+
+    // notify thread that it should end
+    g_redisNotificationTrheadEvent.notify();
 
     notification_thread->join();
 
