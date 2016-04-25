@@ -324,34 +324,67 @@ swss::ConsumerTable         *getRequest = NULL;
 swss::ProducerTable         *getResponse = NULL;
 swss::NotificationProducer  *notifications = NULL;
 
-const char* dummy_profile_get_value(
+const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
 {
+    SWSS_LOG_ENTER();
+
     auto it = gProfileMap.find(variable);
 
     if (it == gProfileMap.end())
+    {
+        SWSS_LOG_INFO("%s: NULL", variable);
         return NULL;
+    }
+
+    SWSS_LOG_INFO("%s: %s", variable, it->second.c_str());
 
     return it->second.c_str();
-
 }
 
-int dummy_profile_get_next_value(
+std::map<std::string, std::string>::iterator gProfileIter = gProfileMap.begin();
+
+int profile_get_next_value(
         _In_ sai_switch_profile_id_t profile_id,
         _Out_ const char** variable,
         _Out_ const char** value)
 {
-    UNREFERENCED_PARAMETER(profile_id);
-    UNREFERENCED_PARAMETER(variable);
-    UNREFERENCED_PARAMETER(value);
+    SWSS_LOG_ENTER();
 
-    return -1;
+    if (value == NULL)
+    {
+        SWSS_LOG_INFO("resetting profile map iterator");
+
+        gProfileIter = gProfileMap.begin();
+        return 0;
+    }
+
+    if (variable == NULL)
+    {
+        SWSS_LOG_WARN("variable is null");
+        return -1;
+    }
+
+    if (gProfileIter == gProfileMap.end())
+    {
+        SWSS_LOG_INFO("iterator reached end");
+        return -1;
+    }
+
+    *variable = gProfileIter->first.c_str();
+    *value = gProfileIter->second.c_str();
+
+    SWSS_LOG_INFO("key: %s:%s", *variable, *value);
+
+    gProfileIter++;
+
+    return 0;
 }
 
 const service_method_table_t test_services = {
-    dummy_profile_get_value,
-    dummy_profile_get_next_value
+    profile_get_value,
+    profile_get_next_value
 };
 
 sai_status_t handle_generic(
@@ -681,12 +714,7 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
     std::string str_object_type = key.substr(0, key.find(":"));
     std::string str_object_id = key.substr(key.find(":")+1);
 
-    SWSS_LOG_INFO(
-            "key: %s op: %s objtype: %s objid: %s",
-            key.c_str(),
-            op.c_str(),
-            str_object_type.c_str(),
-            str_object_id.c_str());
+    SWSS_LOG_INFO("key: %s op: %s", key.c_str(), op.c_str());
 
     sai_common_api_t api = SAI_COMMON_API_MAX;
 
@@ -766,7 +794,7 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
     }
     else if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("failed to execute api: %s: %u", op.c_str(), status);
+        SWSS_LOG_ERROR("failed to execute api: %s: %d", op.c_str(), status);
 
         exit(EXIT_FAILURE);
     }
@@ -915,6 +943,8 @@ int main(int argc, char **argv)
     {
         if (strcmp(argv[i],"--diag") == 0)
         {
+            SWSS_LOG_INFO("starting bcm diag shell thread");
+
             std::thread bcm_diag_shell_thread = std::thread(sai_diag_shell);
             bcm_diag_shell_thread.detach();
             break;
