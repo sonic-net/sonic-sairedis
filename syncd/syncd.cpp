@@ -1,6 +1,8 @@
 #include <thread>
 #include "syncd.h"
 
+#include <getopt.h>
+
 std::mutex g_mutex;
 
 swss::RedisClient           *g_redisClient = NULL;
@@ -329,6 +331,12 @@ const char* profile_get_value(
         _In_ const char* variable)
 {
     SWSS_LOG_ENTER();
+
+    if (variable == NULL)
+    {
+        SWSS_LOG_WARN("variable is null");
+        return NULL;
+    }
 
     auto it = gProfileMap.find(variable);
 
@@ -892,11 +900,105 @@ void notifySyncd(swss::NotificationConsumer &consumer)
     sendResponse(status);
 }
 
+struct cmdOptions
+{
+    bool diagShell;
+    std::string profileMapFile;
+};
+
+cmdOptions handleCmdLine(int argc, char **argv)
+{
+    SWSS_LOG_ENTER();
+
+    cmdOptions options = {};
+
+    while(true)
+    {
+        static struct option long_options[] =
+        {
+            {"diag",     no_argument,       0, 'd' },
+            {"profile",  required_argument, 0, 'p' },
+            {0, 0, 0, 0}
+        };
+
+        int option_index = 0;
+
+        int c = getopt_long(argc, argv, "dp:", long_options, &option_index);
+
+        if (c == -1)
+            break;
+
+        switch (c)
+        {
+            case 'd':
+                SWSS_LOG_INFO("enable diag shell");
+                options.diagShell = true;
+                break;
+
+            case 'p':
+                SWSS_LOG_INFO("profile map file: %s", optarg);
+                options.profileMapFile = std::string(optarg);
+                break;
+
+            case '?':
+                SWSS_LOG_WARN("unknown get opti option %c", optopt);
+                exit(EXIT_FAILURE);
+                break;
+
+            default:
+                SWSS_LOG_ERROR("getopt_long failure");
+                exit(EXIT_FAILURE);
+        }
+    }
+
+    return options;
+}
+
+void handleProfileMap(const std::string& profileMapFile)
+{
+    SWSS_LOG_ENTER();
+
+    if (profileMapFile.size() == 0)
+        return;
+
+    std::ifstream profile(profileMapFile);
+
+    if (!profile.is_open())
+    {
+        SWSS_LOG_ERROR("failed to open profile map file: %s : %s", profileMapFile.c_str(), strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    std::string line;
+
+    while(getline(profile, line))
+    {
+        size_t pos = line.find("=");
+
+        if (pos == std::string::npos)
+        {
+            SWSS_LOG_WARN("not found '=' in line %s", line.c_str());
+            continue;
+        }
+
+        std::string key = line.substr(0, pos);
+        std::string value = line.substr(pos + 1);
+
+        gProfileMap[key] = value;
+
+        SWSS_LOG_INFO("insert: %s:%s", key.c_str(), value.c_str());
+    }
+}
+
 int main(int argc, char **argv)
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     SWSS_LOG_ENTER();
+
+    auto options = handleCmdLine(argc, argv);
+
+    handleProfileMap(options.profileMapFile);
 
     swss::DBConnector *db = new swss::DBConnector(ASIC_DB, "localhost", 6379, 0);
     swss::DBConnector *dbNtf = new swss::DBConnector(ASIC_DB, "localhost", 6379, 0);
@@ -927,8 +1029,6 @@ int main(int argc, char **argv)
 
     initialize_common_api_pointers();
 
-#if 1
-
     sai_status_t status = sai_switch_api->initialize_switch(0, "0xb850", "", &switch_notifications);
 
     if (status != SAI_STATUS_SUCCESS)
@@ -939,27 +1039,15 @@ int main(int argc, char **argv)
 
 #ifdef BRCMSAI
 
-    for (int i = 0; i < argc; i++)
+    if (options.diagShell)
     {
-        if (strcmp(argv[i],"--diag") == 0)
-        {
-            SWSS_LOG_INFO("starting bcm diag shell thread");
+        SWSS_LOG_INFO("starting bcm diag shell thread");
 
-            std::thread bcm_diag_shell_thread = std::thread(sai_diag_shell);
-            bcm_diag_shell_thread.detach();
-            break;
-        }
+        std::thread bcm_diag_shell_thread = std::thread(sai_diag_shell);
+        bcm_diag_shell_thread.detach();
     }
 
 #endif /* BRCMSAI */
-
-#else
-    sai_switch_api->initialize_switch(
-            0,  // profile id
-            "dummy_hardware_id",
-            "dummy_firmwre_path_name",
-            &switch_notifications);
-#endif
 
     SWSS_LOG_INFO("syncd started");
 
