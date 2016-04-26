@@ -1,0 +1,27 @@
+#!/bin/bash
+
+### BEGIN INIT INFO
+# Provides:          syncd
+# Required-Start:
+# Required-Stop:
+# Default-Start:     S
+# Default-Stop:      0 6
+# Short-Description: SONiC sync daemon
+# Description:       Enable service syncd.
+### END INIT INFO
+
+case "$1" in
+start)
+    [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
+    [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
+    [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
+    ;;
+stop)
+    ;;
+*)
+    echo "Usage: service syncd {start|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0
