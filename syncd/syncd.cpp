@@ -903,6 +903,7 @@ void notifySyncd(swss::NotificationConsumer &consumer)
 struct cmdOptions
 {
     bool diagShell;
+    bool disableCountersThread;
     std::string profileMapFile;
 };
 
@@ -916,20 +917,26 @@ cmdOptions handleCmdLine(int argc, char **argv)
     {
         static struct option long_options[] =
         {
-            {"diag",     no_argument,       0, 'd' },
-            {"profile",  required_argument, 0, 'p' },
-            {0, 0, 0, 0}
+            { "diag",          no_argument,       0, 'd' },
+            { "nocounters",    no_argument,       0, 'N' },
+            { "profile",       required_argument, 0, 'p' },
+            { 0,               0,                 0,  0  }
         };
 
         int option_index = 0;
 
-        int c = getopt_long(argc, argv, "dp:", long_options, &option_index);
+        int c = getopt_long(argc, argv, "dNp:", long_options, &option_index);
 
         if (c == -1)
             break;
 
         switch (c)
         {
+            case 'N':
+                SWSS_LOG_INFO("disable counters thread");
+                options.disableCountersThread = true;
+                break;
+
             case 'd':
                 SWSS_LOG_INFO("enable diag shell");
                 options.diagShell = true;
@@ -1057,6 +1064,13 @@ int main(int argc, char **argv)
 
         SWSS_LOG_INFO("syncd listening for events");
 
+        if (options.disableCountersThread == false)
+        {
+            SWSS_LOG_INFO("starting counters thread");
+
+            startCountersThread();
+        }
+
         swss::Select s;
 
         s.addSelectable(getRequest);
@@ -1087,6 +1101,8 @@ int main(int argc, char **argv)
     {
         SWSS_LOG_ERROR("Runtime error: %s", e.what());
     }
+
+    endCountersThread();
 
     sai_api_uninitialize();
 }
