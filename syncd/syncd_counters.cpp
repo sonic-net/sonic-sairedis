@@ -210,6 +210,9 @@ sai_port_stat_counter_t collectCountersIds[] = {
 
 void collectCounters(swss::Table &countersTable)
 {
+    // collect counters should be under mutex
+    // sice configuration can change and we
+    // don't want that during counters collection
     std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
@@ -234,8 +237,10 @@ void collectCounters(swss::Table &countersTable)
             return;
         }
 
+        sai_object_id_t vid = translate_rid_to_vid(portId);
+
         std::string strPortId;
-        sai_serialize_primitive(portId, strPortId);
+        sai_serialize_primitive(vid, strPortId);
 
         std::vector<swss::FieldValueTuple> values;
 
@@ -245,7 +250,7 @@ void collectCounters(swss::Table &countersTable)
             std::string value = std::to_string(counters[idx]);
 
             swss::FieldValueTuple fvt(field, value);
-            
+
             values.push_back(fvt);
         }
 
