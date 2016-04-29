@@ -334,4 +334,6 @@ void transfer_attributes(
         _In_ sai_attribute_t *dst_attr_list,
         _In_ bool countOnly);
 
+std::string sai_get_port_stat_counter_name(sai_port_stat_counter_t counter);
+
 #endif // __SAI_SERIALIZE__

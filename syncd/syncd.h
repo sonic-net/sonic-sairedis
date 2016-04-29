@@ -145,7 +145,7 @@ extern swss::DBConnector *db;
 void initialize_common_api_pointers();
 void populate_sai_apis();
 
-void startCountersThread();
+void startCountersThread(int intervalInSeconds);
 void endCountersThread();
 
 std::vector<sai_object_id_t> saiGetPortList();
