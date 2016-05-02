@@ -540,7 +540,7 @@ void helperCheckVlanId()
     g_redisClient->hset(strKey, "NULL", "NULL");
 }
 
-void onSyncdStart()
+void onSyncdStart(bool warmStart)
 {
     SWSS_LOG_ENTER();
 
@@ -553,6 +553,14 @@ void onSyncdStart()
     helperCheckVlanId();
 
     helperCheckPortIds();
+
+    if (warmStart)
+    {
+        SWSS_LOG_NOTICE("skipping hard reinit since WARM start was performed");
+        return;
+    }
+
+    SWSS_LOG_NOTICE("performing hard reinit since COLD start was performed");
 
     hardReinit();
 }

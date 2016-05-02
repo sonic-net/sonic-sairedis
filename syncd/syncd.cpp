@@ -1140,7 +1140,7 @@ int main(int argc, char **argv)
 
     try
     {
-        onSyncdStart();
+        onSyncdStart(options.warmStart);
 
         if (options.disableCountersThread == false)
         {

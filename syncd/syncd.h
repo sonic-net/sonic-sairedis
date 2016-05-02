@@ -47,7 +47,7 @@ extern "C" {
 
 extern std::mutex g_mutex;
 
-void onSyncdStart();
+void onSyncdStart(bool warmStart);
 void hardReinit();
 
 sai_object_id_t replaceVidToRid(const sai_object_id_t &virtual_object_id);
