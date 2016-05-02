@@ -6,10 +6,12 @@
 #include <stdexcept>
 #include <thread>
 #include <mutex>
+#include <thread>
 
 #include <unistd.h>
 #include <execinfo.h>
 #include <signal.h>
+#include <getopt.h>
 
 #include "string.h"
 extern "C" {
@@ -24,6 +26,7 @@ extern "C" {
 #include "swss/consumertable.h"
 #include "swss/notificationconsumer.h"
 #include "swss/notificationproducer.h"
+#include "swss/selectableevent.h"
 #include "swss/select.h"
 #include "swss/scheme.h"
 #include "swss/logger.h"

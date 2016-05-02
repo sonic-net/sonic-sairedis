@@ -1,7 +1,4 @@
-#include <thread>
 #include "syncd.h"
-
-#include <getopt.h>
 
 std::mutex g_mutex;
 
@@ -858,7 +855,7 @@ void sendResponse(sai_status_t status)
 
     std::vector<swss::FieldValueTuple> entry;
 
-    SWSS_LOG_INFO("sending response: %s", strStatus.c_str());
+    SWSS_LOG_NOTICE("sending response: %s", strStatus.c_str());
 
     notifySyncdResponse->send(strStatus, "", entry);
 }
@@ -904,6 +901,7 @@ struct cmdOptions
 {
     int countersThreadIntervalInSeconds;
     bool diagShell;
+    bool warmStart;
     bool disableCountersThread;
     std::string profileMapFile;
 };
@@ -924,6 +922,7 @@ cmdOptions handleCmdLine(int argc, char **argv)
         {
             { "diag",             no_argument,       0, 'd' },
             { "nocounters",       no_argument,       0, 'N' },
+            { "warmStart",        no_argument,       0, 'w' },
             { "profile",          required_argument, 0, 'p' },
             { "countersInterval", required_argument, 0, 'i' },
             { 0,                  0,                 0,  0  }
@@ -931,7 +930,7 @@ cmdOptions handleCmdLine(int argc, char **argv)
 
         int option_index = 0;
 
-        int c = getopt_long(argc, argv, "dNp:i:", long_options, &option_index);
+        int c = getopt_long(argc, argv, "dNwp:i:", long_options, &option_index);
 
         if (c == -1)
             break;
@@ -939,24 +938,43 @@ cmdOptions handleCmdLine(int argc, char **argv)
         switch (c)
         {
             case 'N':
-                SWSS_LOG_INFO("disable counters thread");
+                SWSS_LOG_NOTICE("disable counters thread");
                 options.disableCountersThread = true;
                 break;
 
             case 'd':
-                SWSS_LOG_INFO("enable diag shell");
+                SWSS_LOG_NOTICE("enable diag shell");
                 options.diagShell = true;
                 break;
 
             case 'p':
-                SWSS_LOG_INFO("profile map file: %s", optarg);
+                SWSS_LOG_NOTICE("profile map file: %s", optarg);
                 options.profileMapFile = std::string(optarg);
                 break;
 
             case 'i':
-                SWSS_LOG_INFO("counters thread interval: %s", optarg);
-                options.countersThreadIntervalInSeconds = 
-                    std::max(defaultCountersThreadIntervalInSeconds, std::stoi(std::string(optarg)));
+                {
+                    SWSS_LOG_NOTICE("counters thread interval: %s", optarg);
+
+                    int interval = std::stoi(std::string(optarg));
+
+                    if (interval == 0)
+                    {
+                        // use zero interval to disable counters thread
+                        options.disableCountersThread = true;
+                    }
+                    else
+                    {
+                        options.countersThreadIntervalInSeconds =
+                            std::max(defaultCountersThreadIntervalInSeconds, interval);
+                    }
+
+                    break;
+                }
+
+            case 'w':
+                SWSS_LOG_NOTICE("warm start request");
+                options.warmStart = true;
                 break;
 
             case '?':
@@ -992,6 +1010,9 @@ void handleProfileMap(const std::string& profileMapFile)
 
     while(getline(profile, line))
     {
+        if (line.size() > 0 && (line[0] == '#' || line[0] == ';'))
+            continue;
+
         size_t pos = line.find("=");
 
         if (pos == std::string::npos)
@@ -1007,6 +1028,34 @@ void handleProfileMap(const std::string& profileMapFile)
 
         SWSS_LOG_INFO("insert: %s:%s", key.c_str(), value.c_str());
     }
+}
+
+bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
+{
+    SWSS_LOG_ENTER();
+
+    std::string op;
+    std::string data;
+    std::vector<swss::FieldValueTuple> values;
+
+    restartQuery.pop(op, data, values);
+
+    SWSS_LOG_DEBUG("op = %d", op.c_str());
+
+    if (op == "COLD")
+    {
+        SWSS_LOG_NOTICE("received COLD switch shutdown event");
+        return false;
+    }
+
+    if (op == "WARM")
+    {
+        SWSS_LOG_NOTICE("received WARM switch shutdown event");
+        return true;
+    }
+
+    SWSS_LOG_WARN("received '%s' unknown switch shutdown event, assuming COLD", op.c_str());
+    return false;
 }
 
 int main(int argc, char **argv)
@@ -1028,6 +1077,7 @@ int main(int argc, char **argv)
 
     swss::ConsumerTable *asicState = new swss::ConsumerTable(db, "ASIC_STATE");
     swss::NotificationConsumer *notifySyncdQuery = new swss::NotificationConsumer(db, "NOTIFYSYNCDREQUERY");
+    swss::NotificationConsumer *restartQuery = new swss::NotificationConsumer(db, "RESTARTQUERY");
 
     // at the end we cant use producer consumer concept since
     // if one proces will restart there may be something in the queue
@@ -1041,6 +1091,22 @@ int main(int argc, char **argv)
     std::string mlnx_config_file = "/etc/ssw/ACS-MSN2700/sai_2700.xml";
     gProfileMap[SAI_KEY_INIT_CONFIG_FILE] = mlnx_config_file;
 #endif /* MLNX_SAI */
+
+    if (options.warmStart)
+    {
+        const char *warmBootReadFile = profile_get_value(0, SAI_KEY_WARM_BOOT_READ_FILE);
+
+        SWSS_LOG_NOTICE("using warmBootReadFile: '%s'", warmBootReadFile);
+
+        if (warmBootReadFile == NULL || access(warmBootReadFile, F_OK) == -1)
+        {
+            SWSS_LOG_WARN("user requested warmStart but warmBootReadFile is not specified or not accesible, forcing cold start");
+
+            options.warmStart = false;
+        }
+    }
+
+    gProfileMap[SAI_KEY_WARM_BOOT] = options.warmStart ? "1" : "0";
 
     sai_api_initialize(0, (service_method_table_t*)&test_services);
 
@@ -1060,7 +1126,7 @@ int main(int argc, char **argv)
 
     if (options.diagShell)
     {
-        SWSS_LOG_INFO("starting bcm diag shell thread");
+        SWSS_LOG_NOTICE("starting bcm diag shell thread");
 
         std::thread bcm_diag_shell_thread = std::thread(sai_diag_shell);
         bcm_diag_shell_thread.detach();
@@ -1068,26 +1134,29 @@ int main(int argc, char **argv)
 
 #endif /* BRCMSAI */
 
-    SWSS_LOG_INFO("syncd started");
+    SWSS_LOG_NOTICE("syncd started");
+
+    bool warmRestartHint = false;
 
     try
     {
         onSyncdStart();
 
-        SWSS_LOG_INFO("syncd listening for events");
-
         if (options.disableCountersThread == false)
         {
-            SWSS_LOG_INFO("starting counters thread");
+            SWSS_LOG_NOTICE("starting counters thread");
 
             startCountersThread(options.countersThreadIntervalInSeconds);
         }
+
+        SWSS_LOG_NOTICE("syncd listening for events");
 
         swss::Select s;
 
         s.addSelectable(getRequest);
         s.addSelectable(asicState);
         s.addSelectable(notifySyncdQuery);
+        s.addSelectable(restartQuery);
 
         while(true)
         {
@@ -1096,6 +1165,12 @@ int main(int argc, char **argv)
             int fd;
 
             int result = s.select(&sel, &fd);
+
+            if (sel == restartQuery)
+            {
+                warmRestartHint = handleRestartQuery(*restartQuery);
+                break;
+            }
 
             if (sel == notifySyncdQuery)
             {
@@ -1112,9 +1187,29 @@ int main(int argc, char **argv)
     catch(const std::exception &e)
     {
         SWSS_LOG_ERROR("Runtime error: %s", e.what());
+
+        exit(EXIT_FAILURE);
     }
 
     endCountersThread();
+
+    if (warmRestartHint)
+    {
+        const char *warmBootWriteFile = profile_get_value(0, SAI_KEY_WARM_BOOT_WRITE_FILE);
+
+        SWSS_LOG_NOTICE("using warmBootWriteFile: '%s'", warmBootWriteFile);
+
+        if (warmBootWriteFile == NULL)
+        {
+            SWSS_LOG_WARN("user requested warm shutdown but warmBootWriteFile is not specified, forcing cold shutdown");
+
+            warmRestartHint = false;
+        }
+    }
+
+    sai_switch_api->shutdown_switch(warmRestartHint);
+
+    SWSS_LOG_NOTICE("calling api uninitialize");
 
     sai_api_uninitialize();
 }

@@ -1,7 +1,7 @@
 AM_CPPFLAGS =
 AM_CPPFLAGS += -I$(top_srcdir)/common
 
-bin_PROGRAMS = syncd
+bin_PROGRAMS = syncd syncd_request_shutdown
 
 if DEBUG
 DBGFLAGS = -ggdb -DDEBUG
@@ -32,4 +32,11 @@ syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) \
 				 -I$(top_srcdir)/lib/inc \
 				 -I/usr/include/sai $(SAIFLAGS)
 syncd_LDADD = -lhiredis -lswsscommon -lsai -lpthread
+
+
+syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
+
+syncd_request_shutdown_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+
+syncd_request_shutdown_LDADD = -lhiredis -lswsscommon -lpthread
 

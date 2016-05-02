@@ -1,4 +1,5 @@
 #include "syncd.h"
+#include <condition_variable>
 
 void collectCounters(swss::Table &countersTable,
                      const std::vector<sai_port_stat_counter_t> &supportedCounters)
@@ -84,6 +85,9 @@ std::vector<sai_port_stat_counter_t> getSupportedCounters(sai_object_id_t portId
 static volatile bool  g_runCountersThread = false;
 static std::shared_ptr<std::thread> g_countersThread = NULL;
 
+static std::mutex mtx_sleep;
+static std::condition_variable cv_sleep;
+
 void collectCountersThread(int intervalInSeconds)
 {
     SWSS_LOG_ENTER();
@@ -103,8 +107,8 @@ void collectCountersThread(int intervalInSeconds)
     {
         collectCounters(countersTable, supportedCounters);
 
-        // collect counters every second
-        sleep(intervalInSeconds);
+        std::unique_lock<std::mutex> lk(mtx_sleep);
+        cv_sleep.wait_for(lk, std::chrono::seconds(intervalInSeconds));
     }
 }
 
@@ -123,8 +127,14 @@ void endCountersThread()
 
     g_runCountersThread = false;
 
+    cv_sleep.notify_all();
+
     if (g_countersThread != NULL)
     {
+        SWSS_LOG_NOTICE("counters thread join");
+
         g_countersThread->join();
     }
+
+    SWSS_LOG_NOTICE("counters thread ended");
 }
