@@ -1,5 +1,9 @@
 #include "sai_redis.h"
 
+// if we don't receive response from syncd in 60 seconds
+// there is something wrong and we should fail
+#define GET_RESPONSE_TIMEOUT (60*1000)
+
 sai_status_t internal_redis_get_process(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t attr_count,
@@ -92,7 +96,7 @@ sai_status_t internal_redis_generic_get(
 
         int fd;
 
-        int result = s.select(&sel, &fd, 2000);
+        int result = s.select(&sel, &fd, GET_RESPONSE_TIMEOUT);
 
         if (result == swss::Select::OBJECT)
         {
