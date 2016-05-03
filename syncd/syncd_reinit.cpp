@@ -472,17 +472,6 @@ void helperCheckPortIds()
 {
     SWSS_LOG_ENTER();
 
-    // we need lock here since after initialization
-    // some notifications may appear and it may cause
-    // race condition for port id generation
-    std::lock_guard<std::mutex> lock(g_mutex);
-
-    // it may happen that after initialize we will receive
-    // some port notifications with port'ids that are not in
-    // redis db yet, so after checking VIDTORID map there will
-    // be entries and translate_vid_to_rid will generate new
-    // id's for ports
-
     auto laneMap = saiGetHardwareLaneMap();
 
     for (auto kv: laneMap)
@@ -542,6 +531,16 @@ void helperCheckVlanId()
 
 void onSyncdStart(bool warmStart)
 {
+    // it may happen that after initialize we will receive
+    // some port notifications with port'ids that are not in
+    // redis db yet, so after checking VIDTORID map there will
+    // be entries and translate_vid_to_rid will generate new
+    // id's for ports, this may cause race condition so we need
+    // to use a lock here to prevent that
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+
     SWSS_LOG_ENTER();
 
     helperCheckLaneMap();

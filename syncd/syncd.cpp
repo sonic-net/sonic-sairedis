@@ -1212,4 +1212,8 @@ int main(int argc, char **argv)
     SWSS_LOG_NOTICE("calling api uninitialize");
 
     sai_api_uninitialize();
+
+    SWSS_LOG_NOTICE("uninitialize finished");
+
+    return EXIT_SUCCESS;
 }

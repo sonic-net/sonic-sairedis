@@ -1,4 +1,5 @@
 #include "redisclient.h"
+#include "swss/logger.h"
 
 namespace swss
 {
@@ -190,7 +191,11 @@ std::shared_ptr<std::string> RedisClient::hget(std::string key, std::string fiel
     redisGetReply(m_db->getContext(), (void**)&reply);
 
     if (!reply)
-        throw std::runtime_error("HGET failed, memory exception");
+    {
+        SWSS_LOG_ERROR("HGET failed, null reply, memory exception: %s: %s", key.c_str(), field.c_str());
+
+        throw std::runtime_error("HGET failed, null reply, memory exception");
+    }
 
     if (reply->type == REDIS_REPLY_NIL)
     {
@@ -205,9 +210,11 @@ std::shared_ptr<std::string> RedisClient::hget(std::string key, std::string fiel
         return ptr;
     }
 
+    SWSS_LOG_ERROR("HGET failed, reply-type: %d, %s: %s", reply->type, key.c_str(), field.c_str());
+
     freeReplyObject(reply);
 
-    throw std::runtime_error("HGET failed, memory exception");
+    throw std::runtime_error("HGET failed, unexpected reply type, memory exception");
 }
 
 int64_t RedisClient::rpush(std::string list, std::string item)

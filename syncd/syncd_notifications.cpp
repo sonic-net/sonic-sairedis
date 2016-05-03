@@ -7,7 +7,7 @@ void send_notification(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("sending notification: %s:%s", op.c_str(), data.c_str());
+    SWSS_LOG_NOTICE("%s %s", op.c_str(), data.c_str());
 
     notifications->send(op, data, entry);
 
@@ -39,7 +39,7 @@ void on_switch_state_change(
 }
 
 sai_fdb_entry_type_t getFdbEntryType(
-        _In_ uint32_t count, 
+        _In_ uint32_t count,
         _In_ const sai_attribute_t *list)
 {
     for (uint32_t idx = 0; idx < count; idx++)
