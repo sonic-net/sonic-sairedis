@@ -453,10 +453,6 @@ sai_status_t sai_serialize_attr_value(
             sai_serialize_list(attr.value.vlanlist, s, countOnly);
             break;
 
-        case SAI_SERIALIZATION_TYPE_VLAN_PORT_LIST:
-            sai_serialize_list(attr.value.vlanportlist, s, countOnly);
-            break;
-
         case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
             sai_serialize_primitive(attr.value.portbreakout.breakout_mode, s);
             sai_serialize_list(attr.value.portbreakout.port_list, s, countOnly);
@@ -739,10 +735,6 @@ sai_status_t sai_deserialize_attr_value(
             sai_deserialize_list(s, index, attr.value.vlanlist, countOnly);
             break;
 
-        case SAI_SERIALIZATION_TYPE_VLAN_PORT_LIST:
-            sai_deserialize_list(s, index, attr.value.vlanportlist, countOnly);
-            break;
-
         case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
             sai_deserialize_primitive(s, index, attr.value.portbreakout.breakout_mode);
             sai_deserialize_list(s, index, attr.value.portbreakout.port_list, countOnly);
@@ -977,10 +969,6 @@ sai_status_t sai_deserialize_free_attribute_value(
 
         case SAI_SERIALIZATION_TYPE_VLAN_LIST:
             sai_free_list(attr.value.vlanlist);
-            break;
-
-        case SAI_SERIALIZATION_TYPE_VLAN_PORT_LIST:
-            sai_free_list(attr.value.vlanportlist);
             break;
 
         case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
@@ -1318,10 +1306,6 @@ sai_status_t transfer_attribute(
 
         case SAI_SERIALIZATION_TYPE_VLAN_LIST:
             transfer_list(src_attr.value.vlanlist, dst_attr.value.vlanlist, countOnly);
-            break;
-
-        case SAI_SERIALIZATION_TYPE_VLAN_PORT_LIST:
-            transfer_list(src_attr.value.vlanportlist, dst_attr.value.vlanportlist, countOnly);
             break;
 
         case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
