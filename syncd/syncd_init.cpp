@@ -144,7 +144,7 @@ void initialize_common_api_pointers()
     common_get_attribute[SAI_OBJECT_TYPE_HOST_INTERFACE] = (sai_hostif_api) ? sai_hostif_api->get_hostif_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_TRAP_GROUP] = (sai_hostif_api) ? sai_hostif_api->get_trap_group_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_ACL_TABLE_GROUP] = NULL;
-    common_get_attribute[SAI_OBJECT_TYPE_POLICER] = (sai_policer_api) ? sai_policer_api->get_policer_attribute : NULL ;
+    common_get_attribute[SAI_OBJECT_TYPE_POLICER] = (sai_policer_api) ? sai_policer_api->get_policer_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_WRED] = (sai_wred_api) ? sai_wred_api->get_wred_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_QOS_MAPS] = (sai_qos_map_api) ? sai_qos_map_api->get_qos_map_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_QUEUE] = (sai_queue_api) ? sai_queue_api->get_queue_attribute : NULL;
