@@ -25,15 +25,6 @@ debian/libsairedis/
 debian/syncd/
 debian/tmp/
 
-# autogen.sh Files #
-####################
-AUTHORS
-COPYING
-ChangeLog
-INSTALL
-NEWS
-README
-
 aclocal.m4
 autom4te.cache/
 config.h
