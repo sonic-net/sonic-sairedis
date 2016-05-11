@@ -7,6 +7,8 @@ swss::NotificationProducer  *notifySyncdResponse = NULL;
 
 std::map<std::string, std::string> gProfileMap;
 
+bool g_veryFirstRun = false;
+
 void sai_diag_shell()
 {
     SWSS_LOG_ENTER();
@@ -872,6 +874,25 @@ void notifySyncd(swss::NotificationConsumer &consumer)
 
     consumer.pop(op, data, values);
 
+    if (g_veryFirstRun)
+    {
+        SWSS_LOG_NOTICE("very first run is TRUE, op = %s", op.c_str());
+
+        // on the very first start of syncd, "compile" view is directly
+        // applied on device, since it will make it easier to switch
+        // to new asic state later on when we restart orch agent
+
+        if (op == NOTIFY_SAI_SWITCH_VIEW)
+        {
+            g_veryFirstRun = false;
+
+            SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", op.c_str());
+        }
+
+        sendResponse(SAI_STATUS_SUCCESS);
+        return;
+    }
+
     sai_status_t status = SAI_STATUS_FAILURE;
 
     if (op == NOTIFY_SAI_COMPILE_VIEW)
@@ -1058,6 +1079,25 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
     return false;
 }
 
+bool isVeryFirstRun()
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    SWSS_LOG_ENTER();
+
+    // if lane map is not defined in redis db then
+    // we assume this is very first start of syncd
+    // later on we can add additional checks here
+
+    auto redisLaneMap = redisGetLaneMap();
+
+    bool firstRun = redisLaneMap.size() == 0;
+
+    SWSS_LOG_NOTICE("First Run: %s", firstRun ? "True" : "False");
+
+    return firstRun;
+}
+
 int main(int argc, char **argv)
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -1092,6 +1132,8 @@ int main(int argc, char **argv)
     gProfileMap[SAI_KEY_INIT_CONFIG_FILE] = mlnx_config_file;
 #endif /* MLNX_SAI */
 
+    g_veryFirstRun = isVeryFirstRun();
+
     if (options.warmStart)
     {
         const char *warmBootReadFile = profile_get_value(0, SAI_KEY_WARM_BOOT_READ_FILE);
@@ -1104,6 +1146,16 @@ int main(int argc, char **argv)
 
             options.warmStart = false;
         }
+    }
+
+    if (options.warmStart && g_veryFirstRun)
+    {
+        SWSS_LOG_WARN("warm start requested, but this is very first syncd start, forcing cold start");
+
+        // we force cold start since if it's first run then redis db is not complete
+        // so redis asic view will not reflect warm boot asic state, if this happen
+        // then orch agent needs to be restarted as well to repopulate asic view
+        options.warmStart = false;
     }
 
     gProfileMap[SAI_KEY_WARM_BOOT] = options.warmStart ? "1" : "0";

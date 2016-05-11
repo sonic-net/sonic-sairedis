@@ -151,6 +151,8 @@ void populate_sai_apis();
 void startCountersThread(int intervalInSeconds);
 void endCountersThread();
 
+std::unordered_map<sai_uint32_t, sai_object_id_t> redisGetLaneMap();
+
 std::vector<sai_object_id_t> saiGetPortList();
 
 #endif // __SYNCD_H__
