@@ -42,8 +42,8 @@ extern "C" {
 #define DEFAULT_VIRTUAL_ROUTER_ID   "DEFAULT_VIRTUAL_ROUTER_ID"
 #define CPU_PORT_ID                 "CPU_PORT_ID"
 
-#define NOTIFY_SAI_COMPILE_VIEW  "sai_compile_view"
-#define NOTIFY_SAI_SWITCH_VIEW   "sai_switch_view"
+#define NOTIFY_SAI_INIT_VIEW        "SAI_INIT_VIEW"
+#define NOTIFY_SAI_APPLY_VIEW       "SAI_APPLY_VIEW"
 
 extern std::mutex g_mutex;
 

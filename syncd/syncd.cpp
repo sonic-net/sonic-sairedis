@@ -874,7 +874,7 @@ void notifySyncd(swss::NotificationConsumer &consumer)
 
     sai_status_t status = SAI_STATUS_FAILURE;
 
-    if (op == NOTIFY_SAI_COMPILE_VIEW)
+    if (op == NOTIFY_SAI_INIT_VIEW)
     {
         // TODO
         SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
@@ -882,7 +882,7 @@ void notifySyncd(swss::NotificationConsumer &consumer)
         status = SAI_STATUS_NOT_IMPLEMENTED;
     }
 
-    if (op == NOTIFY_SAI_SWITCH_VIEW)
+    if (op == NOTIFY_SAI_APPLY_VIEW)
     {
         // TODO
         SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());

@@ -8,8 +8,8 @@
 // to compiled state, then there is something wrong
 #define NOTIFY_SYNCD_TIMEOUT (60*1000)
 
-#define NOTIFY_SAI_COMPILE_VIEW  "sai_compile_view"
-#define NOTIFY_SAI_SWITCH_VIEW   "sai_switch_view"
+#define NOTIFY_SAI_INIT_VIEW    "SAI_INIT_VIEW"
+#define NOTIFY_SAI_APPLY_VIEW   "SAI_APPLY_VIEW"
 
 sai_switch_notification_t redis_switch_notifications;
 
@@ -144,7 +144,7 @@ sai_status_t redis_initialize_switch(
 
     SWSS_LOG_INFO("operation: '%s'", op.c_str());
 
-    if (op == NOTIFY_SAI_COMPILE_VIEW || op == NOTIFY_SAI_SWITCH_VIEW)
+    if (op == NOTIFY_SAI_INIT_VIEW || op == NOTIFY_SAI_APPLY_VIEW)
     {
         sai_status_t status = notify_syncd(op);
 
