@@ -48,6 +48,7 @@ deps/
 # Executables #
 ###############
 syncd/syncd
+syncd/syncd_request_shutdown
 
 # Temporary files #
 ###################
