@@ -1,0 +1,26 @@
+#!/bin/bash
+
+### BEGIN INIT INFO
+# Provides:          syncd
+# Required-Start:
+# Required-Stop:
+# Default-Start:     S
+# Default-Stop:      0 6
+# Short-Description: SONiC sync daemon
+# Description:       Enable service syncd.
+### END INIT INFO
+
+case "$1" in
+start)
+    mkdir -p /dev/sxdevs
+    [ -e /dev/sxdevs/sxcdev ] || mknod /dev/sxdevs/sxcdev c 231 193
+    ;;
+stop)
+    ;;
+*)
+    echo "Usage: service syncd {start|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0
