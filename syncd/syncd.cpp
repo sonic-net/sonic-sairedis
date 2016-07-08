@@ -1127,12 +1127,6 @@ int main(int argc, char **argv)
     notifications = new swss::NotificationProducer(dbNtf, "NOTIFICATIONS");
     notifySyncdResponse = new swss::NotificationProducer(db, "NOTIFYSYNCDRESPONSE");
 
-#ifdef MLNXSAI
-    /* This file is included in Mellanox SAI package. */
-    std::string mlnx_config_file = "/usr/share/sai_2700.xml";
-    gProfileMap[SAI_KEY_INIT_CONFIG_FILE] = mlnx_config_file;
-#endif /* MLNX_SAI */
-
     g_veryFirstRun = isVeryFirstRun();
 
     if (options.warmStart)
@@ -1167,7 +1161,7 @@ int main(int argc, char **argv)
 
     initialize_common_api_pointers();
 
-    sai_status_t status = sai_switch_api->initialize_switch(0, "0xb850", "", &switch_notifications);
+    sai_status_t status = sai_switch_api->initialize_switch(0, "", "", &switch_notifications);
 
     if (status != SAI_STATUS_SUCCESS)
     {
