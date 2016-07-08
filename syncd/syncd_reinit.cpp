@@ -107,7 +107,9 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> saiGetHardwareLaneMap()
             exit(EXIT_FAILURE);
         }
 
-        for (int j = 0; j < lanesPerPort; j++)
+        sai_int32_t laneCount = attr.value.u32list.count;
+
+        for (int j = 0; j < laneCount; j++)
         {
             map[lanes[j]] = portList[i];
         }
