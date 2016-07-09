@@ -997,16 +997,15 @@ cmdOptions handleCmdLine(int argc, char **argv)
                 SWSS_LOG_NOTICE("start type: %s", optarg);
                 if (std::string(optarg) == "cold")
                 {
-                    options.startType = 0;
+                    options.startType = SAI_COLD_BOOT;
                 }
                 else if (std::string(optarg) == "warm")
                 {
-                    options.startType = 1;
+                    options.startType = SAI_WARM_BOOT;
                 }
                 else if (std::string(optarg) == "fast")
                 {
-                    options.startType = 2;
-                SWSS_LOG_NOTICE("start type: %d", options.startType);
+                    options.startType = SAI_FAST_BOOT;
                 }
                 else
                 {
@@ -1146,7 +1145,7 @@ int main(int argc, char **argv)
 
     g_veryFirstRun = isVeryFirstRun();
 
-    if (options.startType == 1)
+    if (options.startType == SAI_WARM_BOOT)
     {
         const char *warmBootReadFile = profile_get_value(0, SAI_KEY_WARM_BOOT_READ_FILE);
 
@@ -1156,21 +1155,21 @@ int main(int argc, char **argv)
         {
             SWSS_LOG_WARN("user requested warmStart but warmBootReadFile is not specified or not accesible, forcing cold start");
 
-            options.startType = 0;
+            options.startType = SAI_COLD_BOOT;
         }
     }
 
-    if (options.startType == 1 && g_veryFirstRun)
+    if (options.startType == SAI_WARM_BOOT && g_veryFirstRun)
     {
         SWSS_LOG_WARN("warm start requested, but this is very first syncd start, forcing cold start");
 
         // we force cold start since if it's first run then redis db is not complete
         // so redis asic view will not reflect warm boot asic state, if this happen
         // then orch agent needs to be restarted as well to repopulate asic view
-        options.startType = 0;
+        options.startType = SAI_COLD_BOOT;
     }
 
-    gProfileMap[SAI_KEY_WARM_BOOT] = std::to_string(options.startType);
+    gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(options.startType);
 
     sai_api_initialize(0, (service_method_table_t*)&test_services);
 
@@ -1204,7 +1203,7 @@ int main(int argc, char **argv)
 
     try
     {
-        onSyncdStart(options.startType == 1);
+        onSyncdStart(options.startType == SAI_WARM_BOOT);
 
         if (options.disableCountersThread == false)
         {
