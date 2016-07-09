@@ -20,7 +20,6 @@ extern "C" {
 #include "swss/notificationproducer.h"
 #include "swss/table.h"
 #include "swss/select.h"
-#include "swss/scheme.h"
 #include "swss/logger.h"
 
 extern service_method_table_t           g_services;
