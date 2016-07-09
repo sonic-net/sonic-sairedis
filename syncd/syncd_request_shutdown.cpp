@@ -5,7 +5,6 @@
 #include <getopt.h>
 
 #include "swss/notificationproducer.h"
-#include "swss/scheme.h"
 #include "swss/logger.h"
 
 int main(int argc, char **argv)

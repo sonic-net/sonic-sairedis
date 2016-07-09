@@ -28,7 +28,6 @@ extern "C" {
 #include "swss/notificationproducer.h"
 #include "swss/selectableevent.h"
 #include "swss/select.h"
-#include "swss/scheme.h"
 #include "swss/logger.h"
 #include "swss/table.h"
 
