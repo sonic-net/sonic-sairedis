@@ -60,6 +60,7 @@ extern const sai_scheduler_api_t        redis_scheduler_api;
 extern const sai_scheduler_group_api_t  redis_scheduler_group_api;
 extern const sai_stp_api_t              redis_stp_api;
 extern const sai_switch_api_t           redis_switch_api;
+extern const sai_tunnel_api_t           redis_tunnel_api;
 extern const sai_udf_api_t              redis_udf_api;
 extern const sai_virtual_router_api_t   redis_router_api;
 extern const sai_vlan_api_t             redis_vlan_api;

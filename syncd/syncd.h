@@ -139,6 +139,7 @@ extern sai_scheduler_api_t          *sai_scheduler_api;
 extern sai_scheduler_group_api_t    *sai_scheduler_group_api;
 extern sai_stp_api_t                *sai_stp_api;
 extern sai_switch_api_t             *sai_switch_api;
+extern sai_tunnel_api_t             *sai_tunnel_api;
 extern sai_udf_api_t                *sai_udf_api;
 extern sai_virtual_router_api_t     *sai_router_api;
 extern sai_vlan_api_t               *sai_vlan_api;

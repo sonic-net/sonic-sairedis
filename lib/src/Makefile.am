@@ -35,6 +35,7 @@ libsairedis_la_SOURCES = sai_redis_acl.cpp \
 			 sai_redis_schedulergroup.cpp \
 			 sai_redis_stp.cpp \
 			 sai_redis_switch.cpp \
+			 sai_redis_tunnel.cpp \
 			 sai_redis_udf.cpp \
 			 sai_redis_vlan.cpp \
 			 sai_redis_wred.cpp \
