@@ -162,7 +162,7 @@ void initialize_common_api_pointers()
     common_get_attribute[SAI_OBJECT_TYPE_PRIORITY_GROUP] = (sai_buffer_api) ? sai_buffer_api->get_ingress_priority_group_attr : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_LAG_MEMBER] = (sai_lag_api) ? sai_lag_api->get_lag_member_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_VLAN_MEMBER] = (sai_vlan_api) ? sai_vlan_api->get_vlan_member_attribute : NULL;
-    common_get_attribute[SAI_OBJECT_TYPE_TUNNEL] = (sai_tunnel_api) ? sai_tunnel_api->get_tunnel_attribute : NULL;;
+    common_get_attribute[SAI_OBJECT_TYPE_TUNNEL] = (sai_tunnel_api) ? sai_tunnel_api->get_tunnel_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY] = (sai_tunnel_api) ? sai_tunnel_api->get_tunnel_term_table_entry_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_FDB] =  NULL;
     common_get_attribute[SAI_OBJECT_TYPE_SWITCH] = NULL;
