@@ -1,5 +1,7 @@
 #include "syncd.h"
 
+#include <iostream>
+
 std::mutex g_mutex;
 
 swss::RedisClient           *g_redisClient = NULL;
@@ -927,6 +929,23 @@ struct cmdOptions
     std::string profileMapFile;
 };
 
+void printUsage()
+{
+    std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h]" << std::endl;
+    std::cout << "    -N --nocounters:" << std::endl;
+    std::cout << "        Disable counter thread" << std::endl;
+    std::cout << "    -d --diag:" << std::endl;
+    std::cout << "        Enable diagnostic shell" << std::endl;
+    std::cout << "    -p --profile profile:" << std::endl;
+    std::cout << "        Provide profile map file" << std::endl;
+    std::cout << "    -i --countersInterval interval:" << std::endl;
+    std::cout << "        Provide counter thread interval" << std::endl;
+    std::cout << "    -t --startType type:" << std::endl;
+    std::cout << "        Specify cold|warm|fast start type" << std::endl;
+    std::cout << "    -h --help:" << std::endl;
+    std::cout << "        Print out this message" << std::endl;
+}
+
 cmdOptions handleCmdLine(int argc, char **argv)
 {
     SWSS_LOG_ENTER();
@@ -946,12 +965,13 @@ cmdOptions handleCmdLine(int argc, char **argv)
             { "startType",        required_argument, 0, 't' },
             { "profile",          required_argument, 0, 'p' },
             { "countersInterval", required_argument, 0, 'i' },
+            { "help",             no_argument,       0, 'h' },
             { 0,                  0,                 0,  0  }
         };
 
         int option_index = 0;
 
-        int c = getopt_long(argc, argv, "dNt:p:i:", long_options, &option_index);
+        int c = getopt_long(argc, argv, "dNt:p:i:h", long_options, &option_index);
 
         if (c == -1)
             break;
@@ -1014,10 +1034,14 @@ cmdOptions handleCmdLine(int argc, char **argv)
                 }
                 break;
 
+            case 'h':
+                printUsage();
+                exit(EXIT_SUCCESS);
+
             case '?':
-                SWSS_LOG_WARN("unknown get opti option %c", optopt);
+                SWSS_LOG_WARN("unknown option %c", optopt);
+                printUsage();
                 exit(EXIT_FAILURE);
-                break;
 
             default:
                 SWSS_LOG_ERROR("getopt_long failure");
