@@ -927,6 +927,10 @@ struct cmdOptions
     int startType;
     bool disableCountersThread;
     std::string profileMapFile;
+#ifdef SAITHRIFT
+    bool run_rpc_server;
+    std::string portMapFile;
+#endif // SAITHRIFT
 };
 
 void printUsage()
@@ -942,6 +946,12 @@ void printUsage()
     std::cout << "        Provide counter thread interval" << std::endl;
     std::cout << "    -t --startType type:" << std::endl;
     std::cout << "        Specify cold|warm|fast start type" << std::endl;
+#ifdef SAITHRIFT
+    std::cout << "    -r --rpcserver:"           << std::endl;
+    std::cout << "        Enable rpcserver"      << std::endl;
+    std::cout << "    -m --portmap:"             << std::endl;
+    std::cout << "        Specify port map file" << std::endl;
+#endif // SAITHRIFT
     std::cout << "    -h --help:" << std::endl;
     std::cout << "        Print out this message" << std::endl;
 }
@@ -956,6 +966,13 @@ cmdOptions handleCmdLine(int argc, char **argv)
 
     options.countersThreadIntervalInSeconds = defaultCountersThreadIntervalInSeconds;
 
+#ifdef SAITHRIFT
+    options.run_rpc_server = false;
+    const char* const optstring = "dNt:p:i:rm:h";
+#else
+    const char* const optstring = "dNt:p:i:h";
+#endif // SAITHRIFT
+
     while(true)
     {
         static struct option long_options[] =
@@ -966,12 +983,16 @@ cmdOptions handleCmdLine(int argc, char **argv)
             { "profile",          required_argument, 0, 'p' },
             { "countersInterval", required_argument, 0, 'i' },
             { "help",             no_argument,       0, 'h' },
+#ifdef SAITHRIFT
+            { "rpcserver",        no_argument,       0, 'r' },
+            { "portmap",          required_argument, 0, 'm' },
+#endif // SAITHRIFT
             { 0,                  0,                 0,  0  }
         };
 
         int option_index = 0;
 
-        int c = getopt_long(argc, argv, "dNt:p:i:h", long_options, &option_index);
+        int c = getopt_long(argc, argv, optstring, long_options, &option_index);
 
         if (c == -1)
             break;
@@ -1034,6 +1055,17 @@ cmdOptions handleCmdLine(int argc, char **argv)
                 }
                 break;
 
+#ifdef SAITHRIFT
+            case 'r':
+                SWSS_LOG_NOTICE("enable rpc server");
+                options.run_rpc_server = true;
+                break;
+            case 'm':
+                SWSS_LOG_NOTICE("port map file: %s", optarg);
+                options.portMapFile = std::string(optarg);
+                break;
+#endif // SAITHRIFT
+
             case 'h':
                 printUsage();
                 exit(EXIT_SUCCESS);
@@ -1091,6 +1123,56 @@ void handleProfileMap(const std::string& profileMapFile)
     }
 }
 
+#ifdef SAITHRIFT
+std::map<std::set<int>, std::string> gPortMap;
+
+// FIXME: introduce common config format for SONiC
+void handlePortMap(const std::string& portMapFile)
+{
+    if (portMapFile.size() == 0)
+        return;
+
+    std::ifstream portmap(portMapFile);
+
+    if (!portmap.is_open())
+    {
+        std::cerr << "failed to open port map file:" << portMapFile.c_str() << " : "<< strerror(errno) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    std::string line;
+
+    while(getline(portmap, line))
+    {
+        if (line.size() > 0 && (line[0] == '#' || line[0] == ';'))
+            continue;
+
+        size_t pos = line.find(" ");
+
+        if (pos == std::string::npos)
+        {
+            std::cerr << "port map parsing: not found ' ' in line" << line.c_str() << std::endl;
+            continue;
+        }
+		 
+        std::string fp_value = line.substr(0, pos);		
+        std::string lanes    = line.substr(pos + 1);
+        lanes.erase(lanes.begin(), std::find_if(lanes.begin(), lanes.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
+        std::istringstream iss(lanes);
+        std::string lane_str;
+        std::set<int> lane_set;
+		
+        while (getline(iss, lane_str, ','))
+        {
+            int lane = stoi(lane_str);
+            lane_set.insert(lane);
+        }		 
+
+        gPortMap.insert(std::pair<std::set<int>,std::string>(lane_set,fp_value));     
+    }
+}
+#endif // SAITHRIFT
+
 bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
 {
     SWSS_LOG_ENTER();
@@ -1147,6 +1229,12 @@ int main(int argc, char **argv)
     auto options = handleCmdLine(argc, argv);
 
     handleProfileMap(options.profileMapFile);
+#ifdef SAITHRIFT
+    if (options.portMapFile.size() > 0)
+    {
+        handlePortMap(options.portMapFile);
+    }
+#endif // SAITHRIFT
 
     swss::DBConnector *db = new swss::DBConnector(ASIC_DB, "localhost", 6379, 0);
     swss::DBConnector *dbNtf = new swss::DBConnector(ASIC_DB, "localhost", 6379, 0);
@@ -1220,6 +1308,14 @@ int main(int argc, char **argv)
     }
 
 #endif /* BRCMSAI */
+
+#ifdef SAITHRIFT
+    if (options.run_rpc_server)
+    {
+        start_sai_thrift_rpc_server(SWITCH_SAI_THRIFT_RPC_SERVER_PORT);
+        SWSS_LOG_NOTICE("rpcserver started");
+    }
+#endif // SAITHRIFT
 
     SWSS_LOG_NOTICE("syncd started");
 

@@ -29,4 +29,4 @@ DEB_SAI_FLAVOR ?= "bcm"
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
 override_dh_auto_configure:
-	dh_auto_configure -- --with-sai=$(DEB_SAI_FLAVOR)
+	dh_auto_configure -- --with-sai=$(DEB_SAI_FLAVOR) ${CONFIGURE_ARGS}
