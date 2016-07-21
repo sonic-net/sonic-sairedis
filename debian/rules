@@ -30,10 +30,3 @@ DEB_SAI_FLAVOR ?= "bcm"
 
 override_dh_auto_configure:
 	dh_auto_configure -- --with-sai=$(DEB_SAI_FLAVOR)
-
-# SONiC:
-# override dh_installinit to prepare init file for different SAI flavors
-override_dh_installinit:
-	if [ "$(DEB_SAI_FLAVOR)" = "bcm" ]; then cp debian/syncd.bcm.init debian/syncd.init; fi
-	if [ "$(DEB_SAI_FLAVOR)" = "mlnx" ]; then cp debian/syncd.mlnx.init debian/syncd.init; fi
-	dh_installinit

@@ -1,0 +1,47 @@
+#!/bin/bash
+
+### BEGIN INIT INFO
+# Provides:          syncd
+# Required-Start:
+# Required-Stop:
+# Default-Start:     S
+# Default-Stop:      0 6
+# Short-Description: SONiC sync daemon
+# Description:       Enable service syncd.
+### END INIT INFO
+
+DAEMON=/usr/bin/syncd
+
+case "$1" in
+start)
+    . /etc/machine.conf
+
+    if [ "$onie_platform" == "x86_64-dell_s6000_s1220-r0" ]; then
+        [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
+        [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
+        [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
+    elif [ "$onie_platform" == "x86_64-dell_s6100_c2538-r0" ]; then
+        [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
+        [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
+        [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
+ 
+        DAEMON_ARGS="-p /etc/syncd.d/dell_s6100.profile -N"
+    elif [ "onie_platform" == "x86_64-mlnx_x86-r5.0.1400" ]; then
+        mkdir -p /dev/sxdevs
+        [ -e /dev/sxdevs/sxcdev ] || mknod /dev/sxdevs/sxcdev c 231 193
+
+        DAEMON_ARGS="-p /etc/syncd.d/mlnx_2700.profile -N"
+    fi
+
+    start-stop-daemon --start --quiet --exec $DAEMON -- $DAEMON_ARGS
+    ;;
+stop)
+    start-stop-daemon --stop --quiet --exec $DAEMON
+    ;;
+*)
+    echo "Usage: service syncd {start|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0
