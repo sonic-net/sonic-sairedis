@@ -13,6 +13,13 @@
 #include <signal.h>
 #include <getopt.h>
 
+#ifdef SAITHRIFT
+#include <utility>
+#include <set>
+#include <algorithm>
+#include <switch_sai_rpc_server.h>
+#endif // SAITHRIFT
+
 #include "string.h"
 extern "C" {
 #include "sai.h"
@@ -47,6 +54,10 @@ extern "C" {
 #define SAI_COLD_BOOT               0
 #define SAI_WARM_BOOT               1
 #define SAI_FAST_BOOT               2
+
+#ifdef SAITHRIFT
+#define SWITCH_SAI_THRIFT_RPC_SERVER_PORT 9092
+#endif // SAITHRIFT
 
 extern std::mutex g_mutex;
 
