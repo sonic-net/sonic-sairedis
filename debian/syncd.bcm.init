@@ -10,7 +10,11 @@
 # Description:       Enable service syncd.
 ### END INIT INFO
 
-DAEMON=/usr/bin/syncd
+DAEMON_SYNCD=/usr/bin/syncd
+
+# dsserve: domain socket server for stdio
+DAEMON_DSSERVE=/usr/local/bin/dsserve
+DAEMON_DSSERVE_ARGS="-d $DAEMON_SYNCD --diag"
 
 case "$1" in
 start)
@@ -18,10 +22,18 @@ start)
     [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
     [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
 
-    start-stop-daemon --start --quiet --exec $DAEMON
+    if [ -x DAEMON_DSSERVE ]; then
+        start-stop-daemon --start --quiet --exec $DAEMON_DSSERVE -- $DAEMON_DSSERVE_ARGS
+    else
+        start-stop-daemon --start --quiet --exec $DAEMON_SYNCD
+    fi
     ;;
 stop)
-    start-stop-daemon --stop --quiet --exec $DAEMON
+    if [ -x DAEMON_DSSERVE ]; then
+        start-stop-daemon --stop --quiet --exec $DAEMON_DSSERVE
+    else
+        start-stop-daemon --stop --quiet --exec $DAEMON_SYNCD
+    fi
     ;;
 *)
     echo "Usage: service syncd {start|stop}"
