@@ -33,6 +33,12 @@ syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) \
 				 -I/usr/include/sai $(SAIFLAGS)
 syncd_LDADD = -lhiredis -lswsscommon -lsai -lpthread
 
+if SAITHRIFT
+SAI_RPC_INCLUDE_DIR = ../libsaiserver/include
+SAI_RPC_LIB_DIR = ../libsaiserver/lib
+syncd_CPPFLAGS += -I$(SAI_RPC_INCLUDE_DIR) -DSAITHRIFT=yes
+syncd_LDADD += -L$(SAI_RPC_LIB_DIR) -lrpcserver
+endif
 
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
 
