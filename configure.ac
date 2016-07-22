@@ -38,6 +38,9 @@ AC_ARG_ENABLE(rpcserver,
    *) AC_MSG_ERROR(bad value ${enableval} for --enable-rpcserver) ;;
 esac],[rpcserver=false])
 AM_CONDITIONAL(SAITHRIFT, test x$rpcserver = xtrue)
+AM_COND_IF([SAITHRIFT], [
+        AC_CHECK_LIB([thrift], [main], [], [AC_MSG_ERROR(libthrift is required for rpcserver)])
+])
 
 CFLAGS_COMMON="-std=c++11 -Wall -fPIC -Wno-write-strings"
 AC_SUBST(CFLAGS_COMMON)
