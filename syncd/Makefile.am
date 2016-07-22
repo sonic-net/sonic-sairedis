@@ -37,7 +37,7 @@ if SAITHRIFT
 SAI_RPC_INCLUDE_DIR = ../libsaiserver/include
 SAI_RPC_LIB_DIR = ../libsaiserver/lib
 syncd_CPPFLAGS += -I$(SAI_RPC_INCLUDE_DIR) -DSAITHRIFT=yes
-syncd_LDADD += -L$(SAI_RPC_LIB_DIR) -lrpcserver -lthrift
+syncd_LDADD += -L$(SAI_RPC_LIB_DIR) -lrpcserver
 endif
 
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
