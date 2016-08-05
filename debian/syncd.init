@@ -28,12 +28,14 @@ start_bcm()
     [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
     [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
     [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
+    SAITHRIFT_ARGS_BCM=""
 }
 
 start_mlnx()
 {
     mkdir -p /dev/sxdevs
     [ -e /dev/sxdevs/sxcdev ] || mknod /dev/sxdevs/sxcdev c 231 193
+    SAITHRIFT_ARGS_MLNX=""
 }
 
 case "$1" in
@@ -45,11 +47,11 @@ start)
 
     elif [ "$onie_platform" == "x86_64-dell_s6100_c2538-r0" ]; then
         start_bcm
-        DAEMON_ARGS+=" -p /etc/syncd.d/dell_s6100.profile -N"
+        DAEMON_ARGS+=" -p /etc/syncd.d/dell_s6100.profile -N ${SAITHRIFT_ARGS_BCM}"
 
     elif [ "$onie_platform" == "x86_64-mlnx_x86-r5.0.1400" ]; then
         start_mlnx
-        DAEMON_ARGS="-p /etc/syncd.d/mlnx_2700.profile -N"
+        DAEMON_ARGS="-p /etc/syncd.d/mlnx_2700.profile -N ${SAITHRIFT_ARGS_MLNX}"
     fi
 
     start-stop-daemon --start --quiet --exec $DAEMON -- $DAEMON_ARGS

@@ -28,5 +28,23 @@ DEB_SAI_FLAVOR ?= "bcm"
 #	dh_auto_configure -- \
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
+ifeq ($(findstring --enable-rpcserver=yes,${CONFIGURE_ARGS}),--enable-rpcserver=yes)
+  saithrift = yes
+else
+  saithrift = no
+endif
+
 override_dh_auto_configure:
 	dh_auto_configure -- --with-sai=$(DEB_SAI_FLAVOR) ${CONFIGURE_ARGS}
+
+override_dh_install:
+  ifeq ($(saithrift), no)
+	rm -f etc/syncd.d/msn2700_port_map.ini
+  endif
+	dh_install
+
+override_dh_installinit:
+  ifeq ($(saithrift), yes)
+	sed -i 's/SAITHRIFT_ARGS_MLNX=""/SAITHRIFT_ARGS_MLNX="-r -m \/etc\/syncd.d\/msn2700_port_map.ini"/' debian/syncd.init
+  endif
+	dh_installinit
