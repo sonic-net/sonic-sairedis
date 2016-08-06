@@ -45,4 +45,9 @@ AM_COND_IF([SAITHRIFT], [
 CFLAGS_COMMON="-std=c++11 -Wall -fPIC -Wno-write-strings"
 AC_SUBST(CFLAGS_COMMON)
 
-AC_OUTPUT(Makefile lib/Makefile lib/src/Makefile syncd/Makefile)
+AC_OUTPUT(Makefile
+          lib/Makefile
+          lib/src/Makefile
+          vslib/Makefile
+          vslib/src/Makefile
+          syncd/Makefile)
