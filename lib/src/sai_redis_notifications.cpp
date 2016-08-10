@@ -95,7 +95,7 @@ void handle_port_state_change(
     {
         sai_port_oper_status_notification_t *oper_stat = &portdata[i];
 
-        sai_deserialize_primitive(data, index, oper_stat);
+        sai_deserialize_primitive(data, index, *oper_stat);
     }
 
     auto on_port_state_change = redis_switch_notifications.on_port_state_change;
@@ -129,7 +129,7 @@ void handle_port_event(
     {
         sai_port_event_notification_t *oper_stat = &portdata[i];
 
-        sai_deserialize_primitive(data, index, oper_stat);
+        sai_deserialize_primitive(data, index, *oper_stat);
     }
 
     auto on_port_event = redis_switch_notifications.on_port_event;
