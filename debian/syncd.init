@@ -53,7 +53,7 @@ start)
         DAEMON_ARGS="-p /etc/syncd.d/mlnx_2700.profile"
 
         if [ ${ENABLE_SAITHRIFT} == 1 ]; then
-            DAEMON_ARGS+="-r -m /etc/syncd.d/msn2700_port_map.ini"
+            DAEMON_ARGS+=" -r -m /etc/syncd.d/msn2700_port_map.ini"
         fi
     fi
 
