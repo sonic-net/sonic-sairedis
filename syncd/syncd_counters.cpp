@@ -1,5 +1,6 @@
 #include "syncd.h"
 #include <condition_variable>
+#include <sstream>
 
 void collectCounters(swss::Table &countersTable,
                      const std::vector<sai_port_stat_counter_t> &supportedCounters)
@@ -35,6 +36,11 @@ void collectCounters(swss::Table &countersTable,
 
         std::string strPortId;
         sai_serialize_primitive(vid, strPortId);
+
+        // for counters, use port vid as printf "%llx" format
+        std::stringstream ss;
+        ss << std::hex << vid;
+        strPortId = ss.str();
 
         std::vector<swss::FieldValueTuple> values;
 
