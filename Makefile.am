@@ -1,1 +1,1 @@
-SUBDIRS = lib syncd
+SUBDIRS = lib vslib syncd
