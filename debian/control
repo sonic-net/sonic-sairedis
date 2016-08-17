@@ -21,3 +21,13 @@ Depends: libsairedis (= ${binary:Version})
 Section: libdevel
 Description: This package contains development files for SAI-Redis.
 
+Package: libsaivs
+Architecture: any
+Section: libs
+Description: This package contains SAI-VirtualSwitch implementation for SONiC project.
+
+Package: libsaivs-dev
+Architecture: any
+Depends: libsaivs (= ${binary:Version})
+Section: libdevel
+Description: This package contains development files for SAI-VirtualSwitch.
