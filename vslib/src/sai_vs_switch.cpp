@@ -11,6 +11,9 @@ sai_object_id_t switch_object_id = (sai_object_id_t)SAI_OBJECT_TYPE_SWITCH << 48
     if (status != SAI_STATUS_SUCCESS) \
         return status;
 
+// should always be 1
+#define DEFAULT_VLAN_NUMBER 1
+
 sai_status_t vs_initialize_default_objects()
 {
     SWSS_LOG_ENTER();
@@ -52,7 +55,7 @@ sai_status_t vs_initialize_default_objects()
     SWSS_LOG_INFO("create default vlan");
 
     {
-        status = vs_vlan_api.create_vlan(1);
+        status = vs_vlan_api.create_vlan(DEFAULT_VLAN_NUMBER);
 
         CHECK_STATUS(status);
     }
@@ -208,6 +211,54 @@ sai_status_t vs_initialize_default_objects()
         attr.value.oid = virtual_router_id;
 
         status = vs_switch_api.set_switch_attribute(&attr);
+
+        CHECK_STATUS(status);
+    }
+
+    SWSS_LOG_INFO("create vlan members for all ports");
+
+    std::vector<sai_object_id_t> vlan_member_list;
+
+    {
+        for (auto &portId : port_list)
+        {
+            std::vector<sai_attribute_t> attrs;
+
+            sai_attribute_t attr_vlan_id;
+
+            attr_vlan_id.id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+            attr_vlan_id.value.u16 = DEFAULT_VLAN_NUMBER;
+            attrs.push_back(attr_vlan_id);
+
+            sai_attribute_t attr_port_id;
+
+            attr_port_id.id = SAI_VLAN_MEMBER_ATTR_PORT_ID;
+            attr_port_id.value.oid = portId;
+            attrs.push_back(attr_port_id);
+
+            sai_object_id_t vlan_member_id;
+            status = vs_vlan_api.create_vlan_member(&vlan_member_id, attrs.size() , attrs.data());
+
+            CHECK_STATUS(status);
+
+            vlan_member_list.push_back(vlan_member_id);
+        }
+    }
+
+    SWSS_LOG_INFO("create vlan member list");
+
+    {
+        // TODO this list should be updated each time we modify any VLAN member
+        // and it probably should be handled inside create/remove vlan member api
+        // and not here
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_VLAN_ATTR_MEMBER_LIST;
+        attr.value.objlist.count = vlan_member_list.size();
+        attr.value.objlist.list = vlan_member_list.data();
+
+        status = vs_vlan_api.set_vlan_attribute(DEFAULT_VLAN_NUMBER, &attr);
 
         CHECK_STATUS(status);
     }
