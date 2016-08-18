@@ -10,9 +10,9 @@ else
 DBGFLAGS = -g
 endif
 
-lib_LTLIBRARIES = libsaivs.la
+lib_LTLIBRARIES = libsai.la
 
-libsaivs_la_SOURCES = sai_vs_acl.cpp \
+libsai_la_SOURCES = sai_vs_acl.cpp \
 			 sai_vs_buffer.cpp \
 			 sai_vs_fdb.cpp \
 			 sai_vs_hash.cpp \
@@ -47,6 +47,6 @@ libsaivs_la_SOURCES = sai_vs_acl.cpp \
 			 ../../common/saiattributelist.cpp
 
 
-libsaivs_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+libsai_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 
-libsaivs_la_LIBADD = -lhiredis -lswsscommon
+libsai_la_LIBADD = -lhiredis -lswsscommon
