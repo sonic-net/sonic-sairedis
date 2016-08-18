@@ -13,6 +13,12 @@ debian/libsairedis.debhelper.log
 debian/libsairedis.postinst.debhelper
 debian/libsairedis.postrm.debhelper
 debian/libsairedis.substvars
+debian/libsaivs-dev.debhelper.log
+debian/libsaivs-dev.substvars
+debian/libsaivs.debhelper.log
+debian/libsaivs.postinst.debhelper
+debian/libsaivs.postrm.debhelper
+debian/libsaivs.substvars
 debian/syncd.debhelper.log
 debian/syncd.postinst.debhelper
 debian/syncd.postrm.debhelper
@@ -21,6 +27,8 @@ debian/syncd.substvars
 
 debian/libsairedis-dev/
 debian/libsairedis/
+debian/libsaivs-dev/
+debian/libsaivs/
 debian/syncd/
 debian/tmp/
 
