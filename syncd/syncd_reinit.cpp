@@ -18,7 +18,7 @@ sai_uint32_t saiGetPortCount()
     {
         SWSS_LOG_ERROR("failed to get port number: %d", status);
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     SWSS_LOG_DEBUG("port count is %u", attr.value.u32);
@@ -40,7 +40,7 @@ sai_object_id_t saiGetCpuId()
     {
         SWSS_LOG_ERROR("failed to get cpu port: %d", status);
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     SWSS_LOG_DEBUG("cpu port RID %llx", attr.value.oid);
@@ -70,7 +70,7 @@ std::vector<sai_object_id_t> saiGetPortList()
     {
         SWSS_LOG_ERROR("failed to get port list: %d", status);
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     return portList;
@@ -104,7 +104,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> saiGetHardwareLaneMap()
         {
             SWSS_LOG_ERROR("failed to get hardware lane list pid: %lx: %d", portList[i], status);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         sai_int32_t laneCount = attr.value.u32list.count;
@@ -132,7 +132,7 @@ sai_object_id_t saiGetDefaultVirtualRouter()
     {
          SWSS_LOG_ERROR("failed to get switch virtual router id %d", status);
 
-         exit(EXIT_FAILURE);
+         exit_and_notify(EXIT_FAILURE);
     }
 
     return attr.value.oid;
@@ -286,7 +286,7 @@ void helperCheckLaneMap()
     {
         SWSS_LOG_ERROR("lanes map size differ: %lu vs %lu", laneMap.size(), redisLaneMap.size());
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     for (auto kv: laneMap)
@@ -298,7 +298,7 @@ void helperCheckLaneMap()
         {
             SWSS_LOG_ERROR("lane %u not found in redis", lane);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         if (redisLaneMap[lane] != portId)
@@ -306,7 +306,7 @@ void helperCheckLaneMap()
             // if this happens, we need to remap VIDTORID and RIDTOVID
             SWSS_LOG_ERROR("FIXME: lane port id differs: %llx vs %llx, port ids must be remapped", portId, redisLaneMap[lane]);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
     }
 }
@@ -383,7 +383,7 @@ void redisSetDummyAsicStateForRealObjectId(sai_object_id_t rid)
     {
         SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID %llx", rid);
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     std::string strObjectType;
@@ -427,7 +427,7 @@ void helperCheckVirtualRouterId()
         // if this happens, we need to remap VIDTORID and RIDTOVID
         SWSS_LOG_ERROR("FIXME: default virtual router id differs: %llx vs %llx, ids must be remapped", vrId, redisVrId);
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 }
 
@@ -466,7 +466,7 @@ void helperCheckCpuId()
         // if this happens, we need to remap VIDTORID and RIDTOVID
         SWSS_LOG_ERROR("FIXME: cpu id differs: %llx vs %llx, ids must be remapped", cpuId, redisCpuId);
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 }
 
@@ -491,7 +491,7 @@ void helperCheckPortIds()
         {
             SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID %llx", portId);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         std::string strObjectType;

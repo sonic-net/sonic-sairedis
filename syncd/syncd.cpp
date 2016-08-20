@@ -11,6 +11,35 @@ std::map<std::string, std::string> gProfileMap;
 
 bool g_veryFirstRun = false;
 
+void exit_and_notify(int status)
+{
+    SWSS_LOG_ENTER();
+
+    try
+    {
+        if (notifications != NULL)
+        {
+            std::vector<swss::FieldValueTuple> entry;
+
+            SWSS_LOG_NOTICE("sending switch_shutdown_request notification to OA");
+
+            notifications->send("switch_shutdown_request", "", entry);
+
+            SWSS_LOG_NOTICE("notification send successfull");
+        }
+    }
+    catch(const std::exception &e)
+    {
+        SWSS_LOG_ERROR("Runtime error: %s", e.what());
+    }
+    catch(...)
+    {
+        SWSS_LOG_ERROR("Unknown runtime error");
+    }
+
+    exit(status);
+}
+
 void sai_diag_shell()
 {
     SWSS_LOG_ENTER();
@@ -87,8 +116,7 @@ sai_object_id_t translate_rid_to_vid(
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
         SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID %llx", rid);
-
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     vid = redis_create_virtual_object_id(object_type);
@@ -135,8 +163,7 @@ void translate_rid_to_vid_list(
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("unable to find serialization type for object type %x, attribute %x", object_type, attr.id);
-
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         switch (serialization_type)
@@ -195,8 +222,7 @@ sai_object_id_t translate_vid_to_rid(
     if (prid == NULL)
     {
         SWSS_LOG_ERROR("unable to get RID for VID: %s", str_vid.c_str());
-
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     str_rid = *prid;
@@ -231,8 +257,7 @@ void translate_vid_to_rid_list(
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("unable to find serialization type for object type %x, attribute %x", object_type, attr.id);
-
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         switch (serialization_type)
@@ -422,7 +447,7 @@ sai_status_t handle_generic(
                 if (create == NULL)
                 {
                     SWSS_LOG_ERROR("create function is not defined for object type %x", object_type);
-                    exit(EXIT_FAILURE);
+                    exit_and_notify(EXIT_FAILURE);
                 }
 
                 sai_object_id_t real_object_id;
@@ -461,7 +486,7 @@ sai_status_t handle_generic(
                 if (remove == NULL)
                 {
                     SWSS_LOG_ERROR("remove function is not defined for object type %x", object_type);
-                    exit(EXIT_FAILURE);
+                    exit_and_notify(EXIT_FAILURE);
                 }
 
                 sai_object_id_t rid = translate_vid_to_rid(object_id);
@@ -487,7 +512,7 @@ sai_status_t handle_generic(
                 if (set == NULL)
                 {
                     SWSS_LOG_ERROR("set function is not defined for object type %x", object_type);
-                    exit(EXIT_FAILURE);
+                    exit_and_notify(EXIT_FAILURE);
                 }
 
                 sai_object_id_t rid = translate_vid_to_rid(object_id);
@@ -504,7 +529,7 @@ sai_status_t handle_generic(
                 if (get == NULL)
                 {
                     SWSS_LOG_ERROR("get function is not defined for object type %x", object_type);
-                    exit(EXIT_FAILURE);
+                    exit_and_notify(EXIT_FAILURE);
                 }
 
                 sai_object_id_t rid = translate_vid_to_rid(object_id);
@@ -514,7 +539,7 @@ sai_status_t handle_generic(
 
         default:
             SWSS_LOG_ERROR("generic other apis not implemented");
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
     }
 }
 
@@ -546,7 +571,7 @@ sai_status_t handle_fdb(
 
         default:
             SWSS_LOG_ERROR("fdb other apis not implemented");
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
     }
 }
 
@@ -574,7 +599,7 @@ sai_status_t handle_switch(
 
         default:
             SWSS_LOG_ERROR("switch other apis not implemented");
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
     }
 }
 
@@ -608,7 +633,7 @@ sai_status_t handle_neighbor(
 
         default:
             SWSS_LOG_ERROR("neighbor other apis not implemented");
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
     }
 }
 
@@ -644,7 +669,7 @@ sai_status_t handle_route(
 
         default:
             SWSS_LOG_ERROR("route other apis not implemented");
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
     }
 }
 
@@ -676,7 +701,7 @@ sai_status_t handle_vlan(
 
         default:
             SWSS_LOG_ERROR("vlan other apis not implemented");
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
     }
 }
 
@@ -704,7 +729,7 @@ sai_status_t handle_trap(
 
         default:
             SWSS_LOG_ERROR("trap other apis not implemented");
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
     }
 }
 
@@ -805,7 +830,7 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
     {
         SWSS_LOG_ERROR("failed to execute api: %s: %d", op.c_str(), status);
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     return status;
@@ -1294,7 +1319,7 @@ int main(int argc, char **argv)
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("fail to sai_initialize_switch: %d", status);
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
 #ifdef BRCMSAI
@@ -1371,7 +1396,7 @@ int main(int argc, char **argv)
     {
         SWSS_LOG_ERROR("Runtime error: %s", e.what());
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     endCountersThread();

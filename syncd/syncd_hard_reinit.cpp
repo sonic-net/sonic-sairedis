@@ -44,7 +44,7 @@ sai_object_type_t getObjectTypeFromVid(sai_object_id_t sai_object_id)
     {
         SWSS_LOG_ERROR("invalid object type: %x on object id: %llx", objectType, sai_object_id);
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     return objectType;
@@ -89,7 +89,7 @@ sai_object_type_t getObjectTypeFromAsicKey(const std::string &key)
     {
         SWSS_LOG_ERROR("invalid object type: %x on asic key: %s", objectType, key.c_str());
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     return objectType;
@@ -134,7 +134,7 @@ void checkAllIds()
         {
             SWSS_LOG_ERROR("failed to find vid %llx in previous map", kv.first);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         g_vidToRidMap.erase(it);
@@ -151,7 +151,7 @@ void checkAllIds()
             SWSS_LOG_ERROR("vid not translated: %llx, object type: %llx", kv.first, objectType);
         }
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     redisSetVidAndRidMap(g_translated);
@@ -257,7 +257,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
         {
             SWSS_LOG_ERROR("failed to find VID %llx in VIDTORID map", vid);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         sai_object_id_t virtualRouterRid = it->second;
@@ -288,7 +288,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
         {
             SWSS_LOG_ERROR("failed to find VID %llx in VIDTORID map", vid);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         rid = it->second;
@@ -304,7 +304,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
     {
         SWSS_LOG_ERROR("failed to find VID %s in OIDs map", strVid.c_str());
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     std::string asicKey = oit->second;;
@@ -325,7 +325,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
         {
             SWSS_LOG_ERROR("create function is not defined for object type %llx", objectType);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         sai_status_t status = create(&rid, attrCount, attrList);
@@ -334,7 +334,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
         {
             SWSS_LOG_ERROR("failed to create object %llx: %d", objectType, status);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
 
         SWSS_LOG_DEBUG("created object of type %x, processed VID %llx to RID %llx", objectType, vid, rid);
@@ -355,7 +355,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
             {
                 SWSS_LOG_ERROR("failed to set attribute for object type %llx attr id %llx: %d", objectType, attr->id, status);
 
-                exit(EXIT_FAILURE);
+                exit_and_notify(EXIT_FAILURE);
             }
         }
     }
@@ -376,7 +376,7 @@ sai_attr_serialization_type_t getSerializationType(sai_object_type_t objectType,
     {
         SWSS_LOG_ERROR("unable to find serialization type on object type %x and attr id %x", objectType, attrId);
 
-        exit(EXIT_FAILURE);
+        exit_and_notify(EXIT_FAILURE);
     }
 
     return serializationType;
@@ -505,7 +505,7 @@ void processSwitch()
             {
                 SWSS_LOG_ERROR("failed to set_switch_attribute %llx: %d", attr->id, status);
 
-                exit(EXIT_FAILURE);
+                exit_and_notify(EXIT_FAILURE);
             }
         }
     }
@@ -542,7 +542,7 @@ void processVlans()
             {
                 SWSS_LOG_ERROR("failed to create_vlan %d: %d", vlanId, status);
 
-                exit(EXIT_FAILURE);
+                exit_and_notify(EXIT_FAILURE);
             }
         }
 
@@ -564,7 +564,7 @@ void processVlans()
             {
                 SWSS_LOG_ERROR("failed to set_vlan_attribute %llx: %d", attr->id, status);
 
-                exit(EXIT_FAILURE);
+                exit_and_notify(EXIT_FAILURE);
             }
         }
     }
@@ -606,7 +606,7 @@ void processFdbs()
         {
             SWSS_LOG_ERROR("failed to create_fdb_entry: %d", status);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
     }
 }
@@ -649,7 +649,7 @@ void processNeighbors()
         {
             SWSS_LOG_ERROR("failed to create_neighbor_entry: %d", status);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
     }
 }
@@ -692,7 +692,7 @@ void processRoutes()
         {
             SWSS_LOG_ERROR("failed to create_route_entry: %d", status);
 
-            exit(EXIT_FAILURE);
+            exit_and_notify(EXIT_FAILURE);
         }
     }
 }
@@ -740,7 +740,7 @@ void processTraps()
             {
                 SWSS_LOG_ERROR("failed to set_trap_attribute %d: %d", trapId, status);
 
-                exit(EXIT_FAILURE);
+                exit_and_notify(EXIT_FAILURE);
             }
         }
     }
