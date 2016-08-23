@@ -25,10 +25,12 @@ AC_ARG_WITH(sai,
 [case "${withval}" in
 	bcm)  sai=bcm ;;
 	mlnx) sai=mlnx ;;
+	cavm) sai=cavm ;;
 	*) AC_MSG_ERROR(bad value ${withval} for --with-sai) ;;
 esac])
 AM_CONDITIONAL(SAIBCM,  test x$sai = xbcm)
 AM_CONDITIONAL(SAIMLNX, test x$sai = xmlnx)
+AM_CONDITIONAL(SAICAVM, test x$sai = xcavm)
 
 AC_ARG_ENABLE(rpcserver,
 [  --enable-rpcserver  Compile with thrift rpcserver included],

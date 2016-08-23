@@ -17,6 +17,10 @@ if SAIMLNX
 SAIFLAGS = -DMLNXSAI
 endif
 
+if SAICAVM
+SAIFLAGS = -DCAVMSAI
+endif
+
 syncd_SOURCES = syncd.cpp \
 		syncd_init.cpp \
 		syncd_reinit.cpp \
