@@ -107,7 +107,7 @@ sai_status_t notify_syncd(const std::string &operation)
         int index = 0;
         sai_deserialize_primitive(strStatus, index, status);
 
-        SWSS_LOG_INFO("%s status: %d", op.c_str(), status);
+        SWSS_LOG_NOTICE("%s status: %d", op.c_str(), status);
 
         return status;
     }
@@ -136,7 +136,7 @@ void clear_local_state()
     local_vlan_members_set.clear();
     local_vlans_set.clear();
     local_hostif_trap_groups_set.clear();
-    local_hostif_set.clear();
+    local_hostifs_set.clear();
 
     // populate default objects
 
@@ -190,7 +190,7 @@ sai_status_t redis_initialize_switch(
 
     std::string op = std::string(firmware_path_name);
 
-    SWSS_LOG_INFO("operation: '%s'", op.c_str());
+    SWSS_LOG_NOTICE("operation: '%s'", op.c_str());
 
     if (op == NOTIFY_SAI_INIT_VIEW || op == NOTIFY_SAI_APPLY_VIEW)
     {
@@ -560,6 +560,8 @@ sai_status_t redis_get_switch_attribute(
         {
             // RO
             case SAI_SWITCH_ATTR_PORT_NUMBER:
+                break;
+
             case SAI_SWITCH_ATTR_PORT_LIST:
 
                 {
@@ -607,6 +609,8 @@ sai_status_t redis_get_switch_attribute(
             case SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID:
             case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_TRAFFIC_CLASSES:
             case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_SCHEDULER_GROUP_HIERARCHY_LEVELS:
+                break;
+
             case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_SCHEDULER_GROUPS_PER_HIERARCHY_LEVEL: // sai_u32_li
 
                 {
@@ -667,7 +671,7 @@ sai_status_t redis_get_switch_attribute(
             //case SAI_SWITCH_ATTR_QOS_TC_AND_COLOR_TO_DOT1P_MAP:
             //case SAI_SWITCH_ATTR_QOS_TC_AND_COLOR_TO_DSCP_MAP:
             // ok
-            break;
+                break;
 
             default:
 
@@ -710,7 +714,7 @@ sai_status_t redis_get_switch_attribute(
 
             local_cpu_port_id = cpu_port_id;
 
-            SWSS_LOG_INFO("got cpu port ID %llx via get api", local_cpu_port_id);
+            SWSS_LOG_NOTICE("got cpu port ID %llx via get api", local_cpu_port_id);
         }
 
         const sai_attribute_t* attr_def_vr_id = redis_get_attribute_by_id(SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID, attr_count, attr_list);
@@ -718,7 +722,7 @@ sai_status_t redis_get_switch_attribute(
         // default virtual router ID can be only obtained by sai GET switch API
         // and this router can't be removed from the switch
 
-        if (attr_def_vr_id == NULL)
+        if (attr_def_vr_id != NULL)
         {
             sai_object_id_t vr_id = attr_def_vr_id->value.oid;
 
@@ -737,7 +741,7 @@ sai_status_t redis_get_switch_attribute(
 
             local_default_virtual_router_id = vr_id;
 
-            SWSS_LOG_INFO("got default virtual router ID %llx via get api", local_default_virtual_router_id);
+            SWSS_LOG_NOTICE("got default virtual router ID %llx via get api", local_default_virtual_router_id);
         }
 
         const sai_attribute_t* attr_port_list = redis_get_attribute_by_id(SAI_SWITCH_ATTR_PORT_LIST, attr_count, attr_list);
@@ -746,7 +750,7 @@ sai_status_t redis_get_switch_attribute(
         {
             sai_object_list_t port_list = attr_port_list->value.objlist;
 
-            bool empty = local_ports_set.size();
+            bool empty = local_ports_set.size() == 0;
 
             if (empty)
             {
@@ -755,7 +759,7 @@ sai_status_t redis_get_switch_attribute(
                     local_ports_set.insert(port_list.list[i]);
                 }
 
-                SWSS_LOG_INFO("got %u ports via get api", port_list.count);
+                SWSS_LOG_NOTICE("got %u ports via get api", port_list.count);
             }
             else
             {

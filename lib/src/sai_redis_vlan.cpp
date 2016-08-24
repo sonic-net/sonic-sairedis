@@ -247,6 +247,32 @@ sai_status_t redis_get_vlan_attribute(
             attr_count,
             attr_list);
 
+    // TODO this a hack to get member list for vlan 1, this should be done at
+    // init and there may be some issues when we will start keeping attributes
+    // of vlan members in local state
+
+    if (status == SAI_STATUS_SUCCESS && vlan_id == DEFAULT_VLAN_NUMBER)
+    {
+        const sai_attribute_t* attr_member_list = redis_get_attribute_by_id(SAI_VLAN_ATTR_MEMBER_LIST, attr_count, attr_list);
+
+        if (attr_member_list != NULL)
+        {
+            sai_object_list_t member_list = attr_member_list->value.objlist;
+
+            for (uint32_t i = 0; i < member_list.count; ++i)
+            {
+                sai_object_id_t member_id = member_list.list[i];
+
+                if (local_vlan_members_set.find(member_id) == local_vlan_members_set.end())
+                {
+                    SWSS_LOG_NOTICE("adding vlan member %llx to vlan %d", member_id, DEFAULT_VLAN_NUMBER);
+
+                    local_vlan_members_set.insert(member_id);
+                }
+            }
+        }
+    }
+
     return status;
 }
 

@@ -594,7 +594,7 @@ sai_status_t redis_create_hostif(
     {
         SWSS_LOG_DEBUG("host interface %llx to local state", *hif_id);
 
-        local_hostif_set.insert(*hif_id);
+        local_hostifs_set.insert(*hif_id);
 
         // TODO increase reference count for used object ids
     }
@@ -637,7 +637,7 @@ sai_status_t redis_remove_hostif(
     {
         SWSS_LOG_DEBUG("erasing host interface %llx from local state", hif_id);
 
-        local_hostif_set.erase(hif_id);
+        local_hostifs_set.erase(hif_id);
     }
 
     return status;
