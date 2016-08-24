@@ -9,6 +9,7 @@ std::set<sai_object_id_t> local_switches_set;
 #define DEFAULT_SWITCH_ID 0
 
 sai_object_id_t local_cpu_port_id = SAI_NULL_OBJECT_ID;
+sai_object_id_t local_default_trap_group_id = SAI_NULL_OBJECT_ID;
 
 // TODO it may be needed to obtain SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP object id
 
@@ -134,9 +135,10 @@ void clear_local_state()
     local_tunnel_term_table_entries_set.clear();
     local_virtual_routers_set.clear();
     local_vlan_members_set.clear();
-    local_vlans_set.clear();
-    local_hostif_trap_groups_set.clear();
     local_hostifs_set.clear();
+    local_hostif_trap_groups_set.clear();
+    local_hostif_traps_set.clear();
+    local_vlans_set.clear();
 
     // populate default objects
 
@@ -150,7 +152,7 @@ void clear_local_state()
     // TODO populate ports list
 
     local_default_virtual_router_id = SAI_NULL_OBJECT_ID;
-
+    local_default_trap_group_id = SAI_NULL_OBJECT_ID; // TODO needs to be snooped
     local_cpu_port_id = SAI_NULL_OBJECT_ID;
 }
 

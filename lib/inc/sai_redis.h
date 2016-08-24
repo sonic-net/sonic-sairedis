@@ -36,6 +36,7 @@ extern std::set<std::string>            local_route_entries_set;
 extern std::set<sai_object_id_t>        local_virtual_routers_set;
 extern sai_object_id_t                  local_default_virtual_router_id;
 extern sai_object_id_t                  local_cpu_port_id;
+extern sai_object_id_t                  local_default_trap_group_id;
 extern std::set<sai_vlan_id_t>          local_vlans_set;
 extern std::set<sai_object_id_t>        local_vlan_members_set;
 extern std::set<sai_object_id_t>        local_tunnel_maps_set;
@@ -46,6 +47,7 @@ extern std::set<sai_object_id_t>        local_policers_set;
 extern std::set<sai_object_id_t>        local_switches_set;
 extern std::set<sai_object_id_t>        local_hostif_trap_groups_set;
 extern std::set<sai_object_id_t>        local_hostifs_set;
+extern std::set<sai_hostif_trap_id_t>   local_hostif_traps_set;
 
 // other global declarations
 

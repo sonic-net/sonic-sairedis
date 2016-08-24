@@ -4,6 +4,9 @@
 std::set<sai_object_id_t> local_hostif_trap_groups_set;
 std::set<sai_object_id_t> local_hostifs_set;
 
+// TODO this will be changed to object is as well
+std::set<sai_hostif_trap_id_t> local_hostif_traps_set;
+
 /**
  * Routine Description:
  *   @brief hostif receive function
@@ -249,8 +252,7 @@ sai_status_t redis_remove_hostif_trap_group(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t redis_set_trap_group_attribute
-(
+sai_status_t redis_set_trap_group_attribute(
     _In_ sai_object_id_t hostif_trap_group_id,
     _In_ const sai_attribute_t *attr)
 {
@@ -406,6 +408,167 @@ sai_status_t redis_set_trap_attribute(
 
     SWSS_LOG_ENTER();
 
+    if (attr == NULL)
+    {
+        SWSS_LOG_ERROR("attribute parameter is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // TODO to make this work we need to populate trap list first
+
+    if (local_hostif_traps_set.find(hostif_trapid) == local_hostif_traps_set.end())
+    {
+        SWSS_LOG_ERROR("host interface trap %d is missing", hostif_trapid);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    switch (attr->id)
+    {
+        case SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION:
+
+            {
+                sai_packet_action_t packet_action = (sai_packet_action_t)attr->value.s32;
+
+                switch (packet_action)
+                {
+                    case SAI_PACKET_ACTION_DROP:
+                    case SAI_PACKET_ACTION_FORWARD:
+                    case SAI_PACKET_ACTION_COPY:
+                    case SAI_PACKET_ACTION_COPY_CANCEL:
+                    case SAI_PACKET_ACTION_TRAP:
+                    case SAI_PACKET_ACTION_LOG:
+                    case SAI_PACKET_ACTION_DENY:
+                    case SAI_PACKET_ACTION_TRANSIT:
+                            // ok
+                        break;
+
+                    default:
+
+                        SWSS_LOG_ERROR("invalid packet action value: %d", packet_action);
+
+                        return SAI_STATUS_INVALID_PARAMETER;
+                }
+            }
+
+            break;
+
+        case SAI_HOSTIF_TRAP_ATTR_TRAP_PRIORITY:
+            break;
+
+        case SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL:
+
+            {
+                sai_hostif_trap_channel_t trap_channel = (sai_hostif_trap_channel_t)attr->value.s32;
+
+                switch (trap_channel)
+                {
+                    case SAI_HOSTIF_TRAP_CHANNEL_FD:
+                    case SAI_HOSTIF_TRAP_CHANNEL_CB:
+                    case SAI_HOSTIF_TRAP_CHANNEL_NETDEV:
+                        // ok
+                        break;
+
+                    default:
+
+                        SWSS_LOG_ERROR("invalid trap channel value: %d", trap_channel);
+
+                        return SAI_STATUS_INVALID_PARAMETER;
+                }
+            }
+
+            // TODO extra validation here maybe needed to check cb/fd/netdev
+            // we will need extra logic to validate this attribute (previous attributes)
+            break;
+
+        case SAI_HOSTIF_TRAP_ATTR_FD:
+
+            {
+                // Valid only when SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL == SAI_HOSTIF_TRAP_CHANNEL_FD
+                // Must be set before set SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL to SAI_HOSTIF_TRAP_CHANNEL_FD
+                //
+                // when we move to create api, this can be solved other way
+
+                sai_object_id_t fd = attr->value.oid;
+
+                if (local_hostifs_set.find(fd) == local_hostifs_set.end() &&
+                    fd != SAI_NULL_OBJECT_ID)
+                {
+                    SWSS_LOG_ERROR("file descriptor %llx is missing", fd);
+
+                    return SAI_STATUS_INVALID_PARAMETER;
+                }
+
+                // TODO additional logic here is required, this fd hostif
+                // must be type of sai_hostif_type_t == SAI_HOSTIF_TYPE_FD
+                // we need to check hostif attribute then
+                //
+                // TODO also what about netdev case ?
+            }
+
+            break;
+
+        // TODO condition to check when ports are removed
+        case SAI_HOSTIF_TRAP_ATTR_PORT_LIST:
+
+            {
+                sai_object_list_t port_list = attr->value.objlist;
+
+                // TODO should we allow null on SET when count is zero ?
+                if (port_list.list == NULL)
+                {
+                    SWSS_LOG_ERROR("port list is NULL");
+
+                    return SAI_STATUS_INVALID_PARAMETER;
+                }
+
+                for (uint32_t i = 0; i < port_list.count; ++i)
+                {
+                    sai_object_id_t port_id = port_list.list[i];
+
+                    if (local_ports_set.find(port_id) == local_ports_set.end())
+                    {
+                        SWSS_LOG_ERROR("port %llx is missing", port_id);
+
+                        return SAI_STATUS_INVALID_PARAMETER;
+                    }
+                }
+            }
+
+            break;
+
+        case SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP:
+
+            {
+                sai_object_id_t trap_group = attr->value.oid;
+
+                if (local_default_trap_group_id != SAI_NULL_OBJECT_ID &&
+                    local_default_trap_group_id == trap_group)
+                {
+                    // ok its default trap id
+                    break;
+                }
+
+                // TODO that default trap group should also be
+                // on that trap groups list this would implify condition
+                if (local_hostif_trap_groups_set.find(trap_group) == local_hostif_trap_groups_set.end())
+                {
+                    SWSS_LOG_ERROR("trap group %llx is missing", trap_group);
+
+                    return SAI_STATUS_INVALID_PARAMETER;
+                }
+            }
+
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("setting attribute id %d is not supported", attr->id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+    }
+
     sai_status_t status = redis_generic_set(
             SAI_OBJECT_TYPE_TRAP,
             hostif_trapid,
@@ -435,6 +598,62 @@ sai_status_t redis_get_trap_attribute(
     std::lock_guard<std::mutex> lock(g_apimutex);
 
     SWSS_LOG_ENTER();
+
+    if (attr_list == NULL)
+    {
+        SWSS_LOG_ERROR("attribute list parameter is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (attr_count < 1)
+    {
+        SWSS_LOG_ERROR("attribute count must be at least 1");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (local_hostif_traps_set.find(hostif_trapid) == local_hostif_traps_set.end())
+    {
+        SWSS_LOG_ERROR("host interface trap %d is missing", hostif_trapid);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    for (uint32_t i = 0; i < attr_count; ++i)
+    {
+        sai_attribute_t* attr = &attr_list[i];
+
+        switch (attr->id)
+        {
+            case SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION:
+            case SAI_HOSTIF_TRAP_ATTR_TRAP_PRIORITY:
+            case SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL:
+            case SAI_HOSTIF_TRAP_ATTR_FD:
+                break;
+
+            case SAI_HOSTIF_TRAP_ATTR_PORT_LIST:
+
+            {
+                sai_object_list_t port_list = attr->value.objlist;
+
+                // TODO should we allow null on GET when count is zero ?
+                // will it be used then to obtain actual count ?
+                if (port_list.list == NULL)
+                {
+                    SWSS_LOG_ERROR("port list is NULL");
+
+                    return SAI_STATUS_INVALID_PARAMETER;
+                }
+            }
+
+            default:
+
+                SWSS_LOG_ERROR("getting attribute id %d is not supported", attr->id);
+
+                return SAI_STATUS_INVALID_PARAMETER;
+        }
+    }
 
     sai_status_t status = redis_generic_get(
             SAI_OBJECT_TYPE_TRAP,
