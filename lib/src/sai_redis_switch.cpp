@@ -118,6 +118,44 @@ sai_status_t notify_syncd(const std::string &operation)
     return SAI_STATUS_FAILURE;
 }
 
+void populate_hostif_traps()
+{
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_STP);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_LACP);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_EAPOL);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_LLDP);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_PVRST);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IGMP_TYPE_QUERY);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IGMP_TYPE_LEAVE);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IGMP_TYPE_V1_REPORT);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IGMP_TYPE_V2_REPORT);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IGMP_TYPE_V3_REPORT);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_SAMPLEPACKET);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_SWITCH_CUSTOM_RANGE_BASE);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_ARP_REQUEST);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_ARP_RESPONSE);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_DHCP);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_OSPF);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_PIM);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_VRRP);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_BGP);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_DHCPV6);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_OSPFV6);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_VRRPV6);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_BGPV6);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IPV6_NEIGHBOR_DISCOVERY);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IPV6_MLD_V1_V2);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IPV6_MLD_V1_REPORT);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IPV6_MLD_V1_DONE);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_MLD_V2_REPORT);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_IP2ME);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_SSH);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_SNMP);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_ROUTER_CUSTOM_RANGE_BASE);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_L3_MTU_ERROR);
+    local_hostif_traps_set.insert(SAI_HOSTIF_TRAP_ID_TTL_ERROR);
+}
+
 void clear_local_state()
 {
     local_lag_members_set.clear();
@@ -139,10 +177,13 @@ void clear_local_state()
     local_hostif_trap_groups_set.clear();
     local_hostif_traps_set.clear();
     local_vlans_set.clear();
+    local_user_defined_hostif_traps_set.clear();
 
     // populate default objects
 
     local_vlans_set.insert(DEFAULT_VLAN_NUMBER);
+
+    populate_hostif_traps();
 
     local_switches_set.insert(DEFAULT_SWITCH_ID);
 
@@ -154,6 +195,14 @@ void clear_local_state()
     local_default_virtual_router_id = SAI_NULL_OBJECT_ID;
     local_default_trap_group_id = SAI_NULL_OBJECT_ID; // TODO needs to be snooped
     local_cpu_port_id = SAI_NULL_OBJECT_ID;
+
+    // TODO getting default object id's like TRAP which can contain other object
+    // id as dependency (in this case queue/policer)
+    // we need to also GET those attributes at first switch init to have full
+    // asic view of what's goind on and also we need extra logic on remove
+    // function (we can add 4 pointers in metadata c/r/s/g) because some default
+    // object's can't be removed like cpu port or default virtual router
+    // and probably default trap group
 }
 
 /**
@@ -208,6 +257,8 @@ sai_status_t redis_initialize_switch(
                 {
                     SWSS_LOG_NOTICE("clearing current local state sinice init view is called on initialised switch");
 
+                    // TODO since we clear all defaults here and we are compiling new view
+                    // there may be some problems with GET
                     clear_local_state();
                 }
 

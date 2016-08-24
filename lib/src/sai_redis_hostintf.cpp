@@ -6,6 +6,7 @@ std::set<sai_object_id_t> local_hostifs_set;
 
 // TODO this will be changed to object is as well
 std::set<sai_hostif_trap_id_t> local_hostif_traps_set;
+std::set<sai_hostif_user_defined_trap_id_t> local_user_defined_hostif_traps_set;
 
 /**
  * Routine Description:
@@ -93,6 +94,83 @@ sai_status_t redis_set_user_defined_trap_attribute(
 
     SWSS_LOG_ENTER();
 
+    if (attr == NULL)
+    {
+        SWSS_LOG_ERROR("attribute parameter is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    //TODO to make this work we need to populate user trap list first
+
+    if (local_user_defined_hostif_traps_set.find(hostif_user_defined_trapid) == local_user_defined_hostif_traps_set.end())
+    {
+        SWSS_LOG_ERROR("host interface user defined trap %llx is missing", hostif_user_defined_trapid);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    switch (attr->id)
+    {
+        case SAI_HOSTIF_USER_DEFINED_TRAP_ATTR_TRAP_CHANNEL:
+
+            {
+                sai_hostif_trap_channel_t trap_channel = (sai_hostif_trap_channel_t)attr->value.s32;
+
+                switch (trap_channel)
+                {
+                    case SAI_HOSTIF_TRAP_CHANNEL_FD:
+                    case SAI_HOSTIF_TRAP_CHANNEL_CB:
+                    case SAI_HOSTIF_TRAP_CHANNEL_NETDEV:
+                        // ok
+                        break;
+
+                    default:
+
+                        SWSS_LOG_ERROR("invalid trap channel value: %d", trap_channel);
+
+                        return SAI_STATUS_INVALID_PARAMETER;
+                }
+            }
+
+            // TODO extra validation here maybe needed to check cb/fd/netdev
+            // we will need extra logic to validate this attribute (previous attributes)
+            break;
+
+        case SAI_HOSTIF_USER_DEFINED_TRAP_ATTR_FD:
+
+            {
+                // Valid only when SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL == SAI_HOSTIF_TRAP_CHANNEL_FD
+                // Must be set before set SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL to SAI_HOSTIF_TRAP_CHANNEL_FD
+                //
+                // when we move to create api, this can be solved other way
+
+                sai_object_id_t fd = attr->value.oid;
+
+                if (local_hostifs_set.find(fd) == local_hostifs_set.end() &&
+                    fd != SAI_NULL_OBJECT_ID)
+                {
+                    SWSS_LOG_ERROR("file descriptor %llx is missing", fd);
+
+                    return SAI_STATUS_INVALID_PARAMETER;
+                }
+
+                // TODO additional logic here is required, this fd hostif
+                // must be type of sai_hostif_type_t == SAI_HOSTIF_TYPE_FD
+                // we need to check hostif attribute then
+                //
+                // TODO also what about netdev case ?
+            }
+
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("setting attribute id %d is not supported", attr->id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+    }
+
     sai_status_t status = redis_generic_set(
             SAI_OBJECT_TYPE_TRAP_USER_DEF,
             hostif_user_defined_trapid,
@@ -122,6 +200,46 @@ sai_status_t redis_get_user_defined_trap_attribute(
     std::lock_guard<std::mutex> lock(g_apimutex);
 
     SWSS_LOG_ENTER();
+
+    if (attr_list == NULL)
+    {
+        SWSS_LOG_ERROR("attribute list parameter is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (attr_count < 1)
+    {
+        SWSS_LOG_ERROR("attribute count must be at least 1");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (local_user_defined_hostif_traps_set.find(hostif_user_defined_trapid) == local_user_defined_hostif_traps_set.end())
+    {
+        SWSS_LOG_ERROR("host interface user defined trap %llx is missing", hostif_user_defined_trapid);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    for (uint32_t i = 0; i < attr_count; ++i)
+    {
+        sai_attribute_t* attr = &attr_list[i];
+
+        switch (attr->id)
+        {
+            case SAI_HOSTIF_USER_DEFINED_TRAP_ATTR_TRAP_CHANNEL:
+            case SAI_HOSTIF_USER_DEFINED_TRAP_ATTR_FD:
+                break;
+
+            default:
+
+                SWSS_LOG_ERROR("getting attribute id %d is not supported", attr->id);
+
+                return SAI_STATUS_INVALID_PARAMETER;
+        }
+    }
+
 
     sai_status_t status = redis_generic_get(
             SAI_OBJECT_TYPE_TRAP_USER_DEF,
@@ -277,7 +395,16 @@ sai_status_t redis_set_trap_group_attribute(
     switch (attr->id)
     {
         case SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE:
+            break;
+
         case SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE:
+
+            // TODO this can be tricky since this QUEUE is queue INDEX
+            // indirect depenency, by default there are 8 queues, but
+            // user can create extra one, so there may be 10, and what
+            // happens when this points to queue 10 and user remove this queue?
+            // on queue remove we should queue index on trap group and
+            // not allow to remove then
             break;
 
         case SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER:
