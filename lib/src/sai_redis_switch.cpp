@@ -70,19 +70,19 @@ void ntf_thread()
     }
 }
 
-sai_status_t notify_syncd(const std::string &op)
+sai_status_t notify_syncd(const std::string &operation)
 {
     SWSS_LOG_ENTER();
 
     std::vector<swss::FieldValueTuple> entry;
 
-    g_notifySyncdProducer->send(op, "", entry);
+    g_notifySyncdProducer->send(operation, "", entry);
 
     swss::Select s;
 
     s.addSelectable(g_notifySyncdConsumer);
 
-    SWSS_LOG_DEBUG("wait for response after: %s", op.c_str());
+    SWSS_LOG_DEBUG("wait for response after: %s", operation.c_str());
 
     swss::Selectable *sel;
 
@@ -112,7 +112,7 @@ sai_status_t notify_syncd(const std::string &op)
         return status;
     }
 
-    SWSS_LOG_ERROR("%s get response failed, result: %d", op.c_str(), result);
+    SWSS_LOG_ERROR("%s get response failed, result: %d", operation.c_str(), result);
 
     return SAI_STATUS_FAILURE;
 }

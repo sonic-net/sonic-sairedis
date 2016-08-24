@@ -184,12 +184,12 @@ void sai_deserialize_primitive(
         int u = char_to_int(ptr[2 * i]);
         int l = char_to_int(ptr[2 * i + 1]);
 
-        unsigned char c = (u << 4) | l;
+        int c = (u << 4) | l;
 
-        mem[i] = c;
+        mem[i] = (unsigned char)c;
     }
 
-    index += count * 2;
+    index += (int)(count * 2);
 }
 
 template<typename T>

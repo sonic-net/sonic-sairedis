@@ -322,6 +322,113 @@ sai_status_t redis_get_acl_counter_attribute(
 }
 
 /**
+ *   Routine Description:
+ *     @brief Create an ACL Range
+ *
+ *  Arguments:
+ *  @param[out] acl_range_id - the acl range id
+ *  @param[in] attr_count - number of attributes
+ *  @param[in] attr_list - array of attributes
+ *
+ *  Return Values:
+ *    @return  SAI_STATUS_SUCCESS on success
+ *             Failure status code on error
+ */
+sai_status_t redis_create_acl_range(
+    _Out_ sai_object_id_t* acl_range_id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = redis_generic_create(
+        SAI_OBJECT_TYPE_ACL_RANGE,
+        acl_range_id,
+        attr_count,
+        attr_list);
+
+    return status;
+}
+
+/**
+ *  Routine Description:
+ *    @brief Remove an ACL Range
+ *
+ *  Arguments:
+ *    @param[in] acl_range_id - the acl range id
+ *
+ *  Return Values:
+ *    @return  SAI_STATUS_SUCCESS on success
+ *             Failure status code on error
+ */
+sai_status_t redis_remove_acl_range(
+    _In_ sai_object_id_t acl_range_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = redis_generic_remove(
+        SAI_OBJECT_TYPE_ACL_RANGE,
+        acl_range_id);
+
+    return status;
+}
+
+/**
+ * Routine Description:
+ *   @brief Set ACL range attribute
+ *
+ * Arguments:
+ *    @param[in] acl_range_id - the acl range id
+ *    @param[in] attr - attribute
+ *
+ * Return Values:
+ *    @return  SAI_STATUS_SUCCESS on success
+ *             Failure status code on error
+ */
+sai_status_t redis_set_acl_range_attribute(
+    _In_ sai_object_id_t acl_range_id,
+    _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = redis_generic_set(
+            SAI_OBJECT_TYPE_ACL_RANGE,
+            acl_range_id,
+            attr);
+
+    return status;
+}
+
+/**
+ * Routine Description:
+ *   @brief Get ACL range attribute
+ *
+ * Arguments:
+ *    @param[in] acl_range_id - acl range id
+ *    @param[in] attr_count - number of attributes
+ *    @param[out] attr_list - array of attributes
+ *
+ * Return Values:
+ *    @return  SAI_STATUS_SUCCESS on success
+ *             Failure status code on error
+ */
+sai_status_t redis_get_acl_range_attribute(
+    _In_ sai_object_id_t acl_range_id,
+    _In_ uint32_t attr_count,
+    _Out_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = redis_generic_get(
+            SAI_OBJECT_TYPE_ACL_RANGE,
+            acl_range_id,
+            attr_count,
+            attr_list);
+
+    return status;
+}
+
+/**
  *  @brief acl methods table retrieved with sai_api_query()
  */
 const sai_acl_api_t redis_acl_api = {
@@ -339,4 +446,9 @@ const sai_acl_api_t redis_acl_api = {
     redis_delete_acl_counter,
     redis_set_acl_counter_attribute,
     redis_get_acl_counter_attribute,
+
+    redis_create_acl_range,
+    redis_remove_acl_range,
+    redis_set_acl_range_attribute,
+    redis_get_acl_range_attribute,
 };

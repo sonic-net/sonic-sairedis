@@ -1,8 +1,45 @@
-# Makefile.am -- Process this file with automake to produce Makefile.in
+
 
 AM_CPPFLAGS =
 AM_CPPFLAGS += -I/usr/include/sai -I/usr/include/swss -I$(top_srcdir)/common
 AM_CPPFLAGS += -I../inc
+AM_CPPFLAGS += -pedantic-errors -pedantic -ansi \
+				-Wcast-align \
+				-Wcast-qual \
+				-Wconversion \
+				-Wdisabled-optimization \
+				-Werror \
+				-Wextra \
+				-Wfloat-equal \
+				-Wformat=2 \
+				-Wformat-nonliteral \
+				-Wformat-security \
+				-Wformat-y2k \
+				-Wimport \
+				-Winit-self \
+				-Winline \
+				-Winvalid-pch \
+				-Wlong-long \
+				-Wmissing-field-initializers \
+				-Wmissing-format-attribute \
+				-Wmissing-include-dirs \
+				-Wmissing-noreturn \
+				-Wno-aggregate-return \
+				-Wno-padded \
+				-Wno-switch-enum \
+				-Wno-unused-parameter \
+				-Wpacked \
+				-Wpointer-arith \
+				-Wredundant-decls \
+				-Wshadow \
+				-Wstack-protector \
+				-Wstrict-aliasing=2 \
+				-Wswitch \
+				-Wswitch-default \
+				-Wunreachable-code \
+				-Wunused \
+				-Wvariadic-macros \
+				-Wwrite-strings
 
 if DEBUG
 DBGFLAGS = -ggdb -D_DEBUG_
@@ -13,7 +50,7 @@ endif
 lib_LTLIBRARIES = libsairedis.la
 
 libsairedis_la_SOURCES = sai_redis_acl.cpp \
-			 sai_redis_buffer.cpp \
+		 sai_redis_buffer.cpp \
 			 sai_redis_fdb.cpp \
 			 sai_redis_hash.cpp \
 			 sai_redis_hostintf.cpp \

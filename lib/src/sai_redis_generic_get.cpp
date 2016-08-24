@@ -105,9 +105,9 @@ sai_status_t internal_redis_generic_get(
             g_redisGetConsumer->pop(kco);
 
             const std::string &op = kfvOp(kco); 
-            const std::string &key = kfvKey(kco);
+            const std::string &opkey = kfvKey(kco);
 
-            SWSS_LOG_DEBUG("response: op = %s, key = %s", key.c_str(), op.c_str());
+            SWSS_LOG_DEBUG("response: op = %s, key = %s", opkey.c_str(), op.c_str());
 
             if (op != "getresponse") // ignore non response messages
                 continue;
