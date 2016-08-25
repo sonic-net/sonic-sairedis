@@ -49,6 +49,7 @@ extern std::set<sai_object_id_t>        local_hostif_trap_groups_set;
 extern std::set<sai_object_id_t>        local_hostifs_set;
 extern std::set<sai_hostif_trap_id_t>   local_hostif_traps_set;
 extern std::set<sai_hostif_user_defined_trap_id_t> local_user_defined_hostif_traps_set;
+extern std::set<sai_object_id_t>        local_wreds_set;
 
 // other global declarations
 

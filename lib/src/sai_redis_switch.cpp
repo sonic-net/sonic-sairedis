@@ -178,6 +178,7 @@ void clear_local_state()
     local_hostif_traps_set.clear();
     local_vlans_set.clear();
     local_user_defined_hostif_traps_set.clear();
+    local_wreds_set.clear();
 
     // populate default objects
 
