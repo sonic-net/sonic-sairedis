@@ -587,7 +587,7 @@ sai_status_t redis_set_buffer_profile_attr(
 
     switch (attr->id)
     {
-        case SAI_BUFFER_PROFILE_ATTR_POOL_ID:
+        //case SAI_BUFFER_PROFILE_ATTR_POOL_ID: // TODO should this be readonly
         case SAI_BUFFER_PROFILE_ATTR_BUFFER_SIZE:
         case SAI_BUFFER_PROFILE_ATTR_TH_MODE:
 

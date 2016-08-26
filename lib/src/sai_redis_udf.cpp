@@ -1,5 +1,7 @@
 #include "sai_redis.h"
 
+std::set<sai_object_id_t> local_udf_groups_set;
+
 /**
  * Routine Description:
  *    @brief Create UDF
