@@ -56,6 +56,7 @@ extern std::set<sai_object_id_t>        local_hashes_set;
 extern std::set<sai_object_id_t>        local_udf_groups_set;
 extern std::set<sai_object_id_t>        local_mirror_sessions_set;
 extern std::set<sai_object_id_t>        local_schedulers_set;
+extern std::set<sai_object_id_t>        local_scheduler_groups_set;
 
 // other global declarations
 

@@ -185,6 +185,7 @@ void clear_local_state()
     local_udf_groups_set.clear();
     local_mirror_sessions_set.clear();
     local_schedulers_set.clear();
+    local_scheduler_groups_set.clear();
 
     // populate default objects
 
