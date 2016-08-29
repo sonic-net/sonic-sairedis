@@ -60,6 +60,7 @@ extern std::set<sai_object_id_t>        local_mirror_sessions_set;
 extern std::set<sai_object_id_t>        local_schedulers_set;
 extern std::set<sai_object_id_t>        local_scheduler_groups_set;
 extern std::set<sai_object_id_t>        local_qos_maps_set;
+extern std::set<sai_object_id_t>        local_stp_instances_set;
 
 extern std::set<sai_object_id_t>        local_queues_set;
 extern std::set<std::string>            local_queue_keys_set;

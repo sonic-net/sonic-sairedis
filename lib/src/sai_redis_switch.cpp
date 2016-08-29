@@ -188,6 +188,7 @@ void clear_local_state()
     local_scheduler_groups_set.clear();
     local_fdb_entries_set.clear();
     local_qos_maps_set.clear();
+    local_stp_instances_set.clear();
 
     local_queues_set.clear();
     local_queue_keys_set.clear();
