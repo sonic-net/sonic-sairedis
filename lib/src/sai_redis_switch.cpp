@@ -186,6 +186,7 @@ void clear_local_state()
     local_mirror_sessions_set.clear();
     local_schedulers_set.clear();
     local_scheduler_groups_set.clear();
+    local_fdb_entries_set.clear();
 
     // populate default objects
 

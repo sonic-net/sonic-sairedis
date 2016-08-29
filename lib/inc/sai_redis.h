@@ -33,6 +33,7 @@ extern std::set<sai_object_id_t>        local_lags_set;
 extern std::set<sai_object_id_t>        local_lag_members_set;
 extern std::set<std::string>            local_neighbor_entries_set;
 extern std::set<std::string>            local_route_entries_set;
+extern std::set<std::string>            local_fdb_entries_set;
 extern std::set<sai_object_id_t>        local_virtual_routers_set;
 extern sai_object_id_t                  local_default_virtual_router_id;
 extern sai_object_id_t                  local_cpu_port_id;
