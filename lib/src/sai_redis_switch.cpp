@@ -188,6 +188,10 @@ void clear_local_state()
     local_scheduler_groups_set.clear();
     local_fdb_entries_set.clear();
 
+    local_queues_set.clear();
+    local_queue_keys_set.clear();
+    local_queue_keys_map.clear();
+
     // populate default objects
 
     local_vlans_set.insert(DEFAULT_VLAN_NUMBER);

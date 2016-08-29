@@ -3,6 +3,7 @@
 
 #include <mutex>
 #include <set>
+#include <unordered_map>
 
 #include "stdint.h"
 #include "stdio.h"
@@ -58,6 +59,10 @@ extern std::set<sai_object_id_t>        local_udf_groups_set;
 extern std::set<sai_object_id_t>        local_mirror_sessions_set;
 extern std::set<sai_object_id_t>        local_schedulers_set;
 extern std::set<sai_object_id_t>        local_scheduler_groups_set;
+
+extern std::set<sai_object_id_t>        local_queues_set;
+extern std::set<std::string>            local_queue_keys_set;
+extern std::unordered_map<sai_object_id_t, std::string> local_queue_keys_map;
 
 // other global declarations
 
