@@ -183,6 +183,8 @@ void clear_local_state()
     local_buffer_profiles_set.clear();
     local_hashes_set.clear();
     local_udf_groups_set.clear();
+    local_udf_matches_set.clear();
+    local_udfs_set.clear();
     local_mirror_sessions_set.clear();
     local_schedulers_set.clear();
     local_scheduler_groups_set.clear();
