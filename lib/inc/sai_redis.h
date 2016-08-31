@@ -25,6 +25,8 @@ extern "C" {
 #include "swss/logger.h"
 
 #define DEFAULT_VLAN_NUMBER 1
+#define MINIMUM_VLAN_NUMBER 1
+#define MAXIMUM_VLAN_NUMBER 4094
 
 // local redis state
 extern std::set<sai_object_id_t>        local_next_hops_set;
@@ -63,6 +65,12 @@ extern std::set<sai_object_id_t>        local_schedulers_set;
 extern std::set<sai_object_id_t>        local_scheduler_groups_set;
 extern std::set<sai_object_id_t>        local_qos_maps_set;
 extern std::set<sai_object_id_t>        local_stp_instances_set;
+
+extern std::set<sai_object_id_t>        local_acl_tables_set;
+extern std::set<sai_object_id_t>        local_acl_entries_set;
+extern std::set<sai_object_id_t>        local_acl_counters_set;
+extern std::set<sai_object_id_t>        local_acl_ranges_set;
+extern std::set<sai_object_id_t>        local_acl_table_groups_set;
 
 extern std::set<sai_object_id_t>        local_queues_set;
 extern std::set<std::string>            local_queue_keys_set;

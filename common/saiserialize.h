@@ -1,7 +1,9 @@
 #ifndef __SAI_SERIALIZE__
 #define __SAI_SERIALIZE__
 
+extern "C" {
 #include "sai.h"
+}
 
 #include <iostream>
 #include <fstream>

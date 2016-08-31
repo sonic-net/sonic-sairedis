@@ -3,9 +3,6 @@
 std::set<sai_vlan_id_t> local_vlans_set;
 std::set<sai_object_id_t> local_vlan_members_set;
 
-#define MINIMUM_VLAN_NUMBER 1
-#define MAXIMUM_VLAN_NUMBER 4094
-
 /**
  * Routine Description:
  *    @brief Create a VLAN

@@ -192,6 +192,12 @@ void clear_local_state()
     local_qos_maps_set.clear();
     local_stp_instances_set.clear();
 
+    local_acl_tables_set.clear();
+    local_acl_entries_set.clear();
+    local_acl_counters_set.clear();
+    local_acl_ranges_set.clear();
+    local_acl_table_groups_set.clear();
+
     local_queues_set.clear();
     local_queue_keys_set.clear();
     local_queue_keys_map.clear();
