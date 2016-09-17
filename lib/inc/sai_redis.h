@@ -2,6 +2,8 @@
 #define __SAI_REDIS__
 
 #include <mutex>
+#include <set>
+#include <unordered_map>
 
 #include "stdint.h"
 #include "stdio.h"
@@ -22,6 +24,60 @@ extern "C" {
 #include "swss/select.h"
 #include "swss/logger.h"
 
+#define DEFAULT_VLAN_NUMBER 1
+#define MINIMUM_VLAN_NUMBER 1
+#define MAXIMUM_VLAN_NUMBER 4094
+
+// local redis state
+extern std::set<sai_object_id_t>        local_next_hops_set;
+extern std::set<sai_object_id_t>        local_router_interfaces_set;
+extern std::set<sai_object_id_t>        local_next_hop_groups_set;
+extern std::set<sai_object_id_t>        local_lags_set;
+extern std::set<sai_object_id_t>        local_lag_members_set;
+extern std::set<std::string>            local_neighbor_entries_set;
+extern std::set<std::string>            local_route_entries_set;
+extern std::set<std::string>            local_fdb_entries_set;
+extern std::set<sai_object_id_t>        local_virtual_routers_set;
+extern sai_object_id_t                  local_default_virtual_router_id;
+extern sai_object_id_t                  local_cpu_port_id;
+extern sai_object_id_t                  local_default_trap_group_id;
+extern std::set<sai_vlan_id_t>          local_vlans_set;
+extern std::set<sai_object_id_t>        local_vlan_members_set;
+extern std::set<sai_object_id_t>        local_tunnel_maps_set;
+extern std::set<sai_object_id_t>        local_tunnels_set;
+extern std::set<sai_object_id_t>        local_tunnel_term_table_entries_set;
+extern std::set<sai_object_id_t>        local_ports_set;
+extern std::set<sai_object_id_t>        local_policers_set;
+extern std::set<sai_object_id_t>        local_switches_set;
+extern std::set<sai_object_id_t>        local_hostif_trap_groups_set;
+extern std::set<sai_object_id_t>        local_hostifs_set;
+extern std::set<sai_hostif_trap_id_t>   local_hostif_traps_set;
+extern std::set<sai_hostif_user_defined_trap_id_t> local_user_defined_hostif_traps_set;
+extern std::set<sai_object_id_t>        local_wreds_set;
+extern std::set<sai_object_id_t>        local_buffer_pools_set;
+extern std::set<sai_object_id_t>        local_buffer_profiles_set;
+extern std::set<sai_object_id_t>        local_hashes_set;
+extern std::set<sai_object_id_t>        local_udf_groups_set;
+extern std::set<sai_object_id_t>        local_udf_matches_set;
+extern std::set<sai_object_id_t>        local_udfs_set;
+extern std::set<sai_object_id_t>        local_mirror_sessions_set;
+extern std::set<sai_object_id_t>        local_schedulers_set;
+extern std::set<sai_object_id_t>        local_scheduler_groups_set;
+extern std::set<sai_object_id_t>        local_qos_maps_set;
+extern std::set<sai_object_id_t>        local_stp_instances_set;
+
+extern std::set<sai_object_id_t>        local_acl_tables_set;
+extern std::set<sai_object_id_t>        local_acl_entries_set;
+extern std::set<sai_object_id_t>        local_acl_counters_set;
+extern std::set<sai_object_id_t>        local_acl_ranges_set;
+extern std::set<sai_object_id_t>        local_acl_table_groups_set;
+
+extern std::set<sai_object_id_t>        local_queues_set;
+extern std::set<std::string>            local_queue_keys_set;
+extern std::unordered_map<sai_object_id_t, std::string> local_queue_keys_map;
+
+// other global declarations
+
 extern service_method_table_t           g_services;
 extern swss::DBConnector               *g_db;
 extern swss::ProducerTable             *g_asicState;
@@ -38,6 +94,7 @@ extern swss::Table *g_ridToVid;
 extern swss::RedisClient               *g_redisClient;
 
 extern std::mutex g_mutex;
+extern std::mutex g_apimutex;
 
 extern const sai_acl_api_t              redis_acl_api;
 extern const sai_buffer_api_t           redis_buffer_api;
@@ -69,6 +126,16 @@ extern const sai_wred_api_t             redis_wred_api;
 extern sai_switch_notification_t redis_switch_notifications;
 
 #define UNREFERENCED_PARAMETER(X)
+
+bool redis_validate_contains_attribute(
+    _In_ sai_attr_id_t required_id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list);
+
+const sai_attribute_t* redis_get_attribute_by_id(
+    _In_ sai_attr_id_t id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list);
 
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_type_t object_type);

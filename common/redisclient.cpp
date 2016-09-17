@@ -13,10 +13,10 @@ int64_t RedisClient::del(std::string key)
 {
     char *temp;
     int len = redisFormatCommand(&temp, "DEL %s", key.c_str());
-    std::string del(temp, len);
+    std::string sdel(temp, len);
     free(temp);
 
-    RedisReply r(m_db, del, REDIS_REPLY_INTEGER, true);
+    RedisReply r(m_db, sdel, REDIS_REPLY_INTEGER, true);
 
     if (r.getContext()->type != REDIS_REPLY_INTEGER)
         throw std::runtime_error("DEL operation failed");
@@ -28,10 +28,10 @@ int64_t RedisClient::hdel(std::string key, std::string field)
 {
     char *temp;
     int len = redisFormatCommand(&temp, "HDEL %s %s", key.c_str(), field.c_str());
-    std::string hdel(temp, len);
+    std::string shdel(temp, len);
     free(temp);
 
-    RedisReply r(m_db, hdel, REDIS_REPLY_INTEGER, true);
+    RedisReply r(m_db, shdel, REDIS_REPLY_INTEGER, true);
 
     if (r.getContext()->type != REDIS_REPLY_INTEGER)
         throw std::runtime_error("HDEL operation failed");
@@ -43,10 +43,10 @@ void RedisClient::hset(std::string key, std::string field, std::string value)
 {
     char *temp;
     int len = redisFormatCommand(&temp, "HSET %s %s %s", key.c_str(), field.c_str(), value.c_str());
-    std::string hset(temp, len);
+    std::string shset(temp, len);
     free(temp);
 
-    RedisReply r(m_db, hset, REDIS_REPLY_INTEGER, true);
+    RedisReply r(m_db, shset, REDIS_REPLY_INTEGER, true);
 
     if (r.getContext()->type != REDIS_REPLY_INTEGER)
         throw std::runtime_error("HSET operation failed");
@@ -56,10 +56,10 @@ void RedisClient::set(std::string key, std::string value)
 {
     char *temp;
     int len = redisFormatCommand(&temp, "SET %s %s", key.c_str(), value.c_str());
-    std::string set(temp, len);
+    std::string sset(temp, len);
     free(temp);
 
-    RedisReply r(m_db, set, REDIS_REPLY_STATUS, true);
+    RedisReply r(m_db, sset, REDIS_REPLY_STATUS, true);
 
     if (r.getContext()->type != REDIS_REPLY_STATUS)
         throw std::runtime_error("SET operation failed");
@@ -72,10 +72,10 @@ std::unordered_map<std::string, std::string> RedisClient::hgetall(std::string ke
     char *temp;
     int len = redisFormatCommand(&temp, "HGETALL %s", key.c_str());
 
-    std::string incr(temp, len);
+    std::string sincr(temp, len);
     free(temp);
 
-    RedisReply r(m_db, incr, REDIS_REPLY_ARRAY, true);
+    RedisReply r(m_db, sincr, REDIS_REPLY_ARRAY, true);
 
     if (r.getContext()->type != REDIS_REPLY_ARRAY)
         throw std::runtime_error("HGETALL operation failed");
@@ -95,10 +95,10 @@ std::vector<std::string> RedisClient::keys(std::string key)
     char *temp;
     int len = redisFormatCommand(&temp, "KEYS %s", key.c_str());
 
-    std::string keys(temp, len);
+    std::string skeys(temp, len);
     free(temp);
 
-    RedisReply r(m_db, keys, REDIS_REPLY_ARRAY, true);
+    RedisReply r(m_db, skeys, REDIS_REPLY_ARRAY, true);
 
     if (r.getContext()->type != REDIS_REPLY_ARRAY)
         throw std::runtime_error("KEYS operation failed");
@@ -116,10 +116,10 @@ int64_t RedisClient::incr(std::string key)
     char *temp;
     int len = redisFormatCommand(&temp, "INCR %s", key.c_str());
 
-    std::string incr(temp, len);
+    std::string sincr(temp, len);
     free(temp);
 
-    RedisReply r(m_db, incr, REDIS_REPLY_INTEGER, true);
+    RedisReply r(m_db, sincr, REDIS_REPLY_INTEGER, true);
 
     if (r.getContext()->type != REDIS_REPLY_INTEGER)
         throw std::runtime_error("INCR command failed");
@@ -132,10 +132,10 @@ int64_t RedisClient::decr(std::string key)
     char *temp;
     int len = redisFormatCommand(&temp, "DECR %s", key.c_str());
 
-    std::string decr(temp, len);
+    std::string sdecr(temp, len);
     free(temp);
 
-    RedisReply r(m_db, decr, REDIS_REPLY_INTEGER, true);
+    RedisReply r(m_db, sdecr, REDIS_REPLY_INTEGER, true);
 
     if (r.getContext()->type != REDIS_REPLY_INTEGER)
         throw std::runtime_error("DECR command failed");
@@ -148,12 +148,12 @@ std::shared_ptr<std::string> RedisClient::get(std::string key)
     char *temp;
     int len = redisFormatCommand(&temp, "GET %s", key.c_str());
 
-    std::string get(temp, len);
+    std::string sget(temp, len);
     free(temp);
 
     redisReply *reply;
 
-    redisAppendFormattedCommand(m_db->getContext(), get.c_str(), get.length());
+    redisAppendFormattedCommand(m_db->getContext(), sget.c_str(), sget.length());
     redisGetReply(m_db->getContext(), (void**)&reply);
 
     if (!reply)
@@ -182,12 +182,12 @@ std::shared_ptr<std::string> RedisClient::hget(std::string key, std::string fiel
     char *temp;
     int len = redisFormatCommand(&temp, "HGET %s %s", key.c_str(), field.c_str());
 
-    std::string hget(temp, len);
+    std::string shget(temp, len);
     free(temp);
 
     redisReply *reply;
 
-    redisAppendFormattedCommand(m_db->getContext(), hget.c_str(), hget.length());
+    redisAppendFormattedCommand(m_db->getContext(), shget.c_str(), shget.length());
     redisGetReply(m_db->getContext(), (void**)&reply);
 
     if (!reply)
@@ -222,10 +222,10 @@ int64_t RedisClient::rpush(std::string list, std::string item)
     char *temp;
     int len = redisFormatCommand(&temp, "RPUSH %s %s", list.c_str(), item.c_str());
 
-    std::string rpush(temp, len);
+    std::string srpush(temp, len);
     free(temp);
 
-    RedisReply r(m_db, rpush, REDIS_REPLY_INTEGER, true);
+    RedisReply r(m_db, srpush, REDIS_REPLY_INTEGER, true);
 
     if (r.getContext()->type != REDIS_REPLY_INTEGER)
         throw std::runtime_error("RPUSH command failed");
@@ -238,12 +238,12 @@ std::shared_ptr<std::string> RedisClient::blpop(std::string list, int timeout)
     char *temp;
     int len = redisFormatCommand(&temp, "BLPOP %s %d", list.c_str(), timeout);
 
-    std::string blpop(temp, len);
+    std::string sblpop(temp, len);
     free(temp);
 
     redisReply *reply;
 
-    redisAppendFormattedCommand(m_db->getContext(), blpop.c_str(), blpop.length());
+    redisAppendFormattedCommand(m_db->getContext(), sblpop.c_str(), sblpop.length());
     redisGetReply(m_db->getContext(), (void**)&reply);
 
     if (!reply)

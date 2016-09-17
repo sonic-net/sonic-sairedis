@@ -39,6 +39,13 @@ sai_status_t redis_generic_remove(
 {
     SWSS_LOG_ENTER();
 
+    if (object_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("object id is zero on object type %d", object_type);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
     std::string str_object_id;
     sai_serialize_primitive(object_id, str_object_id);
 
