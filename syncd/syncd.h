@@ -40,12 +40,15 @@ extern "C" {
 
 #define UNREFERENCED_PARAMETER(X)
 
+#define DEFAULT_VLAN_NUMBER         1
+
 #define VIDTORID                    "VIDTORID"
 #define RIDTOVID                    "RIDTOVID"
 #define VIDCOUNTER                  "VIDCOUNTER"
 #define LANES                       "LANES"
 #define HIDDEN                      "HIDDEN"
 #define DEFAULT_VIRTUAL_ROUTER_ID   "DEFAULT_VIRTUAL_ROUTER_ID"
+#define DEFAULT_TRAP_GROUP_ID       "DEFAULT_TRAP_GROUP_ID"
 #define CPU_PORT_ID                 "CPU_PORT_ID"
 
 #define NOTIFY_SAI_INIT_VIEW        "SAI_INIT_VIEW"
@@ -71,6 +74,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> redisGetVidToRidMap();
 std::unordered_map<sai_object_id_t, sai_object_id_t> redisGetRidToVidMap();
 std::vector<std::string> redisGetAsicStateKeys();
 sai_object_id_t redisGetDefaultVirtualRouterId();
+sai_object_id_t redisGetDefaultTrapGroupId();
 void redisClearVidToRidMap();
 void redisClearRidToVidMap();
 

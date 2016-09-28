@@ -157,9 +157,55 @@ void checkAllIds()
     redisSetVidAndRidMap(g_translated);
 }
 
+void saiRemoveDefaultVlanMembers()
+{
+    SWSS_LOG_ENTER();
+
+    // after asic init, all ports are vlan 1 members
+    // we will remove them to not complicate reinit
+    // if user want to add vlan 1, then it needs to be
+    // done explicitly.
+
+    const auto& portList = saiGetPortList();
+
+    std::vector<sai_object_id_t> vlanMemberList;
+
+    vlanMemberList.resize(portList.size());
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_VLAN_ATTR_MEMBER_LIST;
+
+    attr.value.objlist.count = vlanMemberList.size();
+    attr.value.objlist.list = vlanMemberList.data();
+
+    sai_status_t status = sai_vlan_api->get_vlan_attribute(DEFAULT_VLAN_NUMBER, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to obtain vlan %d members", DEFAULT_VLAN_NUMBER);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    for (auto &vm: vlanMemberList)
+    {
+        status = sai_vlan_api->remove_vlan_member(vm);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to remove vlan member 0x%llx from vland %d", vm, DEFAULT_VLAN_NUMBER);
+
+            exit_and_notify(EXIT_FAILURE);
+        }
+    }
+}
+
 void hardReinit()
 {
     SWSS_LOG_ENTER();
+
+    saiRemoveDefaultVlanMembers();
 
     // repopulate asic view from redis db after hard asic initialize
 
@@ -272,8 +318,36 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
             rid = defaultVirtualRouterId;
 
             createObject = false;
-            
+
             SWSS_LOG_INFO("default virtual router will not be created, processed VID %llx to RID %llx", vid, rid);
+        }
+
+    }
+    else if (objectType == SAI_OBJECT_TYPE_TRAP_GROUP)
+    {
+        auto it = g_vidToRidMap.find(vid);
+
+        if (it == g_vidToRidMap.end())
+        {
+            SWSS_LOG_ERROR("failed to find VID %llx in VIDTORID map", vid);
+
+            exit_and_notify(EXIT_FAILURE);
+        }
+
+        sai_object_id_t trapGroupRid = it->second;
+
+        sai_object_id_t defaultTrapGroupId = redisGetDefaultTrapGroupId();
+
+        if (trapGroupRid == defaultTrapGroupId)
+        {
+            // this is default trap group id
+            // we don't need to create it, just set attributes
+
+            rid = defaultTrapGroupId;
+
+            createObject = false;
+
+            SWSS_LOG_INFO("default trap group will not be created, processed VID %llx to RID %llx", vid, rid);
         }
 
     }

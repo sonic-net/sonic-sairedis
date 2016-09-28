@@ -118,6 +118,27 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> saiGetHardwareLaneMap()
     return map;
 }
 
+sai_object_id_t saiGetDefaultTrapGroup()
+{
+
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP;
+
+    sai_status_t status = sai_switch_api->get_switch_attribute(1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+         SWSS_LOG_ERROR("failed to get switch default trap group %d", status);
+
+         exit_and_notify(EXIT_FAILURE);
+    }
+
+    return attr.value.oid;
+}
+
 sai_object_id_t saiGetDefaultVirtualRouter()
 {
     SWSS_LOG_ENTER();
@@ -329,6 +350,24 @@ sai_object_id_t redisGetDefaultVirtualRouterId()
     return vr_id;
 }
 
+sai_object_id_t redisGetDefaultTrapGroupId()
+{
+    SWSS_LOG_ENTER();
+
+    auto redisVrId = g_redisClient->hget(HIDDEN, DEFAULT_TRAP_GROUP_ID);
+
+    if (redisVrId == NULL)
+        return SAI_NULL_OBJECT_ID;
+
+    sai_object_id_t vr_id;
+
+    int index = 0;
+
+    sai_deserialize_primitive(*redisVrId, index, vr_id);
+
+    return vr_id;
+}
+
 sai_object_id_t redisGetCpuId()
 {
     SWSS_LOG_ENTER();
@@ -356,6 +395,17 @@ void redisSetDefaultVirtualRouterId(sai_object_id_t vr_id)
     sai_serialize_primitive(vr_id, strVrId);
 
     g_redisClient->hset(HIDDEN, DEFAULT_VIRTUAL_ROUTER_ID, strVrId);
+}
+
+void redisSetDefaultTrapGroup(sai_object_id_t vr_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::string strVrId;
+
+    sai_serialize_primitive(vr_id, strVrId);
+
+    g_redisClient->hset(HIDDEN, DEFAULT_TRAP_GROUP_ID, strVrId);
 }
 
 void redisCreateRidAndVidMapping(sai_object_id_t rid, sai_object_id_t vid)
@@ -403,7 +453,7 @@ void redisSetDummyAsicStateForRealObjectId(sai_object_id_t rid)
     redisCreateRidAndVidMapping(rid, vid);
 }
 
-void helperCheckVirtualRouterId()
+void helperCheckDefaultVirtualRouterId()
 {
     SWSS_LOG_ENTER();
 
@@ -426,6 +476,35 @@ void helperCheckVirtualRouterId()
     {
         // if this happens, we need to remap VIDTORID and RIDTOVID
         SWSS_LOG_ERROR("FIXME: default virtual router id differs: %llx vs %llx, ids must be remapped", vrId, redisVrId);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+}
+
+
+void helperCheckDefaultTrapGroup()
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t tgId = saiGetDefaultTrapGroup();
+
+    sai_object_id_t redisTgId = redisGetDefaultTrapGroupId();
+
+    if (redisTgId == SAI_NULL_OBJECT_ID)
+    {
+        redisSetDummyAsicStateForRealObjectId(tgId);
+
+        SWSS_LOG_INFO("redis default trap group is not defined yet");
+
+        redisSetDefaultTrapGroup(tgId);
+
+        redisTgId = tgId;
+    }
+
+    if (tgId != redisTgId)
+    {
+        // if this happens, we need to remap VIDTORID and RIDTOVID
+        SWSS_LOG_ERROR("FIXME: default trap group id differs: %llx vs %llx, ids must be remapped", tgId, redisTgId);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -542,14 +621,15 @@ void onSyncdStart(bool warmStart)
 
     std::lock_guard<std::mutex> lock(g_mutex);
 
-
     SWSS_LOG_ENTER();
 
     helperCheckLaneMap();
 
     helperCheckCpuId();
 
-    helperCheckVirtualRouterId();
+    helperCheckDefaultVirtualRouterId();
+
+    helperCheckDefaultTrapGroup();
 
     helperCheckVlanId();
 
