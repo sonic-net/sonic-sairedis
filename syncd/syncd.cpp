@@ -846,7 +846,7 @@ swss::Logger::Priority redisGetLogLevel()
     auto plevel = g_redisClient->get("LOGLEVEL");
 
     if (plevel == NULL)
-        return swss::Logger::SWSS_DEBUG;
+        return swss::Logger::SWSS_NOTICE;
 
     return swss::Logger::stringToPriority(*plevel);
 }
@@ -1250,7 +1250,7 @@ bool isVeryFirstRun()
 
 int main(int argc, char **argv)
 {
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     SWSS_LOG_ENTER();
 
