@@ -34,7 +34,6 @@ extern swss::DBConnector               *g_db;
 extern swss::ProducerTable             *g_asicState;
 
 extern swss::NotificationProducer      *g_notifySyncdProducer;
-extern swss::ProducerTable             *g_redisGetProducer;
 extern swss::ConsumerTable             *g_redisGetConsumer;
 extern swss::NotificationConsumer      *g_redisNotifications;
 extern swss::NotificationConsumer      *g_notifySyncdConsumer;

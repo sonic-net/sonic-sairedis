@@ -13,7 +13,6 @@ swss::ProducerTable   *g_asicState = NULL;
 
 // we probably don't need those to tables to access GET requests
 swss::NotificationProducer   *g_notifySyncdProducer = NULL;
-swss::ProducerTable          *g_redisGetProducer = NULL;
 swss::ConsumerTable          *g_redisGetConsumer = NULL;
 swss::NotificationConsumer   *g_redisNotifications = NULL;
 swss::NotificationConsumer   *g_notifySyncdConsumer = NULL;
@@ -61,11 +60,6 @@ sai_status_t sai_api_initialize(
         delete g_notifySyncdProducer;
 
     g_notifySyncdProducer = new swss::NotificationProducer(g_db, "NOTIFYSYNCDREQUERY");
-
-    if (g_redisGetProducer != NULL)
-        delete g_redisGetProducer;
-
-    g_redisGetProducer = new swss::ProducerTable(g_db, "GETREQUEST");
 
     if (g_notifySyncdConsumer != NULL)
         delete g_notifySyncdConsumer;

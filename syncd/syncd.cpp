@@ -346,12 +346,10 @@ void internal_syncd_get_send(
 
     // since we have only one get at a time, we don't have to serialize
     // object type and object id, only get status is required
+    // get response will not put any data to table only queue is used
     getResponse->set(key, entry, "getresponse");
-    getResponse->del(key, "delgetresponse");
 }
 
-
-swss::ConsumerTable         *getRequest = NULL;
 swss::ProducerTable         *getResponse = NULL;
 swss::NotificationProducer  *notifications = NULL;
 
@@ -1278,7 +1276,6 @@ int main(int argc, char **argv)
     // at the end we cant use producer consumer concept since
     // if one proces will restart there may be something in the queue
     // also "remove" from response queue will also trigger another "response"
-    getRequest = new swss::ConsumerTable(db, "GETREQUEST");
     getResponse  = new swss::ProducerTable(db, "GETRESPONSE");
     notifications = new swss::NotificationProducer(dbNtf, "NOTIFICATIONS");
     notifySyncdResponse = new swss::NotificationProducer(db, "NOTIFYSYNCDRESPONSE");
@@ -1364,14 +1361,13 @@ int main(int argc, char **argv)
 
         swss::Select s;
 
-        s.addSelectable(getRequest);
         s.addSelectable(asicState);
         s.addSelectable(notifySyncdQuery);
         s.addSelectable(restartQuery);
 
         while(true)
         {
-            swss::Selectable *sel;
+            swss::Selectable *sel = NULL;
 
             int fd;
 

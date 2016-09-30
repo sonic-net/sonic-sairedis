@@ -78,7 +78,6 @@ sai_object_id_t redisGetDefaultTrapGroupId();
 void redisClearVidToRidMap();
 void redisClearRidToVidMap();
 
-extern swss::ConsumerTable         *getRequest;
 extern swss::ProducerTable         *getResponse;
 extern swss::NotificationProducer  *notifications;
 

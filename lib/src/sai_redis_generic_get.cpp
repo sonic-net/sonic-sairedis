@@ -66,7 +66,7 @@ sai_status_t internal_redis_generic_get(
     SWSS_LOG_ENTER();
 
     std::vector<swss::FieldValueTuple> entry = SaiAttributeList::serialize_attr_list(
-            object_type, 
+            object_type,
             attr_count,
             attr_list,
             false);
@@ -84,11 +84,12 @@ sai_status_t internal_redis_generic_get(
         recordLine("g," + key + "," + joinFieldValues(entry));
     }
 
-    g_redisGetProducer->set(key, entry, "get");
-    g_redisGetProducer->del(key, "delget");
+    // get is special, it will not put data
+    // into asic view, only to message queue
+    g_asicState->set(key, entry, "get");
 
     // wait for response
-    
+
     swss::Select s;
 
     s.addSelectable(g_redisGetConsumer);
@@ -109,7 +110,7 @@ sai_status_t internal_redis_generic_get(
 
             g_redisGetConsumer->pop(kco);
 
-            const std::string &op = kfvOp(kco); 
+            const std::string &op = kfvOp(kco);
             const std::string &key = kfvKey(kco);
 
             SWSS_LOG_DEBUG("response: op = %s, key = %s", key.c_str(), op.c_str());
@@ -118,9 +119,9 @@ sai_status_t internal_redis_generic_get(
                 continue;
 
             sai_status_t status = internal_redis_get_process(
-                    object_type, 
-                    attr_count, 
-                    attr_list, 
+                    object_type,
+                    attr_count,
+                    attr_list,
                     kco);
 
             if (g_record)
