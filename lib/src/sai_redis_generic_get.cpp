@@ -79,6 +79,11 @@ sai_status_t internal_redis_generic_get(
 
     SWSS_LOG_DEBUG("generic get key: %s, fields: %lu", key.c_str(), entry.size());
 
+    if (g_record)
+    {
+        recordLine("g," + key + "," + joinFieldValues(entry));
+    }
+
     g_redisGetProducer->set(key, entry, "get");
     g_redisGetProducer->del(key, "delget");
 
@@ -118,6 +123,15 @@ sai_status_t internal_redis_generic_get(
                     attr_list, 
                     kco);
 
+            if (g_record)
+            {
+                const std::string &str_status = kfvKey(kco);
+                const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+                // first serialized is status
+                recordLine("G," + str_status + "," + joinFieldValues(values));
+            }
+
             SWSS_LOG_DEBUG("generic get status: %d", status);
 
             return status;
@@ -125,6 +139,11 @@ sai_status_t internal_redis_generic_get(
 
         SWSS_LOG_ERROR("generic get failed to get response result: %d", result);
         break;
+    }
+
+    if (g_record)
+    {
+        recordLine("G,FAILURE");
     }
 
     SWSS_LOG_ERROR("generic get failed to get response");

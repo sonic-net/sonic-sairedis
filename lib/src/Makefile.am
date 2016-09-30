@@ -44,6 +44,7 @@ libsairedis_la_SOURCES = sai_redis_acl.cpp \
 			 sai_redis_generic_set.cpp \
 			 sai_redis_generic_get.cpp \
 			 sai_redis_notifications.cpp \
+			 sai_redis_record.cpp \
 			 ../../common/redisclient.cpp \
 			 ../../common/saiserialize.cpp \
 			 ../../common/saiattributelist.cpp

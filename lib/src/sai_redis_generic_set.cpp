@@ -36,6 +36,11 @@ sai_status_t internal_redis_generic_set(
 
     SWSS_LOG_DEBUG("generic set key: %s, fields: %lu", key.c_str(), entry.size());
 
+    if (g_record)
+    {
+        recordLine("s," + key + "," + joinFieldValues(entry));
+    }
+
     g_asicState->set(key, entry, "set");
 
     return SAI_STATUS_SUCCESS;

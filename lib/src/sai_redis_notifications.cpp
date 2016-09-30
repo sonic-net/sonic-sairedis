@@ -198,6 +198,11 @@ void handle_notification(
 {
     SWSS_LOG_ENTER();
 
+    if (g_record)
+    {
+        recordLine("n," + notification + "," + data + "," + joinFieldValues(values));
+    }
+
     if (notification == "switch_state_change")
     {
         handle_switch_state_change(data);

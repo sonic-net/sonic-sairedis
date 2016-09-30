@@ -22,6 +22,13 @@ extern "C" {
 #include "swss/select.h"
 #include "swss/logger.h"
 
+extern volatile bool                    g_record;
+extern void setRecording(bool record);
+extern void recordLine(std::string s);
+
+extern std::string joinFieldValues(
+        _In_ const std::vector<swss::FieldValueTuple> &values);
+
 extern service_method_table_t           g_services;
 extern swss::DBConnector               *g_db;
 extern swss::ProducerTable             *g_asicState;

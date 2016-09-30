@@ -72,6 +72,11 @@ sai_status_t internal_redis_generic_create(
 
     SWSS_LOG_DEBUG("generic create key: %s, fields: %lu", key.c_str(), entry.size());
 
+    if (g_record)
+    {
+        recordLine("c," + key + "," + joinFieldValues(entry));
+    }
+
     g_asicState->set(key, entry, "create");
 
     // we assume create will always succeed which may not be true

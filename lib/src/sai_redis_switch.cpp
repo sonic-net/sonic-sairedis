@@ -193,6 +193,8 @@ sai_status_t redis_initialize_switch(
 
     g_run = true;
 
+    setRecording(g_record);
+
     SWSS_LOG_DEBUG("creating notification thread");
 
     notification_thread = std::make_shared<std::thread>(std::thread(ntf_thread));
@@ -300,6 +302,15 @@ sai_status_t  redis_set_switch_attribute(
     _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
+
+    if (attr != NULL)
+    {
+        if (attr->id == SAI_SWITCH_ATTR_CUSTOM_RANGE_START + 1)
+        {
+            setRecording(attr->value.booldata);
+            return SAI_STATUS_SUCCESS;
+        }
+    }
 
     sai_status_t status = redis_generic_set(
             SAI_OBJECT_TYPE_SWITCH,

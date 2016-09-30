@@ -16,6 +16,11 @@ sai_status_t internal_redis_generic_remove(
 
     SWSS_LOG_DEBUG("generic remove key: %s", key.c_str());
 
+    if (g_record)
+    {
+        recordLine("r," + key);
+    }
+
     g_asicState->del(key, "remove");
 
     return SAI_STATUS_SUCCESS;

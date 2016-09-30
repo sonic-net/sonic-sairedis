@@ -1,0 +1,105 @@
+#include "sai_redis.h"
+
+std::string getTimestamp()
+{
+    SWSS_LOG_ENTER();
+
+    char buffer[64];
+    struct timeval tv;
+
+    gettimeofday(&tv, NULL);
+
+    size_t size = strftime(buffer, 64 ,"%Y-%m-%d.%T.", localtime(&tv.tv_sec));
+
+    sprintf(&buffer[size],"%06ld", tv.tv_usec);
+
+    return std::string(buffer);
+}
+
+// currenly true by default for debugging
+volatile bool g_record = true;
+
+std::ofstream recording;
+
+void recordLine(std::string s)
+{
+    SWSS_LOG_ENTER();
+
+    if (recording.is_open())
+    {
+        recording << getTimestamp() << "," << s << std::endl;
+
+        // performance hit
+        recording.flush();
+    }
+}
+
+std::string recfile = "dummy.rec";
+
+void startRecording()
+{
+    SWSS_LOG_ENTER();
+
+    recfile = "sairedis." + getTimestamp() + ".rec";
+
+    recording.open(recfile);
+
+    if (!recording.is_open())
+    {
+        SWSS_LOG_ERROR("failed to open recording file %s: %s", recfile.c_str(), strerror(errno));
+        return;
+    }
+
+    recordLine("#,recording on: " + recfile);
+
+    SWSS_LOG_NOTICE("started recording: %s", recfile.c_str());
+}
+
+void stopRecording()
+{
+    SWSS_LOG_ENTER();
+
+    if (recording.is_open())
+    {
+        recording.close();
+
+        SWSS_LOG_NOTICE("stopped recording: %s", recfile.c_str());
+    }
+}
+
+void setRecording(bool record)
+{
+    SWSS_LOG_ENTER();
+
+    g_record = record;
+
+    stopRecording();
+
+    if (record)
+    {
+        startRecording();
+    }
+}
+
+std::string joinFieldValues(
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    std::stringstream ss;
+
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        const std::string &str_attr_id = fvField(values[i]);
+        const std::string &str_attr_value = fvValue(values[i]);
+
+        if(i != 0)
+        {
+            ss << ",";
+        }
+
+        ss << str_attr_id << "=" << str_attr_value;
+    }
+
+    return ss.str();
+}
