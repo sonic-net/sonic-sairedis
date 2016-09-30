@@ -28,9 +28,6 @@ void recordLine(std::string s)
     if (recording.is_open())
     {
         recording << getTimestamp() << "," << s << std::endl;
-
-        // performance hit
-        recording.flush();
     }
 }
 
