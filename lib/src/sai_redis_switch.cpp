@@ -3,6 +3,11 @@
 
 #include "selectableevent.h"
 
+// temporary until new SAI headers
+#ifndef SAI_SWITCH_ATTR_CUSTOM_RANGE_START
+#define SAI_SWITCH_ATTR_CUSTOM_RANGE_START 0x10000000
+#endif
+
 // if we will not get response in 60 seconds when
 // notify syncd to compile new state or to switch
 // to compiled state, then there is something wrong

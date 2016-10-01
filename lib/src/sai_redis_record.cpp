@@ -9,9 +9,9 @@ std::string getTimestamp()
 
     gettimeofday(&tv, NULL);
 
-    size_t size = strftime(buffer, 64 ,"%Y-%m-%d.%T.", localtime(&tv.tv_sec));
+    size_t size = strftime(buffer, 32 ,"%Y-%m-%d.%T.", localtime(&tv.tv_sec));
 
-    sprintf(&buffer[size],"%06ld", tv.tv_usec);
+    snprintf(&buffer[size], 32, "%06ld", tv.tv_usec);
 
     return std::string(buffer);
 }
