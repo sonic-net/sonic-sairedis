@@ -2,33 +2,18 @@
 #define __SAI_VS__
 
 #include <mutex>
-#include <unordered_map>
 
-#include "stdint.h"
-#include "stdio.h"
+//#include "stdint.h"
+//#include "stdio.h"
 
 extern "C" {
 #include "sai.h"
 }
-#include "saiserialize.h"
-#include "saiattributelist.h"
 
 #include "swss/logger.h"
+#include "sai_meta.h"
 
-extern service_method_table_t           g_services;
-
-extern uint64_t g_real_id;
-
-typedef std::unordered_map<std::string, std::string> AttrHash;
-typedef std::unordered_map<std::string, AttrHash> ObjectHash;
-
-// first key is serialized object ID (object id, vlan, route, neighbor, fdb)
-// value is hash containing attributes
-// second key is serialized attribute ID for given object
-// value is serialized attribute value
-extern ObjectHash g_objectHash;
-
-extern std::recursive_mutex g_recursive_mutex;
+extern std::recursive_mutex             g_recursive_mutex;
 
 extern const sai_acl_api_t              vs_acl_api;
 extern const sai_buffer_api_t           vs_buffer_api;
@@ -57,16 +42,7 @@ extern const sai_virtual_router_api_t   vs_router_api;
 extern const sai_vlan_api_t             vs_vlan_api;
 extern const sai_wred_api_t             vs_wred_api;
 
-extern sai_switch_notification_t vs_switch_notifications;
-
-#define UNREFERENCED_PARAMETER(X)
-
-void translate_rid_to_vid(
-        _In_ sai_object_type_t object_type,
-        _In_ uint32_t attr_count,
-        _In_ sai_attribute_t *attr_list);
-
-// separate methods are needed for vlan to not confuse with object_id
+// CREATE
 
 sai_status_t vs_generic_create(
         _In_ sai_object_type_t object_type,
@@ -74,75 +50,73 @@ sai_status_t vs_generic_create(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
-sai_status_t vs_generic_create(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_create_fdb_entry(
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
-sai_status_t vs_generic_create(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_create_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
-sai_status_t vs_generic_create(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_create_route_entry(
         _In_ const sai_unicast_route_entry_t* unicast_route_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
 sai_status_t vs_generic_create_vlan(
-        _In_ sai_object_type_t object_type,
         _In_ sai_vlan_id_t vlan_id);
 
+// REMOVE
 
 sai_status_t vs_generic_remove(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id);
 
-sai_status_t vs_generic_remove(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_remove_fdb_entry(
         _In_ const sai_fdb_entry_t* fdb_entry);
 
-sai_status_t vs_generic_remove(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_remove_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry);
 
-sai_status_t vs_generic_remove(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_remove_route_entry(
         _In_ const sai_unicast_route_entry_t* unicast_route_entry);
 
 sai_status_t vs_generic_remove_vlan(
-        _In_ sai_object_type_t object_type,
         _In_ sai_vlan_id_t vlan_id);
 
+// SET
 
 sai_status_t vs_generic_set(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
         _In_ const sai_attribute_t *attr);
 
-sai_status_t vs_generic_set(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_set_fdb_entry(
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ const sai_attribute_t *attr);
 
-sai_status_t vs_generic_set(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_set_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry,
         _In_ const sai_attribute_t *attr);
 
-sai_status_t vs_generic_set(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_set_route_entry(
         _In_ const sai_unicast_route_entry_t* unicast_route_entry,
         _In_ const sai_attribute_t *attr);
 
 sai_status_t vs_generic_set_vlan(
-        _In_ sai_object_type_t object_type,
         _In_ sai_vlan_id_t vlan_id,
         _In_ const sai_attribute_t *attr);
 
+sai_status_t vs_generic_set_trap(
+        _In_ sai_hostif_trap_id_t hostif_trapid,
+        _In_ const sai_attribute_t *attr);
+
+sai_status_t vs_generic_set_switch(
+        _In_ const sai_attribute_t *attr);
+
+// GET
 
 sai_status_t vs_generic_get(
         _In_ sai_object_type_t object_type,
@@ -150,35 +124,33 @@ sai_status_t vs_generic_get(
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
-sai_status_t vs_generic_get(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_get_fdb_entry(
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
-sai_status_t vs_generic_get(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_get_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
-sai_status_t vs_generic_get(
-        _In_ sai_object_type_t object_type,
+sai_status_t vs_generic_get_route_entry(
         _In_ const sai_unicast_route_entry_t* unicast_route_entry,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
 sai_status_t vs_generic_get_vlan(
-        _In_ sai_object_type_t object_type,
         _In_ sai_vlan_id_t vlan_id,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
-// notifications
+sai_status_t vs_generic_get_trap(
+        _In_ sai_hostif_trap_id_t hostif_trapid,
+        _In_ uint32_t attr_count,
+        _Out_ sai_attribute_t *attr_list);
 
-void handle_notification(
-        _In_ const std::string &notification,
-        _In_ const std::string &data,
-        _In_ const std::vector<swss::FieldValueTuple> &values);
+sai_status_t vs_generic_get_switch(
+        _In_ uint32_t attr_count,
+        _Out_ sai_attribute_t *attr_list);
 
 #endif // __SAI_VS__

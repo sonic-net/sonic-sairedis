@@ -1,99 +1,67 @@
 #include "sai_vs.h"
 
-/**
- * @brief Create samplepacket session.
- *
- * @param[out] session_id samplepacket session id
- * @param[in] attr_count Number of attributes
- * @param[in] attr_list Value of attributes
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *  error code is returned.
- */
 sai_status_t vs_create_samplepacket_session(
         _Out_ sai_object_id_t *session_id,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_SAMPLEPACKET,
             session_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &vs_generic_create);
 }
 
-/**
- * @brief Remove samplepacket session.
- *
- * @param[in] session_id samplepacket session id
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *  error code is returned.
- */
-sai_status_t  vs_remove_samplepacket_session(
-       _In_ sai_object_id_t session_id)
+sai_status_t vs_remove_samplepacket_session(
+        _In_ sai_object_id_t session_id)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_SAMPLEPACKET,
-            session_id);
-
-    return status;
+            session_id,
+            &vs_generic_remove);
 }
 
-/**
- * @brief Set samplepacket session attributes.
- *
- * @param[in] session_id samplepacket session id
- * @param[in] attr Value of attribute
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *  error code is returned.
- */
-sai_status_t  vs_set_samplepacket_attribute(
+sai_status_t vs_set_samplepacket_attribute(
         _In_ sai_object_id_t session_id,
         _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_SAMPLEPACKET,
             session_id,
-            attr);
-
-    return status;
+            attr,
+            &vs_generic_set);
 }
 
-/**
- * @brief Get samplepacket session attributes.
- *
- * @param[in] session_id samplepacket session id
- * @param[in] attr_count Number of attributes
- * @param[inout] attr_list Value of attribute
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *  error code is returned.
- */
-sai_status_t  vs_get_samplepacket_attribute(
+sai_status_t vs_get_samplepacket_attribute(
         _In_ sai_object_id_t session_id,
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_SAMPLEPACKET,
             session_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &vs_generic_get);
 }
 
-/**
- * @brief samplepacket method table retrieved with sai_api_query()
- */
 const sai_samplepacket_api_t vs_samplepacket_api = {
     vs_create_samplepacket_session,
     vs_remove_samplepacket_session,

@@ -1,246 +1,150 @@
 #include "sai_vs.h"
 
-/**
- * Routine Description:
- *    @brief Create a VLAN
- *
- * Arguments:
- *    @param[in] vlan_id - VLAN id
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
-sai_status_t  vs_create_vlan(
-    _In_ sai_vlan_id_t vlan_id)
+sai_status_t vs_create_vlan(
+        _In_ sai_vlan_id_t vlan_id)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_create_vlan(
-            SAI_OBJECT_TYPE_VLAN,
-            vlan_id);
-
-    return status;
+    return meta_sai_create_vlan(
+            vlan_id,
+            &vs_generic_create_vlan);
 }
 
-/**
- * Routine Description:
- *    @brief Remove a VLAN
- *
- * Arguments:
- *    @param[in] vlan_id - VLAN id
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
 sai_status_t vs_remove_vlan(
-    _In_ sai_vlan_id_t vlan_id)
+        _In_ sai_vlan_id_t vlan_id)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_remove_vlan(
-            SAI_OBJECT_TYPE_VLAN,
-            vlan_id);
-
-    return status;
-}
-
-/**
- * Routine Description:
- *    @brief Set VLAN attribute Value
- *
- * Arguments:
- *    @param[in] vlan_id - VLAN id
- *    @param[in] attr - attribute
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
-sai_status_t  vs_set_vlan_attribute(
-    _In_ sai_vlan_id_t vlan_id,
-    _In_ const sai_attribute_t *attr)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = vs_generic_set_vlan(
-            SAI_OBJECT_TYPE_VLAN,
+    return meta_sai_remove_vlan(
             vlan_id,
-            attr);
-
-    return status;
+            &vs_generic_remove_vlan);
 }
 
-/**
- * Routine Description:
- *    @brief Get VLAN attribute Value
- *
- * Arguments:
- *    @param[in] vlan_id - VLAN id
- *    @param[in] attr_count - number of attributes
- *    @param[inout] attr_list - array of attributes
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
-sai_status_t  vs_get_vlan_attribute(
-    _In_ sai_vlan_id_t vlan_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t vs_set_vlan_attribute(
+        _In_ sai_vlan_id_t vlan_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_get_vlan(
-            SAI_OBJECT_TYPE_VLAN,
+    return meta_sai_set_vlan(
+            vlan_id,
+            attr,
+            &vs_generic_set_vlan);
+}
+
+sai_status_t vs_get_vlan_attribute(
+        _In_ sai_vlan_id_t vlan_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
+    SWSS_LOG_ENTER();
+
+    return meta_sai_get_vlan(
             vlan_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &vs_generic_get_vlan);
 }
 
-/*
-    \brief Create VLAN Member
-    \param[out] vlan_member_id VLAN Member id
-    \param[in] attr_count number of attributes
-    \param[in] attr_list array of attributes
-    \return Success: SAI_STATUS_SUCCESS
-            Failure: Failure status code on error
-*/
 sai_status_t vs_create_vlan_member(
-    _Out_ sai_object_id_t* vlan_member_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+        _Out_ sai_object_id_t* vlan_member_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_VLAN_MEMBER,
             vlan_member_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &vs_generic_create);
 }
 
-/*
-    \brief Remove VLAN Member
-    \param[in] vlan_member_id VLAN Member id
-    \return Success: SAI_STATUS_SUCCESS
-            Failure: Failure status code on error
-*/
 sai_status_t vs_remove_vlan_member(
-    _In_ sai_object_id_t vlan_member_id)
+        _In_ sai_object_id_t vlan_member_id)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_remove(
-            SAI_OBJECT_TYPE_VLAN_MEMBER,
-            vlan_member_id);
-
-    return status;
-}
-
-/*
-    \brief Set VLAN Member Attribute
-    \param[in] vlan_member_id VLAN Member id
-    \param[in] attr Structure containing ID and value to be set
-    \return Success: SAI_STATUS_SUCCESS
-            Failure: Failure status code on error
-*/
-sai_status_t  vs_set_vlan_member_attribute(
-    _In_ sai_object_id_t  vlan_member_id,
-    _In_ const sai_attribute_t *attr)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = vs_generic_set(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_VLAN_MEMBER,
             vlan_member_id,
-            attr);
-
-    return status;
+            &vs_generic_remove);
 }
 
-/*
-    \brief Get VLAN Member Attribute
-    \param[in] vlan_member_id VLAN Member id
-    \param[in] attr_count Number of attributes to be get
-    \param[in,out] attr_list List of structures containing ID and value to be get
-    \return Success: SAI_STATUS_SUCCESS
-            Failure: Failure status code on error
-*/
-
-sai_status_t  vs_get_vlan_member_attribute(
-    _In_ sai_object_id_t vlan_member_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t vs_set_vlan_member_attribute(
+        _In_ sai_object_id_t vlan_member_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = vs_generic_get(
+    return meta_sai_set_oid(
+            SAI_OBJECT_TYPE_VLAN_MEMBER,
+            vlan_member_id,
+            attr,
+            &vs_generic_set);
+}
+
+sai_status_t vs_get_vlan_member_attribute(
+        _In_ sai_object_id_t vlan_member_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
+    SWSS_LOG_ENTER();
+
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_VLAN_MEMBER,
             vlan_member_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &vs_generic_get);
 }
 
-
-/**
- * Routine Description:
- *   @brief Get vlan statistics counters.
- *
- * Arguments:
- *    @param[in] vlan_id - VLAN id
- *    @param[in] counter_ids - specifies the array of counter ids
- *    @param[in] number_of_counters - number of counters in the array
- *    @param[out] counters - array of resulting counter values.
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
-sai_status_t  vs_get_vlan_stats(
-    _In_ sai_vlan_id_t vlan_id,
-    _In_ const sai_vlan_stat_counter_t *counter_ids,
-    _In_ uint32_t number_of_counters,
-    _Out_ uint64_t* counters)
+sai_status_t vs_get_vlan_stats(
+        _In_ sai_vlan_id_t vlan_id,
+        _In_ const sai_vlan_stat_counter_t *counter_ids,
+        _In_ uint32_t number_of_counters,
+        _Out_ uint64_t* counters)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-/**
- * Routine Description:
- *   @brief Clear vlan statistics counters.
- *
- * Arguments:
- *    @param[in] vlan_id - vlan id
- *    @param[in] counter_ids - specifies the array of counter ids
- *    @param[in] number_of_counters - number of counters in the array
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
-sai_status_t  vs_clear_vlan_stats(
-    _In_ sai_vlan_id_t vlan_id,
-    _In_ const sai_vlan_stat_counter_t *counter_ids,
-    _In_ uint32_t number_of_counters)
+sai_status_t vs_clear_vlan_stats(
+        _In_ sai_vlan_id_t vlan_id,
+        _In_ const sai_vlan_stat_counter_t *counter_ids,
+        _In_ uint32_t number_of_counters)
 {
+    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-/**
- * @brief VLAN methods table retrieved with sai_api_query()
- */
 const sai_vlan_api_t vs_vlan_api = {
     vs_create_vlan,
     vs_remove_vlan,

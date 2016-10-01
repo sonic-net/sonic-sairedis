@@ -1,11 +1,8 @@
 #include "sai_vs.h"
 
-#include <string.h>
-
-std::recursive_mutex g_recursive_mutex;
-
-service_method_table_t g_services;
-bool                   g_apiInitialized = false;
+service_method_table_t  g_services;
+bool                    g_api_initialized = false;
+std::recursive_mutex    g_recursive_mutex;
 
 sai_status_t sai_api_initialize(
         _In_ uint64_t flags,
@@ -18,6 +15,7 @@ sai_status_t sai_api_initialize(
     if ((NULL == services) || (NULL == services->profile_get_next_value) || (NULL == services->profile_get_value))
     {
         SWSS_LOG_ERROR("Invalid services handle passed to SAI API initialize");
+
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
@@ -26,10 +24,11 @@ sai_status_t sai_api_initialize(
     if (0 != flags)
     {
         SWSS_LOG_ERROR("Invalid flags passed to SAI API initialize");
+
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    g_apiInitialized = true;
+    g_api_initialized = true;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -41,86 +40,6 @@ sai_status_t sai_log_set(
     std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
 
     SWSS_LOG_ENTER();
-
-    switch (log_level)
-    {
-        case SAI_LOG_DEBUG:
-            break;
-
-        case SAI_LOG_INFO:
-            break;
-
-        case SAI_LOG_NOTICE:
-            break;
-
-        case SAI_LOG_WARN:
-            break;
-
-        case SAI_LOG_ERROR:
-            break;
-
-        case SAI_LOG_CRITICAL:
-            break;
-
-        default:
-            SWSS_LOG_ERROR("Invalid log level %d", log_level);
-            return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    switch (sai_api_id)
-    {
-        case SAI_API_SWITCH:
-            break;
-
-        case SAI_API_PORT:
-            break;
-
-        case SAI_API_FDB:
-            break;
-
-        case SAI_API_VLAN:
-            break;
-
-        case SAI_API_VIRTUAL_ROUTER:
-            break;
-
-        case SAI_API_ROUTE:
-            break;
-
-        case SAI_API_NEXT_HOP:
-            break;
-
-        case SAI_API_NEXT_HOP_GROUP:
-            break;
-
-        case SAI_API_ROUTER_INTERFACE:
-            break;
-
-        case SAI_API_NEIGHBOR:
-            break;
-
-        case SAI_API_ACL:
-            break;
-
-        case SAI_API_HOST_INTERFACE:
-            break;
-
-        case SAI_API_MIRROR:
-            break;
-
-        case SAI_API_SAMPLEPACKET:
-            break;
-
-        case SAI_API_STP:
-            break;
-
-        case SAI_API_LAG:
-            break;
-
-        default:
-            SWSS_LOG_ERROR("Invalid API type %d", sai_api_id);
-            return SAI_STATUS_INVALID_PARAMETER;
-    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -139,7 +58,7 @@ sai_status_t sai_api_query(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    if (!g_apiInitialized)
+    if (!g_api_initialized)
     {
         SWSS_LOG_ERROR("SAI API not initialized before calling API query");
         return SAI_STATUS_UNINITIALIZED;
@@ -256,15 +175,14 @@ sai_status_t sai_api_query(
     }
 }
 
-sai_status_t sai_api_uninitialize(void)
+sai_status_t sai_api_uninitialize(
+        void)
 {
     std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
 
     SWSS_LOG_ENTER();
 
-    g_apiInitialized = false;
+    g_api_initialized = false;
 
-    SWSS_LOG_ERROR("not implemented");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return SAI_STATUS_SUCCESS;
 }
