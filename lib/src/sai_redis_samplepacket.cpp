@@ -11,18 +11,17 @@
  */
 sai_status_t redis_create_samplepacket_session(
         _Out_ sai_object_id_t *session_id,
-        _In_ uint32_t attr_count, 
+        _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_SAMPLEPACKET,
             session_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -33,15 +32,14 @@ sai_status_t redis_create_samplepacket_session(
  *  error code is returned.
  */
 sai_status_t  redis_remove_samplepacket_session(
-       _In_ sai_object_id_t session_id)
+        _In_ sai_object_id_t session_id)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_SAMPLEPACKET,
-            session_id);
-
-    return status;
+            session_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -53,17 +51,16 @@ sai_status_t  redis_remove_samplepacket_session(
  *  error code is returned.
  */
 sai_status_t  redis_set_samplepacket_attribute(
-        _In_ sai_object_id_t session_id, 
+        _In_ sai_object_id_t session_id,
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_SAMPLEPACKET,
             session_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -77,18 +74,17 @@ sai_status_t  redis_set_samplepacket_attribute(
  */
 sai_status_t  redis_get_samplepacket_attribute(
         _In_ sai_object_id_t session_id,
-        _In_ uint32_t attr_count, 
+        _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_SAMPLEPACKET,
             session_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**

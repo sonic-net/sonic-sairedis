@@ -14,20 +14,21 @@
  *            Failure status code on error
  *
  */
-sai_status_t  redis_create_udf(
-    _Out_ sai_object_id_t* udf_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_create_udf(
+        _Out_ sai_object_id_t* udf_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_UDF,
             udf_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -42,15 +43,16 @@ sai_status_t  redis_create_udf(
  *            Failure status code on error
  */
 sai_status_t redis_remove_udf(
-    _In_ sai_object_id_t udf_id)
+        _In_ sai_object_id_t udf_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_UDF,
-            udf_id);
-
-    return status;
+            udf_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -65,18 +67,19 @@ sai_status_t redis_remove_udf(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_set_udf_attribute(
-    _In_ sai_object_id_t udf_id,
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_udf_attribute(
+        _In_ sai_object_id_t udf_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_UDF,
             udf_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -92,20 +95,21 @@ sai_status_t  redis_set_udf_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_udf_attribute(
-    _In_ sai_object_id_t udf_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_udf_attribute(
+        _In_ sai_object_id_t udf_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_UDF,
             udf_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
@@ -122,20 +126,21 @@ sai_status_t  redis_get_udf_attribute(
  *            Failure status code on error
  *
  */
-sai_status_t  redis_create_udf_match(
-    _Out_ sai_object_id_t* udf_match_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_create_udf_match(
+        _Out_ sai_object_id_t* udf_match_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_UDF_MATCH,
             udf_match_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -149,16 +154,17 @@ sai_status_t  redis_create_udf_match(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_remove_udf_match(
-    _In_ sai_object_id_t udf_match_id)
+sai_status_t redis_remove_udf_match(
+        _In_ sai_object_id_t udf_match_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_UDF_MATCH,
-            udf_match_id);
-
-    return status;
+            udf_match_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -173,18 +179,19 @@ sai_status_t  redis_remove_udf_match(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_set_udf_match_attribute(
-    _In_ sai_object_id_t udf_match_id,
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_udf_match_attribute(
+        _In_ sai_object_id_t udf_match_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_UDF_MATCH,
             udf_match_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -200,20 +207,21 @@ sai_status_t  redis_set_udf_match_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_udf_match_attribute(
-    _In_ sai_object_id_t udf_match_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_udf_match_attribute(
+        _In_ sai_object_id_t udf_match_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_UDF_MATCH,
             udf_match_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
@@ -230,20 +238,21 @@ sai_status_t  redis_get_udf_match_attribute(
  *            Failure status code on error
  *
  */
-sai_status_t  redis_create_udf_group(
-    _Out_ sai_object_id_t* udf_group_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_create_udf_group(
+        _Out_ sai_object_id_t* udf_group_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_UDF_GROUP,
             udf_group_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -257,16 +266,17 @@ sai_status_t  redis_create_udf_group(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_remove_udf_group(
-    _In_ sai_object_id_t udf_group_id)
+sai_status_t redis_remove_udf_group(
+        _In_ sai_object_id_t udf_group_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_UDF_GROUP,
-            udf_group_id);
-
-    return status;
+            udf_group_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -281,18 +291,19 @@ sai_status_t  redis_remove_udf_group(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_set_udf_group_attribute(
-    _In_ sai_object_id_t udf_group_id,
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_udf_group_attribute(
+        _In_ sai_object_id_t udf_group_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_UDF_GROUP,
             udf_group_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -308,34 +319,37 @@ sai_status_t  redis_set_udf_group_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_udf_group_attribute(
-    _In_ sai_object_id_t udf_group_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_udf_group_attribute(
+        _In_ sai_object_id_t udf_group_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_UDF_GROUP,
             udf_group_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
- *  @brief UDF methods, retrieved via sai_api_query()
+ * @brief UDF methods, retrieved via sai_api_query()
  */
 const sai_udf_api_t redis_udf_api = {
     redis_create_udf,
     redis_remove_udf,
     redis_set_udf_attribute,
     redis_get_udf_attribute,
+
     redis_create_udf_match,
     redis_remove_udf_match,
     redis_set_udf_match_attribute,
     redis_get_udf_match_attribute,
+
     redis_create_udf_group,
     redis_remove_udf_group,
     redis_set_udf_group_attribute,

@@ -12,18 +12,19 @@
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_set_port_attribute(
-    _In_ sai_object_id_t port_id,
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_port_attribute(
+        _In_ sai_object_id_t port_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_PORT,
             port_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -39,20 +40,21 @@ sai_status_t  redis_set_port_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_port_attribute(
-    _In_ sai_object_id_t port_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_port_attribute(
+        _In_ sai_object_id_t port_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_PORT,
             port_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
@@ -69,11 +71,11 @@ sai_status_t  redis_get_port_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_port_stats(
-    _In_ sai_object_id_t port_id,
-    _In_ const sai_port_stat_counter_t *counter_ids,
-    _In_ uint32_t number_of_counters,
-    _Out_ uint64_t* counters)
+sai_status_t redis_get_port_stats(
+        _In_ sai_object_id_t port_id,
+        _In_ const sai_port_stat_counter_t *counter_ids,
+        _In_ uint32_t number_of_counters,
+        _Out_ uint64_t* counters)
 {
     SWSS_LOG_ENTER();
 
@@ -93,10 +95,10 @@ sai_status_t  redis_get_port_stats(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_clear_port_stats(
-    _In_ sai_object_id_t port_id,
-    _In_ const sai_port_stat_counter_t *counter_ids,
-    _In_ uint32_t number_of_counters)
+sai_status_t redis_clear_port_stats(
+        _In_ sai_object_id_t port_id,
+        _In_ const sai_port_stat_counter_t *counter_ids,
+        _In_ uint32_t number_of_counters)
 {
     SWSS_LOG_ENTER();
 
@@ -114,49 +116,12 @@ sai_status_t  redis_clear_port_stats(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_clear_port_all_stats(
-    _In_ sai_object_id_t port_id)
+sai_status_t redis_clear_port_all_stats(
+        _In_ sai_object_id_t port_id)
 {
     SWSS_LOG_ENTER();
 
     return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-/**
- * Routine Description:
- *   Port state change notification
- *   Passed as a parameter into sai_initialize_switch()
- *
- * Arguments:
- *   @param[in] count - number of notifications
- *   @param[in] data  - array of port operational status
- *
- * Return Values:
- *    None
- */
-void  redis_port_state_change_notification(
-    _In_ uint32_t count,
-    _In_ sai_port_oper_status_notification_t *data)
-{
-    SWSS_LOG_ENTER();
-}
-
-/**
- * Routine Description:
- *   @brief Port event notification
- *
- * Arguments:
- *    @param[in] count - number of notifications
- *    @param[in] data  - array of port events
-
- * Return Values:
- *    None
- */
-void  redis_port_event_notification(
-    _In_ uint32_t count,
-    _In_ sai_port_event_notification_t *data)
-{
-    SWSS_LOG_ENTER();
 }
 
 /**

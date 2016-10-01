@@ -2,6 +2,8 @@
 #define __SAI_REDIS__
 
 #include <mutex>
+#include <set>
+#include <unordered_map>
 
 #include "stdint.h"
 #include "stdio.h"
@@ -21,6 +23,7 @@ extern "C" {
 #include "swss/table.h"
 #include "swss/select.h"
 #include "swss/logger.h"
+#include "sai_meta.h"
 
 extern volatile bool                    g_record;
 extern void setRecording(bool record);
@@ -28,6 +31,8 @@ extern void recordLine(std::string s);
 
 extern std::string joinFieldValues(
         _In_ const std::vector<swss::FieldValueTuple> &values);
+
+// other global declarations
 
 extern service_method_table_t           g_services;
 extern swss::DBConnector               *g_db;
@@ -44,6 +49,7 @@ extern swss::Table *g_ridToVid;
 extern swss::RedisClient               *g_redisClient;
 
 extern std::mutex g_mutex;
+extern std::mutex g_apimutex;
 
 extern const sai_acl_api_t              redis_acl_api;
 extern const sai_buffer_api_t           redis_buffer_api;
@@ -76,6 +82,16 @@ extern sai_switch_notification_t redis_switch_notifications;
 
 #define UNREFERENCED_PARAMETER(X)
 
+bool redis_validate_contains_attribute(
+    _In_ sai_attr_id_t required_id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list);
+
+const sai_attribute_t* redis_get_attribute_by_id(
+    _In_ sai_attr_id_t id,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list);
+
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_type_t object_type);
 
@@ -86,81 +102,81 @@ void translate_rid_to_vid(
 
 // separate methods are needed for vlan to not confuse with object_id
 
+// CREATE
+
 sai_status_t redis_generic_create(
         _In_ sai_object_type_t object_type,
         _Out_ sai_object_id_t* object_id,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
-sai_status_t redis_generic_create(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_create_fdb_entry(
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
-sai_status_t redis_generic_create(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_create_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
-sai_status_t redis_generic_create(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_create_route_entry(
         _In_ const sai_unicast_route_entry_t* unicast_route_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
 sai_status_t redis_generic_create_vlan(
-        _In_ sai_object_type_t object_type,
         _In_ sai_vlan_id_t vlan_id);
 
+// REMOVE
 
 sai_status_t redis_generic_remove(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id);
 
-sai_status_t redis_generic_remove(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_remove_fdb_entry(
         _In_ const sai_fdb_entry_t* fdb_entry);
 
-sai_status_t redis_generic_remove(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_remove_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry);
 
-sai_status_t redis_generic_remove(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_remove_route_entry(
         _In_ const sai_unicast_route_entry_t* unicast_route_entry);
 
 sai_status_t redis_generic_remove_vlan(
-        _In_ sai_object_type_t object_type,
         _In_ sai_vlan_id_t vlan_id);
 
+// SET
 
 sai_status_t redis_generic_set(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
         _In_ const sai_attribute_t *attr);
 
-sai_status_t redis_generic_set(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_set_fdb_entry(
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ const sai_attribute_t *attr);
 
-sai_status_t redis_generic_set(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_set_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry,
         _In_ const sai_attribute_t *attr);
 
-sai_status_t redis_generic_set(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_set_route_entry(
         _In_ const sai_unicast_route_entry_t* unicast_route_entry,
         _In_ const sai_attribute_t *attr);
 
 sai_status_t redis_generic_set_vlan(
-        _In_ sai_object_type_t object_type,
         _In_ sai_vlan_id_t vlan_id,
         _In_ const sai_attribute_t *attr);
 
+sai_status_t redis_generic_set_trap(
+        _In_ sai_hostif_trap_id_t hostif_trapid,
+        _In_ const sai_attribute_t *attr);
+
+sai_status_t redis_generic_set_switch(
+        _In_ const sai_attribute_t *attr);
+
+// GET
 
 sai_status_t redis_generic_get(
         _In_ sai_object_type_t object_type,
@@ -168,27 +184,32 @@ sai_status_t redis_generic_get(
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
-sai_status_t redis_generic_get(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_get_fdb_entry(
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
-sai_status_t redis_generic_get(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_get_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
-sai_status_t redis_generic_get(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_get_route_entry(
         _In_ const sai_unicast_route_entry_t* unicast_route_entry,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
 sai_status_t redis_generic_get_vlan(
-        _In_ sai_object_type_t object_type,
         _In_ sai_vlan_id_t vlan_id,
+        _In_ uint32_t attr_count,
+        _Out_ sai_attribute_t *attr_list);
+
+sai_status_t redis_generic_get_trap(
+        _In_ sai_hostif_trap_id_t hostif_trapid,
+        _In_ uint32_t attr_count,
+        _Out_ sai_attribute_t *attr_list);
+
+sai_status_t redis_generic_get_switch(
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 

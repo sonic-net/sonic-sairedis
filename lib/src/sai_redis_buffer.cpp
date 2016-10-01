@@ -9,17 +9,18 @@
  *           Failure status code on error
  */
 sai_status_t redis_set_ingress_priority_group_attr(
-    _In_ sai_object_id_t ingress_pg_id,
-    _In_ const sai_attribute_t *attr)
+        _In_ sai_object_id_t ingress_pg_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_PRIORITY_GROUP,
             ingress_pg_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -32,59 +33,68 @@ sai_status_t redis_set_ingress_priority_group_attr(
  *           Failure status code on error
  */
 sai_status_t redis_get_ingress_priority_group_attr(
-    _In_ sai_object_id_t ingress_pg_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+        _In_ sai_object_id_t ingress_pg_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_PRIORITY_GROUP,
             ingress_pg_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
-* @brief   Get ingress priority group statistics counters.
-*
-* @param[in] ingress_pg_id ingress priority group id
-* @param[in] counter_ids specifies the array of counter ids
-* @param[in] number_of_counters number of counters in the array
-* @param[out] counters array of resulting counter values.
-*
-* @return SAI_STATUS_SUCCESS on success
-*         Failure status code on error
-*/
+ * @brief   Get ingress priority group statistics counters.
+ *
+ * @param[in] ingress_pg_id ingress priority group id
+ * @param[in] counter_ids specifies the array of counter ids
+ * @param[in] number_of_counters number of counters in the array
+ * @param[out] counters array of resulting counter values.
+ *
+ * @return SAI_STATUS_SUCCESS on success
+ *         Failure status code on error
+ */
 sai_status_t redis_get_ingress_priority_group_stats(
-    _In_ sai_object_id_t ingress_pg_id,
-    _In_ const sai_ingress_priority_group_stat_counter_t *counter_ids,
-    _In_ uint32_t number_of_counters,
-    _Out_ uint64_t* counters)
+        _In_ sai_object_id_t ingress_pg_id,
+        _In_ const sai_ingress_priority_group_stat_counter_t *counter_ids,
+        _In_ uint32_t number_of_counters,
+        _Out_ uint64_t* counters)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 /**
-* @brief   Clear ingress priority group statistics counters.
-*
-* @param[in] ingress_pg_id ingress priority group id
-* @param[in] counter_ids specifies the array of counter ids
-* @param[in] number_of_counters number of counters in the array
-*
-* @return SAI_STATUS_SUCCESS on success
-*         Failure status code on error
-*/
+ * @brief   Clear ingress priority group statistics counters.
+ *
+ * @param[in] ingress_pg_id ingress priority group id
+ * @param[in] counter_ids specifies the array of counter ids
+ * @param[in] number_of_counters number of counters in the array
+ *
+ * @return SAI_STATUS_SUCCESS on success
+ *         Failure status code on error
+ */
 sai_status_t redis_clear_ingress_priority_group_stats(
-    _In_ sai_object_id_t ingress_pg_id,
-    _In_ const sai_ingress_priority_group_stat_counter_t *counter_ids,
-    _In_ uint32_t number_of_counters)
+        _In_ sai_object_id_t ingress_pg_id,
+        _In_ const sai_ingress_priority_group_stat_counter_t *counter_ids,
+        _In_ uint32_t number_of_counters)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
@@ -98,19 +108,20 @@ sai_status_t redis_clear_ingress_priority_group_stats(
  *           Failure status code on error
  */
 sai_status_t redis_create_buffer_pool(
-    _Out_ sai_object_id_t* pool_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+        _Out_ sai_object_id_t* pool_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
-        SAI_OBJECT_TYPE_BUFFER_POOL,
-        pool_id,
-        attr_count,
-        attr_list);
-
-    return status;
+    return meta_sai_create_oid(
+            SAI_OBJECT_TYPE_BUFFER_POOL,
+            pool_id,
+            attr_count,
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -120,15 +131,16 @@ sai_status_t redis_create_buffer_pool(
  *           Failure status code on error
  */
 sai_status_t redis_remove_buffer_pool(
-    _In_ sai_object_id_t pool_id)
+        _In_ sai_object_id_t pool_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_BUFFER_POOL,
-            pool_id);
-
-    return status;
+            pool_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -139,17 +151,18 @@ sai_status_t redis_remove_buffer_pool(
  *           Failure status code on error
  */
 sai_status_t redis_set_buffer_pool_attr(
-    _In_ sai_object_id_t pool_id,
-    _In_ const sai_attribute_t *attr)
+        _In_ sai_object_id_t pool_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_BUFFER_POOL,
             pool_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -161,39 +174,44 @@ sai_status_t redis_set_buffer_pool_attr(
  *           Failure status code on error
  */
 sai_status_t redis_get_buffer_pool_attr(
-    _In_ sai_object_id_t pool_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+        _In_ sai_object_id_t pool_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_BUFFER_POOL,
             pool_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
-* @brief   Get buffer pool statistics counters.
-*
-* @param[in] pool_id buffer pool id
-* @param[in] counter_ids specifies the array of counter ids
-* @param[in] number_of_counters number of counters in the array
-* @param[out] counters array of resulting counter values.
-*
-* @return SAI_STATUS_SUCCESS on success
-*         Failure status code on error
-*/
+ * @brief   Get buffer pool statistics counters.
+ *
+ * @param[in] pool_id buffer pool id
+ * @param[in] counter_ids specifies the array of counter ids
+ * @param[in] number_of_counters number of counters in the array
+ * @param[out] counters array of resulting counter values.
+ *
+ * @return SAI_STATUS_SUCCESS on success
+ *         Failure status code on error
+ */
 sai_status_t redis_get_buffer_pool_stats(
-    _In_ sai_object_id_t pool_id,
-    _In_ const sai_buffer_pool_stat_counter_t *counter_ids,
-    _In_ uint32_t number_of_counters,
-    _Out_ uint64_t* counters)
+        _In_ sai_object_id_t pool_id,
+        _In_ const sai_buffer_pool_stat_counter_t *counter_ids,
+        _In_ uint32_t number_of_counters,
+        _Out_ uint64_t* counters)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
@@ -207,19 +225,20 @@ sai_status_t redis_get_buffer_pool_stats(
  *           Failure status code on error
  */
 sai_status_t redis_create_buffer_profile(
-    _Out_ sai_object_id_t* buffer_profile_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+        _Out_ sai_object_id_t* buffer_profile_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_BUFFER_PROFILE,
             buffer_profile_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -229,15 +248,16 @@ sai_status_t redis_create_buffer_profile(
  *           Failure status code on error
  */
 sai_status_t redis_remove_buffer_profile(
-    _In_ sai_object_id_t buffer_profile_id)
+        _In_ sai_object_id_t buffer_profile_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_BUFFER_PROFILE,
-            buffer_profile_id);
-
-    return status;
+            buffer_profile_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -248,17 +268,18 @@ sai_status_t redis_remove_buffer_profile(
  *           Failure status code on error
  */
 sai_status_t redis_set_buffer_profile_attr(
-    _In_ sai_object_id_t buffer_profile_id,
-    _In_ const sai_attribute_t *attr)
+        _In_ sai_object_id_t buffer_profile_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_BUFFER_PROFILE,
             buffer_profile_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -270,19 +291,20 @@ sai_status_t redis_set_buffer_profile_attr(
  *           Failure status code on error
  */
 sai_status_t redis_get_buffer_profile_attr(
-    _In_ sai_object_id_t buffer_profile_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+        _In_ sai_object_id_t buffer_profile_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_BUFFER_PROFILE,
             buffer_profile_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**

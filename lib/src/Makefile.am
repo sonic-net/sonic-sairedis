@@ -1,8 +1,42 @@
-# Makefile.am -- Process this file with automake to produce Makefile.in
-
 AM_CPPFLAGS =
 AM_CPPFLAGS += -I/usr/include/sai -I/usr/include/swss -I$(top_srcdir)/common
-AM_CPPFLAGS += -I../inc
+AM_CPPFLAGS += -I../inc -I../../meta
+AM_CPPFLAGS += \
+				-Wcast-align \
+				-Wcast-qual \
+				-Wconversion \
+				-Wdisabled-optimization \
+				-Werror \
+				-Wextra \
+				-Wfloat-equal \
+				-Wformat=2 \
+				-Wformat-nonliteral \
+				-Wformat-security \
+				-Wformat-y2k \
+				-Wimport \
+				-Winit-self \
+				-Winline \
+				-Winvalid-pch \
+				-Wlong-long \
+				-Wmissing-field-initializers \
+				-Wmissing-format-attribute \
+				-Wmissing-include-dirs \
+				-Wmissing-noreturn \
+				-Wno-aggregate-return \
+				-Wno-padded \
+				-Wno-switch-enum \
+				-Wno-unused-parameter \
+				-Wpacked \
+				-Wpointer-arith \
+				-Wredundant-decls \
+				-Wstack-protector \
+				-Wstrict-aliasing=2 \
+				-Wswitch \
+				-Wswitch-default \
+				-Wunreachable-code \
+				-Wunused \
+				-Wvariadic-macros \
+				-Wwrite-strings
 
 if DEBUG
 DBGFLAGS = -ggdb -D_DEBUG_
@@ -12,7 +46,8 @@ endif
 
 lib_LTLIBRARIES = libsairedis.la
 
-libsairedis_la_SOURCES = sai_redis_acl.cpp \
+libsairedis_la_SOURCES = \
+			 sai_redis_acl.cpp \
 			 sai_redis_buffer.cpp \
 			 sai_redis_fdb.cpp \
 			 sai_redis_hash.cpp \
@@ -47,8 +82,35 @@ libsairedis_la_SOURCES = sai_redis_acl.cpp \
 			 sai_redis_record.cpp \
 			 ../../common/redisclient.cpp \
 			 ../../common/saiserialize.cpp \
-			 ../../common/saiattributelist.cpp
-
+			 ../../common/saiattributelist.cpp \
+			 ../../meta/sai_meta.cpp \
+			 ../../meta/sai_meta_sanity.cpp \
+			 ../../meta/sai_meta_acl.cpp \
+			 ../../meta/sai_meta_buffer.cpp \
+			 ../../meta/sai_meta_fdb.cpp \
+			 ../../meta/sai_meta_hash.cpp \
+			 ../../meta/sai_meta_hostintf.cpp \
+			 ../../meta/sai_meta_lag.cpp \
+			 ../../meta/sai_meta_mirror.cpp \
+			 ../../meta/sai_meta_neighbor.cpp \
+			 ../../meta/sai_meta_nexthop.cpp \
+			 ../../meta/sai_meta_nexthopgroup.cpp \
+			 ../../meta/sai_meta_policer.cpp \
+			 ../../meta/sai_meta_port.cpp \
+			 ../../meta/sai_meta_qosmaps.cpp \
+			 ../../meta/sai_meta_queue.cpp \
+			 ../../meta/sai_meta_route.cpp \
+			 ../../meta/sai_meta_router.cpp \
+			 ../../meta/sai_meta_routerintf.cpp \
+			 ../../meta/sai_meta_samplepacket.cpp \
+			 ../../meta/sai_meta_scheduler.cpp \
+			 ../../meta/sai_meta_schedulergroup.cpp \
+			 ../../meta/sai_meta_stp.cpp \
+			 ../../meta/sai_meta_switch.cpp \
+			 ../../meta/sai_meta_tunnel.cpp \
+			 ../../meta/sai_meta_udf.cpp \
+			 ../../meta/sai_meta_vlan.cpp \
+			 ../../meta/sai_meta_wred.cpp
 
 libsairedis_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 

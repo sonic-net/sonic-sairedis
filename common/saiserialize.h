@@ -1,7 +1,9 @@
 #ifndef __SAI_SERIALIZE__
 #define __SAI_SERIALIZE__
 
+extern "C" {
 #include "sai.h"
+}
 
 #include <iostream>
 #include <fstream>
@@ -43,8 +45,8 @@ typedef enum _sai_attr_serialization_type_t
     SAI_SERIALIZATION_TYPE_UINT32_RANGE,
     SAI_SERIALIZATION_TYPE_INT32_RANGE,
     SAI_SERIALIZATION_TYPE_VLAN_LIST,
-    SAI_SERIALIZATION_TYPE_VLAN_PORT_LIST,
 
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL,
     SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8,
     SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT8,
     SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT16,
@@ -71,7 +73,8 @@ typedef enum _sai_attr_serialization_type_t
     SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST,
 
     SAI_SERIALIZATION_TYPE_PORT_BREAKOUT,
-    SAI_SERIALIZATION_TYPE_QOS_MAP_LIST
+    SAI_SERIALIZATION_TYPE_QOS_MAP_LIST,
+    SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST
 
 } sai_attr_serialization_type_t;
 
@@ -184,12 +187,12 @@ void sai_deserialize_primitive(
         int u = char_to_int(ptr[2 * i]);
         int l = char_to_int(ptr[2 * i + 1]);
 
-        unsigned char c = (u << 4) | l;
+        int c = (u << 4) | l;
 
-        mem[i] = c;
+        mem[i] = (unsigned char)c;
     }
 
-    index += count * 2;
+    index += (int)(count * 2);
 }
 
 template<typename T>

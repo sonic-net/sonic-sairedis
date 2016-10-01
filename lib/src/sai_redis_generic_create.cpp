@@ -27,6 +27,22 @@ sai_object_id_t redis_create_virtual_object_id(
 }
 
 /**
+ * Routine Description:
+ *     @brief  Query sai object type.
+ *
+ * Arguments:
+ *     @param[in] sai_object_id
+ *
+ * Return Values:
+ *    @return  Return SAI_OBJECT_TYPE_NULL when sai_object_id is not valid.
+ *             Otherwise, return a valid sai object type SAI_OBJECT_TYPE_XXX
+ */
+sai_object_type_t sai_object_type_query(_In_ sai_object_id_t sai_object_id)
+{
+    return (sai_object_type_t)(sai_object_id >> 48);
+}
+
+/**
  *   Routine Description:
  *    @brief Generic create method
  *
@@ -49,9 +65,38 @@ sai_status_t internal_redis_generic_create(
 
     SWSS_LOG_ENTER();
 
+    if (attr_count > 0 && attr_list == NULL)
+    {
+        SWSS_LOG_ERROR("attribute list is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // check for duplicated id entries on attribute list
+    // this needs to be checked only on create API
+    // since set always use one attribute, and get api
+    // is not making any changes so attributes can be
+    // duplicated
+
+    std::set<sai_attr_id_t> attr_ids;
+
+    for (uint32_t i = 0; i < attr_count; ++i)
+    {
+        sai_attr_id_t id = attr_list[i].id;
+
+        if (attr_ids.find(id) != attr_ids.end())
+        {
+            SWSS_LOG_ERROR("duplicated attribute id %d on attribute list for object type %d", id, object_type);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        attr_ids.insert(id);
+    }
+
     std::vector<swss::FieldValueTuple> entry = SaiAttributeList::serialize_attr_list(
-            object_type, 
-            attr_count, 
+            object_type,
+            attr_count,
             attr_list,
             false);
 
@@ -105,6 +150,21 @@ sai_status_t redis_generic_create(
 {
     SWSS_LOG_ENTER();
 
+    if (object_id == NULL)
+    {
+        SWSS_LOG_ERROR("object id pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (object_type <= SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_MAX)
+    {
+        // this is sanity check for code bugs
+        SWSS_LOG_ERROR("trying to create invalid object type: %d", object_type);
+
+        return SAI_STATUS_FAILURE;
+    }
+
     // on create vid is put in db by syncd
     *object_id = redis_create_virtual_object_id(object_type);
 
@@ -120,8 +180,7 @@ sai_status_t redis_generic_create(
     return status;
 }
 
-sai_status_t redis_generic_create(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_create_fdb_entry(
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -132,7 +191,7 @@ sai_status_t redis_generic_create(
     sai_serialize_primitive(*fdb_entry, str_fdb_entry);
 
     sai_status_t status = internal_redis_generic_create(
-            object_type,
+            SAI_OBJECT_TYPE_FDB,
             str_fdb_entry,
             attr_count,
             attr_list);
@@ -140,20 +199,18 @@ sai_status_t redis_generic_create(
     return status;
 }
 
-sai_status_t redis_generic_create(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_create_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    // rif_id must be valid virtual id
     std::string str_neighbor_entry;
     sai_serialize_neighbor_entry(*neighbor_entry, str_neighbor_entry);
 
     sai_status_t status = internal_redis_generic_create(
-            object_type,
+            SAI_OBJECT_TYPE_NEIGHBOR,
             str_neighbor_entry,
             attr_count,
             attr_list);
@@ -161,8 +218,7 @@ sai_status_t redis_generic_create(
     return status;
 }
 
-sai_status_t redis_generic_create(
-        _In_ sai_object_type_t object_type,
+sai_status_t redis_generic_create_route_entry(
         _In_ const sai_unicast_route_entry_t* unicast_route_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -174,7 +230,7 @@ sai_status_t redis_generic_create(
     sai_serialize_route_entry(*unicast_route_entry, str_route_entry);
 
     sai_status_t status = internal_redis_generic_create(
-            object_type,
+            SAI_OBJECT_TYPE_ROUTE,
             str_route_entry,
             attr_count,
             attr_list);
@@ -183,7 +239,6 @@ sai_status_t redis_generic_create(
 }
 
 sai_status_t redis_generic_create_vlan(
-        _In_ sai_object_type_t object_type,
         _In_ sai_vlan_id_t vlan_id)
 {
     SWSS_LOG_ENTER();
@@ -196,7 +251,7 @@ sai_status_t redis_generic_create_vlan(
     sai_attribute_t dummy_attribute;
 
     sai_status_t status = internal_redis_generic_create(
-            object_type,
+            SAI_OBJECT_TYPE_VLAN,
             str_vlan_id,
             0,
             &dummy_attribute);

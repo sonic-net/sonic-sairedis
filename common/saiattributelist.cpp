@@ -5,9 +5,9 @@ SaiAttributeList::SaiAttributeList(
         _In_ const std::vector<swss::FieldValueTuple> &values,
         _In_ bool onlyCount)
 {
-    uint32_t attr_count = values.size();
+    size_t attr_count = values.size();
 
-    for (uint32_t i = 0; i < attr_count; ++i)
+    for (size_t i = 0; i < attr_count; ++i)
     {
         const std::string &str_attr_id = fvField(values[i]);
         const std::string &str_attr_value = fvValue(values[i]);
@@ -44,9 +44,9 @@ SaiAttributeList::SaiAttributeList(
 
 SaiAttributeList::~SaiAttributeList()
 {
-    uint32_t attr_count = m_attr_list.size();
+    size_t attr_count = m_attr_list.size();
 
-    for (uint32_t i = 0; i < attr_count; ++i)
+    for (size_t i = 0; i < attr_count; ++i)
     {
         sai_attribute_t &attr = m_attr_list[i];
 
@@ -118,5 +118,5 @@ sai_attribute_t* SaiAttributeList::get_attr_list()
 
 uint32_t SaiAttributeList::get_attr_count()
 {
-    return m_attr_list.size();
+    return (uint32_t)m_attr_list.size();
 }

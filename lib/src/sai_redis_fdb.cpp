@@ -13,20 +13,20 @@
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_create_fdb_entry(
-    _In_ const sai_fdb_entry_t *fdb_entry,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_create_fdb_entry(
+        _In_ const sai_fdb_entry_t *fdb_entry,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
-            SAI_OBJECT_TYPE_FDB,
+    return meta_sai_create_fdb_entry(
             fdb_entry,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create_fdb_entry);
 }
 
 /**
@@ -40,16 +40,16 @@ sai_status_t  redis_create_fdb_entry(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_remove_fdb_entry(
-    _In_ const sai_fdb_entry_t* fdb_entry)
+sai_status_t redis_remove_fdb_entry(
+        _In_ const sai_fdb_entry_t* fdb_entry)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
-            SAI_OBJECT_TYPE_FDB,
-            fdb_entry);
-
-    return status;
+    return meta_sai_remove_fdb_entry(
+            fdb_entry,
+            &redis_generic_remove_fdb_entry);
 }
 
 /**
@@ -62,18 +62,18 @@ sai_status_t  redis_remove_fdb_entry(
  * * Return Values: *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_set_fdb_entry_attribute(
-    _In_ const sai_fdb_entry_t* fdb_entry,
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_fdb_entry_attribute(
+        _In_ const sai_fdb_entry_t* fdb_entry,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
-            SAI_OBJECT_TYPE_FDB,
+    return meta_sai_set_fdb_entry(
             fdb_entry,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set_fdb_entry);
 }
 
 /**
@@ -89,20 +89,20 @@ sai_status_t  redis_set_fdb_entry_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_fdb_entry_attribute(
-    _In_ const sai_fdb_entry_t* fdb_entry,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_fdb_entry_attribute(
+        _In_ const sai_fdb_entry_t* fdb_entry,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
-            SAI_OBJECT_TYPE_FDB,
+    return meta_sai_get_fdb_entry(
             fdb_entry,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get_fdb_entry);
 }
 
 /**
@@ -117,31 +117,17 @@ sai_status_t  redis_get_fdb_entry_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_flush_fdb_entries(
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_flush_fdb_entries(
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-/**
- * Routine Description:
- *     @brief FDB notifications
- *
- * Arguments:
- *    @param[in] count - number of notifications
- *    @param[in] data  - pointer to fdb event notification data array
- *
- * Return Values:
- *    None
- */
-void  redis_fdb_event_notification(
-    _In_ uint32_t count,
-    _In_ sai_fdb_event_notification_data_t *data)
-{
-    SWSS_LOG_ENTER();
 }
 
 /**

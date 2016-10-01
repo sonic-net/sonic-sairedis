@@ -10,20 +10,21 @@
  * @return SAI_STATUS_SUCCESS on success
  *         Failure status code on error
  */
-sai_status_t  redis_create_policer(
-    _Out_ sai_object_id_t *policer_id,
-    _In_ uint32_t attr_count, 
-    _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_create_policer(
+        _Out_ sai_object_id_t *policer_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_POLICER,
             policer_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -31,23 +32,24 @@ sai_status_t  redis_create_policer(
  *
  * @param[in] policer_id - Policer id
  *
- * @return  SAI_STATUS_SUCCESS on success
+ * @return SAI_STATUS_SUCCESS on success
  *          Failure status code on error
  */
-sai_status_t  redis_remove_policer(
+sai_status_t redis_remove_policer(
         _In_ sai_object_id_t policer_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_POLICER,
-            policer_id);
-
-    return status;
+            policer_id,
+            &redis_generic_remove);
 }
 
 /**
- * @brief  Set Policer attribute
+ * @brief Set Policer attribute
  *
  * @param[in] policer_id - Policer id
  * @param[in] attr - attribute
@@ -55,22 +57,23 @@ sai_status_t  redis_remove_policer(
  * @return SAI_STATUS_SUCCESS on success
  *         Failure status code on error
  */
-sai_status_t  redis_set_policer_attribute(
-    _In_ sai_object_id_t policer_id,
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_policer_attribute(
+        _In_ sai_object_id_t policer_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_POLICER,
             policer_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
- * @brief  Get Policer attribute
+ * @brief Get Policer attribute
  *
  * @param[in] policer_id - policer id
  * @param[in] attr_count - number of attributes
@@ -79,24 +82,25 @@ sai_status_t  redis_set_policer_attribute(
  * @return SAI_STATUS_SUCCESS on success
  *         Failure status code on error
  */
-sai_status_t  redis_get_policer_attribute(
-    _In_ sai_object_id_t policer_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_policer_attribute(
+        _In_ sai_object_id_t policer_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_POLICER,
             policer_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
- * @brief  Get Policer Statistics
+ * @brief Get Policer Statistics
  *
  * @param[in] policer_id - policer id
  * @param[in] counter_ids - array of counter ids
@@ -106,13 +110,17 @@ sai_status_t  redis_get_policer_attribute(
  * @return SAI_STATUS_SUCCESS on success
  *         Failure status code on error
  */
-sai_status_t  redis_get_policer_stats(
-    _In_ sai_object_id_t policer_id,
-    _In_ const sai_policer_stat_counter_t *counter_ids,
-    _In_ uint32_t number_of_counters,
-    _Out_ uint64_t* counters)
+sai_status_t redis_get_policer_stats(
+        _In_ sai_object_id_t policer_id,
+        _In_ const sai_policer_stat_counter_t *counter_ids,
+        _In_ uint32_t number_of_counters,
+        _Out_ uint64_t* counters)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }

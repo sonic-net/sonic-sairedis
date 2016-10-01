@@ -171,6 +171,33 @@ sai_serialization_map_t sai_get_serialization_map()
     map[SAI_OBJECT_TYPE_TRAP_GROUP][SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE] = SAI_SERIALIZATION_TYPE_BOOL;
     map[SAI_OBJECT_TYPE_TRAP_GROUP][SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE] = SAI_SERIALIZATION_TYPE_UINT32;
     map[SAI_OBJECT_TYPE_TRAP_GROUP][SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER] = SAI_SERIALIZATION_TYPE_OBJECT_ID;
+
+    map[SAI_OBJECT_TYPE_TUNNEL_MAP][SAI_TUNNEL_MAP_ATTR_TYPE] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TUNNEL_MAP][SAI_TUNNEL_MAP_ATTR_MAP_TO_VALUE_LIST] = SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST;
+
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_TYPE] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE] = SAI_SERIALIZATION_TYPE_OBJECT_ID;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_OVERLAY_INTERFACE] = SAI_SERIALIZATION_TYPE_OBJECT_ID;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_ENCAP_SRC_IP] = SAI_SERIALIZATION_TYPE_IP_ADDRESS;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_ENCAP_TTL_MODE] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_ENCAP_TTL_VAL] = SAI_SERIALIZATION_TYPE_UINT8;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_ENCAP_DSCP_MODE] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_ENCAP_DSCP_VAL] = SAI_SERIALIZATION_TYPE_UINT8;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_ENCAP_GRE_KEY_VALID] = SAI_SERIALIZATION_TYPE_BOOL;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_ENCAP_GRE_KEY] = SAI_SERIALIZATION_TYPE_UINT32;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_ENCAP_ECN_MODE] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_ENCAP_MAPPERS] = SAI_SERIALIZATION_TYPE_OBJECT_LIST;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_DECAP_ECN_MODE] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_DECAP_MAPPERS] = SAI_SERIALIZATION_TYPE_OBJECT_LIST;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_DECAP_TTL_MODE] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TUNNEL][SAI_TUNNEL_ATTR_DECAP_DSCP_MODE] = SAI_SERIALIZATION_TYPE_INT32;
+
+    map[SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY][SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_VR_ID] = SAI_SERIALIZATION_TYPE_OBJECT_ID;
+    map[SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY][SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TYPE] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY][SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP] = SAI_SERIALIZATION_TYPE_IP_ADDRESS;
+    map[SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY][SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_SRC_IP] = SAI_SERIALIZATION_TYPE_IP_ADDRESS;
+    map[SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY][SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TUNNEL_TYPE] = SAI_SERIALIZATION_TYPE_INT32;
+    map[SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY][SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_ACTION_TUNNEL_ID] = SAI_SERIALIZATION_TYPE_OBJECT_ID;
     return map;
 }
 
@@ -401,12 +428,12 @@ void sai_deserialize_buffer(
         int u = char_to_int(ptr[2 * i]);
         int l = char_to_int(ptr[2 * i + 1]);
 
-        unsigned char c = (u << 4) | l;
+        int c = (u << 4) | l;
 
-        mem[i] = c;
+        mem[i] = (unsigned char) c;
     }
 
-    index += buffer_size * 2;
+    index += (int)(buffer_size * 2);
 }
 
 void sai_free_buffer(void *buffer)
@@ -557,7 +584,16 @@ sai_status_t sai_serialize_attr_value(
             sai_serialize_list(attr.value.qosmap, s, countOnly);
             break;
 
+        case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+            sai_serialize_list(attr.value.tunnelmap, s, countOnly);
+            break;
+
             /* ACL FIELD DATA */
+
+        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
+            sai_serialize_primitive(attr.value.aclfield.enable, s);
+            sai_serialize_primitive(attr.value.aclfield.data.booldata, s);
+            break;
 
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
             sai_serialize_primitive(attr.value.aclfield.enable, s);
@@ -839,7 +875,16 @@ sai_status_t sai_deserialize_attr_value(
             sai_deserialize_list(s, index, attr.value.qosmap, countOnly);
             break;
 
+        case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+            sai_deserialize_list(s, index, attr.value.tunnelmap, countOnly);
+            break;
+
             /* ACL FIELD DATA */
+
+        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
+            sai_deserialize_primitive(s, index, attr.value.aclfield.enable);
+            sai_deserialize_primitive(s, index, attr.value.aclfield.data.booldata);
+            break;
 
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
             sai_deserialize_primitive(s, index, attr.value.aclfield.enable);
@@ -1074,7 +1119,14 @@ sai_status_t sai_deserialize_free_attribute_value(
             sai_free_list(attr.value.qosmap);
             break;
 
+        case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+            sai_free_list(attr.value.tunnelmap);
+            break;
+
             /* ACL FIELD DATA */
+
+        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
+            break;
 
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
             break;
@@ -1412,7 +1464,16 @@ sai_status_t transfer_attribute(
             transfer_list(src_attr.value.qosmap, dst_attr.value.qosmap, countOnly);
             break;
 
+        case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+            transfer_list(src_attr.value.tunnelmap, dst_attr.value.tunnelmap, countOnly);
+            break;
+
             /* ACL FIELD DATA */
+
+        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
+            transfer_primitive(src_attr.value.aclfield.enable, dst_attr.value.aclfield.enable);
+            transfer_primitive(src_attr.value.aclfield.data.booldata, dst_attr.value.aclfield.data.booldata);
+            break;
 
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
             transfer_primitive(src_attr.value.aclfield.enable, dst_attr.value.aclfield.enable);

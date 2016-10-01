@@ -14,20 +14,21 @@
  *            Failure status code on error
  *
  */
-sai_status_t  redis_create_tunnel_map(
-    _Out_ sai_object_id_t* tunnel_map_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_create_tunnel_map(
+        _Out_ sai_object_id_t* tunnel_map_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_TUNNEL_MAP,
             tunnel_map_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -42,16 +43,17 @@ sai_status_t  redis_create_tunnel_map(
  *            Failure status code on error
  *
  */
-sai_status_t  redis_remove_tunnel_map(
-    _In_ sai_object_id_t tunnel_map_id)
+sai_status_t redis_remove_tunnel_map(
+        _In_ sai_object_id_t tunnel_map_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_TUNNEL_MAP,
-            tunnel_map_id);
-
-    return status;
+            tunnel_map_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -66,18 +68,19 @@ sai_status_t  redis_remove_tunnel_map(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_set_tunnel_map_attribute(
-    _In_ sai_object_id_t  tunnel_map_id,
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_tunnel_map_attribute(
+        _In_ sai_object_id_t tunnel_map_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_TUNNEL_MAP,
             tunnel_map_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -92,20 +95,21 @@ sai_status_t  redis_set_tunnel_map_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_tunnel_map_attribute(
-    _In_ sai_object_id_t   tunnel_map_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_tunnel_map_attribute(
+        _In_ sai_object_id_t   tunnel_map_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_TUNNEL_MAP,
             tunnel_map_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
@@ -122,20 +126,21 @@ sai_status_t  redis_get_tunnel_map_attribute(
  *            Failure status code on error
  *
  */
-sai_status_t  redis_create_tunnel(
-    _Out_ sai_object_id_t* tunnel_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_create_tunnel(
+        _Out_ sai_object_id_t* tunnel_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_TUNNEL,
             tunnel_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -150,16 +155,17 @@ sai_status_t  redis_create_tunnel(
  *            Failure status code on error
  *
  */
-sai_status_t  redis_remove_tunnel(
-    _In_ sai_object_id_t tunnel_id)
+sai_status_t redis_remove_tunnel(
+        _In_ sai_object_id_t tunnel_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_TUNNEL,
-            tunnel_id);
-
-    return status;
+            tunnel_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -174,18 +180,19 @@ sai_status_t  redis_remove_tunnel(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_set_tunnel_attribute(
-    _In_ sai_object_id_t tunnel_id,
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_tunnel_attribute(
+        _In_ sai_object_id_t tunnel_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_TUNNEL,
             tunnel_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -201,20 +208,21 @@ sai_status_t  redis_set_tunnel_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_tunnel_attribute(
-    _In_ sai_object_id_t tunnel_id, 
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_tunnel_attribute(
+        _In_ sai_object_id_t tunnel_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_TUNNEL,
             tunnel_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
@@ -231,20 +239,21 @@ sai_status_t  redis_get_tunnel_attribute(
  *            Failure status code on error
  *
  */
-sai_status_t  redis_create_tunnel_term_table_entry (
-    _Out_ sai_object_id_t* tunnel_term_table_entry_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_create_tunnel_term_table_entry (
+        _Out_ sai_object_id_t* tunnel_term_table_entry_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY,
             tunnel_term_table_entry_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -259,16 +268,17 @@ sai_status_t  redis_create_tunnel_term_table_entry (
  *            Failure status code on error
  *
  */
-sai_status_t  redis_remove_tunnel_term_table_entry (
-    _In_ sai_object_id_t tunnel_term_table_entry_id)
+sai_status_t redis_remove_tunnel_term_table_entry (
+        _In_ sai_object_id_t tunnel_term_table_entry_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY,
-            tunnel_term_table_entry_id);
-
-    return status;
+            tunnel_term_table_entry_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -283,18 +293,19 @@ sai_status_t  redis_remove_tunnel_term_table_entry (
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_set_tunnel_term_table_entry_attribute(
-    _In_ sai_object_id_t tunnel_term_table_entry_id,
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_tunnel_term_table_entry_attribute(
+        _In_ sai_object_id_t tunnel_term_table_entry_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY,
             tunnel_term_table_entry_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -309,24 +320,25 @@ sai_status_t  redis_set_tunnel_term_table_entry_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_tunnel_term_table_entry_attribute(
-    _In_ sai_object_id_t tunnel_term_table_entry_id,
-    _In_ uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_tunnel_term_table_entry_attribute(
+        _In_ sai_object_id_t tunnel_term_table_entry_id,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY,
             tunnel_term_table_entry_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**
- *  @brief tunnel table methods, retrieved via sai_api_query()
+ * @brief tunnel table methods, retrieved via sai_api_query()
  */
 const sai_tunnel_api_t redis_tunnel_api = {
     redis_create_tunnel_map,

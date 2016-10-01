@@ -3,6 +3,7 @@
 #include <string.h>
 
 std::mutex g_mutex;
+std::mutex g_apimutex;
 
 service_method_table_t g_services;
 bool                   g_apiInitialized = false;

@@ -7,22 +7,23 @@
  * @param[in] attr_count Number of attributes
  * @param[in] attr_list Value of attributes
  * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *  error code is returned.
+ *   error code is returned.
  */
-sai_status_t  redis_create_mirror_session(
+sai_status_t redis_create_mirror_session(
         _Out_ sai_object_id_t *session_id,
-        _In_ uint32_t attr_count, 
+        _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_create(
+    return meta_sai_create_oid(
             SAI_OBJECT_TYPE_MIRROR,
             session_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_create);
 }
 
 /**
@@ -30,18 +31,19 @@ sai_status_t  redis_create_mirror_session(
  *
  * @param[in] session_id Port mirror session id
  * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *  error code is returned.
+ *   error code is returned.
  */
-sai_status_t  redis_remove_mirror_session(
+sai_status_t redis_remove_mirror_session(
         _In_ sai_object_id_t session_id)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_remove(
+    return meta_sai_remove_oid(
             SAI_OBJECT_TYPE_MIRROR,
-            session_id);
-
-    return status;
+            session_id,
+            &redis_generic_remove);
 }
 
 /**
@@ -50,20 +52,21 @@ sai_status_t  redis_remove_mirror_session(
  * @param[in] session_id Port mirror session id
  * @param[in] attr Value of attribute
  * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *  error code is returned.
+ *   error code is returned.
  */
-sai_status_t  redis_set_mirror_session_attribute(
-        _In_ sai_object_id_t session_id, 
-        _In_ const  sai_attribute_t *attr)
+sai_status_t redis_set_mirror_session_attribute(
+        _In_ sai_object_id_t session_id,
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_set(
+    return meta_sai_set_oid(
             SAI_OBJECT_TYPE_MIRROR,
             session_id,
-            attr);
-
-    return status;
+            attr,
+            &redis_generic_set);
 }
 
 /**
@@ -73,22 +76,23 @@ sai_status_t  redis_set_mirror_session_attribute(
  * @param[in] attr_count Number of attributes
  * @param[inout] attr_list Value of attribute
  * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *  error code is returned.
+ *   error code is returned.
  */
-sai_status_t  redis_get_mirror_session_attribute(
+sai_status_t redis_get_mirror_session_attribute(
         _In_ sai_object_id_t session_id,
-        _In_ uint32_t attr_count, 
+        _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
+    return meta_sai_get_oid(
             SAI_OBJECT_TYPE_MIRROR,
             session_id,
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get);
 }
 
 /**

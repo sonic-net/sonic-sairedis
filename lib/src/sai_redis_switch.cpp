@@ -1,7 +1,9 @@
 #include "sai_redis.h"
 #include <thread>
 
-#include "selectableevent.h"
+#include "swss/selectableevent.h"
+
+// TODO it may be needed to obtain SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP object id
 
 // temporary until new SAI headers
 #ifndef SAI_SWITCH_ATTR_CUSTOM_RANGE_START
@@ -66,19 +68,19 @@ void ntf_thread()
     }
 }
 
-sai_status_t notify_syncd(const std::string &op)
+sai_status_t notify_syncd(const std::string &operation)
 {
     SWSS_LOG_ENTER();
 
     std::vector<swss::FieldValueTuple> entry;
 
-    g_notifySyncdProducer->send(op, "", entry);
+    g_notifySyncdProducer->send(operation, "", entry);
 
     swss::Select s;
 
     s.addSelectable(g_notifySyncdConsumer);
 
-    SWSS_LOG_DEBUG("wait for response after: %s", op.c_str());
+    SWSS_LOG_DEBUG("wait for response after: %s", operation.c_str());
 
     swss::Selectable *sel;
 
@@ -103,37 +105,52 @@ sai_status_t notify_syncd(const std::string &op)
         int index = 0;
         sai_deserialize_primitive(strStatus, index, status);
 
-        SWSS_LOG_INFO("%s status: %d", op.c_str(), status);
+        SWSS_LOG_NOTICE("%s status: %d", op.c_str(), status);
 
         return status;
     }
 
-    SWSS_LOG_ERROR("%s get response failed, result: %d", op.c_str(), result);
+    SWSS_LOG_ERROR("%s get response failed, result: %d", operation.c_str(), result);
 
     return SAI_STATUS_FAILURE;
 }
 
-/**
-* Routine Description:
-*   SDK initialization. After the call the capability attributes should be
-*   ready for retrieval via sai_get_switch_attribute().
-*
-* Arguments:
-*   @param[in] profile_id - Handle for the switch profile.
-*   @param[in] switch_hardware_id - Switch hardware ID to open
-*   @param[in] firmware_path_name - Vendor specific path name of the firmware
-*                                   to load
-*   @param[in] switch_notifications - switch notification table
-* Return Values:
-*   @return SAI_STATUS_SUCCESS on success
-*           Failure status code on error
-*/
-sai_status_t redis_initialize_switch(
-    _In_ sai_switch_profile_id_t profile_id,
-    _In_reads_z_(SAI_MAX_HARDWARE_ID_LEN) char* switch_hardware_id,
-    _In_reads_opt_z_(SAI_MAX_FIRMWARE_PATH_NAME_LEN) char* firmware_path_name,
-    _In_ sai_switch_notification_t* switch_notifications)
+void clear_local_state()
 {
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_init_db();
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to init meta db FIXME");
+        throw;
+    }
+}
+
+/**
+ * Routine Description:
+ *   SDK initialization. After the call the capability attributes should be
+ *   ready for retrieval via sai_get_switch_attribute().
+ *
+ * Arguments:
+ *   @param[in] profile_id - Handle for the switch profile.
+ *   @param[in] switch_hardware_id - Switch hardware ID to open
+ *   @param[in] firmware_path_name - Vendor specific path name of the firmware
+ *                                   to load
+ *   @param[in] switch_notifications - switch notification table
+ * Return Values:
+ *   @return SAI_STATUS_SUCCESS on success
+ *           Failure status code on error
+ */
+sai_status_t redis_initialize_switch(
+        _In_ sai_switch_profile_id_t profile_id,
+        _In_reads_z_(SAI_MAX_HARDWARE_ID_LEN) char* switch_hardware_id,
+        _In_reads_opt_z_(SAI_MAX_FIRMWARE_PATH_NAME_LEN) char* firmware_path_name,
+        _In_ sai_switch_notification_t* switch_notifications)
+{
+    std::lock_guard<std::mutex> apilock(g_apimutex);
+
     std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
@@ -147,7 +164,7 @@ sai_status_t redis_initialize_switch(
 
     std::string op = std::string(firmware_path_name);
 
-    SWSS_LOG_INFO("operation: '%s'", op.c_str());
+    SWSS_LOG_NOTICE("operation: '%s'", op.c_str());
 
     if (op == NOTIFY_SAI_INIT_VIEW || op == NOTIFY_SAI_APPLY_VIEW)
     {
@@ -159,6 +176,15 @@ sai_status_t redis_initialize_switch(
 
             if (g_switchInitialized)
             {
+                if (op == NOTIFY_SAI_INIT_VIEW)
+                {
+                    SWSS_LOG_NOTICE("clearing current local state sinice init view is called on initialised switch");
+
+                    // TODO since we clear all defaults here and we are compiling new view
+                    // there may be some problems with GET
+                    clear_local_state();
+                }
+
                 return status;
             }
 
@@ -188,13 +214,15 @@ sai_status_t redis_initialize_switch(
     if (switch_notifications != NULL)
     {
         memcpy(&redis_switch_notifications,
-               switch_notifications,
-               sizeof(sai_switch_notification_t));
+                switch_notifications,
+                sizeof(sai_switch_notification_t));
     }
     else
     {
         memset(&redis_switch_notifications, 0, sizeof(sai_switch_notification_t));
     }
+
+    clear_local_state();
 
     g_run = true;
 
@@ -220,9 +248,11 @@ sai_status_t redis_initialize_switch(
  * Return Values:
  *   None
  */
-void  redis_shutdown_switch(
-    _In_ bool warm_restart_hint)
+void redis_shutdown_switch(
+        _In_ bool warm_restart_hint)
 {
+    std::lock_guard<std::mutex> apilock(g_apimutex);
+
     std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
@@ -261,10 +291,12 @@ void  redis_shutdown_switch(
  *           Failure status code on error
  */
 sai_status_t redis_connect_switch(
-    _In_ sai_switch_profile_id_t profile_id,
-    _In_reads_z_(SAI_MAX_HARDWARE_ID_LEN) char* switch_hardware_id,
-    _In_ sai_switch_notification_t* switch_notifications)
+        _In_ sai_switch_profile_id_t profile_id,
+        _In_reads_z_(SAI_MAX_HARDWARE_ID_LEN) char* switch_hardware_id,
+        _In_ sai_switch_notification_t* switch_notifications)
 {
+    std::lock_guard<std::mutex> apilock(g_apimutex);
+
     std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
@@ -285,6 +317,8 @@ sai_status_t redis_connect_switch(
  */
 void redis_disconnect_switch(void)
 {
+    std::lock_guard<std::mutex> apilock(g_apimutex);
+
     std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
@@ -303,9 +337,11 @@ void redis_disconnect_switch(void)
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_set_switch_attribute(
-    _In_ const sai_attribute_t *attr)
+sai_status_t redis_set_switch_attribute(
+        _In_ const sai_attribute_t *attr)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
     if (attr != NULL)
@@ -317,12 +353,9 @@ sai_status_t  redis_set_switch_attribute(
         }
     }
 
-    sai_status_t status = redis_generic_set(
-            SAI_OBJECT_TYPE_SWITCH,
-            (sai_object_id_t)0, // dummy sai_object_id_t for switch
-            attr);
-
-    return status;
+    return meta_sai_set_switch(
+            attr,
+            &redis_generic_set_switch);
 }
 
 /**
@@ -337,19 +370,18 @@ sai_status_t  redis_set_switch_attribute(
  *    @return SAI_STATUS_SUCCESS on success
  *            Failure status code on error
  */
-sai_status_t  redis_get_switch_attribute(
-    _In_ sai_uint32_t attr_count,
-    _Inout_ sai_attribute_t *attr_list)
+sai_status_t redis_get_switch_attribute(
+        _In_ sai_uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
 {
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
     SWSS_LOG_ENTER();
 
-    sai_status_t status = redis_generic_get(
-            SAI_OBJECT_TYPE_SWITCH,
-            (sai_object_id_t)0,
+    return meta_sai_get_switch(
             attr_count,
-            attr_list);
-
-    return status;
+            attr_list,
+            &redis_generic_get_switch);
 }
 
 /**
