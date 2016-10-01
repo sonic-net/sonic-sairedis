@@ -188,6 +188,8 @@ void saiRemoveDefaultVlanMembers()
         exit_and_notify(EXIT_FAILURE);
     }
 
+    vlanMemberList.resize(attr.value.objlist.count);
+
     for (auto &vm: vlanMemberList)
     {
         status = sai_vlan_api->remove_vlan_member(vm);
