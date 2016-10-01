@@ -102,7 +102,7 @@ DEPS = sai_meta.h sai_extra.h
 CFLAGS=-std=c++11 -I/usr/include/swss -I/usr/include/sai -I/usr/include $(warnings)
 LDFLAGS=-L/usr/lib -lswsscommon
 
-all: tests gen
+all: tests
 
 %.o: %.cpp $(DEPS)
 	g++ -c -o $@ $< $(CFLAGS)
@@ -110,11 +110,8 @@ all: tests gen
 tests: tests.o $(OBJ) 
 	g++ -o $@ $^ $(LDFLAGS)
 
-gen: gen.o $(OBJ)
-	g++ -o $@ $^ $(LDFLAGS)
-
 .PHONY: clean
 
 clean:
-	rm -f *~ .*~ tests gen *.o *.lo
+	rm -f *~ .*~ tests *.o *.lo
 
