@@ -34,7 +34,7 @@ class SaiAttribute
 
         sai_object_type_t m_objectType;
         sai_attribute_t m_attr;
-    
+
         sai_attr_serialization_type_t m_serializationType;
 };
 

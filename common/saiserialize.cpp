@@ -43,6 +43,7 @@ sai_serialization_map_t sai_get_serialization_map()
     map[SAI_OBJECT_TYPE_WRED][SAI_WRED_ATTR_WEIGHT] = SAI_SERIALIZATION_TYPE_UINT8;
     map[SAI_OBJECT_TYPE_WRED][SAI_WRED_ATTR_ECN_MARK_MODE] = SAI_SERIALIZATION_TYPE_INT32;
 
+    map[SAI_OBJECT_TYPE_PORT][SAI_PORT_ATTR_TYPE] = SAI_SERIALIZATION_TYPE_INT32;
     map[SAI_OBJECT_TYPE_PORT][SAI_PORT_ATTR_SPEED] = SAI_SERIALIZATION_TYPE_UINT32;
     map[SAI_OBJECT_TYPE_PORT][SAI_PORT_ATTR_ADMIN_STATE] = SAI_SERIALIZATION_TYPE_BOOL;
     map[SAI_OBJECT_TYPE_PORT][SAI_PORT_ATTR_OPER_STATUS] = SAI_SERIALIZATION_TYPE_INT32;
@@ -244,6 +245,7 @@ sai_object_type_to_string_map_t sai_get_object_type_map()
     map[SAI_OBJECT_TYPE_NEIGHBOR] = TO_STR(SAI_OBJECT_TYPE_NEIGHBOR);
     map[SAI_OBJECT_TYPE_ROUTE] = TO_STR(SAI_OBJECT_TYPE_ROUTE);
     map[SAI_OBJECT_TYPE_VLAN] = TO_STR(SAI_OBJECT_TYPE_VLAN);
+    map[SAI_OBJECT_TYPE_VLAN_MEMBER] = TO_STR(SAI_OBJECT_TYPE_VLAN_MEMBER);
     map[SAI_OBJECT_TYPE_TUNNEL] = TO_STR(SAI_OBJECT_TYPE_TUNNEL);
     map[SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY] = TO_STR(SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY);
 
@@ -256,7 +258,7 @@ sai_status_t sai_get_object_type_string(sai_object_type_t object_type, std::stri
 
     if (it == g_object_type_map.end())
     {
-        SWSS_LOG_ERROR("serialization object not found %x", object_type);
+        SWSS_LOG_ERROR("serialization object not found %d", object_type);
 
         return SAI_STATUS_NOT_IMPLEMENTED;
     }
@@ -1347,6 +1349,13 @@ sai_status_t sai_deserialize_free_fdb_event_notification_data(
     return SAI_STATUS_SUCCESS;
 }
 
+#define RETURN_ON_ERROR(x)\
+{\
+    sai_status_t s = (x);\
+    if (s != SAI_STATUS_SUCCESS)\
+        return s;\
+}
+
 sai_status_t transfer_attribute(
         _In_ sai_attr_serialization_type_t serialization_type,
         _In_ sai_attribute_t &src_attr,
@@ -1416,31 +1425,31 @@ sai_status_t transfer_attribute(
             break;
 
         case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
-            transfer_list(src_attr.value.objlist, dst_attr.value.objlist, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.objlist, dst_attr.value.objlist, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_UINT8_LIST:
-            transfer_list(src_attr.value.u8list, dst_attr.value.u8list, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.u8list, dst_attr.value.u8list, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_INT8_LIST:
-            transfer_list(src_attr.value.s8list, dst_attr.value.s8list, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.s8list, dst_attr.value.s8list, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_UINT16_LIST:
-            transfer_list(src_attr.value.u16list, dst_attr.value.u16list, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.u16list, dst_attr.value.u16list, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_INT16_LIST:
-            transfer_list(src_attr.value.s16list, dst_attr.value.s16list, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.s16list, dst_attr.value.s16list, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_UINT32_LIST:
-            transfer_list(src_attr.value.u32list, dst_attr.value.u32list, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.u32list, dst_attr.value.u32list, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_INT32_LIST:
-            transfer_list(src_attr.value.s32list, dst_attr.value.s32list, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.s32list, dst_attr.value.s32list, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_UINT32_RANGE:
@@ -1452,20 +1461,20 @@ sai_status_t transfer_attribute(
             break;
 
         case SAI_SERIALIZATION_TYPE_VLAN_LIST:
-            transfer_list(src_attr.value.vlanlist, dst_attr.value.vlanlist, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.vlanlist, dst_attr.value.vlanlist, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
             transfer_primitive(src_attr.value.portbreakout.breakout_mode, dst_attr.value.portbreakout.breakout_mode);
-            transfer_list(src_attr.value.portbreakout.port_list, dst_attr.value.portbreakout.port_list, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.portbreakout.port_list, dst_attr.value.portbreakout.port_list, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
-            transfer_list(src_attr.value.qosmap, dst_attr.value.qosmap, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.qosmap, dst_attr.value.qosmap, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
-            transfer_list(src_attr.value.tunnelmap, dst_attr.value.tunnelmap, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.tunnelmap, dst_attr.value.tunnelmap, countOnly));
             break;
 
             /* ACL FIELD DATA */
@@ -1536,12 +1545,12 @@ sai_status_t transfer_attribute(
 
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
             transfer_primitive(src_attr.value.aclfield.enable, dst_attr.value.aclfield.enable);
-            transfer_list(src_attr.value.aclfield.data.objlist, dst_attr.value.aclfield.data.objlist, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.aclfield.data.objlist, dst_attr.value.aclfield.data.objlist, countOnly));
             break;
 
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST:
             transfer_primitive(src_attr.value.aclfield.enable, dst_attr.value.aclfield.enable);
-            transfer_list(src_attr.value.aclfield.mask.u8list, dst_attr.value.aclfield.mask.u8list, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.aclfield.mask.u8list, dst_attr.value.aclfield.mask.u8list, countOnly));
             transfer_list(src_attr.value.aclfield.data.u8list, dst_attr.value.aclfield.data.u8list, countOnly);
             break;
 
@@ -1599,7 +1608,7 @@ sai_status_t transfer_attribute(
 
         case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
             transfer_primitive(src_attr.value.aclaction.enable, dst_attr.value.aclaction.enable);
-            transfer_list(src_attr.value.aclaction.parameter.objlist, dst_attr.value.aclaction.parameter.objlist, countOnly);
+            RETURN_ON_ERROR(transfer_list(src_attr.value.aclaction.parameter.objlist, dst_attr.value.aclaction.parameter.objlist, countOnly));
             break;
 
         default:
@@ -1609,7 +1618,7 @@ sai_status_t transfer_attribute(
     return SAI_STATUS_SUCCESS;
 }
 
-void transfer_attributes(
+sai_status_t transfer_attributes(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t attr_count,
         _In_ sai_attribute_t *src_attr_list,
@@ -1634,8 +1643,10 @@ void transfer_attributes(
             exit(EXIT_FAILURE);
         }
 
-        transfer_attribute(serialization_type, src_attr, dst_attr, countOnly);
+        RETURN_ON_ERROR(transfer_attribute(serialization_type, src_attr, dst_attr, countOnly));
     }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 void sai_serialize_ip_address(

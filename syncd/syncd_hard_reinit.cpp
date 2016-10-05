@@ -170,6 +170,7 @@ void saiRemoveDefaultVlanMembers()
 
     const auto& portList = saiGetPortList();
 
+    // TODO we should query for actual list size not port size
     std::vector<sai_object_id_t> vlanMemberList;
 
     vlanMemberList.resize(portList.size());
@@ -198,7 +199,7 @@ void saiRemoveDefaultVlanMembers()
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Failed to remove vlan member 0x%llx from vland %d", vm, DEFAULT_VLAN_NUMBER);
+            SWSS_LOG_ERROR("Failed to remove vlan member 0x%llx from vlan %d", vm, DEFAULT_VLAN_NUMBER);
 
             exit_and_notify(EXIT_FAILURE);
         }

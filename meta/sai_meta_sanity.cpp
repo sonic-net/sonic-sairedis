@@ -6,7 +6,7 @@
 // NOTE: since enum is a key we need size, hence HashForEnum
 std::unordered_map<sai_object_type_t,std::unordered_map<sai_attr_id_t, const sai_attr_metadata_t*>, HashForEnum> AttributesMetadata;
 
-// Serialization type name resolve 
+// Serialization type name resolve
 
 std::unordered_map<int32_t, std::string> get_serialization_type_map()
 {
@@ -442,6 +442,7 @@ std::unordered_map<int32_t, std::unordered_map<int32_t, std::string>> get_attr_n
     ATTR_MAP_SET(PORT,SAI_PORT_ATTR_MULTICAST_STORM_CONTROL_POLICER_ID);
     ATTR_MAP_SET(PORT,SAI_PORT_ATTR_GLOBAL_FLOW_CONTROL);
     ATTR_MAP_SET(PORT,SAI_PORT_ATTR_MAX_LEARNED_ADDRESSES);
+    ATTR_MAP_SET(PORT,SAI_PORT_ATTR_FDB_LEARNING);
     ATTR_MAP_SET(PORT,SAI_PORT_ATTR_FDB_LEARNING_LIMIT_VIOLATION);
     ATTR_MAP_SET(PORT,SAI_PORT_ATTR_INGRESS_MIRROR_SESSION);
     ATTR_MAP_SET(PORT,SAI_PORT_ATTR_EGRESS_MIRROR_SESSION);

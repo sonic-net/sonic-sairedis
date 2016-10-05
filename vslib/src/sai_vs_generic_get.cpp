@@ -21,9 +21,7 @@ sai_status_t internal_vs_get_process(
 
     SaiAttributeList list(object_type, values, false);
 
-    transfer_attributes(object_type, 1, list.get_attr_list(), attr, false);
-
-    return SAI_STATUS_SUCCESS;
+    return transfer_attributes(object_type, 1, list.get_attr_list(), attr, false);
 }
 
 sai_status_t internal_vs_generic_get(
@@ -53,6 +51,9 @@ sai_status_t internal_vs_generic_get(
 
     for (uint32_t i = 0; i < attr_count; ++i)
     {
+        // TODO we need to also support "0" for list types
+        // to return only number
+
         const std::string &str_attr_id = fvField(values[i]);
 
         // actual count that user requests is in attr_value
@@ -79,15 +80,28 @@ sai_status_t internal_vs_generic_get(
                 str_attr_value,
                 &attr_list[i]);
 
+        if (status == SAI_STATUS_BUFFER_OVERFLOW)
+        {
+            // this is considered partial success, since we get correct list length
+
+            SWSS_LOG_NOTICE("Get returned BUFFER_OVERFLOW object type: %d: id: %s, attr_id: %s",
+                    object_type,
+                    serialized_object_id.c_str(),
+                    str_attr_id.c_str());
+
+            return status;
+        }
+
         if (status != SAI_STATUS_SUCCESS)
         {
+            // all other errors
 
             SWSS_LOG_ERROR("Get failed, attribute process failed, object type: %d: id: %s, attr_id: %s",
                     object_type,
                     serialized_object_id.c_str(),
                     str_attr_id.c_str());
 
-            return SAI_STATUS_FAILURE;
+            return status;
         }
     }
 
@@ -200,15 +214,18 @@ sai_status_t vs_generic_get_vlan(
 }
 
 sai_status_t vs_generic_get_trap(
-        _In_ sai_hostif_trap_id_t hostif_trapid,
+        _In_ sai_hostif_trap_id_t hostif_trap_id,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    return vs_generic_get(
+    std::string str_hostif_trap_id;
+    sai_serialize_primitive(hostif_trap_id, str_hostif_trap_id);
+
+    return internal_vs_generic_get(
             SAI_OBJECT_TYPE_TRAP,
-            hostif_trapid,
+            str_hostif_trap_id,
             attr_count,
             attr_list);
 }
@@ -232,4 +249,3 @@ sai_status_t vs_generic_get_switch(
 
     return status;
 }
-

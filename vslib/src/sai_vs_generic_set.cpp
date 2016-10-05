@@ -130,14 +130,17 @@ sai_status_t vs_generic_set_vlan(
 }
 
 sai_status_t vs_generic_set_trap(
-        _In_ sai_hostif_trap_id_t hostif_trapid,
+        _In_ sai_hostif_trap_id_t hostif_trap_id,
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
-    return vs_generic_set(
+    std::string str_hostif_trap_id;
+    sai_serialize_primitive(hostif_trap_id, str_hostif_trap_id);
+
+    return internal_vs_generic_set(
             SAI_OBJECT_TYPE_TRAP,
-            hostif_trapid,
+            str_hostif_trap_id,
             attr);
 }
 

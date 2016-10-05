@@ -78,6 +78,29 @@ sai_object_id_t redis_create_virtual_object_id(
     return vid;
 }
 
+std::unordered_map<sai_object_id_t, sai_object_id_t> local_rid_to_vid;
+std::unordered_map<sai_object_id_t, sai_object_id_t> local_vid_to_rid;
+
+void save_rid_and_vid_to_local(
+        _In_ sai_object_id_t rid,
+        _In_ sai_object_id_t vid)
+{
+    SWSS_LOG_ENTER();
+
+    local_rid_to_vid[rid] = vid;
+    local_vid_to_rid[vid] = rid;
+}
+
+void remove_rid_and_vid_from_local(
+        _In_ sai_object_id_t rid,
+        _In_ sai_object_id_t vid)
+{
+    SWSS_LOG_ENTER();
+
+    local_rid_to_vid.erase(rid);
+    local_vid_to_rid.erase(vid);
+}
+
 sai_object_id_t translate_rid_to_vid(
         _In_ sai_object_id_t rid)
 {
@@ -88,6 +111,13 @@ sai_object_id_t translate_rid_to_vid(
         SWSS_LOG_DEBUG("translated RID null to VID null");
 
         return SAI_NULL_OBJECT_ID;
+    }
+
+    auto it = local_rid_to_vid.find(rid);
+
+    if (it != local_rid_to_vid.end())
+    {
+        return it->second;
     }
 
     sai_object_id_t vid;
@@ -130,6 +160,8 @@ sai_object_id_t translate_rid_to_vid(
 
     g_redisClient->hset(RIDTOVID, str_rid, str_vid);
     g_redisClient->hset(VIDTORID, str_vid, str_rid);
+
+    save_rid_and_vid_to_local(rid, vid);
 
     return vid;
 }
@@ -213,6 +245,13 @@ sai_object_id_t translate_vid_to_rid(
     {
         SWSS_LOG_DEBUG("translated RID null to VID null");
         return SAI_NULL_OBJECT_ID;
+    }
+
+    auto it = local_vid_to_rid.find(vid);
+
+    if (it != local_vid_to_rid.end())
+    {
+        return it->second;
     }
 
     std::string str_vid;
@@ -468,6 +507,8 @@ sai_status_t handle_generic(
                     g_redisClient->hset(VIDTORID, str_vid, str_rid);
                     g_redisClient->hset(RIDTOVID, str_rid, str_vid);
 
+                    save_rid_and_vid_to_local(real_object_id, object_id);
+
                     SWSS_LOG_INFO("saved VID %s to RID %s", str_vid.c_str(), str_rid.c_str());
                 }
                 else
@@ -500,6 +541,8 @@ sai_status_t handle_generic(
 
                 g_redisClient->hdel(VIDTORID, str_vid);
                 g_redisClient->hdel(RIDTOVID, str_rid);
+
+                remove_rid_and_vid_from_local(rid, object_id);
 
                 return remove(rid);
             }
@@ -1180,21 +1223,21 @@ void handlePortMap(const std::string& portMapFile)
             std::cerr << "port map parsing: not found ' ' in line" << line.c_str() << std::endl;
             continue;
         }
-		 
-        std::string fp_value = line.substr(0, pos);		
+
+        std::string fp_value = line.substr(0, pos);
         std::string lanes    = line.substr(pos + 1);
         lanes.erase(lanes.begin(), std::find_if(lanes.begin(), lanes.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
         std::istringstream iss(lanes);
         std::string lane_str;
         std::set<int> lane_set;
-		
+
         while (getline(iss, lane_str, ','))
         {
             int lane = stoi(lane_str);
             lane_set.insert(lane);
-        }		 
+        }
 
-        gPortMap.insert(std::pair<std::set<int>,std::string>(lane_set,fp_value));     
+        gPortMap.insert(std::pair<std::set<int>,std::string>(lane_set,fp_value));
     }
 }
 #endif // SAITHRIFT

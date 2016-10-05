@@ -18,7 +18,7 @@ extern "C" {
 
 #define TO_STR(x) #x
 
-typedef enum _sai_attr_serialization_type_t 
+typedef enum _sai_attr_serialization_type_t
 {
     SAI_SERIALIZATION_TYPE_BOOL,
     SAI_SERIALIZATION_TYPE_CHARDATA,
@@ -107,14 +107,14 @@ void sai_dealloc_array(
 void sai_deserialize_buffer(
         _In_ const std::string &s,
         _In_ int index,
-        _In_ size_t buffer_size, 
+        _In_ size_t buffer_size,
         _In_ void *buffer);
 
 void sai_free_buffer(void * buffer);
 
 void sai_serialize_buffer(
-        _In_ const void *buffer, 
-        _In_ size_t buffer_size, 
+        _In_ const void *buffer,
+        _In_ size_t buffer_size,
         _Out_ std::string &s);
 
 template<typename T>
@@ -227,20 +227,40 @@ void transfer_primitive(
 }
 
 template<typename T>
-void transfer_list(
+sai_status_t transfer_list(
         _In_ const T &src_element,
         _In_ T &dst_element,
         _In_ bool countOnly)
 {
+    if (countOnly || dst_element.count == 0)
+    {
+        transfer_primitive(src_element.count, dst_element.count);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (dst_element.list == NULL)
+    {
+        SWSS_LOG_ERROR("destination list is null, unable to transfer elements");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (dst_element.count >= src_element.count)
+    {
+        transfer_primitive(src_element.count, dst_element.count);
+
+        for (size_t i = 0; i < src_element.count; i++)
+        {
+            transfer_primitive(src_element.list[i], dst_element.list[i]);
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // input buffer is too small to get all list elements, so return count only
     transfer_primitive(src_element.count, dst_element.count);
 
-    if (countOnly)
-        return;
-
-    for (size_t i = 0; i < src_element.count; i++)
-    {
-        transfer_primitive(src_element.list[i], dst_element.list[i]);
-    }
+    return SAI_STATUS_BUFFER_OVERFLOW;
 }
 
 void sai_serialize_ip_address(
@@ -330,7 +350,7 @@ sai_status_t transfer_attribute(
         _In_ sai_attribute_t &dst_attr,
         _In_ bool countOnly);
 
-void transfer_attributes(
+sai_status_t transfer_attributes(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t attr_count,
         _In_ sai_attribute_t *src_attr_list,

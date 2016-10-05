@@ -3,14 +3,13 @@
 
 ObjectHash g_objectHash;
 
-uint64_t real_id = 0;
 uint64_t real_ids[SAI_OBJECT_TYPE_MAX];
+
+#define VS_OID_FLAG 0x8000000000000000
 
 void reset_id_counter()
 {
     SWSS_LOG_ENTER();
-
-    real_id = 0;
 
     memset(real_ids, 0, sizeof(real_ids));
 }
@@ -20,19 +19,39 @@ sai_object_id_t vs_create_real_object_id(
 {
     SWSS_LOG_ENTER();
 
-    real_id++;
+    if (object_type <= SAI_OBJECT_TYPE_NULL ||
+        object_type >= SAI_OBJECT_TYPE_MAX)
+    {
+        SWSS_LOG_ERROR("invalid object type %d for createing real id", object_type);
 
-    sai_object_id_t objectId = (((sai_object_id_t)object_type) << 48) | real_id;
+        return SAI_NULL_OBJECT_ID;
+    }
 
-    SWSS_LOG_DEBUG("created RID %llx", objectId);
+    // count from zero for each type separetly
+    uint64_t real_id = real_ids[object_type]++;
 
-    return objectId;
+    sai_object_id_t object_id = (((sai_object_id_t)object_type) << 48) | real_id | VS_OID_FLAG;
+
+    SWSS_LOG_DEBUG("created RID %llx", object_id);
+
+    return object_id;
 }
 
-sai_object_type_t sai_object_type_query(_In_ sai_object_id_t sai_object_id)
+sai_object_type_t sai_object_type_query(_In_ sai_object_id_t object_id)
 {
-    // TODO add flag for visibility that this is vs switch
-    return (sai_object_type_t)(sai_object_id >> 48);
+    object_id = object_id & ~VS_OID_FLAG;
+
+    sai_object_type_t object_type = (sai_object_type_t)(object_id >> 48);
+
+    if (object_type <= SAI_OBJECT_TYPE_NULL ||
+        object_type >= SAI_OBJECT_TYPE_MAX)
+    {
+        SWSS_LOG_ERROR("invalid object type %d for createing real id", object_type);
+
+        return SAI_OBJECT_TYPE_NULL;
+    }
+
+    return object_type;
 }
 
 sai_status_t internal_vs_generic_create(
@@ -85,6 +104,8 @@ sai_status_t vs_generic_create(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    std::string otstr;
 
     // create new real object ID
     *object_id = vs_create_real_object_id(object_type);
@@ -156,6 +177,23 @@ sai_status_t vs_generic_create_route_entry(
             attr_list);
 
     return status;
+}
+
+sai_status_t vs_generic_create_trap(
+        _In_ sai_hostif_trap_id_t hostif_trap_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    std::string str_hostif_trap_id;
+    sai_serialize_primitive(hostif_trap_id, str_hostif_trap_id);
+
+    return internal_vs_generic_create(
+            SAI_OBJECT_TYPE_TRAP,
+            str_hostif_trap_id,
+            attr_count,
+            attr_list);
 }
 
 sai_status_t vs_generic_create_vlan(

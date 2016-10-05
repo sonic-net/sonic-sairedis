@@ -68,6 +68,11 @@ sai_status_t vs_generic_create_route_entry(
 sai_status_t vs_generic_create_vlan(
         _In_ sai_vlan_id_t vlan_id);
 
+sai_status_t vs_generic_create_trap(
+        _In_ sai_hostif_trap_id_t hostif_trap_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list);
+
 // REMOVE
 
 sai_status_t vs_generic_remove(

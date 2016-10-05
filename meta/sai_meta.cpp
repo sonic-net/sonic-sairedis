@@ -353,6 +353,7 @@ class SaiAttrWrapper
 #define META_LOG_ERROR(md, format, ...) SWSS_LOG_ERROR("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_DEBUG(md, format, ...) SWSS_LOG_DEBUG("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_NOTICE(md, format, ...) SWSS_LOG_NOTICE("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
+#define META_LOG_INFO(md, format, ...) SWSS_LOG_INFO("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
 
 // traps and vlan will be converted to oid
 // fdb, route, neighbor don't need reference count,
@@ -2164,28 +2165,19 @@ sai_status_t meta_generic_validation_get(
                 break;
 
             case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
-
-                // allow NULL list if count is zero (just get list length)
-
-                if (value.objlist.count != 0 && value.objlist.list == NULL)
-                {
-                    META_LOG_ERROR(md, "object list count is %u, but list is NULL", value.objlist.count);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                if (value.objlist.count > MAX_LIST_COUNT)
-                {
-                    META_LOG_ERROR(md, "object list count %u is > then max list count %u", value.objlist.count, MAX_LIST_COUNT);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
+                VALIDATION_LIST(md, value.objlist);
                 break;
 
             case SAI_SERIALIZATION_TYPE_VLAN_LIST:
 
                 {
+                    if (value.vlanlist.count == 0 && value.vlanlist.list != NULL)
+                    {
+                        META_LOG_ERROR(md, "vlan list count is zero, but list not NULL");
+
+                        return SAI_STATUS_INVALID_PARAMETER;
+                    }
+
                     if (value.vlanlist.count != 0 && value.vlanlist.list == NULL)
                     {
                         META_LOG_ERROR(md, "vlan list count is %u, but list is NULL", value.vlanlist.count);
@@ -2222,26 +2214,8 @@ sai_status_t meta_generic_validation_get(
                 break;
 
             case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
-
-                {
-                    // allow NULL list if count is zero (just get list length)
-
-                    if (value.aclfield.data.objlist.count != 0 && value.aclfield.data.objlist.list == NULL)
-                    {
-                        META_LOG_ERROR(md, "object list count is %u, but list is NULL", value.aclfield.data.objlist.count);
-
-                        return SAI_STATUS_INVALID_PARAMETER;
-                    }
-
-                    if (value.aclfield.data.objlist.count > MAX_LIST_COUNT)
-                    {
-                        META_LOG_ERROR(md, "object list count %u is > then max list count %u", value.aclfield.data.objlist.count, MAX_LIST_COUNT);
-
-                        return SAI_STATUS_INVALID_PARAMETER;
-                    }
-
-                    break;
-                }
+                VALIDATION_LIST(md, value.aclfield.data.objlist);
+                break;
 
                 // case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST:
 
@@ -2263,26 +2237,8 @@ sai_status_t meta_generic_validation_get(
                 break;
 
             case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
-
-                {
-                    // allow NULL list if count is zero (just get list length)
-
-                    if (value.aclaction.parameter.objlist.count != 0 && value.aclaction.parameter.objlist.list == NULL)
-                    {
-                        META_LOG_ERROR(md, "object list count is %u, but list is NULL", value.aclaction.parameter.objlist.count);
-
-                        return SAI_STATUS_INVALID_PARAMETER;
-                    }
-
-                    if (value.aclaction.parameter.objlist.count > MAX_LIST_COUNT)
-                    {
-                        META_LOG_ERROR(md, "object list count %u is > then max list count %u", value.aclaction.parameter.objlist.count, MAX_LIST_COUNT);
-
-                        return SAI_STATUS_INVALID_PARAMETER;
-                    }
-
-                    break;
-                }
+                VALIDATION_LIST(md, value.aclaction.parameter.objlist);
+                break;
 
                 // ACL END
 
@@ -3013,7 +2969,11 @@ void meta_generic_validation_post_get_objlist(
 
         if (!object_reference_exists(oid))
         {
-            META_LOG_NOTICE(md, "returned get object on list [%u] oid 0x%llx object type %d does not exists in local DB (snoop)", i, oid, ot);
+            // NOTE: there may happen that user will request multiple object lists
+            // and first list was retrived ok, but second failed with overflow
+            // then we may forget to snoop
+
+            META_LOG_INFO(md, "returned get object on list [%u] oid 0x%llx object type %d does not exists in local DB (snoop)", i, oid, ot);
 
             sai_object_meta_key_t key = { .object_type = ot, .key = { .object_id = oid } };
 

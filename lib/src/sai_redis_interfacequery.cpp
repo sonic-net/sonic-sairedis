@@ -317,7 +317,5 @@ sai_status_t sai_api_uninitialize(void)
 
     g_apiInitialized = false;
 
-    SWSS_LOG_ERROR("not implemented");
-
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
