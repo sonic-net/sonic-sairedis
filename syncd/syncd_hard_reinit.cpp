@@ -140,9 +140,11 @@ void checkAllIds()
         g_vidToRidMap.erase(it);
     }
 
-    if (g_vidToRidMap.size() != 0)
+    size_t size = g_vidToRidMap.size();
+
+    if (size != 0)
     {
-        SWSS_LOG_ERROR("vid to rid map is not empty after translation");
+        SWSS_LOG_ERROR("vid to rid map is not empty (%lu) after translation", size);
 
         for (auto &kv: g_vidToRidMap)
         {
@@ -206,6 +208,8 @@ void saiRemoveDefaultVlanMembers()
 void hardReinit()
 {
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_TIMER("hard reinit");
 
     saiRemoveDefaultVlanMembers();
 
@@ -323,7 +327,56 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
 
             SWSS_LOG_INFO("default virtual router will not be created, processed VID %llx to RID %llx", vid, rid);
         }
+    }
+    else if (objectType == SAI_OBJECT_TYPE_QUEUE)
+    {
+        auto it = g_vidToRidMap.find(vid);
 
+        if (it == g_vidToRidMap.end())
+        {
+            SWSS_LOG_ERROR("failed to find VID %llx in VIDTORID map", vid);
+
+            exit_and_notify(EXIT_FAILURE);
+        }
+
+        sai_object_id_t queueRid = it->second;
+
+        if (isDefaultQueueId(queueRid));
+        {
+            // this is one of default queue id
+            // we don't need to create it, just set attributes if any
+
+            rid = queueRid;
+
+            createObject = false;
+
+            SWSS_LOG_DEBUG("default queue will not be created, processed VID %llx to RID %llx", vid, rid);
+        }
+    }
+    else if (objectType == SAI_OBJECT_TYPE_PRIORITY_GROUP)
+    {
+        auto it = g_vidToRidMap.find(vid);
+
+        if (it == g_vidToRidMap.end())
+        {
+            SWSS_LOG_ERROR("failed to find VID %llx in VIDTORID map", vid);
+
+            exit_and_notify(EXIT_FAILURE);
+        }
+
+        sai_object_id_t pgRid = it->second;
+
+        if (isDefaultPriorityGroupId(pgRid))
+        {
+            // this is one of default priority group id
+            // we don't need to create it, just set attributes if any
+
+            rid = pgRid;
+
+            createObject = false;
+
+            SWSS_LOG_DEBUG("default priority group will not be created, processed VID %llx to RID %llx", vid, rid);
+        }
     }
     else if (objectType == SAI_OBJECT_TYPE_TRAP_GROUP)
     {

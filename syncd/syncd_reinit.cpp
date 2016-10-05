@@ -1,6 +1,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <set>
 
 #include "syncd.h"
 
@@ -64,6 +65,7 @@ std::vector<sai_object_id_t> saiGetPortList()
     attr.value.objlist.count = portCount;
     attr.value.objlist.list = portList.data();
 
+    // we assube port list is always returned in the same order
     sai_status_t status = sai_switch_api->get_switch_attribute(1, &attr);
 
     if (status != SAI_STATUS_SUCCESS)
@@ -120,7 +122,6 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> saiGetHardwareLaneMap()
 
 sai_object_id_t saiGetDefaultTrapGroup()
 {
-
     SWSS_LOG_ENTER();
 
     sai_attribute_t attr;
@@ -481,7 +482,6 @@ void helperCheckDefaultVirtualRouterId()
     }
 }
 
-
 void helperCheckDefaultTrapGroup()
 {
     SWSS_LOG_ENTER();
@@ -549,6 +549,34 @@ void helperCheckCpuId()
     }
 }
 
+void redisCreateDummyEntryInAsicView(sai_object_id_t objectId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t vid = translate_rid_to_vid(objectId);
+
+    sai_object_type_t objectType = sai_object_type_query(objectId);
+
+    if (objectType == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID %llx", objectId);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    std::string strObjectType;
+
+    sai_serialize_primitive(objectType, strObjectType);
+
+    std::string strVid;
+
+    sai_serialize_primitive(vid, strVid);
+
+    std::string strKey = "ASIC_STATE:" + strObjectType + ":" + strVid;
+
+    g_redisClient->hset(strKey, "NULL", "NULL");
+}
+
 void helperCheckPortIds()
 {
     SWSS_LOG_ENTER();
@@ -562,28 +590,7 @@ void helperCheckPortIds()
         // translate will create entry if missing
         // we assume here that port numbers didn't changed
         // during restarts
-        sai_object_id_t vid = translate_rid_to_vid(portId);
-
-        sai_object_type_t objectType = sai_object_type_query(portId);
-
-        if (objectType == SAI_OBJECT_TYPE_NULL)
-        {
-            SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID %llx", portId);
-
-            exit_and_notify(EXIT_FAILURE);
-        }
-
-        std::string strObjectType;
-
-        sai_serialize_primitive(objectType, strObjectType);
-
-        std::string strVid;
-
-        sai_serialize_primitive(vid, strVid);
-
-        std::string strKey = "ASIC_STATE:" + strObjectType + ":" + strVid;
-
-        g_redisClient->hset(strKey, "NULL", "NULL");
+        redisCreateDummyEntryInAsicView(portId);
     }
 }
 
@@ -610,6 +617,174 @@ void helperCheckVlanId()
     g_redisClient->hset(strKey, "NULL", "NULL");
 }
 
+sai_uint32_t saiGetPortNumberOfQueues(sai_object_id_t portId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
+
+    sai_status_t status = sai_port_api->get_port_attribute(portId, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get port number of queues: %d", status);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    SWSS_LOG_DEBUG("port 0x%llx queues number: %u", portId, attr.value.u32);
+
+    return attr.value.u32;
+}
+
+std::vector<sai_object_id_t> saiGetPortQueues(sai_object_id_t portId)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t queueCount = saiGetPortNumberOfQueues(portId);
+
+    std::vector<sai_object_id_t> queueList;
+
+    queueList.resize(queueCount);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+    attr.value.objlist.count = queueCount;
+    attr.value.objlist.list = queueList.data();
+
+    sai_status_t status = sai_port_api->get_port_attribute(portId, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get port queue list: %d", status);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    return queueList;
+}
+
+// later we need to have this in redis with port mapping
+std::set<sai_object_id_t> g_defaultQueuesRids;
+
+bool isDefaultQueueId(sai_object_id_t queueId)
+{
+    return g_defaultQueuesRids.find(queueId) != g_defaultQueuesRids.end();
+}
+
+void helperCheckQueuesIds()
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_id_t> ports = saiGetPortList();
+
+    for (const auto& portId: ports)
+    {
+        SWSS_LOG_DEBUG("getting queues for port 0x%llx", portId);
+
+        std::vector<sai_object_id_t> queues = saiGetPortQueues(portId);
+
+        // we have queues
+
+        for (const auto& queueId: queues)
+        {
+            // create entry in asic view if missing
+            // we assume here that queue numbers will
+            // not be changed during restarts
+
+            redisCreateDummyEntryInAsicView(queueId);
+
+            g_defaultQueuesRids.insert(queueId);
+        }
+    }
+}
+
+sai_uint32_t saiGetPortNumberOfPriorityGroups(sai_object_id_t portId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_NUMBER_OF_PRIORITY_GROUPS;
+
+    sai_status_t status = sai_port_api->get_port_attribute(portId, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get port number of priority groups: %d", status);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    SWSS_LOG_DEBUG("port 0x%llx priority groups number: %u", portId, attr.value.u32);
+
+    return attr.value.u32;
+}
+
+std::vector<sai_object_id_t> saiGetPortPriorityGroups(sai_object_id_t portId)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t pgCount =  saiGetPortNumberOfPriorityGroups(portId);
+
+    std::vector<sai_object_id_t> pgList;
+
+    pgList.resize(pgCount);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_PRIORITY_GROUP_LIST;
+    attr.value.objlist.count = pgCount;
+    attr.value.objlist.list = pgList.data();
+
+    sai_status_t status = sai_port_api->get_port_attribute(portId, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get port priority groups list: %d", status);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    return pgList;
+}
+
+// later we need to have this in redis with port mapping
+std::set<sai_object_id_t> g_defaultPriorityGroupsRids;
+
+bool isDefaultPriorityGroupId(sai_object_id_t pgId)
+{
+    return g_defaultPriorityGroupsRids.find(pgId) != g_defaultPriorityGroupsRids.end();
+}
+
+void helperCheckPriorityGroupsIds()
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_id_t> ports = saiGetPortList();
+
+    for (const auto& portId: ports)
+    {
+        SWSS_LOG_DEBUG("getting priority groups for port 0x%llx", portId);
+
+        std::vector<sai_object_id_t> pgs = saiGetPortPriorityGroups(portId);
+
+        for (const auto& pgId: pgs)
+        {
+            // create entry in asic view if missing
+            // we assume here that PG numbers will
+            // not be changed during restarts
+
+            redisCreateDummyEntryInAsicView(pgId);
+
+            g_defaultPriorityGroupsRids.insert(pgId);
+        }
+    }
+}
+
 void onSyncdStart(bool warmStart)
 {
     // it may happen that after initialize we will receive
@@ -623,6 +798,8 @@ void onSyncdStart(bool warmStart)
 
     SWSS_LOG_ENTER();
 
+    SWSS_LOG_TIMER("on syncd start");
+
     helperCheckLaneMap();
 
     helperCheckCpuId();
@@ -634,6 +811,10 @@ void onSyncdStart(bool warmStart)
     helperCheckVlanId();
 
     helperCheckPortIds();
+
+    helperCheckQueuesIds();
+
+    helperCheckPriorityGroupsIds();
 
     if (warmStart)
     {

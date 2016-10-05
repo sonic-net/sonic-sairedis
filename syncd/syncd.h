@@ -175,4 +175,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> redisGetLaneMap();
 
 std::vector<sai_object_id_t> saiGetPortList();
 
+bool isDefaultQueueId(sai_object_id_t queueId);
+bool isDefaultPriorityGroupId(sai_object_id_t pgId);
+
 #endif // __SYNCD_H__
