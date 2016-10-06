@@ -144,7 +144,7 @@ void checkAllIds()
 
     if (size != 0)
     {
-        SWSS_LOG_ERROR("vid to rid map is not empty (%lu) after translation", size);
+        SWSS_LOG_ERROR("vid to rid map is not empty (%zu) after translation", size);
 
         for (auto &kv: g_vidToRidMap)
         {
