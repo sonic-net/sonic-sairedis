@@ -132,7 +132,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_PROFILE,
         .attrid                 = SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH,
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT8,
-        .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_AND_SET,
+        .flags                  = /*SAI_ATTR_FLAGS_MANDATORY_ON_CREATE |*/ SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
         .allownullobjectid      = false,
         .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_NONE,
@@ -143,13 +143,14 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
 
         // TODO condition here is complex, since if TH is inherited from pool then this is hard to determine
         // and it should be SAI_BUFFER_POOL_TH_MODE = SAI_BUFFER_THRESHOLD_MODE_DYNAMIC, so this attribute depends on other attribute
+        // FIXME: SAI_ATTR_FLAGS_MANDATORY_ON_CREATE was temporary comment out until SAI has better support for it
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_PROFILE,
         .attrid                 = SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH,
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
-        .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_AND_SET,
+        .flags                  = /*SAI_ATTR_FLAGS_MANDATORY_ON_CREATE |*/ SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
         .allownullobjectid      = false,
         .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_NONE,
@@ -160,6 +161,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
 
         // TODO condition here is complex, since if TH is inherited from pool then this is hard to determine
         // and it should be SAI_BUFFER_POOL_TH_MODE = SAI_BUFFER_THRESHOLD_MODE_DYNAMIC, so this attribute depends on other attribute
+        // FIXME: SAI_ATTR_FLAGS_MANDATORY_ON_CREATE was temporary comment out until SAI has better support for it    
     },
 
     {
