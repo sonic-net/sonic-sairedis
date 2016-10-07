@@ -647,6 +647,11 @@ std::vector<sai_object_id_t> saiGetPortQueues(sai_object_id_t portId)
 
     std::vector<sai_object_id_t> queueList;
 
+    if (queueCount == 0)
+    {
+        return queueList;
+    }
+
     queueList.resize(queueCount);
 
     sai_attribute_t attr;
@@ -731,6 +736,11 @@ std::vector<sai_object_id_t> saiGetPortPriorityGroups(sai_object_id_t portId)
     uint32_t pgCount =  saiGetPortNumberOfPriorityGroups(portId);
 
     std::vector<sai_object_id_t> pgList;
+
+    if (pgCount == 0)
+    {
+        return pgList;
+    }
 
     pgList.resize(pgCount);
 
