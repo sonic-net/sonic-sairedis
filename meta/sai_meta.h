@@ -574,6 +574,7 @@ EXTERN_METADATA(nexthop);
 EXTERN_METADATA(nexthopgroup);
 EXTERN_METADATA(policer);
 EXTERN_METADATA(port);
+EXTERN_METADATA(priority_group);
 EXTERN_METADATA(qos_maps);
 EXTERN_METADATA(queue);
 EXTERN_METADATA(route);

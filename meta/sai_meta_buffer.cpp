@@ -1,5 +1,26 @@
 #include "sai_meta.h"
 
+// METADATA for SAI_OBJECT_TYPE_PRIORITY_GROUP
+
+const sai_attr_metadata_t sai_priority_group_attr_metadata[] = {
+
+    {
+        .objecttype             = SAI_OBJECT_TYPE_PRIORITY_GROUP,
+        .attrid                 = SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE,
+        .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
+        .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
+        .allowedobjecttypes     = { SAI_OBJECT_TYPE_BUFFER_PROFILE },
+        .allownullobjectid      = true,
+        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_CONST,
+        .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
+        .enumtypestr            = NULL,
+        .enumallowedvalues      = { },
+        .conditions             = { },
+    },
+};
+
+const size_t sai_priority_group_attr_metadata_count = sizeof(sai_priority_group_attr_metadata)/sizeof(sai_attr_metadata_t);
+
 // METADATA for SAI_OBJECT_TYPE_BUFFER_POOL
 
 DEFINE_ENUM_VALUES(sai_buffer_pool_type_t)

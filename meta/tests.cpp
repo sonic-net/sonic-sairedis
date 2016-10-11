@@ -3284,6 +3284,26 @@ void test_null_list()
     META_ASSERT_SUCCESS(status);
 }
 
+void test_priority_group()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_status_t    status;
+
+    sai_attribute_t attr;
+
+    sai_object_id_t pg = insert_dummy_object(SAI_OBJECT_TYPE_PRIORITY_GROUP);
+
+    SWSS_LOG_NOTICE("set");
+
+    attr.id = SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+    status = meta_sai_set_oid(SAI_OBJECT_TYPE_PRIORITY_GROUP, pg, &attr, &dummy_success_sai_set_oid);
+    META_ASSERT_SUCCESS(status);
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -3331,6 +3351,8 @@ int main()
     test_construct_key();
     test_queue_create();
     test_null_list();
+
+    test_priority_group();
 
     std::cout << "SUCCESS" << std::endl;
 }

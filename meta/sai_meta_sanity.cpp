@@ -6,7 +6,7 @@
 // NOTE: since enum is a key we need size, hence HashForEnum
 std::unordered_map<sai_object_type_t,std::unordered_map<sai_attr_id_t, const sai_attr_metadata_t*>, HashForEnum> AttributesMetadata;
 
-// Serialization type name resolve 
+// Serialization type name resolve
 
 std::unordered_map<int32_t, std::string> get_serialization_type_map()
 {
@@ -382,6 +382,9 @@ std::unordered_map<int32_t, std::unordered_map<int32_t, std::string>> get_attr_n
     ATTR_MAP_SET(NEXT_HOP_GROUP,SAI_NEXT_HOP_GROUP_ATTR_NEXT_HOP_COUNT);
     ATTR_MAP_SET(NEXT_HOP_GROUP,SAI_NEXT_HOP_GROUP_ATTR_TYPE);
     ATTR_MAP_SET(NEXT_HOP_GROUP,SAI_NEXT_HOP_GROUP_ATTR_NEXT_HOP_LIST);
+
+    ATTR_MAP_SET(PRIORITY_GROUP,SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE);
+
     ATTR_MAP_SET(POLICER,SAI_POLICER_ATTR_METER_TYPE);
     ATTR_MAP_SET(POLICER,SAI_POLICER_ATTR_MODE);
     ATTR_MAP_SET(POLICER,SAI_POLICER_ATTR_COLOR_SOURCE);
@@ -747,7 +750,7 @@ void metadata_sanity_check(const sai_attr_metadata_t& md)
 
             if (md.defaultvaluetype == SAI_DEFAULT_VALUE_TYPE_NONE)
             {
-                META_LOG_THROW(md, "expected no default value, but type provided: %d", md.defaultvaluetype);
+                META_LOG_THROW(md, "expected default value, but none type provided: %d", md.defaultvaluetype);
             }
 
             break;
@@ -1507,6 +1510,7 @@ void meta_init()
     CHECK(nexthopgroup);
     CHECK(policer);
     CHECK(port);
+    CHECK(priority_group);
     CHECK(qos_maps);
     CHECK(queue);
     CHECK(route);
