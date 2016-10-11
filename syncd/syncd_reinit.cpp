@@ -795,27 +795,6 @@ void helperCheckPriorityGroupsIds()
     }
 }
 
-bool isDefaultVirtualRouterId(sai_object_id_t id)
-{
-    sai_object_id_t defaultVirtualRouterId = redisGetDefaultVirtualRouterId();
-
-    return id == defaultVirtualRouterId;
-}
-
-bool isDefaultTrapGroupId(sai_object_id_t id)
-{
-    sai_object_id_t defaultTrapGroupId = redisGetDefaultTrapGroupId();
-
-    return id == defaultTrapGroupId;
-}
-
-bool isDefaultPortId(sai_object_id_t id)
-{
-    // currenty all ports are considered default
-
-    return true;
-}
-
 void onSyncdStart(bool warmStart)
 {
     // it may happen that after initialize we will receive

@@ -270,11 +270,12 @@ void hardReinit()
     checkAllIds();
 }
 
+template<typename FUN>
 bool shouldSkipCreateion(
         sai_object_id_t vid,
         sai_object_id_t& rid,
         bool& createObject,
-        isDefaultFunction fun)
+        FUN fun)
 {
     auto it = g_vidToRidMap.find(vid);
 
@@ -330,7 +331,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
 
     if (objectType == SAI_OBJECT_TYPE_VIRTUAL_ROUTER)
     {
-        if (shouldSkipCreateion(vid, rid, createObject, isDefaultVirtualRouterId))
+        if (shouldSkipCreateion(vid, rid, createObject, [](sai_object_id_t id) { return id == redisGetDefaultVirtualRouterId(); }))
         {
             SWSS_LOG_INFO("default virtual router will not be created, processed VID %llx to RID %llx", vid, rid);
         }
@@ -351,14 +352,14 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
     }
     else if (objectType == SAI_OBJECT_TYPE_TRAP_GROUP)
     {
-        if (shouldSkipCreateion(vid, rid, createObject, isDefaultTrapGroupId))
+        if (shouldSkipCreateion(vid, rid, createObject, [](sai_object_id_t id) { return id == redisGetDefaultTrapGroupId(); }))
         {
             SWSS_LOG_INFO("default trap group will not be created, processed VID %llx to RID %llx", vid, rid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_PORT)
     {
-        if (shouldSkipCreateion(vid, rid, createObject, isDefaultPortId))
+        if (shouldSkipCreateion(vid, rid, createObject, [](sai_object_id_t) { return true; }))
         {
             SWSS_LOG_INFO("port will not be created, processed VID %llx to RID %llx", vid, rid);
         }
