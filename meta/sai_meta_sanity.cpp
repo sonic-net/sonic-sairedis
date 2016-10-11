@@ -924,6 +924,7 @@ void metadata_sanity_check(const sai_attr_metadata_t& md)
 
             case SAI_SERIALIZATION_TYPE_OBJECT_ID:
             case SAI_SERIALIZATION_TYPE_BOOL:
+            case SAI_SERIALIZATION_TYPE_INT8:
             case SAI_SERIALIZATION_TYPE_INT32:
             case SAI_SERIALIZATION_TYPE_UINT8:
             case SAI_SERIALIZATION_TYPE_UINT16:
