@@ -7,6 +7,7 @@
 #include <thread>
 #include <mutex>
 #include <thread>
+#include <set>
 
 #include <unistd.h>
 #include <execinfo.h>
@@ -15,7 +16,6 @@
 
 #ifdef SAITHRIFT
 #include <utility>
-#include <set>
 #include <algorithm>
 #include <switch_sai_rpc_server.h>
 #endif // SAITHRIFT
@@ -65,6 +65,8 @@ extern "C" {
 extern void exit_and_notify(int status) __attribute__ ((__noreturn__));
 
 extern std::mutex g_mutex;
+extern std::set<sai_object_id_t> g_defaultPriorityGroupsRids;
+extern std::set<sai_object_id_t> g_defaultQueuesRids;
 
 void onSyncdStart(bool warmStart);
 void hardReinit();
@@ -174,8 +176,5 @@ void endCountersThread();
 std::unordered_map<sai_uint32_t, sai_object_id_t> redisGetLaneMap();
 
 std::vector<sai_object_id_t> saiGetPortList();
-
-bool isDefaultQueueId(sai_object_id_t queueId);
-bool isDefaultPriorityGroupId(sai_object_id_t pgId);
 
 #endif // __SYNCD_H__

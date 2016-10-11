@@ -338,14 +338,14 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
     }
     else if (objectType == SAI_OBJECT_TYPE_QUEUE)
     {
-        if (shouldSkipCreateion(vid, rid, createObject, isDefaultQueueId))
+        if (shouldSkipCreateion(vid, rid, createObject, [&](sai_object_id_t queueId) { return g_defaultQueuesRids.find(queueId) != g_defaultQueuesRids.end(); }))
         {
             SWSS_LOG_DEBUG("default queue will not be created, processed VID %llx to RID %llx", vid, rid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_PRIORITY_GROUP)
     {
-        if (shouldSkipCreateion(vid, rid, createObject, isDefaultPriorityGroupId))
+        if (shouldSkipCreateion(vid, rid, createObject, [&](sai_object_id_t pgId) { return g_defaultPriorityGroupsRids.find(pgId) != g_defaultPriorityGroupsRids.end(); }))
         {
             SWSS_LOG_DEBUG("default priority group will not be created, processed VID %llx to RID %llx", vid, rid);
         }
