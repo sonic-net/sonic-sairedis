@@ -105,8 +105,6 @@ sai_status_t vs_generic_create(
 {
     SWSS_LOG_ENTER();
 
-    std::string otstr;
-
     // create new real object ID
     *object_id = vs_create_real_object_id(object_type);
 
