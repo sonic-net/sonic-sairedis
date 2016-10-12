@@ -36,6 +36,13 @@ sai_status_t vs_remove_vlan(
     {
         auto it = vlan_members_map.find(vlan_id);
 
+        if (it == vlan_members_map.end())
+        {
+            SWSS_LOG_ERROR("failed to find vlan %u in vlan members map", vlan_id);
+
+            return SAI_STATUS_FAILURE;
+        }
+
         vlan_members_map.erase(it);
     }
 
@@ -171,6 +178,13 @@ sai_status_t vs_remove_vlan_member(
     if (status == SAI_STATUS_SUCCESS)
     {
         auto it = vlan_members_map[vlan_id].find(vlan_member_id);
+
+        if (it == vlan_members_map[vlan_id].end())
+        {
+            SWSS_LOG_ERROR("failed to find vlan member 0x%llx in vlan members map", vlan_member_id);
+
+            return SAI_STATUS_FAILURE;
+        }
 
         vlan_members_map[vlan_id].erase(it);
 
