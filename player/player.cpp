@@ -3,6 +3,8 @@
 #include <sstream>
 #include <string>
 
+#include <getopt.h>
+
 #include "string.h"
 extern "C" {
 #include "sai.h"
@@ -11,6 +13,7 @@ extern "C" {
 #include "common/saiserialize.h"
 #include "common/saiattributelist.h"
 #include "swss/logger.h"
+#include "swss/tokenize.h"
 
 std::map<std::string, std::string> profile_map;
 
@@ -299,24 +302,6 @@ sai_switch_notification_t switch_notifications
     }\
 }
 
-std::vector<std::string> split(const std::string &s, char delim = ',')
-{
-    std::stringstream ss;
-
-    ss.str(s);
-
-    std::vector<std::string> v;
-
-    std::string item;
-
-    while (std::getline(ss, item, delim))
-    {
-        v.push_back(item);
-    }
-
-    return v;
-}
-
 // to recorded
 std::map<sai_object_id_t,sai_object_id_t> local_to_redis;
 std::map<sai_object_id_t,sai_object_id_t> redis_to_local;
@@ -424,7 +409,7 @@ const std::vector<swss::FieldValueTuple> get_values(const std::vector<std::strin
     // timestamp,action,objecttype:objectid,attrid=value,...
     for (size_t i = 3; i <items.size(); ++i)
     {
-        auto o = split(items[i], '=');
+        auto o = swss::tokenize(items[i], '=');
 
         swss::FieldValueTuple entry(o[0], o[1]);
 
@@ -433,6 +418,10 @@ const std::vector<swss::FieldValueTuple> get_values(const std::vector<std::strin
 
     return values;
 }
+
+#define CHECK_LIST(x)\
+    if (attr.x.count != get_attr.x.count)\
+{ SWSS_LOG_ERROR("get response list count not match recording"); exit(EXIT_FAILURE); }
 
 void match_list_lengths(
         sai_object_type_t object_type,
@@ -462,10 +451,6 @@ void match_list_lengths(
             SWSS_LOG_ERROR("unable to find serialization type for object type %x, attribute %x", object_type, attr.id);
             exit(EXIT_FAILURE);
         }
-
-#define CHECK_LIST(x)\
-        if (attr.x.count != get_attr.x.count)\
-        { SWSS_LOG_ERROR("get response list count not match recording"); exit(EXIT_FAILURE); }
 
         switch (serialization_type)
         {
@@ -553,7 +538,7 @@ void match_redis_with_rec(
                 get_oid,
                 redis_to_local[get_oid]);
 
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     SWSS_LOG_DEBUG("map size: %zu", local_to_redis.size());
@@ -948,10 +933,10 @@ void handle_get_response(
     //std::cout << "processing " << response << std::endl;
 
     // timestamp,action,objecttype:objectid,attrid=value,...
-    auto v = split(response);
+    auto v = swss::tokenize(response, ',');
 
     // objecttype:objectid
-    auto o = split(v[2], ':');
+    auto o = swss::tokenize(v[2], ':');
 
     auto values = get_values(v);
 
@@ -1026,10 +1011,10 @@ int replay(int argc, char **argv)
         }
 
         // timestamp,action,objecttype:objectid,attrid=value,...
-        auto fields = split(line);
+        auto fields = swss::tokenize(line, ',');
 
         // objecttype:objectid
-        auto o = split(fields[2], ':');
+        auto o = swss::tokenize(fields[2], ':');
 
         sai_object_type_t object_type = deserialize_object_type(o[0]);
 
@@ -1110,11 +1095,59 @@ int replay(int argc, char **argv)
     return 0;
 }
 
+void printUsage()
+{
+    std::cout << "Usage: player [-h] recordfile" << std::endl;
+    std::cout << "    -h --help:" << std::endl;
+    std::cout << "        Print out this message" << std::endl;
+}
+
+void handleCmdLine(int argc, char **argv)
+{
+    SWSS_LOG_ENTER();
+
+    while(true)
+    {
+        static struct option long_options[] =
+        {
+            { "help",             no_argument,       0, 'h' },
+            { 0,                  0,                 0,  0  }
+        };
+
+        int option_index = 0;
+
+        const char* const optstring = "h";
+
+        int c = getopt_long(argc, argv, optstring, long_options, &option_index);
+
+        if (c == -1)
+            break;
+
+        switch (c)
+        {
+            case 'h':
+                printUsage();
+                exit(EXIT_SUCCESS);
+
+            case '?':
+                SWSS_LOG_WARN("unknown option %c", optopt);
+                printUsage();
+                exit(EXIT_FAILURE);
+
+            default:
+                SWSS_LOG_ERROR("getopt_long failure");
+                exit(EXIT_FAILURE);
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     SWSS_LOG_ENTER();
+
+    handleCmdLine(argc, argv);
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
