@@ -3290,13 +3290,13 @@ void test_priority_group()
 
     meta_init_db();
 
-    sai_status_t    status;
+    sai_status_t status;
 
     sai_attribute_t attr;
 
     sai_object_id_t pg = insert_dummy_object(SAI_OBJECT_TYPE_PRIORITY_GROUP);
 
-    SWSS_LOG_NOTICE("set");
+    SWSS_LOG_NOTICE("set SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE attr");
 
     attr.id = SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE;
     attr.value.oid = SAI_NULL_OBJECT_ID;
