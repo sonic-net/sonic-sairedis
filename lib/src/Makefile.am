@@ -30,7 +30,7 @@ AM_CPPFLAGS += \
 				-Wpointer-arith \
 				-Wredundant-decls \
 				-Wstack-protector \
-				-Wstrict-aliasing=2 \
+				-Wstrict-aliasing=3 \
 				-Wswitch \
 				-Wswitch-default \
 				-Wunreachable-code \

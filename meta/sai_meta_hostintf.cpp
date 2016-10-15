@@ -53,11 +53,51 @@ DEFINE_ENUM_VALUES(sai_hostif_trap_channel_t)
     SAI_HOSTIF_TRAP_CHANNEL_NETDEV
 };
 
+const char metadata_sai_hostif_trap_channel_t_enum_name[] = "sai_hostif_trap_channel_t";
+const sai_hostif_trap_channel_t metadata_sai_hostif_trap_channel_t_enum_values[] = {
+    SAI_HOSTIF_TRAP_CHANNEL_FD,
+    SAI_HOSTIF_TRAP_CHANNEL_CB,
+    SAI_HOSTIF_TRAP_CHANNEL_NETDEV,
+};
+const char* metadata_sai_hostif_trap_channel_t_enum_values_names[] = {
+    "SAI_HOSTIF_TRAP_CHANNEL_FD",
+    "SAI_HOSTIF_TRAP_CHANNEL_CB",
+    "SAI_HOSTIF_TRAP_CHANNEL_NETDEV",
+    NULL
+};
+const char* metadata_sai_hostif_trap_channel_t_enum_values_short_names[] = {
+    "FD",
+    "CB",
+    "NETDEV",
+    NULL
+};
+const size_t metadata_sai_hostif_trap_channel_t_enum_values_count = 3;
+DEFINE_ENUM_METADATA(sai_hostif_trap_channel_t, 3);
+
+const char metadata_sai_hostif_type_t_enum_name[] = "sai_hostif_type_t";
+const sai_hostif_type_t metadata_sai_hostif_type_t_enum_values[] = {
+    SAI_HOSTIF_TYPE_NETDEV,
+    SAI_HOSTIF_TYPE_FD,
+};
+const char* metadata_sai_hostif_type_t_enum_values_names[] = {
+    "SAI_HOSTIF_TYPE_NETDEV",
+    "SAI_HOSTIF_TYPE_FD",
+    NULL
+};
+const char* metadata_sai_hostif_type_t_enum_values_short_names[] = {
+    "NETDEV",
+    "FD",
+    NULL
+};
+const size_t metadata_sai_hostif_type_t_enum_values_count = 2;
+DEFINE_ENUM_METADATA(sai_hostif_type_t, 2);
+
 const sai_attr_metadata_t sai_hostintf_attr_metadata[] = {
 
     {
         .objecttype             = SAI_OBJECT_TYPE_HOST_INTERFACE,
         .attrid                 = SAI_HOSTIF_ATTR_TYPE,
+        .attridname             = "SAI_HOSTIF_ATTR_TYPE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { },
@@ -66,12 +106,14 @@ const sai_attr_metadata_t sai_hostintf_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = StringifyEnum ( sai_hostif_type_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_hostif_type_t ),
+        .enummetadata           = &metadata_enum_sai_hostif_type_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_HOST_INTERFACE,
         .attrid                 = SAI_HOSTIF_ATTR_RIF_OR_PORT_ID,
+        .attridname             = "SAI_HOSTIF_ATTR_RIF_OR_PORT_ID",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_PORT, SAI_OBJECT_TYPE_ROUTER_INTERFACE },
@@ -80,12 +122,14 @@ const sai_attr_metadata_t sai_hostintf_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { COND_ENUM ( SAI_HOSTIF_ATTR_TYPE, SAI_HOSTIF_TYPE_NETDEV ) },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_HOST_INTERFACE,
         .attrid                 = SAI_HOSTIF_ATTR_NAME,
+        .attridname             = "SAI_HOSTIF_ATTR_NAME",
         .serializationtype      = SAI_SERIALIZATION_TYPE_CHARDATA,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { },
@@ -94,6 +138,7 @@ const sai_attr_metadata_t sai_hostintf_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { COND_ENUM ( SAI_HOSTIF_ATTR_TYPE, SAI_HOSTIF_TYPE_NETDEV ) },
 
         // TODO extra logic on name validation is needed
@@ -102,6 +147,7 @@ const sai_attr_metadata_t sai_hostintf_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_HOST_INTERFACE,
         .attrid                 = SAI_HOSTIF_ATTR_OPER_STATUS,
+        .attridname             = "SAI_HOSTIF_ATTR_OPER_STATUS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -110,6 +156,7 @@ const sai_attr_metadata_t sai_hostintf_attr_metadata[] = {
         .defaultvalue           = { .booldata = false },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 };
@@ -123,6 +170,7 @@ const sai_attr_metadata_t sai_hostintf_trap_group_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_TRAP_GROUP,
         .attrid                 = SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE,
+        .attridname             = "SAI_HOSTIF_TRAP_GROUP_ATTR_ADMIN_STATE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -131,12 +179,14 @@ const sai_attr_metadata_t sai_hostintf_trap_group_attr_metadata[] = {
         .defaultvalue           = { .booldata = true },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_TRAP_GROUP,
         .attrid                 = SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE,
+        .attridname             = "SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -145,6 +195,7 @@ const sai_attr_metadata_t sai_hostintf_trap_group_attr_metadata[] = {
         .defaultvalue           = { .u32 = 0 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO this can be tricky since this QUEUE is queue INDEX
@@ -158,6 +209,7 @@ const sai_attr_metadata_t sai_hostintf_trap_group_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_TRAP_GROUP,
         .attrid                 = SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER,
+        .attridname             = "SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_POLICER },
@@ -166,6 +218,7 @@ const sai_attr_metadata_t sai_hostintf_trap_group_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 };
@@ -175,24 +228,27 @@ const size_t sai_hostintf_trap_group_attr_metadata_count = sizeof(sai_hostintf_t
 // METADATA for SAI_OBJECT_TYPE_TRAP
 
 const sai_attr_metadata_t sai_hostintf_trap_attr_metadata[] = {
-
-    //{
-    //    .objecttype             = SAI_OBJECT_TYPE_TRAP,
-    //    .attrid                 = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE,
-    //    .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
-    //    .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_AND_SET | SAI_ATTR_FLAGS_KEY,
-    //    .allowedobjecttypes     = { },
-    //    .allownullobjectid      = false,
-    //    .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_NONE,
-    //    .defaultvalue           = { },
-    //    .enumtypestr            = StringifyEnum ( sai_hostif_trap_type_t ),
-    //    .enumallowedvalues      = ENUM_VALUES ( sai_hostif_trap_type_f ),
-    //    .conditions             = { },
-    //},
-
+/*
+    {
+        .objecttype             = SAI_OBJECT_TYPE_TRAP,
+        .attrid                 = SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE,
+        .nameid                 = "SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE",
+        .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
+        .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_AND_SET | SAI_ATTR_FLAGS_KEY,
+        .allowedobjecttypes     = { },
+        .allownullobjectid      = false,
+        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_NONE,
+        .defaultvalue           = { },
+        .enumtypestr            = StringifyEnum ( sai_hostif_trap_type_t ),
+        .enumallowedvalues      = ENUM_VALUES ( sai_hostif_trap_type_f ),
+        .enummetadata           = &metadata_enum_sai_hostif_trap_type_f,
+        .conditions             = { },
+    },
+*/
     {
         .objecttype             = SAI_OBJECT_TYPE_TRAP,
         .attrid                 = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION,
+        .attridname             = "SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -201,6 +257,7 @@ const sai_attr_metadata_t sai_hostintf_trap_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_PACKET_ACTION_FORWARD }, // TODO check if this is right one
         .enumtypestr            = StringifyEnum ( sai_packet_action_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_packet_action_t ),
+        .enummetadata           = &metadata_enum_sai_packet_action_t,
         .conditions             = { },
     },
 
@@ -217,6 +274,7 @@ const sai_attr_metadata_t sai_hostintf_trap_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_TRAP,
         .attrid                 = SAI_HOSTIF_TRAP_ATTR_TRAP_PRIORITY,
+        .attridname             = "SAI_HOSTIF_TRAP_ATTR_TRAP_PRIORITY",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -225,6 +283,7 @@ const sai_attr_metadata_t sai_hostintf_trap_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO default value is provided by SAI_SWITCH_ATTR_ACL_ENTRY_MINIMUM_PRIORITY
@@ -233,6 +292,7 @@ const sai_attr_metadata_t sai_hostintf_trap_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_TRAP,
         .attrid                 = SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL,
+        .attridname             = "SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET, // mandatory + crete_only
         .allowedobjecttypes     = { },
@@ -241,30 +301,34 @@ const sai_attr_metadata_t sai_hostintf_trap_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_HOSTIF_TRAP_CHANNEL_CB },
         .enumtypestr            = StringifyEnum ( sai_hostif_trap_channel_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_hostif_trap_channel_t ),
+        .enummetadata           = &metadata_enum_sai_hostif_trap_channel_t,
         .conditions             = { },
     },
+/*
+    {
+        .objecttype             = SAI_OBJECT_TYPE_TRAP,
+        .attrid                 = SAI_HOSTIF_TRAP_ATTR_FD,
+        .nameid                 = "SAI_HOSTIF_TRAP_ATTR_FD",
+        .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
+        .flags                  = SAI_ATTR_FLAGS_CREATE_ONLY,
+        .allowedobjecttypes     = { },                          // TODO what kind of object ?
+        .allownullobjectid      = true,
+        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_CONST,
+        .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
+        .enumtypestr            = NULL,
+        .enumallowedvalues      = { },
+        .enummetadata           = NULL,
+        .conditions             = { }
 
-    //{
-    //    .objecttype             = SAI_OBJECT_TYPE_TRAP,
-    //    .attrid                 = SAI_HOSTIF_TRAP_ATTR_FD,
-    //    .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
-    //    .flags                  = SAI_ATTR_FLAGS_CREATE_ONLY,
-    //    .allowedobjecttypes     = { },                          // TODO what kind of object ?
-    //    .allownullobjectid      = true,
-    //    .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_CONST,
-    //    .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
-    //    .enumtypestr            = NULL,
-    //    .enumallowedvalues      = { },
-    //    .conditions             = { }
-
-    // TODO condition is more complex here since trap/log and this (extra logic needed)
-    //     // * Valid only when SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL == SAI_HOSTIF_TRAP_CHANNEL_FD
-    //     // * Must be set before set SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL to SAI_HOSTIF_TRAP_CHANNEL_FD
-    //},
-
+         // TODO condition is more complex here since trap/log and this (extra logic needed)
+         // * Valid only when SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL == SAI_HOSTIF_TRAP_CHANNEL_FD
+         // * Must be set before set SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL to SAI_HOSTIF_TRAP_CHANNEL_FD
+    },
+*/
     {
         .objecttype             = SAI_OBJECT_TYPE_TRAP,
         .attrid                 = SAI_HOSTIF_TRAP_ATTR_PORT_LIST,
+        .attridname             = "SAI_HOSTIF_TRAP_ATTR_PORT_LIST",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_LIST,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_PORT },
@@ -273,6 +337,7 @@ const sai_attr_metadata_t sai_hostintf_trap_attr_metadata[] = {
         .defaultvalue           = { },                 // TODO default is to all ports
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { }
 
         // TODO extra logic is needed here since default is to all ports, we need more explanation
@@ -281,6 +346,7 @@ const sai_attr_metadata_t sai_hostintf_trap_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_TRAP,
         .attrid                 = SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP,
+        .attridname             = "SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET, // create only ?
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_TRAP_GROUP },
@@ -289,6 +355,7 @@ const sai_attr_metadata_t sai_hostintf_trap_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { }
 
         // TODO default value points to SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP

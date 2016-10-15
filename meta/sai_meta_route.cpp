@@ -7,6 +7,7 @@ const sai_attr_metadata_t sai_route_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_ROUTE,
         .attrid                 = SAI_ROUTE_ATTR_PACKET_ACTION,
+        .attridname             = "SAI_ROUTE_ATTR_PACKET_ACTION",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -15,12 +16,14 @@ const sai_attr_metadata_t sai_route_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_PACKET_ACTION_FORWARD },
         .enumtypestr            = StringifyEnum ( sai_packet_action_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_packet_action_t ),
+        .enummetadata           = &metadata_enum_sai_packet_action_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_ROUTE,
         .attrid                 = SAI_ROUTE_ATTR_TRAP_PRIORITY,
+        .attridname             = "SAI_ROUTE_ATTR_TRAP_PRIORITY",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT8,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -29,12 +32,14 @@ const sai_attr_metadata_t sai_route_attr_metadata[] = {
         .defaultvalue           = { .u8 = 0 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_ROUTE,
         .attrid                 = SAI_ROUTE_ATTR_NEXT_HOP_ID,
+        .attridname             = "SAI_ROUTE_ATTR_NEXT_HOP_ID",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_NEXT_HOP, SAI_OBJECT_TYPE_NEXT_HOP_GROUP, SAI_OBJECT_TYPE_ROUTER_INTERFACE, SAI_OBJECT_TYPE_PORT },
@@ -43,6 +48,7 @@ const sai_attr_metadata_t sai_route_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO may require some extra logic for CPU port
@@ -51,6 +57,7 @@ const sai_attr_metadata_t sai_route_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_ROUTE,
         .attrid                 = SAI_ROUTE_ATTR_META_DATA,
+        .attridname             = "SAI_ROUTE_ATTR_META_DATA",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -59,6 +66,7 @@ const sai_attr_metadata_t sai_route_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO range in SAI_SWITCH_ATTR_ROUTE_USER_META_DATA_RANGE

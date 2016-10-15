@@ -9,6 +9,7 @@ const sai_attr_metadata_t sai_stp_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_STP_INSTANCE,
         .attrid                 = SAI_STP_ATTR_VLAN_LIST,
+        .attridname             = "SAI_STP_ATTR_VLAN_LIST",
         .serializationtype      = SAI_SERIALIZATION_TYPE_VLAN_LIST,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -17,6 +18,7 @@ const sai_attr_metadata_t sai_stp_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 

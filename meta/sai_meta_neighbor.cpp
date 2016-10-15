@@ -7,6 +7,7 @@ const sai_attr_metadata_t sai_neighbor_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_NEIGHBOR,
         .attrid                 = SAI_NEIGHBOR_ATTR_DST_MAC_ADDRESS,
+        .attridname             = "SAI_NEIGHBOR_ATTR_DST_MAC_ADDRESS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_MAC,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -15,12 +16,14 @@ const sai_attr_metadata_t sai_neighbor_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_NEIGHBOR,
         .attrid                 = SAI_NEIGHBOR_ATTR_PACKET_ACTION,
+        .attridname             = "SAI_NEIGHBOR_ATTR_PACKET_ACTION",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -29,12 +32,14 @@ const sai_attr_metadata_t sai_neighbor_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_PACKET_ACTION_FORWARD },
         .enumtypestr            = StringifyEnum ( sai_packet_action_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_packet_action_t ),
+        .enummetadata           = &metadata_enum_sai_packet_action_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_NEIGHBOR,
         .attrid                 = SAI_NEIGHBOR_ATTR_NO_HOST_ROUTE,
+        .attridname             = "SAI_NEIGHBOR_ATTR_NO_HOST_ROUTE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -43,12 +48,14 @@ const sai_attr_metadata_t sai_neighbor_attr_metadata[] = {
         .defaultvalue           = { .booldata = false },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_NEIGHBOR,
         .attrid                 = SAI_NEIGHBOR_ATTR_META_DATA,
+        .attridname             = "SAI_NEIGHBOR_ATTR_META_DATA",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -57,6 +64,7 @@ const sai_attr_metadata_t sai_neighbor_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO value range is SAI_SWITCH_ATTR_NEIGHBOR_DST_USER_META_DATA_RANGE

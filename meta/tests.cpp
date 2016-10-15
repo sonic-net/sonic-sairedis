@@ -1,6 +1,6 @@
 #include "sai_meta.h"
 #include "sai_extra.h"
-
+#include <string.h>
 #include <arpa/inet.h>
 
 #include <map>

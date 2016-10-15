@@ -7,6 +7,7 @@ const sai_attr_metadata_t sai_scheduler_group_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SCHEDULER_GROUP,
         .attrid                 = SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT,
+        .attridname             = "SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -15,20 +16,23 @@ const sai_attr_metadata_t sai_scheduler_group_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SCHEDULER_GROUP,
         .attrid                 = SAI_SCHEDULER_GROUP_ATTR_CHILD_LIST,
+        .attridname             = "SAI_SCHEDULER_GROUP_ATTR_CHILD_LIST",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_LIST,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
-        .allowedobjecttypes     = { SAI_OBJECT_TYPE_SCHEDULER_GROUP, SAI_OBJECT_TYPE_QUEUE },
+        .allowedobjecttypes     = { SAI_OBJECT_TYPE_SCHEDULER }, // TODO there may be different types like QUEUE or PORT here
         .allownullobjectid      = false,
         .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_NONE,
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO extra check may be needed here
@@ -37,6 +41,7 @@ const sai_attr_metadata_t sai_scheduler_group_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SCHEDULER_GROUP,
         .attrid                 = SAI_SCHEDULER_GROUP_ATTR_PORT_ID,
+        .attridname             = "SAI_SCHEDULER_GROUP_ATTR_PORT_ID",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_PORT },
@@ -45,12 +50,14 @@ const sai_attr_metadata_t sai_scheduler_group_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SCHEDULER_GROUP,
         .attrid                 = SAI_SCHEDULER_GROUP_ATTR_LEVEL,
+        .attridname             = "SAI_SCHEDULER_GROUP_ATTR_LEVEL",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT8,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { },
@@ -59,6 +66,7 @@ const sai_attr_metadata_t sai_scheduler_group_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO validate range 0..16
@@ -67,6 +75,7 @@ const sai_attr_metadata_t sai_scheduler_group_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SCHEDULER_GROUP,
         .attrid                 = SAI_SCHEDULER_GROUP_ATTR_MAX_CHILDS,
+        .attridname             = "SAI_SCHEDULER_GROUP_ATTR_MAX_CHILDS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT8,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { },
@@ -75,6 +84,7 @@ const sai_attr_metadata_t sai_scheduler_group_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO validate range 0..64 ?
@@ -83,14 +93,16 @@ const sai_attr_metadata_t sai_scheduler_group_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SCHEDULER_GROUP,
         .attrid                 = SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID,
+        .attridname             = "SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
-        .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_AND_SET,
+        .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_SCHEDULER },
         .allownullobjectid      = false,
         .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_NONE,
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO SET ONLY, special, not supported yet, must change api design

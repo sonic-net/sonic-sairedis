@@ -99,7 +99,7 @@ OBJ = \
 
 DEPS = sai_meta.h sai_extra.h
 
-CFLAGS=-std=c++11 -I/usr/include/swss -I/usr/include/sai -I/usr/include $(warnings)
+CFLAGS=-std=c++11 -I/usr/include/swss -I/usr/include/sai -I/usr/include -I. -I.. $(warnings)
 LDFLAGS=-L/usr/lib -lswsscommon
 
 all: tests

@@ -42,6 +42,90 @@ DEFINE_ENUM_VALUES(sai_hash_algorithm_t)
     SAI_HASH_ALGORITHM_RANDOM
 };
 
+const char metadata_sai_switch_oper_status_t_enum_name[] = "sai_switch_oper_status_t";
+const sai_switch_oper_status_t metadata_sai_switch_oper_status_t_enum_values[] = {
+    SAI_SWITCH_OPER_STATUS_UNKNOWN,
+    SAI_SWITCH_OPER_STATUS_UP,
+    SAI_SWITCH_OPER_STATUS_DOWN,
+    SAI_SWITCH_OPER_STATUS_FAILED,
+};
+const char* metadata_sai_switch_oper_status_t_enum_values_names[] = {
+    "SAI_SWITCH_OPER_STATUS_UNKNOWN",
+    "SAI_SWITCH_OPER_STATUS_UP",
+    "SAI_SWITCH_OPER_STATUS_DOWN",
+    "SAI_SWITCH_OPER_STATUS_FAILED",
+    NULL
+};
+const char* metadata_sai_switch_oper_status_t_enum_values_short_names[] = {
+    "UNKNOWN",
+    "UP",
+    "DOWN",
+    "FAILED",
+    NULL
+};
+const size_t metadata_sai_switch_oper_status_t_enum_values_count = 4;
+DEFINE_ENUM_METADATA(sai_switch_oper_status_t, 4);
+
+const char metadata_sai_hash_algorithm_t_enum_name[] = "sai_hash_algorithm_t";
+const sai_hash_algorithm_t metadata_sai_hash_algorithm_t_enum_values[] = {
+    SAI_HASH_ALGORITHM_CRC,
+    SAI_HASH_ALGORITHM_XOR,
+    SAI_HASH_ALGORITHM_RANDOM,
+};
+const char* metadata_sai_hash_algorithm_t_enum_values_names[] = {
+    "SAI_HASH_ALGORITHM_CRC",
+    "SAI_HASH_ALGORITHM_XOR",
+    "SAI_HASH_ALGORITHM_RANDOM",
+    NULL
+};
+const char* metadata_sai_hash_algorithm_t_enum_values_short_names[] = {
+    "CRC",
+    "XOR",
+    "RANDOM",
+    NULL
+};
+const size_t metadata_sai_hash_algorithm_t_enum_values_count = 3;
+DEFINE_ENUM_METADATA(sai_hash_algorithm_t, 3);
+
+const char metadata_sai_switch_switching_mode_t_enum_name[] = "sai_switch_switching_mode_t";
+const sai_switch_switching_mode_t metadata_sai_switch_switching_mode_t_enum_values[] = {
+    SAI_SWITCHING_MODE_CUT_THROUGH,
+    SAI_SWITCHING_MODE_STORE_AND_FORWARD,
+};
+const char* metadata_sai_switch_switching_mode_t_enum_values_names[] = {
+    "SAI_SWITCH_SWITCHING_MODE_CUT_THROUGH",
+    "SAI_SWITCH_SWITCHING_MODE_STORE_AND_FORWARD",
+    NULL
+};
+const char* metadata_sai_switch_switching_mode_t_enum_values_short_names[] = {
+    "CUT_THROUGH",
+    "STORE_AND_FORWARD",
+    NULL
+};
+const size_t metadata_sai_switch_switching_mode_t_enum_values_count = 2;
+DEFINE_ENUM_METADATA(sai_switch_switching_mode_t, 2);
+
+const char metadata_sai_switch_restart_type_t_enum_name[] = "sai_switch_restart_type_t";
+const sai_switch_restart_type_t metadata_sai_switch_restart_type_t_enum_values[] = {
+    SAI_RESTART_TYPE_NONE,
+    SAI_RESTART_TYPE_PLANNED,
+    SAI_RESTART_TYPE_ANY,
+};
+const char* metadata_sai_switch_restart_type_t_enum_values_names[] = {
+    "SAI_SWITCH_RESTART_TYPE_NONE",
+    "SAI_SWITCH_RESTART_TYPE_PLANNED",
+    "SAI_SWITCH_RESTART_TYPE_ANY",
+    NULL
+};
+const char* metadata_sai_switch_restart_type_t_enum_values_short_names[] = {
+    "NONE",
+    "PLANNED",
+    "ANY",
+    NULL
+};
+const size_t metadata_sai_switch_restart_type_t_enum_values_count = 3;
+DEFINE_ENUM_METADATA(sai_switch_restart_type_t, 3);
+
 const sai_attr_metadata_t sai_switch_attr_metadata[] = {
 
     // READ-ONLY
@@ -49,6 +133,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_PORT_NUMBER,
+        .attridname             = "SAI_SWITCH_ATTR_PORT_NUMBER",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -57,6 +142,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // dynamic
@@ -65,6 +151,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_PORT_LIST,
+        .attridname             = "SAI_SWITCH_ATTR_PORT_LIST",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_LIST,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_PORT },
@@ -73,6 +160,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // dynamic
@@ -81,6 +169,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_PORT_MAX_MTU,
+        .attridname             = "SAI_SWITCH_ATTR_PORT_MAX_MTU",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -89,12 +178,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_CPU_PORT,
+        .attridname             = "SAI_SWITCH_ATTR_CPU_PORT",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_PORT },
@@ -103,12 +194,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_MAX_VIRTUAL_ROUTERS,
+        .attridname             = "SAI_SWITCH_ATTR_MAX_VIRTUAL_ROUTERS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -117,12 +210,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_FDB_TABLE_SIZE,
+        .attridname             = "SAI_SWITCH_ATTR_FDB_TABLE_SIZE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -131,12 +226,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_L3_NEIGHBOR_TABLE_SIZE,
+        .attridname             = "SAI_SWITCH_ATTR_L3_NEIGHBOR_TABLE_SIZE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -145,12 +242,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_L3_ROUTE_TABLE_SIZE,
+        .attridname             = "SAI_SWITCH_ATTR_L3_ROUTE_TABLE_SIZE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -159,12 +258,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_LAG_MEMBERS,
+        .attridname             = "SAI_SWITCH_ATTR_LAG_MEMBERS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -173,12 +274,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_NUMBER_OF_LAGS,
+        .attridname             = "SAI_SWITCH_ATTR_NUMBER_OF_LAGS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -187,12 +290,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ECMP_MEMBERS,
+        .attridname             = "SAI_SWITCH_ATTR_ECMP_MEMBERS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -201,12 +306,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_NUMBER_OF_ECMP_GROUPS,
+        .attridname             = "SAI_SWITCH_ATTR_NUMBER_OF_ECMP_GROUPS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -215,12 +322,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_NUMBER_OF_UNICAST_QUEUES,
+        .attridname             = "SAI_SWITCH_ATTR_NUMBER_OF_UNICAST_QUEUES",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -229,12 +338,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_NUMBER_OF_MULTICAST_QUEUES,
+        .attridname             = "SAI_SWITCH_ATTR_NUMBER_OF_MULTICAST_QUEUES",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -243,12 +354,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_NUMBER_OF_QUEUES,
+        .attridname             = "SAI_SWITCH_ATTR_NUMBER_OF_QUEUES",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -257,12 +370,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_NUMBER_OF_CPU_QUEUES,
+        .attridname             = "SAI_SWITCH_ATTR_NUMBER_OF_CPU_QUEUES",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -271,12 +386,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ON_LINK_ROUTE_SUPPORTED,
+        .attridname             = "SAI_SWITCH_ATTR_ON_LINK_ROUTE_SUPPORTED",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -285,12 +402,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_OPER_STATUS,
+        .attridname             = "SAI_SWITCH_ATTR_OPER_STATUS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -299,6 +418,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = StringifyEnum ( sai_switch_oper_status_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_switch_oper_status_t ),
+        .enummetadata           = &metadata_enum_sai_switch_oper_status_t,
         .conditions             = { },
 
         // dynamic
@@ -307,6 +427,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_MAX_TEMP,
+        .attridname             = "SAI_SWITCH_ATTR_MAX_TEMP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -315,12 +436,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ACL_TABLE_MINIMUM_PRIORITY,
+        .attridname             = "SAI_SWITCH_ATTR_ACL_TABLE_MINIMUM_PRIORITY",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -329,12 +452,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ACL_TABLE_MAXIMUM_PRIORITY,
+        .attridname             = "SAI_SWITCH_ATTR_ACL_TABLE_MAXIMUM_PRIORITY",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -343,12 +468,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ACL_ENTRY_MINIMUM_PRIORITY,
+        .attridname             = "SAI_SWITCH_ATTR_ACL_ENTRY_MINIMUM_PRIORITY",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -357,12 +484,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ACL_ENTRY_MAXIMUM_PRIORITY,
+        .attridname             = "SAI_SWITCH_ATTR_ACL_ENTRY_MAXIMUM_PRIORITY",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -371,12 +500,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_FDB_DST_USER_META_DATA_RANGE,
+        .attridname             = "SAI_SWITCH_ATTR_FDB_DST_USER_META_DATA_RANGE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32_RANGE,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -385,12 +516,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ROUTE_DST_USER_META_DATA_RANGE,
+        .attridname             = "SAI_SWITCH_ATTR_ROUTE_DST_USER_META_DATA_RANGE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32_RANGE,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -399,12 +532,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_NEIGHBOR_DST_USER_META_DATA_RANGE,
+        .attridname             = "SAI_SWITCH_ATTR_NEIGHBOR_DST_USER_META_DATA_RANGE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32_RANGE,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -413,12 +548,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_PORT_USER_META_DATA_RANGE,
+        .attridname             = "SAI_SWITCH_ATTR_PORT_USER_META_DATA_RANGE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32_RANGE,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -427,12 +564,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_VLAN_USER_META_DATA_RANGE,
+        .attridname             = "SAI_SWITCH_ATTR_VLAN_USER_META_DATA_RANGE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32_RANGE,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -441,12 +580,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ACL_USER_META_DATA_RANGE,
+        .attridname             = "SAI_SWITCH_ATTR_ACL_USER_META_DATA_RANGE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32_RANGE,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -455,12 +596,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ACL_USER_TRAP_ID_RANGE,
+        .attridname             = "SAI_SWITCH_ATTR_ACL_USER_TRAP_ID_RANGE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32_RANGE,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -469,12 +612,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID,
+        .attridname             = "SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_STP_INSTANCE },
@@ -483,12 +628,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID,
+        .attridname             = "SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_VIRTUAL_ROUTER },
@@ -497,12 +644,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_TRAFFIC_CLASSES,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_TRAFFIC_CLASSES",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT8,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -511,12 +660,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_SCHEDULER_GROUP_HIERARCHY_LEVELS,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_SCHEDULER_GROUP_HIERARCHY_LEVELS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -525,12 +676,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_SCHEDULER_GROUPS_PER_HIERARCHY_LEVEL,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_SCHEDULER_GROUPS_PER_HIERARCHY_LEVEL",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32_LIST,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -539,12 +692,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -553,12 +708,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_TOTAL_BUFFER_SIZE,
+        .attridname             = "SAI_SWITCH_ATTR_TOTAL_BUFFER_SIZE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -567,12 +724,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_INGRESS_BUFFER_POOL_NUM,
+        .attridname             = "SAI_SWITCH_ATTR_INGRESS_BUFFER_POOL_NUM",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -581,12 +740,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_EGRESS_BUFFER_POOL_NUM,
+        .attridname             = "SAI_SWITCH_ATTR_EGRESS_BUFFER_POOL_NUM",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -595,12 +756,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP,
+        .attridname             = "SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_TRAP_GROUP },
@@ -609,6 +772,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         /*
@@ -625,6 +789,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ECMP_HASH,
+        .attridname             = "SAI_SWITCH_ATTR_ECMP_HASH",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_HASH },
@@ -633,6 +798,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         /*
@@ -648,6 +814,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_LAG_HASH,
+        .attridname             = "SAI_SWITCH_ATTR_LAG_HASH",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_HASH },
@@ -656,6 +823,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         /*
@@ -671,6 +839,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_RESTART_TYPE,
+        .attridname             = "SAI_SWITCH_ATTR_RESTART_TYPE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -679,12 +848,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = StringifyEnum ( sai_switch_restart_type_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_switch_restart_type_t ),
+        .enummetadata           = &metadata_enum_sai_switch_restart_type_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_MIN_PLANNED_RESTART_INTERVAL,
+        .attridname             = "SAI_SWITCH_ATTR_MIN_PLANNED_RESTART_INTERVAL",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -693,12 +864,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_NV_STORAGE_SIZE,
+        .attridname             = "SAI_SWITCH_ATTR_NV_STORAGE_SIZE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT64,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -707,12 +880,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_MAX_ACL_ACTION_COUNT,
+        .attridname             = "SAI_SWITCH_ATTR_MAX_ACL_ACTION_COUNT",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -721,28 +896,32 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
-
-//    {
-//        .objecttype             = SAI_OBJECT_TYPE_SWITCH,
-//        .attrid                 = SAI_SWITCH_ATTR_ACL_CAPABILITY,
-//        .serializationtype      = SAI_SERIALIZATION_TYPE_ACL_CAPABILITY, // not supported yet
-//        .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
-//        .allowedobjecttypes     = { },
-//        .allownullobjectid      = false,
-//        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_NONE,
-//        .defaultvalue           = { },
-//        .enumtypestr            = NULL,
-//        .enumallowedvalues      = { },
-//        .conditions             = { },
-//    },
-
+/*
+    {
+        .objecttype             = SAI_OBJECT_TYPE_SWITCH,
+        .attrid                 = SAI_SWITCH_ATTR_ACL_CAPABILITY,
+        .nameid                 = "SAI_SWITCH_ATTR_ACL_CAPABILITY",
+        .serializationtype      = SAI_SERIALIZATION_TYPE_ACL_CAPABILITY, // not supported yet
+        .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
+        .allowedobjecttypes     = { },
+        .allownullobjectid      = false,
+        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_NONE,
+        .defaultvalue           = { },
+        .enumtypestr            = NULL,
+        .enumallowedvalues      = { },
+        .enummetadata           = NULL,
+        .conditions             = { },
+    },
+*/
     // READ-WRITE
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_SWITCHING_MODE,
+        .attridname             = "SAI_SWITCH_ATTR_SWITCHING_MODE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -751,12 +930,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_SWITCHING_MODE_STORE_AND_FORWARD },
         .enumtypestr            = StringifyEnum ( sai_switch_switching_mode_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_switch_switching_mode_t ),
+        .enummetadata           = &metadata_enum_sai_switch_switching_mode_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_BCAST_CPU_FLOOD_ENABLE,
+        .attridname             = "SAI_SWITCH_ATTR_BCAST_CPU_FLOOD_ENABLE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -765,6 +946,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .booldata = false },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO what is default value? switch dependent?
@@ -773,6 +955,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_MCAST_CPU_FLOOD_ENABLE,
+        .attridname             = "SAI_SWITCH_ATTR_MCAST_CPU_FLOOD_ENABLE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -781,12 +964,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .booldata = false },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS,
+        .attridname             = "SAI_SWITCH_ATTR_SRC_MAC_ADDRESS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_MAC,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -795,6 +980,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // NOTE: Default value is switch dependent
@@ -803,6 +989,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_MAX_LEARNED_ADDRESSES,
+        .attridname             = "SAI_SWITCH_ATTR_MAX_LEARNED_ADDRESSES",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -811,12 +998,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .u32 = 0 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_FDB_AGING_TIME,
+        .attridname             = "SAI_SWITCH_ATTR_FDB_AGING_TIME",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -825,12 +1014,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .u32 = 0 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_FDB_UNICAST_MISS_ACTION,
+        .attridname             = "SAI_SWITCH_ATTR_FDB_UNICAST_MISS_ACTION",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -839,12 +1030,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_PACKET_ACTION_FORWARD },
         .enumtypestr            = StringifyEnum ( sai_packet_action_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_packet_action_t ),
+        .enummetadata           = &metadata_enum_sai_packet_action_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_FDB_BROADCAST_MISS_ACTION,
+        .attridname             = "SAI_SWITCH_ATTR_FDB_BROADCAST_MISS_ACTION",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -853,12 +1046,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_PACKET_ACTION_FORWARD },
         .enumtypestr            = StringifyEnum ( sai_packet_action_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_packet_action_t ),
+        .enummetadata           = &metadata_enum_sai_packet_action_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_FDB_MULTICAST_MISS_ACTION,
+        .attridname             = "SAI_SWITCH_ATTR_FDB_MULTICAST_MISS_ACTION",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -867,12 +1062,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_PACKET_ACTION_FORWARD },
         .enumtypestr            = StringifyEnum ( sai_packet_action_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_packet_action_t ),
+        .enummetadata           = &metadata_enum_sai_packet_action_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_ALGORITHM,
+        .attridname             = "SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_ALGORITHM",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -881,12 +1078,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_HASH_ALGORITHM_CRC },
         .enumtypestr            = StringifyEnum ( sai_hash_algorithm_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_hash_algorithm_t ),
+        .enummetadata           = &metadata_enum_sai_hash_algorithm_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED,
+        .attridname             = "SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_SEED",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -895,12 +1094,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .u32 = 0 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ECMP_DEFAULT_SYMMETRIC_HASH,
+        .attridname             = "SAI_SWITCH_ATTR_ECMP_DEFAULT_SYMMETRIC_HASH",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -909,12 +1110,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .booldata = false },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ECMP_HASH_IPV4,
+        .attridname             = "SAI_SWITCH_ATTR_ECMP_HASH_IPV4",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_HASH },
@@ -923,6 +1126,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO there may exist internal hash (vendor specific / switch internal)
@@ -931,6 +1135,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ECMP_HASH_IPV4_IN_IPV4,
+        .attridname             = "SAI_SWITCH_ATTR_ECMP_HASH_IPV4_IN_IPV4",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_HASH },
@@ -939,6 +1144,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO there may exist internal hash
@@ -947,6 +1153,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_ECMP_HASH_IPV6,
+        .attridname             = "SAI_SWITCH_ATTR_ECMP_HASH_IPV6",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_HASH },
@@ -955,6 +1162,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO there may exist internal hash
@@ -963,6 +1171,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_ALGORITHM,
+        .attridname             = "SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_ALGORITHM",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -971,12 +1180,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_HASH_ALGORITHM_CRC },
         .enumtypestr            = StringifyEnum ( sai_hash_algorithm_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_hash_algorithm_t ),
+        .enummetadata           = &metadata_enum_sai_hash_algorithm_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_SEED,
+        .attridname             = "SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_SEED",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -985,12 +1196,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .u32 = 0 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_LAG_DEFAULT_SYMMETRIC_HASH,
+        .attridname             = "SAI_SWITCH_ATTR_LAG_DEFAULT_SYMMETRIC_HASH",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -999,12 +1212,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .booldata = false },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_LAG_HASH_IPV4,
+        .attridname             = "SAI_SWITCH_ATTR_LAG_HASH_IPV4",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_HASH },
@@ -1013,6 +1228,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
 
         .conditions             = { },
 
@@ -1022,6 +1238,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_LAG_HASH_IPV4_IN_IPV4,
+        .attridname             = "SAI_SWITCH_ATTR_LAG_HASH_IPV4_IN_IPV4",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_HASH },
@@ -1030,6 +1247,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO there may exist internal hash
@@ -1038,6 +1256,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_LAG_HASH_IPV6,
+        .attridname             = "SAI_SWITCH_ATTR_LAG_HASH_IPV6",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_HASH },
@@ -1046,6 +1265,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
 
         .conditions             = { },
 
@@ -1055,6 +1275,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_COUNTER_REFRESH_INTERVAL,
+        .attridname             = "SAI_SWITCH_ATTR_COUNTER_REFRESH_INTERVAL",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -1063,6 +1284,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .u32 = 1 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
@@ -1072,6 +1294,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_DEFAULT_TC,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_DEFAULT_TC",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT8,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -1080,12 +1303,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .u8 = 0 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_QOS_MAPS },
@@ -1094,6 +1319,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
 
         .conditions             = { },
     },
@@ -1101,6 +1327,7 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_DOT1P_TO_COLOR_MAP,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_DOT1P_TO_COLOR_MAP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_QOS_MAPS },
@@ -1109,12 +1336,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_DSCP_TO_TC_MAP,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_DSCP_TO_TC_MAP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_QOS_MAPS },
@@ -1123,12 +1352,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_DSCP_TO_COLOR_MAP,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_DSCP_TO_COLOR_MAP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_QOS_MAPS },
@@ -1137,12 +1368,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_TC_TO_QUEUE_MAP,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_TC_TO_QUEUE_MAP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_QOS_MAPS },
@@ -1151,12 +1384,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_TC_AND_COLOR_TO_DOT1P_MAP,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_TC_AND_COLOR_TO_DOT1P_MAP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_QOS_MAPS },
@@ -1165,12 +1400,14 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_QOS_TC_AND_COLOR_TO_DSCP_MAP,
+        .attridname             = "SAI_SWITCH_ATTR_QOS_TC_AND_COLOR_TO_DSCP_MAP",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_QOS_MAPS },
@@ -1179,22 +1416,26 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
-
-    //{
-    //    .objecttype             = SAI_OBJECT_TYPE_SWITCH,
-    //    .attrid                 = SAI_SWITCH_ATTR_SWITCH_SHELL_ENABLE,
-    //    .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
-    //    .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
-    //    .allowedobjecttypes     = { },
-    //    .allownullobjectid      = true,
-    //    .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_CONST,
-    //    .defaultvalue           = { .booldata = false },
-    //    .enumtypestr            = NULL,
-    //    .enumallowedvalues      = { },
-    //    .conditions             = { },
-    //},
+/*
+    {
+        .objecttype             = SAI_OBJECT_TYPE_SWITCH,
+        .attrid                 = SAI_SWITCH_ATTR_SWITCH_SHELL_ENABLE,
+        .nameid                 = "SAI_SWITCH_ATTR_SWITCH_SHELL_ENABLE",
+        .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
+        .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
+        .allowedobjecttypes     = { },
+        .allownullobjectid      = true,
+        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_CONST,
+        .defaultvalue           = { .booldata = false },
+        .enumtypestr            = NULL,
+        .enumallowedvalues      = { },
+        .enummetadata           = NULL,
+        .conditions             = { },
+    },
+*/
 };
 
 const size_t sai_switch_attr_metadata_count = sizeof(sai_switch_attr_metadata)/sizeof(sai_attr_metadata_t);

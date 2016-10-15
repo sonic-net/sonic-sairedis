@@ -1,5 +1,149 @@
-#include "sai_meta.h"
 #include <sstream>
+#include "sai_meta.h"
+
+const char metadata_sai_object_type_t_enum_name[] = "sai_object_type_t";
+const sai_object_type_t metadata_sai_object_type_t_enum_values[] = {
+    SAI_OBJECT_TYPE_NULL,
+    SAI_OBJECT_TYPE_PORT,
+    SAI_OBJECT_TYPE_LAG,
+    SAI_OBJECT_TYPE_VIRTUAL_ROUTER,
+    SAI_OBJECT_TYPE_NEXT_HOP,
+    SAI_OBJECT_TYPE_NEXT_HOP_GROUP,
+    SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+    SAI_OBJECT_TYPE_ACL_TABLE,
+    SAI_OBJECT_TYPE_ACL_ENTRY,
+    SAI_OBJECT_TYPE_ACL_COUNTER,
+    SAI_OBJECT_TYPE_ACL_RANGE,
+    SAI_OBJECT_TYPE_HOST_INTERFACE,
+    SAI_OBJECT_TYPE_MIRROR,
+    SAI_OBJECT_TYPE_SAMPLEPACKET,
+    SAI_OBJECT_TYPE_STP_INSTANCE,
+    SAI_OBJECT_TYPE_TRAP_GROUP,
+    SAI_OBJECT_TYPE_ACL_TABLE_GROUP,
+    SAI_OBJECT_TYPE_POLICER,
+    SAI_OBJECT_TYPE_WRED,
+    SAI_OBJECT_TYPE_QOS_MAPS,
+    SAI_OBJECT_TYPE_QUEUE,
+    SAI_OBJECT_TYPE_SCHEDULER,
+    SAI_OBJECT_TYPE_SCHEDULER_GROUP,
+    SAI_OBJECT_TYPE_BUFFER_POOL,
+    SAI_OBJECT_TYPE_BUFFER_PROFILE,
+    SAI_OBJECT_TYPE_PRIORITY_GROUP,
+    SAI_OBJECT_TYPE_LAG_MEMBER,
+    SAI_OBJECT_TYPE_HASH,
+    SAI_OBJECT_TYPE_UDF,
+    SAI_OBJECT_TYPE_UDF_MATCH,
+    SAI_OBJECT_TYPE_UDF_GROUP,
+    SAI_OBJECT_TYPE_FDB,
+    SAI_OBJECT_TYPE_SWITCH,
+    SAI_OBJECT_TYPE_TRAP,
+    SAI_OBJECT_TYPE_TRAP_USER_DEF,
+    SAI_OBJECT_TYPE_NEIGHBOR,
+    SAI_OBJECT_TYPE_ROUTE,
+    SAI_OBJECT_TYPE_VLAN,
+    SAI_OBJECT_TYPE_VLAN_MEMBER,
+    SAI_OBJECT_TYPE_PACKET,
+    SAI_OBJECT_TYPE_TUNNEL_MAP,
+    SAI_OBJECT_TYPE_TUNNEL,
+    SAI_OBJECT_TYPE_TUNNEL_TABLE_ENTRY,
+    SAI_OBJECT_TYPE_MAX,
+};
+const char* metadata_sai_object_type_t_enum_values_names[] = {
+    "SAI_OBJECT_TYPE_NULL",
+    "SAI_OBJECT_TYPE_PORT",
+    "SAI_OBJECT_TYPE_LAG",
+    "SAI_OBJECT_TYPE_VIRTUAL_ROUTER",
+    "SAI_OBJECT_TYPE_NEXT_HOP",
+    "SAI_OBJECT_TYPE_NEXT_HOP_GROUP",
+    "SAI_OBJECT_TYPE_ROUTER_INTERFACE",
+    "SAI_OBJECT_TYPE_ACL_TABLE",
+    "SAI_OBJECT_TYPE_ACL_ENTRY",
+    "SAI_OBJECT_TYPE_ACL_COUNTER",
+    "SAI_OBJECT_TYPE_ACL_RANGE",
+    "SAI_OBJECT_TYPE_HOSTIF",
+    "SAI_OBJECT_TYPE_MIRROR_SESSION",
+    "SAI_OBJECT_TYPE_SAMPLEPACKET",
+    "SAI_OBJECT_TYPE_STP",
+    "SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP",
+    "SAI_OBJECT_TYPE_ACL_TABLE_GROUP",
+    "SAI_OBJECT_TYPE_POLICER",
+    "SAI_OBJECT_TYPE_WRED",
+    "SAI_OBJECT_TYPE_QOS_MAP",
+    "SAI_OBJECT_TYPE_QUEUE",
+    "SAI_OBJECT_TYPE_SCHEDULER",
+    "SAI_OBJECT_TYPE_SCHEDULER_GROUP",
+    "SAI_OBJECT_TYPE_BUFFER_POOL",
+    "SAI_OBJECT_TYPE_BUFFER_PROFILE",
+    "SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP",
+    "SAI_OBJECT_TYPE_LAG_MEMBER",
+    "SAI_OBJECT_TYPE_HASH",
+    "SAI_OBJECT_TYPE_UDF",
+    "SAI_OBJECT_TYPE_UDF_MATCH",
+    "SAI_OBJECT_TYPE_UDF_GROUP",
+    "SAI_OBJECT_TYPE_FDB_ENTRY",
+    "SAI_OBJECT_TYPE_SWITCH",
+    "SAI_OBJECT_TYPE_HOSTIF_TRAP",
+    "SAI_OBJECT_TYPE_HOSTIF_USER_DEFINED_TRAP",
+    "SAI_OBJECT_TYPE_NEIGHBOR_ENTRY",
+    "SAI_OBJECT_TYPE_ROUTE_ENTRY",
+    "SAI_OBJECT_TYPE_VLAN",
+    "SAI_OBJECT_TYPE_VLAN_MEMBER",
+    "SAI_OBJECT_TYPE_HOSTIF_PACKET",
+    "SAI_OBJECT_TYPE_TUNNEL_MAP",
+    "SAI_OBJECT_TYPE_TUNNEL",
+    "SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY",
+    "SAI_OBJECT_TYPE_MAX",
+    NULL
+};
+const char* metadata_sai_object_type_t_enum_values_short_names[] = {
+    "NULL",
+    "PORT",
+    "LAG",
+    "VIRTUAL_ROUTER",
+    "NEXT_HOP",
+    "NEXT_HOP_GROUP",
+    "ROUTER_INTERFACE",
+    "ACL_TABLE",
+    "ACL_ENTRY",
+    "ACL_COUNTER",
+    "ACL_RANGE",
+    "HOSTIF",
+    "MIRROR_SESSION",
+    "SAMPLEPACKET",
+    "STP",
+    "HOSTIF_TRAP_GROUP",
+    "ACL_TABLE_GROUP",
+    "POLICER",
+    "WRED",
+    "QOS_MAP",
+    "QUEUE",
+    "SCHEDULER",
+    "SCHEDULER_GROUP",
+    "BUFFER_POOL",
+    "BUFFER_PROFILE",
+    "INGRESS_PRIORITY_GROUP",
+    "LAG_MEMBER",
+    "HASH",
+    "UDF",
+    "UDF_MATCH",
+    "UDF_GROUP",
+    "FDB_ENTRY",
+    "SWITCH",
+    "HOSTIF_TRAP",
+    "HOSTIF_USER_DEFINED_TRAP",
+    "NEIGHBOR_ENTRY",
+    "ROUTE_ENTRY",
+    "VLAN",
+    "VLAN_MEMBER",
+    "HOSTIF_PACKET",
+    "TUNNEL_MAP",
+    "TUNNEL",
+    "TUNNEL_TERM_TABLE_ENTRY",
+    "MAX",
+    NULL
+};
+const size_t metadata_sai_object_type_t_enum_values_count = 44;
+DEFINE_ENUM_METADATA(sai_object_type_t, 44);
 
 // TODO needs to be moved to SAI
 
@@ -1013,6 +1157,14 @@ void metadata_sanity_check(const sai_attr_metadata_t& md)
     if (!(md.isenum() || md.isenumlist()) && md.enumallowedvalues.size() != 0)
     {
         META_LOG_THROW(md, "is not marked enum but has defined enum allowed values");
+    }
+
+    if (md.isenum() || md.isenumlist())
+    {
+        if (md.enummetadata == NULL)
+        {
+            META_LOG_THROW(md, "attribute is enum but no metadata specified");
+        }
     }
 
     if (requiredefault && md.isenum())

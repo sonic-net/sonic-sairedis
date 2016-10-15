@@ -7,6 +7,7 @@ const sai_attr_metadata_t sai_priority_group_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_PRIORITY_GROUP,
         .attrid                 = SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE,
+        .attridname             = "SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_BUFFER_PROFILE },
@@ -15,6 +16,7 @@ const sai_attr_metadata_t sai_priority_group_attr_metadata[] = {
         .defaultvalue           = { .oid = SAI_NULL_OBJECT_ID },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 };
@@ -35,11 +37,48 @@ DEFINE_ENUM_VALUES(sai_buffer_threshold_mode_t)
     SAI_BUFFER_THRESHOLD_MODE_DYNAMIC
 };
 
+const char metadata_sai_buffer_threshold_mode_t_enum_name[] = "sai_buffer_threshold_mode_t";
+const sai_buffer_threshold_mode_t metadata_sai_buffer_threshold_mode_t_enum_values[] = {
+    SAI_BUFFER_THRESHOLD_MODE_STATIC,
+    SAI_BUFFER_THRESHOLD_MODE_DYNAMIC,
+};
+const char* metadata_sai_buffer_threshold_mode_t_enum_values_names[] = {
+    "SAI_BUFFER_THRESHOLD_MODE_STATIC",
+    "SAI_BUFFER_THRESHOLD_MODE_DYNAMIC",
+    NULL
+};
+const char* metadata_sai_buffer_threshold_mode_t_enum_values_short_names[] = {
+    "STATIC",
+    "DYNAMIC",
+    NULL
+};
+const size_t metadata_sai_buffer_threshold_mode_t_enum_values_count = 2;
+DEFINE_ENUM_METADATA(sai_buffer_threshold_mode_t, 2);
+
+const char metadata_sai_buffer_pool_type_t_enum_name[] = "sai_buffer_pool_type_t";
+const sai_buffer_pool_type_t metadata_sai_buffer_pool_type_t_enum_values[] = {
+    SAI_BUFFER_POOL_INGRESS,
+    SAI_BUFFER_POOL_EGRESS,
+};
+const char* metadata_sai_buffer_pool_type_t_enum_values_names[] = {
+    "SAI_BUFFER_POOL_TYPE_INGRESS",
+    "SAI_BUFFER_POOL_TYPE_EGRESS",
+    NULL
+};
+const char* metadata_sai_buffer_pool_type_t_enum_values_short_names[] = {
+    "INGRESS",
+    "EGRESS",
+    NULL
+};
+const size_t metadata_sai_buffer_pool_type_t_enum_values_count = 2;
+DEFINE_ENUM_METADATA(sai_buffer_pool_type_t, 2);
+
 const sai_attr_metadata_t sai_buffer_pool_attr_metadata[] = {
 
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_POOL,
         .attrid                 = SAI_BUFFER_POOL_ATTR_SHARED_SIZE,
+        .attridname             = "SAI_BUFFER_POOL_ATTR_SHARED_SIZE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_READ_ONLY,
         .allowedobjecttypes     = { },
@@ -48,12 +87,14 @@ const sai_attr_metadata_t sai_buffer_pool_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_POOL,
         .attrid                 = SAI_BUFFER_POOL_ATTR_TYPE,
+        .attridname             = "SAI_BUFFER_POOL_ATTR_TYPE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { },
@@ -62,12 +103,14 @@ const sai_attr_metadata_t sai_buffer_pool_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = StringifyEnum ( sai_buffer_pool_type_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_buffer_pool_type_t ),
+        .enummetadata           = &metadata_enum_sai_buffer_pool_type_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_POOL,
         .attrid                 = SAI_BUFFER_POOL_ATTR_SIZE,
+        .attridname             = "SAI_BUFFER_POOL_ATTR_SIZE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -76,12 +119,14 @@ const sai_attr_metadata_t sai_buffer_pool_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_POOL,
         .attrid                 = SAI_BUFFER_POOL_ATTR_TH_MODE,
+        .attridname             = "SAI_BUFFER_POOL_ATTR_TH_MODE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { },
@@ -90,6 +135,7 @@ const sai_attr_metadata_t sai_buffer_pool_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_BUFFER_THRESHOLD_MODE_DYNAMIC },
         .enumtypestr            = StringifyEnum ( sai_buffer_threshold_mode_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_buffer_threshold_mode_t ),
+        .enummetadata           = &metadata_enum_sai_buffer_threshold_mode_t,
         .conditions             = { },
     },
 };
@@ -103,6 +149,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_PROFILE,
         .attrid                 = SAI_BUFFER_PROFILE_ATTR_POOL_ID,
+        .attridname             = "SAI_BUFFER_PROFILE_ATTR_POOL_ID",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_ID,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { SAI_OBJECT_TYPE_BUFFER_POOL },
@@ -111,6 +158,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // Pool id = SAI_NULL_OBJECT_ID can be used when profile is not associated with specific
@@ -120,6 +168,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_PROFILE,
         .attrid                 = SAI_BUFFER_PROFILE_ATTR_BUFFER_SIZE,
+        .attridname             = "SAI_BUFFER_PROFILE_ATTR_BUFFER_SIZE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -128,12 +177,14 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_PROFILE,
         .attrid                 = SAI_BUFFER_PROFILE_ATTR_TH_MODE,
+        .attridname             = "SAI_BUFFER_PROFILE_ATTR_TH_MODE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -142,6 +193,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = StringifyEnum ( sai_buffer_threshold_mode_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_buffer_threshold_mode_t ), // TODO 3rd value needed to use pool and set to default (PR in progress)
+        .enummetadata           = &metadata_enum_sai_buffer_threshold_mode_t,
         .conditions             = { },
 
         // If set, this overrides SAI_BUFFER_POOL_ATTR_TH_MODE.
@@ -152,6 +204,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_PROFILE,
         .attrid                 = SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH,
+        .attridname             = "SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT8,
         .flags                  = /*SAI_ATTR_FLAGS_MANDATORY_ON_CREATE |*/ SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -160,6 +213,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { }, // ENUM_COND ( SAI_BUFFER_PROFILE_ATTR_TH_MODE, SAI_BUFFER_THRESHOLD_MODE_DYNAMIC ),
 
         // TODO condition here is complex, since if TH is inherited from pool then this is hard to determine
@@ -170,6 +224,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_PROFILE,
         .attrid                 = SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH,
+        .attridname             = "SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = /*SAI_ATTR_FLAGS_MANDATORY_ON_CREATE |*/ SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -178,6 +233,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { }, //  ENUM_COND ( SAI_BUFFER_PROFILE_ATTR_TH_MODE, SAI_BUFFER_THRESHOLD_MODE_DYNAMIC ),
 
         // TODO condition here is complex, since if TH is inherited from pool then this is hard to determine
@@ -188,6 +244,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_PROFILE,
         .attrid                 = SAI_BUFFER_PROFILE_ATTR_XOFF_TH,
+        .attridname             = "SAI_BUFFER_PROFILE_ATTR_XOFF_TH",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -196,6 +253,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
         .defaultvalue           = { .u32 = 0 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO valid only for ingress priority group
@@ -204,6 +262,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_BUFFER_PROFILE,
         .attrid                 = SAI_BUFFER_PROFILE_ATTR_XON_TH,
+        .attridname             = "SAI_BUFFER_PROFILE_ATTR_XON_TH",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -212,6 +271,7 @@ const sai_attr_metadata_t sai_buffer_profile_attr_metadata[] = {
         .defaultvalue           = { .u32 = 0 },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO valid only for ingress priority group

@@ -14,7 +14,7 @@ extern "C" {
 }
 
 #include "swss/logger.h"
-#include "../common/saiserialize.h"
+#include "common/saiserialize.h"
 
 #define MAX_LIST_COUNT 128
 
@@ -36,6 +36,69 @@ extern "C" {
 #endif
 
 #define StringifyEnum(x) ((std::is_enum<x>::value) ? #x : 0)
+
+/*
+typedef enum _sai_attr_serialization_type_t
+{
+    SAI_SERIALIZATION_TYPE_BOOL,
+    SAI_SERIALIZATION_TYPE_CHARDATA,
+    SAI_SERIALIZATION_TYPE_UINT8,
+    SAI_SERIALIZATION_TYPE_INT8,
+    SAI_SERIALIZATION_TYPE_UINT16,
+    SAI_SERIALIZATION_TYPE_INT16,
+    SAI_SERIALIZATION_TYPE_UINT32,
+    SAI_SERIALIZATION_TYPE_INT32,
+    SAI_SERIALIZATION_TYPE_UINT64,
+    SAI_SERIALIZATION_TYPE_INT64,
+    SAI_SERIALIZATION_TYPE_MAC,
+    SAI_SERIALIZATION_TYPE_IP4,
+    SAI_SERIALIZATION_TYPE_IP6,
+    SAI_SERIALIZATION_TYPE_IP_ADDRESS,
+    SAI_SERIALIZATION_TYPE_OBJECT_ID,
+    SAI_SERIALIZATION_TYPE_OBJECT_LIST,
+    SAI_SERIALIZATION_TYPE_UINT8_LIST,
+    SAI_SERIALIZATION_TYPE_INT8_LIST,
+    SAI_SERIALIZATION_TYPE_UINT16_LIST,
+    SAI_SERIALIZATION_TYPE_INT16_LIST,
+    SAI_SERIALIZATION_TYPE_UINT32_LIST,
+    SAI_SERIALIZATION_TYPE_INT32_LIST,
+    SAI_SERIALIZATION_TYPE_UINT32_RANGE,
+    SAI_SERIALIZATION_TYPE_INT32_RANGE,
+    SAI_SERIALIZATION_TYPE_VLAN_LIST,
+
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT8,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT16,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT16,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT32,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_MAC,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP4,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP6,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST,
+    SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST,
+
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT8,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT8,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT16,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT16,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT32,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_MAC,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV4,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV6,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID,
+    SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST,
+
+    SAI_SERIALIZATION_TYPE_PORT_BREAKOUT,
+    SAI_SERIALIZATION_TYPE_QOS_MAP_LIST,
+    SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST,
+    SAI_SERIALIZATION_TYPE_ACL_CAPABILITY
+
+} sai_attr_serialization_type_t;
+*/
 
 typedef struct _sai_object_meta_key_t
 {
@@ -325,6 +388,38 @@ typedef struct _sai_attr_condition_t {
 // also must be ignored on post set/remve (check flags) so
 // we could validate ranges for example what are valid when doing query
 
+/**
+ * @brief Defines enum metadata information.
+ */
+typedef struct _sai_enum_metadata_t {
+
+    /**
+     * @brief String representation of enum typedef.
+     */
+    const char*     name;
+
+    /**
+     * @brief Values count in enum.
+     */
+    const size_t    valuescount;
+
+    /**
+     * @brief Array of enum values.
+     */
+    const int*      values;
+
+    /**
+     * @brief Array of enum values string names.
+     */
+    const char**    valuesnames;
+
+    /**
+     * @brief Array of enum values string short names.
+     */
+    const char**    valuesshortnames;
+
+} sai_enum_metadata_t;
+
 typedef struct _sai_attr_metadata_t {
 
     /*
@@ -338,6 +433,11 @@ typedef struct _sai_attr_metadata_t {
      */
 
     const sai_attr_id_t                       attrid;
+
+    /**
+     * Specifies valid attribute id name for this object type.
+     */
+    const char*                               attridname;
 
     /*
      * Specifies serialization type for this attribute.
@@ -441,6 +541,12 @@ typedef struct _sai_attr_metadata_t {
      */
 
     const std::set<int32_t>&                  enumallowedvalues;
+
+    /*
+     * If attribute is enum value, then this will
+     * hold enum metadata.
+     */
+    const sai_enum_metadata_t* const          enummetadata;
 
     /*
      * Specifies condition type of attribute.
@@ -595,6 +701,26 @@ EXTERN_METADATA(vlan);
 EXTERN_METADATA(vlan_member);
 EXTERN_METADATA(wred);
 
+#define DEFINE_ENUM_METADATA(x,count)\
+const sai_enum_metadata_t metadata_enum_ ## x = {\
+    .name              = metadata_ ## x ## _enum_name,\
+    .valuescount       = count,\
+    .values            = (const int*)metadata_ ## x ## _enum_values,\
+    .valuesnames       = metadata_ ## x ## _enum_values_names,\
+    .valuesshortnames  = metadata_ ## x ## _enum_values_short_names,\
+};
+
+
+extern const sai_enum_metadata_t metadata_enum_sai_port_oper_status_t;
+extern const sai_enum_metadata_t metadata_enum_sai_status_t;
+extern const sai_enum_metadata_t metadata_enum_sai_fdb_event_t;
+extern const sai_enum_metadata_t metadata_enum_sai_object_type_t;
+extern const sai_enum_metadata_t metadata_enum_sai_port_event_t;
+extern const sai_enum_metadata_t metadata_enum_sai_packet_color_t;
+extern const sai_enum_metadata_t metadata_enum_sai_packet_action_t;
+extern const sai_enum_metadata_t metadata_enum_sai_next_hop_group_type_t;
+extern const sai_enum_metadata_t metadata_enum_sai_meter_type_t;
+
 struct HashForEnum
 {
     template <typename T> std::size_t operator()(T t) const
@@ -624,6 +750,10 @@ extern const sai_attribute_t* get_object_previous_attr(
 
 extern sai_status_t meta_init_db();
 extern void meta_init();
+
+extern const sai_attr_metadata_t* sai_metadata_get_attr_metadata(
+        _In_ sai_object_type_t objecttype,
+        _In_ sai_attr_id_t attrid);
 
 // GENERIC FUNCTION POINTERS
 

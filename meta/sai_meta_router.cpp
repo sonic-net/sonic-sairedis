@@ -7,6 +7,7 @@ const sai_attr_metadata_t sai_router_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_VIRTUAL_ROUTER,
         .attrid                 = SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V4_STATE,
+        .attridname             = "SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V4_STATE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -15,12 +16,14 @@ const sai_attr_metadata_t sai_router_attr_metadata[] = {
         .defaultvalue           = { .booldata = true },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_VIRTUAL_ROUTER,
         .attrid                 = SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V6_STATE,
+        .attridname             = "SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V6_STATE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -29,12 +32,14 @@ const sai_attr_metadata_t sai_router_attr_metadata[] = {
         .defaultvalue           = { .booldata = true },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_VIRTUAL_ROUTER,
         .attrid                 = SAI_VIRTUAL_ROUTER_ATTR_SRC_MAC_ADDRESS,
+        .attridname             = "SAI_VIRTUAL_ROUTER_ATTR_SRC_MAC_ADDRESS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_MAC,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -43,6 +48,7 @@ const sai_attr_metadata_t sai_router_attr_metadata[] = {
         .defaultvalue           = { },
         .enumtypestr            = NULL,
         .enumallowedvalues      = { },
+        .enummetadata           = NULL,
         .conditions             = { },
 
         // TODO equal to the SAI_SWITCH_ATTR_SRC_MAC_ADDRESS by default
@@ -54,6 +60,7 @@ const sai_attr_metadata_t sai_router_attr_metadata[] = {
     {
         .objecttype             = SAI_OBJECT_TYPE_VIRTUAL_ROUTER,
         .attrid                 = SAI_VIRTUAL_ROUTER_ATTR_VIOLATION_TTL1_ACTION,
+        .attridname             = "SAI_VIRTUAL_ROUTER_ATTR_VIOLATION_TTL1_ACTION",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -62,12 +69,14 @@ const sai_attr_metadata_t sai_router_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_PACKET_ACTION_TRAP },
         .enumtypestr            = StringifyEnum ( sai_packet_action_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_packet_action_t ),
+        .enummetadata           = &metadata_enum_sai_packet_action_t,
         .conditions             = { },
     },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_VIRTUAL_ROUTER,
         .attrid                 = SAI_VIRTUAL_ROUTER_ATTR_VIOLATION_IP_OPTIONS,
+        .attridname             = "SAI_VIRTUAL_ROUTER_ATTR_VIOLATION_IP_OPTIONS",
         .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
         .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
         .allowedobjecttypes     = { },
@@ -76,6 +85,7 @@ const sai_attr_metadata_t sai_router_attr_metadata[] = {
         .defaultvalue           = { .s32 = SAI_PACKET_ACTION_TRAP },
         .enumtypestr            = StringifyEnum ( sai_packet_action_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_packet_action_t ),
+        .enummetadata           = &metadata_enum_sai_packet_action_t,
         .conditions             = { },
     },
 };
