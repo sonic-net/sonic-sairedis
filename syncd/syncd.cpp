@@ -274,6 +274,8 @@ sai_object_id_t translate_vid_to_rid(
     int index = 0;
     sai_deserialize_primitive(str_rid, index, rid);
 
+    local_vid_to_rid[vid] = rid;
+
     SWSS_LOG_DEBUG("translated VID %llx to RID %llx", vid, rid);
 
     return rid;
