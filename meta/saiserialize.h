@@ -15,9 +15,10 @@ extern "C" {
 #include <tuple>
 #include <string.h>
 #include "swss/logger.h"
+#include "sai_meta.h"
 
 #define TO_STR(x) #x
-
+/*
 typedef enum _sai_attr_serialization_type_t
 {
     SAI_SERIALIZATION_TYPE_BOOL,
@@ -77,7 +78,7 @@ typedef enum _sai_attr_serialization_type_t
     SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST
 
 } sai_attr_serialization_type_t;
-
+*/
 typedef std::map<sai_object_type_t, std::string> sai_object_type_to_string_map_t;
 
 typedef std::map<sai_object_type_t, std::map<sai_attr_id_t, sai_attr_serialization_type_t>> sai_serialization_map_t;
@@ -358,5 +359,18 @@ sai_status_t transfer_attributes(
         _In_ bool countOnly);
 
 std::string sai_get_port_stat_counter_name(sai_port_stat_counter_t counter);
+
+// new methods
+
+std::string sai_serialize_attr_value(
+        _In_ const sai_attr_metadata_t& meta,
+        _In_ const sai_attribute_t &attr,
+        _In_ const bool countOnly);
+
+void sai_deserialize_attr_value(
+        _In_ const std::string& s,
+        _In_ const sai_attr_metadata_t& meta,
+        _Out_ sai_attribute_t &attr,
+        _In_ const bool countOnly);
 
 #endif // __SAI_SERIALIZE__

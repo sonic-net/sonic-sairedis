@@ -1,7 +1,8 @@
 #include "sai_meta.h"
 #include "sai_extra.h"
-#include <string.h>
+#include "saiserialize.h"
 
+#include <string.h>
 #include <arpa/inet.h>
 
 #include <map>
@@ -310,25 +311,23 @@ class SaiAttrWrapper
     public:
 
         SaiAttrWrapper(
-                _In_ sai_object_type_t objecttype,
-                _In_ sai_attr_serialization_type_t st,
+                _In_ const sai_attr_metadata_t* meta,
                 _In_ const sai_attribute_t& attr):
-            m_objecttype(objecttype),
-            m_serializationtype(st),
+            m_meta(meta),
             m_attr(attr)
     {
+        SWSS_LOG_ENTER();
+
         m_attr.id = attr.id;
 
-        std::string s;
-        sai_serialize_attr_value(st, attr, s, false);
+        std::string s = sai_serialize_attr_value(*meta, attr, false);
 
-        int index = 0;
-        sai_deserialize_attr_value(s, index, st, m_attr, false);
+        sai_deserialize_attr_value(s, *meta, m_attr, false);
     }
 
         ~SaiAttrWrapper()
         {
-            sai_deserialize_free_attribute_value(m_serializationtype, m_attr);
+            sai_deserialize_free_attribute_value(m_meta->serializationtype, m_attr);
         }
 
         const sai_attribute_t* getattr() const
@@ -336,18 +335,12 @@ class SaiAttrWrapper
             return &m_attr;
         }
 
-        sai_attr_serialization_type_t getserializationtype() const
-        {
-            return m_serializationtype;
-        }
-
     private:
 
         SaiAttrWrapper(const SaiAttrWrapper&);
         SaiAttrWrapper& operator=(const SaiAttrWrapper&);
 
-        sai_object_type_t m_objecttype;
-        sai_attr_serialization_type_t m_serializationtype;
+        const sai_attr_metadata_t* m_meta;
         sai_attribute_t m_attr;
 };
 
@@ -746,7 +739,7 @@ void set_object(
 
     META_LOG_DEBUG(md, "set attribute %d on %s", attr->id, key.c_str());
 
-    auto p = new SaiAttrWrapper(meta_key.object_type, md.serializationtype, *attr);
+    auto p = new SaiAttrWrapper(&md,*attr);
 
     ObjectAttrHash[key][attr->id] = std::shared_ptr<SaiAttrWrapper>(p);
 }

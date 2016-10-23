@@ -44,7 +44,7 @@ OBJ = \
 DEPS = 
 
 CFLAGS=-std=c++11 -I/usr/include/swss -I/usr/include/sai -I/usr/include -I.. $(warnings)
-LDFLAGS=-lpthread -lsairedis -lswsscommon 
+LDFLAGS=-lpthread -lsairedis -lswsscommon
 
 all: player
 

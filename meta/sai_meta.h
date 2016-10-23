@@ -14,7 +14,6 @@ extern "C" {
 }
 
 #include "swss/logger.h"
-#include "saiserialize.h"
 
 #define MAX_LIST_COUNT 128
 
@@ -37,7 +36,6 @@ extern "C" {
 
 #define StringifyEnum(x) ((std::is_enum<x>::value) ? #x : 0)
 
-/*
 typedef enum _sai_attr_serialization_type_t
 {
     SAI_SERIALIZATION_TYPE_BOOL,
@@ -98,7 +96,6 @@ typedef enum _sai_attr_serialization_type_t
     SAI_SERIALIZATION_TYPE_ACL_CAPABILITY
 
 } sai_attr_serialization_type_t;
-*/
 
 typedef struct _sai_object_meta_key_t
 {
@@ -711,6 +708,7 @@ const sai_enum_metadata_t metadata_enum_ ## x = {\
 };
 
 
+extern const sai_enum_metadata_t metadata_enum_sai_switch_oper_status_t;
 extern const sai_enum_metadata_t metadata_enum_sai_port_oper_status_t;
 extern const sai_enum_metadata_t metadata_enum_sai_status_t;
 extern const sai_enum_metadata_t metadata_enum_sai_fdb_event_t;
@@ -720,6 +718,8 @@ extern const sai_enum_metadata_t metadata_enum_sai_packet_color_t;
 extern const sai_enum_metadata_t metadata_enum_sai_packet_action_t;
 extern const sai_enum_metadata_t metadata_enum_sai_next_hop_group_type_t;
 extern const sai_enum_metadata_t metadata_enum_sai_meter_type_t;
+extern const sai_enum_metadata_t metadata_enum_sai_hostif_trap_type_t;
+extern const sai_enum_metadata_t metadata_enum_sai_port_stat_t;
 
 struct HashForEnum
 {
@@ -729,7 +729,9 @@ struct HashForEnum
     }
 };
 
+// TODO those should be internal only
 extern std::unordered_map<sai_object_type_t,std::unordered_map<sai_attr_id_t, const sai_attr_metadata_t*>, HashForEnum> AttributesMetadata;
+extern std::unordered_map<std::string,const sai_attr_metadata_t*> AttributesIdMetadata;
 
 extern std::string get_attr_info(const sai_attr_metadata_t& md);
 extern const char* get_object_type_name(sai_object_type_t o);

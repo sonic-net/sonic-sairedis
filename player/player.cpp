@@ -10,8 +10,8 @@ extern "C" {
 #include "sai.h"
 }
 
-#include "common/saiserialize.h"
-#include "common/saiattributelist.h"
+#include "meta/saiserialize.h"
+#include "meta/saiattributelist.h"
 #include "swss/logger.h"
 #include "swss/tokenize.h"
 

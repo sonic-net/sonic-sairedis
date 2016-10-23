@@ -1770,3 +1770,28 @@ void sai_deserialize_route_entry(
 
     sai_deserialize_ip_prefix(s, index, re.destination);
 }
+
+// new methods
+
+std::string sai_serialize_attr_value(
+        _In_ const sai_attr_metadata_t& meta,
+        _In_ const sai_attribute_t &attr,
+        _In_ const bool countOnly)
+{
+    std::string s;
+
+    sai_serialize_attr_value(meta.serializationtype, attr, s, countOnly);
+
+    return s;
+}
+
+void sai_deserialize_attr_value(
+        _In_ const std::string& s,
+        _In_ const sai_attr_metadata_t& meta,
+        _Out_ sai_attribute_t &attr,
+        _In_ const bool countOnly)
+{
+    int index = 0;
+
+    sai_deserialize_attr_value(s, index, meta.serializationtype, attr, countOnly);
+}

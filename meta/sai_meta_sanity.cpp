@@ -1,6 +1,117 @@
 #include <sstream>
 #include "sai_meta.h"
 
+const char metadata_sai_status_t_enum_name[] = "sai_status_t";
+const sai_status_t metadata_sai_status_t_enum_values[] = {
+    SAI_STATUS_SUCCESS,
+    SAI_STATUS_FAILURE,
+    SAI_STATUS_NOT_SUPPORTED,
+    SAI_STATUS_NO_MEMORY,
+    SAI_STATUS_INSUFFICIENT_RESOURCES,
+    SAI_STATUS_INVALID_PARAMETER,
+    SAI_STATUS_ITEM_ALREADY_EXISTS,
+    SAI_STATUS_ITEM_NOT_FOUND,
+    SAI_STATUS_BUFFER_OVERFLOW,
+    SAI_STATUS_INVALID_PORT_NUMBER,
+    SAI_STATUS_INVALID_PORT_MEMBER,
+    SAI_STATUS_INVALID_VLAN_ID,
+    SAI_STATUS_UNINITIALIZED,
+    SAI_STATUS_TABLE_FULL,
+    SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING,
+    SAI_STATUS_NOT_IMPLEMENTED,
+    SAI_STATUS_ADDR_NOT_FOUND,
+    SAI_STATUS_OBJECT_IN_USE,
+    SAI_STATUS_INVALID_OBJECT_TYPE,
+    SAI_STATUS_INVALID_OBJECT_ID,
+    SAI_STATUS_INVALID_NV_STORAGE,
+    SAI_STATUS_NV_STORAGE_FULL,
+    SAI_STATUS_SW_UPGRADE_VERSION_MISMATCH,
+    SAI_STATUS_INVALID_ATTRIBUTE_0,
+    SAI_STATUS_INVALID_ATTRIBUTE_MAX,
+    SAI_STATUS_INVALID_ATTR_VALUE_0,
+    SAI_STATUS_INVALID_ATTR_VALUE_MAX,
+    SAI_STATUS_ATTR_NOT_IMPLEMENTED_0,
+    SAI_STATUS_ATTR_NOT_IMPLEMENTED_MAX,
+    SAI_STATUS_UNKNOWN_ATTRIBUTE_0,
+    SAI_STATUS_UNKNOWN_ATTRIBUTE_MAX,
+    SAI_STATUS_ATTR_NOT_SUPPORTED_0,
+    SAI_STATUS_ATTR_NOT_SUPPORTED_MAX,
+};
+const char* metadata_sai_status_t_enum_values_names[] = {
+    "SAI_STATUS_SUCCESS",
+    "SAI_STATUS_FAILURE",
+    "SAI_STATUS_NOT_SUPPORTED",
+    "SAI_STATUS_NO_MEMORY",
+    "SAI_STATUS_INSUFFICIENT_RESOURCES",
+    "SAI_STATUS_INVALID_PARAMETER",
+    "SAI_STATUS_ITEM_ALREADY_EXISTS",
+    "SAI_STATUS_ITEM_NOT_FOUND",
+    "SAI_STATUS_BUFFER_OVERFLOW",
+    "SAI_STATUS_INVALID_PORT_NUMBER",
+    "SAI_STATUS_INVALID_PORT_MEMBER",
+    "SAI_STATUS_INVALID_VLAN_ID",
+    "SAI_STATUS_UNINITIALIZED",
+    "SAI_STATUS_TABLE_FULL",
+    "SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING",
+    "SAI_STATUS_NOT_IMPLEMENTED",
+    "SAI_STATUS_ADDR_NOT_FOUND",
+    "SAI_STATUS_OBJECT_IN_USE",
+    "SAI_STATUS_INVALID_OBJECT_TYPE",
+    "SAI_STATUS_INVALID_OBJECT_ID",
+    "SAI_STATUS_INVALID_NV_STORAGE",
+    "SAI_STATUS_NV_STORAGE_FULL",
+    "SAI_STATUS_SW_UPGRADE_VERSION_MISMATCH",
+    "SAI_STATUS_INVALID_ATTRIBUTE_0",
+    "SAI_STATUS_INVALID_ATTRIBUTE_MAX",
+    "SAI_STATUS_INVALID_ATTR_VALUE_0",
+    "SAI_STATUS_INVALID_ATTR_VALUE_MAX",
+    "SAI_STATUS_ATTR_NOT_IMPLEMENTED_0",
+    "SAI_STATUS_ATTR_NOT_IMPLEMENTED_MAX",
+    "SAI_STATUS_UNKNOWN_ATTRIBUTE_0",
+    "SAI_STATUS_UNKNOWN_ATTRIBUTE_MAX",
+    "SAI_STATUS_ATTR_NOT_SUPPORTED_0",
+    "SAI_STATUS_ATTR_NOT_SUPPORTED_MAX",
+    NULL
+};
+const char* metadata_sai_status_t_enum_values_short_names[] = {
+    "SUCCESS",
+    "FAILURE",
+    "NOT_SUPPORTED",
+    "NO_MEMORY",
+    "INSUFFICIENT_RESOURCES",
+    "INVALID_PARAMETER",
+    "ITEM_ALREADY_EXISTS",
+    "ITEM_NOT_FOUND",
+    "BUFFER_OVERFLOW",
+    "INVALID_PORT_NUMBER",
+    "INVALID_PORT_MEMBER",
+    "INVALID_VLAN_ID",
+    "UNINITIALIZED",
+    "TABLE_FULL",
+    "MANDATORY_ATTRIBUTE_MISSING",
+    "NOT_IMPLEMENTED",
+    "ADDR_NOT_FOUND",
+    "OBJECT_IN_USE",
+    "INVALID_OBJECT_TYPE",
+    "INVALID_OBJECT_ID",
+    "INVALID_NV_STORAGE",
+    "NV_STORAGE_FULL",
+    "SW_UPGRADE_VERSION_MISMATCH",
+    "INVALID_ATTRIBUTE_0",
+    "INVALID_ATTRIBUTE_MAX",
+    "INVALID_ATTR_VALUE_0",
+    "INVALID_ATTR_VALUE_MAX",
+    "ATTR_NOT_IMPLEMENTED_0",
+    "ATTR_NOT_IMPLEMENTED_MAX",
+    "UNKNOWN_ATTRIBUTE_0",
+    "UNKNOWN_ATTRIBUTE_MAX",
+    "ATTR_NOT_SUPPORTED_0",
+    "ATTR_NOT_SUPPORTED_MAX",
+    NULL
+};
+const size_t metadata_sai_status_t_enum_values_count = 33;
+DEFINE_ENUM_METADATA(sai_status_t, 33);
+
 const char metadata_sai_object_type_t_enum_name[] = "sai_object_type_t";
 const sai_object_type_t metadata_sai_object_type_t_enum_values[] = {
     SAI_OBJECT_TYPE_NULL,
@@ -149,6 +260,8 @@ DEFINE_ENUM_METADATA(sai_object_type_t, 44);
 
 // NOTE: since enum is a key we need size, hence HashForEnum
 std::unordered_map<sai_object_type_t,std::unordered_map<sai_attr_id_t, const sai_attr_metadata_t*>, HashForEnum> AttributesMetadata;
+
+std::unordered_map<std::string, const sai_attr_metadata_t*> AttributesIdMetadata;
 
 // Serialization type name resolve
 
@@ -835,6 +948,29 @@ std::string get_attr_info(const sai_attr_metadata_t& md)
     return std::string(get_object_type_name(md.objecttype)) + ":" +
         std::string(get_attr_name(md.objecttype,md.attrid)) + ":" +
         std::string(get_serialization_type_name(md.serializationtype));
+}
+
+const sai_attr_metadata_t* sai_metadata_get_attr_metadata(
+        _In_ sai_object_type_t objecttype,
+        _In_ sai_attr_id_t attrid)
+{
+    SWSS_LOG_ENTER();
+
+    if ((objecttype > SAI_OBJECT_TYPE_NULL) &&
+            (objecttype < SAI_OBJECT_TYPE_MAX))
+    {
+        auto &attrset = AttributesMetadata[objecttype];
+
+        auto it = attrset.find(attrid);
+
+        if (it != attrset.end())
+        {
+            return it->second;
+        }
+    }
+
+    SWSS_LOG_ERROR("unable to find metadata for object type %d attr id %d", objecttype, attrid);
+    return NULL;
 }
 
 void metadata_sanity_check(const sai_attr_metadata_t& md)
@@ -1613,6 +1749,8 @@ void metadata_sanity_check(const sai_attr_metadata_t& md)
     // success, add attribute to valid set
     attrset[md.attrid] = &md;
 
+    AttributesIdMetadata[md.attridname] = &md;
+
     // we could have metadata automatic created for object types like:
     // bool haveMandatoryAttribytes
     // bool haveMandatoryContitionalAttributes
@@ -1630,6 +1768,8 @@ void meta_init()
     }
 
     initialized = true;
+
+    AttributesIdMetadata = {};
 
     for (int type = SAI_OBJECT_TYPE_NULL + 1; type < SAI_OBJECT_TYPE_MAX; ++type)
     {

@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include <string.h>
 
 service_method_table_t  g_services;
 bool                    g_api_initialized = false;

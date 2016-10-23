@@ -67,7 +67,7 @@ OBJ = \
 	  sai_extra_udf.o \
 	  sai_extra_vlan.o \
 	  sai_extra_wred.o \
-	  ../common/saiserialize.o \
+	  saiserialize.o \
 	  sai_meta.o \
 	  sai_meta_sanity.o \
 	  sai_meta_acl.o \

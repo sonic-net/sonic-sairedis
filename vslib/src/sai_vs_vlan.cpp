@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include <map>
 
 std::map<sai_vlan_id_t, std::set<sai_object_id_t>> vlan_members_map;
 
