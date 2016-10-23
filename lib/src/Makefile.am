@@ -81,8 +81,8 @@ libsairedis_la_SOURCES = \
 			 sai_redis_notifications.cpp \
 			 sai_redis_record.cpp \
 			 ../../common/redisclient.cpp \
-			 ../../common/saiserialize.cpp \
-			 ../../common/saiattributelist.cpp \
+			 ../../meta/saiserialize.cpp \
+			 ../../meta/saiattributelist.cpp \
 			 ../../meta/sai_meta.cpp \
 			 ../../meta/sai_meta_sanity.cpp \
 			 ../../meta/sai_meta_acl.cpp \

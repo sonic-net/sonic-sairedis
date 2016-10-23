@@ -28,8 +28,8 @@ syncd_SOURCES = syncd.cpp \
 		syncd_notifications.cpp \
 		syncd_counters.cpp \
 		../common/redisclient.cpp \
-		../common/saiserialize.cpp \
-		../common/saiattributelist.cpp
+		../meta/saiserialize.cpp \
+		../meta/saiattributelist.cpp
 
 syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) \
 				 -I$(top_srcdir)/lib/inc \

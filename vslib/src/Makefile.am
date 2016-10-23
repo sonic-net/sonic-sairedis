@@ -52,8 +52,8 @@ endif
 lib_LTLIBRARIES = libsai.la
 
 libsai_la_SOURCES = \
-					../../common/saiattributelist.cpp \
-					../../common/saiserialize.cpp \
+					../../meta/saiattributelist.cpp \
+					../../meta/saiserialize.cpp \
 					../../meta/sai_meta_acl.cpp \
 					../../meta/sai_meta_buffer.cpp \
 					../../meta/sai_meta.cpp \

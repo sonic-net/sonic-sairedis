@@ -14,7 +14,7 @@ extern "C" {
 }
 
 #include "swss/logger.h"
-#include "common/saiserialize.h"
+#include "saiserialize.h"
 
 #define MAX_LIST_COUNT 128
 

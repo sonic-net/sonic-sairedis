@@ -11,8 +11,8 @@
 extern "C" {
 #include "sai.h"
 }
-#include "saiserialize.h"
-#include "saiattributelist.h"
+#include "meta/saiserialize.h"
+#include "meta/saiattributelist.h"
 #include "redisclient.h"
 
 #include "swss/dbconnector.h"

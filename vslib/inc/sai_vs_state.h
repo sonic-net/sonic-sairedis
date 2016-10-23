@@ -6,8 +6,8 @@
 
 #include "sai_meta.h"
 
-#include "saiserialize.h"
-#include "saiattributelist.h"
+#include "meta/saiserialize.h"
+#include "meta/saiattributelist.h"
 
 typedef std::unordered_map<std::string, std::string> AttrHash;
 typedef std::unordered_map<std::string, AttrHash> ObjectHash;

@@ -26,8 +26,8 @@ extern "C" {
 }
 
 #include "common/redisclient.h"
-#include "common/saiserialize.h"
-#include "common/saiattributelist.h"
+#include "meta/saiserialize.h"
+#include "meta/saiattributelist.h"
 #include "swss/dbconnector.h"
 #include "swss/producertable.h"
 #include "swss/consumertable.h"
