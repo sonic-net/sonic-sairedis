@@ -52,7 +52,8 @@ sai_fdb_entry_type_t getFdbEntryType(
 
     SWSS_LOG_WARN("unknown fdb entry type");
 
-    return (sai_fdb_entry_type_t)-1;
+    int ret = -1;
+    return (sai_fdb_entry_type_t)ret;
 }
 
 void redisPutFdbEntryToAsicView(

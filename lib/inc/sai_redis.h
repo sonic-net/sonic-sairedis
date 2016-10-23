@@ -13,7 +13,7 @@ extern "C" {
 }
 #include "meta/saiserialize.h"
 #include "meta/saiattributelist.h"
-#include "redisclient.h"
+#include "common/redisclient.h"
 
 #include "swss/dbconnector.h"
 #include "swss/producertable.h"
@@ -23,7 +23,7 @@ extern "C" {
 #include "swss/table.h"
 #include "swss/select.h"
 #include "swss/logger.h"
-#include "sai_meta.h"
+#include "meta/sai_meta.h"
 
 extern volatile bool                    g_record;
 extern void setRecording(bool record);

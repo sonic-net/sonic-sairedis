@@ -1,1 +1,1 @@
-SUBDIRS = lib vslib syncd
+SUBDIRS = meta lib vslib syncd player

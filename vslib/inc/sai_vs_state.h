@@ -4,8 +4,7 @@
 #include <unordered_map>
 #include <string>
 
-#include "sai_meta.h"
-
+#include "meta/sai_meta.h"
 #include "meta/saiserialize.h"
 #include "meta/saiattributelist.h"
 

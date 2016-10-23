@@ -14,7 +14,7 @@ void collectCounters(swss::Table &countersTable,
 
     SWSS_LOG_TIMER("get counters");
 
-    uint32_t countersSize = supportedCounters.size();
+    uint32_t countersSize = (uint32_t)supportedCounters.size();
 
     std::vector<uint64_t> counters;
 

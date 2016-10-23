@@ -11,7 +11,7 @@ extern "C" {
 }
 
 #include "swss/logger.h"
-#include "sai_meta.h"
+#include "meta/sai_meta.h"
 
 extern std::recursive_mutex             g_recursive_mutex;
 

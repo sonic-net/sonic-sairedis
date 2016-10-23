@@ -16,8 +16,6 @@ void handle_switch_state_change(
 
     if (on_switch_state_change != NULL)
     {
-        SWSS_LOG_ENTER();
-
         on_switch_state_change(switch_oper_status);
     }
 }
@@ -56,8 +54,6 @@ void handle_fdb_event(
 
     if (on_fdb_event != NULL)
     {
-        SWSS_LOG_ENTER();
-
         on_fdb_event(count, fdbdata.data());
     }
 
@@ -102,8 +98,6 @@ void handle_port_state_change(
 
     if (on_port_state_change != NULL)
     {
-        SWSS_LOG_ENTER();
-
         on_port_state_change(count, portdata.data());
     }
 }
@@ -136,8 +130,6 @@ void handle_port_event(
 
     if (on_port_event != NULL)
     {
-        SWSS_LOG_ENTER();
-
         on_port_event(count, portdata.data());
     }
 }
@@ -153,8 +145,6 @@ void handle_switch_shutdown_request(
 
     if (on_switch_shutdown_request != NULL)
     {
-        SWSS_LOG_ENTER();
-
         on_switch_shutdown_request();
     }
 }
@@ -185,8 +175,6 @@ void handle_packet_event(
 
     if (on_packet_event != NULL)
     {
-        SWSS_LOG_ENTER();
-
         on_packet_event(buffer.data(), buffer_size, list.get_attr_count(), list.get_attr_list());
     }
 }

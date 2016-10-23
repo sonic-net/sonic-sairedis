@@ -62,10 +62,10 @@ std::shared_ptr<SaiAttributeList> redisGetAttributesFromAsicKey(const std::strin
 
     for (auto &kv: hash)
     {
-        const std::string &key = kv.first;
-        const std::string &value = kv.second;
+        const std::string &skey = kv.first;
+        const std::string &svalue = kv.second;
 
-        swss::FieldValueTuple fvt(key, value);
+        swss::FieldValueTuple fvt(skey, svalue);
 
         values.push_back(fvt);
     }
@@ -179,7 +179,7 @@ void saiRemoveDefaultVlanMembers()
 
     attr.id = SAI_VLAN_ATTR_MEMBER_LIST;
 
-    attr.value.objlist.count = vlanMemberList.size();
+    attr.value.objlist.count = (uint32_t)vlanMemberList.size();
     attr.value.objlist.list = vlanMemberList.data();
 
     sai_status_t status = sai_vlan_api->get_vlan_attribute(DEFAULT_VLAN_NUMBER, 1, &attr);
@@ -513,9 +513,9 @@ void processAttributesForOids(sai_object_type_t objectType, std::shared_ptr<SaiA
         // attribute contains object id's, they need to be translated
         // some of them could be already translated
 
-        for (uint32_t idx = 0; idx < count; idx++)
+        for (uint32_t j = 0; j < count; j++)
         {
-            sai_object_id_t vid = objectIdList[idx];
+            sai_object_id_t vid = objectIdList[j];
 
             sai_object_id_t rid = processSingleVid(vid);
 

@@ -31,3 +31,14 @@ Architecture: any
 Depends: libsaivs (= ${binary:Version})
 Section: libdevel
 Description: This package contains development files for SAI-VirtualSwitch.
+
+Package: libsaimetadata
+Architecture: any
+Section: libs
+Description: This package contains SAI-Metadata implementation for SONiC project.
+
+Package: libsaimetadata-dev
+Architecture: any
+Depends: libsaimetadata (= ${binary:Version})
+Section: libdevel
+Description: This package contains development files for SAI-Metadata.

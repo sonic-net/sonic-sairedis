@@ -458,7 +458,7 @@ int profile_get_next_value(
     return 0;
 }
 
-const service_method_table_t test_services = {
+service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -1031,7 +1031,7 @@ cmdOptions handleCmdLine(int argc, char **argv)
 {
     SWSS_LOG_ENTER();
 
-    cmdOptions options = {};
+    cmdOptions options;
 
     const int defaultCountersThreadIntervalInSeconds = 1;
 

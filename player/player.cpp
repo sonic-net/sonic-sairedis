@@ -265,6 +265,7 @@ void on_port_event(
     SWSS_LOG_ENTER();
 }
 
+void on_switch_shutdown_request() __attribute__ ((noreturn));
 void on_switch_shutdown_request()
 {
     SWSS_LOG_ENTER();

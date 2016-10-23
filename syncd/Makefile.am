@@ -1,5 +1,4 @@
-AM_CPPFLAGS =
-AM_CPPFLAGS += -I$(top_srcdir)/common
+AM_CPPFLAGS = -I/usr/include/sai -I$(top_srcdir)/vslib/inc
 
 bin_PROGRAMS = syncd syncd_request_shutdown
 
@@ -21,20 +20,17 @@ if SAICAVM
 SAIFLAGS = -DCAVMSAI
 endif
 
-syncd_SOURCES = syncd.cpp \
-		syncd_init.cpp \
-		syncd_reinit.cpp \
-		syncd_hard_reinit.cpp \
-		syncd_notifications.cpp \
-		syncd_counters.cpp \
-		../common/redisclient.cpp \
-		../meta/saiserialize.cpp \
-		../meta/saiattributelist.cpp
+syncd_SOURCES = \
+				syncd.cpp \
+				syncd_init.cpp \
+				syncd_reinit.cpp \
+				syncd_hard_reinit.cpp \
+				syncd_notifications.cpp \
+				syncd_counters.cpp \
+				../common/redisclient.cpp
 
-syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) \
-				 -I$(top_srcdir)/lib/inc \
-				 -I/usr/include/sai $(SAIFLAGS)
-syncd_LDADD = -lhiredis -lswsscommon -lsai -lpthread
+syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+syncd_LDADD = -lhiredis -lswsscommon -lsai -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata
 
 if SAITHRIFT
 SAI_RPC_INCLUDE_DIR = ../libsaiserver/include
@@ -44,8 +40,5 @@ syncd_LDADD += -L$(SAI_RPC_LIB_DIR) -lrpcserver -lthrift
 endif
 
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
-
 syncd_request_shutdown_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-
 syncd_request_shutdown_LDADD = -lhiredis -lswsscommon -lpthread
-

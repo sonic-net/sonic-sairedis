@@ -165,8 +165,6 @@ extern sai_wred_api_t               *sai_wred_api;
 
 extern sai_switch_notification_t switch_notifications;
 
-extern swss::DBConnector *db;
-
 void initialize_common_api_pointers();
 void populate_sai_apis();
 
