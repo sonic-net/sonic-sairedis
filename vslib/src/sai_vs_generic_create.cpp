@@ -108,16 +108,13 @@ sai_status_t vs_generic_create(
     // create new real object ID
     *object_id = vs_create_real_object_id(object_type);
 
-    std::string str_object_id;
-    sai_serialize_primitive(*object_id, str_object_id);
+    std::string str_object_id = sai_serialize_object_id(*object_id);
 
-    sai_status_t status = internal_vs_generic_create(
+    return internal_vs_generic_create(
             object_type,
             str_object_id,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t vs_generic_create_fdb_entry(
@@ -127,16 +124,13 @@ sai_status_t vs_generic_create_fdb_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_fdb_entry;
-    sai_serialize_primitive(*fdb_entry, str_fdb_entry);
+    std::string str_fdb_entry = sai_serialize_fdb_entry(*fdb_entry);
 
-    sai_status_t status = internal_vs_generic_create(
+    return internal_vs_generic_create(
             SAI_OBJECT_TYPE_FDB,
             str_fdb_entry,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t vs_generic_create_neighbor_entry(
@@ -146,16 +140,13 @@ sai_status_t vs_generic_create_neighbor_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_neighbor_entry;
-    sai_serialize_neighbor_entry(*neighbor_entry, str_neighbor_entry);
+    std::string str_neighbor_entry = sai_serialize_neighbor_entry(*neighbor_entry);
 
-    sai_status_t status = internal_vs_generic_create(
+    return internal_vs_generic_create(
             SAI_OBJECT_TYPE_NEIGHBOR,
             str_neighbor_entry,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t vs_generic_create_route_entry(
@@ -165,16 +156,13 @@ sai_status_t vs_generic_create_route_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_route_entry;
-    sai_serialize_route_entry(*unicast_route_entry, str_route_entry);
+    std::string str_route_entry = sai_serialize_route_entry(*unicast_route_entry);
 
-    sai_status_t status = internal_vs_generic_create(
+    return internal_vs_generic_create(
             SAI_OBJECT_TYPE_ROUTE,
             str_route_entry,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t vs_generic_create_trap(
@@ -184,8 +172,7 @@ sai_status_t vs_generic_create_trap(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_hostif_trap_id;
-    sai_serialize_primitive(hostif_trap_id, str_hostif_trap_id);
+    std::string str_hostif_trap_id = sai_serialize_hostif_trap_id(hostif_trap_id);
 
     return internal_vs_generic_create(
             SAI_OBJECT_TYPE_TRAP,
@@ -199,18 +186,11 @@ sai_status_t vs_generic_create_vlan(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_vlan_id;
-    sai_serialize_primitive(vlan_id, str_vlan_id);
+    std::string str_vlan_id = sai_serialize_vlan_id(vlan_id);
 
-    // create_vlan have no attributes, but generic method needs one
-    // so provide count as zero and dummy attribute
-    sai_attribute_t dummy_attribute;
-
-    sai_status_t status = internal_vs_generic_create(
+    return internal_vs_generic_create(
             SAI_OBJECT_TYPE_VLAN,
             str_vlan_id,
             0,
-            &dummy_attribute);
-
-    return status;
+            NULL);
 }

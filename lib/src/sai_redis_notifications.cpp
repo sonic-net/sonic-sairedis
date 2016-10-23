@@ -1,4 +1,6 @@
 #include "sai_redis.h"
+#include "meta/saiserialize.h"
+#include "meta/saiattributelist.h"
 
 void handle_switch_state_change(
         _In_ const std::string &data)

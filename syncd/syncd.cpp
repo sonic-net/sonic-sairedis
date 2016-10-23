@@ -122,10 +122,8 @@ sai_object_id_t translate_rid_to_vid(
 
     sai_object_id_t vid;
 
-    std::string str_rid;
+    std::string str_rid = sai_serialize_object_id(rid);
     std::string str_vid;
-
-    sai_serialize_primitive(rid, str_rid);
 
     auto pvid = g_redisClient->hget(RIDTOVID, str_rid);
 
@@ -134,8 +132,7 @@ sai_object_id_t translate_rid_to_vid(
         // object exists
         str_vid = *pvid;
 
-        int index = 0;
-        sai_deserialize_primitive(str_vid, index, vid);
+        sai_deserialize_object_id(str_vid, vid);
 
         SWSS_LOG_DEBUG("translated RID %llx to VID %llx", rid, vid);
 
@@ -156,7 +153,7 @@ sai_object_id_t translate_rid_to_vid(
 
     SWSS_LOG_DEBUG("translated RID %llx to VID %llx", rid, vid);
 
-    sai_serialize_primitive(vid, str_vid);
+    str_vid = sai_serialize_object_id(vid);
 
     g_redisClient->hset(RIDTOVID, str_rid, str_vid);
     g_redisClient->hset(VIDTORID, str_vid, str_rid);
@@ -192,16 +189,15 @@ void translate_rid_to_vid_list(
     {
         sai_attribute_t &attr = attr_list[i];
 
-        sai_attr_serialization_type_t serialization_type;
-        sai_status_t status = sai_get_serialization_type(object_type, attr.id, serialization_type);
+        auto meta = get_attribute_metadata(object_type, attr.id);
 
-        if (status != SAI_STATUS_SUCCESS)
+        if (meta == NULL)
         {
-            SWSS_LOG_ERROR("unable to find serialization type for object type %x, attribute %x", object_type, attr.id);
+            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %x", object_type, attr.id);
             exit_and_notify(EXIT_FAILURE);
         }
 
-        switch (serialization_type)
+        switch (meta->serializationtype)
         {
             case SAI_SERIALIZATION_TYPE_OBJECT_ID:
                 attr.value.oid = translate_rid_to_vid(attr.value.oid);
@@ -254,8 +250,7 @@ sai_object_id_t translate_vid_to_rid(
         return it->second;
     }
 
-    std::string str_vid;
-    sai_serialize_primitive(vid, str_vid);
+    std::string str_vid = sai_serialize_object_id(vid);
 
     std::string str_rid;
 
@@ -271,8 +266,7 @@ sai_object_id_t translate_vid_to_rid(
 
     sai_object_id_t rid;
 
-    int index = 0;
-    sai_deserialize_primitive(str_rid, index, rid);
+    sai_deserialize_object_id(str_rid, rid);
 
     local_vid_to_rid[vid] = rid;
 
@@ -295,16 +289,15 @@ void translate_vid_to_rid_list(
     {
         sai_attribute_t &attr = attr_list[i];
 
-        sai_attr_serialization_type_t serialization_type;
-        sai_status_t status = sai_get_serialization_type(object_type, attr.id, serialization_type);
+        auto meta = get_attribute_metadata(object_type, attr.id);
 
-        if (status != SAI_STATUS_SUCCESS)
+        if (meta == NULL)
         {
-            SWSS_LOG_ERROR("unable to find serialization type for object type %x, attribute %x", object_type, attr.id);
+            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %x", object_type, attr.id);
             exit_and_notify(EXIT_FAILURE);
         }
 
-        switch (serialization_type)
+        switch (meta->serializationtype)
         {
             case SAI_SERIALIZATION_TYPE_OBJECT_ID:
                 attr.value.oid = translate_vid_to_rid(attr.value.oid);
@@ -380,8 +373,7 @@ void internal_syncd_get_send(
         // some other error, dont send attributes at all
     }
 
-    std::string str_status;
-    sai_serialize_primitive(status, str_status);
+    std::string str_status = sai_serialize_status(status);
 
     std::string key = str_status;
 
@@ -472,9 +464,8 @@ sai_status_t handle_generic(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_object_id_t object_id;
-    sai_deserialize_primitive(str_object_id, index, object_id);
+    sai_deserialize_object_id(str_object_id, object_id);
 
     SWSS_LOG_DEBUG("common generic api: %d", api);
 
@@ -500,11 +491,8 @@ sai_status_t handle_generic(
                     // object was created so new object id was generated
                     // we need to save virtual id's to redis db
 
-                    std::string str_vid;
-                    std::string str_rid;
-
-                    sai_serialize_primitive(object_id, str_vid);
-                    sai_serialize_primitive(real_object_id, str_rid);
+                    std::string str_vid = sai_serialize_object_id(object_id);
+                    std::string str_rid = sai_serialize_object_id(real_object_id);
 
                     g_redisClient->hset(VIDTORID, str_vid, str_rid);
                     g_redisClient->hset(RIDTOVID, str_rid, str_vid);
@@ -535,11 +523,8 @@ sai_status_t handle_generic(
 
                 sai_object_id_t rid = translate_vid_to_rid(object_id);
 
-                std::string str_vid;
-                sai_serialize_primitive(object_id, str_vid);
-
-                std::string str_rid;
-                sai_serialize_primitive(rid, str_rid);
+                std::string str_vid = sai_serialize_object_id(object_id);
+                std::string str_rid = sai_serialize_object_id(rid);
 
                 g_redisClient->hdel(VIDTORID, str_vid);
                 g_redisClient->hdel(RIDTOVID, str_rid);
@@ -597,9 +582,8 @@ sai_status_t handle_fdb(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_fdb_entry_t fdb_entry;
-    sai_deserialize_primitive(str_object_id, index, fdb_entry);
+    sai_deserialize_fdb_entry(str_object_id, fdb_entry);
 
     switch(api)
     {
@@ -657,9 +641,8 @@ sai_status_t handle_neighbor(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_neighbor_entry_t neighbor_entry;
-    sai_deserialize_neighbor_entry(str_object_id, index, neighbor_entry);
+    sai_deserialize_neighbor_entry(str_object_id, neighbor_entry);
 
     neighbor_entry.rif_id = translate_vid_to_rid(neighbor_entry.rif_id);
 
@@ -691,9 +674,8 @@ sai_status_t handle_route(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_unicast_route_entry_t route_entry;
-    sai_deserialize_route_entry(str_object_id, index, route_entry);
+    sai_deserialize_route_entry(str_object_id, route_entry);
 
     route_entry.vr_id = translate_vid_to_rid(route_entry.vr_id);
 
@@ -727,9 +709,8 @@ sai_status_t handle_vlan(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_vlan_id_t vlan_id;
-    sai_deserialize_primitive(str_object_id, index, vlan_id);
+    sai_deserialize_vlan_id(str_object_id, vlan_id);
 
     switch(api)
     {
@@ -759,11 +740,8 @@ sai_status_t handle_trap(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
-    sai_object_id_t dummy_id;
-    sai_deserialize_primitive(str_object_id, index, dummy_id);
-
-    sai_hostif_trap_id_t trap_id = (sai_hostif_trap_id_t)dummy_id;
+    sai_hostif_trap_id_t trap_id;
+    sai_deserialize_hostif_trap_id(str_object_id, trap_id);
 
     switch(api)
     {
@@ -816,9 +794,8 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
 
     std::stringstream ss;
 
-    int index = 0;
     sai_object_type_t object_type;
-    sai_deserialize_primitive(str_object_type, index, object_type);
+    sai_deserialize_object_type(str_object_type, object_type);
 
     if (object_type >= SAI_OBJECT_TYPE_MAX)
     {
@@ -924,15 +901,13 @@ void sendResponse(sai_status_t status)
 {
     SWSS_LOG_ENTER();
 
-    std::string strStatus;
-
-    sai_serialize_primitive(status, strStatus);
+    std::string str_status = sai_serialize_status(status);
 
     std::vector<swss::FieldValueTuple> entry;
 
-    SWSS_LOG_NOTICE("sending response: %s", strStatus.c_str());
+    SWSS_LOG_NOTICE("sending response: %s", str_status.c_str());
 
-    notifySyncdResponse->send(strStatus, "", entry);
+    notifySyncdResponse->send(str_status, "", entry);
 }
 
 void notifySyncd(swss::NotificationConsumer &consumer)

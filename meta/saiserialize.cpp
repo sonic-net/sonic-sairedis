@@ -1040,7 +1040,7 @@ sai_status_t sai_deserialize_attr_value(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t sai_deserialize_free_attribute_value(
+void sai_deserialize_free_attribute_value(
         _In_ const sai_attr_serialization_type_t type,
         _In_ sai_attribute_t &attr)
 {
@@ -1224,10 +1224,9 @@ sai_status_t sai_deserialize_free_attribute_value(
             break;
 
         default:
-            return SAI_STATUS_NOT_IMPLEMENTED;
+            SWSS_LOG_ERROR("serialization type is not supported");
+            throw std::runtime_error("serialization type is not supported");
     }
-
-    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t sai_serialize_fdb_event_notification_data(
@@ -1349,17 +1348,7 @@ sai_status_t sai_deserialize_free_fdb_event_notification_data(
             return status;
         }
 
-        status = sai_deserialize_free_attribute_value(serialization_type, *attr);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("Unable to free attribute for object type: %x and attribute id: %u, status: %u",
-                SAI_OBJECT_TYPE_FDB,
-                attr->id,
-                status);
-
-            return status;
-        }
+        sai_deserialize_free_attribute_value(serialization_type, *attr);
     }
 
     sai_dealloc_array(fdb->attr);
@@ -1773,17 +1762,148 @@ void sai_deserialize_route_entry(
 
 // new methods
 
+std::string sai_serialize_enum(
+        _In_ const int32_t value,
+        _In_ const sai_enum_metadata_t* meta)
+{
+    SWSS_LOG_ENTER();
+
+    if (meta == NULL)
+    {
+        return sai_serialize_number(value);
+    }
+
+    for (size_t i = 0; i < meta->valuescount; ++i)
+    {
+        if (meta->values[i] == value)
+        {
+            return meta->valuesnames[i];
+        }
+    }
+
+    return sai_serialize_number(value);
+}
+
+std::string sai_serialize_number(
+        _In_ const uint32_t number,
+        _In_ bool hex)
+{
+    std::string s;
+    sai_serialize_primitive(number, s);
+    return s;
+}
+
 std::string sai_serialize_attr_value(
         _In_ const sai_attr_metadata_t& meta,
         _In_ const sai_attribute_t &attr,
         _In_ const bool countOnly)
 {
     std::string s;
-
     sai_serialize_attr_value(meta.serializationtype, attr, s, countOnly);
-
     return s;
 }
+
+std::string sai_serialize_attr_id(
+        _In_ const sai_attr_metadata_t& meta)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_primitive(meta.attrid, s);
+    return s;
+}
+
+std::string sai_serialize_status(
+        _In_ const sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_primitive(status, s);
+    return s;
+}
+
+std::string sai_serialize_object_id(
+        _In_ sai_object_id_t oid)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_primitive(oid, s);
+    return s;
+}
+
+std::string sai_serialize_object_type(
+        _In_ const sai_object_type_t object_type)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_primitive(object_type, s);
+    return s;
+}
+
+std::string sai_serialize_vlan_id(
+        _In_ sai_vlan_id_t vlan_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_primitive(vlan_id, s);
+    return s;
+}
+
+std::string sai_serialize_neighbor_entry(
+        _In_ const sai_neighbor_entry_t &ne)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_neighbor_entry(ne, s);
+    return s;
+}
+
+std::string sai_serialize_route_entry(
+        _In_ const sai_unicast_route_entry_t& route_entry)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_route_entry(route_entry, s);
+    return s;
+}
+
+std::string sai_serialize_fdb_entry(
+        _In_ const sai_fdb_entry_t& fdb_entry)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_primitive(fdb_entry, s);
+    return s;
+}
+
+std::string sai_serialize_port_stat(
+        _In_ const sai_port_stat_counter_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_primitive(counter, s);
+    return s;
+}
+
+std::string sai_serialize_hostif_trap_id(
+        _In_ const sai_hostif_trap_id_t hostif_trap_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s;
+    sai_serialize_primitive(hostif_trap_id, s);
+    return s;
+}
+
+// deserialize
 
 void sai_deserialize_attr_value(
         _In_ const std::string& s,
@@ -1792,6 +1912,115 @@ void sai_deserialize_attr_value(
         _In_ const bool countOnly)
 {
     int index = 0;
-
     sai_deserialize_attr_value(s, index, meta.serializationtype, attr, countOnly);
+}
+
+
+void sai_deserialize_status(
+        _In_ const std::string& s,
+        _Out_ sai_status_t& status)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_primitive(s, index, status);
+}
+
+void sai_deserialize_switch_oper_status(
+        _In_ const std::string& s,
+        _Out_ sai_switch_oper_status_t& status)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_primitive(s, index, status);
+}
+
+void sai_deserialize_hostif_trap_id(
+        _In_ const std::string& s,
+        _In_ sai_hostif_trap_id_t& hostif_trap_id)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_primitive(s, index, hostif_trap_id);
+}
+
+void sai_deserialize_object_id(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& oid)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_primitive(s, index, oid);
+}
+
+void sai_deserialize_object_type(
+        _In_ const std::string& s,
+        _Out_ sai_object_type_t& object_type)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_primitive(s, index, object_type);
+}
+
+void sai_deserialize_vlan_id(
+        _In_ const std::string& s,
+        _In_ sai_vlan_id_t& vlan_id)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_primitive(s, index, vlan_id);
+}
+
+void sai_deserialize_fdb_entry(
+        _In_ const std::string &s,
+        _Out_ sai_fdb_entry_t &fdb_entry)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_primitive(s, index, fdb_entry);
+}
+
+void sai_deserialize_neighbor_entry(
+        _In_ const std::string& s,
+        _In_ sai_neighbor_entry_t &ne)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_neighbor_entry(s, index, ne);
+}
+
+void sai_deserialize_route_entry(
+        _In_ const std::string &s,
+        _Out_ sai_unicast_route_entry_t& route_entry)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_route_entry(s, index, route_entry);
+}
+
+void sai_deserialize_number(
+        _In_ const std::string& s,
+        _Out_ uint32_t& number,
+        _In_ bool hex)
+{
+    int index = 0;
+    sai_deserialize_primitive(s, index, number);
+}
+
+void sai_deserialize_attr_id(
+        _In_ const std::string& s,
+        _Out_ sai_attr_id_t& attrid)
+{
+    SWSS_LOG_ENTER();
+
+    int index = 0;
+    sai_deserialize_primitive(s, index, attrid);
 }

@@ -5,14 +5,12 @@
 #include <set>
 #include <unordered_map>
 
-#include "stdint.h"
-#include "stdio.h"
+//#include "stdint.h"
+#include <stdio.h>
 
 extern "C" {
 #include "sai.h"
 }
-#include "meta/saiserialize.h"
-#include "meta/saiattributelist.h"
 #include "common/redisclient.h"
 
 #include "swss/dbconnector.h"

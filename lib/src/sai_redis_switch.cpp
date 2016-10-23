@@ -2,6 +2,7 @@
 #include <thread>
 
 #include "swss/selectableevent.h"
+#include "meta/saiserialize.h"
 
 // TODO it may be needed to obtain SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP object id
 
@@ -102,8 +103,7 @@ sai_status_t notify_syncd(const std::string &operation)
 
         sai_status_t status;
 
-        int index = 0;
-        sai_deserialize_primitive(strStatus, index, status);
+        sai_deserialize_status(strStatus, status);
 
         SWSS_LOG_NOTICE("%s status: %d", op.c_str(), status);
 

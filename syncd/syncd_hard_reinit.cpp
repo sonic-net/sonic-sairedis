@@ -79,10 +79,8 @@ sai_object_type_t getObjectTypeFromAsicKey(const std::string &key)
 
     const std::string strObjectType = key.substr(key.find_first_of(":") + 1, key.find_last_of(":"));
 
-    int index = 0;
-
     sai_object_type_t objectType;
-    sai_deserialize_primitive(strObjectType, index, objectType);
+    sai_deserialize_object_type(strObjectType, objectType);
 
     if (objectType >= SAI_OBJECT_TYPE_MAX ||
         objectType == SAI_OBJECT_TYPE_NULL)
@@ -111,11 +109,8 @@ void redisSetVidAndRidMap(std::unordered_map<sai_object_id_t, sai_object_id_t> m
 
     for (auto &kv: map)
     {
-        std::string strVid;
-        std::string strRid;
-
-        sai_serialize_primitive(kv.first, strVid);
-        sai_serialize_primitive(kv.second, strRid);
+        std::string strVid = sai_serialize_object_id(kv.first);
+        std::string strRid = sai_serialize_object_id(kv.second);
 
         g_redisClient->hset(VIDTORID, strVid, strRid);
         g_redisClient->hset(RIDTOVID, strRid, strVid);
@@ -325,8 +320,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
     sai_object_id_t rid;
     sai_object_type_t objectType = getObjectTypeFromVid(vid);
 
-    std::string strVid;
-    sai_serialize_primitive(vid, strVid);
+    std::string strVid = sai_serialize_object_id(vid);
 
     bool createObject = true;
 
@@ -433,23 +427,6 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
     return rid;
 }
 
-sai_attr_serialization_type_t getSerializationType(sai_object_type_t objectType, sai_attr_id_t attrId)
-{
-    SWSS_LOG_ENTER();
-
-    sai_attr_serialization_type_t serializationType;
-    sai_status_t status = sai_get_serialization_type(objectType, attrId, serializationType);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("unable to find serialization type on object type %x and attr id %x", objectType, attrId);
-
-        exit_and_notify(EXIT_FAILURE);
-    }
-
-    return serializationType;
-}
-
 void processAttributesForOids(sai_object_type_t objectType, std::shared_ptr<SaiAttributeList> list)
 {
     SWSS_LOG_ENTER();
@@ -464,12 +441,18 @@ void processAttributesForOids(sai_object_type_t objectType, std::shared_ptr<SaiA
     {
         sai_attribute_t &attr = attrList[idx];
 
-        sai_attr_serialization_type_t serializationType = getSerializationType(objectType, attr.id);
+        auto meta = get_attribute_metadata(objectType, attr.id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %x", objectType, attr.id);
+            exit_and_notify(EXIT_FAILURE);
+        }
 
         uint32_t count = 0;
         sai_object_id_t *objectIdList;
 
-        switch (serializationType)
+        switch (meta->serializationtype)
         {
             case SAI_SERIALIZATION_TYPE_OBJECT_ID:
                 count = 1;
@@ -519,7 +502,7 @@ void processAttributesForOids(sai_object_type_t objectType, std::shared_ptr<SaiA
 
             sai_object_id_t rid = processSingleVid(vid);
 
-            objectIdList[idx] = rid;
+            objectIdList[j] = rid;
         }
     }
 }
@@ -528,9 +511,8 @@ sai_object_id_t getObjectIdFromString(const std::string &strObjectId)
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_object_id_t objectId;
-    sai_deserialize_primitive(strObjectId, index, objectId);
+    sai_deserialize_object_id(strObjectId, objectId);
 
     return objectId;
 }
@@ -583,9 +565,8 @@ sai_vlan_id_t getVlanIdFromString(const std::string &strVlanId)
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_vlan_id_t vlanId;
-    sai_deserialize_primitive(strVlanId, index, vlanId);
+    sai_deserialize_vlan_id(strVlanId, vlanId);
 
     return vlanId;
 }
@@ -642,9 +623,8 @@ sai_fdb_entry_t getFdbEntryFromString(const std::string &strFdbEntry)
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_fdb_entry_t fdbEntry;
-    sai_deserialize_primitive(strFdbEntry, index, fdbEntry);
+    sai_deserialize_fdb_entry(strFdbEntry, fdbEntry);
 
     return fdbEntry;
 }
@@ -683,9 +663,8 @@ sai_neighbor_entry_t getNeighborEntryFromString(const std::string &strNeighborEn
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_neighbor_entry_t neighborEntry;
-    sai_deserialize_neighbor_entry(strNeighborEntry, index, neighborEntry);
+    sai_deserialize_neighbor_entry(strNeighborEntry, neighborEntry);
 
     return neighborEntry;
 }
@@ -726,9 +705,8 @@ sai_unicast_route_entry_t getRouteEntryFromString(const std::string &strRouteEnt
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_unicast_route_entry_t routeEntry;
-    sai_deserialize_route_entry(strRouteEntry, index, routeEntry);
+    sai_deserialize_route_entry(strRouteEntry, routeEntry);
 
     return routeEntry;
 }
@@ -765,16 +743,12 @@ void processRoutes()
     }
 }
 
-sai_hostif_trap_id_t getTrapIdFromString(const std::string &strObjectId)
+sai_hostif_trap_id_t getTrapIdFromString(const std::string &strTrapId)
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
-    sai_object_id_t dummyId;
-    sai_deserialize_primitive(strObjectId, index, dummyId);
-
-    // trap id is encoded as sai_object_id_t
-    sai_hostif_trap_id_t trapId = (sai_hostif_trap_id_t)dummyId;
+    sai_hostif_trap_id_t trapId;
+    sai_deserialize_hostif_trap_id(strTrapId, trapId);
 
     return trapId;
 }

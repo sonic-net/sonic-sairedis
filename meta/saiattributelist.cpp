@@ -1,9 +1,10 @@
 #include "saiattributelist.h"
+#include "sai_meta.h"
 
 SaiAttributeList::SaiAttributeList(
         _In_ const sai_object_type_t object_type,
         _In_ const std::vector<swss::FieldValueTuple> &values,
-        _In_ bool onlyCount)
+        _In_ bool countOnly)
 {
     size_t attr_count = values.size();
 
@@ -13,32 +14,27 @@ SaiAttributeList::SaiAttributeList(
         const std::string &str_attr_value = fvValue(values[i]);
 
         if (str_attr_id == "NULL")
+        {
             continue;
+        }
 
         sai_attribute_t attr;
         memset(&attr, 0, sizeof(sai_attribute_t));
 
-        int index = 0;
-        sai_deserialize_primitive(str_attr_id, index, attr.id);
+        sai_deserialize_attr_id(str_attr_id, attr.id);
 
-        sai_attr_serialization_type_t serialization_type;
-        sai_status_t status = sai_get_serialization_type(object_type, attr.id, serialization_type);
+        auto meta = sai_metadata_get_attr_metadata(object_type, attr.id);
 
-        if (status != SAI_STATUS_SUCCESS)
+        if (meta == NULL)
         {
-            throw std::runtime_error("failed to get serialization type");
+            SWSS_LOG_ERROR("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr.id);
+            throw std::runtime_error("failed to get metadata");
         }
 
-        index = 0;
-        status = sai_deserialize_attr_value(str_attr_value, index, serialization_type, attr, onlyCount);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            throw std::runtime_error("failed to deserialize attribute value");
-        }
+        sai_deserialize_attr_value(str_attr_value, *meta, attr, countOnly);
 
         m_attr_list.push_back(attr);
-        m_serialization_type_list.push_back(serialization_type);
+        m_serialization_type_list.push_back(meta->serializationtype);
     }
 }
 
@@ -52,12 +48,7 @@ SaiAttributeList::~SaiAttributeList()
 
         sai_attr_serialization_type_t serialization_type = m_serialization_type_list[i];
 
-        sai_status_t status = sai_deserialize_free_attribute_value(serialization_type, attr);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            throw std::runtime_error("deserialize free failed");
-        }
+        sai_deserialize_free_attribute_value(serialization_type, attr);
     }
 }
 
@@ -65,7 +56,7 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list,
-        _In_ bool onlyCount)
+        _In_ bool countOnly)
 {
     std::vector<swss::FieldValueTuple> entry;
 
@@ -73,35 +64,17 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
     {
         const sai_attribute_t *attr = &attr_list[index];
 
-        sai_attr_serialization_type_t serialization_type;
+        auto meta = sai_metadata_get_attr_metadata(object_type, attr->id);
 
-        sai_status_t status = sai_get_serialization_type(object_type, attr->id, serialization_type);
-
-        if (status != SAI_STATUS_SUCCESS)
+        if (meta == NULL)
         {
-            //LOG_ERR("Unable to find serialization type for object type: %u and attribute id: %u, status: %u",
-            //        object_type,
-            //        attr->id,
-            //        status);
-
-            throw std::runtime_error("unable to find serialization type");
+            SWSS_LOG_ERROR("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr->id);
+            throw std::runtime_error("failed to get metadata");
         }
 
-        std::string str_attr_id;
-        sai_serialize_attr_id(*attr, str_attr_id);
+        std::string str_attr_id = sai_serialize_attr_id(*meta);
 
-        std::string str_attr_value;
-        status = sai_serialize_attr_value(serialization_type, *attr, str_attr_value, onlyCount);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            //LOG_ERR("Unable to serialize attribute for object type: %u and attribute id: %u, status: %u",
-            //        object_type,
-            //        attr->id,
-            //        status);
-
-            throw std::runtime_error("unable to serialize attribute value");
-        }
+        std::string str_attr_value = sai_serialize_attr_value(*meta, *attr, countOnly);
 
         swss::FieldValueTuple fvt(str_attr_id, str_attr_value);
 

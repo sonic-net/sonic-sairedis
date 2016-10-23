@@ -185,13 +185,9 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> redisGetLaneMap()
         sai_uint32_t lane;
         sai_object_id_t portId;
 
-        int index = 0;
+        sai_deserialize_number(str_key, lane);
 
-        sai_deserialize_primitive(str_key, index, lane);
-
-        index = 0;
-
-        sai_deserialize_primitive(str_value, index, portId);
+        sai_deserialize_object_id(str_value, portId);
 
         map[lane] = portId;
     }
@@ -210,11 +206,8 @@ void redisSaveLaneMap(const std::unordered_map<sai_uint32_t, sai_object_id_t> &m
         sai_uint32_t lane = it.first;
         sai_object_id_t portId = it.second;
 
-        std::string strLane;
-        std::string strPortId;
-
-        sai_serialize_primitive(lane, strLane);
-        sai_serialize_primitive(portId, strPortId);
+        std::string strLane = sai_serialize_number(lane);
+        std::string strPortId = sai_serialize_object_id(portId);
 
         // TODO use multi or hmset
         g_redisClient->hset(LANES, strLane, strPortId);
@@ -258,13 +251,9 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> redisGetObjectMap(std::stri
         sai_object_id_t objectIdKey;
         sai_object_id_t objectIdValue;
 
-        int index = 0;
+        sai_deserialize_object_id(str_key, objectIdKey);
 
-        sai_deserialize_primitive(str_key, index, objectIdKey);
-
-        index = 0;
-
-        sai_deserialize_primitive(str_value, index, objectIdValue);
+        sai_deserialize_object_id(str_value, objectIdValue);
 
         map[objectIdKey] = objectIdValue;
     }
@@ -344,9 +333,7 @@ sai_object_id_t redisGetDefaultVirtualRouterId()
 
     sai_object_id_t vr_id;
 
-    int index = 0;
-
-    sai_deserialize_primitive(*redisVrId, index, vr_id);
+    sai_deserialize_object_id(*redisVrId, vr_id);
 
     return vr_id;
 }
@@ -362,9 +349,7 @@ sai_object_id_t redisGetDefaultTrapGroupId()
 
     sai_object_id_t vr_id;
 
-    int index = 0;
-
-    sai_deserialize_primitive(*redisVrId, index, vr_id);
+    sai_deserialize_object_id(*redisVrId, vr_id);
 
     return vr_id;
 }
@@ -380,9 +365,7 @@ sai_object_id_t redisGetCpuId()
 
     sai_object_id_t cpuId;
 
-    int index = 0;
-
-    sai_deserialize_primitive(*redisCpuId, index, cpuId);
+    sai_deserialize_object_id(*redisCpuId, cpuId);
 
     return cpuId;
 }
@@ -391,9 +374,7 @@ void redisSetDefaultVirtualRouterId(sai_object_id_t vr_id)
 {
     SWSS_LOG_ENTER();
 
-    std::string strVrId;
-
-    sai_serialize_primitive(vr_id, strVrId);
+    std::string strVrId = sai_serialize_object_id(vr_id);
 
     g_redisClient->hset(HIDDEN, DEFAULT_VIRTUAL_ROUTER_ID, strVrId);
 }
@@ -402,9 +383,7 @@ void redisSetDefaultTrapGroup(sai_object_id_t vr_id)
 {
     SWSS_LOG_ENTER();
 
-    std::string strVrId;
-
-    sai_serialize_primitive(vr_id, strVrId);
+    std::string strVrId = sai_serialize_object_id(vr_id);
 
     g_redisClient->hset(HIDDEN, DEFAULT_TRAP_GROUP_ID, strVrId);
 }
@@ -413,10 +392,8 @@ void redisCreateRidAndVidMapping(sai_object_id_t rid, sai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
 
-    std::string strRid, strVid;
-
-    sai_serialize_primitive(rid, strRid);
-    sai_serialize_primitive(vid, strVid);
+    std::string strRid = sai_serialize_object_id(rid);
+    std::string strVid = sai_serialize_object_id(vid);
 
     g_redisClient->hset(VIDTORID, strVid, strRid);
     g_redisClient->hset(RIDTOVID, strRid, strVid);
@@ -437,15 +414,11 @@ void redisSetDummyAsicStateForRealObjectId(sai_object_id_t rid)
         exit_and_notify(EXIT_FAILURE);
     }
 
-    std::string strObjectType;
-
-    sai_serialize_primitive(objectType, strObjectType);
+    std::string strObjectType = sai_serialize_object_type(objectType);
 
     sai_object_id_t vid = redis_create_virtual_object_id(objectType);
 
-    std::string strVid;
-
-    sai_serialize_primitive(vid, strVid);
+    std::string strVid = sai_serialize_object_id(vid);
 
     std::string strKey = "ASIC_STATE:" + strObjectType + ":" + strVid;
 
@@ -514,9 +487,7 @@ void redisSetCpuId(sai_object_id_t cpuId)
 {
     SWSS_LOG_ENTER();
 
-    std::string strCpuId;
-
-    sai_serialize_primitive(cpuId, strCpuId);
+    std::string strCpuId = sai_serialize_object_id(cpuId);
 
     g_redisClient->hset(HIDDEN, CPU_PORT_ID, strCpuId);
 }
@@ -564,13 +535,9 @@ void redisCreateDummyEntryInAsicView(sai_object_id_t objectId)
         exit_and_notify(EXIT_FAILURE);
     }
 
-    std::string strObjectType;
+    std::string strObjectType = sai_serialize_object_type(objectType);
 
-    sai_serialize_primitive(objectType, strObjectType);
-
-    std::string strVid;
-
-    sai_serialize_primitive(vid, strVid);
+    std::string strVid = sai_serialize_object_id(vid);
 
     std::string strKey = "ASIC_STATE:" + strObjectType + ":" + strVid;
 
@@ -602,15 +569,11 @@ void helperCheckVlanId()
 
     sai_object_type_t objectType = SAI_OBJECT_TYPE_VLAN;
 
-    std::string strObjectType;
-
-    sai_serialize_primitive(objectType, strObjectType);
-
-    std::string strVlanId;
+    std::string strObjectType = sai_serialize_object_type(objectType);
 
     sai_vlan_id_t vlanId = 1;
 
-    sai_serialize_primitive(vlanId, strVlanId);
+    std::string strVlanId = sai_serialize_vlan_id(vlanId);
 
     std::string strKey = "ASIC_STATE:" + strObjectType + ":" + strVlanId;
 

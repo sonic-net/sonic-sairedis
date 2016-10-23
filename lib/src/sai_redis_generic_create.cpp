@@ -1,4 +1,6 @@
 #include "sai_redis.h"
+#include "meta/saiserialize.h"
+#include "meta/saiattributelist.h"
 
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_type_t object_type)
@@ -26,35 +28,11 @@ sai_object_id_t redis_create_virtual_object_id(
     return objectId;
 }
 
-/**
- * Routine Description:
- *     @brief  Query sai object type.
- *
- * Arguments:
- *     @param[in] sai_object_id
- *
- * Return Values:
- *    @return  Return SAI_OBJECT_TYPE_NULL when sai_object_id is not valid.
- *             Otherwise, return a valid sai object type SAI_OBJECT_TYPE_XXX
- */
 sai_object_type_t sai_object_type_query(_In_ sai_object_id_t sai_object_id)
 {
     return (sai_object_type_t)(sai_object_id >> 48);
 }
 
-/**
- *   Routine Description:
- *    @brief Generic create method
- *
- *  Arguments:
- *  @param[out] acl_table_id - the the acl table id
- *  @param[in] attr_count - number of attributes
- *  @param[in] attr_list - array of attributes
- *
- *  Return Values:
- *    @return  SAI_STATUS_SUCCESS on success
- *             Failure status code on error
- */
 sai_status_t internal_redis_generic_create(
         _In_ sai_object_type_t object_type,
         _In_ const std::string &serialized_object_id,
@@ -109,9 +87,7 @@ sai_status_t internal_redis_generic_create(
         entry.push_back(null);
     }
 
-    std::string str_object_type;
-
-    sai_serialize_primitive(object_type, str_object_type);
+    std::string str_object_type = sai_serialize_object_type(object_type);
 
     std::string key = str_object_type + ":" + serialized_object_id;
 
@@ -129,19 +105,6 @@ sai_status_t internal_redis_generic_create(
     return SAI_STATUS_SUCCESS;
 }
 
-/**
- *   Routine Description:
- *    @brief Generic create method
- *
- *  Arguments:
- *  @param[out] acl_table_id - the the acl table id
- *  @param[in] attr_count - number of attributes
- *  @param[in] attr_list - array of attributes
- *
- *  Return Values:
- *    @return  SAI_STATUS_SUCCESS on success
- *             Failure status code on error
- */
 sai_status_t redis_generic_create(
         _In_ sai_object_type_t object_type,
         _Out_ sai_object_id_t* object_id,
@@ -168,16 +131,13 @@ sai_status_t redis_generic_create(
     // on create vid is put in db by syncd
     *object_id = redis_create_virtual_object_id(object_type);
 
-    std::string str_object_id;
-    sai_serialize_primitive(*object_id, str_object_id);
+    std::string str_object_id = sai_serialize_object_id(*object_id);
 
-    sai_status_t status = internal_redis_generic_create(
+    return internal_redis_generic_create(
             object_type,
             str_object_id,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t redis_generic_create_fdb_entry(
@@ -187,16 +147,13 @@ sai_status_t redis_generic_create_fdb_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_fdb_entry;
-    sai_serialize_primitive(*fdb_entry, str_fdb_entry);
+    std::string str_fdb_entry = sai_serialize_fdb_entry(*fdb_entry);
 
-    sai_status_t status = internal_redis_generic_create(
+    return internal_redis_generic_create(
             SAI_OBJECT_TYPE_FDB,
             str_fdb_entry,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t redis_generic_create_neighbor_entry(
@@ -206,16 +163,13 @@ sai_status_t redis_generic_create_neighbor_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_neighbor_entry;
-    sai_serialize_neighbor_entry(*neighbor_entry, str_neighbor_entry);
+    std::string str_neighbor_entry = sai_serialize_neighbor_entry(*neighbor_entry);
 
-    sai_status_t status = internal_redis_generic_create(
+    return internal_redis_generic_create(
             SAI_OBJECT_TYPE_NEIGHBOR,
             str_neighbor_entry,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t redis_generic_create_route_entry(
@@ -225,17 +179,13 @@ sai_status_t redis_generic_create_route_entry(
 {
     SWSS_LOG_ENTER();
 
-    // vr_id must be valid virtual router id
-    std::string str_route_entry;
-    sai_serialize_route_entry(*unicast_route_entry, str_route_entry);
+    std::string str_route_entry = sai_serialize_route_entry(*unicast_route_entry);
 
-    sai_status_t status = internal_redis_generic_create(
+    return internal_redis_generic_create(
             SAI_OBJECT_TYPE_ROUTE,
             str_route_entry,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t redis_generic_create_vlan(
@@ -243,18 +193,11 @@ sai_status_t redis_generic_create_vlan(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_vlan_id;
-    sai_serialize_primitive(vlan_id, str_vlan_id);
+    std::string str_vlan_id = sai_serialize_vlan_id(vlan_id);
 
-    // create_vlan have no attributes, but generic method needs one
-    // so provide count as zero and dummy attribute
-    sai_attribute_t dummy_attribute;
-
-    sai_status_t status = internal_redis_generic_create(
+    return internal_redis_generic_create(
             SAI_OBJECT_TYPE_VLAN,
             str_vlan_id,
             0,
-            &dummy_attribute);
-
-    return status;
+            NULL);
 }

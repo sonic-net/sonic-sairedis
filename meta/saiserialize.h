@@ -307,10 +307,6 @@ sai_status_t sai_deserialize_attr_value(
         _Out_ sai_attribute_t &attr,
         _In_ bool countOnly);
 
-sai_status_t sai_deserialize_free_attribute_value(
-        _In_ const sai_attr_serialization_type_t type,
-        _In_ sai_attribute_t &attr);
-
 sai_status_t sai_serialize_attr(
         _In_ const sai_attr_serialization_type_t type,
         _In_ const sai_attribute_t &attr,
@@ -362,15 +358,129 @@ std::string sai_get_port_stat_counter_name(sai_port_stat_counter_t counter);
 
 // new methods
 
+std::string sai_serialize_ip_address(
+        _In_ const sai_ip_address_t &ip_address);
+
+std::string sai_serialize_ip_prefix(
+        _In_ const sai_ip_prefix_t &ip_prefix);
+
+std::string sai_serialize_neighbor_entry(
+        _In_ const sai_neighbor_entry_t &neighbor_entry);
+
+std::string sai_serialize_route_entry(
+        _In_ const sai_unicast_route_entry_t &route_entry);
+
+std::string sai_serialize_fdb_entry(
+        _In_ const sai_fdb_entry_t &fdb_entry);
+
+std::string sai_serialize_hostif_trap_id(
+        _In_ const sai_hostif_trap_id_t hostif_trap_id);
+
+std::string sai_serialize_vlan_id(
+        _In_ const sai_vlan_id_t vlan_id);
+
+std::string sai_serialize_object_type(
+        _In_ const sai_object_type_t object_type);
+
+std::string sai_serialize_object_id(
+        _In_ const sai_object_id_t object_id);
+
 std::string sai_serialize_attr_value(
         _In_ const sai_attr_metadata_t& meta,
         _In_ const sai_attribute_t &attr,
-        _In_ const bool countOnly);
+        _In_ const bool countOnly = false);
+
+std::string sai_serialize_status(
+        _In_ const sai_status_t status);
+
+std::string sai_serialize_port_stat(
+        _In_ const sai_port_stat_counter_t counter);
+
+std::string sai_serialize_enum(
+        _In_ const int32_t value,
+        _In_ const sai_enum_metadata_t* meta);
+
+std::string sai_serialize_fdb_event_notification_data(
+        _In_ const sai_fdb_event_notification_data_t& fdb);
+
+std::string sai_serialize_port_oper_status_notification(
+        _In_ const sai_port_oper_status_notification_t& ntf);
+
+std::string sai_serialize_port_event_notification(
+        _In_ const sai_port_event_notification_t& ntf);
+
+std::string sai_serialize_buffer(
+        _In_ const sai_size_t size,
+        _In_ const void* buffer);
+
+std::string sai_serialize_number(
+        _In_ uint32_t number,
+        _In_ bool hex = false);
+
+std::string sai_serialize_attr_id(
+        _In_ const sai_attr_metadata_t& meta);
+
+// deserialize
+
+void sai_deserialize_number(
+        _In_ const std::string& s,
+        _Out_ uint32_t& number,
+        _In_ bool hex = false);
+
+void sai_deserialize_status(
+        _In_ const std::string& s,
+        _Out_ sai_status_t& status);
+
+void sai_deserialize_switch_oper_status(
+        _In_ const std::string& s,
+        _Out_ sai_switch_oper_status_t& status);
+
+void sai_deserialize_object_type(
+        _In_ const std::string& s,
+        _Out_ sai_object_type_t& object_type);
+
+void sai_deserialize_object_id(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& oid);
+
+void sai_deserialize_fdb_entry(
+        _In_ const std::string& s,
+        _In_ sai_fdb_entry_t &fdb_entry);
+
+void sai_deserialize_neighbor_entry(
+        _In_ const std::string& s,
+        _In_ sai_neighbor_entry_t &neighbor_entry);
+
+void sai_deserialize_route_entry(
+        _In_ const std::string& s,
+        _In_ sai_unicast_route_entry_t &route_entry);
+
+void sai_deserialize_vlan_id(
+        _In_ const std::string& s,
+        _In_ sai_vlan_id_t& vlan_id);
+
+void sai_deserialize_hostif_trap_id(
+        _In_ const std::string& s,
+        _In_ sai_hostif_trap_id_t& hostif_trap_id);
+
+void sai_deserialize_attr_id(
+        _In_ const std::string& s,
+        _Out_ sai_attr_id_t &attrid);
 
 void sai_deserialize_attr_value(
         _In_ const std::string& s,
         _In_ const sai_attr_metadata_t& meta,
         _Out_ sai_attribute_t &attr,
         _In_ const bool countOnly);
+
+void sai_deserialize_attr_id(
+        _In_ const std::string& s,
+        _In_ const sai_attr_metadata_t& meta);
+
+// free methods
+
+void sai_deserialize_free_attribute_value(
+        _In_ const sai_attr_serialization_type_t type,
+        _In_ sai_attribute_t &attr);
 
 #endif // __SAI_SERIALIZE__

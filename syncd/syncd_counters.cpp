@@ -34,8 +34,7 @@ void collectCounters(swss::Table &countersTable,
 
         sai_object_id_t vid = translate_rid_to_vid(portId);
 
-        std::string strPortId;
-        sai_serialize_primitive(vid, strPortId);
+        std::string strPortId = sai_serialize_object_id(vid);
 
         // for counters, use port vid as printf "%llx" format
         std::stringstream ss;
@@ -46,8 +45,8 @@ void collectCounters(swss::Table &countersTable,
 
         for (size_t idx = 0; idx < counters.size(); idx++)
         {
-            std::string field = sai_get_port_stat_counter_name(supportedCounters[idx]);
-            std::string value = std::to_string(counters[idx]);
+            const std::string &field = sai_serialize_port_stat(supportedCounters[idx]);
+            const std::string &value = std::to_string(counters[idx]);
 
             swss::FieldValueTuple fvt(field, value);
 
@@ -76,7 +75,7 @@ std::vector<sai_port_stat_counter_t> getSupportedCounters(sai_object_id_t portId
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            const std::string &name = sai_get_port_stat_counter_name(counter);
+            const std::string &name = sai_serialize_port_stat(counter);
 
             SWSS_LOG_WARN("counter %s is not supported on port RID %llx: %d", name.c_str(), portId, status);
             continue;

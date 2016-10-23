@@ -50,15 +50,12 @@ sai_status_t vs_generic_set(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    std::string str_object_id;
-    sai_serialize_primitive(object_id, str_object_id);
+    std::string str_object_id = sai_serialize_object_id(object_id);
 
-    sai_status_t status = internal_vs_generic_set(
+    return internal_vs_generic_set(
             object_type,
             str_object_id,
             attr);
-
-    return status;
 }
 
 sai_status_t vs_generic_set_fdb_entry(
@@ -67,15 +64,12 @@ sai_status_t vs_generic_set_fdb_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_fdb_entry;
-    sai_serialize_primitive(*fdb_entry, str_fdb_entry);
+    std::string str_fdb_entry = sai_serialize_fdb_entry(*fdb_entry);
 
-    sai_status_t status = internal_vs_generic_set(
+    return internal_vs_generic_set(
             SAI_OBJECT_TYPE_FDB,
             str_fdb_entry,
             attr);
-
-    return status;
 }
 
 sai_status_t vs_generic_set_neighbor_entry(
@@ -84,15 +78,12 @@ sai_status_t vs_generic_set_neighbor_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_neighbor_entry;
-    sai_serialize_neighbor_entry(*neighbor_entry, str_neighbor_entry);
+    std::string str_neighbor_entry = sai_serialize_neighbor_entry(*neighbor_entry);
 
-    sai_status_t status = internal_vs_generic_set(
+    return internal_vs_generic_set(
             SAI_OBJECT_TYPE_NEIGHBOR,
             str_neighbor_entry,
             attr);
-
-    return status;
 }
 
 sai_status_t vs_generic_set_route_entry(
@@ -101,15 +92,12 @@ sai_status_t vs_generic_set_route_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_route_entry;
-    sai_serialize_route_entry(*unicast_route_entry, str_route_entry);
+    std::string str_route_entry = sai_serialize_route_entry(*unicast_route_entry);
 
-    sai_status_t status = internal_vs_generic_set(
+    return internal_vs_generic_set(
             SAI_OBJECT_TYPE_ROUTE,
             str_route_entry,
             attr);
-
-    return status;
 }
 
 sai_status_t vs_generic_set_vlan(
@@ -118,15 +106,12 @@ sai_status_t vs_generic_set_vlan(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_vlan_id;
-    sai_serialize_primitive(vlan_id, str_vlan_id);
+    std::string str_vlan_id = sai_serialize_vlan_id(vlan_id);
 
-    sai_status_t status = internal_vs_generic_set(
+    return internal_vs_generic_set(
             SAI_OBJECT_TYPE_VLAN,
             str_vlan_id,
             attr);
-
-    return status;
 }
 
 sai_status_t vs_generic_set_trap(
@@ -135,8 +120,7 @@ sai_status_t vs_generic_set_trap(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_hostif_trap_id;
-    sai_serialize_primitive(hostif_trap_id, str_hostif_trap_id);
+    std::string str_hostif_trap_id = sai_serialize_hostif_trap_id(hostif_trap_id);
 
     return internal_vs_generic_set(
             SAI_OBJECT_TYPE_TRAP,
@@ -151,13 +135,10 @@ sai_status_t vs_generic_set_switch(
 
     sai_object_id_t object_id = switch_object_id;
 
-    std::string str_object_id;
-    sai_serialize_primitive(object_id, str_object_id);
+    std::string str_object_id = sai_serialize_object_id(object_id);
 
-    sai_status_t status = internal_vs_generic_set(
+    return internal_vs_generic_set(
             SAI_OBJECT_TYPE_SWITCH,
             str_object_id,
             attr);
-
-    return status;
 }

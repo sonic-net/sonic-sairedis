@@ -1,4 +1,5 @@
 #include "sai_redis.h"
+#include <string.h>
 
 std::string getTimestamp()
 {

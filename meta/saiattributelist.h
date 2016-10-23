@@ -19,7 +19,7 @@ class SaiAttributeList
         SaiAttributeList(
                 _In_ const sai_object_type_t object_type,
                 _In_ const std::vector<swss::FieldValueTuple> &values,
-                _In_ bool onlyCount);
+                _In_ bool countOnly);
 
         ~SaiAttributeList();
 
@@ -31,7 +31,7 @@ class SaiAttributeList
                 _In_ sai_object_type_t object_type,
                 _In_ uint32_t attr_count,
                 _In_ const sai_attribute_t *attr_list,
-                _In_ bool onlyCount);
+                _In_ bool countOnly);
 
     private:
 

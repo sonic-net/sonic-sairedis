@@ -1,4 +1,6 @@
 #include "sai_redis.h"
+#include "meta/saiserialize.h"
+#include "meta/saiattributelist.h"
 
 // if we don't receive response from syncd in 60 seconds
 // there is something wrong and we should fail
@@ -21,8 +23,7 @@ sai_status_t internal_redis_get_process(
 
     sai_status_t status;
 
-    int index = 0;
-    sai_deserialize_primitive(str_sai_status, index, status);
+    sai_deserialize_status(str_sai_status, status);
 
     // we could deserialize directly to user data, but list is alocated by deserializer
     if (status == SAI_STATUS_SUCCESS)
@@ -42,19 +43,6 @@ sai_status_t internal_redis_get_process(
     return status;
 }
 
-/**
- *   Routine Description:
- *    @brief Internal set attribute
- *
- *  Arguments:
- *  @param[in] object_type - type of object
- *  @param[in] serialized_object_id - serialized object id
- *  @param[in] attr - attribute to serialize
- *
- *  Return Values:
- *    @return  SAI_STATUS_SUCCESS on success
- *             Failure status code on error
- */
 sai_status_t internal_redis_generic_get(
         _In_ sai_object_type_t object_type,
         _In_ const std::string &serialized_object_id,
@@ -71,9 +59,7 @@ sai_status_t internal_redis_generic_get(
             attr_list,
             false);
 
-    std::string str_object_type;
-
-    sai_serialize_primitive(object_type, str_object_type);
+    std::string str_object_type = sai_serialize_object_type(object_type);
 
     std::string key = str_object_type + ":" + serialized_object_id;
 
@@ -152,20 +138,6 @@ sai_status_t internal_redis_generic_get(
     return SAI_STATUS_FAILURE;
 }
 
-/**
- * Routine Description:
- *   @brief Generic get attribute
- *
- * Arguments:
- *    @param[in] object_type - the object type
- *    @param[in] object_id - the object id
- *    @param[in] attr_count - number of attributes
- *    @param[out] attr_list - array of attributes
- *
- * Return Values:
- *    @return  SAI_STATUS_SUCCESS on success
- *             Failure status code on error
- */
 sai_status_t redis_generic_get(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -181,16 +153,13 @@ sai_status_t redis_generic_get(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    std::string str_object_id;
-    sai_serialize_primitive(object_id, str_object_id);
+    std::string str_object_id = sai_serialize_object_id(object_id);
 
-    sai_status_t status = internal_redis_generic_get(
+    return internal_redis_generic_get(
             object_type,
             str_object_id,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t redis_generic_get_fdb_entry(
@@ -200,16 +169,13 @@ sai_status_t redis_generic_get_fdb_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_fdb_entry;
-    sai_serialize_primitive(*fdb_entry, str_fdb_entry);
+    std::string str_fdb_entry = sai_serialize_fdb_entry(*fdb_entry);
 
-    sai_status_t status = internal_redis_generic_get(
+    return internal_redis_generic_get(
             SAI_OBJECT_TYPE_FDB,
             str_fdb_entry,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t redis_generic_get_neighbor_entry(
@@ -219,16 +185,13 @@ sai_status_t redis_generic_get_neighbor_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_neighbor_entry;
-    sai_serialize_neighbor_entry(*neighbor_entry, str_neighbor_entry);
+    std::string str_neighbor_entry = sai_serialize_neighbor_entry(*neighbor_entry);
 
-    sai_status_t status = internal_redis_generic_get(
+    return internal_redis_generic_get(
             SAI_OBJECT_TYPE_NEIGHBOR,
             str_neighbor_entry,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t redis_generic_get_route_entry(
@@ -238,16 +201,13 @@ sai_status_t redis_generic_get_route_entry(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_route_entry;
-    sai_serialize_route_entry(*unicast_route_entry, str_route_entry);
+    std::string str_route_entry = sai_serialize_route_entry(*unicast_route_entry);
 
-    sai_status_t status = internal_redis_generic_get(
+    return internal_redis_generic_get(
             SAI_OBJECT_TYPE_ROUTE,
             str_route_entry,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t redis_generic_get_vlan(
@@ -257,28 +217,27 @@ sai_status_t redis_generic_get_vlan(
 {
     SWSS_LOG_ENTER();
 
-    std::string str_vlan_id;
-    sai_serialize_primitive(vlan_id, str_vlan_id);
+    std::string str_vlan_id = sai_serialize_vlan_id(vlan_id);
 
-    sai_status_t status = internal_redis_generic_get(
+    return internal_redis_generic_get(
             SAI_OBJECT_TYPE_VLAN,
             str_vlan_id,
             attr_count,
             attr_list);
-
-    return status;
 }
 
 sai_status_t redis_generic_get_trap(
-        _In_ sai_hostif_trap_id_t hostif_trapid,
+        _In_ sai_hostif_trap_id_t hostif_trap_id,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    return redis_generic_get(
+    std::string str_hostif_trap_id = sai_serialize_hostif_trap_id(hostif_trap_id);
+
+    return internal_redis_generic_get(
             SAI_OBJECT_TYPE_TRAP,
-            hostif_trapid,
+            str_hostif_trap_id,
             attr_count,
             attr_list);
 }
@@ -291,15 +250,11 @@ sai_status_t redis_generic_get_switch(
 
     sai_object_id_t object_id = 0;
 
-    std::string str_object_id;
-    sai_serialize_primitive(object_id, str_object_id);
+    std::string str_object_id = sai_serialize_object_id(object_id);
 
-    sai_status_t status = internal_redis_generic_get(
+    return internal_redis_generic_get(
             SAI_OBJECT_TYPE_SWITCH,
             str_object_id,
             attr_count,
             attr_list);
-
-    return status;
 }
-
