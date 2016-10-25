@@ -44,3 +44,9 @@ libsaivs_la_SOURCES = \
 
 libsaivs_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 libsaivs_la_LIBADD = -lhiredis -lswsscommon
+
+bin_PROGRAMS = tests
+
+tests_SOURCES = tests.cpp
+tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+tests_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/vslib/src/.libs -lsaivs -L$(top_srcdir)/meta/.libs -lsaimetadata 

@@ -9,10 +9,9 @@ void handle_switch_state_change(
 
     SWSS_LOG_DEBUG("data: %s", data.c_str());
 
-    int index = 0;
-
     sai_switch_oper_status_t switch_oper_status;
-    sai_deserialize_primitive(data, index, switch_oper_status);
+
+    sai_deserialize_switch_oper_status(data, switch_oper_status);
 
     auto on_switch_state_change = redis_switch_notifications.on_switch_state_change;
 
@@ -29,47 +28,19 @@ void handle_fdb_event(
 
     SWSS_LOG_DEBUG("data: %s", data.c_str());
 
-    int index = 0;
-
     uint32_t count;
-    sai_deserialize_primitive(data, index, count);
+    sai_fdb_event_notification_data_t *fdbevent = NULL;
 
-    std::vector<sai_fdb_event_notification_data_t> fdbdata;
-
-    fdbdata.resize(count);
-
-    for (uint32_t i = 0; i < count; i++)
-    {
-        sai_fdb_event_notification_data_t *fdb = &fdbdata[i];
-
-        sai_status_t status = sai_deserialize_fdb_event_notification_data(data, index, fdb);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("Unable to deserialize fdb event, status: %u", status);
-
-            return;
-        }
-    }
+    sai_deserialize_fdb_event_ntf(data, count, &fdbevent);
 
     auto on_fdb_event = redis_switch_notifications.on_fdb_event;
 
     if (on_fdb_event != NULL)
     {
-        on_fdb_event(count, fdbdata.data());
+        on_fdb_event(count, fdbevent);
     }
 
-    for (uint32_t i = 0; i < count; i++)
-    {
-        sai_fdb_event_notification_data_t *fdb = &fdbdata[i];
-
-        sai_status_t status = sai_deserialize_free_fdb_event_notification_data(fdb);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("Unable to free fdb event, status: %u", status);
-        }
-    }
+    sai_deserialize_free_fdb_event_ntf(count, fdbevent);
 }
 
 void handle_port_state_change(
@@ -79,29 +50,19 @@ void handle_port_state_change(
 
     SWSS_LOG_DEBUG("data: %s", data.c_str());
 
-    int index = 0;
-
     uint32_t count;
+    sai_port_oper_status_notification_t *portoperstatus = NULL;
 
-    sai_deserialize_primitive(data, index, count);
-
-    std::vector<sai_port_oper_status_notification_t> portdata;
-
-    portdata.resize(count);
-
-    for (uint32_t i = 0; i < count; i++)
-    {
-        sai_port_oper_status_notification_t *oper_stat = &portdata[i];
-
-        sai_deserialize_primitive(data, index, *oper_stat);
-    }
+    sai_deserialize_port_oper_status_ntf(data, count, &portoperstatus);
 
     auto on_port_state_change = redis_switch_notifications.on_port_state_change;
 
     if (on_port_state_change != NULL)
     {
-        on_port_state_change(count, portdata.data());
+        on_port_state_change(count, portoperstatus);
     }
+
+    sai_deserialize_free_port_oper_status_ntf(count, portoperstatus);
 }
 
 void handle_port_event(
@@ -111,29 +72,19 @@ void handle_port_event(
 
     SWSS_LOG_DEBUG("data: %s", data.c_str());
 
-    int index = 0;
-
     uint32_t count;
+    sai_port_event_notification_t *portevent = NULL;
 
-    sai_deserialize_primitive(data, index, count);
-
-    std::vector<sai_port_event_notification_t> portdata;
-
-    portdata.resize(count);
-
-    for (uint32_t i = 0; i < count; i++)
-    {
-        sai_port_event_notification_t *oper_stat = &portdata[i];
-
-        sai_deserialize_primitive(data, index, *oper_stat);
-    }
+    sai_deserialize_port_event_ntf(data, count, &portevent);
 
     auto on_port_event = redis_switch_notifications.on_port_event;
 
     if (on_port_event != NULL)
     {
-        on_port_event(count, portdata.data());
+        on_port_event(count, portevent);
     }
+
+    sai_deserialize_free_port_event_ntf(count, portevent);
 }
 
 void handle_switch_shutdown_request(
@@ -141,7 +92,7 @@ void handle_switch_shutdown_request(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("data: %s", data.c_str());
+    SWSS_LOG_NOTICE("switch shutdown request");
 
     auto on_switch_shutdown_request = redis_switch_notifications.on_switch_shutdown_request;
 
@@ -159,26 +110,15 @@ void handle_packet_event(
 
     SWSS_LOG_DEBUG("data: %s, values: %lu", data.c_str(), values.size());
 
-    sai_size_t buffer_size;
+    SWSS_LOG_ERROR("not implemented");
 
-    int index = 0;
-
-    sai_deserialize_primitive(data, index, buffer_size);
-
-    std::vector<unsigned char> buffer;
-
-    buffer.resize(buffer_size);
-
-    sai_deserialize_buffer(data, index, buffer_size, buffer.data());
-
-    SaiAttributeList list(SAI_OBJECT_TYPE_PACKET, values, false);
-
+    /*
     auto on_packet_event = redis_switch_notifications.on_packet_event;
 
     if (on_packet_event != NULL)
     {
         on_packet_event(buffer.data(), buffer_size, list.get_attr_count(), list.get_attr_list());
-    }
+    }*/
 }
 
 void handle_notification(

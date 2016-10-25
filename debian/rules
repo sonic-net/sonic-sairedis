@@ -42,3 +42,6 @@ override_dh_installinit:
 	sed -i 's/ENABLE_SAITHRIFT=0/ENABLE_SAITHRIFT=1/' debian/syncd.init
   endif
 	dh_installinit
+
+override_dh_shlibdeps:
+	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info

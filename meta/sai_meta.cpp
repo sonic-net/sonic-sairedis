@@ -253,8 +253,6 @@ const sai_attr_metadata_t* get_attribute_metadata(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("objecttype: %s, attrid: %d", get_object_type_name(objecttype), attrid);
-
     const auto &it = AttributesMetadata.find(objecttype);
 
     if (it == AttributesMetadata.end())
@@ -270,10 +268,12 @@ const sai_attr_metadata_t* get_attribute_metadata(
 
     if (ita == attrset.end())
     {
-        SWSS_LOG_ERROR("attribute %d not found in metadata", attrid);
+        SWSS_LOG_ERROR("attribute %d not found in metadata for object type %s", attrid, get_object_type_name(objecttype));
 
         return NULL;
     }
+
+    SWSS_LOG_DEBUG("objecttype: %s, attrid: %s", get_object_type_name(objecttype), ita->second->attridname);
 
     return ita->second;
 }

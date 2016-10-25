@@ -32,8 +32,7 @@ void on_switch_state_change(
 
     SWSS_LOG_ENTER();
 
-    std::string s;
-    sai_serialize_primitive(switch_oper_status, s);
+    std::string s = sai_serialize_switch_oper_status(switch_oper_status);
 
     send_notification("switch_state_change", s);
 }
@@ -47,7 +46,9 @@ sai_fdb_entry_type_t getFdbEntryType(
         const sai_attribute_t &attr = list[idx];
 
         if (attr.id == SAI_FDB_ENTRY_ATTR_TYPE)
+        {
             return (sai_fdb_entry_type_t)attr.value.s32;
+        }
     }
 
     SWSS_LOG_WARN("unknown fdb entry type");
@@ -57,8 +58,7 @@ sai_fdb_entry_type_t getFdbEntryType(
 }
 
 void redisPutFdbEntryToAsicView(
-    _In_ const sai_fdb_entry_t *fdbEntry,
-    _In_ SaiAttributeList &list)
+        _In_ const sai_fdb_event_notification_data_t *fdb)
 {
     // NOTE: this fdb entry already contains translated RID to VID
 
@@ -66,17 +66,15 @@ void redisPutFdbEntryToAsicView(
 
     entry = SaiAttributeList::serialize_attr_list(
             SAI_OBJECT_TYPE_FDB,
-            list.get_attr_count(),
-            list.get_attr_list(),
+            fdb->attr_count,
+            fdb->attr,
             false);
 
     sai_object_type_t objectType = SAI_OBJECT_TYPE_FDB;
 
-    std::string strObjectType;
-    sai_serialize_primitive(objectType, strObjectType);
+    std::string strObjectType = sai_serialize_object_type(objectType);
 
-    std::string strFdbEntry;
-    sai_serialize_primitive(*fdbEntry, strFdbEntry);
+    std::string strFdbEntry = sai_serialize_fdb_entry(fdb->fdb_entry);
 
     std::string key = "ASIC_STATE:" + strObjectType + ":" + strFdbEntry;
 
@@ -94,21 +92,18 @@ void redisPutFdbEntryToAsicView(
     attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
     attr.value.s32 = SAI_FDB_ENTRY_DYNAMIC;
 
-    std::string strAttrValue;
+    auto meta = get_attribute_metadata(objectType, attr.id);
 
-    sai_status_t status = sai_serialize_attr_value(SAI_SERIALIZATION_TYPE_INT32, attr, strAttrValue, false);
-
-    if (status != SAI_STATUS_SUCCESS)
+    if (meta == NULL)
     {
-        SWSS_LOG_ERROR("Unable to serialize fdb entry attribute, status: %u", status);
-
-        exit(EXIT_FAILURE);
+        SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %x", objectType, attr.id);
+        exit_and_notify(EXIT_FAILURE);
     }
 
-    std::string strAttrType;
-    sai_serialize_primitive(attr.id, strAttrType);
+    std::string strAttrId = sai_serialize_attr_id(*meta);
+    std::string strAttrValue = sai_serialize_attr_value(*meta, attr);
 
-    g_redisClient->hset(key, strAttrType, strAttrValue);
+    g_redisClient->hset(key, strAttrId, strAttrValue);
 }
 
 void on_fdb_event(
@@ -119,9 +114,6 @@ void on_fdb_event(
 
     SWSS_LOG_ENTER();
 
-    std::string s;
-    sai_serialize_primitive(count, s);
-
     SWSS_LOG_DEBUG("fdb event count: %d", count);
 
     for (uint32_t i = 0; i < count; i++)
@@ -130,48 +122,22 @@ void on_fdb_event(
 
         SWSS_LOG_DEBUG("fdb %u: type: %d", i, fdb->event_type);
 
-        // NOTE: operate on copy to not modify sdk data
-
-        sai_fdb_event_notification_data_t copy;
-
-        memcpy(&copy, fdb, sizeof(sai_fdb_event_notification_data_t));
-
-        std::vector<swss::FieldValueTuple> entry;
-
-        entry = SaiAttributeList::serialize_attr_list(
-                SAI_OBJECT_TYPE_FDB,
-                copy.attr_count,
-                copy.attr,
-                false);
-
-        SaiAttributeList list(SAI_OBJECT_TYPE_FDB, entry, false);
-
-        translate_rid_to_vid_list(SAI_OBJECT_TYPE_FDB, list.get_attr_count(), list.get_attr_list());
-
-        copy.attr_count = list.get_attr_count();
-        copy.attr = list.get_attr_list();
-
-        sai_status_t status = sai_serialize_fdb_event_notification_data(&copy, s);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("Unable to serialize fdb event, status: %u", status);
-
-            exit(EXIT_FAILURE);
-        }
+        translate_rid_to_vid_list(SAI_OBJECT_TYPE_FDB, fdb->attr_count, fdb->attr);
 
         // currently because of bcrm bug, we need to install fdb entries in asic view
         // and currently this event don't have fdb type which is required on creation
 
-        redisPutFdbEntryToAsicView(&copy.fdb_entry, list);
+        redisPutFdbEntryToAsicView(fdb);
     }
+
+    std::string s = sai_serialize_fdb_event_ntf(count, data);
 
     send_notification("fdb_event", s);
 }
 
 void on_port_state_change(
-            _In_ uint32_t count,
-            _In_ sai_port_oper_status_notification_t *data)
+        _In_ uint32_t count,
+        _In_ sai_port_oper_status_notification_t *data)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
 
@@ -179,22 +145,14 @@ void on_port_state_change(
 
     SWSS_LOG_DEBUG("port notification count: %u", count);
 
-    std::string s;
-    sai_serialize_primitive(count, s);
-
     for (uint32_t i = 0; i < count; i++)
     {
         sai_port_oper_status_notification_t *oper_stat = &data[i];
 
-        // NOTE: make a copy to not modify sdk values
-        sai_port_oper_status_notification_t copy;
-
-        memcpy(&copy, oper_stat, sizeof(sai_port_oper_status_notification_t));
-
-        copy.port_id = translate_rid_to_vid(copy.port_id);
-
-        sai_serialize_primitive(copy, s);
+        oper_stat->port_id = translate_rid_to_vid(oper_stat->port_id);
     }
+
+    std::string s = sai_serialize_port_oper_status_ntf(count, data);
 
     send_notification("port_state_change", s);
 }
@@ -207,22 +165,14 @@ void on_port_event(
 
     SWSS_LOG_ENTER();
 
-    std::string s;
-    sai_serialize_primitive(count, s);
-
     for (uint32_t i = 0; i < count; i++)
     {
         sai_port_event_notification_t *port_event = &data[i];
 
-        // NOTE: make a copy to not modify sdk values
-        sai_port_event_notification_t copy;
-
-        memcpy(&copy, port_event, sizeof(sai_port_event_notification_t));
-
-        copy.port_id = translate_rid_to_vid(copy.port_id);
-
-        sai_serialize_primitive(copy, s);
+        port_event->port_id = translate_rid_to_vid(port_event->port_id);
     }
+
+    std::string s = sai_serialize_port_event_ntf(count, data);
 
     send_notification("port_event", s);
 }
@@ -246,18 +196,21 @@ void on_packet_event(
 
     SWSS_LOG_ENTER();
 
-    std::string s;
-    sai_serialize_primitive(buffer_size, s);
+    SWSS_LOG_ERROR("not implemented");
 
-    sai_serialize_buffer(buffer, buffer_size, s);
+    /*
+       std::string s;
+       sai_serialize_primitive(buffer_size, s);
 
-    std::vector<swss::FieldValueTuple> entry;
+       sai_serialize_buffer(buffer, buffer_size, s);
 
-    entry = SaiAttributeList::serialize_attr_list(
-            SAI_OBJECT_TYPE_PACKET,
-            attr_count,
-            attr_list,
-            false);
+       std::vector<swss::FieldValueTuple> entry;
+
+       entry = SaiAttributeList::serialize_attr_list(
+       SAI_OBJECT_TYPE_PACKET,
+       attr_count,
+       attr_list,
+       false);
 
     // since attr_list is const, we can't replace rid's
     // we need to create copy of that list
@@ -267,21 +220,22 @@ void on_packet_event(
     translate_rid_to_vid_list(SAI_OBJECT_TYPE_PACKET, copy.get_attr_count(), copy.get_attr_list());
 
     entry = SaiAttributeList::serialize_attr_list(
-            SAI_OBJECT_TYPE_PACKET,
-            copy.get_attr_count(),
-            copy.get_attr_list(),
-            false);
+    SAI_OBJECT_TYPE_PACKET,
+    copy.get_attr_count(),
+    copy.get_attr_list(),
+    false);
 
     send_notification("packet_event", s, entry);
+    */
 }
 
 sai_switch_notification_t switch_notifications
 {
     on_switch_state_change,
-    on_fdb_event,
-    on_port_state_change,
-    on_port_event,
-    on_switch_shutdown_request,
-    on_packet_event
+        on_fdb_event,
+        on_port_state_change,
+        on_port_event,
+        on_switch_shutdown_request,
+        on_packet_event
 };
 

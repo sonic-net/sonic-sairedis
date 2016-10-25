@@ -77,7 +77,10 @@ sai_object_type_t getObjectTypeFromAsicKey(const std::string &key)
 {
     SWSS_LOG_ENTER();
 
-    const std::string strObjectType = key.substr(key.find_first_of(":") + 1, key.find_last_of(":"));
+    auto start = key.find_first_of(":") + 1;
+    auto end = key.find(":", start);
+
+    const std::string strObjectType = key.substr(start, end - start);
 
     sai_object_type_t objectType;
     sai_deserialize_object_type(strObjectType, objectType);
@@ -97,7 +100,10 @@ std::string getObjectIdFromAsicKey(const std::string &key)
 {
     SWSS_LOG_ENTER();
 
-    return key.substr(key.find_last_of(":") + 1);
+    auto start = key.find_first_of(":") + 1;
+    auto end = key.find(":", start);
+
+    return key.substr(end + 1);
 }
 
 void redisSetVidAndRidMap(std::unordered_map<sai_object_id_t, sai_object_id_t> map)

@@ -753,9 +753,6 @@ extern const sai_attribute_t* get_object_previous_attr(
 extern sai_status_t meta_init_db();
 extern void meta_init();
 
-extern const sai_attr_metadata_t* sai_metadata_get_attr_metadata(
-        _In_ sai_object_type_t objecttype,
-        _In_ sai_attr_id_t attrid);
 
 // GENERIC FUNCTION POINTERS
 

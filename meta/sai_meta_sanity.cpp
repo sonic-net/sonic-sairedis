@@ -950,29 +950,6 @@ std::string get_attr_info(const sai_attr_metadata_t& md)
         std::string(get_serialization_type_name(md.serializationtype));
 }
 
-const sai_attr_metadata_t* sai_metadata_get_attr_metadata(
-        _In_ sai_object_type_t objecttype,
-        _In_ sai_attr_id_t attrid)
-{
-    SWSS_LOG_ENTER();
-
-    if ((objecttype > SAI_OBJECT_TYPE_NULL) &&
-            (objecttype < SAI_OBJECT_TYPE_MAX))
-    {
-        auto &attrset = AttributesMetadata[objecttype];
-
-        auto it = attrset.find(attrid);
-
-        if (it != attrset.end())
-        {
-            return it->second;
-        }
-    }
-
-    SWSS_LOG_ERROR("unable to find metadata for object type %d attr id %d", objecttype, attrid);
-    return NULL;
-}
-
 void metadata_sanity_check(const sai_attr_metadata_t& md)
 {
     SWSS_LOG_ENTER();

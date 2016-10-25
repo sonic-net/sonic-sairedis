@@ -1,5 +1,6 @@
 #include "saiattributelist.h"
 #include "sai_meta.h"
+#include "saiserialize.h"
 
 SaiAttributeList::SaiAttributeList(
         _In_ const sai_object_type_t object_type,
@@ -23,7 +24,7 @@ SaiAttributeList::SaiAttributeList(
 
         sai_deserialize_attr_id(str_attr_id, attr.id);
 
-        auto meta = sai_metadata_get_attr_metadata(object_type, attr.id);
+        auto meta = get_attribute_metadata(object_type, attr.id);
 
         if (meta == NULL)
         {
@@ -64,7 +65,7 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
     {
         const sai_attribute_t *attr = &attr_list[index];
 
-        auto meta = sai_metadata_get_attr_metadata(object_type, attr->id);
+        auto meta = get_attribute_metadata(object_type, attr->id);
 
         if (meta == NULL)
         {

@@ -1,10 +1,12 @@
-#include "sai_meta.h"
-#include "sai_extra.h"
 #include <string.h>
 #include <arpa/inet.h>
 
 #include <map>
 #include <iterator>
+
+#include "sai_meta.h"
+#include "sai_extra.h"
+#include "saiserialize.h"
 
 class SaiAttrWrapper;
 extern std::unordered_map<std::string,std::unordered_map<sai_attr_id_t,std::shared_ptr<SaiAttrWrapper>>> ObjectAttrHash;
@@ -49,6 +51,8 @@ sai_object_id_t create_dummy_object_id(
 sai_object_type_t sai_object_type_query(
         _In_ sai_object_id_t oid)
 {
+    SWSS_LOG_ENTER();
+
     sai_object_type_t objecttype = (sai_object_type_t)(oid >> 48);
 
     if ((objecttype <= SAI_OBJECT_TYPE_NULL) ||
@@ -1896,7 +1900,7 @@ void test_vlan_flow()
     status = meta_sai_set_vlan(vlan_id, &attr, &dummy_success_sai_set_vlan_id);
     META_ASSERT_SUCCESS(status);
 
-    SWSS_LOG_NOTICE("metadat");
+    SWSS_LOG_NOTICE("metadata");
     attr.id = SAI_VLAN_ATTR_META_DATA;
     attr.value.u32 = 1;
     status = meta_sai_set_vlan(vlan_id, &attr, &dummy_success_sai_set_vlan_id);
@@ -3020,6 +3024,8 @@ void test_mask()
 
 sai_object_id_t insert_dummy_object(sai_object_type_t ot)
 {
+    SWSS_LOG_ENTER();
+
     // TODO we should use create
     sai_object_id_t oid = create_dummy_object_id(ot);
     object_reference_insert(oid);
@@ -3129,6 +3135,9 @@ void test_acl_entry_field_and_action()
         sai_attribute_t attr;
 
         memset(&attr,0,sizeof(attr));
+
+        attr.value.aclfield.enable = true;
+        attr.value.aclaction.enable = true;
 
         attr.id = ids[i];
 
@@ -3304,11 +3313,778 @@ void test_priority_group()
     META_ASSERT_SUCCESS(status);
 }
 
+#define ASSERT_TRUE(x,y)\
+    if ((x) != y) { std::cout << "assert true failed: '" << x << "' != '" << y << "'" << std::endl; throw; }
+
+#define ASSERT_FAIL(msg) \
+    { std::cout << "assert failed: " << msg << std::endl; throw; }
+
+void test_serialize_bool()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    // test bool
+
+    attr.id = SAI_SWITCH_ATTR_ON_LINK_ROUTE_SUPPORTED;
+    attr.value.booldata = true;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "true");
+
+    attr.id = SAI_SWITCH_ATTR_ON_LINK_ROUTE_SUPPORTED;
+    attr.value.booldata = false;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "false");
+
+    // deserialize
+
+    attr.id = SAI_SWITCH_ATTR_ON_LINK_ROUTE_SUPPORTED;
+
+    sai_deserialize_attr_value("true", *meta, attr);
+    ASSERT_TRUE(true, attr.value.booldata);
+
+    sai_deserialize_attr_value("false", *meta, attr);
+    ASSERT_TRUE(false, attr.value.booldata);
+
+    try
+    {
+        sai_deserialize_attr_value("xx", *meta, attr);
+        ASSERT_FAIL("invalid bool deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+}
+
+void test_serialize_chardata()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    memset(attr.value.chardata, 0, 32);
+
+    attr.id = SAI_HOSTIF_ATTR_NAME;
+    memcpy(attr.value.chardata, "foo", sizeof("foo"));
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_HOST_INTERFACE, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "foo");
+
+    attr.id = SAI_HOSTIF_ATTR_NAME;
+    memcpy(attr.value.chardata, "f\\oo\x12", sizeof("f\\oo\x12"));
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_HOST_INTERFACE, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "f\\\\oo\\x12");
+
+    attr.id = SAI_HOSTIF_ATTR_NAME;
+    memcpy(attr.value.chardata, "\x80\xff", sizeof("\x80\xff"));
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_HOST_INTERFACE, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "\\x80\\xFF");
+
+    // deserialize
+
+    sai_deserialize_attr_value("f\\\\oo\\x12", *meta, attr);
+
+    SWSS_LOG_NOTICE("des: %s", attr.value.chardata);
+
+    ASSERT_TRUE(0, strcmp(attr.value.chardata, "f\\oo\x12"));
+
+    sai_deserialize_attr_value("foo", *meta, attr);
+
+    ASSERT_TRUE(0, strcmp(attr.value.chardata, "foo"));
+
+    try
+    {
+        sai_deserialize_attr_value("\\x2g", *meta, attr);
+        ASSERT_FAIL("invalid chardata deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+
+    try
+    {
+        sai_deserialize_attr_value("\\x2", *meta, attr);
+        ASSERT_FAIL("invalid chardata deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+
+    try
+    {
+        sai_deserialize_attr_value("\\s45", *meta, attr);
+        ASSERT_FAIL("invalid chardata deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+
+    try
+    {
+        sai_deserialize_attr_value("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", *meta, attr);
+        ASSERT_FAIL("invalid chardata deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+}
+
+void test_serialize_uint64()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_SWITCH_ATTR_NV_STORAGE_SIZE;
+    attr.value.u64 = 42;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "42");
+    attr.value.u64 = 0x87654321aabbccdd;
+
+    attr.id = SAI_SWITCH_ATTR_NV_STORAGE_SIZE;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    char buf[32];
+    sprintf(buf, "%lu", attr.value.u64);
+
+    ASSERT_TRUE(s, std::string(buf));
+
+    // deserialize
+
+    sai_deserialize_attr_value("12345", *meta, attr);
+
+    ASSERT_TRUE(12345, attr.value.u64);
+
+    try
+    {
+        sai_deserialize_attr_value("22345235345345345435", *meta, attr);
+        ASSERT_FAIL("invalid u64 deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+
+    try
+    {
+        sai_deserialize_attr_value("2a", *meta, attr);
+        ASSERT_FAIL("invalid u64 deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+}
+
+void test_serialize_enum()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_SWITCH_ATTR_SWITCHING_MODE;
+    attr.value.s32 = SAI_SWITCHING_MODE_STORE_AND_FORWARD;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "SAI_SWITCH_SWITCHING_MODE_STORE_AND_FORWARD");
+
+    attr.value.s32 = -1;
+
+    attr.id = SAI_SWITCH_ATTR_SWITCHING_MODE;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "-1");
+
+    attr.value.s32 = 100;
+
+    attr.id = SAI_SWITCH_ATTR_SWITCHING_MODE;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "100");
+
+    // deserialize
+
+    sai_deserialize_attr_value("12345", *meta, attr);
+
+    ASSERT_TRUE(12345, attr.value.s32);
+
+    sai_deserialize_attr_value("-1", *meta, attr);
+
+    ASSERT_TRUE(-1, attr.value.s32);
+
+    sai_deserialize_attr_value("SAI_SWITCH_SWITCHING_MODE_STORE_AND_FORWARD", *meta, attr);
+
+    ASSERT_TRUE(SAI_SWITCHING_MODE_STORE_AND_FORWARD, attr.value.s32);
+
+    try
+    {
+        sai_deserialize_attr_value("foo", *meta, attr);
+        ASSERT_FAIL("invalid s32 deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+}
+
+void test_serialize_mac()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+    memcpy(attr.value.mac, "\x01\x22\x33\xaa\xbb\xcc", 6);
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "01:22:33:AA:BB:CC");
+
+    // deserialize
+
+    sai_deserialize_attr_value("ff:ee:dd:33:44:55", *meta, attr);
+
+    ASSERT_TRUE(0, memcmp("\xff\xee\xdd\x33\x44\x55", attr.value.mac, 6));
+
+    try
+    {
+        sai_deserialize_attr_value("foo", *meta, attr);
+        ASSERT_FAIL("invalid s32 deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+}
+
+void test_serialize_ip_address()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+    attr.value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    attr.value.ipaddr.addr.ip4 = htonl(0x0a000015);
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_TUNNEL, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "10.0.0.21");
+
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+    attr.value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+
+    uint16_t ip6[] = { 0x1111, 0x2222, 0x3333, 0x4444, 0x5555, 0x6666, 0xaaaa, 0xbbbb };
+
+    memcpy(attr.value.ipaddr.addr.ip6, ip6, 16);
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_TUNNEL, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "1111:2222:3333:4444:5555:6666:aaaa:bbbb");
+
+    uint16_t ip6a[] = { 0x0100, 0 ,0 ,0 ,0 ,0 ,0 ,0xff00 };
+
+    memcpy(attr.value.ipaddr.addr.ip6, ip6a, 16);
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_TUNNEL, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "1::ff");
+
+    uint16_t ip6b[] = { 0, 0 ,0 ,0 ,0 ,0 ,0 ,0x100 };
+
+    memcpy(attr.value.ipaddr.addr.ip6, ip6b, 16);
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_TUNNEL, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "::1");
+
+    try
+    {
+        // invalid address family
+        int k = 100;
+        attr.value.ipaddr.addr_family = (sai_ip_addr_family_t)k;
+
+        s = sai_serialize_attr_value(*meta, attr);
+
+        ASSERT_FAIL("invalid family not throw exception");
+    }
+    catch (const std::runtime_error &e)
+    {
+        // ok
+    }
+
+    // deserialize
+
+    sai_deserialize_attr_value("10.0.0.23", *meta, attr);
+
+    ASSERT_TRUE(attr.value.ipaddr.addr.ip4, htonl(0x0a000017));
+    ASSERT_TRUE(attr.value.ipaddr.addr_family, SAI_IP_ADDR_FAMILY_IPV4);
+
+    sai_deserialize_attr_value("1::ff", *meta, attr);
+
+    ASSERT_TRUE(0, memcmp(attr.value.ipaddr.addr.ip6, ip6a, 16));
+    ASSERT_TRUE(attr.value.ipaddr.addr_family, SAI_IP_ADDR_FAMILY_IPV6);
+
+    try
+    {
+        sai_deserialize_attr_value("foo", *meta, attr);
+        ASSERT_FAIL("invalid s32 deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+}
+
+void test_serialize_uint32_list()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_PORT_ATTR_SUPPORTED_SPEED; //SAI_PORT_ATTR_SUPPORTED_HALF_DUPLEX_SPEED;
+
+    uint32_t list[] = {1,2,3,4,5,6,7};
+
+    attr.value.u32list.count = 7;
+    attr.value.u32list.list = NULL;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_PORT, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "7:null");
+
+    attr.value.u32list.list = list;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_PORT, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "7:1,2,3,4,5,6,7");
+
+    attr.value.u32list.count = 0;
+    attr.value.u32list.list = list;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_PORT, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "0:null");
+
+    attr.value.u32list.count = 0;
+    attr.value.u32list.list = NULL;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_PORT, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "0:null");
+
+    memset(&attr, 0, sizeof(attr));
+
+    sai_deserialize_attr_value("7:1,2,3,4,5,6,7", *meta, attr, false);
+
+    ASSERT_TRUE(attr.value.u32list.count, 7);
+    ASSERT_TRUE(attr.value.u32list.list[0], 1);
+    ASSERT_TRUE(attr.value.u32list.list[1], 2);
+    ASSERT_TRUE(attr.value.u32list.list[2], 3);
+    ASSERT_TRUE(attr.value.u32list.list[3], 4);
+}
+
+void test_serialize_enum_list()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_HASH_ATTR_NATIVE_FIELD_LIST;
+
+    int32_t list[] = {
+             SAI_NATIVE_HASH_FIELD_SRC_IP,
+             SAI_NATIVE_HASH_FIELD_DST_IP,
+             SAI_NATIVE_HASH_FIELD_VLAN_ID,
+             77
+    };
+
+    attr.value.s32list.count = 4;
+    attr.value.s32list.list = NULL;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_HASH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "4:null");
+
+    attr.value.s32list.list = list;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_HASH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    // or for enum: 4:SAI_NATIVE_HASH_FIELD[SRC_IP,DST_IP,VLAN_ID,77]
+
+    ASSERT_TRUE(s, "4:SAI_NATIVE_HASH_FIELD_SRC_IP,SAI_NATIVE_HASH_FIELD_DST_IP,SAI_NATIVE_HASH_FIELD_VLAN_ID,77");
+
+    attr.value.s32list.count = 0;
+    attr.value.s32list.list = list;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_HASH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "0:null");
+
+    attr.value.s32list.count = 0;
+    attr.value.s32list.list = NULL;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_HASH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "0:null");
+}
+
+void test_serialize_oid()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+
+    attr.value.oid = 0x1234567890abcdef;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "oid:0x1234567890abcdef");
+
+    // deserialize
+
+    sai_deserialize_attr_value("oid:0x1234567890abcdef", *meta, attr);
+
+    ASSERT_TRUE(0x1234567890abcdef, attr.value.oid);
+
+    try
+    {
+        sai_deserialize_attr_value("foo", *meta, attr);
+        ASSERT_FAIL("invalid oid deserialize failed to throw exception");
+    }
+    catch (const std::runtime_error& e)
+    {
+        // ok
+    }
+}
+
+void test_serialize_oid_list()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+
+    sai_object_id_t list[] = {
+        1,0x42, 0x77
+    };
+
+    attr.value.objlist.count = 3;
+    attr.value.objlist.list = NULL;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "3:null");
+
+    attr.value.objlist.list = list;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    // or: 4:[ROUTE:0x1,PORT:0x3,oid:0x77] if we have query function
+
+    ASSERT_TRUE(s, "3:oid:0x1,oid:0x42,oid:0x77");
+
+    attr.value.objlist.count = 0;
+    attr.value.objlist.list = list;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "0:null");
+
+    attr.value.objlist.count = 0;
+    attr.value.objlist.list = NULL;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "0:null");
+
+    memset(&attr, 0, sizeof(attr));
+
+    // deserialize
+
+    sai_deserialize_attr_value("3:oid:0x1,oid:0x42,oid:0x77", *meta, attr, false);
+
+    ASSERT_TRUE(attr.value.objlist.count, 3);
+    ASSERT_TRUE(attr.value.objlist.list[0], 0x1);
+    ASSERT_TRUE(attr.value.objlist.list[1], 0x42);
+    ASSERT_TRUE(attr.value.objlist.list[2], 0x77);
+}
+
+void test_serialize_acl_action()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_ACL_ENTRY_ATTR_ACTION_REDIRECT;
+
+    attr.value.aclaction.enable = true;
+    attr.value.aclaction.parameter.oid = (sai_object_id_t)2;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_ACL_ENTRY, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "oid:0x2");
+
+    attr.value.aclaction.enable = false;
+    attr.value.aclaction.parameter.oid = (sai_object_id_t)2;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_ACL_ENTRY, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "disabled");
+
+    attr.id = SAI_ACL_ENTRY_ATTR_PACKET_ACTION;
+
+    attr.value.aclaction.enable = true;
+    attr.value.aclaction.parameter.s32 = SAI_PACKET_ACTION_TRAP;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_ACL_ENTRY, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "SAI_PACKET_ACTION_TRAP");
+
+    attr.value.aclaction.enable = true;
+    attr.value.aclaction.parameter.s32 = 77;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_ACL_ENTRY, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    ASSERT_TRUE(s, "77");
+}
+
+template<typename T>
+void deserialize_number(
+        _In_ const std::string& s,
+        _Out_ T& number,
+        _In_ bool hex = false)
+{
+    SWSS_LOG_ENTER();
+
+    errno = 0;
+
+    char *endptr = NULL;
+
+    number = (T)strtoull(s.c_str(), &endptr, hex ? 16 : 10);
+
+    if (errno != 0 || endptr != s.c_str() + s.length())
+    {
+        SWSS_LOG_ERROR("invalid number %s", s.c_str());
+        throw std::runtime_error("invalid number");
+    }
+}
+
+template <typename T>
+std::string serialize_number(
+        _In_ const T& number,
+        _In_ bool hex = false)
+{
+    SWSS_LOG_ENTER();
+
+    if (hex)
+    {
+        char buf[32];
+
+        snprintf(buf, sizeof(buf), "0x%lx", (uint64_t)number);
+
+        return buf;
+    }
+
+    return std::to_string(number);
+}
+
+void test_numbers()
+{
+    SWSS_LOG_ENTER();
+
+    int64_t sp =  0x12345678;
+    int64_t sn = -0x12345678;
+    int64_t u  =  0x12345678;
+
+    auto ssp = serialize_number(sp);
+    auto ssn = serialize_number(sn);
+    auto su  = serialize_number(u);
+
+    ASSERT_TRUE(ssp, std::to_string(sp));
+    ASSERT_TRUE(ssn, std::to_string(sn));
+    ASSERT_TRUE(su,  std::to_string(u));
+
+    auto shsp = serialize_number(sp, true);
+    auto shsn = serialize_number(sn, true);
+    auto shu  = serialize_number(u,  true);
+
+    ASSERT_TRUE(shsp, "0x12345678");
+    ASSERT_TRUE(shsn, "0xffffffffedcba988");
+    ASSERT_TRUE(shu,  "0x12345678");
+
+    sp = 0;
+    sn = 0;
+    u  = 0;
+
+    deserialize_number(ssp, sp);
+    deserialize_number(ssn, sn);
+    deserialize_number(su,  u);
+
+    ASSERT_TRUE(sp,  0x12345678);
+    ASSERT_TRUE(sn, -0x12345678);
+    ASSERT_TRUE(u,   0x12345678);
+
+    deserialize_number(shsp, sp, true);
+    deserialize_number(shsn, sn, true);
+    deserialize_number(shu,  u,  true);
+
+    ASSERT_TRUE(sp,  0x12345678);
+    ASSERT_TRUE(sn, -0x12345678);
+    ASSERT_TRUE(u,   0x12345678);
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     SWSS_LOG_ENTER();
+
+    // serialize tests
+
+    test_serialize_bool();
+    test_serialize_chardata();
+    test_serialize_uint64();
+    test_serialize_enum();
+    test_serialize_mac();
+    test_serialize_ip_address();
+    test_serialize_uint32_list();
+    test_serialize_enum_list();
+    test_serialize_oid();
+    test_serialize_oid_list();
+    test_serialize_acl_action();
+
+    // attributes tests
 
     test_switch_set();
     test_switch_get();
@@ -3351,6 +4127,8 @@ int main()
     test_construct_key();
     test_queue_create();
     test_null_list();
+
+    test_numbers();
 
     test_priority_group();
 

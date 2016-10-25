@@ -348,16 +348,15 @@ void translate_local_to_redis(
     {
         sai_attribute_t &attr = attr_list[i];
 
-        sai_attr_serialization_type_t serialization_type;
-        sai_status_t status = sai_get_serialization_type(object_type, attr.id, serialization_type);
+        auto meta = get_attribute_metadata(object_type, attr.id);
 
-        if (status != SAI_STATUS_SUCCESS)
+        if (meta == NULL)
         {
-            SWSS_LOG_ERROR("unable to find serialization type for object type %x, attribute %x", object_type, attr.id);
+            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %x", object_type, attr.id);
             exit(EXIT_FAILURE);
         }
 
-        switch (serialization_type)
+        switch (meta->serializationtype)
         {
             case SAI_SERIALIZATION_TYPE_OBJECT_ID:
                 attr.value.oid = translate_local_to_redis(attr.value.oid);
@@ -397,8 +396,7 @@ sai_object_type_t deserialize_object_type(const std::string& s)
 {
     sai_object_type_t object_type;
 
-    int index = 0;
-    sai_deserialize_primitive(s, index, object_type);
+    sai_deserialize_object_type(s, object_type);
 
     return object_type;
 }
@@ -444,16 +442,15 @@ void match_list_lengths(
         sai_attribute_t &get_attr = get_attr_list[i];
         sai_attribute_t &attr = attr_list[i];
 
-        sai_attr_serialization_type_t serialization_type;
-        sai_status_t status = sai_get_serialization_type(object_type, attr.id, serialization_type);
+        auto meta = get_attribute_metadata(object_type, attr.id);
 
-        if (status != SAI_STATUS_SUCCESS)
+        if (meta == NULL)
         {
-            SWSS_LOG_ERROR("unable to find serialization type for object type %x, attribute %x", object_type, attr.id);
+            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %x", object_type, attr.id);
             exit(EXIT_FAILURE);
         }
 
-        switch (serialization_type)
+        switch (meta->serializationtype)
         {
             case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
                 CHECK_LIST(value.objlist);
@@ -577,16 +574,15 @@ void match_redis_with_rec(
         sai_attribute_t &get_attr = get_attr_list[i];
         sai_attribute_t &attr = attr_list[i];
 
-        sai_attr_serialization_type_t serialization_type;
-        sai_status_t status = sai_get_serialization_type(object_type, attr.id, serialization_type);
+        auto meta = get_attribute_metadata(object_type, attr.id);
 
-        if (status != SAI_STATUS_SUCCESS)
+        if (meta == NULL)
         {
-            SWSS_LOG_ERROR("unable to find serialization type for object type %x, attribute %x", object_type, attr.id);
+            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %x", object_type, attr.id);
             exit(EXIT_FAILURE);
         }
 
-        switch (serialization_type)
+        switch (meta->serializationtype)
         {
             case SAI_SERIALIZATION_TYPE_OBJECT_ID:
                 match_redis_with_rec(get_attr.value.oid, attr.value.oid);
@@ -630,9 +626,8 @@ sai_status_t handle_fdb(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_fdb_entry_t fdb_entry;
-    sai_deserialize_primitive(str_object_id, index, fdb_entry);
+    sai_deserialize_fdb_entry(str_object_id, fdb_entry);
 
     switch (api)
     {
@@ -664,9 +659,8 @@ sai_status_t handle_neighbor(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_neighbor_entry_t neighbor_entry;
-    sai_deserialize_neighbor_entry(str_object_id, index, neighbor_entry);
+    sai_deserialize_neighbor_entry(str_object_id, neighbor_entry);
 
     neighbor_entry.rif_id = translate_local_to_redis(neighbor_entry.rif_id);
 
@@ -698,9 +692,8 @@ sai_status_t handle_route(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_unicast_route_entry_t route_entry;
-    sai_deserialize_route_entry(str_object_id, index, route_entry);
+    sai_deserialize_route_entry(str_object_id, route_entry);
 
     route_entry.vr_id = translate_local_to_redis(route_entry.vr_id);
 
@@ -762,9 +755,8 @@ sai_status_t handle_vlan(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_vlan_id_t vlan_id;
-    sai_deserialize_primitive(str_object_id, index, vlan_id);
+    sai_deserialize_vlan_id(str_object_id, vlan_id);
 
     switch(api)
     {
@@ -794,11 +786,8 @@ sai_status_t handle_trap(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
-    sai_object_id_t dummy_id;
-    sai_deserialize_primitive(str_object_id, index, dummy_id);
-
-    sai_hostif_trap_id_t trap_id = (sai_hostif_trap_id_t)dummy_id;
+    sai_hostif_trap_id_t trap_id;
+    sai_deserialize_hostif_trap_id(str_object_id, trap_id);
 
     switch(api)
     {
@@ -829,9 +818,8 @@ sai_status_t handle_generic(
 {
     SWSS_LOG_ENTER();
 
-    int index = 0;
     sai_object_id_t local_id;
-    sai_deserialize_primitive(str_object_id, index, local_id);
+    sai_deserialize_object_id(str_object_id, local_id);
 
     SWSS_LOG_DEBUG("common generic api: %d", api);
 
