@@ -25,7 +25,7 @@ sai_status_t internal_redis_generic_set(
 
     if (g_record)
     {
-        recordLine("s," + key + "," + joinFieldValues(entry));
+        recordLine("s|" + key + "|" + joinFieldValues(entry));
     }
 
     g_asicState->set(key, entry, "set");

@@ -67,7 +67,7 @@ sai_status_t internal_redis_generic_get(
 
     if (g_record)
     {
-        recordLine("g," + key + "," + joinFieldValues(entry));
+        recordLine("g|" + key + "|" + joinFieldValues(entry));
     }
 
     // get is special, it will not put data
@@ -116,7 +116,7 @@ sai_status_t internal_redis_generic_get(
                 const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
 
                 // first serialized is status
-                recordLine("G," + str_status + "," + joinFieldValues(values));
+                recordLine("G|" + str_status + "|" + joinFieldValues(values));
             }
 
             SWSS_LOG_DEBUG("generic get status: %d", status);
@@ -130,7 +130,7 @@ sai_status_t internal_redis_generic_get(
 
     if (g_record)
     {
-        recordLine("G,FAILURE");
+        recordLine("G|SAI_STATUS_FAILURE");
     }
 
     SWSS_LOG_ERROR("generic get failed to get response");

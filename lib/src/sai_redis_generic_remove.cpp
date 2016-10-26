@@ -18,7 +18,7 @@ sai_status_t internal_redis_generic_remove(
 
     if (g_record)
     {
-        recordLine("r," + key);
+        recordLine("r|" + key);
     }
 
     g_asicState->del(key, "remove");

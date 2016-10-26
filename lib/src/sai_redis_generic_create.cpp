@@ -95,7 +95,7 @@ sai_status_t internal_redis_generic_create(
 
     if (g_record)
     {
-        recordLine("c," + key + "," + joinFieldValues(entry));
+        recordLine("c|" + key + "|" + joinFieldValues(entry));
     }
 
     g_asicState->set(key, entry, "create");

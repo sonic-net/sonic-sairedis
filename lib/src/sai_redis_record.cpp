@@ -28,7 +28,7 @@ void recordLine(std::string s)
 
     if (recording.is_open())
     {
-        recording << getTimestamp() << "," << s << std::endl;
+        recording << getTimestamp() << "|" << s << std::endl;
     }
 }
 
@@ -48,7 +48,7 @@ void startRecording()
         return;
     }
 
-    recordLine("#,recording on: " + recfile);
+    recordLine("#|recording on: " + recfile);
 
     SWSS_LOG_NOTICE("started recording: %s", recfile.c_str());
 }
@@ -93,7 +93,7 @@ std::string joinFieldValues(
 
         if(i != 0)
         {
-            ss << ",";
+            ss << "|";
         }
 
         ss << str_attr_id << "=" << str_attr_value;

@@ -130,7 +130,7 @@ void handle_notification(
 
     if (g_record)
     {
-        recordLine("n," + notification + "," + data + "," + joinFieldValues(values));
+        recordLine("n|" + notification + "|" + data + "|" + joinFieldValues(values));
     }
 
     if (notification == "switch_state_change")

@@ -405,12 +405,17 @@ const std::vector<swss::FieldValueTuple> get_values(const std::vector<std::strin
 {
     std::vector<swss::FieldValueTuple> values;
 
-    // timestamp,action,objecttype:objectid,attrid=value,...
+    // timestamp|action|objecttype:objectid|attrid=value,...
     for (size_t i = 3; i <items.size(); ++i)
     {
-        auto o = swss::tokenize(items[i], '=');
+        const std::string& item = items[i];
 
-        swss::FieldValueTuple entry(o[0], o[1]);
+        auto start = item.find_first_of("=");
+
+        auto field = item.substr(0, start);
+        auto value = item.substr(start + 1);
+
+        swss::FieldValueTuple entry(field, value);
 
         values.push_back(entry);
     }
@@ -921,11 +926,8 @@ void handle_get_response(
 
     //std::cout << "processing " << response << std::endl;
 
-    // timestamp,action,objecttype:objectid,attrid=value,...
-    auto v = swss::tokenize(response, ',');
-
-    // objecttype:objectid
-    auto o = swss::tokenize(v[2], ':');
+    // timestamp|action|objecttype:objectid|attrid=value,...
+    auto v = swss::tokenize(response, '|');
 
     auto values = get_values(v);
 
@@ -972,7 +974,7 @@ int replay(int argc, char **argv)
 
         sai_common_api_t api = SAI_COMMON_API_CREATE;
 
-        auto p = line.find_first_of(",");
+        auto p = line.find_first_of("|");
 
         char op = line[p+1];
 
@@ -999,15 +1001,16 @@ int replay(int argc, char **argv)
                 exit(EXIT_FAILURE);
         }
 
-        // timestamp,action,objecttype:objectid,attrid=value,...
-        auto fields = swss::tokenize(line, ',');
+        // timestamp|action|objecttype:objectid|attrid=value,...
+        auto fields = swss::tokenize(line, '|');
 
-        // objecttype:objectid
-        auto o = swss::tokenize(fields[2], ':');
+        // objecttype:objectid (object id may contain ':')
+        auto start = fields[2].find_first_of(":");
 
-        sai_object_type_t object_type = deserialize_object_type(o[0]);
+        auto str_object_type = fields[2].substr(0, start);
+        auto str_object_id  = fields[2].substr(start + 1);
 
-        const std::string& str_object_id = o[1];
+        sai_object_type_t object_type = deserialize_object_type(str_object_type);
 
         auto values = get_values(fields);
 
@@ -1073,7 +1076,7 @@ int replay(int argc, char **argv)
                 // this line may be notification, we need to skip
                 std::getline(infile, response);
             }
-            while (response[response.find_first_of(",")+1] == 'n');
+            while (response[response.find_first_of("|")+1] == 'n');
 
             handle_get_response(object_type, attr_count, attr_list, response);
         }

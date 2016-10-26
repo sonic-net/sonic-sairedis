@@ -400,7 +400,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("failed to create object %llx: %d", objectType, status);
+            SWSS_LOG_ERROR("failed to create object %s: %s", sai_serialize_object_type(objectType).c_str(), sai_serialize_status(status).c_str());
 
             exit_and_notify(EXIT_FAILURE);
         }
