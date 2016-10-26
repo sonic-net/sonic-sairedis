@@ -10,4 +10,4 @@ endif
 
 player_SOURCES = player.cpp
 player_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-player_LDADD = -lhiredis -lswsscommon -lsairedis -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata
+player_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -L$(top_srcdir)/lib/src/.libs -lsairedis
