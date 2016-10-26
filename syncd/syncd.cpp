@@ -977,6 +977,7 @@ struct cmdOptions
     bool run_rpc_server;
     std::string portMapFile;
 #endif // SAITHRIFT
+    ~cmdOptions() {}
 };
 
 void printUsage()
