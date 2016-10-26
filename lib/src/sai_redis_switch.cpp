@@ -6,11 +6,6 @@
 
 // TODO it may be needed to obtain SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP object id
 
-// temporary until new SAI headers
-#ifndef SAI_SWITCH_ATTR_CUSTOM_RANGE_START
-#define SAI_SWITCH_ATTR_CUSTOM_RANGE_START 0x10000000
-#endif
-
 // if we will not get response in 60 seconds when
 // notify syncd to compile new state or to switch
 // to compiled state, then there is something wrong
@@ -346,7 +341,7 @@ sai_status_t redis_set_switch_attribute(
 
     if (attr != NULL)
     {
-        if (attr->id == SAI_SWITCH_ATTR_CUSTOM_RANGE_START + 1)
+        if (attr->id == SAI_SWITCH_ATTR_CUSTOM_RANGE_BASE + 1)
         {
             setRecording(attr->value.booldata);
             return SAI_STATUS_SUCCESS;

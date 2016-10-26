@@ -1132,13 +1132,11 @@ void handleCmdLine(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     SWSS_LOG_ENTER();
 
     handleCmdLine(argc, argv);
-
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     EXIT_ON_ERROR(sai_api_initialize(0, (const service_method_table_t *)&test_services));
 
@@ -1148,13 +1146,12 @@ int main(int argc, char **argv)
 
     EXIT_ON_ERROR(sai_switch_api->initialize_switch(0, "", "", &switch_notifications));
 
+    // Disable recording
     sai_attribute_t attr;
-
-    attr.id = SAI_SWITCH_ATTR_CUSTOM_RANGE_START + 1;
+    attr.id = SAI_SWITCH_ATTR_CUSTOM_RANGE_BASE + 1;
     attr.value.booldata = false;
 
-    // disable recording
-    sai_switch_api->set_switch_attribute(&attr);
+    EXIT_ON_ERROR(sai_switch_api->set_switch_attribute(&attr));
 
     int exitcode = replay(argc, argv);
 
