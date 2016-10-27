@@ -29,7 +29,7 @@ syncd_SOURCES = \
 				syncd_counters.cpp \
 				../common/redisclient.cpp
 
-syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
 syncd_LDADD = -lhiredis -lswsscommon -lsai -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata
 
 if SAITHRIFT
