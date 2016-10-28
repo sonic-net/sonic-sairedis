@@ -3979,6 +3979,62 @@ void test_serialize_acl_action()
     ASSERT_TRUE(s, "77");
 }
 
+void test_serialize_qos_map()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+
+    sai_qos_map_t qm = {
+        .key   = { .tc = 1, .dscp = 2, .dot1p = 3, .prio = 4, .pg = 5, .queue_index = 6, .color = SAI_PACKET_COLOR_RED },
+        .value = { .tc = 11, .dscp = 22, .dot1p = 33, .prio = 44, .pg = 55, .queue_index = 66, .color = SAI_PACKET_COLOR_GREEN } };
+
+    attr.value.qosmap.count = 1;
+    attr.value.qosmap.list = &qm;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_QOS_MAPS, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"color\":\"SAI_PACKET_COLOR_RED\",\"dot1p\":3,\"dscp\":2,\"pg\":5,\"prio\":4,\"qidx\":6,\"tc\":1},\"value\":{\"color\":\"SAI_PACKET_COLOR_GREEN\",\"dot1p\":33,\"dscp\":22,\"pg\":55,\"prio\":44,\"qidx\":66,\"tc\":11}}]}";
+
+    s = sai_serialize_attr_value(*meta, attr, true);
+
+    std::string ret2 = "{\"count\":1,\"list\":null}";
+    ASSERT_TRUE(s, ret2);
+
+    // deserialize
+
+    memset(&attr, 0, sizeof(attr));
+
+    sai_deserialize_attr_value(ret, *meta, attr);
+
+    ASSERT_TRUE(attr.value.qosmap.count, 1);
+
+    auto &l = attr.value.qosmap.list[0];
+    ASSERT_TRUE(l.key.tc, 1);
+    ASSERT_TRUE(l.key.dscp, 2);
+    ASSERT_TRUE(l.key.dot1p, 3);
+    ASSERT_TRUE(l.key.prio, 4);
+    ASSERT_TRUE(l.key.pg, 5);
+    ASSERT_TRUE(l.key.queue_index, 6);
+    ASSERT_TRUE(l.key.color, SAI_PACKET_COLOR_RED);
+
+    ASSERT_TRUE(l.value.tc, 11);
+    ASSERT_TRUE(l.value.dscp, 22);
+    ASSERT_TRUE(l.value.dot1p, 33);
+    ASSERT_TRUE(l.value.prio, 44);
+    ASSERT_TRUE(l.value.pg, 55);
+    ASSERT_TRUE(l.value.queue_index, 66);
+    ASSERT_TRUE(l.value.color, SAI_PACKET_COLOR_GREEN);
+}
+
 template<typename T>
 void deserialize_number(
         _In_ const std::string& s,
@@ -4083,6 +4139,7 @@ int main()
     test_serialize_oid();
     test_serialize_oid_list();
     test_serialize_acl_action();
+    test_serialize_qos_map();
 
     // attributes tests
 

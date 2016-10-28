@@ -618,6 +618,14 @@ std::string sai_serialize_object_type(
     return sai_serialize_enum(object_type, &metadata_enum_sai_object_type_t);
 }
 
+std::string sai_serialize_packet_color(
+        _In_ sai_packet_color_t color)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(color, &metadata_enum_sai_packet_color_t);
+}
+
 std::string sai_serialize_vlan_id(
         _In_ sai_vlan_id_t vlan_id)
 {
@@ -827,6 +835,74 @@ std::string sai_serialize_number_list(
     return sai_serialize_list(list, countOnly, [&](decltype(*list.list)& item) { return sai_serialize_number(item, hex);} );
 }
 
+json sai_serialize_qos_map_params(
+        _In_ const sai_qos_map_params_t& params)
+{
+    json j;
+
+    j["tc"]     = params.tc;
+    j["dscp"]   = params.dscp;
+    j["dot1p"]  = params.dot1p;
+    j["prio"]   = params.prio;
+    j["pg"]     = params.pg;
+    j["qidx"]   = params.queue_index;
+    j["color"]  = sai_serialize_packet_color(params.color);
+
+    return j;
+}
+
+json sai_serialize_qos_map(
+        _In_ const sai_qos_map_t& qosmap)
+{
+    json j;
+
+    j["key"]    = sai_serialize_qos_map_params(qosmap.key);
+    j["value"]  = sai_serialize_qos_map_params(qosmap.value);;
+
+    return j;
+}
+
+std::string sai_serialize_qos_map_list(
+        _In_ const sai_qos_map_list_t& qosmap,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["count"] = qosmap.count;
+
+    if (qosmap.list == NULL || countOnly)
+    {
+        j["list"] = nullptr;
+
+        return j.dump();
+    }
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < qosmap.count; ++i)
+    {
+        json item = sai_serialize_qos_map(qosmap.list[i]);
+
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    return j.dump();
+}
+
+std::string sai_serialize_tunnel_map_list(
+        _In_ const sai_qos_map_list_t& qosmap,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    // TODO
+    return "TODOFIXME";
+}
+
 template <typename T>
 std::string sai_serialize_range(
         _In_ const T& range)
@@ -1033,16 +1109,13 @@ std::string sai_serialize_attr_value(
 
         case SAI_SERIALIZATION_TYPE_VLAN_LIST:
             return sai_serialize_number_list(attr.value.vlanlist, countOnly);
-/*
+
         case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
-            return sai_serialize_qos_map(attr.value.qosmap, countOnly);
+            return sai_serialize_qos_map_list(attr.value.qosmap, countOnly);
 
-        case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
-            return sai_serialize_tunnel_map(attr.value.tunnelmap, countOnly);
+        //case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+        //    return sai_serialize_tunnel_map_list(attr.value.tunnelmap, countOnly);
 
-        case SAI_SERIALIZATION_TYPE_ACL_CAPABILITY:
-            return sai_serialize_acl_capability(attr.value.aclcapability, countOnly);
-*/
             // ACL FIELD DATA
 
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
@@ -1516,6 +1589,81 @@ void sai_deserialize_number_list(
     sai_deserialize_list(s, list, countOnly, [&](const std::string sitem, decltype(*list.list)& item) { sai_deserialize_number(sitem, item, hex);} );
 }
 
+void sai_deserialize_packet_color(
+        _In_ const std::string& s,
+        _Out_ sai_packet_color_t& color)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &metadata_enum_sai_packet_color_t, (int32_t&)color);
+}
+
+void sai_deserialize_qos_map_params(
+        _In_ const json& j,
+        _Out_ sai_qos_map_params_t& params)
+{
+    SWSS_LOG_ENTER();
+
+    params.tc             = j["tc"];
+    params.dscp           = j["dscp"];
+    params.dot1p          = j["dot1p"];
+    params.prio           = j["prio"];
+    params.pg             = j["pg"];
+    params.queue_index    = j["qidx"];
+
+    sai_deserialize_packet_color(j["color"], params.color);
+}
+
+void sai_deserialize_qos_map(
+        _In_ const json& j,
+        _Out_ sai_qos_map_t& qosmap)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_qos_map_params(j["key"], qosmap.key);
+    sai_deserialize_qos_map_params(j["value"], qosmap.value);
+}
+
+void sai_deserialize_qos_map_list(
+        _In_ const std::string& s,
+        _Out_ sai_qos_map_list_t& qosmap,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    qosmap.count = j["count"];
+
+    if (countOnly)
+    {
+        return;
+    }
+
+    if (j["list"] == nullptr)
+    {
+        qosmap.list = NULL;
+        return;
+    }
+
+    json arr = j["list"];
+
+    if (arr.size() != (size_t)qosmap.count)
+    {
+        SWSS_LOG_ERROR("qos map count mismatch %lu vs %u", arr.size(), qosmap.count);
+        throw std::runtime_error("qos map count mismatch");
+    }
+
+    qosmap.list = sai_alloc_n_of_ptr_type(qosmap.count, qosmap.list);
+
+    for (uint32_t i = 0; i < qosmap.count; ++i)
+    {
+        const json& item = arr[i];
+
+        sai_deserialize_qos_map(item, qosmap.list[i]);
+    }
+}
+
 void sai_deserialize_ipv6(
         _In_ const std::string& s,
         _Out_ sai_ip6_t& ipaddr)
@@ -1823,15 +1971,12 @@ void sai_deserialize_attr_value(
         case SAI_SERIALIZATION_TYPE_VLAN_LIST:
             return sai_deserialize_number_list(s, attr.value.vlanlist, countOnly);
 
-            /*
-               case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
-               sai_deserialize_qos_map_list(s, attr.value.qosmap, countOnly);
-               break;
+        case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
+            return sai_deserialize_qos_map_list(s, attr.value.qosmap, countOnly);
 
-               case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
-               sai_deserialize_tunnel_map_list(s, attr.value.tunnelmap, countOnly);
-               break;
-               */
+        //case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+        //    return sai_deserialize_tunnel_map_list(s, attr.value.tunnelmap, countOnly);
+
             // ACL FIELD DATA
 
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
