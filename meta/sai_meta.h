@@ -15,7 +15,7 @@ extern "C" {
 
 #include "swss/logger.h"
 
-#define MAX_LIST_COUNT 128
+#define MAX_LIST_COUNT 256
 
 #define DEFAULT_LAYER2_FRAME_SIZE 1514
 
