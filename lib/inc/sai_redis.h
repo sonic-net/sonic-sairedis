@@ -11,8 +11,8 @@
 extern "C" {
 #include "sai.h"
 }
-#include "common/redisclient.h"
 
+#include "swss/redisclient.h"
 #include "swss/dbconnector.h"
 #include "swss/producertable.h"
 #include "swss/consumertable.h"

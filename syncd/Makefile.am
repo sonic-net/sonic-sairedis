@@ -26,8 +26,7 @@ syncd_SOURCES = \
 				syncd_reinit.cpp \
 				syncd_hard_reinit.cpp \
 				syncd_notifications.cpp \
-				syncd_counters.cpp \
-				../common/redisclient.cpp
+				syncd_counters.cpp
 
 syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
 syncd_LDADD = -lhiredis -lswsscommon -lsai -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata
