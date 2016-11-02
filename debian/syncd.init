@@ -44,6 +44,10 @@ start)
         start_bcm
         DAEMON_ARGS+=" -p /etc/syncd.d/dell_s6000.profile "
 
+        if [ ${ENABLE_SAITHRIFT} == 1 ]; then
+            DAEMON_ARGS+=" -r -m /etc/syncd.d/dell_s6000_port_map.ini"
+        fi
+
     elif [ "$onie_platform" == "x86_64-dell_s6100_c2538-r0" ]; then
         start_bcm
         DAEMON_ARGS+=" -p /etc/syncd.d/dell_s6100.profile -N"
