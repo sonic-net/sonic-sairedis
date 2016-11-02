@@ -4004,6 +4004,8 @@ void test_serialize_qos_map()
 
     std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"color\":\"SAI_PACKET_COLOR_RED\",\"dot1p\":3,\"dscp\":2,\"pg\":5,\"prio\":4,\"qidx\":6,\"tc\":1},\"value\":{\"color\":\"SAI_PACKET_COLOR_GREEN\",\"dot1p\":33,\"dscp\":22,\"pg\":55,\"prio\":44,\"qidx\":66,\"tc\":11}}]}";
 
+    ASSERT_TRUE(s, ret);
+
     s = sai_serialize_attr_value(*meta, attr, true);
 
     std::string ret2 = "{\"count\":1,\"list\":null}";
@@ -4033,6 +4035,59 @@ void test_serialize_qos_map()
     ASSERT_TRUE(l.value.pg, 55);
     ASSERT_TRUE(l.value.queue_index, 66);
     ASSERT_TRUE(l.value.color, SAI_PACKET_COLOR_GREEN);
+}
+
+void test_serialize_tunnel_map()
+{
+    SWSS_LOG_ENTER();
+
+    meta_init_db();
+
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_TUNNEL_MAP_ATTR_MAP_TO_VALUE_LIST;
+
+    sai_tunnel_map_t tm = {
+        .key   = { .oecn = 1,  .uecn = 2,  .vlan_id = 3,  .vni_id = 4  },
+        .value = { .oecn = 11, .uecn = 22, .vlan_id = 33, .vni_id = 44 } };
+
+    attr.value.tunnelmap.count = 1;
+    attr.value.tunnelmap.list = &tm;
+
+    meta = get_attribute_metadata(SAI_OBJECT_TYPE_TUNNEL_MAP, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"oecn\":1,\"uecn\":2,\"vlan\":\"3\",\"vni\":4},\"value\":{\"oecn\":11,\"uecn\":22,\"vlan\":\"33\",\"vni\":44}}]}";
+
+    ASSERT_TRUE(s, ret);
+
+    s = sai_serialize_attr_value(*meta, attr, true);
+
+    std::string ret2 = "{\"count\":1,\"list\":null}";
+    ASSERT_TRUE(s, ret2);
+
+    // deserialize
+
+    memset(&attr, 0, sizeof(attr));
+
+    sai_deserialize_attr_value(ret, *meta, attr);
+
+    ASSERT_TRUE(attr.value.tunnelmap.count, 1);
+
+    auto &l = attr.value.tunnelmap.list[0];
+
+    ASSERT_TRUE(l.key.oecn, 1);
+    ASSERT_TRUE(l.key.uecn, 2);
+    ASSERT_TRUE(l.key.vlan_id, 3);
+    ASSERT_TRUE(l.key.vni_id, 4);
+
+    ASSERT_TRUE(l.value.oecn, 11);
+    ASSERT_TRUE(l.value.uecn, 22);
+    ASSERT_TRUE(l.value.vlan_id, 33);
+    ASSERT_TRUE(l.value.vni_id, 44);
 }
 
 template<typename T>
@@ -4140,6 +4195,7 @@ int main()
     test_serialize_oid_list();
     test_serialize_acl_action();
     test_serialize_qos_map();
+    test_serialize_tunnel_map();
 
     // attributes tests
 

@@ -327,6 +327,7 @@ std::unordered_map<int32_t, std::string> get_serialization_type_map()
 
     SER_MAP_SET(PORT_BREAKOUT);
     SER_MAP_SET(QOS_MAP_LIST);
+    SER_MAP_SET(TUNNEL_MAP_LIST);
 
     return map;
 }
@@ -1077,6 +1078,7 @@ void metadata_sanity_check(const sai_attr_metadata_t& md)
         case SAI_SERIALIZATION_TYPE_UINT32_RANGE:
         case SAI_SERIALIZATION_TYPE_UINT32_LIST:
         case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
+        case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
 
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
         case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:

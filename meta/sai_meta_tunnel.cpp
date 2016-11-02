@@ -512,12 +512,12 @@ const sai_attr_metadata_t sai_tunnel_map_attr_metadata[] = {
 
         // TODO some extra logic may be needed
     },
-/*
+
     {
         .objecttype             = SAI_OBJECT_TYPE_TUNNEL_MAP,
         .attrid                 = SAI_TUNNEL_MAP_ATTR_MAP_TO_VALUE_LIST,
-        .nameid                 = "SAI_TUNNEL_MAP_ATTR_MAP_TO_VALUE_LIST",
-        .serializationtype      = SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST,   // TODO declare
+        .attridname             = "SAI_TUNNEL_MAP_ATTR_MAP_TO_VALUE_LIST",
+        .serializationtype      = SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST,
         .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
         .allowedobjecttypes     = { },
         .allownullobjectid      = false,
@@ -530,7 +530,6 @@ const sai_attr_metadata_t sai_tunnel_map_attr_metadata[] = {
 
         // TODO some extra logic may be needed on map
     },
-*/
 };
 
 const size_t sai_tunnel_map_attr_metadata_count = sizeof(sai_tunnel_map_attr_metadata)/sizeof(sai_attr_metadata_t);
