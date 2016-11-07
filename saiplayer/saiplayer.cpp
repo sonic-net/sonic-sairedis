@@ -1112,7 +1112,7 @@ int replay(int argc, char **argv)
 
 void printUsage()
 {
-    std::cout << "Usage: player [-h] recordfile" << std::endl << std::endl;
+    std::cout << "Usage: saiplayer [-h] recordfile" << std::endl << std::endl;
     std::cout << "    -C --skipNotifySyncd:" << std::endl;
     std::cout << "        Will not send notify init/apply view to syncd" << std::endl << std::endl;
     std::cout << "    -d --enableDebug:" << std::endl;
