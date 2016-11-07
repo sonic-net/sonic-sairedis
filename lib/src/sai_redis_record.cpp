@@ -21,9 +21,12 @@ std::string getTimestamp()
 volatile bool g_record = true;
 
 std::ofstream recording;
+std::mutex g_recordMutex;
 
 void recordLine(std::string s)
 {
+    std::lock_guard<std::mutex> lock(g_recordMutex);
+
     SWSS_LOG_ENTER();
 
     if (recording.is_open())
