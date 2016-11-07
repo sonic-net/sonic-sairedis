@@ -851,7 +851,12 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
     }
     else if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("failed to execute api: %s: %d", op.c_str(), status);
+        SWSS_LOG_ERROR("failed to execute api: %s, key: %s, status: %s", op.c_str(), key.c_str(), sai_serialize_status(status).c_str());
+
+        for (const auto&v: values)
+        {
+            SWSS_LOG_ERROR(" field: %s, value: %s", fvField(v).c_str(), fvValue(v).c_str());
+        }
 
         exit_and_notify(EXIT_FAILURE);
     }
