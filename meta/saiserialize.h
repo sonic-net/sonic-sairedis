@@ -149,7 +149,7 @@ void sai_deserialize_attr_id(
 
 void sai_deserialize_attr_id(
         _In_ const std::string& s,
-        _In_ const sai_attr_metadata_t& meta);
+        _In_ const sai_attr_metadata_t** meta);
 
 // deserialize ntf
 
