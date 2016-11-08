@@ -1,1 +1,1 @@
-SUBDIRS = meta lib vslib syncd player asicdump
+SUBDIRS = meta lib vslib syncd player saidump
