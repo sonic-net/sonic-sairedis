@@ -1,18 +1,11 @@
 #include "sai_redis.h"
+#include "sairedis.h"
 #include <thread>
 
 #include "swss/selectableevent.h"
 #include "meta/saiserialize.h"
 
 // TODO it may be needed to obtain SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP object id
-
-// if we will not get response in 60 seconds when
-// notify syncd to compile new state or to switch
-// to compiled state, then there is something wrong
-#define NOTIFY_SYNCD_TIMEOUT (60*1000)
-
-#define NOTIFY_SAI_INIT_VIEW    "SAI_INIT_VIEW"
-#define NOTIFY_SAI_APPLY_VIEW   "SAI_APPLY_VIEW"
 
 sai_switch_notification_t redis_switch_notifications;
 
@@ -64,52 +57,6 @@ void ntf_thread()
     }
 }
 
-sai_status_t notify_syncd(const std::string &operation)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<swss::FieldValueTuple> entry;
-
-    g_notifySyncdProducer->send(operation, "", entry);
-
-    swss::Select s;
-
-    s.addSelectable(g_notifySyncdConsumer);
-
-    SWSS_LOG_DEBUG("wait for response after: %s", operation.c_str());
-
-    swss::Selectable *sel;
-
-    int fd;
-
-    int result = s.select(&sel, &fd, NOTIFY_SYNCD_TIMEOUT);
-
-    if (result == swss::Select::OBJECT)
-    {
-        swss::KeyOpFieldsValuesTuple kco;
-
-        std::string op;
-        std::string data;
-        std::vector<swss::FieldValueTuple> values;
-
-        g_notifySyncdConsumer->pop(op, data, values);
-
-        const std::string &strStatus = op;
-
-        sai_status_t status;
-
-        sai_deserialize_status(strStatus, status);
-
-        SWSS_LOG_NOTICE("%s status: %d", op.c_str(), status);
-
-        return status;
-    }
-
-    SWSS_LOG_ERROR("%s get response failed, result: %d", operation.c_str(), result);
-
-    return SAI_STATUS_FAILURE;
-}
-
 void clear_local_state()
 {
     SWSS_LOG_ENTER();
@@ -119,7 +66,7 @@ void clear_local_state()
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("failed to init meta db FIXME");
-        throw;
+        throw std::runtime_error("failed to init meta db");
     }
 }
 
@@ -149,53 +96,6 @@ sai_status_t redis_initialize_switch(
     std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
-
-    if (firmware_path_name == NULL)
-    {
-        SWSS_LOG_ERROR("firmware path name is NULL");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    std::string op = std::string(firmware_path_name);
-
-    SWSS_LOG_NOTICE("operation: '%s'", op.c_str());
-
-    if (op == NOTIFY_SAI_INIT_VIEW || op == NOTIFY_SAI_APPLY_VIEW)
-    {
-        sai_status_t status = notify_syncd(op);
-
-        if (status == SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_NOTICE("sending %s to syncd succeeded", op.c_str());
-
-            if (g_switchInitialized)
-            {
-                if (op == NOTIFY_SAI_INIT_VIEW)
-                {
-                    SWSS_LOG_NOTICE("clearing current local state sinice init view is called on initialised switch");
-
-                    // TODO since we clear all defaults here and we are compiling new view
-                    // there may be some problems with GET
-                    clear_local_state();
-                }
-
-                return status;
-            }
-
-            // proceed with proper initialization
-        }
-        else
-        {
-            SWSS_LOG_ERROR("sending %s to syncd failed: %d", op.c_str(), status);
-
-            return status;
-        }
-    }
-    else
-    {
-        SWSS_LOG_WARN("unknown operation: '%s'", op.c_str());
-    }
 
     if (g_switchInitialized)
     {
@@ -321,6 +221,114 @@ void redis_disconnect_switch(void)
     SWSS_LOG_ERROR("not implemented");
 }
 
+sai_status_t sai_redis_internal_notify_syncd(
+        _In_ const std::string& key)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    g_asicState->set(key, entry, "notify");
+
+    swss::Select s;
+
+    s.addSelectable(g_redisGetConsumer);
+
+    while (true)
+    {
+        SWSS_LOG_NOTICE("wait for notify response");
+
+        swss::Selectable *sel;
+
+        int fd;
+
+        int result = s.select(&sel, &fd, GET_RESPONSE_TIMEOUT);
+
+        if (result == swss::Select::OBJECT)
+        {
+            swss::KeyOpFieldsValuesTuple kco;
+
+            g_redisGetConsumer->pop(kco);
+
+            const std::string &op = kfvOp(kco);
+            const std::string &opkey = kfvKey(kco);
+
+            SWSS_LOG_NOTICE("notify response: %s", opkey.c_str());
+
+            if (op != "notify")
+            {
+                continue;
+            }
+
+            sai_status_t status;
+            sai_deserialize_status(opkey, status);
+
+            return status;
+        }
+
+        SWSS_LOG_ERROR("notify syncd failed to get response result from select: %d", result);
+        break;
+    }
+
+    SWSS_LOG_ERROR("notify syncd failed to get response");
+
+    return SAI_STATUS_FAILURE;
+}
+
+sai_status_t sai_redis_notify_syncd(
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    // we need to use "GET" channel to be sure that
+    // all previous operations were applied, if we don't
+    // use GET channel then we may hit race condition
+    // on syncd side where syncd will start compare view
+    // when there are still objects in op queue
+    //
+    // other solution can be to use notify event
+    // and then on syncd side read all the asic state queue
+    // and apply changes before switching to init/apply mode
+
+    std::string op;
+
+    switch (attr->value.s32)
+    {
+        case SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW:
+            SWSS_LOG_NOTICE("sending syncd INIT view");
+            op = SYNCD_INIT_VIEW;
+            break;
+
+        case SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW:
+            SWSS_LOG_NOTICE("sending syncd APPLY view");
+            op = SYNCD_APPLY_VIEW;
+            break;
+
+        default:
+            SWSS_LOG_ERROR("invalid notify syncd attr value %d", attr->value.s32);
+            return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t status = sai_redis_internal_notify_syncd(op);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("notify syncd failed: %s", sai_serialize_status(status).c_str());
+        return status;
+    }
+
+    SWSS_LOG_NOTICE("notify syncd sycceeded");
+
+    if (attr->value.s32 == SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW)
+    {
+        SWSS_LOG_NOTICE("clearing current local state sinice init view is called on initialised switch");
+
+        clear_local_state();
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 /**
  * Routine Description:
  *    @brief Set switch attribute value
@@ -341,10 +349,17 @@ sai_status_t redis_set_switch_attribute(
 
     if (attr != NULL)
     {
-        if (attr->id == SAI_SWITCH_ATTR_CUSTOM_RANGE_BASE + 1)
+        switch (attr->id)
         {
-            setRecording(attr->value.booldata);
-            return SAI_STATUS_SUCCESS;
+            case SAI_REDIS_SWITCH_ATTR_RECORD:
+                setRecording(attr->value.booldata);
+                return SAI_STATUS_SUCCESS;
+
+            case SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD:
+                return sai_redis_notify_syncd(attr);
+
+            default:
+                break;
         }
     }
 

@@ -13,10 +13,8 @@ swss::DBConnector     *g_dbNtf = NULL;
 swss::ProducerTable   *g_asicState = NULL;
 
 // we probably don't need those to tables to access GET requests
-swss::NotificationProducer   *g_notifySyncdProducer = NULL;
 swss::ConsumerTable          *g_redisGetConsumer = NULL;
 swss::NotificationConsumer   *g_redisNotifications = NULL;
-swss::NotificationConsumer   *g_notifySyncdConsumer = NULL;
 
 swss::RedisClient     *g_redisClient = NULL;
 
@@ -56,16 +54,6 @@ sai_status_t sai_api_initialize(
         delete g_asicState;
 
     g_asicState = new swss::ProducerTable(g_db, "ASIC_STATE");
-
-    if (g_notifySyncdProducer != NULL)
-        delete g_notifySyncdProducer;
-
-    g_notifySyncdProducer = new swss::NotificationProducer(g_db, "NOTIFYSYNCDREQUERY");
-
-    if (g_notifySyncdConsumer != NULL)
-        delete g_notifySyncdConsumer;
-
-    g_notifySyncdConsumer = new swss::NotificationConsumer(g_db, "NOTIFYSYNCRESPONSE");
 
     if (g_redisGetConsumer != NULL)
         delete g_redisGetConsumer;

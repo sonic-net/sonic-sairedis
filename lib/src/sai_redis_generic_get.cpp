@@ -2,10 +2,6 @@
 #include "meta/saiserialize.h"
 #include "meta/saiattributelist.h"
 
-// if we don't receive response from syncd in 60 seconds
-// there is something wrong and we should fail
-#define GET_RESPONSE_TIMEOUT (60*1000)
-
 sai_status_t internal_redis_get_process(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t attr_count,

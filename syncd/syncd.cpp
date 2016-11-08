@@ -1,11 +1,11 @@
 #include "syncd.h"
+#include "sairedis.h"
 
 #include <iostream>
 
 std::mutex g_mutex;
 
 swss::RedisClient           *g_redisClient = NULL;
-swss::NotificationProducer  *notifySyncdResponse = NULL;
 
 std::map<std::string, std::string> gProfileMap;
 
@@ -757,6 +757,63 @@ sai_status_t handle_trap(
     }
 }
 
+void sendResponse(sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    std::string str_status = sai_serialize_status(status);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    SWSS_LOG_NOTICE("sending response: %s", str_status.c_str());
+
+    getResponse->set(str_status, entry, "notify");
+}
+
+sai_status_t notifySyncd(const std::string& op)
+{
+    SWSS_LOG_ENTER();
+
+    if (g_veryFirstRun)
+    {
+        SWSS_LOG_NOTICE("very first run is TRUE, op = %s", op.c_str());
+
+        // on the very first start of syncd, "compile" view is directly
+        // applied on device, since it will make it easier to switch
+        // to new asic state later on when we restart orch agent
+
+        if (op == SYNCD_APPLY_VIEW)
+        {
+            g_veryFirstRun = false;
+
+            SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", op.c_str());
+        }
+
+        sendResponse(SAI_STATUS_SUCCESS);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (op == SYNCD_INIT_VIEW)
+    {
+        SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
+        exit_and_notify(EXIT_FAILURE);
+    }
+    else if (op == SYNCD_APPLY_VIEW)
+    {
+        SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
+        sendResponse(SAI_STATUS_NOT_IMPLEMENTED);
+        exit_and_notify(EXIT_FAILURE);
+    }
+    else
+    {
+        SWSS_LOG_ERROR("unknown operation: %s", op.c_str());
+        sendResponse(SAI_STATUS_NOT_IMPLEMENTED);
+        exit_and_notify(EXIT_FAILURE);
+    }
+    
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t processEvent(swss::ConsumerTable &consumer)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -784,6 +841,8 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
         api = SAI_COMMON_API_SET;
     else if (op == "get")
         api = SAI_COMMON_API_GET;
+    else if (op == "notify")
+        return notifySyncd(key);
     else
     {
         if (op != "delget")
@@ -900,75 +959,6 @@ void updateLogLevel()
         // set level to correct one if user set some invalid value
         redisSetLogLevel(level);
     }
-}
-
-void sendResponse(sai_status_t status)
-{
-    SWSS_LOG_ENTER();
-
-    std::string str_status = sai_serialize_status(status);
-
-    std::vector<swss::FieldValueTuple> entry;
-
-    SWSS_LOG_NOTICE("sending response: %s", str_status.c_str());
-
-    notifySyncdResponse->send(str_status, "", entry);
-}
-
-void notifySyncd(swss::NotificationConsumer &consumer)
-{
-    std::lock_guard<std::mutex> lock(g_mutex);
-
-    SWSS_LOG_ENTER();
-
-    std::string op;
-    std::string data;
-    std::vector<swss::FieldValueTuple> values;
-
-    consumer.pop(op, data, values);
-
-    if (g_veryFirstRun)
-    {
-        SWSS_LOG_NOTICE("very first run is TRUE, op = %s", op.c_str());
-
-        // on the very first start of syncd, "compile" view is directly
-        // applied on device, since it will make it easier to switch
-        // to new asic state later on when we restart orch agent
-
-        if (op == NOTIFY_SAI_APPLY_VIEW)
-        {
-            g_veryFirstRun = false;
-
-            SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", op.c_str());
-        }
-
-        sendResponse(SAI_STATUS_SUCCESS);
-        return;
-    }
-
-    sai_status_t status = SAI_STATUS_FAILURE;
-
-    if (op == NOTIFY_SAI_INIT_VIEW)
-    {
-        // TODO
-        SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
-
-        status = SAI_STATUS_NOT_IMPLEMENTED;
-    }
-
-    if (op == NOTIFY_SAI_APPLY_VIEW)
-    {
-        // TODO
-        SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
-
-        status = SAI_STATUS_NOT_IMPLEMENTED;
-    }
-    else
-    {
-        SWSS_LOG_ERROR("unknown operation: %s", op.c_str());
-    }
-
-    sendResponse(status);
 }
 
 struct cmdOptions
@@ -1300,7 +1290,6 @@ int main(int argc, char **argv)
     updateLogLevel();
 
     swss::ConsumerTable *asicState = new swss::ConsumerTable(db, "ASIC_STATE");
-    swss::NotificationConsumer *notifySyncdQuery = new swss::NotificationConsumer(db, "NOTIFYSYNCDREQUERY");
     swss::NotificationConsumer *restartQuery = new swss::NotificationConsumer(db, "RESTARTQUERY");
 
     // at the end we cant use producer consumer concept since
@@ -1308,7 +1297,6 @@ int main(int argc, char **argv)
     // also "remove" from response queue will also trigger another "response"
     getResponse  = new swss::ProducerTable(db, "GETRESPONSE");
     notifications = new swss::NotificationProducer(dbNtf, "NOTIFICATIONS");
-    notifySyncdResponse = new swss::NotificationProducer(db, "NOTIFYSYNCDRESPONSE");
 
     g_veryFirstRun = isVeryFirstRun();
 
@@ -1392,7 +1380,6 @@ int main(int argc, char **argv)
         swss::Select s;
 
         s.addSelectable(asicState);
-        s.addSelectable(notifySyncdQuery);
         s.addSelectable(restartQuery);
 
         while(true)
@@ -1407,12 +1394,6 @@ int main(int argc, char **argv)
             {
                 warmRestartHint = handleRestartQuery(*restartQuery);
                 break;
-            }
-
-            if (sel == notifySyncdQuery)
-            {
-                notifySyncd(*notifySyncdQuery);
-                continue;
             }
 
             if (result == swss::Select::OBJECT)

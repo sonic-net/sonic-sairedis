@@ -14,6 +14,7 @@ extern "C" {
 #include "meta/saiattributelist.h"
 #include "swss/logger.h"
 #include "swss/tokenize.h"
+#include "sairedis.h"
 
 std::map<std::string, std::string> profile_map;
 
@@ -943,6 +944,8 @@ void handle_get_response(
     match_redis_with_rec(object_type, get_attr_count, get_attr_list, attr_count, attr_list);
 }
 
+bool g_notifySyncd = true;
+
 int replay(int argc, char **argv)
 {
     //swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -956,17 +959,28 @@ int replay(int argc, char **argv)
         return -1;
     }
 
-    SWSS_LOG_NOTICE("using file: %s", argv[1]);
+    char* filename = argv[argc - 1];
 
-    std::ifstream infile(argv[1]);
+    SWSS_LOG_NOTICE("using file: %s", filename);
+
+    std::ifstream infile(filename);
 
     if (!infile.is_open())
     {
-        SWSS_LOG_ERROR("failed to open file %s", argv[1]);
+        SWSS_LOG_ERROR("failed to open file %s", filename);
         return -1;
     }
 
     std::string line;
+
+    if (g_notifySyncd)
+    {
+        // tell syncd that we are compiling new view
+        sai_attribute_t attr;
+        attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+        attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+        EXIT_ON_ERROR(sai_switch_api->set_switch_attribute(&attr));
+    }
 
     while (std::getline(infile, line))
     {
@@ -1084,14 +1098,27 @@ int replay(int argc, char **argv)
 
     infile.close();
 
+    if (g_notifySyncd)
+    {
+        // tell syncd that we want to apply this view
+        sai_attribute_t attr;
+        attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+        attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
+        EXIT_ON_ERROR(sai_switch_api->set_switch_attribute(&attr));
+    }
+
     return 0;
 }
 
 void printUsage()
 {
-    std::cout << "Usage: player [-h] recordfile" << std::endl;
+    std::cout << "Usage: player [-h] recordfile" << std::endl << std::endl;
+    std::cout << "    -C --skipNotifySyncd:" << std::endl;
+    std::cout << "        Will not send notify init/apply view to syncd" << std::endl << std::endl;
+    std::cout << "    -d --enableDebug:" << std::endl;
+    std::cout << "        Enable syslog debug messages" << std::endl << std::endl;
     std::cout << "    -h --help:" << std::endl;
-    std::cout << "        Print out this message" << std::endl;
+    std::cout << "        Print out this message" << std::endl << std::endl;
 }
 
 void handleCmdLine(int argc, char **argv)
@@ -1103,12 +1130,14 @@ void handleCmdLine(int argc, char **argv)
         static struct option long_options[] =
         {
             { "help",             no_argument,       0, 'h' },
+            { "skipNotifySyncd",  no_argument,       0, 'C' },
+            { "enableDebug",      no_argument,       0, 'd' },
             { 0,                  0,                 0,  0  }
         };
 
-        int option_index = 0;
+        const char* const optstring = "hCd";
 
-        const char* const optstring = "h";
+        int option_index;
 
         int c = getopt_long(argc, argv, optstring, long_options, &option_index);
 
@@ -1117,6 +1146,14 @@ void handleCmdLine(int argc, char **argv)
 
         switch (c)
         {
+            case 'd':
+                swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+                break;
+
+            case 'C':
+                g_notifySyncd = false;
+                break;
+
             case 'h':
                 printUsage();
                 exit(EXIT_SUCCESS);
@@ -1135,9 +1172,11 @@ void handleCmdLine(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     SWSS_LOG_ENTER();
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     handleCmdLine(argc, argv);
 
@@ -1151,7 +1190,7 @@ int main(int argc, char **argv)
 
     // Disable recording
     sai_attribute_t attr;
-    attr.id = SAI_SWITCH_ATTR_CUSTOM_RANGE_BASE + 1;
+    attr.id = SAI_REDIS_SWITCH_ATTR_RECORD;
     attr.value.booldata = false;
 
     EXIT_ON_ERROR(sai_switch_api->set_switch_attribute(&attr));

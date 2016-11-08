@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I/usr/include/sai
+AM_CPPFLAGS = -I/usr/include/sai -I$(top_srcdir)/lib/inc
 
 bin_PROGRAMS = player
 

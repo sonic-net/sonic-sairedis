@@ -51,9 +51,6 @@ extern "C" {
 #define DEFAULT_TRAP_GROUP_ID       "DEFAULT_TRAP_GROUP_ID"
 #define CPU_PORT_ID                 "CPU_PORT_ID"
 
-#define NOTIFY_SAI_INIT_VIEW        "SAI_INIT_VIEW"
-#define NOTIFY_SAI_APPLY_VIEW       "SAI_APPLY_VIEW"
-
 #define SAI_COLD_BOOT               0
 #define SAI_WARM_BOOT               1
 #define SAI_FAST_BOOT               2

@@ -23,6 +23,10 @@ extern "C" {
 #include "swss/logger.h"
 #include "meta/sai_meta.h"
 
+// if we don't receive response from syncd in 60 seconds
+// there is something wrong and we should fail
+#define GET_RESPONSE_TIMEOUT (60*1000)
+
 extern volatile bool                    g_record;
 extern void setRecording(bool record);
 extern void recordLine(std::string s);
@@ -36,10 +40,8 @@ extern service_method_table_t           g_services;
 extern swss::DBConnector               *g_db;
 extern swss::ProducerTable             *g_asicState;
 
-extern swss::NotificationProducer      *g_notifySyncdProducer;
 extern swss::ConsumerTable             *g_redisGetConsumer;
 extern swss::NotificationConsumer      *g_redisNotifications;
-extern swss::NotificationConsumer      *g_notifySyncdConsumer;
 
 extern swss::Table *g_vidToRid;
 extern swss::Table *g_ridToVid;
