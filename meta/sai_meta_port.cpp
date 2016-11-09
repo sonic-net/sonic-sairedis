@@ -305,6 +305,7 @@ const sai_port_stat_counter_t metadata_sai_port_stat_t_enum_values[] = {
     SAI_PORT_STAT_RED_DISCARD_DROPPED_BYTES,
     SAI_PORT_STAT_DISCARD_DROPPED_PACKETS,
     SAI_PORT_STAT_DISCARD_DROPPED_BYTES,
+    SAI_PORT_STAT_ECN_MARKED_PACKETS,
     SAI_PORT_STAT_ETHER_IN_PKTS_64_OCTETS,
     SAI_PORT_STAT_ETHER_IN_PKTS_65_TO_127_OCTETS,
     SAI_PORT_STAT_ETHER_IN_PKTS_128_TO_255_OCTETS,
@@ -397,6 +398,7 @@ const char* metadata_sai_port_stat_t_enum_values_names[] = {
     "SAI_PORT_STAT_RED_DISCARD_DROPPED_BYTES",
     "SAI_PORT_STAT_DISCARD_DROPPED_PACKETS",
     "SAI_PORT_STAT_DISCARD_DROPPED_BYTES",
+    "SAI_PORT_STAT_ECN_MARKED_PACKETS",
     "SAI_PORT_STAT_ETHER_IN_PKTS_64_OCTETS",
     "SAI_PORT_STAT_ETHER_IN_PKTS_65_TO_127_OCTETS",
     "SAI_PORT_STAT_ETHER_IN_PKTS_128_TO_255_OCTETS",
@@ -490,6 +492,7 @@ const char* metadata_sai_port_stat_t_enum_values_short_names[] = {
     "RED_DISCARD_DROPPED_BYTES",
     "DISCARD_DROPPED_PACKETS",
     "DISCARD_DROPPED_BYTES",
+    "ECN_MARKED_PACKETS",
     "ETHER_IN_PKTS_64_OCTETS",
     "ETHER_IN_PKTS_65_TO_127_OCTETS",
     "ETHER_IN_PKTS_128_TO_255_OCTETS",
@@ -512,8 +515,8 @@ const char* metadata_sai_port_stat_t_enum_values_short_names[] = {
     "ETHER_OUT_PKTS_9217_TO_16383_OCTETS",
     NULL
 };
-const size_t metadata_sai_port_stat_t_enum_values_count = 90;
-DEFINE_ENUM_METADATA(sai_port_stat_t, 90);
+const size_t metadata_sai_port_stat_t_enum_values_count = 91;
+DEFINE_ENUM_METADATA(sai_port_stat_t, 91);
 
 const sai_attr_metadata_t sai_port_attr_metadata[] = {
 
