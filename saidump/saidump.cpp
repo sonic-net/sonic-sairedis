@@ -31,7 +31,7 @@ void printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: asicdump [-C] [-s] [-h]" << std::endl;
+    std::cout << "Usage: saidump [-C] [-s] [-h]" << std::endl;
     std::cout << "    -C --disableColors" << std::endl;
     std::cout << "        Disable colors" << std::endl;
     std::cout << "    -s --shortNames:" << std::endl;
