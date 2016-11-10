@@ -65,7 +65,8 @@ deps/
 ###############
 syncd/syncd
 syncd/syncd_request_shutdown
-player/player
+saiplayer/saiplayer
+saidump/saidump
 meta/tests
 
 # Temporary files #
