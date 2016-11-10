@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I/usr/include/sai -I$(top_srcdir)/common
+AM_CPPFLAGS = -I/usr/include/sai
 
 bin_PROGRAMS = saidump
 
