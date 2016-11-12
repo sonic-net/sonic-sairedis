@@ -17,8 +17,8 @@ std::string getTimestamp()
     return std::string(buffer);
 }
 
-// currenly true by default for debugging
-volatile bool g_record = true;
+// recording needs to be enabled explicitly
+volatile bool g_record = false;
 
 std::ofstream recording;
 std::mutex g_recordMutex;

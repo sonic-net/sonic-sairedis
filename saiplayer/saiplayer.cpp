@@ -4,6 +4,7 @@
 #include <string>
 
 #include <getopt.h>
+#include <unistd.h>
 
 #include "string.h"
 extern "C" {
@@ -944,7 +945,88 @@ void handle_get_response(
     match_redis_with_rec(object_type, get_attr_count, get_attr_list, attr_count, attr_list);
 }
 
+void performSleep(const std::string& line)
+{
+    SWSS_LOG_ENTER();
+
+    // timestamp|action|sleeptime
+    auto v = swss::tokenize(line, '|');
+
+    uint32_t useconds;
+    sai_deserialize_number(v[2], useconds);
+
+    if (useconds > 0)
+    {
+        useconds *= 1000; // 1ms resolution is enough for sleep
+
+        SWSS_LOG_NOTICE("usleep(%lu)", useconds);
+        usleep(useconds);
+    }
+}
+
 bool g_notifySyncd = true;
+
+void performNotifySyncd(const std::string& request, const std::string response)
+{
+    SWSS_LOG_ENTER();
+
+    // timestamp|action|data
+    auto r = swss::tokenize(request, '|');
+    auto R = swss::tokenize(response, '|');
+
+    if (r[1] != "a" || R[1] != "A")
+    {
+        SWSS_LOG_ERROR("invalid syncd notify request/response %s/%s", request.c_str(), response.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    if (g_notifySyncd == false)
+    {
+        SWSS_LOG_NOTICE("skipping notify syncd, selected by user");
+        return;
+    }
+
+    // tell syncd that we are compiling new view
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+
+    const std::string requestAction = r[2];
+
+    if (requestAction == SYNCD_INIT_VIEW)
+    {
+        attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+    }
+    else if (requestAction == SYNCD_APPLY_VIEW)
+    {
+        attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("invalid syncd notify request: %s", request.c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    sai_status_t status = sai_switch_api->set_switch_attribute(&attr);
+
+    const std::string& responseStatus = R[2];
+
+    sai_status_t response_status;
+    sai_deserialize_status(responseStatus, response_status);
+
+    if (status != response_status)
+    {
+        SWSS_LOG_ERROR("response status %s is differnt than syncd status %s", responseStatus.c_str(), sai_serialize_status(status).c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to notify syncd %s", sai_serialize_status(status).c_str());
+        exit(EXIT_FAILURE);
+    }
+
+    // OK
+}
 
 int replay(int argc, char **argv)
 {
@@ -973,15 +1055,6 @@ int replay(int argc, char **argv)
 
     std::string line;
 
-    if (g_notifySyncd)
-    {
-        // tell syncd that we are compiling new view
-        sai_attribute_t attr;
-        attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
-        attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
-        EXIT_ON_ERROR(sai_switch_api->set_switch_attribute(&attr));
-    }
-
     while (std::getline(infile, line))
     {
         // std::cout << "processing " << line << std::endl;
@@ -994,6 +1067,23 @@ int replay(int argc, char **argv)
 
         switch (op)
         {
+            case 'a':
+                {
+                    std::string response;
+
+                    do
+                    {
+                        // this line may be notification, we need to skip
+                        std::getline(infile, response);
+                    }
+                    while (response[response.find_first_of("|")+1] == 'n');
+
+                    performNotifySyncd(line, response);
+                }
+                continue;
+            case 'S':
+                performSleep(line);
+                continue;
             case 'c':
                 api = SAI_COMMON_API_CREATE;
                 break;
@@ -1098,15 +1188,6 @@ int replay(int argc, char **argv)
 
     infile.close();
 
-    if (g_notifySyncd)
-    {
-        // tell syncd that we want to apply this view
-        sai_attribute_t attr;
-        attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
-        attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
-        EXIT_ON_ERROR(sai_switch_api->set_switch_attribute(&attr));
-    }
-
     return 0;
 }
 
@@ -1187,13 +1268,6 @@ int main(int argc, char **argv)
     initialize_common_api_pointers();
 
     EXIT_ON_ERROR(sai_switch_api->initialize_switch(0, "", "", &switch_notifications));
-
-    // Disable recording
-    sai_attribute_t attr;
-    attr.id = SAI_REDIS_SWITCH_ATTR_RECORD;
-    attr.value.booldata = false;
-
-    EXIT_ON_ERROR(sai_switch_api->set_switch_attribute(&attr));
 
     int exitcode = replay(argc, argv);
 

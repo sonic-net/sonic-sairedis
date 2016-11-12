@@ -10,6 +10,7 @@
 sai_switch_notification_t redis_switch_notifications;
 
 bool g_switchInitialized = false;
+volatile bool g_asicInitViewMode = false; // default mode is apply mode
 volatile bool g_run = false;
 
 std::shared_ptr<std::thread> notification_thread;
@@ -121,6 +122,8 @@ sai_status_t redis_initialize_switch(
 
     g_run = true;
 
+    g_asicInitViewMode = false;
+
     setRecording(g_record);
 
     SWSS_LOG_DEBUG("creating notification thread");
@@ -228,6 +231,14 @@ sai_status_t sai_redis_internal_notify_syncd(
 
     std::vector<swss::FieldValueTuple> entry;
 
+    // ASIC INIT/APPLY view with small letter 'a'
+    // and response is recorded as capital letter 'A'
+
+    if (g_record)
+    {
+        recordLine("a|" + key);
+    }
+
     g_asicState->set(key, entry, "notify");
 
     swss::Select s;
@@ -260,6 +271,11 @@ sai_status_t sai_redis_internal_notify_syncd(
                 continue;
             }
 
+            if (g_record)
+            {
+                recordLine("A|" + opkey);
+            }
+
             sai_status_t status;
             sai_deserialize_status(opkey, status);
 
@@ -271,6 +287,11 @@ sai_status_t sai_redis_internal_notify_syncd(
     }
 
     SWSS_LOG_ERROR("notify syncd failed to get response");
+
+    if (g_record)
+    {
+        recordLine("A|SAI_STATUS_FAILURE");
+    }
 
     return SAI_STATUS_FAILURE;
 }
@@ -297,11 +318,13 @@ sai_status_t sai_redis_notify_syncd(
         case SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW:
             SWSS_LOG_NOTICE("sending syncd INIT view");
             op = SYNCD_INIT_VIEW;
+            g_asicInitViewMode = true;
             break;
 
         case SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW:
             SWSS_LOG_NOTICE("sending syncd APPLY view");
             op = SYNCD_APPLY_VIEW;
+            g_asicInitViewMode = false;
             break;
 
         default:

@@ -795,14 +795,13 @@ sai_status_t notifySyncd(const std::string& op)
 
     if (op == SYNCD_INIT_VIEW)
     {
-        SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
-        exit_and_notify(EXIT_FAILURE);
+        SWSS_LOG_WARN("op = %s - not implemented, but sending success", op.c_str());
+        sendResponse(SAI_STATUS_SUCCESS);
     }
     else if (op == SYNCD_APPLY_VIEW)
     {
-        SWSS_LOG_ERROR("op = %s - not implemented", op.c_str());
-        sendResponse(SAI_STATUS_NOT_IMPLEMENTED);
-        exit_and_notify(EXIT_FAILURE);
+        SWSS_LOG_WARN("op = %s - not implemented, but sending success", op.c_str());
+        sendResponse(SAI_STATUS_SUCCESS);
     }
     else
     {
