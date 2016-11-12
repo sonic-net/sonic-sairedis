@@ -1,6 +1,6 @@
-#include "sai_redis.h"
-
 #include <string.h>
+#include "sai_redis.h"
+#include "inc/common.h"
 
 std::mutex g_mutex;
 std::mutex g_apimutex;
@@ -43,12 +43,12 @@ sai_status_t sai_api_initialize(
     if (g_db != NULL)
         delete g_db;
 
-    g_db = new swss::DBConnector(ASIC_DB, "localhost", 6379, 0);
+    g_db = new swss::DBConnector(ASIC_DB, REDIS_UNIXSOCKET, 0);
 
     if (g_dbNtf != NULL)
         delete g_dbNtf;
 
-    g_dbNtf = new swss::DBConnector(ASIC_DB, "localhost", 6379, 0);
+    g_dbNtf = new swss::DBConnector(ASIC_DB, REDIS_UNIXSOCKET, 0);
 
     if (g_asicState != NULL)
         delete g_asicState;
