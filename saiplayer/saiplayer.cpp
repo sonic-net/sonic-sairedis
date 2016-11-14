@@ -952,6 +952,12 @@ void performSleep(const std::string& line)
     // timestamp|action|sleeptime
     auto v = swss::tokenize(line, '|');
 
+    if (v.size() < 3)
+    {
+        SWSS_LOG_ERROR("invalid line %s", line.c_str());
+        exit(EXIT_FAILURE);
+    }
+
     uint32_t useconds;
     sai_deserialize_number(v[2], useconds);
 
@@ -1074,7 +1080,11 @@ int replay(int argc, char **argv)
                     do
                     {
                         // this line may be notification, we need to skip
-                        std::getline(infile, response);
+                        if (!std::getline(infile, response))
+                        {
+                            SWSS_LOG_ERROR("failed to read next file from file, previous: %s", line.c_str());
+                            exit(EXIT_FAILURE);
+                        }
                     }
                     while (response[response.find_first_of("|")+1] == 'n');
 
