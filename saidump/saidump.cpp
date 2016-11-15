@@ -10,7 +10,6 @@ extern "C" {
 #include "swss/table.h"
 #include "swss/logger.h"
 #include "meta/saiserialize.h"
-#include "inc/common.h"
 
 #include <getopt.h>
 
@@ -181,7 +180,7 @@ int main(int argc, char ** argv)
 
     g_cmdOptions = handleCmdLine(argc, argv);
 
-    swss::DBConnector db(ASIC_DB, REDIS_UNIXSOCKET, 0);
+    swss::DBConnector db(ASIC_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
 
     swss::Table t(&db, "ASIC_STATE");
 
