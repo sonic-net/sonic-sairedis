@@ -28,7 +28,7 @@ void processVlans();
 void processNeighbors();
 void processOids();
 void processFdbs();
-void processRoutes();
+void processRoutes(bool defaultOnly);
 void processTraps();
 
 sai_object_type_t getObjectTypeFromAsicKey(const std::string &key);
@@ -267,7 +267,8 @@ void hardReinit()
     processNeighbors();
     processOids();
     processTraps();
-    processRoutes();
+    processRoutes(true);
+    processRoutes(false);
 
     checkAllIds();
 }
@@ -816,16 +817,24 @@ sai_unicast_route_entry_t getRouteEntryFromString(const std::string &strRouteEnt
     return routeEntry;
 }
 
-void processRoutes()
+void processRoutes(bool defaultOnly)
 {
     SWSS_LOG_ENTER();
 
-    // TODO we need to add default route's first for ipv4 and ipv6
+    SWSS_LOG_TIMER("apply routes");
 
     for (auto &kv: g_routes)
     {
         const std::string &strRouteEntry = kv.first;
         const std::string &asicKey = kv.second;
+
+        bool isDefault = strRouteEntry.find("\"0.0.0.0/0\"") != std::string::npos ||
+                         strRouteEntry.find("\"::/0\"") != std::string::npos;
+
+        if (defaultOnly ^ isDefault)
+        {
+            continue;
+        }
 
         sai_unicast_route_entry_t routeEntry = getRouteEntryFromString(strRouteEntry);
 
