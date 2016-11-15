@@ -691,7 +691,7 @@ std::vector<sai_object_id_t> saiGetPortPriorityGroups(sai_object_id_t portId)
 {
     SWSS_LOG_ENTER();
 
-    uint32_t pgCount =  saiGetPortNumberOfPriorityGroups(portId);
+    uint32_t pgCount = saiGetPortNumberOfPriorityGroups(portId);
 
     std::vector<sai_object_id_t> pgList;
 
@@ -748,6 +748,182 @@ void helperCheckPriorityGroupsIds()
     }
 }
 
+uint32_t saiGetMaxNumberOfChildsPerSchedulerGroup()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP;
+
+    sai_status_t status = sai_switch_api->get_switch_attribute(1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("faled to obtain SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP");
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    return attr.value.u32;
+}
+
+uint32_t saiGetQosNumberOfSchedulerGroups(sai_object_id_t portId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_SCHEDULER_GROUPS;
+
+    sai_status_t status = sai_port_api->get_port_attribute(portId, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get number of scheduler groups for port: 0x%llx", portId);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    // total groups list on the port
+    return attr.value.u32;
+}
+
+std::vector<sai_object_id_t> saiGetSchedulerGroupList(sai_object_id_t portId)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t groupsCount = saiGetQosNumberOfSchedulerGroups(portId);
+
+    std::vector<sai_object_id_t> groups;
+
+    groups.resize(groupsCount);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_QOS_SCHEDULER_GROUP_LIST;
+    attr.value.objlist.list = groups.data();
+    attr.value.objlist.count = (uint32_t)groups.size();
+
+    sai_status_t status = sai_port_api->get_port_attribute(portId, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get scheduler group list for port: 0x%llx", portId);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    // just in case
+    groups.resize(attr.value.objlist.count);
+
+    SWSS_LOG_DEBUG("got %zu scheduler groups on port 0x%llx", groups.size(), portId);
+
+    return groups;
+}
+
+uint32_t saiGetSchedulerGroupChildCount(sai_object_id_t schedulerGroupId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT; // queues + sched groups
+
+    sai_status_t status = sai_scheduler_group_api->get_scheduler_group_attribute(schedulerGroupId, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get child count for scheduler group: 0x%llx", schedulerGroupId);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    return attr.value.u32;
+}
+
+std::vector<sai_object_id_t> saiGetSchedulerGroupChildList(sai_object_id_t schedulerGroupId)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t childCount = saiGetSchedulerGroupChildCount(schedulerGroupId);
+
+    std::vector<sai_object_id_t> childs;
+
+    childs.resize(childCount);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_LIST;
+    attr.value.objlist.list = childs.data();
+    attr.value.objlist.count = (uint32_t)childs.size();
+
+    sai_status_t status = sai_scheduler_group_api->get_scheduler_group_attribute(schedulerGroupId, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get child list for scheduler group: 0x%llx", schedulerGroupId);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    childs.resize(attr.value.objlist.count);
+
+    SWSS_LOG_DEBUG("got %zu childs on scheduler group 0x%llx", childs.size(), schedulerGroupId);
+
+    return childs; // scheduler groups + queues
+}
+
+std::set<sai_object_id_t> g_defaultSchedulerGroupsRids;
+
+void helperCheckSchedulerGroupsIds()
+{
+    SWSS_LOG_ENTER();
+
+    for (const auto& portId: saiGetPortList())
+    {
+        // each group can contain next scheduler group or queue
+
+        for (const auto& schedGroupId: saiGetSchedulerGroupList(portId))
+        {
+            // create entry in asic view if missing
+            // we assume here that SchedulerGroups numbers will
+            // not be changed during restarts
+
+            redisCreateDummyEntryInAsicView(schedGroupId);
+
+            g_defaultSchedulerGroupsRids.insert(schedGroupId);
+
+            // childs may be scheduler group or queue
+
+            for (const auto& childId: saiGetSchedulerGroupChildList(schedGroupId))
+            {
+                sai_object_type_t objectType = sai_object_type_query(childId);
+
+                if (objectType == SAI_OBJECT_TYPE_QUEUE)
+                {
+                    // skip queue since we are not interested here
+                }
+                else if (objectType == SAI_OBJECT_TYPE_SCHEDULER_GROUP)
+                {
+                    redisCreateDummyEntryInAsicView(childId);
+
+                    g_defaultSchedulerGroupsRids.insert(childId);
+                }
+                else
+                {
+                    SWSS_LOG_ERROR(
+                            "unexpected object type %s on scheduler group child list 0x%llx",
+                            sai_serialize_object_type(objectType).c_str(),
+                            schedGroupId);
+
+                    exit_and_notify(EXIT_FAILURE);
+                }
+            }
+        }
+    }
+}
+
 void onSyncdStart(bool warmStart)
 {
     // it may happen that after initialize we will receive
@@ -778,6 +954,8 @@ void onSyncdStart(bool warmStart)
     helperCheckQueuesIds();
 
     helperCheckPriorityGroupsIds();
+
+    helperCheckSchedulerGroupsIds();
 
     if (warmStart)
     {

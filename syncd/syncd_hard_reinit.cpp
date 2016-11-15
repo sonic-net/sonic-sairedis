@@ -266,8 +266,8 @@ void hardReinit()
     processFdbs();
     processNeighbors();
     processOids();
-    processRoutes();
     processTraps();
+    processRoutes();
 
     checkAllIds();
 }
@@ -300,6 +300,82 @@ bool shouldSkipCreateion(
     return false;
 }
 
+void trapGroupWorkaround(
+        sai_object_id_t vid,
+        sai_object_id_t& rid,
+        bool& createObject,
+        uint32_t attrCount,
+        const sai_attribute_t* attrList)
+{
+    SWSS_LOG_ENTER();
+
+    if (createObject)
+    {
+        createObject = false; // force to "SET" left attributes
+    }
+    else
+    {
+        // default trap group
+        return;
+    }
+
+    sai_object_type_t objectType = SAI_OBJECT_TYPE_TRAP_GROUP;
+
+    SWSS_LOG_INFO("creating trap group and setting attributes 1 by 1 as workaroung");
+
+    const sai_attribute_t* queue_attr = get_attribute_by_id(SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE, attrCount, attrList);
+
+    if (queue_attr == NULL)
+    {
+        SWSS_LOG_ERROR("missing QUEUE attribute on TRAP_GROUP creation even if it's not MANDATORY");
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    create_fn create = common_create[objectType];
+
+    if (create == NULL)
+    {
+        SWSS_LOG_ERROR("create function is not defined for object type %llx", objectType);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    sai_status_t status = create(&rid, 1, queue_attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to create TRAP_GROUP %s", sai_serialize_status(status).c_str());
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    SWSS_LOG_DEBUG("created TRAP_GROUP, processed VID %llx to RID %llx", objectType, vid, rid);
+}
+
+void listFailedAttributes(
+        sai_object_type_t objectType,
+        uint32_t attrCount,
+        const sai_attribute_t* attrList)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t idx = 0; idx < attrCount; idx++)
+    {
+        const sai_attribute_t *attr = &attrList[idx];
+
+        auto meta = get_attribute_metadata(objectType, attr->id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_ERROR("failed to get atribute metadata %d %d", objectType, attr->id);
+            exit_and_notify(EXIT_FAILURE);
+        }
+
+        SWSS_LOG_ERROR("%s = %s", meta->attridname, sai_serialize_attr_value(*meta, *attr).c_str());
+    }
+}
+
 sai_object_id_t processSingleVid(sai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
@@ -328,6 +404,25 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
 
     std::string strVid = sai_serialize_object_id(vid);
 
+    auto oit = g_oids.find(strVid);
+
+    if (oit == g_oids.end())
+    {
+        SWSS_LOG_ERROR("failed to find VID %s in OIDs map", strVid.c_str());
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    std::string asicKey = oit->second;;
+
+    std::shared_ptr<SaiAttributeList> list = g_attributesLists[asicKey];
+
+    processAttributesForOids(objectType, list); // recursion
+
+    sai_attribute_t *attrList = list->get_attr_list();
+
+    uint32_t attrCount = list->get_attr_count();
+
     bool createObject = true;
 
     if (objectType == SAI_OBJECT_TYPE_VIRTUAL_ROUTER)
@@ -351,12 +446,21 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
             SWSS_LOG_DEBUG("default priority group will not be created, processed VID %llx to RID %llx", vid, rid);
         }
     }
+    else if (objectType == SAI_OBJECT_TYPE_SCHEDULER_GROUP)
+    {
+        if (shouldSkipCreateion(vid, rid, createObject, [&](sai_object_id_t sgId) { return g_defaultSchedulerGroupsRids.find(sgId) != g_defaultSchedulerGroupsRids.end(); }))
+        {
+            SWSS_LOG_DEBUG("default scheduler group will not be created, processed VID %llx to RID %llx", vid, rid);
+        }
+    }
     else if (objectType == SAI_OBJECT_TYPE_TRAP_GROUP)
     {
         if (shouldSkipCreateion(vid, rid, createObject, [](sai_object_id_t id) { return id == redisGetDefaultTrapGroupId(); }))
         {
             SWSS_LOG_INFO("default trap group will not be created, processed VID %llx to RID %llx", vid, rid);
         }
+
+        trapGroupWorkaround(vid, rid, createObject, attrCount, attrList);
     }
     else if (objectType == SAI_OBJECT_TYPE_PORT)
     {
@@ -365,25 +469,6 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
             SWSS_LOG_INFO("port will not be created, processed VID %llx to RID %llx", vid, rid);
         }
     }
-
-    auto oit = g_oids.find(strVid);
-
-    if (oit == g_oids.end())
-    {
-        SWSS_LOG_ERROR("failed to find VID %s in OIDs map", strVid.c_str());
-
-        exit_and_notify(EXIT_FAILURE);
-    }
-
-    std::string asicKey = oit->second;;
-
-    std::shared_ptr<SaiAttributeList> list = g_attributesLists[asicKey];
-
-    processAttributesForOids(objectType, list); // recursion
-
-    sai_attribute_t *attrList = list->get_attr_list();
-
-    uint32_t attrCount = list->get_attr_count();
 
     if (createObject)
     {
@@ -401,6 +486,8 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("failed to create object %s: %s", sai_serialize_object_type(objectType).c_str(), sai_serialize_status(status).c_str());
+
+            listFailedAttributes(objectType, attrCount, attrList);
 
             exit_and_notify(EXIT_FAILURE);
         }
@@ -421,7 +508,19 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("failed to set attribute for object type %llx attr id %llx: %d", objectType, attr->id, status);
+                auto meta = get_attribute_metadata(objectType, attr->id);
+
+                if (meta == NULL)
+                {
+                    SWSS_LOG_ERROR("failed to get atribute metadata %d %d", objectType, attr->id);
+                    exit_and_notify(EXIT_FAILURE);
+                }
+
+                SWSS_LOG_ERROR(
+                        "failed to set %s value %s: %s",
+                        meta->attridname,
+                        sai_serialize_attr_value(*meta, *attr).c_str(),
+                        sai_serialize_status(status).c_str());
 
                 exit_and_notify(EXIT_FAILURE);
             }
@@ -721,6 +820,8 @@ void processRoutes()
 {
     SWSS_LOG_ENTER();
 
+    // TODO we need to add default route's first for ipv4 and ipv6
+
     for (auto &kv: g_routes)
     {
         const std::string &strRouteEntry = kv.first;
@@ -742,7 +843,12 @@ void processRoutes()
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("failed to create_route_entry: %d", status);
+            SWSS_LOG_ERROR(
+                    "failed to create ROUTE %s: %s",
+                    sai_serialize_route_entry(routeEntry).c_str(),
+                    sai_serialize_status(status).c_str());
+
+            listFailedAttributes(SAI_OBJECT_TYPE_ROUTE, attrCount, attrList);
 
             exit_and_notify(EXIT_FAILURE);
         }

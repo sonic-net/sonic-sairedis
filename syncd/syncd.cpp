@@ -1324,13 +1324,19 @@ int main(int argc, char **argv)
 
     gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(options.startType);
 
-    sai_api_initialize(0, (service_method_table_t*)&test_services);
+    sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("fail to sai_api_initialize: %d", status);
+        exit_and_notify(EXIT_FAILURE);
+    }
 
     populate_sai_apis();
 
     initialize_common_api_pointers();
 
-    sai_status_t status = sai_switch_api->initialize_switch(0, "", "", &switch_notifications);
+    status = sai_switch_api->initialize_switch(0, "", "", &switch_notifications);
 
     if (status != SAI_STATUS_SUCCESS)
     {

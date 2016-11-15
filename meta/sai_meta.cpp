@@ -327,6 +327,8 @@ class SaiAttrWrapper
 
         ~SaiAttrWrapper()
         {
+            SWSS_LOG_ENTER();
+
             sai_deserialize_free_attribute_value(m_meta->serializationtype, m_attr);
         }
 
