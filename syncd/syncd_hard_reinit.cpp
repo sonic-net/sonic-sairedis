@@ -828,8 +828,7 @@ void processRoutes(bool defaultOnly)
         const std::string &strRouteEntry = kv.first;
         const std::string &asicKey = kv.second;
 
-        bool isDefault = strRouteEntry.find("\"0.0.0.0/0\"") != std::string::npos ||
-                         strRouteEntry.find("\"::/0\"") != std::string::npos;
+        bool isDefault = strRouteEntry.find("/0") != std::string::npos;
 
         if (defaultOnly ^ isDefault)
         {
