@@ -893,33 +893,6 @@ void helperCheckSchedulerGroupsIds()
             redisCreateDummyEntryInAsicView(schedGroupId);
 
             g_defaultSchedulerGroupsRids.insert(schedGroupId);
-
-            // childs may be scheduler group or queue
-
-            for (const auto& childId: saiGetSchedulerGroupChildList(schedGroupId))
-            {
-                sai_object_type_t objectType = sai_object_type_query(childId);
-
-                if (objectType == SAI_OBJECT_TYPE_QUEUE)
-                {
-                    // skip queue since we are not interested here
-                }
-                else if (objectType == SAI_OBJECT_TYPE_SCHEDULER_GROUP)
-                {
-                    redisCreateDummyEntryInAsicView(childId);
-
-                    g_defaultSchedulerGroupsRids.insert(childId);
-                }
-                else
-                {
-                    SWSS_LOG_ERROR(
-                            "unexpected object type %s on scheduler group child list 0x%llx",
-                            sai_serialize_object_type(objectType).c_str(),
-                            schedGroupId);
-
-                    exit_and_notify(EXIT_FAILURE);
-                }
-            }
         }
     }
 }

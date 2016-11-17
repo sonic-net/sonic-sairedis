@@ -322,7 +322,7 @@ void trapGroupWorkaround(
 
     sai_object_type_t objectType = SAI_OBJECT_TYPE_TRAP_GROUP;
 
-    SWSS_LOG_INFO("creating trap group and setting attributes 1 by 1 as workaroung");
+    SWSS_LOG_INFO("creating trap group and setting attributes 1 by 1 as workaround");
 
     const sai_attribute_t* queue_attr = get_attribute_by_id(SAI_HOSTIF_TRAP_GROUP_ATTR_QUEUE, attrCount, attrList);
 
