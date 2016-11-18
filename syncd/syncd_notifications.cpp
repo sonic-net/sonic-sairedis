@@ -114,7 +114,7 @@ void on_fdb_event(
 
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("fdb event count: %d", count);
+    SWSS_LOG_INFO("fdb event count: %d", count);
 
     for (uint32_t i = 0; i < count; i++)
     {

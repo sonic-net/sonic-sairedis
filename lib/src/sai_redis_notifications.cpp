@@ -33,6 +33,16 @@ void handle_fdb_event(
 
     sai_deserialize_fdb_event_ntf(data, count, &fdbevent);
 
+    {
+        std::lock_guard<std::mutex> lock(g_apimutex);
+
+        // NOTE: this meta api must be under mutex since
+        // it will access meta DB and notification comes
+        // from different thread
+
+        meta_sai_on_fdb_event(count, fdbevent);
+    }
+
     auto on_fdb_event = redis_switch_notifications.on_fdb_event;
 
     if (on_fdb_event != NULL)

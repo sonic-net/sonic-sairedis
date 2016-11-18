@@ -39,8 +39,6 @@ sai_status_t internal_redis_generic_create(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
-
     SWSS_LOG_ENTER();
 
     if (attr_count > 0 && attr_list == NULL)

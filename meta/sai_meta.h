@@ -918,4 +918,10 @@ extern sai_status_t meta_sai_get_route_entry(
         _Inout_ sai_attribute_t *attr_list,
         _In_ sai_get_route_attribute_fn get);
 
+// NOTIFICATIONS
+
+extern void meta_sai_on_fdb_event(
+        _In_ uint32_t count,
+        _In_ sai_fdb_event_notification_data_t *data);
+
 #endif // __SAI_META_H__

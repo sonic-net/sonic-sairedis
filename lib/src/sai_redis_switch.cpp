@@ -94,8 +94,6 @@ sai_status_t redis_initialize_switch(
 {
     std::lock_guard<std::mutex> apilock(g_apimutex);
 
-    std::lock_guard<std::mutex> lock(g_mutex);
-
     SWSS_LOG_ENTER();
 
     if (g_switchInitialized)
@@ -151,8 +149,6 @@ void redis_shutdown_switch(
 {
     std::lock_guard<std::mutex> apilock(g_apimutex);
 
-    std::lock_guard<std::mutex> lock(g_mutex);
-
     SWSS_LOG_ENTER();
 
     if (!g_switchInitialized)
@@ -195,8 +191,6 @@ sai_status_t redis_connect_switch(
 {
     std::lock_guard<std::mutex> apilock(g_apimutex);
 
-    std::lock_guard<std::mutex> lock(g_mutex);
-
     SWSS_LOG_ENTER();
 
     SWSS_LOG_ERROR("not implemented");
@@ -216,8 +210,6 @@ sai_status_t redis_connect_switch(
 void redis_disconnect_switch(void)
 {
     std::lock_guard<std::mutex> apilock(g_apimutex);
-
-    std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
 
