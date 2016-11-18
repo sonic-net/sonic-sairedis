@@ -4,6 +4,7 @@
 #include <set>
 
 #include "syncd.h"
+#include "sairedis.h"
 
 sai_uint32_t saiGetPortCount()
 {
@@ -218,7 +219,7 @@ std::vector<std::string> redisGetAsicStateKeys()
 {
     SWSS_LOG_ENTER();
 
-    return g_redisClient->keys("ASIC_STATE:*");
+    return g_redisClient->keys(ASIC_STATE_TABLE + std::string(":*"));
 }
 
 void redisClearVidToRidMap()
@@ -420,7 +421,7 @@ void redisSetDummyAsicStateForRealObjectId(sai_object_id_t rid)
 
     std::string strVid = sai_serialize_object_id(vid);
 
-    std::string strKey = "ASIC_STATE:" + strObjectType + ":" + strVid;
+    std::string strKey = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strVid);
 
     g_redisClient->hset(strKey, "NULL", "NULL");
 
@@ -539,7 +540,7 @@ void redisCreateDummyEntryInAsicView(sai_object_id_t objectId)
 
     std::string strVid = sai_serialize_object_id(vid);
 
-    std::string strKey = "ASIC_STATE:" + strObjectType + ":" + strVid;
+    std::string strKey = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strVid);
 
     g_redisClient->hset(strKey, "NULL", "NULL");
 }
@@ -575,7 +576,7 @@ void helperCheckVlanId()
 
     std::string strVlanId = sai_serialize_vlan_id(vlanId);
 
-    std::string strKey = "ASIC_STATE:" + strObjectType + ":" + strVlanId;
+    std::string strKey = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strVlanId);
 
     g_redisClient->hset(strKey, "NULL", "NULL");
 }

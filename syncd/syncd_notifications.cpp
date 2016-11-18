@@ -1,4 +1,5 @@
 #include "syncd.h"
+#include "sairedis.h"
 
 void send_notification(
         _In_ std::string op,
@@ -76,7 +77,7 @@ void redisPutFdbEntryToAsicView(
 
     std::string strFdbEntry = sai_serialize_fdb_entry(fdb->fdb_entry);
 
-    std::string key = "ASIC_STATE:" + strObjectType + ":" + strFdbEntry;
+    std::string key = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strFdbEntry);
 
     for (const auto &e: entry)
     {

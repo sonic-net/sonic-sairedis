@@ -808,7 +808,7 @@ sai_status_t notifySyncd(const std::string& op)
         sendResponse(SAI_STATUS_NOT_IMPLEMENTED);
         exit_and_notify(EXIT_FAILURE);
     }
-    
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -928,7 +928,9 @@ swss::Logger::Priority redisGetLogLevel()
     auto plevel = g_redisClient->get("LOGLEVEL");
 
     if (plevel == NULL)
+    {
         return swss::Logger::SWSS_NOTICE;
+    }
 
     return swss::Logger::stringToPriority(*plevel);
 }
@@ -963,6 +965,7 @@ struct cmdOptions
 {
     int countersThreadIntervalInSeconds;
     bool diagShell;
+    bool useTempView;
     int startType;
     bool disableCountersThread;
     std::string profileMapFile;
@@ -975,7 +978,7 @@ struct cmdOptions
 
 void printUsage()
 {
-    std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u]" << std::endl;
     std::cout << "    -N --nocounters:" << std::endl;
     std::cout << "        Disable counter thread" << std::endl;
     std::cout << "    -d --diag:" << std::endl;
@@ -986,6 +989,8 @@ void printUsage()
     std::cout << "        Provide counter thread interval" << std::endl;
     std::cout << "    -t --startType type:" << std::endl;
     std::cout << "        Specify cold|warm|fast start type" << std::endl;
+    std::cout << "    -u --useTempView type:" << std::endl;
+    std::cout << "        Use temporary view between init and apply" << std::endl;
 #ifdef SAITHRIFT
     std::cout << "    -r --rpcserver:"           << std::endl;
     std::cout << "        Enable rpcserver"      << std::endl;
@@ -1008,15 +1013,16 @@ cmdOptions handleCmdLine(int argc, char **argv)
 
 #ifdef SAITHRIFT
     options.run_rpc_server = false;
-    const char* const optstring = "dNt:p:i:rm:h";
+    const char* const optstring = "dNt:p:i:rm:hu";
 #else
-    const char* const optstring = "dNt:p:i:h";
+    const char* const optstring = "dNt:p:i:hu";
 #endif // SAITHRIFT
 
     while(true)
     {
         static struct option long_options[] =
         {
+            { "useTempView",      no_argument,       0, 'u' },
             { "diag",             no_argument,       0, 'd' },
             { "nocounters",       no_argument,       0, 'N' },
             { "startType",        required_argument, 0, 't' },
@@ -1039,6 +1045,11 @@ cmdOptions handleCmdLine(int argc, char **argv)
 
         switch (c)
         {
+            case 'u':
+                SWSS_LOG_NOTICE("enable use temp view");
+                options.useTempView = true;
+                break;
+
             case 'N':
                 SWSS_LOG_NOTICE("disable counters thread");
                 options.disableCountersThread = true;
@@ -1287,7 +1298,7 @@ int main(int argc, char **argv)
 
     updateLogLevel();
 
-    swss::ConsumerTable *asicState = new swss::ConsumerTable(db, "ASIC_STATE");
+    swss::ConsumerTable *asicState = new swss::ConsumerTable(db, ASIC_STATE_TABLE);
     swss::NotificationConsumer *restartQuery = new swss::NotificationConsumer(db, "RESTARTQUERY");
 
     // at the end we cant use producer consumer concept since

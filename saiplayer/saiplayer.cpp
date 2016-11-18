@@ -1208,9 +1208,13 @@ void printUsage()
     std::cout << "        Will not send notify init/apply view to syncd" << std::endl << std::endl;
     std::cout << "    -d --enableDebug:" << std::endl;
     std::cout << "        Enable syslog debug messages" << std::endl << std::endl;
+    std::cout << "    -u --useTempView:" << std::endl;
+    std::cout << "        Enable temporary view between init and apply" << std::endl << std::endl;
     std::cout << "    -h --help:" << std::endl;
     std::cout << "        Print out this message" << std::endl << std::endl;
 }
+
+bool g_useTempView = false;
 
 void handleCmdLine(int argc, char **argv)
 {
@@ -1220,13 +1224,14 @@ void handleCmdLine(int argc, char **argv)
     {
         static struct option long_options[] =
         {
+            { "useTempView",      no_argument,       0, 'u' },
             { "help",             no_argument,       0, 'h' },
             { "skipNotifySyncd",  no_argument,       0, 'C' },
             { "enableDebug",      no_argument,       0, 'd' },
             { 0,                  0,                 0,  0  }
         };
 
-        const char* const optstring = "hCd";
+        const char* const optstring = "hCdu";
 
         int option_index;
 
@@ -1239,6 +1244,10 @@ void handleCmdLine(int argc, char **argv)
         {
             case 'd':
                 swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+                break;
+
+            case 'u':
+                g_useTempView = false;
                 break;
 
             case 'C':
@@ -1278,6 +1287,13 @@ int main(int argc, char **argv)
     initialize_common_api_pointers();
 
     EXIT_ON_ERROR(sai_switch_api->initialize_switch(0, "", "", &switch_notifications));
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_USE_TEMP_VIEW;
+    attr.value.booldata = g_useTempView;
+
+    EXIT_ON_ERROR(sai_switch_api->set_switch_attribute(&attr));
 
     int exitcode = replay(argc, argv);
 

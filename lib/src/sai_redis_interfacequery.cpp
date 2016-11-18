@@ -1,5 +1,6 @@
 #include <string.h>
 #include "sai_redis.h"
+#include "sairedis.h"
 
 std::mutex g_apimutex;
 
@@ -51,7 +52,7 @@ sai_status_t sai_api_initialize(
     if (g_asicState != NULL)
         delete g_asicState;
 
-    g_asicState = new swss::ProducerTable(g_db, "ASIC_STATE");
+    g_asicState = new swss::ProducerTable(g_db, ASIC_STATE_TABLE);
 
     if (g_redisGetConsumer != NULL)
         delete g_redisGetConsumer;

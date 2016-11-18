@@ -12,6 +12,7 @@ sai_switch_notification_t redis_switch_notifications;
 bool g_switchInitialized = false;
 volatile bool g_asicInitViewMode = false; // default mode is apply mode
 volatile bool g_run = false;
+volatile bool g_useTempView = false;
 
 std::shared_ptr<std::thread> notification_thread;
 
@@ -121,6 +122,8 @@ sai_status_t redis_initialize_switch(
     g_run = true;
 
     g_asicInitViewMode = false;
+
+    g_useTempView = false;
 
     setRecording(g_record);
 
@@ -372,6 +375,10 @@ sai_status_t redis_set_switch_attribute(
 
             case SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD:
                 return sai_redis_notify_syncd(attr);
+
+            case SAI_REDIS_SWITCH_ATTR_USE_TEMP_VIEW:
+                g_useTempView = attr->value.booldata;
+                return SAI_STATUS_SUCCESS;
 
             default:
                 break;

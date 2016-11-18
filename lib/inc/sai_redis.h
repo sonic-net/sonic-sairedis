@@ -34,6 +34,8 @@ extern void recordLine(std::string s);
 extern std::string joinFieldValues(
         _In_ const std::vector<swss::FieldValueTuple> &values);
 
+extern volatile bool                    g_useTempView;
+
 // other global declarations
 
 extern service_method_table_t           g_services;
@@ -42,9 +44,6 @@ extern swss::ProducerTable             *g_asicState;
 
 extern swss::ConsumerTable             *g_redisGetConsumer;
 extern swss::NotificationConsumer      *g_redisNotifications;
-
-extern swss::Table *g_vidToRid;
-extern swss::Table *g_ridToVid;
 
 extern swss::RedisClient               *g_redisClient;
 

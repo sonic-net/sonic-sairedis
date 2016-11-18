@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I/usr/include/sai -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc
+AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I/usr/include/sai 
 
 bin_PROGRAMS = syncd syncd_request_shutdown
 

@@ -10,6 +10,7 @@ extern "C" {
 #include "swss/table.h"
 #include "swss/logger.h"
 #include "meta/saiserialize.h"
+#include "sairedis.h"
 
 #include <getopt.h>
 
@@ -182,7 +183,7 @@ int main(int argc, char ** argv)
 
     swss::DBConnector db(ASIC_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
 
-    swss::Table t(&db, "ASIC_STATE");
+    swss::Table t(&db, ASIC_STATE_TABLE);
 
     TableDump dump;
 
