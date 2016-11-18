@@ -4878,11 +4878,28 @@ void meta_sai_on_fdb_event_single(
             }
 
             {
-                sai_status_t status = meta_generic_validation_create(meta_key_fdb, data.attr_count, data.attr);
+                sai_attribute_t *list = data.attr;
+                uint32_t count = data.attr_count;
+
+                sai_attribute_t local[2]; // 2 for port id and type
+
+                if (count == 1)
+                {
+                    // workaround for missing "TYPE" attribute on notification
+
+                    local[0] = data.attr[0]; // copy 1st attr
+                    local[1].id = SAI_FDB_ENTRY_ATTR_TYPE;
+                    local[1].value.s32 = SAI_FDB_ENTRY_DYNAMIC; // assume learned entries are always dynamic
+
+                    list = local;
+                    count = 2; // now we added type
+                }
+
+                sai_status_t status = meta_generic_validation_create(meta_key_fdb, count, list);
 
                 if (status == SAI_STATUS_SUCCESS)
                 {
-                    meta_generic_validation_post_create(meta_key_fdb, data.attr_count, data.attr);
+                    meta_generic_validation_post_create(meta_key_fdb, count, list);
                 }
                 else
                 {
