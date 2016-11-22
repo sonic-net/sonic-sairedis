@@ -1368,6 +1368,8 @@ int main(int argc, char **argv)
 
     bool warmRestartHint = false;
 
+    start_cli();
+
     try
     {
         onSyncdStart(options.startType == SAI_WARM_BOOT);
@@ -1436,6 +1438,8 @@ int main(int argc, char **argv)
     sai_api_uninitialize();
 
     SWSS_LOG_NOTICE("uninitialize finished");
+
+    stop_cli();
 
     return EXIT_SUCCESS;
 }

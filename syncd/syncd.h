@@ -173,4 +173,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> redisGetLaneMap();
 
 std::vector<sai_object_id_t> saiGetPortList();
 
+void start_cli();
+void stop_cli();
+
 #endif // __SYNCD_H__

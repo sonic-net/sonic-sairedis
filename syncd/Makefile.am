@@ -22,6 +22,7 @@ endif
 
 syncd_SOURCES = \
 				syncd.cpp \
+				syncd_cli.cpp \
 				syncd_init.cpp \
 				syncd_reinit.cpp \
 				syncd_hard_reinit.cpp \
