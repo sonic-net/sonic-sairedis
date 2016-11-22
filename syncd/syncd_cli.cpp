@@ -144,7 +144,7 @@ void handle_cli()
         }
 
         // blocking
-        ssize_t n = read(cli_client_socket, buffer, BUFFER_SIZE - 1);
+        ssize_t n = read(cli_client_socket, buffer, BUFFER_SIZE);
 
         if (n == 0)
         {
@@ -224,7 +224,7 @@ void cli_thread_function()
                 SWSS_LOG_ERROR("accept failed, errno: %s", strerror(errno));
             }
 
-            continue;
+            break;
         }
 
         SWSS_LOG_NOTICE("client connected to cli");
