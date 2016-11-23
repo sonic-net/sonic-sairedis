@@ -84,7 +84,7 @@ sai_status_t transfer_list(
     {
         transfer_primitive(src_element.count, dst_element.count);
 
-        if (src_element.list == NULL)
+        if (src_element.list == NULL && src_element.count > 0)
         {
             SWSS_LOG_ERROR("source list is NULL when count is %u, wrong db insert?", src_element.count);
             throw std::runtime_error("source list is NULL when count is not zero, wrong db insert?");
