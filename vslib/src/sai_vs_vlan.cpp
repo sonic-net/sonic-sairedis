@@ -129,7 +129,7 @@ sai_vlan_id_t get_vlan_id_from_member(
         return (sai_vlan_id_t)attr.value.u16;
     }
 
-    SWSS_LOG_ERROR("failed to get vlan id from vlan member 0x%llx, status: %d", vlan_member_id, status);
+    SWSS_LOG_ERROR("failed to get vlan id from vlan member 0x%lx, status: %d", vlan_member_id, status);
 
     throw std::runtime_error("failed to get vlan id from vlan member");
 }
@@ -182,7 +182,7 @@ sai_status_t vs_remove_vlan_member(
 
         if (it == vlan_members_map[vlan_id].end())
         {
-            SWSS_LOG_ERROR("failed to find vlan member 0x%llx in vlan members map", vlan_member_id);
+            SWSS_LOG_ERROR("failed to find vlan member 0x%lx in vlan members map", vlan_member_id);
 
             return SAI_STATUS_FAILURE;
         }

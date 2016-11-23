@@ -86,24 +86,6 @@ extern swss::RedisClient   *g_redisClient;
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_type_t object_type);
 
-sai_object_id_t translate_vid_to_rid(
-        _In_ sai_object_id_t vid);
-
-void translate_vid_to_rid_list(
-        _In_ sai_object_type_t object_type,
-        _In_ uint32_t attr_count,
-        _In_ sai_attribute_t *attr_list);
-
-template <typename T>
-void translate_list_vid_to_rid(
-        _In_ T &element)
-{
-    for (uint32_t i = 0; i < element.count; i++)
-    {
-        element.list[i] = translate_vid_to_rid(element.list[i]);
-    }
-}
-
 sai_object_id_t translate_rid_to_vid(
         _In_ sai_object_id_t rid);
 
@@ -172,6 +154,8 @@ void endCountersThread();
 std::unordered_map<sai_uint32_t, sai_object_id_t> redisGetLaneMap();
 
 std::vector<sai_object_id_t> saiGetPortList();
+
+sai_object_type_t getObjectTypeFromVid(sai_object_id_t sai_object_id);
 
 void start_cli();
 void stop_cli();

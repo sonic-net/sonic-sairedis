@@ -43,7 +43,7 @@ sai_object_id_t create_dummy_object_id(
 
     sai_object_id_t oid = (((sai_object_id_t)objecttype) << 48) | ++index;
 
-    SWSS_LOG_DEBUG("created oid 0x%llx", oid);
+    SWSS_LOG_DEBUG("created oid 0x%lx", oid);
 
     return oid;
 }
@@ -58,7 +58,7 @@ sai_object_type_t sai_object_type_query(
     if ((objecttype <= SAI_OBJECT_TYPE_NULL) ||
             (objecttype >= SAI_OBJECT_TYPE_MAX))
     {
-        SWSS_LOG_ERROR("invalid oid %d", oid);
+        SWSS_LOG_ERROR("invalid oid 0x%lx", oid);
 
         return SAI_OBJECT_TYPE_NULL;
     }

@@ -28,7 +28,7 @@ void collectCounters(swss::Table &countersTable,
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("failed to collect counters for port %llx: %d", portId, status);
+            SWSS_LOG_ERROR("failed to collect counters for port 0x%lx: %d", portId, status);
             return;
         }
 
@@ -77,7 +77,7 @@ std::vector<sai_port_stat_counter_t> getSupportedCounters(sai_object_id_t portId
         {
             const std::string &name = sai_serialize_port_stat(counter);
 
-            SWSS_LOG_WARN("counter %s is not supported on port RID %llx: %d", name.c_str(), portId, status);
+            SWSS_LOG_WARN("counter %s is not supported on port RID 0x%lx: %d", name.c_str(), portId, status);
             continue;
         }
 

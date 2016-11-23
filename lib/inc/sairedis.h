@@ -8,6 +8,7 @@ extern "C" {
 #define SYNCD_INIT_VIEW  "INIT_VIEW"
 #define SYNCD_APPLY_VIEW "APPLY_VIEW"
 #define ASIC_STATE_TABLE "ASIC_STATE"
+#define TEMP_PREFIX      "TEMP_"
 
 typedef enum _sai_redis_notify_syncd_t
 {

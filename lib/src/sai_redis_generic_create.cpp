@@ -23,7 +23,7 @@ sai_object_id_t redis_create_virtual_object_id(
 
     sai_object_id_t objectId = (((sai_object_id_t)object_type) << 48) | virtual_id;
 
-    SWSS_LOG_DEBUG("created VID %llx", objectId);
+    SWSS_LOG_DEBUG("created VID 0x%lx", objectId);
 
     return objectId;
 }

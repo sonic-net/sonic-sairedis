@@ -219,11 +219,6 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.vlanlist, dst_attr.value.vlanlist, countOnly));
             break;
 
-        case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
-            transfer_primitive(src_attr.value.portbreakout.breakout_mode, dst_attr.value.portbreakout.breakout_mode);
-            RETURN_ON_ERROR(transfer_list(src_attr.value.portbreakout.port_list, dst_attr.value.portbreakout.port_list, countOnly));
-            break;
-
         case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.qosmap, dst_attr.value.qosmap, countOnly));
             break;
@@ -2526,7 +2521,7 @@ void sai_deserialize_free_attribute_value(
             break;
 
         default:
-            SWSS_LOG_ERROR("unsupported type on deserialize free %s, FIXME", type);
+            SWSS_LOG_ERROR("unsupported type %d on deserialize free, FIXME", type);
             throw std::runtime_error("unsupported type on deserialize free, FIXME");
     }
 }

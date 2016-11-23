@@ -45,7 +45,7 @@ sai_object_id_t saiGetCpuId()
         exit_and_notify(EXIT_FAILURE);
     }
 
-    SWSS_LOG_DEBUG("cpu port RID %llx", attr.value.oid);
+    SWSS_LOG_DEBUG("cpu port RID 0x%lx", attr.value.oid);
 
     return attr.value.oid;
 }
@@ -316,7 +316,7 @@ void helperCheckLaneMap()
         if (redisLaneMap[lane] != portId)
         {
             // if this happens, we need to remap VIDTORID and RIDTOVID
-            SWSS_LOG_ERROR("FIXME: lane port id differs: %llx vs %llx, port ids must be remapped", portId, redisLaneMap[lane]);
+            SWSS_LOG_ERROR("FIXME: lane port id differs: 0x%lx vs 0x%lx, port ids must be remapped", portId, redisLaneMap[lane]);
 
             exit_and_notify(EXIT_FAILURE);
         }
@@ -399,7 +399,7 @@ void redisCreateRidAndVidMapping(sai_object_id_t rid, sai_object_id_t vid)
     g_redisClient->hset(VIDTORID, strVid, strRid);
     g_redisClient->hset(RIDTOVID, strRid, strVid);
 
-    SWSS_LOG_DEBUG("set VID %llx and RID %llx", vid, rid);
+    SWSS_LOG_DEBUG("set VID 0x%lx and RID 0x%lx", vid, rid);
 }
 
 void redisSetDummyAsicStateForRealObjectId(sai_object_id_t rid)
@@ -410,7 +410,7 @@ void redisSetDummyAsicStateForRealObjectId(sai_object_id_t rid)
 
     if (objectType == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID %llx", rid);
+        SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID 0x%lx", rid);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -450,7 +450,7 @@ void helperCheckDefaultVirtualRouterId()
     if (vrId != redisVrId)
     {
         // if this happens, we need to remap VIDTORID and RIDTOVID
-        SWSS_LOG_ERROR("FIXME: default virtual router id differs: %llx vs %llx, ids must be remapped", vrId, redisVrId);
+        SWSS_LOG_ERROR("FIXME: default virtual router id differs: 0x%lx vs 0x%lx, ids must be remapped", vrId, redisVrId);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -478,7 +478,7 @@ void helperCheckDefaultTrapGroup()
     if (tgId != redisTgId)
     {
         // if this happens, we need to remap VIDTORID and RIDTOVID
-        SWSS_LOG_ERROR("FIXME: default trap group id differs: %llx vs %llx, ids must be remapped", tgId, redisTgId);
+        SWSS_LOG_ERROR("FIXME: default trap group id differs: 0x%lx vs 0x%lx, ids must be remapped", tgId, redisTgId);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -515,7 +515,7 @@ void helperCheckCpuId()
     if (cpuId != redisCpuId)
     {
         // if this happens, we need to remap VIDTORID and RIDTOVID
-        SWSS_LOG_ERROR("FIXME: cpu id differs: %llx vs %llx, ids must be remapped", cpuId, redisCpuId);
+        SWSS_LOG_ERROR("FIXME: cpu id differs: 0x%lx vs 0x%lx, ids must be remapped", cpuId, redisCpuId);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -531,7 +531,7 @@ void redisCreateDummyEntryInAsicView(sai_object_id_t objectId)
 
     if (objectType == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID %llx", objectId);
+        SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID 0x%lx", objectId);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -598,7 +598,7 @@ sai_uint32_t saiGetPortNumberOfQueues(sai_object_id_t portId)
         exit_and_notify(EXIT_FAILURE);
     }
 
-    SWSS_LOG_DEBUG("port 0x%llx queues number: %u", portId, attr.value.u32);
+    SWSS_LOG_DEBUG("port 0x%lx queues number: %u", portId, attr.value.u32);
 
     return attr.value.u32;
 }
@@ -647,7 +647,7 @@ void helperCheckQueuesIds()
 
     for (const auto& portId: ports)
     {
-        SWSS_LOG_DEBUG("getting queues for port 0x%llx", portId);
+        SWSS_LOG_DEBUG("getting queues for port 0x%lx", portId);
 
         std::vector<sai_object_id_t> queues = saiGetPortQueues(portId);
 
@@ -683,7 +683,7 @@ sai_uint32_t saiGetPortNumberOfPriorityGroups(sai_object_id_t portId)
         exit_and_notify(EXIT_FAILURE);
     }
 
-    SWSS_LOG_DEBUG("port 0x%llx priority groups number: %u", portId, attr.value.u32);
+    SWSS_LOG_DEBUG("port 0x%lx priority groups number: %u", portId, attr.value.u32);
 
     return attr.value.u32;
 }
@@ -732,7 +732,7 @@ void helperCheckPriorityGroupsIds()
 
     for (const auto& portId: ports)
     {
-        SWSS_LOG_DEBUG("getting priority groups for port 0x%llx", portId);
+        SWSS_LOG_DEBUG("getting priority groups for port 0x%lx", portId);
 
         std::vector<sai_object_id_t> pgs = saiGetPortPriorityGroups(portId);
 
@@ -781,7 +781,7 @@ uint32_t saiGetQosNumberOfSchedulerGroups(sai_object_id_t portId)
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to get number of scheduler groups for port: 0x%llx", portId);
+        SWSS_LOG_ERROR("Failed to get number of scheduler groups for port: 0x%lx", portId);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -810,7 +810,7 @@ std::vector<sai_object_id_t> saiGetSchedulerGroupList(sai_object_id_t portId)
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to get scheduler group list for port: 0x%llx", portId);
+        SWSS_LOG_ERROR("Failed to get scheduler group list for port: 0x%lx", portId);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -818,7 +818,7 @@ std::vector<sai_object_id_t> saiGetSchedulerGroupList(sai_object_id_t portId)
     // just in case
     groups.resize(attr.value.objlist.count);
 
-    SWSS_LOG_DEBUG("got %zu scheduler groups on port 0x%llx", groups.size(), portId);
+    SWSS_LOG_DEBUG("got %zu scheduler groups on port 0x%lx", groups.size(), portId);
 
     return groups;
 }
@@ -835,7 +835,7 @@ uint32_t saiGetSchedulerGroupChildCount(sai_object_id_t schedulerGroupId)
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to get child count for scheduler group: 0x%llx", schedulerGroupId);
+        SWSS_LOG_ERROR("Failed to get child count for scheduler group: 0x%lx", schedulerGroupId);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -848,6 +848,8 @@ std::vector<sai_object_id_t> saiGetSchedulerGroupChildList(sai_object_id_t sched
     SWSS_LOG_ENTER();
 
     uint32_t childCount = saiGetSchedulerGroupChildCount(schedulerGroupId);
+
+    SWSS_LOG_DEBUG("child count for SG 0x%lx is %u", schedulerGroupId, childCount);
 
     std::vector<sai_object_id_t> childs;
 
@@ -863,14 +865,14 @@ std::vector<sai_object_id_t> saiGetSchedulerGroupChildList(sai_object_id_t sched
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to get child list for scheduler group: 0x%llx", schedulerGroupId);
+        SWSS_LOG_ERROR("Failed to get child list for scheduler group: 0x%lx", schedulerGroupId);
 
         exit_and_notify(EXIT_FAILURE);
     }
 
     childs.resize(attr.value.objlist.count);
 
-    SWSS_LOG_DEBUG("got %zu childs on scheduler group 0x%llx", childs.size(), schedulerGroupId);
+    SWSS_LOG_DEBUG("got %zu childs on scheduler group 0x%lx", childs.size(), schedulerGroupId);
 
     return childs; // scheduler groups + queues
 }

@@ -15,6 +15,8 @@ extern "C" {
 
 extern std::recursive_mutex             g_recursive_mutex;
 
+extern sai_switch_notification_t        vs_switch_notifications;
+
 extern const sai_acl_api_t              vs_acl_api;
 extern const sai_buffer_api_t           vs_buffer_api;
 extern const sai_fdb_api_t              vs_fdb_api;

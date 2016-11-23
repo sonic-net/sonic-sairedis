@@ -368,7 +368,7 @@ bool object_reference_exists(
 
     bool exists = ObjectReferences.find(oid) != ObjectReferences.end();
 
-    SWSS_LOG_DEBUG("object 0x%llx refrence: %s", oid, exists ? "exists" : "missing");
+    SWSS_LOG_DEBUG("object 0x%lx refrence: %s", oid, exists ? "exists" : "missing");
 
     return exists;
 }
@@ -385,13 +385,13 @@ void object_reference_inc(
 
     if (!object_reference_exists(oid))
     {
-        SWSS_LOG_ERROR("FATAL: object oid 0x%llx not in reference map", oid);
+        SWSS_LOG_ERROR("FATAL: object oid 0x%lx not in reference map", oid);
         throw;
     }
 
     ObjectReferences[oid]++;
 
-    SWSS_LOG_DEBUG("increased reference on oid 0x%llx to %d", oid, ObjectReferences[oid]);
+    SWSS_LOG_DEBUG("increased reference on oid 0x%lx to %d", oid, ObjectReferences[oid]);
 }
 
 void object_reference_dec(
@@ -406,7 +406,7 @@ void object_reference_dec(
 
     if (!object_reference_exists(oid))
     {
-        SWSS_LOG_ERROR("FATAL: object oid 0x%llx not in reference map", oid);
+        SWSS_LOG_ERROR("FATAL: object oid 0x%lx not in reference map", oid);
         throw;
     }
 
@@ -414,11 +414,11 @@ void object_reference_dec(
 
     if (ObjectReferences[oid] < 0)
     {
-        SWSS_LOG_ERROR("FATAL: object oid 0x%llx reference count is negative!", oid);
+        SWSS_LOG_ERROR("FATAL: object oid 0x%lx reference count is negative!", oid);
         throw;
     }
 
-    SWSS_LOG_DEBUG("decreased reference on oid 0x%llx to %d", oid, ObjectReferences[oid]);
+    SWSS_LOG_DEBUG("decreased reference on oid 0x%lx to %d", oid, ObjectReferences[oid]);
 }
 
 void object_reference_dec(
@@ -450,13 +450,13 @@ void object_reference_insert(
 
     if (object_reference_exists(oid))
     {
-        SWSS_LOG_ERROR("FATAL: object oid 0x%llx already in reference map");
+        SWSS_LOG_ERROR("FATAL: object oid 0x%lx already in reference map", oid);
         throw;
     }
 
     ObjectReferences[oid] = 0;
 
-    SWSS_LOG_DEBUG("inserted reference on 0x%llx", oid);
+    SWSS_LOG_DEBUG("inserted reference on 0x%lx", oid);
 }
 
 int32_t object_reference_count(
@@ -468,12 +468,12 @@ int32_t object_reference_count(
     {
         int32_t count = ObjectReferences[oid];
 
-        SWSS_LOG_DEBUG("reference count on oid 0x%llx is %d", oid, count);
+        SWSS_LOG_DEBUG("reference count on oid 0x%lx is %d", oid, count);
 
         return count;
     }
 
-    SWSS_LOG_ERROR("FATAL: object oid 0x%llx reference not in map", oid);
+    SWSS_LOG_ERROR("FATAL: object oid 0x%lx reference not in map", oid);
     throw;
 }
 
@@ -488,12 +488,12 @@ void object_reference_remove(
 
         if (count > 0)
         {
-            SWSS_LOG_ERROR("FATAL: removing object oid 0x%llx but reference count is: %d", oid, count);
+            SWSS_LOG_ERROR("FATAL: removing object oid 0x%lx but reference count is: %d", oid, count);
             throw;
         }
     }
 
-    SWSS_LOG_DEBUG("removing object oid 0x%llx reference", oid);
+    SWSS_LOG_DEBUG("removing object oid 0x%lx reference", oid);
 
     ObjectReferences.erase(oid);
 }
@@ -580,7 +580,7 @@ int32_t vlan_reference_count(
         return count;
     }
 
-    SWSS_LOG_ERROR("FATAL: vlan vlanid 0x%llx reference not in map", vlanid);
+    SWSS_LOG_ERROR("FATAL: vlan vlanid %d reference not in map", vlanid);
     throw;
 }
 
@@ -595,7 +595,7 @@ void vlan_reference_remove(
 
         if (count > 0)
         {
-            SWSS_LOG_ERROR("FATAL: removing vlan vlanid 0x%llx but reference count is: %d", vlanid, count);
+            SWSS_LOG_ERROR("FATAL: removing vlan vlanid %d but reference count is: %d", vlanid, count);
             throw;
         }
     }
@@ -841,7 +841,7 @@ sai_status_t meta_generic_validation_objlist(
 
         if (oids.find(oid) != oids.end())
         {
-            META_LOG_ERROR(md, "object on list [%u] oid 0x%llx is duplicated, but not allowed", i, oid);
+            META_LOG_ERROR(md, "object on list [%u] oid 0x%lx is duplicated, but not allowed", i, oid);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -865,21 +865,21 @@ sai_status_t meta_generic_validation_objlist(
 
         if (ot == SAI_NULL_OBJECT_ID)
         {
-            META_LOG_ERROR(md, "object on list [%u] oid 0x%llx is not valid, returned null object id", i, oid);
+            META_LOG_ERROR(md, "object on list [%u] oid 0x%lx is not valid, returned null object id", i, oid);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (md.allowedobjecttypes.find(ot) == md.allowedobjecttypes.end())
         {
-            META_LOG_ERROR(md, "object on list [%u] oid 0x%llx object type %d is not allowed on this attribute", i, oid, ot);
+            META_LOG_ERROR(md, "object on list [%u] oid 0x%lx object type %d is not allowed on this attribute", i, oid, ot);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (!object_reference_exists(oid))
         {
-            META_LOG_ERROR(md, "object on list [%u] oid 0x%llx object type %d does not exists in local DB", i, oid, ot);
+            META_LOG_ERROR(md, "object on list [%u] oid 0x%lx object type %d does not exists in local DB", i, oid, ot);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -1304,7 +1304,7 @@ sai_status_t meta_generic_validation_create(
 
                 if (value.u32range.min > value.u32range.max)
                 {
-                    META_LOG_ERROR(md, "invalid range %u .. %u", value.u32range.min > value.u32range.max);
+                    META_LOG_ERROR(md, "invalid range %u .. %u", value.u32range.min, value.u32range.max);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
@@ -1315,7 +1315,7 @@ sai_status_t meta_generic_validation_create(
 
                 if (value.s32range.min > value.s32range.max)
                 {
-                    META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min > value.s32range.max);
+                    META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min, value.s32range.max);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
@@ -1649,21 +1649,21 @@ sai_status_t meta_generic_validation_remove(
 
                 if (object_type == SAI_NULL_OBJECT_ID)
                 {
-                    SWSS_LOG_ERROR("oid 0x%llx is not valid, returned null object id", oid);
+                    SWSS_LOG_ERROR("oid 0x%lx is not valid, returned null object id", oid);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
 
                 if (object_type != meta_key.object_type)
                 {
-                    SWSS_LOG_ERROR("oid 0x%llx type %d is not accepted, expected object type %d", oid, object_type, meta_key.object_type);
+                    SWSS_LOG_ERROR("oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.object_type);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
 
                 if (!object_reference_exists(oid))
                 {
-                    SWSS_LOG_ERROR("object 0x%llx reference don't exists", oid);
+                    SWSS_LOG_ERROR("object 0x%lx reference don't exists", oid);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
@@ -1672,7 +1672,7 @@ sai_status_t meta_generic_validation_remove(
 
                 if (count != 0)
                 {
-                    SWSS_LOG_ERROR("object 0x%llx reference count is %d, can't remove", oid, count);
+                    SWSS_LOG_ERROR("object 0x%lx reference count is %d, can't remove", oid, count);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
@@ -1921,7 +1921,7 @@ sai_status_t meta_generic_validation_set(
 
             if (value.u32range.min > value.u32range.max)
             {
-                META_LOG_ERROR(md, "invalid range %u .. %u", value.u32range.min > value.u32range.max);
+                META_LOG_ERROR(md, "invalid range %u .. %u", value.u32range.min, value.u32range.max);
 
                 return SAI_STATUS_INVALID_PARAMETER;
             }
@@ -1932,7 +1932,7 @@ sai_status_t meta_generic_validation_set(
 
             if (value.s32range.min > value.s32range.max)
             {
-                META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min > value.s32range.max);
+                META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min, value.s32range.max);
 
                 return SAI_STATUS_INVALID_PARAMETER;
             }
@@ -2056,14 +2056,14 @@ sai_status_t meta_generic_validation_set(
 
                 if (object_type == SAI_NULL_OBJECT_ID)
                 {
-                    META_LOG_ERROR(md, "oid 0x%llx is not valid, returned null object id", oid);
+                    META_LOG_ERROR(md, "oid 0x%lx is not valid, returned null object id", oid);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
 
                 if (object_type != meta_key.object_type)
                 {
-                    META_LOG_ERROR(md, "oid 0x%llx type %d is not accepted, expected object type %d", oid, object_type, meta_key.object_type);
+                    META_LOG_ERROR(md, "oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.object_type);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
@@ -2311,14 +2311,14 @@ sai_status_t meta_generic_validation_get(
 
                 if (object_type == SAI_NULL_OBJECT_ID)
                 {
-                    SWSS_LOG_ERROR("oid 0x%llx is not valid, returned null object id", oid);
+                    SWSS_LOG_ERROR("oid 0x%lx is not valid, returned null object id", oid);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
 
                 if (object_type != meta_key.object_type)
                 {
-                    SWSS_LOG_ERROR("oid 0x%llx type %d is not accepted, expected object type %d", oid, object_type, meta_key.object_type);
+                    SWSS_LOG_ERROR("oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.object_type);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
@@ -2392,13 +2392,13 @@ void meta_generic_validation_post_create(
 
                 if (object_type == SAI_NULL_OBJECT_ID)
                 {
-                    SWSS_LOG_ERROR("created oid 0x%llx is not valid object type after create, returned null object id (vendor bug?)", oid);
+                    SWSS_LOG_ERROR("created oid 0x%lx is not valid object type after create, returned null object id (vendor bug?)", oid);
                     break;
                 }
 
                 if (object_type != meta_key.object_type)
                 {
-                    SWSS_LOG_ERROR("created oid 0x%llx type %d is wrond type, expected object type %d (vendor bug?)", oid, object_type, meta_key.object_type);
+                    SWSS_LOG_ERROR("created oid 0x%lx type %d is wrond type, expected object type %d (vendor bug?)", oid, object_type, meta_key.object_type);
                     break;
                 }
 
@@ -2956,13 +2956,13 @@ void meta_generic_validation_post_get_objlist(
 
         if (ot == SAI_NULL_OBJECT_ID)
         {
-            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%llx is not valid, returned null object id", i, oid);
+            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%lx is not valid, returned null object id", i, oid);
             continue;
         }
 
         if (md.allowedobjecttypes.find(ot) == md.allowedobjecttypes.end())
         {
-            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%llx object type %d is not allowed on this attribute", i, oid, ot);
+            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%lx object type %d is not allowed on this attribute", i, oid, ot);
         }
 
         if (!object_reference_exists(oid))
@@ -2971,7 +2971,7 @@ void meta_generic_validation_post_get_objlist(
             // and first list was retrived ok, but second failed with overflow
             // then we may forget to snoop
 
-            META_LOG_INFO(md, "returned get object on list [%u] oid 0x%llx object type %d does not exists in local DB (snoop)", i, oid, ot);
+            META_LOG_INFO(md, "returned get object on list [%u] oid 0x%lx object type %d does not exists in local DB (snoop)", i, oid, ot);
 
             sai_object_meta_key_t key = { .object_type = ot, .key = { .object_id = oid } };
 
@@ -3149,7 +3149,7 @@ void meta_generic_validation_post_get(
 
                 if (value.u32range.min > value.u32range.max)
                 {
-                    META_LOG_ERROR(md, "invalid range %u .. %u", value.u32range.min > value.u32range.max);
+                    META_LOG_ERROR(md, "invalid range %u .. %u", value.u32range.min, value.u32range.max);
                 }
 
                 break;
@@ -3158,7 +3158,7 @@ void meta_generic_validation_post_get(
 
                 if (value.s32range.min > value.s32range.max)
                 {
-                    META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min > value.s32range.max);
+                    META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min, value.s32range.max);
                 }
 
                 break;
@@ -3632,7 +3632,7 @@ sai_status_t meta_sai_validate_neighbor_entry(
 
     if (object_type == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_ERROR("router interface oid 0x%llx is not valid object type, returned null object id", rif);
+        SWSS_LOG_ERROR("router interface oid 0x%lx is not valid object type, returned null object id", rif);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3641,7 +3641,7 @@ sai_status_t meta_sai_validate_neighbor_entry(
 
     if (object_type != expected)
     {
-        SWSS_LOG_ERROR("router interface oid 0x%llx type %d is wrond type, expected object type %d", rif, object_type, expected);
+        SWSS_LOG_ERROR("router interface oid 0x%lx type %d is wrond type, expected object type %d", rif, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4182,7 +4182,7 @@ sai_status_t meta_sai_validate_route_entry(
 
     if (object_type == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%llx is not valid object type, returned null object id", vr);
+        SWSS_LOG_ERROR("virtual router oid 0x%lx is not valid object type, returned null object id", vr);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4191,7 +4191,7 @@ sai_status_t meta_sai_validate_route_entry(
 
     if (object_type != expected)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%llx type %d is wrond type, expected object type %d", vr, object_type, expected);
+        SWSS_LOG_ERROR("virtual router oid 0x%lx type %d is wrond type, expected object type %d", vr, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4613,7 +4613,7 @@ sai_status_t meta_sai_validate_oid(
 
     if (ot == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_ERROR("%s oid 0x%llx is not valid object type, returned null object id", otname, oid);
+        SWSS_LOG_ERROR("%s oid 0x%lx is not valid object type, returned null object id", otname, oid);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4622,7 +4622,7 @@ sai_status_t meta_sai_validate_oid(
 
     if (ot != expected)
     {
-        SWSS_LOG_ERROR("%s oid 0x%llx type %d is wrond type, expected object type %d", otname, oid, ot, expected);
+        SWSS_LOG_ERROR("%s oid 0x%lx type %d is wrond type, expected object type %d", otname, oid, ot, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }

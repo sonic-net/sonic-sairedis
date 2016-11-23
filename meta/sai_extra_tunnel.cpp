@@ -34,7 +34,7 @@ sai_status_t meta_pre_create_tunnel_map(
             const sai_tunnel_map_t* tunnel_map = &tunnel_map_list->list[i];
 
             // TODO validate tunnel map
-            SWSS_LOG_DEBUG("tunnel map pointer: %llx", tunnel_map);
+            SWSS_LOG_DEBUG("tunnel map pointer: %p", tunnel_map);
         }
     }
 

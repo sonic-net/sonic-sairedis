@@ -23,8 +23,8 @@ std::shared_ptr<std::thread> cli_thread;
 volatile bool run_cli = false;
 volatile bool run_user = false;
 
-int cli_server_socket = 0;
-int cli_client_socket = 0;
+volatile int cli_server_socket = 0;
+volatile int cli_client_socket = 0;
 
 bool sendtoclient(const std::string& s)
 {
@@ -262,8 +262,9 @@ void stop_cli()
 
     run_cli = false;
 
+    // close actually don't break accept :/
     close(cli_client_socket);
     close(cli_server_socket);
 
-    cli_thread->join();
+    // cli_thread->join(); // TODO fix
 }

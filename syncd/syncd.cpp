@@ -4,9 +4,36 @@
 
 std::mutex g_mutex;
 
-swss::RedisClient           *g_redisClient = NULL;
+swss::RedisClient *g_redisClient = NULL;
 
 std::map<std::string, std::string> gProfileMap;
+
+// by default we are in APPLY mode
+volatile bool g_asicInitViewMode = false;
+
+struct cmdOptions
+{
+    int countersThreadIntervalInSeconds;
+    bool diagShell;
+    bool useTempView;
+    int startType;
+    bool disableCountersThread;
+    std::string profileMapFile;
+#ifdef SAITHRIFT
+    bool run_rpc_server;
+    std::string portMapFile;
+#endif // SAITHRIFT
+    ~cmdOptions() {}
+};
+
+cmdOptions options;
+
+bool inline isInitViewMode()
+{
+    SWSS_LOG_ENTER();
+
+    return g_asicInitViewMode && options.useTempView;
+}
 
 bool g_veryFirstRun = false;
 
@@ -72,13 +99,15 @@ sai_object_id_t redis_create_virtual_object_id(
 
     sai_object_id_t vid = (((sai_object_id_t)object_type) << 48) | virtual_id;
 
-    SWSS_LOG_DEBUG("created virtual object id %llx for object type %x", vid, object_type);
+    SWSS_LOG_DEBUG("created virtual object id 0x%lx for object type %d", vid, object_type);
 
     return vid;
 }
 
 std::unordered_map<sai_object_id_t, sai_object_id_t> local_rid_to_vid;
 std::unordered_map<sai_object_id_t, sai_object_id_t> local_vid_to_rid;
+
+std::set<sai_object_id_t> floating_vid_set;
 
 void save_rid_and_vid_to_local(
         _In_ sai_object_id_t rid,
@@ -133,24 +162,24 @@ sai_object_id_t translate_rid_to_vid(
 
         sai_deserialize_object_id(str_vid, vid);
 
-        SWSS_LOG_DEBUG("translated RID %llx to VID %llx", rid, vid);
+        SWSS_LOG_DEBUG("translated RID 0x%lx to VID 0x%lx", rid, vid);
 
         return vid;
     }
 
-    SWSS_LOG_INFO("spotted new RID %llx", rid);
+    SWSS_LOG_INFO("spotted new RID 0x%lx", rid);
 
     sai_object_type_t object_type = sai_object_type_query(rid);
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID %llx", rid);
+        SWSS_LOG_ERROR("sai_object_type_query returned NULL type for RID 0x%lx", rid);
         exit_and_notify(EXIT_FAILURE);
     }
 
     vid = redis_create_virtual_object_id(object_type);
 
-    SWSS_LOG_DEBUG("translated RID %llx to VID %llx", rid, vid);
+    SWSS_LOG_DEBUG("translated RID 0x%lx to VID 0x%lx", rid, vid);
 
     str_vid = sai_serialize_object_id(vid);
 
@@ -162,9 +191,8 @@ sai_object_id_t translate_rid_to_vid(
     return vid;
 }
 
-template <typename T>
 void translate_list_rid_to_vid(
-        _In_ T &element)
+        _In_ sai_object_list_t &element)
 {
     SWSS_LOG_ENTER();
 
@@ -192,7 +220,7 @@ void translate_rid_to_vid_list(
 
         if (meta == NULL)
         {
-            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %x", object_type, attr.id);
+            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %d", object_type, attr.id);
             exit_and_notify(EXIT_FAILURE);
         }
 
@@ -221,9 +249,6 @@ void translate_rid_to_vid_list(
             case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
                 translate_list_rid_to_vid(attr.value.aclaction.parameter.objlist);
                 break;
-
-            case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
-                translate_list_rid_to_vid(attr.value.portbreakout.port_list);
 
             default:
                 break;
@@ -257,6 +282,11 @@ sai_object_id_t translate_vid_to_rid(
 
     if (prid == NULL)
     {
+        if (isInitViewMode())
+        {
+            SWSS_LOG_ERROR("can't get RID in init view mode - don't query created objects");
+        }
+
         SWSS_LOG_ERROR("unable to get RID for VID: %s", str_vid.c_str());
         exit_and_notify(EXIT_FAILURE);
     }
@@ -269,9 +299,18 @@ sai_object_id_t translate_vid_to_rid(
 
     local_vid_to_rid[vid] = rid;
 
-    SWSS_LOG_DEBUG("translated VID %llx to RID %llx", vid, rid);
+    SWSS_LOG_DEBUG("translated VID 0x%lx to RID 0x%lx", vid, rid);
 
     return rid;
+}
+
+void translate_list_vid_to_rid(
+        _In_ sai_object_list_t &element)
+{
+    for (uint32_t i = 0; i < element.count; i++)
+    {
+        element.list[i] = translate_vid_to_rid(element.list[i]);
+    }
 }
 
 void translate_vid_to_rid_list(
@@ -292,7 +331,7 @@ void translate_vid_to_rid_list(
 
         if (meta == NULL)
         {
-            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %x", object_type, attr.id);
+            SWSS_LOG_ERROR("unable to get metadata for object type %x, attribute %d", object_type, attr.id);
             exit_and_notify(EXIT_FAILURE);
         }
 
@@ -322,17 +361,156 @@ void translate_vid_to_rid_list(
                 translate_list_vid_to_rid(attr.value.aclaction.parameter.objlist);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
-                translate_list_vid_to_rid(attr.value.portbreakout.port_list);
-
             default:
                 break;
         }
     }
 }
 
+void snoop_get_attr(
+        _In_ sai_object_type_t  object_type,
+        _In_ const std::string &str_object_id,
+        _In_ const std::string &attr_id,
+        _In_ const std::string &attr_value)
+{
+    SWSS_LOG_ENTER();
+
+    std::string str_object_type = sai_serialize_object_type(object_type);
+
+    std::string key = TEMP_PREFIX + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
+
+    SWSS_LOG_DEBUG("%s", key.c_str());
+
+    g_redisClient->hset(key, attr_id, attr_value);
+}
+
+void snoop_get_oid(
+        _In_ sai_object_id_t vid)
+{
+    SWSS_LOG_ENTER();
+
+    if (vid == SAI_NULL_OBJECT_ID)
+    {
+        return;
+    }
+
+    // this is redis version of sai_object_type_query
+    sai_object_type_t object_type = getObjectTypeFromVid(vid);
+
+    std::string str_vid = sai_serialize_object_id(vid);
+
+    snoop_get_attr(object_type, str_vid, "NULL", "NULL");
+}
+
+void snoop_get_oid_list(
+        _In_ const sai_object_list_t &list)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t i = 0; i < list.count; i++)
+    {
+        snoop_get_oid(list.list[i]);
+    }
+}
+
+void snoop_get_attr_value(
+        _In_ const std::string &str_object_id,
+        _In_ const sai_attr_metadata_t *meta,
+        _In_ const sai_attribute_t &attr)
+{
+    SWSS_LOG_ENTER();
+
+    std::string value = sai_serialize_attr_value(*meta, attr);
+
+    SWSS_LOG_NOTICE("%s:%s", meta->attridname, value.c_str());
+
+    snoop_get_attr(meta->objecttype, str_object_id, meta->attridname, value);
+}
+
+void snoop_get_response(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &str_object_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    if (object_type == SAI_OBJECT_TYPE_VLAN)
+    {
+        // vlan (including vlan 1) will need to be put into TEMP view
+        // this should also be valid for all objects that were queried
+        // only for readonly attributes
+        snoop_get_attr(object_type, str_object_id, "NULL", "NULL");
+    }
+
+    for (uint32_t idx = 0; idx < attr_count; ++idx)
+    {
+        const sai_attribute_t &attr = attr_list[idx];
+
+        auto meta = get_attribute_metadata(object_type, attr.id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_ERROR("unable to get metadata for object type %d, attribute %d", object_type, attr.id);
+            exit_and_notify(EXIT_FAILURE);
+        }
+
+        // we should snoop oid values even if they are readonly
+        // we just note in temp view that those objects exist on switch
+
+        switch (meta->serializationtype)
+        {
+            case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+                snoop_get_oid(attr.value.oid);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+                snoop_get_oid_list(attr.value.objlist);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+                snoop_get_oid(attr.value.aclfield.data.oid);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+                snoop_get_oid_list(attr.value.aclfield.data.objlist);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+                snoop_get_oid(attr.value.aclaction.parameter.oid);
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+                snoop_get_oid_list(attr.value.aclaction.parameter.objlist);
+                break;
+
+            default:
+                break;
+        }
+
+        if (HAS_FLAG_READ_ONLY(meta->flags))
+        {
+            // if value is read only, we skip it, since after
+            // syncd restart we won't be able to set/create it anyway
+            continue;
+        }
+
+        if (meta->objecttype == SAI_OBJECT_TYPE_PORT &&
+                meta->attrid == SAI_PORT_ATTR_HW_LANE_LIST)
+        {
+            // skip port lanes for now since we don't create ports
+
+            SWSS_LOG_INFO("skipping %s for %s", meta->attridname, str_object_id.c_str());
+            continue;
+        }
+
+        snoop_get_attr_value(str_object_id, meta, attr);
+    }
+}
+
 void internal_syncd_get_send(
         _In_ sai_object_type_t object_type,
+        _In_ const std::string &str_object_id,
         _In_ sai_status_t status,
         _In_ uint32_t attr_count,
         _In_ sai_attribute_t *attr_list)
@@ -351,6 +529,13 @@ void internal_syncd_get_send(
                 attr_count,
                 attr_list,
                 false);
+
+        if (isInitViewMode())
+        {
+            // all oid values here are VID's
+
+            snoop_get_response(object_type, str_object_id, attr_count, attr_list);
+        }
     }
     else if (status == SAI_STATUS_BUFFER_OVERFLOW)
     {
@@ -769,9 +954,43 @@ void sendResponse(sai_status_t status)
     getResponse->set(str_status, entry, "notify");
 }
 
+void clearTempView()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("clearing current TEMP VIEW");
+
+    SWSS_LOG_TIMER("clear temp view");
+
+    std::string pattern = TEMP_PREFIX + (ASIC_STATE_TABLE + std::string(":*"));
+
+    // TODO optimize with lua script (this takes ~0.2s now)
+
+    for (const auto &key: g_redisClient->keys(pattern))
+    {
+        g_redisClient->del(key);
+    }
+}
+
+void syncdApplyView()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("apply view is not implemented yet");
+}
+
 sai_status_t notifySyncd(const std::string& op)
 {
     SWSS_LOG_ENTER();
+
+    if (!options.useTempView)
+    {
+        SWSS_LOG_NOTICE("received %s, ignored since TEMP VIEW is not used, returning success", op.c_str());
+
+        sendResponse(SAI_STATUS_SUCCESS);
+
+        return SAI_STATUS_SUCCESS;
+    }
 
     if (g_veryFirstRun)
     {
@@ -781,33 +1000,185 @@ sai_status_t notifySyncd(const std::string& op)
         // applied on device, since it will make it easier to switch
         // to new asic state later on when we restart orch agent
 
-        if (op == SYNCD_APPLY_VIEW)
+        if (op == SYNCD_INIT_VIEW)
+        {
+            // on first start we just do "apply" directly on asic so
+            // we set init to false instead of true
+            g_asicInitViewMode = false;
+
+            floating_vid_set.clear();
+
+            clearTempView();
+        }
+        else if (op == SYNCD_APPLY_VIEW)
         {
             g_veryFirstRun = false;
 
+            g_asicInitViewMode = false;
+
             SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", op.c_str());
+        }
+        else
+        {
+            SWSS_LOG_ERROR("unknown operation: %s", op.c_str());
+            exit_and_notify(EXIT_FAILURE);
         }
 
         sendResponse(SAI_STATUS_SUCCESS);
+
         return SAI_STATUS_SUCCESS;
     }
 
     if (op == SYNCD_INIT_VIEW)
     {
-        SWSS_LOG_WARN("op = %s - not implemented, but sending success", op.c_str());
+        if (g_asicInitViewMode)
+        {
+            SWSS_LOG_WARN("syncd is already in asic INIT VIEW mode, but received init again, orchagent restarted before apply?");
+        }
+
+        g_asicInitViewMode = true;
+
+        floating_vid_set.clear();
+
+        clearTempView();
+
+        SWSS_LOG_WARN("syncd switched to INIT VIEW mode, all op will be saved to TEMP view");
+
         sendResponse(SAI_STATUS_SUCCESS);
     }
     else if (op == SYNCD_APPLY_VIEW)
     {
-        SWSS_LOG_WARN("op = %s - not implemented, but sending success", op.c_str());
+        g_asicInitViewMode = false;
+
+        SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
+
+        syncdApplyView();
+
         sendResponse(SAI_STATUS_SUCCESS);
     }
     else
     {
         SWSS_LOG_ERROR("unknown operation: %s", op.c_str());
+
         sendResponse(SAI_STATUS_NOT_IMPLEMENTED);
+
         exit_and_notify(EXIT_FAILURE);
     }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t processEventInInitViewMode(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    // since attributes are not checked, it may happen that user will send
+    // some invalid VID in object id/list in attribute, metadata should handle
+    // that, but if that happen, this id will be treated as "new" object instead
+    // of existing one
+
+    if (api == SAI_COMMON_API_CREATE)
+    {
+        switch (object_type)
+        {
+            case SAI_OBJECT_TYPE_FDB:
+            case SAI_OBJECT_TYPE_NEIGHBOR:
+            case SAI_OBJECT_TYPE_ROUTE:
+            case SAI_OBJECT_TYPE_TRAP:
+            case SAI_OBJECT_TYPE_SWITCH:
+            case SAI_OBJECT_TYPE_VLAN:
+
+                // we assume create of those non object id object types will succeed
+
+                break;
+
+            default:
+
+                {
+                    sai_object_id_t object_id;
+                    sai_deserialize_object_id(str_object_id, object_id);
+
+                    // object ID here is actual VID returned from redis during creation
+                    // this is floating VID in init view mode
+
+                    SWSS_LOG_DEBUG("generic create (init view) for %s, floating VID: %s",
+                                   sai_serialize_object_type(object_type).c_str(),
+                                   sai_serialize_object_id(object_id).c_str());
+
+                    // floating vid set will contain all created objects
+                    // from TEMP asic view which don't have real id assigned
+
+                    floating_vid_set.insert(object_id);
+                }
+
+                break;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (api == SAI_COMMON_API_GET)
+    {
+        sai_status_t status;
+
+        switch (object_type)
+        {
+            case SAI_OBJECT_TYPE_FDB:
+            case SAI_OBJECT_TYPE_NEIGHBOR:
+            case SAI_OBJECT_TYPE_ROUTE:
+            case SAI_OBJECT_TYPE_TRAP:
+
+                SWSS_LOG_ERROR("get is not supported on %s in init view mode", sai_serialize_object_type(object_type).c_str());
+                exit_and_notify(EXIT_FAILURE);
+                break;
+
+            case SAI_OBJECT_TYPE_SWITCH:
+                status = sai_switch_api->get_switch_attribute(attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_VLAN:
+
+                {
+                    sai_vlan_id_t vlan_id;
+                    sai_deserialize_vlan_id(str_object_id, vlan_id);
+
+                    status = sai_vlan_api->get_vlan_attribute(vlan_id, attr_count, attr_list);
+                }
+
+                break;
+
+            default:
+
+                {
+                    sai_object_id_t object_id;
+                    sai_deserialize_object_id(str_object_id, object_id);
+
+                    SWSS_LOG_DEBUG("generic get (init view) for object type %s", sai_serialize_object_type(object_type).c_str());
+
+                    // object must exists, we can't call GET on created object in init view mode
+
+                    sai_object_id_t rid = translate_vid_to_rid(object_id);
+
+                    get_attribute_fn get = common_get_attribute[object_type];
+
+                    status = get(rid, attr_count, attr_list);
+                }
+
+                break;
+        }
+
+        internal_syncd_get_send(object_type, str_object_id, status, attr_count, attr_list);
+
+        return status;
+    }
+
+    // we assume that SET and REMOVE succeeded, no real asic operations
+    // this is only DB operation in TEMP asic view
 
     return SAI_STATUS_SUCCESS;
 }
@@ -819,7 +1190,16 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
     SWSS_LOG_ENTER();
 
     swss::KeyOpFieldsValuesTuple kco;
-    consumer.pop(kco);
+
+    if (isInitViewMode())
+    {
+        // in init mode we put all data to TEMP view and we snoop
+        consumer.pop(kco, TEMP_PREFIX);
+    }
+    else
+    {
+        consumer.pop(kco);
+    }
 
     const std::string &key = kfvKey(kco);
     const std::string &op = kfvOp(kco);
@@ -843,8 +1223,7 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
         return notifySyncd(key);
     else
     {
-        if (op != "delget")
-            SWSS_LOG_ERROR("api %s is not implemented", op.c_str());
+        SWSS_LOG_ERROR("api %s is not implemented", op.c_str());
 
         return SAI_STATUS_NOT_SUPPORTED;
     }
@@ -864,11 +1243,19 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
 
     SaiAttributeList list(object_type, values, false);
 
-    if (api != SAI_COMMON_API_GET)
-        translate_vid_to_rid_list(object_type, list.get_attr_count(), list.get_attr_list());
-
     sai_attribute_t *attr_list = list.get_attr_list();
     uint32_t attr_count = list.get_attr_count();
+
+    if (isInitViewMode())
+    {
+        return processEventInInitViewMode(object_type, str_object_id, api, attr_count, attr_list);
+    }
+
+    if (api != SAI_COMMON_API_GET)
+    {
+        // can't be called on init view, since some VID's may have no RID yet
+        translate_vid_to_rid_list(object_type, attr_count, attr_list);
+    }
 
     sai_status_t status;
     switch (object_type)
@@ -904,7 +1291,7 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
 
     if (api == SAI_COMMON_API_GET)
     {
-        internal_syncd_get_send(object_type, status, attr_count, attr_list);
+        internal_syncd_get_send(object_type, str_object_id, status, attr_count, attr_list);
     }
     else if (status != SAI_STATUS_SUCCESS)
     {
@@ -961,21 +1348,6 @@ void updateLogLevel()
     }
 }
 
-struct cmdOptions
-{
-    int countersThreadIntervalInSeconds;
-    bool diagShell;
-    bool useTempView;
-    int startType;
-    bool disableCountersThread;
-    std::string profileMapFile;
-#ifdef SAITHRIFT
-    bool run_rpc_server;
-    std::string portMapFile;
-#endif // SAITHRIFT
-    ~cmdOptions() {}
-};
-
 void printUsage()
 {
     std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u]" << std::endl;
@@ -1001,11 +1373,9 @@ void printUsage()
     std::cout << "        Print out this message" << std::endl;
 }
 
-cmdOptions handleCmdLine(int argc, char **argv)
+void handleCmdLine(int argc, char **argv)
 {
     SWSS_LOG_ENTER();
-
-    cmdOptions options;
 
     const int defaultCountersThreadIntervalInSeconds = 1;
 
@@ -1131,8 +1501,6 @@ cmdOptions handleCmdLine(int argc, char **argv)
                 exit(EXIT_FAILURE);
         }
     }
-
-    return options;
 }
 
 void handleProfileMap(const std::string& profileMapFile)
@@ -1234,7 +1602,7 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
 
     restartQuery.pop(op, data, values);
 
-    SWSS_LOG_DEBUG("op = %d", op.c_str());
+    SWSS_LOG_DEBUG("op = %s", op.c_str());
 
     if (op == "COLD")
     {
@@ -1281,7 +1649,7 @@ int main(int argc, char **argv)
 
     meta_init_db();
 
-    auto options = handleCmdLine(argc, argv);
+    handleCmdLine(argc, argv);
 
     handleProfileMap(options.profileMapFile);
 #ifdef SAITHRIFT

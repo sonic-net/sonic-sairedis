@@ -384,10 +384,6 @@ void translate_local_to_redis(
                 translate_local_to_redis(attr.value.aclaction.parameter.objlist);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
-                translate_local_to_redis(attr.value.portbreakout.port_list);
-                break;
-
             default:
                 break;
         }
@@ -489,10 +485,6 @@ void match_list_lengths(
 
             case SAI_SERIALIZATION_TYPE_VLAN_LIST:
                 CHECK_LIST(value.vlanlist);
-                break;
-
-            case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
-                CHECK_LIST(value.portbreakout.port_list);
                 break;
 
             case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
@@ -613,10 +605,6 @@ void match_redis_with_rec(
 
             case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
                 match_redis_with_rec(get_attr.value.aclaction.parameter.objlist, attr.value.aclaction.parameter.objlist);
-                break;
-
-            case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
-                match_redis_with_rec(get_attr.value.portbreakout.port_list, attr.value.portbreakout.port_list);
                 break;
 
             default:
@@ -967,7 +955,7 @@ void performSleep(const std::string& line)
     {
         useconds *= 1000; // 1ms resolution is enough for sleep
 
-        SWSS_LOG_NOTICE("usleep(%lu)", useconds);
+        SWSS_LOG_NOTICE("usleep(%u)", useconds);
         usleep(useconds);
     }
 }

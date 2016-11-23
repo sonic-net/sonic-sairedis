@@ -23,6 +23,7 @@ struct CmdOptions
     bool disableColors;
     bool skipAttributes;
     bool followReferences;
+    bool dumpTempView;
 };
 
 CmdOptions g_cmdOptions;
@@ -32,11 +33,13 @@ void printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: saidump [-C] [-s] [-h]" << std::endl;
+    std::cout << "Usage: saidump [-C] [-s] [-h] [-t]" << std::endl;
     std::cout << "    -C --disableColors" << std::endl;
     std::cout << "        Disable colors" << std::endl;
     std::cout << "    -s --shortNames:" << std::endl;
     std::cout << "        Use short names" << std::endl;
+    std::cout << "    -t --tempView:" << std::endl;
+    std::cout << "        Dump temp view" << std::endl;
     std::cout << "    -h --help:" << std::endl;
     std::cout << "        Print out this message" << std::endl;
 }
@@ -49,8 +52,9 @@ CmdOptions handleCmdLine(int argc, char **argv)
 
     options.shortNames = false;
     options.disableColors = false;
+    options.dumpTempView = false;
 
-    const char* const optstring = "Csh";
+    const char* const optstring = "Csht";
 
     while(true)
     {
@@ -58,6 +62,7 @@ CmdOptions handleCmdLine(int argc, char **argv)
         {
             { "disableColors",  no_argument,       0, 'C' },
             { "shortNames",     no_argument,       0, 's' },
+            { "tempView",       no_argument,       0, 't' },
             { "help",           no_argument,       0, 'h' },
             { 0,                0,                 0,  0  }
         };
@@ -73,6 +78,11 @@ CmdOptions handleCmdLine(int argc, char **argv)
 
         switch (c)
         {
+            case 't':
+                SWSS_LOG_NOTICE("Dump temp vie");
+                options.dumpTempView = true;
+                break;
+
             case 'C':
                 SWSS_LOG_NOTICE("Disable colors");
                 options.disableColors = true;
@@ -137,7 +147,7 @@ const TableMap* get_table_map(sai_object_id_t object_id)
 
     if (it == g_oid_map.end())
     {
-        SWSS_LOG_ERROR("unable to find oid %llx in oid map", object_id);
+        SWSS_LOG_ERROR("unable to find oid 0x%lx in oid map", object_id);
         throw;
     }
 
@@ -183,7 +193,14 @@ int main(int argc, char ** argv)
 
     swss::DBConnector db(ASIC_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
 
-    swss::Table t(&db, ASIC_STATE_TABLE);
+    std::string table = ASIC_STATE_TABLE;
+
+    if (g_cmdOptions.dumpTempView)
+    {
+        table = TEMP_PREFIX + table;
+    }
+
+    swss::Table t(&db, table);
 
     TableDump dump;
 

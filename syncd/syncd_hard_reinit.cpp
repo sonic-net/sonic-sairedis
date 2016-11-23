@@ -42,7 +42,7 @@ sai_object_type_t getObjectTypeFromVid(sai_object_id_t sai_object_id)
     if (objectType >= SAI_OBJECT_TYPE_MAX ||
             objectType == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("invalid object type: %x on object id: %llx", objectType, sai_object_id);
+        SWSS_LOG_ERROR("invalid object type: %x on object id: 0x%lx", objectType, sai_object_id);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -133,7 +133,7 @@ void checkAllIds()
 
         if (it == g_vidToRidMap.end())
         {
-            SWSS_LOG_ERROR("failed to find vid %llx in previous map", kv.first);
+            SWSS_LOG_ERROR("failed to find vid 0x%lx in previous map", kv.first);
 
             exit_and_notify(EXIT_FAILURE);
         }
@@ -151,7 +151,9 @@ void checkAllIds()
         {
             sai_object_type_t objectType = getObjectTypeFromVid(kv.first);
 
-            SWSS_LOG_ERROR("vid not translated: %llx, object type: %llx", kv.first, objectType);
+            SWSS_LOG_ERROR("vid not translated: %s, object type: %s",
+                    sai_serialize_object_id(kv.first).c_str(),
+                    sai_serialize_object_type(objectType).c_str());
         }
 
         exit_and_notify(EXIT_FAILURE);
@@ -200,7 +202,7 @@ void saiRemoveDefaultVlanMembers()
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Failed to remove vlan member 0x%llx from vlan %d", vm, DEFAULT_VLAN_NUMBER);
+            SWSS_LOG_ERROR("Failed to remove vlan member 0x%lx from vlan %d", vm, DEFAULT_VLAN_NUMBER);
 
             exit_and_notify(EXIT_FAILURE);
         }
@@ -284,7 +286,7 @@ bool shouldSkipCreateion(
 
     if (it == g_vidToRidMap.end())
     {
-        SWSS_LOG_ERROR("failed to find VID %llx in VIDTORID map", vid);
+        SWSS_LOG_ERROR("failed to find VID 0x%lx in VIDTORID map", vid);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -351,7 +353,7 @@ void trapGroupWorkaround(
         exit_and_notify(EXIT_FAILURE);
     }
 
-    SWSS_LOG_DEBUG("created TRAP_GROUP, processed VID %llx to RID %llx", objectType, vid, rid);
+    SWSS_LOG_DEBUG("created TRAP_GROUP (%d), processed VID 0x%lx to RID 0x%lx", objectType, vid, rid);
 }
 
 void listFailedAttributes(
@@ -395,7 +397,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
         // this object was already processed,
         // just return real object id
 
-        SWSS_LOG_DEBUG("processed VID %llx to RID %llx", vid, it->second);
+        SWSS_LOG_DEBUG("processed VID 0x%lx to RID 0x%lx", vid, it->second);
 
         return it->second;
     }
@@ -430,35 +432,35 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
     {
         if (shouldSkipCreateion(vid, rid, createObject, [](sai_object_id_t id) { return id == redisGetDefaultVirtualRouterId(); }))
         {
-            SWSS_LOG_INFO("default virtual router will not be created, processed VID %llx to RID %llx", vid, rid);
+            SWSS_LOG_INFO("default virtual router will not be created, processed VID 0x%lx to RID 0x%lx", vid, rid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_QUEUE)
     {
         if (shouldSkipCreateion(vid, rid, createObject, [&](sai_object_id_t queueId) { return g_defaultQueuesRids.find(queueId) != g_defaultQueuesRids.end(); }))
         {
-            SWSS_LOG_DEBUG("default queue will not be created, processed VID %llx to RID %llx", vid, rid);
+            SWSS_LOG_DEBUG("default queue will not be created, processed VID 0x%lx to RID 0x%lx", vid, rid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_PRIORITY_GROUP)
     {
         if (shouldSkipCreateion(vid, rid, createObject, [&](sai_object_id_t pgId) { return g_defaultPriorityGroupsRids.find(pgId) != g_defaultPriorityGroupsRids.end(); }))
         {
-            SWSS_LOG_DEBUG("default priority group will not be created, processed VID %llx to RID %llx", vid, rid);
+            SWSS_LOG_DEBUG("default priority group will not be created, processed VID 0x%lx to RID 0x%lx", vid, rid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_SCHEDULER_GROUP)
     {
         if (shouldSkipCreateion(vid, rid, createObject, [&](sai_object_id_t sgId) { return g_defaultSchedulerGroupsRids.find(sgId) != g_defaultSchedulerGroupsRids.end(); }))
         {
-            SWSS_LOG_DEBUG("default scheduler group will not be created, processed VID %llx to RID %llx", vid, rid);
+            SWSS_LOG_DEBUG("default scheduler group will not be created, processed VID 0x%lx to RID 0x%lx", vid, rid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_TRAP_GROUP)
     {
         if (shouldSkipCreateion(vid, rid, createObject, [](sai_object_id_t id) { return id == redisGetDefaultTrapGroupId(); }))
         {
-            SWSS_LOG_INFO("default trap group will not be created, processed VID %llx to RID %llx", vid, rid);
+            SWSS_LOG_INFO("default trap group will not be created, processed VID 0x%lx to RID 0x%lx", vid, rid);
         }
 
         trapGroupWorkaround(vid, rid, createObject, attrCount, attrList);
@@ -467,7 +469,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
     {
         if (shouldSkipCreateion(vid, rid, createObject, [](sai_object_id_t) { return true; }))
         {
-            SWSS_LOG_INFO("port will not be created, processed VID %llx to RID %llx", vid, rid);
+            SWSS_LOG_INFO("port will not be created, processed VID 0x%lx to RID 0x%lx", vid, rid);
         }
     }
 
@@ -493,11 +495,11 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
             exit_and_notify(EXIT_FAILURE);
         }
 
-        SWSS_LOG_DEBUG("created object of type %x, processed VID %llx to RID %llx", objectType, vid, rid);
+        SWSS_LOG_DEBUG("created object of type %x, processed VID 0x%lx to RID 0x%lx", objectType, vid, rid);
     }
     else
     {
-        SWSS_LOG_DEBUG("setting attributes on object of type %x, processed VID %llx to RID %llx", objectType, vid, rid);
+        SWSS_LOG_DEBUG("setting attributes on object of type %x, processed VID 0x%lx to RID 0x%lx", objectType, vid, rid);
 
         set_attribute_fn set = common_set_attribute[objectType];
 
@@ -537,7 +539,7 @@ void processAttributesForOids(sai_object_type_t objectType, std::shared_ptr<SaiA
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("processing list for object type %llx", objectType);
+    SWSS_LOG_DEBUG("processing list for object type %d", objectType);
 
     sai_attribute_t *attrList = list->get_attr_list();
 
@@ -588,11 +590,6 @@ void processAttributesForOids(sai_object_type_t objectType, std::shared_ptr<SaiA
             case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
                 count = attr.value.aclaction.parameter.objlist.count;
                 objectIdList = attr.value.aclaction.parameter.objlist.list;
-                break;
-
-            case SAI_SERIALIZATION_TYPE_PORT_BREAKOUT:
-                count = attr.value.portbreakout.port_list.count;
-                objectIdList = attr.value.portbreakout.port_list.list;
                 break;
 
             default:
@@ -659,7 +656,7 @@ void processSwitch()
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("failed to set_switch_attribute %llx: %d", attr->id, status);
+                SWSS_LOG_ERROR("failed to set_switch_attribute %d: %d", attr->id, status);
 
                 exit_and_notify(EXIT_FAILURE);
             }
@@ -717,7 +714,7 @@ void processVlans()
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("failed to set_vlan_attribute %llx: %d", attr->id, status);
+                SWSS_LOG_ERROR("failed to set_vlan_attribute %d: %d", attr->id, status);
 
                 exit_and_notify(EXIT_FAILURE);
             }

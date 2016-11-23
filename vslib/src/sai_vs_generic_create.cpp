@@ -30,7 +30,7 @@ sai_object_id_t vs_create_real_object_id(
 
     sai_object_id_t object_id = (((sai_object_id_t)object_type) << 32) | real_id;
 
-    SWSS_LOG_DEBUG("created RID %llx", object_id);
+    SWSS_LOG_DEBUG("created RID 0x%lx", object_id);
 
     return object_id;
 }
