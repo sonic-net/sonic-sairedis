@@ -179,7 +179,7 @@ const sai_attr_metadata_t sai_mirror_attr_metadata[] = {
         // TODO extra logic will be required to check if vlan exists
     },
 
-    /*{
+    {
         .objecttype             = SAI_OBJECT_TYPE_MIRROR,
         .attrid                 = SAI_MIRROR_SESSION_ATTR_VLAN_CFI,
         .attridname             = "SAI_MIRROR_SESSION_ATTR_VLAN_CFI",
@@ -196,7 +196,7 @@ const sai_attr_metadata_t sai_mirror_attr_metadata[] = {
                                         COND_ENUM ( SAI_MIRROR_SESSION_ATTR_TYPE, SAI_MIRROR_TYPE_ENHANCED_REMOTE ),
                                         COND_ENUM ( SAI_MIRROR_SESSION_ATTR_TYPE, SAI_MIRROR_TYPE_REMOTE),
                                   },
-    },*/
+    },
 
     // TODO valid only for ERSPAN
 

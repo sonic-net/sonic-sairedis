@@ -47,6 +47,7 @@ void initialize_common_api_pointers()
     common_create[SAI_OBJECT_TYPE_ACL_ENTRY] = (sai_acl_api) ? sai_acl_api->create_acl_entry : NULL;
     common_create[SAI_OBJECT_TYPE_ACL_COUNTER] = (sai_acl_api) ? sai_acl_api->create_acl_counter : NULL;
     common_create[SAI_OBJECT_TYPE_HOST_INTERFACE] = (sai_hostif_api) ? sai_hostif_api->create_hostif : NULL;
+    common_create[SAI_OBJECT_TYPE_MIRROR] = (sai_mirror_api) ? sai_mirror_api->create_mirror_session : NULL;
     common_create[SAI_OBJECT_TYPE_TRAP_GROUP] = (sai_hostif_api) ? sai_hostif_api->create_hostif_trap_group : NULL;
     common_create[SAI_OBJECT_TYPE_ACL_TABLE_GROUP] = NULL;
     common_create[SAI_OBJECT_TYPE_POLICER] = (sai_policer_api) ? sai_policer_api->create_policer : NULL;
@@ -81,6 +82,7 @@ void initialize_common_api_pointers()
     common_remove[SAI_OBJECT_TYPE_ACL_ENTRY] = (sai_acl_api) ? sai_acl_api->delete_acl_entry : NULL;
     common_remove[SAI_OBJECT_TYPE_ACL_COUNTER] = (sai_acl_api) ? sai_acl_api->delete_acl_counter : NULL;
     common_remove[SAI_OBJECT_TYPE_HOST_INTERFACE] = (sai_hostif_api) ? sai_hostif_api->remove_hostif : NULL;
+    common_remove[SAI_OBJECT_TYPE_MIRROR] = (sai_mirror_api) ? sai_mirror_api->remove_mirror_session : NULL;
     common_remove[SAI_OBJECT_TYPE_TRAP_GROUP] = (sai_hostif_api) ? sai_hostif_api->remove_hostif_trap_group : NULL;
     common_remove[SAI_OBJECT_TYPE_ACL_TABLE_GROUP] = NULL;
     common_remove[SAI_OBJECT_TYPE_POLICER] = (sai_policer_api) ? sai_policer_api->remove_policer : NULL;
@@ -115,6 +117,7 @@ void initialize_common_api_pointers()
     common_set_attribute[SAI_OBJECT_TYPE_ACL_ENTRY] = (sai_acl_api) ? sai_acl_api->set_acl_entry_attribute : NULL;
     common_set_attribute[SAI_OBJECT_TYPE_ACL_COUNTER] = (sai_acl_api) ? sai_acl_api->set_acl_counter_attribute : NULL;
     common_set_attribute[SAI_OBJECT_TYPE_HOST_INTERFACE] = (sai_hostif_api) ? sai_hostif_api->set_hostif_attribute : NULL;
+    common_set_attribute[SAI_OBJECT_TYPE_MIRROR] = (sai_mirror_api) ? sai_mirror_api->set_mirror_session_attribute : NULL;
     common_set_attribute[SAI_OBJECT_TYPE_TRAP_GROUP] = (sai_hostif_api) ? sai_hostif_api->set_trap_group_attribute : NULL;
     common_set_attribute[SAI_OBJECT_TYPE_ACL_TABLE_GROUP] = NULL;
     common_set_attribute[SAI_OBJECT_TYPE_POLICER] = (sai_policer_api) ? sai_policer_api->set_policer_attribute : NULL;
@@ -149,6 +152,7 @@ void initialize_common_api_pointers()
     common_get_attribute[SAI_OBJECT_TYPE_ACL_ENTRY] = (sai_acl_api) ? sai_acl_api->get_acl_entry_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_ACL_COUNTER] = (sai_acl_api) ? sai_acl_api->get_acl_counter_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_HOST_INTERFACE] = (sai_hostif_api) ? sai_hostif_api->get_hostif_attribute : NULL;
+    common_get_attribute[SAI_OBJECT_TYPE_MIRROR] = (sai_mirror_api) ? sai_mirror_api->get_mirror_session_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_TRAP_GROUP] = (sai_hostif_api) ? sai_hostif_api->get_trap_group_attribute : NULL;
     common_get_attribute[SAI_OBJECT_TYPE_ACL_TABLE_GROUP] = NULL;
     common_get_attribute[SAI_OBJECT_TYPE_POLICER] = (sai_policer_api) ? sai_policer_api->get_policer_attribute : NULL;
