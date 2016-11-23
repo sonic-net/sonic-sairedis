@@ -20,6 +20,12 @@ if SAICAVM
 SAIFLAGS = -DCAVMSAI
 endif
 
+if SAIVS
+SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
+else
+SAILIB=-lsai
+endif
+
 syncd_SOURCES = \
 				syncd.cpp \
 				syncd_cli.cpp \
@@ -30,7 +36,7 @@ syncd_SOURCES = \
 				syncd_counters.cpp
 
 syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
-syncd_LDADD = -lhiredis -lswsscommon -lsai -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata
+syncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata
 
 if SAITHRIFT
 SAI_RPC_INCLUDE_DIR = ../libsaiserver/include

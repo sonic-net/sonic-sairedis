@@ -64,8 +64,8 @@ sai_status_t internal_vs_generic_get(
 
         if (ait == attrHash.end())
         {
-            SWSS_LOG_ERROR("Get failed, attribute not found, object type: %d: id: %s, attr_id: %s",
-                    object_type,
+            SWSS_LOG_ERROR("Get failed, attribute not found, object type: %s: id: %s, attr_id: %s",
+                    sai_serialize_object_type(object_type).c_str(),
                     serialized_object_id.c_str(),
                     str_attr_id.c_str());
 

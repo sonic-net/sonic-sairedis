@@ -250,47 +250,6 @@ sai_status_t create_vlan_members_for_default_vlan(
     return SAI_STATUS_SUCCESS;
 }
 
-/*
-sai_status_t create_vlan_members_list_for_default_vlan(std::vector<sai_object_id_t>& vlan_member_list)
-{
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_INFO("create vlan members list for default vlan");
-
-    // TODO this list must be modified when we add/remove vlan member
-
-    sai_attribute_t attr;
-
-    uint32_t members_count = (uint32_t)vlan_member_list.size();
-
-    attr.id = SAI_VLAN_ATTR_MEMBER_LIST;
-    attr.value.objlist.count = members_count;
-    attr.value.objlist.list = vlan_member_list.data();
-
-    return vs_generic_set_vlan(DEFAULT_VLAN_NUMBER, &attr);
-}
-*/
-/*
-sai_status_t creae_vlan_member_list(std::vector<sai_object_id_t>& vlan_member_list)
-{
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_INFO("create vlan member list");
-
-    // TODO this list must be updated every time vlan member is created/removed
-
-    sai_attribute_t attr;
-
-    uint32_t vlan_member_list_count = (uint32_t)vlan_member_list.size();
-
-    attr.id = SAI_VLAN_ATTR_MEMBER_LIST;
-    attr.value.objlist.count = vlan_member_list_count;
-    attr.value.objlist.list = vlan_member_list.data();
-
-    return vs_generic_set_vlan(DEFAULT_VLAN_NUMBER, &attr);
-}
-*/
-
 sai_status_t create_default_trap_group()
 {
     SWSS_LOG_ENTER();
@@ -310,7 +269,8 @@ sai_status_t create_default_trap_group()
     return vs_generic_set_switch(&attr);
 }
 
-sai_status_t create_qos_queues(std::vector<sai_object_id_t>& port_list)
+sai_status_t create_qos_queues(
+        _In_ const std::vector<sai_object_id_t>& port_list)
 {
     SWSS_LOG_ENTER();
 
@@ -439,6 +399,232 @@ sai_status_t create_hostif_traps()
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t create_scheduler_group_tree(
+        _In_ const std::vector<sai_object_id_t>& sgs,
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attrq;
+
+    std::vector<sai_object_id_t> queues;
+
+    // in this implementation we have 20 queues per port
+    // (10 in and 10 out), which will be assigned to schedulers
+    uint32_t queues_count = 20;
+
+    queues.resize(queues_count);
+
+    attrq.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+    attrq.value.objlist.count = queues_count;
+    attrq.value.objlist.list = queues.data();
+
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attrq));
+
+    // schedulers groups: 0 1 2 3 4 5 6 7 8 9 a b c
+
+    // tree index
+    // 0 = 1 2
+    // 1 = 3 4 5 6 7 8 9 a
+    // 2 = b c (bug on brcm)
+
+    // 3..c - have both QUEUES, each one 2
+
+    // sg 0 (2 groups)
+    {
+        sai_object_id_t sg_0 = sgs.at(0);
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT;
+        attr.value.u32 = 2;
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, sg_0, &attr));
+
+        uint32_t list_count = 2;
+        std::vector<sai_object_id_t> list;
+
+        list.push_back(sgs.at(1));
+        list.push_back(sgs.at(2));
+
+        attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_LIST;
+        attr.value.objlist.count = list_count;
+        attr.value.objlist.list = list.data();
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, sg_0, &attr));
+    }
+
+    uint32_t queue_index = 0;
+
+    // sg 1 (8 groups)
+    {
+        sai_object_id_t sg_1 = sgs.at(1);
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT;
+        attr.value.u32 = 8;
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, sg_1, &attr));
+
+        uint32_t list_count = 8;
+        std::vector<sai_object_id_t> list;
+
+        list.push_back(sgs.at(3));
+        list.push_back(sgs.at(4));
+        list.push_back(sgs.at(5));
+        list.push_back(sgs.at(6));
+        list.push_back(sgs.at(7));
+        list.push_back(sgs.at(8));
+        list.push_back(sgs.at(9));
+        list.push_back(sgs.at(0xa));
+
+        attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_LIST;
+        attr.value.objlist.count = list_count;
+        attr.value.objlist.list = list.data();
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, sg_1, &attr));
+
+        // now assign queues to level 1 scheduler groups,
+
+        for (size_t i = 0; i < list.size(); ++i)
+        {
+            sai_object_id_t childs[2];
+
+            childs[0] = queues[queue_index];    // first half are in queues
+            childs[1] = queues[queue_index + queues_count/2]; // second half are out queues
+
+            // for each scheduler set 2 queues
+            attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_LIST;
+            attr.value.objlist.count = 2;
+            attr.value.objlist.list = childs;
+
+            queue_index++;
+
+            CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, list.at(i), &attr));
+
+            attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT;
+            attr.value.u32 = 2;
+
+            CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, list.at(i), &attr));
+        }
+    }
+
+    // sg 2 (2 groups)
+    {
+        sai_object_id_t sg_2 = sgs.at(2);
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT;
+        attr.value.u32 = 2;
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, sg_2, &attr));
+
+        uint32_t list_count = 2;
+        std::vector<sai_object_id_t> list;
+
+        list.push_back(sgs.at(0xb));
+        list.push_back(sgs.at(0xc));
+
+        attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_LIST;
+        attr.value.objlist.count = list_count;
+        attr.value.objlist.list = list.data();
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, sg_2, &attr));
+
+        for (size_t i = 0; i < list.size(); ++i)
+        {
+            sai_object_id_t childs[2];
+
+            // for each scheduler set 2 queues
+            childs[0] = queues[queue_index];    // first half are in queues
+            childs[1] = queues[queue_index + queues_count/2]; // second half are out queues
+
+            attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_LIST;
+            attr.value.objlist.count = 2;
+            attr.value.objlist.list = childs;
+
+            queue_index++;
+
+            CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, list.at(i), &attr));
+
+            attr.id = SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT;
+            attr.value.u32 = 2;
+
+            CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SCHEDULER_GROUP, list.at(i), &attr));
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t create_scheduler_groups(
+        _In_ const std::vector<sai_object_id_t>& port_list)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create scheduler groups");
+
+    uint32_t port_sgs_count = 13; // brcm default
+
+    // NOTE: this is only static data, to keep track of this
+    // we would need to create actual objects and keep them
+    // in respected objects, we need to move in to that
+    // solution when we will start using different "profiles"
+    // currently this is good enough
+
+    for (const auto &port_id : port_list)
+    {
+        sai_attribute_t attr;
+
+        attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_SCHEDULER_GROUPS;
+        attr.value.u32 = port_sgs_count;
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        // scheduler groups per port
+
+        std::vector<sai_object_id_t> sgs;
+
+        for (uint32_t i = 0; i < port_sgs_count; ++i)
+        {
+            sai_object_id_t sg_id;
+
+            CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_SCHEDULER_GROUP, &sg_id, 0, NULL));
+
+            sgs.push_back(sg_id);
+        }
+
+        attr.id = SAI_PORT_ATTR_QOS_SCHEDULER_GROUP_LIST;
+        attr.value.objlist.count = port_sgs_count;
+        attr.value.objlist.list = sgs.data();
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        CHECK_STATUS(create_scheduler_group_tree(sgs, port_id));
+    }
+
+    // SAI_SCHEDULER_GROUP_ATTR_CHILD_COUNT // sched_groups + count
+    // scheduler group are organized in tree and on the bottom there are queues
+    // order matters in returning api
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t set_maximum_number_of_childs_per_scheduler_group()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create switch src mac address");
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP;
+    attr.value.u32 = 16;
+
+    return vs_generic_set_switch(&attr);
+}
+
 sai_status_t initialize_default_objects()
 {
     SWSS_LOG_ENTER();
@@ -458,7 +644,6 @@ sai_status_t initialize_default_objects()
     std::vector<sai_object_id_t> vlan_member_list;
 
     CHECK_STATUS(create_vlan_members_for_default_vlan(port_list, vlan_member_list));
- //   CHECK_STATUS(create_vlan_members_list_for_default_vlan(vlan_member_list));
 
     CHECK_STATUS(create_default_trap_group());
 
@@ -466,6 +651,9 @@ sai_status_t initialize_default_objects()
     CHECK_STATUS(create_priority_groups(port_list));
 
     CHECK_STATUS(create_hostif_traps());
+
+    CHECK_STATUS(set_maximum_number_of_childs_per_scheduler_group());
+    CHECK_STATUS(create_scheduler_groups(port_list));
 
     return SAI_STATUS_SUCCESS;
 }

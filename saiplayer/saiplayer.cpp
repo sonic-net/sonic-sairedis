@@ -943,6 +943,8 @@ void handle_get_response(
     SWSS_LOG_DEBUG("list match");
 
     match_redis_with_rec(object_type, get_attr_count, get_attr_list, attr_count, attr_list);
+
+    // TODO primitive values are not matched (recording vs switch/vs), we can add that check
 }
 
 void performSleep(const std::string& line)

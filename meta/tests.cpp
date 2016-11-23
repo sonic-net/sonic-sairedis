@@ -811,8 +811,9 @@ void test_fdb_entry_create()
     status = meta_sai_create_fdb_entry(&fdb_entry, 4, list1, &dummy_success_sai_create_fdb_entry);
     META_ASSERT_FAIL(status);
 
+    // packet action is now optional
     SWSS_LOG_NOTICE("missing mandatory attribute");
-    status = meta_sai_create_fdb_entry(&fdb_entry, 2, list1, &dummy_success_sai_create_fdb_entry);
+    status = meta_sai_create_fdb_entry(&fdb_entry, 1, list1, &dummy_success_sai_create_fdb_entry);
     META_ASSERT_FAIL(status);
 
     attr2.value.oid = create_dummy_object_id(SAI_OBJECT_TYPE_HASH);

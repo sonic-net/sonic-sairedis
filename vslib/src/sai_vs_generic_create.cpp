@@ -5,8 +5,6 @@ ObjectHash g_objectHash;
 
 uint64_t real_ids[SAI_OBJECT_TYPE_MAX];
 
-#define VS_OID_FLAG 0x8000000000000000
-
 void reset_id_counter()
 {
     SWSS_LOG_ENTER();
@@ -30,18 +28,17 @@ sai_object_id_t vs_create_real_object_id(
     // count from zero for each type separetly
     uint64_t real_id = real_ids[object_type]++;
 
-    sai_object_id_t object_id = (((sai_object_id_t)object_type) << 48) | real_id | VS_OID_FLAG;
+    sai_object_id_t object_id = (((sai_object_id_t)object_type) << 32) | real_id;
 
     SWSS_LOG_DEBUG("created RID %llx", object_id);
 
     return object_id;
 }
 
-sai_object_type_t sai_object_type_query(_In_ sai_object_id_t object_id)
+sai_object_type_t sai_object_type_query(
+        _In_ sai_object_id_t object_id)
 {
-    object_id = object_id & ~VS_OID_FLAG;
-
-    sai_object_type_t object_type = (sai_object_type_t)(object_id >> 48);
+    sai_object_type_t object_type = (sai_object_type_t)(object_id >> 32);
 
     if (object_type <= SAI_OBJECT_TYPE_NULL ||
         object_type >= SAI_OBJECT_TYPE_MAX)
