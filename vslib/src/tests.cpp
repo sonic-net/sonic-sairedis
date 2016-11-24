@@ -47,7 +47,7 @@ service_method_table_t test_services = {
 };
 
 #define SUCCESS(x) \
-    if (x != SAI_STATUS_SUCCESS) \
+    if ((x) != SAI_STATUS_SUCCESS) \
 {\
     SWSS_LOG_ERROR("expected success on: %s", #x);\
     throw std::runtime_error(std::string(#x));\

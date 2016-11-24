@@ -478,7 +478,7 @@ sai_status_t handle_generic(
 
                 if (create == NULL)
                 {
-                    SWSS_LOG_ERROR("create function is not defined for object type %x", object_type);
+                    SWSS_LOG_ERROR("create function is not defined for object type %s", sai_serialize_object_type(object_type).c_str());
                     exit_and_notify(EXIT_FAILURE);
                 }
 

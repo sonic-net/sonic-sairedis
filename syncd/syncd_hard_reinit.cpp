@@ -337,7 +337,7 @@ void trapGroupWorkaround(
 
     if (create == NULL)
     {
-        SWSS_LOG_ERROR("create function is not defined for object type %llx", objectType);
+        SWSS_LOG_ERROR("create function is not defined for object type %s", sai_serialize_object_type(objectType).c_str());
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -477,7 +477,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
 
         if (create == NULL)
         {
-            SWSS_LOG_ERROR("create function is not defined for object type %llx", objectType);
+            SWSS_LOG_ERROR("create function is not defined for object type %s", sai_serialize_object_type(objectType).c_str());
 
             exit_and_notify(EXIT_FAILURE);
         }
