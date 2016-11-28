@@ -23,7 +23,7 @@ endif
 if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else
-SAILIB=-lsai -lopennsl -ldl
+SAILIB=-lsai
 endif
 
 syncd_SOURCES = \
