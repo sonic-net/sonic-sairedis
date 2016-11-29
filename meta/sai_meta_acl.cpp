@@ -515,6 +515,22 @@ const sai_attr_metadata_t sai_acl_entry_attr_metadata[] = {
 
     {
         .objecttype             = SAI_OBJECT_TYPE_ACL_ENTRY,
+        .attrid                 = SAI_ACL_ENTRY_ATTR_ADMIN_STATE,
+        .attridname             = "SAI_ACL_ENTRY_ATTR_ADMIN_STATE",
+        .serializationtype      = SAI_SERIALIZATION_TYPE_BOOL,
+        .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
+        .allowedobjecttypes     = {  },
+        .allownullobjectid      = false,
+        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_CONST,
+        .defaultvalue           = { .booldata = true },
+        .enumtypestr            = NULL,
+        .enumallowedvalues      = { },
+        .enummetadata           = NULL,
+        .conditions             = { },
+    },
+
+    {
+        .objecttype             = SAI_OBJECT_TYPE_ACL_ENTRY,
         .attrid                 = SAI_ACL_ENTRY_ATTR_PRIORITY,
         .attridname             = "SAI_ACL_ENTRY_ATTR_PRIORITY",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32,

@@ -506,6 +506,22 @@ const sai_attr_metadata_t sai_switch_attr_metadata[] = {
 
     {
         .objecttype             = SAI_OBJECT_TYPE_SWITCH,
+        .attrid                 = SAI_SWITCH_ATTR_DEFAULT_INGRESS_ACL_LIST,
+        .attridname             = "SAI_SWITCH_ATTR_DEFAULT_INGRESS_ACL_LIST",
+        .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_LIST,
+        .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
+        .allowedobjecttypes     = { SAI_OBJECT_TYPE_ACL_TABLE },
+        .allownullobjectid      = false,
+        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_EMPTY_LIST,
+        .defaultvalue           = { },
+        .enumtypestr            = NULL,
+        .enumallowedvalues      = { },
+        .enummetadata           = NULL,
+        .conditions             = { },
+    },
+
+    {
+        .objecttype             = SAI_OBJECT_TYPE_SWITCH,
         .attrid                 = SAI_SWITCH_ATTR_FDB_DST_USER_META_DATA_RANGE,
         .attridname             = "SAI_SWITCH_ATTR_FDB_DST_USER_META_DATA_RANGE",
         .serializationtype      = SAI_SERIALIZATION_TYPE_UINT32_RANGE,

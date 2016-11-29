@@ -1426,6 +1426,22 @@ const sai_attr_metadata_t sai_port_attr_metadata[] = {
 
     {
         .objecttype             = SAI_OBJECT_TYPE_PORT,
+        .attrid                 = SAI_PORT_ATTR_INGRESS_ACL_LIST,
+        .attridname             = "SAI_PORT_ATTR_INGRESS_ACL_LIST",
+        .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_LIST,
+        .flags                  = SAI_ATTR_FLAGS_CREATE_AND_SET,
+        .allowedobjecttypes     = { SAI_OBJECT_TYPE_ACL_TABLE },
+        .allownullobjectid      = false,
+        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_EMPTY_LIST,
+        .defaultvalue           = { },
+        .enumtypestr            = NULL,
+        .enumallowedvalues      = { },
+        .enummetadata           = NULL,
+        .conditions             = { },
+    },
+
+    {
+        .objecttype             = SAI_OBJECT_TYPE_PORT,
         .attrid                 = SAI_PORT_ATTR_INGRESS_MIRROR_SESSION,
         .attridname             = "SAI_PORT_ATTR_INGRESS_MIRROR_SESSION",
         .serializationtype      = SAI_SERIALIZATION_TYPE_OBJECT_LIST,
