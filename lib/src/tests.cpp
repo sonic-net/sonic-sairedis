@@ -44,13 +44,19 @@ service_method_table_t test_services = {
     profile_get_next_value
 };
 
+void test_sai_linking()
+{
+    // NOTE: this is just testing whether test application will
+    // link against libsairedis, this api requires running redis db
+    // with enabled unix socket
+    sai_api_initialize(0, (service_method_table_t*)&test_services);
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     SWSS_LOG_ENTER();
-
-    sai_api_initialize(0, (service_method_table_t*)&test_services);
 
     return 0;
 }
