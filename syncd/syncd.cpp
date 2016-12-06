@@ -1133,8 +1133,14 @@ sai_status_t processEventInInitViewMode(
             case SAI_OBJECT_TYPE_ROUTE:
             case SAI_OBJECT_TYPE_TRAP:
 
+                // those object's are user created, so if user created ROUTE
+                // he passed some attributes, there is no sense to support GET
+                // since user explicitly know what attributes were set, similar
+                // for other object types here
+
                 SWSS_LOG_ERROR("get is not supported on %s in init view mode", sai_serialize_object_type(object_type).c_str());
-                exit_and_notify(EXIT_FAILURE);
+
+                status = SAI_STATUS_NOT_SUPPORTED;
                 break;
 
             case SAI_OBJECT_TYPE_SWITCH:
@@ -1161,6 +1167,8 @@ sai_status_t processEventInInitViewMode(
                     SWSS_LOG_DEBUG("generic get (init view) for object type %s", sai_serialize_object_type(object_type).c_str());
 
                     // object must exists, we can't call GET on created object in init view mode
+                    // get here can be called on existing objects like default trap group to
+                    // get some vendor specific values
 
                     sai_object_id_t rid = translate_vid_to_rid(object_id);
 
@@ -1253,7 +1261,6 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
 
     if (api != SAI_COMMON_API_GET)
     {
-        // can't be called on init view, since some VID's may have no RID yet
         translate_vid_to_rid_list(object_type, attr_count, attr_list);
     }
 
