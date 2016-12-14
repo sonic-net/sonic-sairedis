@@ -380,6 +380,14 @@ sai_status_t redis_set_switch_attribute(
                 g_useTempView = attr->value.booldata;
                 return SAI_STATUS_SUCCESS;
 
+            case SAI_REDIS_SWITCH_ATTR_USE_PIPELINE:
+                g_asicState->setBuffered(attr->value.booldata);
+                return SAI_STATUS_SUCCESS;
+
+            case SAI_REDIS_SWITCH_ATTR_FLUSH:
+                g_asicState->flush();
+                return SAI_STATUS_SUCCESS;
+
             default:
                 break;
         }
