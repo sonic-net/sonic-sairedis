@@ -1,5 +1,7 @@
 P4[![Build Status](https://sonic-jenkins.westus.cloudapp.azure.com/job/p4/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus.cloudapp.azure.com/job/p4/job/sonic-sairedis-build/)Mellanox[![Build Status](https://sonic-jenkins.westus.cloudapp.azure.com/job/mellanox/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus.cloudapp.azure.com/job/mellanox/job/sonic-sairedis-build/)
 
+test pr build
+
 # SONiC - SAI Redis - sairedis
 
 ## Description
