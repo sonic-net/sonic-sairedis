@@ -23,15 +23,9 @@ AM_CONDITIONAL(DEBUG, test x$debug = xtrue)
 AC_ARG_WITH(sai,
 [  --with-sai        Compiling against specific SAI],
 [case "${withval}" in
-	bcm)  sai=bcm ;;
-	mlnx) sai=mlnx ;;
-	cavm) sai=cavm ;;
 	vs)   sai=vs ;;
 	*) AC_MSG_ERROR(bad value ${withval} for --with-sai) ;;
 esac])
-AM_CONDITIONAL(SAIBCM,  test x$sai = xbcm)
-AM_CONDITIONAL(SAIMLNX, test x$sai = xmlnx)
-AM_CONDITIONAL(SAICAVM, test x$sai = xcavm)
 AM_CONDITIONAL(SAIVS,   test x$sai = xvs)
 
 AC_ARG_ENABLE(rpcserver,

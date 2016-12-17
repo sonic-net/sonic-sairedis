@@ -48,14 +48,10 @@ Install prerequisite packages:
 
     sudo apt-get install libswsscommon libswsscommon-dev
 
-Before compiling, you will need to set an environmental variable to indicate which 'SAI flavor' you are using.
-
-    export DEB_SAI_FLAVOR=[FLAVOR]
-
 You can compile and install from source using:
 
     ./autogen.sh
-    ./configure --with-sai=$(DEB_SAI_FLAVOR)
+    ./configure
     make && sudo make install
 
 You can also build a debian package using:

@@ -66,7 +66,6 @@ void exit_and_notify(int status)
     exit(status);
 }
 
-#ifdef BRCMSAI
 void sai_diag_shell()
 {
     SWSS_LOG_ENTER();
@@ -88,7 +87,6 @@ void sai_diag_shell()
         sleep(1);
     }
 }
-#endif /* BRCMSAI */
 
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_type_t object_type)
@@ -1730,17 +1728,13 @@ int main(int argc, char **argv)
         exit_and_notify(EXIT_FAILURE);
     }
 
-#ifdef BRCMSAI
-
     if (options.diagShell)
     {
-        SWSS_LOG_NOTICE("starting bcm diag shell thread");
+        SWSS_LOG_NOTICE("starting diag shell thread");
 
-        std::thread bcm_diag_shell_thread = std::thread(sai_diag_shell);
-        bcm_diag_shell_thread.detach();
+        std::thread diag_shell_thread = std::thread(sai_diag_shell);
+        diag_shell_thread.detach();
     }
-
-#endif /* BRCMSAI */
 
 #ifdef SAITHRIFT
     if (options.run_rpc_server)

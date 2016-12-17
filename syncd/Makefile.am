@@ -8,18 +8,6 @@ else
 DBGFLAGS = -g
 endif
 
-if SAIBCM
-SAIFLAGS = -DBRCMSAI
-endif
-
-if SAIMLNX
-SAIFLAGS = -DMLNXSAI
-endif
-
-if SAICAVM
-SAIFLAGS = -DCAVMSAI
-endif
-
 if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else
