@@ -615,7 +615,7 @@ const sai_attr_metadata_t sai_tunnel_table_entry_attr_metadata[] = {
         .enumtypestr            = StringifyEnum ( sai_tunnel_type_t ),
         .enumallowedvalues      = ENUM_VALUES ( sai_tunnel_type_t ),
         .enummetadata           = &metadata_enum_sai_tunnel_type_t,
-        .conditions             = { COND_ENUM ( SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_TYPE, SAI_TUNNEL_TERM_TABLE_ENTRY_P2P ) },
+        .conditions             = { },
     },
 
     {
