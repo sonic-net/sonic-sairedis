@@ -51,7 +51,7 @@ typedef enum _sai_redis_switch_attr_t
     SAI_REDIS_SWITCH_ATTR_USE_TEMP_VIEW,
 
     /**
-     * @brief Will flush redis pipeline
+     * @brief Enable redis pipeline
      *
      * @type bool
      * @flags CREATE_AND_SET
