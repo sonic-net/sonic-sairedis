@@ -1011,7 +1011,7 @@ void performNotifySyncd(const std::string& request, const std::string response)
 
     if (status != response_status)
     {
-        SWSS_LOG_ERROR("response status %s is differnt than syncd status %s", responseStatus.c_str(), sai_serialize_status(status).c_str());
+        SWSS_LOG_ERROR("response status %s is different than syncd status %s", responseStatus.c_str(), sai_serialize_status(status).c_str());
         exit(EXIT_FAILURE);
     }
 

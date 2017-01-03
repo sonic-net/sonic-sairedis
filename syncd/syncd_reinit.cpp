@@ -141,6 +141,26 @@ sai_object_id_t saiGetDefaultTrapGroup()
     return attr.value.oid;
 }
 
+sai_object_id_t saiGetDefaultStpInstance()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID;
+
+    sai_status_t status = sai_switch_api->get_switch_attribute(1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+         SWSS_LOG_ERROR("failed to get switch default stp instance %d", status);
+
+         exit_and_notify(EXIT_FAILURE);
+    }
+
+    return attr.value.oid;
+}
+
 sai_object_id_t saiGetDefaultVirtualRouter()
 {
     SWSS_LOG_ENTER();
@@ -355,6 +375,22 @@ sai_object_id_t redisGetDefaultTrapGroupId()
     return vr_id;
 }
 
+sai_object_id_t redisGetDefaultStpInstanceId()
+{
+    SWSS_LOG_ENTER();
+
+    auto redisStpId = g_redisClient->hget(HIDDEN, DEFAULT_STP_INSTANCE_ID);
+
+    if (redisStpId == NULL)
+        return SAI_NULL_OBJECT_ID;
+
+    sai_object_id_t stp_id;
+
+    sai_deserialize_object_id(*redisStpId, stp_id);
+
+    return stp_id;
+}
+
 sai_object_id_t redisGetCpuId()
 {
     SWSS_LOG_ENTER();
@@ -387,6 +423,15 @@ void redisSetDefaultTrapGroup(sai_object_id_t vr_id)
     std::string strVrId = sai_serialize_object_id(vr_id);
 
     g_redisClient->hset(HIDDEN, DEFAULT_TRAP_GROUP_ID, strVrId);
+}
+
+void redisSetDefaultStpInstance(sai_object_id_t stp_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::string strStpId = sai_serialize_object_id(stp_id);
+
+    g_redisClient->hset(HIDDEN, DEFAULT_STP_INSTANCE_ID, strStpId);
 }
 
 void redisCreateRidAndVidMapping(sai_object_id_t rid, sai_object_id_t vid)
@@ -479,6 +524,34 @@ void helperCheckDefaultTrapGroup()
     {
         // if this happens, we need to remap VIDTORID and RIDTOVID
         SWSS_LOG_ERROR("FIXME: default trap group id differs: 0x%lx vs 0x%lx, ids must be remapped", tgId, redisTgId);
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+}
+
+void helperCheckDefaultStpInstance()
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t stpId = saiGetDefaultStpInstance();
+
+    sai_object_id_t redisStpId = redisGetDefaultStpInstanceId();
+
+    if (redisStpId == SAI_NULL_OBJECT_ID)
+    {
+        redisSetDummyAsicStateForRealObjectId(stpId);
+
+        SWSS_LOG_INFO("redis default stp instance id is not defined yet");
+
+        redisSetDefaultStpInstance(stpId);
+
+        redisStpId = stpId;
+    }
+
+    if (stpId != redisStpId)
+    {
+        // if this happens, we need to remap VIDTORID and RIDTOVID
+        SWSS_LOG_ERROR("FIXME: default stp instance id differs: 0x%lx vs 0x%lx, ids must be remapped", stpId, redisStpId);
 
         exit_and_notify(EXIT_FAILURE);
     }
@@ -922,6 +995,8 @@ void onSyncdStart(bool warmStart)
     helperCheckDefaultVirtualRouterId();
 
     helperCheckDefaultTrapGroup();
+
+    helperCheckDefaultStpInstance();
 
     helperCheckVlanId();
 

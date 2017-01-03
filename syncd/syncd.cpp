@@ -970,11 +970,13 @@ void clearTempView()
     }
 }
 
-void syncdApplyView()
+sai_status_t syncdApplyView()
 {
     SWSS_LOG_ENTER();
 
     SWSS_LOG_ERROR("apply view is not implemented yet");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 sai_status_t notifySyncd(const std::string& op)

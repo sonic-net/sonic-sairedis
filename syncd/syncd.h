@@ -49,6 +49,7 @@ extern "C" {
 #define HIDDEN                      "HIDDEN"
 #define DEFAULT_VIRTUAL_ROUTER_ID   "DEFAULT_VIRTUAL_ROUTER_ID"
 #define DEFAULT_TRAP_GROUP_ID       "DEFAULT_TRAP_GROUP_ID"
+#define DEFAULT_STP_INSTANCE_ID     "DEFAULT_STP_INSTANCE_ID"
 #define CPU_PORT_ID                 "CPU_PORT_ID"
 
 #define SAI_COLD_BOOT               0
@@ -75,6 +76,8 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> redisGetRidToVidMap();
 std::vector<std::string> redisGetAsicStateKeys();
 sai_object_id_t redisGetDefaultVirtualRouterId();
 sai_object_id_t redisGetDefaultTrapGroupId();
+sai_object_id_t redisGetDefaultStpInstanceId();
+sai_object_id_t redisGetCpuId();
 void redisClearVidToRidMap();
 void redisClearRidToVidMap();
 
@@ -159,5 +162,8 @@ sai_object_type_t getObjectTypeFromVid(sai_object_id_t sai_object_id);
 
 void start_cli();
 void stop_cli();
+
+sai_status_t applyViewTransition();
+sai_status_t syncdApplyView();
 
 #endif // __SYNCD_H__

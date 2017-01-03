@@ -70,6 +70,7 @@ void initialize_common_api_pointers()
     common_create[SAI_OBJECT_TYPE_NEIGHBOR] = NULL;
     common_create[SAI_OBJECT_TYPE_ROUTE] = NULL;
     common_create[SAI_OBJECT_TYPE_VLAN] = NULL;
+    common_create[SAI_OBJECT_TYPE_STP_INSTANCE] = (sai_stp_api) ? sai_stp_api->create_stp : NULL;
 
     common_remove[SAI_OBJECT_TYPE_NULL] = NULL;
     common_remove[SAI_OBJECT_TYPE_PORT] = NULL;
@@ -105,6 +106,7 @@ void initialize_common_api_pointers()
     common_remove[SAI_OBJECT_TYPE_NEIGHBOR] = NULL;
     common_remove[SAI_OBJECT_TYPE_ROUTE] = NULL;
     common_remove[SAI_OBJECT_TYPE_VLAN] = NULL;
+    common_remove[SAI_OBJECT_TYPE_STP_INSTANCE] = (sai_stp_api) ? sai_stp_api->remove_stp : NULL;
 
     common_set_attribute[SAI_OBJECT_TYPE_NULL] = NULL;
     common_set_attribute[SAI_OBJECT_TYPE_PORT] = (sai_port_api) ? sai_port_api->set_port_attribute : NULL;
@@ -140,6 +142,7 @@ void initialize_common_api_pointers()
     common_set_attribute[SAI_OBJECT_TYPE_NEIGHBOR] = NULL;
     common_set_attribute[SAI_OBJECT_TYPE_ROUTE] = NULL;
     common_set_attribute[SAI_OBJECT_TYPE_VLAN] = NULL;
+    common_set_attribute[SAI_OBJECT_TYPE_STP_INSTANCE] = (sai_stp_api) ? sai_stp_api->set_stp_attribute: NULL;
 
     common_get_attribute[SAI_OBJECT_TYPE_NULL] = NULL;
     common_get_attribute[SAI_OBJECT_TYPE_PORT] = (sai_port_api) ? sai_port_api->get_port_attribute : NULL;
@@ -175,6 +178,7 @@ void initialize_common_api_pointers()
     common_get_attribute[SAI_OBJECT_TYPE_NEIGHBOR] = NULL;
     common_get_attribute[SAI_OBJECT_TYPE_ROUTE] = NULL;
     common_get_attribute[SAI_OBJECT_TYPE_VLAN] = NULL;
+    common_get_attribute[SAI_OBJECT_TYPE_STP_INSTANCE] = (sai_stp_api) ? sai_stp_api->get_stp_attribute: NULL;
 }
 
 void populate_sai_apis()

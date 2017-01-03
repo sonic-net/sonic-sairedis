@@ -206,6 +206,24 @@ sai_status_t create_default_virtual_router()
     return vs_generic_set_switch(&attr);
 }
 
+sai_status_t create_default_stp_instance()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create default stp instance");
+
+    sai_object_id_t stp_instance_id;
+
+    CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_STP_INSTANCE, &stp_instance_id, 0, NULL));
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID;
+    attr.value.oid = stp_instance_id;
+
+    return vs_generic_set_switch(&attr);
+}
+
 sai_status_t create_vlan_members_for_default_vlan(
         std::vector<sai_object_id_t>& port_list,
         std::vector<sai_object_id_t>& vlan_member_list)
@@ -640,6 +658,8 @@ sai_status_t initialize_default_objects()
     CHECK_STATUS(create_port_list(port_list));
 
     CHECK_STATUS(create_default_virtual_router());
+
+    CHECK_STATUS(create_default_stp_instance());
 
     std::vector<sai_object_id_t> vlan_member_list;
 
