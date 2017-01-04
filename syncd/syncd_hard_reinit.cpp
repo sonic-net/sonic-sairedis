@@ -435,7 +435,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
             SWSS_LOG_INFO("default virtual router will not be created, processed VID 0x%lx to RID 0x%lx", vid, rid);
         }
     }
-    if (objectType == SAI_OBJECT_TYPE_STP_INSTANCE)
+    else if (objectType == SAI_OBJECT_TYPE_STP_INSTANCE)
     {
         if (shouldSkipCreateion(vid, rid, createObject, [](sai_object_id_t id) { return id == redisGetDefaultStpInstanceId(); }))
         {
