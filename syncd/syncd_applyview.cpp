@@ -332,7 +332,7 @@ class AsicView
 
         // TODO we need 2 functions, one with processed types and one with all for search
         std::vector<std::shared_ptr<SaiObj>> getObjectsByObjectType(
-                _In_ sai_object_type_t object_type)
+                _In_ sai_object_type_t object_type) const
         {
             SWSS_LOG_ENTER();
 
@@ -486,6 +486,513 @@ void matchOids(
     SWSS_LOG_NOTICE("matched oids");
 }
 
+void checkMatchedPorts(
+        _In_ const AsicView &temp)
+{
+    SWSS_LOG_ENTER();
+
+    auto ports = temp.getObjectsByObjectType(SAI_OBJECT_TYPE_PORT);
+
+    for (const auto &p: ports)
+    {
+        // we expect to all ports status to be matched since
+        // this is our entry point of compare logic
+
+        if (p->object_status != OBJECT_STATUS_MATCHED)
+        {
+            SWSS_LOG_ERROR("port %s object status is not matched", p->str_object_id.c_str());
+
+            throw std::runtime_error("not all ports objects status are matched");
+        }
+    }
+
+    SWSS_LOG_NOTICE("all ports are matched");
+}
+
+// TODO best match could find multiple matches, and then in
+// main processing loop we could select the one that can
+// be the most apriopriate
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForQosMap(
+        _In_ const AsicView &curv,
+        _In_ const std::shared_ptr<SaiObj> t)
+{
+    SWSS_LOG_ENTER();
+
+    auto qosmaps = curv.getObjectsByObjectType(SAI_OBJECT_TYPE_QOS_MAPS);
+
+    for (const auto &c: qosmaps)
+    {
+        if (c->object_status != OBJECT_STATUS_NOT_PROCESSED)
+        {
+            // we are interested only in not processed objects
+            // TODO move this to separate method in class
+            continue;
+        }
+
+        sai_attr_id_t id = SAI_QOS_MAP_ATTR_TYPE;
+
+        if (c->hasAttr(id) && t->hasAttr(id))
+        {
+            if (c->getAttr(id)->getStrAttrValue() != t->getAttr(id)->getStrAttrValue())
+            {
+                continue;
+            }
+        }
+        else
+        {
+            continue;
+        }
+
+        // TODO this later can be complicated since it can will contain bridge id object id
+
+        id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+
+        if (c->hasAttr(id) && t->hasAttr(id))
+        {
+            if (c->getAttr(id)->getStrAttrValue() != t->getAttr(id)->getStrAttrValue())
+            {
+                continue;
+            }
+        }
+        else
+        {
+            continue;
+        }
+
+        SWSS_LOG_INFO("found best match %s: current: %s temp: %s",
+                c->str_object_type.c_str(),
+                c->str_object_id.c_str(),
+                t->str_object_id.c_str());
+
+        return c;
+    }
+
+    SWSS_LOG_INFO("failed to find best match %s in current view", t->str_object_type.c_str());
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatch(
+        _In_ const AsicView &curv,
+        _In_ const std::shared_ptr<SaiObj> t)
+{
+    SWSS_LOG_ENTER();
+
+    if (t->oidObject)
+    {
+        if (t->object_status == OBJECT_STATUS_MATCHED)
+        {
+            // object status is matched so current and tem VID are the same
+            // so we can just take object directly
+
+            SWSS_LOG_INFO("found best match for %s %s since object status is MATCHED",
+                t->str_object_type.c_str(),
+                t->str_object_id.c_str());
+
+            return curv.oOids.at(t->getVid());
+        }
+    }
+
+    switch (t->meta_key.object_type)
+    {
+        case SAI_OBJECT_TYPE_QOS_MAPS:
+
+            return findCurrentBestMatchForQosMap(curv, t);
+
+        default:
+
+            SWSS_LOG_ERROR("%s is not supported yet for find", t->str_object_type.c_str());
+
+            return nullptr;
+    }
+
+    return nullptr;
+}
+
+void processObject(
+        _In_ AsicView &curv,
+        _In_ AsicView &tmpv,
+        _In_ std::shared_ptr<SaiObj> t)
+{
+    SWSS_LOG_ENTER();
+
+    if (t->object_status == OBJECT_STATUS_FINAL)
+    {
+        // object is in final state, no need to process it
+        //
+        // TODO what about removed objects? we should not get temp removed object's here
+        return;
+    }
+
+    SWSS_LOG_INFO("processing temp %s %s", t->str_object_type.c_str(), t->str_object_id.c_str());
+
+    // first we need to make sure if all attributes of this temp object are
+    // in FINAL or MATCHED state, then we can process this object and find
+    // best match in current asic view
+
+    for (auto &at: t->attrs)
+    {
+        auto &attribute = at.second;
+
+        SWSS_LOG_INFO(" attr %s", attribute->getStrAttrId().c_str());
+
+        const auto meta = attribute->getAttrMetadata();
+
+        const sai_attribute_t &attr = *attribute->getSaiAttr();
+
+        uint32_t count = 0;
+        const sai_object_id_t *objectIdList;
+
+        switch (meta->serializationtype)
+        {
+            case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+                count = 1;
+                objectIdList = &attr.value.oid;
+                break;
+
+            case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+                count = attr.value.objlist.count;
+                objectIdList = attr.value.objlist.list;
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+                count = 1;
+                objectIdList = &attr.value.aclfield.data.oid;
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+                count = attr.value.aclfield.data.objlist.count;
+                objectIdList = attr.value.aclfield.data.objlist.list;
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+                count = 1;
+                objectIdList = &attr.value.aclaction.parameter.oid;
+                break;
+
+            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+                count = attr.value.aclaction.parameter.objlist.count;
+                objectIdList = attr.value.aclaction.parameter.objlist.list;
+                break;
+
+            default:
+                // attribute is not object id
+                continue;
+        }
+
+        // for each object id in attributes go recursively to match those objects
+
+        for (uint32_t j = 0; j < count; j++)
+        {
+            sai_object_id_t vid = objectIdList[j];
+
+            if (vid == SAI_NULL_OBJECT_ID)
+            {
+                continue;
+            }
+
+            SWSS_LOG_INFO(" - processing attr VID 0x%lx", vid);
+
+            auto tempParent = tmpv.oOids.at(vid);
+
+            processObject(curv, tmpv, tempParent); // recursion
+        }
+    }
+
+    std::shared_ptr<SaiObj> currentBestMatch = findCurrentBestMatch(curv, t);
+
+    if (currentBestMatch == nullptr)
+    {
+        // TODO in this case we need to produce operations to CREATE this object
+        // since we were not able to match current one
+
+        SWSS_LOG_ERROR("finding current best match for %s %s failed, not supported yet, FIXME",
+                t->str_object_type.c_str(), t->str_object_id.c_str());
+
+        throw std::runtime_error("finding current best match failed, not supported yet, FIXME");
+    }
+
+    SWSS_LOG_INFO("found best match %s: current: %s temp: %s",
+            currentBestMatch->str_object_type.c_str(),
+            currentBestMatch->str_object_id.c_str(),
+            t->str_object_id.c_str());
+
+    // all parents (if any) are in final state here, we could now search for best match against current view
+    // that some of the objects in temp final stat could been created so they will not
+    // exist in current view (since all creation is done after all matching, so it may cause
+    // problems for finding RID for compare
+
+    // after finding best match we need to determine whether current object can be updated to
+    // "this temp" object or whether current needs to be destroyed and recreated according to temp
+
+    std::set<sai_attr_id_t> processedAttributes;
+
+    // matched objects can have different attributes
+
+    // This is first pass of temporary object to see what action is needed
+
+    for (auto &at: t->attrs)
+    {
+        auto &ta= at.second;
+
+        SWSS_LOG_INFO(" first pass (temp): attr %s", ta->getStrAttrId().c_str());
+
+        const auto meta = ta->getAttrMetadata();
+
+        const sai_attribute_t &attr = *ta->getSaiAttr();
+
+        processedAttributes.insert(attr.id); // mark id as processed
+
+        // on all non object id we can compare attributes just by compare serialized value
+
+        if (currentBestMatch->hasAttr(attr.id))
+        {
+            // same attribute exists on current and temp view, check if it's the same
+
+            auto ca = currentBestMatch->getAttr(attr.id);
+
+            switch (meta->serializationtype)
+            {
+                case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+
+                    {
+                        // TODO we need to check if both RID exist on current and temp
+
+                        sai_object_id_t cvid = ca->getSaiAttr()->value.oid;
+                        sai_object_id_t tvid = ta->getSaiAttr()->value.oid;
+
+                        if (cvid == SAI_NULL_OBJECT_ID && tvid == SAI_NULL_OBJECT_ID)
+                        {
+                            // both id are null, thats find, no need to do any action
+                            continue;
+                        }
+
+                        if (cvid != SAI_NULL_OBJECT_ID && tvid != SAI_NULL_OBJECT_ID)
+                        {
+                            sai_object_id_t crid = curv.vidToRid.at(cvid);
+
+                            if (tmpv.vidToRid.find(tvid) == tmpv.vidToRid.end())
+                            {
+                                // TODO this object was created in previous processing and RID
+                                // is not yet created, we need to support this scenario
+
+                                SWSS_LOG_ERROR("current VID 0x%lx RID 0x%lx temp VID 0x%lx RID don't exist yet, FIXME", cvid, crid, tvid);
+
+                                throw std::runtime_error("temporary object only have VID, RID was not created yet, FIXME");
+                            }
+
+                            sai_object_id_t trid = tmpv.vidToRid.at(tvid);
+
+                            if (trid == crid)
+                            {
+                                // both RID on current and temporary objects are the same, no need to perform any action
+                                continue;
+                            }
+
+                            SWSS_LOG_ERROR("current VID 0x%lx RID 0x%lx temp VID 0x%lx RID 0x%lx are different, not supported yet, FIXME",
+                                    cvid, crid, tvid,trid);
+
+                            throw std::runtime_error("current RID and temp RID are different, FIXME");
+
+                            continue;
+                        }
+
+                        SWSS_LOG_ERROR("scenario where current VID 0x%lx and temp VID 0x%lx is not supported, FIXME", cvid, tvid);
+
+                        throw std::runtime_error("scenario where one of current/tmep vid is NULL is not supported, FIXME");
+                    }
+
+                    break;
+
+                case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+                case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+                case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+                case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+                case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+
+                    // all those object's are in FINAL state but not all of them
+                    // may be created yet, so RID maybe missing
+
+                    // TODO here we need to compare RID's
+
+                    SWSS_LOG_ERROR(" - %s is not supported yet for compare",
+                            get_attr_info(*meta).c_str());
+
+                    throw std::runtime_error("serialization type is not supported yet");
+
+                default:
+
+                    // for non object id we can just compare serialized value of the attributes
+
+                    if (ca->getStrAttrValue() == ta->getStrAttrValue())
+                    {
+                        // both attributes values on current and temp view are the same
+                        // there is no need for any update
+                        continue;
+                    }
+
+                    // here we need to check if it's possible to update attribute value
+                    // ot whether current object needs to be destroyed
+
+                    SWSS_LOG_ERROR("attr %s value current %s vs temp %s, FIXME",
+                            meta->attridname,
+                            ca->getStrAttrValue().c_str(),
+                            ta->getStrAttrValue().c_str());
+
+                    throw std::runtime_error("attr value current vs temp is different, FIXME");
+
+                    break;
+            }
+        }
+        else
+        {
+            // this attribute is missing from current object but is present in temporary one
+
+            // TODO check if it's possible to set this attribute or whether current
+            // best match object must be removed
+            SWSS_LOG_ERROR("attr %s is missing from best match, FIXME", meta->attridname);
+
+            throw std::runtime_error("attr is missing from best match, FIXME");
+        }
+    }
+
+    // best match can have more attributes than current temporary object
+    // let see if we can bring them to default value if possible
+
+    for (auto &ac: currentBestMatch->attrs)
+    {
+        auto &ca = ac.second;
+
+        const auto meta = ca->getAttrMetadata();
+
+        const sai_attribute_t &attr = *ca->getSaiAttr();
+
+        if (processedAttributes.find(attr.id) != processedAttributes.end())
+        {
+            // this attibute was processed in previous temporary attributes processing
+            continue;
+        }
+
+        SWSS_LOG_INFO(" first pass (curr): attr %s", ca->getStrAttrId().c_str());
+
+        // this attrbute is not present in temporary object, but is present in current
+        // object, we should see if we can bring it to default value or whether
+        // current object should be removed if this attribute is CREATE_ONLY
+        //
+        // NOTE: this can also be object id attribute
+        //
+        // TODO put those objects also in temp view?
+
+        SWSS_LOG_ERROR("attr %s is present in current object but missing from temporary, FIXME", meta->attridname);
+
+        throw std::runtime_error("attr is present in current object but missing from temporary, FIXME");
+    }
+
+    // NOTE if we are here this means that match was sucessfull and we can update from
+    // current to temp, some actions maybe required, also current object may be in
+    // removed state, so new object will need to be created
+
+    // TODO generate update actions and updates if required
+    //
+    // TODO we probably need second stage to do the update in current tree view if matching will be successfull
+
+    if ((t->object_status == OBJECT_STATUS_NOT_PROCESSED &&
+        currentBestMatch->object_status == OBJECT_STATUS_NOT_PROCESSED) ||
+        (t->object_status == OBJECT_STATUS_MATCHED &&
+        currentBestMatch->object_status == OBJECT_STATUS_MATCHED))
+    {
+        // if we are here, move object status to final
+
+        t->object_status = OBJECT_STATUS_FINAL;
+        currentBestMatch->object_status = OBJECT_STATUS_FINAL;
+
+        if (t->oidObject)
+        {
+            // populate rid/vid map
+            // TODO support case when RID don't exists
+
+            sai_object_id_t tvid = t->getVid();
+            sai_object_id_t cvid = currentBestMatch->getVid();
+            sai_object_id_t rid = curv.vidToRid.at(cvid);
+
+            SWSS_LOG_INFO("remapped current VID 0x%lx to temp VID 0x%lx using RID 0x%lx", cvid, tvid, rid);
+
+            tmpv.ridToVid[rid] = tvid;
+            tmpv.vidToRid[tvid] = rid;
+        }
+        else
+        {
+            SWSS_LOG_ERROR("object %s is not oid object, not supported yet, FIXME", t->str_object_type.c_str());
+
+            throw std::runtime_error("object %s is not oid object, not supported yet, FIXME");
+        }
+
+        return;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("unexpected temporary object status: %d", t->object_status);
+
+        throw std::runtime_error("unexpected temporary object status");
+    }
+
+    // TODO we need to compare readl id's here (if object were created then hmm how?)
+    // and set object status to final, if object was created we need extra flag to mention that
+    // object was created and RID don't exist's yet
+    //
+    // TODO when SET operation is required for objet ID we also need to update references
+    // in current view
+
+    // NOTE: after processing each object in attribute we need to check if this object was
+    // removed (because it could - NO this is wrong, since in temp view nothig is removed
+    // temp view is const, only current view can be changed
+
+    // TODO how to keep RID which are not created yet?
+
+    // TODO check all attributes first ? if all attributes are in final/matched state ?
+    // in generic case current object can be removed if parents also will be removed
+
+    // TODO for processing non object id we need to check objects in entry types
+
+    SWSS_LOG_ERROR("implement ME here, find best match!, FIXME");
+
+    throw std::runtime_error("implement ME here, find best match!, FIXME");
+
+    // and then generate diff etc, create new if not existing
+    //
+    // TODO set state here as final since object was fully processed (on both temp and current
+    // even if current was created dynamically in memory)
+    // hmm, maybe creation can be done right away ? since it will populate everything ?
+    // and in case on failure in next comparison it will be taken into account anyway
+}
+
+void processPorts(
+        _In_ AsicView &curv,
+        _In_ AsicView &tmpv)
+{
+    SWSS_LOG_ENTER();
+
+    // we start processing from ports since they are all matched
+    // but this is not necessary
+
+    auto ports = tmpv.getObjectsByObjectType(SAI_OBJECT_TYPE_PORT);
+
+    for (const auto &p: ports)
+    {
+        processObject(curv, tmpv, p);
+    }
+
+    // TODO we need 2 passes - first to check if all objects are in
+    // matched / final state on temp view, that will determine
+    // if object can be updated
+    //
+    // second pass actual fix pass for current view
+    //
+    // TODO if some object can't be removed from current and it's missing from
+    // temp, then it needs to be transfered to temp as well
+}
+
 sai_status_t applyViewTransition(
         _In_ AsicView &current,
         _In_ AsicView &temp)
@@ -496,6 +1003,12 @@ sai_status_t applyViewTransition(
 
     matchOids(current, temp);
 
+    checkMatchedPorts(temp);
+
+    processPorts(current, temp);
+
+    SWSS_LOG_NOTICE("ports mapped");
+
     // TODO start processing matched objects (from ports)
 
     // TODO we will need in temp view option str_matched_id
@@ -503,7 +1016,7 @@ sai_status_t applyViewTransition(
     // and then we will need second pass on all objects to see
     // if we have the same attributes
 
-    return SAI_STATUS_SUCCESS;
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 sai_status_t internalSyncdApplyView()
@@ -603,7 +1116,7 @@ sai_status_t syncdApplyView()
     }
     catch (const std::runtime_error& e)
     {
-        SWSS_LOG_ERROR("Exceptiomn: %s", e.what());
+        SWSS_LOG_ERROR("Exception: %s", e.what());
     }
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
