@@ -62,14 +62,12 @@ class SaiAttr
 
         SaiAttr(
                 _In_ const std::string &str_attr_id,
-                _In_ const std::string &str_attr_value)
+                _In_ const std::string &str_attr_value):
+            m_str_attr_id(str_attr_id),
+            m_str_attr_value(str_attr_value),
+            m_meta(NULL)
         {
             SWSS_LOG_ENTER();
-
-            m_str_attr_id = str_attr_id;
-            m_str_attr_value = str_attr_value;
-
-            m_meta = NULL;
 
             sai_deserialize_attr_id(str_attr_id, &m_meta);
 
@@ -144,11 +142,10 @@ class SaiObj
 {
     public:
 
-        SaiObj()
+        SaiObj():
+            object_status(OBJECT_STATUS_NOT_PROCESSED),
+            oidObject(false)
         {
-            object_status = OBJECT_STATUS_NOT_PROCESSED;
-
-            oidObject = false;
         }
 
         ObjectStatus object_status;
@@ -242,7 +239,14 @@ class AsicView
             {
                 auto start = key.first.find_first_of(":");
 
-                std::shared_ptr<SaiObj> o(new SaiObj());
+                if (start == std::string::npos)
+                {
+                    SWSS_LOG_ERROR("failed to find colon in %s", key.first.c_str());
+
+                    throw std::runtime_error("failed to find colon inside key");
+                }
+
+                std::shared_ptr<SaiObj> o = std::make_shared<SaiObj>();
 
                 o->str_object_type  = key.first.substr(0, start);
                 o->str_object_id    = key.first.substr(start + 1);
@@ -361,7 +365,7 @@ class AsicView
 
             for (const auto &field: map)
             {
-                std::shared_ptr<SaiAttr> a(new SaiAttr(field.first, field.second));
+                std::shared_ptr<SaiAttr> a = std::make_shared<SaiAttr>(field.first, field.second);
 
                 o->addAttr(a);
             }
@@ -399,7 +403,7 @@ sai_status_t checkObjectsStatus(
 
     int count = 0;
 
-    for (const auto &p :view.soAll)
+    for (const auto &p: view.soAll)
     {
         // TODO at last stage we need to look for FINAL status
         if (p.second->object_status == OBJECT_STATUS_NOT_PROCESSED)
@@ -500,7 +504,6 @@ sai_status_t applyViewTransition(
     // if we have the same attributes
 
     return SAI_STATUS_SUCCESS;
-    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 sai_status_t internalSyncdApplyView()
