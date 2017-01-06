@@ -19,6 +19,15 @@
         .conditions             = { },\
     },
 
+DEFINE_ENUM_VALUES(sai_acl_bind_point_t)
+{
+    SAI_ACL_BIND_POINT_PORT,
+    SAI_ACL_BIND_POINT_LAG,
+    SAI_ACL_BIND_POINT_VLAN,
+    SAI_ACL_BIND_POINT_ROUTER_INTF,
+    SAI_ACL_BIND_POINT_SWITCH
+};
+
 DEFINE_ENUM_VALUES(sai_acl_stage_t)
 {
     SAI_ACL_STAGE_INGRESS,
@@ -93,6 +102,31 @@ const char* metadata_sai_packet_color_t_enum_values_short_names[] = {
 };
 const size_t metadata_sai_packet_color_t_enum_values_count = 3;
 DEFINE_ENUM_METADATA(sai_packet_color_t, 3);
+
+const char metadata_sai_acl_bind_point_t_enum_name[] = "sai_acl_bind_point_t";
+const sai_acl_bind_point_t metadata_sai_acl_bind_point_t_enum_values[] = {
+    SAI_ACL_BIND_POINT_PORT,
+    SAI_ACL_BIND_POINT_LAG,
+    SAI_ACL_BIND_POINT_VLAN,
+    SAI_ACL_BIND_POINT_ROUTER_INTF,
+    SAI_ACL_BIND_POINT_SWITCH
+};
+const char* metadata_sai_acl_bind_point_t_enum_values_names[] = {
+    "SAI_ACL_BIND_POINT_PORT",
+    "SAI_ACL_BIND_POINT_LAG",
+    "SAI_ACL_BIND_POINT_VLAN",
+    "SAI_ACL_BIND_POINT_ROUTER_INTF",
+    "SAI_ACL_BIND_POINT_SWITCH"
+};
+const char* metadata_sai_acl_bind_point_t_enum_values_short_names[] = {
+    "PORT",
+    "LAG",
+    "VLAN",
+    "ROUTER_INTF",
+    "SWITCH"
+};
+const size_t metadata_sai_acl_bind_point_t_enum_values_count = 4;
+DEFINE_ENUM_METADATA(sai_acl_bind_point_t, 4);
 
 const char metadata_sai_acl_stage_t_enum_name[] = "sai_acl_stage_t";
 const sai_acl_stage_t metadata_sai_acl_stage_t_enum_values[] = {
@@ -272,6 +306,22 @@ const size_t metadata_sai_acl_range_type_t_enum_values_count = 5;
 DEFINE_ENUM_METADATA(sai_acl_range_type_t, 5);
 
 const sai_attr_metadata_t sai_acl_table_attr_metadata[] = {
+
+    {
+        .objecttype             = SAI_OBJECT_TYPE_ACL_TABLE,
+        .attrid                 = SAI_ACL_TABLE_ATTR_BIND_POINT,
+        .attridname             = "SAI_ACL_TABLE_ATTR_BIND_POINT",
+        .serializationtype      = SAI_SERIALIZATION_TYPE_INT32,
+        .flags                  = SAI_ATTR_FLAGS_MANDATORY_ON_CREATE | SAI_ATTR_FLAGS_CREATE_ONLY,
+        .allowedobjecttypes     = { },
+        .allownullobjectid      = false,
+        .defaultvaluetype       = SAI_DEFAULT_VALUE_TYPE_NONE,
+        .defaultvalue           = { },
+        .enumtypestr            = StringifyEnum ( sai_acl_bind_point_t ),
+        .enumallowedvalues      = ENUM_VALUES ( sai_acl_bind_point_t ),
+        .enummetadata           = &metadata_enum_sai_acl_bind_point_t,
+        .conditions             = { },
+    },
 
     {
         .objecttype             = SAI_OBJECT_TYPE_ACL_TABLE,
