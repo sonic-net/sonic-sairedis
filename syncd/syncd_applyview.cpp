@@ -509,6 +509,23 @@ void checkMatchedPorts(
     SWSS_LOG_NOTICE("all ports are matched");
 }
 
+bool hasEqualAttribute(
+        _In_ const std::shared_ptr<SaiObj> &current,
+        _In_ const std::shared_ptr<SaiObj> &temporary,
+        _In_ sai_attr_id_t id)
+{
+    SWSS_LOG_ENTER();
+
+    // NOTE: this function should be used only to compare primitive attributes
+
+    if (current->hasAttr(id) && temporary->hasAttr(id))
+    {
+        return current->getAttr(id)->getStrAttrValue() == temporary->getAttr(id)->getStrAttrValue();
+    }
+
+    return false;
+}
+
 // TODO best match could find multiple matches, and then in
 // main processing loop we could select the one that can
 // be the most apriopriate
@@ -530,32 +547,14 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForQosMap(
             continue;
         }
 
-        sai_attr_id_t id = SAI_QOS_MAP_ATTR_TYPE;
-
-        if (c->hasAttr(id) && t->hasAttr(id))
-        {
-            if (c->getAttr(id)->getStrAttrValue() != t->getAttr(id)->getStrAttrValue())
-            {
-                continue;
-            }
-        }
-        else
+        if (!hasEqualAttribute(c, t, SAI_QOS_MAP_ATTR_TYPE))
         {
             continue;
         }
 
         // TODO this later can be complicated since it can will contain bridge id object id
 
-        id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
-
-        if (c->hasAttr(id) && t->hasAttr(id))
-        {
-            if (c->getAttr(id)->getStrAttrValue() != t->getAttr(id)->getStrAttrValue())
-            {
-                continue;
-            }
-        }
-        else
+        if (!hasEqualAttribute(c, t, SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST))
         {
             continue;
         }
@@ -606,11 +605,42 @@ std::shared_ptr<SaiObj> findCurrentBestMatch(
 
             return nullptr;
     }
-
-    return nullptr;
 }
 
-void processObject(
+/**
+ * @brief Process SAI object for ASIC view transition
+ *
+ * Purpose of this function is to find matching SAI
+ * object in current view corresponding to new temporary
+ * view for which we want to make switch current ASIC
+ * configuration.
+ *
+ * This function is recursive since it checks all object
+ * attributes including attributes that contain other
+ * objects which at this stage may not be processed yet.
+ *
+ * Processing may result in different actions:
+ *
+ * - no action is taken if objects are the same
+ * - update existing object for new attributes if possible
+ * - remove current object and create new object if
+ *   updating current attributes is not possible or
+ *   best matching object was not fount in current view
+ *
+ * All those actions will be generated "in memory" no actual
+ * SAI ASIC operations will be performed at this stage.
+ * After entire object dependency graph will be processed
+ * and consistent, list of generated actions will be executed
+ * on actual ASIC.
+ * This approach is safer than making changes right away
+ * since if some object is not supported we will return
+ * return but ASIC still will be in consistent state.
+ *
+ *
+ * NOTE: Development is in progress, not all corner cases
+ * are supported yet.
+ */
+void processObjectForViewTransition(
         _In_ AsicView &curv,
         _In_ AsicView &tmpv,
         _In_ std::shared_ptr<SaiObj> t)
@@ -696,7 +726,7 @@ void processObject(
 
             auto tempParent = tmpv.oOids.at(vid);
 
-            processObject(curv, tmpv, tempParent); // recursion
+            processObjectForViewTransition(curv, tmpv, tempParent); // recursion
         }
     }
 
@@ -734,7 +764,7 @@ void processObject(
 
     for (auto &at: t->attrs)
     {
-        auto &ta= at.second;
+        auto &ta = at.second;
 
         SWSS_LOG_INFO(" first pass (temp): attr %s", ta->getStrAttrId().c_str());
 
@@ -772,7 +802,9 @@ void processObject(
                         {
                             sai_object_id_t crid = curv.vidToRid.at(cvid);
 
-                            if (tmpv.vidToRid.find(tvid) == tmpv.vidToRid.end())
+                            auto it = tmpv.vidToRid.find(tvid);
+
+                            if (it == tmpv.vidToRid.end())
                             {
                                 // TODO this object was created in previous processing and RID
                                 // is not yet created, we need to support this scenario
@@ -782,7 +814,7 @@ void processObject(
                                 throw std::runtime_error("temporary object only have VID, RID was not created yet, FIXME");
                             }
 
-                            sai_object_id_t trid = tmpv.vidToRid.at(tvid);
+                            sai_object_id_t trid = it->second;
 
                             if (trid == crid)
                             {
@@ -965,6 +997,10 @@ void processObject(
     // even if current was created dynamically in memory)
     // hmm, maybe creation can be done right away ? since it will populate everything ?
     // and in case on failure in next comparison it will be taken into account anyway
+
+    // TODO when we compare attributes, and one attribute is missing, we can check if
+    // it have default value, and if this value is the same in current and temp view
+    // this will save doing "set" operation or remove/create if attribute is create only
 }
 
 void processPorts(
@@ -980,7 +1016,7 @@ void processPorts(
 
     for (const auto &p: ports)
     {
-        processObject(curv, tmpv, p);
+        processObjectForViewTransition(curv, tmpv, p);
     }
 
     // TODO we need 2 passes - first to check if all objects are in
