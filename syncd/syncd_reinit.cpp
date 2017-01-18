@@ -996,7 +996,8 @@ void onSyncdStart(bool warmStart)
 
     helperCheckDefaultTrapGroup();
 
-    helperCheckDefaultStpInstance();
+    // currently STP is disabled since not all vendors supports that
+    //helperCheckDefaultStpInstance();
 
     helperCheckVlanId();
 

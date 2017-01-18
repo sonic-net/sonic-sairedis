@@ -439,7 +439,7 @@ sai_object_id_t processSingleVid(sai_object_id_t vid)
     {
         if (shouldSkipCreateion(vid, rid, createObject, [](sai_object_id_t id) { return id == redisGetDefaultStpInstanceId(); }))
         {
-            SWSS_LOG_INFO("default virtual router will not be created, processed VID 0x%lx to RID 0x%lx", vid, rid);
+            SWSS_LOG_INFO("default stp instance will not be created, processed VID 0x%lx to RID 0x%lx", vid, rid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_QUEUE)
