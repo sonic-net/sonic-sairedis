@@ -75,22 +75,7 @@ class SaiAttr
 
             sai_deserialize_attr_value(str_attr_value, *m_meta, m_attr, false);
 
-            // TODO move this to metadata
-            switch (m_meta->serializationtype)
-            {
-                case SAI_SERIALIZATION_TYPE_OBJECT_ID:
-                case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
-                case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
-                case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
-                case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
-                case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
-                    m_is_object_id_attr = true;
-                    break;
-
-                default:
-                    m_is_object_id_attr = false;
-                    break;
-            }
+            m_is_object_id_attr = m_meta->allowedobjecttypes.size() > 0;
         }
 
         ~SaiAttr()
@@ -105,7 +90,7 @@ class SaiAttr
             return &m_attr;
         }
 
-        bool is_object_id_attr() const
+        bool isObjectIdAttr() const
         {
             return m_is_object_id_attr;
         }
@@ -179,6 +164,11 @@ class SaiObj
             }
 
             return it->second;
+        }
+
+        sai_object_type_t getObjectType() const
+        {
+            return meta_key.object_type;
         }
 
         void addAttr(
@@ -324,6 +314,9 @@ class AsicView
         // if we would make this map for all obejct on strings
         // then we don't need to have this per object type
         std::unordered_map<std::string,std::string> neighborIdMap;
+        std::unordered_map<std::string,std::string> routeIdMap;
+        std::unordered_map<std::string,std::string> fdbIdMap;
+        std::unordered_map<std::string,std::string> switchIdMap;
 
         sai_object_id_t cpuPortRid;
         sai_object_id_t defaultVirtualRouterRid;
@@ -405,8 +398,7 @@ sai_status_t checkObjectsStatus(
 
     for (const auto &p: view.soAll)
     {
-        // TODO at last stage we need to look for FINAL status
-        if (p.second->object_status == OBJECT_STATUS_NOT_PROCESSED)
+        if (p.second->object_status != OBJECT_STATUS_FINAL)
         {
             const auto &o = *p.second;
 
@@ -1280,6 +1272,441 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclEntry(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForNeighborEntry(
+        _In_ const AsicView &curv,
+        _In_ const AsicView &tmpv,
+        _In_ const std::shared_ptr<SaiObj> t)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For Neighbor we don't need to iterate via all current
+     * neighbors, we can do dictionary lookup, but we need
+     * to do smart trick, since temporary object was processed
+     * we just need to check whether VID in neighbor_entry
+     * struct is matched/final and it has RID assigned from
+     * current view. If, RID exists, we can use that RID
+     * to get VID of current view, exchange in neighbor_entry
+     * struct and do dictionary lookup on serialized neighbor_entry.
+     *
+     * With this approach for many entries this is the quickest
+     * possible way. In case when RID don't exist, that means
+     * we have invalid neighbor entry, so we must return null.
+     */
+
+    /*
+     * Make a copy here to not destroy object data, later
+     * on this data should be read only.
+     */
+
+    sai_neighbor_entry_t ne = t->meta_key.key.neighbor_entry;
+
+    sai_object_id_t temporaryRouterInterfaceVid = ne.rif_id;
+
+    auto temporaryIt = tmpv.vidToRid.find(temporaryRouterInterfaceVid);
+
+    if (temporaryIt == tmpv.vidToRid.end())
+    {
+        /*
+         * RID for router interface in neighbor_entry struct was not assigned,
+         * so we didn't matched it in previous processing router interfaces, or
+         * router interface will be created later on. This mean we can't
+         * match neighbor because even if all attributes are matchind, RID in
+         * neighbor struct after create will not match so at the end of
+         * processing current neighbor will need to be destroyed and new one
+         * needs to be created.
+         */
+
+        return nullptr;
+    }
+
+    /*
+     * We found RID which should be in current view, now we need to
+     * get current view VID to replace is in our neighbor_entry copy.
+     */
+
+    sai_object_id_t temporaryRid = temporaryIt->second;
+
+    auto currentIt = curv.ridToVid.find(temporaryRid);
+
+    if (currentIt == curv.ridToVid.end())
+    {
+        /*
+         * This is just sanity check, should never happen.
+         */
+
+        SWSS_LOG_ERROR("found tempoary RID 0x%lx but current VID don't exists, FATAL", temporaryRid);
+
+        throw std::runtime_error("found temporary RID but current VID don't exists, FATAL");
+    }
+
+    /*
+     * This vid is vid of current view router interface, it may or may not be
+     * equal to temporaryVid, but we need to this step to not guess vids.
+     */
+
+    sai_object_id_t currentRouterInterfaceVid = currentIt->second;
+
+    ne.rif_id = currentRouterInterfaceVid;
+
+    std::string str_neighbor_entry = sai_serialize_neighbor_entry(ne);
+
+    /*
+     * Now when we have serialized neighbor entry with temporary rif_if VID
+     * replaced to current rif_id VID we can do dictionary lookup for neighbor.
+     */
+
+    auto currentNeighborIt = curv.soNeighbors.find(str_neighbor_entry);
+
+    if (currentNeighborIt == curv.soNeighbors.end())
+    {
+        SWSS_LOG_DEBUG("unable to find neighbor entry %s in current asic view", str_neighbor_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same neighbor entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentNeighborObj = currentNeighborIt->second;
+
+    if (currentNeighborObj->object_status == OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentNeighborObj;
+    }
+
+    /*
+     * If we are here, that means this neighbor was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_ERROR("found neighbor entry %s in current view, but it status is %d, FATAL",
+            str_neighbor_entry.c_str(), currentNeighborObj->object_status);
+
+    throw std::runtime_error("found neighbor entry in current view, but it status was processed");
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForRouteEntry(
+        _In_ const AsicView &curv,
+        _In_ const AsicView &tmpv,
+        _In_ const std::shared_ptr<SaiObj> t)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For Route we don't need to iterate via all current
+     * routes, we can do dictionary lookup, but we need
+     * to do smart trick, since temporary object was processed
+     * we just need to check whether VID in route_entry
+     * struct is matched/final and it has RID assigned from
+     * current view. If, RID exists, we can use that RID
+     * to get VID of current view, exchange in route_entry
+     * struct and do dictionary lookup on serialized route_entry.
+     *
+     * With this approach for many entries this is the quickest
+     * possible way. In case when RID don't exist, that means
+     * we have invalid route entry, so we must return null.
+     */
+
+    /*
+     * Make a copy here to not destroy object data, later
+     * on this data should be read only.
+     */
+
+    sai_unicast_route_entry_t re = t->meta_key.key.route_entry;
+
+    sai_object_id_t temporaryVirtualRouterVid = re.vr_id;
+
+    auto temporaryIt = tmpv.vidToRid.find(temporaryVirtualRouterVid);
+
+    if (temporaryIt == tmpv.vidToRid.end())
+    {
+        /*
+         * RID for virtual router in route_entry struct was not assigned,
+         * so we didn't matched it in previous processing virtual routers, or
+         * virtual router will be created later on. This mean we can't
+         * match route because even if all attributes are matchind, RID in
+         * route struct after create will not match so at the end of
+         * processing current route will need to be destroyed and new one
+         * needs to be created.
+         */
+
+        return nullptr;
+    }
+
+    /*
+     * We found RID which should be in current view, now we need to
+     * get current view VID to replace is in our route_entry copy.
+     */
+
+    sai_object_id_t temporaryRid = temporaryIt->second;
+
+    auto currentIt = curv.ridToVid.find(temporaryRid);
+
+    if (currentIt == curv.ridToVid.end())
+    {
+        /*
+         * This is just sanity check, should never happen.
+         */
+
+        SWSS_LOG_ERROR("found tempoary RID 0x%lx but current VID don't exists, FATAL", temporaryRid);
+
+        throw std::runtime_error("found temporary RID but current VID don't exists, FATAL");
+    }
+
+    /*
+     * This vid is vid of current view virtual router, it may or may not be
+     * equal to temporaryVid, but we need to this step to not guess vids.
+     */
+
+    sai_object_id_t currentVirtualRouterVid = currentIt->second;
+
+    re.vr_id = currentVirtualRouterVid;
+
+    std::string str_route_entry = sai_serialize_route_entry(re);
+
+    /*
+     * Now when we have serialized route entry with temporary vr_id VID
+     * replaced to current vr_id VID we can do dictionary lookup for route.
+     */
+
+    auto currentRouteIt = curv.soRoutes.find(str_route_entry);
+
+    if (currentRouteIt == curv.soRoutes.end())
+    {
+        SWSS_LOG_DEBUG("unable to find route entry %s in current asic view", str_route_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same route entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentRouteObj = currentRouteIt->second;
+
+    if (currentRouteObj->object_status == OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentRouteObj;
+    }
+
+    /*
+     * If we are here, that means this route was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_ERROR("found route entry %s in current view, but it status is %d, FATAL",
+            str_route_entry.c_str(), currentRouteObj->object_status);
+
+    throw std::runtime_error("found route entry in current view, but it status was processed");
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForSwitch(
+        _In_ const AsicView &curv,
+        _In_ const AsicView &tmpv,
+        _In_ const std::shared_ptr<SaiObj> t)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * On compare logic we checked that we have one switch
+     * so we can just get first.
+     */
+
+    auto currentSwitchIt = curv.soSwitches.begin();
+
+    if (currentSwitchIt == curv.soSwitches.end())
+    {
+        SWSS_LOG_DEBUG("unable to find switch object in current view");
+
+        return nullptr;
+    }
+
+    /*
+     * We found switch object in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentSwitchObj = currentSwitchIt->second;
+
+    if (currentSwitchObj->object_status == OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentSwitchObj;
+    }
+
+    /*
+     * If we are here, that means this switch was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_ERROR("found switch object %s in current view, but it status is %d, FATAL",
+            currentSwitchObj->str_object_id.c_str(), currentSwitchObj->object_status);
+
+    throw std::runtime_error("found switch object in current view, but it status was processed");
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForFdbEntry(
+        _In_ const AsicView &curv,
+        _In_ const AsicView &tmpv,
+        _In_ const std::shared_ptr<SaiObj> t)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For fdb we don't need to iterate via all current
+     * fdbs, we can do dictionary lookup, we don't even
+     * do OID translation since fdb entry don't contain
+     * any oids, so simple direct lookup is fine. This
+     * will change in SAI 1.0 since oids are added there.
+     */
+
+    sai_fdb_entry_t fe = t->meta_key.key.fdb_entry;
+
+    std::string str_fdb_entry = sai_serialize_fdb_entry(fe);
+
+    /*
+     * Now when we have serialized fdb entry can do dictionary lookup for fdb.
+     */
+
+    auto currentFdbIt = curv.soFdbs.find(str_fdb_entry);
+
+    if (currentFdbIt == curv.soFdbs.end())
+    {
+        SWSS_LOG_DEBUG("unable to find fdb entry %s in current asic view", str_fdb_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same fdb entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentFdbObj = currentFdbIt->second;
+
+    if (currentFdbObj->object_status == OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentFdbObj;
+    }
+
+    /*
+     * If we are here, that means this fdb was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_ERROR("found fdb entry %s in current view, but it status is %d, FATAL",
+            str_fdb_entry.c_str(), currentFdbObj->object_status);
+
+    throw std::runtime_error("found fdb entry in current view, but it status was processed");
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForTrap(
+        _In_ const AsicView &curv,
+        _In_ const AsicView &tmpv,
+        _In_ const std::shared_ptr<SaiObj> t)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For traps in 0.9.4 traps are enum values, and we have
+     * their exact names so we can do direct dictionary lookup.
+     */
+
+    sai_hostif_trap_id_t trap_id = t->meta_key.key.trap_id;
+
+    std::string str_trap_id = sai_serialize_hostif_trap_id(trap_id);
+
+    /*
+     * Now when we have serialized trap id, we can do dictionary lookup for trap.
+     */
+
+    auto currentTrapIt = curv.soTraps.find(str_trap_id);
+
+    if (currentTrapIt == curv.soTraps.end())
+    {
+        SWSS_LOG_DEBUG("unable to find trap id %s in current asic view", str_trap_id.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same trap id in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentTrapObj = currentTrapIt->second;
+
+    if (currentTrapObj->object_status == OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentTrapObj;
+    }
+
+    /*
+     * If we are here, that means this trap was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_ERROR("found trap id %s in current view, but it status is %d, FATAL",
+            str_trap_id.c_str(), currentTrapObj->object_status);
+
+    throw std::runtime_error("found trap id in current view, but it status was processed");
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForVlan(
+        _In_ const AsicView &curv,
+        _In_ const AsicView &tmpv,
+        _In_ const std::shared_ptr<SaiObj> t)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For vlan in 0.9.4 vlans are numbers values, and we have
+     * their exact values so we can do direct dictionary lookup.
+     */
+
+    sai_vlan_id_t vlan_id = t->meta_key.key.vlan_id;
+
+    std::string str_vlan_id = sai_serialize_vlan_id(vlan_id);
+
+    /*
+     * Now when we have serialized vlan id, we can do dictionary lookup for vlan.
+     */
+
+    auto currentVlanIt = curv.soVlans.find(str_vlan_id);
+
+    if (currentVlanIt == curv.soVlans.end())
+    {
+        SWSS_LOG_DEBUG("unable to find vlan id %s in current asic view", str_vlan_id.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same vlan id in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentVlanObj = currentVlanIt->second;
+
+    if (currentVlanObj->object_status == OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentVlanObj;
+    }
+
+    /*
+     * If we are here, that means this vlan was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_ERROR("found vlan id %s in current view, but it status is %d, FATAL",
+            str_vlan_id.c_str(), currentVlanObj->object_status);
+
+    throw std::runtime_error("found vlan id in current view, but it status was processed");
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatch(
         _In_ const AsicView &curv,
         _In_ const AsicView &tmpv,
@@ -1289,6 +1716,12 @@ std::shared_ptr<SaiObj> findCurrentBestMatch(
 
     if (t->oidObject)
     {
+        /*
+         * This approach will not work for neighbor but it could work for
+         * routes in SAI 0.9.4 with default virtual router. But make no sense
+         * to invest time since in SAI 1.0 it will not work for routes as well.
+         */
+
         if (t->object_status == OBJECT_STATUS_MATCHED)
         {
             // object status is matched so current and temp VID are the same
@@ -1306,7 +1739,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatch(
     // attributes or on most matched CREATE_AND_SET attributes, but
     // for now we will keep separate logic for different object type
 
-    switch (t->meta_key.object_type)
+    switch (t->getObjectType())
     {
         case SAI_OBJECT_TYPE_QOS_MAPS:
             return findCurrentBestMatchForQosMap(curv, t);
@@ -1350,6 +1783,28 @@ std::shared_ptr<SaiObj> findCurrentBestMatch(
         case SAI_OBJECT_TYPE_ACL_ENTRY:
             return findCurrentBestMatchForAclEntry(curv, tmpv, t);
 
+            /*
+             * No object id cases
+             */
+
+        case SAI_OBJECT_TYPE_NEIGHBOR:
+            return findCurrentBestMatchForNeighborEntry(curv, tmpv, t);
+
+        case SAI_OBJECT_TYPE_ROUTE:
+            return findCurrentBestMatchForRouteEntry(curv, tmpv, t);
+
+        case SAI_OBJECT_TYPE_FDB:
+            return findCurrentBestMatchForFdbEntry(curv, tmpv, t);
+
+        case SAI_OBJECT_TYPE_SWITCH:
+            return findCurrentBestMatchForSwitch(curv, tmpv, t);
+
+        case SAI_OBJECT_TYPE_TRAP:
+            return findCurrentBestMatchForTrap(curv, tmpv, t);
+
+        case SAI_OBJECT_TYPE_VLAN:
+            return findCurrentBestMatchForVlan(curv, tmpv, t);
+
         default:
 
             SWSS_LOG_ERROR("%s is not supported yet for find", t->str_object_type.c_str());
@@ -1369,6 +1824,12 @@ std::shared_ptr<SaiObj> findCurrentBestMatch(
     // TODO we could also implement generic best match method
     // based on attribute types and metadata, this should the way
     // to go, and have only specific find methods for special cases
+    //
+    // TODO we need to implement for identical object per object
+    // heuristic like going along the path and counding how many
+    // times object is used, or on which "matched" port/object
+    // is used, or on how many routes etc, of course in both
+    // trees
 }
 
 /**
@@ -1505,7 +1966,86 @@ void processObjectForViewTransition(
         }
     }
 
+    /*
+     * For non object id types like neighbor or route they have object id
+     * inside object struct, they also need to be processed, in SAI 1.0 this
+     * can be automated since we have metadata for those structs.
+     */
+
+    if (t->getObjectType() == SAI_OBJECT_TYPE_NEIGHBOR)
+    {
+        auto structObject = tmpv.oOids.at(t->meta_key.key.neighbor_entry.rif_id);
+
+        processObjectForViewTransition(curv, tmpv, structObject); // recursion
+    }
+    else if (t->getObjectType() == SAI_OBJECT_TYPE_ROUTE)
+    {
+        auto structObject = tmpv.oOids.at(t->meta_key.key.route_entry.vr_id);
+
+        processObjectForViewTransition(curv, tmpv, structObject); // recursion
+    }
+    else if (t->getObjectType() == SAI_OBJECT_TYPE_FDB)
+    {
+        /*
+         * In SAI 0.9.4 FDB don't contains any object IDs so no extra work
+         * required at this stage. As SAI 1.0 this will change.
+         */
+    }
+
+    /*
+     * now since all object ids (VIDs) were processed for current object
+     * we can try to find current best match
+     */
+
     std::shared_ptr<SaiObj> currentBestMatch = findCurrentBestMatch(curv, tmpv, t);
+
+    /*
+     * TODO XXX
+     *
+     * So there will be interesting problem, when we don't find best matching
+     * object, but actual object will exist, and it will have the same KEY attribute
+     * like, and some other attribute will be create_only and it will be differerent
+     * then we can't just create temporary object because of key will match and we
+     * have conflict, so we need first in this case remove prebious object with key
+     *
+     * so there are 2 options here:
+     *
+     * - eather our finding best match function will always include matching keys
+     *   (if more keys, they all should (or any?) match should be right away taken) and this
+     *   should be only object returned on list possible candidates as best match
+     *   then below logic should figure out that we cant do "set" and we need to
+     *   destroy object and destroy it now, and create temporary later
+     *   this means that finding best logic can return objects that are not
+     *   upgradable "cant do set"
+     *
+     * - or secnd solution, in this case, finding best match will not include
+     *   this object on list, since other create only attribute will be different
+     *   which also means we need to destroy and recreate, but in  this case
+     *   finding best match will figure this out and will destroy object
+     *   on the way since it will know that set transition is not possible
+     *   so here when we find best match (other object) in that
+     *   case we always will be able to do "SET", or when no object
+     *   will be returned then we can just righ away create this object
+     *   since all keys objects were removed by finding best match
+     *
+     * in both cases logic is the same, someone needs to figure out wheter
+     * updating object and set is possible or wheter we leave object alone,
+     * or we delete it before creating new one object
+     *
+     * preferebly this logic could be in both but that duplicates compare actions
+     * i would rather want this in finding best match, but that would modify
+     * current view which i dont like much
+     * and here it seems like to much hassle since after finding best match
+     * here we would have simple operations
+     *
+     * currently KEY are in: vlan, queue, port, hostif_trap
+     * - port - hw lane, we don't need to worry since w match them all
+     * - queue - all other attributes can be set
+     * - vlan - all ather attributes can be set
+     * - hostif_trap - all other attributes can be set
+     *
+     *   we could add a check for that in sanity
+     */
 
     if (currentBestMatch == nullptr)
     {
@@ -1519,6 +2059,9 @@ void processObjectForViewTransition(
 
         throw std::runtime_error("finding current best match failed, not supported yet, FIXME");
     }
+
+    // we need to 2 two runs, for not matched parameters since if first can be updated
+    // but second can't then we will end up modyfying current view and there will be not going back
 
     SWSS_LOG_INFO("found best match %s: current: %s temp: %s",
             currentBestMatch->str_object_type.c_str(),
@@ -1665,6 +2208,84 @@ void processObjectForViewTransition(
         }
         else
         {
+            // TODO this can be optimized
+            // by having double map by object type and by string map
+
+            if (t->getObjectType() == SAI_OBJECT_TYPE_NEIGHBOR)
+            {
+                SWSS_LOG_INFO("remapped %s current %s to temp %s",
+                        sai_serialize_object_type(t->getObjectType()).c_str(),
+                        currentBestMatch->str_object_id.c_str(),
+                        t->str_object_id.c_str());
+
+                tmpv.neighborIdMap[t->str_object_id] = currentBestMatch->str_object_id;
+                curv.neighborIdMap[currentBestMatch->str_object_id] = t->str_object_id;
+
+                return;
+            }
+            else if (t->getObjectType() == SAI_OBJECT_TYPE_ROUTE)
+            {
+                SWSS_LOG_INFO("remapped %s current %s to temp %s",
+                        sai_serialize_object_type(t->getObjectType()).c_str(),
+                        currentBestMatch->str_object_id.c_str(),
+                        t->str_object_id.c_str());
+
+                tmpv.routeIdMap[t->str_object_id] = currentBestMatch->str_object_id;
+                curv.routeIdMap[currentBestMatch->str_object_id] = t->str_object_id;
+
+                return;
+            }
+            else if (t->getObjectType() == SAI_OBJECT_TYPE_FDB)
+            {
+                SWSS_LOG_INFO("remapped %s current %s to temp %s",
+                        sai_serialize_object_type(t->getObjectType()).c_str(),
+                        currentBestMatch->str_object_id.c_str(),
+                        t->str_object_id.c_str());
+
+                tmpv.fdbIdMap[t->str_object_id] = currentBestMatch->str_object_id;
+                curv.fdbIdMap[currentBestMatch->str_object_id] = t->str_object_id;
+
+                return;
+            }
+            else if (t->getObjectType() == SAI_OBJECT_TYPE_SWITCH)
+            {
+                SWSS_LOG_INFO("remapped %s current %s to temp %s",
+                        sai_serialize_object_type(t->getObjectType()).c_str(),
+                        currentBestMatch->str_object_id.c_str(),
+                        t->str_object_id.c_str());
+
+                tmpv.switchIdMap[t->str_object_id] = currentBestMatch->str_object_id;
+                curv.switchIdMap[currentBestMatch->str_object_id] = t->str_object_id;
+
+                return;
+            }
+            else if (t->getObjectType() == SAI_OBJECT_TYPE_TRAP)
+            {
+                SWSS_LOG_INFO("remapped %s current %s to temp %s",
+                        sai_serialize_object_type(t->getObjectType()).c_str(),
+                        currentBestMatch->str_object_id.c_str(),
+                        t->str_object_id.c_str());
+
+                /*
+                 * We don't need actual matching since traps have the exact values
+                 */
+
+                return;
+            }
+            else if (t->getObjectType() == SAI_OBJECT_TYPE_VLAN)
+            {
+                SWSS_LOG_INFO("remapped %s current %s to temp %s",
+                        sai_serialize_object_type(t->getObjectType()).c_str(),
+                        currentBestMatch->str_object_id.c_str(),
+                        t->str_object_id.c_str());
+
+                /*
+                 * We don't need actual matching since vlans have the exact values
+                 */
+
+                return;
+            }
+
             SWSS_LOG_ERROR("object %s is not oid object, not supported yet, FIXME", t->str_object_type.c_str());
 
             throw std::runtime_error("object %s is not oid object, not supported yet, FIXME");
@@ -1739,6 +2360,42 @@ void processObjectType(
     SWSS_LOG_NOTICE("processed %s", sai_serialize_object_type(object_type).c_str());
 }
 
+void checkSwitch(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Current logic supports only 1 instance of switch
+     * so in both view we should have only 1 instance
+     * of switch and they must match.
+     */
+
+    if (currentView.soSwitches.size() != 1)
+    {
+        SWSS_LOG_ERROR("current view don't contain any switch");
+
+        throw std::runtime_error("current view don't contain any switch object");
+    }
+
+    if (temporaryView.soSwitches.size() != 1)
+    {
+        SWSS_LOG_ERROR("temporary view don't contain any switch object");
+
+        throw std::runtime_error("temporary view don't contain any switch object");
+    }
+
+    /*
+     * In current SAI 0.9.4 switch is non object id so we don't
+     * need to ma VID/RID for it, but in SAI 1.0 it will be
+     * object id so we need to change our strategy here.
+     *
+     * Later on we can support in 0.9.4 case where one or both
+     * switches can be missing since no attributes were set.
+     */
+}
+
 sai_status_t applyViewTransition(
         _In_ AsicView &current,
         _In_ AsicView &temp)
@@ -1749,15 +2406,26 @@ sai_status_t applyViewTransition(
 
     matchOids(current, temp);
 
+    checkSwitch(current, temp);
+
     checkMatchedPorts(temp);
 
-    // TODO match switch, there should be only 1 switch
+    /*
+     * Process all objects
+     */
+
+//    for (auto &obj: temp.soAll)
+//    {
+//        processObjectForViewTransition(current, temp, obj.second);
+//    }
+//
+//    return SAI_STATUS_SUCCESS;
 
     // we start processing from ports since they are all matched
     // but this is not necessary
 
     processObjectType(current, temp, SAI_OBJECT_TYPE_PORT);
-    processObjectType(current, temp, SAI_OBJECT_TYPE_SCHEDULER_GROUP);
+    processObjectType(current, temp, SAI_OBJECT_TYPE_SWITCH);
     processObjectType(current, temp, SAI_OBJECT_TYPE_HOST_INTERFACE);
     processObjectType(current, temp, SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
     processObjectType(current, temp, SAI_OBJECT_TYPE_ROUTER_INTERFACE);
@@ -1769,34 +2437,40 @@ sai_status_t applyViewTransition(
     processObjectType(current, temp, SAI_OBJECT_TYPE_NEXT_HOP_GROUP);
     processObjectType(current, temp, SAI_OBJECT_TYPE_WRED);
     processObjectType(current, temp, SAI_OBJECT_TYPE_SCHEDULER);
+    processObjectType(current, temp, SAI_OBJECT_TYPE_SCHEDULER_GROUP);
     processObjectType(current, temp, SAI_OBJECT_TYPE_QOS_MAPS);
     processObjectType(current, temp, SAI_OBJECT_TYPE_POLICER);
     processObjectType(current, temp, SAI_OBJECT_TYPE_TRAP_GROUP);
     processObjectType(current, temp, SAI_OBJECT_TYPE_ACL_TABLE);
     processObjectType(current, temp, SAI_OBJECT_TYPE_ACL_ENTRY);
-
-    // TODO at the end we can have loop that will spin through all object types
+    processObjectType(current, temp, SAI_OBJECT_TYPE_NEIGHBOR);
+    processObjectType(current, temp, SAI_OBJECT_TYPE_ROUTE);
+    processObjectType(current, temp, SAI_OBJECT_TYPE_FDB);
+    processObjectType(current, temp, SAI_OBJECT_TYPE_TRAP);
+    processObjectType(current, temp, SAI_OBJECT_TYPE_VLAN);
 
     /*
-     * TODO to support non object id's
+     * Iterate via all object types to make sure all objects were processed.
+     * We could also just get list of all objects from temp asic view
+     * and iterate through them.
+     */
 
-        SAI_OBJECT_TYPE_NEIGHBOR_ENTRY
-        SAI_OBJECT_TYPE_ROUTE_ENTRY
-        SAI_OBJECT_TYPE_FDB_ENTRY
+    for (int ot = SAI_OBJECT_TYPE_NULL; ot < SAI_OBJECT_TYPE_MAX; ot++)
+    {
+        /*
+         * We don't need to skip hostif packet and fdb flush since those are
+         * not real objects and they never will be in object list.
+         */
 
-        SAI_OBJECT_TYPE_HOSTIF_TRAP
-        SAI_OBJECT_TYPE_SWITCH
-        SAI_OBJECT_TYPE_VLAN
-    */
-
-    // TODO start processing matched objects (from ports)
+        processObjectType(current, temp, (sai_object_type_t)ot);
+    }
 
     // TODO we will need in temp view option str_matched_id
     // string if empty than it mean it's the same
     // and then we will need second pass on all objects to see
     // if we have the same attributes
 
-    //return SAI_STATUS_SUCCESS;
+    return SAI_STATUS_SUCCESS;
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
@@ -1848,20 +2522,25 @@ sai_status_t internalSyncdApplyView()
         return status;
     }
 
-    status = checkObjectsStatus(current);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("object status failed on current view: %s", sai_serialize_status(status).c_str());
-
-        return status;
-    }
-
     status = checkObjectsStatus(temp);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("object status failed on temp view: %s", sai_serialize_status(status).c_str());
+
+        return status;
+    }
+
+    SWSS_LOG_NOTICE("all temporary view objects were processed to FINAL state");
+
+    // TODO this check must be different
+    // for objects not processed they needs to be removed
+    // and actions needs to be generated!
+    status = checkObjectsStatus(current);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("object status failed on current view: %s", sai_serialize_status(status).c_str());
 
         return status;
     }
