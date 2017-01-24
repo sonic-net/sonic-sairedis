@@ -58,6 +58,20 @@ start)
 
     elif [ "$onie_platform" == "x86_64-mlnx_x86-r5.0.1400" ]; then
         start_mlnx
+
+        # Check if there's no MAC in .profile already.
+        if ! grep DEVICE_MAC_ADDRESS /etc/syncd.d/mlnx_2700.profile > /dev/null
+        then
+            # Read MAC address and align the last 6 bits.
+            MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
+            last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
+            aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), 'x')"`  # put mask and take away the 0x prefix
+            ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
+
+            # Write MAC address into *.profile file.
+            echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /etc/syncd.d/mlnx_2700.profile
+        fi
+
         DAEMON_ARGS="-p /etc/syncd.d/mlnx_2700.profile"
 
         if [ ${ENABLE_SAITHRIFT} == 1 ]; then
