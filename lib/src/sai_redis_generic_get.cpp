@@ -39,6 +39,35 @@ sai_status_t internal_redis_get_process(
     return status;
 }
 
+std::string getSelectResultAsString(int result)
+{
+    SWSS_LOG_ENTER();
+
+    std::string res;
+
+    switch (result)
+    {
+        case swss::Select::FD:
+            res = "FD";
+            break;
+
+        case swss::Select::ERROR:
+            res = "ERROR";
+            break;
+
+        case swss::Select::TIMEOUT:
+            res = "TIMEOUT";
+            break;
+
+        default:
+            SWSS_LOG_WARN("non recognized select result: %d", result);
+            res = std::to_string(result);
+            break;
+    }
+
+    return res;
+}
+
 sai_status_t internal_redis_generic_get(
         _In_ sai_object_type_t object_type,
         _In_ const std::string &serialized_object_id,
@@ -118,7 +147,7 @@ sai_status_t internal_redis_generic_get(
             return status;
         }
 
-        SWSS_LOG_ERROR("generic get failed to get response result: %d", result);
+        SWSS_LOG_ERROR("generic get failed due to SELECT operation result: %s", getSelectResultAsString(result).c_str());
         break;
     }
 

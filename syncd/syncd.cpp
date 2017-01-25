@@ -559,10 +559,14 @@ void internal_syncd_get_send(
 
     std::string key = str_status;
 
+    SWSS_LOG_INFO("sending response for GET api with status: %s", str_status.c_str());
+
     // since we have only one get at a time, we don't have to serialize
     // object type and object id, only get status is required
     // get response will not put any data to table only queue is used
     getResponse->set(key, entry, "getresponse");
+
+    SWSS_LOG_INFO("response for GET api was send");
 }
 
 swss::ProducerTable         *getResponse = NULL;
@@ -1289,6 +1293,12 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
 
     if (api == SAI_COMMON_API_GET)
     {
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN("get API for key: %s op: %s returned status: %s", key.c_str(), op.c_str(),
+                    sai_serialize_status(status).c_str());
+        }
+
         internal_syncd_get_send(object_type, str_object_id, status, attr_count, attr_list);
     }
     else if (status != SAI_STATUS_SUCCESS)
