@@ -56,7 +56,7 @@ start)
         start_bcm
         DAEMON_ARGS+=" -p /etc/syncd.d/arista_a7050_qx32.profile"
 
-    elif [ "$onie_platform" == "x86_64-mlnx_x86-r5.0.1400" ]; then
+    elif [ "$onie_platform" == "x86_64-mlnx_x86-r5.0.1400" ] || [ "$onie_platform" == "x86_64-mlnx_msn2700-r0" ]; then
         start_mlnx
         DAEMON_ARGS="-p /etc/syncd.d/mlnx_2700.profile"
 
