@@ -56,6 +56,14 @@ start)
         start_bcm
         DAEMON_ARGS+=" -p /etc/syncd.d/arista_a7050_qx32.profile"
 
+    elif [ "$onie_platform" == "x86_64-m3000-r0" ]; then
+        start_bcm
+        DAEMON_ARGS+=" -p /etc/syncd.d/m3000_r0.profile"
+
+    elif [ "$onie_platform" == "x86_64-m3000-r1" ]; then
+        start_bcm
+        DAEMON_ARGS+=" -p /etc/syncd.d/m3000_r1.profile"
+
     elif [ "$onie_platform" == "x86_64-mlnx_x86-r5.0.1400" ] || [ "$onie_platform" == "x86_64-mlnx_msn2700-r0" ]; then
         start_mlnx
         DAEMON_ARGS="-p /etc/syncd.d/mlnx_2700.profile"
@@ -63,6 +71,7 @@ start)
         if [ ${ENABLE_SAITHRIFT} == 1 ]; then
             DAEMON_ARGS+=" -r -m /etc/syncd.d/msn2700_port_map.ini"
         fi
+
     fi
 
     start-stop-daemon --start --quiet --exec $DAEMON -- $DAEMON_ARGS
