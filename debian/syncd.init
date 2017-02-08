@@ -86,6 +86,10 @@ start)
             DAEMON_ARGS+=" -r -m /etc/syncd.d/msn2700_port_map.ini"
         fi
 
+    elif [ "$onie_platform" == "x86_64-ingrasys_s9100-r0" ]; then
+        start_bcm
+        export OPENNSL_CONFIG_POST_INIT_FILE="/etc/bcm/th-ingrasys-s9100-32x100G.soc"
+        DAEMON_ARGS+=" -p /etc/syncd.d/ingrasys_s9100.profile -N"
     fi
 
     start-stop-daemon --start --quiet --exec $DAEMON -- $DAEMON_ARGS
