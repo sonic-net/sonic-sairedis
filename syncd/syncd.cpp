@@ -1049,6 +1049,8 @@ sai_status_t notifySyncd(const std::string& op)
 
         sai_status_t status = syncdApplyView();
 
+        // TODO if status is success, clear local db and floating vids
+
         sendResponse(status);
     }
     else

@@ -618,6 +618,8 @@ void redisCreateDummyEntryInAsicView(sai_object_id_t objectId)
     g_redisClient->hset(strKey, "NULL", "NULL");
 }
 
+std::set<sai_object_id_t> g_defaultPortsRids;
+
 void helperCheckPortIds()
 {
     SWSS_LOG_ENTER();
@@ -632,6 +634,8 @@ void helperCheckPortIds()
         // we assume here that port numbers didn't changed
         // during restarts
         redisCreateDummyEntryInAsicView(portId);
+
+        g_defaultPortsRids.insert(portId);
     }
 }
 
@@ -1008,6 +1012,10 @@ void onSyncdStart(bool warmStart)
     helperCheckPriorityGroupsIds();
 
     helperCheckSchedulerGroupsIds();
+
+    // TODO add SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID
+    // also support this values inside virtual switch
+    // and what will happen if user will moify existing profile values?
 
     if (warmStart)
     {
