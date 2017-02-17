@@ -133,8 +133,6 @@ class SaiAttr
          * attribute or non oid attribute. This method will extract all those oids from
          * this attribute and return as vector.  This is handy when we nedd processin
          * oids per attribute.
-         *
-         * TODO: this could be SaiAttr method
          */
         std::vector<sai_object_id_t> getOidListFromAttribute() const/*{{{*/
         {
@@ -211,8 +209,6 @@ class SaiAttr
 
                     break;
             }
-
-            // TODO check will it work with NULL pointer
 
             std::vector<sai_object_id_t> result(objectIdList, objectIdList + count);
 
@@ -447,7 +443,10 @@ class AsicView
                         soOids[o->str_object_id] = o;
                         oOids[o->meta_key.key.object_id] = o;
 
-                        // TODO move to metadata
+                        /*
+                         * From SAI 1.0 this will be in metadata.
+                         */
+
                         o->oidObject = true;
 
                         /*
@@ -716,9 +715,9 @@ class AsicView
         }/*}}}*/
 
         /*
-         * TODO instead of iterating via all list all the time lets have this
-         * as set, and then when we set object status we just remove it from
-         * set, but there is problem since status in set on object not on view
+         * Call to this method can be expensive, since every time we iterate
+         * entire list. This list can contain even 10k elements if view will be
+         * hudge.
          */
 
         std::vector<std::shared_ptr<SaiObj>> getNotProcessedObjectsByObjectType(/*{{{*/
@@ -875,7 +874,7 @@ class AsicView
              * deserialize to execute them on actual asic, maybe this is not
              * necessary and could be optimized later.
              *
-             * TODO create on object id attributes should do bind references to
+             * TODO create on object id attributes should bind references to
              * used VIDs of of links (currently done outside) and modify
              * dependency tree.
              */
@@ -1001,8 +1000,10 @@ class AsicView
 
             if (entry.size() == 0)
             {
-                // make sure that we put object into db
-                // even if there are no attributes set
+                /*
+                 * Make sure that we put object into db even if there are no
+                 * attributes set.
+                 */
                 swss::FieldValueTuple null("NULL", "NULL");
 
                 entry.push_back(null);
@@ -1137,9 +1138,12 @@ class AsicView
             ridToVid.erase(rid);
             vidToRid.erase(vid);
 
-            removedVidToRid[vid] = rid;
+            /*
+             * We could remove this VID also from m_vidReference, but it's not
+             * required.
+             */
 
-            // TODO m_vidReference remove also ?
+            removedVidToRid[vid] = rid;
 
             /*
              * Generate asic commands.
@@ -1896,12 +1900,11 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(/*{{{*/
              * Function hasEqualAttribute check if attribute exists on both objects.
              */
 
-            // TODO add to logs which attributes and then change do debug
             if (hasEqualAttribute(currentView, temporaryView, currentObj, temporaryObj, attrId))
             {
                 soci.equal_attributes++;
 
-                SWSS_LOG_INFO("ob equal %s %s, %s: %s",
+                SWSS_LOG_DEBUG("ob equal %s %s, %s: %s",
                         temporaryObj->str_object_id.c_str(),
                         currentObj->str_object_id.c_str(),
                         attr.second->getStrAttrId().c_str(),
@@ -1909,7 +1912,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(/*{{{*/
             }
             else
             {
-                SWSS_LOG_INFO("ob not equal %s %s, %s: %s",
+                SWSS_LOG_DEBUG("ob not equal %s %s, %s: %s",
                         temporaryObj->str_object_id.c_str(),
                         currentObj->str_object_id.c_str(),
                         attr.second->getStrAttrId().c_str(),
@@ -1990,7 +1993,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(/*{{{*/
     }
 
     /*
-     * TODO if we have more than 1 object matched actually more preffered
+     * If we have more than 1 object matched actually more preffered
      * object would be the object with most CREATE_ONLY attributes matching
      * since that will reduce risk of removind and recreateing that object in
      * current view.
@@ -2557,13 +2560,6 @@ std::shared_ptr<SaiObj> findCurrentBestMatch(/*{{{*/
 
             return findCurrentBestMatchForGenericObject(currentView, temporaryView, temporaryObj);
     }
-
-    /*
-     * TODO: We need to implement for multiple object matches per object
-     * heuristic like going along the path and counting how many times object
-     * is used, or on which "matched" port/object is used, or on how many
-     * routes etc, of course in both trees.
-     */
 }/*}}}*/
 
 void processObjectForViewTransition(
@@ -2712,7 +2708,7 @@ void bindNewLinks(/*{{{*/
      * eather we matched current object to temporary object so RID can be the
      * same.
      *
-     * TODO also if we want to keep track of object reverse dependency
+     * Also if we want to keep track of object reverse dependency
      * this action can be more complicated.
      */
 
@@ -2804,7 +2800,6 @@ void bringNonRemovableObjectToDefaultState(/*{{{*/
      * it's default object.
      */
 }/*}}}*/
-
 
 void releaseExisgingLinks(/*{{{*/
         _In_ AsicView &currentView,
@@ -2999,7 +2994,7 @@ void releaseExisgingLinks(/*{{{*/
      * Second operation after could increase links of setting new attribute, or
      * nothing if object was removed.
      *
-     * TODO also if we want to keep track of object reverse dependency
+     * Also if we want to keep track of object reverse dependency
      * this action can be more complicated.
      */
 
@@ -3053,7 +3048,6 @@ sai_object_id_t translateTemporaryVidToCurrentVid(/*{{{*/
 
         if (tempObj->createdObject)
         {
-            // TODO we can also double check if this vid exists in current view.
             SWSS_LOG_DEBUG("translated temp VID 0x%lx to current, since object was created", tvid);
 
             return tvid;
@@ -3105,7 +3099,7 @@ std::shared_ptr<SaiAttr> translateTemporaryVidsToCurrentVids(/*{{{*/
     /*
      * We need temporary VID translation to current view RID.
      *
-     * TODO: we also need simpler version that will translate simple VID for
+     * We also need simpler version that will translate simple VID for
      * oids present inside non object id structs.
      */
 
@@ -3230,7 +3224,7 @@ void setAttributeOnCurrentObject(/*{{{*/
     }
 
     /*
-     * TODO ok there is a problem here, since attribute we SET can be OID
+     * TODO There is a problem here, since attribute we SET can be OID
      * attribute, and that can be a VID or list of VIDs from temporary view. So
      * after this "set" operation we will end up with MIXED VIDs on current
      * view, some object will contain VIDs from temporary view, and this can
@@ -3245,7 +3239,7 @@ void setAttributeOnCurrentObject(/*{{{*/
      * to the same RID then we will lost track in dependency tree of that VID
      * reference count.
      *
-     * TODO this should also be done for object id's inside non object ids
+     * This should also done for object id's inside non object ids.
      */
 
     std::shared_ptr<SaiAttr> attr = translateTemporaryVidsToCurrentVids(currentView, temporaryView, currentObj, inattr);
@@ -3257,8 +3251,6 @@ void setAttributeOnCurrentObject(/*{{{*/
             /*
              * Since previous attribute exists, lets release previous links if
              * they are not NULL.
-             *
-             * TODO maybe release links should also modify dependency tree
              */
 
             releaseExisgingLinks(currentView, currentObj->getSaiAttr(meta->attrid));
@@ -3278,9 +3270,9 @@ void setAttributeOnCurrentObject(/*{{{*/
          * Also this attribute may exist already on this object or it will be
          * just set now, so just in case lets make copy of it.
          *
-         * TODO: making copy here is not maybe necessary since default
-         * attribute will be created dynamically anyway, and temporary
-         * attributes will not change also.
+         * Making copy here is not necessary since default attribute will be
+         * created dynamically anyway, and temporary attributes will not change
+         * also.
          */
 
         currentObj->setAttr(attr);
@@ -3321,7 +3313,7 @@ void createNewOidObjectFromTemporaryObject(/*{{{*/
      * to the same RID then we will lost track in dependency tree of that VID
      * reference count.
      *
-     * TODO this should also be done for object id's inside non object ids
+     * This should also be done for object id's inside non object ids.
      */
 
     /*
@@ -3478,7 +3470,6 @@ void createNewNonOidObjectFromTemporaryObject(/*{{{*/
                 currentObj->meta_key.key.route_entry.vr_id = vid;
 
                 // TODO this needs to be done in more generic way
-                // TODO should this vid be updated in vr_id ?
                 currentObj->str_object_id = sai_serialize_route_entry(currentObj->meta_key.key.route_entry);
 
                 currentView.bindNewVidReference(vid);
@@ -3507,7 +3498,6 @@ void createNewNonOidObjectFromTemporaryObject(/*{{{*/
                 currentObj->meta_key.key.neighbor_entry.rif_id = vid;
 
                 // TODO this needs to be done in more generic way
-                // TODO should this vid be updated in rif_id ?
                 currentObj->str_object_id = sai_serialize_neighbor_entry(currentObj->meta_key.key.neighbor_entry);
 
                 currentView.bindNewVidReference(vid);
@@ -3532,7 +3522,6 @@ void createNewNonOidObjectFromTemporaryObject(/*{{{*/
 
             throw std::runtime_error("unexpected non object id type");
     }
-
 
     /*
      * CreateObject flag is set to true, so when we we will be looking to
@@ -3812,7 +3801,9 @@ std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(/*{{{*/
 {
     SWSS_LOG_ENTER();
 
-    // TODO move this method to asicview class
+    /*
+     * Move this method to asicview class.
+     */
 
     switch (meta.defaultvaluetype)
     {
@@ -3852,6 +3843,10 @@ std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(/*{{{*/
                     break;
             }
 
+            /*
+             * NOTE: default for acl flags or action is disabled.
+             */
+
             break;
 
         case SAI_DEFAULT_VALUE_TYPE_ATTR_VALUE:
@@ -3859,6 +3854,9 @@ std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(/*{{{*/
             /*
              * TODO normally we need check defaultobject type and value but
              * this is only available in metadata sai 1.0.
+             *
+             * And all those values we should keep in double map object type
+             * and attribute id, and auto select from attr value.
              */
 
             if (meta.objecttype == SAI_OBJECT_TYPE_TRAP && meta.attrid == SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP)
@@ -3990,8 +3988,6 @@ bool performObjectSetTransition(/*{{{*/
 
             if (HAS_FLAG_CREATE_AND_SET(meta->flags))
             {
-                // TODO move to INFO
-
                 SWSS_LOG_DEBUG("Attr %s can be updated from %s to %s",
                         meta->attridname,
                         currentAttr->getStrAttrValue().c_str(),
@@ -4139,14 +4135,14 @@ bool performObjectSetTransition(/*{{{*/
             if (currentBestMatch->getObjectStatus() == SAI_OBJECT_STATUS_MATCHED &&
                     HAS_FLAG_CREATE_AND_SET(meta->flags))
             {
-               //   SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE
-               //   SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID
-               //   SAI_SCHEDULER_GROUP_ATTR_PARENT_NODE
-               //   SAI_BRIDGE_PORT_ATTR_BRIDGE_ID
+               // SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE
+               // SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID
+               // SAI_SCHEDULER_GROUP_ATTR_PARENT_NODE
+               // SAI_BRIDGE_PORT_ATTR_BRIDGE_ID
                //
-               //   TODO matched by ID (MATCHED state) should always be updatable
-               //   except those 4 above (at least for those above since they can have
-               //   default value present after switch creation
+               // TODO matched by ID (MATCHED state) should always be updatable
+               // except those 4 above (at least for those above since they can have
+               // default value present after switch creation
 
                 // TODO SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID is mandatory on create but also SET
                 // if attribute is set we and objest is in MATCHED state then that means we are able to
@@ -4181,7 +4177,7 @@ bool performObjectSetTransition(/*{{{*/
          *
          * TODO Currently we will support limited default value types.
          *
-         * TODO Later this comparison of default value we need to extract to
+         * Later this comparison of default value we need to extract to
          * separate functions. Maybe create SaiAttr from default value or
          * nullptr if it's not supported yet.
          */
@@ -4226,7 +4222,6 @@ bool performObjectSetTransition(/*{{{*/
 
             if (currentAttr->getStrAttrValue() == defaultValueAttr->getStrAttrValue())
             {
-                // TODO convert to info
                 SWSS_LOG_INFO("Present current attr %s value %s is the same as default value, no action needed",
                     meta->attridname,
                     currentAttr->getStrAttrValue().c_str());
@@ -4751,6 +4746,11 @@ void populateExistingObjects(/*{{{*/
          * called, and here we created some new objects that should be matched.
          */
 
+        for (const auto e: currentView.oOids)
+        {
+            SWSS_LOG_NOTICE("e: vid 0x%lx", e.first);
+        }
+
         currentView.oOids.at(vid)->setObjectStatus(SAI_OBJECT_STATUS_MATCHED);
         temporaryView.oOids.at(vid)->setObjectStatus(SAI_OBJECT_STATUS_MATCHED);
     }
@@ -4802,6 +4802,8 @@ void updateRedisDatabase(/*{{{*/
 
         std::string key = std::string(ASIC_STATE_TABLE) + ":" + obj->str_object_type + ":" + obj->str_object_id;
 
+        SWSS_LOG_DEBUG("setting key %s", key.c_str());
+
         if (attr.size() == 0)
         {
             /*
@@ -4831,12 +4833,14 @@ void updateRedisDatabase(/*{{{*/
 
     for (auto &kv: temporaryView.ridToVid)
     {
-        std::string strVid = sai_serialize_object_id(kv.first);
-        std::string strRid = sai_serialize_object_id(kv.second);
+        std::string strVid = sai_serialize_object_id(kv.second);
+        std::string strRid = sai_serialize_object_id(kv.first);
 
         g_redisClient->hset(VIDTORID, strVid, strRid);
         g_redisClient->hset(RIDTOVID, strRid, strVid);
     }
+
+    SWSS_LOG_NOTICE("updated redis database");
 }/*}}}*/
 
 sai_status_t internalSyncdApplyView()/*{{{*/
@@ -5003,7 +5007,7 @@ sai_status_t syncdApplyView()/*{{{*/
 {
     SWSS_LOG_ENTER();
 
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     sai_status_t status = SAI_STATUS_FAILURE;
 
@@ -5212,7 +5216,7 @@ sai_status_t asic_handle_generic(/*{{{*/
                     std::string str_vid = sai_serialize_object_id(object_id);
                     std::string str_rid = sai_serialize_object_id(real_object_id);
 
-                    SWSS_LOG_NOTICE("saved VID %s to RID %s", str_vid.c_str(), str_rid.c_str());
+                    SWSS_LOG_INFO("saved VID %s to RID %s", str_vid.c_str(), str_rid.c_str());
                 }
                 else
                 {
