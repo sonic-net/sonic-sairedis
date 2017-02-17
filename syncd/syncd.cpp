@@ -1049,9 +1049,20 @@ sai_status_t notifySyncd(const std::string& op)
 
         sai_status_t status = syncdApplyView();
 
-        // TODO if status is success, clear local db and floating vids
-
         sendResponse(status);
+
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            /*
+             * We succesfully applied new view, VID mapping could change, so we
+             * need to clear local db, and all new VIDs will be queried using
+             * redis.
+             */
+
+            floating_vid_set.clear();
+            local_rid_to_vid.clear();
+            local_vid_to_rid.clear();
+        }
     }
     else
     {
