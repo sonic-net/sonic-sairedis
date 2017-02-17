@@ -125,8 +125,8 @@ const char* metadata_sai_acl_bind_point_t_enum_values_short_names[] = {
     "ROUTER_INTF",
     "SWITCH"
 };
-const size_t metadata_sai_acl_bind_point_t_enum_values_count = 4;
-DEFINE_ENUM_METADATA(sai_acl_bind_point_t, 4);
+const size_t metadata_sai_acl_bind_point_t_enum_values_count = 5;
+DEFINE_ENUM_METADATA(sai_acl_bind_point_t, 5);
 
 const char metadata_sai_acl_stage_t_enum_name[] = "sai_acl_stage_t";
 const sai_acl_stage_t metadata_sai_acl_stage_t_enum_values[] = {
