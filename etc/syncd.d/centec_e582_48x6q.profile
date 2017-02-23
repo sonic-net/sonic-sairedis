@@ -1,0 +1,1 @@
+BOARD_CONFIG_FILE_PATH=/etc/centec/E582-48x6q.json
