@@ -52,6 +52,10 @@ start)
         start_bcm
         DAEMON_ARGS+=" -p /etc/syncd.d/dell_s6100.profile -N"
 
+    elif [ "$onie_platform" == "x86_64-dell_z9100_c2538-r0" ]; then
+        start_bcm
+        DAEMON_ARGS+=" -p /etc/syncd.d/dell_z9100.profile"
+
     elif [ "$aboot_platform" == "x86_64-arista_7050_qx32" ]; then
         start_bcm
         DAEMON_ARGS+=" -p /etc/syncd.d/arista_a7050_qx32.profile"
