@@ -36,6 +36,12 @@ start_mlnx()
     [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
 }
 
+start_centec()
+{
+    [ -e /dev/linux_dal ] || ( insmod /usr/lib/dal.ko && mknod /dev/linux_dal c 198 0 )
+    [ -e /dev/net/tun ] || ( modprobe tun &&  mkdir -p /dev/net && mknod /dev/net/tun c 10 200 && chmod 777 /dev/net/tun )
+}
+
 case "$1" in
 start)
     [ -r /etc/machine.conf ] && . /etc/machine.conf
@@ -89,6 +95,39 @@ start)
         if [ ${ENABLE_SAITHRIFT} == 1 ]; then
             DAEMON_ARGS+=" -r -m /etc/syncd.d/msn2700_port_map.ini"
         fi
+    elif [ "$onie_platform" == "x86_64-centec_e582_48x6q-r0" ]; then
+        start_centec
+
+        if ! grep DEVICE_MAC_ADDRESS /etc/syncd.d/centec_e582_48x6q.profile > /dev/null
+        then
+            # Read MAC address and align the last 6 bits.
+            MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
+            last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
+            aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')"`  # put mask and take away the 0x prefix
+            ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
+
+            # Write MAC address into *.profile file.
+            echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /etc/syncd.d/centec_e582_48x6q.profile
+        fi
+
+        DAEMON_ARGS="-p /etc/syncd.d/centec_e582_48x6q.profile"
+
+    elif [ "$onie_platform" == "x86_64-ew_es6220_x48q2h4-r0" ]; then
+        start_centec
+
+        if ! grep DEVICE_MAC_ADDRESS /etc/syncd.d/embedway_es6428a-x48q2h4.profile > /dev/null
+        then
+            # Read MAC address and align the last 6 bits.
+            MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
+            last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
+            aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')"`  # put mask and take away the 0x prefix
+            ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
+
+            # Write MAC address into *.profile file.
+            echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /etc/syncd.d/embedway_es6428a-x48q2h4.profile
+        fi
+
+        DAEMON_ARGS="-p /etc/syncd.d/embedway_es6428a-x48q2h4.profile"
 
     elif [ "$onie_platform" == "x86_64-ingrasys_s9100-r0" ]; then
         start_bcm
