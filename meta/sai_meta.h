@@ -623,11 +623,8 @@ typedef struct _sai_attr_metadata_t {
             return true;
         }
 
-        if (objecttype == SAI_OBJECT_TYPE_MIRROR &&
-                attrid == SAI_MIRROR_SESSION_ATTR_VLAN_ID)
-        {
-            return true;
-        }
+        // Requires special handling ("0" is valid value).
+        // SAI_MIRROR_SESSION_ATTR_VLAN_ID
 
         // has different serialization than u16
         // SAI_ACL_ENTRY_ATTR_FIELD_OUTER_VLAN_ID
