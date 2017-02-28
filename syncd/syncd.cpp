@@ -1666,6 +1666,8 @@ int main(int argc, char **argv)
 
     SWSS_LOG_ENTER();
 
+    SWSS_LOG_NOTICE("fast-reboot. syncd started");
+
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     meta_init_db();
@@ -1736,7 +1738,9 @@ int main(int argc, char **argv)
 
     initialize_common_api_pointers();
 
+    SWSS_LOG_NOTICE("fast-reboot. Starting initializing the switch");
     status = sai_switch_api->initialize_switch(0, "", "", &switch_notifications);
+    SWSS_LOG_NOTICE("fast-reboot. Stopped initializing the switch");
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -1783,6 +1787,8 @@ int main(int argc, char **argv)
 
         s.addSelectable(asicState);
         s.addSelectable(restartQuery);
+
+        SWSS_LOG_NOTICE("fast-reboot. Starting main loop");
 
         while(true)
         {
