@@ -1488,6 +1488,7 @@ void handleCmdLine(int argc, char **argv)
                 }
                 else if (std::string(optarg) == "fast")
                 {
+                    SWSS_LOG_NOTICE("fast-reboot. fast boot option was selected");
                     options.startType = SAI_FAST_BOOT;
                 }
                 else
