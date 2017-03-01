@@ -1,4 +1,5 @@
 #include <iostream>
+#include <map>
 #include "syncd.h"
 #include "sairedis.h"
 
@@ -7,6 +8,8 @@ std::mutex g_mutex;
 swss::RedisClient *g_redisClient = NULL;
 
 std::map<std::string, std::string> gProfileMap;
+
+extern const std::map<std::string, sai_api_t> saiApiMap;
 
 // by default we are in APPLY mode
 volatile bool g_asicInitViewMode = false;
@@ -1306,46 +1309,6 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
     return status;
 }
 
-swss::Logger::Priority redisGetLogLevel()
-{
-    SWSS_LOG_ENTER();
-
-    auto plevel = g_redisClient->get("LOGLEVEL");
-
-    if (plevel == NULL)
-    {
-        return swss::Logger::getInstance().getMinPrio();
-    }
-
-    return swss::Logger::stringToPriority(*plevel);
-}
-
-void redisSetLogLevel(swss::Logger::Priority prio)
-{
-    SWSS_LOG_ENTER();
-
-    std::string level = swss::Logger::priorityToString(prio);
-
-    g_redisClient->set("LOGLEVEL", level);
-}
-
-void updateLogLevel()
-{
-    std::lock_guard<std::mutex> lock(g_mutex);
-
-    auto level = redisGetLogLevel();
-
-    if (level != swss::Logger::getInstance().getMinPrio())
-    {
-        swss::Logger::getInstance().setMinPrio(level);
-
-        SWSS_LOG_NOTICE("log level changed to %s", swss::Logger::priorityToString(level).c_str());
-
-        // set level to correct one if user set some invalid value
-        redisSetLogLevel(level);
-    }
-}
-
 void printUsage()
 {
     std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u]" << std::endl;
@@ -1637,13 +1600,44 @@ bool isVeryFirstRun()
     return firstRun;
 }
 
+void saiLoglevelNotify(std::string apiStr, std::string prioStr)
+{
+    using namespace swss;
+
+    static const std::map<std::string, sai_log_level_t> saiLoglevelMap = {
+        { "SAI_LOG_CRITICAL", SAI_LOG_CRITICAL },
+        { "SAI_LOG_ERROR", SAI_LOG_ERROR },
+        { "SAI_LOG_WARN", SAI_LOG_WARN },
+        { "SAI_LOG_NOTICE", SAI_LOG_NOTICE },
+        { "SAI_LOG_INFO", SAI_LOG_INFO },
+        { "SAI_LOG_DEBUG", SAI_LOG_DEBUG },
+    };
+
+    if (saiLoglevelMap.find(prioStr) == saiLoglevelMap.end())
+    {
+        SWSS_LOG_ERROR("Invalid SAI loglevel %s %s", apiStr.c_str(), prioStr.c_str());
+        return;
+    }
+
+    sai_status_t status = sai_log_set(saiApiMap.at(apiStr), saiLoglevelMap.at(prioStr));
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to set SAI loglevel %s %s", apiStr.c_str(), prioStr.c_str());
+        return;
+    }
+
+    SWSS_LOG_NOTICE("Setting SAI loglevel %s to %s", apiStr.c_str(), prioStr.c_str());
+}
+
 int main(int argc, char **argv)
 {
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
-
     SWSS_LOG_ENTER();
 
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
+    for (const auto& i : saiApiMap)
+    {
+        swss::Logger::linkToDb(i.first, saiLoglevelNotify, "SAI_LOG_NOTICE");
+    }
+    swss::Logger::linkToDbNative("syncd");
 
     meta_init_db();
 
@@ -1661,8 +1655,6 @@ int main(int argc, char **argv)
     swss::DBConnector *dbNtf = new swss::DBConnector(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
 
     g_redisClient = new swss::RedisClient(db);
-
-    updateLogLevel();
 
     swss::ConsumerTable *asicState = new swss::ConsumerTable(db, ASIC_STATE_TABLE);
     swss::NotificationConsumer *restartQuery = new swss::NotificationConsumer(db, "RESTARTQUERY");

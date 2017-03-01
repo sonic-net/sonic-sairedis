@@ -1,9 +1,39 @@
+#include <map>
 #include "syncd.h"
 
 create_fn           common_create[SAI_OBJECT_TYPE_MAX];
 remove_fn           common_remove[SAI_OBJECT_TYPE_MAX];
 set_attribute_fn    common_set_attribute[SAI_OBJECT_TYPE_MAX];
 get_attribute_fn    common_get_attribute[SAI_OBJECT_TYPE_MAX];
+
+extern const std::map<std::string, sai_api_t> saiApiMap = {
+    { "SAI_API_SWITCH", SAI_API_SWITCH },
+    { "SAI_API_PORT", SAI_API_PORT },
+    { "SAI_API_FDB", SAI_API_FDB },
+    { "SAI_API_VLAN", SAI_API_VLAN },
+    { "SAI_API_VIRTUAL_ROUTER", SAI_API_VIRTUAL_ROUTER },
+    { "SAI_API_ROUTE", SAI_API_ROUTE },
+    { "SAI_API_NEXT_HOP", SAI_API_NEXT_HOP },
+    { "SAI_API_NEXT_HOP_GROUP", SAI_API_NEXT_HOP_GROUP },
+    { "SAI_API_ROUTER_INTERFACE", SAI_API_ROUTER_INTERFACE },
+    { "SAI_API_NEIGHBOR", SAI_API_NEIGHBOR },
+    { "SAI_API_ACL", SAI_API_ACL },
+    { "SAI_API_HOST_INTERFACE", SAI_API_HOST_INTERFACE },
+    { "SAI_API_MIRROR", SAI_API_MIRROR },
+    { "SAI_API_SAMPLEPACKET", SAI_API_SAMPLEPACKET },
+    { "SAI_API_STP", SAI_API_STP },
+    { "SAI_API_LAG", SAI_API_LAG },
+    { "SAI_API_POLICER", SAI_API_POLICER },
+    { "SAI_API_WRED", SAI_API_WRED },
+    { "SAI_API_QOS_MAPS", SAI_API_QOS_MAPS },
+    { "SAI_API_QUEUE", SAI_API_QUEUE },
+    { "SAI_API_SCHEDULER", SAI_API_SCHEDULER },
+    { "SAI_API_SCHEDULER_GROUP", SAI_API_SCHEDULER_GROUP },
+    { "SAI_API_BUFFERS", SAI_API_BUFFERS },
+    { "SAI_API_HASH", SAI_API_HASH },
+    { "SAI_API_UDF", SAI_API_UDF },
+    { "SAI_API_TUNNEL", SAI_API_TUNNEL },
+};
 
 sai_acl_api_t                *sai_acl_api;
 sai_buffer_api_t             *sai_buffer_api;
@@ -215,33 +245,4 @@ void populate_sai_apis()
     sai_api_query(SAI_API_VIRTUAL_ROUTER, (void**)&sai_router_api);
     sai_api_query(SAI_API_VLAN, (void**)&sai_vlan_api);
     sai_api_query(SAI_API_WRED, (void**)&sai_wred_api);
-
-    // set log levels
-
-    sai_log_set(SAI_API_ACL, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_BUFFERS, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_FDB, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_HASH, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_HOST_INTERFACE, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_LAG, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_MIRROR, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_NEIGHBOR, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_NEXT_HOP, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_NEXT_HOP_GROUP, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_POLICER, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_PORT, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_QOS_MAPS, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_QUEUE, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_ROUTE, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_ROUTER_INTERFACE, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_SAMPLEPACKET, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_SCHEDULER, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_SCHEDULER_GROUP, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_STP, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_SWITCH, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_TUNNEL, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_UDF, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_VIRTUAL_ROUTER, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_VLAN, SAI_LOG_NOTICE);
-    sai_log_set(SAI_API_WRED, SAI_LOG_NOTICE);
 }

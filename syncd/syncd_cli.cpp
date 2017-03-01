@@ -54,31 +54,9 @@ void cmd_help(const std::vector<std::string>& args)
 
     std::string help = "\n\
     help            - this command\n\
-    exit            - close cli connection\n\
-    loglevel LEVEL  - sets debug logger level\n\n";
+    exit            - close cli connection\n";
 
     sendtoclient(help);
-}
-
-void cmd_loglevel(const std::vector<std::string>& args)
-{
-    SWSS_LOG_ENTER();
-
-    if (args.size() < 2)
-    {
-        sendtoclient("missing level parameter\n");
-        return;
-    }
-
-    std::string slevel = args[1];
-
-    std::transform(slevel.begin(), slevel.end(), slevel.begin(), ::toupper);
-
-    swss::Logger::Priority level = swss::Logger::stringToPriority(slevel);
-
-    swss::Logger::getInstance().setMinPrio(level);
-
-    sendtoclient("log level changed to " + swss::Logger::priorityToString(level) + "\n");
 }
 
 std::string trim(const std::string &in)
@@ -113,10 +91,6 @@ void handle_cli_commands(const std::string& line)
     if (cmd == "exit" || cmd == "quit")
     {
         cmd_exit();
-    }
-    else if (cmd == "loglevel")
-    {
-        cmd_loglevel(tokens);
     }
     else if (cmd == "help")
     {
