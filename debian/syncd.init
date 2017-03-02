@@ -16,6 +16,8 @@ DAEMON_SYNCD=/usr/bin/syncd
 DAEMON_DSSERVE=/usr/bin/dsserve
 DAEMON_DSSERVE_ARGS="-d $DAEMON_SYNCD --diag"
 ENABLE_SAITHRIFT=0
+HWSKU_DIR=/usr/share/sonic/hwsku
+asic_type=`/usr/bin/sonic-cfggen -y /etc/sonic/sonic_version.yml -v asic_type`
 
 if [ -x $DAEMON_DSSERVE ]; then
     DAEMON=$DAEMON_DSSERVE
@@ -34,67 +36,46 @@ start_bcm()
 start_mlnx()
 {
     [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
+
+    cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
+
+    # Read MAC address and align the last 6 bits.
+    MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
+    last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
+    aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')"`  # put mask and take away the 0x prefix
+    ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
+
+    # Write MAC address into *.profile file.
+    echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /tmp/sai.profile
+}
+
+start_cavium()
+{
+    export XP_ROOT=/usr/bin/
 }
 
 case "$1" in
 start)
-    [ -r /etc/machine.conf ] && . /etc/machine.conf
 
-    if [ "$onie_platform" == "x86_64-dell_s6000_s1220-r0" ]; then
+    if [ $asic_type == "broadcom" ]; then
         start_bcm
-        DAEMON_ARGS+=" -p /etc/syncd.d/dell_s6000.profile "
-
-        if [ ${ENABLE_SAITHRIFT} == 1 ]; then
-            DAEMON_ARGS+=" -r -m /etc/syncd.d/dell_s6000_port_map.ini"
-        fi
-
-    elif [ "$onie_platform" == "x86_64-dell_s6100_c2538-r0" ]; then
-        start_bcm
-        DAEMON_ARGS+=" -p /etc/syncd.d/dell_s6100.profile -N"
-
-    elif [ "$onie_platform" == "x86_64-dell_z9100_c2538-r0" ]; then
-        start_bcm
-        DAEMON_ARGS+=" -p /etc/syncd.d/dell_z9100.profile"
-
-    elif [ "$aboot_platform" == "x86_64-arista_7050_qx32" ]; then
-        start_bcm
-        DAEMON_ARGS+=" -p /etc/syncd.d/arista_a7050_qx32.profile"
-
-    elif [ "$onie_platform" == "x86_64-m3000-r0" ]; then
-        start_bcm
-        DAEMON_ARGS+=" -p /etc/syncd.d/m3000_r0.profile"
-
-    elif [ "$onie_platform" == "x86_64-m3000-r1" ]; then
-        start_bcm
-        DAEMON_ARGS+=" -p /etc/syncd.d/m3000_r1.profile"
-
-    elif [ "$onie_platform" == "x86_64-mlnx_x86-r5.0.1400" ] || [ "$onie_platform" == "x86_64-mlnx_msn2700-r0" ]; then
+        DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile "
+    elif [ $asic_type == "mellanox" ]; then
         start_mlnx
-
-        # Check if there's no MAC in .profile already.
-        if ! grep DEVICE_MAC_ADDRESS /etc/syncd.d/mlnx_2700.profile > /dev/null
-        then
-            # Read MAC address and align the last 6 bits.
-            MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
-            last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
-            aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')"`  # put mask and take away the 0x prefix
-            ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
-
-            # Write MAC address into *.profile file.
-            echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /etc/syncd.d/mlnx_2700.profile
-        fi
-
-        DAEMON_ARGS="-p /etc/syncd.d/mlnx_2700.profile"
-
-        if [ ${ENABLE_SAITHRIFT} == 1 ]; then
-            DAEMON_ARGS+=" -r -m /etc/syncd.d/msn2700_port_map.ini"
-        fi
-
-    elif [ "$onie_platform" == "x86_64-ingrasys_s9100-r0" ]; then
-        start_bcm
-        export OPENNSL_CONFIG_POST_INIT_FILE="/etc/bcm/th-ingrasys-s9100-32x100G.soc"
-        DAEMON_ARGS+=" -p /etc/syncd.d/ingrasys_s9100.profile -N"
+        DAEMON_ARGS+=" -p /tmp/sai.profile "
+    elif [ $asic_type == "cavium" ]; then
+        DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile "
+        start_cavium
+    else
+        echo "Unknown asic type $asic_type"
+        exit 1
     fi
+
+    if [ ${ENABLE_SAITHRIFT} == 1 ]; then
+        DAEMON_ARGS+=" -r -m $HWSKU_DIR/port_config.ini"
+    fi
+
+    [ -r $HWSKU_DIR/syncd.conf ] && . $HWSKU_DIR/syncd.conf
 
     start-stop-daemon --start --quiet --exec $DAEMON -- $DAEMON_ARGS
     ;;

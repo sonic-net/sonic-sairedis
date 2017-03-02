@@ -1550,18 +1550,11 @@ void handlePortMap(const std::string& portMapFile)
         if (line.size() > 0 && (line[0] == '#' || line[0] == ';'))
             continue;
 
-        size_t pos = line.find(" ");
+        std::istringstream iss(line);
+        std::string name, lanes, alias;
+        iss >> name >> lanes >> alias;
 
-        if (pos == std::string::npos)
-        {
-            std::cerr << "port map parsing: not found ' ' in line" << line.c_str() << std::endl;
-            continue;
-        }
-
-        std::string fp_value = line.substr(0, pos);
-        std::string lanes    = line.substr(pos + 1);
-        lanes.erase(lanes.begin(), std::find_if(lanes.begin(), lanes.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
-        std::istringstream iss(lanes);
+        iss.str(lanes);
         std::string lane_str;
         std::set<int> lane_set;
 
@@ -1571,7 +1564,7 @@ void handlePortMap(const std::string& portMapFile)
             lane_set.insert(lane);
         }
 
-        gPortMap.insert(std::pair<std::set<int>,std::string>(lane_set,fp_value));
+        gPortMap.insert(std::pair<std::set<int>,std::string>(lane_set, name));
     }
 }
 #endif // SAITHRIFT
