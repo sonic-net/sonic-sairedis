@@ -63,6 +63,22 @@ start_mlnx()
     echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /tmp/sai.profile
 }
 
+start_centec()
+{
+    [ -e /dev/linux_dal ] || mknod /dev/linux_dal c 198 0
+    [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
+
+    # Read MAC address and align the last 6 bits.
+    MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
+    last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
+    aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')"`  # put mask and take away the 0x prefix
+    ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
+
+    # Write MAC address into /tmp/profile file.
+    cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
+    echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /tmp/sai.profile
+}
+
 start_cavium()
 {
     export XP_ROOT=/usr/bin/
@@ -81,6 +97,9 @@ start)
     elif [ $sonic_asic_type == "cavium" ]; then
         DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile "
         start_cavium
+    elif [ $sonic_asic_type == "centec" ]; then
+        start_centec
+        DAEMON_ARGS+=" -p /tmp/sai.profile "
     else
         echo "Unknown asic type $sonic_asic_type"
         exit 1
