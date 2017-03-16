@@ -1488,7 +1488,6 @@ void handleCmdLine(int argc, char **argv)
                 }
                 else if (std::string(optarg) == "fast")
                 {
-                    SWSS_LOG_NOTICE("fast-reboot. fast boot option was selected");
                     options.startType = SAI_FAST_BOOT;
                 }
                 else
@@ -1667,7 +1666,7 @@ int main(int argc, char **argv)
 
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_NOTICE("fast-reboot. syncd started");
+    SWSS_LOG_NOTICE("syncd started");
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
@@ -1739,9 +1738,9 @@ int main(int argc, char **argv)
 
     initialize_common_api_pointers();
 
-    SWSS_LOG_NOTICE("fast-reboot. Starting initializing the switch");
+    SWSS_LOG_NOTICE("starting initializing ASIC");
     status = sai_switch_api->initialize_switch(0, "", "", &switch_notifications);
-    SWSS_LOG_NOTICE("fast-reboot. Stopped initializing the switch");
+    SWSS_LOG_NOTICE("finished initializing ASIC");
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -1773,7 +1772,9 @@ int main(int argc, char **argv)
 
     try
     {
+        SWSS_LOG_NOTICE("before onSyncdStart");
         onSyncdStart(options.startType == SAI_WARM_BOOT);
+        SWSS_LOG_NOTICE("after onSyncdStart");
 
         if (options.disableCountersThread == false)
         {
@@ -1789,7 +1790,7 @@ int main(int argc, char **argv)
         s.addSelectable(asicState);
         s.addSelectable(restartQuery);
 
-        SWSS_LOG_NOTICE("fast-reboot. Starting main loop");
+        SWSS_LOG_NOTICE("starting main loop");
 
         while(true)
         {
