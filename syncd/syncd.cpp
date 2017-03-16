@@ -1624,7 +1624,7 @@ void saiLoglevelNotify(std::string apiStr, std::string prioStr)
         { "SAI_LOG_CRITICAL", SAI_LOG_CRITICAL },
         { "SAI_LOG_ERROR", SAI_LOG_ERROR },
         { "SAI_LOG_WARN", SAI_LOG_WARN },
-         { "SAI_LOG_NOTICE", SAI_LOG_NOTICE },
+        { "SAI_LOG_NOTICE", SAI_LOG_NOTICE },
         { "SAI_LOG_INFO", SAI_LOG_INFO },
         { "SAI_LOG_DEBUG", SAI_LOG_DEBUG },
     };
@@ -1656,7 +1656,7 @@ int main(int argc, char **argv)
         swss::Logger::linkToDb(i.first, saiLoglevelNotify, "SAI_LOG_NOTICE");
     }
     swss::Logger::linkToDbNative("syncd");
-  
+
     meta_init_db();
 
     handleCmdLine(argc, argv);
