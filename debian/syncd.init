@@ -88,6 +88,10 @@ case "$1" in
 start)
     eval $(parse_yaml /etc/sonic/sonic_version.yml "sonic_")
 
+    [ -r /etc/machine.conf ] && . /etc/machine.conf
+
+    [ -r $HWSKU_DIR/$onie_platform/minigraph.xml ] && HWSKU_DIR=$HWSKU_DIR/$onie_platform/$(cat $HWSKU_DIR/$onie_platform/minigraph.xml | grep HwSku | sed -e 's/<[^>]*>//g;s/^ *//;s/$//' | uniq)
+
     if [ $sonic_asic_type == "broadcom" ]; then
         start_bcm
         DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile "
