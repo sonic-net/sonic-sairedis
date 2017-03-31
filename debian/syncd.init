@@ -84,6 +84,15 @@ start_cavium()
     export XP_ROOT=/usr/bin/
 }
 
+case "`cat /proc/cmdline`" in
+  *fast-reboot*)
+     FAST_REBOOT='yes'
+    ;;
+  *)
+     FAST_REBOOT='no'
+    ;;
+esac
+
 case "$1" in
 start)
     eval $(parse_yaml /etc/sonic/sonic_version.yml "sonic_")
@@ -91,6 +100,10 @@ start)
     if [ $sonic_asic_type == "broadcom" ]; then
         start_bcm
         DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile "
+        if [ $FAST_REBOOT == "yes" ];
+        then
+          DAEMON_ARGS+=" -t fast "
+        fi
     elif [ $sonic_asic_type == "mellanox" ]; then
         start_mlnx
         DAEMON_ARGS+=" -p /tmp/sai.profile "
