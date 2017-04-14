@@ -10,6 +10,12 @@ Architecture: any
 Description: This package contains sync daemon for SONiC project.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
 
+Package: syncd-rpc
+Architecture: any
+Description: This package contains sync daemon with rpc for SONiC project.
+  This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
+  This daemon contains saithrift rpc library for remote control of an ASIC.
+
 Package: libsairedis
 Architecture: any
 Section: libs

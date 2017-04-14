@@ -28,10 +28,8 @@ syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
 syncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata
 
 if SAITHRIFT
-SAI_RPC_INCLUDE_DIR = ../libsaiserver/include
-SAI_RPC_LIB_DIR = ../libsaiserver/lib
-syncd_CPPFLAGS += -I$(SAI_RPC_INCLUDE_DIR) -DSAITHRIFT=yes
-syncd_LDADD += -L$(SAI_RPC_LIB_DIR) -lrpcserver -lthrift
+syncd_CPPFLAGS += -DSAITHRIFT=yes
+syncd_LDADD += -lrpcserver -lthrift
 endif
 
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp

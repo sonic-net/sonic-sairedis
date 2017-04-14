@@ -16,9 +16,25 @@ include /usr/share/dpkg/default.mk
 # package maintainers to append LDFLAGS
 #export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 
-# main packaging script based on dh7 syntax
-%:
-	dh $@  --with autotools-dev
+clean:
+	dh $@ --with autotools-dev
+
+build:
+	echo build stage is skipped. Please use binary to generate debian packages
+
+binary: binary-syncd binary-syncd-rpc
+
+binary-syncd:
+	$(shell echo > /tmp/syncd-build)
+	dh clean               --with autotools-dev
+	dh build  -N syncd-rpc --with autotools-dev
+	dh binary -N syncd-rpc --with autotools-dev
+
+binary-syncd-rpc:
+	$(shell echo '--enable-rpcserver=yes' > /tmp/syncd-build)
+	dh clean           --with autotools-dev
+	dh build  -N syncd --with autotools-dev
+	dh binary -N syncd --with autotools-dev
 
 # dh_make generated override targets
 # This is example for Cmake (See https://bugs.debian.org/641051 )
@@ -26,20 +42,17 @@ include /usr/share/dpkg/default.mk
 #	dh_auto_configure -- \
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
-ifeq ($(findstring --enable-rpcserver=yes,${CONFIGURE_ARGS}),--enable-rpcserver=yes)
-  saithrift = yes
-else
-  saithrift = no
-endif
-
 override_dh_auto_configure:
-	dh_auto_configure -- ${CONFIGURE_ARGS}
+	./autogen.sh	
+	dh_auto_configure -- $(shell cat /tmp/syncd-build)
 
 override_dh_installinit:
-  ifeq ($(saithrift), yes)
-	sed -i 's/ENABLE_SAITHRIFT=0/ENABLE_SAITHRIFT=1/' debian/syncd.init
+  ifeq ($(shell cat /tmp/syncd-build), --enable-rpcserver=yes)
+	sed -i 's/ENABLE_SAITHRIFT=0/ENABLE_SAITHRIFT=1/' debian/syncd-rpc.init
+  else
+	sed -i 's/ENABLE_SAITHRIFT=1/ENABLE_SAITHRIFT=0/' debian/syncd.init
   endif
-	dh_installinit
+	dh_installinit --init-script=syncd
 
 override_dh_shlibdeps:
 	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
