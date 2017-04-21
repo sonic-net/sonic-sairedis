@@ -16,6 +16,7 @@ DAEMON_SYNCD=/usr/bin/syncd
 DAEMON_DSSERVE=/usr/bin/dsserve
 DAEMON_DSSERVE_ARGS="-d $DAEMON_SYNCD --diag"
 ENABLE_SAITHRIFT=0
+PLATFORM_DIR=/usr/share/sonic/platform
 HWSKU_DIR=/usr/share/sonic/hwsku
 
 if [ -x $DAEMON_DSSERVE ]; then
@@ -122,7 +123,7 @@ start)
         DAEMON_ARGS+=" -r -m $HWSKU_DIR/port_config.ini"
     fi
 
-    [ -r $HWSKU_DIR/syncd.conf ] && . $HWSKU_DIR/syncd.conf
+    [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf
 
     start-stop-daemon --start --quiet --exec $DAEMON -- $DAEMON_ARGS
     ;;
