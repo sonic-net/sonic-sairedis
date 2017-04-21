@@ -37,7 +37,7 @@ AC_ARG_ENABLE(rpcserver,
 esac],[rpcserver=false])
 AM_CONDITIONAL(SAITHRIFT, test x$rpcserver = xtrue)
 AM_COND_IF([SAITHRIFT], [
-        AC_CHECK_LIB([thrift], [main], [], [AC_MSG_ERROR(libthrift is required for rpcserver)])
+        AC_CHECK_LIB([thrift], [main], [AC_MSG_NOTICE(libthrift found)], [AC_MSG_ERROR(libthrift is required for rpcserver)])
 ])
 
 CFLAGS_COMMON=""
