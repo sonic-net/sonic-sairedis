@@ -48,3 +48,48 @@ Architecture: any
 Depends: libsaimetadata (= ${binary:Version})
 Section: libdevel
 Description: This package contains development files for SAI-Metadata.
+
+Package: syncd-dbg
+Architecture: any
+Section: debug
+Priority: extra
+Depends:
+    syncd (= ${binary:Version}),
+    ${misc:Depends}
+Description: debugging symbols for syncd
+
+Package: syncd-rpc-dbg
+Architecture: any
+Section: debug
+Priority: extra
+Depends:
+    syncd-rpc (= ${binary:Version}),
+    ${misc:Depends}
+Description: debugging symbols for syncd-rpc
+
+Package: libsairedis-dbg
+Architecture: any
+Section: debug
+Priority: extra
+Depends:
+    libsairedis (= ${binary:Version}),
+    ${misc:Depends}
+Description: debugging symbols for libsairedis
+
+Package: libsaivs-dbg
+Architecture: any
+Section: debug
+Priority: extra
+Depends:
+    libsaivs (= ${binary:Version}),
+    ${misc:Depends}
+Description: debugging symbols for libsaivs
+
+Package: libsaimetadata-dbg
+Architecture: any
+Section: debug
+Priority: extra
+Depends:
+    libsaimetadata (= ${binary:Version}),
+    ${misc:Depends}
+Description: debugging symbols for libsaimetadata
