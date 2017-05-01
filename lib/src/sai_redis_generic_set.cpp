@@ -31,6 +31,60 @@ sai_status_t internal_redis_generic_set(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t internal_redis_bulk_generic_set(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ const sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    std::string str_object_type = sai_serialize_object_type(object_type);
+
+    std::vector<swss::FieldValueTuple> entries;
+
+    for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
+    {
+        std::vector<swss::FieldValueTuple> entry =
+            SaiAttributeList::serialize_attr_list(object_type, 1, &attr_list[idx], false);
+
+        std::string str_attr = joinFieldValues(entry);
+
+        std::string str_status = sai_serialize_status(object_statuses[idx]);
+
+        std::string joined = str_attr + "|" + str_status;
+
+        swss::FieldValueTuple fvt(serialized_object_ids[idx] , joined);
+
+        entries.push_back(fvt);
+    }
+
+    std::string key = str_object_type;
+
+    if (g_record)
+    {
+        std::string joined = "";
+
+        for (const auto &e: entries)
+        {
+            // ||obj_id|attr=val|attr=val|status||obj_id|attr=val|attr=val|status
+
+            joined += "||" + fvField(e) + "|" + fvValue(e);
+        }
+
+        /*
+         * Capital 'S' stads for bulk SET operation.
+         */
+
+        recordLine("S|" + key + joined);
+    }
+
+    g_asicState->set(key, entries, "bulkset");
+
+    return SAI_STATUS_SUCCESS;
+}
+
+
 sai_status_t redis_generic_set(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,

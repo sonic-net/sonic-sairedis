@@ -174,6 +174,12 @@ sai_status_t redis_generic_set_trap(
 sai_status_t redis_generic_set_switch(
         _In_ const sai_attribute_t *attr);
 
+sai_status_t internal_redis_bulk_generic_set(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ const sai_status_t *object_statuses);
+
 // GET
 
 sai_status_t redis_generic_get(

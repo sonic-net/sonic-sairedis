@@ -1,4 +1,7 @@
 #include "sai_redis.h"
+#include "sairedis.h"
+#include "meta/saiserialize.h"
+#include "meta/saiattributelist.h"
 
 /**
  * Routine Description:
@@ -121,3 +124,163 @@ const sai_route_api_t redis_route_api = {
     redis_set_route_attribute,
     redis_get_route_attribute,
 };
+
+
+sai_status_t sai_bulk_create_route_entry(
+        _In_ uint32_t object_count,
+        _In_ const sai_unicast_route_entry_t *route_entry,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_type_t type,
+        _Out_ sai_status_t *object_statuses)
+{
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t sai_bulk_remove_route_entry(
+        _In_ uint32_t object_count,
+        _In_ const sai_unicast_route_entry_t *route_entry,
+        _In_ sai_bulk_op_type_t type,
+        _Out_ sai_status_t *object_statuses)
+{
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t redis_dummy_set_route_entry(
+        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Since we are using validation for each route in bulk operations, we
+     * can't execute actual SET, we need to do dummy set and then introduce
+     * internal bulk_set operation that will only touch redis db only once.
+     * So we are returning success here.
+     */
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t sai_bulk_set_route_entry_attribute(
+        _In_ uint32_t object_count,
+        _In_ const sai_unicast_route_entry_t *route_entry,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_type_t type,
+        _Out_ sai_status_t *object_statuses)
+{
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
+    SWSS_LOG_ENTER();
+
+    if (object_count < 1)
+    {
+        SWSS_LOG_ERROR("expected at least 1 object to set");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (route_entry == NULL)
+    {
+        SWSS_LOG_ERROR("route_entry is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (attr_list == NULL)
+    {
+        SWSS_LOG_ERROR("attr_list is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    switch (type)
+    {
+        case SAI_BULK_OP_TYPE_STOP_ON_ERROR:
+        case SAI_BULK_OP_TYPE_INGORE_ERROR:
+             // ok
+             break;
+
+        default:
+
+             SWSS_LOG_ERROR("invalid bulk operation type %d", type);
+
+             return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (object_statuses == NULL)
+    {
+        SWSS_LOG_ERROR("object_statuses is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    std::vector<std::string> serialized_object_ids;
+
+    for (uint32_t idx = 0; idx < object_count; ++idx)
+    {
+        /*
+         * At the beginning set all statuses to not executed.
+         */
+
+        object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
+
+        serialized_object_ids.push_back(
+                sai_serialize_route_entry(route_entry[idx]));
+    }
+
+    for (uint32_t idx = 0; idx < object_count; ++idx)
+    {
+        sai_status_t status =
+            meta_sai_set_route_entry(
+                    &route_entry[idx],
+                    &attr_list[idx],
+                    &redis_dummy_set_route_entry);
+
+        object_statuses[idx] = status;
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            // TODO add attr id and value
+
+            SWSS_LOG_ERROR("failed on index %u: %s",
+                    idx,
+                    serialized_object_ids[idx].c_str());
+
+            if (type == SAI_BULK_OP_TYPE_STOP_ON_ERROR)
+            {
+                SWSS_LOG_NOTICE("stop on error since previous operation failed");
+                break;
+            }
+        }
+    }
+
+    return internal_redis_bulk_generic_set(
+            SAI_OBJECT_TYPE_ROUTE,
+            serialized_object_ids,
+            attr_list,
+            object_statuses);
+}
+
+sai_status_t sai_bulk_get_route_entry_attribute(
+        _In_ uint32_t object_count,
+        _In_ const sai_unicast_route_entry_t *route_entry,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_type_t type,
+        _Out_ sai_status_t *object_statuses)
+{
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
