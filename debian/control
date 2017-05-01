@@ -55,7 +55,7 @@ Package: syncd-dbg
 Architecture: any
 Section: debug
 Priority: extra
-Conflicts: syncd-dbg-rpc
+Conflicts: syncd-rpc-dbg
 Depends:
     syncd (= ${binary:Version}),
     ${misc:Depends}
