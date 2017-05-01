@@ -735,8 +735,8 @@ void set_object(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_ERROR("FATAL: object %s don't exists", key.c_str());
-        throw std::runtime_error("FATAL: object don't exists" + key);
+        SWSS_LOG_ERROR("FATAL: object %s doesn't exist", key.c_str());
+        throw std::runtime_error("FATAL: object doesn't exist" + key);
     }
 
     META_LOG_DEBUG(md, "set attribute %d on %s", attr->id, key.c_str());
@@ -753,7 +753,7 @@ const std::vector<std::shared_ptr<SaiAttrWrapper>> get_object(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_ERROR("FATAL: object %s don't exists", key.c_str());
+        SWSS_LOG_ERROR("FATAL: object %s doesn't exist", key.c_str());
         throw;
     }
 
@@ -778,7 +778,7 @@ void remove_object(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_ERROR("FATAL: object %s don't exists", key.c_str());
+        SWSS_LOG_ERROR("FATAL: object %s doesn't exist", key.c_str());
         throw;
     }
 
@@ -1579,7 +1579,7 @@ sai_status_t meta_generic_validation_remove(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -1607,7 +1607,7 @@ sai_status_t meta_generic_validation_remove(
 
                 if (!vlan_reference_exists(vlan_id))
                 {
-                    SWSS_LOG_ERROR("vlan %u reference don't exists", vlan_id);
+                    SWSS_LOG_ERROR("vlan %u reference doesn't exist", vlan_id);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
@@ -1663,7 +1663,7 @@ sai_status_t meta_generic_validation_remove(
 
                 if (!object_reference_exists(oid))
                 {
-                    SWSS_LOG_ERROR("object 0x%lx reference don't exists", oid);
+                    SWSS_LOG_ERROR("object 0x%lx reference doesn't exist", oid);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
@@ -2025,7 +2025,7 @@ sai_status_t meta_generic_validation_set(
 
     if (!object_exists(key))
     {
-        META_LOG_ERROR(md, "object key %s don't exists", key.c_str());
+        META_LOG_ERROR(md, "object key %s doesn't exist", key.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2281,7 +2281,7 @@ sai_status_t meta_generic_validation_get(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3354,7 +3354,7 @@ sai_status_t meta_sai_validate_fdb_entry(
 
     if (!object_exists(key_vlan))
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key_vlan.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_vlan.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3382,7 +3382,7 @@ sai_status_t meta_sai_validate_fdb_entry(
 
     if (!object_exists(key_fdb) && !get)
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key_fdb.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_fdb.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3654,7 +3654,7 @@ sai_status_t meta_sai_validate_neighbor_entry(
 
     if (!object_exists(key_rif))
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key_rif.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_rif.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3679,7 +3679,7 @@ sai_status_t meta_sai_validate_neighbor_entry(
 
     if (!object_exists(key_neighbor))
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key_neighbor.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_neighbor.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3919,7 +3919,7 @@ sai_status_t meta_sai_validate_vlan_id(
 
     if (!object_exists(key_vlan))
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key_vlan.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_vlan.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4204,7 +4204,7 @@ sai_status_t meta_sai_validate_route_entry(
 
     if (!object_exists(key_vr))
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key_vr.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_vr.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4231,7 +4231,7 @@ sai_status_t meta_sai_validate_route_entry(
 
     if (!object_exists(key_route))
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key_route.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_route.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4635,7 +4635,7 @@ sai_status_t meta_sai_validate_oid(
 
     if (!object_exists(key_oid))
     {
-        SWSS_LOG_ERROR("object key %s don't exists", key_oid.c_str());
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_oid.c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4862,7 +4862,7 @@ void meta_sai_on_fdb_event_single(
 
     if (!object_exists(key_vlan))
     {
-        SWSS_LOG_WARN("object key %s don't exists", key_vlan.c_str());
+        SWSS_LOG_WARN("object key %s doesn't exist", key_vlan.c_str());
     }
 
     const sai_object_meta_key_t meta_key_fdb = { .object_type = SAI_OBJECT_TYPE_FDB, .key = { .fdb_entry = data.fdb_entry } };
