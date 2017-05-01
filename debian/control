@@ -7,11 +7,13 @@ Standards-Version: 1.0.0
 
 Package: syncd
 Architecture: any
+Conflicts: syncd-rpc
 Description: This package contains sync daemon for SONiC project.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
 
 Package: syncd-rpc
 Architecture: any
+Conflicts: syncd
 Description: This package contains sync daemon with rpc for SONiC project.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
   This daemon contains saithrift rpc library for remote control of an ASIC.
@@ -53,6 +55,7 @@ Package: syncd-dbg
 Architecture: any
 Section: debug
 Priority: extra
+Conflicts: syncd-dbg-rpc
 Depends:
     syncd (= ${binary:Version}),
     ${misc:Depends}
@@ -62,6 +65,7 @@ Package: syncd-rpc-dbg
 Architecture: any
 Section: debug
 Priority: extra
+Conflicts: syncd-dbg
 Depends:
     syncd-rpc (= ${binary:Version}),
     ${misc:Depends}
