@@ -177,6 +177,11 @@ void test_bulk_route_set()
 
     statuses.resize(attrs.size());
 
+    for (auto &attr: attrs)
+    {
+        attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+    }
+
     status = sai_bulk_set_route_entry_attribute(
         count,
         routes.data(),
@@ -185,6 +190,13 @@ void test_bulk_route_set()
         statuses.data());
 
     ASSERT_SUCCESS("Failed to bulk set route");
+
+    for (auto s: statuses)
+    {
+        status = s;
+
+        ASSERT_SUCCESS("Failed to bulk set route on one of the routes");
+    }
 
     // TODO we need to add consumer producer test here to see
     // if after consume we get pop we get expectd parameters

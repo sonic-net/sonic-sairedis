@@ -87,7 +87,7 @@ sai_status_t internal_redis_bulk_generic_set(
 
     if (g_record)
     {
-        std::string joined = "";
+        std::string joined;
 
         for (const auto &e: entriesWithStatus)
         {
