@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <string>
+#include <iterator>
 
 #include <getopt.h>
 #include <unistd.h>
@@ -1024,6 +1025,231 @@ void performNotifySyncd(const std::string& request, const std::string response)
     // OK
 }
 
+std::vector<std::string> tokenize(
+        _In_ std::string input,
+        _In_ const std::string &delim)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * input is modified so it can't be passed as reference
+     */
+
+    std::vector<std::string> tokens;
+
+    size_t pos = 0;
+
+    while ((pos = input.find(delim)) != std::string::npos)
+    {
+        std::string token = input.substr(0, pos);
+
+        input.erase(0, pos + delim.length());
+        tokens.push_back(token);
+    }
+
+    tokens.push_back(input);
+
+    return tokens;
+}
+
+sai_status_t handle_bulk_route(
+        _In_ const std::vector<std::string> &object_ids,
+        _In_ sai_common_api_t api,
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>> &attributes,
+        _In_ const std::vector<sai_status_t> &recorded_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_unicast_route_entry_t> routes;
+
+    for (size_t i = 0; i < object_ids.size(); ++i)
+    {
+        sai_unicast_route_entry_t route_entry;
+        sai_deserialize_route_entry(object_ids[i], route_entry);
+
+        route_entry.vr_id = translate_local_to_redis(route_entry.vr_id);
+
+        routes.push_back(route_entry);
+
+        SWSS_LOG_DEBUG("route: %s", object_ids[i].c_str());
+    }
+
+    std::vector<sai_status_t> statuses;
+
+    statuses.resize(recorded_statuses.size());
+
+    if (api == (sai_common_api_t)SAI_COMMON_API_BULK_SET)
+    {
+        /*
+         * TODO: since SDK don't support bulk route api yet, we just use our
+         * implementation, and later on we can switch to SDK api.
+         *
+         * TODO: we need to get operation type from recording, currently is not
+         * serialized and it is hard coded here.
+         */
+
+        std::vector<sai_attribute_t> attrs;
+
+        for (const auto &a: attributes)
+        {
+            /*
+             * Set has only 1 attribute, so we can just join them nicely here.
+             */
+
+            attrs.push_back(a->get_attr_list()[0]);
+        }
+
+        sai_status_t status = sai_bulk_set_route_entry_attribute(
+                (uint32_t)routes.size(),
+                routes.data(),
+                attrs.data(),
+                SAI_BULK_OP_TYPE_INGORE_ERROR, // TODO we need to get that from recording
+                statuses.data());
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            /*
+             * Entire API failes, so no need to compare statuses.
+             */
+
+            return status;
+        }
+
+        for (size_t i = 0; i < statuses.size(); ++i)
+        {
+            if (statuses[i] != recorded_statuses[i])
+            {
+                /*
+                 * If recorded statuses are different than received, throw
+                 * excetion since data don't match.
+                 */
+
+                SWSS_LOG_THROW("recorded status is %s but returned is %s on %s",
+                        sai_serialize_status(recorded_statuses[i]).c_str(),
+                        sai_serialize_status(statuses[i]).c_str(),
+                        object_ids[i].c_str());
+            }
+        }
+
+        return status;
+    }
+    else
+    {
+        SWSS_LOG_THROW("api %d is not supported in bulk route", api);
+    }
+}
+
+void processBulk(
+        _In_ sai_common_api_t api,
+        _In_ const std::string &line)
+{
+    SWSS_LOG_ENTER();
+
+    if (!line.size())
+    {
+        return;
+    }
+
+    if (api != (sai_common_api_t)SAI_COMMON_API_BULK_SET)
+    {
+        SWSS_LOG_THROW("bulk common api %d is not supported yet, FIXME", api);
+    }
+
+    /*
+     * Here we know we have bulk SET api
+     */
+
+    // timestamp|action|objecttype||objectid|attrid=value|...|status||objectid||objectid|attrid=value|...|status||...
+    auto fields = tokenize(line, "||");
+
+    auto first = fields.at(0); // timestamp|acion|objecttype
+
+    std::string str_object_type = swss::tokenize(first, '|').at(2);
+
+    sai_object_type_t object_type = deserialize_object_type(str_object_type);
+
+    std::vector<std::string> object_ids;
+
+    std::vector<std::shared_ptr<SaiAttributeList>> attributes;
+
+    std::vector<sai_status_t> statuses;
+
+    for (size_t idx = 1; idx < fields.size(); ++idx)
+    {
+        // object_id|attr=value|...|status
+        const std::string &joined = fields[idx];
+
+        auto split = swss::tokenize(joined, '|');
+
+        std::string str_object_id = split.front();
+
+        object_ids.push_back(str_object_id);
+
+        std::string str_status = split.back();
+
+        sai_status_t status;
+
+        sai_deserialize_status(str_status, status);
+
+        statuses.push_back(status);
+
+        std::vector<swss::FieldValueTuple> entries; // attributes per object id
+
+        // skip front object_id and back status
+
+        SWSS_LOG_DEBUG("processing: %s", joined.c_str());
+
+        for (size_t i = 1; i < split.size() - 1; ++i)
+        {
+            const auto &item = split[i];
+
+            auto start = item.find_first_of("=");
+
+            auto field = item.substr(0, start);
+            auto value = item.substr(start + 1);
+
+            swss::FieldValueTuple entry(field, value);
+
+            entries.push_back(entry);
+        }
+
+        // since now we converted this to proper list, we can extract attributes
+
+        std::shared_ptr<SaiAttributeList> list =
+            std::make_shared<SaiAttributeList>(object_type, entries, false);
+
+        sai_attribute_t *attr_list = list->get_attr_list();
+
+        uint32_t attr_count = list->get_attr_count();
+
+        if (api != (sai_common_api_t)SAI_COMMON_API_BULK_GET)
+        {
+            translate_local_to_redis(object_type, attr_count, attr_list);
+        }
+
+        attributes.push_back(list);
+    }
+
+    sai_status_t status;
+
+    switch (object_type)
+    {
+        case SAI_OBJECT_TYPE_ROUTE:
+            status = handle_bulk_route(object_ids, api, attributes, statuses);
+            break;
+
+        default:
+
+            SWSS_LOG_THROW("bulk op for %s is not supported yet, FIXME",
+                    sai_serialize_object_type(object_type).c_str());
+    }
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_THROW("failed to execute bulk api, FIXME");
+    }
+}
+
 int replay(int argc, char **argv)
 {
     //swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -1081,7 +1307,7 @@ int replay(int argc, char **argv)
                     performNotifySyncd(line, response);
                 }
                 continue;
-            case 'S':
+            case '@':
                 performSleep(line);
                 continue;
             case 'c':
@@ -1093,6 +1319,9 @@ int replay(int argc, char **argv)
             case 's':
                 api = SAI_COMMON_API_SET;
                 break;
+            case 'S':
+                processBulk((sai_common_api_t)SAI_COMMON_API_BULK_SET, line);
+                continue;
             case 'g':
                 api = SAI_COMMON_API_GET;
                 break;

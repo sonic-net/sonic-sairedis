@@ -1808,7 +1808,16 @@ void saiLoglevelNotify(std::string apiStr, std::string prioStr)
 
 int main(int argc, char **argv)
 {
+    /*
+     * We want main to be logged as debug to be shown in syslog when new
+     * process starts, rest can be logged as notice.
+     */
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+
     SWSS_LOG_ENTER();
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     SWSS_LOG_NOTICE("syncd started");
 

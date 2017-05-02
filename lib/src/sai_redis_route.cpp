@@ -263,6 +263,10 @@ sai_status_t sai_bulk_set_route_entry_attribute(
         }
     }
 
+    /*
+     * TODO: we need to record operation type
+     */
+
     return internal_redis_bulk_generic_set(
             SAI_OBJECT_TYPE_ROUTE,
             serialized_object_ids,

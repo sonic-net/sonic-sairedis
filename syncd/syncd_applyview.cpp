@@ -4746,11 +4746,6 @@ void populateExistingObjects(/*{{{*/
          * called, and here we created some new objects that should be matched.
          */
 
-        for (const auto e: currentView.oOids)
-        {
-            SWSS_LOG_NOTICE("e: vid 0x%lx", e.first);
-        }
-
         currentView.oOids.at(vid)->setObjectStatus(SAI_OBJECT_STATUS_MATCHED);
         temporaryView.oOids.at(vid)->setObjectStatus(SAI_OBJECT_STATUS_MATCHED);
     }
