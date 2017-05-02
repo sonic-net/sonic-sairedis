@@ -104,6 +104,13 @@ typedef enum _sai_bulk_op_type_t
 #define SAI_STATUS_NOT_EXECUTED                     SAI_STATUS_CODE(0x00000017L)
 #endif
 
+#ifndef SAI_COMMON_API_BULK_SET
+#define SAI_COMMON_API_BULK_CREATE 4
+#define SAI_COMMON_API_BULK_REMOVE 5
+#define SAI_COMMON_API_BULK_SET    6
+#define SAI_COMMON_API_BULK_GET    7
+#endif
+
 /**
  * @brief Bulk create route entry
  *

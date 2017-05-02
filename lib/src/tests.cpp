@@ -185,6 +185,9 @@ void test_bulk_route_set()
         statuses.data());
 
     ASSERT_SUCCESS("Failed to bulk set route");
+
+    // TODO we need to add consumer producer test here to see
+    // if after consume we get pop we get expectd parameters
 }
 
 int main()

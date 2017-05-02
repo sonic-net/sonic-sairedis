@@ -2,6 +2,7 @@
 #include <map>
 #include "syncd.h"
 #include "sairedis.h"
+#include "swss/tokenize.h"
 
 std::mutex g_mutex;
 
@@ -856,7 +857,7 @@ sai_status_t handle_neighbor(
 }
 
 sai_status_t handle_route(
-        _In_ std::string &str_object_id,
+        _In_ const std::string &str_object_id,
         _In_ sai_common_api_t api,
         _In_ uint32_t attr_count,
         _In_ sai_attribute_t *attr_list)
@@ -1199,7 +1200,167 @@ sai_status_t processEventInInitViewMode(
     // we assume that SET and REMOVE succeeded, no real asic operations
     // this is only DB operation in TEMP asic view
 
+    if (api == SAI_COMMON_API_SET)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (api == SAI_COMMON_API_REMOVE)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    /*
+     * We don't support bulk API's in init view mode yet.
+     */
+
+    SWSS_LOG_ERROR("api %d is not supported in init view mode", api);
+    exit_and_notify(EXIT_FAILURE);
+}
+
+sai_status_t handle_bulk_route(
+        _In_ const std::vector<std::string> &object_ids,
+        _In_ sai_common_api_t api,
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>> &attributes)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Since we don't have asic support yet for bulk api, just execute one by
+     * one.
+     */
+
+    for (size_t idx = 0; idx < object_ids.size(); ++idx)
+    {
+        sai_status_t status = SAI_STATUS_FAILURE;
+
+        auto &list = attributes[idx];
+
+        sai_attribute_t *attr_list = list->get_attr_list();
+        uint32_t attr_count = list->get_attr_count();
+
+        if (api == (sai_common_api_t)SAI_COMMON_API_BULK_SET)
+        {
+            status = handle_route(object_ids[idx], SAI_COMMON_API_SET, attr_count, attr_list);
+        }
+        else
+        {
+            SWSS_LOG_ERROR("api %d is not supported in bulk route", api);
+            exit_and_notify(EXIT_FAILURE);
+        }
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return status;
+        }
+    }
+
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t processBulkEvent(
+        _In_ sai_common_api_t api,
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &key = kfvKey(kco);
+
+    std::string str_object_type = key.substr(0, key.find(":"));
+
+    sai_object_type_t object_type;
+    sai_deserialize_object_type(str_object_type, object_type);
+
+    const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+    // key = str_object_id
+    // val = attrid=attrval|...
+
+    std::vector<std::string> object_ids;
+
+    std::vector<std::shared_ptr<SaiAttributeList>> attributes;
+
+    for (const auto &fvt: values)
+    {
+        std::string str_object_id = fvField(fvt);
+        std::string joined = fvValue(fvt);
+
+        // decode values
+
+        auto v = swss::tokenize(joined, '|');
+
+        object_ids.push_back(str_object_id);
+
+        std::vector<swss::FieldValueTuple> entries; // attributes per object id
+
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            const std::string item = v.at(i);
+
+            auto start = item.find_first_of("=");
+
+            auto field = item.substr(0, start);
+            auto value = item.substr(start + 1);
+
+            swss::FieldValueTuple entry(field, value);
+
+            entries.push_back(entry);
+        }
+
+        // since now we converted this to proper list, we can extract attributes
+
+        std::shared_ptr<SaiAttributeList> list =
+            std::make_shared<SaiAttributeList>(object_type, entries, false);
+
+        attributes.push_back(list);
+    }
+
+    SWSS_LOG_NOTICE("bulk %s execute with %zu items",
+            str_object_type.c_str(),
+            object_ids.size());
+
+    if (isInitViewMode())
+    {
+        SWSS_LOG_ERROR("bulk api is not supported in init view mode", api);
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    if (api != SAI_COMMON_API_BULK_GET)
+    {
+        // translate attributes for all objects
+
+        for (auto &list: attributes)
+        {
+            sai_attribute_t *attr_list = list->get_attr_list();
+            uint32_t attr_count = list->get_attr_count();
+
+            translate_vid_to_rid_list(object_type, attr_count, attr_list);
+        }
+    }
+
+    sai_status_t status;
+
+    switch (object_type)
+    {
+        case SAI_OBJECT_TYPE_ROUTE:
+            status = handle_bulk_route(object_ids, api, attributes);
+            break;
+
+        default:
+            SWSS_LOG_ERROR("bulk api for %s is not supported yet, FIXME",
+                    sai_serialize_object_type(object_type).c_str());
+            exit_and_notify(EXIT_FAILURE);
+    }
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to execute bulk api: %s",
+                sai_serialize_status(status).c_str());
+
+        exit_and_notify(EXIT_FAILURE);
+    }
+
+    return status;
 }
 
 sai_status_t processEvent(swss::ConsumerTable &consumer)
@@ -1223,9 +1384,6 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
     const std::string &key = kfvKey(kco);
     const std::string &op = kfvOp(kco);
 
-    std::string str_object_type = key.substr(0, key.find(":"));
-    std::string str_object_id = key.substr(key.find(":")+1);
-
     SWSS_LOG_INFO("key: %s op: %s", key.c_str(), op.c_str());
 
     sai_common_api_t api = SAI_COMMON_API_MAX;
@@ -1236,6 +1394,8 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
         api = SAI_COMMON_API_REMOVE;
     else if (op == "set")
         api = SAI_COMMON_API_SET;
+    else if (op == "bulkset")
+        return processBulkEvent((sai_common_api_t)SAI_COMMON_API_BULK_SET, kco);
     else if (op == "get")
         api = SAI_COMMON_API_GET;
     else if (op == "notify")
@@ -1247,7 +1407,8 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
         return SAI_STATUS_NOT_SUPPORTED;
     }
 
-    std::stringstream ss;
+    std::string str_object_type = key.substr(0, key.find(":"));
+    std::string str_object_id = key.substr(key.find(":") + 1);
 
     sai_object_type_t object_type;
     sai_deserialize_object_type(str_object_type, object_type);
@@ -1650,7 +1811,7 @@ int main(int argc, char **argv)
     SWSS_LOG_ENTER();
 
     SWSS_LOG_NOTICE("syncd started");
-  
+
     for (const auto& i : saiApiMap)
     {
         swss::Logger::linkToDb(i.first, saiLoglevelNotify, "SAI_LOG_NOTICE");

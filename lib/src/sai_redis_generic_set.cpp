@@ -42,6 +42,14 @@ sai_status_t internal_redis_bulk_generic_set(
     std::string str_object_type = sai_serialize_object_type(object_type);
 
     std::vector<swss::FieldValueTuple> entries;
+    std::vector<swss::FieldValueTuple> entriesWithStatus;
+
+    /*
+     * We are recording all entries and their statuses, but we send to sairedis
+     * only those that succeeded metadata check, since only those will be
+     * executed on syncd, so there is no need with bothering decoding statuses
+     * on syncd side.
+     */
 
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
@@ -56,16 +64,32 @@ sai_status_t internal_redis_bulk_generic_set(
 
         swss::FieldValueTuple fvt(serialized_object_ids[idx] , joined);
 
-        entries.push_back(fvt);
+        entriesWithStatus.push_back(fvt);
+
+        if (object_statuses[idx] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN("skipping %s since status is %s",
+                    serialized_object_ids[idx].c_str(),
+                    str_status.c_str());
+
+            continue;
+        }
+
+        swss::FieldValueTuple fvtNoStatus(serialized_object_ids[idx] , str_attr);
+
+        entries.push_back(fvtNoStatus);
     }
 
-    std::string key = str_object_type;
+    /*
+     * We are adding number of entries to actualy add ':' to be compatible
+     * with previous
+     */
 
     if (g_record)
     {
         std::string joined = "";
 
-        for (const auto &e: entries)
+        for (const auto &e: entriesWithStatus)
         {
             // ||obj_id|attr=val|attr=val|status||obj_id|attr=val|attr=val|status
 
@@ -76,10 +100,15 @@ sai_status_t internal_redis_bulk_generic_set(
          * Capital 'S' stads for bulk SET operation.
          */
 
-        recordLine("S|" + key + joined);
+        recordLine("S|" + str_object_type + joined);
     }
 
-    g_asicState->set(key, entries, "bulkset");
+    std::string key = str_object_type + ":" + std::to_string(entries.size());
+
+    if (entries.size())
+    {
+        g_asicState->set(key, entries, "bulkset");
+    }
 
     return SAI_STATUS_SUCCESS;
 }
