@@ -210,13 +210,24 @@ int main()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
-    test_sai_initialize();
+    try
+    {
+        test_sai_initialize();
 
-    test_enable_recording();
+        test_enable_recording();
 
-    test_bulk_route_set();
+        test_bulk_route_set();
 
-    printf("\n[ %s ]\n\n", sai_serialize_status(SAI_STATUS_SUCCESS).c_str());
+        printf("\n[ %s ]\n\n", sai_serialize_status(SAI_STATUS_SUCCESS).c_str());
+    }
+    catch (const std::exception &e)
+    {
+        SWSS_LOG_ERROR("exception: %s", e.what());
+
+        printf("\n[ %s ]\n\n%s\n\n", sai_serialize_status(SAI_STATUS_FAILURE).c_str(), e.what());
+
+        exit(EXIT_FAILURE);
+    }
 
     return 0;
 }
