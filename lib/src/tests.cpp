@@ -210,8 +210,6 @@ int main()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
-    return 0;  // TODO: enable tests after redis will be supported on jenkins
-
     test_sai_initialize();
 
     test_enable_recording();
