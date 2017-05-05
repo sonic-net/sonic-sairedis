@@ -74,6 +74,7 @@ sai_status_t sai_api_initialize(
     return SAI_STATUS_SUCCESS;
 }
 
+// FIXME: Currently per API log level cannot be set
 sai_status_t sai_log_set(
         _In_ sai_api_t sai_api_id,
         _In_ sai_log_level_t log_level)
@@ -104,61 +105,6 @@ sai_status_t sai_log_set(
 
         default:
             SWSS_LOG_ERROR("Invalid log level %d", log_level);
-            return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    switch (sai_api_id)
-    {
-        case SAI_API_SWITCH:
-            break;
-
-        case SAI_API_PORT:
-            break;
-
-        case SAI_API_FDB:
-            break;
-
-        case SAI_API_VLAN:
-            break;
-
-        case SAI_API_VIRTUAL_ROUTER:
-            break;
-
-        case SAI_API_ROUTE:
-            break;
-
-        case SAI_API_NEXT_HOP:
-            break;
-
-        case SAI_API_NEXT_HOP_GROUP:
-            break;
-
-        case SAI_API_ROUTER_INTERFACE:
-            break;
-
-        case SAI_API_NEIGHBOR:
-            break;
-
-        case SAI_API_ACL:
-            break;
-
-        case SAI_API_HOST_INTERFACE:
-            break;
-
-        case SAI_API_MIRROR:
-            break;
-
-        case SAI_API_SAMPLEPACKET:
-            break;
-
-        case SAI_API_STP:
-            break;
-
-        case SAI_API_LAG:
-            break;
-
-        default:
-            SWSS_LOG_ERROR("Invalid API type %d", sai_api_id);
             return SAI_STATUS_INVALID_PARAMETER;
     }
 
