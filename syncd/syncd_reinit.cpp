@@ -138,6 +138,8 @@ sai_object_id_t saiGetDefaultTrapGroup()
          exit_and_notify(EXIT_FAILURE);
     }
 
+    SWSS_LOG_NOTICE("default trap group value is 0x%lx, enum value: %d ", attr.value.oid, SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP);
+
     return attr.value.oid;
 }
 
