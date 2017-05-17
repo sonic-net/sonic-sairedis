@@ -72,6 +72,13 @@ start_centec()
 start_cavium()
 {
     export XP_ROOT=/usr/bin/
+
+    # Wait until redis-server starts
+    until [ $(redis-cli ping | grep -c PONG) -gt 0 ]; do
+        sleep 1
+    done
+
+    redis-cli FLUSHALL
 }
 
 case "$(cat /proc/cmdline)" in
@@ -87,20 +94,19 @@ case "$1" in
 start)
     if [ $SONIC_ASIC_TYPE == "broadcom" ]; then
         start_bcm
-        DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile "
-        if [ $FAST_REBOOT == "yes" ];
-        then
-          DAEMON_ARGS+=" -t fast "
+        DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile"
+        if [ $FAST_REBOOT == "yes" ]; then
+            DAEMON_ARGS+=" -t fast"
         fi
     elif [ $SONIC_ASIC_TYPE == "mellanox" ]; then
         start_mlnx
-        DAEMON_ARGS+=" -p /tmp/sai.profile "
+        DAEMON_ARGS+=" -p /tmp/sai.profile"
     elif [ $SONIC_ASIC_TYPE == "cavium" ]; then
-        DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile "
         start_cavium
+        DAEMON_ARGS+=" -p /etc/ssw/AS7512/profile.ini -N"
     elif [ $SONIC_ASIC_TYPE == "centec" ]; then
         start_centec
-        DAEMON_ARGS+=" -p /tmp/sai.profile "
+        DAEMON_ARGS+=" -p /tmp/sai.profile"
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
