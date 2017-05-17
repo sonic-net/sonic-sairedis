@@ -15,9 +15,13 @@ DAEMON_SYNCD=/usr/bin/syncd
 # dsserve: domain socket server for stdio
 DAEMON_DSSERVE=/usr/bin/dsserve
 DAEMON_DSSERVE_ARGS="-d $DAEMON_SYNCD --diag"
+
 ENABLE_SAITHRIFT=0
+
 PLATFORM_DIR=/usr/share/sonic/platform
 HWSKU_DIR=/usr/share/sonic/hwsku
+
+SONIC_ASIC_TYPE=$(sonic-cfggen -y /etc/sonic/sonic_version.yml -v asic_type)
 
 if [ -x $DAEMON_DSSERVE ]; then
     DAEMON=$DAEMON_DSSERVE
@@ -26,21 +30,6 @@ else
     DAEMON=$DAEMON_SYNCD
 fi
 
-parse_yaml() {
-   local prefix=$2
-   local s='[[:space:]]*' w='[a-zA-Z0-9_]*' fs=$(echo @|tr @ '\034')
-   sed -ne "s|^\($s\)\($w\)$s:$s\"\(.*\)\"$s\$|\1$fs\2$fs\3|p" \
-        -e "s|^\($s\)\($w\)$s:$s\(.*\)$s\$|\1$fs\2$fs\3|p"  $1 |
-   awk -F$fs '{
-      indent = length($1)/2;
-      vname[indent] = $2;
-      for (i in vname) {if (i > indent) {delete vname[i]}}
-      if (length($3) > 0) {
-         vn=""; for (i=0; i<indent; i++) {vn=(vn)(vname[i])("_")}
-         printf("%s%s%s=\"%s\"\n", "'$prefix'",vn, $2, $3);
-      }
-   }'
-}
 
 start_bcm()
 {
@@ -96,26 +85,24 @@ esac
 
 case "$1" in
 start)
-    eval $(parse_yaml /etc/sonic/sonic_version.yml "sonic_")
-
-    if [ $sonic_asic_type == "broadcom" ]; then
+    if [ $SONIC_ASIC_TYPE == "broadcom" ]; then
         start_bcm
         DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile "
         if [ $FAST_REBOOT == "yes" ];
         then
           DAEMON_ARGS+=" -t fast "
         fi
-    elif [ $sonic_asic_type == "mellanox" ]; then
+    elif [ $SONIC_ASIC_TYPE == "mellanox" ]; then
         start_mlnx
         DAEMON_ARGS+=" -p /tmp/sai.profile "
-    elif [ $sonic_asic_type == "cavium" ]; then
+    elif [ $SONIC_ASIC_TYPE == "cavium" ]; then
         DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile "
         start_cavium
-    elif [ $sonic_asic_type == "centec" ]; then
+    elif [ $SONIC_ASIC_TYPE == "centec" ]; then
         start_centec
         DAEMON_ARGS+=" -p /tmp/sai.profile "
     else
-        echo "Unknown asic type $sonic_asic_type"
+        echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
     fi
 
