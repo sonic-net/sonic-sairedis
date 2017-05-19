@@ -10,118 +10,21 @@
 # Description:       Enable service syncd.
 ### END INIT INFO
 
-DAEMON_SYNCD=/usr/bin/syncd
+# Source the file that holds common code for systemd and supervisord
+. /usr/bin/syncd_init_common.sh
 
-# dsserve: domain socket server for stdio
-DAEMON_DSSERVE=/usr/bin/dsserve
-DAEMON_DSSERVE_ARGS="-d $DAEMON_SYNCD --diag"
-
-ENABLE_SAITHRIFT=0
-
-PLATFORM_DIR=/usr/share/sonic/platform
-HWSKU_DIR=/usr/share/sonic/hwsku
-
-SONIC_ASIC_TYPE=$(sonic-cfggen -y /etc/sonic/sonic_version.yml -v asic_type)
-
-if [ -x $DAEMON_DSSERVE ]; then
-    DAEMON=$DAEMON_DSSERVE
-    DAEMON_ARGS=$DAEMON_DSSERVE_ARGS
-else
-    DAEMON=$DAEMON_SYNCD
+# When starting as a service, we want our process to run as a daemon, in the background
+if [ $CMD == $CMD_DSSERVE ]; then
+    CMD_ARGS="-d $CMD_ARGS"
 fi
-
-
-start_bcm()
-{
-    [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
-    [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
-    [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
-}
-
-start_mlnx()
-{
-    [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
-
-    # Read MAC address and align the last 6 bits.
-    MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
-    last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
-    aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')"`  # put mask and take away the 0x prefix
-    ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
-
-    # Write MAC address into /tmp/profile file.
-    cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
-    echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /tmp/sai.profile
-}
-
-start_centec()
-{
-    [ -e /dev/linux_dal ] || mknod /dev/linux_dal c 198 0
-    [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
-
-    # Read MAC address and align the last 6 bits.
-    MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
-    last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
-    aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')"`  # put mask and take away the 0x prefix
-    ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
-
-    # Write MAC address into /tmp/profile file.
-    cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
-    echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /tmp/sai.profile
-}
-
-start_cavium()
-{
-    export XP_ROOT=/usr/bin/
-
-    # Wait until redis-server starts
-    until [ $(redis-cli ping | grep -c PONG) -gt 0 ]; do
-        sleep 1
-    done
-
-    redis-cli FLUSHALL
-}
-
-case "$(cat /proc/cmdline)" in
-  *fast-reboot*)
-     FAST_REBOOT='yes'
-    ;;
-  *)
-     FAST_REBOOT='no'
-    ;;
-esac
 
 case "$1" in
 start)
-    if [ $SONIC_ASIC_TYPE == "broadcom" ]; then
-        start_bcm
-        DAEMON_ARGS+=" -p $HWSKU_DIR/sai.profile"
-        if [ $FAST_REBOOT == "yes" ]; then
-            DAEMON_ARGS+=" -t fast"
-        fi
-    elif [ $SONIC_ASIC_TYPE == "mellanox" ]; then
-        start_mlnx
-        DAEMON_ARGS+=" -p /tmp/sai.profile"
-    elif [ $SONIC_ASIC_TYPE == "cavium" ]; then
-        start_cavium
-        DAEMON_ARGS+=" -p /etc/ssw/AS7512/profile.ini -N"
-    elif [ $SONIC_ASIC_TYPE == "centec" ]; then
-        start_centec
-        DAEMON_ARGS+=" -p /tmp/sai.profile"
-    else
-        echo "Unknown ASIC type $SONIC_ASIC_TYPE"
-        exit 1
-    fi
-
-    if [ ${ENABLE_SAITHRIFT} == 1 ]; then
-        DAEMON_ARGS+=" -r -m $HWSKU_DIR/port_config.ini"
-    fi
-
-    [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf
-
-    start-stop-daemon --start --quiet --exec $DAEMON -- $DAEMON_ARGS
+    config_syncd
+    start-stop-daemon --start --quiet --exec $CMD -- $CMD_ARGS
     ;;
 stop)
-    start-stop-daemon --stop --quiet --exec $DAEMON
+    start-stop-daemon --stop --quiet --exec $CMD
     ;;
 *)
     echo "Usage: service syncd {start|stop}"
@@ -130,3 +33,4 @@ stop)
 esac
 
 exit 0
+

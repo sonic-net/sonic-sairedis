@@ -1,3 +1,4 @@
 usr/bin/saidump
 usr/bin/saiplayer
 usr/bin/syncd*
+syncd/usr/bin/* usr/bin
