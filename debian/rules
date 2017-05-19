@@ -44,9 +44,9 @@ binary-syncd-rpc:
 
 override_dh_auto_configure:
     ifeq ($(shell cat /tmp/syncd-build), --enable-rpcserver=yes)
-	sed -i 's/ENABLE_SAITHRIFT=0/ENABLE_SAITHRIFT=1/' syncd/usr/bin/syncd_init_common.sh
+	sed -i 's/ENABLE_SAITHRIFT=0/ENABLE_SAITHRIFT=1/' syncd/scripts/syncd_init_common.sh
     else
-	sed -i 's/ENABLE_SAITHRIFT=1/ENABLE_SAITHRIFT=0/' syncd/usr/bin/syncd_init_common.sh
+	sed -i 's/ENABLE_SAITHRIFT=1/ENABLE_SAITHRIFT=0/' syncd/scripts/syncd_init_common.sh
     endif
 	./autogen.sh	
 	dh_auto_configure -- $(shell cat /tmp/syncd-build)
