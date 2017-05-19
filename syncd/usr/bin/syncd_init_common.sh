@@ -50,10 +50,10 @@ config_syncd_mlnx()
     [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
 
     # Read MAC address and align the last 6 bits.
-    MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
-    last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
-    aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')"`  # put mask and take away the 0x prefix
-    ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
+    MAC_ADDRESS=$(ip link show eth0 | grep ether | awk '{print $2}')
+    last_byte=$(python -c "print '$MAC_ADDRESS'[-2:]")
+    aligned_last_byte=$(python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')")  # put mask and take away the 0x prefix
+    ALIGNED_MAC_ADDRESS=$(python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'")          # put aligned byte into the end of MAC
 
     # Write MAC address into /tmp/profile file.
     cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
@@ -68,10 +68,10 @@ config_syncd_centec()
     [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
 
     # Read MAC address and align the last 6 bits.
-    MAC_ADDRESS=`ip link show eth0 | grep ether | awk '{print $2}'`
-    last_byte=`python -c "print '$MAC_ADDRESS'[-2:]"`
-    aligned_last_byte=`python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')"`  # put mask and take away the 0x prefix
-    ALIGNED_MAC_ADDRESS=`python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'"`          # put aligned byte into the end of MAC
+    MAC_ADDRESS=$(ip link show eth0 | grep ether | awk '{print $2}')
+    last_byte=$(python -c "print '$MAC_ADDRESS'[-2:]")
+    aligned_last_byte=$(python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')")  # put mask and take away the 0x prefix
+    ALIGNED_MAC_ADDRESS=$(python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'")          # put aligned byte into the end of MAC
 
     # Write MAC address into /tmp/profile file.
     cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
@@ -94,13 +94,13 @@ config_syncd_cavium()
 
 config_syncd()
 {
-    if [ $SONIC_ASIC_TYPE == "broadcom" ]; then
+    if [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
         config_syncd_bcm
-    elif [ $SONIC_ASIC_TYPE == "mellanox" ]; then
+    elif [ "$SONIC_ASIC_TYPE" == "mellanox" ]; then
         config_syncd_mlnx
-    elif [ $SONIC_ASIC_TYPE == "cavium" ]; then
+    elif [ "$SONIC_ASIC_TYPE" == "cavium" ]; then
         config_syncd_cavium
-    elif [ $SONIC_ASIC_TYPE == "centec" ]; then
+    elif [ "$SONIC_ASIC_TYPE" == "centec" ]; then
         config_syncd_centec
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
