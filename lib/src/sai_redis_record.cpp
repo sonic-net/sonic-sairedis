@@ -129,7 +129,7 @@ sai_status_t setRecordingOutputDir(
 
     if (len != (size_t)attr.value.s8list.count)
     {
-        SWSS_LOG_ERROR("count (%u) is different then strnlen (%zu)", attr.value.s8list.count, len);
+        SWSS_LOG_ERROR("count (%u) is different than strnlen (%zu)", attr.value.s8list.count, len);
         return SAI_STATUS_FAILURE;
     }
 

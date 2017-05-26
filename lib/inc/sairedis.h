@@ -71,7 +71,7 @@ typedef enum _sai_redis_switch_attr_t
     /**
      * @brief Recording output directory.
      *
-     * By defaut is current directory. Also setting empty will force default
+     * By default is current directory. Also setting empty will force default
      * directory.
      *
      * It will have only impact on next created recording.
