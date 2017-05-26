@@ -389,7 +389,7 @@ sai_status_t redis_set_switch_attribute(
                 return SAI_STATUS_SUCCESS;
 
             case SAI_REDIS_SWITCH_ATTR_RECORDING_OUTPUT_DIR:
-                return setRecordingLogOutputDir(*attr);
+                return setRecordingOutputDir(*attr);
 
             default:
                 break;
