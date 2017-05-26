@@ -69,18 +69,18 @@ typedef enum _sai_redis_switch_attr_t
     SAI_REDIS_SWITCH_ATTR_FLUSH,
 
     /**
-     * @brief Record log output directory.
+     * @brief Recording output directory.
      *
      * By defaut is current directory. Also setting empty will force default
      * directory.
      *
-     * It will have only impact on next created log.
+     * It will have only impact on next created recording.
      *
      * @type sai_s8_list_t
      * @flags CREATE_AND_SET
      * @default empty
      */
-    SAI_REDIS_SWITCH_ATTR_RECORD_LOG_OUTPUT_DIR,
+    SAI_REDIS_SWITCH_ATTR_RECORDING_OUTPUT_DIR,
 
 } sai_redis_switch_attr_t;
 

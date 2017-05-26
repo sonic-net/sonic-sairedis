@@ -108,7 +108,7 @@ std::string joinFieldValues(
     return ss.str();
 }
 
-sai_status_t setRecordingLogOutputDir(
+sai_status_t setRecordingOutputDir(
         _In_ const sai_attribute_t &attr)
 {
     SWSS_LOG_ENTER();
@@ -133,7 +133,7 @@ sai_status_t setRecordingLogOutputDir(
         return SAI_STATUS_FAILURE;
     }
 
-    std::string dir((const char*)attr.value.s8list.list);
+    std::string dir((const char*)attr.value.s8list.list, len);
 
     int result = access(dir.c_str(), W_OK);
 
