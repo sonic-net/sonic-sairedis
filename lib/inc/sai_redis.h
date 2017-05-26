@@ -29,6 +29,8 @@ extern "C" {
 
 extern volatile bool                    g_record;
 extern void setRecording(bool record);
+extern sai_status_t setRecordingLogOutputDir(
+        _In_ const sai_attribute_t &attr);
 extern void recordLine(std::string s);
 
 extern std::string joinFieldValues(
