@@ -335,11 +335,11 @@ sai_status_t sai_redis_notify_syncd(
         return status;
     }
 
-    SWSS_LOG_NOTICE("notify syncd sycceeded");
+    SWSS_LOG_NOTICE("notify syncd succeeded");
 
     if (attr->value.s32 == SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW)
     {
-        SWSS_LOG_NOTICE("clearing current local state sinice init view is called on initialised switch");
+        SWSS_LOG_NOTICE("clearing current local state since init view is called on initialized switch");
 
         clear_local_state();
     }
