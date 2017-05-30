@@ -12,8 +12,6 @@ void collectCounters(swss::Table &countersTable,
 
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_TIMER("get counters");
-
     uint32_t countersSize = (uint32_t)supportedCounters.size();
 
     std::vector<uint64_t> counters;
@@ -136,10 +134,10 @@ void endCountersThread()
 
     if (g_countersThread != NULL)
     {
-        SWSS_LOG_NOTICE("counters thread join");
+        SWSS_LOG_INFO("counters thread join");
 
         g_countersThread->join();
     }
 
-    SWSS_LOG_NOTICE("counters thread ended");
+    SWSS_LOG_INFO("counters thread ended");
 }
