@@ -5,7 +5,6 @@
 #include <set>
 #include <unordered_map>
 
-//#include "stdint.h"
 #include <stdio.h>
 
 extern "C" {
@@ -23,9 +22,9 @@ extern "C" {
 #include "swss/logger.h"
 #include "meta/sai_meta.h"
 
-// if we don't receive response from syncd in 60 seconds
+// if we don't receive response from syncd in 6*60 seconds
 // there is something wrong and we should fail
-#define GET_RESPONSE_TIMEOUT (60*1000)
+#define GET_RESPONSE_TIMEOUT (6*60*1000)
 
 extern volatile bool                    g_record;
 extern void setRecording(bool record);
