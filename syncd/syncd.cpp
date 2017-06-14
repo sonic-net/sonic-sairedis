@@ -1715,6 +1715,7 @@ void handlePortMap(const std::string& portMapFile)
         std::string name, lanes, alias;
         iss >> name >> lanes >> alias;
 
+        iss.clear();
         iss.str(lanes);
         std::string lane_str;
         std::set<int> lane_set;
