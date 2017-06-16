@@ -82,6 +82,25 @@ typedef enum _sai_redis_switch_attr_t
      */
     SAI_REDIS_SWITCH_ATTR_RECORDING_OUTPUT_DIR,
 
+    /**
+     * @brief Log rotate.
+     *
+     * This is action attribute. When set to true then at the next log line
+     * write it will close recording file and open it again. This is desired
+     * when doing log rotate, since sairedis holds handle to recording file for
+     * performance reasons. We are assuming logrotate will move recording file
+     * to ".n" suffix, and when we reopen file, we will actually create new
+     * one.
+     *
+     * This attribute is only setting variable in memroy, it's safe to call
+     * this from signal handler.
+     *
+     * @type bool
+     * @flags CREATE_AND_SET
+     * @default false
+     */
+    SAI_REDIS_SWITCH_ATTR_PERFORM_LOG_ROTATE,
+
 } sai_redis_switch_attr_t;
 
 /*

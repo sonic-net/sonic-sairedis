@@ -36,6 +36,7 @@ extern std::string joinFieldValues(
         _In_ const std::vector<swss::FieldValueTuple> &values);
 
 extern volatile bool                    g_useTempView;
+extern volatile bool                    g_logrotate;
 
 // other global declarations
 

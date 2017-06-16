@@ -22,9 +22,33 @@ std::string getTimestamp()
 
 // recording needs to be enabled explicitly
 volatile bool g_record = false;
+volatile bool g_logrotate = false;
 
 std::ofstream recording;
 std::mutex g_recordMutex;
+
+std::string recfile = "dummy.rec";
+
+void logRotate()
+{
+    SWSS_LOG_ENTER();
+
+    recording.close();
+
+    /*
+     * On log rotate we will use the same file name, we are assuming that
+     * logrotate deamon move filename to filename.1 and we will create new
+     * empty file here.
+     */
+
+    recording.open(recfile);
+
+    if (!recording.is_open())
+    {
+        SWSS_LOG_ERROR("failed to open recording file %s: %s", recfile.c_str(), strerror(errno));
+        return;
+    }
+}
 
 void recordLine(std::string s)
 {
@@ -36,9 +60,21 @@ void recordLine(std::string s)
     {
         recording << getTimestamp() << "|" << s << std::endl;
     }
-}
 
-std::string recfile = "dummy.rec";
+    if (g_rotate)
+    {
+        g_rotate = false;
+
+        logRotate();
+
+        /* double check since reopen could fail */
+
+        if (recording.is_open())
+        {
+            recording << getTimestamp() << "|" << "#|logrotate on: " << recfile << std::endl;
+        }
+    }
+}
 
 void startRecording()
 {

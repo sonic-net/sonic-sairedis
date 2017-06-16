@@ -361,6 +361,22 @@ sai_status_t sai_redis_notify_syncd(
 sai_status_t redis_set_switch_attribute(
         _In_ const sai_attribute_t *attr)
 {
+    if (attr != NULL && attr.id == SAI_REDIS_SWITCH_ATTR_PERFORM_LOG_ROTATE)
+    {
+        /*
+         * Let's avoid using mutexes, since this attribute could be used in
+         * signal handler, so check it's value here. If set this attribute will
+         * be performed from multiple threads there is possibility for race
+         * condition here, but this doesn't matter since we only set logrotate
+         * flag, and if that happens we will just reopen file less times then
+         * actual set operation was called.
+         */
+
+        g_logrotate = true;
+
+        return SAI_STATUS_SUCCESS;
+    }
+
     std::lock_guard<std::mutex> lock(g_apimutex);
 
     SWSS_LOG_ENTER();
