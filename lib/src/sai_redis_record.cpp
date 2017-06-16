@@ -61,9 +61,9 @@ void recordLine(std::string s)
         recording << getTimestamp() << "|" << s << std::endl;
     }
 
-    if (g_rotate)
+    if (g_logrotate)
     {
-        g_rotate = false;
+        g_logrotate = false;
 
         logRotate();
 
