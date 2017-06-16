@@ -361,7 +361,7 @@ sai_status_t sai_redis_notify_syncd(
 sai_status_t redis_set_switch_attribute(
         _In_ const sai_attribute_t *attr)
 {
-    if (attr != NULL && attr.id == SAI_REDIS_SWITCH_ATTR_PERFORM_LOG_ROTATE)
+    if (attr != NULL && attr->id == SAI_REDIS_SWITCH_ATTR_PERFORM_LOG_ROTATE)
     {
         /*
          * Let's avoid using mutexes, since this attribute could be used in
