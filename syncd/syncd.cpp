@@ -22,6 +22,7 @@ struct cmdOptions
     bool useTempView;
     int startType;
     bool disableCountersThread;
+    bool disableCrashThread;
     std::string profileMapFile;
 #ifdef SAITHRIFT
     bool run_rpc_server;
@@ -67,7 +68,19 @@ void exit_and_notify(int status)
         SWSS_LOG_ERROR("Unknown runtime error");
     }
 
-    exit(status);
+    if (options.disableCrashSleep)
+    {
+        exit(status);
+    }
+
+    SWSS_LOG_WARN("syncd crashed, but will sleep forever to keep data plane active");
+
+    while (true)
+    {
+        sleep(UINT_MAX);
+
+        SWSS_LOG_NOTICE("sleep ended, sleeping again");
+    }
 }
 
 void sai_diag_shell()
@@ -1495,7 +1508,7 @@ sai_status_t processEvent(swss::ConsumerTable &consumer)
 
 void printUsage()
 {
-    std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u]" << std::endl;
+    std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u] [-S]" << std::endl;
     std::cout << "    -N --nocounters:" << std::endl;
     std::cout << "        Disable counter thread" << std::endl;
     std::cout << "    -d --diag:" << std::endl;
@@ -1508,6 +1521,8 @@ void printUsage()
     std::cout << "        Specify cold|warm|fast start type" << std::endl;
     std::cout << "    -u --useTempView type:" << std::endl;
     std::cout << "        Use temporary view between init and apply" << std::endl;
+    std::cout << "    -S --disableCrashSleep" << std::endl;
+    std::cout << "        Disable sleep when syncd crashes" << std::endl;
 #ifdef SAITHRIFT
     std::cout << "    -r --rpcserver:"           << std::endl;
     std::cout << "        Enable rpcserver"      << std::endl;
@@ -1525,12 +1540,13 @@ void handleCmdLine(int argc, char **argv)
     const int defaultCountersThreadIntervalInSeconds = 1;
 
     options.countersThreadIntervalInSeconds = defaultCountersThreadIntervalInSeconds;
+    options.disableCrashSleep = false;
 
 #ifdef SAITHRIFT
     options.run_rpc_server = false;
-    const char* const optstring = "dNt:p:i:rm:hu";
+    const char* const optstring = "dNt:p:i:rm:huS";
 #else
-    const char* const optstring = "dNt:p:i:hu";
+    const char* const optstring = "dNt:p:i:huS";
 #endif // SAITHRIFT
 
     while(true)
@@ -1544,6 +1560,7 @@ void handleCmdLine(int argc, char **argv)
             { "profile",          required_argument, 0, 'p' },
             { "countersInterval", required_argument, 0, 'i' },
             { "help",             no_argument,       0, 'h' },
+            { "disableCrashSleep",no_argument,       0, 'S' },
 #ifdef SAITHRIFT
             { "rpcserver",        no_argument,       0, 'r' },
             { "portmap",          required_argument, 0, 'm' },
@@ -1568,6 +1585,11 @@ void handleCmdLine(int argc, char **argv)
             case 'N':
                 SWSS_LOG_NOTICE("disable counters thread");
                 options.disableCountersThread = true;
+                break;
+
+            case 'S':
+                SWSS_LOG_NOTICE("disable crash sleep");
+                options.disableCrashSleep = true;
                 break;
 
             case 'd':
