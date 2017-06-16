@@ -29,7 +29,7 @@ std::mutex g_recordMutex;
 
 std::string recfile = "dummy.rec";
 
-void logRotate()
+void logfileReopen()
 {
     SWSS_LOG_ENTER();
 
@@ -65,7 +65,7 @@ void recordLine(std::string s)
     {
         g_logrotate = false;
 
-        logRotate();
+        logfileReopen();
 
         /* double check since reopen could fail */
 
