@@ -3,6 +3,7 @@
 #include "syncd.h"
 #include "sairedis.h"
 #include "swss/tokenize.h"
+#include <limits.h>
 
 std::mutex g_mutex;
 
@@ -22,7 +23,7 @@ struct cmdOptions
     bool useTempView;
     int startType;
     bool disableCountersThread;
-    bool disableCrashThread;
+    bool disableExitSleep;
     std::string profileMapFile;
 #ifdef SAITHRIFT
     bool run_rpc_server;
@@ -68,12 +69,12 @@ void exit_and_notify(int status)
         SWSS_LOG_ERROR("Unknown runtime error");
     }
 
-    if (options.disableCrashSleep)
+    if (options.disableExitSleep)
     {
         exit(status);
     }
 
-    SWSS_LOG_WARN("syncd crashed, but will sleep forever to keep data plane active");
+    SWSS_LOG_WARN("sleep forever to keep data plane active");
 
     while (true)
     {
@@ -1521,7 +1522,7 @@ void printUsage()
     std::cout << "        Specify cold|warm|fast start type" << std::endl;
     std::cout << "    -u --useTempView type:" << std::endl;
     std::cout << "        Use temporary view between init and apply" << std::endl;
-    std::cout << "    -S --disableCrashSleep" << std::endl;
+    std::cout << "    -S --disableExitSleep" << std::endl;
     std::cout << "        Disable sleep when syncd crashes" << std::endl;
 #ifdef SAITHRIFT
     std::cout << "    -r --rpcserver:"           << std::endl;
@@ -1540,7 +1541,7 @@ void handleCmdLine(int argc, char **argv)
     const int defaultCountersThreadIntervalInSeconds = 1;
 
     options.countersThreadIntervalInSeconds = defaultCountersThreadIntervalInSeconds;
-    options.disableCrashSleep = false;
+    options.disableExitSleep = false;
 
 #ifdef SAITHRIFT
     options.run_rpc_server = false;
@@ -1560,7 +1561,7 @@ void handleCmdLine(int argc, char **argv)
             { "profile",          required_argument, 0, 'p' },
             { "countersInterval", required_argument, 0, 'i' },
             { "help",             no_argument,       0, 'h' },
-            { "disableCrashSleep",no_argument,       0, 'S' },
+            { "disableExitSleep", no_argument,       0, 'S' },
 #ifdef SAITHRIFT
             { "rpcserver",        no_argument,       0, 'r' },
             { "portmap",          required_argument, 0, 'm' },
@@ -1589,7 +1590,7 @@ void handleCmdLine(int argc, char **argv)
 
             case 'S':
                 SWSS_LOG_NOTICE("disable crash sleep");
-                options.disableCrashSleep = true;
+                options.disableExitSleep = true;
                 break;
 
             case 'd':
