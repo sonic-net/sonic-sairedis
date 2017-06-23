@@ -2855,7 +2855,7 @@ int main(int argc, char **argv)
 
     set_sai_api_loglevel();
 
-    //swss::Logger::linkToDbNative("syncd");
+    swss::Logger::linkToDbNative("syncd");
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
