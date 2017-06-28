@@ -92,6 +92,13 @@ config_syncd_cavium()
     redis-cli FLUSHALL
 }
 
+config_syncd_marvell()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+
+    [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
+}
+
 config_syncd()
 {
     if [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
@@ -102,6 +109,8 @@ config_syncd()
         config_syncd_cavium
     elif [ "$SONIC_ASIC_TYPE" == "centec" ]; then
         config_syncd_centec
+    elif [ "$SONIC_ASIC_TYPE" == "marvell" ]; then
+        config_syncd_marvell
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
