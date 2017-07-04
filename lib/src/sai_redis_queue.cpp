@@ -11,7 +11,28 @@ sai_status_t redis_get_queue_stats(
 
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    if (number_of_counters < 1)
+    {
+        SWSS_LOG_ERROR("Expected at least 1 counter ID");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (counter_ids == NULL)
+    {
+        SWSS_LOG_ERROR("counter_ids is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (counters == NULL)
+    {
+        SWSS_LOG_ERROR("counters is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t redis_clear_queue_stats(

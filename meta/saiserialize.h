@@ -72,6 +72,9 @@ std::string sai_serialize_common_api(
 std::string sai_serialize_port_stat(
         _In_ const sai_port_stat_t counter);
 
+std::string sai_serialize_queue_stat(
+        _In_ const sai_queue_stat_t counter);
+
 std::string sai_serialize_switch_oper_status(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t status);
@@ -195,5 +198,13 @@ void sai_deserialize_free_fdb_event_ntf(
 void sai_deserialize_free_port_oper_status_ntf(
         _In_ uint32_t count,
         _In_ sai_port_oper_status_notification_t* portoperstatus);
+
+void sai_deserialize_port_stat(
+        _In_ const std::string& s,
+        _Out_ sai_port_stat_t& stat);
+
+void sai_deserialize_queue_stat(
+        _In_ const std::string& s,
+        _Out_ sai_queue_stat_t& stat);
 
 #endif // __SAI_SERIALIZE__

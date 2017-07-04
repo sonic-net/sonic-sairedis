@@ -31,6 +31,7 @@ extern "C" {
 #include "swss/dbconnector.h"
 #include "swss/producertable.h"
 #include "swss/consumertable.h"
+#include "swss/consumerstatetable.h"
 #include "swss/notificationconsumer.h"
 #include "swss/notificationproducer.h"
 #include "swss/selectableevent.h"
@@ -100,7 +101,6 @@ void startCountersThread(
         _In_ int intervalInSeconds);
 
 sai_status_t syncdApplyView();
-
 void check_notifications_pointers(
         _In_ uint32_t attr_count,
         _In_ sai_attribute_t *attr_list);
