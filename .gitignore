@@ -65,6 +65,7 @@ deps/
 ###############
 syncd/syncd
 syncd/syncd_request_shutdown
+syncd/syncd_request_saidump
 saiplayer/saiplayer
 saidump/saidump
 meta/tests

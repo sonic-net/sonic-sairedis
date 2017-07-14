@@ -2597,6 +2597,31 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
     return false;
 }
 
+bool handleSaiDumpQuery(swss::NotificationConsumer &saiDumpQuery)
+{
+    SWSS_LOG_ENTER();
+
+    std::string dumpFile;
+    std::vector<swss::FieldValueTuple> values;
+    saiDumpQuery.pop(dumpFile, dumpFile, values);
+
+    if (switches.size() == 0)
+    {
+    	SWSS_LOG_ERROR("Failed to generate SAI dump because switch is not initialized yet");
+    	return false;
+    }
+
+    sai_status_t sai_status = sai_dbg_generate_dump(dumpFile.c_str());
+    if (sai_status != SAI_STATUS_SUCCESS)
+    {
+    	SWSS_LOG_ERROR("Failed to generate SAI dump, error 0x%x", sai_status);
+    	return false;
+    }
+
+    SWSS_LOG_NOTICE("Generated SAI dump file", dumpFile.c_str());
+    return true;
+}
+
 bool isVeryFirstRun()
 {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -2888,6 +2913,7 @@ int main(int argc, char **argv)
 
     std::shared_ptr<swss::ConsumerTable> asicState = std::make_shared<swss::ConsumerTable>(db.get(), ASIC_STATE_TABLE);
     std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(db.get(), "RESTARTQUERY");
+    std::shared_ptr<swss::NotificationConsumer> saiDumpQuery = std::make_shared<swss::NotificationConsumer>(db.get(), "SAIDUMPQUERY");
 
     /*
      * At the end we cant use producer consumer concept since if one proces
@@ -2981,6 +3007,7 @@ int main(int argc, char **argv)
 
         s.addSelectable(asicState.get());
         s.addSelectable(restartQuery.get());
+        s.addSelectable(saiDumpQuery.get());
 
         SWSS_LOG_NOTICE("starting main loop");
 
@@ -3006,7 +3033,17 @@ int main(int argc, char **argv)
                 break;
             }
 
-            if (result == swss::Select::OBJECT)
+            if (sel == saiDumpQuery.get())
+            {
+            	bool success = handleSaiDumpQuery(*saiDumpQuery);
+            	if (success)
+            	{
+                    swss::NotificationProducer saiDumpResp (dbNtf.get(), "SAIDUMPRESP");
+                    std::vector<swss::FieldValueTuple> values;
+                    saiDumpResp.send("success", "success", values);
+            	}
+            }
+            else if (result == swss::Select::OBJECT)
             {
                 processEvent(*(swss::ConsumerTable*)sel);
             }
