@@ -1,1 +1,1 @@
-SUBDIRS = meta lib vslib syncd saiplayer saidump
+SUBDIRS = meta lib vslib syncd saiplayer saidump saidiscovery tests
