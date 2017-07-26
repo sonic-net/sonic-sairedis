@@ -52,7 +52,7 @@ config_syncd_mlnx()
     # Read MAC address and align the last 6 bits.
     MAC_ADDRESS=$(ip link show eth0 | grep ether | awk '{print $2}')
     last_byte=$(python -c "print '$MAC_ADDRESS'[-2:]")
-    aligned_last_byte=$(python -c "print format(int(int('$last_byte', 16) & 0b00000000), '02x')")  # put mask and take away the 0x prefix
+    aligned_last_byte=$(python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')")  # put mask and take away the 0x prefix
     ALIGNED_MAC_ADDRESS=$(python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'")          # put aligned byte into the end of MAC
 
     # Write MAC address into /tmp/profile file.
