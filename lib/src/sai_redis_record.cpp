@@ -80,7 +80,7 @@ void startRecording()
 {
     SWSS_LOG_ENTER();
 
-    recfile = logOutputDir + "/sairedis." + getTimestamp() + ".rec";
+    recfile = logOutputDir + "/sairedis.rec";
 
     recording.open(recfile);
 
