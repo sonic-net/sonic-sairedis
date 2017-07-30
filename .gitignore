@@ -65,9 +65,9 @@ deps/
 ###############
 syncd/syncd
 syncd/syncd_request_shutdown
-syncd/syncd_request_saidump
 saiplayer/saiplayer
 saidump/saidump
+saisdkdump/saisdkdump
 meta/tests
 
 # Temporary files #

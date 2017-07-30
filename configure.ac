@@ -96,4 +96,5 @@ AC_OUTPUT(Makefile
           syncd/Makefile
           saiplayer/Makefile
           saidump/Makefile
+          saisdkdump/Makefile
           saidiscovery/Makefile)

@@ -1,6 +1,6 @@
 AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta
 
-bin_PROGRAMS = syncd syncd_request_shutdown syncd_request_saidump
+bin_PROGRAMS = syncd syncd_request_shutdown
 
 if DEBUG
 DBGFLAGS = -ggdb -DDEBUG
@@ -33,7 +33,3 @@ endif
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
 syncd_request_shutdown_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 syncd_request_shutdown_LDADD = -lhiredis -lswsscommon -lpthread
-
-syncd_request_saidump_SOURCES = syncd_request_saidump.cpp
-syncd_request_saidump_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-syncd_request_saidump_LDADD = -lhiredis -lswsscommon -lpthread
