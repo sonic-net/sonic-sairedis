@@ -41,7 +41,7 @@ void logfileReopen()
      * empty file here.
      */
 
-    recording.open(recfile);
+    recording.open(recfile, std::ofstream::out | std::ofstream::app);
 
     if (!recording.is_open())
     {
@@ -80,7 +80,7 @@ void startRecording()
 {
     SWSS_LOG_ENTER();
 
-    recfile = logOutputDir + "/sairedis." + getTimestamp() + ".rec";
+    recfile = logOutputDir + "/sairedis.rec";
 
     recording.open(recfile);
 
