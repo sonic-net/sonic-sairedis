@@ -78,7 +78,15 @@ void redisPutFdbEntryToAsicView(
     std::string strFdbEntry = sai_serialize_fdb_entry(fdb->fdb_entry);
 
     std::string key = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strFdbEntry);
-
+	if((fdb->event_type == SAI_FDB_EVENT_AGED)||(fdb->event_type == SAI_FDB_EVENT_FLUSHED))
+    {
+        if(fdb->event_type == SAI_FDB_EVENT_AGED)
+            SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_AGED",key.c_str());
+        if(fdb->event_type == SAI_FDB_EVENT_FLUSHED)
+            SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",key.c_str());
+        g_redisClient->del(key);
+        return;
+    }
     for (const auto &e: entry)
     {
         const std::string &strField = fvField(e);
