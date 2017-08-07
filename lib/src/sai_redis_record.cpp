@@ -82,7 +82,7 @@ void startRecording()
 
     recfile = logOutputDir + "/sairedis.rec";
 
-    recording.open(recfile);
+    recording.open(recfile, std::ofstream::out | std::ofstream::app);
 
     if (!recording.is_open())
     {
