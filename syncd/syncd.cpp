@@ -148,6 +148,8 @@ void remove_rid_and_vid_from_local(
 sai_object_id_t translate_rid_to_vid(
         _In_ sai_object_id_t rid)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
 
     if (rid == SAI_NULL_OBJECT_ID)
@@ -275,6 +277,8 @@ void translate_rid_to_vid_list(
 sai_object_id_t translate_vid_to_rid(
         _In_ sai_object_id_t vid)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
 
     if (vid == SAI_NULL_OBJECT_ID)
@@ -396,6 +400,8 @@ void snoop_get_attr(
     std::string key = TEMP_PREFIX + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
 
     SWSS_LOG_DEBUG("%s", key.c_str());
+
+    std::lock_guard<std::mutex> lock(g_mutex);
 
     g_redisClient->hset(key, attr_id, attr_value);
 }
@@ -698,6 +704,8 @@ sai_status_t handle_generic(
                     std::string str_vid = sai_serialize_object_id(object_id);
                     std::string str_rid = sai_serialize_object_id(real_object_id);
 
+                    std::lock_guard<std::mutex> lock(g_mutex);
+
                     g_redisClient->hset(VIDTORID, str_vid, str_rid);
                     g_redisClient->hset(RIDTOVID, str_rid, str_vid);
 
@@ -729,6 +737,8 @@ sai_status_t handle_generic(
 
                 std::string str_vid = sai_serialize_object_id(object_id);
                 std::string str_rid = sai_serialize_object_id(rid);
+
+                std::lock_guard<std::mutex> lock(g_mutex);
 
                 g_redisClient->hdel(VIDTORID, str_vid);
                 g_redisClient->hdel(RIDTOVID, str_rid);
@@ -985,6 +995,8 @@ void clearTempView()
     std::string pattern = TEMP_PREFIX + (ASIC_STATE_TABLE + std::string(":*"));
 
     // TODO optimize with lua script (this takes ~0.2s now)
+
+    std::lock_guard<std::mutex> lock(g_mutex);
 
     for (const auto &key: g_redisClient->keys(pattern))
     {
@@ -1379,8 +1391,6 @@ sai_status_t processBulkEvent(
 
 sai_status_t processEvent(swss::ConsumerTable &consumer)
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
-
     SWSS_LOG_ENTER();
 
     swss::KeyOpFieldsValuesTuple kco;
