@@ -8,11 +8,6 @@ void collectCounters(swss::Table &countersTable,
     // collect counters should be under mutex
     // sice configuration can change and we
     // don't want that during counters collection
-    //
-    // XXX currently lock for counters is disabled
-    // since on new 0.9.4 can cause deadlock since
-    // interanl sai implementaion also uses locks
-    // std::lock_guard<std::mutex> lock(g_db_mutex);
 
     SWSS_LOG_ENTER();
 
@@ -54,6 +49,8 @@ void collectCounters(swss::Table &countersTable,
 
             values.push_back(fvt);
         }
+
+        std::lock_guard<std::mutex> lock(g_db_mutex);
 
         countersTable.set(strPortId, values, "");
     }
