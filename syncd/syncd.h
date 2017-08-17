@@ -62,7 +62,7 @@ extern "C" {
 
 extern void exit_and_notify(int status) __attribute__ ((__noreturn__));
 
-extern std::mutex g_mutex;
+extern std::mutex g_db_mutex;
 extern std::set<sai_object_id_t> g_defaultPriorityGroupsRids;
 extern std::set<sai_object_id_t> g_defaultSchedulerGroupsRids;
 extern std::set<sai_object_id_t> g_defaultQueuesRids;
