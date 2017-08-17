@@ -107,7 +107,7 @@ void redisPutFdbEntryToAsicView(
     std::string strAttrId = sai_serialize_attr_id(*meta);
     std::string strAttrValue = sai_serialize_attr_value(*meta, attr);
 
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     g_redisClient->hset(key, strAttrId, strAttrValue);
 }

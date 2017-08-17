@@ -5,7 +5,7 @@
 #include "swss/tokenize.h"
 #include <limits.h>
 
-std::mutex g_mutex;
+std::mutex g_db_mutex;
 
 swss::RedisClient *g_redisClient = NULL;
 
@@ -148,7 +148,7 @@ void remove_rid_and_vid_from_local(
 sai_object_id_t translate_rid_to_vid(
         _In_ sai_object_id_t rid)
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     SWSS_LOG_ENTER();
 
@@ -277,7 +277,7 @@ void translate_rid_to_vid_list(
 sai_object_id_t translate_vid_to_rid(
         _In_ sai_object_id_t vid)
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     SWSS_LOG_ENTER();
 
@@ -401,7 +401,7 @@ void snoop_get_attr(
 
     SWSS_LOG_DEBUG("%s", key.c_str());
 
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     g_redisClient->hset(key, attr_id, attr_value);
 }
@@ -704,7 +704,7 @@ sai_status_t handle_generic(
                     std::string str_vid = sai_serialize_object_id(object_id);
                     std::string str_rid = sai_serialize_object_id(real_object_id);
 
-                    std::lock_guard<std::mutex> lock(g_mutex);
+                    std::lock_guard<std::mutex> lock(g_db_mutex);
 
                     g_redisClient->hset(VIDTORID, str_vid, str_rid);
                     g_redisClient->hset(RIDTOVID, str_rid, str_vid);
@@ -738,7 +738,7 @@ sai_status_t handle_generic(
                 std::string str_vid = sai_serialize_object_id(object_id);
                 std::string str_rid = sai_serialize_object_id(rid);
 
-                std::lock_guard<std::mutex> lock(g_mutex);
+                std::lock_guard<std::mutex> lock(g_db_mutex);
 
                 g_redisClient->hdel(VIDTORID, str_vid);
                 g_redisClient->hdel(RIDTOVID, str_rid);
@@ -996,7 +996,7 @@ void clearTempView()
 
     // TODO optimize with lua script (this takes ~0.2s now)
 
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     for (const auto &key: g_redisClient->keys(pattern))
     {
@@ -1794,7 +1794,7 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
 
 bool isVeryFirstRun()
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     SWSS_LOG_ENTER();
 

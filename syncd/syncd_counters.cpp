@@ -12,7 +12,7 @@ void collectCounters(swss::Table &countersTable,
     // XXX currently lock for counters is disabled
     // since on new 0.9.4 can cause deadlock since
     // interanl sai implementaion also uses locks
-    // std::lock_guard<std::mutex> lock(g_mutex);
+    // std::lock_guard<std::mutex> lock(g_db_mutex);
 
     SWSS_LOG_ENTER();
 
