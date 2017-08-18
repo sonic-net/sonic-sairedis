@@ -191,11 +191,13 @@ void checkAllIds()
 
         if (it == g_vidToRidMap.end())
         {
-            SWSS_LOG_THROW("failed to find vid %s in previous map",
+            SWSS_LOG_NOTICE("failed to find vid %s in previous map",
                     sai_serialize_object_id(kv.first).c_str());
         }
-
-        g_vidToRidMap.erase(it);
+        else
+        {
+            g_vidToRidMap.erase(it);
+        }
     }
 
     size_t size = g_vidToRidMap.size();
