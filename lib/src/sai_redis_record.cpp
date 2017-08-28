@@ -181,5 +181,9 @@ sai_status_t setRecordingOutputDir(
 
     logOutputDir = dir;
 
+    /* perform auto log rotate when log directory was changed */
+
+    g_logrotate = true;
+
     return SAI_STATUS_SUCCESS;
 }
