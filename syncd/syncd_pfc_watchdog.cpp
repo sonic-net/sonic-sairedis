@@ -209,7 +209,7 @@ void PfcWatchdog::pfcWatchdogThread(void)
     SWSS_LOG_ENTER();
 
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    swss::Table countersTable(&db, "PFC_WD_COUNTERS");
+    swss::Table countersTable(&db, COUNTERS_TABLE);
 
     while(m_runPfcWatchdogThread)
     {
