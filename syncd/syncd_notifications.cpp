@@ -87,6 +87,8 @@ void redisPutFdbEntryToAsicView(
         const std::string &strField = fvField(e);
         const std::string &strValue = fvValue(e);
 
+        std::lock_guard<std::mutex> lock(g_db_mutex);
+
         g_redisClient->hset(key, strField, strValue);
     }
 
