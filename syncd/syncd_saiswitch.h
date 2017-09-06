@@ -189,7 +189,13 @@ class SaiSwitch
 
         sai_mac_t m_default_mac_address;
 
+        std::vector<sai_object_id_t> m_port_rid_list;
+
         std::vector<sai_port_stat_t> m_supported_counters;
+
+        std::map<sai_object_id_t, std::vector<sai_object_id_t>>  m_queue_rid_map;
+
+        std::vector<sai_queue_stat_t> m_supported_queue_counters;
 
         /*
          * NOTE: Those default value will make sense only when we will do hard
@@ -227,11 +233,28 @@ class SaiSwitch
 
         std::string saiGetHardwareInfo() const;
 
-        std::vector<sai_object_id_t> saiGetPortList() const;
+        /**
+         * @brief Get the port list from SAI.
+         */
+        void saiInitPortList();
 
         std::unordered_map<sai_uint32_t, sai_object_id_t> saiGetHardwareLaneMap() const;
 
-        std::vector<sai_port_stat_t> saiGetSupportedCounters() const;
+        /**
+         * @brief Get the supported port statistic counters for port from SAI.
+         */
+        void saiInitSupportedPortCounters();
+
+
+        /**
+         * @brief Get the queue list for each port from SAI.
+         */
+        void saiInitQueueMap();
+
+        /**
+         * @brief Get the supported queue statistic counters for port from SAI.
+         */
+        void saiInitSupportedQueueCounters();
 
         /**
          * @brief Get MAC address.
@@ -329,6 +352,28 @@ class SaiSwitch
          * m_defaultOidMap[0x17][SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID] == 0x16
          */
         std::unordered_map<sai_object_id_t, std::unordered_map<sai_attr_id_t, sai_object_id_t>> m_defaultOidMap;
+
+        /**
+         * @brief Collect switch counters.
+         *
+         * Collects supported counters from each port and put them to specified
+         * table.
+         *
+         * @param countersTable Counters table to be used.
+         */
+        void collectPortCounters(
+                _In_ swss::Table &countersTable) const;
+
+        /**
+         * @brief Collect switch counters.
+         *
+         * Collects supported counters from each queue of each port and put them to specified
+         * table.
+         *
+         * @param countersTable Counters table to be used.
+         */
+        void collectQueueCounters(
+                _In_ swss::Table &countersTable) const;
 };
 
 extern std::map<sai_object_id_t, std::shared_ptr<SaiSwitch>> switches;
