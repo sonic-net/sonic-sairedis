@@ -422,7 +422,7 @@ void ntf_process_function()
 
 std::shared_ptr<std::thread> ntf_process_thread;
 
-void startNotificationsProfessingThread()
+void startNotificationsProcessingThread()
 {
     SWSS_LOG_ENTER();
 

@@ -167,7 +167,7 @@ void stop_cli();
 sai_status_t applyViewTransition();
 sai_status_t syncdApplyView();
 
-void startNotificationsProfessingThread();
+void startNotificationsProcessingThread();
 void stopNotificationsProcessingThread();
 
 #endif // __SYNCD_H__
