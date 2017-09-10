@@ -9,6 +9,8 @@ void collectCounters(swss::Table &countersTable,
     // sice configuration can change and we
     // don't want that during counters collection
 
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
 
     uint32_t countersSize = (uint32_t)supportedCounters.size();
@@ -49,8 +51,6 @@ void collectCounters(swss::Table &countersTable,
 
             values.push_back(fvt);
         }
-
-        std::lock_guard<std::mutex> lock(g_db_mutex);
 
         countersTable.set(strPortId, values, "");
     }

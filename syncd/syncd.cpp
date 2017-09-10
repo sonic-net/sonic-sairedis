@@ -5,7 +5,7 @@
 #include "swss/tokenize.h"
 #include <limits.h>
 
-std::mutex g_db_mutex;
+std::mutex g_mutex;
 
 swss::RedisClient *g_redisClient = NULL;
 
@@ -148,7 +148,6 @@ void remove_rid_and_vid_from_local(
 sai_object_id_t translate_rid_to_vid(
         _In_ sai_object_id_t rid)
 {
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     SWSS_LOG_ENTER();
 
@@ -277,7 +276,6 @@ void translate_rid_to_vid_list(
 sai_object_id_t translate_vid_to_rid(
         _In_ sai_object_id_t vid)
 {
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     SWSS_LOG_ENTER();
 
@@ -401,7 +399,6 @@ void snoop_get_attr(
 
     SWSS_LOG_DEBUG("%s", key.c_str());
 
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     g_redisClient->hset(key, attr_id, attr_value);
 }
@@ -589,7 +586,6 @@ void internal_syncd_get_send(
     // object type and object id, only get status is required
     // get response will not put any data to table only queue is used
 
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     getResponse->set(key, entry, "getresponse");
 
@@ -707,7 +703,6 @@ sai_status_t handle_generic(
                     std::string str_vid = sai_serialize_object_id(object_id);
                     std::string str_rid = sai_serialize_object_id(real_object_id);
 
-                    std::lock_guard<std::mutex> lock(g_db_mutex);
 
                     g_redisClient->hset(VIDTORID, str_vid, str_rid);
                     g_redisClient->hset(RIDTOVID, str_rid, str_vid);
@@ -741,7 +736,6 @@ sai_status_t handle_generic(
                 std::string str_vid = sai_serialize_object_id(object_id);
                 std::string str_rid = sai_serialize_object_id(rid);
 
-                std::lock_guard<std::mutex> lock(g_db_mutex);
 
                 g_redisClient->hdel(VIDTORID, str_vid);
                 g_redisClient->hdel(RIDTOVID, str_rid);
@@ -984,7 +978,6 @@ void sendResponse(sai_status_t status)
 
     SWSS_LOG_NOTICE("sending response: %s", str_status.c_str());
 
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     getResponse->set(str_status, entry, "notify");
 }
@@ -1001,7 +994,6 @@ void clearTempView()
 
     // TODO optimize with lua script (this takes ~0.2s now)
 
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     for (const auto &key: g_redisClient->keys(pattern))
     {
@@ -1396,6 +1388,8 @@ sai_status_t processBulkEvent(
 
 sai_status_t processEvent(swss::ConsumerTable &consumer)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
 
     swss::KeyOpFieldsValuesTuple kco;
@@ -1799,8 +1793,6 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
 
 bool isVeryFirstRun()
 {
-    std::lock_guard<std::mutex> lock(g_db_mutex);
-
     SWSS_LOG_ENTER();
 
     // if lane map is not defined in redis db then
@@ -1977,6 +1969,8 @@ int main(int argc, char **argv)
             startCountersThread(options.countersThreadIntervalInSeconds);
         }
 
+        startNotificationsProcessingThread();
+
         SWSS_LOG_NOTICE("syncd listening for events");
 
         swss::Select s;
@@ -2038,6 +2032,8 @@ int main(int argc, char **argv)
     SWSS_LOG_NOTICE("uninitialize finished");
 
     stop_cli();
+
+    stopNotificationsProcessingThread();
 
     return EXIT_SUCCESS;
 }
