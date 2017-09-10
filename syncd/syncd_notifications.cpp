@@ -392,6 +392,25 @@ volatile bool runThread;
 std::mutex ntf_mutex;
 std::unique_lock<std::mutex> ulock(ntf_mutex);
 
+bool tryDequeue(
+        _Out_ swss::KeyOpFieldsValuesTyple &item)
+{
+    std::lock_guard<std::mutex> lock(queue_mutex);
+
+    SWSS_LOG_ENTER();
+
+    if (ntf_queue.size() == 0)
+    {
+        return false;
+    }
+
+    item = ntf_queue.front();
+
+    ntf_queue.pop();
+
+    return true;
+}
+
 void ntf_process_function()
 {
     SWSS_LOG_ENTER();
@@ -405,14 +424,10 @@ void ntf_process_function()
         // processing each notification is under same mutex as processing main
         // events, counters and reinit
 
-        std::lock_guard<std::mutex> lock(queue_mutex);
+        swss::KeyOpFieldsValuesTuple item;
 
-        while (ntf_queue.size() != 0)
+        while (tryDequeue(item))
         {
-            swss::KeyOpFieldsValuesTuple item = ntf_queue.front();
-
-            ntf_queue.pop();
-
             processNotification(item);
         }
     }
