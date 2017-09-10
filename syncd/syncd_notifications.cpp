@@ -140,7 +140,7 @@ void process_on_fdb_event(
     send_notification("fdb_event", s);
 }
 
-void process_onport_state_change(
+void process_on_port_state_change(
         _In_ uint32_t count,
         _In_ sai_port_oper_status_notification_t *data)
 {
@@ -398,8 +398,6 @@ void ntf_process_function()
 
     while (runThread)
     {
-        LOG_DEBUG("waiting for notification");
-
         cv.wait(ulock);
 
         // this is notifications processing thread context, which is different
@@ -409,11 +407,11 @@ void ntf_process_function()
 
         std::lock_guard<std::mutex> lock(queue_mutex);
 
-        while (queue.size() != 0)
+        while (ntf_queue.size() != 0)
         {
-            swss::KeyOpFieldsValuesTuple item = queue.front();
+            swss::KeyOpFieldsValuesTuple item = ntf_queue.front();
 
-            queue.pop();
+            ntf_queue.pop();
 
             processNotification(item);
         }
@@ -428,7 +426,7 @@ void startNotificationsProcessingThread()
 
     runThread = true;
 
-    ntf_process_thread = std::make_shared<ntf_process_thread>(ntf_process_function);
+    ntf_process_thread = std::make_shared<std::thread>(ntf_process_function);
 
     ntf_process_thread->detach();
 }
