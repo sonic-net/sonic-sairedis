@@ -331,7 +331,7 @@ void on_switch_state_change(
 
     std::string s = sai_serialize_switch_oper_status(switch_oper_status);
 
-    send_notification("switch_state_change", s);
+    enqueue_notification("switch_state_change", s);
 }
 
 void on_fdb_event(
@@ -342,7 +342,7 @@ void on_fdb_event(
 
     std::string s = sai_serialize_fdb_event_ntf(count, data);
 
-    send_notification("fdb_event", s);
+    enqueue_notification("fdb_event", s);
 }
 
 void on_port_state_change(
@@ -353,7 +353,7 @@ void on_port_state_change(
 
     std::string s = sai_serialize_port_oper_status_ntf(count, data);
 
-    send_notification("port_state_change", s);
+    enqueue_notification("port_state_change", s);
 }
 
 void on_port_event(
@@ -364,14 +364,14 @@ void on_port_event(
 
     std::string s = sai_serialize_port_event_ntf(count, data);
 
-    send_notification("port_event", s);
+    enqueue_notification("port_event", s);
 }
 
 void on_switch_shutdown_request()
 {
     SWSS_LOG_ENTER();
 
-    send_notification("switch_shutdown_request", "");
+    enqueue_notification("switch_shutdown_request", "");
 }
 
 void on_packet_event(
