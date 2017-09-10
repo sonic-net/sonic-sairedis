@@ -604,8 +604,6 @@ void SaiSwitch::collectCounters(
             values.push_back(fvt);
         }
 
-        std::lock_guard<std::mutex> lock(g_db_mutex);
-
         countersTable.set(strPortId, values, "");
     }
 }

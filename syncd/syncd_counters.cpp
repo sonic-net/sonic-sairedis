@@ -29,6 +29,8 @@ void collectCountersThread(
 
         for (auto sw: switches)
         {
+            std::lock_guard<std::mutex> lock(g_mutex);
+
             /*
              * Collect counters should be under mutex sice configuration can
              * change and we don't want that during counters collection.

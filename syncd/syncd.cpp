@@ -7,7 +7,7 @@
 #include <iostream>
 #include <map>
 
-std::mutex g_db_mutex;
+std::mutex g_mutex;
 
 std::shared_ptr<swss::RedisClient>          g_redisClient;
 std::shared_ptr<swss::ProducerTable>        getResponse;
@@ -327,8 +327,6 @@ sai_object_id_t translate_rid_to_vid(
         _In_ sai_object_id_t rid,
         _In_ sai_object_id_t switch_vid)
 {
-    std::lock_guard<std::mutex> lock(g_db_mutex);
-
     SWSS_LOG_ENTER();
 
     /*
@@ -516,7 +514,6 @@ void translate_rid_to_vid_list(
 sai_object_id_t translate_vid_to_rid(
         _In_ sai_object_id_t vid)
 {
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     SWSS_LOG_ENTER();
 
@@ -679,7 +676,6 @@ void snoop_get_attr(
 
     SWSS_LOG_DEBUG("%s", key.c_str());
 
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     g_redisClient->hset(key, attr_id, attr_value);
 }
@@ -1208,7 +1204,6 @@ sai_status_t handle_generic(
                      */
 
                     {
-                        std::lock_guard<std::mutex> lock(g_db_mutex);
 
                         g_redisClient->hset(VIDTORID, str_vid, str_rid);
                         g_redisClient->hset(RIDTOVID, str_rid, str_vid);
@@ -1246,7 +1241,6 @@ sai_status_t handle_generic(
                      */
 
                     {
-                        std::lock_guard<std::mutex> lock(g_db_mutex);
 
                         g_redisClient->hdel(VIDTORID, str_vid);
                         g_redisClient->hdel(RIDTOVID, str_rid);
@@ -1411,7 +1405,6 @@ void clearTempView()
      * We need to expose api to execute user lua script not only predefined.
      */
 
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     for (const auto &key: g_redisClient->keys(pattern))
     {
@@ -2107,6 +2100,8 @@ sai_status_t processBulkEvent(
 sai_status_t processEvent(
         _In_ swss::ConsumerTable &consumer)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     SWSS_LOG_ENTER();
 
     swss::KeyOpFieldsValuesTuple kco;
@@ -2613,7 +2608,6 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
 
 bool isVeryFirstRun()
 {
-    std::lock_guard<std::mutex> lock(g_db_mutex);
 
     SWSS_LOG_ENTER();
 
@@ -2761,6 +2755,8 @@ void performWarmRestart()
 
 void onSyncdStart(bool warmStart)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     /*
      * It may happen that after initialize we will receive some port
      * notifications with port'ids that are not in redis db yet, so after
@@ -2987,6 +2983,8 @@ int main(int argc, char **argv)
             startCountersThread(options.countersThreadIntervalInSeconds);
         }
 
+        startNotificationsProcessingThread();
+
         SWSS_LOG_NOTICE("syncd listening for events");
 
         swss::Select s;
@@ -3055,6 +3053,8 @@ int main(int argc, char **argv)
     {
         SWSS_LOG_ERROR("failed to uninitialize api: %s", sai_serialize_status(status).c_str());
     }
+
+    stopNotificationsProcessingThread();
 
     SWSS_LOG_NOTICE("uninitialize finished");
 

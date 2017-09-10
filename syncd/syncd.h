@@ -58,7 +58,7 @@ extern "C" {
 #define SWITCH_SAI_THRIFT_RPC_SERVER_PORT 9092
 #endif // SAITHRIFT
 
-extern std::mutex g_db_mutex;
+extern std::mutex g_mutex;
 
 extern std::map<sai_object_id_t, std::shared_ptr<SaiSwitch>> switches;
 
@@ -109,5 +109,8 @@ bool is_set_attribute_workaround(
         _In_ sai_object_type_t objecttype,
         _In_ sai_attr_id_t attrid,
         _In_ sai_status_t status);
+
+void startNotificationsProcessingThread();
+void stopNotificationsProcessingThread();
 
 #endif // __SYNCD_H__
