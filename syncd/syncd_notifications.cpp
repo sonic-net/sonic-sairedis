@@ -393,7 +393,7 @@ std::mutex ntf_mutex;
 std::unique_lock<std::mutex> ulock(ntf_mutex);
 
 bool tryDequeue(
-        _Out_ swss::KeyOpFieldsValuesTyple &item)
+        _Out_ swss::KeyOpFieldsValuesTuple &item)
 {
     std::lock_guard<std::mutex> lock(queue_mutex);
 
