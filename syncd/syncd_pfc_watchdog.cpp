@@ -1,7 +1,7 @@
 #include "syncd_pfc_watchdog.h"
 #include "syncd.h"
 
-#define PFC_WD_POLL_MSECS 100
+#define PFC_WD_POLL_MSECS 50
 
 PfcWatchdog::PfcCounterIds::PfcCounterIds(
         _In_ sai_object_id_t queue,
