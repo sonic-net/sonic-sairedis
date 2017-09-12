@@ -5,6 +5,18 @@
 #include "swss/tokenize.h"
 #include <limits.h>
 
+/**
+ * @brief Global mutex for thread synchronization
+ *
+ * Purpose of this mutex is to synchronize multiple threads like main thread,
+ * counters and notifications as well as all operations which require multiple
+ * Redis DB access.
+ *
+ * For example: query DB for next VID id number, and then put map RID and VID
+ * to Redis. From syncd point of view this entire operation should be atomic
+ * and no other thread should access DB or make assumption on previous
+ * information until entire operation will finish.
+ */
 std::mutex g_mutex;
 
 swss::RedisClient *g_redisClient = NULL;

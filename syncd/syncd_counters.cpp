@@ -6,7 +6,7 @@ void collectCounters(swss::Table &countersTable,
                      const std::vector<sai_port_stat_counter_t> &supportedCounters)
 {
     // collect counters should be under mutex
-    // sice configuration can change and we
+    // since configuration can change and we
     // don't want that during counters collection
 
     std::lock_guard<std::mutex> lock(g_mutex);
