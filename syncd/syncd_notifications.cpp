@@ -395,7 +395,7 @@ bool tryDequeue(
 
     SWSS_LOG_ENTER();
 
-    if (ntf_queue.size() == 0)
+    if (ntf_queue.empty())
     {
         return false;
     }

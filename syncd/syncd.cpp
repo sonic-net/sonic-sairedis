@@ -7,6 +7,18 @@
 #include <iostream>
 #include <map>
 
+/**
+ * @brief Global mutex for thread synchronization
+ *
+ * Purpose of this mutex is to synchronize multiple threads like main thread,
+ * counters and notifications as well as all operations which require multiple
+ * Redis DB access.
+ *
+ * For example: query DB for next VID id number, and then put map RID and VID
+ * to Redis. From syncd point of view this entire operation should be atomic
+ * and no other thread should access DB or make assumption on previous
+ * information until entire operation will finish.
+ */
 std::mutex g_mutex;
 
 std::shared_ptr<swss::RedisClient>          g_redisClient;
@@ -41,7 +53,7 @@ std::map<sai_object_id_t, std::shared_ptr<SaiSwitch>> switches;
  * could be vlan members, bridge ports etc.
  *
  * We need this list to later on not put them back to temp view mode when doing
- * populate existing obejcts in apply view mode.
+ * populate existing objects in apply view mode.
  *
  * Object ids here a VIDs.
  */
