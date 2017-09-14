@@ -381,7 +381,7 @@ void on_packet_event(
     SWSS_LOG_ERROR("not implemented");
 }
 
-// determine wheter notification thread is running
+// determine whether notification thread is running
 
 volatile bool runThread;
 
