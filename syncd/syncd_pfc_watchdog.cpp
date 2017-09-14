@@ -231,7 +231,7 @@ void PfcWatchdog::startWatchdogThread(void)
 
     m_runPfcWatchdogThread = true;
 
-    m_pfcWatchdogThread = std::shared_ptr<std::thread>(new std::thread(&PfcWatchdog::pfcWatchdogThread, this));
+    m_pfcWatchdogThread = std::make_shared<std::thread>(&PfcWatchdog::pfcWatchdogThread, this);
     
     SWSS_LOG_INFO("PFC Watchdog thread started");
 }
