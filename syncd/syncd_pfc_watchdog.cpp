@@ -211,7 +211,7 @@ void PfcWatchdog::pfcWatchdogThread(void)
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     swss::Table countersTable(&db, COUNTERS_TABLE);
 
-    while(m_runPfcWatchdogThread)
+    while (m_runPfcWatchdogThread)
     {
         collectCounters(countersTable);
 
