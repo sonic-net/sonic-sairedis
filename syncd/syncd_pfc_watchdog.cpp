@@ -34,10 +34,10 @@ void PfcWatchdog::setPortCounterList(
         return;
     }
 
-    auto pfcCounterIds = std::shared_ptr<PfcCounterIds>(new PfcCounterIds(queueId,
-                                                                          portId,
-                                                                          counterIds,
-                                                                          {}));
+    auto pfcCounterIds = std::make_shared<PfcCounterIds>(queueId,
+                                                         portId,
+                                                         counterIds,
+                                                         std::vector<sai_queue_stat_t>());
     wd.m_counterIdsMap.emplace(queueVid, pfcCounterIds);
 
     // Start watchdog thread in case it was not running due to empty counter IDs map
@@ -66,10 +66,10 @@ void PfcWatchdog::setQueueCounterList(
         return;
     }
 
-    auto pfcCounterIds = std::shared_ptr<PfcCounterIds>(new PfcCounterIds(queueId,
-                                                                          portId,
-                                                                          {},
-                                                                          counterIds));
+    auto pfcCounterIds = std::make_shared<PfcCounterIds>(queueId,
+                                                        portId,
+                                                        std::vector<sai_port_stat_t>(),
+                                                        counterIds);
     wd.m_counterIdsMap.emplace(queueVid, pfcCounterIds);
 
     // Start watchdog thread in case it was not running due to empty counter IDs map
