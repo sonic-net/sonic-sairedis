@@ -100,21 +100,19 @@ std::string SaiSwitch::saiGetHardwareInfo() const
     return std::string(info);
 }
 
-std::vector<sai_object_id_t> SaiSwitch::saiGetPortList() const
+void SaiSwitch::saiInitPortList()
 {
     SWSS_LOG_ENTER();
 
     uint32_t portCount = saiGetPortCount();
 
-    std::vector<sai_object_id_t> portList;
-
-    portList.resize(portCount);
+    m_port_rid_list.resize(portCount);
 
     sai_attribute_t attr;
 
     attr.id = SAI_SWITCH_ATTR_PORT_LIST;
     attr.value.objlist.count = portCount;
-    attr.value.objlist.list = portList.data();
+    attr.value.objlist.list = m_port_rid_list.data();
 
     /*
      * NOTE: We assume port list is always returned in the same order.
@@ -128,11 +126,9 @@ std::vector<sai_object_id_t> SaiSwitch::saiGetPortList() const
                 sai_serialize_status(status).c_str());
     }
 
-    portList.resize(attr.value.objlist.count);
+    m_port_rid_list.resize(attr.value.objlist.count);
 
-    SWSS_LOG_DEBUG("number of ports: %zu", portList.size());
-
-    return portList;
+    SWSS_LOG_DEBUG("number of ports: %zu", m_port_rid_list.size());
 }
 
 std::unordered_map<sai_uint32_t, sai_object_id_t> SaiSwitch::saiGetHardwareLaneMap() const
@@ -141,8 +137,6 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> SaiSwitch::saiGetHardwareLaneM
 
     std::unordered_map<sai_uint32_t, sai_object_id_t> map;
 
-    const std::vector<sai_object_id_t> portList = saiGetPortList();
-
     /*
      * NOTE: Currently we don't support port breakout this will need to be
      * addressed in future.
@@ -150,7 +144,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> SaiSwitch::saiGetHardwareLaneM
 
     const int lanesPerPort = 4;
 
-    for (const auto &port_rid : portList)
+    for (const auto &port_rid : m_port_rid_list)
     {
         sai_uint32_t lanes[lanesPerPort];
 
@@ -500,20 +494,16 @@ void SaiSwitch::removeExistingObject(
     }
 }
 
-std::vector<sai_port_stat_t> SaiSwitch::saiGetSupportedCounters() const
+void SaiSwitch::saiInitSupportedPortCounters()
 {
     SWSS_LOG_ENTER();
 
-    auto ports = saiGetPortList();
-
-    if (ports.size() == 0)
+    if (m_port_rid_list.size() == 0)
     {
         SWSS_LOG_THROW("no ports are defined on switch");
     }
 
-    sai_object_id_t port_rid = ports.at(0);
-
-    std::vector<sai_port_stat_t> supportedCounters;
+    sai_object_id_t port_rid = m_port_rid_list.at(0);
 
     for (uint32_t idx = 0; idx < sai_metadata_enum_sai_port_stat_t.valuescount; ++idx)
     {
@@ -535,14 +525,12 @@ std::vector<sai_port_stat_t> SaiSwitch::saiGetSupportedCounters() const
             continue;
         }
 
-        supportedCounters.push_back(counter);
+        m_supported_counters.push_back(counter);
     }
 
     SWSS_LOG_NOTICE("supported %zu of %d",
-            supportedCounters.size(),
+            m_supported_counters.size(),
             sai_metadata_enum_sai_port_stat_t.valuescount);
-
-    return supportedCounters;
 }
 
 void SaiSwitch::collectCounters(
@@ -550,24 +538,27 @@ void SaiSwitch::collectCounters(
 {
     SWSS_LOG_ENTER();
 
-    if (m_supported_counters.size() == 0)
+    if (m_supported_counters.size() != 0)
     {
-        /*
-         * There are not supported counters :(
-         */
-
-        return;
+        collectPortCounters(countersTable);
     }
 
+    if (m_supported_queue_counters.size() != 0)
+    {
+        collectQueueCounters(countersTable);
+    }
+}
+
+void SaiSwitch::collectPortCounters(
+        _In_ swss::Table &countersTable) const
+{
+    SWSS_LOG_ENTER();
+
     uint32_t countersSize = (uint32_t)m_supported_counters.size();
-
     std::vector<uint64_t> counters;
-
     counters.resize(countersSize);
 
-    auto ports = saiGetPortList();
-
-    for (auto &port_rid: ports)
+    for (auto &port_rid: m_port_rid_list)
     {
         sai_status_t status = sai_metadata_sai_port_api->get_port_stats(
                 port_rid,
@@ -584,13 +575,12 @@ void SaiSwitch::collectCounters(
         }
 
         sai_object_id_t vid = translate_rid_to_vid(port_rid, m_switch_vid);
-
-        std::string strPortId = sai_serialize_object_id(vid);
-
-        // for counters, use port vid as printf "%llx" format
+        // Currently for counters, use port vid as printf "%llx" format
+        // TODO: refactor syncd and portorch to use serialized vid
+        // std::string strPortId = sai_serialize_object_id(vid);
         std::stringstream ss;
         ss << std::hex << vid;
-        strPortId = ss.str();
+        std::string strPortId = ss.str();
 
         std::vector<swss::FieldValueTuple> values;
 
@@ -599,12 +589,62 @@ void SaiSwitch::collectCounters(
             const std::string &field = sai_serialize_port_stat(m_supported_counters[idx]);
             const std::string &value = std::to_string(counters[idx]);
 
-            swss::FieldValueTuple fvt(field, value);
-
-            values.push_back(fvt);
+            values.push_back( swss::FieldValueTuple(field, value) );
         }
 
         countersTable.set(strPortId, values, "");
+    }
+}
+
+void SaiSwitch::collectQueueCounters(
+        _In_ swss::Table &countersTable) const
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t countersSize = (uint32_t)m_supported_queue_counters.size();
+    std::vector<uint64_t> counters;
+    counters.resize(countersSize);
+
+    for (auto &port_rid: m_port_rid_list)
+    {
+        if (m_queue_rid_map.find(port_rid) == m_queue_rid_map.end())
+        {
+            SWSS_LOG_ERROR("failed to collect queues counters for port RID %s",
+                    sai_serialize_object_id(port_rid).c_str());
+            continue;
+        }
+
+        const std::vector<sai_object_id_t>& queue_list = m_queue_rid_map.at(port_rid);
+
+        for (auto &queue_rid: queue_list)
+        {
+            sai_status_t status = sai_metadata_sai_queue_api->get_queue_stats(
+                    queue_rid,
+                    countersSize,
+                    m_supported_queue_counters.data(),
+                    counters.data());
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("failed to collect queue counters for queue RID %s: %s",
+                        sai_serialize_object_id(queue_rid).c_str(),
+                        sai_serialize_status(status).c_str());
+                continue;
+            }
+
+            sai_object_id_t vid = translate_rid_to_vid(queue_rid, m_switch_vid);
+            std::string strQueueId = sai_serialize_object_id(vid);
+            std::vector<swss::FieldValueTuple> values;
+
+            for (size_t idx = 0; idx < counters.size(); idx++)
+            {
+                const std::string &field = sai_serialize_enum(m_supported_queue_counters[idx], &sai_metadata_enum_sai_queue_stat_t);
+                const std::string &value = std::to_string(counters[idx]);
+                values.push_back( swss::FieldValueTuple(field, value) );
+            }
+
+            countersTable.set(strQueueId, values, "");
+        }
     }
 }
 
@@ -1191,6 +1231,84 @@ sai_object_id_t SaiSwitch::getDefaultValueForOidAttr(
     return ita->second;
 }
 
+void SaiSwitch::saiInitQueueMap()
+{
+	SWSS_LOG_ENTER();
+
+    for (auto &port_rid : m_port_rid_list)
+    {
+        sai_attribute_t sai_attr;
+        sai_attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
+        sai_status_t status = sai_metadata_sai_port_api->get_port_attribute(port_rid, 1, &sai_attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to collect number of queues for port RID %s: %s",
+                    sai_serialize_object_id(port_rid).c_str(),
+                    sai_serialize_status(status).c_str());
+            continue;
+        }
+
+        std::vector<sai_object_id_t> queue_list;
+        queue_list.resize(sai_attr.value.u32);
+
+        sai_attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+        sai_attr.value.objlist.list = queue_list.data();
+        status = sai_metadata_sai_port_api->get_port_attribute(port_rid, 1, &sai_attr);
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to collect number of queues for port RID %s: %s",
+                    sai_serialize_object_id(port_rid).c_str(),
+                    sai_serialize_status(status).c_str());
+            continue;
+        }
+
+        m_queue_rid_map[port_rid] = queue_list;
+    }
+}
+
+void SaiSwitch::saiInitSupportedQueueCounters()
+{
+    SWSS_LOG_ENTER();
+
+    if (m_port_rid_list.size() == 0)
+    {
+        SWSS_LOG_THROW("no ports are defined on switch");
+    }
+
+    sai_object_id_t port_rid = m_port_rid_list.at(0);
+
+    if (m_queue_rid_map.find(port_rid) == m_queue_rid_map.end())
+    {
+        SWSS_LOG_THROW("no queues are defined on port");
+    }
+
+    sai_object_id_t queue_rid = m_queue_rid_map.at(port_rid).at(0);
+
+    for (uint32_t idx = 0; idx < sai_metadata_enum_sai_queue_stat_t.valuescount; ++idx)
+    {
+        sai_queue_stat_t counter = (sai_queue_stat_t)sai_metadata_enum_sai_queue_stat_t.values[idx];
+        uint64_t value;
+        sai_status_t status = sai_metadata_sai_queue_api->get_queue_stats(queue_rid, 1, &counter, &value);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            const std::string &name = sai_serialize_enum(counter, &sai_metadata_enum_sai_queue_stat_t);
+            SWSS_LOG_DEBUG("counter %s is not supported on port RID %s: %s",
+                    name.c_str(),
+                    sai_serialize_object_id(port_rid).c_str(),
+                    sai_serialize_status(status).c_str());
+
+            continue;
+        }
+
+        m_supported_queue_counters.push_back(counter);
+    }
+
+    SWSS_LOG_NOTICE("supported %zu of %d",
+            m_supported_queue_counters.size(),
+            sai_metadata_enum_sai_port_stat_t.valuescount);
+}
+
 /*
  * NOTE: If real ID will change during hard restarts, then we need to remap all
  * VID/RID, but we can only do that if we will save entire tree with all
@@ -1226,9 +1344,15 @@ SaiSwitch::SaiSwitch(
 
     helperInternalOids();
 
+    saiGetMacAddress(m_default_mac_address);
+
+    saiInitPortList();
+
+    saiInitSupportedPortCounters();
+
     helperCheckLaneMap();
 
-    m_supported_counters = saiGetSupportedCounters();
+    saiInitQueueMap();
 
-    saiGetMacAddress(m_default_mac_address);
+    saiInitSupportedQueueCounters();
 }
