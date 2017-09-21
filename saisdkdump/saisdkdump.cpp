@@ -12,6 +12,8 @@ extern "C" {
 #include <sai.h>
 }
 
+sai_status_t sai_dbg_generate_dump(const char *c) {return 0; }
+
 std::string sai_profile = "/tmp/sai.profile";
 
 void print_usage()

@@ -111,11 +111,11 @@ void test_bulk_route_set()
 
     sai_status_t    status;
 
-    sai_route_api_t *sai_route_api = NULL;
+    sai_route_api_t  *sai_route_api = NULL;
+    sai_switch_api_t *sai_switch_api = NULL;
 
     sai_api_query(SAI_API_ROUTE, (void**)&sai_route_api);
-
-    // TODO we need switch ID
+    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
 
     uint32_t count = 3;
 
@@ -124,16 +124,29 @@ void test_bulk_route_set()
 
     uint32_t index = 15;
 
+    sai_attribute_t swattr;
+
+    swattr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    swattr.value.booldata = true;
+
+    sai_object_id_t switch_id;
+
+    status = sai_switch_api->create_switch(&switch_id, 1, &swattr);
+
+    ASSERT_SUCCESS("Failed to create switch");
+
     for (uint32_t i = index; i < index + count; ++i)
     {
         sai_route_entry_t route_entry;
 
+        // virtual router
         sai_object_id_t vr = create_dummy_object_id(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
         object_reference_insert(vr);
         sai_object_meta_key_t meta_key_vr = { .objecttype = SAI_OBJECT_TYPE_VIRTUAL_ROUTER, .objectkey = { .key = { .object_id = vr } } };
         std::string vr_key = sai_serialize_object_meta_key(meta_key_vr);
         ObjectAttrHash[vr_key] = { };
 
+        // next hop
         sai_object_id_t hop = create_dummy_object_id(SAI_OBJECT_TYPE_NEXT_HOP);
         object_reference_insert(hop);
         sai_object_meta_key_t meta_key_hop = { .objecttype = SAI_OBJECT_TYPE_NEXT_HOP, .objectkey = { .key = { .object_id = hop } } };
@@ -144,6 +157,7 @@ void test_bulk_route_set()
         route_entry.destination.addr.ip4 = htonl(0x0a000000 | i);
         route_entry.destination.mask.ip4 = htonl(0xffffffff);
         route_entry.vr_id = vr;
+        route_entry.switch_id = switch_id;
 
         sai_attribute_t list[2] = { };
 
@@ -210,9 +224,7 @@ int main()
 
     SWSS_LOG_ENTER();
 
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
-
-    return 0; // temporary disabled since docker can't connect to redis
+//    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
     try
     {
@@ -221,6 +233,8 @@ int main()
         test_enable_recording();
 
         test_bulk_route_set();
+
+        sai_api_uninitialize();
 
         printf("\n[ %s ]\n\n", sai_serialize_status(SAI_STATUS_SUCCESS).c_str());
     }
