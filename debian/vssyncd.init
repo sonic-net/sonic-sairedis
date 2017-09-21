@@ -1,0 +1,36 @@
+#!/bin/bash
+
+### BEGIN INIT INFO
+# Provides:          vssyncd
+# Required-Start:
+# Required-Stop:
+# Default-Start:     S
+# Default-Stop:      0 6
+# Short-Description: SONiC vssync daemon
+# Description:       Enable service vssyncd.
+### END INIT INFO
+
+# Source the file that holds common code for systemd and supervisord
+. /usr/bin/syncd_init_common.sh
+
+# When starting as a service, we want our process to run as a daemon, in the background
+if [ $CMD == $CMD_DSSERVE ]; then
+    CMD_ARGS="-d $CMD_ARGS"
+fi
+
+case "$1" in
+start)
+    config_syncd
+    start-stop-daemon --start --quiet --exec $CMD -- $CMD_ARGS
+    ;;
+stop)
+    start-stop-daemon --stop --quiet --exec $CMD
+    ;;
+*)
+    echo "Usage: service syncd {start|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0
+
