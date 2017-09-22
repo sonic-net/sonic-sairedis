@@ -1,12 +1,25 @@
 #include "syncd.h"
 #include "syncd_saiswitch.h"
 #include "sairedis.h"
+#include "syncd_pfc_watchdog.h"
 #include "swss/tokenize.h"
 #include <limits.h>
 
 #include <iostream>
 #include <map>
 
+/**
+ * @brief Global mutex for thread synchronization
+ *
+ * Purpose of this mutex is to synchronize multiple threads like main thread,
+ * counters and notifications as well as all operations which require multiple
+ * Redis DB access.
+ *
+ * For example: query DB for next VID id number, and then put map RID and VID
+ * to Redis. From syncd point of view this entire operation should be atomic
+ * and no other thread should access DB or make assumption on previous
+ * information until entire operation will finish.
+ */
 std::mutex g_mutex;
 
 std::shared_ptr<swss::RedisClient>          g_redisClient;
@@ -41,7 +54,7 @@ std::map<sai_object_id_t, std::shared_ptr<SaiSwitch>> switches;
  * could be vlan members, bridge ports etc.
  *
  * We need this list to later on not put them back to temp view mode when doing
- * populate existing obejcts in apply view mode.
+ * populate existing objects in apply view mode.
  *
  * Object ids here a VIDs.
  */
@@ -514,6 +527,7 @@ void translate_rid_to_vid_list(
 sai_object_id_t translate_vid_to_rid(
         _In_ sai_object_id_t vid)
 {
+
     SWSS_LOG_ENTER();
 
     if (vid == SAI_NULL_OBJECT_ID)
@@ -674,6 +688,7 @@ void snoop_get_attr(
     std::string key = TEMP_PREFIX + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
 
     SWSS_LOG_DEBUG("%s", key.c_str());
+
 
     g_redisClient->hset(key, attr_id, attr_value);
 }
@@ -1201,10 +1216,13 @@ sai_status_t handle_generic(
                      * To support multiple switches vid/rid map must be per switch.
                      */
 
-                    g_redisClient->hset(VIDTORID, str_vid, str_rid);
-                    g_redisClient->hset(RIDTOVID, str_rid, str_vid);
+                    {
 
-                    save_rid_and_vid_to_local(real_object_id, object_id);
+                        g_redisClient->hset(VIDTORID, str_vid, str_rid);
+                        g_redisClient->hset(RIDTOVID, str_rid, str_vid);
+
+                        save_rid_and_vid_to_local(real_object_id, object_id);
+                    }
 
                     SWSS_LOG_INFO("saved VID %s to RID %s", str_vid.c_str(), str_rid.c_str());
 
@@ -1235,10 +1253,13 @@ sai_status_t handle_generic(
                      * TODO: This must be ATOMIC.
                      */
 
-                    g_redisClient->hdel(VIDTORID, str_vid);
-                    g_redisClient->hdel(RIDTOVID, str_rid);
+                    {
 
-                    remove_rid_and_vid_from_local(rid, object_id);
+                        g_redisClient->hdel(VIDTORID, str_vid);
+                        g_redisClient->hdel(RIDTOVID, str_rid);
+
+                        remove_rid_and_vid_from_local(rid, object_id);
+                    }
 
                     if (object_type == SAI_OBJECT_TYPE_SWITCH)
                     {
@@ -1396,6 +1417,7 @@ void clearTempView()
      *
      * We need to expose api to execute user lua script not only predefined.
      */
+
 
     for (const auto &key: g_redisClient->keys(pattern))
     {
@@ -2309,6 +2331,62 @@ sai_status_t processEvent(
     return status;
 }
 
+void processPfcWdEvent(
+        _In_ swss::ConsumerStateTable &consumer)
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    SWSS_LOG_ENTER();
+
+    swss::KeyOpFieldsValuesTuple kco;
+    consumer.pop(kco);
+
+    const auto &key = kfvKey(kco);
+    const auto &op = kfvOp(kco);
+
+    sai_object_id_t queueVid = SAI_NULL_OBJECT_ID;
+    sai_deserialize_object_id(key, queueVid);
+    sai_object_id_t queueId = translate_vid_to_rid(queueVid);
+
+    const auto values = kfvFieldsValues(kco);
+    for (const auto& valuePair : values)
+    {
+        const auto field = fvField(valuePair);
+        const auto value = fvValue(valuePair);
+
+        if (op == DEL_COMMAND)
+        {
+            PfcWatchdog::removeQueue(queueVid);
+            continue;
+        }
+
+        auto idStrings  = swss::tokenize(value, ',');
+
+        if (field == PFC_WD_PORT_COUNTER_ID_LIST)
+        {
+            std::vector<sai_port_stat_t> portCounterIds;
+            for (const auto &str : idStrings)
+            {
+                sai_port_stat_t stat;
+                sai_deserialize_port_stat(str, stat);
+                portCounterIds.push_back(stat);
+            }
+            PfcWatchdog::setPortCounterList(queueVid, queueId, portCounterIds);
+        }
+        else if (field == PFC_WD_QUEUE_COUNTER_ID_LIST)
+        {
+            std::vector<sai_queue_stat_t> queueCounterIds;
+            for (const auto &str : idStrings)
+            {
+                sai_queue_stat_t stat;
+                sai_deserialize_queue_stat(str, stat);
+                queueCounterIds.push_back(stat);
+            }
+            PfcWatchdog::setQueueCounterList(queueVid, queueId, queueCounterIds);
+        }
+    }
+}
+
 void printUsage()
 {
     std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u] [-S]" << std::endl;
@@ -2599,7 +2677,6 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
 
 bool isVeryFirstRun()
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
 
@@ -2747,6 +2824,8 @@ void performWarmRestart()
 
 void onSyncdStart(bool warmStart)
 {
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     /*
      * It may happen that after initialize we will receive some port
      * notifications with port'ids that are not in redis db yet, so after
@@ -2754,8 +2833,6 @@ void onSyncdStart(bool warmStart)
      * will generate new id's for ports, this may cause race condition so we
      * need to use a lock here to prevent that.
      */
-
-    std::lock_guard<std::mutex> lock(g_mutex);
 
     SWSS_LOG_ENTER();
 
@@ -2881,13 +2958,15 @@ int main(int argc, char **argv)
     }
 #endif // SAITHRIFT
 
-    std::shared_ptr<swss::DBConnector> db = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    std::shared_ptr<swss::DBConnector> dbAsic = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    std::shared_ptr<swss::DBConnector> dbPfcWatchdog = std::make_shared<swss::DBConnector>(PFC_WD_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
 
-    g_redisClient = std::make_shared<swss::RedisClient>(db.get());
+    g_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());
 
-    std::shared_ptr<swss::ConsumerTable> asicState = std::make_shared<swss::ConsumerTable>(db.get(), ASIC_STATE_TABLE);
-    std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(db.get(), "RESTARTQUERY");
+    std::shared_ptr<swss::ConsumerTable> asicState = std::make_shared<swss::ConsumerTable>(dbAsic.get(), ASIC_STATE_TABLE);
+    std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "RESTARTQUERY");
+    std::shared_ptr<swss::ConsumerStateTable> pfcWdState = std::make_shared<swss::ConsumerStateTable>(dbPfcWatchdog.get(), PFC_WD_STATE_TABLE);
 
     /*
      * At the end we cant use producer consumer concept since if one proces
@@ -2895,7 +2974,7 @@ int main(int argc, char **argv)
      * response queue will also trigger another "response".
      */
 
-    getResponse  = std::make_shared<swss::ProducerTable>(db.get(), "GETRESPONSE");
+    getResponse  = std::make_shared<swss::ProducerTable>(dbAsic.get(), "GETRESPONSE");
     notifications = std::make_shared<swss::NotificationProducer>(dbNtf.get(), "NOTIFICATIONS");
 
     g_veryFirstRun = isVeryFirstRun();
@@ -2975,12 +3054,15 @@ int main(int argc, char **argv)
             startCountersThread(options.countersThreadIntervalInSeconds);
         }
 
+        startNotificationsProcessingThread();
+
         SWSS_LOG_NOTICE("syncd listening for events");
 
         swss::Select s;
 
         s.addSelectable(asicState.get());
         s.addSelectable(restartQuery.get());
+        s.addSelectable(pfcWdState.get());
 
         SWSS_LOG_NOTICE("starting main loop");
 
@@ -3005,8 +3087,11 @@ int main(int argc, char **argv)
                 warmRestartHint = handleRestartQuery(*restartQuery);
                 break;
             }
-
-            if (result == swss::Select::OBJECT)
+            else if (sel == pfcWdState.get())
+            {
+                processPfcWdEvent(*(swss::ConsumerStateTable*)sel);
+            }
+            else if (result == swss::Select::OBJECT)
             {
                 processEvent(*(swss::ConsumerTable*)sel);
             }
@@ -3043,6 +3128,8 @@ int main(int argc, char **argv)
     {
         SWSS_LOG_ERROR("failed to uninitialize api: %s", sai_serialize_status(status).c_str());
     }
+
+    stopNotificationsProcessingThread();
 
     SWSS_LOG_NOTICE("uninitialize finished");
 
