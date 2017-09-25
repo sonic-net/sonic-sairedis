@@ -16,6 +16,8 @@ extern "C" {
     if ((status)!=SAI_STATUS_SUCCESS) \
         SWSS_LOG_THROW(format ": %s", ##__VA_ARGS__, sai_serialize_status(status).c_str());
 
+using namespace std;
+
 const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
@@ -135,6 +137,10 @@ void test_bulk_route_set()
 
     ASSERT_SUCCESS("Failed to create switch");
 
+    vector<vector<sai_attribute_t>> route_attrs;
+    vector<sai_attribute_t *> route_attrs_array;
+    vector<uint32_t> route_attrs_count;
+
     for (uint32_t i = index; i < index + count; ++i)
     {
         sai_route_entry_t route_entry;
@@ -158,39 +164,45 @@ void test_bulk_route_set()
         route_entry.destination.mask.ip4 = htonl(0xffffffff);
         route_entry.vr_id = vr;
         route_entry.switch_id = switch_id;
+        route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+        routes.push_back(route_entry);
 
-        sai_attribute_t list[2] = { };
-
+        vector<sai_attribute_t> list(2);
         sai_attribute_t &attr1 = list[0];
         sai_attribute_t &attr2 = list[1];
 
         attr1.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
         attr1.value.oid = hop;
-
         attr2.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
         attr2.value.s32 = SAI_PACKET_ACTION_FORWARD;
+        route_attrs.push_back(list);
+        route_attrs_count.push_back(2);
+    }
 
-        route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    for (size_t j = 0; j < route_attrs.size(); j++)
+    {
+        route_attrs_array.push_back(route_attrs[j].data());
+    }
 
-        status = sai_route_api->create_route_entry(&route_entry, 2, list);
+    vector<sai_status_t> statuses(count);
+    sai_bulk_create_route_entry(count, routes.data(), route_attrs_count.data(), route_attrs_array.data()
+        , SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+    ASSERT_SUCCESS("Failed to create route");
 
-        ASSERT_SUCCESS("Failed to create route");
-
-        routes.push_back(route_entry);
-
+    for (uint32_t i = index; i < index + count; ++i)
+    {
         sai_attribute_t attr;
         attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
         attr.value.s32 = SAI_PACKET_ACTION_DROP;
 
-        status = sai_route_api->set_route_entry_attribute(&route_entry, &attr);
+        status = sai_route_api->set_route_entry_attribute(&routes[i - index], &attr);
 
         attrs.push_back(attr);
 
         ASSERT_SUCCESS("Failed to set route");
     }
 
-    std::vector<sai_status_t> statuses;
-
+    statuses.clear();
     statuses.resize(attrs.size());
 
     for (auto &attr: attrs)
