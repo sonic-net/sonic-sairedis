@@ -49,6 +49,10 @@ class PfcWatchdog
                 _In_ sai_object_id_t queueVid);
         void collectCounters(
                 _In_ swss::Table &countersTable);
+        void runChecks(
+                _In_ swss::DBConnector& db,
+                _In_ std::string detectSha,
+                _In_ std::string restoreSha);
         void pfcWatchdogThread(void);
         void startWatchdogThread(void);
         void endWatchdogThread(void);

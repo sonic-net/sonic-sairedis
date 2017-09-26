@@ -1302,6 +1302,14 @@ std::string sai_serialize_port_oper_status(
     return sai_serialize_enum(status, &sai_metadata_enum_sai_port_oper_status_t);
 }
 
+std::string sai_serialize_queue_deadlock_event(
+        _In_ sai_queue_pfc_deadlock_event_type_t event)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(event, &sai_metadata_enum_sai_queue_pfc_deadlock_event_type_t);
+}
+
 std::string sai_serialize_fdb_event(
         _In_ sai_fdb_event_t event)
 {
@@ -1394,6 +1402,34 @@ std::string sai_serialize_port_oper_status_ntf(
 
         item["port_id"] = sai_serialize_object_id(port_oper_status[i].port_id);
         item["port_state"] = sai_serialize_port_oper_status(port_oper_status[i].port_state);
+
+        j.push_back(item);
+    }
+
+    // we don't need count since it can be deduced
+    return j.dump();
+}
+
+std::string sai_serialize_queue_deadlock_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_queue_deadlock_notification_data_t* deadlock_data)
+{
+    SWSS_LOG_ENTER();
+
+    if (deadlock_data == NULL)
+    {
+        SWSS_LOG_ERROR("deadlock_data pointer is null");
+        throw std::runtime_error("deadlock_data pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        json item;
+
+        item["queue_id"] = sai_serialize_object_id(deadlock_data[i].queue_id);
+        item["event"] = sai_serialize_queue_deadlock_event(deadlock_data[i].event);
 
         j.push_back(item);
     }
@@ -2280,6 +2316,15 @@ void sai_deserialize_port_oper_status(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_port_oper_status_t, (int32_t&)status);
 }
 
+void sai_deserialize_queue_deadlock(
+        _In_ const std::string& s,
+        _Out_ sai_queue_pfc_deadlock_event_type_t& event)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_queue_pfc_deadlock_event_type_t, (int32_t&)event);
+}
+
 void sai_deserialize_fdb_event(
         _In_ const std::string& s,
         _Out_ sai_fdb_event_t& event)
@@ -2540,6 +2585,28 @@ void sai_deserialize_port_oper_status_ntf(
     *port_oper_status = data;
 }
 
+void sai_deserialize_queue_deadlock_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_queue_deadlock_notification_data_t** deadlock_data)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_queue_deadlock_notification_data_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_object_id(j[i]["queue_id"], data[i].queue_id);
+        sai_deserialize_queue_deadlock(j[i]["event"], data[i].event);
+    }
+
+    *deadlock_data = data;
+}
+
 // deserialize free
 
 void sai_deserialize_free_attribute_value(
@@ -2708,6 +2775,15 @@ void sai_deserialize_free_port_oper_status_ntf(
     SWSS_LOG_ENTER();
 
     delete port_oper_status;
+}
+
+void sai_deserialize_free_queue_deadlock_ntf(
+        _In_ uint32_t count,
+        _In_ sai_queue_deadlock_notification_data_t* queue_deadlock)
+{
+    SWSS_LOG_ENTER();
+
+    delete[] queue_deadlock;
 }
 
 void sai_deserialize_port_stat(

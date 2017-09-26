@@ -1,7 +1,12 @@
 #include "syncd_pfc_watchdog.h"
 #include "syncd.h"
+#include "swss/redisapi.h"
 
-#define PFC_WD_POLL_MSECS 50
+#define PFC_WD_POLL_MSECS 100
+
+void on_queue_deadlock(
+        _In_ uint32_t count,
+        _In_ sai_queue_deadlock_notification_data_t *data);
 
 PfcWatchdog::PfcCounterIds::PfcCounterIds(
         _In_ sai_object_id_t queue,
@@ -204,6 +209,64 @@ void PfcWatchdog::collectCounters(
     }
 }
 
+void PfcWatchdog::runChecks(
+        _In_ swss::DBConnector& db,
+        _In_ std::string detectSha,
+        _In_ std::string restoreSha)
+{
+    std::vector<std::string> argv = 
+    {
+        std::to_string(COUNTERS_DB),
+        COUNTERS_TABLE,
+        std::to_string(PFC_WD_POLL_MSECS * 1000)
+    };
+
+    std::vector<std::string> queueList;
+    queueList.reserve(m_counterIdsMap.size());
+    for (const auto& kv : m_counterIdsMap)
+    {
+        queueList.push_back(sai_serialize_object_id(kv.first));
+    }
+
+    auto stormCheckReply = runRedisScript(db, detectSha, queueList, argv);
+    auto restoreCheckReply = runRedisScript(db, restoreSha, queueList, argv);
+
+    std::vector<sai_queue_deadlock_notification_data_t> ntfData;
+
+    for (const auto queueStr : stormCheckReply)
+    {
+        SWSS_LOG_ERROR("FOUND %s stormed", queueStr.c_str());
+        sai_object_id_t queueVid;
+        sai_deserialize_object_id(queueStr, queueVid);
+        sai_queue_deadlock_notification_data_t data =
+        {
+            .queue_id = m_counterIdsMap[queueVid]->queueId,
+            .event = SAI_QUEUE_PFC_DEADLOCK_EVENT_TYPE_DETECTED,
+        };
+        ntfData.push_back(data);
+    }
+
+    for (const auto queueStr : restoreCheckReply)
+    {
+        SWSS_LOG_ERROR("FOUND %s restored", queueStr.c_str());
+        sai_object_id_t queueVid;
+        sai_deserialize_object_id(queueStr, queueVid);
+        sai_queue_deadlock_notification_data_t data =
+        {
+            .queue_id = m_counterIdsMap[queueVid]->queueId,
+            .event = SAI_QUEUE_PFC_DEADLOCK_EVENT_TYPE_RECOVERED,
+        };
+        ntfData.push_back(data);
+    }
+
+    if (ntfData.size() != 0)
+    {
+        on_queue_deadlock(
+                static_cast<uint32_t>(ntfData.size()),
+                ntfData.data());
+    }
+}
+
 void PfcWatchdog::pfcWatchdogThread(void)
 {
     SWSS_LOG_ENTER();
@@ -211,9 +274,45 @@ void PfcWatchdog::pfcWatchdogThread(void)
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     swss::Table countersTable(&db, COUNTERS_TABLE);
 
+    std::string platform = getenv("platform") ? getenv("platform") : "";
+
+    if (platform == "")
+    {
+        SWSS_LOG_ERROR("Environment variable 'platform' is not defined");
+        return;
+    }
+
+    std::string detectScriptName = "pfc_detect_" + platform + ".lua";
+    std::string restoreScriptName = "pfc_restore_" + platform + ".lua";
+
+    bool checkQueues = false;
+    std::string detectSha;
+    std::string restoreSha;
+
+    try
+    {
+        // Load script for storm detection
+        std::string detectLuaScript = swss::loadLuaScript(detectScriptName);
+        detectSha = swss::loadRedisScript(&db, detectLuaScript);
+
+        // Load script for restoration check
+        std::string restoreLuaScript = swss::loadLuaScript(restoreScriptName);
+        restoreSha = swss::loadRedisScript(&db, restoreLuaScript);
+
+        checkQueues = true;
+    }
+    catch(...)
+    {
+        SWSS_LOG_WARN("Lua scripts for PFC watchdog were not loaded");
+    }
+
     while (m_runPfcWatchdogThread)
     {
         collectCounters(countersTable);
+        if (checkQueues)
+        {
+            runChecks(db, detectSha, restoreSha);
+        }
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
         m_cvSleep.wait_for(lk, std::chrono::milliseconds(PFC_WD_POLL_MSECS));
