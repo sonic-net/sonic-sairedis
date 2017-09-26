@@ -12,7 +12,7 @@ AC_PROG_LIBTOOL
 AC_HEADER_STDC
 
 AC_ARG_ENABLE(debug,
-[  --enable-debug    Turn on debugging],
+[  --enable-debug          turn on debugging],
 [case "${enableval}" in
 	yes) debug=true ;;
 	no)  debug=false ;;
@@ -21,7 +21,7 @@ esac],[debug=false])
 AM_CONDITIONAL(DEBUG, test x$debug = xtrue)
 
 AC_ARG_WITH(sai,
-[  --with-sai        Compiling against specific SAI],
+[  --with-sai              compiling against specific SAI],
 [case "${withval}" in
 	vs)   sai=vs ;;
 	*) AC_MSG_ERROR(bad value ${withval} for --with-sai) ;;
@@ -29,7 +29,7 @@ esac])
 AM_CONDITIONAL(SAIVS,   test x$sai = xvs)
 
 AC_ARG_ENABLE(rpcserver,
-[  --enable-rpcserver  Compile with thrift rpcserver included],
+[  --enable-rpcserver      compile with thrift rpcserver included],
 [case "${enableval}" in
    yes) rpcserver=true ;;
    no)  rpcserver=false ;;
@@ -39,6 +39,15 @@ AM_CONDITIONAL(SAITHRIFT, test x$rpcserver = xtrue)
 AM_COND_IF([SAITHRIFT], [
         AC_CHECK_LIB([thrift], [main], [AC_MSG_NOTICE(libthrift found)], [AC_MSG_ERROR(libthrift is required for rpcserver)])
 ])
+
+AC_ARG_ENABLE(rtest,
+[  --enable-redis-test     test with redis service],
+[case "${enableval}" in
+	yes) rtest=true ;;
+	no)  rtest=false ;;
+	*) AC_MSG_ERROR(bad value ${enableval} for --enable-redis-test) ;;
+esac],[rtest=false])
+AM_CONDITIONAL(RTEST, test x$rtest = xtrue)
 
 CFLAGS_COMMON=""
 CFLAGS_COMMON+=" -ansi"
