@@ -58,6 +58,10 @@ config_syncd_mlnx()
     # Write MAC address into /tmp/profile file.
     cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
     echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /tmp/sai.profile
+
+    if [ $FAST_REBOOT == "yes" ]; then
+        CMD_ARGS+=" -t fast"
+    fi
 }
 
 config_syncd_centec()

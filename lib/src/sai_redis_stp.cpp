@@ -1,150 +1,43 @@
 #include "sai_redis.h"
 
-/**
- * @brief Create stp instance with default port state as forwarding.
- *
- * @param[out] stp_id stp instance id
- * @param[in] attr_count Number of attributes
- * @param[in] attr_list Value of attributes
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *   error code is returned.
- */
-sai_status_t redis_create_stp(
-        _Out_ sai_object_id_t *stp_id,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+sai_status_t redis_create_stp_ports(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t object_count,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attrs,
+        _In_ sai_bulk_op_type_t type,
+        _Out_ sai_object_id_t *object_id,
+        _Out_ sai_status_t *object_statuses)
 {
-    std::lock_guard<std::mutex> lock(g_apimutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
-
-    return meta_sai_create_oid(
-            SAI_OBJECT_TYPE_STP_INSTANCE,
-            stp_id,
-            attr_count,
-            attr_list,
-            &redis_generic_create);
-}
-
-/**
- * @brief Remove stp instance.
- *
- * @param[in] stp_id stp instance id
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *   error code is returned.
- */
-sai_status_t redis_remove_stp(
-        _In_ sai_object_id_t stp_id)
-{
-    std::lock_guard<std::mutex> lock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    return meta_sai_remove_oid(
-            SAI_OBJECT_TYPE_STP_INSTANCE,
-            stp_id,
-            &redis_generic_remove);
-}
-
-/**
- * @brief Set the attribute of STP instance.
- *
- * @param[in] stp_id stp instance id
- * @param[in] attr attribute value
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *   error code is returned.
- */
-sai_status_t redis_set_stp_attribute(
-        _In_ sai_object_id_t stp_id,
-        _In_ const sai_attribute_t *attr)
-{
-    std::lock_guard<std::mutex> lock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    return meta_sai_set_oid(
-            SAI_OBJECT_TYPE_STP_INSTANCE,
-            stp_id,
-            attr,
-            &redis_generic_set);
-}
-
-/**
- * @brief Get the attribute of STP instance.
- *
- * @param[in] stp_id stp instance id
- * @param[in] attr_count number of the attribute
- * @param[in] attr_list attribute value
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *   error code is returned.
- */
-sai_status_t redis_get_stp_attribute(
-        _In_ sai_object_id_t stp_id,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list)
-{
-    std::lock_guard<std::mutex> lock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    return meta_sai_get_oid(
-            SAI_OBJECT_TYPE_STP_INSTANCE,
-            stp_id,
-            attr_count,
-            attr_list,
-            &redis_generic_get);
-}
-
-/**
- * @brief Update stp state of a port in specified stp instance.
- *
- * @param[in] stp_id stp instance id
- * @param[in] port_id port id
- * @param[in] stp_port_state stp state of the port
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *   error code is returned.
- */
-sai_status_t redis_set_stp_port_state(
-        _In_ sai_object_id_t stp_id,
-        _In_ sai_object_id_t port_id,
-        _In_ sai_port_stp_port_state_t stp_port_state)
-{
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_ERROR("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-/**
- * @brief Retrieve stp state of a port in specified stp instance.
- *
- * @param[in] stp_id stp instance id
- * @param[in] port_id port id
- * @param[out] stp_port_state stp state of the port
- * @return SAI_STATUS_SUCCESS if operation is successful otherwise a different
- *   error code is returned.
- */
-sai_status_t redis_get_stp_port_state(
-        _In_ sai_object_id_t stp_id,
-        _In_ sai_object_id_t port_id,
-        _Out_ sai_port_stp_port_state_t *stp_port_state)
+sai_status_t redis_remove_stp_ports(
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ sai_bulk_op_type_t type,
+        _Out_ sai_status_t *object_statuses)
 {
-    SWSS_LOG_ENTER();
+    MUTEX();
 
-    SWSS_LOG_ERROR("not implemented");
+    SWSS_LOG_ENTER();
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-/**
- * @brief STP method table retrieved with sai_api_query()
- */
+REDIS_GENERIC_QUAD(STP,stp);
+REDIS_GENERIC_QUAD(STP_PORT,stp_port);
+
+
 const sai_stp_api_t redis_stp_api = {
-    redis_create_stp,
-    redis_remove_stp,
-    redis_set_stp_attribute,
-    redis_get_stp_attribute,
-    redis_set_stp_port_state,
-    redis_get_stp_port_state,
+
+    REDIS_GENERIC_QUAD_API(stp)
+    REDIS_GENERIC_QUAD_API(stp_port)
+
+    redis_create_stp_ports,
+    redis_remove_stp_ports,
 };

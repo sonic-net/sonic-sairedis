@@ -1,21 +1,97 @@
-#include <string.h>
 #include "sai_redis.h"
 #include "sairedis.h"
+
+#include "swss/selectableevent.h"
+#include <string.h>
 
 std::mutex g_apimutex;
 
 service_method_table_t g_services;
 bool                   g_apiInitialized = false;
+volatile bool          g_run = false;
 
-swss::DBConnector     *g_db = NULL;
-swss::DBConnector     *g_dbNtf = NULL;
-swss::ProducerTable   *g_asicState = NULL;
+// this event is used to nice end notifications thread
+swss::SelectableEvent g_redisNotificationTrheadEvent;
+std::shared_ptr<std::thread> notification_thread;
 
-// we probably don't need those to tables to access GET requests
-swss::ConsumerTable          *g_redisGetConsumer = NULL;
-swss::NotificationConsumer   *g_redisNotifications = NULL;
+std::shared_ptr<swss::DBConnector>          g_db;
+std::shared_ptr<swss::DBConnector>          g_dbNtf;
+std::shared_ptr<swss::ProducerTable>        g_asicState;
+std::shared_ptr<swss::ConsumerTable>        g_redisGetConsumer;
+std::shared_ptr<swss::NotificationConsumer> g_redisNotifications;
+std::shared_ptr<swss::RedisClient>          g_redisClient;
 
-swss::RedisClient     *g_redisClient = NULL;
+void clear_local_state()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("clearing local state");
+
+    /*
+     * Will need to be executed after init VIEW
+     */
+
+    /*
+     * Clear current notifications pointers.
+     *
+     * Clear notifications before clearing metadata database to not cause
+     * potential race condition for updating db right after clear.
+     */
+
+    clear_notifications();
+
+    /*
+     * Initialize metatada database.
+     */
+
+    meta_init_db();
+
+    /*
+     * Reset used switch ids.
+     */
+
+    redis_clear_switch_ids();
+}
+
+void ntf_thread()
+{
+    SWSS_LOG_ENTER();
+
+    swss::Select s;
+
+    s.addSelectable(g_redisNotifications.get());
+    s.addSelectable(&g_redisNotificationTrheadEvent);
+
+    while (g_run)
+    {
+        swss::Selectable *sel;
+
+        int fd;
+
+        int result = s.select(&sel, &fd);
+
+        if (sel == &g_redisNotificationTrheadEvent)
+        {
+            // user requested shutdown_switch
+            break;
+        }
+
+        if (result == swss::Select::OBJECT)
+        {
+            swss::KeyOpFieldsValuesTuple kco;
+
+            std::string op;
+            std::string data;
+            std::vector<swss::FieldValueTuple> values;
+
+            g_redisNotifications->pop(op, data, values);
+
+            SWSS_LOG_DEBUG("notification: op = %s, data = %s", op.c_str(), data.c_str());
+
+            handle_notification(op, data, values);
+        }
+    }
+}
 
 sai_status_t sai_api_initialize(
         _In_ uint64_t flags,
@@ -25,51 +101,71 @@ sai_status_t sai_api_initialize(
 
     SWSS_LOG_ENTER();
 
+    if (g_apiInitialized)
+    {
+        SWSS_LOG_ERROR("api already initialized");
+
+        return SAI_STATUS_FAILURE;
+    }
+
     if ((NULL == services) || (NULL == services->profile_get_next_value) || (NULL == services->profile_get_value))
     {
         SWSS_LOG_ERROR("Invalid services handle passed to SAI API initialize");
+
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
     memcpy(&g_services, services, sizeof(g_services));
 
-    if (0 != flags)
-    {
-        SWSS_LOG_ERROR("Invalid flags passed to SAI API initialize");
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
+    g_db                 = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    g_dbNtf              = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    g_asicState          = std::make_shared<swss::ProducerTable>(g_db.get(), ASIC_STATE_TABLE);
+    g_redisGetConsumer   = std::make_shared<swss::ConsumerTable>(g_db.get(), "GETRESPONSE");
+    g_redisNotifications = std::make_shared<swss::NotificationConsumer>(g_dbNtf.get(), "NOTIFICATIONS");
+    g_redisClient        = std::make_shared<swss::RedisClient>(g_db.get());
 
-    if (g_db != NULL)
-        delete g_db;
+    clear_local_state();
 
-    g_db = new swss::DBConnector(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    g_asicInitViewMode = false;
 
-    if (g_dbNtf != NULL)
-        delete g_dbNtf;
+    g_useTempView = false;
 
-    g_dbNtf = new swss::DBConnector(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    g_run = true;
 
-    if (g_asicState != NULL)
-        delete g_asicState;
+    setRecording(g_record);
 
-    g_asicState = new swss::ProducerTable(g_db, ASIC_STATE_TABLE);
+    SWSS_LOG_DEBUG("creating notification thread");
 
-    if (g_redisGetConsumer != NULL)
-        delete g_redisGetConsumer;
-
-    g_redisGetConsumer = new swss::ConsumerTable(g_db, "GETRESPONSE");
-
-    if (g_redisNotifications != NULL)
-        delete g_redisNotifications;
-
-    g_redisNotifications = new swss::NotificationConsumer(g_dbNtf, "NOTIFICATIONS");
-
-    if (g_redisClient != NULL)
-        delete g_redisClient;
-
-    g_redisClient = new swss::RedisClient(g_db);
+    notification_thread = std::make_shared<std::thread>(std::thread(ntf_thread));
 
     g_apiInitialized = true;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t sai_api_uninitialize(void)
+{
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
+    SWSS_LOG_ENTER();
+
+    if (!g_apiInitialized)
+    {
+        SWSS_LOG_ERROR("api not initialized");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    clear_local_state();
+
+    g_run = false;
+
+    // notify thread that it should end
+    g_redisNotificationTrheadEvent.notify();
+
+    notification_thread->join();
+
+    g_apiInitialized = false;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -83,33 +179,15 @@ sai_status_t sai_log_set(
 
     SWSS_LOG_ENTER();
 
-    switch (log_level)
-    {
-        case SAI_LOG_DEBUG:
-            break;
+    SWSS_LOG_ERROR("not implemented");
 
-        case SAI_LOG_INFO:
-            break;
-
-        case SAI_LOG_NOTICE:
-            break;
-
-        case SAI_LOG_WARN:
-            break;
-
-        case SAI_LOG_ERROR:
-            break;
-
-        case SAI_LOG_CRITICAL:
-            break;
-
-        default:
-            SWSS_LOG_ERROR("Invalid log level %d", log_level);
-            return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    return SAI_STATUS_SUCCESS;
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
+
+#define API_CASE(API,api)\
+    case SAI_API_ ## API: {\
+        *(const sai_ ## api ## _api_t**)api_method_table = &redis_ ## api ## _api;\
+        return SAI_STATUS_SUCCESS; }
 
 sai_status_t sai_api_query(
         _In_ sai_api_t sai_api_id,
@@ -119,7 +197,7 @@ sai_status_t sai_api_query(
 
     SWSS_LOG_ENTER();
 
-    if (NULL == api_method_table)
+    if (api_method_table == NULL)
     {
         SWSS_LOG_ERROR("NULL method table passed to SAI API initialize");
         return SAI_STATUS_INVALID_PARAMETER;
@@ -131,124 +209,44 @@ sai_status_t sai_api_query(
         return SAI_STATUS_UNINITIALIZED;
     }
 
-    switch (sai_api_id) {
-        case SAI_API_BUFFERS:
-            *(const sai_buffer_api_t**)api_method_table = &redis_buffer_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_HASH:
-            *(const sai_hash_api_t**)api_method_table = &redis_hash_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_SWITCH:
-            *(const sai_switch_api_t**)api_method_table = &redis_switch_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_PORT:
-            *(const sai_port_api_t**)api_method_table = &redis_port_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_FDB:
-            *(const sai_fdb_api_t**)api_method_table = &redis_fdb_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_VLAN:
-            *(const sai_vlan_api_t**)api_method_table = &redis_vlan_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_WRED:
-            *(const sai_wred_api_t**)api_method_table = &redis_wred_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_VIRTUAL_ROUTER:
-            *(const sai_virtual_router_api_t**)api_method_table = &redis_router_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_ROUTE:
-            *(const sai_route_api_t**)api_method_table = &redis_route_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_NEXT_HOP:
-            *(const sai_next_hop_api_t**)api_method_table = &redis_next_hop_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_NEXT_HOP_GROUP:
-            *(const sai_next_hop_group_api_t**)api_method_table = &redis_next_hop_group_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_ROUTER_INTERFACE:
-            *(const sai_router_interface_api_t**)api_method_table = &redis_router_interface_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_NEIGHBOR:
-            *(const sai_neighbor_api_t**)api_method_table = &redis_neighbor_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_ACL:
-            *(const sai_acl_api_t**)api_method_table = &redis_acl_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_HOST_INTERFACE:
-            *(const sai_hostif_api_t**)api_method_table = &redis_host_interface_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_POLICER:
-            *(const sai_policer_api_t**)api_method_table = &redis_policer_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_QOS_MAPS:
-            *(const sai_qos_map_api_t**)api_method_table = &redis_qos_map_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_QUEUE:
-            *(const sai_queue_api_t**)api_method_table = &redis_queue_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_SCHEDULER:
-            *(const sai_scheduler_api_t**)api_method_table = &redis_scheduler_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_SCHEDULER_GROUP:
-            *(const sai_scheduler_group_api_t**)api_method_table = &redis_scheduler_group_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_MIRROR:
-            *(const sai_mirror_api_t**)api_method_table = &redis_mirror_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_UDF:
-            *(const sai_udf_api_t**)api_method_table = &redis_udf_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_SAMPLEPACKET:
-            *(const sai_samplepacket_api_t**)api_method_table = &redis_samplepacket_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_STP:
-            *(const sai_stp_api_t**)api_method_table = &redis_stp_api;
-            return SAI_STATUS_NOT_IMPLEMENTED;
-
-        case SAI_API_LAG:
-            *(const sai_lag_api_t**)api_method_table = &redis_lag_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_TUNNEL:
-            *(const sai_tunnel_api_t**)api_method_table = &redis_tunnel_api;
-            return SAI_STATUS_SUCCESS;
+    switch (sai_api_id)
+    {
+        API_CASE(ACL,acl);
+        API_CASE(BRIDGE,bridge);
+        API_CASE(BUFFER,buffer);
+        API_CASE(FDB,fdb);
+        API_CASE(HASH,hash);
+        API_CASE(HOSTIF,hostif);
+        //API_CASE(IPMC,ipmc);
+        //API_CASE(IPMC_GROUP,ipmc_group);
+        //API_CASE(L2MC,l2mc);
+        //API_CASE(L2MC_GROUP,l2mc_group);
+        API_CASE(LAG,lag);
+        //API_CASE(MCAST_FDB,mcast_fdb);
+        API_CASE(MIRROR,mirror);
+        API_CASE(NEIGHBOR,neighbor);
+        API_CASE(NEXT_HOP,next_hop);
+        API_CASE(NEXT_HOP_GROUP,next_hop_group);
+        API_CASE(POLICER,policer);
+        API_CASE(PORT,port);
+        API_CASE(QOS_MAP,qos_map);
+        API_CASE(QUEUE,queue);
+        API_CASE(ROUTE,route);
+        API_CASE(ROUTER_INTERFACE,router_interface);
+        //API_CASE(RPF_GROUP,rpf_group);
+        API_CASE(SAMPLEPACKET,samplepacket);
+        API_CASE(SCHEDULER,scheduler);
+        API_CASE(SCHEDULER_GROUP,scheduler_group);
+        API_CASE(STP,stp);
+        API_CASE(SWITCH,switch);
+        API_CASE(TUNNEL,tunnel);
+        API_CASE(UDF,udf);
+        API_CASE(VIRTUAL_ROUTER,virtual_router);
+        API_CASE(VLAN,vlan);
+        API_CASE(WRED,wred);
 
         default:
             SWSS_LOG_ERROR("Invalid API type %d", sai_api_id);
             return SAI_STATUS_INVALID_PARAMETER;
     }
-}
-
-sai_status_t sai_api_uninitialize(void)
-{
-    std::lock_guard<std::mutex> lock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    g_apiInitialized = false;
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
 }

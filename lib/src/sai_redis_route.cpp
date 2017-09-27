@@ -3,132 +3,17 @@
 #include "meta/saiserialize.h"
 #include "meta/saiattributelist.h"
 
-/**
- * Routine Description:
- *    @brief Create Route
- *
- * Arguments:
- *    @param[in] unicast_route_entry - route entry
- *    @param[in] attr_count - number of attributes
- *    @param[in] attr_list - array of attributes
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- *
- * Note: IP prefix/mask expected in Network Byte Order.
- *
- */
-sai_status_t redis_create_route(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
-{
-    std::lock_guard<std::mutex> lock(g_apimutex);
+REDIS_GENERIC_QUAD_ENTRY(ROUTE_ENTRY,route_entry);
 
-    SWSS_LOG_ENTER();
-
-    return meta_sai_create_route_entry(
-            unicast_route_entry,
-            attr_count,
-            attr_list,
-            &redis_generic_create_route_entry);
-}
-
-/**
- * Routine Description:
- *    @brief Remove Route
- *
- * Arguments:
- *    @param[in] unicast_route_entry - route entry
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- *
- * Note: IP prefix/mask expected in Network Byte Order.
- */
-sai_status_t redis_remove_route(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry)
-{
-    std::lock_guard<std::mutex> lock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    return meta_sai_remove_route_entry(
-            unicast_route_entry,
-            &redis_generic_remove_route_entry);
-}
-
-/**
- * Routine Description:
- *    @brief Set route attribute value
- *
- * Arguments:
- *    @param[in] unicast_route_entry - route entry
- *    @param[in] attr - attribute
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
-sai_status_t redis_set_route_attribute(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
-        _In_ const sai_attribute_t *attr)
-{
-    std::lock_guard<std::mutex> lock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    return meta_sai_set_route_entry(
-            unicast_route_entry,
-            attr,
-            &redis_generic_set_route_entry);
-}
-
-/**
- * Routine Description:
- *    @brief Get route attribute value
- *
- * Arguments:
- *    @param[in] unicast_route_entry - route entry
- *    @param[in] attr_count - number of attributes
- *    @param[inout] attr_list - array of attributes
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
-sai_status_t redis_get_route_attribute(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list)
-{
-    std::lock_guard<std::mutex> lock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    return meta_sai_get_route_entry(
-            unicast_route_entry,
-            attr_count,
-            attr_list,
-            &redis_generic_get_route_entry);
-}
-
-/**
- * @brief Router entry methods table retrieved with sai_api_query()
- */
 const sai_route_api_t redis_route_api = {
-    redis_create_route,
-    redis_remove_route,
-    redis_set_route_attribute,
-    redis_get_route_attribute,
+
+    REDIS_GENERIC_QUAD_API(route_entry)
 };
 
 
 sai_status_t sai_bulk_create_route_entry(
         _In_ uint32_t object_count,
-        _In_ const sai_unicast_route_entry_t *route_entry,
+        _In_ const sai_route_entry_t *route_entry,
         _In_ const uint32_t *attr_count,
         _In_ const sai_attribute_t **attr_list,
         _In_ sai_bulk_op_type_t type,
@@ -143,7 +28,7 @@ sai_status_t sai_bulk_create_route_entry(
 
 sai_status_t sai_bulk_remove_route_entry(
         _In_ uint32_t object_count,
-        _In_ const sai_unicast_route_entry_t *route_entry,
+        _In_ const sai_route_entry_t *route_entry,
         _In_ sai_bulk_op_type_t type,
         _Out_ sai_status_t *object_statuses)
 {
@@ -155,7 +40,7 @@ sai_status_t sai_bulk_remove_route_entry(
 }
 
 sai_status_t redis_dummy_set_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
+        _In_ const sai_route_entry_t* unicast_route_entry,
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
@@ -172,7 +57,7 @@ sai_status_t redis_dummy_set_route_entry(
 
 sai_status_t sai_bulk_set_route_entry_attribute(
         _In_ uint32_t object_count,
-        _In_ const sai_unicast_route_entry_t *route_entry,
+        _In_ const sai_route_entry_t *route_entry,
         _In_ const sai_attribute_t *attr_list,
         _In_ sai_bulk_op_type_t type,
         _Out_ sai_status_t *object_statuses)
@@ -268,7 +153,7 @@ sai_status_t sai_bulk_set_route_entry_attribute(
      */
 
     return internal_redis_bulk_generic_set(
-            SAI_OBJECT_TYPE_ROUTE,
+            SAI_OBJECT_TYPE_ROUTE_ENTRY,
             serialized_object_ids,
             attr_list,
             object_statuses);
@@ -276,7 +161,7 @@ sai_status_t sai_bulk_set_route_entry_attribute(
 
 sai_status_t sai_bulk_get_route_entry_attribute(
         _In_ uint32_t object_count,
-        _In_ const sai_unicast_route_entry_t *route_entry,
+        _In_ const sai_route_entry_t *route_entry,
         _In_ const uint32_t *attr_count,
         _Inout_ sai_attribute_t **attr_list,
         _In_ sai_bulk_op_type_t type,

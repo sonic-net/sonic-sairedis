@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I/usr/include/sai 
+AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta
 
 bin_PROGRAMS = syncd syncd_request_shutdown
 
@@ -16,16 +16,15 @@ endif
 
 syncd_SOURCES = \
 				syncd.cpp \
-				syncd_applyview.cpp \
-				syncd_cli.cpp \
-				syncd_init.cpp \
-				syncd_reinit.cpp \
+				syncd_saiswitch.cpp \
 				syncd_hard_reinit.cpp \
 				syncd_notifications.cpp \
-				syncd_counters.cpp
+				syncd_counters.cpp \
+				syncd_applyview.cpp \
+				syncd_pfc_watchdog.cpp
 
 syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
-syncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata
+syncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl
 
 if SAITHRIFT
 syncd_CPPFLAGS += -DSAITHRIFT=yes

@@ -30,8 +30,8 @@ binary-syncd:
 	dh build  -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
 	dh binary -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
 
-binary-syncd-rpc:
-	$(shell echo '--enable-rpcserver=yes' > /tmp/syncd-build)
+binary-syncd-rpc: | binary-syncd
+	$(shell echo '--enable-rpcserver=no' > /tmp/syncd-build)
 	dh clean  --with autotools-dev
 	dh build  -N syncd -N syncd-dbg --with autotools-dev
 	dh binary -N syncd -N syncd-dbg --with autotools-dev

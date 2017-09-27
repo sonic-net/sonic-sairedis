@@ -3,11 +3,18 @@
 #include "saiserialize.h"
 
 #include <string.h>
-#include <arpa/inet.h>
+#include <stdio.h>
+#include <stdlib.h>
 
+#include <iostream>
+#include <vector>
+#include <unordered_map>
+#include <set>
+#include <memory>
 #include <map>
 #include <iterator>
 
+// TODO move to metadata utils
 bool is_ipv6_mask_valid(
         _In_ const uint8_t* mask)
 {
@@ -41,266 +48,20 @@ bool is_ipv6_mask_valid(
     return true;
 }
 
-int get_ipv6_mask(
-        _In_ const uint8_t* mask)
-{
-    if (mask == NULL)
-    {
-        SWSS_LOG_ERROR("FATAL: mask is null");
-        throw;
-    }
-
-    int ones = 0;
-    bool zeros = false;
-
-    for (uint8_t i = 0; i < 128; i++)
-    {
-        bool bit = mask[i/8] & (1 << (7 - (i%8)));
-
-        if (zeros && bit)
-        {
-            SWSS_LOG_ERROR("FATAL: mask is not correct");
-            throw;
-        }
-
-        zeros |= !bit;
-
-        if (bit)
-        {
-            ones++;
-        }
-    }
-
-    return ones;
-}
-
-std::string mac_to_string(
-        _In_ const sai_mac_t& mac)
-{
-    char macstr[128];
-
-    sprintf(macstr, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
-    return macstr;
-}
-
-std::string fdb_entry_to_string(
-        _In_ const sai_fdb_entry_t& fdb_entry)
-{
-    return "mac:" + mac_to_string(fdb_entry.mac_address) +";vlan:" + std::to_string(fdb_entry.vlan_id);
-}
-
-std::string oid_to_string(
-        _In_ sai_object_id_t oid)
-{
-    char str[32];
-
-    sprintf(str, "0x%lx", oid);
-
-    return str;
-}
-
-std::string ip_addr_to_string(
-        _In_ sai_ip_addr_family_t family, const void* mem)
-{
-    char str[INET6_ADDRSTRLEN];
-
-    switch (family)
-    {
-        case SAI_IP_ADDR_FAMILY_IPV4:
-
-            {
-                struct sockaddr_in sa;
-
-                memcpy(&sa.sin_addr, mem, 4);
-
-                if (inet_ntop(AF_INET, &(sa.sin_addr), str, INET_ADDRSTRLEN) == NULL)
-                {
-                    SWSS_LOG_ERROR("FATAL: failed to convert IPv4 address, errno: %d", errno);
-                    throw;
-                }
-
-                break;
-            }
-
-        case SAI_IP_ADDR_FAMILY_IPV6:
-
-            {
-                struct sockaddr_in6 sa6;
-
-                memcpy(&sa6.sin6_addr, mem, 16);
-
-                if (inet_ntop(AF_INET6, &(sa6.sin6_addr), str, INET6_ADDRSTRLEN) == NULL)
-                {
-                    SWSS_LOG_ERROR("FATAL: failed to convert IPv6 address, errno: %d", errno);
-                    throw;
-                }
-
-                break;
-            }
-
-        default:
-
-            SWSS_LOG_ERROR("FATAL: invalid ip address family: %d", family);
-            throw;
-    }
-
-    return str;
-}
-
-std::string ip_address_to_string(
-        _In_ const sai_ip_address_t& ip)
-{
-    return "[" + ip_addr_to_string(ip.addr_family, &ip.addr) + "]";
-}
-
-std::string neighbor_entry_to_string(
-        _In_ const sai_neighbor_entry_t& neighbor_entry)
-{
-    return "rif:" + oid_to_string(neighbor_entry.rif_id) + ";ip:" + ip_address_to_string(neighbor_entry.ip_address);
-}
-
-std::string ip_prefix_to_string(
-        _In_ const sai_ip_prefix_t& prefix)
-{
-    if (prefix.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
-    {
-        return "[" + ip_addr_to_string(prefix.addr_family, &prefix.addr) + "/" +
-            ip_addr_to_string(prefix.addr_family, &prefix.mask) + "]";
-    }
-
-    return "[" + ip_addr_to_string(prefix.addr_family, &prefix.addr) + "/" +
-        std::to_string(get_ipv6_mask(prefix.mask.ip6)) + "]";
-}
-
-std::string route_entry_to_string(
-        _In_ const sai_unicast_route_entry_t& route_entry)
-{
-    return "vr:" + oid_to_string(route_entry.vr_id) + ";dest:" + ip_prefix_to_string(route_entry.destination);
-}
-
-std::string get_object_meta_key_string(
-        _In_ const sai_object_meta_key_t& meta_key)
-{
-    SWSS_LOG_ENTER();
-
-    std::string key;
-
-    switch (meta_key.object_type)
-    {
-        case SAI_OBJECT_TYPE_SWITCH:
-            key = "switch:0";
-            break;
-
-        case SAI_OBJECT_TYPE_VLAN:
-            key = "vlan:" + std::to_string(meta_key.key.vlan_id);
-            break;
-
-        case SAI_OBJECT_TYPE_TRAP:
-            key = "trap:" + std::to_string(meta_key.key.trap_id);
-            break;
-
-        case SAI_OBJECT_TYPE_FDB:
-            key = "fdb:" + fdb_entry_to_string(meta_key.key.fdb_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_ROUTE:
-            key = "route:" + route_entry_to_string(meta_key.key.route_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_NEIGHBOR:
-            key = "neighbor:" + neighbor_entry_to_string(meta_key.key.neighbor_entry);
-            break;
-
-        default:
-            key = "oid:" + oid_to_string(meta_key.key.object_id);
-            break;
-    }
-
-    SWSS_LOG_DEBUG("%s", key.c_str());
-
-    return key;
-}
-
-const sai_attribute_t* get_attribute_by_id(
-        _In_ sai_attr_id_t id,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    if (attr_list == NULL)
-    {
-        SWSS_LOG_ERROR("attribute list is null");
-
-        return NULL;
-    }
-
-    for (uint32_t i = 0; i < attr_count; ++i)
-    {
-        if (attr_list[i].id == id)
-        {
-            return &attr_list[i];
-        }
-    }
-
-    return NULL;
-}
-
-const sai_attr_metadata_t* get_attribute_metadata(
-        _In_ sai_object_type_t objecttype,
-        _In_ sai_attr_id_t attrid)
-{
-    SWSS_LOG_ENTER();
-
-    const auto &it = AttributesMetadata.find(objecttype);
-
-    if (it == AttributesMetadata.end())
-    {
-        SWSS_LOG_ERROR("invalid object type value: %d", objecttype);
-
-        return NULL;
-    }
-
-    const auto &attrset = it->second;
-
-    const auto &ita = attrset.find(attrid);
-
-    if (ita == attrset.end())
-    {
-        SWSS_LOG_ERROR("attribute %d not found in metadata for object type %s", attrid, get_object_type_name(objecttype));
-
-        return NULL;
-    }
-
-    SWSS_LOG_DEBUG("objecttype: %s, attrid: %s", get_object_type_name(objecttype), ita->second->attridname);
-
-    return ita->second;
-}
-
 std::vector<const sai_attr_metadata_t*> get_attributes_metadata(
         _In_ sai_object_type_t objecttype)
 {
     SWSS_LOG_ENTER();
 
-    // NOTE: this is not performance best, we can do better
+    SWSS_LOG_DEBUG("objecttype: %s", sai_serialize_object_type(objecttype).c_str());
 
-    SWSS_LOG_DEBUG("objecttype: %d", objecttype);
-
-    const auto &it = AttributesMetadata.find(objecttype);
+    auto meta = sai_metadata_get_object_type_info(objecttype)->attrmetadata;
 
     std::vector<const sai_attr_metadata_t*> attrs;
 
-    if (it == AttributesMetadata.end())
+    for (size_t index = 0; meta[index] != NULL; ++index)
     {
-        SWSS_LOG_ERROR("invalid object type value: %d", objecttype);
-
-        return attrs;
-    }
-
-    for (auto i: it->second)
-    {
-        attrs.push_back(i.second);
+        attrs.push_back(meta[index]);
     }
 
     return attrs;
@@ -315,21 +76,35 @@ class SaiAttrWrapper
                 _In_ const sai_attribute_t& attr):
             m_meta(meta),
             m_attr(attr)
-    {
-        SWSS_LOG_ENTER();
+        {
+            SWSS_LOG_ENTER();
 
-        m_attr.id = attr.id;
+            m_attr.id = attr.id;
 
-        std::string s = sai_serialize_attr_value(*meta, attr, false);
+            /*
+             * We are making serialize and deserialize to get copy of
+             * attribute, it may be a list so we need to allocate new memory.
+             *
+             * This copy will be used later to get previous value of attribute
+             * if attribute will be updated. And if this attribute is oid list
+             * then we need to release object reference count.
+             */
 
-        sai_deserialize_attr_value(s, *meta, m_attr, false);
-    }
+            std::string s = sai_serialize_attr_value(*meta, attr, false);
+
+            sai_deserialize_attr_value(s, *meta, m_attr, false);
+        }
 
         ~SaiAttrWrapper()
         {
             SWSS_LOG_ENTER();
 
-            sai_deserialize_free_attribute_value(m_meta->serializationtype, m_attr);
+            /*
+             * On destructor we need to call free to dealocate possible
+             * alocated list on constructor.
+             */
+
+            sai_deserialize_free_attribute_value(m_meta->attrvaluetype, m_attr);
         }
 
         const sai_attribute_t* getattr() const
@@ -346,17 +121,30 @@ class SaiAttrWrapper
         sai_attribute_t m_attr;
 };
 
+std::string get_attr_info(const sai_attr_metadata_t& md)
+{
+    /*
+     * Attribute name will contain object type as well so we don't need to
+     * serialize object type separatly.
+     */
+
+    return std::string(md.attridname) + ":" + sai_serialize_attr_value_type(md.attrvaluetype);
+}
+
+#define META_LOG_WARN(md, format, ...) SWSS_LOG_WARN("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_ERROR(md, format, ...) SWSS_LOG_ERROR("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_DEBUG(md, format, ...) SWSS_LOG_DEBUG("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_NOTICE(md, format, ...) SWSS_LOG_NOTICE("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_INFO(md, format, ...) SWSS_LOG_INFO("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
+#define META_LOG_THROW(md, format, ...) SWSS_LOG_THROW("%s " format, get_attr_info(md).c_str(), ##__VA_ARGS__)
 
-// traps and vlan will be converted to oid
-// fdb, route, neighbor don't need reference count,
-// they are leafs and can be removed at any time
-std::unordered_map<sai_object_id_t,int32_t> ObjectReferences;
-std::unordered_map<sai_vlan_id_t,int32_t> VlanReferences;
-std::unordered_map<std::string,std::string> AttributeKeys;
+/*
+ * Non object is don't need reference count since they are leafs and can be
+ * removed at any time.
+ */
+
+static std::unordered_map<sai_object_id_t,int32_t> ObjectReferences;
+static std::unordered_map<std::string,std::string> AttributeKeys;
 std::unordered_map<std::string,std::unordered_map<sai_attr_id_t,std::shared_ptr<SaiAttrWrapper>>> ObjectAttrHash;
 
 // GENERIC REFERENCE FUNCTIONS
@@ -380,13 +168,16 @@ void object_reference_inc(
 
     if (oid == SAI_NULL_OBJECT_ID)
     {
+        /*
+         * We don't keep track of NULL object id's.
+         */
+
         return;
     }
 
     if (!object_reference_exists(oid))
     {
-        SWSS_LOG_ERROR("FATAL: object oid 0x%lx not in reference map", oid);
-        throw;
+        SWSS_LOG_THROW("FATAL: object oid 0x%lx not in reference map", oid);
     }
 
     ObjectReferences[oid]++;
@@ -401,21 +192,23 @@ void object_reference_dec(
 
     if (oid == SAI_NULL_OBJECT_ID)
     {
+        /*
+         * We don't keep track of NULL object id's.
+         */
+
         return;
     }
 
     if (!object_reference_exists(oid))
     {
-        SWSS_LOG_ERROR("FATAL: object oid 0x%lx not in reference map", oid);
-        throw;
+        SWSS_LOG_THROW("FATAL: object oid 0x%lx not in reference map", oid);
     }
 
     ObjectReferences[oid]--;
 
     if (ObjectReferences[oid] < 0)
     {
-        SWSS_LOG_ERROR("FATAL: object oid 0x%lx reference count is negative!", oid);
-        throw;
+        SWSS_LOG_THROW("FATAL: object oid 0x%lx reference count is negative!", oid);
     }
 
     SWSS_LOG_DEBUG("decreased reference on oid 0x%lx to %d", oid, ObjectReferences[oid]);
@@ -450,8 +243,7 @@ void object_reference_insert(
 
     if (object_reference_exists(oid))
     {
-        SWSS_LOG_ERROR("FATAL: object oid 0x%lx already in reference map", oid);
-        throw;
+        SWSS_LOG_THROW("FATAL: object oid 0x%lx already in reference map", oid);
     }
 
     ObjectReferences[oid] = 0;
@@ -473,8 +265,7 @@ int32_t object_reference_count(
         return count;
     }
 
-    SWSS_LOG_ERROR("FATAL: object oid 0x%lx reference not in map", oid);
-    throw;
+    SWSS_LOG_THROW("FATAL: object oid 0x%lx reference not in map", oid);
 }
 
 void object_reference_remove(
@@ -488,121 +279,13 @@ void object_reference_remove(
 
         if (count > 0)
         {
-            SWSS_LOG_ERROR("FATAL: removing object oid 0x%lx but reference count is: %d", oid, count);
-            throw;
+            SWSS_LOG_THROW("FATAL: removing object oid 0x%lx but reference count is: %d", oid, count);
         }
     }
 
     SWSS_LOG_DEBUG("removing object oid 0x%lx reference", oid);
 
     ObjectReferences.erase(oid);
-}
-
-// VLAN REFERENCE FUNCTIONS
-
-bool vlan_reference_exists(
-        _In_ sai_vlan_id_t vlanid)
-{
-    SWSS_LOG_ENTER();
-
-    bool exists = VlanReferences.find(vlanid) != VlanReferences.end();
-
-    SWSS_LOG_DEBUG("vlan %u refrence: %s", vlanid, exists ? "exists" : "missing");
-
-    return exists;
-}
-
-void vlan_reference_inc(
-        _In_ sai_vlan_id_t vlanid)
-{
-    SWSS_LOG_ENTER();
-
-    if (!vlan_reference_exists(vlanid))
-    {
-        SWSS_LOG_ERROR("FATAL: vlan vlanid %u not in reference map", vlanid);
-        throw;
-    }
-
-    VlanReferences[vlanid]++;
-
-    SWSS_LOG_DEBUG("increased reference on vlan %u to %d", vlanid, VlanReferences[vlanid]);
-}
-
-void vlan_reference_dec(
-        _In_ sai_vlan_id_t vlanid)
-{
-    SWSS_LOG_ENTER();
-
-    if (!vlan_reference_exists(vlanid))
-    {
-        SWSS_LOG_ERROR("FATAL: vlan vlanid %u not in reference map", vlanid);
-        throw;
-    }
-
-    VlanReferences[vlanid]--;
-
-    if (VlanReferences[vlanid] < 0)
-    {
-        SWSS_LOG_ERROR("FATAL: vlan vlanid %u reference count is negative!", vlanid);
-        throw;
-    }
-
-    SWSS_LOG_DEBUG("decreased reference on vlan %u to %d", vlanid, VlanReferences[vlanid]);
-}
-
-void vlan_reference_insert(
-        _In_ sai_vlan_id_t vlanid)
-{
-    SWSS_LOG_ENTER();
-
-    if (vlan_reference_exists(vlanid))
-    {
-        SWSS_LOG_ERROR("FATAL: vlan %u already in reference map", vlanid);
-        throw;
-    }
-
-    VlanReferences[vlanid] = 0;
-
-    SWSS_LOG_DEBUG("inserted reference on vlan %u", vlanid);
-}
-
-int32_t vlan_reference_count(
-        _In_ sai_vlan_id_t vlanid)
-{
-    SWSS_LOG_ENTER();
-
-    if (vlan_reference_exists(vlanid))
-    {
-        int32_t count = VlanReferences[vlanid];
-
-        SWSS_LOG_DEBUG("reference count on vlan %u is %d", vlanid, count);
-
-        return count;
-    }
-
-    SWSS_LOG_ERROR("FATAL: vlan vlanid %d reference not in map", vlanid);
-    throw;
-}
-
-void vlan_reference_remove(
-        _In_ sai_vlan_id_t vlanid)
-{
-    SWSS_LOG_ENTER();
-
-    if (vlan_reference_exists(vlanid))
-    {
-        int32_t count = vlan_reference_count(vlanid);
-
-        if (count > 0)
-        {
-            SWSS_LOG_ERROR("FATAL: removing vlan vlanid %d but reference count is: %d", vlanid, count);
-            throw;
-        }
-    }
-
-    VlanReferences.erase(vlanid);
-
-    SWSS_LOG_DEBUG("removing vlan %u reference", vlanid);
 }
 
 bool object_exists(
@@ -618,11 +301,11 @@ bool object_exists(
 }
 
 bool object_exists(
-        _In_ const sai_object_meta_key_t meta_key)
+        _In_ const sai_object_meta_key_t& meta_key)
 {
     SWSS_LOG_ENTER();
 
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     return object_exists(key);
 }
@@ -631,75 +314,24 @@ sai_status_t meta_init_db()
 {
     SWSS_LOG_ENTER();
 
-    meta_init();
-
-    // we need local db to keep track if
-    // we are performing "get" or set on
-    // conditional attribute and whether
-    // condition is in force
+    /*
+     * This DB will contain objects from all switches.
+     */
 
     ObjectReferences.clear();
-    VlanReferences.clear();
     ObjectAttrHash.clear();
     AttributeKeys.clear();
-
-    // init switch
-
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_SWITCH, .key = { } };
-
-    std::string switch_key = get_object_meta_key_string(meta_key);
-
-    ObjectAttrHash[switch_key] = { };
-
-    // init default vlan
-
-    sai_object_meta_key_t meta_key_vlan = { .object_type = SAI_OBJECT_TYPE_VLAN, .key = { .vlan_id = DEFAULT_VLAN_NUMBER } };
-
-    std::string vlan_key = get_object_meta_key_string(meta_key_vlan);
-
-    ObjectAttrHash[vlan_key] = { };
-
-    vlan_reference_insert(DEFAULT_VLAN_NUMBER);
-    vlan_reference_inc(DEFAULT_VLAN_NUMBER);
-
-    // init traps
-
-    for (auto& trap: enum_sai_hostif_trap_id_t_values)
-    {
-        sai_object_meta_key_t meta_key_trap = { .object_type = SAI_OBJECT_TYPE_TRAP, .key = { .trap_id = (sai_hostif_trap_id_t)trap } };
-
-        std::string trap_key = get_object_meta_key_string(meta_key_trap);
-
-        ObjectAttrHash[trap_key] = { };
-
-        // not need for now creating trap references since
-        // in this SAI all traps are created by default
-    }
-
-    // TODO For object references like virtual router or vlanmembers they can
-    // be using some other references (like vlan member can use port or vlan so
-    // there may be existing dependency there and we dont know it so we should
-    // do actual "get" here and populate them we could use object api to retrve
-    // all objects and rebuild dependencies basing on metadata.
-
-    // TODO Getting default object id's like TRAP which can contain other
-    // object id as dependency (in this case queue/policer) we need to also GET
-    // those attributes at first switch init to have full asic view of what's
-    // going on and also we need extra logic on remove function (we can add 4
-    // pointers in metadata c/r/s/g) because some default object's can't be
-    // removed like cpu port or default virtual router and probably default
-    // trap group.
 
     return SAI_STATUS_SUCCESS;
 }
 
 const sai_attribute_t* get_object_previous_attr(
-        _In_ const sai_object_meta_key_t meta_key,
+        _In_ const sai_object_meta_key_t& meta_key,
         _In_ const sai_attr_metadata_t& md)
 {
     SWSS_LOG_ENTER();
 
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     auto it = ObjectAttrHash.find(key);
 
@@ -714,47 +346,48 @@ const sai_attribute_t* get_object_previous_attr(
 
     if (ita == it->second.end())
     {
-        // attribute id not found
+        /*
+         * Attribute id not found.
+         */
+
         return NULL;
     }
 
-    // NOTE: this is actually dangerous since
-    // we possibly expose memory on attribute
-    // list that could be already freed
+    /*
+     * NOTE: this is actually dangerous since we possibly expose memory on
+     * attribute list that could be already freed.
+     */
+
     return ita->second->getattr();
 }
 
 void set_object(
-        _In_ const sai_object_meta_key_t meta_key,
+        _In_ const sai_object_meta_key_t& meta_key,
         _In_ const sai_attr_metadata_t& md,
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (!object_exists(key))
     {
-        SWSS_LOG_ERROR("FATAL: object %s doesn't exist", key.c_str());
-        throw std::runtime_error("FATAL: object doesn't exist" + key);
+        SWSS_LOG_THROW("FATAL: object %s don't exists", key.c_str());
     }
 
     META_LOG_DEBUG(md, "set attribute %d on %s", attr->id, key.c_str());
 
-    auto p = new SaiAttrWrapper(&md,*attr);
-
-    ObjectAttrHash[key][attr->id] = std::shared_ptr<SaiAttrWrapper>(p);
+    ObjectAttrHash[key][attr->id] = std::make_shared<SaiAttrWrapper>(&md, *attr);
 }
 
-const std::vector<std::shared_ptr<SaiAttrWrapper>> get_object(
-        _In_ const sai_object_meta_key_t meta_key)
+const std::vector<std::shared_ptr<SaiAttrWrapper>> get_object_attributes(
+        _In_ const sai_object_meta_key_t& meta_key)
 {
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (!object_exists(key))
     {
-        SWSS_LOG_ERROR("FATAL: object %s doesn't exist", key.c_str());
-        throw;
+        SWSS_LOG_THROW("FATAL: object %s don't exists", key.c_str());
     }
 
     std::vector<std::shared_ptr<SaiAttrWrapper>> attrs;
@@ -770,16 +403,15 @@ const std::vector<std::shared_ptr<SaiAttrWrapper>> get_object(
 }
 
 void remove_object(
-        _In_ const sai_object_meta_key_t meta_key)
+        _In_ const sai_object_meta_key_t& meta_key)
 {
     SWSS_LOG_ENTER();
 
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (!object_exists(key))
     {
-        SWSS_LOG_ERROR("FATAL: object %s doesn't exist", key.c_str());
-        throw;
+        SWSS_LOG_THROW("FATAL: object %s don't exists", key.c_str());
     }
 
     SWSS_LOG_DEBUG("removing object %s", key.c_str());
@@ -792,12 +424,11 @@ void create_object(
 {
     SWSS_LOG_ENTER();
 
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (object_exists(key))
     {
-        SWSS_LOG_ERROR("FATAL: object %s already exists", key.c_str());
-        throw;
+        SWSS_LOG_THROW("FATAL: object %s already exists", key.c_str());
     }
 
     SWSS_LOG_DEBUG("creating object %s", key.c_str());
@@ -807,6 +438,7 @@ void create_object(
 
 sai_status_t meta_generic_validation_objlist(
         _In_ const sai_attr_metadata_t& md,
+        _In_ sai_object_id_t switch_id,
         _In_ uint32_t count,
         _In_ const sai_object_id_t* list)
 {
@@ -831,6 +463,11 @@ sai_status_t meta_generic_validation_objlist(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    /*
+     * We need oids set and object type to check whehter oids are not repeated
+     * on list and whether all oids are same object type.
+     */
+
     std::set<sai_object_id_t> oids;
 
     sai_object_type_t object_type = SAI_OBJECT_TYPE_NULL;
@@ -846,8 +483,6 @@ sai_status_t meta_generic_validation_objlist(
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
-        oids.insert(oid);
-
         if (oid == SAI_NULL_OBJECT_ID)
         {
             if (md.allownullobjectid)
@@ -861,6 +496,8 @@ sai_status_t meta_generic_validation_objlist(
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
+        oids.insert(oid);
+
         sai_object_type_t ot = sai_object_type_query(oid);
 
         if (ot == SAI_NULL_OBJECT_ID)
@@ -870,7 +507,7 @@ sai_status_t meta_generic_validation_objlist(
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
-        if (md.allowedobjecttypes.find(ot) == md.allowedobjecttypes.end())
+        if (!sai_metadata_is_allowed_object_type(&md, ot))
         {
             META_LOG_ERROR(md, "object on list [%u] oid 0x%lx object type %d is not allowed on this attribute", i, oid, ot);
 
@@ -886,7 +523,10 @@ sai_status_t meta_generic_validation_objlist(
 
         if (i > 1)
         {
-            // currently all objects on list must be the same type
+            /*
+             * Currently all objects on list must be the same type.
+             */
+
             if (object_type != ot)
             {
                 META_LOG_ERROR(md, "object list contain's mixed object types: %d vs %d, not allowed", object_type, ot);
@@ -895,16 +535,32 @@ sai_status_t meta_generic_validation_objlist(
             }
         }
 
+        sai_object_id_t query_switch_id = sai_switch_id_query(oid);
+
+        if (!object_reference_exists(query_switch_id))
+        {
+            SWSS_LOG_ERROR("switch id 0x%lx don't exists", query_switch_id);
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (query_switch_id != switch_id)
+        {
+            SWSS_LOG_ERROR("oid 0x%lx is from switch 0x%lx but expected switch 0x%lx", oid, query_switch_id, switch_id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
         object_type = ot;
     }
 
     return SAI_STATUS_SUCCESS;
 }
 
-template<typename T> sai_status_t meta_genetic_validation_list(const sai_attr_metadata_t& md, const T&list)
+sai_status_t meta_genetic_validation_list(
+        _In_ const sai_attr_metadata_t& md,
+        _In_ uint32_t count,
+        _In_ const void* list)
 {
-    uint32_t count = list.count;
-
     if (count > MAX_LIST_COUNT)
     {
         META_LOG_ERROR(md, "list count %u is > then max list count %u", count, MAX_LIST_COUNT);
@@ -912,14 +568,14 @@ template<typename T> sai_status_t meta_genetic_validation_list(const sai_attr_me
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    if (count == 0 && list.list != NULL)
+    if (count == 0 && list != NULL)
     {
         META_LOG_ERROR(md, "when count is zero, list must be NULL");
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    if (list.list == NULL)
+    if (list == NULL)
     {
         if (count == 0)
         {
@@ -934,12 +590,12 @@ template<typename T> sai_status_t meta_genetic_validation_list(const sai_attr_me
     return SAI_STATUS_SUCCESS;
 }
 
-#define VALIDATION_LIST(md,list) \
+#define VALIDATION_LIST(md,vlist) \
 {\
-    auto status = meta_genetic_validation_list(md,list);\
-    if (status != SAI_STATUS_SUCCESS)\
+    auto status1 = meta_genetic_validation_list(md,vlist.count,vlist.list);\
+    if (status1 != SAI_STATUS_SUCCESS)\
     {\
-        return status;\
+        return status1;\
     }\
 }
 
@@ -950,7 +606,9 @@ std::string construct_key(
 {
     SWSS_LOG_ENTER();
 
-    // use map to make sure that kays will be always sorded by id
+    /*
+     * Use map to make sure that keys will be always sorded by id.
+     */
 
     std::map<int32_t, std::string> keys;
 
@@ -958,7 +616,7 @@ std::string construct_key(
     {
         const sai_attribute_t* attr = &attr_list[idx];
 
-        const auto& md = *get_attribute_metadata(meta_key.object_type, attr->id);
+        const auto& md = *sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
         const sai_attribute_value_t& value = attr->value;
 
@@ -967,13 +625,14 @@ std::string construct_key(
             continue;
         }
 
-        std::string name = std::string(get_attr_name(md.objecttype, md.attrid)) + ":";
+        std::string name = md.attridname + std::string(":");
 
-        switch (md.serializationtype)
+        switch (md.attrvaluetype)
         {
-            case SAI_SERIALIZATION_TYPE_UINT32_LIST: // only for port
+            case SAI_ATTR_VALUE_TYPE_UINT32_LIST: // only for port lanes
 
-                // TODO this list should be sorted
+                // NOTE: this list should be sorted
+
                 for (uint32_t i = 0; i < value.u32list.count; ++i)
                 {
                     name += std::to_string(value.u32list.list[i]);
@@ -986,21 +645,28 @@ std::string construct_key(
 
                 break;
 
-            case SAI_SERIALIZATION_TYPE_INT32:
+            case SAI_ATTR_VALUE_TYPE_INT32:
                 name += std::to_string(value.s32); // if enum then get enum name?
                 break;
 
-            case SAI_SERIALIZATION_TYPE_UINT32:
+            case SAI_ATTR_VALUE_TYPE_UINT32:
                 name += std::to_string(value.u32);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_UINT8:
+            case SAI_ATTR_VALUE_TYPE_UINT8:
                 name += std::to_string(value.u8);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_UINT16:
+                name += std::to_string(value.u16);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+                name += sai_serialize_object_id(value.oid);
+                break;
+
             default:
-                META_LOG_ERROR(md, "FATAL: marked as key, but have invalid serialization type");
-                throw;
+                META_LOG_THROW(md, "FATAL: marked as key, but have invalid serialization type");
         }
 
         keys[md.attrid] = name;
@@ -1018,8 +684,176 @@ std::string construct_key(
     return key;
 }
 
+sai_object_id_t meta_extract_switch_id(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ sai_object_id_t switch_id)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * We assume here that objecttype in meta key is in valid range.
+     */
+
+    auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (info->isnonobjectid)
+    {
+        /*
+         * Since object is non object id, we are sure via sanity check that
+         * struct member contains switch_id, we need to extract it here.
+         *
+         * NOTE: we could have this in metadata predefined for all non object ids.
+         */
+
+        for (size_t j = 0; j < info->structmemberscount; ++j)
+        {
+            const sai_struct_member_info_t *m = info->structmembers[j];
+
+            if (m->membervaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            {
+                continue;
+            }
+
+            for (size_t k = 0 ; k < m->allowedobjecttypeslength; k++)
+            {
+                sai_object_type_t ot = m->allowedobjecttypes[k];
+
+                if (ot == SAI_OBJECT_TYPE_SWITCH)
+                {
+                    return  m->getoid(&meta_key);
+                }
+            }
+        }
+
+        SWSS_LOG_ERROR("unable to find switch id inside non object id");
+
+        return SAI_NULL_OBJECT_ID;
+    }
+    else
+    {
+        // NOTE: maybe we should extract switch from oid?
+        return switch_id;
+    }
+}
+
+sai_status_t meta_generic_validate_non_object_on_create(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ sai_object_id_t switch_id)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Since non object id objects can contain several object id's inside
+     * object id strucutre, we need to check whether they all belong to the
+     * same switch (sine multiple switches can be present and whether all those
+     * objects are allowd respectivly on their members.
+     *
+     * This check is required only on creation, since on set/get/remove we
+     * check in object hash whether this object exists.
+     */
+
+    auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (!info->isnonobjectid)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    /*
+     * This will be most utilzed for createing route entries.
+     */
+
+    for (size_t j = 0; j < info->structmemberscount; ++j)
+    {
+        const sai_struct_member_info_t *m = info->structmembers[j];
+
+        if (m->membervaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+        {
+            continue;
+        }
+
+        sai_object_id_t oid = m->getoid(&meta_key);
+
+        if (oid == SAI_NULL_OBJECT_ID)
+        {
+            if (meta_key.objecttype == SAI_OBJECT_TYPE_FDB_ENTRY)
+            {
+                SWSS_LOG_WARN("workaround: %s is NULL, REMOVE when using bv_id", m->membername);
+                continue;
+            }
+
+            SWSS_LOG_ERROR("oid on %s on struct member %s is NULL",
+                    sai_serialize_object_type(meta_key.objecttype).c_str(),
+                    m->membername);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (oid == SAI_NULL_OBJECT_ID)
+        {
+            SWSS_LOG_ERROR("oid on %s on struct member %s is NULL",
+                    sai_serialize_object_type(meta_key.objecttype).c_str(),
+                    m->membername);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (!object_reference_exists(oid))
+        {
+            SWSS_LOG_ERROR("object don't exist 0x%lx (%s)", oid, m->membername);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        sai_object_type_t ot = sai_object_type_query(oid);
+
+        /*
+         * No need for checking null here, since metadata don't allow
+         * NULL in allowed objects list.
+         */
+
+        bool allowed = false;
+
+        for (size_t k = 0 ; k < m->allowedobjecttypeslength; k++)
+        {
+            if (ot == m->allowedobjecttypes[k])
+            {
+                allowed = true;
+                break;
+            }
+        }
+
+        if (!allowed)
+        {
+            SWSS_LOG_ERROR("object id 0x%lx is %s, but it's not allowed on member %s",
+                    oid, sai_serialize_object_type(ot).c_str(), m->membername);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        sai_object_id_t oid_switch_id = sai_switch_id_query(oid);
+
+        if (!object_reference_exists(oid_switch_id))
+        {
+            SWSS_LOG_ERROR("switch id 0x%lx don't exists", oid_switch_id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (switch_id != oid_switch_id)
+        {
+            SWSS_LOG_ERROR("oid 0x%lx is on switch 0x%lx but required switch is 0x%lx", oid, oid_switch_id, switch_id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t meta_generic_validation_create(
         _In_ const sai_object_meta_key_t& meta_key,
+        _In_ sai_object_id_t switch_id,
         _In_ const uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
@@ -1039,6 +873,68 @@ sai_status_t meta_generic_validation_create(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    bool switchcreate = meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH;
+
+    if (switchcreate)
+    {
+        // we are creating switch
+
+        switch_id = SAI_NULL_OBJECT_ID;
+    }
+    else
+    {
+        /*
+         * Non switch object case (also non object id)
+         *
+         * NOTE: this is a lot of checks for each create
+         */
+
+        switch_id = meta_extract_switch_id(meta_key, switch_id);
+
+        if (switch_id == SAI_NULL_OBJECT_ID)
+        {
+            SWSS_LOG_ERROR("switch id is NULL for %s", sai_serialize_object_type(meta_key.objecttype).c_str());
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        sai_object_type_t sw_type = sai_object_type_query(switch_id);
+
+        if (sw_type != SAI_OBJECT_TYPE_SWITCH)
+        {
+            SWSS_LOG_ERROR("switch id 0x%lx type is %s, expected SWITCH", switch_id, sai_serialize_object_type(sw_type).c_str());
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        // check if switch exists
+
+        sai_object_meta_key_t switch_meta_key = { .objecttype = SAI_OBJECT_TYPE_SWITCH, .objectkey = { .key = { .object_id = switch_id } } };
+
+        if (!object_exists(switch_meta_key))
+        {
+            SWSS_LOG_ERROR("switch id 0x%lx don't exists yet", switch_id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (!object_reference_exists(switch_id))
+        {
+            SWSS_LOG_ERROR("switch id 0x%lx don't exists yet", switch_id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        // ok
+    }
+
+    sai_status_t status = meta_generic_validate_non_object_on_create(meta_key, switch_id);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
     std::unordered_map<sai_attr_id_t, const sai_attribute_t*> attrs;
 
     SWSS_LOG_DEBUG("attr count = %u", attr_count);
@@ -1050,11 +946,11 @@ sai_status_t meta_generic_validation_create(
     {
         const sai_attribute_t* attr = &attr_list[idx];
 
-        auto mdp = get_attribute_metadata(meta_key.object_type, attr->id);
+        auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
         if (mdp == NULL)
         {
-            SWSS_LOG_ERROR("unable to find attribute metadata %d:%d", meta_key.object_type, attr->id);
+            SWSS_LOG_ERROR("unable to find attribute metadata %d:%d", meta_key.objecttype, attr->id);
 
             return SAI_STATUS_FAILURE;
         }
@@ -1084,14 +980,16 @@ sai_status_t meta_generic_validation_create(
         if (HAS_FLAG_KEY(md.flags))
         {
             haskeys = true;
+
             META_LOG_DEBUG(md, "attr is key");
         }
 
         // if we set OID check if exists and if type is correct
+        // and it belongs to the same switch id
 
-        switch (md.serializationtype)
+        switch (md.attrvaluetype)
         {
-            case SAI_SERIALIZATION_TYPE_CHARDATA:
+            case SAI_ATTR_VALUE_TYPE_CHARDATA:
 
                 {
                     const char* chardata = value.chardata;
@@ -1128,21 +1026,23 @@ sai_status_t meta_generic_validation_create(
                     break;
                 }
 
-            case SAI_SERIALIZATION_TYPE_BOOL:
-            case SAI_SERIALIZATION_TYPE_UINT8:
-            case SAI_SERIALIZATION_TYPE_INT8:
-            case SAI_SERIALIZATION_TYPE_UINT16:
-            case SAI_SERIALIZATION_TYPE_INT16:
-            case SAI_SERIALIZATION_TYPE_UINT32:
-            case SAI_SERIALIZATION_TYPE_INT32:
-            case SAI_SERIALIZATION_TYPE_UINT64:
-            case SAI_SERIALIZATION_TYPE_INT64:
-            case SAI_SERIALIZATION_TYPE_MAC:
-            case SAI_SERIALIZATION_TYPE_IP4:
-            case SAI_SERIALIZATION_TYPE_IP6:
+            case SAI_ATTR_VALUE_TYPE_BOOL:
+            case SAI_ATTR_VALUE_TYPE_UINT8:
+            case SAI_ATTR_VALUE_TYPE_INT8:
+            case SAI_ATTR_VALUE_TYPE_UINT16:
+            case SAI_ATTR_VALUE_TYPE_INT16:
+            case SAI_ATTR_VALUE_TYPE_UINT32:
+            case SAI_ATTR_VALUE_TYPE_INT32:
+            case SAI_ATTR_VALUE_TYPE_UINT64:
+            case SAI_ATTR_VALUE_TYPE_INT64:
+            case SAI_ATTR_VALUE_TYPE_MAC:
+            case SAI_ATTR_VALUE_TYPE_IPV4:
+            case SAI_ATTR_VALUE_TYPE_IPV6:
+            case SAI_ATTR_VALUE_TYPE_POINTER:
+                // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
 
                 {
                     switch (value.ipaddr.addr_family)
@@ -1161,10 +1061,10 @@ sai_status_t meta_generic_validation_create(
                     break;
                 }
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
 
                 {
-                    sai_status_t status = meta_generic_validation_objlist(md, 1, &value.oid);
+                    status = meta_generic_validation_objlist(md, switch_id, 1, &value.oid);
 
                     if (status != SAI_STATUS_SUCCESS)
                     {
@@ -1174,10 +1074,10 @@ sai_status_t meta_generic_validation_create(
                     break;
                 }
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+            case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
 
                 {
-                    sai_status_t status = meta_generic_validation_objlist(md, value.objlist.count, value.objlist.list);
+                    status = meta_generic_validation_objlist(md, switch_id, value.objlist.count, value.objlist.list);
 
                     if (status != SAI_STATUS_SUCCESS)
                     {
@@ -1186,29 +1086,31 @@ sai_status_t meta_generic_validation_create(
 
                     break;
                 }
-
-                // case SAI_SERIALIZATION_TYPE_VLAN_LIST:
-                // require test for vlan existence
 
                 // ACL FIELD
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP4:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP6:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
 
                 {
-                    sai_status_t status = meta_generic_validation_objlist(md, 1, &value.aclfield.data.oid);
+                    if (!value.aclfield.enable)
+                    {
+                        break;
+                    }
+
+                    status = meta_generic_validation_objlist(md, switch_id, 1, &value.aclfield.data.oid);
 
                     if (status != SAI_STATUS_SUCCESS)
                     {
@@ -1218,10 +1120,15 @@ sai_status_t meta_generic_validation_create(
                     break;
                 }
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
 
                 {
-                    sai_status_t status = meta_generic_validation_objlist(md, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
+                    if (!value.aclfield.enable)
+                    {
+                        break;
+                    }
+
+                    status = meta_generic_validation_objlist(md, switch_id, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
 
                     if (status != SAI_STATUS_SUCCESS)
                     {
@@ -1231,26 +1138,31 @@ sai_status_t meta_generic_validation_create(
                     break;
                 }
 
-                // case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
 
                 // ACL ACTION
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV4:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV6:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV6:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
 
                 {
-                    sai_status_t status = meta_generic_validation_objlist(md, 1, &value.aclaction.parameter.oid);
+                    if (!value.aclaction.enable)
+                    {
+                        break;
+                    }
+
+                    status = meta_generic_validation_objlist(md, switch_id, 1, &value.aclaction.parameter.oid);
 
                     if (status != SAI_STATUS_SUCCESS)
                     {
@@ -1260,10 +1172,15 @@ sai_status_t meta_generic_validation_create(
                     break;
                 }
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
 
                 {
-                    sai_status_t status = meta_generic_validation_objlist(md, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
+                    if (!value.aclaction.enable)
+                    {
+                        break;
+                    }
+
+                    status = meta_generic_validation_objlist(md, switch_id, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
 
                     if (status != SAI_STATUS_SUCCESS)
                     {
@@ -1275,32 +1192,32 @@ sai_status_t meta_generic_validation_create(
 
                 // ACL END
 
-            case SAI_SERIALIZATION_TYPE_UINT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
                 VALIDATION_LIST(md, value.u8list);
                 break;
-            case SAI_SERIALIZATION_TYPE_INT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT8_LIST:
                 VALIDATION_LIST(md, value.s8list);
                 break;
-            case SAI_SERIALIZATION_TYPE_UINT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
                 VALIDATION_LIST(md, value.u16list);
                 break;
-            case SAI_SERIALIZATION_TYPE_INT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT16_LIST:
                 VALIDATION_LIST(md, value.s16list);
                 break;
-            case SAI_SERIALIZATION_TYPE_UINT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
                 VALIDATION_LIST(md, value.u32list);
                 break;
-            case SAI_SERIALIZATION_TYPE_INT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT32_LIST:
                 VALIDATION_LIST(md, value.s32list);
                 break;
-            case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 VALIDATION_LIST(md, value.qosmap);
                 break;
-            case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
                 VALIDATION_LIST(md, value.tunnelmap);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_UINT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
 
                 if (value.u32range.min > value.u32range.max)
                 {
@@ -1311,7 +1228,7 @@ sai_status_t meta_generic_validation_create(
 
                 break;
 
-            case SAI_SERIALIZATION_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
 
                 if (value.s32range.min > value.s32range.max)
                 {
@@ -1324,21 +1241,20 @@ sai_status_t meta_generic_validation_create(
 
             default:
 
-                META_LOG_ERROR(md, "serialization type is not supported yet FIXME");
-                throw;
+                META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
 
-        if (md.isenum())
+        if (md.isenum)
         {
             int32_t val = value.s32;
 
-            switch (md.serializationtype)
+            switch (md.attrvaluetype)
             {
-                case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
+                case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
                     val = value.aclfield.data.s32;
                     break;
 
-                case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
+                case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
                     val = value.aclaction.parameter.s32;
                     break;
 
@@ -1347,7 +1263,7 @@ sai_status_t meta_generic_validation_create(
                     break;
             }
 
-            if (md.enumallowedvalues.find(val) == md.enumallowedvalues.end())
+            if (!sai_metadata_is_allowed_enum_value(&md, val))
             {
                 META_LOG_ERROR(md, "is enum, but value %d not found on allowed values list", val);
 
@@ -1355,7 +1271,7 @@ sai_status_t meta_generic_validation_create(
             }
         }
 
-        if (md.isenumlist())
+        if (md.isenumlist)
         {
             // we allow repeats on enum list
             if (value.s32list.count != 0 && value.s32list.list == NULL)
@@ -1369,22 +1285,12 @@ sai_status_t meta_generic_validation_create(
             {
                 int32_t s32 = value.s32list.list[i];
 
-                if (md.enumallowedvalues.find(s32) == md.enumallowedvalues.end())
+                if (!sai_metadata_is_allowed_enum_value(&md, s32))
                 {
-                    META_LOG_ERROR(md, "is enum list, but value %d not found on allowed values list", value.s32);
+                    META_LOG_ERROR(md, "is enum list, but value %d not found on allowed values list", s32);
 
                     return SAI_STATUS_INVALID_PARAMETER;
                 }
-            }
-        }
-
-        if (md.isvlan())
-        {
-            if (!vlan_reference_exists(value.u16))
-            {
-                SWSS_LOG_ERROR("vlan %d is missing", value.u16);
-
-                return SAI_STATUS_INVALID_PARAMETER;
             }
         }
 
@@ -1393,39 +1299,33 @@ sai_status_t meta_generic_validation_create(
 
     // we are creating object, no need for check if exists (only key values needs to be checked)
 
-    switch (meta_key.object_type)
+    auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (info->isnonobjectid)
     {
-        case SAI_OBJECT_TYPE_SWITCH:
-        case SAI_OBJECT_TYPE_ROUTE:
-        case SAI_OBJECT_TYPE_FDB:
-        case SAI_OBJECT_TYPE_NEIGHBOR:
-        case SAI_OBJECT_TYPE_VLAN:
-        case SAI_OBJECT_TYPE_TRAP:
+        // just sanity check if object already exists
+        std::string key = sai_serialize_object_meta_key(meta_key);
 
-            {
-                // just sanity check if object already exists
-                std::string key = get_object_meta_key_string(meta_key);
+        if (object_exists(key))
+        {
+            SWSS_LOG_ERROR("object key %s already exists", key.c_str());
 
-                if (object_exists(key))
-                {
-                    SWSS_LOG_ERROR("object key %s already exists", key.c_str());
-
-                    return SAI_STATUS_ITEM_ALREADY_EXISTS;
-                }
-
-                break;
-            }
-
-        default:
-            // we are creating OID object, and we don't have it's value yet
-            break;
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+    }
+    else
+    {
+        /*
+         * We are creating OID object, and we don't have it's value yet so we
+         * can't do any check on it.
+         */
     }
 
-    const auto& metadata = get_attributes_metadata(meta_key.object_type);
+    const auto& metadata = get_attributes_metadata(meta_key.objecttype);
 
     if (metadata.empty())
     {
-        SWSS_LOG_ERROR("get attributes metadata returned empty list for object type: %d", meta_key.object_type);
+        SWSS_LOG_ERROR("get attributes metadata returned empty list for object type: %d", meta_key.objecttype);
 
         return SAI_STATUS_FAILURE;
     }
@@ -1441,7 +1341,7 @@ sai_status_t meta_generic_validation_create(
             continue;
         }
 
-        if (md.isconditional())
+        if (md.isconditional)
         {
             // skip conditional attributes for now
             continue;
@@ -1451,6 +1351,81 @@ sai_status_t meta_generic_validation_create(
 
         if (it == attrs.end())
         {
+            /*
+             * Buffer profile shared static/dynamic is special case since it's
+             * mandatory on create but condition is on
+             * SAI_BUFFER_PROFILE_ATTR_POOL_ID attribute (see file saibuffer.h).
+             */
+
+            if (md.objecttype == SAI_OBJECT_TYPE_BUFFER_PROFILE &&
+                    (md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH ||
+                    (md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH)))
+            {
+                auto pool_id_attr = sai_metadata_get_attr_by_id(SAI_BUFFER_PROFILE_ATTR_POOL_ID, attr_count, attr_list);
+
+                if (pool_id_attr == NULL)
+                {
+                    META_LOG_ERROR(md, "buffer pool ID is not passed when creating buffer profile, attr is mandatory");
+
+                    return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
+                }
+
+                sai_object_id_t pool_id = pool_id_attr->value.oid;
+
+                if (pool_id == SAI_NULL_OBJECT_ID)
+                {
+                    /* attribute allows null */
+                    continue;
+                }
+
+                /*
+                 * Object type  pool_id is correct since previous loop checked that.
+                 * Now extract SAI_BUFFER_POOL_THRESHOLD_MODE attribute
+                 */
+
+                sai_object_meta_key_t mk = { .objecttype = SAI_OBJECT_TYPE_BUFFER_POOL, .objectkey = { .key = { .object_id = pool_id } } };
+
+                auto pool_md = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BUFFER_POOL, SAI_BUFFER_POOL_ATTR_THRESHOLD_MODE);
+
+                auto prev = get_object_previous_attr(mk, *pool_md);
+
+                sai_buffer_pool_threshold_mode_t mode;
+
+                if (prev == NULL)
+                {
+                    mode = (sai_buffer_pool_threshold_mode_t)pool_md->defaultvalue->s32;
+                }
+                else
+                {
+                    mode = (sai_buffer_pool_threshold_mode_t)prev->value.s32;
+                }
+
+                if ((mode == SAI_BUFFER_POOL_THRESHOLD_MODE_DYNAMIC && md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH) ||
+                    (mode == SAI_BUFFER_POOL_THRESHOLD_MODE_STATIC && md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH))
+                {
+                    /* attribute is mandatory */
+                }
+                else
+                {
+                    /* in this case attribute is not mandatory */
+                    META_LOG_INFO(md, "not mandatory");
+                    continue;
+                }
+            }
+
+            if (md.attrid == SAI_ACL_TABLE_ATTR_FIELD_ACL_RANGE_TYPE && md.objecttype == SAI_OBJECT_TYPE_ACL_TABLE)
+            {
+                /*
+                 * TODO Remove in future. Workaround for range type which in
+                 * headers was marked as mandatory by mistake, and we need to
+                 * wait for next SAI integration to pull this change in.
+                 */
+
+                META_LOG_WARN(md, "Workaround: attribute is mandatory but not passed in attr list, REMOVE ME");
+
+                continue;
+            }
+
             META_LOG_ERROR(md, "attribute is mandatory but not passed in attr list");
 
             return SAI_STATUS_MANDATORY_ATTRIBUTE_MISSING;
@@ -1462,7 +1437,7 @@ sai_status_t meta_generic_validation_create(
     {
         const sai_attr_metadata_t& md = *mdp;
 
-        if (!md.isconditional())
+        if (!md.isconditional)
         {
             continue;
         }
@@ -1471,14 +1446,16 @@ sai_status_t meta_generic_validation_create(
 
         bool any = false;
 
-        for (auto& c : md.conditions)
+        for (size_t index = 0; md.conditions[index] != NULL; index++)
         {
+            const auto& c = *md.conditions[index];
+
             // condtions may only be on the same object type
-            const auto& cmd = *get_attribute_metadata(meta_key.object_type, c.attrid);
+            const auto& cmd = *sai_metadata_get_attr_metadata(meta_key.objecttype, c.attrid);
 
-            const sai_attribute_value_t* cvalue = &cmd.defaultvalue;
+            const sai_attribute_value_t* cvalue = cmd.defaultvalue;
 
-            const sai_attribute_t *cattr = get_attribute_by_id(c.attrid, attr_count, attr_list);
+            const sai_attribute_t *cattr = sai_metadata_get_attr_by_id(c.attrid, attr_count, attr_list);
 
             if (cattr != NULL)
             {
@@ -1487,7 +1464,7 @@ sai_status_t meta_generic_validation_create(
                 cvalue = &cattr->value;
             }
 
-            if (cmd.serializationtype == SAI_SERIALIZATION_TYPE_BOOL)
+            if (cmd.attrvaluetype == SAI_ATTR_VALUE_TYPE_BOOL)
             {
                 if (c.condition.booldata == cvalue->booldata)
                 {
@@ -1501,13 +1478,13 @@ sai_status_t meta_generic_validation_create(
             {
                 int32_t val = cvalue->s32;
 
-                switch (cmd.serializationtype)
+                switch (cmd.attrvaluetype)
                 {
-                    case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
+                    case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
                         val = cvalue->aclfield.data.s32;
                         break;
 
-                    case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
+                    case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
                         val = cvalue->aclaction.parameter.s32;
                         break;
 
@@ -1575,7 +1552,7 @@ sai_status_t meta_generic_validation_remove(
 {
     SWSS_LOG_ENTER();
 
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (!object_exists(key))
     {
@@ -1584,104 +1561,58 @@ sai_status_t meta_generic_validation_remove(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    switch (meta_key.object_type)
+    auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (info->isnonobjectid)
     {
-        case SAI_OBJECT_TYPE_ROUTE:
-        case SAI_OBJECT_TYPE_FDB:
-        case SAI_OBJECT_TYPE_NEIGHBOR:
-            // we don't keep reference of those since those are leafs
-            break;
-
-        case SAI_OBJECT_TYPE_SWITCH:
-            SWSS_LOG_ERROR("remove switch not supported yet FIXME");
-            throw;
-
-        case SAI_OBJECT_TYPE_TRAP:
-            SWSS_LOG_ERROR("remove trap not supported yet FIXME");
-            throw;
-
-        case SAI_OBJECT_TYPE_VLAN:
-
-            {
-                sai_vlan_id_t vlan_id = meta_key.key.vlan_id;
-
-                if (!vlan_reference_exists(vlan_id))
-                {
-                    SWSS_LOG_ERROR("vlan %u reference doesn't exist", vlan_id);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                int count = vlan_reference_count(vlan_id);
-
-                if (count != 0)
-                {
-                    SWSS_LOG_ERROR("vlan %u reference count is %d, can't remove", vlan_id, count);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                if (vlan_id == DEFAULT_VLAN_NUMBER)
-                {
-                    SWSS_LOG_ERROR("removing vlan number %u is not supported", DEFAULT_VLAN_NUMBER);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                // should be safe to remove
-
-                break;
-            }
-
-        default:
-
-            {
-                sai_object_id_t oid = meta_key.key.object_id;
-
-                if (oid == SAI_NULL_OBJECT_ID)
-                {
-                    SWSS_LOG_ERROR("can't remove null object id");
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                sai_object_type_t object_type = sai_object_type_query(oid);
-
-                if (object_type == SAI_NULL_OBJECT_ID)
-                {
-                    SWSS_LOG_ERROR("oid 0x%lx is not valid, returned null object id", oid);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                if (object_type != meta_key.object_type)
-                {
-                    SWSS_LOG_ERROR("oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.object_type);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                if (!object_reference_exists(oid))
-                {
-                    SWSS_LOG_ERROR("object 0x%lx reference doesn't exist", oid);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                int count = object_reference_count(oid);
-
-                if (count != 0)
-                {
-                    SWSS_LOG_ERROR("object 0x%lx reference count is %d, can't remove", oid, count);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                // should be safe to remove
-
-                break;
-            }
+        // we don't keep reference of those since those are leafs
+        return SAI_STATUS_SUCCESS;
     }
+
+    // for OID objects check oid value
+
+    sai_object_id_t oid = meta_key.objectkey.key.object_id;
+
+    if (oid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("can't remove null object id");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t object_type = sai_object_type_query(oid);
+
+    if (object_type == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("oid 0x%lx is not valid, returned null object id", oid);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (object_type != meta_key.objecttype)
+    {
+        SWSS_LOG_ERROR("oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.objecttype);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (!object_reference_exists(oid))
+    {
+        SWSS_LOG_ERROR("object 0x%lx reference don't exists", oid);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    int count = object_reference_count(oid);
+
+    if (count != 0)
+    {
+        SWSS_LOG_ERROR("object 0x%lx reference count is %d, can't remove", oid, count);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // should be safe to remove
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1699,11 +1630,11 @@ sai_status_t meta_generic_validation_set(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    auto mdp = get_attribute_metadata(meta_key.object_type, attr->id);
+    auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
     if (mdp == NULL)
     {
-        SWSS_LOG_ERROR("unable to find attribute metadata %d:%d", meta_key.object_type, attr->id);
+        SWSS_LOG_ERROR("unable to find attribute metadata %d:%d", meta_key.objecttype, attr->id);
 
         return SAI_STATUS_FAILURE;
     }
@@ -1735,27 +1666,45 @@ sai_status_t meta_generic_validation_set(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
+
+    auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (!info->isnonobjectid)
+    {
+        switch_id = sai_switch_id_query(meta_key.objectkey.key.object_id);
+
+        if (!object_reference_exists(switch_id))
+        {
+            SWSS_LOG_ERROR("switch id 0x%lx don't exists", switch_id);
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    switch_id = meta_extract_switch_id(meta_key, switch_id);
+
     // if we set OID check if exists and if type is correct
 
-    switch (md.serializationtype)
+    switch (md.attrvaluetype)
     {
-        case SAI_SERIALIZATION_TYPE_BOOL:
-            // case SAI_SERIALIZATION_TYPE_CHARDATA:
-        case SAI_SERIALIZATION_TYPE_UINT8:
-        case SAI_SERIALIZATION_TYPE_INT8:
-        case SAI_SERIALIZATION_TYPE_UINT16:
-        case SAI_SERIALIZATION_TYPE_INT16:
-        case SAI_SERIALIZATION_TYPE_UINT32:
-        case SAI_SERIALIZATION_TYPE_INT32:
-        case SAI_SERIALIZATION_TYPE_UINT64:
-        case SAI_SERIALIZATION_TYPE_INT64:
-        case SAI_SERIALIZATION_TYPE_MAC:
-        case SAI_SERIALIZATION_TYPE_IP4:
-        case SAI_SERIALIZATION_TYPE_IP6:
+        case SAI_ATTR_VALUE_TYPE_BOOL:
+            // case SAI_ATTR_VALUE_TYPE_CHARDATA:
+        case SAI_ATTR_VALUE_TYPE_UINT8:
+        case SAI_ATTR_VALUE_TYPE_INT8:
+        case SAI_ATTR_VALUE_TYPE_UINT16:
+        case SAI_ATTR_VALUE_TYPE_INT16:
+        case SAI_ATTR_VALUE_TYPE_UINT32:
+        case SAI_ATTR_VALUE_TYPE_INT32:
+        case SAI_ATTR_VALUE_TYPE_UINT64:
+        case SAI_ATTR_VALUE_TYPE_INT64:
+        case SAI_ATTR_VALUE_TYPE_MAC:
+        case SAI_ATTR_VALUE_TYPE_IPV4:
+        case SAI_ATTR_VALUE_TYPE_IPV6:
+        case SAI_ATTR_VALUE_TYPE_POINTER:
             // primitives
             break;
 
-        case SAI_SERIALIZATION_TYPE_IP_ADDRESS:
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
 
             {
                 switch (value.ipaddr.addr_family)
@@ -1774,10 +1723,20 @@ sai_status_t meta_generic_validation_set(
                 break;
             }
 
-        case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+        case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
 
             {
-                sai_status_t status = meta_generic_validation_objlist(md, 1, &value.oid);
+
+                if (md.objecttype == SAI_OBJECT_TYPE_SCHEDULER_GROUP &&
+                        md.attrid == SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID &&
+                        value.oid == SAI_NULL_OBJECT_ID)
+                {
+                    // XXX workaround, since this profile can't be NULL according to metadata,
+                    // but currently on mlnx2700 null can be set, need verify and fix
+                    break;
+                }
+
+                sai_status_t status = meta_generic_validation_objlist(md, switch_id, 1, &value.oid);
 
                 if (status != SAI_STATUS_SUCCESS)
                 {
@@ -1787,10 +1746,10 @@ sai_status_t meta_generic_validation_set(
                 break;
             }
 
-        case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+        case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
 
             {
-                sai_status_t status = meta_generic_validation_objlist(md, value.objlist.count, value.objlist.list);
+                sai_status_t status = meta_generic_validation_objlist(md, switch_id, value.objlist.count, value.objlist.list);
 
                 if (status != SAI_STATUS_SUCCESS)
                 {
@@ -1799,29 +1758,31 @@ sai_status_t meta_generic_validation_set(
 
                 break;
             }
-
-            // case SAI_SERIALIZATION_TYPE_VLAN_LIST:
-            // will require test vlan existence
 
             // ACL FIELD
 
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT8:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT16:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT16:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT32:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_MAC:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP4:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP6:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT8:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT16:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
             // primitives
             break;
 
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
 
             {
-                sai_status_t status = meta_generic_validation_objlist(md, 1, &value.aclfield.data.oid);
+                if (!value.aclfield.enable)
+                {
+                    break;
+                }
+
+                sai_status_t status = meta_generic_validation_objlist(md, switch_id, 1, &value.aclfield.data.oid);
 
                 if (status != SAI_STATUS_SUCCESS)
                 {
@@ -1831,10 +1792,15 @@ sai_status_t meta_generic_validation_set(
                 break;
             }
 
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
 
             {
-                sai_status_t status = meta_generic_validation_objlist(md, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
+                if (!value.aclfield.enable)
+                {
+                    break;
+                }
+
+                sai_status_t status = meta_generic_validation_objlist(md, switch_id, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
 
                 if (status != SAI_STATUS_SUCCESS)
                 {
@@ -1844,30 +1810,30 @@ sai_status_t meta_generic_validation_set(
                 break;
             }
 
-            // case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+            // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
 
             // ACL ACTION
-            //
-            // NOTE: when we are going to disable action parameter is not
-            // needed (we don't need to validate it) also same object can be
-            // enabled/disabled without changing oid? this makes things
-            // complicated
 
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT8:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT8:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT16:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT16:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT32:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_MAC:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV4:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV6:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT16:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_MAC:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV4:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV6:
             break;
 
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
 
             {
-                sai_status_t status = meta_generic_validation_objlist(md, 1, &value.aclaction.parameter.oid);
+                if (!value.aclaction.enable)
+                {
+                    break;
+                }
+
+                sai_status_t status = meta_generic_validation_objlist(md, switch_id, 1, &value.aclaction.parameter.oid);
 
                 if (status != SAI_STATUS_SUCCESS)
                 {
@@ -1877,10 +1843,15 @@ sai_status_t meta_generic_validation_set(
                 break;
             }
 
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
 
             {
-                sai_status_t status = meta_generic_validation_objlist(md, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
+                if (!value.aclaction.enable)
+                {
+                    break;
+                }
+
+                sai_status_t status = meta_generic_validation_objlist(md, switch_id, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
 
                 if (status != SAI_STATUS_SUCCESS)
                 {
@@ -1892,32 +1863,32 @@ sai_status_t meta_generic_validation_set(
 
             // ACL END
 
-        case SAI_SERIALIZATION_TYPE_UINT8_LIST:
+        case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
             VALIDATION_LIST(md, value.u8list);
             break;
-        case SAI_SERIALIZATION_TYPE_INT8_LIST:
+        case SAI_ATTR_VALUE_TYPE_INT8_LIST:
             VALIDATION_LIST(md, value.s8list);
             break;
-        case SAI_SERIALIZATION_TYPE_UINT16_LIST:
+        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
             VALIDATION_LIST(md, value.u16list);
             break;
-        case SAI_SERIALIZATION_TYPE_INT16_LIST:
+        case SAI_ATTR_VALUE_TYPE_INT16_LIST:
             VALIDATION_LIST(md, value.s16list);
             break;
-        case SAI_SERIALIZATION_TYPE_UINT32_LIST:
+        case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
             VALIDATION_LIST(md, value.u32list);
             break;
-        case SAI_SERIALIZATION_TYPE_INT32_LIST:
+        case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             VALIDATION_LIST(md, value.s32list);
             break;
-        case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
+        case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             VALIDATION_LIST(md, value.qosmap);
             break;
-        case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
             VALIDATION_LIST(md, value.tunnelmap);
             break;
 
-        case SAI_SERIALIZATION_TYPE_UINT32_RANGE:
+        case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
 
             if (value.u32range.min > value.u32range.max)
             {
@@ -1928,7 +1899,7 @@ sai_status_t meta_generic_validation_set(
 
             break;
 
-        case SAI_SERIALIZATION_TYPE_INT32_RANGE:
+        case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
 
             if (value.s32range.min > value.s32range.max)
             {
@@ -1941,21 +1912,20 @@ sai_status_t meta_generic_validation_set(
 
         default:
 
-            META_LOG_ERROR(md, "serialization type is not supported yet FIXME");
-            throw;
+            META_LOG_THROW(md, "serialization type is not supported yet FIXME");
     }
 
-    if (md.isenum())
+    if (md.isenum)
     {
         int32_t val = value.s32;
 
-        switch (md.serializationtype)
+        switch (md.attrvaluetype)
         {
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
                 val = value.aclfield.data.s32;
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
                 val = value.aclaction.parameter.s32;
                 break;
 
@@ -1964,7 +1934,7 @@ sai_status_t meta_generic_validation_set(
                 break;
         }
 
-        if (md.enumallowedvalues.find(val) == md.enumallowedvalues.end())
+        if (!sai_metadata_is_allowed_enum_value(&md, val))
         {
             META_LOG_ERROR(md, "is enum, but value %d not found on allowed values list", val);
 
@@ -1972,7 +1942,7 @@ sai_status_t meta_generic_validation_set(
         }
     }
 
-    if (md.isenumlist())
+    if (md.isenumlist)
     {
         // we allow repeats on enum list
         if (value.s32list.count != 0 && value.s32list.list == NULL)
@@ -1986,34 +1956,29 @@ sai_status_t meta_generic_validation_set(
         {
             int32_t s32 = value.s32list.list[i];
 
-            if (md.enumallowedvalues.find(s32) == md.enumallowedvalues.end())
+            if (!sai_metadata_is_allowed_enum_value(&md, s32))
             {
-                SWSS_LOG_ERROR("is enum list, but value %d not found on allowed values list", value.s32);
+                SWSS_LOG_ERROR("is enum list, but value %d not found on allowed values list", s32);
 
                 return SAI_STATUS_INVALID_PARAMETER;
             }
         }
     }
 
-    if (md.isvlan())
-    {
-        if (!vlan_reference_exists(value.u16))
-        {
-            SWSS_LOG_ERROR("vlan %d is missing", value.u16);
-
-            return SAI_STATUS_INVALID_PARAMETER;
-        }
-    }
-
-    if (md.isconditional())
+    if (md.isconditional)
     {
         // check if it was set on local DB
         // (this will not respect create_only with default)
+
         if (get_object_previous_attr(meta_key, md) == NULL)
         {
-            META_LOG_ERROR(md, "set for conditional, but not found in local db");
+            std::string key = sai_serialize_object_meta_key(meta_key);
 
-            return SAI_STATUS_INVALID_PARAMETER;
+            META_LOG_WARN(md, "set for conditional, but not found in local db, object %s created on switch ?", key.c_str());
+        }
+        else
+        {
+            META_LOG_DEBUG(md, "conditional attr found in local db");
         }
 
         META_LOG_DEBUG(md, "conditional attr found in local db");
@@ -2021,7 +1986,7 @@ sai_status_t meta_generic_validation_set(
 
     // check if object on which we perform operation exists
 
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (!object_exists(key))
     {
@@ -2032,44 +1997,34 @@ sai_status_t meta_generic_validation_set(
 
     // object exists in DB so we can do "set" operation
 
-    switch (meta_key.object_type)
+    if (info->isnonobjectid)
     {
-        case SAI_OBJECT_TYPE_SWITCH:
-        case SAI_OBJECT_TYPE_ROUTE:
-        case SAI_OBJECT_TYPE_FDB:
-        case SAI_OBJECT_TYPE_NEIGHBOR:
-        case SAI_OBJECT_TYPE_VLAN:
-        case SAI_OBJECT_TYPE_TRAP:
+        SWSS_LOG_DEBUG("object key exists: %s", key.c_str());
+    }
+    else
+    {
+        /*
+         * Check if object we are calling SET is the same object type as the
+         * type of SET function.
+         */
 
-            SWSS_LOG_DEBUG("object key exists: %s", key.c_str());
-            break;
+        sai_object_id_t oid = meta_key.objectkey.key.object_id;
 
-        default:
+        sai_object_type_t object_type = sai_object_type_query(oid);
 
-            {
-                // check if object we are calling SET is the same object type
-                // as the type of SET function
+        if (object_type == SAI_NULL_OBJECT_ID)
+        {
+            META_LOG_ERROR(md, "oid 0x%lx is not valid, returned null object id", oid);
 
-                sai_object_id_t oid = meta_key.key.object_id;
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
 
-                sai_object_type_t object_type = sai_object_type_query(oid);
+        if (object_type != meta_key.objecttype)
+        {
+            META_LOG_ERROR(md, "oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.objecttype);
 
-                if (object_type == SAI_NULL_OBJECT_ID)
-                {
-                    META_LOG_ERROR(md, "oid 0x%lx is not valid, returned null object id", oid);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                if (object_type != meta_key.object_type)
-                {
-                    META_LOG_ERROR(md, "oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.object_type);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-            }
-
-            break;
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
     }
 
     return SAI_STATUS_SUCCESS;
@@ -2109,11 +2064,11 @@ sai_status_t meta_generic_validation_get(
     {
         const sai_attribute_t* attr = &attr_list[i];
 
-        auto mdp = get_attribute_metadata(meta_key.object_type, attr->id);
+        auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
         if (mdp == NULL)
         {
-            SWSS_LOG_ERROR("unable to find attribute metadata %d:%d", meta_key.object_type, attr->id);
+            SWSS_LOG_ERROR("unable to find attribute metadata %d:%d", meta_key.objecttype, attr->id);
 
             return SAI_STATUS_FAILURE;
         }
@@ -2124,47 +2079,69 @@ sai_status_t meta_generic_validation_get(
 
         META_LOG_DEBUG(md, "(get)");
 
-        if (md.isconditional())
+        if (md.isconditional)
         {
+            /*
+             * XXX workaround
+             *
+             * TODO If object was created internally by switch (like bridge
+             * port) then current db will not have previous value of this
+             * attribute (like SAI_BRIDGE_PORT_ATTR_PORT_ID) or even other oid.
+             * This can lead to inconsistency, that we queried one oid, and its
+             * attribute also oid, and then did a "set" on that value, and now
+             * reference is not decreased since previous oid was not snooped.
+             *
+             * TODO This concearn all attributes not only conditionals
+             *
+             * If attribute is conditional, we need to check if condition is
+             * met, if not then this attribute is not mandatory so we can
+             * return fail in that case, for that we need all internal
+             * switch objects after create.
+             */
+
             // check if it was set on local DB
             // (this will not respect create_only with default)
             if (get_object_previous_attr(meta_key, md) == NULL)
             {
-                META_LOG_ERROR(md, "request for conditional, but not found in local db");
+                std::string key = sai_serialize_object_meta_key(meta_key);
 
-                return SAI_STATUS_INVALID_PARAMETER;
+                // XXX produces too much noise
+                // META_LOG_WARN(md, "get for conditional, but not found in local db, object %s created on switch ?", key.c_str());
             }
-
-            META_LOG_DEBUG(md, "conditional attr found in local db");
+            else
+            {
+                META_LOG_DEBUG(md, "conditional attr found in local db");
+            }
         }
 
-        switch (md.serializationtype)
+        switch (md.attrvaluetype)
         {
-            case SAI_SERIALIZATION_TYPE_BOOL:
-            case SAI_SERIALIZATION_TYPE_CHARDATA:
-            case SAI_SERIALIZATION_TYPE_UINT8:
-            case SAI_SERIALIZATION_TYPE_INT8:
-            case SAI_SERIALIZATION_TYPE_UINT16:
-            case SAI_SERIALIZATION_TYPE_INT16:
-            case SAI_SERIALIZATION_TYPE_UINT32:
-            case SAI_SERIALIZATION_TYPE_INT32:
-            case SAI_SERIALIZATION_TYPE_UINT64:
-            case SAI_SERIALIZATION_TYPE_INT64:
-            case SAI_SERIALIZATION_TYPE_MAC:
-            case SAI_SERIALIZATION_TYPE_IP4:
-            case SAI_SERIALIZATION_TYPE_IP6:
-            case SAI_SERIALIZATION_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_BOOL:
+            case SAI_ATTR_VALUE_TYPE_CHARDATA:
+            case SAI_ATTR_VALUE_TYPE_UINT8:
+            case SAI_ATTR_VALUE_TYPE_INT8:
+            case SAI_ATTR_VALUE_TYPE_UINT16:
+            case SAI_ATTR_VALUE_TYPE_INT16:
+            case SAI_ATTR_VALUE_TYPE_UINT32:
+            case SAI_ATTR_VALUE_TYPE_INT32:
+            case SAI_ATTR_VALUE_TYPE_UINT64:
+            case SAI_ATTR_VALUE_TYPE_INT64:
+            case SAI_ATTR_VALUE_TYPE_MAC:
+            case SAI_ATTR_VALUE_TYPE_IPV4:
+            case SAI_ATTR_VALUE_TYPE_IPV6:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_POINTER:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
                 break;
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+            case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
                 VALIDATION_LIST(md, value.objlist);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_VLAN_LIST:
+            case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
 
                 {
                     if (value.vlanlist.count == 0 && value.vlanlist.list != NULL)
@@ -2193,78 +2170,78 @@ sai_status_t meta_generic_validation_get(
 
                 // ACL FIELD
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP4:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP6:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
                 VALIDATION_LIST(md, value.aclfield.data.objlist);
                 break;
 
-                // case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
 
                 // ACL ACTION
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV4:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV6:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV6:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
                 VALIDATION_LIST(md, value.aclaction.parameter.objlist);
                 break;
 
                 // ACL END
 
-            case SAI_SERIALIZATION_TYPE_UINT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
                 VALIDATION_LIST(md, value.u8list);
                 break;
-            case SAI_SERIALIZATION_TYPE_INT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT8_LIST:
                 VALIDATION_LIST(md, value.s8list);
                 break;
-            case SAI_SERIALIZATION_TYPE_UINT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
                 VALIDATION_LIST(md, value.u16list);
                 break;
-            case SAI_SERIALIZATION_TYPE_INT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT16_LIST:
                 VALIDATION_LIST(md, value.s16list);
                 break;
-            case SAI_SERIALIZATION_TYPE_UINT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
                 VALIDATION_LIST(md, value.u32list);
                 break;
-            case SAI_SERIALIZATION_TYPE_INT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT32_LIST:
                 VALIDATION_LIST(md, value.s32list);
                 break;
-            case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 VALIDATION_LIST(md, value.qosmap);
                 break;
-            case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
                 VALIDATION_LIST(md, value.tunnelmap);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_UINT32_RANGE:
-            case SAI_SERIALIZATION_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
                 // primitives
                 break;
 
@@ -2272,12 +2249,11 @@ sai_status_t meta_generic_validation_get(
 
                 // acl capability will is more complex since is in/out we need to check stage
 
-                META_LOG_ERROR(md, "serialization type is not supported yet FIXME");
-                throw;
+                META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
     }
 
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (!object_exists(key))
     {
@@ -2286,45 +2262,36 @@ sai_status_t meta_generic_validation_get(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    switch (meta_key.object_type)
+    auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (info->isnonobjectid)
     {
-        case SAI_OBJECT_TYPE_SWITCH:
-        case SAI_OBJECT_TYPE_ROUTE:
-        case SAI_OBJECT_TYPE_FDB:
-        case SAI_OBJECT_TYPE_NEIGHBOR:
-        case SAI_OBJECT_TYPE_VLAN:
-        case SAI_OBJECT_TYPE_TRAP:
+        SWSS_LOG_DEBUG("object key exists: %s", key.c_str());
+    }
+    else
+    {
+        /*
+         * Check if object we are calling GET is the same object type as the
+         * type of GET function.
+         */
 
-            SWSS_LOG_DEBUG("object key exists: %s", key.c_str());
+        sai_object_id_t oid = meta_key.objectkey.key.object_id;
 
-            break;
+        sai_object_type_t object_type = sai_object_type_query(oid);
 
-        default:
+        if (object_type == SAI_NULL_OBJECT_ID)
+        {
+            SWSS_LOG_ERROR("oid 0x%lx is not valid, returned null object id", oid);
 
-            {
-                // check if object we are calling GET is the same object type
-                // as the type of GET function
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
 
-                sai_object_id_t oid = meta_key.key.object_id;
+        if (object_type != meta_key.objecttype)
+        {
+            SWSS_LOG_ERROR("oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.objecttype);
 
-                sai_object_type_t object_type = sai_object_type_query(oid);
-
-                if (object_type == SAI_NULL_OBJECT_ID)
-                {
-                    SWSS_LOG_ERROR("oid 0x%lx is not valid, returned null object id", oid);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                if (object_type != meta_key.object_type)
-                {
-                    SWSS_LOG_ERROR("oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.object_type);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-            }
-
-            break;
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
     }
 
     // object exists in DB so we can do "get" operation
@@ -2334,12 +2301,13 @@ sai_status_t meta_generic_validation_get(
 
 void meta_generic_validation_post_create(
         _In_ const sai_object_meta_key_t& meta_key,
+        _In_ sai_object_id_t switch_id,
         _In_ const uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    std::string key = get_object_meta_key_string(meta_key);
+    std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (object_exists(key))
     {
@@ -2350,62 +2318,86 @@ void meta_generic_validation_post_create(
 
     create_object(meta_key);
 
-    switch (meta_key.object_type)
+    auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (info->isnonobjectid)
     {
-        case SAI_OBJECT_TYPE_ROUTE:
-            object_reference_inc(meta_key.key.route_entry.vr_id);
-            break;
+        /*
+         * Increase object reference count for all object ids in non object id
+         * members.
+         */
 
-        case SAI_OBJECT_TYPE_NEIGHBOR:
-            object_reference_inc(meta_key.key.neighbor_entry.rif_id);
-            break;
+        for (size_t j = 0; j < info->structmemberscount; ++j)
+        {
+            const sai_struct_member_info_t *m = info->structmembers[j];
 
-        case SAI_OBJECT_TYPE_FDB:
-            // NOTE: we don't increase vlan reference on FDB entries, ignored
-            // vlan_reference_inc(meta_key.key.fdb_entry.vlan_id);
-            break;
-
-        case SAI_OBJECT_TYPE_VLAN:
-            vlan_reference_insert(meta_key.key.vlan_id);
-            break;
-
-        case SAI_OBJECT_TYPE_SWITCH:
-        case SAI_OBJECT_TYPE_TRAP:
-            SWSS_LOG_ERROR("object not supported FIXME");
-            throw;
-
-        default:
-
+            if (m->membervaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
             {
-                // check if object created was expected type
-                // as the type of SET function
+                continue;
+            }
 
-                sai_object_id_t oid = meta_key.key.object_id;
+            object_reference_inc(m->getoid(&meta_key));
+        }
+    }
+    else
+    {
+        /*
+         * Check if object created was expected type as the type of CRATE
+         * function.
+         */
 
-                if (oid == SAI_NULL_OBJECT_ID)
-                {
-                    SWSS_LOG_ERROR("created oid is null object id (vendor bug?)");
-                    break;
-                }
+        do
+        {
+            sai_object_id_t oid = meta_key.objectkey.key.object_id;
 
-                sai_object_type_t object_type = sai_object_type_query(oid);
-
-                if (object_type == SAI_NULL_OBJECT_ID)
-                {
-                    SWSS_LOG_ERROR("created oid 0x%lx is not valid object type after create, returned null object id (vendor bug?)", oid);
-                    break;
-                }
-
-                if (object_type != meta_key.object_type)
-                {
-                    SWSS_LOG_ERROR("created oid 0x%lx type %d is wrond type, expected object type %d (vendor bug?)", oid, object_type, meta_key.object_type);
-                    break;
-                }
-
-                object_reference_insert(oid);
-
+            if (oid == SAI_NULL_OBJECT_ID)
+            {
+                SWSS_LOG_ERROR("created oid is null object id (vendor bug?)");
                 break;
             }
+
+            sai_object_type_t object_type = sai_object_type_query(oid);
+
+            if (object_type == SAI_NULL_OBJECT_ID)
+            {
+                SWSS_LOG_ERROR("created oid 0x%lx is not valid object type after create (null) (vendor bug?)", oid);
+                break;
+            }
+
+            if (object_type != meta_key.objecttype)
+            {
+                SWSS_LOG_ERROR("created oid 0x%lx type %s, expected %s (vendor bug?)",
+                        oid,
+                        sai_serialize_object_type(object_type).c_str(),
+                        sai_serialize_object_type(meta_key.objecttype).c_str());
+                break;
+            }
+
+            if (meta_key.objecttype != SAI_OBJECT_TYPE_SWITCH)
+            {
+                /*
+                 * Check if created object switch is the same as input switch.
+                 */
+
+                sai_object_id_t query_switch_id = sai_switch_id_query(meta_key.objectkey.key.object_id);
+
+                if (!object_reference_exists(query_switch_id))
+                {
+                    SWSS_LOG_ERROR("switch id 0x%lx don't exists", query_switch_id);
+                    break;
+                }
+
+                if (switch_id != query_switch_id)
+                {
+                    SWSS_LOG_ERROR("created oid 0x%lx switch id 0x%lx is different than requested 0x%lx",
+                            oid, query_switch_id, switch_id);
+                    break;
+                }
+            }
+
+            object_reference_insert(oid);
+
+        } while (false);
     }
 
     bool haskeys;
@@ -2414,7 +2406,7 @@ void meta_generic_validation_post_create(
     {
         const sai_attribute_t* attr = &attr_list[idx];
 
-        auto mdp = get_attribute_metadata(meta_key.object_type, attr->id);
+        auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
         const sai_attribute_value_t& value = attr->value;
 
@@ -2428,107 +2420,114 @@ void meta_generic_validation_post_create(
 
         // increase reference on object id types
 
-        switch (md.serializationtype)
+        switch (md.attrvaluetype)
         {
-            case SAI_SERIALIZATION_TYPE_BOOL:
-            case SAI_SERIALIZATION_TYPE_CHARDATA:
-            case SAI_SERIALIZATION_TYPE_UINT8:
-            case SAI_SERIALIZATION_TYPE_INT8:
-            case SAI_SERIALIZATION_TYPE_UINT16:
-            case SAI_SERIALIZATION_TYPE_INT16:
-            case SAI_SERIALIZATION_TYPE_UINT32:
-            case SAI_SERIALIZATION_TYPE_INT32:
-            case SAI_SERIALIZATION_TYPE_UINT64:
-            case SAI_SERIALIZATION_TYPE_INT64:
-            case SAI_SERIALIZATION_TYPE_MAC:
-            case SAI_SERIALIZATION_TYPE_IP4:
-            case SAI_SERIALIZATION_TYPE_IP6:
-            case SAI_SERIALIZATION_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_BOOL:
+            case SAI_ATTR_VALUE_TYPE_CHARDATA:
+            case SAI_ATTR_VALUE_TYPE_UINT8:
+            case SAI_ATTR_VALUE_TYPE_INT8:
+            case SAI_ATTR_VALUE_TYPE_UINT16:
+            case SAI_ATTR_VALUE_TYPE_INT16:
+            case SAI_ATTR_VALUE_TYPE_UINT32:
+            case SAI_ATTR_VALUE_TYPE_INT32:
+            case SAI_ATTR_VALUE_TYPE_UINT64:
+            case SAI_ATTR_VALUE_TYPE_INT64:
+            case SAI_ATTR_VALUE_TYPE_MAC:
+            case SAI_ATTR_VALUE_TYPE_IPV4:
+            case SAI_ATTR_VALUE_TYPE_IPV6:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_POINTER:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
                 object_reference_inc(value.oid);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+            case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
                 object_reference_inc(value.objlist);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_VLAN_LIST:
+            case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
                 break;
 
                 // ACL FIELD
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP4:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP6:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
-                object_reference_inc(value.aclfield.data.oid);
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+                if (value.aclfield.enable)
+                {
+                    object_reference_inc(value.aclfield.data.oid);
+                }
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
-                object_reference_inc(value.aclfield.data.objlist);
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+                if (value.aclfield.enable)
+                {
+                    object_reference_inc(value.aclfield.data.objlist);
+                }
                 break;
 
-                // case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
 
                 // ACL ACTION
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV4:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV6:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV6:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
-                object_reference_inc(value.aclaction.parameter.oid);
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+                if (value.aclaction.enable)
+                {
+                    object_reference_inc(value.aclaction.parameter.oid);
+                }
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
-                object_reference_inc(value.aclaction.parameter.objlist);
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+                if (value.aclaction.enable)
+                {
+                    object_reference_inc(value.aclaction.parameter.objlist);
+                }
                 break;
 
                 // ACL END
 
-            case SAI_SERIALIZATION_TYPE_UINT8_LIST:
-            case SAI_SERIALIZATION_TYPE_INT8_LIST:
-            case SAI_SERIALIZATION_TYPE_UINT16_LIST:
-            case SAI_SERIALIZATION_TYPE_INT16_LIST:
-            case SAI_SERIALIZATION_TYPE_UINT32_LIST:
-            case SAI_SERIALIZATION_TYPE_INT32_LIST:
-            case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
-            case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
-            case SAI_SERIALIZATION_TYPE_UINT32_RANGE:
-            case SAI_SERIALIZATION_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
                 // no special action required
                 break;
 
             default:
 
-                META_LOG_ERROR(md, "serialization type is not supported yet FIXME");
-                throw;
-        }
-
-        if (md.isvlan())
-        {
-            vlan_reference_inc(value.u16);
+                META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
 
         set_object(meta_key, md, attr);
@@ -2536,7 +2535,7 @@ void meta_generic_validation_post_create(
 
     if (haskeys)
     {
-        std::string ok = get_object_meta_key_string(meta_key);
+        std::string ok = sai_serialize_object_meta_key(meta_key);
 
         AttributeKeys[ok] = construct_key(meta_key, attr_count, attr_list);
     }
@@ -2549,11 +2548,11 @@ void meta_generic_validation_post_remove(
 
     // get all attributes that was set
 
-    for (auto&it: get_object(meta_key))
+    for (auto&it: get_object_attributes(meta_key))
     {
         const sai_attribute_t* attr = it->getattr();
 
-        auto mdp = get_attribute_metadata(meta_key.object_type, attr->id);
+        auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
         const sai_attribute_value_t& value = attr->value;
 
@@ -2561,145 +2560,143 @@ void meta_generic_validation_post_remove(
 
         // decrease reference on object id types
 
-        switch (md.serializationtype)
+        switch (md.attrvaluetype)
         {
-            case SAI_SERIALIZATION_TYPE_BOOL:
-            case SAI_SERIALIZATION_TYPE_CHARDATA:
-            case SAI_SERIALIZATION_TYPE_UINT8:
-            case SAI_SERIALIZATION_TYPE_INT8:
-            case SAI_SERIALIZATION_TYPE_UINT16:
-            case SAI_SERIALIZATION_TYPE_INT16:
-            case SAI_SERIALIZATION_TYPE_UINT32:
-            case SAI_SERIALIZATION_TYPE_INT32:
-            case SAI_SERIALIZATION_TYPE_UINT64:
-            case SAI_SERIALIZATION_TYPE_INT64:
-            case SAI_SERIALIZATION_TYPE_MAC:
-            case SAI_SERIALIZATION_TYPE_IP4:
-            case SAI_SERIALIZATION_TYPE_IP6:
-            case SAI_SERIALIZATION_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_BOOL:
+            case SAI_ATTR_VALUE_TYPE_CHARDATA:
+            case SAI_ATTR_VALUE_TYPE_UINT8:
+            case SAI_ATTR_VALUE_TYPE_INT8:
+            case SAI_ATTR_VALUE_TYPE_UINT16:
+            case SAI_ATTR_VALUE_TYPE_INT16:
+            case SAI_ATTR_VALUE_TYPE_UINT32:
+            case SAI_ATTR_VALUE_TYPE_INT32:
+            case SAI_ATTR_VALUE_TYPE_UINT64:
+            case SAI_ATTR_VALUE_TYPE_INT64:
+            case SAI_ATTR_VALUE_TYPE_MAC:
+            case SAI_ATTR_VALUE_TYPE_IPV4:
+            case SAI_ATTR_VALUE_TYPE_IPV6:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_POINTER:
                 // primitives, ok
                 break;
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
                 object_reference_dec(value.oid);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+            case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
                 object_reference_dec(value.objlist);
                 break;
 
-                //case SAI_SERIALIZATION_TYPE_VLAN_LIST:
-                // will require dec vlan references
-
                 // ACL FIELD
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP4:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP6:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
-                object_reference_dec(value.aclfield.data.oid);
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+                if (value.aclfield.enable)
+                {
+                    object_reference_dec(value.aclfield.data.oid);
+                }
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
-                object_reference_dec(value.aclfield.data.objlist);
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+                if (value.aclfield.enable)
+                {
+                    object_reference_dec(value.aclfield.data.objlist);
+                }
                 break;
 
-                // case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
 
                 // ACL ACTION
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV4:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV6:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV6:
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
-                object_reference_dec(value.aclaction.parameter.oid);
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+                if (value.aclaction.enable)
+                {
+                    object_reference_dec(value.aclaction.parameter.oid);
+                }
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
-                object_reference_dec(value.aclaction.parameter.objlist);
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+                if (value.aclaction.enable)
+                {
+                    object_reference_dec(value.aclaction.parameter.objlist);
+                }
                 break;
 
                 // ACL END
 
-            case SAI_SERIALIZATION_TYPE_UINT8_LIST:
-            case SAI_SERIALIZATION_TYPE_INT8_LIST:
-            case SAI_SERIALIZATION_TYPE_UINT16_LIST:
-            case SAI_SERIALIZATION_TYPE_INT16_LIST:
-            case SAI_SERIALIZATION_TYPE_UINT32_LIST:
-            case SAI_SERIALIZATION_TYPE_INT32_LIST:
-            case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
-            case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
-            case SAI_SERIALIZATION_TYPE_UINT32_RANGE:
-            case SAI_SERIALIZATION_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
                 // no special action required
                 break;
 
             default:
-                META_LOG_ERROR(md, "serialization type is not supported yet FIXME");
-                throw;
-        }
-
-        if (md.isvlan())
-        {
-            vlan_reference_dec(value.u16);
+                META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
     }
 
     // we don't keep track of fdb, neighbor, route since
     // those are safe to remove any time (leafs)
 
-    switch (meta_key.object_type)
+    auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (info->isnonobjectid)
     {
-        case SAI_OBJECT_TYPE_SWITCH:
-            SWSS_LOG_ERROR("remove switch not supported yet FIXME");
-            throw;
+        /*
+         * Decrease object reference count for all object ids in non object id
+         * members.
+         */
 
-        case SAI_OBJECT_TYPE_ROUTE:
-            object_reference_dec(meta_key.key.route_entry.vr_id);
-            break;
+        for (size_t j = 0; j < info->structmemberscount; ++j)
+        {
+            const sai_struct_member_info_t *m = info->structmembers[j];
 
-        case SAI_OBJECT_TYPE_NEIGHBOR:
-            object_reference_dec(meta_key.key.neighbor_entry.rif_id);
-            break;
+            if (m->membervaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            {
+                continue;
+            }
 
-        case SAI_OBJECT_TYPE_FDB:
-            // NOTE: we don't decrease vlan reference on FDB entries, ignored
-            // vlan_reference_dec(meta_key.key.fdb_entry.vlan_id);
-            break;
-
-        case SAI_OBJECT_TYPE_TRAP:
-            SWSS_LOG_ERROR("trap remove not supported yet FIXME");
-            throw;
-
-        case SAI_OBJECT_TYPE_VLAN:
-            vlan_reference_remove(meta_key.key.vlan_id);
-            break;
-
-        default:
-            object_reference_remove(meta_key.key.object_id);
-            break;
+            object_reference_dec(m->getoid(&meta_key));
+        }
+    }
+    else
+    {
+        object_reference_remove(meta_key.objectkey.key.object_id);
     }
 
     remove_object(meta_key);
 
-    std::string ok = get_object_meta_key_string(meta_key);
+    std::string ok = sai_serialize_object_meta_key(meta_key);
 
     if (AttributeKeys.find(ok) != AttributeKeys.end())
     {
@@ -2715,32 +2712,55 @@ void meta_generic_validation_post_set(
 {
     SWSS_LOG_ENTER();
 
-    auto mdp = get_attribute_metadata(meta_key.object_type, attr->id);
+    auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
     const sai_attribute_value_t& value = attr->value;
 
     const sai_attr_metadata_t& md = *mdp;
 
-    switch (md.serializationtype)
+    /*
+     * TODO We need to get previous value and make deal with references, check
+     * if there is default value and if it's const.
+     */
+
+    if (!HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
     {
-        case SAI_SERIALIZATION_TYPE_BOOL:
-        case SAI_SERIALIZATION_TYPE_CHARDATA:
-        case SAI_SERIALIZATION_TYPE_UINT8:
-        case SAI_SERIALIZATION_TYPE_INT8:
-        case SAI_SERIALIZATION_TYPE_UINT16:
-        case SAI_SERIALIZATION_TYPE_INT16:
-        case SAI_SERIALIZATION_TYPE_UINT32:
-        case SAI_SERIALIZATION_TYPE_INT32:
-        case SAI_SERIALIZATION_TYPE_UINT64:
-        case SAI_SERIALIZATION_TYPE_INT64:
-        case SAI_SERIALIZATION_TYPE_MAC:
-        case SAI_SERIALIZATION_TYPE_IP4:
-        case SAI_SERIALIZATION_TYPE_IP6:
-        case SAI_SERIALIZATION_TYPE_IP_ADDRESS:
+        if ((get_object_previous_attr(meta_key, md) == NULL) &&
+                (md.defaultvaluetype != SAI_DEFAULT_VALUE_TYPE_CONST &&
+                 md.defaultvaluetype != SAI_DEFAULT_VALUE_TYPE_EMPTY_LIST))
+        {
+            /*
+             * If default value type will be internal then we should warn.
+             */
+
+            std::string key = sai_serialize_object_meta_key(meta_key);
+
+            // XXX produces too much noise
+            // META_LOG_WARN(md, "post set, not in local db, FIX snoop!: %s", key.c_str());
+        }
+    }
+
+    switch (md.attrvaluetype)
+    {
+        case SAI_ATTR_VALUE_TYPE_BOOL:
+        case SAI_ATTR_VALUE_TYPE_CHARDATA:
+        case SAI_ATTR_VALUE_TYPE_UINT8:
+        case SAI_ATTR_VALUE_TYPE_INT8:
+        case SAI_ATTR_VALUE_TYPE_UINT16:
+        case SAI_ATTR_VALUE_TYPE_INT16:
+        case SAI_ATTR_VALUE_TYPE_UINT32:
+        case SAI_ATTR_VALUE_TYPE_INT32:
+        case SAI_ATTR_VALUE_TYPE_UINT64:
+        case SAI_ATTR_VALUE_TYPE_INT64:
+        case SAI_ATTR_VALUE_TYPE_MAC:
+        case SAI_ATTR_VALUE_TYPE_IPV4:
+        case SAI_ATTR_VALUE_TYPE_IPV6:
+        case SAI_ATTR_VALUE_TYPE_POINTER:
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
             // primitives, ok
             break;
 
-        case SAI_SERIALIZATION_TYPE_OBJECT_ID:
+        case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
 
             {
                 const sai_attribute_t *previous_attr = get_object_previous_attr(meta_key, md);
@@ -2756,7 +2776,7 @@ void meta_generic_validation_post_set(
                 break;
             }
 
-        case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
+        case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
 
             {
                 const sai_attribute_t *previous_attr = get_object_previous_attr(meta_key, md);
@@ -2772,24 +2792,24 @@ void meta_generic_validation_post_set(
                 break;
             }
 
-            // case SAI_SERIALIZATION_TYPE_VLAN_LIST:
+            // case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
             // will require increase vlan references
 
             // ACL FIELD
 
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT8:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT16:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT16:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT32:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_MAC:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP4:
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP6:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT8:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT16:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
             break;
 
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
 
             {
                 const sai_attribute_t *previous_attr = get_object_previous_attr(meta_key, md);
@@ -2797,15 +2817,17 @@ void meta_generic_validation_post_set(
                 if (previous_attr != NULL)
                 {
                     // decrease previous if it was set
+                    if (previous_attr->value.aclfield.enable)
                     object_reference_dec(previous_attr->value.aclfield.data.oid);
                 }
 
+                if (value.aclfield.enable)
                 object_reference_inc(value.aclfield.data.oid);
 
                 break;
             }
 
-        case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
 
             {
                 const sai_attribute_t *previous_attr = get_object_previous_attr(meta_key, md);
@@ -2813,31 +2835,33 @@ void meta_generic_validation_post_set(
                 if (previous_attr != NULL)
                 {
                     // decrease previous if it was set
+                    if (previous_attr->value.aclfield.enable)
                     object_reference_dec(previous_attr->value.aclfield.data.objlist);
                 }
 
+                if (value.aclfield.enable)
                 object_reference_inc(value.aclfield.data.objlist);
 
                 break;
             }
 
-            // case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST:
+            // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST:
 
             // ACL ACTION
 
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT8:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT8:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT16:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT16:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT32:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_MAC:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV4:
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV6:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT16:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_MAC:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV4:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV6:
             // primitives
             break;
 
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
 
             {
                 const sai_attribute_t *previous_attr = get_object_previous_attr(meta_key, md);
@@ -2845,14 +2869,16 @@ void meta_generic_validation_post_set(
                 if (previous_attr != NULL)
                 {
                     // decrease previous if it was set
+                    if (previous_attr->value.aclaction.enable)
                     object_reference_dec(previous_attr->value.aclaction.parameter.oid);
                 }
 
+                if (value.aclaction.enable)
                 object_reference_inc(value.aclaction.parameter.oid);
                 break;
             }
 
-        case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
 
             {
                 const sai_attribute_t *previous_attr = get_object_previous_attr(meta_key, md);
@@ -2860,9 +2886,11 @@ void meta_generic_validation_post_set(
                 if (previous_attr != NULL)
                 {
                     // decrease previous if it was set
+                    if (previous_attr->value.aclaction.enable)
                     object_reference_dec(previous_attr->value.aclaction.parameter.objlist);
                 }
 
+                if (value.aclaction.enable)
                 object_reference_inc(value.aclaction.parameter.objlist);
 
                 break;
@@ -2870,35 +2898,21 @@ void meta_generic_validation_post_set(
 
             // ACL END
 
-        case SAI_SERIALIZATION_TYPE_UINT8_LIST:
-        case SAI_SERIALIZATION_TYPE_INT8_LIST:
-        case SAI_SERIALIZATION_TYPE_UINT16_LIST:
-        case SAI_SERIALIZATION_TYPE_INT16_LIST:
-        case SAI_SERIALIZATION_TYPE_UINT32_LIST:
-        case SAI_SERIALIZATION_TYPE_INT32_LIST:
-        case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
-        case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
-        case SAI_SERIALIZATION_TYPE_UINT32_RANGE:
-        case SAI_SERIALIZATION_TYPE_INT32_RANGE:
+        case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
+        case SAI_ATTR_VALUE_TYPE_INT8_LIST:
+        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
+        case SAI_ATTR_VALUE_TYPE_INT16_LIST:
+        case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
+        case SAI_ATTR_VALUE_TYPE_INT32_LIST:
+        case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
+        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
+        case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
+        case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             // no special action required
             break;
 
         default:
-            META_LOG_ERROR(md, "serialization type is not supported yet FIXME");
-            throw;
-    }
-
-    if (md.isvlan())
-    {
-        const sai_attribute_t *previous_attr = get_object_previous_attr(meta_key, md);
-
-        if (previous_attr != NULL)
-        {
-            // decrease previous if it was set
-            vlan_reference_dec(previous_attr->value.u16);
-        }
-
-        vlan_reference_inc(value.u16);
+            META_LOG_THROW(md, "serialization type is not supported yet FIXME");
     }
 
     // only on create we need to increase entry object types members
@@ -2910,10 +2924,36 @@ void meta_generic_validation_post_set(
 void meta_generic_validation_post_get_objlist(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ const sai_attr_metadata_t& md,
+        _In_ sai_object_id_t switch_id,
         _In_ uint32_t count,
         _In_ const sai_object_id_t* list)
 {
     SWSS_LOG_ENTER();
+
+    /*
+     * TODO This is not good enough when object was created by switch
+     * internally and it have oid attributes, we need to insert them to local
+     * db and increase reference count if object don't exist.
+     *
+     * Also this function maybe not best place to do it since it's not executed
+     * when we doing get on acl field/action. But none of those are created
+     * internally by switch.
+     *
+     * TODO Similar stuff is with SET, when we will set oid obejct on existing
+     * switch object, but we will not have it's previous value.  We can check
+     * whether default value is present and it's const NULL.
+     */
+
+    if (!HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
+    {
+        if (get_object_previous_attr(meta_key, md) == NULL)
+        {
+            std::string key = sai_serialize_object_meta_key(meta_key);
+
+            // XXX produces too much noise
+            // META_LOG_WARN(md, "post get, not in local db, FIX snoop!: %s", key.c_str());
+        }
+    }
 
     if (count > MAX_LIST_COUNT)
     {
@@ -2954,13 +2994,13 @@ void meta_generic_validation_post_get_objlist(
 
         sai_object_type_t ot = sai_object_type_query(oid);
 
-        if (ot == SAI_NULL_OBJECT_ID)
+        if (ot == SAI_OBJECT_TYPE_NULL)
         {
-            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%lx is not valid, returned null object id", i, oid);
+            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%lx is not valid, returned null object type", i, oid);
             continue;
         }
 
-        if (md.allowedobjecttypes.find(ot) == md.allowedobjecttypes.end())
+        if (!sai_metadata_is_allowed_object_type(&md, ot))
         {
             META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%lx object type %d is not allowed on this attribute", i, oid, ot);
         }
@@ -2973,7 +3013,7 @@ void meta_generic_validation_post_get_objlist(
 
             META_LOG_INFO(md, "returned get object on list [%u] oid 0x%lx object type %d does not exists in local DB (snoop)", i, oid, ot);
 
-            sai_object_meta_key_t key = { .object_type = ot, .key = { .object_id = oid } };
+            sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = oid } } };
 
             object_reference_insert(oid);
 
@@ -2981,6 +3021,18 @@ void meta_generic_validation_post_get_objlist(
             {
                 create_object(key);
             }
+        }
+
+        sai_object_id_t query_switch_id = sai_switch_id_query(oid);
+
+        if (!object_reference_exists(query_switch_id))
+        {
+            SWSS_LOG_ERROR("switch id 0x%lx don't exists", query_switch_id);
+        }
+
+        if (query_switch_id != switch_id)
+        {
+            SWSS_LOG_ERROR("oid 0x%lx is from switch 0x%lx but expected switch 0x%lx", oid, query_switch_id, switch_id);
         }
     }
 }
@@ -2995,49 +3047,59 @@ void meta_generic_validation_post_get_objlist(
 
 void meta_generic_validation_post_get(
         _In_ const sai_object_meta_key_t& meta_key,
+        _In_ sai_object_id_t switch_id,
         _In_ const uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
+    switch_id = meta_extract_switch_id(meta_key, switch_id);
+
+    /*
+     * TODO We should snoop attributes retrived from switch and put them to
+     * local db if they don't exist since if attr is oid it may lead to
+     * inconsistency when counting reference
+     */
+
     for (uint32_t idx = 0; idx < attr_count; ++idx)
     {
         const sai_attribute_t* attr = &attr_list[idx];
 
-        auto mdp = get_attribute_metadata(meta_key.object_type, attr->id);
+        auto mdp = sai_metadata_get_attr_metadata(meta_key.objecttype, attr->id);
 
         const sai_attribute_value_t& value = attr->value;
 
         const sai_attr_metadata_t& md = *mdp;
 
-        switch (md.serializationtype)
+        switch (md.attrvaluetype)
         {
-            case SAI_SERIALIZATION_TYPE_BOOL:
-            case SAI_SERIALIZATION_TYPE_CHARDATA:
-            case SAI_SERIALIZATION_TYPE_UINT8:
-            case SAI_SERIALIZATION_TYPE_INT8:
-            case SAI_SERIALIZATION_TYPE_UINT16:
-            case SAI_SERIALIZATION_TYPE_INT16:
-            case SAI_SERIALIZATION_TYPE_UINT32:
-            case SAI_SERIALIZATION_TYPE_INT32:
-            case SAI_SERIALIZATION_TYPE_UINT64:
-            case SAI_SERIALIZATION_TYPE_INT64:
-            case SAI_SERIALIZATION_TYPE_MAC:
-            case SAI_SERIALIZATION_TYPE_IP4:
-            case SAI_SERIALIZATION_TYPE_IP6:
-            case SAI_SERIALIZATION_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_BOOL:
+            case SAI_ATTR_VALUE_TYPE_CHARDATA:
+            case SAI_ATTR_VALUE_TYPE_UINT8:
+            case SAI_ATTR_VALUE_TYPE_INT8:
+            case SAI_ATTR_VALUE_TYPE_UINT16:
+            case SAI_ATTR_VALUE_TYPE_INT16:
+            case SAI_ATTR_VALUE_TYPE_UINT32:
+            case SAI_ATTR_VALUE_TYPE_INT32:
+            case SAI_ATTR_VALUE_TYPE_UINT64:
+            case SAI_ATTR_VALUE_TYPE_INT64:
+            case SAI_ATTR_VALUE_TYPE_MAC:
+            case SAI_ATTR_VALUE_TYPE_IPV4:
+            case SAI_ATTR_VALUE_TYPE_IPV6:
+            case SAI_ATTR_VALUE_TYPE_POINTER:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
                 // primitives, ok
                 break;
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_ID:
-                meta_generic_validation_post_get_objlist(meta_key, md, 1, &value.oid);
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.oid);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_OBJECT_LIST:
-                meta_generic_validation_post_get_objlist(meta_key, md, value.objlist.count, value.objlist.list);
+            case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
+                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.objlist.count, value.objlist.list);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_VLAN_LIST:
+            case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
 
                 {
                     uint32_t count = value.vlanlist.count;
@@ -3054,18 +3116,12 @@ void meta_generic_validation_post_get(
 
                     for (uint32_t i = 0; i < count; ++i)
                     {
-                        sai_vlan_id_t vlan_id = value.vlanlist.list[i];
+                        uint16_t vlanid = value.vlanlist.list[i];
 
-                        sai_object_meta_key_t meta_key_vlan = { .object_type = SAI_OBJECT_TYPE_VLAN, .key = { .vlan_id = vlan_id } };
-
-                        std::string key_vlan = get_object_meta_key_string(meta_key_vlan);
-
-                        if (object_exists(key_vlan))
+                        if (vlanid < MINIMUM_VLAN_NUMBER || vlanid > MAXIMUM_VLAN_NUMBER)
                         {
-                            continue;
+                            META_LOG_ERROR(md, "vlan id %u is outside range, but returned on list [%u]", vlanid, i);
                         }
-
-                        META_LOG_ERROR(md, "vlan id %d not exists, but returned on list [%u] (snoop?)", vlan_id, i);
                     }
 
                     break;
@@ -3073,79 +3129,83 @@ void meta_generic_validation_post_get(
 
                 // ACL FIELD
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_BOOL:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP4:
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_IP6:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_ID:
-                meta_generic_validation_post_get_objlist(meta_key, md, 1, &value.aclfield.data.oid);
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+                if (value.aclfield.enable)
+                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclfield.data.oid);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
-                meta_generic_validation_post_get_objlist(meta_key, md, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+                if (value.aclfield.enable)
+                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
                 break;
 
-                // case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_UINT8_LIST: (2 lists)
+                // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST: (2 lists)
 
                 // ACL ACTION
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT8:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT16:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_UINT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_MAC:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV4:
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_IPV6:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT16:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_MAC:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV4:
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_IPV6:
                 // primitives
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_ID:
-                meta_generic_validation_post_get_objlist(meta_key, md, 1, &value.aclaction.parameter.oid);
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+                if (value.aclaction.enable)
+                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclaction.parameter.oid);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
-                meta_generic_validation_post_get_objlist(meta_key, md, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+                if (value.aclaction.enable)
+                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
                 break;
 
                 // ACL END
 
-            case SAI_SERIALIZATION_TYPE_UINT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
                 VALIDATION_LIST_GET(md, value.u8list);
                 break;
-            case SAI_SERIALIZATION_TYPE_INT8_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT8_LIST:
                 VALIDATION_LIST_GET(md, value.s8list);
                 break;
-            case SAI_SERIALIZATION_TYPE_UINT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
                 VALIDATION_LIST_GET(md, value.u16list);
                 break;
-            case SAI_SERIALIZATION_TYPE_INT16_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT16_LIST:
                 VALIDATION_LIST_GET(md, value.s16list);
                 break;
-            case SAI_SERIALIZATION_TYPE_UINT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
                 VALIDATION_LIST_GET(md, value.u32list);
                 break;
-            case SAI_SERIALIZATION_TYPE_INT32_LIST:
+            case SAI_ATTR_VALUE_TYPE_INT32_LIST:
                 VALIDATION_LIST_GET(md, value.s32list);
                 break;
-            case SAI_SERIALIZATION_TYPE_QOS_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 VALIDATION_LIST_GET(md, value.qosmap);
                 break;
-            case SAI_SERIALIZATION_TYPE_TUNNEL_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
                 VALIDATION_LIST_GET(md, value.tunnelmap);
                 break;
 
-            case SAI_SERIALIZATION_TYPE_UINT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
 
                 if (value.u32range.min > value.u32range.max)
                 {
@@ -3154,7 +3214,7 @@ void meta_generic_validation_post_get(
 
                 break;
 
-            case SAI_SERIALIZATION_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
 
                 if (value.s32range.min > value.s32range.max)
                 {
@@ -3165,21 +3225,20 @@ void meta_generic_validation_post_get(
 
             default:
 
-                META_LOG_ERROR(md, "serialization type is not supported yet FIXME");
-                throw;
+                META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
 
-        if (md.isenum())
+        if (md.isenum)
         {
             int32_t val = value.s32;
 
-            switch (md.serializationtype)
+            switch (md.attrvaluetype)
             {
-                case SAI_SERIALIZATION_TYPE_ACL_FIELD_DATA_INT32:
+                case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
                     val = value.aclfield.data.s32;
                     break;
 
-                case SAI_SERIALIZATION_TYPE_ACL_ACTION_DATA_INT32:
+                case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
                     val = value.aclaction.parameter.s32;
                     break;
 
@@ -3188,14 +3247,14 @@ void meta_generic_validation_post_get(
                     break;
             }
 
-            if (md.enumallowedvalues.find(val) == md.enumallowedvalues.end())
+            if (!sai_metadata_is_allowed_enum_value(&md, val))
             {
                 META_LOG_ERROR(md, "is enum, but value %d not found on allowed values list", val);
                 continue;
             }
         }
 
-        if (md.isenumlist())
+        if (md.isenumlist)
         {
             if (value.s32list.list == NULL)
             {
@@ -3206,117 +3265,13 @@ void meta_generic_validation_post_get(
             {
                 int32_t s32 = value.s32list.list[i];
 
-                if (md.enumallowedvalues.find(s32) == md.enumallowedvalues.end())
+                if (!sai_metadata_is_allowed_enum_value(&md, s32))
                 {
-                    META_LOG_ERROR(md, "is enum list, but value %d not found on allowed values list", value.s32);
+                    META_LOG_ERROR(md, "is enum list, but value %d not found on allowed values list", s32);
                 }
             }
         }
-
-        if (md.isvlan())
-        {
-            if (value.u16 < MINIMUM_VLAN_NUMBER || value.u16 > MAXIMUM_VLAN_NUMBER)
-            {
-                META_LOG_ERROR(md, "get returned invalid vlan %d", value.u16);
-            }
-        }
     }
-}
-
-// SWITCH
-
-sai_status_t meta_sai_set_switch(
-        _In_ const sai_attribute_t *attr,
-        _In_ sai_set_switch_attribute_fn set)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status;
-
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_SWITCH, .key = { } };
-
-    status = meta_generic_validation_set(meta_key, attr);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    //status = meta_pre_set_switch(attr);
-
-    //if (status != SAI_STATUS_SUCCESS)
-    //{
-    //    return status;
-    //}
-
-    if (set == NULL)
-    {
-        SWSS_LOG_ERROR("set function pointer is NULL");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    status = set(attr);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %d", status);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %d", status);
-    }
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        meta_generic_validation_post_set(meta_key, attr);
-    }
-
-    return status;
-}
-
-sai_status_t meta_sai_get_switch(
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_switch_attribute_fn get)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status;
-
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_SWITCH, .key = { } };
-
-    status = meta_generic_validation_get(meta_key, attr_count, attr_list);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    if (get == NULL)
-    {
-        SWSS_LOG_ERROR("get function pointer is NULL");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    status = get(attr_count, attr_list);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %d", status);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %d", status);
-    }
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        meta_generic_validation_post_get(meta_key, attr_count, attr_list);
-    }
-
-    return status;
 }
 
 // FDB ENTRY
@@ -3335,36 +3290,20 @@ sai_status_t meta_sai_validate_fdb_entry(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    sai_vlan_id_t vlan_id = fdb_entry->vlan_id;
+    //sai_vlan_id_t vlan_id = fdb_entry->vlan_id;
 
-    if (vlan_id < MINIMUM_VLAN_NUMBER || vlan_id > MAXIMUM_VLAN_NUMBER)
-    {
-        SWSS_LOG_ERROR("invalid vlan number %d expected <%d..%d>", vlan_id, MINIMUM_VLAN_NUMBER, MAXIMUM_VLAN_NUMBER);
+    //if (vlan_id < MINIMUM_VLAN_NUMBER || vlan_id > MAXIMUM_VLAN_NUMBER)
+    //{
+    //    SWSS_LOG_ERROR("invalid vlan number %d expected <%d..%d>", vlan_id, MINIMUM_VLAN_NUMBER, MAXIMUM_VLAN_NUMBER);
 
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    // check if vlan exists
-    // NOTE: this is disabled on purpose, we can create/set/get/remove fdb entris with non existing vlans
-
-    /*
-    sai_object_meta_key_t meta_key_vlan = { .object_type = SAI_OBJECT_TYPE_VLAN, .key = { .vlan_id = vlan_id } };
-
-    std::string key_vlan = get_object_meta_key_string(meta_key_vlan);
-
-    if (!object_exists(key_vlan))
-    {
-        SWSS_LOG_ERROR("object key %s doesn't exist", key_vlan.c_str());
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-    */
+    //    return SAI_STATUS_INVALID_PARAMETER;
+    //}
 
     // check if fdb entry exists
 
-    sai_object_meta_key_t meta_key_fdb = { .object_type = SAI_OBJECT_TYPE_FDB, .key = { .fdb_entry = *fdb_entry } };
+    sai_object_meta_key_t meta_key_fdb = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = *fdb_entry } } };
 
-    std::string key_fdb = get_object_meta_key_string(meta_key_fdb);
+    std::string key_fdb = sai_serialize_object_meta_key(meta_key_fdb);
 
     if (create)
     {
@@ -3407,9 +3346,9 @@ sai_status_t meta_sai_create_fdb_entry(
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_FDB, .key = { .fdb_entry = *fdb_entry  } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = *fdb_entry  } } };
 
-    status = meta_generic_validation_create(meta_key, attr_count, attr_list);
+    status = meta_generic_validation_create(meta_key, fdb_entry->switch_id, attr_count, attr_list);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -3427,16 +3366,16 @@ sai_status_t meta_sai_create_fdb_entry(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("create status: %d", status);
+        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("create status: %d", status);
+        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        meta_generic_validation_post_create(meta_key, attr_count, attr_list);
+        meta_generic_validation_post_create(meta_key, fdb_entry->switch_id, attr_count, attr_list);
     }
 
     return status;
@@ -3455,7 +3394,7 @@ sai_status_t meta_sai_remove_fdb_entry(
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_FDB, .key = { .fdb_entry = *fdb_entry  } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = *fdb_entry  } } };
 
     status = meta_generic_validation_remove(meta_key);
 
@@ -3475,11 +3414,11 @@ sai_status_t meta_sai_remove_fdb_entry(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("remove status: %d", status);
+        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("remove status: %d", status);
+        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
@@ -3504,7 +3443,7 @@ sai_status_t meta_sai_set_fdb_entry(
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_FDB, .key = { .fdb_entry = *fdb_entry  } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = *fdb_entry  } } };
 
     status = meta_generic_validation_set(meta_key, attr);
 
@@ -3524,11 +3463,11 @@ sai_status_t meta_sai_set_fdb_entry(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("set status: %d", status);
+        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("set status: %d", status);
+        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
@@ -3556,7 +3495,7 @@ sai_status_t meta_sai_get_fdb_entry(
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_FDB, .key = { .fdb_entry = *fdb_entry } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = *fdb_entry } } };
 
     status = meta_generic_validation_get(meta_key, attr_count, attr_list);
 
@@ -3576,16 +3515,16 @@ sai_status_t meta_sai_get_fdb_entry(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("get status: %d", status);
+        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("get status: %d", status);
+        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        meta_generic_validation_post_get(meta_key, attr_count, attr_list);
+        meta_generic_validation_post_get(meta_key, fdb_entry->switch_id, attr_count, attr_list);
     }
 
     return status;
@@ -3630,9 +3569,9 @@ sai_status_t meta_sai_validate_neighbor_entry(
 
     sai_object_type_t object_type = sai_object_type_query(rif);
 
-    if (object_type == SAI_NULL_OBJECT_ID)
+    if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("router interface oid 0x%lx is not valid object type, returned null object id", rif);
+        SWSS_LOG_ERROR("router interface oid 0x%lx is not valid object type, returned null object type", rif);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3641,16 +3580,16 @@ sai_status_t meta_sai_validate_neighbor_entry(
 
     if (object_type != expected)
     {
-        SWSS_LOG_ERROR("router interface oid 0x%lx type %d is wrond type, expected object type %d", rif, object_type, expected);
+        SWSS_LOG_ERROR("router interface oid 0x%lx type %d is wrong type, expected object type %d", rif, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
     // check if router interface exists
 
-    sai_object_meta_key_t meta_key_rif = { .object_type = expected, .key = { .object_id = rif } };
+    sai_object_meta_key_t meta_key_rif = { .objecttype = expected, .objectkey = { .key = { .object_id = rif } } };
 
-    std::string key_rif = get_object_meta_key_string(meta_key_rif);
+    std::string key_rif = sai_serialize_object_meta_key(meta_key_rif);
 
     if (!object_exists(key_rif))
     {
@@ -3659,9 +3598,9 @@ sai_status_t meta_sai_validate_neighbor_entry(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    sai_object_meta_key_t meta_key_neighbor = { .object_type = SAI_OBJECT_TYPE_NEIGHBOR, .key = { .neighbor_entry = *neighbor_entry } };
+    sai_object_meta_key_t meta_key_neighbor = { .objecttype = SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, .objectkey = { .key = { .neighbor_entry = *neighbor_entry } } };
 
-    std::string key_neighbor = get_object_meta_key_string(meta_key_neighbor);
+    std::string key_neighbor = sai_serialize_object_meta_key(meta_key_neighbor);
 
     if (create)
     {
@@ -3704,9 +3643,9 @@ sai_status_t meta_sai_create_neighbor_entry(
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_NEIGHBOR, .key = { .neighbor_entry = *neighbor_entry  } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, .objectkey = { .key = { .neighbor_entry = *neighbor_entry  } } };
 
-    status = meta_generic_validation_create(meta_key, attr_count, attr_list);
+    status = meta_generic_validation_create(meta_key, neighbor_entry->switch_id, attr_count, attr_list);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -3724,16 +3663,16 @@ sai_status_t meta_sai_create_neighbor_entry(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("create status: %d", status);
+        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("create status: %d", status);
+        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        meta_generic_validation_post_create(meta_key, attr_count, attr_list);
+        meta_generic_validation_post_create(meta_key, neighbor_entry->switch_id, attr_count, attr_list);
     }
 
     return status;
@@ -3752,7 +3691,7 @@ sai_status_t meta_sai_remove_neighbor_entry(
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_NEIGHBOR, .key = { .neighbor_entry = *neighbor_entry  } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, .objectkey = { .key = { .neighbor_entry = *neighbor_entry  } } };
 
     status = meta_generic_validation_remove(meta_key);
 
@@ -3772,11 +3711,11 @@ sai_status_t meta_sai_remove_neighbor_entry(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("remove status: %d", status);
+        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("remove status: %d", status);
+        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
@@ -3790,7 +3729,7 @@ sai_status_t meta_sai_remove_neighbor_entry(
 sai_status_t meta_sai_set_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry,
         _In_ const sai_attribute_t *attr,
-        _In_ sai_set_neighbor_attribute_fn set)
+        _In_ sai_set_neighbor_entry_attribute_fn set)
 {
     SWSS_LOG_ENTER();
 
@@ -3801,7 +3740,7 @@ sai_status_t meta_sai_set_neighbor_entry(
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_NEIGHBOR, .key = { .neighbor_entry = *neighbor_entry  } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, .objectkey = { .key = { .neighbor_entry = *neighbor_entry  } } };
 
     status = meta_generic_validation_set(meta_key, attr);
 
@@ -3821,11 +3760,11 @@ sai_status_t meta_sai_set_neighbor_entry(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("set status: %d", status);
+        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("set status: %d", status);
+        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
@@ -3840,7 +3779,7 @@ sai_status_t meta_sai_get_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry,
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_neighbor_attribute_fn get)
+        _In_ sai_get_neighbor_entry_attribute_fn get)
 {
     SWSS_LOG_ENTER();
 
@@ -3851,7 +3790,7 @@ sai_status_t meta_sai_get_neighbor_entry(
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_NEIGHBOR, .key = { .neighbor_entry = *neighbor_entry } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, .objectkey = { .key = { .neighbor_entry = *neighbor_entry } } };
 
     status = meta_generic_validation_get(meta_key, attr_count, attr_list);
 
@@ -3871,259 +3810,16 @@ sai_status_t meta_sai_get_neighbor_entry(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("get status: %d", status);
+        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("get status: %d", status);
+        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        meta_generic_validation_post_get(meta_key, attr_count, attr_list);
-    }
-
-    return status;
-}
-
-// VLAN
-
-sai_status_t meta_sai_validate_vlan_id(
-        _In_ sai_vlan_id_t vlan_id,
-        _In_ bool create)
-{
-    SWSS_LOG_ENTER();
-
-    if (vlan_id < MINIMUM_VLAN_NUMBER || vlan_id > MAXIMUM_VLAN_NUMBER)
-    {
-        SWSS_LOG_ERROR("invalid vlan number %d", vlan_id);
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    sai_object_meta_key_t meta_key_vlan = { .object_type = SAI_OBJECT_TYPE_VLAN, .key = { .vlan_id = vlan_id } };
-
-    std::string key_vlan = get_object_meta_key_string(meta_key_vlan);
-
-    if (create)
-    {
-        if (object_exists(key_vlan))
-        {
-            SWSS_LOG_ERROR("object key %s already exists", key_vlan.c_str());
-
-            return SAI_STATUS_ITEM_ALREADY_EXISTS;
-        }
-
-        return SAI_STATUS_SUCCESS;
-    }
-
-    if (!object_exists(key_vlan))
-    {
-        SWSS_LOG_ERROR("object key %s doesn't exist", key_vlan.c_str());
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    return SAI_STATUS_SUCCESS;
-}
-
-sai_status_t meta_sai_create_vlan(
-        _In_ sai_vlan_id_t vlan_id,
-        _In_ sai_create_vlan_fn create)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = meta_sai_validate_vlan_id(vlan_id, true);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_VLAN, .key = { .vlan_id = vlan_id } };
-
-    status = meta_generic_validation_create(meta_key, 0, NULL);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    if (create == NULL)
-    {
-        SWSS_LOG_ERROR("create function pointer is NULL");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    status = create(vlan_id);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %d", status);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %d", status);
-    }
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        meta_generic_validation_post_create(meta_key, 0, NULL);
-    }
-
-    return status;
-}
-
-sai_status_t meta_sai_remove_vlan(
-        _In_ sai_vlan_id_t vlan_id,
-        _In_ sai_remove_vlan_fn remove)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = meta_sai_validate_vlan_id(vlan_id, false);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    if (vlan_id == DEFAULT_VLAN_NUMBER)
-    {
-        SWSS_LOG_ERROR("default vlan %d can't be removed", vlan_id);
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_VLAN, .key = { .vlan_id = vlan_id } };
-
-    status = meta_generic_validation_remove(meta_key);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    if (remove == NULL)
-    {
-        SWSS_LOG_ERROR("remove function pointer is NULL");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    status = remove(vlan_id);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %d", status);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %d", status);
-    }
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        meta_generic_validation_post_remove(meta_key);
-    }
-
-    return status;
-}
-
-sai_status_t meta_sai_set_vlan(
-        _In_ sai_vlan_id_t vlan_id,
-        _In_ const sai_attribute_t *attr,
-        _In_ sai_set_vlan_attribute_fn set)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = meta_sai_validate_vlan_id(vlan_id, false);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_VLAN, .key = { .vlan_id = vlan_id  } };
-
-    status = meta_generic_validation_set(meta_key, attr);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    if (set == NULL)
-    {
-        SWSS_LOG_ERROR("set function pointer is NULL");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    status = set(vlan_id, attr);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %d", status);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %d", status);
-    }
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        meta_generic_validation_post_set(meta_key, attr);
-    }
-
-    return status;
-}
-
-sai_status_t meta_sai_get_vlan(
-        _In_ sai_vlan_id_t vlan_id,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_vlan_attribute_fn get)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = meta_sai_validate_vlan_id(vlan_id, false);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_VLAN, .key = { .vlan_id = vlan_id } };
-
-    status = meta_generic_validation_get(meta_key, attr_count, attr_list);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    if (get == NULL)
-    {
-        SWSS_LOG_ERROR("get function pointer is NULL");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    status = get(vlan_id, attr_count, attr_list);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %d", status);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %d", status);
-    }
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        meta_generic_validation_post_get(meta_key, attr_count, attr_list);
+        meta_generic_validation_post_get(meta_key, neighbor_entry->switch_id, attr_count, attr_list);
     }
 
     return status;
@@ -4132,19 +3828,19 @@ sai_status_t meta_sai_get_vlan(
 // ROUTE ENTRY
 
 sai_status_t meta_sai_validate_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
+        _In_ const sai_route_entry_t* route_entry,
         _In_ bool create)
 {
     SWSS_LOG_ENTER();
 
-    if (unicast_route_entry == NULL)
+    if (route_entry == NULL)
     {
-        SWSS_LOG_ERROR("unicast_route_entry pointer is NULL");
+        SWSS_LOG_ERROR("route_entry pointer is NULL");
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    auto family = unicast_route_entry->destination.addr_family;
+    auto family = route_entry->destination.addr_family;
 
     switch (family)
     {
@@ -4153,9 +3849,9 @@ sai_status_t meta_sai_validate_route_entry(
 
         case SAI_IP_ADDR_FAMILY_IPV6:
 
-            if (!is_ipv6_mask_valid(unicast_route_entry->destination.mask.ip6))
+            if (!is_ipv6_mask_valid(route_entry->destination.mask.ip6))
             {
-                SWSS_LOG_ERROR("invalid ipv6 mask: %s", ip_addr_to_string(family, unicast_route_entry->destination.mask.ip6).c_str());
+                SWSS_LOG_ERROR("invalid ipv6 mask: %s", sai_serialize_ipv6(route_entry->destination.mask.ip6).c_str());
 
                 return SAI_STATUS_INVALID_PARAMETER;
             }
@@ -4169,7 +3865,7 @@ sai_status_t meta_sai_validate_route_entry(
             return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    sai_object_id_t vr = unicast_route_entry->vr_id;
+    sai_object_id_t vr = route_entry->vr_id;
 
     if (vr == SAI_NULL_OBJECT_ID)
     {
@@ -4180,9 +3876,9 @@ sai_status_t meta_sai_validate_route_entry(
 
     sai_object_type_t object_type = sai_object_type_query(vr);
 
-    if (object_type == SAI_NULL_OBJECT_ID)
+    if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%lx is not valid object type, returned null object id", vr);
+        SWSS_LOG_ERROR("virtual router oid 0x%lx is not valid object type, returned null object type", vr);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4191,16 +3887,16 @@ sai_status_t meta_sai_validate_route_entry(
 
     if (object_type != expected)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%lx type %d is wrond type, expected object type %d", vr, object_type, expected);
+        SWSS_LOG_ERROR("virtual router oid 0x%lx type %d is wrong type, expected object type %d", vr, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
     // check if virtual router exists
 
-    sai_object_meta_key_t meta_key_vr = { .object_type = expected, .key = { .object_id = vr } };
+    sai_object_meta_key_t meta_key_vr = { .objecttype = expected, .objectkey = { .key = { .object_id = vr } } };
 
-    std::string key_vr = get_object_meta_key_string(meta_key_vr);
+    std::string key_vr = sai_serialize_object_meta_key(meta_key_vr);
 
     if (!object_exists(key_vr))
     {
@@ -4211,9 +3907,9 @@ sai_status_t meta_sai_validate_route_entry(
 
     // check if route entry exists
 
-    sai_object_meta_key_t meta_key_route = { .object_type = SAI_OBJECT_TYPE_ROUTE, .key = { .route_entry = *unicast_route_entry } };
+    sai_object_meta_key_t meta_key_route = { .objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY, .objectkey = { .key = { .route_entry = *route_entry } } };
 
-    std::string key_route = get_object_meta_key_string(meta_key_route);
+    std::string key_route = sai_serialize_object_meta_key(meta_key_route);
 
     if (create)
     {
@@ -4240,23 +3936,23 @@ sai_status_t meta_sai_validate_route_entry(
 }
 
 sai_status_t meta_sai_create_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
+        _In_ const sai_route_entry_t* route_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list,
-        _In_ sai_create_route_fn create)
+        _In_ sai_create_route_entry_fn create)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_route_entry(unicast_route_entry, true);
+    sai_status_t status = meta_sai_validate_route_entry(route_entry, true);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_ROUTE, .key = { .route_entry = *unicast_route_entry  } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY, .objectkey = { .key = { .route_entry = *route_entry  } } };
 
-    status = meta_generic_validation_create(meta_key, attr_count, attr_list);
+    status = meta_generic_validation_create(meta_key, route_entry->switch_id, attr_count, attr_list);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -4270,39 +3966,39 @@ sai_status_t meta_sai_create_route_entry(
         return SAI_STATUS_FAILURE;
     }
 
-    status = create(unicast_route_entry, attr_count, attr_list);
+    status = create(route_entry, attr_count, attr_list);
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("create status: %d", status);
+        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("create status: %d", status);
+        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        meta_generic_validation_post_create(meta_key, attr_count, attr_list);
+        meta_generic_validation_post_create(meta_key, route_entry->switch_id, attr_count, attr_list);
     }
 
     return status;
 }
 
 sai_status_t meta_sai_remove_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
-        _In_ sai_remove_route_fn remove)
+        _In_ const sai_route_entry_t* route_entry,
+        _In_ sai_remove_route_entry_fn remove)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_route_entry(unicast_route_entry, false);
+    sai_status_t status = meta_sai_validate_route_entry(route_entry, false);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_ROUTE, .key = { .route_entry = *unicast_route_entry  } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY, .objectkey = { .key = { .route_entry = *route_entry  } } };
 
     status = meta_generic_validation_remove(meta_key);
 
@@ -4318,15 +4014,15 @@ sai_status_t meta_sai_remove_route_entry(
         return SAI_STATUS_FAILURE;
     }
 
-    status = remove(unicast_route_entry);
+    status = remove(route_entry);
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("remove status: %d", status);
+        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("remove status: %d", status);
+        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
@@ -4338,20 +4034,20 @@ sai_status_t meta_sai_remove_route_entry(
 }
 
 sai_status_t meta_sai_set_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
+        _In_ const sai_route_entry_t* route_entry,
         _In_ const sai_attribute_t *attr,
-        _In_ sai_set_route_attribute_fn set)
+        _In_ sai_set_route_entry_attribute_fn set)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_route_entry(unicast_route_entry, false);
+    sai_status_t status = meta_sai_validate_route_entry(route_entry, false);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_ROUTE, .key = { .route_entry = *unicast_route_entry  } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY, .objectkey = { .key = { .route_entry = *route_entry  } } };
 
     status = meta_generic_validation_set(meta_key, attr);
 
@@ -4367,15 +4063,15 @@ sai_status_t meta_sai_set_route_entry(
         return SAI_STATUS_FAILURE;
     }
 
-    status = set(unicast_route_entry, attr);
+    status = set(route_entry, attr);
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("set status: %d", status);
+        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("set status: %d", status);
+        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
@@ -4387,21 +4083,21 @@ sai_status_t meta_sai_set_route_entry(
 }
 
 sai_status_t meta_sai_get_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
+        _In_ const sai_route_entry_t* route_entry,
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_route_attribute_fn get)
+        _In_ sai_get_route_entry_attribute_fn get)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_route_entry(unicast_route_entry, false);
+    sai_status_t status = meta_sai_validate_route_entry(route_entry, false);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_ROUTE, .key = { .route_entry = *unicast_route_entry } };
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY, .objectkey = { .key = { .route_entry = *route_entry } } };
 
     status = meta_generic_validation_get(meta_key, attr_count, attr_list);
 
@@ -4417,136 +4113,20 @@ sai_status_t meta_sai_get_route_entry(
         return SAI_STATUS_FAILURE;
     }
 
-    status = get(unicast_route_entry, attr_count, attr_list);
+    status = get(route_entry, attr_count, attr_list);
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("get status: %d", status);
+        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("get status: %d", status);
+        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        meta_generic_validation_post_get(meta_key, attr_count, attr_list);
-    }
-
-    return status;
-}
-
-// TRAP
-
-sai_status_t meta_sai_validate_trap(
-        _In_ sai_hostif_trap_id_t hostif_trapid)
-{
-    SWSS_LOG_ENTER();
-
-    if (enum_sai_hostif_trap_id_t_values.find(hostif_trapid) == enum_sai_hostif_trap_id_t_values.end())
-    {
-        SWSS_LOG_ERROR("trap id %d not found on allowed trap id values list", hostif_trapid);
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    return SAI_STATUS_SUCCESS;
-}
-
-sai_status_t meta_sai_set_trap(
-        _In_ sai_hostif_trap_id_t hostif_trapid,
-        _In_ const sai_attribute_t *attr,
-        _In_ sai_set_hostif_trap_attribute_fn set)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = meta_sai_validate_trap(hostif_trapid);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_TRAP, .key = { .trap_id = hostif_trapid } };
-
-    status = meta_generic_validation_set(meta_key, attr);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    if (set == NULL)
-    {
-        SWSS_LOG_ERROR("set function pointer is NULL");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    status = set(hostif_trapid, attr);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %d", status);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %d", status);
-    }
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        meta_generic_validation_post_set(meta_key, attr);
-    }
-
-    return status;
-}
-
-sai_status_t meta_sai_get_trap(
-        _In_ sai_hostif_trap_id_t hostif_trapid,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_hostif_trap_attribute_fn get)
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = meta_sai_validate_trap(hostif_trapid);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    sai_object_meta_key_t meta_key = { .object_type = SAI_OBJECT_TYPE_TRAP, .key = { .trap_id = hostif_trapid } };
-
-    status = meta_generic_validation_get(meta_key, attr_count, attr_list);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
-
-    if (get == NULL)
-    {
-        SWSS_LOG_ERROR("get function pointer is NULL");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    status = get(hostif_trapid, attr_count, attr_list);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %d", status);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %d", status);
-    }
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        meta_generic_validation_post_get(meta_key, attr_count, attr_list);
+        meta_generic_validation_post_get(meta_key, route_entry->switch_id, attr_count, attr_list);
     }
 
     return status;
@@ -4557,6 +4137,7 @@ sai_status_t meta_sai_get_trap(
 sai_status_t meta_sai_validate_oid(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t* object_id,
+        _In_ sai_object_id_t switch_id,
         _In_ bool create)
 {
     SWSS_LOG_ENTER();
@@ -4565,25 +4146,16 @@ sai_status_t meta_sai_validate_oid(
             object_type >= SAI_OBJECT_TYPE_MAX)
     {
         SWSS_LOG_ERROR("invalid object type specified: %d, FIXME", object_type);
-        throw;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    const char* otname = get_object_type_name(object_type);
+    const char* otname =  sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_object_type_t, object_type);
 
-    switch (object_type)
+    auto info = sai_metadata_get_object_type_info(object_type);
+
+    if (info->isnonobjectid)
     {
-        case SAI_OBJECT_TYPE_SWITCH:
-        case SAI_OBJECT_TYPE_FDB:
-        case SAI_OBJECT_TYPE_ROUTE:
-        case SAI_OBJECT_TYPE_NEIGHBOR:
-        case SAI_OBJECT_TYPE_VLAN:
-        case SAI_OBJECT_TYPE_TRAP:
-
-            SWSS_LOG_ERROR("invalid object type (%s) specified as generic, FIXME", otname);
-            throw;
-
-        default:
-            break;
+        SWSS_LOG_THROW("invalid object type (%s) specified as generic, FIXME", otname);
     }
 
     SWSS_LOG_DEBUG("generic object type: %s", otname);
@@ -4611,9 +4183,9 @@ sai_status_t meta_sai_validate_oid(
 
     sai_object_type_t ot = sai_object_type_query(oid);
 
-    if (ot == SAI_NULL_OBJECT_ID)
+    if (ot == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("%s oid 0x%lx is not valid object type, returned null object id", otname, oid);
+        SWSS_LOG_ERROR("%s oid 0x%lx is not valid object type, returned null object type", otname, oid);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4622,16 +4194,16 @@ sai_status_t meta_sai_validate_oid(
 
     if (ot != expected)
     {
-        SWSS_LOG_ERROR("%s oid 0x%lx type %d is wrond type, expected object type %d", otname, oid, ot, expected);
+        SWSS_LOG_ERROR("%s oid 0x%lx type %d is wrong type, expected object type %d", otname, oid, ot, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
     // check if object exists
 
-    sai_object_meta_key_t meta_key_oid = { .object_type = expected, .key = { .object_id = oid } };
+    sai_object_meta_key_t meta_key_oid = { .objecttype = expected, .objectkey = { .key = { .object_id = oid } } };
 
-    std::string key_oid = get_object_meta_key_string(meta_key_oid);
+    std::string key_oid = sai_serialize_object_meta_key(meta_key_oid);
 
     if (!object_exists(key_oid))
     {
@@ -4646,22 +4218,23 @@ sai_status_t meta_sai_validate_oid(
 sai_status_t meta_sai_create_oid(
         _In_ sai_object_type_t object_type,
         _Out_ sai_object_id_t* object_id,
+        _In_ sai_object_id_t switch_id,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list,
         _In_ sai_create_generic_fn create)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_oid(object_type, object_id, true);
+    sai_status_t status = meta_sai_validate_oid(object_type, object_id, switch_id, true);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = object_type, .key = { .object_id  = SAI_NULL_OBJECT_ID } };
+    sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = SAI_NULL_OBJECT_ID } } };
 
-    status = meta_generic_validation_create(meta_key, attr_count, attr_list);
+    status = meta_generic_validation_create(meta_key, switch_id, attr_count, attr_list);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -4675,23 +4248,33 @@ sai_status_t meta_sai_create_oid(
         return SAI_STATUS_FAILURE;
     }
 
-    status = create(object_type, object_id, attr_count, attr_list);
+    status = create(object_type, object_id, switch_id, attr_count, attr_list);
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("create status: %d", status);
+        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("create status: %d", status);
+        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        // new oid was created, save id and validate it
+        meta_key.objectkey.key.object_id = *object_id;
 
-        meta_key.key.object_id = *object_id;
-        meta_generic_validation_post_create(meta_key, attr_count, attr_list);
+        if (meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+        {
+            /*
+             * We are creating switch object, so switch id must be the same as
+             * just created object. We could use SAI_NULL_OBJECT_ID in that
+             * case and do special switch inside post_create method.
+             */
+
+            switch_id = *object_id;
+        }
+
+        meta_generic_validation_post_create(meta_key, switch_id, attr_count, attr_list);
     }
 
     return status;
@@ -4704,14 +4287,14 @@ sai_status_t meta_sai_remove_oid(
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, false);
+    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, SAI_NULL_OBJECT_ID, false);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = object_type, .key = { .object_id  = object_id } };
+    sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id } } };
 
     status = meta_generic_validation_remove(meta_key);
 
@@ -4731,11 +4314,11 @@ sai_status_t meta_sai_remove_oid(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("remove status: %d", status);
+        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("remove status: %d", status);
+        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
@@ -4754,14 +4337,14 @@ sai_status_t meta_sai_set_oid(
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, false);
+    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, SAI_NULL_OBJECT_ID, false);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = object_type, .key = { .object_id  = object_id } };
+    sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id } } };
 
     status = meta_generic_validation_set(meta_key, attr);
 
@@ -4781,11 +4364,11 @@ sai_status_t meta_sai_set_oid(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("set status: %d", status);
+        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("set status: %d", status);
+        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
@@ -4805,14 +4388,14 @@ sai_status_t meta_sai_get_oid(
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, false);
+    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, SAI_NULL_OBJECT_ID, false);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    sai_object_meta_key_t meta_key = { .object_type = object_type, .key = { .object_id  = object_id } };
+    sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id } } };
 
     status = meta_generic_validation_get(meta_key, attr_count, attr_list);
 
@@ -4832,16 +4415,23 @@ sai_status_t meta_sai_get_oid(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_DEBUG("get status: %d", status);
+        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
     }
     else
     {
-        SWSS_LOG_ERROR("get status: %d", status);
+        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
     }
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        meta_generic_validation_post_get(meta_key, attr_count, attr_list);
+        sai_object_id_t switch_id = sai_switch_id_query(object_id);
+
+        if (!object_reference_exists(switch_id))
+        {
+            SWSS_LOG_ERROR("switch id 0x%lx don't exists", switch_id);
+        }
+
+        meta_generic_validation_post_get(meta_key, switch_id, attr_count, attr_list);
     }
 
     return status;
@@ -4854,20 +4444,9 @@ void meta_sai_on_fdb_event_single(
 {
     SWSS_LOG_ENTER();
 
-    // NOTE: vlan may not exists
+    const sai_object_meta_key_t meta_key_fdb = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = data.fdb_entry } } };
 
-    sai_object_meta_key_t meta_key_vlan = { .object_type = SAI_OBJECT_TYPE_VLAN, .key = { .vlan_id = data.fdb_entry.vlan_id} };
-
-    std::string key_vlan = get_object_meta_key_string(meta_key_vlan);
-
-    if (!object_exists(key_vlan))
-    {
-        SWSS_LOG_WARN("object key %s doesn't exist", key_vlan.c_str());
-    }
-
-    const sai_object_meta_key_t meta_key_fdb = { .object_type = SAI_OBJECT_TYPE_FDB, .key = { .fdb_entry = data.fdb_entry } };
-
-    std::string key_fdb = get_object_meta_key_string(meta_key_fdb);
+    std::string key_fdb = sai_serialize_object_meta_key(meta_key_fdb);
 
     switch (data.event_type)
     {
@@ -4891,17 +4470,17 @@ void meta_sai_on_fdb_event_single(
 
                     local[0] = data.attr[0]; // copy 1st attr
                     local[1].id = SAI_FDB_ENTRY_ATTR_TYPE;
-                    local[1].value.s32 = SAI_FDB_ENTRY_DYNAMIC; // assume learned entries are always dynamic
+                    local[1].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC; // assume learned entries are always dynamic
 
                     list = local;
                     count = 2; // now we added type
                 }
 
-                sai_status_t status = meta_generic_validation_create(meta_key_fdb, count, list);
+                sai_status_t status = meta_generic_validation_create(meta_key_fdb, data.fdb_entry.switch_id, count, list);
 
                 if (status == SAI_STATUS_SUCCESS)
                 {
-                    meta_generic_validation_post_create(meta_key_fdb, count, list);
+                    meta_generic_validation_post_create(meta_key_fdb, data.fdb_entry.switch_id, count, list);
                 }
                 else
                 {
@@ -4916,7 +4495,7 @@ void meta_sai_on_fdb_event_single(
 
             if (!object_exists(key_fdb))
             {
-                SWSS_LOG_WARN("object key %s don't exist but received AGED/FLUSHED event", key_fdb.c_str());
+                SWSS_LOG_WARN("object key %s doesn't exist but received AGED/FLUSHED event", key_fdb.c_str());
                 break;
             }
 

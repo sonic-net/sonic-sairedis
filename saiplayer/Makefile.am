@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/lib/inc -I/usr/include/sai
+AM_CPPFLAGS = -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta
 
 bin_PROGRAMS = saiplayer
 
@@ -10,4 +10,4 @@ endif
 
 saiplayer_SOURCES = saiplayer.cpp
 saiplayer_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-saiplayer_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -L$(top_srcdir)/lib/src/.libs -lsairedis
+saiplayer_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -L$(top_srcdir)/lib/src/.libs -lsairedis

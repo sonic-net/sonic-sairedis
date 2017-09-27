@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/lib/inc -I/usr/include/sai
+AM_CPPFLAGS = -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta
 
 bin_PROGRAMS = saidump
 
@@ -10,4 +10,4 @@ endif
 
 saidump_SOURCES = saidump.cpp
 saidump_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-saidump_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -L$(top_srcdir)/lib/src/.libs -lsairedis
+saidump_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -L$(top_srcdir)/lib/src/.libs -lsairedis

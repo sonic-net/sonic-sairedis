@@ -1,4 +1,5 @@
 usr/bin/saidump
 usr/bin/saiplayer
+usr/bin/saisdkdump
 usr/bin/syncd*
 syncd/scripts/* usr/bin
