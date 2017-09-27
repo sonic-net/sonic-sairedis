@@ -80,7 +80,7 @@ config_syncd_centec()
 
 config_syncd_cavium()
 {
-    CMD_ARGS+=" -p /etc/ssw/AS7512/profile.ini -N"
+    CMD_ARGS+=" -p /etc/ssw/AS7512/profile.ini"
 
     export XP_ROOT=/usr/bin/
 
