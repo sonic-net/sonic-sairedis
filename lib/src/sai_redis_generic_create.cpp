@@ -291,7 +291,7 @@ sai_status_t internal_redis_bulk_generic_create(
 
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
-        // FIXME: now only one attribute is supported fro each object, extend it later
+        // FIXME: now only one attribute is supported for each object, extend it later
         std::vector<swss::FieldValueTuple> entry =
             SaiAttributeList::serialize_attr_list(object_type, 1, &attr_list[idx][0], false);
 
