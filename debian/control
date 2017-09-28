@@ -20,7 +20,7 @@ Description: This package contains sync daemon with rpc for SONiC project.
 
 Package: vssyncd
 Architecture: any
-Conflicts: syncd-rpc
+Conflicts: syncd-rpc syncd
 Description: This package contains sync daemon for SONiC project linked with virtual switch.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
 
