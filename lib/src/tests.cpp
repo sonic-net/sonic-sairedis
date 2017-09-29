@@ -16,8 +16,6 @@ extern "C" {
     if ((status)!=SAI_STATUS_SUCCESS) \
         SWSS_LOG_THROW(format ": %s", ##__VA_ARGS__, sai_serialize_status(status).c_str());
 
-using namespace std;
-
 const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
@@ -137,9 +135,9 @@ void test_bulk_route_set()
 
     ASSERT_SUCCESS("Failed to create switch");
 
-    vector<vector<sai_attribute_t>> route_attrs;
-    vector<sai_attribute_t *> route_attrs_array;
-    vector<uint32_t> route_attrs_count;
+    std::vector<std::vector<sai_attribute_t>> route_attrs;
+    std::vector<sai_attribute_t *> route_attrs_array;
+    std::vector<uint32_t> route_attrs_count;
 
     for (uint32_t i = index; i < index + count; ++i)
     {
@@ -167,7 +165,7 @@ void test_bulk_route_set()
         route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
         routes.push_back(route_entry);
 
-        vector<sai_attribute_t> list(2);
+        std::vector<sai_attribute_t> list(2);
         sai_attribute_t &attr1 = list[0];
         sai_attribute_t &attr2 = list[1];
 
@@ -184,7 +182,7 @@ void test_bulk_route_set()
         route_attrs_array.push_back(route_attrs[j].data());
     }
 
-    vector<sai_status_t> statuses(count);
+    std::vector<sai_status_t> statuses(count);
     sai_bulk_create_route_entry(count, routes.data(), route_attrs_count.data(), route_attrs_array.data()
         , SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to create route");
