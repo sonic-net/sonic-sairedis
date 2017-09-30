@@ -906,7 +906,7 @@ void internal_syncd_get_send(
         /*
          * In this case we got correct values for list, but list was too small
          * so serialize only count without list itself, sairedis will need to
-         * take this into account when deseralzie.
+         * take this into account when deserialize.
          *
          * If there was a list somewhere, count will be changed to actual value
          * different attributes can have different lists, many of them may

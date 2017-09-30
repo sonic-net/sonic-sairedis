@@ -145,7 +145,7 @@ sai_status_t internal_redis_bulk_generic_create(
         _In_ const std::vector<std::string> &serialized_object_ids,
         _In_ const uint32_t *attr_count,
         _In_ const sai_attribute_t *const *attr_list,
-        _In_ const sai_status_t *object_statuses);
+        _Inout_ sai_status_t *object_statuses);
 
 // REMOVE
 

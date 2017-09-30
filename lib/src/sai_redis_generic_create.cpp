@@ -273,7 +273,7 @@ sai_status_t internal_redis_bulk_generic_create(
         _In_ const std::vector<std::string> &serialized_object_ids,
         _In_ const uint32_t *attr_count,
         _In_ const sai_attribute_t *const *attr_list,
-        _In_ const sai_status_t *object_statuses)
+        _Inout_ sai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -291,9 +291,8 @@ sai_status_t internal_redis_bulk_generic_create(
 
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
-        // FIXME: now only one attribute is supported for each object, extend it later
         std::vector<swss::FieldValueTuple> entry =
-            SaiAttributeList::serialize_attr_list(object_type, 1, &attr_list[idx][0], false);
+            SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], &attr_list[idx][0], false);
 
         std::string str_attr = joinFieldValues(entry);
 
@@ -342,6 +341,9 @@ sai_status_t internal_redis_bulk_generic_create(
         recordLine("C|" + str_object_type + joined);
     }
 
+    // key:         object_type:count
+    // field:       object_id
+    // value:       object_attrs
     std::string key = str_object_type + ":" + std::to_string(entries.size());
 
     if (entries.size())

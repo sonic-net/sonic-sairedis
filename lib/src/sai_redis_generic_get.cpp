@@ -10,7 +10,9 @@ sai_status_t internal_redis_get_process(
 {
     SWSS_LOG_ENTER();
 
-    // key is: object_type:object_id:sai_status
+    // key:         sai_status
+    // field:       attr_id
+    // value:       attr_value
 
     const std::string &key = kfvKey(kco);
     const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
