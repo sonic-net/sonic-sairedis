@@ -586,12 +586,6 @@ void SaiSwitch::collectCounters(
         sai_object_id_t vid = translate_rid_to_vid(port_rid, m_switch_vid);
 
         std::string strPortId = sai_serialize_object_id(vid);
-
-        // for counters, use port vid as printf "%llx" format
-        std::stringstream ss;
-        ss << std::hex << vid;
-        strPortId = ss.str();
-
         std::vector<swss::FieldValueTuple> values;
 
         for (size_t idx = 0; idx < counters.size(); idx++)
