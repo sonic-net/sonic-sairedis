@@ -13,7 +13,8 @@ sai_status_t redis_bulk_object_create_next_hop_group_members(
 
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return redis_bulk_generic_create(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, object_count, object_id
+        , switch_id, attr_count, attrs, object_statuses);
 }
 
 sai_status_t redis_bulk_object_remove_next_hop_group_members(

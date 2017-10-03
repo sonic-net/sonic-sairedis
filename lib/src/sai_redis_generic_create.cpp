@@ -268,6 +268,43 @@ sai_status_t redis_generic_create(
             attr_list);
 }
 
+sai_status_t redis_bulk_generic_create(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _Out_ sai_object_id_t *object_id, /* array */
+        _In_ sai_object_id_t switch_id,
+        _In_ const uint32_t *attr_count, /* array */
+        _In_ const sai_attribute_t *const *attr_list, /* array */
+        _Inout_ sai_status_t *object_statuses) /* array */
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> serialized_object_ids;
+
+    // on create vid is put in db by syncd
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        object_id[idx] = redis_create_virtual_object_id(object_type, switch_id);
+        if (object_id[idx] == SAI_NULL_OBJECT_ID)
+        {
+            SWSS_LOG_ERROR("failed to create %s, with switch id: %s",
+                    sai_serialize_object_type(object_type).c_str(),
+                    sai_serialize_object_id(switch_id).c_str());
+
+            return SAI_STATUS_INSUFFICIENT_RESOURCES;
+        }
+        std::string str_object_id = sai_serialize_object_id(object_id[idx]);
+        serialized_object_ids.push_back(str_object_id);
+    }
+
+    return internal_redis_bulk_generic_create(
+            object_type,
+            serialized_object_ids,
+            attr_count,
+            attr_list,
+            object_statuses);
+}
+
 sai_status_t internal_redis_bulk_generic_create(
         _In_ sai_object_type_t object_type,
         _In_ const std::vector<std::string> &serialized_object_ids,

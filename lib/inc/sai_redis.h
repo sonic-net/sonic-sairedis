@@ -140,6 +140,15 @@ sai_status_t redis_generic_create_route_entry(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
+sai_status_t redis_bulk_generic_create(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _Out_ sai_object_id_t *object_id, /* array */
+        _In_ sai_object_id_t switch_id,
+        _In_ const uint32_t *attr_count, /* array */
+        _In_ const sai_attribute_t *const *attr_list, /* array */
+        _Inout_ sai_status_t *object_statuses) /* array */;
+
 sai_status_t internal_redis_bulk_generic_create(
         _In_ sai_object_type_t object_type,
         _In_ const std::vector<std::string> &serialized_object_ids,
