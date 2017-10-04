@@ -4,46 +4,38 @@
 
 #define PFC_WD_POLL_MSECS 100
 
-void on_queue_deadlock(
-        _In_ uint32_t count,
-        _In_ sai_queue_deadlock_notification_data_t *data);
-
-PfcWatchdog::PfcCounterIds::PfcCounterIds(
-        _In_ sai_object_id_t queue,
+PfcWatchdog::PortCounterIds::PortCounterIds(
         _In_ sai_object_id_t port,
-        _In_ const std::vector<sai_port_stat_t> &portIds,
+        _In_ const std::vector<sai_port_stat_t> &portIds):
+    portId(port), portCounterIds(portIds)
+{
+}
+
+PfcWatchdog::QueueCounterIds::QueueCounterIds(
+        _In_ sai_object_id_t queue,
         _In_ const std::vector<sai_queue_stat_t> &queueIds):
-    queueId(queue), portId(port), portCounterIds(portIds), queueCounterIds(queueIds)
+    queueId(queue), queueCounterIds(queueIds)
 {
 }
 
 void PfcWatchdog::setPortCounterList(
-        _In_ sai_object_id_t queueVid,
-        _In_ sai_object_id_t queueId,
+        _In_ sai_object_id_t portVid,
+        _In_ sai_object_id_t portId,
         _In_ const std::vector<sai_port_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 
     PfcWatchdog &wd = getInstance();
 
-    sai_object_id_t portId = queueIdToPortId(queueId);
-    if (portId == SAI_NULL_OBJECT_ID)
-    {
-        return;
-    }
-
-    auto it = wd.m_counterIdsMap.find(queueVid);
-    if (it != wd.m_counterIdsMap.end())
+    auto it = wd.m_portCounterIdsMap.find(portVid);
+    if (it != wd.m_portCounterIdsMap.end())
     {
         (*it).second->portCounterIds = counterIds;
         return;
     }
 
-    auto pfcCounterIds = std::make_shared<PfcCounterIds>(queueId,
-                                                         portId,
-                                                         counterIds,
-                                                         std::vector<sai_queue_stat_t>());
-    wd.m_counterIdsMap.emplace(queueVid, pfcCounterIds);
+    auto portCounterIds = std::make_shared<PortCounterIds>(portId, counterIds);
+    wd.m_portCounterIdsMap.emplace(portVid, portCounterIds);
 
     // Start watchdog thread in case it was not running due to empty counter IDs map
     wd.startWatchdogThread();
@@ -58,27 +50,41 @@ void PfcWatchdog::setQueueCounterList(
 
     PfcWatchdog &wd = getInstance();
 
-    sai_object_id_t portId = queueIdToPortId(queueId);
-    if (portId == SAI_NULL_OBJECT_ID)
-    {
-        return;
-    }
-
-    auto it = wd.m_counterIdsMap.find(queueVid);
-    if (it != wd.m_counterIdsMap.end())
+    auto it = wd.m_queueCounterIdsMap.find(queueVid);
+    if (it != wd.m_queueCounterIdsMap.end())
     {
         (*it).second->queueCounterIds = counterIds;
         return;
     }
 
-    auto pfcCounterIds = std::make_shared<PfcCounterIds>(queueId,
-                                                        portId,
-                                                        std::vector<sai_port_stat_t>(),
-                                                        counterIds);
-    wd.m_counterIdsMap.emplace(queueVid, pfcCounterIds);
+    auto queueCounterIds = std::make_shared<QueueCounterIds>(queueId, counterIds);
+    wd.m_queueCounterIdsMap.emplace(queueVid, queueCounterIds);
 
     // Start watchdog thread in case it was not running due to empty counter IDs map
     wd.startWatchdogThread();
+}
+
+void PfcWatchdog::removePort(
+        _In_ sai_object_id_t portVid)
+{
+    SWSS_LOG_ENTER();
+
+    PfcWatchdog &wd = getInstance();
+
+    auto it = wd.m_portCounterIdsMap.find(portVid);
+    if (it == wd.m_portCounterIdsMap.end())
+    {
+        SWSS_LOG_ERROR("Trying to remove nonexisting port counter Ids 0x%lx", portVid);
+        return;
+    }
+
+    wd.m_portCounterIdsMap.erase(it);
+
+    // Stop watchdog thread if counter IDs map is empty
+    if (wd.m_queueCounterIdsMap.empty() && wd.m_portCounterIdsMap.empty())
+    {
+        wd.endWatchdogThread();
+    }
 }
 
 void PfcWatchdog::removeQueue(
@@ -88,20 +94,65 @@ void PfcWatchdog::removeQueue(
 
     PfcWatchdog &wd = getInstance();
 
-    auto it = wd.m_counterIdsMap.find(queueVid);
-    if (it == wd.m_counterIdsMap.end())
+    auto it = wd.m_queueCounterIdsMap.find(queueVid);
+    if (it == wd.m_queueCounterIdsMap.end())
     {
         SWSS_LOG_ERROR("Trying to remove nonexisting queue counter Ids 0x%lx", queueVid);
         return;
     }
 
-    wd.m_counterIdsMap.erase(it);
+    wd.m_queueCounterIdsMap.erase(it);
 
     // Stop watchdog thread if counter IDs map is empty
-    if (wd.m_counterIdsMap.empty())
+    if (wd.m_queueCounterIdsMap.empty() && wd.m_portCounterIdsMap.empty())
     {
         wd.endWatchdogThread();
     }
+}
+
+void PfcWatchdog::addPortCounterPlugin(
+        _In_ std::string sha)
+{
+    SWSS_LOG_ENTER();
+
+    PfcWatchdog &wd = getInstance();
+
+    if (wd.m_portPlugins.find(sha) != wd.m_portPlugins.end() ||
+            wd.m_queuePlugins.find(sha) != wd.m_queuePlugins.end())
+    {
+        SWSS_LOG_ERROR("Plugin %s already registered", sha.c_str());
+    }
+
+    wd.m_portPlugins.insert(sha);
+    SWSS_LOG_NOTICE("Port counters plugin %s registered", sha.c_str());
+}
+
+void PfcWatchdog::addQueueCounterPlugin(
+        _In_ std::string sha)
+{
+    SWSS_LOG_ENTER();
+
+    PfcWatchdog &wd = getInstance();
+
+    if (wd.m_portPlugins.find(sha) != wd.m_portPlugins.end() ||
+            wd.m_queuePlugins.find(sha) != wd.m_queuePlugins.end())
+    {
+        SWSS_LOG_ERROR("Plugin %s already registered", sha.c_str());
+    }
+
+    wd.m_queuePlugins.insert(sha);
+    SWSS_LOG_NOTICE("Queue counters plugin %s registered", sha.c_str());
+}
+
+void PfcWatchdog::removeCounterPlugin(
+        _In_ std::string sha)
+{
+    SWSS_LOG_ENTER();
+
+    PfcWatchdog &wd = getInstance();
+
+    wd.m_queuePlugins.erase(sha);
+    wd.m_portPlugins.erase(sha);
 }
 
 PfcWatchdog::~PfcWatchdog(void)
@@ -120,30 +171,6 @@ PfcWatchdog& PfcWatchdog::getInstance(void)
     return wd;
 }
 
-sai_object_id_t PfcWatchdog::queueIdToPortId(
-        _In_ sai_object_id_t queueId)
-{
-    SWSS_LOG_ENTER();
-
-    sai_attribute_t attr =
-    {
-        .id = SAI_QUEUE_ATTR_PORT,
-        .value =
-        {
-            .oid = queueId,
-        }
-    };
-
-    sai_status_t status = sai_metadata_sai_queue_api->get_queue_attribute(queueId, 1, &attr);
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("Failed to get port Id of queue 0x%lx: %d", queueId, status);
-        return SAI_NULL_OBJECT_ID;
-    }
-
-    return attr.value.oid;
-}
-
 void PfcWatchdog::collectCounters(
         _In_ swss::Table &countersTable)
 {
@@ -151,17 +178,14 @@ void PfcWatchdog::collectCounters(
 
     std::lock_guard<std::mutex> lock(g_mutex);
 
-    // Collect stats for every registered queue
-    for (const auto &kv: m_counterIdsMap)
+    // Collect stats for every registered port
+    for (const auto &kv: m_portCounterIdsMap)
     {
-        const auto &queueVid = kv.first;
-        const auto &queueId = kv.second->queueId;
+        const auto &portVid = kv.first;
         const auto &portId = kv.second->portId;
         const auto &portCounterIds = kv.second->portCounterIds;
-        const auto &queueCounterIds = kv.second->queueCounterIds;
 
         std::vector<uint64_t> portStats(portCounterIds.size());
-        std::vector<uint64_t> queueStats(queueCounterIds.size());
 
         // Get port stats for queue
         sai_status_t status = sai_metadata_sai_port_api->get_port_stats(
@@ -175,8 +199,32 @@ void PfcWatchdog::collectCounters(
             continue;
         }
 
+        // Push all counter values to a single vector
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != portCounterIds.size(); i++)
+        {
+            const std::string &counterName = sai_serialize_port_stat(portCounterIds[i]);
+            values.emplace_back(counterName, std::to_string(portStats[i]));
+        }
+
+        // Write counters to DB
+        std::string portVidStr = sai_serialize_object_id(portVid);
+
+        countersTable.set(portVidStr, values, "");
+    }
+
+    // Collect stats for every registered queue
+    for (const auto &kv: m_queueCounterIdsMap)
+    {
+        const auto &queueVid = kv.first;
+        const auto &queueId = kv.second->queueId;
+        const auto &queueCounterIds = kv.second->queueCounterIds;
+
+        std::vector<uint64_t> queueStats(queueCounterIds.size());
+
         // Get queue stats
-        status = sai_metadata_sai_queue_api->get_queue_stats(
+        sai_status_t status = sai_metadata_sai_queue_api->get_queue_stats(
                 queueId,
                 static_cast<uint32_t>(queueCounterIds.size()),
                 queueCounterIds.data(),
@@ -189,12 +237,6 @@ void PfcWatchdog::collectCounters(
 
         // Push all counter values to a single vector
         std::vector<swss::FieldValueTuple> values;
-
-        for (size_t i = 0; i != portCounterIds.size(); i++)
-        {
-            const std::string &counterName = sai_serialize_port_stat(portCounterIds[i]);
-            values.emplace_back(counterName, std::to_string(portStats[i]));
-        }
 
         for (size_t i = 0; i != queueCounterIds.size(); i++)
         {
@@ -209,61 +251,38 @@ void PfcWatchdog::collectCounters(
     }
 }
 
-void PfcWatchdog::runChecks(
-        _In_ swss::DBConnector& db,
-        _In_ std::string detectSha,
-        _In_ std::string restoreSha)
+void PfcWatchdog::runPlugins(
+        _In_ swss::DBConnector& db)
 {
-    std::vector<std::string> argv = 
+    const std::vector<std::string> argv = 
     {
         std::to_string(COUNTERS_DB),
         COUNTERS_TABLE,
         std::to_string(PFC_WD_POLL_MSECS * 1000)
     };
 
+    std::vector<std::string> portList;
+    portList.reserve(m_portCounterIdsMap.size());
+    for (const auto& kv : m_portCounterIdsMap)
+    {
+        portList.push_back(sai_serialize_object_id(kv.first));
+    }
+
+    for (const auto& sha : m_portPlugins)
+    {
+        runRedisScript(db, sha, portList, argv);
+    }
+
     std::vector<std::string> queueList;
-    queueList.reserve(m_counterIdsMap.size());
-    for (const auto& kv : m_counterIdsMap)
+    queueList.reserve(m_queueCounterIdsMap.size());
+    for (const auto& kv : m_queueCounterIdsMap)
     {
         queueList.push_back(sai_serialize_object_id(kv.first));
     }
 
-    auto stormCheckReply = runRedisScript(db, detectSha, queueList, argv);
-    auto restoreCheckReply = runRedisScript(db, restoreSha, queueList, argv);
-
-    std::vector<sai_queue_deadlock_notification_data_t> ntfData;
-
-    for (const auto queueStr : stormCheckReply)
+    for (const auto& sha : m_queuePlugins)
     {
-        SWSS_LOG_ERROR("FOUND %s stormed", queueStr.c_str());
-        sai_object_id_t queueVid;
-        sai_deserialize_object_id(queueStr, queueVid);
-        sai_queue_deadlock_notification_data_t data =
-        {
-            .queue_id = m_counterIdsMap[queueVid]->queueId,
-            .event = SAI_QUEUE_PFC_DEADLOCK_EVENT_TYPE_DETECTED,
-        };
-        ntfData.push_back(data);
-    }
-
-    for (const auto queueStr : restoreCheckReply)
-    {
-        SWSS_LOG_ERROR("FOUND %s restored", queueStr.c_str());
-        sai_object_id_t queueVid;
-        sai_deserialize_object_id(queueStr, queueVid);
-        sai_queue_deadlock_notification_data_t data =
-        {
-            .queue_id = m_counterIdsMap[queueVid]->queueId,
-            .event = SAI_QUEUE_PFC_DEADLOCK_EVENT_TYPE_RECOVERED,
-        };
-        ntfData.push_back(data);
-    }
-
-    if (ntfData.size() != 0)
-    {
-        on_queue_deadlock(
-                static_cast<uint32_t>(ntfData.size()),
-                ntfData.data());
+        runRedisScript(db, sha, queueList, argv);
     }
 }
 
@@ -274,45 +293,10 @@ void PfcWatchdog::pfcWatchdogThread(void)
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     swss::Table countersTable(&db, COUNTERS_TABLE);
 
-    std::string platform = getenv("platform") ? getenv("platform") : "";
-
-    if (platform == "")
-    {
-        SWSS_LOG_ERROR("Environment variable 'platform' is not defined");
-        return;
-    }
-
-    std::string detectScriptName = "pfc_detect_" + platform + ".lua";
-    std::string restoreScriptName = "pfc_restore_" + platform + ".lua";
-
-    bool checkQueues = false;
-    std::string detectSha;
-    std::string restoreSha;
-
-    try
-    {
-        // Load script for storm detection
-        std::string detectLuaScript = swss::loadLuaScript(detectScriptName);
-        detectSha = swss::loadRedisScript(&db, detectLuaScript);
-
-        // Load script for restoration check
-        std::string restoreLuaScript = swss::loadLuaScript(restoreScriptName);
-        restoreSha = swss::loadRedisScript(&db, restoreLuaScript);
-
-        checkQueues = true;
-    }
-    catch(...)
-    {
-        SWSS_LOG_WARN("Lua scripts for PFC watchdog were not loaded");
-    }
-
     while (m_runPfcWatchdogThread)
     {
         collectCounters(countersTable);
-        if (checkQueues)
-        {
-            runChecks(db, detectSha, restoreSha);
-        }
+        runPlugins(db);
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
         m_cvSleep.wait_for(lk, std::chrono::milliseconds(PFC_WD_POLL_MSECS));
