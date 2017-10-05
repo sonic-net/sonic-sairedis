@@ -458,11 +458,43 @@ void stopNotificationsProcessingThread()
     ntf_process_thread = nullptr;
 }
 
+void on_queue_deadlock(
+        _In_ uint32_t count,
+        _In_ sai_queue_deadlock_notification_data_t *data)
+{
+    std::lock_guard<std::mutex> lock(g_mutex);
+
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("queue deadlock notification count: %u", count);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_queue_deadlock_notification_data_t *deadlock_data = &data[i];
+
+        /*
+         * We are using switch_rid as null, since queue should be already
+         * defined inside local db after creation.
+         *
+         * If this will be faster than return from create queue then we can use
+         * query switch id and extract rid of switch id and then convert it to
+         * switch vid.
+         */
+
+        deadlock_data->queue_id = translate_rid_to_vid(deadlock_data->queue_id, SAI_NULL_OBJECT_ID);
+    }
+
+    std::string s = sai_serialize_queue_deadlock_ntf(count, data);
+
+    send_notification("queue_deadlock", s);
+}
+
 sai_switch_state_change_notification_fn     on_switch_state_change_ntf = on_switch_state_change;
 sai_switch_shutdown_request_notification_fn on_switch_shutdown_request_ntf = on_switch_shutdown_request;
 sai_fdb_event_notification_fn               on_fdb_event_ntf = on_fdb_event;
 sai_port_state_change_notification_fn       on_port_state_change_ntf = on_port_state_change;
 sai_packet_event_notification_fn            on_packet_event_ntf = on_packet_event;
+sai_queue_pfc_deadlock_notification_fn      on_queue_deadlock_ntf = on_queue_deadlock;
 
 void check_notifications_pointers(
         _In_ uint32_t attr_count,
@@ -528,6 +560,10 @@ void check_notifications_pointers(
 
             case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
                 attr.value.ptr = (void*)on_packet_event_ntf;
+                break;
+
+            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
+                attr.value.ptr = (void*)on_queue_deadlock_ntf;
                 break;
 
             default:
