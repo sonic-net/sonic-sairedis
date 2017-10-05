@@ -12,7 +12,6 @@ sai_switch_shutdown_request_notification_fn on_switch_shutdown_request_notificat
 sai_fdb_event_notification_fn               on_fdb_event = NULL;
 sai_port_state_change_notification_fn       on_port_state_change = NULL;
 sai_packet_event_notification_fn            on_packet_event = NULL;
-sai_queue_pfc_deadlock_notification_fn      on_queue_deadlock = NULL;
 
 void clear_notifications()
 {
@@ -23,7 +22,6 @@ void clear_notifications()
     on_fdb_event = NULL;
     on_port_state_change = NULL;
     on_packet_event = NULL;
-    on_queue_deadlock = NULL;
 }
 
 void check_notifications_pointers(
@@ -74,10 +72,6 @@ void check_notifications_pointers(
 
             case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
                 on_packet_event = (sai_packet_event_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                on_queue_deadlock = (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
                 break;
 
             default:
@@ -188,26 +182,6 @@ void handle_packet_event(
     }
 }
 
-void handle_queue_deadlock_event(
-        _In_ const std::string &data)
-{
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_DEBUG("data: %s", data.c_str());
-
-    uint32_t count;
-    sai_queue_deadlock_notification_data_t *ntfData = NULL;
-
-    sai_deserialize_queue_deadlock_ntf(data, count, &ntfData);
-
-    if (on_queue_deadlock != NULL)
-    {
-        on_queue_deadlock(count, ntfData);
-    }
-
-    sai_deserialize_free_queue_deadlock_ntf(count, ntfData);
-}
-
 void handle_notification(
         _In_ const std::string &notification,
         _In_ const std::string &data,
@@ -239,10 +213,6 @@ void handle_notification(
     else if (notification == "packet_event")
     {
         handle_packet_event(data, values);
-    }
-    else if (notification == "queue_deadlock")
-    {
-        handle_queue_deadlock_event(data);
     }
     else
     {

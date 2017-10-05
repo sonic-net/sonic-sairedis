@@ -1101,8 +1101,7 @@ bool is_set_attribute_workaround(
     }
 
     if (objecttype == SAI_OBJECT_TYPE_SWITCH &&
-            (attrid == SAI_SWITCH_ATTR_SRC_MAC_ADDRESS ||
-             attrid == SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY))
+            attrid == SAI_SWITCH_ATTR_SRC_MAC_ADDRESS)
     {
         SWSS_LOG_WARN("setting %s failed: %s, not all platforms support this attribute",
                 sai_metadata_get_attr_metadata(objecttype, attrid)->attridname,

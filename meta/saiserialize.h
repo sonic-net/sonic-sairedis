@@ -109,10 +109,6 @@ std::string sai_serialize_port_oper_status_ntf(
         _In_ uint32_t count,
         _In_ const sai_port_oper_status_notification_t* port_oper_status);
 
-std::string sai_serialize_queue_deadlock_ntf(
-        _In_ uint32_t count,
-        _In_ const sai_queue_deadlock_notification_data_t* deadlock_data);
-
 // deserialize
 
 void sai_deserialize_number(
@@ -187,11 +183,6 @@ void sai_deserialize_port_oper_status_ntf(
         _Out_ uint32_t &count,
         _Out_ sai_port_oper_status_notification_t** portoperstatus);
 
-void sai_deserialize_queue_deadlock_ntf(
-        _In_ const std::string& s,
-        _Out_ uint32_t &count,
-        _Out_ sai_queue_deadlock_notification_data_t** deadlock_data);
-
 // free methods
 
 void sai_deserialize_free_attribute_value(
@@ -207,10 +198,6 @@ void sai_deserialize_free_fdb_event_ntf(
 void sai_deserialize_free_port_oper_status_ntf(
         _In_ uint32_t count,
         _In_ sai_port_oper_status_notification_t* portoperstatus);
-
-void sai_deserialize_free_queue_deadlock_ntf(
-        _In_ uint32_t count,
-        _In_ sai_queue_deadlock_notification_data_t* deadlock_data);
 
 void sai_deserialize_port_stat(
         _In_ const std::string& s,
