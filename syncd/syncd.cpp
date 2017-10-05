@@ -2399,7 +2399,7 @@ void processPfcWdEvent(
         }
         else
         {
-            SWSS_LOG_ERROR("Object tyoe for not supported");
+            SWSS_LOG_ERROR("Object type not supported");
         }
     }
 }
