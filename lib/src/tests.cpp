@@ -6,6 +6,7 @@ extern "C" {
 
 #include "swss/logger.h"
 #include "sairedis.h"
+#include "sai_redis.h"
 #include "meta/saiserialize.h"
 
 #include <map>
@@ -99,6 +100,89 @@ sai_object_id_t create_dummy_object_id(
     return (((sai_object_id_t)objecttype) << 48) | ++index;
 }
 
+void test_bulk_next_hop_group_member_create()
+{
+    SWSS_LOG_ENTER();
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
+
+    meta_init_db();
+    redis_clear_switch_ids();
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+
+    sai_status_t    status;
+
+    sai_next_hop_group_api_t  *sai_next_hop_group_api = NULL;
+    sai_switch_api_t *sai_switch_api = NULL;
+
+    sai_api_query(SAI_API_NEXT_HOP_GROUP, (void**)&sai_next_hop_group_api);
+    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+
+    uint32_t count = 3;
+
+    std::vector<sai_route_entry_t> routes;
+    std::vector<sai_attribute_t> attrs;
+
+    sai_attribute_t swattr;
+
+    swattr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    swattr.value.booldata = true;
+
+    sai_object_id_t switch_id;
+    status = sai_switch_api->create_switch(&switch_id, 1, &swattr);
+
+    ASSERT_SUCCESS("Failed to create switch");
+
+    std::vector<std::vector<sai_attribute_t>> nhgm_attrs;
+    std::vector<sai_attribute_t *> nhgm_attrs_array;
+    std::vector<uint32_t> nhgm_attrs_count;
+
+    // next hop group
+    sai_object_id_t hopgroup = create_dummy_object_id(SAI_OBJECT_TYPE_NEXT_HOP_GROUP);
+    object_reference_insert(hopgroup);
+    sai_object_meta_key_t meta_key_hopgruop = { .objecttype = SAI_OBJECT_TYPE_NEXT_HOP_GROUP, .objectkey = { .key = { .object_id = hopgroup } } };
+    std::string hopgroup_key = sai_serialize_object_meta_key(meta_key_hopgruop);
+    ObjectAttrHash[hopgroup_key] = { };
+
+    for (uint32_t i = 0; i <  count; ++i)
+    {
+        // next hop
+        sai_object_id_t hop = create_dummy_object_id(SAI_OBJECT_TYPE_NEXT_HOP);
+        object_reference_insert(hop);
+        sai_object_meta_key_t meta_key_hop = { .objecttype = SAI_OBJECT_TYPE_NEXT_HOP, .objectkey = { .key = { .object_id = hop } } };
+        std::string hop_key = sai_serialize_object_meta_key(meta_key_hop);
+        ObjectAttrHash[hop_key] = { };
+
+        std::vector<sai_attribute_t> list(2);
+        sai_attribute_t &attr1 = list[0];
+        sai_attribute_t &attr2 = list[1];
+
+        attr1.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID;
+        attr1.value.oid = hopgroup;
+        attr2.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
+        attr2.value.oid = hop;
+        nhgm_attrs.push_back(list);
+        nhgm_attrs_count.push_back(2);
+    }
+
+    for (size_t j = 0; j < nhgm_attrs.size(); j++)
+    {
+        nhgm_attrs_array.push_back(nhgm_attrs[j].data());
+    }
+
+    std::vector<sai_status_t> statuses(count);
+    std::vector<sai_object_id_t> object_id(count);
+    redis_bulk_object_create_next_hop_group_members(switch_id, count, nhgm_attrs_count.data(), nhgm_attrs_array.data()
+        , SAI_BULK_OP_TYPE_INGORE_ERROR, object_id.data(), statuses.data());
+    ASSERT_SUCCESS("Failed to create nhgm");
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_SUCCESS("Failed to create nhgm # %zu", j);
+    }
+}
+
 void test_bulk_route_set()
 {
     SWSS_LOG_ENTER();
@@ -106,6 +190,7 @@ void test_bulk_route_set()
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     meta_init_db();
+    redis_clear_switch_ids();
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
@@ -130,7 +215,6 @@ void test_bulk_route_set()
     swattr.value.booldata = true;
 
     sai_object_id_t switch_id;
-
     status = sai_switch_api->create_switch(&switch_id, 1, &swattr);
 
     ASSERT_SUCCESS("Failed to create switch");
@@ -183,9 +267,14 @@ void test_bulk_route_set()
     }
 
     std::vector<sai_status_t> statuses(count);
-    sai_bulk_create_route_entry(count, routes.data(), route_attrs_count.data(), route_attrs_array.data()
+    status = sai_bulk_create_route_entry(count, routes.data(), route_attrs_count.data(), route_attrs_array.data()
         , SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to create route");
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_SUCCESS("Failed to create route # %zu", j);
+    }
 
     for (uint32_t i = index; i < index + count; ++i)
     {
@@ -241,6 +330,8 @@ int main()
         test_sai_initialize();
 
         test_enable_recording();
+
+        test_bulk_next_hop_group_member_create();
 
         test_bulk_route_set();
 

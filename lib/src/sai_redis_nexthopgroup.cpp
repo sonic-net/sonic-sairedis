@@ -4,7 +4,7 @@ sai_status_t redis_bulk_object_create_next_hop_group_members(
         _In_ sai_object_id_t switch_id,
         _In_ uint32_t object_count,
         _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attrs,
+        _In_ const sai_attribute_t *const *attrs,
         _In_ sai_bulk_op_type_t type,
         _Out_ sai_object_id_t *object_id,
         _Out_ sai_status_t *object_statuses)
@@ -38,6 +38,7 @@ const sai_next_hop_group_api_t redis_next_hop_group_api = {
     REDIS_GENERIC_QUAD_API(next_hop_group)
     REDIS_GENERIC_QUAD_API(next_hop_group_member)
 
-    redis_bulk_object_create_next_hop_group_members,
+    // TODO: upstream signiture fix to SAI repo
+    (sai_bulk_object_create_fn)redis_bulk_object_create_next_hop_group_members,
     redis_bulk_object_remove_next_hop_group_members,
 };
