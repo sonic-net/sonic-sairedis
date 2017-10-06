@@ -2360,46 +2360,46 @@ void processPfcWdEvent(
             if (objectType == SAI_OBJECT_TYPE_PORT)
             {
                 PfcWatchdog::removePort(vid);
-                continue;
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE)
             {
                 PfcWatchdog::removeQueue(vid);
-                continue;
             }
             else
             {
-                SWSS_LOG_ERROR("Object tyoe for removal not supported");
+                SWSS_LOG_ERROR("Object type for removal not supported");
             }
         }
+        else if (op == SET_COMMAND)
+        {
+            auto idStrings  = swss::tokenize(value, ',');
 
-        auto idStrings  = swss::tokenize(value, ',');
-
-        if (objectType == SAI_OBJECT_TYPE_PORT && field == PFC_WD_PORT_COUNTER_ID_LIST)
-        {
-            std::vector<sai_port_stat_t> portCounterIds;
-            for (const auto &str : idStrings)
+            if (objectType == SAI_OBJECT_TYPE_PORT && field == PFC_WD_PORT_COUNTER_ID_LIST)
             {
-                sai_port_stat_t stat;
-                sai_deserialize_port_stat(str, stat);
-                portCounterIds.push_back(stat);
+                std::vector<sai_port_stat_t> portCounterIds;
+                for (const auto &str : idStrings)
+                {
+                    sai_port_stat_t stat;
+                    sai_deserialize_port_stat(str, stat);
+                    portCounterIds.push_back(stat);
+                }
+                PfcWatchdog::setPortCounterList(vid, rid, portCounterIds);
             }
-            PfcWatchdog::setPortCounterList(vid, rid, portCounterIds);
-        }
-        else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_COUNTER_ID_LIST)
-        {
-            std::vector<sai_queue_stat_t> queueCounterIds;
-            for (const auto &str : idStrings)
+            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_COUNTER_ID_LIST)
             {
-                sai_queue_stat_t stat;
-                sai_deserialize_queue_stat(str, stat);
-                queueCounterIds.push_back(stat);
+                std::vector<sai_queue_stat_t> queueCounterIds;
+                for (const auto &str : idStrings)
+                {
+                    sai_queue_stat_t stat;
+                    sai_deserialize_queue_stat(str, stat);
+                    queueCounterIds.push_back(stat);
+                }
+                PfcWatchdog::setQueueCounterList(vid, rid, queueCounterIds);
             }
-            PfcWatchdog::setQueueCounterList(vid, rid, queueCounterIds);
-        }
-        else
-        {
-            SWSS_LOG_ERROR("Object type not supported");
+            else
+            {
+                SWSS_LOG_ERROR("Object type not supported");
+            }
         }
     }
 }

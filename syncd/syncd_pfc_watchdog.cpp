@@ -254,6 +254,10 @@ void PfcWatchdog::collectCounters(
 void PfcWatchdog::runPlugins(
         _In_ swss::DBConnector& db)
 {
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+
     const std::vector<std::string> argv = 
     {
         std::to_string(COUNTERS_DB),
