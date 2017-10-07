@@ -11,6 +11,7 @@ endif
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 
 vssyncd_SOURCES = \
+				../syncd/main.cpp \
 				../syncd/syncd.cpp \
 				../syncd/syncd_saiswitch.cpp \
 				../syncd/syncd_hard_reinit.cpp \

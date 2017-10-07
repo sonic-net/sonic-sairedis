@@ -46,13 +46,3 @@ libsairedis_la_SOURCES = \
 
 libsairedis_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 libsairedis_la_LIBADD = -lhiredis -lswsscommon
-
-bin_PROGRAMS = tests
-
-tests_SOURCES = tests.cpp
-tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta
-
-if RTEST
-TESTS = tests
-endif

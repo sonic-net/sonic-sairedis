@@ -3004,7 +3004,7 @@ void sai_meta_log_syncd(
     swss::Logger::getInstance().write(p, ":- %s: %s", func, buffer);
 }
 
-int main(int argc, char **argv)
+int syncd_main(int argc, char **argv)
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
@@ -3091,7 +3091,7 @@ int main(int argc, char **argv)
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("fail to sai_api_initialize: %d", status);
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     int failed = sai_metadata_apis_query(sai_api_query);
@@ -3215,5 +3215,5 @@ int main(int argc, char **argv)
 
     SWSS_LOG_NOTICE("uninitialize finished");
 
-    exit(EXIT_SUCCESS);
+    return EXIT_SUCCESS;
 }
