@@ -22,6 +22,11 @@ class PfcWatchdog
                 _In_ sai_object_id_t queueVid,
                 _In_ sai_object_id_t queueId,
                 _In_ const std::vector<sai_queue_stat_t> &counterIds);
+        static void setQueueAttrList(
+                _In_ sai_object_id_t queueVid,
+                _In_ sai_object_id_t queueId,
+                _In_ const std::vector<sai_queue_attr_t> &attrIds);
+
         static void removePort(
                 _In_ sai_object_id_t portVid);
         static void removeQueue(
@@ -49,6 +54,16 @@ class PfcWatchdog
             std::vector<sai_queue_stat_t> queueCounterIds;
         };
 
+        struct QueueAttrIds
+        {
+            QueueAttrIds(
+                    _In_ sai_object_id_t queue,
+                    _In_ const std::vector<sai_queue_attr_t> &queueIds);
+
+            sai_object_id_t queueId;
+            std::vector<sai_queue_attr_t> queueAttrIds;
+        };
+
         struct PortCounterIds
         {
             PortCounterIds(
@@ -72,6 +87,7 @@ class PfcWatchdog
         // Key is a Virtual ID
         std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> m_portCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> m_queueCounterIdsMap;
+        std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
 
         // Plugins
         std::set<std::string> m_queuePlugins;

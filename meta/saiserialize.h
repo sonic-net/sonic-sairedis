@@ -75,6 +75,9 @@ std::string sai_serialize_port_stat(
 std::string sai_serialize_queue_stat(
         _In_ const sai_queue_stat_t counter);
 
+std::string sai_serialize_queue_attr(
+        _In_ const sai_queue_attr_t attr);
+
 std::string sai_serialize_switch_oper_status(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t status);
@@ -220,4 +223,7 @@ void sai_deserialize_queue_stat(
         _In_ const std::string& s,
         _Out_ sai_queue_stat_t& stat);
 
+void sai_deserialize_queue_attr(
+        _In_ const std::string& s,
+        _Out_ sai_queue_attr_t& attr);
 #endif // __SAI_SERIALIZE__

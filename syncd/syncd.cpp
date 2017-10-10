@@ -2410,6 +2410,18 @@ void processPfcWdEvent(
                 }
                 PfcWatchdog::setQueueCounterList(vid, rid, queueCounterIds);
             }
+            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_ATTR_ID_LIST)
+            {
+                std::vector<sai_queue_attr_t> queueAttrIds;
+                for (const auto &str : idStrings)
+                {
+                    sai_queue_attr_t attr;
+                    sai_deserialize_queue_attr(str, attr);
+                    queueAttrIds.push_back(attr);
+                }
+
+                PfcWatchdog::setQueueAttrList(vid, rid, queueAttrIds);
+            }
             else
             {
                 SWSS_LOG_ERROR("Object type not supported");
