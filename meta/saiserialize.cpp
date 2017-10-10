@@ -2751,7 +2751,7 @@ void sai_deserialize_free_fdb_event(
         sai_deserialize_free_attribute_value(meta->attrvaluetype, fdb_event.attr[i]);
     }
 
-    delete fdb_event.attr;
+    delete[] fdb_event.attr;
 }
 
 void sai_deserialize_free_fdb_event_ntf(
@@ -2765,7 +2765,7 @@ void sai_deserialize_free_fdb_event_ntf(
         sai_deserialize_free_fdb_event(fdb_event[i]);
     }
 
-    delete fdb_event;
+    delete[] fdb_event;
 }
 
 void sai_deserialize_free_port_oper_status_ntf(
@@ -2774,7 +2774,7 @@ void sai_deserialize_free_port_oper_status_ntf(
 {
     SWSS_LOG_ENTER();
 
-    delete port_oper_status;
+    delete[] port_oper_status;
 }
 
 void sai_deserialize_free_queue_deadlock_ntf(
