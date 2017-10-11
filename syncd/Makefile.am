@@ -36,7 +36,8 @@ syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
 syncd_request_shutdown_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 syncd_request_shutdown_LDADD = -lhiredis -lswsscommon -lpthread
 
-tests_SOURCES = tests.cpp \
+tests_SOURCES = \
+				tests.cpp \
 				syncd.cpp \
 				syncd_saiswitch.cpp \
 				syncd_hard_reinit.cpp \

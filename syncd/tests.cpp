@@ -17,10 +17,29 @@ extern "C" {
 #include <unordered_map>
 #include <vector>
 #include <thread>
+#include <tuple>
 
 #define ASSERT_SUCCESS(format,...) \
     if ((status)!=SAI_STATUS_SUCCESS) \
         SWSS_LOG_THROW(format ": %s", ##__VA_ARGS__, sai_serialize_status(status).c_str());
+
+static sai_next_hop_group_api_t test_next_hop_group_api;
+static std::vector<std::tuple<sai_object_id_t, sai_object_id_t, std::vector<sai_attribute_t>>> created_next_hop_group_member;
+
+sai_status_t test_create_next_hop_group_member(
+        _Out_ sai_object_id_t *next_hop_group_member_id,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    created_next_hop_group_member.emplace_back();
+    auto& back = created_next_hop_group_member.back();
+    std::get<0>(back) = *next_hop_group_member_id;
+    std::get<1>(back) = switch_id;
+    auto& attrs = std::get<2>(back);
+    attrs.insert(attrs.end(), attr_list, attr_list + attr_count);
+    return 0;
+}
 
 void clearDB()
 {
@@ -75,6 +94,11 @@ void test_sai_initialize()
     // link against libsairedis, this api requires running redis db
     // with enabled unix socket
     sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+
+    // Mock the SAI api
+    test_next_hop_group_api.create_next_hop_group_member = test_create_next_hop_group_member;
+    sai_metadata_sai_next_hop_group_api = &test_next_hop_group_api;
+    created_next_hop_group_member.clear();
 
     ASSERT_SUCCESS("Failed to initialize api");
 }
@@ -146,6 +170,7 @@ void bulk_nhgm_consumer_worker()
         {
             sai_status_t status = processBulkEvent((sai_common_api_t)SAI_COMMON_API_BULK_CREATE, kco);
             ASSERT_SUCCESS("Failed to processBulkEvent");
+            break;
         }
 
     }
@@ -240,6 +265,15 @@ void test_bulk_next_hop_group_member_create()
 
     consumerThreads->join();
     delete consumerThreads;
+
+    // check the SAI api calling
+    for (size_t i = 0; i < created_next_hop_group_member.size(); i++)
+    {
+        auto created = created_next_hop_group_member[i];
+        auto created_attrs = std::get<2>(created);
+        assert(created_attrs.size() == 2);
+        assert(created_attrs[1].value.oid == nhgm_attrs[i][1].value.oid);
+    }
 }
 
 void test_bulk_route_set()
