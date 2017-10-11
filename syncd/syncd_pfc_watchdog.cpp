@@ -112,7 +112,7 @@ void PfcWatchdog::removePort(
     wd.m_portCounterIdsMap.erase(it);
 
     // Stop watchdog thread if counter IDs map is empty
-    if (wd.m_queueCounterIdsMap.empty() && wd.m_portCounterIdsMap.empty())
+    if (wd.m_queueCounterIdsMap.empty() && wd.m_portCounterIdsMap.empty() && wd.m_queueAttrIdsMap.empty())
     {
         wd.endWatchdogThread();
     }
@@ -125,17 +125,26 @@ void PfcWatchdog::removeQueue(
 
     PfcWatchdog &wd = getInstance();
 
-    auto it = wd.m_queueCounterIdsMap.find(queueVid);
-    if (it == wd.m_queueCounterIdsMap.end())
+    auto counterIter = wd.m_queueCounterIdsMap.find(queueVid);
+    if (counterIter == wd.m_queueCounterIdsMap.end())
     {
         SWSS_LOG_ERROR("Trying to remove nonexisting queue counter Ids 0x%lx", queueVid);
         return;
     }
 
-    wd.m_queueCounterIdsMap.erase(it);
+    wd.m_queueCounterIdsMap.erase(counterIter);
+
+    auto attrIter = wd.m_queueAttrIdsMap.find(queueVid);
+    if (attrIter == wd.m_queueAttrIdsMap.end())
+    {
+        SWSS_LOG_ERROR("Trying to remove nonexisting queue attr Ids 0x%lx", queueVid);
+        return;
+    }
+
+    wd.m_queueAttrIdsMap.erase(attrIter);
 
     // Stop watchdog thread if counter IDs map is empty
-    if (wd.m_queueCounterIdsMap.empty() && wd.m_portCounterIdsMap.empty())
+    if (wd.m_queueCounterIdsMap.empty() && wd.m_portCounterIdsMap.empty() && wd.m_queueAttrIdsMap.empty())
     {
         wd.endWatchdogThread();
     }
