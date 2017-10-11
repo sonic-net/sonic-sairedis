@@ -1,217 +1,217 @@
-#include "syncd_pfc_watchdog.h"
+#include "syncd_flex_counter.h"
 #include "syncd.h"
 #include "swss/redisapi.h"
 
-#define PFC_WD_POLL_MSECS 100
+#define FLEX_COUNTER_POLL_MSECS 100
 
-PfcWatchdog::PortCounterIds::PortCounterIds(
+FlexCounter::PortCounterIds::PortCounterIds(
         _In_ sai_object_id_t port,
         _In_ const std::vector<sai_port_stat_t> &portIds):
     portId(port), portCounterIds(portIds)
 {
 }
 
-PfcWatchdog::QueueCounterIds::QueueCounterIds(
+FlexCounter::QueueCounterIds::QueueCounterIds(
         _In_ sai_object_id_t queue,
         _In_ const std::vector<sai_queue_stat_t> &queueIds):
     queueId(queue), queueCounterIds(queueIds)
 {
 }
 
-PfcWatchdog::QueueAttrIds::QueueAttrIds(
+FlexCounter::QueueAttrIds::QueueAttrIds(
         _In_ sai_object_id_t queue,
         _In_ const std::vector<sai_queue_attr_t> &queueIds):
     queueId(queue), queueAttrIds(queueIds)
 {
 }
 
-void PfcWatchdog::setPortCounterList(
+void FlexCounter::setPortCounterList(
         _In_ sai_object_id_t portVid,
         _In_ sai_object_id_t portId,
         _In_ const std::vector<sai_port_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 
-    PfcWatchdog &wd = getInstance();
+    FlexCounter &fc = getInstance();
 
-    auto it = wd.m_portCounterIdsMap.find(portVid);
-    if (it != wd.m_portCounterIdsMap.end())
+    auto it = fc.m_portCounterIdsMap.find(portVid);
+    if (it != fc.m_portCounterIdsMap.end())
     {
         (*it).second->portCounterIds = counterIds;
         return;
     }
 
     auto portCounterIds = std::make_shared<PortCounterIds>(portId, counterIds);
-    wd.m_portCounterIdsMap.emplace(portVid, portCounterIds);
+    fc.m_portCounterIdsMap.emplace(portVid, portCounterIds);
 
-    // Start watchdog thread in case it was not running due to empty counter IDs map
-    wd.startWatchdogThread();
+    // Start flex counter thread in case it was not running due to empty counter IDs map
+    fc.startFlexCounterThread();
 }
 
-void PfcWatchdog::setQueueCounterList(
+void FlexCounter::setQueueCounterList(
         _In_ sai_object_id_t queueVid,
         _In_ sai_object_id_t queueId,
         _In_ const std::vector<sai_queue_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 
-    PfcWatchdog &wd = getInstance();
+    FlexCounter &fc = getInstance();
 
-    auto it = wd.m_queueCounterIdsMap.find(queueVid);
-    if (it != wd.m_queueCounterIdsMap.end())
+    auto it = fc.m_queueCounterIdsMap.find(queueVid);
+    if (it != fc.m_queueCounterIdsMap.end())
     {
         (*it).second->queueCounterIds = counterIds;
         return;
     }
 
     auto queueCounterIds = std::make_shared<QueueCounterIds>(queueId, counterIds);
-    wd.m_queueCounterIdsMap.emplace(queueVid, queueCounterIds);
+    fc.m_queueCounterIdsMap.emplace(queueVid, queueCounterIds);
 
-    // Start watchdog thread in case it was not running due to empty counter IDs map
-    wd.startWatchdogThread();
+    // Start flex counter thread in case it was not running due to empty counter IDs map
+    fc.startFlexCounterThread();
 }
 
-void PfcWatchdog::setQueueAttrList(
+void FlexCounter::setQueueAttrList(
         _In_ sai_object_id_t queueVid,
         _In_ sai_object_id_t queueId,
         _In_ const std::vector<sai_queue_attr_t> &attrIds)
 {
     SWSS_LOG_ENTER();
 
-    PfcWatchdog &wd = getInstance();
+    FlexCounter &fc = getInstance();
 
-    auto it = wd.m_queueAttrIdsMap.find(queueVid);
-    if (it != wd.m_queueAttrIdsMap.end())
+    auto it = fc.m_queueAttrIdsMap.find(queueVid);
+    if (it != fc.m_queueAttrIdsMap.end())
     {
         (*it).second->queueAttrIds = attrIds;
         return;
     }
 
     auto queueAttrIds = std::make_shared<QueueAttrIds>(queueId, attrIds);
-    wd.m_queueAttrIdsMap.emplace(queueVid, queueAttrIds);
+    fc.m_queueAttrIdsMap.emplace(queueVid, queueAttrIds);
 
-    // Start watchdog thread in case it was not running due to empty counter IDs map
-    wd.startWatchdogThread();
+    // Start flex counter thread in case it was not running due to empty counter IDs map
+    fc.startFlexCounterThread();
 }
 
 
-void PfcWatchdog::removePort(
+void FlexCounter::removePort(
         _In_ sai_object_id_t portVid)
 {
     SWSS_LOG_ENTER();
 
-    PfcWatchdog &wd = getInstance();
+    FlexCounter &fc = getInstance();
 
-    auto it = wd.m_portCounterIdsMap.find(portVid);
-    if (it == wd.m_portCounterIdsMap.end())
+    auto it = fc.m_portCounterIdsMap.find(portVid);
+    if (it == fc.m_portCounterIdsMap.end())
     {
         SWSS_LOG_ERROR("Trying to remove nonexisting port counter Ids 0x%lx", portVid);
         return;
     }
 
-    wd.m_portCounterIdsMap.erase(it);
+    fc.m_portCounterIdsMap.erase(it);
 
-    // Stop watchdog thread if counter IDs map is empty
-    if (wd.m_queueCounterIdsMap.empty() && wd.m_portCounterIdsMap.empty() && wd.m_queueAttrIdsMap.empty())
+    // Stop flex counter thread if counter IDs map is empty
+    if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
     {
-        wd.endWatchdogThread();
+        fc.endFlexCounterThread();
     }
 }
 
-void PfcWatchdog::removeQueue(
+void FlexCounter::removeQueue(
         _In_ sai_object_id_t queueVid)
 {
     SWSS_LOG_ENTER();
 
-    PfcWatchdog &wd = getInstance();
+    FlexCounter &fc = getInstance();
 
-    auto counterIter = wd.m_queueCounterIdsMap.find(queueVid);
-    if (counterIter == wd.m_queueCounterIdsMap.end())
+    auto counterIter = fc.m_queueCounterIdsMap.find(queueVid);
+    if (counterIter == fc.m_queueCounterIdsMap.end())
     {
         SWSS_LOG_ERROR("Trying to remove nonexisting queue counter Ids 0x%lx", queueVid);
         return;
     }
 
-    wd.m_queueCounterIdsMap.erase(counterIter);
+    fc.m_queueCounterIdsMap.erase(counterIter);
 
-    auto attrIter = wd.m_queueAttrIdsMap.find(queueVid);
-    if (attrIter == wd.m_queueAttrIdsMap.end())
+    auto attrIter = fc.m_queueAttrIdsMap.find(queueVid);
+    if (attrIter == fc.m_queueAttrIdsMap.end())
     {
         SWSS_LOG_ERROR("Trying to remove nonexisting queue attr Ids 0x%lx", queueVid);
         return;
     }
 
-    wd.m_queueAttrIdsMap.erase(attrIter);
+    fc.m_queueAttrIdsMap.erase(attrIter);
 
-    // Stop watchdog thread if counter IDs map is empty
-    if (wd.m_queueCounterIdsMap.empty() && wd.m_portCounterIdsMap.empty() && wd.m_queueAttrIdsMap.empty())
+    // Stop flex counter thread if counter IDs map is empty
+    if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
     {
-        wd.endWatchdogThread();
+        fc.endFlexCounterThread();
     }
 }
 
-void PfcWatchdog::addPortCounterPlugin(
+void FlexCounter::addPortCounterPlugin(
         _In_ std::string sha)
 {
     SWSS_LOG_ENTER();
 
-    PfcWatchdog &wd = getInstance();
+    FlexCounter &fc = getInstance();
 
-    if (wd.m_portPlugins.find(sha) != wd.m_portPlugins.end() ||
-            wd.m_queuePlugins.find(sha) != wd.m_queuePlugins.end())
+    if (fc.m_portPlugins.find(sha) != fc.m_portPlugins.end() ||
+            fc.m_queuePlugins.find(sha) != fc.m_queuePlugins.end())
     {
         SWSS_LOG_ERROR("Plugin %s already registered", sha.c_str());
     }
 
-    wd.m_portPlugins.insert(sha);
+    fc.m_portPlugins.insert(sha);
     SWSS_LOG_NOTICE("Port counters plugin %s registered", sha.c_str());
 }
 
-void PfcWatchdog::addQueueCounterPlugin(
+void FlexCounter::addQueueCounterPlugin(
         _In_ std::string sha)
 {
     SWSS_LOG_ENTER();
 
-    PfcWatchdog &wd = getInstance();
+    FlexCounter &fc = getInstance();
 
-    if (wd.m_portPlugins.find(sha) != wd.m_portPlugins.end() ||
-            wd.m_queuePlugins.find(sha) != wd.m_queuePlugins.end())
+    if (fc.m_portPlugins.find(sha) != fc.m_portPlugins.end() ||
+            fc.m_queuePlugins.find(sha) != fc.m_queuePlugins.end())
     {
         SWSS_LOG_ERROR("Plugin %s already registered", sha.c_str());
     }
 
-    wd.m_queuePlugins.insert(sha);
+    fc.m_queuePlugins.insert(sha);
     SWSS_LOG_NOTICE("Queue counters plugin %s registered", sha.c_str());
 }
 
-void PfcWatchdog::removeCounterPlugin(
+void FlexCounter::removeCounterPlugin(
         _In_ std::string sha)
 {
     SWSS_LOG_ENTER();
 
-    PfcWatchdog &wd = getInstance();
+    FlexCounter &fc = getInstance();
 
-    wd.m_queuePlugins.erase(sha);
-    wd.m_portPlugins.erase(sha);
+    fc.m_queuePlugins.erase(sha);
+    fc.m_portPlugins.erase(sha);
 }
 
-PfcWatchdog::~PfcWatchdog(void)
+FlexCounter::~FlexCounter(void)
 {
-    endWatchdogThread();
+    endFlexCounterThread();
 }
 
-PfcWatchdog::PfcWatchdog(void)
+FlexCounter::FlexCounter(void)
 {
 }
 
-PfcWatchdog& PfcWatchdog::getInstance(void)
+FlexCounter& FlexCounter::getInstance(void)
 {
-    static PfcWatchdog wd;
+    static FlexCounter fc;
 
-    return wd;
+    return fc;
 }
 
-void PfcWatchdog::collectCounters(
+void FlexCounter::collectCounters(
         _In_ swss::Table &countersTable)
 {
     SWSS_LOG_ENTER();
@@ -332,7 +332,7 @@ void PfcWatchdog::collectCounters(
 
 }
 
-void PfcWatchdog::runPlugins(
+void FlexCounter::runPlugins(
         _In_ swss::DBConnector& db)
 {
     SWSS_LOG_ENTER();
@@ -341,7 +341,7 @@ void PfcWatchdog::runPlugins(
     {
         std::to_string(COUNTERS_DB),
         COUNTERS_TABLE,
-        std::to_string(PFC_WD_POLL_MSECS * 1000)
+        std::to_string(FLEX_COUNTER_POLL_MSECS * 1000)
     };
 
     std::vector<std::string> portList;
@@ -369,14 +369,14 @@ void PfcWatchdog::runPlugins(
     }
 }
 
-void PfcWatchdog::pfcWatchdogThread(void)
+void FlexCounter::flexCounterThread(void)
 {
     SWSS_LOG_ENTER();
 
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     swss::Table countersTable(&db, COUNTERS_TABLE);
 
-    while (m_runPfcWatchdogThread)
+    while (m_runFlexCounterThread)
     {
 
         std::lock_guard<std::mutex> lock(g_mutex);
@@ -384,45 +384,45 @@ void PfcWatchdog::pfcWatchdogThread(void)
         runPlugins(db);
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
-        m_cvSleep.wait_for(lk, std::chrono::milliseconds(PFC_WD_POLL_MSECS));
+        m_cvSleep.wait_for(lk, std::chrono::milliseconds(FLEX_COUNTER_POLL_MSECS));
     }
 }
 
-void PfcWatchdog::startWatchdogThread(void)
+void FlexCounter::startFlexCounterThread(void)
 {
     SWSS_LOG_ENTER();
 
-    if (m_runPfcWatchdogThread.load() == true)
+    if (m_runFlexCounterThread.load() == true)
     {
         return;
     }
 
-    m_runPfcWatchdogThread = true;
+    m_runFlexCounterThread = true;
 
-    m_pfcWatchdogThread = std::make_shared<std::thread>(&PfcWatchdog::pfcWatchdogThread, this);
+    m_flexCounterThread = std::make_shared<std::thread>(&FlexCounter::flexCounterThread, this);
     
-    SWSS_LOG_INFO("PFC Watchdog thread started");
+    SWSS_LOG_INFO("Flex Counter thread started");
 }
 
-void PfcWatchdog::endWatchdogThread(void)
+void FlexCounter::endFlexCounterThread(void)
 {
     SWSS_LOG_ENTER();
 
-    if (m_runPfcWatchdogThread.load() == false)
+    if (m_runFlexCounterThread.load() == false)
     {
         return;
     }
 
-    m_runPfcWatchdogThread = false;
+    m_runFlexCounterThread = false;
 
     m_cvSleep.notify_all();
 
-    if (m_pfcWatchdogThread != nullptr)
+    if (m_flexCounterThread != nullptr)
     {
-        SWSS_LOG_INFO("Wait for PFC Watchdog thread to end");
+        SWSS_LOG_INFO("Wait for Flex Counter thread to end");
 
-        m_pfcWatchdogThread->join();
+        m_flexCounterThread->join();
     }
 
-    SWSS_LOG_INFO("PFC Watchdog thread ended");
+    SWSS_LOG_INFO("Flex Counter thread ended");
 }

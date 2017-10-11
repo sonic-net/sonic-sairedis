@@ -1,7 +1,7 @@
 #include "syncd.h"
 #include "syncd_saiswitch.h"
 #include "sairedis.h"
-#include "syncd_pfc_watchdog.h"
+#include "syncd_flex_counter.h"
 #include "swss/tokenize.h"
 #include <limits.h>
 
@@ -2352,7 +2352,7 @@ sai_status_t processEvent(
     return status;
 }
 
-void processPfcWdEvent(
+void processFlexCounterEvent(
         _In_ swss::ConsumerStateTable &consumer)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -2380,11 +2380,11 @@ void processPfcWdEvent(
         {
             if (objectType == SAI_OBJECT_TYPE_PORT)
             {
-                PfcWatchdog::removePort(vid);
+                FlexCounter::removePort(vid);
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE)
             {
-                PfcWatchdog::removeQueue(vid);
+                FlexCounter::removeQueue(vid);
             }
             else
             {
@@ -2404,7 +2404,7 @@ void processPfcWdEvent(
                     sai_deserialize_port_stat(str, stat);
                     portCounterIds.push_back(stat);
                 }
-                PfcWatchdog::setPortCounterList(vid, rid, portCounterIds);
+                FlexCounter::setPortCounterList(vid, rid, portCounterIds);
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_COUNTER_ID_LIST)
             {
@@ -2415,7 +2415,7 @@ void processPfcWdEvent(
                     sai_deserialize_queue_stat(str, stat);
                     queueCounterIds.push_back(stat);
                 }
-                PfcWatchdog::setQueueCounterList(vid, rid, queueCounterIds);
+                FlexCounter::setQueueCounterList(vid, rid, queueCounterIds);
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_ATTR_ID_LIST)
             {
@@ -2427,7 +2427,7 @@ void processPfcWdEvent(
                     queueAttrIds.push_back(attr);
                 }
 
-                PfcWatchdog::setQueueAttrList(vid, rid, queueAttrIds);
+                FlexCounter::setQueueAttrList(vid, rid, queueAttrIds);
             }
             else
             {
@@ -2437,7 +2437,7 @@ void processPfcWdEvent(
     }
 }
 
-void processPfcWdPluginEvent(
+void processFlexCounterPluginEvent(
         _In_ swss::ConsumerStateTable &consumer)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -2452,7 +2452,7 @@ void processPfcWdPluginEvent(
 
     if (op == DEL_COMMAND)
     {
-        PfcWatchdog::removeCounterPlugin(key);
+        FlexCounter::removeCounterPlugin(key);
         return;
     }
 
@@ -2469,11 +2469,11 @@ void processPfcWdPluginEvent(
 
         if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_PORT))
         {
-            PfcWatchdog::addPortCounterPlugin(key);
+            FlexCounter::addPortCounterPlugin(key);
         }
         else if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_QUEUE))
         {
-            PfcWatchdog::addQueueCounterPlugin(key);
+            FlexCounter::addQueueCounterPlugin(key);
         }
         else
         {
@@ -3055,14 +3055,14 @@ int syncd_main(int argc, char **argv)
 
     std::shared_ptr<swss::DBConnector> dbAsic = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    std::shared_ptr<swss::DBConnector> dbPfcWatchdog = std::make_shared<swss::DBConnector>(PFC_WD_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(PFC_WD_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
 
     g_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());
 
     std::shared_ptr<swss::ConsumerTable> asicState = std::make_shared<swss::ConsumerTable>(dbAsic.get(), ASIC_STATE_TABLE);
     std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "RESTARTQUERY");
-    std::shared_ptr<swss::ConsumerStateTable> pfcWdState = std::make_shared<swss::ConsumerStateTable>(dbPfcWatchdog.get(), PFC_WD_STATE_TABLE);
-    std::shared_ptr<swss::ConsumerStateTable> pfcWdPlugin = std::make_shared<swss::ConsumerStateTable>(dbPfcWatchdog.get(), PLUGIN_TABLE);
+    std::shared_ptr<swss::ConsumerStateTable> flexCounterState = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PFC_WD_STATE_TABLE);
+    std::shared_ptr<swss::ConsumerStateTable> flexCounterPlugin = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PLUGIN_TABLE);
 
     /*
      * At the end we cant use producer consumer concept since if one proces
@@ -3158,8 +3158,8 @@ int syncd_main(int argc, char **argv)
 
         s.addSelectable(asicState.get());
         s.addSelectable(restartQuery.get());
-        s.addSelectable(pfcWdState.get());
-        s.addSelectable(pfcWdPlugin.get());
+        s.addSelectable(flexCounterState.get());
+        s.addSelectable(flexCounterPlugin.get());
 
         SWSS_LOG_NOTICE("starting main loop");
 
@@ -3184,13 +3184,13 @@ int syncd_main(int argc, char **argv)
                 warmRestartHint = handleRestartQuery(*restartQuery);
                 break;
             }
-            else if (sel == pfcWdState.get())
+            else if (sel == flexCounterState.get())
             {
-                processPfcWdEvent(*(swss::ConsumerStateTable*)sel);
+                processFlexCounterEvent(*(swss::ConsumerStateTable*)sel);
             }
-            else if (sel == pfcWdPlugin.get())
+            else if (sel == flexCounterPlugin.get())
             {
-                processPfcWdPluginEvent(*(swss::ConsumerStateTable*)sel);
+                processFlexCounterPluginEvent(*(swss::ConsumerStateTable*)sel);
             }
             else if (result == swss::Select::OBJECT)
             {
