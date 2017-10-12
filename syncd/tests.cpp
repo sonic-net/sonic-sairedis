@@ -136,7 +136,7 @@ sai_object_id_t create_dummy_object_id(
     return (((sai_object_id_t)objecttype) << 48) | ++index;
 }
 
-bool starts_with(std::string str, std::string substr)
+bool starts_with(const std::string& str, const std::string& substr)
 {
     return strncmp(str.c_str(), substr.c_str(), substr.size()) == 0;
 }
