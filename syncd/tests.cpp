@@ -157,9 +157,9 @@ void bulk_nhgm_consumer_worker()
         swss::KeyOpFieldsValuesTuple kco;
         c.pop(kco);
 
-        auto key = kfvKey(kco);
-        auto op = kfvOp(kco);
-        auto values = kfvFieldsValues(kco);
+        auto& key = kfvKey(kco);
+        auto& op = kfvOp(kco);
+        auto& values = kfvFieldsValues(kco);
 
         if (starts_with(key, "SAI_OBJECT_TYPE_SWITCH")) continue;
 
@@ -266,8 +266,8 @@ void test_bulk_next_hop_group_member_create()
     // check the SAI api calling
     for (size_t i = 0; i < created_next_hop_group_member.size(); i++)
     {
-        auto created = created_next_hop_group_member[i];
-        auto created_attrs = std::get<2>(created);
+        auto& created = created_next_hop_group_member[i];
+        auto& created_attrs = std::get<2>(created);
         assert(created_attrs.size() == 2);
         assert(created_attrs[1].value.oid == nhgm_attrs[i][1].value.oid);
     }
