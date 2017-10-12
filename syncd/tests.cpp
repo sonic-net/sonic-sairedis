@@ -143,21 +143,18 @@ bool starts_with(std::string str, std::string substr)
 
 void bulk_nhgm_consumer_worker()
 {
-    using namespace std;
-    using namespace swss;
-
-    string tableName = ASIC_STATE_TABLE;
-    DBConnector db(ASIC_DB, "localhost", 6379, 0);
-    ConsumerTable c(&db, tableName);
-    Select cs;
-    Selectable *selectcs;
+    std::string tableName = ASIC_STATE_TABLE;
+    swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
+    swss::ConsumerTable c(&db, tableName);
+    swss::Select cs;
+    swss::Selectable *selectcs;
     int tmpfd;
     int ret = 0;
 
     cs.addSelectable(&c);
-    while ((ret = cs.select(&selectcs, &tmpfd)) == Select::OBJECT)
+    while ((ret = cs.select(&selectcs, &tmpfd)) == swss::Select::OBJECT)
     {
-        KeyOpFieldsValuesTuple kco;
+        swss::KeyOpFieldsValuesTuple kco;
         c.pop(kco);
 
         auto key = kfvKey(kco);
