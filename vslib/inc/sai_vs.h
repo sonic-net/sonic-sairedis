@@ -10,7 +10,18 @@ extern "C" {
 
 #include <mutex>
 
-#define SAI_KEY_VS_SWITCH_TYPE "SAI_VS_SWITCH_TYPE"
+#define SAI_KEY_VS_SWITCH_TYPE              "SAI_VS_SWITCH_TYPE"
+
+/**
+ * @def SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE
+ *
+ * Bool flag, (true/false). If set to true, then during create host interface
+ * sai object also tap device will be created and mac address will be assigned.
+ * For this operation root privilages will be required.
+ *
+ * By default this flag is set to false.
+ */
+#define SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE    "SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE"
 
 // TODO probaby should be per switch
 #define SAI_VALUE_VS_SWITCH_TYPE_BCM56850     "SAI_VS_SWITCH_TYPE_BCM56850"
@@ -26,6 +37,7 @@ typedef enum _sai_vs_switch_type_t
 
 } sai_vs_switch_type_t;
 
+extern bool                             g_vs_hostif_use_tap_device;
 extern sai_vs_switch_type_t             g_vs_switch_type;
 extern std::recursive_mutex             g_recursive_mutex;
 
