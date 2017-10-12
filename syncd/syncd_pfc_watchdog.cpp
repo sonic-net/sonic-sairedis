@@ -216,7 +216,6 @@ void PfcWatchdog::collectCounters(
 {
     SWSS_LOG_ENTER();
 
-
     // Collect stats for every registered port
     for (const auto &kv: m_portCounterIdsMap)
     {
