@@ -83,7 +83,6 @@ void redisPutFdbEntryToAsicView(
     std::string strFdbEntry = sai_serialize_fdb_entry(fdb->fdb_entry);
 
     std::string key = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strFdbEntry);
-  
     if (fdb->fdb_entry.switch_id == SAI_NULL_OBJECT_ID ||
         // fdb->fdb_entry.bridge_id == SAI_NULL_OBJECT_ID || // TODO later use bv_id
         sai_metadata_get_fdb_entry_bridge_type_name(fdb->fdb_entry.bridge_type) == NULL)
@@ -92,13 +91,13 @@ void redisPutFdbEntryToAsicView(
         return;
     }
 
-    if((fdb->event_type == SAI_FDB_EVENT_AGED)||(fdb->event_type == SAI_FDB_EVENT_FLUSHED))
+    if ((fdb->event_type == SAI_FDB_EVENT_AGED)||(fdb->event_type == SAI_FDB_EVENT_FLUSHED))
     {
-        if(fdb->event_type == SAI_FDB_EVENT_AGED)
+        if (fdb->event_type == SAI_FDB_EVENT_AGED)
         {
             SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_AGED",key.c_str());
         }
-        if(fdb->event_type == SAI_FDB_EVENT_FLUSHED)
+        if (fdb->event_type == SAI_FDB_EVENT_FLUSHED)
         {
             SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",key.c_str());
         }
