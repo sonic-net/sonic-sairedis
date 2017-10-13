@@ -83,6 +83,7 @@ void redisPutFdbEntryToAsicView(
     std::string strFdbEntry = sai_serialize_fdb_entry(fdb->fdb_entry);
 
     std::string key = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strFdbEntry);
+
     if (fdb->fdb_entry.switch_id == SAI_NULL_OBJECT_ID ||
         // fdb->fdb_entry.bridge_id == SAI_NULL_OBJECT_ID || // TODO later use bv_id
         sai_metadata_get_fdb_entry_bridge_type_name(fdb->fdb_entry.bridge_type) == NULL)
