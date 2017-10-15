@@ -104,7 +104,7 @@ int vs_create_tap_device(const char *dev, int flags)
     return fd;
 }
 
-int vs_set_dev_mac_address(const char *dev, const sai_mac_t mac)
+int vs_set_dev_mac_address(const char *dev, const sai_mac_t& mac)
 {
     SWSS_LOG_ENTER();
 
@@ -154,9 +154,20 @@ int ifup(const char *dev)
 
     strncpy(ifr.ifr_name, dev , IFNAMSIZ);
 
+    int err = ioctl(s, SIOCGIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCGIFFLAGS on socket %d %s failed, err %d", s, dev, err);
+
+        close(s);
+
+        return err;
+    }
+
     ifr.ifr_flags |= IFF_UP;
 
-    int err = ioctl(s, SIOCSIFFLAGS, &ifr);
+    err = ioctl(s, SIOCSIFFLAGS, &ifr);
 
     if (err < 0)
     {
@@ -366,13 +377,6 @@ sai_status_t vs_create_hostif_int(
         return SAI_STATUS_FAILURE;
     }
 
-    if (strncmp(attr_name->value.chardata, "Ethernet", 8) != 0)
-    {
-        SWSS_LOG_ERROR("interface name should start with EthernetX but is %s", attr_name->value.chardata);
-
-        return SAI_STATUS_FAILURE;
-    }
-
     std::string name = std::string(attr_name->value.chardata);
 
     // create TAP device
@@ -390,7 +394,7 @@ sai_status_t vs_create_hostif_int(
 
     SWSS_LOG_INFO("created TAP device for %s, fd: %d", name.c_str(), tapfd);
 
-    // XXX currently tapfd is ignored, it should be closed on hostif_remove
+    // TODO currently tapfd is ignored, it should be closed on hostif_remove
     // and we should use it to read/write packets from that interface
 
     sai_attribute_t attr;
