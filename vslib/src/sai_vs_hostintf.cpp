@@ -423,17 +423,6 @@ sai_status_t vs_create_hostif_int(
         return SAI_STATUS_FAILURE;
     }
 
-    err = ifup(name.c_str());
-
-    if (err < 0)
-    {
-        SWSS_LOG_ERROR("failed to bring ifup %s", name.c_str());
-
-        close(tapfd);
-
-        return SAI_STATUS_FAILURE;
-    }
-
     if (!hostif_create_tap_veth_forwarding(name, tapfd))
     {
         SWSS_LOG_ERROR("forwarding rule on %s was not added", name.c_str());
