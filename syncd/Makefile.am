@@ -44,7 +44,7 @@ tests_SOURCES = \
 				syncd_notifications.cpp \
 				syncd_counters.cpp \
 				syncd_applyview.cpp \
-				syncd_pfc_watchdog.cpp
+				syncd_flex_counter.cpp
 
 tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta
