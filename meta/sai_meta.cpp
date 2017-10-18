@@ -2299,6 +2299,46 @@ sai_status_t meta_generic_validation_get(
     return SAI_STATUS_SUCCESS;
 }
 
+template <typename T>
+sai_status_t meta_generic_validation_get_stats(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ const uint32_t count,
+        _In_ const T *counter_id_list,
+        _In_ const uint64_t *counter_list)
+{
+    SWSS_LOG_ENTER();
+
+    if (count < 1)
+    {
+        SWSS_LOG_ERROR("expected at least 1 stat when calling get_stats, zero given");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (count > MAX_LIST_COUNT)
+    {
+        SWSS_LOG_ERROR("get stats count is too large %u > then max list count %u", count, MAX_LIST_COUNT);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (counter_id_list == NULL)
+    {
+        SWSS_LOG_ERROR("counter id list pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (counter_list == NULL)
+    {
+        SWSS_LOG_ERROR("counter list pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 void meta_generic_validation_post_create(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
@@ -4436,6 +4476,67 @@ sai_status_t meta_sai_get_oid(
 
     return status;
 }
+
+template <typename T>
+sai_status_t meta_sai_get_stats_oid(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t count,
+        _In_ const T* counter_id_list,
+        _Out_ uint64_t *counter_list,
+        _In_ sai_get_generic_stats_fn<T> get)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, SAI_NULL_OBJECT_ID, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id } } };
+
+    status = meta_generic_validation_get_stats(meta_key, count, counter_id_list, counter_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (get == NULL)
+    {
+        SWSS_LOG_ERROR("get function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = get(object_type, object_id, count, counter_id_list, counter_list);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
+    }
+
+    return status;
+}
+
+#define DECLARE_META_GET_STATS_OID(type)                               \
+    template                                                           \
+    sai_status_t meta_sai_get_stats_oid<sai_ ## type ## _stat_t>(      \
+        _In_ sai_object_type_t object_type,                            \
+        _In_ sai_object_id_t object_id,                                \
+        _In_ uint32_t count,                                           \
+        _In_ const sai_ ## type ## _stat_t* counter_id_list,           \
+        _Out_ uint64_t *counter_list,                                  \
+        _In_ sai_get_generic_stats_fn<sai_ ## type ## _stat_t> get);
+
+DECLARE_META_GET_STATS_OID(port);
+DECLARE_META_GET_STATS_OID(queue);
 
 // NOTIFICATIONS
 
