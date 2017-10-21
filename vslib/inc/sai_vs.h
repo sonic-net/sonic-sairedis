@@ -21,7 +21,7 @@ extern "C" {
  *
  * By default this flag is set to false.
  */
-#define SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE    "SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE"
+#define SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE    "SAI_VS_HOSTIF_USE_TAP_DEVICE"
 
 // TODO probaby should be per switch
 #define SAI_VALUE_VS_SWITCH_TYPE_BCM56850     "SAI_VS_SWITCH_TYPE_BCM56850"
