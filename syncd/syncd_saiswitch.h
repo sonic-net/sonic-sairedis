@@ -69,17 +69,6 @@ class SaiSwitch
         bool isNonRemovableRid(
                 _In_ sai_object_id_t rid) const;
 
-        /**
-         * @brief Collect switch counters.
-         *
-         * Collects supported counters from each port and put them to specified
-         * table.
-         *
-         * @param countersTable Counters table to be used.
-         */
-        void collectCounters(
-                _In_ swss::Table &countersTable) const;
-
         /*
          * Redis Static Methods.
          */
@@ -189,8 +178,6 @@ class SaiSwitch
 
         sai_mac_t m_default_mac_address;
 
-        std::vector<sai_port_stat_t> m_supported_counters;
-
         /*
          * NOTE: Those default value will make sense only when we will do hard
          * reinit, since when doing warm restart syncd will restart but if for
@@ -230,8 +217,6 @@ class SaiSwitch
         std::vector<sai_object_id_t> saiGetPortList() const;
 
         std::unordered_map<sai_uint32_t, sai_object_id_t> saiGetHardwareLaneMap() const;
-
-        std::vector<sai_port_stat_t> saiGetSupportedCounters() const;
 
         /**
          * @brief Get MAC address.

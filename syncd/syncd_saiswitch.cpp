@@ -500,108 +500,6 @@ void SaiSwitch::removeExistingObject(
     }
 }
 
-std::vector<sai_port_stat_t> SaiSwitch::saiGetSupportedCounters() const
-{
-    SWSS_LOG_ENTER();
-
-    auto ports = saiGetPortList();
-
-    if (ports.size() == 0)
-    {
-        SWSS_LOG_THROW("no ports are defined on switch");
-    }
-
-    sai_object_id_t port_rid = ports.at(0);
-
-    std::vector<sai_port_stat_t> supportedCounters;
-
-    for (uint32_t idx = 0; idx < sai_metadata_enum_sai_port_stat_t.valuescount; ++idx)
-    {
-        sai_port_stat_t counter = (sai_port_stat_t)sai_metadata_enum_sai_port_stat_t.values[idx];
-
-        uint64_t value;
-
-        sai_status_t status = sai_metadata_sai_port_api->get_port_stats(port_rid, 1, &counter, &value);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            const std::string &name = sai_serialize_port_stat(counter);
-
-            SWSS_LOG_DEBUG("counter %s is not supported on port RID %s: %s",
-                    name.c_str(),
-                    sai_serialize_object_id(port_rid).c_str(),
-                    sai_serialize_status(status).c_str());
-
-            continue;
-        }
-
-        supportedCounters.push_back(counter);
-    }
-
-    SWSS_LOG_NOTICE("supported %zu of %d",
-            supportedCounters.size(),
-            sai_metadata_enum_sai_port_stat_t.valuescount);
-
-    return supportedCounters;
-}
-
-void SaiSwitch::collectCounters(
-        _In_ swss::Table &countersTable) const
-{
-    SWSS_LOG_ENTER();
-
-    if (m_supported_counters.size() == 0)
-    {
-        /*
-         * There are not supported counters :(
-         */
-
-        return;
-    }
-
-    uint32_t countersSize = (uint32_t)m_supported_counters.size();
-
-    std::vector<uint64_t> counters;
-
-    counters.resize(countersSize);
-
-    auto ports = saiGetPortList();
-
-    for (auto &port_rid: ports)
-    {
-        sai_status_t status = sai_metadata_sai_port_api->get_port_stats(
-                port_rid,
-                countersSize,
-                m_supported_counters.data(),
-                counters.data());
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("failed to collect counters for port RID %s: %s",
-                    sai_serialize_object_id(port_rid).c_str(),
-                    sai_serialize_status(status).c_str());
-            continue;
-        }
-
-        sai_object_id_t vid = translate_rid_to_vid(port_rid, m_switch_vid);
-
-        std::string strPortId = sai_serialize_object_id(vid);
-        std::vector<swss::FieldValueTuple> values;
-
-        for (size_t idx = 0; idx < counters.size(); idx++)
-        {
-            const std::string &field = sai_serialize_port_stat(m_supported_counters[idx]);
-            const std::string &value = std::to_string(counters[idx]);
-
-            swss::FieldValueTuple fvt(field, value);
-
-            values.push_back(fvt);
-        }
-
-        countersTable.set(strPortId, values, "");
-    }
-}
-
 /**
  * @brief Helper function to get attribute oid from switch.
  *
@@ -1221,8 +1119,6 @@ SaiSwitch::SaiSwitch(
     helperInternalOids();
 
     helperCheckLaneMap();
-
-    m_supported_counters = saiGetSupportedCounters();
 
     saiGetMacAddress(m_default_mac_address);
 }

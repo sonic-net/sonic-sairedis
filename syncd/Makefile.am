@@ -20,7 +20,6 @@ syncd_SOURCES = \
 				syncd_saiswitch.cpp \
 				syncd_hard_reinit.cpp \
 				syncd_notifications.cpp \
-				syncd_counters.cpp \
 				syncd_applyview.cpp \
 				syncd_flex_counter.cpp
 
@@ -42,7 +41,6 @@ tests_SOURCES = \
 				syncd_saiswitch.cpp \
 				syncd_hard_reinit.cpp \
 				syncd_notifications.cpp \
-				syncd_counters.cpp \
 				syncd_applyview.cpp \
 				syncd_flex_counter.cpp
 
