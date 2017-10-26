@@ -102,6 +102,9 @@ std::string sai_serialize_object_meta_key(
 std::string sai_serialize_mac(
         _In_ const sai_mac_t mac);
 
+std::string sai_serialize_port_oper_status(
+        _In_ sai_port_oper_status_t status);
+
 // serialize ntf
 
 std::string sai_serialize_fdb_event_ntf(

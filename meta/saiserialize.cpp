@@ -171,6 +171,10 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.ip6, dst_attr.value.ip6);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_POINTER:
+            transfer_primitive(src_attr.value.ptr, dst_attr.value.ptr);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
             transfer_primitive(src_attr.value.ipaddr, dst_attr.value.ipaddr);
             break;

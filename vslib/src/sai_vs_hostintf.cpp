@@ -1,5 +1,6 @@
 #include "sai_vs.h"
 #include "sai_vs_internal.h"
+#include "sai_vs_state.h"
 
 #include "meta/saiserialize.h"
 
@@ -431,6 +432,14 @@ sai_status_t vs_create_hostif_int(
     {
         SWSS_LOG_ERROR("forwarding rule on %s was not added", name.c_str());
     }
+
+    std::string vname = "v" + name;
+
+    SWSS_LOG_INFO("mapping interface %s to port id %s",
+            vname.c_str(),
+            sai_serialize_object_id(obj_id).c_str());
+
+    g_switch_state_map.at(switch_id)->setIfNameToPortId(vname, obj_id);
 
     // TODO what about FDB entries notifications, they also should
     // be generated if new mac addres will show up on the interface/arp table

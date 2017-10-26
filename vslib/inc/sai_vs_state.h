@@ -5,6 +5,8 @@
 #include "meta/saiserialize.h"
 #include "meta/saiattributelist.h"
 
+#include "swss/selectableevent.h"
+
 #include <unordered_map>
 #include <string>
 #include <set>
@@ -132,12 +134,69 @@ class SwitchState
 
     sai_object_id_t getSwitchId() const
     {
-    return m_switch_id;
+        return m_switch_id;
+    }
+
+    bool getRunLinkThread() const
+    {
+        return m_run_link_thread;
+    }
+
+    void setRunLinkThread(
+            _In_ bool run)
+    {
+        m_run_link_thread = run;
+    }
+
+    swss::SelectableEvent* getLinkThreadEvent()
+    {
+        return &m_link_thread_event;
+    }
+
+    void setLinkThread(
+            _In_ std::shared_ptr<std::thread> thread)
+    {
+        m_link_thread = thread;
+    }
+
+    std::shared_ptr<std::thread> getLinkThread() const
+    {
+        return m_link_thread;
+    }
+
+    void setIfNameToPortId(
+            _In_ const std::string& ifname,
+            _In_ sai_object_id_t port_id)
+    {
+        m_ifname_to_port_id_map[ifname] = port_id;
+    }
+
+    sai_object_id_t getPortIdFromIfName(
+        _In_ const std::string& ifname) const
+    {
+        auto it = m_ifname_to_port_id_map.find(ifname);
+
+        if (it == m_ifname_to_port_id_map.end())
+        {
+            return SAI_NULL_OBJECT_ID;
+        }
+
+        return it->second;
     }
 
     private:
 
         sai_object_id_t m_switch_id;
+
+        std::map<std::string, sai_object_id_t> m_ifname_to_port_id;
+
+        swss::SelectableEvent m_link_thread_event;
+
+        volatile bool m_run_link_thread;
+
+        std::shared_ptr<std::thread> m_link_thread;
+
+        std::map<std::string, sai_object_id_t> m_ifname_to_port_id_map;
 };
 
 typedef std::map<sai_object_id_t, std::shared_ptr<SwitchState>> SwitchStateMap;

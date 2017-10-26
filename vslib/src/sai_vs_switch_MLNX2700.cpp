@@ -36,6 +36,20 @@ static sai_status_t set_switch_mac_address()
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
 
+static sai_status_t set_default_notifications()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create defaultr notifications");
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
+    attr.value.ptr = NULL;
+
+    return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
+}
+
 static sai_status_t create_default_vlan()
 {
     SWSS_LOG_ENTER();
@@ -182,6 +196,11 @@ static sai_status_t create_ports()
 
         attr.id = SAI_PORT_ATTR_TYPE;
         attr.value.s32 = SAI_PORT_TYPE_LOGICAL;
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_OPER_STATUS;
+        attr.value.s32 = SAI_PORT_OPER_STATUS_UP;
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
     }
@@ -753,6 +772,7 @@ static sai_status_t initialize_default_objects()
     CHECK_STATUS(create_ingress_priority_groups());
     CHECK_STATUS(create_qos_queues());
     CHECK_STATUS(set_maximum_number_of_childs_per_scheduler_group());
+    CHECK_STATUS(set_default_notifications());
     CHECK_STATUS(create_scheduler_groups());
 
     return SAI_STATUS_SUCCESS;
@@ -1071,6 +1091,13 @@ sai_status_t refresh_read_only_MLNX2700(
             case SAI_PORT_ATTR_QOS_NUMBER_OF_SCHEDULER_GROUPS:
             case SAI_PORT_ATTR_QOS_SCHEDULER_GROUP_LIST:
                 return refresh_scheduler_groups(meta, object_id, switch_id);
+
+                /*
+                 * This status is based on hostif vEthernetX status.
+                 */
+
+            case SAI_PORT_ATTR_OPER_STATUS:
+                return SAI_STATUS_SUCCESS;
         }
     }
 
