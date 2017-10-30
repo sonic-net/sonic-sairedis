@@ -4508,7 +4508,7 @@ sai_status_t meta_sai_get_stats_oid(
     {
         SWSS_LOG_ERROR("get function pointer is NULL");
 
-        return SAI_STATUS_FAILURE;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
     status = get(object_type, object_id, count, counter_id_list, counter_list);

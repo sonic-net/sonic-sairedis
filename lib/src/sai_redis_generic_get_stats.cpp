@@ -13,10 +13,10 @@ sai_status_t internal_redis_get_stats_process(
     // field:       stat_id
     // value:       stat_value
 
-    const std::string &key = kfvKey(kco);
-    const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+    const auto &key = kfvKey(kco);
+    const auto &values = kfvFieldsValues(kco);
 
-    std::string str_sai_status = key;
+    auto str_sai_status = key;
 
     sai_status_t status;
 
@@ -27,6 +27,13 @@ sai_status_t internal_redis_get_stats_process(
         uint32_t i = 0;
         for (const auto &v : values)
         {
+            if (i >= count)
+            {
+                SWSS_LOG_ERROR("Received more values than expected");
+                status = SAI_STATUS_FAILURE;
+                break;
+            }
+
             uint64_t value = 0;
 
             value = stoull(fvValue(v));
@@ -102,7 +109,7 @@ sai_status_t internal_redis_generic_get_stats(
 
     while (true)
     {
-        SWSS_LOG_DEBUG("wait for response");
+        SWSS_LOG_DEBUG("wait for get_stats response");
 
         swss::Selectable *sel;
 
@@ -134,8 +141,8 @@ sai_status_t internal_redis_generic_get_stats(
 
             if (g_record)
             {
-                const std::string &str_status = kfvKey(kco);
-                const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+                const auto &str_status = kfvKey(kco);
+                const auto &values = kfvFieldsValues(kco);
 
                 // first serialized is status
                 recordLine("M|" + str_status + "|" + joinFieldValues(values));
