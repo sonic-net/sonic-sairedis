@@ -1650,6 +1650,14 @@ sai_status_t processGetStatsEvent(
                     sai_metadata_sai_queue_api->get_queue_stats,
                     sai_deserialize_queue_stat);
             break;
+        case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
+            status = getStatsGeneric<sai_ingress_priority_group_stat_t>(
+                    rid,
+                    kco,
+                    result,
+                    sai_metadata_sai_buffer_api->get_ingress_priority_group_stats,
+                    sai_deserialize_ingress_priority_group_stat);
+            break;
         default:
             SWSS_LOG_ERROR("SAI object type %s not supported", str_object_type.c_str());
             status = SAI_STATUS_NOT_SUPPORTED;

@@ -4537,6 +4537,7 @@ sai_status_t meta_sai_get_stats_oid(
 
 DECLARE_META_GET_STATS_OID(port);
 DECLARE_META_GET_STATS_OID(queue);
+DECLARE_META_GET_STATS_OID(ingress_priority_group);
 
 // NOTIFICATIONS
 

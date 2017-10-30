@@ -62,6 +62,7 @@ sai_status_t internal_redis_get_stats_process(
 
 DECLARE_SERIALIZE_COUNTER_ID_LIST(port);
 DECLARE_SERIALIZE_COUNTER_ID_LIST(queue);
+DECLARE_SERIALIZE_COUNTER_ID_LIST(ingress_priority_group);
 
 template <typename T>
 sai_status_t internal_redis_generic_get_stats(
@@ -190,3 +191,4 @@ sai_status_t redis_generic_get_stats(
 
 DECLARE_REDIS_GENERIC_GET_STATS(port);
 DECLARE_REDIS_GENERIC_GET_STATS(queue);
+DECLARE_REDIS_GENERIC_GET_STATS(ingress_priority_group);
