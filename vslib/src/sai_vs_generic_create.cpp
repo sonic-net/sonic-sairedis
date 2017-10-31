@@ -259,7 +259,7 @@ sai_status_t internal_vs_generic_create(
 
         if (it != objectHash.end())
         {
-            SWSS_LOG_ERROR("create failed, object already exists %s:%, object type: %s: id: %s",
+            SWSS_LOG_ERROR("create failed, object already exists, object type: %s: id: %s",
                     sai_serialize_object_type(object_type).c_str(),
                     serialized_object_id.c_str());
 

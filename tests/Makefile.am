@@ -11,13 +11,14 @@ endif
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 
 vssyncd_SOURCES = \
+				../syncd/main.cpp \
 				../syncd/syncd.cpp \
 				../syncd/syncd_saiswitch.cpp \
 				../syncd/syncd_hard_reinit.cpp \
 				../syncd/syncd_notifications.cpp \
 				../syncd/syncd_counters.cpp \
 				../syncd/syncd_applyview.cpp \
-				../syncd/syncd_pfc_watchdog.cpp
+				../syncd/syncd_flex_counter.cpp
 
 vssyncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
 vssyncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl

@@ -5,19 +5,50 @@ extern "C" {
 }
 
 #include "swss/logger.h"
+#include "swss/dbconnector.h"
+#include "swss/schema.h"
+#include "swss/redisreply.h"
 #include "sairedis.h"
 #include "sai_redis.h"
 #include "meta/saiserialize.h"
+#include "syncd.h"
 
 #include <map>
 #include <unordered_map>
 #include <vector>
+#include <thread>
+#include <tuple>
 
 #define ASSERT_SUCCESS(format,...) \
     if ((status)!=SAI_STATUS_SUCCESS) \
         SWSS_LOG_THROW(format ": %s", ##__VA_ARGS__, sai_serialize_status(status).c_str());
 
-const char* profile_get_value(
+static sai_next_hop_group_api_t test_next_hop_group_api;
+static std::vector<std::tuple<sai_object_id_t, sai_object_id_t, std::vector<sai_attribute_t>>> created_next_hop_group_member;
+
+sai_status_t test_create_next_hop_group_member(
+        _Out_ sai_object_id_t *next_hop_group_member_id,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    created_next_hop_group_member.emplace_back();
+    auto& back = created_next_hop_group_member.back();
+    std::get<0>(back) = *next_hop_group_member_id;
+    std::get<1>(back) = switch_id;
+    auto& attrs = std::get<2>(back);
+    attrs.insert(attrs.end(), attr_list, attr_list + attr_count);
+    return 0;
+}
+
+void clearDB()
+{
+    swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
+    swss::RedisReply r(&db, "FLUSHALL", REDIS_REPLY_STATUS);
+    r.checkStatusOK();
+}
+
+static const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
 {
@@ -26,7 +57,7 @@ const char* profile_get_value(
     return NULL;
 }
 
-int profile_get_next_value(
+static int profile_get_next_value(
         _In_ sai_switch_profile_id_t profile_id,
         _Out_ const char** variable,
         _Out_ const char** value)
@@ -50,7 +81,7 @@ int profile_get_next_value(
     return -1;
 }
 
-service_method_table_t test_services = {
+static service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -63,6 +94,11 @@ void test_sai_initialize()
     // link against libsairedis, this api requires running redis db
     // with enabled unix socket
     sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+
+    // Mock the SAI api
+    test_next_hop_group_api.create_next_hop_group_member = test_create_next_hop_group_member;
+    sai_metadata_sai_next_hop_group_api = &test_next_hop_group_api;
+    created_next_hop_group_member.clear();
 
     ASSERT_SUCCESS("Failed to initialize api");
 }
@@ -100,14 +136,54 @@ sai_object_id_t create_dummy_object_id(
     return (((sai_object_id_t)objecttype) << 48) | ++index;
 }
 
+bool starts_with(const std::string& str, const std::string& substr)
+{
+    return strncmp(str.c_str(), substr.c_str(), substr.size()) == 0;
+}
+
+void bulk_nhgm_consumer_worker()
+{
+    std::string tableName = ASIC_STATE_TABLE;
+    swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
+    swss::ConsumerTable c(&db, tableName);
+    swss::Select cs;
+    swss::Selectable *selectcs;
+    int tmpfd;
+    int ret = 0;
+
+    cs.addSelectable(&c);
+    while ((ret = cs.select(&selectcs, &tmpfd)) == swss::Select::OBJECT)
+    {
+        swss::KeyOpFieldsValuesTuple kco;
+        c.pop(kco);
+
+        auto& key = kfvKey(kco);
+        auto& op = kfvOp(kco);
+        auto& values = kfvFieldsValues(kco);
+
+        if (starts_with(key, "SAI_OBJECT_TYPE_SWITCH")) continue;
+
+        if (op == "bulkcreate")
+        {
+            sai_status_t status = processBulkEvent((sai_common_api_t)SAI_COMMON_API_BULK_CREATE, kco);
+            ASSERT_SUCCESS("Failed to processBulkEvent");
+            break;
+        }
+
+    }
+}
+
 void test_bulk_next_hop_group_member_create()
 {
     SWSS_LOG_ENTER();
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
+    clearDB();
     meta_init_db();
     redis_clear_switch_ids();
+
+    auto consumerThreads = new std::thread(bulk_nhgm_consumer_worker);
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
@@ -144,6 +220,7 @@ void test_bulk_next_hop_group_member_create()
     sai_object_meta_key_t meta_key_hopgruop = { .objecttype = SAI_OBJECT_TYPE_NEXT_HOP_GROUP, .objectkey = { .key = { .object_id = hopgroup } } };
     std::string hopgroup_key = sai_serialize_object_meta_key(meta_key_hopgruop);
     ObjectAttrHash[hopgroup_key] = { };
+    sai_object_id_t hopgroup_vid = translate_rid_to_vid(hopgroup, switch_id);
 
     for (uint32_t i = 0; i <  count; ++i)
     {
@@ -153,15 +230,16 @@ void test_bulk_next_hop_group_member_create()
         sai_object_meta_key_t meta_key_hop = { .objecttype = SAI_OBJECT_TYPE_NEXT_HOP, .objectkey = { .key = { .object_id = hop } } };
         std::string hop_key = sai_serialize_object_meta_key(meta_key_hop);
         ObjectAttrHash[hop_key] = { };
+        sai_object_id_t hop_vid = translate_rid_to_vid(hop, switch_id);
 
         std::vector<sai_attribute_t> list(2);
         sai_attribute_t &attr1 = list[0];
         sai_attribute_t &attr2 = list[1];
 
         attr1.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID;
-        attr1.value.oid = hopgroup;
+        attr1.value.oid = hopgroup_vid;
         attr2.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
-        attr2.value.oid = hop;
+        attr2.value.oid = hop_vid;
         nhgm_attrs.push_back(list);
         nhgm_attrs_count.push_back(2);
     }
@@ -181,6 +259,18 @@ void test_bulk_next_hop_group_member_create()
         status = statuses[j];
         ASSERT_SUCCESS("Failed to create nhgm # %zu", j);
     }
+
+    consumerThreads->join();
+    delete consumerThreads;
+
+    // check the SAI api calling
+    for (size_t i = 0; i < created_next_hop_group_member.size(); i++)
+    {
+        auto& created = created_next_hop_group_member[i];
+        auto& created_attrs = std::get<2>(created);
+        assert(created_attrs.size() == 2);
+        assert(created_attrs[1].value.oid == nhgm_attrs[i][1].value.oid);
+    }
 }
 
 void test_bulk_route_set()
@@ -189,6 +279,7 @@ void test_bulk_route_set()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
+    clearDB();
     meta_init_db();
     redis_clear_switch_ids();
 

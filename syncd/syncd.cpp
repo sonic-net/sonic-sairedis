@@ -1,7 +1,7 @@
 #include "syncd.h"
 #include "syncd_saiswitch.h"
 #include "sairedis.h"
-#include "syncd_pfc_watchdog.h"
+#include "syncd_flex_counter.h"
 #include "swss/tokenize.h"
 #include <limits.h>
 
@@ -2071,7 +2071,8 @@ sai_object_id_t extractSwitchVid(
     }
 }
 
-sai_status_t handle_bulk_route(
+sai_status_t handle_bulk_generic(
+        _In_ sai_object_type_t object_type,
         _In_ const std::vector<std::string> &object_ids,
         _In_ sai_common_api_t api,
         _In_ const std::vector<std::shared_ptr<SaiAttributeList>> &attributes)
@@ -2092,24 +2093,29 @@ sai_status_t handle_bulk_route(
         sai_attribute_t *attr_list = list->get_attr_list();
         uint32_t attr_count = list->get_attr_count();
 
+        sai_object_meta_key_t meta_key;
+
+        if (object_type == SAI_OBJECT_TYPE_ROUTE_ENTRY)
+        {
+            meta_key.objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY;
+            sai_deserialize_route_entry(object_ids[idx], meta_key.objectkey.key.route_entry);
+        }
+        else if (object_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER)
+        {
+            meta_key.objecttype = SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER;
+            sai_deserialize_object_id(object_ids[idx], meta_key.objectkey.key.object_id);
+        }
+        else
+        {
+            throw std::invalid_argument("object_type");
+        }
+
         if (api == (sai_common_api_t)SAI_COMMON_API_BULK_SET)
         {
-            sai_object_meta_key_t meta_key;
-
-            meta_key.objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY;
-
-            sai_deserialize_route_entry(object_ids[idx], meta_key.objectkey.key.route_entry);
-
             status = handle_non_object_id(meta_key, SAI_COMMON_API_SET, attr_count, attr_list);
         }
         else if (api == (sai_common_api_t)SAI_COMMON_API_BULK_CREATE)
         {
-            sai_object_meta_key_t meta_key;
-
-            meta_key.objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY;
-
-            sai_deserialize_route_entry(object_ids[idx], meta_key.objectkey.key.route_entry);
-
             status = handle_non_object_id(meta_key, SAI_COMMON_API_CREATE, attr_count, attr_list);
         }
         else
@@ -2213,7 +2219,8 @@ sai_status_t processBulkEvent(
     switch (object_type)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
-            status = handle_bulk_route(object_ids, api, attributes);
+        case SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER:
+            status = handle_bulk_generic(object_type, object_ids, api, attributes);
             break;
 
         default:
@@ -2462,7 +2469,7 @@ sai_status_t processEvent(
     return status;
 }
 
-void processPfcWdEvent(
+void processFlexCounterEvent(
         _In_ swss::ConsumerStateTable &consumer)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -2490,11 +2497,11 @@ void processPfcWdEvent(
         {
             if (objectType == SAI_OBJECT_TYPE_PORT)
             {
-                PfcWatchdog::removePort(vid);
+                FlexCounter::removePort(vid);
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE)
             {
-                PfcWatchdog::removeQueue(vid);
+                FlexCounter::removeQueue(vid);
             }
             else
             {
@@ -2514,7 +2521,7 @@ void processPfcWdEvent(
                     sai_deserialize_port_stat(str, stat);
                     portCounterIds.push_back(stat);
                 }
-                PfcWatchdog::setPortCounterList(vid, rid, portCounterIds);
+                FlexCounter::setPortCounterList(vid, rid, portCounterIds);
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_COUNTER_ID_LIST)
             {
@@ -2525,7 +2532,19 @@ void processPfcWdEvent(
                     sai_deserialize_queue_stat(str, stat);
                     queueCounterIds.push_back(stat);
                 }
-                PfcWatchdog::setQueueCounterList(vid, rid, queueCounterIds);
+                FlexCounter::setQueueCounterList(vid, rid, queueCounterIds);
+            }
+            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_ATTR_ID_LIST)
+            {
+                std::vector<sai_queue_attr_t> queueAttrIds;
+                for (const auto &str : idStrings)
+                {
+                    sai_queue_attr_t attr;
+                    sai_deserialize_queue_attr(str, attr);
+                    queueAttrIds.push_back(attr);
+                }
+
+                FlexCounter::setQueueAttrList(vid, rid, queueAttrIds);
             }
             else
             {
@@ -2535,7 +2554,7 @@ void processPfcWdEvent(
     }
 }
 
-void processPfcWdPluginEvent(
+void processFlexCounterPluginEvent(
         _In_ swss::ConsumerStateTable &consumer)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
@@ -2550,7 +2569,7 @@ void processPfcWdPluginEvent(
 
     if (op == DEL_COMMAND)
     {
-        PfcWatchdog::removeCounterPlugin(key);
+        FlexCounter::removeCounterPlugin(key);
         return;
     }
 
@@ -2567,11 +2586,11 @@ void processPfcWdPluginEvent(
 
         if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_PORT))
         {
-            PfcWatchdog::addPortCounterPlugin(key);
+            FlexCounter::addPortCounterPlugin(key);
         }
         else if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_QUEUE))
         {
-            PfcWatchdog::addQueueCounterPlugin(key);
+            FlexCounter::addQueueCounterPlugin(key);
         }
         else
         {
@@ -3121,7 +3140,7 @@ void sai_meta_log_syncd(
     swss::Logger::getInstance().write(p, ":- %s: %s", func, buffer);
 }
 
-int main(int argc, char **argv)
+int syncd_main(int argc, char **argv)
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
@@ -3153,14 +3172,14 @@ int main(int argc, char **argv)
 
     std::shared_ptr<swss::DBConnector> dbAsic = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    std::shared_ptr<swss::DBConnector> dbPfcWatchdog = std::make_shared<swss::DBConnector>(PFC_WD_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(PFC_WD_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
 
     g_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());
 
     std::shared_ptr<swss::ConsumerTable> asicState = std::make_shared<swss::ConsumerTable>(dbAsic.get(), ASIC_STATE_TABLE);
     std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "RESTARTQUERY");
-    std::shared_ptr<swss::ConsumerStateTable> pfcWdState = std::make_shared<swss::ConsumerStateTable>(dbPfcWatchdog.get(), PFC_WD_STATE_TABLE);
-    std::shared_ptr<swss::ConsumerStateTable> pfcWdPlugin = std::make_shared<swss::ConsumerStateTable>(dbPfcWatchdog.get(), PLUGIN_TABLE);
+    std::shared_ptr<swss::ConsumerStateTable> flexCounterState = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PFC_WD_STATE_TABLE);
+    std::shared_ptr<swss::ConsumerStateTable> flexCounterPlugin = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PLUGIN_TABLE);
 
     /*
      * At the end we cant use producer consumer concept since if one proces
@@ -3208,7 +3227,7 @@ int main(int argc, char **argv)
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("fail to sai_api_initialize: %d", status);
-        exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
     }
 
     int failed = sai_metadata_apis_query(sai_api_query);
@@ -3256,8 +3275,8 @@ int main(int argc, char **argv)
 
         s.addSelectable(asicState.get());
         s.addSelectable(restartQuery.get());
-        s.addSelectable(pfcWdState.get());
-        s.addSelectable(pfcWdPlugin.get());
+        s.addSelectable(flexCounterState.get());
+        s.addSelectable(flexCounterPlugin.get());
 
         SWSS_LOG_NOTICE("starting main loop");
 
@@ -3282,13 +3301,13 @@ int main(int argc, char **argv)
                 warmRestartHint = handleRestartQuery(*restartQuery);
                 break;
             }
-            else if (sel == pfcWdState.get())
+            else if (sel == flexCounterState.get())
             {
-                processPfcWdEvent(*(swss::ConsumerStateTable*)sel);
+                processFlexCounterEvent(*(swss::ConsumerStateTable*)sel);
             }
-            else if (sel == pfcWdPlugin.get())
+            else if (sel == flexCounterPlugin.get())
             {
-                processPfcWdPluginEvent(*(swss::ConsumerStateTable*)sel);
+                processFlexCounterPluginEvent(*(swss::ConsumerStateTable*)sel);
             }
             else if (result == swss::Select::OBJECT)
             {
@@ -3332,5 +3351,5 @@ int main(int argc, char **argv)
 
     SWSS_LOG_NOTICE("uninitialize finished");
 
-    exit(EXIT_SUCCESS);
+    return EXIT_SUCCESS;
 }

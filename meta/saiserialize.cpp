@@ -724,6 +724,14 @@ std::string sai_serialize_ingress_priority_group_stat(
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_ingress_priority_group_stat_t);
 }
 
+std::string sai_serialize_queue_attr(
+        _In_ const sai_queue_attr_t attr)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(attr, &sai_metadata_enum_sai_queue_attr_t);
+}
+
 std::string sai_serialize_switch_oper_status(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t status)
@@ -2759,7 +2767,7 @@ void sai_deserialize_free_fdb_event(
         sai_deserialize_free_attribute_value(meta->attrvaluetype, fdb_event.attr[i]);
     }
 
-    delete fdb_event.attr;
+    delete[] fdb_event.attr;
 }
 
 void sai_deserialize_free_fdb_event_ntf(
@@ -2773,7 +2781,7 @@ void sai_deserialize_free_fdb_event_ntf(
         sai_deserialize_free_fdb_event(fdb_event[i]);
     }
 
-    delete fdb_event;
+    delete[] fdb_event;
 }
 
 void sai_deserialize_free_port_oper_status_ntf(
@@ -2782,7 +2790,7 @@ void sai_deserialize_free_port_oper_status_ntf(
 {
     SWSS_LOG_ENTER();
 
-    delete port_oper_status;
+    delete[] port_oper_status;
 }
 
 void sai_deserialize_free_queue_deadlock_ntf(
@@ -2821,3 +2829,11 @@ void sai_deserialize_ingress_priority_group_stat(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_ingress_priority_group_stat_t, (int32_t&)stat);
 }
 
+void sai_deserialize_queue_attr(
+        _In_ const std::string& s,
+        _Out_ sai_queue_attr_t& attr)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_queue_attr_t, (int32_t&)attr);
+}

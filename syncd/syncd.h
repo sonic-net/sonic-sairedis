@@ -113,4 +113,8 @@ bool is_set_attribute_workaround(
 void startNotificationsProcessingThread();
 void stopNotificationsProcessingThread();
 
+sai_status_t processBulkEvent(
+        _In_ sai_common_api_t api,
+        _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
 #endif // __SYNCD_H__

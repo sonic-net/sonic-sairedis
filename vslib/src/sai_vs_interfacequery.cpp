@@ -4,6 +4,7 @@
 #include <string.h>
 
 bool                    g_api_initialized = false;
+bool                    g_vs_hostif_use_tap_device = false;
 sai_vs_switch_type_t    g_vs_switch_type = SAI_VS_SWITCH_TYPE_NONE;
 std::recursive_mutex    g_recursive_mutex;
 
@@ -91,6 +92,13 @@ sai_status_t sai_api_initialize(
 
         return SAI_STATUS_FAILURE;
     }
+
+    const char *use_tap_dev = service_method_table->profile_get_value(0, SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE);
+
+    g_vs_hostif_use_tap_device = use_tap_dev != NULL && strcmp(use_tap_dev, "true") == 0;
+
+    SWSS_LOG_NOTICE("hostif use TAP device: %s",
+            g_vs_hostif_use_tap_device ? "true" : "false");
 
     if (flags != 0)
     {

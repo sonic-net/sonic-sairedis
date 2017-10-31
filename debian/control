@@ -7,18 +7,18 @@ Standards-Version: 1.0.0
 
 Package: syncd
 Architecture: any
-Conflicts: syncd-rpc
+Conflicts: syncd-rpc, syncd-vs
 Description: This package contains sync daemon for SONiC project.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
 
 Package: syncd-rpc
 Architecture: any
-Conflicts: syncd
+Conflicts: syncd, syncd-vs
 Description: This package contains sync daemon with rpc for SONiC project.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
   This daemon contains saithrift rpc library for remote control of an ASIC.
 
-Package: vssyncd
+Package: syncd-vs
 Architecture: any
 Conflicts: syncd-rpc, syncd
 Description: This package contains sync daemon for SONiC project linked with virtual switch.
@@ -61,7 +61,7 @@ Package: syncd-dbg
 Architecture: any
 Section: debug
 Priority: extra
-Conflicts: syncd-rpc-dbg
+Conflicts: syncd-rpc-dbg, syncd-vs
 Depends:
     syncd (= ${binary:Version}),
     ${misc:Depends}
@@ -71,11 +71,21 @@ Package: syncd-rpc-dbg
 Architecture: any
 Section: debug
 Priority: extra
-Conflicts: syncd-dbg
+Conflicts: syncd-dbg, syncd-vs
 Depends:
     syncd-rpc (= ${binary:Version}),
     ${misc:Depends}
 Description: debugging symbols for syncd-rpc
+
+Package: syncd-vs-dbg
+Architecture: any
+Section: debug
+Priority: extra
+Conflicts: syncd-dbg, syncd-rpc-dbg
+Depends:
+    syncd-vs (= ${binary:Version}),
+    ${misc:Depends}
+Description: debugging symbols for syncd-vs
 
 Package: libsairedis-dbg
 Architecture: any

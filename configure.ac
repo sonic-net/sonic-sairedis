@@ -40,7 +40,7 @@ AM_COND_IF([SAITHRIFT], [
         AC_CHECK_LIB([thrift], [main], [AC_MSG_NOTICE(libthrift found)], [AC_MSG_ERROR(libthrift is required for rpcserver)])
 ])
 
-AC_ARG_ENABLE(rtest,
+AC_ARG_ENABLE(redis-test,
 [  --enable-redis-test     test with redis service],
 [case "${enableval}" in
 	yes) rtest=true ;;
