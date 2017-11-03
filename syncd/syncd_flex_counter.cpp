@@ -378,10 +378,11 @@ void FlexCounter::flexCounterThread(void)
 
     while (m_runFlexCounterThread)
     {
-
-        std::lock_guard<std::mutex> lock(g_mutex);
-        collectCounters(countersTable);
-        runPlugins(db);
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            collectCounters(countersTable);
+            runPlugins(db);
+        }
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
         m_cvSleep.wait_for(lk, std::chrono::milliseconds(FLEX_COUNTER_POLL_MSECS));
