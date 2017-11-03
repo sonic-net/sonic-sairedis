@@ -45,30 +45,27 @@ sai_status_t internal_redis_get_stats_process(
     return status;
 }
 
-template <class T> class stat_traits {};
+template <class T> struct stat_traits {};
 
 template <>
-class stat_traits<sai_port_stat_t>
+struct stat_traits<sai_port_stat_t>
 {
-    public:
-        typedef std::string (*serialize_stat)(sai_port_stat_t);
-        static constexpr serialize_stat serialize_stat_fn = sai_serialize_port_stat;
+    typedef std::string (*serialize_stat)(sai_port_stat_t);
+    static constexpr serialize_stat serialize_stat_fn = sai_serialize_port_stat;
 };
 
 template <>
-class stat_traits<sai_queue_stat_t>
+struct stat_traits<sai_queue_stat_t>
 {
-    public:
-        typedef std::string (*serialize_stat)(sai_queue_stat_t);
-        static constexpr stat_traits<sai_queue_stat_t>::serialize_stat serialize_stat_fn = sai_serialize_queue_stat;
+    typedef std::string (*serialize_stat)(sai_queue_stat_t);
+    static constexpr serialize_stat serialize_stat_fn = sai_serialize_queue_stat;
 };
 
 template <>
-class stat_traits<sai_ingress_priority_group_stat_t>
+struct stat_traits<sai_ingress_priority_group_stat_t>
 {
-    public:
-        typedef std::string (*serialize_stat)(sai_ingress_priority_group_stat_t);
-        static constexpr stat_traits<sai_ingress_priority_group_stat_t>::serialize_stat serialize_stat_fn = sai_serialize_ingress_priority_group_stat;
+    typedef std::string (*serialize_stat)(sai_ingress_priority_group_stat_t);
+    static constexpr serialize_stat serialize_stat_fn = sai_serialize_ingress_priority_group_stat;
 };
 
 
