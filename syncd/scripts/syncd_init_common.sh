@@ -92,6 +92,8 @@ config_syncd_cavium()
     until [ $(redis-cli ping | grep -c PONG) -gt 0 ]; do
         sleep 1
     done
+
+    redis-cli FLUSHALL
 }
 
 config_syncd_marvell()

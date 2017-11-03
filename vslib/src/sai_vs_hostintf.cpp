@@ -314,11 +314,7 @@ sai_status_t vs_create_hostif_int(
 
     if (g_vs_hostif_use_tap_device == false)
     {
-        return vs_generic_create(object_type,
-                hostif_id,
-                switch_id,
-                attr_count,
-                attr_list);
+        return SAI_STATUS_SUCCESS;
     }
 
     // validate SAI_HOSTIF_ATTR_TYPE
