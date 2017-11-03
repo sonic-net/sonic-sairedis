@@ -103,6 +103,14 @@ config_syncd_marvell()
     [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
 }
 
+config_syncd_barefoot()
+{
+     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/bfn/install/lib:/opt/bfn/install/lib/tofinopd/switch
+     . /opt/bfn/install/bin/dma_setup.sh
+     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/bfn/install/lib:/opt/bfn/install/lib/tofinopd/switch
+     export LD_PRELOAD=libswitchapi.so:libswitchsai.so:libpd.so:libpdcli.so:libdriver.so:libbfsys.so
+}
+
 config_syncd()
 {
     if [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
@@ -115,6 +123,8 @@ config_syncd()
         config_syncd_centec
     elif [ "$SONIC_ASIC_TYPE" == "marvell" ]; then
         config_syncd_marvell
+     elif [ "$SONIC_ASIC_TYPE" == "barefoot" ]; then
+         config_syncd_barefoot
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
