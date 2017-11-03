@@ -45,31 +45,50 @@ sai_status_t internal_redis_get_stats_process(
     return status;
 }
 
-// Another way to implement this would be to pass sai_serialize_ ## type ## stat as a parameter,
-// but the decision point of what function to pass is up in sai_redis_internal.h, which would make us
-// pass a callback through about five function calls, so for the sake of simplicity here's a macro that
-// generates overloaded functions
-#define DECLARE_SERIALIZE_COUNTER_ID_LIST(type)                                                               \
-    std::vector<swss::FieldValueTuple> serialize_counter_id_list(                                             \
-            _In_ uint32_t count,                                                                              \
-            _In_ const sai_ ## type ## _stat_t *counter_id_list)                                              \
-    {                                                                                                         \
-        SWSS_LOG_ENTER();                                                                                     \
-                                                                                                              \
-        std::vector<swss::FieldValueTuple> values;                                                            \
-                                                                                                              \
-        for (uint32_t i = 0; i < count; i++)                                                                  \
-        {                                                                                                     \
-            std::string field = sai_serialize_ ## type ## _stat(counter_id_list[i]);                          \
-            values.emplace_back(field, "");                                                                   \
-        }                                                                                                     \
-                                                                                                              \
-        return std::move(values);                                                                             \
+template <class T> class stat_traits {};
+
+template <>
+class stat_traits<sai_port_stat_t>
+{
+    public:
+        typedef std::string (*serialize_stat)(sai_port_stat_t);
+        static constexpr serialize_stat serialize_stat_fn = sai_serialize_port_stat;
+};
+
+template <>
+class stat_traits<sai_queue_stat_t>
+{
+    public:
+        typedef std::string (*serialize_stat)(sai_queue_stat_t);
+        static constexpr stat_traits<sai_queue_stat_t>::serialize_stat serialize_stat_fn = sai_serialize_queue_stat;
+};
+
+template <>
+class stat_traits<sai_ingress_priority_group_stat_t>
+{
+    public:
+        typedef std::string (*serialize_stat)(sai_ingress_priority_group_stat_t);
+        static constexpr stat_traits<sai_ingress_priority_group_stat_t>::serialize_stat serialize_stat_fn = sai_serialize_ingress_priority_group_stat;
+};
+
+
+template <class T>
+std::vector<swss::FieldValueTuple> serialize_counter_id_list(
+        _In_ uint32_t count,
+        _In_ const T *counter_id_list)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<swss::FieldValueTuple> values;
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        std::string field = stat_traits<T>::serialize_stat_fn(counter_id_list[i]);
+        values.emplace_back(field, "");
     }
 
-DECLARE_SERIALIZE_COUNTER_ID_LIST(port);
-DECLARE_SERIALIZE_COUNTER_ID_LIST(queue);
-DECLARE_SERIALIZE_COUNTER_ID_LIST(ingress_priority_group);
+    return std::move(values);
+}
 
 template <typename T>
 sai_status_t internal_redis_generic_get_stats(
