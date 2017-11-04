@@ -200,7 +200,7 @@ static sai_status_t create_ports()
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
         attr.id = SAI_PORT_ATTR_OPER_STATUS;
-        attr.value.s32 = SAI_PORT_OPER_STATUS_UP;
+        attr.value.s32 = SAI_PORT_OPER_STATUS_DOWN;
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 

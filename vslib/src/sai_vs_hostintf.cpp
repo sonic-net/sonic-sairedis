@@ -245,7 +245,7 @@ bool hostif_create_tap_veth_forwarding(
     // host interface, vEthernetX will be used for packet transfer between ip
     // namespaces
 
-    std::string vethname = "v" + tapname;
+    std::string vethname = SAI_VS_VETH_PREFIX + tapname;
 
     int packet_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
 
@@ -433,7 +433,7 @@ sai_status_t vs_create_hostif_int(
         SWSS_LOG_ERROR("forwarding rule on %s was not added", name.c_str());
     }
 
-    std::string vname = "v" + name;
+    std::string vname = SAI_VS_VETH_PREFIX + name;
 
     SWSS_LOG_INFO("mapping interface %s to port id %s",
             vname.c_str(),
