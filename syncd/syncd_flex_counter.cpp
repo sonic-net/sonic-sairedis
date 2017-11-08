@@ -191,6 +191,11 @@ void FlexCounter::removePort(
     if (it == fc.m_portCounterIdsMap.end())
     {
         SWSS_LOG_ERROR("Trying to remove nonexisting port counter Ids 0x%lx", portVid);
+        // Remove flex counter if counter IDs map is empty
+        if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
+        {
+            removeInstance(pollInterval);
+        }
         return;
     }
 
@@ -215,6 +220,10 @@ void FlexCounter::removeQueue(
     if (counterIter == fc.m_queueCounterIdsMap.end())
     {
         SWSS_LOG_ERROR("Trying to remove nonexisting queue counter Ids 0x%lx", queueVid);
+        if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
+        {
+            removeInstance(pollInterval);
+        }
         return;
     }
 
@@ -224,6 +233,10 @@ void FlexCounter::removeQueue(
     if (attrIter == fc.m_queueAttrIdsMap.end())
     {
         SWSS_LOG_ERROR("Trying to remove nonexisting queue attr Ids 0x%lx", queueVid);
+        if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
+        {
+            removeInstance(pollInterval);
+        }
         return;
     }
 
