@@ -159,7 +159,6 @@ void bulk_nhgm_consumer_worker()
 
         auto& key = kfvKey(kco);
         auto& op = kfvOp(kco);
-        auto& values = kfvFieldsValues(kco);
 
         if (starts_with(key, "SAI_OBJECT_TYPE_SWITCH")) continue;
 

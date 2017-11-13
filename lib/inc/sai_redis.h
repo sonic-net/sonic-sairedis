@@ -219,6 +219,16 @@ sai_status_t redis_generic_get_route_entry(
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
+// get_stats
+
+template <typename T>
+sai_status_t redis_generic_get_stats(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t count,
+        _In_ const T* counter_id_list,
+        _Out_ uint64_t *counter_list);
+
 // notifications
 
 void handle_notification(

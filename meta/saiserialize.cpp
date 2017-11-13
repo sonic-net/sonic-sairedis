@@ -171,6 +171,10 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.ip6, dst_attr.value.ip6);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_POINTER:
+            transfer_primitive(src_attr.value.ptr, dst_attr.value.ptr);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
             transfer_primitive(src_attr.value.ipaddr, dst_attr.value.ipaddr);
             break;
@@ -714,6 +718,14 @@ std::string sai_serialize_queue_stat(
     SWSS_LOG_ENTER();
 
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_queue_stat_t);
+}
+
+std::string sai_serialize_ingress_priority_group_stat(
+        _In_ const sai_ingress_priority_group_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_ingress_priority_group_stat_t);
 }
 
 std::string sai_serialize_queue_attr(
@@ -2810,6 +2822,15 @@ void sai_deserialize_queue_stat(
     SWSS_LOG_ENTER();
 
     sai_deserialize_enum(s, &sai_metadata_enum_sai_queue_stat_t, (int32_t&)stat);
+}
+
+void sai_deserialize_ingress_priority_group_stat(
+        _In_ const std::string& s,
+        _Out_ sai_ingress_priority_group_stat_t& stat)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_ingress_priority_group_stat_t, (int32_t&)stat);
 }
 
 void sai_deserialize_queue_attr(

@@ -27,6 +27,8 @@ extern "C" {
 #define SAI_VALUE_VS_SWITCH_TYPE_BCM56850     "SAI_VS_SWITCH_TYPE_BCM56850"
 #define SAI_VALUE_VS_SWITCH_TYPE_MLNX2700     "SAI_VS_SWITCH_TYPE_MLNX2700"
 
+#define SAI_VS_VETH_PREFIX   "v"
+
 typedef enum _sai_vs_switch_type_t
 {
     SAI_VS_SWITCH_TYPE_NONE,

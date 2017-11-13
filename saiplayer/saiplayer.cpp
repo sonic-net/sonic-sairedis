@@ -119,6 +119,11 @@ sai_object_id_t translate_local_to_redis(
     SWSS_LOG_DEBUG("translating local RID %s",
             sai_serialize_object_id(rid).c_str());
 
+    if (rid == SAI_NULL_OBJECT_ID)
+    {
+        return SAI_NULL_OBJECT_ID;
+    }
+
     auto it = local_to_redis.find(rid);
 
     if (it == local_to_redis.end())

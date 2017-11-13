@@ -38,6 +38,14 @@ typedef sai_status_t (*sai_get_generic_attribute_fn)(
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list);
 
+template <typename T>
+using sai_get_generic_stats_fn = sai_status_t (*)(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t count,
+        _In_ const T* counter_id_list,
+        _Out_ uint64_t *counter_list);
+
 // META GENERIC
 
 extern sai_status_t meta_sai_create_oid(
@@ -65,6 +73,15 @@ extern sai_status_t meta_sai_get_oid(
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list,
         _In_ sai_get_generic_attribute_fn get);
+
+template<typename T>
+extern sai_status_t meta_sai_get_stats_oid(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t count,
+        _In_ const T* counter_id_list,
+        _Inout_ uint64_t *counter_list,
+        _In_ sai_get_generic_stats_fn<T> get);
 
 // META FDB
 

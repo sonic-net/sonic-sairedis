@@ -1570,6 +1570,119 @@ sai_status_t notifySyncd(
     return SAI_STATUS_SUCCESS;
 }
 
+template <typename T, typename G>
+std::vector<T> extractCounterIdsGeneric(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco,
+        _In_ G deserializeIdFn)
+{
+    SWSS_LOG_ENTER();
+
+    const auto& values = kfvFieldsValues(kco);
+    std::vector<T> counterIdList;
+    for (const auto & v : values)
+    {
+        std::string field = fvField(v);
+        T counterId;
+        deserializeIdFn(field, counterId);
+
+        counterIdList.push_back(counterId);
+    }
+
+    return std::move(counterIdList);
+}
+
+template <typename T, typename F, typename G>
+sai_status_t getStatsGeneric(
+        _In_ sai_object_id_t object_id,
+        _In_ const swss::KeyOpFieldsValuesTuple &kco,
+        _Out_ std::vector<uint64_t>& counters,
+        _In_ F getStatsFn,
+        _In_ G deserializeIdFn)
+{
+    SWSS_LOG_ENTER();
+
+    const std::vector<T> counter_ids = extractCounterIdsGeneric<T, G>(
+            kco,
+            deserializeIdFn);
+    counters.resize(counter_ids.size());
+
+    return getStatsFn(
+            object_id,
+            (uint32_t)counter_ids.size(),
+            counter_ids.data(),
+            counters.data());
+}
+
+sai_status_t processGetStatsEvent(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &key = kfvKey(kco);
+    const std::string &str_object_type = key.substr(0, key.find(":"));
+    const std::string &str_object_id = key.substr(key.find(":") + 1);
+
+    sai_object_id_t object_id;
+    sai_deserialize_object_id(str_object_id, object_id);
+    sai_object_id_t rid = translate_vid_to_rid(object_id);
+    sai_object_type_t object_type;
+    sai_deserialize_object_type(str_object_type, object_type);
+
+    std::vector<uint64_t> result;
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    switch (object_type)
+    {
+        case SAI_OBJECT_TYPE_PORT:
+            status = getStatsGeneric<sai_port_stat_t>(
+                    rid,
+                    kco,
+                    result,
+                    sai_metadata_sai_port_api->get_port_stats,
+                    sai_deserialize_port_stat);
+            break;
+        case SAI_OBJECT_TYPE_QUEUE:
+            status = getStatsGeneric<sai_queue_stat_t>(
+                    rid,
+                    kco,
+                    result,
+                    sai_metadata_sai_queue_api->get_queue_stats,
+                    sai_deserialize_queue_stat);
+            break;
+        case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
+            status = getStatsGeneric<sai_ingress_priority_group_stat_t>(
+                    rid,
+                    kco,
+                    result,
+                    sai_metadata_sai_buffer_api->get_ingress_priority_group_stats,
+                    sai_deserialize_ingress_priority_group_stat);
+            break;
+        default:
+            SWSS_LOG_ERROR("SAI object type %s not supported", str_object_type.c_str());
+            status = SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get stats");
+    }
+    else
+    {
+        const auto& values = kfvFieldsValues(kco);
+        for (size_t i = 0; i < values.size(); i++)
+        {
+            entry.emplace_back(fvField(values[i]), std::to_string(result[i]));
+        }
+    }
+
+    getResponse->set(sai_serialize_status(status), entry, "getresponse");
+
+    return status;
+}
+
 void on_switch_create_in_init_view(
         _In_ sai_object_id_t switch_vid,
         _In_ uint32_t attr_count,
@@ -2193,6 +2306,10 @@ sai_status_t processEvent(
     else if (op == "notify")
     {
         return notifySyncd(key);
+    }
+    else if (op == "get_stats")
+    {
+        return processGetStatsEvent(kco);
     }
     else
     {

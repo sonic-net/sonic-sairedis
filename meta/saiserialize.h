@@ -75,6 +75,9 @@ std::string sai_serialize_port_stat(
 std::string sai_serialize_queue_stat(
         _In_ const sai_queue_stat_t counter);
 
+std::string sai_serialize_ingress_priority_group_stat(
+        _In_ const sai_ingress_priority_group_stat_t counter);
+
 std::string sai_serialize_queue_attr(
         _In_ const sai_queue_attr_t attr);
 
@@ -101,6 +104,9 @@ std::string sai_serialize_object_meta_key(
 
 std::string sai_serialize_mac(
         _In_ const sai_mac_t mac);
+
+std::string sai_serialize_port_oper_status(
+        _In_ sai_port_oper_status_t status);
 
 // serialize ntf
 
@@ -223,7 +229,12 @@ void sai_deserialize_queue_stat(
         _In_ const std::string& s,
         _Out_ sai_queue_stat_t& stat);
 
+void sai_deserialize_ingress_priority_group_stat(
+        _In_ const std::string& s,
+        _Out_ sai_ingress_priority_group_stat_t& stat);
+
 void sai_deserialize_queue_attr(
         _In_ const std::string& s,
         _Out_ sai_queue_attr_t& attr);
+
 #endif // __SAI_SERIALIZE__
