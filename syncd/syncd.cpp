@@ -65,6 +65,13 @@ std::set<sai_object_id_t> initViewRemovedVidSet;
  */
 volatile bool g_asicInitViewMode = false;
 
+#ifdef SAITHRIFT
+/*
+ * SAI switch global needed for RPC server
+ */
+sai_object_id_t gSwitchId;
+#endif
+
 struct cmdOptions
 {
     int countersThreadIntervalInSeconds;
@@ -1641,6 +1648,10 @@ void on_switch_create_in_init_view(
             SWSS_LOG_THROW("failed to create switch in init view mode: %s",
                     sai_serialize_status(status).c_str());
         }
+
+#ifdef SAITHRIFT
+        gSwitchId = switch_rid;
+#endif
 
         /*
          * Object was created so new object id was generated we
