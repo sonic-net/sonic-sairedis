@@ -26,15 +26,21 @@ binary: binary-syncd binary-syncd-rpc
 
 binary-syncd:
 	$(shell echo > /tmp/syncd-build)
-	dh clean               --with autotools-dev
-	dh build  -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
-	dh binary -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
+	dh clean  --with autotools-dev
+	dh build  -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+	dh binary -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
 
-binary-syncd-rpc:
-	$(shell echo '--enable-rpcserver=yes' > /tmp/syncd-build)
-	dh clean           --with autotools-dev
-	dh build  -N syncd -N syncd-dbg --with autotools-dev
-	dh binary -N syncd -N syncd-dbg --with autotools-dev
+binary-syncd-rpc: | binary-syncd
+	$(shell echo '--enable-rpcserver=no' > /tmp/syncd-build)
+	dh clean  --with autotools-dev
+	dh build  -N syncd -N syncd-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+	dh binary -N syncd -N syncd-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+
+binary-syncd-vs:
+	$(shell echo '--with-sai=vs' > /tmp/syncd-build)
+	dh clean  --with autotools-dev
+	dh build  -N syncd -N syncd-dbg -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
+	dh binary -N syncd -N syncd-dbg -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
 
 # dh_make generated override targets
 # This is example for Cmake (See https://bugs.debian.org/641051 )
@@ -43,15 +49,16 @@ binary-syncd-rpc:
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
 override_dh_auto_configure:
-	./autogen.sh	
+	./autogen.sh
 	dh_auto_configure -- $(shell cat /tmp/syncd-build)
 
+override_dh_install:
+	dh_install
+ifeq ($(shell cat /tmp/syncd-build), --enable-rpcserver=yes)
+	sed -i 's/ENABLE_SAITHRIFT=0/ENABLE_SAITHRIFT=1/' debian/syncd-rpc/usr/bin/syncd_init_common.sh
+endif
+
 override_dh_installinit:
-  ifeq ($(shell cat /tmp/syncd-build), --enable-rpcserver=yes)
-	sed -i 's/ENABLE_SAITHRIFT=0/ENABLE_SAITHRIFT=1/' debian/syncd-rpc.init
-  else
-	sed -i 's/ENABLE_SAITHRIFT=1/ENABLE_SAITHRIFT=0/' debian/syncd.init
-  endif
 	dh_installinit --init-script=syncd
 
 override_dh_shlibdeps:
@@ -60,6 +67,7 @@ override_dh_shlibdeps:
 override_dh_strip:
 	dh_strip -psyncd-rpc --dbg-package=syncd-rpc-dbg
 	dh_strip -psyncd --dbg-package=syncd-dbg
+	dh_strip -psyncd-vs --dbg-package=syncd-vs-dbg
 	dh_strip -plibsairedis --dbg-package=libsairedis-dbg
 	dh_strip -plibsaivs --dbg-package=libsaivs-dbg
 	dh_strip -plibsaimetadata --dbg-package=libsaimetadata-dbg

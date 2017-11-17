@@ -24,7 +24,7 @@ SaiAttributeList::SaiAttributeList(
 
         sai_deserialize_attr_id(str_attr_id, attr.id);
 
-        auto meta = get_attribute_metadata(object_type, attr.id);
+        auto meta = sai_metadata_get_attr_metadata(object_type, attr.id);
 
         if (meta == NULL)
         {
@@ -35,7 +35,7 @@ SaiAttributeList::SaiAttributeList(
         sai_deserialize_attr_value(str_attr_value, *meta, attr, countOnly);
 
         m_attr_list.push_back(attr);
-        m_serialization_type_list.push_back(meta->serializationtype);
+        m_attr_value_type_list.push_back(meta->attrvaluetype);
     }
 }
 
@@ -47,7 +47,7 @@ SaiAttributeList::~SaiAttributeList()
     {
         sai_attribute_t &attr = m_attr_list[i];
 
-        sai_attr_serialization_type_t serialization_type = m_serialization_type_list[i];
+        sai_attr_value_type_t serialization_type = m_attr_value_type_list[i];
 
         sai_deserialize_free_attribute_value(serialization_type, attr);
     }
@@ -65,7 +65,7 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
     {
         const sai_attribute_t *attr = &attr_list[index];
 
-        auto meta = get_attribute_metadata(object_type, attr->id);
+        auto meta = sai_metadata_get_attr_metadata(object_type, attr->id);
 
         if (meta == NULL)
         {

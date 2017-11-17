@@ -5,12 +5,13 @@
 #include <set>
 #include <unordered_map>
 
-//#include "stdint.h"
 #include <stdio.h>
 
 extern "C" {
 #include "sai.h"
 }
+
+#include "sai_redis_internal.h"
 
 #include "swss/redisclient.h"
 #include "swss/dbconnector.h"
@@ -23,37 +24,56 @@ extern "C" {
 #include "swss/logger.h"
 #include "meta/sai_meta.h"
 
+/*
+ * Switch index is encoded on 1 byte so we can have
+ * max 0x100 switches at the same time.
+ */
+
+#define MAX_SWITCHES 0x100
+
+void redis_clear_switch_ids();
+void redis_free_virtual_object_id(
+        _In_ sai_object_id_t object_id);
+
+void clear_notifications();
+
+void check_notifications_pointers(
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list);
+
 // if we don't receive response from syncd in 60 seconds
 // there is something wrong and we should fail
-#define GET_RESPONSE_TIMEOUT (60*1000)
+#define GET_RESPONSE_TIMEOUT (6*60*1000)
 
-extern volatile bool                    g_record;
+extern void clear_local_state();
 extern void setRecording(bool record);
+extern sai_status_t setRecordingOutputDir(
+        _In_ const sai_attribute_t &attr);
 extern void recordLine(std::string s);
-
 extern std::string joinFieldValues(
         _In_ const std::vector<swss::FieldValueTuple> &values);
 
-extern volatile bool                    g_useTempView;
-
 // other global declarations
 
-extern service_method_table_t           g_services;
-extern swss::DBConnector               *g_db;
-extern swss::ProducerTable             *g_asicState;
+extern volatile bool g_record;
+extern volatile bool g_useTempView;
+extern volatile bool g_asicInitViewMode;
+extern volatile bool g_logrotate;
 
-extern swss::ConsumerTable             *g_redisGetConsumer;
-extern swss::NotificationConsumer      *g_redisNotifications;
-
-extern swss::RedisClient               *g_redisClient;
+extern service_method_table_t                       g_services;
+extern std::shared_ptr<swss::ProducerTable>         g_asicState;
+extern std::shared_ptr<swss::ConsumerTable>         g_redisGetConsumer;
+extern std::shared_ptr<swss::NotificationConsumer>  g_redisNotifications;
+extern std::shared_ptr<swss::RedisClient>           g_redisClient;
 
 extern std::mutex g_apimutex;
 
 extern const sai_acl_api_t              redis_acl_api;
 extern const sai_buffer_api_t           redis_buffer_api;
+extern const sai_bridge_api_t           redis_bridge_api;
 extern const sai_fdb_api_t              redis_fdb_api;
 extern const sai_hash_api_t             redis_hash_api;
-extern const sai_hostif_api_t           redis_host_interface_api;
+extern const sai_hostif_api_t           redis_hostif_api;
 extern const sai_lag_api_t              redis_lag_api;
 extern const sai_mirror_api_t           redis_mirror_api;
 extern const sai_neighbor_api_t         redis_neighbor_api;
@@ -72,23 +92,21 @@ extern const sai_stp_api_t              redis_stp_api;
 extern const sai_switch_api_t           redis_switch_api;
 extern const sai_tunnel_api_t           redis_tunnel_api;
 extern const sai_udf_api_t              redis_udf_api;
-extern const sai_virtual_router_api_t   redis_router_api;
+extern const sai_virtual_router_api_t   redis_virtual_router_api;
 extern const sai_vlan_api_t             redis_vlan_api;
 extern const sai_wred_api_t             redis_wred_api;
-
-extern sai_switch_notification_t redis_switch_notifications;
 
 #define UNREFERENCED_PARAMETER(X)
 
 bool redis_validate_contains_attribute(
-    _In_ sai_attr_id_t required_id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list);
+        _In_ sai_attr_id_t required_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list);
 
 const sai_attribute_t* redis_get_attribute_by_id(
-    _In_ sai_attr_id_t id,
-    _In_ uint32_t attr_count,
-    _In_ const sai_attribute_t *attr_list);
+        _In_ sai_attr_id_t id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list);
 
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_type_t object_type);
@@ -98,13 +116,12 @@ void translate_rid_to_vid(
         _In_ uint32_t attr_count,
         _In_ sai_attribute_t *attr_list);
 
-// separate methods are needed for vlan to not confuse with object_id
-
 // CREATE
 
 sai_status_t redis_generic_create(
         _In_ sai_object_type_t object_type,
         _Out_ sai_object_id_t* object_id,
+        _In_ sai_object_id_t switch_id,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
@@ -119,12 +136,25 @@ sai_status_t redis_generic_create_neighbor_entry(
         _In_ const sai_attribute_t *attr_list);
 
 sai_status_t redis_generic_create_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
+        _In_ const sai_route_entry_t* route_entry,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
-sai_status_t redis_generic_create_vlan(
-        _In_ sai_vlan_id_t vlan_id);
+sai_status_t redis_bulk_generic_create(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _Out_ sai_object_id_t *object_id, /* array */
+        _In_ sai_object_id_t switch_id,
+        _In_ const uint32_t *attr_count, /* array */
+        _In_ const sai_attribute_t *const *attr_list, /* array */
+        _Inout_ sai_status_t *object_statuses) /* array */;
+
+sai_status_t internal_redis_bulk_generic_create(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t *const *attr_list,
+        _Inout_ sai_status_t *object_statuses);
 
 // REMOVE
 
@@ -139,10 +169,7 @@ sai_status_t redis_generic_remove_neighbor_entry(
         _In_ const sai_neighbor_entry_t* neighbor_entry);
 
 sai_status_t redis_generic_remove_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry);
-
-sai_status_t redis_generic_remove_vlan(
-        _In_ sai_vlan_id_t vlan_id);
+        _In_ const sai_route_entry_t* route_entry);
 
 // SET
 
@@ -160,19 +187,14 @@ sai_status_t redis_generic_set_neighbor_entry(
         _In_ const sai_attribute_t *attr);
 
 sai_status_t redis_generic_set_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
+        _In_ const sai_route_entry_t* route_entry,
         _In_ const sai_attribute_t *attr);
 
-sai_status_t redis_generic_set_vlan(
-        _In_ sai_vlan_id_t vlan_id,
-        _In_ const sai_attribute_t *attr);
-
-sai_status_t redis_generic_set_trap(
-        _In_ sai_hostif_trap_id_t hostif_trapid,
-        _In_ const sai_attribute_t *attr);
-
-sai_status_t redis_generic_set_switch(
-        _In_ const sai_attribute_t *attr);
+sai_status_t internal_redis_bulk_generic_set(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ const sai_status_t *object_statuses);
 
 // GET
 
@@ -193,23 +215,19 @@ sai_status_t redis_generic_get_neighbor_entry(
         _Out_ sai_attribute_t *attr_list);
 
 sai_status_t redis_generic_get_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry,
+        _In_ const sai_route_entry_t* route_entry,
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
-sai_status_t redis_generic_get_vlan(
-        _In_ sai_vlan_id_t vlan_id,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list);
+// get_stats
 
-sai_status_t redis_generic_get_trap(
-        _In_ sai_hostif_trap_id_t hostif_trapid,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list);
-
-sai_status_t redis_generic_get_switch(
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list);
+template <typename T>
+sai_status_t redis_generic_get_stats(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t count,
+        _In_ const T* counter_id_list,
+        _Out_ uint64_t *counter_list);
 
 // notifications
 

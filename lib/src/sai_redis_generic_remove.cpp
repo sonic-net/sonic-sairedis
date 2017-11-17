@@ -30,18 +30,25 @@ sai_status_t redis_generic_remove(
 {
     SWSS_LOG_ENTER();
 
-    if (object_id == SAI_NULL_OBJECT_ID)
-    {
-        SWSS_LOG_ERROR("object id is zero on object type %d", object_type);
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
     std::string str_object_id = sai_serialize_object_id(object_id);
 
-    return internal_redis_generic_remove(
+    sai_status_t status = internal_redis_generic_remove(
             object_type,
             str_object_id);
+
+    if (object_type == SAI_OBJECT_TYPE_SWITCH &&
+            status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_NOTICE("removing switch id %s", sai_serialize_object_id(object_id).c_str());
+
+        redis_free_virtual_object_id(object_id);
+
+        // TODO do we need some more actions here ? to clean all
+        // objects that are in the same switch that were snooped
+        // inside metadata ? should that be metadata job?
+    }
+
+    return status;
 }
 
 sai_status_t redis_generic_remove_fdb_entry(
@@ -52,7 +59,7 @@ sai_status_t redis_generic_remove_fdb_entry(
     std::string str_fdb_entry = sai_serialize_fdb_entry(*fdb_entry);
 
     return internal_redis_generic_remove(
-            SAI_OBJECT_TYPE_FDB,
+            SAI_OBJECT_TYPE_FDB_ENTRY,
             str_fdb_entry);
 }
 
@@ -64,30 +71,18 @@ sai_status_t redis_generic_remove_neighbor_entry(
     std::string str_neighbor_entry = sai_serialize_neighbor_entry(*neighbor_entry);
 
     return internal_redis_generic_remove(
-            SAI_OBJECT_TYPE_NEIGHBOR,
+            SAI_OBJECT_TYPE_NEIGHBOR_ENTRY,
             str_neighbor_entry);
 }
 
 sai_status_t redis_generic_remove_route_entry(
-        _In_ const sai_unicast_route_entry_t* unicast_route_entry)
+        _In_ const sai_route_entry_t* route_entry)
 {
     SWSS_LOG_ENTER();
 
-    std::string str_route_entry = sai_serialize_route_entry(*unicast_route_entry);
+    std::string str_route_entry = sai_serialize_route_entry(*route_entry);
 
     return internal_redis_generic_remove(
-            SAI_OBJECT_TYPE_ROUTE,
+            SAI_OBJECT_TYPE_ROUTE_ENTRY,
             str_route_entry);
-}
-
-sai_status_t redis_generic_remove_vlan(
-        _In_ sai_vlan_id_t vlan_id)
-{
-    SWSS_LOG_ENTER();
-
-    std::string str_vlan_id = sai_serialize_vlan_id(vlan_id);
-
-    return internal_redis_generic_remove(
-            SAI_OBJECT_TYPE_VLAN,
-            str_vlan_id);
 }

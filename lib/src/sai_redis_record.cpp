@@ -1,5 +1,8 @@
 #include "sai_redis.h"
 #include <string.h>
+#include <unistd.h>
+
+std::string logOutputDir = ".";
 
 std::string getTimestamp()
 {
@@ -19,9 +22,33 @@ std::string getTimestamp()
 
 // recording needs to be enabled explicitly
 volatile bool g_record = false;
+volatile bool g_logrotate = false;
 
 std::ofstream recording;
 std::mutex g_recordMutex;
+
+std::string recfile = "dummy.rec";
+
+void logfileReopen()
+{
+    SWSS_LOG_ENTER();
+
+    recording.close();
+
+    /*
+     * On log rotate we will use the same file name, we are assuming that
+     * logrotate deamon move filename to filename.1 and we will create new
+     * empty file here.
+     */
+
+    recording.open(recfile, std::ofstream::out | std::ofstream::app);
+
+    if (!recording.is_open())
+    {
+        SWSS_LOG_ERROR("failed to open recording file %s: %s", recfile.c_str(), strerror(errno));
+        return;
+    }
+}
 
 void recordLine(std::string s)
 {
@@ -33,17 +60,29 @@ void recordLine(std::string s)
     {
         recording << getTimestamp() << "|" << s << std::endl;
     }
-}
 
-std::string recfile = "dummy.rec";
+    if (g_logrotate)
+    {
+        g_logrotate = false;
+
+        logfileReopen();
+
+        /* double check since reopen could fail */
+
+        if (recording.is_open())
+        {
+            recording << getTimestamp() << "|" << "#|logrotate on: " << recfile << std::endl;
+        }
+    }
+}
 
 void startRecording()
 {
     SWSS_LOG_ENTER();
 
-    recfile = "sairedis." + getTimestamp() + ".rec";
+    recfile = logOutputDir + "/sairedis.rec";
 
-    recording.open(recfile);
+    recording.open(recfile, std::ofstream::out | std::ofstream::app);
 
     if (!recording.is_open())
     {
@@ -103,4 +142,48 @@ std::string joinFieldValues(
     }
 
     return ss.str();
+}
+
+sai_status_t setRecordingOutputDir(
+        _In_ const sai_attribute_t &attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr.value.s8list.count == 0)
+    {
+        logOutputDir = ".";
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (attr.value.s8list.list == NULL)
+    {
+        SWSS_LOG_ERROR("list pointer is NULL");
+        return SAI_STATUS_FAILURE;
+    }
+
+    size_t len = strnlen((const char *)attr.value.s8list.list, attr.value.s8list.count);
+
+    if (len != (size_t)attr.value.s8list.count)
+    {
+        SWSS_LOG_ERROR("count (%u) is different than strnlen (%zu)", attr.value.s8list.count, len);
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::string dir((const char*)attr.value.s8list.list, len);
+
+    int result = access(dir.c_str(), W_OK);
+
+    if (result != 0)
+    {
+        SWSS_LOG_ERROR("can't access dir '%s' for writing", dir.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    logOutputDir = dir;
+
+    /* perform auto log rotate when log directory gets changed */
+
+    g_logrotate = true;
+
+    return SAI_STATUS_SUCCESS;
 }

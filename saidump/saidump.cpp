@@ -1,28 +1,20 @@
-#include <vector>
 #include <string>
-#include <iostream>
-#include <sstream>
 
 extern "C" {
 #include <sai.h>
 }
 
 #include "swss/table.h"
-#include "swss/logger.h"
 #include "meta/saiserialize.h"
 #include "sairedis.h"
 
 #include <getopt.h>
 
 using namespace swss;
-using namespace std;
 
 struct CmdOptions
 {
-    bool shortNames;
-    bool disableColors;
     bool skipAttributes;
-    bool followReferences;
     bool dumpTempView;
 };
 
@@ -33,11 +25,7 @@ void printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: saidump [-C] [-s] [-h] [-t]" << std::endl;
-    std::cout << "    -C --disableColors" << std::endl;
-    std::cout << "        Disable colors" << std::endl;
-    std::cout << "    -s --shortNames:" << std::endl;
-    std::cout << "        Use short names" << std::endl;
+    std::cout << "Usage: saidump [-t] [-h]" << std::endl;
     std::cout << "    -t --tempView:" << std::endl;
     std::cout << "        Dump temp view" << std::endl;
     std::cout << "    -h --help:" << std::endl;
@@ -50,18 +38,14 @@ CmdOptions handleCmdLine(int argc, char **argv)
 
     CmdOptions options;
 
-    options.shortNames = false;
-    options.disableColors = false;
     options.dumpTempView = false;
 
-    const char* const optstring = "Csht";
+    const char* const optstring = "th";
 
     while(true)
     {
         static struct option long_options[] =
         {
-            { "disableColors",  no_argument,       0, 'C' },
-            { "shortNames",     no_argument,       0, 's' },
             { "tempView",       no_argument,       0, 't' },
             { "help",           no_argument,       0, 'h' },
             { 0,                0,                 0,  0  }
@@ -79,18 +63,8 @@ CmdOptions handleCmdLine(int argc, char **argv)
         switch (c)
         {
             case 't':
-                SWSS_LOG_NOTICE("Dump temp vie");
+                SWSS_LOG_NOTICE("Dumping temp view");
                 options.dumpTempView = true;
-                break;
-
-            case 'C':
-                SWSS_LOG_NOTICE("Disable colors");
-                options.disableColors = true;
-                break;
-
-            case 's':
-                SWSS_LOG_NOTICE("Short names");
-                options.shortNames = true;
                 break;
 
             case 'h':
@@ -147,8 +121,7 @@ const TableMap* get_table_map(sai_object_id_t object_id)
 
     if (it == g_oid_map.end())
     {
-        SWSS_LOG_ERROR("unable to find oid 0x%lx in oid map", object_id);
-        throw;
+        SWSS_LOG_THROW("unable to find oid 0x%lx in oid map", object_id);
     }
 
     return it->second;
@@ -185,7 +158,7 @@ int main(int argc, char ** argv)
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    meta_init();
+    meta_init_db();
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
@@ -215,24 +188,14 @@ int main(int argc, char ** argv)
         sai_object_type_t object_type;
         sai_deserialize_object_type(str_object_type, object_type);
 
-        switch (object_type)
+        auto info = sai_metadata_get_object_type_info(object_type);
+
+        if (!info->isnonobjectid)
         {
-            case SAI_OBJECT_TYPE_FDB:
-            case SAI_OBJECT_TYPE_SWITCH:
-            case SAI_OBJECT_TYPE_NEIGHBOR:
-            case SAI_OBJECT_TYPE_ROUTE:
-            case SAI_OBJECT_TYPE_VLAN:
-            case SAI_OBJECT_TYPE_TRAP:
-                break;
+            sai_object_id_t object_id;
+            sai_deserialize_object_id(str_object_id, object_id);
 
-            default:
-                {
-                    sai_object_id_t object_id;
-                    sai_deserialize_object_id(str_object_id, object_id);
-
-                    g_oid_map[object_id] = &key.second;
-                }
-                break;
+            g_oid_map[object_id] = &key.second;
         }
     }
 
@@ -242,63 +205,7 @@ int main(int argc, char ** argv)
         auto str_object_type = key.first.substr(0, start);
         auto str_object_id  = key.first.substr(start + 1);
 
-        sai_object_type_t object_type;
-        sai_deserialize_object_type(str_object_type, object_type);
-
-        if (g_cmdOptions.shortNames)
-        {
-            str_object_type = metadata_enum_sai_object_type_t.valuesshortnames[object_type];
-        }
-
         std::cout << str_object_type << " " << str_object_id << " " << std::endl;
-
-        switch (object_type)
-        {
-            case SAI_OBJECT_TYPE_FDB:
-                {
-                    sai_fdb_entry_t fdb_entry;
-                    sai_deserialize_fdb_entry(str_object_id, fdb_entry);
-                }
-                break;
-
-            case SAI_OBJECT_TYPE_SWITCH:
-                break;
-
-            case SAI_OBJECT_TYPE_NEIGHBOR:
-                {
-                    sai_neighbor_entry_t neighbor_entry;
-                    sai_deserialize_neighbor_entry(str_object_id, neighbor_entry);
-                }
-                break;
-
-            case SAI_OBJECT_TYPE_ROUTE:
-                {
-                    sai_unicast_route_entry_t route_entry;
-                    sai_deserialize_route_entry(str_object_id, route_entry);
-                }
-                break;
-
-            case SAI_OBJECT_TYPE_VLAN:
-                {
-                    sai_vlan_id_t vlan_id;
-                    sai_deserialize_vlan_id(str_object_id, vlan_id);
-                }
-                break;
-
-            case SAI_OBJECT_TYPE_TRAP:
-                {
-                    sai_hostif_trap_id_t trap_id;
-                    sai_deserialize_hostif_trap_id(str_object_id, trap_id);
-                }
-                break;
-
-            default:
-                {
-                    sai_object_id_t object_id;
-                    sai_deserialize_object_id(str_object_id, object_id);
-                }
-                break;
-        }
 
         size_t indent = 4;
 

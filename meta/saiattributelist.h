@@ -39,7 +39,7 @@ class SaiAttributeList
         SaiAttributeList& operator=(const SaiAttributeList&);
 
         std::vector<sai_attribute_t> m_attr_list;
-        std::vector<sai_attr_serialization_type_t> m_serialization_type_list;
+        std::vector<sai_attr_value_type_t> m_attr_value_type_list;
 };
 
 #endif // __SAI_ATTRIBUTE_LIST__

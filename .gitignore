@@ -67,6 +67,7 @@ syncd/syncd
 syncd/syncd_request_shutdown
 saiplayer/saiplayer
 saidump/saidump
+saisdkdump/saisdkdump
 meta/tests
 
 # Temporary files #

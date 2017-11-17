@@ -1,223 +1,12 @@
 #include "sai_redis.h"
 #include "sairedis.h"
-#include <thread>
 
-#include "swss/selectableevent.h"
 #include "meta/saiserialize.h"
 
-// TODO it may be needed to obtain SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP object id
+#include <thread>
 
-sai_switch_notification_t redis_switch_notifications;
-
-bool g_switchInitialized = false;
 volatile bool g_asicInitViewMode = false; // default mode is apply mode
-volatile bool g_run = false;
 volatile bool g_useTempView = false;
-
-std::shared_ptr<std::thread> notification_thread;
-
-// this event is used to nice end notifications thread
-swss::SelectableEvent g_redisNotificationTrheadEvent;
-
-void ntf_thread()
-{
-    SWSS_LOG_ENTER();
-
-    swss::Select s;
-
-    s.addSelectable(g_redisNotifications);
-    s.addSelectable(&g_redisNotificationTrheadEvent);
-
-    while (g_run)
-    {
-        swss::Selectable *sel;
-
-        int fd;
-
-        int result = s.select(&sel, &fd);
-
-        if (sel == &g_redisNotificationTrheadEvent)
-        {
-            // user requested shutdown_switch
-            break;
-        }
-
-        if (result == swss::Select::OBJECT)
-        {
-            swss::KeyOpFieldsValuesTuple kco;
-
-            std::string op;
-            std::string data;
-            std::vector<swss::FieldValueTuple> values;
-
-            g_redisNotifications->pop(op, data, values);
-
-            SWSS_LOG_DEBUG("notification: op = %s, data = %s", op.c_str(), data.c_str());
-
-            handle_notification(op, data, values);
-        }
-    }
-}
-
-void clear_local_state()
-{
-    SWSS_LOG_ENTER();
-
-    sai_status_t status = meta_init_db();
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("failed to init meta db FIXME");
-        throw std::runtime_error("failed to init meta db");
-    }
-}
-
-/**
- * Routine Description:
- *   SDK initialization. After the call the capability attributes should be
- *   ready for retrieval via sai_get_switch_attribute().
- *
- * Arguments:
- *   @param[in] profile_id - Handle for the switch profile.
- *   @param[in] switch_hardware_id - Switch hardware ID to open
- *   @param[in] firmware_path_name - Vendor specific path name of the firmware
- *                                   to load
- *   @param[in] switch_notifications - switch notification table
- * Return Values:
- *   @return SAI_STATUS_SUCCESS on success
- *           Failure status code on error
- */
-sai_status_t redis_initialize_switch(
-        _In_ sai_switch_profile_id_t profile_id,
-        _In_reads_z_(SAI_MAX_HARDWARE_ID_LEN) char* switch_hardware_id,
-        _In_reads_opt_z_(SAI_MAX_FIRMWARE_PATH_NAME_LEN) char* firmware_path_name,
-        _In_ sai_switch_notification_t* switch_notifications)
-{
-    std::lock_guard<std::mutex> apilock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    if (g_switchInitialized)
-    {
-        SWSS_LOG_ERROR("switch is already initialized");
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    g_switchInitialized = true;
-
-    if (switch_notifications != NULL)
-    {
-        memcpy(&redis_switch_notifications,
-                switch_notifications,
-                sizeof(sai_switch_notification_t));
-    }
-    else
-    {
-        memset(&redis_switch_notifications, 0, sizeof(sai_switch_notification_t));
-    }
-
-    clear_local_state();
-
-    g_run = true;
-
-    g_asicInitViewMode = false;
-
-    g_useTempView = false;
-
-    setRecording(g_record);
-
-    SWSS_LOG_DEBUG("creating notification thread");
-
-    notification_thread = std::make_shared<std::thread>(std::thread(ntf_thread));
-
-    return SAI_STATUS_SUCCESS;
-}
-
-/**
- * Routine Description:
- *   @brief Release all resources associated with currently opened switch
- *
- * Arguments:
- *   @param[in] warm_restart_hint - hint that indicates controlled warm restart.
- *                            Since warm restart can be caused by crash
- *                            (therefore there are no guarantees for this call),
- *                            this hint is really a performance optimization.
- *
- * Return Values:
- *   None
- */
-void redis_shutdown_switch(
-        _In_ bool warm_restart_hint)
-{
-    std::lock_guard<std::mutex> apilock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    if (!g_switchInitialized)
-    {
-        SWSS_LOG_ERROR("not initialized");
-
-        return;
-    }
-
-    g_run = false;
-
-    // notify thread that it should end
-    g_redisNotificationTrheadEvent.notify();
-
-    notification_thread->join();
-
-    g_switchInitialized = false;
-
-    memset(&redis_switch_notifications, 0, sizeof(sai_switch_notification_t));
-}
-
-/**
- * Routine Description:
- *   SDK connect. This API connects library to the initialized SDK.
- *   After the call the capability attributes should be ready for retrieval
- *   via sai_get_switch_attribute().
- *
- * Arguments:
- *   @param[in] profile_id - Handle for the switch profile.
- *   @param[in] switch_hardware_id - Switch hardware ID to open
- *   @param[in] switch_notifications - switch notification table
- * Return Values:
- *   @return SAI_STATUS_SUCCESS on success
- *           Failure status code on error
- */
-sai_status_t redis_connect_switch(
-        _In_ sai_switch_profile_id_t profile_id,
-        _In_reads_z_(SAI_MAX_HARDWARE_ID_LEN) char* switch_hardware_id,
-        _In_ sai_switch_notification_t* switch_notifications)
-{
-    std::lock_guard<std::mutex> apilock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_ERROR("not implemented");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-/**
- * Routine Description:
- *   @brief Disconnect this SAI library from the SDK.
- *
- * Arguments:
- *   None
- * Return Values:
- *   None
- */
-void redis_disconnect_switch(void)
-{
-    std::lock_guard<std::mutex> apilock(g_apimutex);
-
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_ERROR("not implemented");
-}
 
 sai_status_t sai_redis_internal_notify_syncd(
         _In_ const std::string& key)
@@ -238,7 +27,7 @@ sai_status_t sai_redis_internal_notify_syncd(
 
     swss::Select s;
 
-    s.addSelectable(g_redisGetConsumer);
+    s.addSelectable(g_redisGetConsumer.get());
 
     while (true)
     {
@@ -335,11 +124,11 @@ sai_status_t sai_redis_notify_syncd(
         return status;
     }
 
-    SWSS_LOG_NOTICE("notify syncd sycceeded");
+    SWSS_LOG_NOTICE("notify syncd succeeded");
 
     if (attr->value.s32 == SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW)
     {
-        SWSS_LOG_NOTICE("clearing current local state sinice init view is called on initialised switch");
+        SWSS_LOG_NOTICE("clearing current local state since init view is called on initialized switch");
 
         clear_local_state();
     }
@@ -347,26 +136,118 @@ sai_status_t sai_redis_notify_syncd(
     return SAI_STATUS_SUCCESS;
 }
 
-/**
- * Routine Description:
- *    @brief Set switch attribute value
- *
- * Arguments:
- *    @param[in] attr - switch attribute
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
+sai_status_t redis_create_switch(
+        _Out_ sai_object_id_t* switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
+    SWSS_LOG_ENTER();
+
+    /*
+     * Creating switch can't have any object attributes set on it, need to be
+     * set on separate api.
+     */
+
+    for (uint32_t i = 0; i < attr_count; ++i)
+    {
+        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr_list[i].id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_ERROR("attribute %d not found", attr_list[i].id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (meta->allowedobjecttypeslength > 0)
+        {
+            SWSS_LOG_ERROR("attribute %s is object id attribute, not allowed on create", meta->attridname);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    sai_status_t status = meta_sai_create_oid(
+            SAI_OBJECT_TYPE_SWITCH,
+            switch_id,
+            SAI_NULL_OBJECT_ID, // no switch id since we create switch
+            attr_count,
+            attr_list,
+            &redis_generic_create);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        /*
+         * When doing CREATE operation user may want to update notification
+         * pointers. TODO this be per switch.
+         *
+         * Currently we will have same notifications for all switches.
+         */
+
+        check_notifications_pointers(attr_count, attr_list);
+    }
+
+    return status;
+}
+
+sai_status_t redis_remove_switch(
+        _In_ sai_object_id_t switch_id)
+{
+    std::lock_guard<std::mutex> lock(g_apimutex);
+
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_remove_oid(
+            SAI_OBJECT_TYPE_SWITCH,
+            switch_id,
+            &redis_generic_remove);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        /*
+         * NOTE: Should we remove notifications here? Probably not since we can
+         * have multiple switches and then other switches also may send
+         * notifications and they still can be used since we have global
+         * notifications and not per switch.
+         */
+    }
+
+    return status;
+}
+
 sai_status_t redis_set_switch_attribute(
+        _In_ sai_object_id_t switch_id,
         _In_ const sai_attribute_t *attr)
 {
+    if (attr != NULL && attr->id == SAI_REDIS_SWITCH_ATTR_PERFORM_LOG_ROTATE)
+    {
+        /*
+         * Let's avoid using mutexes, since this attribute could be used in
+         * signal handler, so check it's value here. If set this attribute will
+         * be performed from multiple threads there is possibility for race
+         * condition here, but this doesn't matter since we only set logrotate
+         * flag, and if that happens we will just reopen file less times then
+         * actual set operation was called.
+         */
+
+        g_logrotate = true;
+
+        return SAI_STATUS_SUCCESS;
+    }
+
     std::lock_guard<std::mutex> lock(g_apimutex);
 
     SWSS_LOG_ENTER();
 
     if (attr != NULL)
     {
+        /*
+         * NOTE: that this will work without
+         * switch being created.
+         */
+
         switch (attr->id)
         {
             case SAI_REDIS_SWITCH_ATTR_RECORD:
@@ -388,29 +269,39 @@ sai_status_t redis_set_switch_attribute(
                 g_asicState->flush();
                 return SAI_STATUS_SUCCESS;
 
+            case SAI_REDIS_SWITCH_ATTR_RECORDING_OUTPUT_DIR:
+                return setRecordingOutputDir(*attr);
+
             default:
                 break;
         }
     }
 
-    return meta_sai_set_switch(
+    sai_status_t status = meta_sai_set_oid(
+            SAI_OBJECT_TYPE_SWITCH,
+            switch_id,
             attr,
-            &redis_generic_set_switch);
+            &redis_generic_set);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        /*
+         * When doing SET operation user may want to update notification
+         * pointers.
+         *
+         * TODO this should be per switch.
+         *
+         * Currently we will have same notifications for all switches.
+         */
+
+        check_notifications_pointers(1, attr);
+    }
+
+    return status;
 }
 
-/**
- * Routine Description:
- *    @brief Get switch attribute value
- *
- * Arguments:
- *    @param[in] attr_count - number of switch attributes
- *    @param[inout] attr_list - array of switch attributes
- *
- * Return Values:
- *    @return SAI_STATUS_SUCCESS on success
- *            Failure status code on error
- */
 sai_status_t redis_get_switch_attribute(
+        _In_ sai_object_id_t switch_id,
         _In_ sai_uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list)
 {
@@ -418,20 +309,20 @@ sai_status_t redis_get_switch_attribute(
 
     SWSS_LOG_ENTER();
 
-    return meta_sai_get_switch(
+    return meta_sai_get_oid(
+            SAI_OBJECT_TYPE_SWITCH,
+            switch_id,
             attr_count,
             attr_list,
-            &redis_generic_get_switch);
+            &redis_generic_get);
 }
 
 /**
  * @brief Switch method table retrieved with sai_api_query()
  */
 const sai_switch_api_t redis_switch_api = {
-    redis_initialize_switch,
-    redis_shutdown_switch,
-    redis_connect_switch,
-    redis_disconnect_switch,
+    redis_create_switch,
+    redis_remove_switch,
     redis_set_switch_attribute,
     redis_get_switch_attribute,
 };

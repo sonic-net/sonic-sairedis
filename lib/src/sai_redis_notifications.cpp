@@ -2,6 +2,91 @@
 #include "meta/saiserialize.h"
 #include "meta/saiattributelist.h"
 
+/*
+ * NOTE: currently we only support 1 set of notifications per all switches,
+ * this will need to be corrected later.
+ */
+
+sai_switch_state_change_notification_fn     on_switch_state_change = NULL;
+sai_switch_shutdown_request_notification_fn on_switch_shutdown_request_notification = NULL;
+sai_fdb_event_notification_fn               on_fdb_event = NULL;
+sai_port_state_change_notification_fn       on_port_state_change = NULL;
+sai_packet_event_notification_fn            on_packet_event = NULL;
+sai_queue_pfc_deadlock_notification_fn      on_queue_deadlock = NULL;
+
+void clear_notifications()
+{
+    SWSS_LOG_ENTER();
+
+    on_switch_state_change = NULL;
+    on_switch_shutdown_request_notification = NULL;
+    on_fdb_event = NULL;
+    on_port_state_change = NULL;
+    on_packet_event = NULL;
+    on_queue_deadlock = NULL;
+}
+
+void check_notifications_pointers(
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * This function should only be called on CREATE/SET
+     * api when object is SWITCH.
+     */
+
+    for (uint32_t index = 0; index < attr_count; ++index)
+    {
+        const sai_attribute_t &attr = attr_list[index];
+
+        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_ERROR("failed to find metadata for switch attr %d", attr.id);
+            continue;
+        }
+
+        if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_POINTER)
+        {
+            continue;
+        }
+
+        switch (attr.id)
+        {
+            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
+                on_switch_state_change = (sai_switch_state_change_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
+                on_switch_shutdown_request_notification = (sai_switch_shutdown_request_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
+                on_fdb_event = (sai_fdb_event_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
+                on_port_state_change = (sai_port_state_change_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
+                on_packet_event = (sai_packet_event_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
+                on_queue_deadlock = (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
+                break;
+
+            default:
+                SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
+                break;
+        }
+    }
+}
+
 void handle_switch_state_change(
         _In_ const std::string &data)
 {
@@ -10,14 +95,13 @@ void handle_switch_state_change(
     SWSS_LOG_DEBUG("data: %s", data.c_str());
 
     sai_switch_oper_status_t switch_oper_status;
+    sai_object_id_t switch_id;
 
-    sai_deserialize_switch_oper_status(data, switch_oper_status);
-
-    auto on_switch_state_change = redis_switch_notifications.on_switch_state_change;
+    sai_deserialize_switch_oper_status(data, switch_id, switch_oper_status);
 
     if (on_switch_state_change != NULL)
     {
-        on_switch_state_change(switch_oper_status);
+        on_switch_state_change(switch_id, switch_oper_status);
     }
 }
 
@@ -43,8 +127,6 @@ void handle_fdb_event(
         meta_sai_on_fdb_event(count, fdbevent);
     }
 
-    auto on_fdb_event = redis_switch_notifications.on_fdb_event;
-
     if (on_fdb_event != NULL)
     {
         on_fdb_event(count, fdbevent);
@@ -65,36 +147,12 @@ void handle_port_state_change(
 
     sai_deserialize_port_oper_status_ntf(data, count, &portoperstatus);
 
-    auto on_port_state_change = redis_switch_notifications.on_port_state_change;
-
     if (on_port_state_change != NULL)
     {
         on_port_state_change(count, portoperstatus);
     }
 
     sai_deserialize_free_port_oper_status_ntf(count, portoperstatus);
-}
-
-void handle_port_event(
-        _In_ const std::string &data)
-{
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_DEBUG("data: %s", data.c_str());
-
-    uint32_t count;
-    sai_port_event_notification_t *portevent = NULL;
-
-    sai_deserialize_port_event_ntf(data, count, &portevent);
-
-    auto on_port_event = redis_switch_notifications.on_port_event;
-
-    if (on_port_event != NULL)
-    {
-        on_port_event(count, portevent);
-    }
-
-    sai_deserialize_free_port_event_ntf(count, portevent);
 }
 
 void handle_switch_shutdown_request(
@@ -104,11 +162,13 @@ void handle_switch_shutdown_request(
 
     SWSS_LOG_NOTICE("switch shutdown request");
 
-    auto on_switch_shutdown_request = redis_switch_notifications.on_switch_shutdown_request;
+    sai_object_id_t switch_id;
 
-    if (on_switch_shutdown_request != NULL)
+    sai_deserialize_switch_shutdown_request(data, switch_id);
+
+    if (on_switch_shutdown_request_notification != NULL)
     {
-        on_switch_shutdown_request();
+        on_switch_shutdown_request_notification(switch_id);
     }
 }
 
@@ -122,13 +182,30 @@ void handle_packet_event(
 
     SWSS_LOG_ERROR("not implemented");
 
-    /*
-    auto on_packet_event = redis_switch_notifications.on_packet_event;
-
     if (on_packet_event != NULL)
     {
-        on_packet_event(buffer.data(), buffer_size, list.get_attr_count(), list.get_attr_list());
-    }*/
+        //on_packet_event(switch_id, buffer.data(), buffer_size, list.get_attr_count(), list.get_attr_list());
+    }
+}
+
+void handle_queue_deadlock_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("data: %s", data.c_str());
+
+    uint32_t count;
+    sai_queue_deadlock_notification_data_t *ntfData = NULL;
+
+    sai_deserialize_queue_deadlock_ntf(data, count, &ntfData);
+
+    if (on_queue_deadlock != NULL)
+    {
+        on_queue_deadlock(count, ntfData);
+    }
+
+    sai_deserialize_free_queue_deadlock_ntf(count, ntfData);
 }
 
 void handle_notification(
@@ -155,10 +232,6 @@ void handle_notification(
     {
         handle_port_state_change(data);
     }
-    else if (notification == "port_event")
-    {
-        handle_port_event(data);
-    }
     else if (notification == "switch_shutdown_request")
     {
         handle_switch_shutdown_request(data);
@@ -166,6 +239,10 @@ void handle_notification(
     else if (notification == "packet_event")
     {
         handle_packet_event(data, values);
+    }
+    else if (notification == "queue_deadlock")
+    {
+        handle_queue_deadlock_event(data);
     }
     else
     {

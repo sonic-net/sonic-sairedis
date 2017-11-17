@@ -1,35 +1,135 @@
 #include "sai_vs.h"
+#include "sai_vs_internal.h"
+#include "sai_vs_state.h"
 #include <string.h>
 
-service_method_table_t  g_services;
 bool                    g_api_initialized = false;
+bool                    g_vs_hostif_use_tap_device = false;
+sai_vs_switch_type_t    g_vs_switch_type = SAI_VS_SWITCH_TYPE_NONE;
 std::recursive_mutex    g_recursive_mutex;
+
+/**
+ * @brief Serviec method table.
+ *
+ * We could use this table to choose switch vendor.
+ */
+static service_method_table_t g_service_method_table;
+
+void clear_local_state()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("clearing local state");
+
+    /*
+     * Initialize metatada database.
+     */
+
+    meta_init_db();
+
+    /*
+     * Reset used switch ids.
+     */
+
+    vs_clear_switch_ids();
+
+    /*
+     * Reset real counter id values
+     */
+
+    vs_reset_id_counter();
+}
 
 sai_status_t sai_api_initialize(
         _In_ uint64_t flags,
-        _In_ const service_method_table_t* services)
+        _In_ const service_method_table_t *service_method_table)
 {
-    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
 
-    if ((NULL == services) || (NULL == services->profile_get_next_value) || (NULL == services->profile_get_value))
+    if (g_api_initialized)
     {
-        SWSS_LOG_ERROR("Invalid services handle passed to SAI API initialize");
+        SWSS_LOG_ERROR("api already initialized");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    if ((service_method_table == NULL) ||
+            (service_method_table->profile_get_next_value == NULL) ||
+            (service_method_table->profile_get_value == NULL))
+    {
+        SWSS_LOG_ERROR("invalid service_method_table handle passed to SAI API initialize");
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    memcpy(&g_services, services, sizeof(g_services));
+    memcpy(&g_service_method_table, service_method_table, sizeof(g_service_method_table));
 
-    if (0 != flags)
+    // TODO maybe this query should be done right before switch create
+    const char *type = service_method_table->profile_get_value(0, SAI_KEY_VS_SWITCH_TYPE);
+
+    if (type == NULL)
     {
-        SWSS_LOG_ERROR("Invalid flags passed to SAI API initialize");
+        SWSS_LOG_ERROR("failed to obtain service method table value: %s", SAI_KEY_VS_SWITCH_TYPE);
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::string strType = type;
+
+    if (strType == SAI_VALUE_VS_SWITCH_TYPE_BCM56850)
+    {
+        g_vs_switch_type = SAI_VS_SWITCH_TYPE_BCM56850;
+    }
+    else if (strType == SAI_VALUE_VS_SWITCH_TYPE_MLNX2700)
+    {
+        g_vs_switch_type = SAI_VS_SWITCH_TYPE_MLNX2700;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("unknown switch type: '%s'", type);
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    const char *use_tap_dev = service_method_table->profile_get_value(0, SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE);
+
+    g_vs_hostif_use_tap_device = use_tap_dev != NULL && strcmp(use_tap_dev, "true") == 0;
+
+    SWSS_LOG_NOTICE("hostif use TAP device: %s",
+            g_vs_hostif_use_tap_device ? "true" : "false");
+
+    if (flags != 0)
+    {
+        SWSS_LOG_ERROR("invalid flags passed to SAI API initialize");
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
+
+    clear_local_state();
 
     g_api_initialized = true;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t sai_api_uninitialize(void)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    if (!g_api_initialized)
+    {
+        SWSS_LOG_ERROR("api not initialized");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    clear_local_state();
+
+    g_api_initialized = false;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -38,22 +138,27 @@ sai_status_t sai_log_set(
         _In_ sai_api_t sai_api_id,
         _In_ sai_log_level_t log_level)
 {
-    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_SUCCESS;
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
+
+#define API_CASE(API,api)                                                       \
+    case SAI_API_ ## API: {                                                     \
+        *(const sai_ ## api ## _api_t**)api_method_table = &vs_ ## api ## _api; \
+        return SAI_STATUS_SUCCESS; }
 
 sai_status_t sai_api_query(
         _In_ sai_api_t sai_api_id,
         _Out_ void** api_method_table)
 {
-    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
 
-    if (NULL == api_method_table)
+    if (api_method_table == NULL)
     {
         SWSS_LOG_ERROR("NULL method table passed to SAI API initialize");
         return SAI_STATUS_INVALID_PARAMETER;
@@ -65,125 +170,44 @@ sai_status_t sai_api_query(
         return SAI_STATUS_UNINITIALIZED;
     }
 
-    switch (sai_api_id) {
-        case SAI_API_BUFFERS:
-            *(const sai_buffer_api_t**)api_method_table = &vs_buffer_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_HASH:
-            *(const sai_hash_api_t**)api_method_table = &vs_hash_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_SWITCH:
-            *(const sai_switch_api_t**)api_method_table = &vs_switch_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_PORT:
-            *(const sai_port_api_t**)api_method_table = &vs_port_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_FDB:
-            *(const sai_fdb_api_t**)api_method_table = &vs_fdb_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_VLAN:
-            *(const sai_vlan_api_t**)api_method_table = &vs_vlan_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_WRED:
-            *(const sai_wred_api_t**)api_method_table = &vs_wred_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_VIRTUAL_ROUTER:
-            *(const sai_virtual_router_api_t**)api_method_table = &vs_router_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_ROUTE:
-            *(const sai_route_api_t**)api_method_table = &vs_route_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_NEXT_HOP:
-            *(const sai_next_hop_api_t**)api_method_table = &vs_next_hop_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_NEXT_HOP_GROUP:
-            *(const sai_next_hop_group_api_t**)api_method_table = &vs_next_hop_group_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_ROUTER_INTERFACE:
-            *(const sai_router_interface_api_t**)api_method_table = &vs_router_interface_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_NEIGHBOR:
-            *(const sai_neighbor_api_t**)api_method_table = &vs_neighbor_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_ACL:
-            *(const sai_acl_api_t**)api_method_table = &vs_acl_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_HOST_INTERFACE:
-            *(const sai_hostif_api_t**)api_method_table = &vs_host_interface_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_POLICER:
-            *(const sai_policer_api_t**)api_method_table = &vs_policer_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_QOS_MAPS:
-            *(const sai_qos_map_api_t**)api_method_table = &vs_qos_map_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_QUEUE:
-            *(const sai_queue_api_t**)api_method_table = &vs_queue_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_SCHEDULER:
-            *(const sai_scheduler_api_t**)api_method_table = &vs_scheduler_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_SCHEDULER_GROUP:
-            *(const sai_scheduler_group_api_t**)api_method_table = &vs_scheduler_group_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_MIRROR:
-            *(const sai_mirror_api_t**)api_method_table = &vs_mirror_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_UDF:
-            *(const sai_udf_api_t**)api_method_table = &vs_udf_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_SAMPLEPACKET:
-            *(const sai_samplepacket_api_t**)api_method_table = &vs_samplepacket_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_STP:
-            *(const sai_stp_api_t**)api_method_table = &vs_stp_api;
-            return SAI_STATUS_NOT_IMPLEMENTED;
-
-        case SAI_API_LAG:
-            *(const sai_lag_api_t**)api_method_table = &vs_lag_api;
-            return SAI_STATUS_SUCCESS;
-
-        case SAI_API_TUNNEL:
-            *(const sai_tunnel_api_t**)api_method_table = &vs_tunnel_api;
-            return SAI_STATUS_SUCCESS;
+    switch (sai_api_id)
+    {
+        API_CASE(ACL,acl);
+        API_CASE(BRIDGE,bridge);
+        API_CASE(BUFFER,buffer);
+        API_CASE(FDB,fdb);
+        API_CASE(HASH,hash);
+        API_CASE(HOSTIF,hostif);
+        //API_CASE(IPMC,ipmc);
+        //API_CASE(IPMC_GROUP,ipmc_group);
+        //API_CASE(L2MC,l2mc);
+        //API_CASE(L2MC_GROUP,l2mc_group);
+        API_CASE(LAG,lag);
+        //API_CASE(MCAST_FDB,mcast_fdb);
+        API_CASE(MIRROR,mirror);
+        API_CASE(NEIGHBOR,neighbor);
+        API_CASE(NEXT_HOP,next_hop);
+        API_CASE(NEXT_HOP_GROUP,next_hop_group);
+        API_CASE(POLICER,policer);
+        API_CASE(PORT,port);
+        API_CASE(QOS_MAP,qos_map);
+        API_CASE(QUEUE,queue);
+        API_CASE(ROUTE,route);
+        API_CASE(ROUTER_INTERFACE,router_interface);
+        //API_CASE(RPF_GROUP,rpf_group);
+        API_CASE(SAMPLEPACKET,samplepacket);
+        API_CASE(SCHEDULER,scheduler);
+        API_CASE(SCHEDULER_GROUP,scheduler_group);
+        API_CASE(STP,stp);
+        API_CASE(SWITCH,switch);
+        API_CASE(TUNNEL,tunnel);
+        API_CASE(UDF,udf);
+        API_CASE(VIRTUAL_ROUTER,virtual_router);
+        API_CASE(VLAN,vlan);
+        API_CASE(WRED,wred);
 
         default:
             SWSS_LOG_ERROR("Invalid API type %d", sai_api_id);
             return SAI_STATUS_INVALID_PARAMETER;
     }
-}
-
-sai_status_t sai_api_uninitialize(
-        void)
-{
-    std::lock_guard<std::recursive_mutex> lock(g_recursive_mutex);
-
-    SWSS_LOG_ENTER();
-
-    g_api_initialized = false;
-
-    return SAI_STATUS_SUCCESS;
 }

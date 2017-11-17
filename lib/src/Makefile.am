@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/lib/inc -I/usr/include/sai
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta
 
 if DEBUG
 DBGFLAGS = -ggdb -D_DEBUG_
@@ -11,6 +11,7 @@ lib_LTLIBRARIES = libsairedis.la
 libsairedis_la_SOURCES = \
 			 sai_redis_acl.cpp \
 			 sai_redis_buffer.cpp \
+			 sai_redis_bridge.cpp \
 			 sai_redis_fdb.cpp \
 			 sai_redis_hash.cpp \
 			 sai_redis_hostintf.cpp \
@@ -41,15 +42,8 @@ libsairedis_la_SOURCES = \
 			 sai_redis_generic_set.cpp \
 			 sai_redis_generic_get.cpp \
 			 sai_redis_notifications.cpp \
-			 sai_redis_record.cpp
+			 sai_redis_record.cpp \
+			 sai_redis_generic_get_stats.cpp
 
 libsairedis_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 libsairedis_la_LIBADD = -lhiredis -lswsscommon
-
-bin_PROGRAMS = tests
-
-tests_SOURCES = tests.cpp
-tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata
-
-TESTS = tests
