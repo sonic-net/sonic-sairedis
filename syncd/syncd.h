@@ -96,10 +96,6 @@ void translate_rid_to_vid_list(
         _In_ uint32_t attr_count,
         _In_ sai_attribute_t *attr_list);
 
-void endCountersThread();
-void startCountersThread(
-        _In_ int intervalInSeconds);
-
 sai_status_t syncdApplyView();
 void check_notifications_pointers(
         _In_ uint32_t attr_count,

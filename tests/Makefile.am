@@ -16,7 +16,6 @@ vssyncd_SOURCES = \
 				../syncd/syncd_saiswitch.cpp \
 				../syncd/syncd_hard_reinit.cpp \
 				../syncd/syncd_notifications.cpp \
-				../syncd/syncd_counters.cpp \
 				../syncd/syncd_applyview.cpp \
 				../syncd/syncd_flex_counter.cpp
 

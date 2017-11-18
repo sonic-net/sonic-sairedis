@@ -2243,9 +2243,9 @@ sai_status_t processBulkEvent(
 sai_status_t processEvent(
         _In_ swss::ConsumerTable &consumer)
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
-
     SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(g_mutex);
 
     swss::KeyOpFieldsValuesTuple kco;
 
@@ -2472,9 +2472,9 @@ sai_status_t processEvent(
 void processFlexCounterEvent(
         _In_ swss::ConsumerStateTable &consumer)
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
-
     SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(g_mutex);
 
     swss::KeyOpFieldsValuesTuple kco;
     consumer.pop(kco);
@@ -2482,8 +2482,30 @@ void processFlexCounterEvent(
     const auto &key = kfvKey(kco);
     const auto &op = kfvOp(kco);
 
+    std::size_t delimiter = key.find_last_of(":");
+
+    if (delimiter == std::string::npos)
+    {
+        SWSS_LOG_ERROR("Failed to parse the key %s", key.c_str());
+        return;
+    }
+
+    const auto intervalStr = key.substr(delimiter + 1);
+    const auto vidStr = key.substr(0, delimiter);
+    int pollInterval;
+
+    try
+    {
+        pollInterval = std::stoi(intervalStr);
+    }
+    catch(const std::invalid_argument)
+    {
+        SWSS_LOG_ERROR("Failed to convert the poll intervall, key = %s", key.c_str());
+        return;
+    }
+
     sai_object_id_t vid = SAI_NULL_OBJECT_ID;
-    sai_deserialize_object_id(key, vid);
+    sai_deserialize_object_id(vidStr, vid);
     sai_object_id_t rid = translate_vid_to_rid(vid);
     sai_object_type_t objectType = sai_object_type_query(rid);
 
@@ -2497,11 +2519,11 @@ void processFlexCounterEvent(
         {
             if (objectType == SAI_OBJECT_TYPE_PORT)
             {
-                FlexCounter::removePort(vid);
+                FlexCounter::removePort(vid, pollInterval);
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE)
             {
-                FlexCounter::removeQueue(vid);
+                FlexCounter::removeQueue(vid, pollInterval);
             }
             else
             {
@@ -2521,7 +2543,7 @@ void processFlexCounterEvent(
                     sai_deserialize_port_stat(str, stat);
                     portCounterIds.push_back(stat);
                 }
-                FlexCounter::setPortCounterList(vid, rid, portCounterIds);
+                FlexCounter::setPortCounterList(vid, rid, pollInterval, portCounterIds);
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_COUNTER_ID_LIST)
             {
@@ -2532,7 +2554,7 @@ void processFlexCounterEvent(
                     sai_deserialize_queue_stat(str, stat);
                     queueCounterIds.push_back(stat);
                 }
-                FlexCounter::setQueueCounterList(vid, rid, queueCounterIds);
+                FlexCounter::setQueueCounterList(vid, rid, pollInterval, queueCounterIds);
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_ATTR_ID_LIST)
             {
@@ -2544,7 +2566,7 @@ void processFlexCounterEvent(
                     queueAttrIds.push_back(attr);
                 }
 
-                FlexCounter::setQueueAttrList(vid, rid, queueAttrIds);
+                FlexCounter::setQueueAttrList(vid, rid, pollInterval, queueAttrIds);
             }
             else
             {
@@ -2557,9 +2579,9 @@ void processFlexCounterEvent(
 void processFlexCounterPluginEvent(
         _In_ swss::ConsumerStateTable &consumer)
 {
-    std::lock_guard<std::mutex> lock(g_mutex);
-
     SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(g_mutex);
 
     swss::KeyOpFieldsValuesTuple kco;
     consumer.pop(kco);
@@ -2567,9 +2589,31 @@ void processFlexCounterPluginEvent(
     const auto &key = kfvKey(kco);
     const auto &op = kfvOp(kco);
 
+    std::size_t delimiter = key.find_last_of(":");
+
+    if (delimiter == std::string::npos)
+    {
+        SWSS_LOG_ERROR("Failed to parse the key %s", key.c_str());
+        return;
+    }
+
+    const auto intervalStr = key.substr(delimiter + 1);
+    const auto sha = key.substr(0, delimiter);
+    int pollInterval;
+
+    try
+    {
+        pollInterval = std::stoi(intervalStr);
+    }
+    catch(const std::invalid_argument)
+    {
+        SWSS_LOG_ERROR("Failed to convert the poll intervall, key = %s", key.c_str());
+        return;
+    }
+
     if (op == DEL_COMMAND)
     {
-        FlexCounter::removeCounterPlugin(key);
+        FlexCounter::removeCounterPlugin(sha, pollInterval);
         return;
     }
 
@@ -2586,11 +2630,11 @@ void processFlexCounterPluginEvent(
 
         if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_PORT))
         {
-            FlexCounter::addPortCounterPlugin(key);
+            FlexCounter::addPortCounterPlugin(sha, pollInterval);
         }
         else if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_QUEUE))
         {
-            FlexCounter::addQueueCounterPlugin(key);
+            FlexCounter::addQueueCounterPlugin(sha, pollInterval);
         }
         else
         {
@@ -3036,6 +3080,7 @@ void performWarmRestart()
 
 void onSyncdStart(bool warmStart)
 {
+    SWSS_LOG_ENTER();
     std::lock_guard<std::mutex> lock(g_mutex);
 
     /*
@@ -3046,7 +3091,7 @@ void onSyncdStart(bool warmStart)
      * need to use a lock here to prevent that.
      */
 
-    SWSS_LOG_ENTER();
+
 
     SWSS_LOG_TIMER("on syncd start");
 
@@ -3260,13 +3305,6 @@ int syncd_main(int argc, char **argv)
         onSyncdStart(options.startType == SAI_WARM_BOOT);
         SWSS_LOG_NOTICE("after onSyncdStart");
 
-        if (options.disableCountersThread == false)
-        {
-            SWSS_LOG_NOTICE("starting counters thread");
-
-            startCountersThread(options.countersThreadIntervalInSeconds);
-        }
-
         startNotificationsProcessingThread();
 
         SWSS_LOG_NOTICE("syncd listening for events");
@@ -3321,8 +3359,6 @@ int syncd_main(int argc, char **argv)
 
         exit_and_notify(EXIT_FAILURE);
     }
-
-    endCountersThread();
 
     if (warmRestartHint)
     {
