@@ -93,7 +93,7 @@ class FlexCounter
         void endFlexCounterThread(void);
 
         void saiUpdateSupportedPortCounters(sai_object_id_t portId);
-        void saiUpdateSupportedQueueCounters(sai_object_id_t queueId);
+        void saiUpdateSupportedQueueCounters(sai_object_id_t queueId, const std::vector<sai_queue_stat_t> &counterIds);
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
 
