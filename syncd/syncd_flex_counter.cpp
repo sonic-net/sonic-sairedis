@@ -27,6 +27,11 @@ FlexCounter::QueueAttrIds::QueueAttrIds(
 {
 }
 
+/* The current implementation of 'setPortCounterList' and 'setQueueCounterList' are
+ * not the same. Need to refactor these two functions to have the similar logic.
+ * Either the full SAI attributes are queried once, or each of the needed counters
+ * will be queried when they are set.
+ */
 void FlexCounter::setPortCounterList(
         _In_ sai_object_id_t portVid,
         _In_ sai_object_id_t portId,
@@ -90,11 +95,7 @@ void FlexCounter::setQueueCounterList(
 
     FlexCounter &fc = getInstance(pollInterval);
 
-    // Initialize the supported counters list before setting
-    if (fc.m_supportedQueueCounters.size() == 0)
-    {
-        fc.saiUpdateSupportedQueueCounters(queueId);
-    }
+    fc.saiUpdateSupportedQueueCounters(queueId, counterIds);
 
     // Remove unsupported counters
     std::vector<sai_queue_stat_t> supportedIds;
@@ -579,25 +580,30 @@ void FlexCounter::saiUpdateSupportedPortCounters(sai_object_id_t portId)
     }
 }
 
-void FlexCounter::saiUpdateSupportedQueueCounters(sai_object_id_t queueId)
+void FlexCounter::saiUpdateSupportedQueueCounters(
+        _In_ sai_object_id_t queueId,
+        _In_ const std::vector<sai_queue_stat_t> &counterIds)
 {
     uint64_t value;
-    for (int cntr_id = SAI_QUEUE_STAT_PACKETS; cntr_id <= SAI_QUEUE_STAT_SHARED_WATERMARK_BYTES; ++cntr_id)
-    {
-        sai_queue_stat_t counter = static_cast<sai_queue_stat_t>(cntr_id);
+    m_supportedQueueCounters.clear();
 
+    for (auto &counter : counterIds)
+    {
         sai_status_t status = sai_metadata_sai_queue_api->get_queue_stats(queueId, 1, &counter, &value);
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_WARN("Counter %s is not supported on port RID %s: %s",
+            SWSS_LOG_WARN("Counter %s is not supported on queue %s, rv: %s",
                     sai_serialize_queue_stat(counter).c_str(),
                     sai_serialize_object_id(queueId).c_str(),
                     sai_serialize_status(status).c_str());
 
             continue;
         }
+        else
+        {
+            m_supportedQueueCounters.insert(counter);
+        }
 
-        m_supportedQueueCounters.insert(counter);
     }
 }
