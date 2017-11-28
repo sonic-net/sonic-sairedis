@@ -310,6 +310,10 @@ void match_list_lengths(
                 CHECK_LIST(value.tunnelmap);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+                CHECK_LIST(value.ipaddrlist);
+                break;
+
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
                 CHECK_LIST(value.aclfield.data.objlist);
                 break;

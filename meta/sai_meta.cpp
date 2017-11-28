@@ -1192,6 +1192,9 @@ sai_status_t meta_generic_validation_create(
 
                 // ACL END
 
+            case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+                break;
+
             case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
                 VALIDATION_LIST(md, value.u8list);
                 break;
@@ -1215,6 +1218,9 @@ sai_status_t meta_generic_validation_create(
                 break;
             case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
                 VALIDATION_LIST(md, value.tunnelmap);
+                break;
+            case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+                VALIDATION_LIST(md, value.ipaddrlist);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -1863,6 +1869,9 @@ sai_status_t meta_generic_validation_set(
 
             // ACL END
 
+        case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+            break;
+
         case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
             VALIDATION_LIST(md, value.u8list);
             break;
@@ -1886,6 +1895,9 @@ sai_status_t meta_generic_validation_set(
             break;
         case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
             VALIDATION_LIST(md, value.tunnelmap);
+            break;
+        case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+            VALIDATION_LIST(md, value.ipaddrlist);
             break;
 
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -2215,6 +2227,9 @@ sai_status_t meta_generic_validation_get(
 
                 // ACL END
 
+            case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+                break;
+
             case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
                 VALIDATION_LIST(md, value.u8list);
                 break;
@@ -2238,6 +2253,9 @@ sai_status_t meta_generic_validation_get(
                 break;
             case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
                 VALIDATION_LIST(md, value.tunnelmap);
+                break;
+            case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+                VALIDATION_LIST(md, value.ipaddrlist);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -2520,6 +2538,8 @@ void meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
                 // no special action required
@@ -2655,6 +2675,8 @@ void meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
                 // no special action required
@@ -2906,6 +2928,8 @@ void meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_INT32_LIST:
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
         case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
+        case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+        case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             // no special action required
@@ -3180,6 +3204,8 @@ void meta_generic_validation_post_get(
 
                 // ACL END
 
+	    case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+		break;
             case SAI_ATTR_VALUE_TYPE_UINT8_LIST:
                 VALIDATION_LIST_GET(md, value.u8list);
                 break;
@@ -3203,6 +3229,9 @@ void meta_generic_validation_post_get(
                 break;
             case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
                 VALIDATION_LIST_GET(md, value.tunnelmap);
+                break;
+            case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+                VALIDATION_LIST_GET(md, value.ipaddrlist);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
