@@ -231,6 +231,15 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.tunnelmap, dst_attr.value.tunnelmap, countOnly));
             break;
 
+        case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.ipaddrlist, dst_attr.value.ipaddrlist, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+	    transfer_primitive(src_attr.value.ternaryfield.mask.u8, dst_attr.value.ternaryfield.mask.u8);
+	    transfer_primitive(src_attr.value.ternaryfield.value.u8, dst_attr.value.ternaryfield.value.u8);
+	    break;
+
             /* ACL FIELD DATA */
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
@@ -878,6 +887,15 @@ std::string sai_serialize_list(
 
 }
 
+std::string sai_serialize_ip_address_list(
+        _In_ const sai_ip_address_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_list(list, countOnly, [&](sai_ip_address_t item) { return sai_serialize_ip_address(item);} );
+}
+
 std::string sai_serialize_enum_list(
         _In_ const sai_s32_list_t& list,
         _In_ const sai_enum_metadata_t* meta,
@@ -1028,6 +1046,14 @@ std::string sai_serialize_range(
     SWSS_LOG_ENTER();
 
     return sai_serialize_number(range.min) + "," + sai_serialize_number(range.max);
+}
+
+std::string sai_serialize_ternary_field(
+        _In_ const sai_ternary_field_t& ternary_field)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_number(ternary_field.value.u8) + "/" + sai_serialize_number(ternary_field.mask.u8);
 }
 
 std::string sai_serialize_acl_action(
@@ -1250,6 +1276,12 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
             return sai_serialize_tunnel_map_list(attr.value.tunnelmap, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+            return sai_serialize_ip_address_list(attr.value.ipaddrlist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+            return sai_serialize_ternary_field(attr.value.ternaryfield);
 
             // ACL FIELD DATA
 
@@ -1974,6 +2006,16 @@ void sai_deserialize_ip_address(
     throw std::runtime_error("invalid ip address");
 }
 
+void sai_deserialize_ip_address_list(
+        _In_ const std::string& s,
+        _Out_ sai_ip_address_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_list(s, list, countOnly, [&](const std::string sitem, sai_ip_address_t& item) { sai_deserialize_ip_address(sitem, item);} );
+}
+
 template <typename T>
 void sai_deserialize_range(
         _In_ const std::string& s,
@@ -1991,6 +2033,24 @@ void sai_deserialize_range(
 
     sai_deserialize_number(tokens[0], range.min);
     sai_deserialize_number(tokens[1], range.max);
+}
+
+void sai_deserialize_ternary_field(
+        _In_ const std::string& s,
+        _Out_ sai_ternary_field_t& field)
+{
+    SWSS_LOG_ENTER();
+
+    auto tokens = swss::tokenize(s, '/');
+
+    if (tokens.size() != 2)
+    {
+        SWSS_LOG_ERROR("invalid ternary field %s", s.c_str());
+        throw std::runtime_error("invalid ternary field");
+    }
+
+    sai_deserialize_number(tokens[0], field.value.u8);
+    sai_deserialize_number(tokens[1], field.mask.u8);
 }
 
 void sai_deserialize_acl_field(
@@ -2241,6 +2301,12 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
             return sai_deserialize_tunnel_map_list(s, attr.value.tunnelmap, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+            return sai_deserialize_ip_address_list(s, attr.value.ipaddrlist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
+            return sai_deserialize_ternary_field(s, attr.value.ternaryfield);
 
             // ACL FIELD DATA
 
@@ -2655,6 +2721,7 @@ void sai_deserialize_free_attribute_value(
         case SAI_ATTR_VALUE_TYPE_POINTER:
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+        case SAI_ATTR_VALUE_TYPE_TERNARY_FIELD:
             break;
 
         case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
@@ -2699,6 +2766,10 @@ void sai_deserialize_free_attribute_value(
 
         case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
             sai_free_list(attr.value.tunnelmap);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+            sai_free_list(attr.value.ipaddrlist);
             break;
 
             /* ACL FIELD DATA */
