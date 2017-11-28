@@ -2598,7 +2598,7 @@ void test_route_entry_flow()
     SWSS_LOG_NOTICE("set tests");
 
     SWSS_LOG_NOTICE("correct packet action");
-    attr.id = SAI_NEIGHBOR_ENTRY_ATTR_PACKET_ACTION;
+    attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
     attr.value.s32 = SAI_PACKET_ACTION_DROP;
     status = meta_sai_set_route_entry(&route_entry, &attr, &dummy_success_sai_set_route_entry);
     META_ASSERT_SUCCESS(status);
