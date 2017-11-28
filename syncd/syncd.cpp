@@ -824,7 +824,7 @@ void snoop_get_response(
                 break;
         }
 
-        if (HAS_FLAG_READ_ONLY(meta->flags))
+        if (SAI_HAS_FLAG_READ_ONLY(meta->flags))
         {
             /*
              * If value is read only, we skip it, since after syncd restart we
@@ -1010,7 +1010,7 @@ int profile_get_next_value(
     return 0;
 }
 
-service_method_table_t test_services = {
+sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -3267,7 +3267,7 @@ int syncd_main(int argc, char **argv)
 
     gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(options.startType);
 
-    sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+    sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -3275,7 +3275,8 @@ int syncd_main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    int failed = sai_metadata_apis_query(sai_api_query);
+    sai_apis_t apis;
+    int failed = sai_metadata_apis_query(sai_api_query, &apis);
 
     if (failed > 0)
     {

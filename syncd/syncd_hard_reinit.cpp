@@ -379,7 +379,7 @@ void processSwitches()
         {
             auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attrList[idx].id);
 
-            if (HAS_FLAG_MANDATORY_ON_CREATE(meta->flags) || HAS_FLAG_CREATE_ONLY(meta->flags))
+            if (SAI_HAS_FLAG_MANDATORY_ON_CREATE(meta->flags) || SAI_HAS_FLAG_CREATE_ONLY(meta->flags))
             {
                 /*
                  * If attribute is mandatory on create or create only, we need
@@ -722,7 +722,7 @@ sai_object_id_t processSingleVid(
                 continue;
             }
 
-            if (HAS_FLAG_CREATE_ONLY(meta->flags))
+            if (SAI_HAS_FLAG_CREATE_ONLY(meta->flags))
             {
                 /*
                  * If we will be performing this on default existing created

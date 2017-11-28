@@ -48,7 +48,7 @@ int profile_get_next_value(
     return -1;
 }
 
-service_method_table_t test_services = {
+sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -109,7 +109,7 @@ int main(int argc, char **argv)
         SWSS_LOG_INFO("The dump file is not specified, generated \"%s\" file name", fileName.c_str());
     }
 
-    sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+    sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
     if (status != SAI_STATUS_SUCCESS)
     {
     	exit_with_sai_failure("Failed to initialize SAI api", status);

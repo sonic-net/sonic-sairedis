@@ -9,7 +9,7 @@
 #include "swss/table.h"
 #include "swss/logger.h"
 #include "sai.h"
-#include "saiserialize.h"
+#include "sai_serialize.h"
 #include "string.h"
 
 class SaiAttributeList
