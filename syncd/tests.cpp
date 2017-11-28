@@ -10,7 +10,7 @@ extern "C" {
 #include "swss/redisreply.h"
 #include "sairedis.h"
 #include "sai_redis.h"
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 #include "syncd.h"
 
 #include <map>
@@ -81,7 +81,7 @@ static int profile_get_next_value(
     return -1;
 }
 
-static service_method_table_t test_services = {
+static sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -93,7 +93,7 @@ void test_sai_initialize()
     // NOTE: this is just testing whether test application will
     // link against libsairedis, this api requires running redis db
     // with enabled unix socket
-    sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+    sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
 
     // Mock the SAI api
     test_next_hop_group_api.create_next_hop_group_member = test_create_next_hop_group_member;
@@ -251,7 +251,7 @@ void test_bulk_next_hop_group_member_create()
     std::vector<sai_status_t> statuses(count);
     std::vector<sai_object_id_t> object_id(count);
     redis_bulk_object_create_next_hop_group_members(switch_id, count, nhgm_attrs_count.data(), nhgm_attrs_array.data()
-        , SAI_BULK_OP_TYPE_INGORE_ERROR, object_id.data(), statuses.data());
+        , SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, object_id.data(), statuses.data());
     ASSERT_SUCCESS("Failed to create nhgm");
     for (size_t j = 0; j < statuses.size(); j++)
     {
@@ -358,7 +358,7 @@ void test_bulk_route_set()
 
     std::vector<sai_status_t> statuses(count);
     status = sai_bulk_create_route_entry(count, routes.data(), route_attrs_count.data(), route_attrs_array.data()
-        , SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+        , SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to create route");
     for (size_t j = 0; j < statuses.size(); j++)
     {
@@ -391,7 +391,7 @@ void test_bulk_route_set()
         count,
         routes.data(),
         attrs.data(),
-        SAI_BULK_OP_TYPE_INGORE_ERROR,
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
         statuses.data());
 
     ASSERT_SUCCESS("Failed to bulk set route");

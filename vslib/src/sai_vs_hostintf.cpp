@@ -2,7 +2,7 @@
 #include "sai_vs_internal.h"
 #include "sai_vs_state.h"
 
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 
 #include <string.h>
 #include <sys/types.h>

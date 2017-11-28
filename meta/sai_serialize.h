@@ -72,11 +72,17 @@ std::string sai_serialize_common_api(
 std::string sai_serialize_port_stat(
         _In_ const sai_port_stat_t counter);
 
+std::string sai_serialize_port_pool_stat(
+        _In_ const sai_port_pool_stat_t counter);
+
 std::string sai_serialize_queue_stat(
         _In_ const sai_queue_stat_t counter);
 
 std::string sai_serialize_ingress_priority_group_stat(
         _In_ const sai_ingress_priority_group_stat_t counter);
+
+std::string sai_serialize_tunnel_stat(
+        _In_ const sai_tunnel_stat_t counter);
 
 std::string sai_serialize_queue_attr(
         _In_ const sai_queue_attr_t attr);

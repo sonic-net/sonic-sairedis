@@ -1,6 +1,6 @@
 #include "saiattributelist.h"
 #include "sai_meta.h"
-#include "saiserialize.h"
+#include "sai_serialize.h"
 
 SaiAttributeList::SaiAttributeList(
         _In_ const sai_object_type_t object_type,
