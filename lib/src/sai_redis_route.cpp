@@ -8,6 +8,12 @@ REDIS_GENERIC_QUAD_ENTRY(ROUTE_ENTRY,route_entry);
 const sai_route_api_t redis_route_api = {
 
     REDIS_GENERIC_QUAD_API(route_entry)
+
+    // TODO: uncomment block after SAI 1.2
+    // sai_bulk_create_route_entry,
+    // sai_bulk_remove_route_entry,
+    // sai_bulk_set_route_entry_attribute,
+    // sai_bulk_get_route_entry_attribute
 };
 
 sai_status_t redis_dummy_create_route_entry(
@@ -151,7 +157,21 @@ sai_status_t sai_bulk_remove_route_entry(
 
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    std::vector<std::string> serialized_object_ids;
+
+    for (uint32_t idx = 0; idx < object_count; ++idx)
+    {
+        /*
+         * At the beginning set all statuses to not executed.
+         */
+
+        object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
+
+        serialized_object_ids.push_back(
+                sai_serialize_route_entry(route_entry[idx]));
+    }
+
+    return internal_redis_bulk_generic_remove(SAI_OBJECT_TYPE_ROUTE_ENTRY, serialized_object_ids, object_statuses);
 }
 
 sai_status_t redis_dummy_set_route_entry(

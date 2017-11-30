@@ -252,7 +252,7 @@ void test_bulk_next_hop_group_member_create()
     std::vector<sai_object_id_t> object_id(count);
     sai_bulk_create_next_hop_group_members(switch_id, count, nhgm_attrs_count.data(), nhgm_attrs_array.data()
         , SAI_BULK_OP_TYPE_INGORE_ERROR, object_id.data(), statuses.data());
-    ASSERT_SUCCESS("Failed to create nhgm");
+    ASSERT_SUCCESS("Failed to bulk create nhgm");
     for (size_t j = 0; j < statuses.size(); j++)
     {
         status = statuses[j];
@@ -408,6 +408,10 @@ void test_bulk_route_set()
 
     // TODO we need to add consumer producer test here to see
     // if after consume we get pop we get expectd parameters
+
+    // Remove route entry
+    status = sai_bulk_remove_route_entry(count, routes.data(), SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+    ASSERT_SUCCESS("Failed to bulk remove route entry");
 }
 
 int main()

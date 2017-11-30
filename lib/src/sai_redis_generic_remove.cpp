@@ -59,6 +59,28 @@ sai_status_t redis_bulk_generic_remove(
 {
     SWSS_LOG_ENTER();
 
+    std::vector<std::string> serialized_object_ids;
+
+    // on create vid is put in db by syncd
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        std::string str_object_id = sai_serialize_object_id(object_id[idx]);
+        serialized_object_ids.push_back(str_object_id);
+    }
+
+    return internal_redis_bulk_generic_remove(
+            object_type,
+            serialized_object_ids,
+            object_statuses);
+}
+
+sai_status_t internal_redis_bulk_generic_remove(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _Out_ sai_status_t *object_statuses) /* array */
+{
+    SWSS_LOG_ENTER();
+
     std::string str_object_type = sai_serialize_object_type(object_type);
 
     std::vector<swss::FieldValueTuple> entries;
@@ -70,11 +92,11 @@ sai_status_t redis_bulk_generic_remove(
      * on syncd side.
      */
 
-    for (uint32_t idx = 0; idx < object_count; ++idx)
+    for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
         std::string str_attr = "";
 
-        swss::FieldValueTuple fvtNoStatus(sai_serialize_object_id(object_id[idx]), str_attr);
+        swss::FieldValueTuple fvtNoStatus(serialized_object_ids[idx], str_attr);
 
         entries.push_back(fvtNoStatus);
     }
