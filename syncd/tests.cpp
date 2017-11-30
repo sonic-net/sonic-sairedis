@@ -250,7 +250,7 @@ void test_bulk_next_hop_group_member_create()
 
     std::vector<sai_status_t> statuses(count);
     std::vector<sai_object_id_t> object_id(count);
-    redis_bulk_object_create_next_hop_group_members(switch_id, count, nhgm_attrs_count.data(), nhgm_attrs_array.data()
+    sai_bulk_create_next_hop_group_members(switch_id, count, nhgm_attrs_count.data(), nhgm_attrs_array.data()
         , SAI_BULK_OP_TYPE_INGORE_ERROR, object_id.data(), statuses.data());
     ASSERT_SUCCESS("Failed to create nhgm");
     for (size_t j = 0; j < statuses.size(); j++)
@@ -262,7 +262,7 @@ void test_bulk_next_hop_group_member_create()
     consumerThreads->join();
     delete consumerThreads;
 
-    // check the SAI api calling
+    // check the created nhgm
     for (size_t i = 0; i < created_next_hop_group_member.size(); i++)
     {
         auto& created = created_next_hop_group_member[i];
@@ -270,6 +270,9 @@ void test_bulk_next_hop_group_member_create()
         assert(created_attrs.size() == 2);
         assert(created_attrs[1].value.oid == nhgm_attrs[i][1].value.oid);
     }
+
+    status = sai_bulk_remove_next_hop_group_members(count, object_id.data(), SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+    ASSERT_SUCCESS("Failed to bulk remove nhgm");
 }
 
 void test_bulk_route_set()

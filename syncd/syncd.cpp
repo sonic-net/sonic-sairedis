@@ -2095,19 +2095,18 @@ sai_status_t handle_bulk_generic(
 
         sai_object_meta_key_t meta_key;
 
-        if (object_type == SAI_OBJECT_TYPE_ROUTE_ENTRY)
+        switch (object_type)
         {
-            meta_key.objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY;
-            sai_deserialize_route_entry(object_ids[idx], meta_key.objectkey.key.route_entry);
-        }
-        else if (object_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER)
-        {
-            meta_key.objecttype = SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER;
-            sai_deserialize_object_id(object_ids[idx], meta_key.objectkey.key.object_id);
-        }
-        else
-        {
-            throw std::invalid_argument("object_type");
+            case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+                meta_key.objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY;
+                sai_deserialize_route_entry(object_ids[idx], meta_key.objectkey.key.route_entry);
+                break;
+            case SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER:
+                meta_key.objecttype = object_type;
+                sai_deserialize_object_id(object_ids[idx], meta_key.objectkey.key.object_id);
+                break;
+            default:
+                throw std::invalid_argument("object_type");
         }
 
         if (api == (sai_common_api_t)SAI_COMMON_API_BULK_SET)
@@ -2117,6 +2116,10 @@ sai_status_t handle_bulk_generic(
         else if (api == (sai_common_api_t)SAI_COMMON_API_BULK_CREATE)
         {
             status = handle_non_object_id(meta_key, SAI_COMMON_API_CREATE, attr_count, attr_list);
+        }
+        else if (api == (sai_common_api_t)SAI_COMMON_API_BULK_REMOVE)
+        {
+            status = handle_non_object_id(meta_key, SAI_COMMON_API_REMOVE, attr_count, attr_list);
         }
         else
         {

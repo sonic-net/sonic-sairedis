@@ -171,6 +171,12 @@ sai_status_t redis_generic_remove_neighbor_entry(
 sai_status_t redis_generic_remove_route_entry(
         _In_ const sai_route_entry_t* route_entry);
 
+sai_status_t redis_bulk_generic_remove(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id, /* array */
+        _Inout_ sai_status_t *object_statuses) /* array */;
+
 // SET
 
 sai_status_t redis_generic_set(
