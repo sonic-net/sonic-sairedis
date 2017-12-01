@@ -275,6 +275,111 @@ void test_bulk_next_hop_group_member_create()
     ASSERT_SUCCESS("Failed to bulk remove nhgm");
 }
 
+void test_bulk_fdb_create()
+{
+    SWSS_LOG_ENTER();
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
+
+    clearDB();
+    meta_init_db();
+    redis_clear_switch_ids();
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+
+    sai_status_t    status;
+
+    sai_route_api_t  *sai_fdb_api = NULL;
+    sai_switch_api_t *sai_switch_api = NULL;
+
+    sai_api_query(SAI_API_FDB, (void**)&sai_fdb_api);
+    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+
+    uint32_t count = 3;
+
+    std::vector<sai_fdb_entry_t> fdbs;
+
+    uint32_t index = 15;
+
+    sai_attribute_t swattr;
+
+    swattr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    swattr.value.booldata = true;
+
+    sai_object_id_t switch_id;
+    status = sai_switch_api->create_switch(&switch_id, 1, &swattr);
+
+    ASSERT_SUCCESS("Failed to create switch");
+
+    std::vector<std::vector<sai_attribute_t>> fdb_attrs;
+    std::vector<sai_attribute_t *> fdb_attrs_array;
+    std::vector<uint32_t> fdb_attrs_count;
+
+    for (uint32_t i = index; i < index + count; ++i)
+    {
+        // virtual router
+        sai_object_id_t vr = create_dummy_object_id(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+        object_reference_insert(vr);
+        sai_object_meta_key_t meta_key_vr = { .objecttype = SAI_OBJECT_TYPE_VIRTUAL_ROUTER, .objectkey = { .key = { .object_id = vr } } };
+        std::string vr_key = sai_serialize_object_meta_key(meta_key_vr);
+        ObjectAttrHash[vr_key] = { };
+
+        // bridge port
+        sai_object_id_t bridge_port = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE_PORT);
+        object_reference_insert(bridge_port);
+        sai_object_meta_key_t meta_key_bridge_port = { .objecttype = SAI_OBJECT_TYPE_BRIDGE_PORT, .objectkey = { .key = { .object_id = bridge_port } } };
+        std::string bridge_port_key = sai_serialize_object_meta_key(meta_key_bridge_port);
+        ObjectAttrHash[bridge_port_key] = { };
+
+        sai_fdb_entry_t fdb_entry;
+        fdb_entry.switch_id = switch_id;
+        memset(fdb_entry.mac_address, 0, sizeof(sai_mac_t));
+        fdb_entry.mac_address[0] = 0xD;
+        fdb_entry.bridge_type = SAI_FDB_ENTRY_BRIDGE_TYPE_1Q;
+        fdb_entry.vlan_id = (unsigned short)(1011 + i);
+        fdb_entry.bridge_id = SAI_NULL_OBJECT_ID;
+
+        fdbs.push_back(fdb_entry);
+
+        std::vector<sai_attribute_t> attrs;
+        sai_attribute_t attr;
+
+        attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+        attr.value.s32 = (i % 2) ? SAI_FDB_ENTRY_TYPE_DYNAMIC : SAI_FDB_ENTRY_TYPE_STATIC;
+        attrs.push_back(attr);
+
+        attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+        attr.value.oid = bridge_port;
+        attrs.push_back(attr);
+
+        attr.id = SAI_FDB_ENTRY_ATTR_PACKET_ACTION;
+        attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+        attrs.push_back(attr);
+
+        fdb_attrs.push_back(attrs);
+        fdb_attrs_count.push_back((unsigned int)attrs.size());
+    }
+
+    for (size_t j = 0; j < fdb_attrs.size(); j++)
+    {
+        fdb_attrs_array.push_back(fdb_attrs[j].data());
+    }
+
+    std::vector<sai_status_t> statuses(count);
+    status = sai_bulk_create_fdb_entry(count, fdbs.data(), fdb_attrs_count.data(), fdb_attrs_array.data()
+        , SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+    ASSERT_SUCCESS("Failed to create fdb");
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_SUCCESS("Failed to create route # %zu", j);
+    }
+
+    // Remove route entry
+    status = sai_bulk_remove_fdb_entry(count, fdbs.data(), SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+    ASSERT_SUCCESS("Failed to bulk remove route entry");
+}
+
 void test_bulk_route_set()
 {
     SWSS_LOG_ENTER();
@@ -429,6 +534,8 @@ int main()
         test_enable_recording();
 
         test_bulk_next_hop_group_member_create();
+
+        test_bulk_fdb_create();
 
         test_bulk_route_set();
 

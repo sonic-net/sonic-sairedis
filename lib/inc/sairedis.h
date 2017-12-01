@@ -232,4 +232,17 @@ sai_status_t sai_bulk_remove_next_hop_group_members(
         _In_ sai_bulk_op_type_t type,
         _Out_ sai_status_t *object_statuses);
 
+sai_status_t sai_bulk_create_fdb_entry(
+        _In_ uint32_t object_count,
+        _In_ const sai_fdb_entry_t *fdb_entry,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t *const *attr_list,
+        _In_ sai_bulk_op_type_t type,
+        _Out_ sai_status_t *object_statuses);
+
+sai_status_t sai_bulk_remove_fdb_entry(
+        _In_ uint32_t object_count,
+        _In_ const sai_fdb_entry_t *fdb_entry,
+        _In_ sai_bulk_op_type_t type,
+        _Out_ sai_status_t *object_statuses);
 #endif // __SAIREDIS__

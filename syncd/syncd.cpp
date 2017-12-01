@@ -2094,15 +2094,16 @@ sai_status_t handle_bulk_generic(
         uint32_t attr_count = list->get_attr_count();
 
         sai_object_meta_key_t meta_key;
-
+        meta_key.objecttype = object_type;
         switch (object_type)
         {
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
-                meta_key.objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY;
                 sai_deserialize_route_entry(object_ids[idx], meta_key.objectkey.key.route_entry);
                 break;
+            case SAI_OBJECT_TYPE_FDB_ENTRY:
+                sai_deserialize_fdb_entry(object_ids[idx], meta_key.objectkey.key.fdb_entry);
+                break;
             case SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER:
-                meta_key.objecttype = object_type;
                 sai_deserialize_object_id(object_ids[idx], meta_key.objectkey.key.object_id);
                 break;
             default:
@@ -2223,6 +2224,7 @@ sai_status_t processBulkEvent(
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
         case SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER:
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
             status = handle_bulk_generic(object_type, object_ids, api, attributes);
             break;
 
