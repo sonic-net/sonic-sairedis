@@ -15,6 +15,7 @@ libsairedis_la_SOURCES = \
 			 sai_redis_fdb.cpp \
 			 sai_redis_hash.cpp \
 			 sai_redis_hostintf.cpp \
+			 sai_redis_dtel.cpp \
 			 sai_redis_interfacequery.cpp \
 			 sai_redis_lag.cpp \
 			 sai_redis_mirror.cpp \
