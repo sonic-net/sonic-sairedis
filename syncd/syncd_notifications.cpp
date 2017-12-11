@@ -92,6 +92,19 @@ void redisPutFdbEntryToAsicView(
         return;
     }
 
+    if ((fdb->event_type == SAI_FDB_EVENT_AGED)||(fdb->event_type == SAI_FDB_EVENT_FLUSHED))
+    {
+        if (fdb->event_type == SAI_FDB_EVENT_AGED)
+        {
+            SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_AGED",key.c_str());
+        }
+        if (fdb->event_type == SAI_FDB_EVENT_FLUSHED)
+        {
+            SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",key.c_str());
+        }
+        g_redisClient->del(key);
+        return;
+    }
     for (const auto &e: entry)
     {
         const std::string &strField = fvField(e);
