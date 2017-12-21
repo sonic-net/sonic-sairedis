@@ -101,6 +101,15 @@ config_syncd_marvell()
     [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
 }
 
+config_syncd_nephos()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+
+    if [ $FAST_REBOOT == "yes" ]; then
+        CMD_ARGS+=" -t fast"
+    fi
+}
+
 config_syncd()
 {
     if [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
@@ -113,6 +122,8 @@ config_syncd()
         config_syncd_centec
     elif [ "$SONIC_ASIC_TYPE" == "marvell" ]; then
         config_syncd_marvell
+    elif [ "$SONIC_ASIC_TYPE" == "nephos" ]; then
+        config_syncd_nephos
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
