@@ -314,6 +314,11 @@ sai_status_t transfer_attribute(
 
             /* ACL ACTION DATA */
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
+            transfer_primitive(src_attr.value.aclaction.enable, dst_attr.value.aclaction.enable);
+            transfer_primitive(src_attr.value.aclaction.parameter.booldata, dst_attr.value.aclaction.parameter.booldata);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             transfer_primitive(src_attr.value.aclaction.enable, dst_attr.value.aclaction.enable);
             transfer_primitive(src_attr.value.aclaction.parameter.u8, dst_attr.value.aclaction.parameter.u8);
@@ -1058,6 +1063,9 @@ std::string sai_serialize_acl_action(
 
     switch (meta.attrvaluetype)
     {
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
+            return sai_serialize_bool(action.parameter.booldata);
+
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             return sai_serialize_number(action.parameter.u8);
 
@@ -1286,6 +1294,7 @@ std::string sai_serialize_attr_value(
 
             // ACL ACTION DATA
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2133,6 +2142,9 @@ void sai_deserialize_acl_action(
 
     switch (meta.attrvaluetype)
     {
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
+            return sai_deserialize_bool(s, action.parameter.booldata);
+
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             return sai_deserialize_number(s, action.parameter.u8);
 
@@ -2290,6 +2302,7 @@ void sai_deserialize_attr_value(
 
             // ACL ACTION DATA
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2759,6 +2772,7 @@ void sai_deserialize_free_attribute_value(
 
             /* ACL ACTION DATA */
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
