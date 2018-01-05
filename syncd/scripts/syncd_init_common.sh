@@ -104,7 +104,7 @@ config_syncd_marvell()
 config_syncd_barefoot()
 {
     export ONIE_PLATFORM=`grep platform /etc/machine.conf | awk 'BEGIN { FS = "=" } ; { print $2 }'`
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/bfn/install/lib:/opt/bfn/install/lib/tofinopd/switch:/opt/bfn/install/lib/platform/$ONIE_PLATFORM
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/bfn/install/lib/platform/$ONIE_PLATFORM:/opt/bfn/install/lib:/opt/bfn/install/lib/tofinopd/switch
      . /opt/bfn/install/bin/dma_setup.sh
      export LD_PRELOAD=libswitchapi.so:libswitchsai.so:libpd.so:libpdcli.so:libdriver.so:libbfsys.so
 }
