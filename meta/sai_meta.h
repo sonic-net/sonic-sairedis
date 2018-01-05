@@ -158,4 +158,62 @@ extern void meta_sai_on_fdb_event(
         _In_ uint32_t count,
         _In_ sai_fdb_event_notification_data_t *data);
 
+// UNIT TESTS HELPERS
+
+/**
+ * @brief Enable unittest globally.
+ *
+ * @param[in] enable If set to true unittests are enabled.
+ */
+void meta_unittests_enable(
+        _In_ bool enable);
+
+/**
+ * @brief Indicates whethre unittests are enabled;
+ */
+bool meta_unittests_enabled();
+
+/**
+ * @bried Allow to perform SET operation on READ_ONLY attribue only once.
+ *
+ * This function relaxes metadata checking on SET operation, it allows to
+ * perform SET api on READ_ONLY attribute only once on specific object type and
+ * specific attribue.
+ *
+ * Once means that SET operation is only relaxed for the very next SET call on
+ * that specific object type and attrirbute id.
+ *
+ * Function is explicitly named ONCE, since it will force test developer to not
+ * forget that SET check is relaxed, and not forget for future unittests.
+ *
+ * Function is provided for more flexible testing using virtual switch.  Since
+ * some of the read only attributes maybe very complex to simulate (for example
+ * resources used by actual asic when adding next hop or next hop group), then
+ * it's easier to write such unittest:
+ *
+ * TestCase:
+ * 1. meta_unittests_allow_readonly_set_once(x,y);
+ * 2. object_x_api->set_attribyte(object_id, attr, foo); // attr.id == y
+ * 3. object_x_api->get_attribute(object_id, 1, attr); // attr.id == y
+ * 4. check if get result is equal to set result.
+ *
+ * On real ASIC, even after allowing SET on read only attribute, actual SET
+ * should fail.
+ *
+ * It can be dangerous to set any readonly attribute to different values since
+ * internal metadata logic maybe using that value and in some cases metadata
+ * database may get out of sync and cause unexpected results in api calls up to
+ * application carash.
+ *
+ * This function is not thread safe.
+ *
+ * @param[in] object_type Object type on which SET will be possible.
+ * @param[in] attr_id Attribute ID on which SET will be possible.
+ *
+ * @return #SAI_STATUS_SUCCESS on success Failure status code on error
+ */
+sai_status_t meta_unittests_allow_readonly_set_once(
+        _In_ sai_object_type_t object_type,
+        _In_ int32_t attr_id);
+
 #endif // __SAI_META_H__

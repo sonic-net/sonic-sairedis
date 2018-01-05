@@ -137,6 +137,43 @@ void test_ports()
     ASSERT_TRUE(attr.value.objlist.count == expected_ports);
 }
 
+void test_set_readonly_attribute()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    sai_object_id_t switch_id;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    SUCCESS(sai_metadata_sai_switch_api->create_switch(&switch_id, 1, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_PORT_MAX_MTU;
+    attr.value.u32 = 42;
+
+    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) != SAI_STATUS_SUCCESS);
+
+    meta_unittests_enable(true);
+
+    // allow set on readonly attribute
+    SUCCESS(meta_unittests_allow_readonly_set_once(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PORT_MAX_MTU));
+
+    // set on readonly attribute should pass
+    SUCCESS(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr));
+
+    // just scramble value to make sure that GET will succeed
+    attr.value.u32 = 1;
+
+    SUCCESS(sai_metadata_sai_switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    ASSERT_TRUE(attr.value.u32 == 42);
+
+    // second SET should fail
+    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) != SAI_STATUS_SUCCESS);
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -152,6 +189,8 @@ int main()
     //swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     test_ports();
+
+    test_set_readonly_attribute();
 
     return 0;
 }

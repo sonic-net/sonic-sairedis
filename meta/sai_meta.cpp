@@ -14,6 +14,86 @@
 #include <map>
 #include <iterator>
 
+static volatile bool unittests_enabled = false;
+
+static std::set<std::string> meta_unittests_set_readonly_set;
+
+void meta_unittests_enable(
+        _In_ bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    unittests_enabled = enable;
+}
+
+bool meta_unittests_enabled()
+{
+    SWSS_LOG_ENTER();
+
+    return unittests_enabled;
+}
+
+sai_status_t meta_unittests_allow_readonly_set_once(
+        _In_ sai_object_type_t object_type,
+        _In_ int32_t attr_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (!unittests_enabled)
+    {
+        SWSS_LOG_NOTICE("unittests are not enabled");
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto *md = sai_metadata_get_attr_metadata(object_type, attr_id);
+
+    if (md == NULL)
+    {
+        SWSS_LOG_ERROR("failed to get metadata for object type %d and attr id %d", object_type, attr_id);
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (!HAS_FLAG_READ_ONLY(md->flags))
+    {
+        SWSS_LOG_ERROR("attribute %s is not marked as READ_ONLY", md->attridname);
+        return SAI_STATUS_FAILURE;
+    }
+
+    meta_unittests_set_readonly_set.insert(md->attridname);
+
+    SWSS_LOG_INFO("enabling SET for readonly attribute: %s", md->attridname);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+static bool meta_unittests_get_and_erase_set_readonly_flag(
+        _In_ const sai_attr_metadata_t& md)
+{
+    SWSS_LOG_ENTER();
+
+    if (!unittests_enabled)
+    {
+        // explicityly  to not produce false alarms
+        SWSS_LOG_NOTICE("unittests are not enabled");
+        return false;
+    }
+
+    const auto &it = meta_unittests_set_readonly_set.find(md.attridname);
+
+    if (it == meta_unittests_set_readonly_set.end())
+    {
+        SWSS_LOG_ERROR("%s is not present in readonly set", md.attridname);
+        return false;
+    }
+
+    SWSS_LOG_INFO("%s is present in readonly set, erasing", md.attridname);
+
+    meta_unittests_set_readonly_set.erase(it);
+
+    return true;
+}
+
+
 // TODO move to metadata utils
 bool is_ipv6_mask_valid(
         _In_ const uint8_t* mask)
@@ -1647,9 +1727,16 @@ sai_status_t meta_generic_validation_set(
 
     if (HAS_FLAG_READ_ONLY(md.flags))
     {
-        META_LOG_ERROR(md, "attr is read only and cannot be modified");
+        if (meta_unittests_get_and_erase_set_readonly_flag(md))
+        {
+            META_LOG_NOTICE(md, "readonly attribute is allowd to be set (unittests enabled)");
+        }
+        else
+        {
+            META_LOG_ERROR(md, "attr is read only and cannot be modified");
 
-        return SAI_STATUS_INVALID_PARAMETER;
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
     }
 
     if (HAS_FLAG_CREATE_ONLY(md.flags))
