@@ -21,11 +21,32 @@ extern "C" {
  *
  * By default this flag is set to false.
  */
-#define SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE    "SAI_VS_HOSTIF_USE_TAP_DEVICE"
+#define SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE      "SAI_VS_HOSTIF_USE_TAP_DEVICE"
 
 // TODO probaby should be per switch
 #define SAI_VALUE_VS_SWITCH_TYPE_BCM56850     "SAI_VS_SWITCH_TYPE_BCM56850"
 #define SAI_VALUE_VS_SWITCH_TYPE_MLNX2700     "SAI_VS_SWITCH_TYPE_MLNX2700"
+
+/**
+ * @def SAI_VS_UNITTEST_CHANNEL
+ *
+ * Notification channel for redis database.
+ */
+#define SAI_VS_UNITTEST_CHANNEL     "SAI_VS_UNITTEST_CHANNEL"
+
+/**
+ * @def SAI_VS_UNITTEST_SET_RO_OP
+ *
+ * Notification operation for "SET" READ_ONLY attribute.
+ */
+#define SAI_VS_UNITTEST_SET_RO_OP   "set_ro"
+
+/**
+ * @def SAI_VS_UNITTEST_ENABLE
+ *
+ * Notificatio operation for enabling unittests.
+ */
+#define SAI_VS_UNITTEST_ENABLE_UNITTESTS  "enable_unittests"
 
 #define SAI_VS_VETH_PREFIX   "v"
 
