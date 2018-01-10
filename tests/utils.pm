@@ -34,6 +34,8 @@ sub flush_redis
 
     my @ret = `redis-cli flushall`;
 
+    $ret[0] = "failed" if not defined $ret[0];
+
     chomp $ret[0];
 
     if ($ret[0] ne "OK")
@@ -87,11 +89,6 @@ BEGIN
     $DIR = $1 if $script =~ /(\w+)\.pl/;
 
     print "Using scripts dir '$DIR'\n";
-}
-
-END
-{
-    kill_syncd;
 }
 
 1;
