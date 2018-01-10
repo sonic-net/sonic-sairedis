@@ -25,7 +25,7 @@ sub kill_syncd
 
     print color('bright_blue') . "Killing syncd" . color('reset') . "\n";
 
-    `/usr/bin/killall -9 vssyncd lt-vssyncd 2>/dev/null`;
+    `killall -9 syncd vssyncd lt-vssyncd 2>/dev/null`;
 }
 
 sub flush_redis
