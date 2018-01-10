@@ -315,7 +315,7 @@ void match_list_lengths(
                 CHECK_LIST(value.tunnelmap);
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_IP_ADDR_LIST:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
                 CHECK_LIST(value.ipaddrlist);
                 break;
 
