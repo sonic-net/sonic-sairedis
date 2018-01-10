@@ -2,7 +2,14 @@
 #include <string>
 #include <vector>
 
+#include <unistd.h>
+
 #include "swss/logger.h"
+#include "swss/dbconnector.h"
+#include "swss/schema.h"
+#include "swss/notificationproducer.h"
+
+#include "../../meta/saiserialize.h"
 
 extern "C" {
 #include <sai.h>
@@ -137,6 +144,100 @@ void test_ports()
     ASSERT_TRUE(attr.value.objlist.count == expected_ports);
 }
 
+void test_set_readonly_attribute()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    sai_object_id_t switch_id;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    SUCCESS(sai_metadata_sai_switch_api->create_switch(&switch_id, 1, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_PORT_MAX_MTU;
+    attr.value.u32 = 42;
+
+    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) != SAI_STATUS_SUCCESS);
+
+    meta_unittests_enable(true);
+
+    // allow set on readonly attribute
+    SUCCESS(meta_unittests_allow_readonly_set_once(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PORT_MAX_MTU));
+
+    // set on readonly attribute should pass
+    SUCCESS(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr));
+
+    // just scramble value to make sure that GET will succeed
+    attr.value.u32 = 1;
+
+    SUCCESS(sai_metadata_sai_switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    ASSERT_TRUE(attr.value.u32 == 42);
+
+    // second SET should fail
+    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) != SAI_STATUS_SUCCESS);
+}
+
+void test_set_readonly_attribute_via_redis()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    sai_object_id_t switch_id;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    SUCCESS(sai_metadata_sai_switch_api->create_switch(&switch_id, 1, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_PORT_MAX_MTU;
+    attr.value.u32 = 42;
+
+    // this set should fail
+    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) != SAI_STATUS_SUCCESS);
+
+    // this scope contains all operations needed to perform set operation on readonly attribute
+    {
+        swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
+        swss::NotificationProducer vsntf(&db, SAI_VS_UNITTEST_CHANNEL);
+
+        std::vector<swss::FieldValueTuple> entry;
+
+        // needs to be done only once
+        vsntf.send(SAI_VS_UNITTEST_ENABLE_UNITTESTS, "true", entry);
+
+        std::string field = "SAI_SWITCH_ATTR_PORT_MAX_MTU";
+        std::string value = "42"; // NOTE: normally we need sai_serialize_value()
+
+        swss::FieldValueTuple fvt(field, value);
+
+        entry.push_back(fvt);
+
+        // when using tests from python, user will be required to translate VID2RID here
+        // need RID here in form 0xYYYYYYYYYYYYYYY
+        std::string data = "SAI_OBJECT_TYPE_SWITCH:" + sai_serialize_object_id(switch_id);
+
+        vsntf.send(SAI_VS_UNITTEST_SET_RO_OP, data, entry);
+    }
+
+    // give some time for notification to propagate to vs via redis
+    usleep(200*1000);
+
+    // just scramble value to make sure that GET will succeed
+    attr.value.u32 = 1;
+
+    SUCCESS(sai_metadata_sai_switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    ASSERT_TRUE(attr.value.u32 == 42);
+
+    // second SET should fail
+    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) != SAI_STATUS_SUCCESS);
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -149,9 +250,16 @@ int main()
 
     sai_metadata_apis_query(sai_api_query);
 
-    //swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
+    //swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
     test_ports();
+
+    test_set_readonly_attribute();
+
+    test_set_readonly_attribute_via_redis();
+
+    // make proper unitinialize to close unittest thread
+    sai_api_uninitialize();
 
     return 0;
 }

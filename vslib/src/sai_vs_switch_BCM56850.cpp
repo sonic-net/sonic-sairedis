@@ -1143,6 +1143,13 @@ sai_status_t refresh_read_only_BCM56850(
         return refresh_vlan_member_list(meta, object_id, switch_id);
     }
 
+    if (meta_unittests_enabled())
+    {
+        SWSS_LOG_NOTICE("unittests enabled, SET could be performed on %s, not recalculating", meta->attridname);
+
+        return SAI_STATUS_SUCCESS;
+    }
+
     SWSS_LOG_WARN("need to recalculate RO: %s", meta->attridname);
 
     return SAI_STATUS_NOT_IMPLEMENTED;
