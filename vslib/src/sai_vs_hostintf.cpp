@@ -221,7 +221,7 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
         }
     }
 
-    SWSS_LOG_NOTICE("engind thread proc for %s", info->name.c_str());
+    SWSS_LOG_NOTICE("ending thread proc for %s", info->name.c_str());
 }
 
 void tap2veth_fun(std::shared_ptr<hostif_info_t> info)
@@ -253,7 +253,7 @@ void tap2veth_fun(std::shared_ptr<hostif_info_t> info)
         }
     }
 
-    SWSS_LOG_NOTICE("engind thread proc for %s", info->name.c_str());
+    SWSS_LOG_NOTICE("ending thread proc for %s", info->name.c_str());
 }
 
 bool hostif_create_tap_veth_forwarding(
