@@ -34,6 +34,8 @@ typedef struct _hostif_info_t
 
     volatile bool run_thread;
 
+    std::string name;
+
 } hostif_info_t;
 
 std::map<std::string, std::shared_ptr<hostif_info_t>> hostif_info_map;
@@ -194,18 +196,32 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
 
         if (size < 0)
         {
-            SWSS_LOG_ERROR("failed to read from socket %d", info->packet_socket);
-            break;
+            SWSS_LOG_ERROR("failed to read from socket fd %d, errno(%d): %s",
+                    info->packet_socket, errno, strerror(errno));
+
+            continue;
         }
 
         // TODO examine packet for mac and possible generate fdb_event
 
         if (write(info->tapfd, buffer, size) < 0)
         {
-            SWSS_LOG_ERROR("failed to write to tap device %d", info->tapfd);
-            break;
+            /*
+             * We filter out EIO because of this patch:
+             * https://github.com/torvalds/linux/commit/1bd4978a88ac2589f3105f599b1d404a312fb7f6
+             */
+
+            if (errno != ENETDOWN && errno != EIO)
+            {
+                SWSS_LOG_ERROR("failed to write to tap device fd %d, errno(%d): %s",
+                        info->tapfd, errno, strerror(errno));
+            }
+
+            continue;
         }
     }
+
+    SWSS_LOG_NOTICE("engind thread proc for %s", info->name.c_str());
 }
 
 void tap2veth_fun(std::shared_ptr<hostif_info_t> info)
@@ -222,17 +238,22 @@ void tap2veth_fun(std::shared_ptr<hostif_info_t> info)
 
         if (size < 0)
         {
-            SWSS_LOG_ERROR("failed to read from tapfd: %d", info->tapfd);
+            SWSS_LOG_ERROR("failed to read from tapfd fd %d, errno(%d): %s",
+                    info->tapfd, errno, strerror(errno));
 
-            break;
+            continue;
         }
 
         if (write(info->packet_socket, buffer, (int)size) < 0)
         {
-            SWSS_LOG_ERROR("failed to write to socker %d", info->packet_socket);
-            break;
+            SWSS_LOG_ERROR("failed to write to socket fd %d, errno(%d): %s",
+                    info->packet_socket, errno, strerror(errno));
+
+            continue;
         }
     }
+
+    SWSS_LOG_NOTICE("engind thread proc for %s", info->name.c_str());
 }
 
 bool hostif_create_tap_veth_forwarding(
@@ -295,6 +316,7 @@ bool hostif_create_tap_veth_forwarding(
     info->run_thread    = true;
     info->e2t           = std::make_shared<std::thread>(veth2tap_fun, info);
     info->t2e           = std::make_shared<std::thread>(tap2veth_fun, info);
+    info->name          = tapname;
 
     info->e2t->detach();
     info->t2e->detach();
