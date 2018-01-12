@@ -2107,7 +2107,7 @@ sai_status_t handle_bulk_generic(
                 sai_deserialize_object_id(object_ids[idx], meta_key.objectkey.key.object_id);
                 break;
             default:
-                throw std::invalid_argument("object_type");
+                SWSS_LOG_THROW("invalid object_type: %s", sai_serialize_object_type(object_type).c_str());
         }
 
         if (api == (sai_common_api_t)SAI_COMMON_API_BULK_SET)
@@ -2201,7 +2201,7 @@ sai_status_t processBulkEvent(
 
     if (isInitViewMode())
     {
-        SWSS_LOG_ERROR("bulk api is not supported in init view mode", api);
+        SWSS_LOG_ERROR("bulk api (%d) is not supported in init view mode", api);
         exit_and_notify(EXIT_FAILURE);
     }
 
@@ -2318,7 +2318,7 @@ sai_status_t processEvent(
     }
     else
     {
-        SWSS_LOG_THROW("api %s is not implemented", op.c_str());
+        SWSS_LOG_THROW("api '%s' is not implemented", op.c_str());
     }
 
     sai_object_type_t object_type;

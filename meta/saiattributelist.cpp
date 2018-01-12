@@ -28,8 +28,7 @@ SaiAttributeList::SaiAttributeList(
 
         if (meta == NULL)
         {
-            SWSS_LOG_ERROR("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr.id);
-            throw std::runtime_error("failed to get metadata");
+            SWSS_LOG_THROW("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr.id);
         }
 
         sai_deserialize_attr_value(str_attr_value, *meta, attr, countOnly);
@@ -69,8 +68,7 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
 
         if (meta == NULL)
         {
-            SWSS_LOG_ERROR("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr->id);
-            throw std::runtime_error("failed to get metadata");
+            SWSS_LOG_THROW("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr->id);
         }
 
         std::string str_attr_id = sai_serialize_attr_id(*meta);

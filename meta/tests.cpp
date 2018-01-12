@@ -4081,8 +4081,7 @@ void deserialize_number(
 
     if (errno != 0 || endptr != s.c_str() + s.length())
     {
-        SWSS_LOG_ERROR("invalid number %s", s.c_str());
-        throw std::runtime_error("invalid number");
+        SWSS_LOG_THROW("invalid number %s", s.c_str());
     }
 }
 
