@@ -58,6 +58,8 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
         _In_ const sai_attribute_t *attr_list,
         _In_ bool countOnly)
 {
+    SWSS_LOG_ENTER();
+
     std::vector<swss::FieldValueTuple> entry;
 
     for (uint32_t index = 0; index < attr_count; ++index)
@@ -85,10 +87,14 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
 
 sai_attribute_t* SaiAttributeList::get_attr_list()
 {
+    SWSS_LOG_ENTER();
+
     return m_attr_list.data();
 }
 
 uint32_t SaiAttributeList::get_attr_count()
 {
+    SWSS_LOG_ENTER();
+
     return (uint32_t)m_attr_list.size();
 }

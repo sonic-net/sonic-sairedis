@@ -11,6 +11,7 @@ FlexCounter::PortCounterIds::PortCounterIds(
         _In_ const std::vector<sai_port_stat_t> &portIds):
     portId(port), portCounterIds(portIds)
 {
+    SWSS_LOG_ENTER();
 }
 
 FlexCounter::QueueCounterIds::QueueCounterIds(
@@ -18,6 +19,7 @@ FlexCounter::QueueCounterIds::QueueCounterIds(
         _In_ const std::vector<sai_queue_stat_t> &queueIds):
     queueId(queue), queueCounterIds(queueIds)
 {
+    SWSS_LOG_ENTER();
 }
 
 FlexCounter::QueueAttrIds::QueueAttrIds(
@@ -25,6 +27,7 @@ FlexCounter::QueueAttrIds::QueueAttrIds(
         _In_ const std::vector<sai_queue_attr_t> &queueIds):
     queueId(queue), queueAttrIds(queueIds)
 {
+    SWSS_LOG_ENTER();
 }
 
 /* The current implementation of 'setPortCounterList' and 'setQueueCounterList' are
@@ -307,25 +310,34 @@ void FlexCounter::removeCounterPlugin(
 
 FlexCounter::~FlexCounter(void)
 {
+    SWSS_LOG_ENTER();
+
     endFlexCounterThread();
 }
 
 bool FlexCounter::isPortCounterSupported(sai_port_stat_t counter) const
 {
+    SWSS_LOG_ENTER();
+
     return m_supportedPortCounters.count(counter) != 0;
 }
 
 bool FlexCounter::isQueueCounterSupported(sai_queue_stat_t counter) const
 {
+    SWSS_LOG_ENTER();
+
     return m_supportedQueueCounters.count(counter) != 0;
 }
 
 FlexCounter::FlexCounter(uint32_t pollInterval) : m_pollInterval(pollInterval)
 {
+    SWSS_LOG_ENTER();
 }
 
 FlexCounter& FlexCounter::getInstance(uint32_t pollInterval)
 {
+    SWSS_LOG_ENTER();
+
     if (g_flex_counters_map.count(pollInterval) == 0)
     {
         std::shared_ptr<FlexCounter> instance(new FlexCounter(pollInterval));
@@ -337,6 +349,8 @@ FlexCounter& FlexCounter::getInstance(uint32_t pollInterval)
 
 void FlexCounter::removeInstance(uint32_t pollInterval)
 {
+    SWSS_LOG_ENTER();
+
     g_flex_counters_map.erase(pollInterval);
 }
 
@@ -559,6 +573,8 @@ void FlexCounter::endFlexCounterThread(void)
 
 void FlexCounter::saiUpdateSupportedPortCounters(sai_object_id_t portId)
 {
+    SWSS_LOG_ENTER();
+
     uint64_t value;
     for (int cntr_id = SAI_PORT_STAT_IF_IN_OCTETS; cntr_id <= SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS; ++cntr_id)
     {
@@ -584,6 +600,8 @@ void FlexCounter::saiUpdateSupportedQueueCounters(
         _In_ sai_object_id_t queueId,
         _In_ const std::vector<sai_queue_stat_t> &counterIds)
 {
+    SWSS_LOG_ENTER();
+
     uint64_t value;
     m_supportedQueueCounters.clear();
 
@@ -604,6 +622,5 @@ void FlexCounter::saiUpdateSupportedQueueCounters(
         {
             m_supportedQueueCounters.insert(counter);
         }
-
     }
 }

@@ -142,6 +142,8 @@ int vs_set_dev_mac_address(const char *dev, const sai_mac_t& mac)
 
 int ifup(const char *dev)
 {
+    SWSS_LOG_ENTER();
+
     int s = socket(AF_INET, SOCK_DGRAM, 0);
 
     if (s < 0)

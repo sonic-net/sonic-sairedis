@@ -98,6 +98,8 @@ static bool meta_unittests_get_and_erase_set_readonly_flag(
 bool is_ipv6_mask_valid(
         _In_ const uint8_t* mask)
 {
+    SWSS_LOG_ENTER();
+
     if (mask == NULL)
     {
         SWSS_LOG_ERROR("mask is null");
@@ -189,6 +191,7 @@ class SaiAttrWrapper
 
         const sai_attribute_t* getattr() const
         {
+            SWSS_LOG_ENTER();
             return &m_attr;
         }
 
@@ -203,6 +206,8 @@ class SaiAttrWrapper
 
 std::string get_attr_info(const sai_attr_metadata_t& md)
 {
+    SWSS_LOG_ENTER();
+
     /*
      * Attribute name will contain object type as well so we don't need to
      * serialize object type separatly.
@@ -463,6 +468,8 @@ void set_object(
 const std::vector<std::shared_ptr<SaiAttrWrapper>> get_object_attributes(
         _In_ const sai_object_meta_key_t& meta_key)
 {
+    SWSS_LOG_ENTER();
+
     std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (!object_exists(key))
@@ -641,6 +648,8 @@ sai_status_t meta_genetic_validation_list(
         _In_ uint32_t count,
         _In_ const void* list)
 {
+    SWSS_LOG_ENTER();
+
     if (count > MAX_LIST_COUNT)
     {
         META_LOG_ERROR(md, "list count %u is > then max list count %u", count, MAX_LIST_COUNT);

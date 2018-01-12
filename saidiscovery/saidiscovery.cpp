@@ -473,6 +473,8 @@ void handleProfileMap(
 
 void printUsage()
 {
+    SWSS_LOG_ENTER();
+
     std::cout << std::endl;
     std::cout << "Usage: saidiscovery [-I] [-D] [-f] [-d] [-p profile] [-w] [-h]" << std::endl << std::endl;
     std::cout << "    -I --noInitSwitch:" << std::endl;

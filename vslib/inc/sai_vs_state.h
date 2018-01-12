@@ -61,16 +61,22 @@ class SaiAttrWrap
 
         const sai_attribute_t* getAttr() const
         {
+            SWSS_LOG_ENTER();
+
             return &m_attr;
         }
 
         const sai_attr_metadata_t* getAttrMetadata() const
         {
+            SWSS_LOG_ENTER();
+
             return m_meta;
         }
 
         const std::string& getAttrStrValue() const
         {
+            SWSS_LOG_ENTER();
+
             return m_value;
         }
 
@@ -105,6 +111,8 @@ class SwitchState
                 _In_ sai_object_id_t switch_id):
             m_switch_id(switch_id)
         {
+            SWSS_LOG_ENTER();
+
             if (sai_object_type_query(switch_id) != SAI_OBJECT_TYPE_SWITCH)
             {
                 SWSS_LOG_THROW("object %s is not SWITCH, its %s",
@@ -134,33 +142,45 @@ class SwitchState
 
     sai_object_id_t getSwitchId() const
     {
+        SWSS_LOG_ENTER();
+
         return m_switch_id;
     }
 
     bool getRunLinkThread() const
     {
+        SWSS_LOG_ENTER();
+
         return m_run_link_thread;
     }
 
     void setRunLinkThread(
             _In_ bool run)
     {
+        SWSS_LOG_ENTER();
+
         m_run_link_thread = run;
     }
 
     swss::SelectableEvent* getLinkThreadEvent()
     {
+        SWSS_LOG_ENTER();
+
         return &m_link_thread_event;
     }
 
     void setLinkThread(
             _In_ std::shared_ptr<std::thread> thread)
     {
+        SWSS_LOG_ENTER();
+
         m_link_thread = thread;
     }
 
     std::shared_ptr<std::thread> getLinkThread() const
     {
+        SWSS_LOG_ENTER();
+
         return m_link_thread;
     }
 
@@ -168,12 +188,16 @@ class SwitchState
             _In_ const std::string& ifname,
             _In_ sai_object_id_t port_id)
     {
+        SWSS_LOG_ENTER();
+
         m_ifname_to_port_id_map[ifname] = port_id;
     }
 
     sai_object_id_t getPortIdFromIfName(
         _In_ const std::string& ifname) const
     {
+        SWSS_LOG_ENTER();
+
         auto it = m_ifname_to_port_id_map.find(ifname);
 
         if (it == m_ifname_to_port_id_map.end())

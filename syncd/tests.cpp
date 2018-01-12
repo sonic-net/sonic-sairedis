@@ -32,6 +32,8 @@ sai_status_t test_create_next_hop_group_member(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     created_next_hop_group_member.emplace_back();
     auto& back = created_next_hop_group_member.back();
     std::get<0>(back) = *next_hop_group_member_id;
@@ -43,6 +45,8 @@ sai_status_t test_create_next_hop_group_member(
 
 void clearDB()
 {
+    SWSS_LOG_ENTER();
+
     swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
     swss::RedisReply r(&db, "FLUSHALL", REDIS_REPLY_STATUS);
     r.checkStatusOK();
@@ -138,11 +142,15 @@ sai_object_id_t create_dummy_object_id(
 
 bool starts_with(const std::string& str, const std::string& substr)
 {
+    SWSS_LOG_ENTER();
+
     return strncmp(str.c_str(), substr.c_str(), substr.size()) == 0;
 }
 
 void bulk_nhgm_consumer_worker()
 {
+    SWSS_LOG_ENTER();
+
     std::string tableName = ASIC_STATE_TABLE;
     swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
     swss::ConsumerTable c(&db, tableName);

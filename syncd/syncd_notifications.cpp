@@ -47,6 +47,8 @@ sai_fdb_entry_type_t getFdbEntryType(
         _In_ uint32_t count,
         _In_ const sai_attribute_t *list)
 {
+    SWSS_LOG_ENTER();
+
     for (uint32_t idx = 0; idx < count; idx++)
     {
         const sai_attribute_t &attr = list[idx];
@@ -66,6 +68,8 @@ sai_fdb_entry_type_t getFdbEntryType(
 void redisPutFdbEntryToAsicView(
         _In_ const sai_fdb_event_notification_data_t *fdb)
 {
+    SWSS_LOG_ENTER();
+
     // NOTE: this fdb entry already contains translated RID to VID
 
     std::vector<swss::FieldValueTuple> entry;

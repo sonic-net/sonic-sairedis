@@ -14,6 +14,8 @@ using json = nlohmann::json;
 int char_to_int(
         _In_ const char c)
 {
+    SWSS_LOG_ENTER();
+
     if (c >= '0' && c <= '9')
         return c - '0';
 
@@ -29,6 +31,8 @@ int char_to_int(
 template<class T, typename U>
 T* sai_alloc_n_of_ptr_type(U count, T*)
 {
+    SWSS_LOG_ENTER();
+
     return new T[count];
 }
 
@@ -37,6 +41,8 @@ void sai_alloc_list(
         _In_ T count,
         _In_ U &element)
 {
+    SWSS_LOG_ENTER();
+
     element.count = count;
     element.list = sai_alloc_n_of_ptr_type(count, element.list);
 }
@@ -45,6 +51,8 @@ template<typename T>
 void sai_free_list(
         _In_ T &element)
 {
+    SWSS_LOG_ENTER();
+
     delete[] element.list;
     element.list = NULL;
 }
@@ -54,6 +62,8 @@ void transfer_primitive(
         _In_ const T &src_element,
         _In_ T &dst_element)
 {
+    SWSS_LOG_ENTER();
+
     const unsigned char* src_mem = reinterpret_cast<const unsigned char*>(&src_element);
     unsigned char* dst_mem = reinterpret_cast<unsigned char*>(&dst_element);
 
@@ -66,6 +76,8 @@ sai_status_t transfer_list(
         _In_ T &dst_element,
         _In_ bool countOnly)
 {
+    SWSS_LOG_ENTER();
+
     if (countOnly || dst_element.count == 0)
     {
         transfer_primitive(src_element.count, dst_element.count);
@@ -115,6 +127,8 @@ sai_status_t transfer_attribute(
         _In_ sai_attribute_t &dst_attr,
         _In_ bool countOnly)
 {
+    SWSS_LOG_ENTER();
+
     switch (serialization_type)
     {
         case SAI_ATTR_VALUE_TYPE_BOOL:
@@ -378,6 +392,8 @@ sai_status_t transfer_attributes(
         _In_ sai_attribute_t *dst_attr_list,
         _In_ bool countOnly)
 {
+    SWSS_LOG_ENTER();
+
     for (uint32_t i = 0; i < attr_count; i++)
     {
         const sai_attribute_t &src_attr = src_attr_list[i];
@@ -571,6 +587,8 @@ std::string sai_serialize_enum(
         _In_ const int32_t value,
         _In_ const sai_enum_metadata_t* meta)
 {
+    SWSS_LOG_ENTER();
+
     if (meta == NULL)
     {
         return sai_serialize_number(value);
@@ -593,6 +611,8 @@ std::string sai_serialize_number(
         _In_ const uint32_t number,
         _In_ bool hex)
 {
+    SWSS_LOG_ENTER();
+
     return sai_serialize_number<uint32_t>(number, hex);
 }
 
@@ -623,12 +643,16 @@ std::string sai_serialize_common_api(
 std::string sai_serialize_object_type(
         _In_ const sai_object_type_t object_type)
 {
+    SWSS_LOG_ENTER();
+
     return sai_serialize_enum(object_type, &sai_metadata_enum_sai_object_type_t);
 }
 
 std::string sai_serialize_attr_value_type(
         _In_ const sai_attr_value_type_t attr_value_type)
 {
+    SWSS_LOG_ENTER();
+
     return sai_serialize_enum(attr_value_type, &sai_metadata_enum_sai_attr_value_type_t);
 }
 
@@ -824,6 +848,8 @@ std::string sai_serialize_ip_address(
 std::string sai_serialize_object_id(
         _In_ sai_object_id_t oid)
 {
+    SWSS_LOG_ENTER();
+
     char buf[32];
 
     snprintf(buf, sizeof(buf), "oid:0x%lx", oid);
@@ -900,6 +926,8 @@ std::string sai_serialize_number_list(
 json sai_serialize_qos_map_params(
         _In_ const sai_qos_map_params_t& params)
 {
+    SWSS_LOG_ENTER();
+
     json j;
 
     j["tc"]     = params.tc;
@@ -916,6 +944,8 @@ json sai_serialize_qos_map_params(
 json sai_serialize_qos_map(
         _In_ const sai_qos_map_t& qosmap)
 {
+    SWSS_LOG_ENTER();
+
     json j;
 
     j["key"]    = sai_serialize_qos_map_params(qosmap.key);
@@ -958,6 +988,8 @@ std::string sai_serialize_qos_map_list(
 json sai_serialize_tunnel_map_params(
         _In_ const sai_tunnel_map_params_t& params)
 {
+    SWSS_LOG_ENTER();
+
     json j;
 
     j["oecn"] = params.oecn;
@@ -971,6 +1003,8 @@ json sai_serialize_tunnel_map_params(
 json sai_serialize_tunnel_map(
         _In_ const sai_tunnel_map_t& tunnelmap)
 {
+    SWSS_LOG_ENTER();
+
     json j;
 
     j["key"]    = sai_serialize_tunnel_map_params(tunnelmap.key);
@@ -1574,6 +1608,8 @@ void sai_deserialize_number(
         _Out_ T& number,
         _In_ bool hex = false)
 {
+    SWSS_LOG_ENTER();
+
     errno = 0;
 
     char *endptr = NULL;
@@ -1591,6 +1627,8 @@ void sai_deserialize_number(
         _Out_ uint32_t& number,
         _In_ bool hex)
 {
+    SWSS_LOG_ENTER();
+
     sai_deserialize_number<uint32_t>(s, number, hex);
 }
 
@@ -1599,6 +1637,8 @@ void sai_deserialize_enum(
         _In_ const sai_enum_metadata_t *meta,
         _Out_ int32_t& value)
 {
+    SWSS_LOG_ENTER();
+
     if (meta == NULL)
     {
         return sai_deserialize_number(s, value);
@@ -1646,6 +1686,8 @@ void sai_deserialize_object_id(
         _In_ const std::string& s,
         _Out_ sai_object_id_t& oid)
 {
+    SWSS_LOG_ENTER();
+
     if (s.find("oid:0x") != 0)
     {
         SWSS_LOG_THROW("invalid oid %s", s.c_str());
@@ -2340,6 +2382,8 @@ void sai_deserialize_object_type(
         _In_ const std::string& s,
         _Out_ sai_object_type_t& object_type)
 {
+    SWSS_LOG_ENTER();
+
     sai_deserialize_enum(s, &sai_metadata_enum_sai_object_type_t, (int32_t&)object_type);
 }
 
@@ -2357,6 +2401,8 @@ void sai_deserialize_fdb_entry_bridge_type(
         _In_ const std::string& s,
         _Out_ sai_fdb_entry_bridge_type_t& fdb_entry_bridge_type)
 {
+    SWSS_LOG_ENTER();
+
     sai_deserialize_enum(s, &sai_metadata_enum_sai_fdb_entry_bridge_type_t, (int32_t&)fdb_entry_bridge_type);
 }
 #endif

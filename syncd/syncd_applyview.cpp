@@ -123,11 +123,14 @@ class SaiAttr
 
         sai_attribute_t* getRWSaiAttr()
         {
+            SWSS_LOG_ENTER();
+
             return &m_attr;
         }
 
         const sai_attribute_t* getSaiAttr() const
         {
+            SWSS_LOG_ENTER();
             return &m_attr;
         }
 
@@ -138,26 +141,32 @@ class SaiAttr
          */
         bool isObjectIdAttr() const
         {
+            SWSS_LOG_ENTER();
             return m_meta->isoidattribute;
         }
 
         const std::string& getStrAttrId() const
         {
+            SWSS_LOG_ENTER();
             return m_str_attr_id;
         }
 
         const std::string& getStrAttrValue() const
         {
+            SWSS_LOG_ENTER();
             return m_str_attr_value;
         }
 
         const sai_attr_metadata_t* getAttrMetadata() const
         {
+            SWSS_LOG_ENTER();
             return m_meta;
         }
 
         void UpdateValue()
         {
+            SWSS_LOG_ENTER();
+
             m_str_attr_value = sai_serialize_attr_value(*m_meta, m_attr);
         }
 
@@ -297,6 +306,8 @@ class SaiObj
             createdObject(false),
             m_object_status(SAI_OBJECT_STATUS_NOT_PROCESSED)
         {
+            SWSS_LOG_ENTER();
+
             /* empty intentionally */
         }
 
@@ -316,18 +327,23 @@ class SaiObj
 
         bool isOidObject() const
         {
+            SWSS_LOG_ENTER();
             // XXX return info->isobjectid;
             return !info->isnonobjectid;
         }
 
         const std::unordered_map<sai_attr_id_t, std::shared_ptr<SaiAttr>>& getAllAttributes() const
         {
+            SWSS_LOG_ENTER();
+
             return m_attrs;
         }
 
         std::shared_ptr<const SaiAttr> getSaiAttr(
                 _In_ sai_attr_id_t id) const
         {
+            SWSS_LOG_ENTER();
+
             auto it = m_attrs.find(id);
 
             if (it == m_attrs.end())
@@ -365,6 +381,8 @@ class SaiObj
          */
         sai_object_status_t getObjectStatus() const
         {
+            SWSS_LOG_ENTER();
+
             return m_object_status;
         }
 
@@ -375,6 +393,8 @@ class SaiObj
          */
         sai_object_type_t getObjectType() const
         {
+            SWSS_LOG_ENTER();
+
             return meta_key.objecttype;
         }
 
@@ -382,17 +402,23 @@ class SaiObj
         void setAttr(
                 _In_ const std::shared_ptr<SaiAttr> &attr)
         {
+            SWSS_LOG_ENTER();
+
             m_attrs[attr->getSaiAttr()->id] = attr;
         }
 
         bool hasAttr(
                 _In_ sai_attr_id_t id) const
         {
+            SWSS_LOG_ENTER();
+
             return m_attrs.find(id) != m_attrs.end();
         }
 
         sai_object_id_t getVid() const
         {
+            SWSS_LOG_ENTER();
+
             if (isOidObject())
             {
                 return meta_key.objectkey.key.object_id;
@@ -434,6 +460,8 @@ class AsicView
         AsicView():
             m_asicOperationId(0)
         {
+            SWSS_LOG_ENTER();
+
             /* empty intentionally */
         }
 
@@ -1410,12 +1438,16 @@ class AsicView
         bool hasRid(
                 _In_ sai_object_id_t rid) const
         {
+            SWSS_LOG_ENTER();
+
             return ridToVid.find(rid) != ridToVid.end();
         }
 
         bool hasVid(
                 _In_ sai_object_id_t vid) const
         {
+            SWSS_LOG_ENTER();
+
             return vidToRid.find(vid) != vidToRid.end();
         }
 
@@ -1994,6 +2026,8 @@ bool compareByEqualAttributes(
         _In_ const sai_object_compare_info_t &a,
         _In_ const sai_object_compare_info_t &b)
 {
+    SWSS_LOG_ENTER();
+
     /*
      * NOTE: this function will sort in descending order
      */
@@ -5360,6 +5394,8 @@ void asic_translate_list_vid_to_rid(
         _In_ const AsicView &temporary,
         _Inout_ sai_object_list_t &element)
 {
+    SWSS_LOG_ENTER();
+
     for (uint32_t i = 0; i < element.count; i++)
     {
         element.list[i] = asic_translate_vid_to_rid(current, temporary, element.list[i]);
