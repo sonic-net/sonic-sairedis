@@ -2936,6 +2936,88 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
     return false;
 }
 
+bool getSwitchRid(sai_object_id_t* switch_rid)
+{
+    auto entries = g_redisClient->keys(ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_SWITCH:*"));
+
+    if (entries.size() == 0)
+    {
+        SWSS_LOG_ERROR("No switch created in the system.");
+        return false;
+    }
+
+    if (entries.size() != 1)
+    {
+        SWSS_LOG_ERROR("multiple switches created in the system, not supported yet");
+        return false;
+    }
+    
+    std::string key = entries.at(0);
+    auto start = key.find_first_of(":") + 1;
+    auto end = key.find(":", start);
+    std::string strSwitchVid = key.substr(end + 1);
+
+    sai_object_id_t switch_vid;
+    sai_deserialize_object_id(strSwitchVid, switch_vid);
+
+    *switch_rid = translate_vid_to_rid(switch_vid);
+    return true;
+}
+
+bool handleFlushfdbRequest(swss::NotificationConsumer &flushfdbRequest)
+{
+    SWSS_LOG_ENTER();
+
+    std::string op;
+    std::string data;
+    std::vector<swss::FieldValueTuple> values;
+
+    flushfdbRequest.pop(op, data, values);
+
+    SWSS_LOG_DEBUG("op = %s", op.c_str());
+
+    sai_object_id_t switch_rid;
+    bool status = getSwitchRid(&switch_rid);
+    if(!status)
+    {
+        SWSS_LOG_ERROR("failed to get switch_rid, switch may not created or multi switch created.");
+        return false;
+    }
+     
+    if (op == "ALL")
+    {
+        /*
+         * so far only support flush all the FDB entris
+         * flush per port and flush per vlan will be added later.
+         */
+        SWSS_LOG_NOTICE("received flush fdb %s request",op.c_str());
+        sai_attribute_t attr;
+        attr.id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+        attr.value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+        sai_metadata_sai_fdb_api->flush_fdb_entries(switch_rid, 1, &attr);
+        return true;
+    }
+	else if(op == "PORT")
+	{
+        /*place holder for flush port fdb*/
+	    SWSS_LOG_ERROR("received unsupported flush port fdb request");
+	    return false;
+	}
+    else if(op == "VLAN")
+    {
+        /*place holder for flush vlan fdb*/
+        SWSS_LOG_ERROR("received unsupported flush vlan fdb request");
+	    return false;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("received unknown flush fdb request");
+	    return false;
+    }
+
+}
+
+
 bool isVeryFirstRun()
 {
 
@@ -3228,6 +3310,7 @@ int syncd_main(int argc, char **argv)
 
     std::shared_ptr<swss::ConsumerTable> asicState = std::make_shared<swss::ConsumerTable>(dbAsic.get(), ASIC_STATE_TABLE);
     std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "RESTARTQUERY");
+    std::shared_ptr<swss::NotificationConsumer> flushfdbRequest = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "FLUSHFDBREQUEST");
     std::shared_ptr<swss::ConsumerStateTable> flexCounterState = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PFC_WD_STATE_TABLE);
     std::shared_ptr<swss::ConsumerStateTable> flexCounterPlugin = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PLUGIN_TABLE);
 
@@ -3318,6 +3401,7 @@ int syncd_main(int argc, char **argv)
 
         s.addSelectable(asicState.get());
         s.addSelectable(restartQuery.get());
+        s.addSelectable(flushfdbRequest.get());
         s.addSelectable(flexCounterState.get());
         s.addSelectable(flexCounterPlugin.get());
 
@@ -3343,6 +3427,11 @@ int syncd_main(int argc, char **argv)
 
                 warmRestartHint = handleRestartQuery(*restartQuery);
                 break;
+            }
+            else if (sel == flushfdbRequest.get())
+            {
+                SWSS_LOG_NOTICE("received flush fdb request on channel");
+                handleFlushfdbRequest(*flushfdbRequest);
             }
             else if (sel == flexCounterState.get())
             {
