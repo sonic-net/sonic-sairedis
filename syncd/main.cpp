@@ -1,3 +1,4 @@
+#include "swss/logger.h"
 
 int syncd_main(int argc, char **argv);
 
