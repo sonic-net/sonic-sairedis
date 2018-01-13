@@ -2129,7 +2129,7 @@ sai_status_t meta_generic_validation_set(
 sai_status_t meta_generic_validation_get(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ const uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -2208,6 +2208,24 @@ sai_status_t meta_generic_validation_get(
             {
                 META_LOG_DEBUG(md, "conditional attr found in local db");
             }
+        }
+
+        /*
+         * When GET api is performed, later on same methods serialize/deserialize
+         * are used for create/set/get apis. User may not clear input attributes
+         * buffer (since it is in/out for example for lists) and in case of
+         * values that are validated like "enum" it will try to find best
+         * match for enum, and if not found, it will print warning message.
+         *
+         * In this place we can clear user buffer, so when it will go to
+         * serialize method it will pick first enum on the list.
+         *
+         * For primitive attributes we could just set entire attribute value to zero.
+         */
+
+        if (md.isenum)
+        {
+            attr_list[i].value.s32 = 0;
         }
 
         switch (md.attrvaluetype)
