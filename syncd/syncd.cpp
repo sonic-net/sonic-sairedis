@@ -2936,34 +2936,6 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
     return false;
 }
 
-bool getSwitchRid(sai_object_id_t* switch_rid)
-{
-    auto entries = g_redisClient->keys(ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_SWITCH:*"));
-
-    if (entries.size() == 0)
-    {
-        SWSS_LOG_ERROR("No switch created in the system.");
-        return false;
-    }
-
-    if (entries.size() != 1)
-    {
-        SWSS_LOG_ERROR("multiple switches created in the system, not supported yet");
-        return false;
-    }
-    
-    std::string key = entries.at(0);
-    auto start = key.find_first_of(":") + 1;
-    auto end = key.find(":", start);
-    std::string strSwitchVid = key.substr(end + 1);
-
-    sai_object_id_t switch_vid;
-    sai_deserialize_object_id(strSwitchVid, switch_vid);
-
-    *switch_rid = translate_vid_to_rid(switch_vid);
-    return true;
-}
-
 bool handleFlushfdbRequest(swss::NotificationConsumer &flushfdbRequest)
 {
     SWSS_LOG_ENTER();
@@ -2976,11 +2948,20 @@ bool handleFlushfdbRequest(swss::NotificationConsumer &flushfdbRequest)
 
     SWSS_LOG_DEBUG("op = %s", op.c_str());
 
-    sai_object_id_t switch_rid;
-    bool status = getSwitchRid(&switch_rid);
-    if(!status)
+    sai_object_id_t switch_rid = 0;
+
+    if(switches.size() == 0)
     {
-        SWSS_LOG_ERROR("failed to get switch_rid, switch may not created or multi switch created.");
+        SWSS_LOG_ERROR("no switch has been created in the system yet.");
+        return false;
+    }
+    else if(switches.size() == 1)
+    {
+       switch_rid = switches.begin()->second->getRid();
+    }
+    else
+    {
+        SWSS_LOG_ERROR("%d switches exist, multi switches case not supported yet.", switches.size());
         return false;
     }
      

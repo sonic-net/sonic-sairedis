@@ -103,15 +103,14 @@ void redisPutFdbEntryToAsicView(
     {
         sai_vlan_id_t vlan_id = fdb->fdb_entry.vlan_id;
         sai_object_id_t port_oid = 0;
-        int port_oid_found = 0;
-        int attr_num = fdb->attr_count;
+        bool port_oid_found = false;
         
-        for (int i = 0; i < attr_num; i++)
+        for (uint32_t i = 0; i < fdb->attr_count; i++)
         {
             if(fdb->attr[i].id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
             {
                 port_oid = fdb->attr[i].value.oid;
-                port_oid_found = 1;
+                port_oid_found = true;
             }
         }
         
@@ -170,7 +169,7 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush port fdb event, unsupported");
+            SWSS_LOG_ERROR("received a flush port fdb event, port_oid = %lu, vlan_id = %hd, unsupported", port_oid, vlan_id);
         }
         else if(!port_oid && vlan_id)
         {
@@ -193,16 +192,12 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush vlan fdb event, unsupported");
+            SWSS_LOG_ERROR("received a flush vlan fdb event, port_oid = %lu, vlan_id = %hd, unsupported", port_oid, vlan_id);
             
-        }
-        else if(port_oid && vlan_id)
-        {
-            SWSS_LOG_ERROR("received a flush port in a vlan fdb event, unsupported");
         }
         else
         {
-            SWSS_LOG_ERROR("received a unknown flush fdb event, unsupported");
+            SWSS_LOG_ERROR("received a flush fdb event, port_oid = %lu, vlan_id = %hd, unsupported", port_oid, vlan_id);
         }
 
         return;
