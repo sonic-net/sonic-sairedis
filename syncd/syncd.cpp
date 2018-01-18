@@ -2514,28 +2514,29 @@ void processFlexCounterEvent(
     sai_object_id_t rid = translate_vid_to_rid(vid);
     sai_object_type_t objectType = sai_object_type_query(rid);
 
+    if (op == DEL_COMMAND)
+    {
+        if (objectType == SAI_OBJECT_TYPE_PORT)
+        {
+            FlexCounter::removePort(vid, pollInterval);
+        }
+        else if (objectType == SAI_OBJECT_TYPE_QUEUE)
+        {
+            FlexCounter::removeQueue(vid, pollInterval);
+        }
+        else
+        {
+            SWSS_LOG_ERROR("Object type for removal not supported");
+        }
+    }
+
     const auto values = kfvFieldsValues(kco);
     for (const auto& valuePair : values)
     {
         const auto field = fvField(valuePair);
         const auto value = fvValue(valuePair);
 
-        if (op == DEL_COMMAND)
-        {
-            if (objectType == SAI_OBJECT_TYPE_PORT)
-            {
-                FlexCounter::removePort(vid, pollInterval);
-            }
-            else if (objectType == SAI_OBJECT_TYPE_QUEUE)
-            {
-                FlexCounter::removeQueue(vid, pollInterval);
-            }
-            else
-            {
-                SWSS_LOG_ERROR("Object type for removal not supported");
-            }
-        }
-        else if (op == SET_COMMAND)
+        if (op == SET_COMMAND)
         {
             auto idStrings  = swss::tokenize(value, ',');
 
