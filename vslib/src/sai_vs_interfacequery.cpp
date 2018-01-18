@@ -22,6 +22,10 @@ void handleUnittestChannelOp(
         _In_ const std::string &key,
         _In_ const std::vector<swss::FieldValueTuple> &values)
 {
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
     /*
      * Since we will access and modify DB we need to be under mutex.
      *
@@ -30,10 +34,6 @@ void handleUnittestChannelOp(
      * will set value on the specific READ_ONLY value he should wait for some
      * time until that value will be propagated to virtual switch.
      */
-
-    MUTEX();
-
-    SWSS_LOG_ENTER();
 
     SWSS_LOG_NOTICE("read only SET: op = %s, key = %s", op.c_str(), key.c_str());
 

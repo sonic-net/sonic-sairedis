@@ -212,6 +212,8 @@ void translate_local_to_redis(
 
 sai_object_type_t deserialize_object_type(const std::string& s)
 {
+    SWSS_LOG_ENTER();
+
     sai_object_type_t object_type;
 
     sai_deserialize_object_type(s, object_type);
@@ -221,6 +223,8 @@ sai_object_type_t deserialize_object_type(const std::string& s)
 
 const std::vector<swss::FieldValueTuple> get_values(const std::vector<std::string>& items)
 {
+    SWSS_LOG_ENTER();
+
     std::vector<swss::FieldValueTuple> values;
 
     // timestamp|action|objecttype:objectid|attrid=value,...
@@ -1235,6 +1239,8 @@ int replay(int argc, char **argv)
 
 void printUsage()
 {
+    SWSS_LOG_ENTER();
+
     std::cout << "Usage: saiplayer [-h] recordfile" << std::endl << std::endl;
     std::cout << "    -C --skipNotifySyncd:" << std::endl;
     std::cout << "        Will not send notify init/apply view to syncd" << std::endl << std::endl;

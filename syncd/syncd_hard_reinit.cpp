@@ -882,6 +882,8 @@ void processAttributesForOids(
 
 void processOids()
 {
+    SWSS_LOG_ENTER();
+
     for (const auto &kv: g_oids)
     {
         const std::string &strObjectId = kv.first;

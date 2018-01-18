@@ -65,6 +65,13 @@ std::set<sai_object_id_t> initViewRemovedVidSet;
  */
 volatile bool g_asicInitViewMode = false;
 
+#ifdef SAITHRIFT
+/*
+ * SAI switch global needed for RPC server
+ */
+sai_object_id_t gSwitchId;
+#endif
+
 struct cmdOptions
 {
     int countersThreadIntervalInSeconds;
@@ -527,7 +534,6 @@ void translate_rid_to_vid_list(
 sai_object_id_t translate_vid_to_rid(
         _In_ sai_object_id_t vid)
 {
-
     SWSS_LOG_ENTER();
 
     if (vid == SAI_NULL_OBJECT_ID)
@@ -594,6 +600,8 @@ sai_object_id_t translate_vid_to_rid(
 void translate_list_vid_to_rid(
         _In_ sai_object_list_t &element)
 {
+    SWSS_LOG_ENTER();
+
     for (uint32_t i = 0; i < element.count; i++)
     {
         element.list[i] = translate_vid_to_rid(element.list[i]);
@@ -1017,6 +1025,8 @@ service_method_table_t test_services = {
 
 void startDiagShell()
 {
+    SWSS_LOG_ENTER();
+
     if (options.diagShell)
     {
         SWSS_LOG_NOTICE("starting diag shell thread");
@@ -1755,6 +1765,10 @@ void on_switch_create_in_init_view(
                     sai_serialize_status(status).c_str());
         }
 
+#ifdef SAITHRIFT
+        gSwitchId = switch_rid;
+#endif
+
         /*
          * Object was created so new object id was generated we
          * need to save virtual id's to redis db.
@@ -2107,7 +2121,7 @@ sai_status_t handle_bulk_generic(
                 sai_deserialize_object_id(object_ids[idx], meta_key.objectkey.key.object_id);
                 break;
             default:
-                throw std::invalid_argument("object_type");
+                SWSS_LOG_THROW("invalid object_type: %s", sai_serialize_object_type(object_type).c_str());
         }
 
         if (api == (sai_common_api_t)SAI_COMMON_API_BULK_SET)
@@ -2201,7 +2215,7 @@ sai_status_t processBulkEvent(
 
     if (isInitViewMode())
     {
-        SWSS_LOG_ERROR("bulk api is not supported in init view mode", api);
+        SWSS_LOG_ERROR("bulk api (%d) is not supported in init view mode", api);
         exit_and_notify(EXIT_FAILURE);
     }
 
@@ -2318,7 +2332,7 @@ sai_status_t processEvent(
     }
     else
     {
-        SWSS_LOG_THROW("api %s is not implemented", op.c_str());
+        SWSS_LOG_THROW("api '%s' is not implemented", op.c_str());
     }
 
     sai_object_type_t object_type;
@@ -2650,6 +2664,8 @@ void processFlexCounterPluginEvent(
 
 void printUsage()
 {
+    SWSS_LOG_ENTER();
+
     std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u] [-S]" << std::endl;
     std::cout << "    -N --nocounters:" << std::endl;
     std::cout << "        Disable counter thread" << std::endl;
@@ -2866,6 +2882,8 @@ std::map<std::set<int>, std::string> gPortMap;
 // FIXME: introduce common config format for SONiC
 void handlePortMap(const std::string& portMapFile)
 {
+    SWSS_LOG_ENTER();
+
     if (portMapFile.size() == 0)
     {
         return;
@@ -2938,7 +2956,6 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
 
 bool isVeryFirstRun()
 {
-
     SWSS_LOG_ENTER();
 
     /*
@@ -2968,6 +2985,7 @@ int get_enum_value_from_name(
         _In_ const char *name,
         _In_ const sai_enum_metadata_t* metadata)
 {
+    SWSS_LOG_ENTER();
 
     for (uint32_t idx = 0; idx < metadata->valuescount; idx++)
     {
@@ -2983,6 +3001,8 @@ int get_enum_value_from_name(
 
 void saiLoglevelNotify(std::string apiStr, std::string prioStr)
 {
+    SWSS_LOG_ENTER();
+
     using namespace swss;
 
     static const std::map<std::string, sai_log_level_t> saiLoglevelMap = {
@@ -3155,6 +3175,8 @@ void sai_meta_log_syncd(
         _In_ const char *format,
         ...)
 {
+    // SWSS_LOG_ENTER() is ommited since this is logging for metadata
+
     char buffer[0x1000];
 
     va_list ap;

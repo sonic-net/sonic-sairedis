@@ -98,6 +98,8 @@ static bool meta_unittests_get_and_erase_set_readonly_flag(
 bool is_ipv6_mask_valid(
         _In_ const uint8_t* mask)
 {
+    SWSS_LOG_ENTER();
+
     if (mask == NULL)
     {
         SWSS_LOG_ERROR("mask is null");
@@ -189,6 +191,7 @@ class SaiAttrWrapper
 
         const sai_attribute_t* getattr() const
         {
+            SWSS_LOG_ENTER();
             return &m_attr;
         }
 
@@ -203,6 +206,8 @@ class SaiAttrWrapper
 
 std::string get_attr_info(const sai_attr_metadata_t& md)
 {
+    SWSS_LOG_ENTER();
+
     /*
      * Attribute name will contain object type as well so we don't need to
      * serialize object type separatly.
@@ -463,6 +468,8 @@ void set_object(
 const std::vector<std::shared_ptr<SaiAttrWrapper>> get_object_attributes(
         _In_ const sai_object_meta_key_t& meta_key)
 {
+    SWSS_LOG_ENTER();
+
     std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (!object_exists(key))
@@ -641,6 +648,8 @@ sai_status_t meta_genetic_validation_list(
         _In_ uint32_t count,
         _In_ const void* list)
 {
+    SWSS_LOG_ENTER();
+
     if (count > MAX_LIST_COUNT)
     {
         META_LOG_ERROR(md, "list count %u is > then max list count %u", count, MAX_LIST_COUNT);
@@ -2120,7 +2129,7 @@ sai_status_t meta_generic_validation_set(
 sai_status_t meta_generic_validation_get(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ const uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -2199,6 +2208,24 @@ sai_status_t meta_generic_validation_get(
             {
                 META_LOG_DEBUG(md, "conditional attr found in local db");
             }
+        }
+
+        /*
+         * When GET api is performed, later on same methods serialize/deserialize
+         * are used for create/set/get apis. User may not clear input attributes
+         * buffer (since it is in/out for example for lists) and in case of
+         * values that are validated like "enum" it will try to find best
+         * match for enum, and if not found, it will print warning message.
+         *
+         * In this place we can clear user buffer, so when it will go to
+         * serialize method it will pick first enum on the list.
+         *
+         * For primitive attributes we could just set entire attribute value to zero.
+         */
+
+        if (md.isenum)
+        {
+            attr_list[i].value.s32 = 0;
         }
 
         switch (md.attrvaluetype)
