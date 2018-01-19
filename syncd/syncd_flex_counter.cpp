@@ -354,8 +354,19 @@ void FlexCounter::collectCounters(
 {
     SWSS_LOG_ENTER();
 
+    std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> portCounterIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> queueCounterIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> queueAttrIdsMap;
+
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        portCounterIdsMap = m_portCounterIdsMap;
+        queueCounterIdsMap = m_queueCounterIdsMap;
+        queueAttrIdsMap = m_queueAttrIdsMap;
+    }
+
     // Collect stats for every registered port
-    for (const auto &kv: m_portCounterIdsMap)
+    for (const auto &kv: portCounterIdsMap)
     {
         const auto &portVid = kv.first;
         const auto &portId = kv.second->portId;
@@ -391,7 +402,7 @@ void FlexCounter::collectCounters(
     }
 
     // Collect stats for every registered queue
-    for (const auto &kv: m_queueCounterIdsMap)
+    for (const auto &kv: queueCounterIdsMap)
     {
         const auto &queueVid = kv.first;
         const auto &queueId = kv.second->queueId;
@@ -427,7 +438,7 @@ void FlexCounter::collectCounters(
     }
 
     // Collect attrs for every registered queue
-    for (const auto &kv: m_queueAttrIdsMap)
+    for (const auto &kv: queueAttrIdsMap)
     {
         const auto &queueVid = kv.first;
         const auto &queueId = kv.second->queueId;
@@ -476,6 +487,17 @@ void FlexCounter::runPlugins(
 {
     SWSS_LOG_ENTER();
 
+    std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> portCounterIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> queueCounterIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> queueAttrIdsMap;
+
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        portCounterIdsMap = m_portCounterIdsMap;
+        queueCounterIdsMap = m_queueCounterIdsMap;
+        queueAttrIdsMap = m_queueAttrIdsMap;
+    }
+
     const std::vector<std::string> argv = 
     {
         std::to_string(COUNTERS_DB),
@@ -484,8 +506,8 @@ void FlexCounter::runPlugins(
     };
 
     std::vector<std::string> portList;
-    portList.reserve(m_portCounterIdsMap.size());
-    for (const auto& kv : m_portCounterIdsMap)
+    portList.reserve(portCounterIdsMap.size());
+    for (const auto& kv : portCounterIdsMap)
     {
         portList.push_back(sai_serialize_object_id(kv.first));
     }
@@ -496,8 +518,8 @@ void FlexCounter::runPlugins(
     }
 
     std::vector<std::string> queueList;
-    queueList.reserve(m_queueCounterIdsMap.size());
-    for (const auto& kv : m_queueCounterIdsMap)
+    queueList.reserve(queueCounterIdsMap.size());
+    for (const auto& kv : queueCounterIdsMap)
     {
         queueList.push_back(sai_serialize_object_id(kv.first));
     }
@@ -518,20 +540,18 @@ void FlexCounter::flexCounterThread(void)
 
     while (m_runFlexCounterThread)
     {
-        {
-            auto start = std::chrono::steady_clock::now();
-            std::lock_guard<std::mutex> lock(g_mutex);
-            collectCounters(countersTable);
-            auto finish = std::chrono::steady_clock::now();
+        auto start = std::chrono::steady_clock::now();
+        std::lock_guard<std::mutex> lock(g_mutex);
+        collectCounters(countersTable);
+        auto finish = std::chrono::steady_clock::now();
 
-            uint32_t delay = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
-            uint32_t newCorrection = delay % m_pollInterval;
+        uint32_t delay = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
+        uint32_t newCorrection = delay % m_pollInterval;
 
-            // Run plugins with corrected interval
-            // First we subtract correction from previous sleep and then add delay from current counters read
-            runPlugins(db, m_pollInterval - correction + delay);
-            correction = newCorrection;
-        }
+        // Run plugins with corrected interval
+        // First we subtract correction from previous sleep and then add delay from current counters read
+        runPlugins(db, m_pollInterval - correction + delay);
+        correction = newCorrection;
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
         m_cvSleep.wait_for(lk, std::chrono::milliseconds(m_pollInterval - correction));
