@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <linux/if_packet.h>
 #include <net/if_arp.h>
+#include <linux/if_ether.h>
 
 // TODO on hostif remove we should stop threads
 
@@ -36,9 +37,278 @@ typedef struct _hostif_info_t
 
     std::string name;
 
+    sai_object_id_t portid;
+
 } hostif_info_t;
 
 std::map<std::string, std::shared_ptr<hostif_info_t>> hostif_info_map;
+
+std::set<fdb_info_t> g_fdb_info_set;
+
+void processFdbInfo(
+        _In_ const fdb_info_t &fi,
+        _In_ sai_fdb_event_t fdb_event)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+
+    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attrs[1].value.oid = fi.bridge_port_id;
+
+    sai_fdb_event_notification_data_t data;
+
+    data.event_type = fdb_event;
+
+    data.fdb_entry = fi.fdb_entry;
+
+    if (data.fdb_entry.bridge_type == SAI_FDB_ENTRY_BRIDGE_TYPE_1Q)
+    {
+        // since this is only valid for 1D
+        data.fdb_entry.bridge_id = SAI_NULL_OBJECT_ID;
+    }
+    else if (data.fdb_entry.bridge_type == SAI_FDB_ENTRY_BRIDGE_TYPE_1D)
+    {
+        // since this is only valid for 1Q
+        data.fdb_entry.vlan_id = 0;
+    }
+    else
+    {
+        SWSS_LOG_WARN("unknown bridge type %d", data.fdb_entry.bridge_type);
+    }
+
+    data.attr_count = 2;
+    data.attr = attrs;
+
+    // update metadata DB
+    meta_sai_on_fdb_event(1, &data);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+
+    sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_SWITCH, data.fdb_entry.switch_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return;
+    }
+
+    std::string s = sai_serialize_fdb_event_ntf(1, &data);
+
+    // TODO to debug
+    SWSS_LOG_NOTICE("calling user fdb event callback: %s", s.c_str());
+
+    sai_fdb_event_notification_fn ntf = (sai_fdb_event_notification_fn)attr.value.ptr;
+
+    if (ntf != NULL)
+    {
+        ntf(1, &data);
+    }
+}
+
+void findBridgeForPort(
+        _In_ sai_object_id_t port_id,
+        _Inout_ sai_object_id_t &bridge_id,
+        _Inout_ sai_object_id_t &bridge_port_id,
+        _Inout_ sai_fdb_entry_bridge_type_t &bridge_type)
+{
+    SWSS_LOG_ENTER();
+
+    bridge_id = SAI_NULL_OBJECT_ID;
+    bridge_port_id = SAI_NULL_OBJECT_ID;
+    bridge_type = SAI_FDB_ENTRY_BRIDGE_TYPE_1Q;
+
+    sai_object_id_t switch_id = sai_switch_id_query(port_id);
+
+    auto &objectHash = g_switch_state_map.at(switch_id)->objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT);
+
+    // iterate via all bridge ports to find match on port id
+
+    for (auto it = objectHash.begin(); it != objectHash.end(); ++it)
+    {
+        sai_object_id_t bpid;
+
+        sai_deserialize_object_id(it->first, bpid);
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+
+        sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bpid, 1, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            continue;
+        }
+
+        if (port_id != attr.value.oid)
+        {
+            // this is not expected port
+            continue;
+        }
+
+        bridge_port_id = bpid;
+
+        SWSS_LOG_DEBUG("found bridge port %s for port %s",
+                sai_serialize_object_id(bridge_port_id).c_str(),
+                sai_serialize_object_id(port_id).c_str());
+
+        attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
+
+        status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridge_port_id, 1, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            break;
+        }
+
+        bridge_id = attr.value.oid;
+
+        SWSS_LOG_DEBUG("found bridge %s for port %s",
+                sai_serialize_object_id(bridge_id).c_str(),
+                sai_serialize_object_id(port_id).c_str());
+
+        attr.id = SAI_BRIDGE_ATTR_TYPE;
+
+        status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE, bridge_id, 1, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            break;
+        }
+
+        bridge_type = (sai_fdb_entry_bridge_type_t)attr.value.s32;
+
+        SWSS_LOG_DEBUG("bridge %s type is %d",
+                sai_serialize_object_id(bridge_id).c_str(),
+                bridge_type);
+
+        break;
+    }
+}
+
+void process_packet_for_fdb_event(
+        _In_ const uint8_t *buffer,
+        _In_ size_t size,
+        _In_ const std::shared_ptr<hostif_info_t> &info)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    uint32_t frametime = (uint32_t)time(NULL);
+
+    /*
+     * We add +2 in case if frame contains 1Q VLAN tag.
+     */
+
+    if (size < (sizeof(ethhdr) + 2))
+    {
+        SWSS_LOG_WARN("ethernet frame is too small: %zu", size);
+        return;
+    }
+
+    const ethhdr *eh = (const ethhdr*)buffer;
+
+    uint16_t proto = htons(eh->h_proto);
+
+    uint16_t vlan_id = DEFAULT_VLAN_NUMBER;
+
+    switch (proto)
+    {
+        case ETH_P_IP:
+        case ETH_P_IPV6:
+        case ETH_P_ARP:
+        case ETH_P_RARP:
+
+            {
+                // IP frame, we need to get vlan if from port
+
+                sai_attribute_t attr;
+
+                attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+
+                sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_PORT, info->portid, 1, &attr);
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_WARN("failed to get port vlan id from port %s",
+                            sai_serialize_object_id(info->portid).c_str());
+                    return;
+                }
+
+                vlan_id = attr.value.u16;
+
+                break;
+            }
+
+        case ETH_P_8021Q:
+
+            {
+                // this is tagged frame, get vlan id from frame
+
+                uint16_t tci = htons(eh->h_proto);
+
+                vlan_id = tci & 0xfff;
+
+                if (vlan_id == 0 || vlan_id == 0xfff)
+                {
+                    SWSS_LOG_WARN("invalid vlan id %u in ethernet frame on %s", vlan_id, info->name.c_str());
+                    return;
+                }
+
+                break;
+            }
+
+        default:
+            {
+                SWSS_LOG_WARN("unknown ethernet protocol: 0x%x on %s", proto, info->name.c_str());
+                return;
+            }
+    }
+
+    // we have vlan and mac addres which is KEY, so just see if that is already defined
+
+    fdb_info_t fi;
+
+    fi.port_id = info->portid;
+    fi.fdb_entry.vlan_id = vlan_id;
+
+    memcpy(fi.fdb_entry.mac_address, eh->h_source, sizeof(sai_mac_t));
+
+    std::set<fdb_info_t>::iterator it = g_fdb_info_set.find(fi);
+
+    if (it != g_fdb_info_set.end())
+    {
+        // this key was found, update timestamp
+        // and since iterator is const we need to reinsert
+
+        fi = *it;
+
+        fi.timestamp = frametime;
+
+        g_fdb_info_set.insert(fi);
+
+        return;
+    }
+
+    // key was not found, get additional information
+
+    fi.timestamp = frametime;
+    fi.fdb_entry.switch_id = sai_switch_id_query(info->portid);
+
+    findBridgeForPort(info->portid, fi.fdb_entry.bridge_id, fi.bridge_port_id, fi.fdb_entry.bridge_type);
+
+    // TODO if bridge port is not found then don't add it ?
+
+    g_fdb_info_set.insert(fi);
+
+    processFdbInfo(fi, SAI_FDB_EVENT_LEARNED);
+}
 
 #define MAX_INTERFACE_NAME_LEN IFNAMSIZ
 
@@ -204,7 +474,7 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
             continue;
         }
 
-        // TODO examine packet for mac and possible generate fdb_event
+        process_packet_for_fdb_event(buffer, size, info);
 
         if (write(info->tapfd, buffer, size) < 0)
         {
@@ -260,7 +530,8 @@ void tap2veth_fun(std::shared_ptr<hostif_info_t> info)
 
 bool hostif_create_tap_veth_forwarding(
         _In_ const std::string &tapname,
-        _In_ int tapfd)
+        _In_ int tapfd,
+        _In_ sai_object_id_t port_id)
 {
     SWSS_LOG_ENTER();
 
@@ -319,6 +590,7 @@ bool hostif_create_tap_veth_forwarding(
     info->e2t           = std::make_shared<std::thread>(veth2tap_fun, info);
     info->t2e           = std::make_shared<std::thread>(tap2veth_fun, info);
     info->name          = tapname;
+    info->portid        = port_id;
 
     info->e2t->detach();
     info->t2e->detach();
@@ -452,7 +724,7 @@ sai_status_t vs_create_hostif_int(
         return SAI_STATUS_FAILURE;
     }
 
-    if (!hostif_create_tap_veth_forwarding(name, tapfd))
+    if (!hostif_create_tap_veth_forwarding(name, tapfd, obj_id))
     {
         SWSS_LOG_ERROR("forwarding rule on %s was not added", name.c_str());
     }
