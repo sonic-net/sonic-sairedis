@@ -462,7 +462,8 @@ void FlexCounter::collectCounters(
 }
 
 void FlexCounter::runPlugins(
-        _In_ swss::DBConnector& db)
+        _In_ swss::DBConnector& db,
+        _In_ uint32_t pollInterval)
 {
     SWSS_LOG_ENTER();
 
@@ -470,7 +471,7 @@ void FlexCounter::runPlugins(
     {
         std::to_string(COUNTERS_DB),
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval * 1000)
+        std::to_string(pollInterval * 1000)
     };
 
     std::vector<std::string> portList;
@@ -504,17 +505,28 @@ void FlexCounter::flexCounterThread(void)
 
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     swss::Table countersTable(&db, COUNTERS_TABLE);
+    uint32_t correction = 0;
 
     while (m_runFlexCounterThread)
     {
         {
+            auto start = std::chrono::steady_clock::now();
             std::lock_guard<std::mutex> lock(g_mutex);
             collectCounters(countersTable);
-            runPlugins(db);
+            auto finish = std::chrono::steady_clock::now();
+
+            uint32_t delay = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
+            uint32_t newCorrection = delay % m_pollInterval;
+
+            // Run plugins with corrected interval
+            // First we subtract correction from previous sleep and then add delay from current counters read
+            runPlugins(db, m_pollInterval - correction + delay);
+            correction = newCorrection;
+            SWSS_LOG_ERROR("ELAPSED %d", std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
         }
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
-        m_cvSleep.wait_for(lk, std::chrono::milliseconds(m_pollInterval));
+        m_cvSleep.wait_for(lk, std::chrono::milliseconds(m_pollInterval - correction));
     }
 }
 
