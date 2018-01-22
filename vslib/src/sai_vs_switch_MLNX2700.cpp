@@ -54,7 +54,7 @@ static sai_status_t set_default_notifications()
     CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
 
     attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
-    attr.value.u32 = 5;
+    attr.value.u32 = 0;
 
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
