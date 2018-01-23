@@ -77,7 +77,7 @@ void processFdbInfo(
     }
     else
     {
-        SWSS_LOG_WARN("unknown bridge type %d", data.fdb_entry.bridge_type);
+        SWSS_LOG_ERROR("unknown bridge type %d", data.fdb_entry.bridge_type);
     }
 
     data.attr_count = 2;
@@ -99,8 +99,7 @@ void processFdbInfo(
 
     std::string s = sai_serialize_fdb_event_ntf(1, &data);
 
-    // TODO to debug
-    SWSS_LOG_NOTICE("calling user fdb event callback: %s", s.c_str());
+    SWSS_LOG_DEBUG("calling user fdb event callback: %s", s.c_str());
 
     sai_fdb_event_notification_fn ntf = (sai_fdb_event_notification_fn)attr.value.ptr;
 

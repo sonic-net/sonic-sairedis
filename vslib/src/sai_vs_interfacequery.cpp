@@ -227,7 +227,7 @@ void processFdbEntriesForAging()
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_WARN("failed to get FDB aging time for switch %s",
-                    sai_serialize_object_id(it->fdb_entry.switch_id));
+                    sai_serialize_object_id(it->fdb_entry.switch_id).c_str());
 
             ++it;
             continue;
