@@ -45,6 +45,7 @@ void check_notifications_pointers(
 // there is something wrong and we should fail
 #define GET_RESPONSE_TIMEOUT (6*60*1000)
 
+extern std::string getSelectResultAsString(int result);
 extern void clear_local_state();
 extern void setRecording(bool record);
 extern sai_status_t setRecordingOutputDir(

@@ -158,6 +158,14 @@ extern void meta_sai_on_fdb_event(
         _In_ uint32_t count,
         _In_ sai_fdb_event_notification_data_t *data);
 
+// FDB FLUSH
+
+extern sai_status_t meta_sai_flush_fdb_entries(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_flush_fdb_entries_fn flush_fdb_entries);
+
 // UNIT TESTS HELPERS
 
 /**

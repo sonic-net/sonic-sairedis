@@ -2259,6 +2259,49 @@ sai_status_t processBulkEvent(
     return status;
 }
 
+sai_status_t processFdbFlush(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &key = kfvKey(kco);
+    const std::string &str_object_type = key.substr(0, key.find(":"));
+    const std::string &str_object_id = key.substr(key.find(":") + 1);
+
+    sai_object_id_t switch_vid;
+
+    sai_deserialize_object_id(str_object_id, switch_vid);
+
+    sai_object_id_t switch_rid = translate_vid_to_rid(switch_vid);
+
+    const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+    for (const auto &v: values)
+    {
+        SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+    }
+
+    SaiAttributeList list(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
+
+    /*
+     * Attribute list can't be const since we will use it to translate VID to
+     * RID inplace.
+     */
+
+    sai_attribute_t *attr_list = list.get_attr_list();
+    uint32_t attr_count = list.get_attr_count();
+
+    translate_vid_to_rid_list(SAI_OBJECT_TYPE_FDB_FLUSH, attr_count, attr_list);
+
+    sai_status_t status = sai_metadata_sai_fdb_api->flush_fdb_entries(switch_rid, attr_count, attr_list);
+
+    std::vector<swss::FieldValueTuple> en;
+
+    getResponse->set(sai_serialize_status(status), en, "flushresponse");
+
+    return status;
+}
+
 sai_status_t processEvent(
         _In_ swss::ConsumerTable &consumer)
 {
@@ -2329,6 +2372,10 @@ sai_status_t processEvent(
     else if (op == "get_stats")
     {
         return processGetStatsEvent(kco);
+    }
+    else if (op == "flush")
+    {
+        return processFdbFlush(kco);
     }
     else
     {
