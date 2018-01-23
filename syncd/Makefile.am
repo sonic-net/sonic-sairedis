@@ -11,7 +11,11 @@ endif
 if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else
+if sonic_asic_platform_barefoot
 SAILIB=-L/opt/bfn/install/lib -lswitchsai -lswitchapi -lbf_switchd_lib -ltofinopdfixed_thrift -ldriver -lbfutils -lbfsys -lbfutils -L/opt/bfn/install/lib/tofinopd/switch -lpd -lpdcli -lpdthrift
+else
+SAILIB=-lsai
+endif
 endif
 
 syncd_SOURCES = \
