@@ -123,6 +123,25 @@ void findBridgeForPort(
     bridge_port_id = SAI_NULL_OBJECT_ID;
     bridge_type = SAI_FDB_ENTRY_BRIDGE_TYPE_1Q;
 
+    /*
+     * The bridge port lookup process is two steps:
+     * 
+     * - use (vlan_id, phyiscal port_id) to match any .1D bridge port created.
+     *   If there is match, then quit, found=true
+     *
+     * - use (physical port_id) to match any .1Q bridge created. if there is a
+     *   match, the quite, found=true.
+     *  
+     * If found==true, generate fdb learn event on the .1D or .1Q bridge port.
+     * If not found, then do not generate fdb event. It means the packet is not
+     * received on the bridge port.
+     *
+     * XXX: this is not whats happening here, we are just looking for any
+     * bridge id (as in our case this is shorcut, we will remove all bridge ports
+     * when we will use router interface based port/lag and no bridge
+     * will be found.
+     */
+
     sai_object_id_t switch_id = sai_switch_id_query(port_id);
 
     auto &objectHash = g_switch_state_map.at(switch_id)->objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT);
@@ -452,7 +471,11 @@ void process_packet_for_fdb_event(
 
     findBridgeForPort(info->portid, fi.fdb_entry.bridge_id, fi.bridge_port_id, fi.fdb_entry.bridge_type);
 
-    // TODO if bridge port is not found then don't add it ?
+    if (fi.fdb_entry.bridge_id == SAI_NULL_OBJECT_ID)
+    {
+        // bridge was not found, skip mac learning
+        return;
+    }
 
     g_fdb_info_set.insert(fi);
 
