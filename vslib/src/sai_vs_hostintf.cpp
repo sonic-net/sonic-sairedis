@@ -45,6 +45,50 @@ std::map<std::string, std::shared_ptr<hostif_info_t>> hostif_info_map;
 
 std::set<fdb_info_t> g_fdb_info_set;
 
+void updateLocalDB(
+        _In_ const sai_fdb_event_notification_data_t &data,
+        _In_ sai_fdb_event_t fdb_event)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status;
+
+    switch (fdb_event)
+    {
+        case SAI_FDB_EVENT_LEARNED:
+
+            {
+                status = vs_generic_create_fdb_entry(&data.fdb_entry, data.attr_count, data.attr);
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("failed to create fdb entry: %s",
+                            sai_serialize_fdb_entry(data.fdb_entry).c_str());
+                }
+            }
+
+            break;
+
+        case SAI_FDB_EVENT_AGED:
+
+            {
+                status = vs_generic_remove_fdb_entry(&data.fdb_entry);
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("failed to remove fdb entry %s",
+                            sai_serialize_fdb_entry(data.fdb_entry).c_str());
+                }
+            }
+
+            break;
+
+        default:
+            SWSS_LOG_ERROR("unsupported fdb event: %d", fdb_event);
+            break;
+    }
+}
+
 void processFdbInfo(
         _In_ const fdb_info_t &fi,
         _In_ sai_fdb_event_t fdb_event)
@@ -86,6 +130,9 @@ void processFdbInfo(
     // update metadata DB
     meta_sai_on_fdb_event(1, &data);
 
+    // update local DB
+    updateLocalDB(data, fdb_event);
+
     sai_attribute_t attr;
 
     attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
@@ -125,13 +172,13 @@ void findBridgeForPort(
 
     /*
      * The bridge port lookup process is two steps:
-     * 
+     *
      * - use (vlan_id, phyiscal port_id) to match any .1D bridge port created.
      *   If there is match, then quit, found=true
      *
      * - use (physical port_id) to match any .1Q bridge created. if there is a
      *   match, the quite, found=true.
-     *  
+     *
      * If found==true, generate fdb learn event on the .1D or .1Q bridge port.
      * If not found, then do not generate fdb event. It means the packet is not
      * received on the bridge port.
