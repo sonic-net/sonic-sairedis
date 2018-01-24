@@ -265,9 +265,9 @@ void fdbAgingThreadProc()
 
     while (g_fdbAgingThreadRun)
     {
-        sleep(1);
-
         processFdbEntriesForAging();
+
+        sleep(1);
     }
 
     SWSS_LOG_NOTICE("ending fdb aging thread");
@@ -415,6 +415,9 @@ sai_status_t sai_api_uninitialize(void)
     g_unittestChannelThread->join();
 
     g_fdbAgingThreadRun = false;
+
+    // we can get deadlock here if we switch context
+    // between while() in fdbAgingThreadProc and process fdb
 
     g_fdbAgingThread->join();
 
