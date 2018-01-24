@@ -101,7 +101,7 @@ void processFdbInfo(
 
     std::string s = sai_serialize_fdb_event_ntf(1, &data);
 
-    SWSS_LOG_NOTICE("calling user fdb event callback: %s", s.c_str());
+    SWSS_LOG_DEBUG("calling user fdb event callback: %s", s.c_str());
 
     sai_fdb_event_notification_fn ntf = (sai_fdb_event_notification_fn)attr.value.ptr;
 
