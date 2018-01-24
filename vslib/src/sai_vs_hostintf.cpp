@@ -94,12 +94,14 @@ void processFdbInfo(
 
     if (status != SAI_STATUS_SUCCESS)
     {
+        SWSS_LOG_ERROR("failed to get fdb event notify from switch %s",
+                sai_serialize_object_id(data.fdb_entry.switch_id).c_str());
         return;
     }
 
     std::string s = sai_serialize_fdb_event_ntf(1, &data);
 
-    SWSS_LOG_DEBUG("calling user fdb event callback: %s", s.c_str());
+    SWSS_LOG_NOTICE("calling user fdb event callback: %s", s.c_str());
 
     sai_fdb_event_notification_fn ntf = (sai_fdb_event_notification_fn)attr.value.ptr;
 
@@ -190,6 +192,126 @@ void findBridgeForPort(
     }
 }
 
+bool getLagFromPort(
+        _In_ sai_object_id_t port_id,
+        _Inout_ sai_object_id_t& lag_id)
+{
+    SWSS_LOG_ENTER();
+
+    lag_id = SAI_NULL_OBJECT_ID;
+
+    sai_object_id_t switch_id = sai_switch_id_query(port_id);
+
+    auto &objectHash = g_switch_state_map.at(switch_id)->objectHash.at(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+    // iterate via all lag members to find match on port id
+
+    for (auto it = objectHash.begin(); it != objectHash.end(); ++it)
+    {
+        sai_object_id_t lag_member_id;
+
+        sai_deserialize_object_id(it->first, lag_member_id);
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_LAG_MEMBER_ATTR_PORT_ID;
+
+        sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_id, 1, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to get port id from leg member %s",
+                    sai_serialize_object_id(lag_member_id).c_str());
+            continue;
+        }
+
+        if (port_id != attr.value.oid)
+        {
+            // this is not the port we are looking for
+            continue;
+        }
+
+        attr.id = SAI_LAG_MEMBER_ATTR_LAG_ID;
+
+        status = vs_generic_get(SAI_OBJECT_TYPE_LAG_MEMBER, lag_member_id, 1, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to get lag id from lag member %s",
+                    sai_serialize_object_id(lag_member_id).c_str());
+            continue;
+        }
+
+        lag_id = attr.value.oid;
+
+        return true;
+    }
+
+    // this port does not belong to any lag
+
+    return false;
+}
+
+bool isLagOrPortRifBased(
+        _In_ sai_object_id_t lag_or_port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_id = sai_switch_id_query(lag_or_port_id);
+
+    auto &objectHash = g_switch_state_map.at(switch_id)->objectHash.at(SAI_OBJECT_TYPE_ROUTER_INTERFACE);
+
+    // iterate via all lag members to find match on port id
+
+    for (auto it = objectHash.begin(); it != objectHash.end(); ++it)
+    {
+        sai_object_id_t rif_id;
+
+        sai_deserialize_object_id(it->first, rif_id);
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+
+        sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to get rif type from rif %s",
+                    sai_serialize_object_id(rif_id).c_str());
+            continue;
+        }
+
+        switch (attr.value.s32)
+        {
+            case SAI_ROUTER_INTERFACE_TYPE_PORT:
+            case SAI_ROUTER_INTERFACE_TYPE_SUB_PORT:
+                break;
+
+            default:
+                continue;
+        }
+
+        attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+
+        status = vs_generic_get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, rif_id, 1, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to get rif port id from rif %s",
+                    sai_serialize_object_id(rif_id).c_str());
+            continue;
+        }
+
+        if (attr.value.oid == lag_or_port_id)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void process_packet_for_fdb_event(
         _In_ const uint8_t *buffer,
         _In_ size_t size,
@@ -217,60 +339,88 @@ void process_packet_for_fdb_event(
 
     uint16_t vlan_id = DEFAULT_VLAN_NUMBER;
 
-    switch (proto)
+    bool tagged = (proto == ETH_P_8021Q);
+
+    if (tagged)
     {
-        case ETH_P_IP:
-        case ETH_P_IPV6:
-        case ETH_P_ARP:
-        case ETH_P_RARP:
+        // this is tagged frame, get vlan id from frame
 
-            {
-                // IP frame, we need to get vlan if from port
+        uint16_t tci = htons(((const uint16_t*)&eh->h_proto)[1]); // tag is after h_proto field
 
-                sai_attribute_t attr;
+        vlan_id = tci & 0xfff;
 
-                attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+        if (vlan_id == 0xfff)
+        {
+            SWSS_LOG_WARN("invalid vlan id %u in ethernet frame on %s", vlan_id, info->name.c_str());
+            return;
+        }
 
-                sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_PORT, info->portid, 1, &attr);
-
-                if (status != SAI_STATUS_SUCCESS)
-                {
-                    SWSS_LOG_WARN("failed to get port vlan id from port %s",
-                            sai_serialize_object_id(info->portid).c_str());
-                    return;
-                }
-
-                vlan_id = attr.value.u16;
-
-                break;
-            }
-
-        case ETH_P_8021Q:
-
-            {
-                // this is tagged frame, get vlan id from frame
-
-                uint16_t tci = htons(eh->h_proto);
-
-                vlan_id = tci & 0xfff;
-
-                if (vlan_id == 0 || vlan_id == 0xfff)
-                {
-                    SWSS_LOG_WARN("invalid vlan id %u in ethernet frame on %s", vlan_id, info->name.c_str());
-                    return;
-                }
-
-                break;
-            }
-
-        default:
-            {
-                SWSS_LOG_WARN("unknown ethernet protocol: 0x%x on %s", proto, info->name.c_str());
-                return;
-            }
+        if (vlan_id == 0)
+        {
+            // priority packet, frame should be treated as non tagged
+            tagged = false;
+        }
     }
 
-    // we have vlan and mac addres which is KEY, so just see if that is already defined
+    if (tagged == false)
+    {
+        // untagged ethernet frame
+
+        sai_attribute_t attr;
+
+#ifdef SAI_LAG_ATTR_PORT_VLAN_ID
+
+        sai_object_id_t lag_id;
+
+        if (getLagFromPort(info->portid, lag_id))
+        {
+            // if port belongs to lag we need to get SAI_LAG_ATTR_PORT_VLAN_ID
+
+            attr.id = SAI_LAG_ATTR_PORT_VLAN_ID
+
+            sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_LAG, lag_id, 1, &attr);
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_WARN("failed to get lag vlan id from lag %s",
+                        sai_serialize_object_id(lag_id).c_str());
+                return;
+            }
+
+            vlan_id = attr.value.u16;
+
+            if (isLagOrPortRifBased(lag_id))
+            {
+                // this lag is router interface based, skip mac learning
+                return;
+            }
+        }
+        else
+#endif
+        {
+            attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+
+            sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_PORT, info->portid, 1, &attr);
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_WARN("failed to get port vlan id from port %s",
+                        sai_serialize_object_id(info->portid).c_str());
+                return;
+            }
+
+            vlan_id = attr.value.u16;
+        }
+    }
+
+    if (isLagOrPortRifBased(info->portid))
+    {
+        SWSS_LOG_DEBUG("port %s is rif based, skip mac learning",
+                sai_serialize_object_id(info->portid).c_str());
+        return;
+    }
+
+    // we have vlan and mac address which is KEY, so just see if that is already defined
 
     fdb_info_t fi;
 
