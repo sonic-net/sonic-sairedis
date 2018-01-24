@@ -120,10 +120,10 @@ void redisPutFdbEntryToAsicView(
             return;
         }
                 
-        if( !port_oid && !vlan_id )
+        if (!port_oid && !vlan_id)
         {
             /* we got a flush all fdb event here */
-            /* exaple of a flush all fdb event   */
+            /* example of a flush all fdb event   */
             /*
             [{
             "fdb_entry":"{
@@ -144,8 +144,21 @@ void redisPutFdbEntryToAsicView(
             std::string pattern = ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_FDB_ENTRY:*");
             for (const auto &fdbkey: g_redisClient->keys(pattern))
             {
-                SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
-                g_redisClient->del(fdbkey);
+                /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
+                auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
+                if (pEntryType != NULL)
+                {
+                    std::string strEntryType = *pEntryType;
+                    if (strEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
+                    {
+                        SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
+                        g_redisClient->del(fdbkey);
+                    }
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
+                }
             }
         }
         else if( port_oid && !vlan_id )
