@@ -416,11 +416,6 @@ sai_status_t sai_api_uninitialize(void)
 
     g_fdbAgingThreadRun = false;
 
-    // we can get deadlock here if we switch context
-    // between while() in fdbAgingThreadProc and process fdb
-
-    g_fdbAgingThread->join();
-
     g_api_initialized = false;
 
     return SAI_STATUS_SUCCESS;
