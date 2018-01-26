@@ -522,7 +522,6 @@ void FlexCounter::flexCounterThread(void)
             // First we subtract correction from previous sleep and then add delay from current counters read
             runPlugins(db, m_pollInterval - correction + delay);
             correction = newCorrection;
-            SWSS_LOG_ERROR("ELAPSED %d", std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
         }
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
