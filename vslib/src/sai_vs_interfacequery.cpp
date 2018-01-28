@@ -208,9 +208,12 @@ void unittestChannelThreadProc()
 
 void processFdbEntriesForAging()
 {
-    MUTEX();
-
     SWSS_LOG_ENTER();
+
+    if (!g_recursive_mutex.try_lock())
+    {
+        return;
+    }
 
     uint32_t current = (uint32_t)time(NULL);
 
@@ -255,6 +258,8 @@ void processFdbEntriesForAging()
             ++it;
         }
     }
+
+    g_recursive_mutex.unlock();
 }
 
 void fdbAgingThreadProc()
