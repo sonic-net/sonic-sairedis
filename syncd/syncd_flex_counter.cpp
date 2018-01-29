@@ -490,12 +490,16 @@ void FlexCounter::runPlugins(
     std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> portCounterIdsMap;
     std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> queueCounterIdsMap;
     std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> queueAttrIdsMap;
+    std::set<std::string> queuePlugins;
+    std::set<std::string> portPlugins;
 
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         portCounterIdsMap = m_portCounterIdsMap;
         queueCounterIdsMap = m_queueCounterIdsMap;
         queueAttrIdsMap = m_queueAttrIdsMap;
+        queuePlugins = m_queuePlugins;
+        portPlugins = m_portPlugins;
     }
 
     const std::vector<std::string> argv = 
@@ -512,7 +516,7 @@ void FlexCounter::runPlugins(
         portList.push_back(sai_serialize_object_id(kv.first));
     }
 
-    for (const auto& sha : m_portPlugins)
+    for (const auto& sha : portPlugins)
     {
         runRedisScript(db, sha, portList, argv);
     }
@@ -524,7 +528,7 @@ void FlexCounter::runPlugins(
         queueList.push_back(sai_serialize_object_id(kv.first));
     }
 
-    for (const auto& sha : m_queuePlugins)
+    for (const auto& sha : queuePlugins)
     {
         runRedisScript(db, sha, queueList, argv);
     }
@@ -541,7 +545,6 @@ void FlexCounter::flexCounterThread(void)
     while (m_runFlexCounterThread)
     {
         auto start = std::chrono::steady_clock::now();
-        std::lock_guard<std::mutex> lock(g_mutex);
         collectCounters(countersTable);
         auto finish = std::chrono::steady_clock::now();
 
