@@ -329,14 +329,12 @@ void SaiSwitch::helperCheckLaneMap()
     }
 
     /*
-     * We assume there are at least 32 ports and port number
-     * can be divided by 16 without rest.
+     * We assume there are at least 32 ports.
      */
 
-    if (laneMap.size() < 32 || (laneMap.size() % 16 != 0))
+    if (laneMap.size() < 32)
     {
-        // TODO throw here
-        SWSS_LOG_ERROR("LANES size is %zu, something is wrong!", laneMap.size());
+        SWSS_LOG_ERROR("LANES size is %zu < 32, something is wrong!", laneMap.size());
     }
 
     for (auto kv: laneMap)
