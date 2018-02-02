@@ -693,7 +693,14 @@ void snoop_get_attr(
 
     std::string str_object_type = sai_serialize_object_type(object_type);
 
-    std::string key = TEMP_PREFIX + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
+    std::string prefix = "";
+
+    if (isInitViewMode())
+    {
+        prefix = TEMP_PREFIX;
+    }
+
+    std::string key = prefix + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
 
     SWSS_LOG_DEBUG("%s", key.c_str());
 
@@ -893,21 +900,11 @@ void internal_syncd_get_send(
                 attr_list,
                 false);
 
-        if (isInitViewMode())
-        {
-            /*
-             * All oid values here are VIDs.
-             */
-
-            snoop_get_response(object_type, str_object_id, attr_count, attr_list);
-        }
-
         /*
-         * TODO: When we are doing GET in non init view mode, maybe we could
-         * snoop data also, since we will put this data anyway when we will do
-         * view compare. We would need to fix snoop_get_response since
-         * currently this method is writing only to TEMP view.
+         * All oid values here are VIDs.
          */
+
+        snoop_get_response(object_type, str_object_id, attr_count, attr_list);
     }
     else if (status == SAI_STATUS_BUFFER_OVERFLOW)
     {
