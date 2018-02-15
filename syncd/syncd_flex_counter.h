@@ -14,38 +14,43 @@ extern "C" {
 class FlexCounter
 {
     public:
+        static void setPollInterval(
+                _In_ uint32_t pollInterval,
+                _In_ std::string instanceId);
         static void setPortCounterList(
                 _In_ sai_object_id_t portVid,
                 _In_ sai_object_id_t portId,
-                _In_ uint32_t pollInterval,
+                _In_ std::string instanceId,
                 _In_ const std::vector<sai_port_stat_t> &counterIds);
         static void setQueueCounterList(
                 _In_ sai_object_id_t queueVid,
                 _In_ sai_object_id_t queueId,
-                _In_ uint32_t pollInterval,
+                _In_ std::string instanceId,
                 _In_ const std::vector<sai_queue_stat_t> &counterIds);
         static void setQueueAttrList(
                 _In_ sai_object_id_t queueVid,
                 _In_ sai_object_id_t queueId,
-                _In_ uint32_t pollInterval,
+                _In_ std::string instanceId,
                 _In_ const std::vector<sai_queue_attr_t> &attrIds);
 
         static void removePort(
                 _In_ sai_object_id_t portVid,
-                _In_ uint32_t pollInterval);
+                _In_ std::string instanceId);
         static void removeQueue(
                 _In_ sai_object_id_t queueVid,
-                _In_ uint32_t pollInterval);
+                _In_ std::string instanceId);
 
         static void addPortCounterPlugin(
                 _In_ std::string sha,
-                _In_ uint32_t pollInterval);
+                _In_ std::string instanceId);
         static void addQueueCounterPlugin(
                 _In_ std::string sha,
-                _In_ uint32_t pollInterval);
+                _In_ std::string instanceId);
         static void removeCounterPlugin(
                 _In_ std::string sha,
-                _In_ uint32_t pollInterval);
+                _In_ std::string instanceId);
+        static void removeCounterPlugin(
+                _In_ std::string instanceId);
 
         FlexCounter(
                 _In_ const FlexCounter&) = delete;
@@ -82,12 +87,12 @@ class FlexCounter
             std::vector<sai_port_stat_t> portCounterIds;
         };
 
-        FlexCounter(uint32_t pollInterval);
-        static FlexCounter& getInstance(uint32_t pollInterval);
-        static void removeInstance(uint32_t pollInterval);
+        FlexCounter(std::string instanceId);
+        static FlexCounter& getInstance(std::string instanceId);
+        static void removeInstance(std::string instanceId);
 
         void collectCounters(_In_ swss::Table &countersTable);
-        void runPlugins(_In_ swss::DBConnector& db);
+        void runPlugins(_In_ swss::DBConnector& db, _In_ uint32_t pollInterval);
         void flexCounterThread(void);
         void startFlexCounterThread(void);
         void endFlexCounterThread(void);
@@ -96,6 +101,7 @@ class FlexCounter
         void saiUpdateSupportedQueueCounters(sai_object_id_t queueId, const std::vector<sai_queue_stat_t> &counterIds);
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
+        bool isCounterMapsEmpty();
 
         // Key is a Virtual ID
         std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> m_portCounterIdsMap;
@@ -115,7 +121,8 @@ class FlexCounter
         std::mutex m_mtxSleep;
         std::condition_variable m_cvSleep;
 
-        uint32_t m_pollInterval;
+        uint32_t m_pollInterval = 0;
+        std::string m_instanceId;
 };
 
 #endif

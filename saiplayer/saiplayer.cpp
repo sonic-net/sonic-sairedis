@@ -1344,9 +1344,11 @@ void sai_meta_log_syncd(
             break;
         case SAI_LOG_LEVEL_ERROR:
             p = swss::Logger::SWSS_ERROR;
+            fprintf(stderr, "ERROR: %s: %s", func, buffer);
             break;
         case SAI_LOG_LEVEL_WARN:
             p = swss::Logger::SWSS_WARN;
+            fprintf(stderr, "WARN: %s: %s", func, buffer);
             break;
         case SAI_LOG_LEVEL_CRITICAL:
             p = swss::Logger::SWSS_CRIT;

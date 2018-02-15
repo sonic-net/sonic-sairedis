@@ -693,7 +693,14 @@ void snoop_get_attr(
 
     std::string str_object_type = sai_serialize_object_type(object_type);
 
-    std::string key = TEMP_PREFIX + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
+    std::string prefix = "";
+
+    if (isInitViewMode())
+    {
+        prefix = TEMP_PREFIX;
+    }
+
+    std::string key = prefix + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
 
     SWSS_LOG_DEBUG("%s", key.c_str());
 
@@ -893,21 +900,11 @@ void internal_syncd_get_send(
                 attr_list,
                 false);
 
-        if (isInitViewMode())
-        {
-            /*
-             * All oid values here are VIDs.
-             */
-
-            snoop_get_response(object_type, str_object_id, attr_count, attr_list);
-        }
-
         /*
-         * TODO: When we are doing GET in non init view mode, maybe we could
-         * snoop data also, since we will put this data anyway when we will do
-         * view compare. We would need to fix snoop_get_response since
-         * currently this method is writing only to TEMP view.
+         * All oid values here are VIDs.
          */
+
+        snoop_get_response(object_type, str_object_id, attr_count, attr_list);
     }
     else if (status == SAI_STATUS_BUFFER_OVERFLOW)
     {
@@ -2259,6 +2256,49 @@ sai_status_t processBulkEvent(
     return status;
 }
 
+sai_status_t processFdbFlush(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &key = kfvKey(kco);
+    const std::string &str_object_type = key.substr(0, key.find(":"));
+    const std::string &str_object_id = key.substr(key.find(":") + 1);
+
+    sai_object_id_t switch_vid;
+
+    sai_deserialize_object_id(str_object_id, switch_vid);
+
+    sai_object_id_t switch_rid = translate_vid_to_rid(switch_vid);
+
+    const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+    for (const auto &v: values)
+    {
+        SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+    }
+
+    SaiAttributeList list(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
+
+    /*
+     * Attribute list can't be const since we will use it to translate VID to
+     * RID inplace.
+     */
+
+    sai_attribute_t *attr_list = list.get_attr_list();
+    uint32_t attr_count = list.get_attr_count();
+
+    translate_vid_to_rid_list(SAI_OBJECT_TYPE_FDB_FLUSH, attr_count, attr_list);
+
+    sai_status_t status = sai_metadata_sai_fdb_api->flush_fdb_entries(switch_rid, attr_count, attr_list);
+
+    std::vector<swss::FieldValueTuple> en;
+
+    getResponse->set(sai_serialize_status(status), en, "flushresponse");
+
+    return status;
+}
+
 sai_status_t processEvent(
         _In_ swss::ConsumerTable &consumer)
 {
@@ -2329,6 +2369,10 @@ sai_status_t processEvent(
     else if (op == "get_stats")
     {
         return processGetStatsEvent(kco);
+    }
+    else if (op == "flush")
+    {
+        return processFdbFlush(kco);
     }
     else
     {
@@ -2488,8 +2532,62 @@ sai_status_t processEvent(
     return status;
 }
 
+void processFlexCounterGroupEvent(
+        _In_ swss::ConsumerTable &consumer)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    swss::KeyOpFieldsValuesTuple kco;
+    consumer.pop(kco);
+
+    const auto &groupName = kfvKey(kco);
+    const auto &op = kfvOp(kco);
+    const auto values = kfvFieldsValues(kco);
+
+    if (op == DEL_COMMAND)
+    {
+        FlexCounter::removeCounterPlugin(groupName);
+        return;
+    }
+
+    for (const auto& valuePair : values)
+    {
+        const auto field = fvField(valuePair);
+        const auto value = fvValue(valuePair);
+
+        if (op == SET_COMMAND)
+        {
+            if (field == POLL_INTERVAL_FIELD)
+            {
+                FlexCounter::setPollInterval(stoi(value), groupName);
+            }
+            else if (field == QUEUE_PLUGIN_FIELD)
+            {
+                auto shaStrings = swss::tokenize(value, ',');
+                for (const auto &sha : shaStrings)
+                {
+                    FlexCounter::addQueueCounterPlugin(sha, groupName);
+                }
+            }
+            else if (field == PORT_PLUGIN_FIELD)
+            {
+                auto shaStrings = swss::tokenize(value, ',');
+                for (const auto &sha : shaStrings)
+                {
+                    FlexCounter::addPortCounterPlugin(sha, groupName);
+                }
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Field is not supported %s", field.c_str());
+            }
+        }
+    }
+}
+
 void processFlexCounterEvent(
-        _In_ swss::ConsumerStateTable &consumer)
+        _In_ swss::ConsumerTable &consumer)
 {
     SWSS_LOG_ENTER();
 
@@ -2501,32 +2599,37 @@ void processFlexCounterEvent(
     const auto &key = kfvKey(kco);
     const auto &op = kfvOp(kco);
 
-    std::size_t delimiter = key.find_last_of(":");
-
+    std::size_t delimiter = key.find_first_of(":");
     if (delimiter == std::string::npos)
     {
         SWSS_LOG_ERROR("Failed to parse the key %s", key.c_str());
         return;
     }
 
-    const auto intervalStr = key.substr(delimiter + 1);
-    const auto vidStr = key.substr(0, delimiter);
-    int pollInterval;
-
-    try
-    {
-        pollInterval = std::stoi(intervalStr);
-    }
-    catch(const std::invalid_argument)
-    {
-        SWSS_LOG_ERROR("Failed to convert the poll intervall, key = %s", key.c_str());
-        return;
-    }
+    const auto groupName = key.substr(0, delimiter);
+    const auto vidStr = key.substr(delimiter+1);
 
     sai_object_id_t vid = SAI_NULL_OBJECT_ID;
     sai_deserialize_object_id(vidStr, vid);
     sai_object_id_t rid = translate_vid_to_rid(vid);
     sai_object_type_t objectType = sai_object_type_query(rid);
+    std::string  objectTypeStr = sai_serialize_object_type(objectType);
+
+    if (op == DEL_COMMAND)
+    {
+        if (objectType == SAI_OBJECT_TYPE_PORT)
+        {
+            FlexCounter::removePort(vid, groupName);
+        }
+        else if (objectType == SAI_OBJECT_TYPE_QUEUE)
+        {
+            FlexCounter::removeQueue(vid, groupName);
+        }
+        else
+        {
+            SWSS_LOG_ERROR("Object type for removal not supported, %s", objectTypeStr.c_str());
+        }
+    }
 
     const auto values = kfvFieldsValues(kco);
     for (const auto& valuePair : values)
@@ -2534,26 +2637,11 @@ void processFlexCounterEvent(
         const auto field = fvField(valuePair);
         const auto value = fvValue(valuePair);
 
-        if (op == DEL_COMMAND)
-        {
-            if (objectType == SAI_OBJECT_TYPE_PORT)
-            {
-                FlexCounter::removePort(vid, pollInterval);
-            }
-            else if (objectType == SAI_OBJECT_TYPE_QUEUE)
-            {
-                FlexCounter::removeQueue(vid, pollInterval);
-            }
-            else
-            {
-                SWSS_LOG_ERROR("Object type for removal not supported");
-            }
-        }
-        else if (op == SET_COMMAND)
+        if (op == SET_COMMAND)
         {
             auto idStrings  = swss::tokenize(value, ',');
 
-            if (objectType == SAI_OBJECT_TYPE_PORT && field == PFC_WD_PORT_COUNTER_ID_LIST)
+            if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_COUNTER_ID_LIST)
             {
                 std::vector<sai_port_stat_t> portCounterIds;
                 for (const auto &str : idStrings)
@@ -2562,9 +2650,9 @@ void processFlexCounterEvent(
                     sai_deserialize_port_stat(str, stat);
                     portCounterIds.push_back(stat);
                 }
-                FlexCounter::setPortCounterList(vid, rid, pollInterval, portCounterIds);
+                FlexCounter::setPortCounterList(vid, rid, groupName, portCounterIds);
             }
-            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_COUNTER_ID_LIST)
+            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_COUNTER_ID_LIST)
             {
                 std::vector<sai_queue_stat_t> queueCounterIds;
                 for (const auto &str : idStrings)
@@ -2573,9 +2661,9 @@ void processFlexCounterEvent(
                     sai_deserialize_queue_stat(str, stat);
                     queueCounterIds.push_back(stat);
                 }
-                FlexCounter::setQueueCounterList(vid, rid, pollInterval, queueCounterIds);
+                FlexCounter::setQueueCounterList(vid, rid, groupName, queueCounterIds);
             }
-            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_ATTR_ID_LIST)
+            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_ATTR_ID_LIST)
             {
                 std::vector<sai_queue_attr_t> queueAttrIds;
                 for (const auto &str : idStrings)
@@ -2585,79 +2673,12 @@ void processFlexCounterEvent(
                     queueAttrIds.push_back(attr);
                 }
 
-                FlexCounter::setQueueAttrList(vid, rid, pollInterval, queueAttrIds);
+                FlexCounter::setQueueAttrList(vid, rid, groupName, queueAttrIds);
             }
             else
             {
-                SWSS_LOG_ERROR("Object type not supported");
+                SWSS_LOG_ERROR("Object type and field combination is not supported, object type %s, field %s", objectTypeStr.c_str(), field.c_str());
             }
-        }
-    }
-}
-
-void processFlexCounterPluginEvent(
-        _In_ swss::ConsumerStateTable &consumer)
-{
-    SWSS_LOG_ENTER();
-
-    std::lock_guard<std::mutex> lock(g_mutex);
-
-    swss::KeyOpFieldsValuesTuple kco;
-    consumer.pop(kco);
-
-    const auto &key = kfvKey(kco);
-    const auto &op = kfvOp(kco);
-
-    std::size_t delimiter = key.find_last_of(":");
-
-    if (delimiter == std::string::npos)
-    {
-        SWSS_LOG_ERROR("Failed to parse the key %s", key.c_str());
-        return;
-    }
-
-    const auto intervalStr = key.substr(delimiter + 1);
-    const auto sha = key.substr(0, delimiter);
-    int pollInterval;
-
-    try
-    {
-        pollInterval = std::stoi(intervalStr);
-    }
-    catch(const std::invalid_argument)
-    {
-        SWSS_LOG_ERROR("Failed to convert the poll intervall, key = %s", key.c_str());
-        return;
-    }
-
-    if (op == DEL_COMMAND)
-    {
-        FlexCounter::removeCounterPlugin(sha, pollInterval);
-        return;
-    }
-
-    const auto values = kfvFieldsValues(kco);
-    for (const auto& valuePair : values)
-    {
-        const auto field = fvField(valuePair);
-        const auto value = fvValue(valuePair);
-
-        if (field != SAI_OBJECT_TYPE)
-        {
-            continue;
-        }
-
-        if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_PORT))
-        {
-            FlexCounter::addPortCounterPlugin(sha, pollInterval);
-        }
-        else if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_QUEUE))
-        {
-            FlexCounter::addQueueCounterPlugin(sha, pollInterval);
-        }
-        else
-        {
-            SWSS_LOG_ERROR("Plugin for %s is not supported", value.c_str());
         }
     }
 }
@@ -3196,9 +3217,11 @@ void sai_meta_log_syncd(
             break;
         case SAI_LOG_LEVEL_ERROR:
             p = swss::Logger::SWSS_ERROR;
+            fprintf(stderr, "ERROR: %s: %s", func, buffer);
             break;
         case SAI_LOG_LEVEL_WARN:
             p = swss::Logger::SWSS_WARN;
+            fprintf(stderr, "WARN: %s: %s", func, buffer);
             break;
         case SAI_LOG_LEVEL_CRITICAL:
             p = swss::Logger::SWSS_CRIT;
@@ -3244,14 +3267,14 @@ int syncd_main(int argc, char **argv)
 
     std::shared_ptr<swss::DBConnector> dbAsic = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(PFC_WD_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(FLEX_COUNTER_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
 
     g_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());
 
     std::shared_ptr<swss::ConsumerTable> asicState = std::make_shared<swss::ConsumerTable>(dbAsic.get(), ASIC_STATE_TABLE);
     std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "RESTARTQUERY");
-    std::shared_ptr<swss::ConsumerStateTable> flexCounterState = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PFC_WD_STATE_TABLE);
-    std::shared_ptr<swss::ConsumerStateTable> flexCounterPlugin = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PLUGIN_TABLE);
+    std::shared_ptr<swss::ConsumerTable> flexCounter = std::make_shared<swss::ConsumerTable>(dbFlexCounter.get(), FLEX_COUNTER_TABLE);
+    std::shared_ptr<swss::ConsumerTable> flexCounterGroup = std::make_shared<swss::ConsumerTable>(dbFlexCounter.get(), FLEX_COUNTER_GROUP_TABLE);
 
     /*
      * At the end we cant use producer consumer concept since if one proces
@@ -3340,8 +3363,8 @@ int syncd_main(int argc, char **argv)
 
         s.addSelectable(asicState.get());
         s.addSelectable(restartQuery.get());
-        s.addSelectable(flexCounterState.get());
-        s.addSelectable(flexCounterPlugin.get());
+        s.addSelectable(flexCounter.get());
+        s.addSelectable(flexCounterGroup.get());
 
         SWSS_LOG_NOTICE("starting main loop");
 
@@ -3366,13 +3389,13 @@ int syncd_main(int argc, char **argv)
                 warmRestartHint = handleRestartQuery(*restartQuery);
                 break;
             }
-            else if (sel == flexCounterState.get())
+            else if (sel == flexCounter.get())
             {
-                processFlexCounterEvent(*(swss::ConsumerStateTable*)sel);
+                processFlexCounterEvent(*(swss::ConsumerTable*)sel);
             }
-            else if (sel == flexCounterPlugin.get())
+            else if (sel == flexCounterGroup.get())
             {
-                processFlexCounterPluginEvent(*(swss::ConsumerStateTable*)sel);
+                processFlexCounterGroupEvent(*(swss::ConsumerTable*)sel);
             }
             else if (result == swss::Select::OBJECT)
             {

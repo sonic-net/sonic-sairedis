@@ -42,12 +42,21 @@ static sai_status_t set_default_notifications()
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_INFO("create defaultr notifications");
+    SWSS_LOG_INFO("create default notifications");
 
     sai_attribute_t attr;
 
     attr.id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
     attr.value.ptr = NULL;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+    attr.value.u32 = 0;
 
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
@@ -204,6 +213,11 @@ static sai_status_t create_ports()
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
+        attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+        attr.value.u32 = DEFAULT_VLAN_NUMBER;
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
         // TODO populate other port attributes
     }
 
@@ -253,6 +267,11 @@ static sai_status_t create_bridge_ports()
     attr.value.s32 = SAI_BRIDGE_PORT_TYPE_1Q_ROUTER;
 
     CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_BRIDGE_PORT, &default_bridge_port_1q_router, ss->getSwitchId(), 1, &attr));
+
+    attr.id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_BRIDGE_PORT, default_bridge_port_1q_router, &attr));
 
     attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
 

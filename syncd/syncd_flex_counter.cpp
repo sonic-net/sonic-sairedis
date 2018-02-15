@@ -3,7 +3,7 @@
 #include "swss/redisapi.h"
 
 /* Global map with FlexCounter instances for different polling interval */
-static std::map<uint32_t, std::shared_ptr<FlexCounter>> g_flex_counters_map;
+static std::map<std::string, std::shared_ptr<FlexCounter>> g_flex_counters_map;
 
 
 FlexCounter::PortCounterIds::PortCounterIds(
@@ -30,6 +30,16 @@ FlexCounter::QueueAttrIds::QueueAttrIds(
     SWSS_LOG_ENTER();
 }
 
+void FlexCounter::setPollInterval(
+        _In_ uint32_t pollInterval,
+        _In_ std::string instanceId)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter &fc = getInstance(instanceId);
+    fc.m_pollInterval = pollInterval;
+}
+
 /* The current implementation of 'setPortCounterList' and 'setQueueCounterList' are
  * not the same. Need to refactor these two functions to have the similar logic.
  * Either the full SAI attributes are queried once, or each of the needed counters
@@ -38,12 +48,12 @@ FlexCounter::QueueAttrIds::QueueAttrIds(
 void FlexCounter::setPortCounterList(
         _In_ sai_object_id_t portVid,
         _In_ sai_object_id_t portId,
-        _In_ uint32_t pollInterval,
+        _In_ std::string instanceId,
         _In_ const std::vector<sai_port_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter &fc = getInstance(pollInterval);
+    FlexCounter &fc = getInstance(instanceId);
 
     // Initialize the supported counters list before setting
     if (fc.m_supportedPortCounters.size() == 0)
@@ -66,9 +76,9 @@ void FlexCounter::setPortCounterList(
         SWSS_LOG_ERROR("Port %s does not has supported counters", sai_serialize_object_id(portId).c_str());
 
         // Remove flex counter if counter IDs map is empty
-        if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
+        if (fc.isCounterMapsEmpty())
         {
-            removeInstance(pollInterval);
+            removeInstance(instanceId);
         }
 
         return;
@@ -85,18 +95,18 @@ void FlexCounter::setPortCounterList(
     fc.m_portCounterIdsMap.emplace(portVid, portCounterIds);
 
     // Start flex counter thread in case it was not running due to empty counter IDs map
-    fc.startFlexCounterThread();
+    if (fc.m_pollInterval > 0) fc.startFlexCounterThread();
 }
 
 void FlexCounter::setQueueCounterList(
         _In_ sai_object_id_t queueVid,
         _In_ sai_object_id_t queueId,
-        _In_ uint32_t pollInterval,
+        _In_ std::string instanceId,
         _In_ const std::vector<sai_queue_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter &fc = getInstance(pollInterval);
+    FlexCounter &fc = getInstance(instanceId);
 
     fc.saiUpdateSupportedQueueCounters(queueId, counterIds);
 
@@ -115,9 +125,9 @@ void FlexCounter::setQueueCounterList(
         SWSS_LOG_ERROR("Queue %s does not has supported counters", sai_serialize_object_id(queueId).c_str());
 
         // Remove flex counter if counter IDs map is empty
-        if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
+        if (fc.isCounterMapsEmpty())
         {
-            removeInstance(pollInterval);
+            removeInstance(instanceId);
         }
 
         return;
@@ -136,9 +146,9 @@ void FlexCounter::setQueueCounterList(
         SWSS_LOG_ERROR("Queue %s can't provide the statistic",  sai_serialize_object_id(queueId).c_str());
 
         // Remove flex counter if counter IDs map is empty
-        if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
+        if (fc.isCounterMapsEmpty())
         {
-            removeInstance(pollInterval);
+            removeInstance(instanceId);
         }
 
         return;
@@ -155,18 +165,18 @@ void FlexCounter::setQueueCounterList(
     fc.m_queueCounterIdsMap.emplace(queueVid, queueCounterIds);
 
     // Start flex counter thread in case it was not running due to empty counter IDs map
-    fc.startFlexCounterThread();
+    if (fc.m_pollInterval > 0) fc.startFlexCounterThread();
 }
 
 void FlexCounter::setQueueAttrList(
         _In_ sai_object_id_t queueVid,
         _In_ sai_object_id_t queueId,
-        _In_ uint32_t pollInterval,
+        _In_ std::string instanceId,
         _In_ const std::vector<sai_queue_attr_t> &attrIds)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter &fc = getInstance(pollInterval);
+    FlexCounter &fc = getInstance(instanceId);
 
     auto it = fc.m_queueAttrIdsMap.find(queueVid);
     if (it != fc.m_queueAttrIdsMap.end())
@@ -179,26 +189,26 @@ void FlexCounter::setQueueAttrList(
     fc.m_queueAttrIdsMap.emplace(queueVid, queueAttrIds);
 
     // Start flex counter thread in case it was not running due to empty counter IDs map
-    fc.startFlexCounterThread();
+    if (fc.m_pollInterval > 0) fc.startFlexCounterThread();
 }
 
 
 void FlexCounter::removePort(
         _In_ sai_object_id_t portVid,
-        _In_ uint32_t pollInterval)
+        _In_ std::string instanceId)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter &fc = getInstance(pollInterval);
+    FlexCounter &fc = getInstance(instanceId);
 
     auto it = fc.m_portCounterIdsMap.find(portVid);
     if (it == fc.m_portCounterIdsMap.end())
     {
-        SWSS_LOG_ERROR("Trying to remove nonexisting port counter Ids 0x%lx", portVid);
+        SWSS_LOG_NOTICE("Trying to remove nonexisting port counter Ids 0x%lx", portVid);
         // Remove flex counter if counter IDs map is empty
-        if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
+        if (fc.isCounterMapsEmpty())
         {
-            removeInstance(pollInterval);
+            removeInstance(instanceId);
         }
         return;
     }
@@ -206,60 +216,55 @@ void FlexCounter::removePort(
     fc.m_portCounterIdsMap.erase(it);
 
     // Remove flex counter if counter IDs map is empty
-    if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
+    if (fc.isCounterMapsEmpty())
     {
-        removeInstance(pollInterval);
+        removeInstance(instanceId);
     }
 }
 
 void FlexCounter::removeQueue(
         _In_ sai_object_id_t queueVid,
-        _In_ uint32_t pollInterval)
+        _In_ std::string instanceId)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter &fc = getInstance(pollInterval);
+    bool found = false;
+    FlexCounter &fc = getInstance(instanceId);
 
     auto counterIter = fc.m_queueCounterIdsMap.find(queueVid);
-    if (counterIter == fc.m_queueCounterIdsMap.end())
+    if (counterIter != fc.m_queueCounterIdsMap.end())
     {
-        SWSS_LOG_ERROR("Trying to remove nonexisting queue counter Ids 0x%lx", queueVid);
-        if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
-        {
-            removeInstance(pollInterval);
-        }
-        return;
+        fc.m_queueCounterIdsMap.erase(counterIter);
+        found = true;
     }
-
-    fc.m_queueCounterIdsMap.erase(counterIter);
 
     auto attrIter = fc.m_queueAttrIdsMap.find(queueVid);
-    if (attrIter == fc.m_queueAttrIdsMap.end())
+    if (attrIter != fc.m_queueAttrIdsMap.end())
     {
-        SWSS_LOG_ERROR("Trying to remove nonexisting queue attr Ids 0x%lx", queueVid);
-        if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
-        {
-            removeInstance(pollInterval);
-        }
+        fc.m_queueAttrIdsMap.erase(attrIter);
+        found = true;
+    }
+
+    if (!found)
+    {
+        SWSS_LOG_NOTICE("Trying to remove nonexisting queue from flex counter 0x%lx", queueVid);
         return;
     }
 
-    fc.m_queueAttrIdsMap.erase(attrIter);
-
     // Remove flex counter if counter IDs map is empty
-    if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty())
+    if (fc.isCounterMapsEmpty())
     {
-        removeInstance(pollInterval);
+        removeInstance(instanceId);
     }
 }
 
 void FlexCounter::addPortCounterPlugin(
         _In_ std::string sha,
-        _In_ uint32_t pollInterval)
+        _In_ std::string instanceId)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter &fc = getInstance(pollInterval);
+    FlexCounter &fc = getInstance(instanceId);
 
     if (fc.m_portPlugins.find(sha) != fc.m_portPlugins.end() ||
             fc.m_queuePlugins.find(sha) != fc.m_queuePlugins.end())
@@ -273,11 +278,11 @@ void FlexCounter::addPortCounterPlugin(
 
 void FlexCounter::addQueueCounterPlugin(
         _In_ std::string sha,
-        _In_ uint32_t pollInterval)
+        _In_ std::string instanceId)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter &fc = getInstance(pollInterval);
+    FlexCounter &fc = getInstance(instanceId);
 
     if (fc.m_portPlugins.find(sha) != fc.m_portPlugins.end() ||
             fc.m_queuePlugins.find(sha) != fc.m_queuePlugins.end())
@@ -291,28 +296,52 @@ void FlexCounter::addQueueCounterPlugin(
 
 void FlexCounter::removeCounterPlugin(
         _In_ std::string sha,
-        _In_ uint32_t pollInterval)
+        _In_ std::string instanceId)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter &fc = getInstance(pollInterval);
+    FlexCounter &fc = getInstance(instanceId);
 
     fc.m_queuePlugins.erase(sha);
     fc.m_portPlugins.erase(sha);
 
     // Remove flex counter if counter IDs maps are empty
-    if (fc.m_queueCounterIdsMap.empty() && fc.m_portCounterIdsMap.empty() && fc.m_queueAttrIdsMap.empty() &&
-        fc.m_queuePlugins.empty() && fc.m_portPlugins.empty())
+    if (fc.isCounterMapsEmpty() && fc.m_queuePlugins.empty() && fc.m_portPlugins.empty())
     {
-        removeInstance(pollInterval);
+        removeInstance(instanceId);
     }
 }
+
+void FlexCounter::removeCounterPlugin(
+        _In_ std::string instanceId)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter &fc = getInstance(instanceId);
+
+    fc.m_queuePlugins.clear();
+    fc.m_portPlugins.clear();
+
+    // Remove flex counter if counter IDs maps are empty
+    if (fc.isCounterMapsEmpty() && fc.m_queuePlugins.empty() && fc.m_portPlugins.empty())
+    {
+        removeInstance(instanceId);
+    }
+}
+
 
 FlexCounter::~FlexCounter(void)
 {
     SWSS_LOG_ENTER();
 
     endFlexCounterThread();
+}
+
+bool FlexCounter::isCounterMapsEmpty()
+{
+    SWSS_LOG_ENTER();
+
+    return m_queueCounterIdsMap.empty() && m_portCounterIdsMap.empty() && m_queueAttrIdsMap.empty();
 }
 
 bool FlexCounter::isPortCounterSupported(sai_port_stat_t counter) const
@@ -329,29 +358,29 @@ bool FlexCounter::isQueueCounterSupported(sai_queue_stat_t counter) const
     return m_supportedQueueCounters.count(counter) != 0;
 }
 
-FlexCounter::FlexCounter(uint32_t pollInterval) : m_pollInterval(pollInterval)
+FlexCounter::FlexCounter(std::string instanceId) : m_instanceId(instanceId)
 {
     SWSS_LOG_ENTER();
 }
 
-FlexCounter& FlexCounter::getInstance(uint32_t pollInterval)
+FlexCounter& FlexCounter::getInstance(std::string instanceId)
 {
     SWSS_LOG_ENTER();
 
-    if (g_flex_counters_map.count(pollInterval) == 0)
+    if (g_flex_counters_map.count(instanceId) == 0)
     {
-        std::shared_ptr<FlexCounter> instance(new FlexCounter(pollInterval));
-        g_flex_counters_map.emplace(pollInterval, instance);
+        std::shared_ptr<FlexCounter> instance(new FlexCounter(instanceId));
+        g_flex_counters_map.emplace(instanceId, instance);
     }
 
-    return *(g_flex_counters_map[pollInterval]);
+    return *(g_flex_counters_map[instanceId]);
 }
 
-void FlexCounter::removeInstance(uint32_t pollInterval)
+void FlexCounter::removeInstance(std::string instanceId)
 {
     SWSS_LOG_ENTER();
 
-    g_flex_counters_map.erase(pollInterval);
+    g_flex_counters_map.erase(instanceId);
 }
 
 void FlexCounter::collectCounters(
@@ -359,8 +388,19 @@ void FlexCounter::collectCounters(
 {
     SWSS_LOG_ENTER();
 
+    std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> portCounterIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> queueCounterIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> queueAttrIdsMap;
+
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        portCounterIdsMap = m_portCounterIdsMap;
+        queueCounterIdsMap = m_queueCounterIdsMap;
+        queueAttrIdsMap = m_queueAttrIdsMap;
+    }
+
     // Collect stats for every registered port
-    for (const auto &kv: m_portCounterIdsMap)
+    for (const auto &kv: portCounterIdsMap)
     {
         const auto &portVid = kv.first;
         const auto &portId = kv.second->portId;
@@ -396,7 +436,7 @@ void FlexCounter::collectCounters(
     }
 
     // Collect stats for every registered queue
-    for (const auto &kv: m_queueCounterIdsMap)
+    for (const auto &kv: queueCounterIdsMap)
     {
         const auto &queueVid = kv.first;
         const auto &queueId = kv.second->queueId;
@@ -432,7 +472,7 @@ void FlexCounter::collectCounters(
     }
 
     // Collect attrs for every registered queue
-    for (const auto &kv: m_queueAttrIdsMap)
+    for (const auto &kv: queueAttrIdsMap)
     {
         const auto &queueVid = kv.first;
         const auto &queueId = kv.second->queueId;
@@ -472,41 +512,56 @@ void FlexCounter::collectCounters(
 
         countersTable.set(queueVidStr, values, "");
     }
-
 }
 
 void FlexCounter::runPlugins(
-        _In_ swss::DBConnector& db)
+        _In_ swss::DBConnector& db,
+        _In_ uint32_t pollInterval)
 {
     SWSS_LOG_ENTER();
+
+    std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> portCounterIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> queueCounterIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> queueAttrIdsMap;
+    std::set<std::string> queuePlugins;
+    std::set<std::string> portPlugins;
+
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        portCounterIdsMap = m_portCounterIdsMap;
+        queueCounterIdsMap = m_queueCounterIdsMap;
+        queueAttrIdsMap = m_queueAttrIdsMap;
+        queuePlugins = m_queuePlugins;
+        portPlugins = m_portPlugins;
+    }
 
     const std::vector<std::string> argv = 
     {
         std::to_string(COUNTERS_DB),
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval * 1000)
+        std::to_string(pollInterval * 1000)
     };
 
     std::vector<std::string> portList;
-    portList.reserve(m_portCounterIdsMap.size());
-    for (const auto& kv : m_portCounterIdsMap)
+    portList.reserve(portCounterIdsMap.size());
+    for (const auto& kv : portCounterIdsMap)
     {
         portList.push_back(sai_serialize_object_id(kv.first));
     }
 
-    for (const auto& sha : m_portPlugins)
+    for (const auto& sha : portPlugins)
     {
         runRedisScript(db, sha, portList, argv);
     }
 
     std::vector<std::string> queueList;
-    queueList.reserve(m_queueCounterIdsMap.size());
-    for (const auto& kv : m_queueCounterIdsMap)
+    queueList.reserve(queueCounterIdsMap.size());
+    for (const auto& kv : queueCounterIdsMap)
     {
         queueList.push_back(sai_serialize_object_id(kv.first));
     }
 
-    for (const auto& sha : m_queuePlugins)
+    for (const auto& sha : queuePlugins)
     {
         runRedisScript(db, sha, queueList, argv);
     }
@@ -518,17 +573,24 @@ void FlexCounter::flexCounterThread(void)
 
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     swss::Table countersTable(&db, COUNTERS_TABLE);
+    uint32_t correction = 0;
 
     while (m_runFlexCounterThread)
     {
-        {
-            std::lock_guard<std::mutex> lock(g_mutex);
-            collectCounters(countersTable);
-            runPlugins(db);
-        }
+        auto start = std::chrono::steady_clock::now();
+        collectCounters(countersTable);
+        auto finish = std::chrono::steady_clock::now();
+
+        uint32_t delay = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
+        uint32_t newCorrection = delay % m_pollInterval;
+
+        // Run plugins with corrected interval
+        // First we subtract correction from previous sleep and then add delay from current counters read
+        runPlugins(db, m_pollInterval - correction + delay);
+        correction = newCorrection;
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
-        m_cvSleep.wait_for(lk, std::chrono::milliseconds(m_pollInterval));
+        m_cvSleep.wait_for(lk, std::chrono::milliseconds(m_pollInterval - correction));
     }
 }
 

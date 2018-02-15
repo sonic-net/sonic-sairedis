@@ -96,19 +96,130 @@ void redisPutFdbEntryToAsicView(
         return;
     }
 
-    if ((fdb->event_type == SAI_FDB_EVENT_AGED)||(fdb->event_type == SAI_FDB_EVENT_FLUSHED))
+    if (fdb->event_type == SAI_FDB_EVENT_AGED)
     {
-        if (fdb->event_type == SAI_FDB_EVENT_AGED)
-        {
-            SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_AGED",key.c_str());
-        }
-        if (fdb->event_type == SAI_FDB_EVENT_FLUSHED)
-        {
-            SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",key.c_str());
-        }
+        SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_AGED",key.c_str());
         g_redisClient->del(key);
         return;
     }
+
+    if (fdb->event_type == SAI_FDB_EVENT_FLUSHED)
+    {
+        sai_vlan_id_t vlan_id = fdb->fdb_entry.vlan_id;
+        sai_object_id_t port_oid = 0;
+        bool port_oid_found = false;
+        
+        for (uint32_t i = 0; i < fdb->attr_count; i++)
+        {
+            if(fdb->attr[i].id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
+            {
+                port_oid = fdb->attr[i].value.oid;
+                port_oid_found = true;
+            }
+        }
+        
+        if (!port_oid_found)
+        {
+            SWSS_LOG_ERROR("Failed to get bridge port ID for FDB entry %s",strFdbEntry.c_str());
+            return;
+        }
+                
+        if (!port_oid && !vlan_id)
+        {
+            /* we got a flush all fdb event here */
+            /* example of a flush all fdb event   */
+            /*
+            [{
+            "fdb_entry":"{
+                \"bridge_id\":\"oid:0x0\",
+                \"bridge_type\":\"SAI_FDB_ENTRY_BRIDGE_TYPE_1Q\",
+                \"mac\":\"00:00:00:00:00:00\",
+                \"switch_id\":\"oid:0x21000000000000\",
+                \"vlan\":\"0\"}",
+            "fdb_event":"SAI_FDB_EVENT_FLUSHED",
+                "list":[
+                    {"id":"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID","value":"oid:0x0"},
+                    {"id":"SAI_FDB_ENTRY_ATTR_TYPE","value":"SAI_FDB_ENTRY_TYPE_DYNAMIC"},
+                    {"id":"SAI_FDB_ENTRY_ATTR_PACKET_ACTION","value":"SAI_PACKET_ACTION_FORWARD"}
+                ]
+            }]
+            */
+            SWSS_LOG_NOTICE("received a flush all fdb event");
+            std::string pattern = ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_FDB_ENTRY:*");
+            for (const auto &fdbkey: g_redisClient->keys(pattern))
+            {
+                /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
+                auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
+                if (pEntryType != NULL)
+                {
+                    std::string strEntryType = *pEntryType;
+                    if (strEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
+                    {
+                        SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
+                        g_redisClient->del(fdbkey);
+                    }
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
+                }
+            }
+        }
+        else if( port_oid && !vlan_id )
+        {
+            /* we got a flush port fdb event here        */
+            /* not supported yet, this is a place holder */
+            /* example of a flush port fdb event         */
+            /*
+            [{
+            "fdb_entry":"{
+                \"bridge_id\":\"oid:0x0\",
+                \"bridge_type\":\"SAI_FDB_ENTRY_BRIDGE_TYPE_1Q\",
+                \"mac\":\"00:00:00:00:00:00\",
+                \"switch_id\":\"oid:0x21000000000000\",
+                \"vlan\":\"0\"}",
+            "fdb_event":"SAI_FDB_EVENT_FLUSHED",
+                "list":[
+                    {"id":"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID","value":"oid:0x3a0000000009cf"},
+                    {"id":"SAI_FDB_ENTRY_ATTR_TYPE","value":"SAI_FDB_ENTRY_TYPE_DYNAMIC"},
+                    {"id":"SAI_FDB_ENTRY_ATTR_PACKET_ACTION","value":"SAI_PACKET_ACTION_FORWARD"}
+                ]
+            }]
+            */
+            SWSS_LOG_ERROR("received a flush port fdb event, port_oid = %lu, vlan_id = %hd, unsupported", port_oid, vlan_id);
+        }
+        else if(!port_oid && vlan_id)
+        {
+            /* we got a flush vlan fdb event here        */
+            /* not supported yet, this is a place holder */
+            /* example of a flush vlan event             */
+            /*
+            [{
+            "fdb_entry":"{
+                \"bridge_id\":\"oid:0x0\",
+                \"bridge_type\":\"SAI_FDB_ENTRY_BRIDGE_TYPE_1Q\",
+                \"mac\":\"00:00:00:00:00:00\",
+                \"switch_id\":\"oid:0x21000000000000\",
+                \"vlan\":\"1000\"}",
+            "fdb_event":"SAI_FDB_EVENT_FLUSHED",
+                "list":[
+                    {"id":"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID","value":"oid:0x0"},
+                    {"id":"SAI_FDB_ENTRY_ATTR_TYPE","value":"SAI_FDB_ENTRY_TYPE_DYNAMIC"},
+                    {"id":"SAI_FDB_ENTRY_ATTR_PACKET_ACTION","value":"SAI_PACKET_ACTION_FORWARD"}
+                ]
+            }]
+            */
+            SWSS_LOG_ERROR("received a flush vlan fdb event, port_oid = %lu, vlan_id = %hd, unsupported", port_oid, vlan_id);
+            
+        }
+        else
+        {
+            SWSS_LOG_ERROR("received a flush fdb event, port_oid = %lu, vlan_id = %hd, unsupported", port_oid, vlan_id);
+        }
+
+        return;
+    }
+
     for (const auto &e: entry)
     {
         const std::string &strField = fvField(e);
