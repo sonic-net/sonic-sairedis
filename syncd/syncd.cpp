@@ -74,11 +74,9 @@ sai_object_id_t gSwitchId;
 
 struct cmdOptions
 {
-    int countersThreadIntervalInSeconds;
     bool diagShell;
     bool useTempView;
     int startType;
-    bool disableCountersThread;
     bool disableExitSleep;
     std::string profileMapFile;
 #ifdef SAITHRIFT
@@ -2716,9 +2714,6 @@ void handleCmdLine(int argc, char **argv)
 {
     SWSS_LOG_ENTER();
 
-    const int defaultCountersThreadIntervalInSeconds = 1;
-
-    options.countersThreadIntervalInSeconds = defaultCountersThreadIntervalInSeconds;
     options.disableExitSleep = false;
 
 #ifdef SAITHRIFT
@@ -2734,10 +2729,8 @@ void handleCmdLine(int argc, char **argv)
         {
             { "useTempView",      no_argument,       0, 'u' },
             { "diag",             no_argument,       0, 'd' },
-            { "nocounters",       no_argument,       0, 'N' },
             { "startType",        required_argument, 0, 't' },
             { "profile",          required_argument, 0, 'p' },
-            { "countersInterval", required_argument, 0, 'i' },
             { "help",             no_argument,       0, 'h' },
             { "disableExitSleep", no_argument,       0, 'S' },
 #ifdef SAITHRIFT
@@ -2763,11 +2756,6 @@ void handleCmdLine(int argc, char **argv)
                 options.useTempView = true;
                 break;
 
-            case 'N':
-                SWSS_LOG_NOTICE("disable counters thread");
-                options.disableCountersThread = true;
-                break;
-
             case 'S':
                 SWSS_LOG_NOTICE("disable crash sleep");
                 options.disableExitSleep = true;
@@ -2782,29 +2770,6 @@ void handleCmdLine(int argc, char **argv)
                 SWSS_LOG_NOTICE("profile map file: %s", optarg);
                 options.profileMapFile = std::string(optarg);
                 break;
-
-            case 'i':
-                {
-                    SWSS_LOG_NOTICE("counters thread interval: %s", optarg);
-
-                    int interval = std::stoi(std::string(optarg));
-
-                    if (interval == 0)
-                    {
-                        /*
-                         * Use zero interval to disable counters thread.
-                         */
-
-                        options.disableCountersThread = true;
-                    }
-                    else
-                    {
-                        options.countersThreadIntervalInSeconds =
-                            std::max(defaultCountersThreadIntervalInSeconds, interval);
-                    }
-
-                    break;
-                }
 
             case 't':
                 SWSS_LOG_NOTICE("start type: %s", optarg);
