@@ -97,6 +97,15 @@ class FlexCounter
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
 
+        bool isEmpty(void) const
+        {
+            return m_queueCounterIdsMap.empty() &&
+                m_portCounterIdsMap.empty() &&
+                m_queueAttrIdsMap.empty() &&
+                m_queuePlugins.empty() &&
+                m_portPlugins.empty();
+        }
+
         // Key is a Virtual ID
         std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> m_portCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> m_queueCounterIdsMap;
