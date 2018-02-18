@@ -341,7 +341,11 @@ bool FlexCounter::isCounterMapsEmpty()
 {
     SWSS_LOG_ENTER();
 
-    return m_queueCounterIdsMap.empty() && m_portCounterIdsMap.empty() && m_queueAttrIdsMap.empty();
+    return m_queueCounterIdsMap.empty() &&
+           m_portCounterIdsMap.empty() &&
+           m_queueAttrIdsMap.empty() &&
+           m_queuePlugins.empty() &&
+           m_portPlugins.empty();
 }
 
 bool FlexCounter::isPortCounterSupported(sai_port_stat_t counter) const
