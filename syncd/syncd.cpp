@@ -3294,7 +3294,7 @@ int syncd_main(int argc, char **argv)
 
     if (failed > 0)
     {
-        SWSS_LOG_WARN("sai_api_query failed for %d apis", failed);
+        SWSS_LOG_NOTICE("sai_api_query failed for %d apis", failed);
     }
 
     /*

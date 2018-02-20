@@ -179,7 +179,7 @@ sai_status_t sai_log_set(
 
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_ERROR("not implemented");
+    SWSS_LOG_NOTICE("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
