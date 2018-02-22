@@ -579,15 +579,19 @@ void FlexCounter::flexCounterThread(void)
     {
         auto start = std::chrono::steady_clock::now();
         collectCounters(countersTable);
-        auto finish = std::chrono::steady_clock::now();
+        auto countersFinish = std::chrono::steady_clock::now();
 
-        uint32_t delay = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
-        uint32_t newCorrection = delay % m_pollInterval;
+        uint32_t countersDelay = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(countersFinish - start).count());
 
         // Run plugins with corrected interval
         // First we subtract correction from previous sleep and then add delay from current counters read
-        runPlugins(db, m_pollInterval - correction + delay);
-        correction = newCorrection;
+        runPlugins(db, m_pollInterval - correction + countersDelay);
+
+        auto pluginsFinish = std::chrono::steady_clock::now();
+        uint32_t pluginsDelay = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(pluginsFinish - start).count());
+        correction = pluginsDelay % m_pollInterval;
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
         m_cvSleep.wait_for(lk, std::chrono::milliseconds(m_pollInterval - correction));
