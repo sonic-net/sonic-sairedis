@@ -1234,6 +1234,10 @@ sai_status_t handle_generic(
                     if (object_type == SAI_OBJECT_TYPE_SWITCH)
                     {
                         on_switch_create(switch_id);
+#ifdef SAITHRIFT
+                        gSwitchId = real_object_id;
+                        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
+#endif
                     }
                 }
 
@@ -1762,6 +1766,7 @@ void on_switch_create_in_init_view(
 
 #ifdef SAITHRIFT
         gSwitchId = switch_rid;
+        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
 #endif
 
         /*
