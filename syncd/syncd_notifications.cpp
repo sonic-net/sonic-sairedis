@@ -88,8 +88,9 @@ void redisPutFdbEntryToAsicView(
 
     std::string key = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strFdbEntry);
 
-    if (fdb->fdb_entry.switch_id == SAI_NULL_OBJECT_ID ||
-        fdb->fdb_entry.bv_id == SAI_NULL_OBJECT_ID)
+    if ((fdb->fdb_entry.switch_id == SAI_NULL_OBJECT_ID ||
+         fdb->fdb_entry.bv_id == SAI_NULL_OBJECT_ID) && 
+        (fdb->event_type != SAI_FDB_EVENT_FLUSHED))
     {
         SWSS_LOG_WARN("skipped to put int db: %s", strFdbEntry.c_str());
         return;
