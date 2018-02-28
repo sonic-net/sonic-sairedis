@@ -573,25 +573,18 @@ void FlexCounter::flexCounterThread(void)
 
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     swss::Table countersTable(&db, COUNTERS_TABLE);
-    uint32_t correction = 0;
 
     while (m_runFlexCounterThread)
     {
         auto start = std::chrono::steady_clock::now();
+
         collectCounters(countersTable);
-        auto countersFinish = std::chrono::steady_clock::now();
+        runPlugins(db, m_pollInterval);
 
-        uint32_t countersDelay = static_cast<uint32_t>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(countersFinish - start).count());
-
-        // Run plugins with corrected interval
-        // First we subtract correction from previous sleep and then add delay from current counters read
-        runPlugins(db, m_pollInterval - correction + countersDelay);
-
-        auto pluginsFinish = std::chrono::steady_clock::now();
-        uint32_t pluginsDelay = static_cast<uint32_t>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(pluginsFinish - start).count());
-        correction = pluginsDelay % m_pollInterval;
+        auto finish = std::chrono::steady_clock::now();
+        uint32_t delay = static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
+        uint32_t correction = delay % m_pollInterval;
 
         std::unique_lock<std::mutex> lk(m_mtxSleep);
         m_cvSleep.wait_for(lk, std::chrono::milliseconds(m_pollInterval - correction));
