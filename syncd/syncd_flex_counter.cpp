@@ -515,8 +515,7 @@ void FlexCounter::collectCounters(
 }
 
 void FlexCounter::runPlugins(
-        _In_ swss::DBConnector& db,
-        _In_ uint32_t pollInterval)
+        _In_ swss::DBConnector& db)
 {
     SWSS_LOG_ENTER();
 
@@ -539,7 +538,7 @@ void FlexCounter::runPlugins(
     {
         std::to_string(COUNTERS_DB),
         COUNTERS_TABLE,
-        std::to_string(pollInterval * 1000)
+        std::to_string(m_pollInterval * 1000)
     };
 
     std::vector<std::string> portList;
@@ -579,7 +578,7 @@ void FlexCounter::flexCounterThread(void)
         auto start = std::chrono::steady_clock::now();
 
         collectCounters(countersTable);
-        runPlugins(db, m_pollInterval);
+        runPlugins(db);
 
         auto finish = std::chrono::steady_clock::now();
         uint32_t delay = static_cast<uint32_t>(

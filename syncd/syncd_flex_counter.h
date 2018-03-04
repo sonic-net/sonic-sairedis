@@ -92,7 +92,7 @@ class FlexCounter
         static void removeInstance(std::string instanceId);
 
         void collectCounters(_In_ swss::Table &countersTable);
-        void runPlugins(_In_ swss::DBConnector& db, _In_ uint32_t pollInterval);
+        void runPlugins(_In_ swss::DBConnector& db);
         void flexCounterThread(void);
         void startFlexCounterThread(void);
         void endFlexCounterThread(void);
