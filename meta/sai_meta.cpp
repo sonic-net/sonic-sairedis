@@ -4710,11 +4710,11 @@ void meta_sai_on_fdb_flush_event_consolidated(
             }
         }
 
-        if (data.fdb_entry.vlan_id != 0)
+        if (data.fdb_entry.bv_id != SAI_NULL_OBJECT_ID)
         {
-            if (data.fdb_entry.vlan_id != meta_key_fdb.objectkey.key.fdb_entry.vlan_id)
+            if (data.fdb_entry.bv_id != meta_key_fdb.objectkey.key.fdb_entry.bv_id)
             {
-                // vlan id is not matching on this fdb entry
+                // vlan/bridge id is not matching on this fdb entry
                 continue;
             }
         }

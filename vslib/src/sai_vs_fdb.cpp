@@ -32,7 +32,7 @@ bool doesFdbEntryNotMatchFlushAttr(
 
                 break;
 
-            case SAI_FDB_FLUSH_ATTR_VLAN_ID:
+            case SAI_FDB_FLUSH_ATTR_BV_ID:
 
                 {
                     sai_fdb_entry_t fdb_entry;
@@ -40,7 +40,7 @@ bool doesFdbEntryNotMatchFlushAttr(
                     sai_deserialize_fdb_entry(str_fdb_entry, fdb_entry);
 
                     // remove from list all entries not matching vlan id
-                    if (fdb_entry.vlan_id != attr.value.u16)
+                    if (fdb_entry.bv_id != attr.value.oid)
                     {
                         return true;
                     }
@@ -236,11 +236,11 @@ sai_status_t internal_vs_flush_fdb_entries(
         attrs[1].value.oid = bpid->value.oid;
     }
 
-    auto vlanid = sai_metadata_get_attr_by_id(SAI_FDB_FLUSH_ATTR_VLAN_ID, attr_count, attr_list);
+    auto vlanid = sai_metadata_get_attr_by_id(SAI_FDB_FLUSH_ATTR_BV_ID, attr_count, attr_list);
 
     if (vlanid != NULL)
     {
-        data.fdb_entry.vlan_id = vlanid->value.u16;
+        data.fdb_entry.bv_id = vlanid->value.oid;
     }
 
     if (static_fdbs.size() > 0)
