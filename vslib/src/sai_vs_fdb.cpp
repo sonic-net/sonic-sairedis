@@ -81,7 +81,7 @@ sai_status_t internal_vs_flush_fdb_entries(
      * all dynamic entries learned from interfaces. All learned entries are
      * processed by metadata and propagated from info set to metadata. But
      * there may be short period of time that those 3 sets will be out of sync
-     * untill notifications learned/aged will be sent.
+     * until notifications learned/aged will be sent.
      *
      * After learning fdb event, fdb entry will be put into 3 places:
      * - local db g_switch_state_map
@@ -114,7 +114,7 @@ sai_status_t internal_vs_flush_fdb_entries(
         else
         {
             /*
-             * Entries to be flushed we need to split for 2 grups static and
+             * Entries to be flushed we need to split for 2 groups static and
              * dynamic entries.
              */
 
@@ -177,7 +177,7 @@ sai_status_t internal_vs_flush_fdb_entries(
      *
      * To indicate what entry type was flushed, entry_type field in fdb_entry
      * will be populated. If no entry will be specified 2 notifications will be
-     * send 1 for static entries and 1 for dynamic entries, or 1 notification
+     * sent 1 for static entries and 1 for dynamic entries, or 1 notification
      * with 2 data entries will be send.
      *
      * To indicate what vlan if was flushed, vlan_id field in fdb_entry will be
@@ -189,7 +189,7 @@ sai_status_t internal_vs_flush_fdb_entries(
      * set to that bridge port id, or if no bridge port id was specified then
      * this attribute will be missing or oid will be set to SAI_NULL_OBJECT_ID.
      *
-     * By those rules user reciving notification can figure out what flush
+     * By those rules user receiving notification can figure out what flush
      * event is handling.
      *
      * All other attributes in consolidated fdb event notification are
