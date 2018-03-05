@@ -4,7 +4,9 @@
 
 /* Global map with FlexCounter instances for different polling interval */
 static std::map<std::string, std::shared_ptr<FlexCounter>> g_flex_counters_map;
-
+// List with supported counters 
+static std::set<sai_port_stat_t> supportedPortCounters;
+static std::set<sai_queue_stat_t> supportedQueueCounters;
 
 FlexCounter::PortCounterIds::PortCounterIds(
         _In_ sai_object_id_t port,
@@ -56,7 +58,7 @@ void FlexCounter::setPortCounterList(
     FlexCounter &fc = getInstance(instanceId);
 
     // Initialize the supported counters list before setting
-    if (fc.m_supportedPortCounters.size() == 0)
+    if (supportedPortCounters.size() == 0)
     {
         fc.saiUpdateSupportedPortCounters(portId);
     }
@@ -352,14 +354,14 @@ bool FlexCounter::isPortCounterSupported(sai_port_stat_t counter) const
 {
     SWSS_LOG_ENTER();
 
-    return m_supportedPortCounters.count(counter) != 0;
+    return supportedPortCounters.count(counter) != 0;
 }
 
 bool FlexCounter::isQueueCounterSupported(sai_queue_stat_t counter) const
 {
     SWSS_LOG_ENTER();
 
-    return m_supportedQueueCounters.count(counter) != 0;
+    return supportedQueueCounters.count(counter) != 0;
 }
 
 FlexCounter::FlexCounter(std::string instanceId) : m_instanceId(instanceId)
@@ -654,7 +656,7 @@ void FlexCounter::saiUpdateSupportedPortCounters(sai_object_id_t portId)
             continue;
         }
 
-        m_supportedPortCounters.insert(counter);
+        supportedPortCounters.insert(counter);
     }
 }
 
@@ -665,7 +667,7 @@ void FlexCounter::saiUpdateSupportedQueueCounters(
     SWSS_LOG_ENTER();
 
     uint64_t value;
-    m_supportedQueueCounters.clear();
+    supportedQueueCounters.clear();
 
     for (auto &counter : counterIds)
     {
@@ -682,7 +684,7 @@ void FlexCounter::saiUpdateSupportedQueueCounters(
         }
         else
         {
-            m_supportedQueueCounters.insert(counter);
+            supportedQueueCounters.insert(counter);
         }
     }
 }

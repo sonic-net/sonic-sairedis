@@ -108,10 +108,6 @@ class FlexCounter
         std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> m_queueCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
 
-        // List with supported counters
-        std::set<sai_port_stat_t> m_supportedPortCounters;
-        std::set<sai_queue_stat_t> m_supportedQueueCounters;
-
         // Plugins
         std::set<std::string> m_queuePlugins;
         std::set<std::string> m_portPlugins;
