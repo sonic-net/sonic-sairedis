@@ -1,6 +1,6 @@
 #include "sai_meta.h"
 #include "sai_extra.h"
-#include "saiserialize.h"
+#include "sai_serialize.h"
 
 #include <string.h>
 #include <arpa/inet.h>
@@ -747,8 +747,7 @@ void test_fdb_entry_create()
     fdb_entry.switch_id = switch_id;
     sai_object_id_t bridge_id = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE, switch_id);
     object_reference_insert(bridge_id);
-    //fdb_entry.bvid = bridge_id;
-    fdb_entry.bridge_id = bridge_id;
+    fdb_entry.bv_id = bridge_id;
 
     sai_object_id_t port = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE_PORT, switch_id);
     object_reference_insert(port);
@@ -854,8 +853,7 @@ void test_fdb_entry_remove()
     fdb_entry.switch_id = switch_id;
     sai_object_id_t bridge_id = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE, switch_id);
     object_reference_insert(bridge_id);
-    //fdb_entry.bvid= bridge_id;
-    fdb_entry.bridge_id = bridge_id;
+    fdb_entry.bv_id= bridge_id;
 
     sai_object_id_t port = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE_PORT,switch_id);
     object_reference_insert(port);
@@ -996,8 +994,7 @@ void test_fdb_entry_get()
 
     sai_object_id_t bridge_id = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE, switch_id);
     object_reference_insert(bridge_id);
-    //fdb_entry.bvid = bridge_id;
-    fdb_entry.bridge_id = bridge_id;
+    fdb_entry.bv_id = bridge_id;
 
     // TODO we should use CREATE for this
     sai_object_meta_key_t meta_key_fdb = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = fdb_entry } } };
@@ -1072,8 +1069,7 @@ void test_fdb_entry_flow()
 
     sai_object_id_t bridge_id = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE, switch_id);
     object_reference_insert(bridge_id);
-    //fdb_entry.bvid= bridge_id;
-    fdb_entry.bridge_id = bridge_id;
+    fdb_entry.bv_id= bridge_id;
 
     sai_object_id_t lag = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE_PORT,switch_id);
     object_reference_insert(lag);
@@ -2391,12 +2387,6 @@ void test_route_entry_set()
     status = meta_sai_set_route_entry(&route_entry, &attr, &dummy_success_sai_set_route_entry);
     META_ASSERT_SUCCESS(status);
 
-    SWSS_LOG_NOTICE("correct trap priority");
-    attr.id = SAI_ROUTE_ENTRY_ATTR_TRAP_PRIORITY;
-    attr.value.u8 =  12;
-    status = meta_sai_set_route_entry(&route_entry, &attr, &dummy_success_sai_set_route_entry);
-    META_ASSERT_SUCCESS(status);
-
     SWSS_LOG_NOTICE("correct next hop");
     attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
     attr.value.oid = hop;
@@ -2495,11 +2485,6 @@ void test_route_entry_get()
 
     SWSS_LOG_NOTICE("correct packet action");
     attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
-    status = meta_sai_get_route_entry(&route_entry, 1, &attr, &dummy_success_sai_get_route_entry);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("correct trap prio");
-    attr.id = SAI_ROUTE_ENTRY_ATTR_TRAP_PRIORITY;
     status = meta_sai_get_route_entry(&route_entry, 1, &attr, &dummy_success_sai_get_route_entry);
     META_ASSERT_SUCCESS(status);
 
@@ -2603,12 +2588,6 @@ void test_route_entry_flow()
     status = meta_sai_set_route_entry(&route_entry, &attr, &dummy_success_sai_set_route_entry);
     META_ASSERT_SUCCESS(status);
 
-    SWSS_LOG_NOTICE("correct trap priority");
-    attr.id = SAI_ROUTE_ENTRY_ATTR_TRAP_PRIORITY;
-    attr.value.u8 =  12;
-    status = meta_sai_set_route_entry(&route_entry, &attr, &dummy_success_sai_set_route_entry);
-    META_ASSERT_SUCCESS(status);
-
     SWSS_LOG_NOTICE("correct next hop");
     attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
     attr.value.oid = hop;
@@ -2625,11 +2604,6 @@ void test_route_entry_flow()
 
     SWSS_LOG_NOTICE("correct packet action");
     attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
-    status = meta_sai_get_route_entry(&route_entry, 1, &attr, &dummy_success_sai_get_route_entry);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("correct trap prio");
-    attr.id = SAI_ROUTE_ENTRY_ATTR_TRAP_PRIORITY;
     status = meta_sai_get_route_entry(&route_entry, 1, &attr, &dummy_success_sai_get_route_entry);
     META_ASSERT_SUCCESS(status);
 
@@ -4011,60 +3985,6 @@ void test_serialize_qos_map()
     ASSERT_TRUE(l.value.color, SAI_PACKET_COLOR_GREEN);
 }
 
-void test_serialize_tunnel_map()
-{
-    SWSS_LOG_ENTER();
-
-    clear_local();
-    meta_init_db();
-
-    sai_attribute_t attr;
-    const sai_attr_metadata_t* meta;
-    std::string s;
-
-    attr.id = SAI_TUNNEL_MAP_ATTR_MAP_TO_VALUE_LIST;
-
-    sai_tunnel_map_t tm = {
-        .key   = { .oecn = 1,  .uecn = 2,  .vlan_id = 3,  .vni_id = 4  },
-        .value = { .oecn = 11, .uecn = 22, .vlan_id = 33, .vni_id = 44 } };
-
-    attr.value.tunnelmap.count = 1;
-    attr.value.tunnelmap.list = &tm;
-
-    meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_TUNNEL_MAP, attr.id);
-
-    s = sai_serialize_attr_value(*meta, attr);
-
-    std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"oecn\":1,\"uecn\":2,\"vlan\":\"3\",\"vni\":4},\"value\":{\"oecn\":11,\"uecn\":22,\"vlan\":\"33\",\"vni\":44}}]}";
-
-    ASSERT_TRUE(s, ret);
-
-    s = sai_serialize_attr_value(*meta, attr, true);
-
-    std::string ret2 = "{\"count\":1,\"list\":null}";
-    ASSERT_TRUE(s, ret2);
-
-    // deserialize
-
-    memset(&attr, 0, sizeof(attr));
-
-    sai_deserialize_attr_value(ret, *meta, attr);
-
-    ASSERT_TRUE(attr.value.tunnelmap.count, 1);
-
-    auto &l = attr.value.tunnelmap.list[0];
-
-    ASSERT_TRUE(l.key.oecn, 1);
-    ASSERT_TRUE(l.key.uecn, 2);
-    ASSERT_TRUE(l.key.vlan_id, 3);
-    ASSERT_TRUE(l.key.vni_id, 4);
-
-    ASSERT_TRUE(l.value.oecn, 11);
-    ASSERT_TRUE(l.value.uecn, 22);
-    ASSERT_TRUE(l.value.vlan_id, 33);
-    ASSERT_TRUE(l.value.vni_id, 44);
-}
-
 template<typename T>
 void deserialize_number(
         _In_ const std::string& s,
@@ -4169,7 +4089,6 @@ int main()
     test_serialize_oid_list();
     test_serialize_acl_action();
     test_serialize_qos_map();
-    test_serialize_tunnel_map();
 
     // attributes tests
 

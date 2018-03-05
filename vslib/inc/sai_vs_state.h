@@ -2,7 +2,7 @@
 #define __SAI_VS_STATE__
 
 #include "meta/sai_meta.h"
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
 
 #include "swss/selectableevent.h"
@@ -107,6 +107,8 @@ typedef struct _fdb_info_t
 {
     sai_object_id_t port_id;
 
+    sai_vlan_id_t vlan_id;
+
     sai_object_id_t bridge_port_id;
 
     sai_fdb_entry_t fdb_entry;
@@ -123,7 +125,7 @@ typedef struct _fdb_info_t
         if (res > 0)
             return false;
 
-        return fdb_entry.vlan_id < other.fdb_entry.vlan_id;
+        return vlan_id < other.vlan_id;
     }
 
     bool operator() (const _fdb_info_t& lhs, const _fdb_info_t & rhs) const

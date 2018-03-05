@@ -85,7 +85,7 @@ sai_status_t internal_vs_generic_get(
 
         sai_status_t status;
 
-        if (HAS_FLAG_READ_ONLY(meta->flags))
+        if (SAI_HAS_FLAG_READ_ONLY(meta->flags))
         {
             /*
              * Read only attributes may require recalculation.

@@ -48,7 +48,7 @@ sub flush_redis
 sub start_syncd
 {
     print color('bright_blue') . "Starting syncd" . color('reset') . "\n";
-    `./vssyncd -NSu -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+    `./vssyncd -Su -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
 }
 
 sub play

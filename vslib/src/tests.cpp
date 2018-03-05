@@ -9,7 +9,7 @@
 #include "swss/schema.h"
 #include "swss/notificationproducer.h"
 
-#include "../../meta/saiserialize.h"
+#include "../../meta/sai_serialize.h"
 
 extern "C" {
 #include <sai.h>
@@ -57,7 +57,7 @@ int profile_get_next_value(
     return -1;
 }
 
-service_method_table_t test_services = {
+sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -246,9 +246,10 @@ int main()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    SUCCESS(sai_api_initialize(0, (service_method_table_t*)&test_services));
+    SUCCESS(sai_api_initialize(0, (sai_service_method_table_t*)&test_services));
 
-    sai_metadata_apis_query(sai_api_query);
+    sai_apis_t apis;
+    sai_metadata_apis_query(sai_api_query, &apis);
 
     //swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 

@@ -1,6 +1,6 @@
 #include "sai_meta.h"
 #include "sai_extra.h"
-#include "saiserialize.h"
+#include "sai_serialize.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -53,7 +53,7 @@ sai_status_t meta_unittests_allow_readonly_set_once(
         return SAI_STATUS_FAILURE;
     }
 
-    if (!HAS_FLAG_READ_ONLY(md->flags))
+    if (!SAI_HAS_FLAG_READ_ONLY(md->flags))
     {
         SWSS_LOG_ERROR("attribute %s is not marked as READ_ONLY", md->attridname);
         return SAI_STATUS_FAILURE;
@@ -709,7 +709,7 @@ std::string construct_key(
 
         const sai_attribute_value_t& value = attr->value;
 
-        if (!HAS_FLAG_KEY(md.flags))
+        if (!SAI_HAS_FLAG_KEY(md.flags))
         {
             continue;
         }
@@ -1059,14 +1059,14 @@ sai_status_t meta_generic_validation_create(
 
         attrs[attr->id] = attr;
 
-        if (HAS_FLAG_READ_ONLY(md.flags))
+        if (SAI_HAS_FLAG_READ_ONLY(md.flags))
         {
             META_LOG_ERROR(md, "attr is read only and cannot be created");
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
-        if (HAS_FLAG_KEY(md.flags))
+        if (SAI_HAS_FLAG_KEY(md.flags))
         {
             haskeys = true;
 
@@ -1083,9 +1083,9 @@ sai_status_t meta_generic_validation_create(
                 {
                     const char* chardata = value.chardata;
 
-                    size_t len = strnlen(chardata, HOSTIF_NAME_SIZE);
+                    size_t len = strnlen(chardata, SAI_HOSTIF_NAME_SIZE);
 
-                    if (len == HOSTIF_NAME_SIZE)
+                    if (len == SAI_HOSTIF_NAME_SIZE)
                     {
                         META_LOG_ERROR(md, "host interface name is too long");
 
@@ -1302,8 +1302,8 @@ sai_status_t meta_generic_validation_create(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 VALIDATION_LIST(md, value.qosmap);
                 break;
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-                VALIDATION_LIST(md, value.tunnelmap);
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+                VALIDATION_LIST(md, value.aclresource);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -1425,7 +1425,7 @@ sai_status_t meta_generic_validation_create(
     {
         const sai_attr_metadata_t& md = *mdp;
 
-        if (!HAS_FLAG_MANDATORY_ON_CREATE(md.flags))
+        if (!SAI_HAS_FLAG_MANDATORY_ON_CREATE(md.flags))
         {
             continue;
         }
@@ -1734,7 +1734,7 @@ sai_status_t meta_generic_validation_set(
 
     META_LOG_DEBUG(md, "(set)");
 
-    if (HAS_FLAG_READ_ONLY(md.flags))
+    if (SAI_HAS_FLAG_READ_ONLY(md.flags))
     {
         if (meta_unittests_get_and_erase_set_readonly_flag(md))
         {
@@ -1748,14 +1748,14 @@ sai_status_t meta_generic_validation_set(
         }
     }
 
-    if (HAS_FLAG_CREATE_ONLY(md.flags))
+    if (SAI_HAS_FLAG_CREATE_ONLY(md.flags))
     {
         META_LOG_ERROR(md, "attr is create only and cannot be modified");
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    if (HAS_FLAG_KEY(md.flags))
+    if (SAI_HAS_FLAG_KEY(md.flags))
     {
         META_LOG_ERROR(md, "attr is key and cannot be modified");
 
@@ -1980,8 +1980,8 @@ sai_status_t meta_generic_validation_set(
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             VALIDATION_LIST(md, value.qosmap);
             break;
-        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-            VALIDATION_LIST(md, value.tunnelmap);
+        case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+            VALIDATION_LIST(md, value.aclresource);
             break;
 
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -2350,8 +2350,8 @@ sai_status_t meta_generic_validation_get(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 VALIDATION_LIST(md, value.qosmap);
                 break;
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-                VALIDATION_LIST(md, value.tunnelmap);
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+                VALIDATION_LIST(md, value.aclresource);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -2566,7 +2566,7 @@ void meta_generic_validation_post_create(
 
         const sai_attr_metadata_t& md = *mdp;
 
-        if (HAS_FLAG_KEY(md.flags))
+        if (SAI_HAS_FLAG_KEY(md.flags))
         {
             haskeys = true;
             META_LOG_DEBUG(md, "attr is key");
@@ -2673,9 +2673,9 @@ void meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 // no special action required
                 break;
 
@@ -2808,9 +2808,9 @@ void meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 // no special action required
                 break;
 
@@ -2877,7 +2877,7 @@ void meta_generic_validation_post_set(
      * if there is default value and if it's const.
      */
 
-    if (!HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
+    if (!SAI_HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
     {
         if ((get_object_previous_attr(meta_key, md) == NULL) &&
                 (md.defaultvaluetype != SAI_DEFAULT_VALUE_TYPE_CONST &&
@@ -3059,9 +3059,9 @@ void meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
         case SAI_ATTR_VALUE_TYPE_INT32_LIST:
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
-        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+        case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             // no special action required
             break;
 
@@ -3098,7 +3098,7 @@ void meta_generic_validation_post_get_objlist(
      * whether default value is present and it's const NULL.
      */
 
-    if (!HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
+    if (!SAI_HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
     {
         if (get_object_previous_attr(meta_key, md) == NULL)
         {
@@ -3355,8 +3355,8 @@ void meta_generic_validation_post_get(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 VALIDATION_LIST_GET(md, value.qosmap);
                 break;
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-                VALIDATION_LIST_GET(md, value.tunnelmap);
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+                VALIDATION_LIST_GET(md, value.aclresource);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -4650,8 +4650,10 @@ sai_status_t meta_sai_get_stats_oid(
         _In_ sai_get_generic_stats_fn<sai_ ## type ## _stat_t> get);
 
 DECLARE_META_GET_STATS_OID(port);
+DECLARE_META_GET_STATS_OID(port_pool);
 DECLARE_META_GET_STATS_OID(queue);
 DECLARE_META_GET_STATS_OID(ingress_priority_group);
+DECLARE_META_GET_STATS_OID(tunnel);
 
 // NOTIFICATIONS
 

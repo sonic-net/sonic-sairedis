@@ -2,7 +2,7 @@
 #include "sai_vs_internal.h"
 #include "sai_vs_state.h"
 
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 
 #include <string.h>
 #include <sys/types.h>
@@ -109,21 +109,6 @@ void processFdbInfo(
 
     data.fdb_entry = fi.fdb_entry;
 
-    if (data.fdb_entry.bridge_type == SAI_FDB_ENTRY_BRIDGE_TYPE_1Q)
-    {
-        // since this is only valid for 1D
-        data.fdb_entry.bridge_id = SAI_NULL_OBJECT_ID;
-    }
-    else if (data.fdb_entry.bridge_type == SAI_FDB_ENTRY_BRIDGE_TYPE_1D)
-    {
-        // since this is only valid for 1Q
-        data.fdb_entry.vlan_id = 0;
-    }
-    else
-    {
-        SWSS_LOG_ERROR("unknown bridge type %d", data.fdb_entry.bridge_type);
-    }
-
     data.attr_count = 2;
     data.attr = attrs;
 
@@ -158,17 +143,18 @@ void processFdbInfo(
     }
 }
 
-void findBridgeForPort(
+void findBridgeVlanForPortVlan(
         _In_ sai_object_id_t port_id,
-        _Inout_ sai_object_id_t &bridge_id,
-        _Inout_ sai_object_id_t &bridge_port_id,
-        _Inout_ sai_fdb_entry_bridge_type_t &bridge_type)
+        _In_ sai_vlan_id_t vlan_id,
+        _Inout_ sai_object_id_t &bv_id,
+        _Inout_ sai_object_id_t &bridge_port_id)
 {
     SWSS_LOG_ENTER();
 
-    bridge_id = SAI_NULL_OBJECT_ID;
+    bv_id = SAI_NULL_OBJECT_ID;
     bridge_port_id = SAI_NULL_OBJECT_ID;
-    bridge_type = SAI_FDB_ENTRY_BRIDGE_TYPE_1Q;
+
+    sai_object_id_t bridge_id;
 
     /*
      * The bridge port lookup process is two steps:
@@ -184,7 +170,7 @@ void findBridgeForPort(
      * received on the bridge port.
      *
      * XXX: this is not whats happening here, we are just looking for any
-     * bridge id (as in our case this is shorcut, we will remove all bridge ports
+     * bridge id (as in our case this is shortcut, we will remove all bridge ports
      * when we will use router interface based port/lag and no bridge
      * will be found.
      */
@@ -220,6 +206,8 @@ void findBridgeForPort(
 
         bridge_port_id = bpid;
 
+        // XXX: need to also check the vlan_id match if the bridge port type is subport
+
         SWSS_LOG_DEBUG("found bridge port %s for port %s",
                 sai_serialize_object_id(bridge_port_id).c_str(),
                 sai_serialize_object_id(port_id).c_str());
@@ -248,11 +236,42 @@ void findBridgeForPort(
             break;
         }
 
-        bridge_type = (sai_fdb_entry_bridge_type_t)attr.value.s32;
-
         SWSS_LOG_DEBUG("bridge %s type is %d",
                 sai_serialize_object_id(bridge_id).c_str(),
-                bridge_type);
+                attr.value.s32);
+
+        if (attr.value.s32 == SAI_BRIDGE_TYPE_1D)
+        {
+            bv_id = bridge_id;
+        }
+        else
+        {
+            auto &objectHash2 = g_switch_state_map.at(switch_id)->objectHash.at(SAI_OBJECT_TYPE_VLAN);
+
+            // iterate via all vlans to find match on vlan id
+
+            for (auto it2 = objectHash2.begin(); it2 != objectHash2.end(); ++it2)
+            {
+                sai_object_id_t vlan_oid;
+
+                sai_deserialize_object_id(it2->first, vlan_oid);
+
+                attr.id = SAI_VLAN_ATTR_VLAN_ID;
+
+                status = vs_generic_get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr);
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    continue;
+                }
+
+                if (vlan_id == attr.value.u16)
+                {
+                    bv_id = vlan_oid;
+                    break;
+                }
+            }
+        }
 
         break;
     }
@@ -491,7 +510,7 @@ void process_packet_for_fdb_event(
     fdb_info_t fi;
 
     fi.port_id = info->portid;
-    fi.fdb_entry.vlan_id = vlan_id;
+    fi.vlan_id = vlan_id;
 
     memcpy(fi.fdb_entry.mac_address, eh->h_source, sizeof(sai_mac_t));
 
@@ -516,9 +535,9 @@ void process_packet_for_fdb_event(
     fi.timestamp = frametime;
     fi.fdb_entry.switch_id = sai_switch_id_query(info->portid);
 
-    findBridgeForPort(info->portid, fi.fdb_entry.bridge_id, fi.bridge_port_id, fi.fdb_entry.bridge_type);
+    findBridgeVlanForPortVlan(info->portid, vlan_id, fi.fdb_entry.bv_id, fi.bridge_port_id);
 
-    if (fi.fdb_entry.bridge_id == SAI_NULL_OBJECT_ID)
+    if (fi.fdb_entry.bv_id == SAI_NULL_OBJECT_ID)
     {
         // bridge was not found, skip mac learning
         return;
