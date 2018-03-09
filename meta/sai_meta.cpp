@@ -4673,11 +4673,13 @@ void meta_sai_on_fdb_flush_event_consolidated(
     SWSS_LOG_NOTICE("processing consolidated fdb flush event of type: %s",
             sai_metadata_get_fdb_entry_type_name((sai_fdb_entry_type_t)type->value.s32));
 
+    std::vector<sai_object_meta_key_t> toremove;
+
     for (auto it = ObjectAttrHash.begin(); it != ObjectAttrHash.end(); ++it)
     {
         const std::string &key_fdb = it->first;
 
-        if (strstr(key_fdb.c_str(), "mac_address") == NULL) // in new SAI use bv_id also
+        if (strstr(key_fdb.c_str(), "bvid") == NULL)
         {
             // this is not fdb_entry key
             continue;
@@ -4687,7 +4689,7 @@ void meta_sai_on_fdb_flush_event_consolidated(
 
         meta_key_fdb.objecttype = SAI_OBJECT_TYPE_FDB_ENTRY;
 
-        sai_deserialize_fdb_entry(key_fdb, meta_key_fdb.objectkey.key.fdb_entry);
+        sai_deserialize_object_meta_key(key_fdb, meta_key_fdb);
 
         if (it->second.at(SAI_FDB_ENTRY_ATTR_TYPE)->getattr()->value.s32 != type->value.s32)
         {
@@ -4723,7 +4725,15 @@ void meta_sai_on_fdb_flush_event_consolidated(
 
         SWSS_LOG_INFO("removing %s", key_fdb.c_str());
 
-        meta_generic_validation_post_remove(meta_key_fdb);
+        // since meta_generic_validation_post_remove also modifies ObjectAttrHash
+        // we need to push this to a vector and remove in next loop
+        toremove.push_back(meta_key_fdb);
+    }
+
+    for (auto it = toremove.begin(); it != toremove.end(); ++it)
+    {
+        // remove selected objects
+        meta_generic_validation_post_remove(*it);
     }
 }
 
@@ -4795,10 +4805,12 @@ void meta_sai_on_fdb_event_single(
             if (memcmp(data.fdb_entry.mac_address, zero_mac, sizeof(zero_mac)) == 0)
             {
                 meta_sai_on_fdb_flush_event_consolidated(data);
+                break;
             }
-            else if (!object_exists(key_fdb))
+
+            if (!object_exists(key_fdb))
             {
-                SWSS_LOG_WARN("object key %s doesn't exist but received AGED/FLUSHED event", key_fdb.c_str());
+                SWSS_LOG_WARN("object key %s doesn't exist but received FLUSHED event", key_fdb.c_str());
                 break;
             }
 

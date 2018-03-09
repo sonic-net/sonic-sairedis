@@ -102,14 +102,10 @@ sai_status_t internal_vs_flush_fdb_entries(
         if (doesFdbEntryNotMatchFlushAttr(it->first, it->second, attr_count, attr_list))
         {
             /*
-             * If fdb entry does not match flush attributes, erase it from all
-             * fdb entries.
-             *
-             * Also since we are using &on fdbs then this will also clear local
-             * data base
+             * If fdb entry does not match flush attributes, we will skip this entry.
              */
 
-            it = fdbs.erase(it);
+            ++it;
         }
         else
         {
@@ -155,7 +151,12 @@ sai_status_t internal_vs_flush_fdb_entries(
                 g_fdb_info_set.erase(fit);
             }
 
-            ++it;
+            /*
+             * Since we are using &on fdbs then this will also clear local
+             * data base.
+             */
+
+            it = fdbs.erase(it);
         }
     }
 
@@ -271,6 +272,8 @@ sai_status_t internal_vs_flush_fdb_entries(
         {
             ntf(1, &data);
         }
+
+        SWSS_LOG_NOTICE("1");
     }
 
     // TODO: we can add config entry to send notifications 1 by 1 as option to consolidated
