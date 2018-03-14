@@ -517,8 +517,9 @@ void FlexCounter::collectCounters(
         std::string queueVidStr = sai_serialize_object_id(queueVid);
 
         countersTable.set(queueVidStr, values, "");
-        countersTable.flush();
     }
+
+    countersTable.flush();
 }
 
 void FlexCounter::runPlugins(
