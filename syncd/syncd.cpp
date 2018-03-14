@@ -74,11 +74,9 @@ sai_object_id_t gSwitchId;
 
 struct cmdOptions
 {
-    int countersThreadIntervalInSeconds;
     bool diagShell;
     bool useTempView;
     int startType;
-    bool disableCountersThread;
     bool disableExitSleep;
     std::string profileMapFile;
 #ifdef SAITHRIFT
@@ -839,7 +837,7 @@ void snoop_get_response(
                 break;
         }
 
-        if (HAS_FLAG_READ_ONLY(meta->flags))
+        if (SAI_HAS_FLAG_READ_ONLY(meta->flags))
         {
             /*
              * If value is read only, we skip it, since after syncd restart we
@@ -1015,7 +1013,7 @@ int profile_get_next_value(
     return 0;
 }
 
-service_method_table_t test_services = {
+sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -1236,6 +1234,10 @@ sai_status_t handle_generic(
                     if (object_type == SAI_OBJECT_TYPE_SWITCH)
                     {
                         on_switch_create(switch_id);
+#ifdef SAITHRIFT
+                        gSwitchId = real_object_id;
+                        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
+#endif
                     }
                 }
 
@@ -1764,6 +1766,7 @@ void on_switch_create_in_init_view(
 
 #ifdef SAITHRIFT
         gSwitchId = switch_rid;
+        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
 #endif
 
         /*
@@ -2716,9 +2719,6 @@ void handleCmdLine(int argc, char **argv)
 {
     SWSS_LOG_ENTER();
 
-    const int defaultCountersThreadIntervalInSeconds = 1;
-
-    options.countersThreadIntervalInSeconds = defaultCountersThreadIntervalInSeconds;
     options.disableExitSleep = false;
 
 #ifdef SAITHRIFT
@@ -2734,10 +2734,8 @@ void handleCmdLine(int argc, char **argv)
         {
             { "useTempView",      no_argument,       0, 'u' },
             { "diag",             no_argument,       0, 'd' },
-            { "nocounters",       no_argument,       0, 'N' },
             { "startType",        required_argument, 0, 't' },
             { "profile",          required_argument, 0, 'p' },
-            { "countersInterval", required_argument, 0, 'i' },
             { "help",             no_argument,       0, 'h' },
             { "disableExitSleep", no_argument,       0, 'S' },
 #ifdef SAITHRIFT
@@ -2763,11 +2761,6 @@ void handleCmdLine(int argc, char **argv)
                 options.useTempView = true;
                 break;
 
-            case 'N':
-                SWSS_LOG_NOTICE("disable counters thread");
-                options.disableCountersThread = true;
-                break;
-
             case 'S':
                 SWSS_LOG_NOTICE("disable crash sleep");
                 options.disableExitSleep = true;
@@ -2782,29 +2775,6 @@ void handleCmdLine(int argc, char **argv)
                 SWSS_LOG_NOTICE("profile map file: %s", optarg);
                 options.profileMapFile = std::string(optarg);
                 break;
-
-            case 'i':
-                {
-                    SWSS_LOG_NOTICE("counters thread interval: %s", optarg);
-
-                    int interval = std::stoi(std::string(optarg));
-
-                    if (interval == 0)
-                    {
-                        /*
-                         * Use zero interval to disable counters thread.
-                         */
-
-                        options.disableCountersThread = true;
-                    }
-                    else
-                    {
-                        options.countersThreadIntervalInSeconds =
-                            std::max(defaultCountersThreadIntervalInSeconds, interval);
-                    }
-
-                    break;
-                }
 
             case 't':
                 SWSS_LOG_NOTICE("start type: %s", optarg);
@@ -3317,7 +3287,7 @@ int syncd_main(int argc, char **argv)
 
     gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(options.startType);
 
-    sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+    sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -3325,11 +3295,12 @@ int syncd_main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    int failed = sai_metadata_apis_query(sai_api_query);
+    sai_apis_t apis;
+    int failed = sai_metadata_apis_query(sai_api_query, &apis);
 
     if (failed > 0)
     {
-        SWSS_LOG_WARN("sai_api_query failed for %d apis", failed);
+        SWSS_LOG_NOTICE("sai_api_query failed for %d apis", failed);
     }
 
     /*

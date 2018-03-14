@@ -92,7 +92,7 @@ class FlexCounter
         static void removeInstance(std::string instanceId);
 
         void collectCounters(_In_ swss::Table &countersTable);
-        void runPlugins(_In_ swss::DBConnector& db, _In_ uint32_t pollInterval);
+        void runPlugins(_In_ swss::DBConnector& db);
         void flexCounterThread(void);
         void startFlexCounterThread(void);
         void endFlexCounterThread(void);
@@ -101,16 +101,12 @@ class FlexCounter
         void saiUpdateSupportedQueueCounters(sai_object_id_t queueId, const std::vector<sai_queue_stat_t> &counterIds);
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
-        bool isCounterMapsEmpty();
+        bool isEmpty();
 
         // Key is a Virtual ID
         std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> m_portCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> m_queueCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
-
-        // List with supported counters
-        std::set<sai_port_stat_t> m_supportedPortCounters;
-        std::set<sai_queue_stat_t> m_supportedQueueCounters;
 
         // Plugins
         std::set<std::string> m_queuePlugins;

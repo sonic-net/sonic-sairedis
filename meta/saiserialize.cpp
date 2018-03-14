@@ -1,4 +1,4 @@
-#include "saiserialize.h"
+#include "sai_serialize.h"
 #include "meta/sai_meta.h"
 #include "swss/tokenize.h"
 #include "swss/json.hpp"
@@ -239,9 +239,10 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.qosmap, dst_attr.value.qosmap, countOnly));
             break;
 
-        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-            RETURN_ON_ERROR(transfer_list(src_attr.value.tunnelmap, dst_attr.value.tunnelmap, countOnly));
+        case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.aclresource, dst_attr.value.aclresource, countOnly));
             break;
+
 
             /* ACL FIELD DATA */
 
@@ -709,13 +710,7 @@ std::string sai_serialize_fdb_entry(
 
     j["switch_id"] = sai_serialize_object_id(fdb_entry.switch_id);
     j["mac"] = sai_serialize_mac(fdb_entry.mac_address);
-#if true
-    j["vlan"] = sai_serialize_vlan_id(fdb_entry.vlan_id);
-    j["bridge_type"] = sai_serialize_enum(fdb_entry.bridge_type, &sai_metadata_enum_sai_fdb_entry_bridge_type_t);
-    j["bridge_id"] = sai_serialize_object_id(fdb_entry.bridge_id);
-#else
-    j["bvid"] = sai_serialize_object_id(fdb_entry.bvid);
-#endif
+    j["bvid"] = sai_serialize_object_id(fdb_entry.bv_id);
 
     return j.dump();
 }
@@ -726,6 +721,14 @@ std::string sai_serialize_port_stat(
     SWSS_LOG_ENTER();
 
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_port_stat_t);
+}
+
+std::string sai_serialize_port_pool_stat(
+        _In_ const sai_port_pool_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_port_pool_stat_t);
 }
 
 std::string sai_serialize_queue_stat(
@@ -742,6 +745,14 @@ std::string sai_serialize_ingress_priority_group_stat(
     SWSS_LOG_ENTER();
 
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_ingress_priority_group_stat_t);
+}
+
+std::string sai_serialize_tunnel_stat(
+        _In_ const sai_tunnel_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_tunnel_stat_t);
 }
 
 std::string sai_serialize_queue_attr(
@@ -985,45 +996,31 @@ std::string sai_serialize_qos_map_list(
     return j.dump();
 }
 
-json sai_serialize_tunnel_map_params(
-        _In_ const sai_tunnel_map_params_t& params)
+json sai_serialize_acl_resource(
+        _In_ const sai_acl_resource_t& aclresource)
 {
     SWSS_LOG_ENTER();
 
     json j;
 
-    j["oecn"] = params.oecn;
-    j["uecn"] = params.uecn;
-    j["vni"]  = params.vni_id;
-    j["vlan"] = sai_serialize_vlan_id(params.vlan_id);
+    j["stage"]    = sai_serialize_enum(aclresource.stage, &sai_metadata_enum_sai_acl_stage_t);
+    j["bind_point"]  = sai_serialize_enum(aclresource.bind_point, &sai_metadata_enum_sai_acl_bind_point_type_t);
+    j["avail_num"]  = sai_serialize_number(aclresource.avail_num);
 
     return j;
 }
 
-json sai_serialize_tunnel_map(
-        _In_ const sai_tunnel_map_t& tunnelmap)
-{
-    SWSS_LOG_ENTER();
-
-    json j;
-
-    j["key"]    = sai_serialize_tunnel_map_params(tunnelmap.key);
-    j["value"]  = sai_serialize_tunnel_map_params(tunnelmap.value);;
-
-    return j;
-}
-
-std::string sai_serialize_tunnel_map_list(
-        _In_ const sai_tunnel_map_list_t& tunnelmap,
+std::string sai_serialize_acl_resource_list(
+        _In_ const sai_acl_resource_list_t& aclresource,
         _In_ bool countOnly)
 {
     SWSS_LOG_ENTER();
 
     json j;
 
-    j["count"] = tunnelmap.count;
+    j["count"] = aclresource.count;
 
-    if (tunnelmap.list == NULL || countOnly)
+    if (aclresource.list == NULL || countOnly)
     {
         j["list"] = nullptr;
 
@@ -1032,9 +1029,9 @@ std::string sai_serialize_tunnel_map_list(
 
     json arr = json::array();
 
-    for (uint32_t i = 0; i < tunnelmap.count; ++i)
+    for (uint32_t i = 0; i < aclresource.count; ++i)
     {
-        json item = sai_serialize_tunnel_map(tunnelmap.list[i]);
+        json item = sai_serialize_acl_resource(aclresource.list[i]);
 
         arr.push_back(item);
     }
@@ -1269,8 +1266,8 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             return sai_serialize_qos_map_list(attr.value.qosmap, countOnly);
 
-        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-            return sai_serialize_tunnel_map_list(attr.value.tunnelmap, countOnly);
+        case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+            return sai_serialize_acl_resource_list(attr.value.aclresource, countOnly);
 
             // ACL FIELD DATA
 
@@ -1862,41 +1859,45 @@ void sai_deserialize_qos_map_list(
     }
 }
 
-void sai_deserialize_tunnel_map_params(
-        _In_ const json& j,
-        _Out_ sai_tunnel_map_params_t& params)
-{
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_DEBUG("%s", j.dump().c_str());
-
-    params.oecn   = j["oecn"];
-    params.uecn   = j["uecn"];
-    params.vni_id = j["vni"];
-
-    sai_deserialize_vlan_id(j["vlan"], params.vlan_id);
-}
-
-void sai_deserialize_tunnel_map(
-        _In_ const json& j,
-        _Out_ sai_tunnel_map_t& tunnelmap)
-{
-    SWSS_LOG_ENTER();
-
-    sai_deserialize_tunnel_map_params(j["key"], tunnelmap.key);
-    sai_deserialize_tunnel_map_params(j["value"], tunnelmap.value);
-}
-
-void sai_deserialize_tunnel_map_list(
+void sai_deserialize_acl_stage(
         _In_ const std::string& s,
-        _Out_ sai_tunnel_map_list_t& tunnelmap,
+        _Out_ sai_acl_stage_t& stage)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_acl_stage_t, (int32_t&)stage);
+}
+
+void sai_deserialize_acl_bind_point(
+        _In_ const std::string& s,
+        _Out_ sai_acl_bind_point_type_t& bind_point)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_acl_bind_point_type_t, (int32_t&)bind_point);
+}
+
+void sai_deserialize_acl_resource(
+        _In_ const json& j,
+        _Out_ sai_acl_resource_t& aclresource)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_acl_stage(j["stage"], aclresource.stage);
+    sai_deserialize_acl_bind_point(j["bind_point"], aclresource.bind_point);
+    sai_deserialize_number(j["avail_num"], aclresource.avail_num);
+}
+
+void sai_deserialize_acl_resource_list(
+        _In_ const std::string& s,
+        _Out_ sai_acl_resource_list_t& aclresource,
         _In_ bool countOnly)
 {
     SWSS_LOG_ENTER();
 
     json j = json::parse(s);
 
-    tunnelmap.count = j["count"];
+    aclresource.count = j["count"];
 
     if (countOnly)
     {
@@ -1905,24 +1906,25 @@ void sai_deserialize_tunnel_map_list(
 
     if (j["list"] == nullptr)
     {
-        tunnelmap.list = NULL;
+        aclresource.list = NULL;
         return;
     }
 
     json arr = j["list"];
 
-    if (arr.size() != (size_t)tunnelmap.count)
+    if (arr.size() != (size_t)aclresource.count)
     {
-        SWSS_LOG_THROW("tunnel map count mismatch %lu vs %u", arr.size(), tunnelmap.count);
+        SWSS_LOG_ERROR("acl resource count mismatch %lu vs %u", arr.size(), aclresource.count);
+        throw std::runtime_error("acl resource count mismatch");
     }
 
-    tunnelmap.list = sai_alloc_n_of_ptr_type(tunnelmap.count, tunnelmap.list);
+    aclresource.list = sai_alloc_n_of_ptr_type(aclresource.count, aclresource.list);
 
-    for (uint32_t i = 0; i < tunnelmap.count; ++i)
+    for (uint32_t i = 0; i < aclresource.count; ++i)
     {
         const json& item = arr[i];
 
-        sai_deserialize_tunnel_map(item, tunnelmap.list[i]);
+        sai_deserialize_acl_resource(item, aclresource.list[i]);
     }
 }
 
@@ -2242,8 +2244,8 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             return sai_deserialize_qos_map_list(s, attr.value.qosmap, countOnly);
 
-        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-            return sai_deserialize_tunnel_map_list(s, attr.value.tunnelmap, countOnly);
+        case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+            return sai_deserialize_acl_resource_list(s, attr.value.aclresource, countOnly);
 
             // ACL FIELD DATA
 
@@ -2396,17 +2398,6 @@ void sai_deserialize_vlan_id(
     sai_deserialize_number(s, vlan_id);
 }
 
-#if true
-void sai_deserialize_fdb_entry_bridge_type(
-        _In_ const std::string& s,
-        _Out_ sai_fdb_entry_bridge_type_t& fdb_entry_bridge_type)
-{
-    SWSS_LOG_ENTER();
-
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_fdb_entry_bridge_type_t, (int32_t&)fdb_entry_bridge_type);
-}
-#endif
-
 void sai_deserialize_fdb_entry(
         _In_ const std::string &s,
         _Out_ sai_fdb_entry_t &fdb_entry)
@@ -2417,13 +2408,7 @@ void sai_deserialize_fdb_entry(
 
     sai_deserialize_object_id(j["switch_id"], fdb_entry.switch_id);
     sai_deserialize_mac(j["mac"], fdb_entry.mac_address);
-#if true
-    sai_deserialize_vlan_id(j["vlan"], fdb_entry.vlan_id);
-    sai_deserialize_fdb_entry_bridge_type(j["bridge_type"], fdb_entry.bridge_type);
-    sai_deserialize_object_id(j["bridge_id"], fdb_entry.bridge_id);
-#else
-    sai_deserialize_object_id(j["bvid"], fdb_entry.bvid);
-#endif
+    sai_deserialize_object_id(j["bvid"], fdb_entry.bv_id);
 }
 
 void sai_deserialize_neighbor_entry(
@@ -2699,8 +2684,8 @@ void sai_deserialize_free_attribute_value(
             sai_free_list(attr.value.qosmap);
             break;
 
-        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-            sai_free_list(attr.value.tunnelmap);
+        case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+            sai_free_list(attr.value.aclresource);
             break;
 
             /* ACL FIELD DATA */

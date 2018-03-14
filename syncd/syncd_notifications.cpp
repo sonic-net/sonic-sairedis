@@ -88,9 +88,9 @@ void redisPutFdbEntryToAsicView(
 
     std::string key = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strFdbEntry);
 
-    if (fdb->fdb_entry.switch_id == SAI_NULL_OBJECT_ID ||
-        // fdb->fdb_entry.bridge_id == SAI_NULL_OBJECT_ID || // TODO later use bv_id
-        sai_metadata_get_fdb_entry_bridge_type_name(fdb->fdb_entry.bridge_type) == NULL)
+    if ((fdb->fdb_entry.switch_id == SAI_NULL_OBJECT_ID ||
+         fdb->fdb_entry.bv_id == SAI_NULL_OBJECT_ID) && 
+        (fdb->event_type != SAI_FDB_EVENT_FLUSHED))
     {
         SWSS_LOG_WARN("skipped to put int db: %s", strFdbEntry.c_str());
         return;
@@ -105,7 +105,7 @@ void redisPutFdbEntryToAsicView(
 
     if (fdb->event_type == SAI_FDB_EVENT_FLUSHED)
     {
-        sai_vlan_id_t vlan_id = fdb->fdb_entry.vlan_id;
+        sai_object_id_t bv_id = fdb->fdb_entry.bv_id;
         sai_object_id_t port_oid = 0;
         bool port_oid_found = false;
         
@@ -124,18 +124,16 @@ void redisPutFdbEntryToAsicView(
             return;
         }
                 
-        if (!port_oid && !vlan_id)
+        if (!port_oid && !bv_id)
         {
             /* we got a flush all fdb event here */
             /* example of a flush all fdb event   */
             /*
             [{
             "fdb_entry":"{
-                \"bridge_id\":\"oid:0x0\",
-                \"bridge_type\":\"SAI_FDB_ENTRY_BRIDGE_TYPE_1Q\",
+                \"bv_id\":\"oid:0x0\",
                 \"mac\":\"00:00:00:00:00:00\",
-                \"switch_id\":\"oid:0x21000000000000\",
-                \"vlan\":\"0\"}",
+                \"switch_id\":\"oid:0x21000000000000\"}",
             "fdb_event":"SAI_FDB_EVENT_FLUSHED",
                 "list":[
                     {"id":"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID","value":"oid:0x0"},
@@ -165,7 +163,7 @@ void redisPutFdbEntryToAsicView(
                 }
             }
         }
-        else if( port_oid && !vlan_id )
+        else if (port_oid && !bv_id)
         {
             /* we got a flush port fdb event here        */
             /* not supported yet, this is a place holder */
@@ -173,11 +171,9 @@ void redisPutFdbEntryToAsicView(
             /*
             [{
             "fdb_entry":"{
-                \"bridge_id\":\"oid:0x0\",
-                \"bridge_type\":\"SAI_FDB_ENTRY_BRIDGE_TYPE_1Q\",
+                \"bv_id\":\"oid:0x0\",
                 \"mac\":\"00:00:00:00:00:00\",
-                \"switch_id\":\"oid:0x21000000000000\",
-                \"vlan\":\"0\"}",
+                \"switch_id\":\"oid:0x21000000000000\"}",
             "fdb_event":"SAI_FDB_EVENT_FLUSHED",
                 "list":[
                     {"id":"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID","value":"oid:0x3a0000000009cf"},
@@ -186,9 +182,9 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush port fdb event, port_oid = %lu, vlan_id = %hd, unsupported", port_oid, vlan_id);
+            SWSS_LOG_ERROR("received a flush port fdb event, port_oid = 0x%lx, bv_id = 0x%lx, unsupported", port_oid, bv_id);
         }
-        else if(!port_oid && vlan_id)
+        else if (!port_oid && bv_id)
         {
             /* we got a flush vlan fdb event here        */
             /* not supported yet, this is a place holder */
@@ -196,11 +192,9 @@ void redisPutFdbEntryToAsicView(
             /*
             [{
             "fdb_entry":"{
-                \"bridge_id\":\"oid:0x0\",
-                \"bridge_type\":\"SAI_FDB_ENTRY_BRIDGE_TYPE_1Q\",
+                \"bridge_id\":\"oid:0x23000000000000\",
                 \"mac\":\"00:00:00:00:00:00\",
-                \"switch_id\":\"oid:0x21000000000000\",
-                \"vlan\":\"1000\"}",
+                \"switch_id\":\"oid:0x21000000000000\"}",
             "fdb_event":"SAI_FDB_EVENT_FLUSHED",
                 "list":[
                     {"id":"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID","value":"oid:0x0"},
@@ -209,12 +203,12 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush vlan fdb event, port_oid = %lu, vlan_id = %hd, unsupported", port_oid, vlan_id);
+            SWSS_LOG_ERROR("received a flush vlan fdb event, port_oid = 0x%lx, bv_id = 0x%lx, unsupported", port_oid, bv_id);
             
         }
         else
         {
-            SWSS_LOG_ERROR("received a flush fdb event, port_oid = %lu, vlan_id = %hd, unsupported", port_oid, vlan_id);
+            SWSS_LOG_ERROR("received a flush fdb event, port_oid = 0x%lx, bv_id = 0x%lx, unsupported", port_oid, bv_id);
         }
 
         return;
@@ -269,8 +263,7 @@ void process_on_fdb_event(
 
         fdb->fdb_entry.switch_id = translate_rid_to_vid(fdb->fdb_entry.switch_id, SAI_NULL_OBJECT_ID);
 
-        // TODO later it should be bv_id
-        fdb->fdb_entry.bridge_id = translate_rid_to_vid(fdb->fdb_entry.bridge_id, fdb->fdb_entry.switch_id);
+        fdb->fdb_entry.bv_id = translate_rid_to_vid(fdb->fdb_entry.bv_id, fdb->fdb_entry.switch_id);
 
         translate_rid_to_vid_list(SAI_OBJECT_TYPE_FDB_ENTRY, fdb->fdb_entry.switch_id, fdb->attr_count, fdb->attr);
 

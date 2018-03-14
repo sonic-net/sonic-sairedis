@@ -283,7 +283,7 @@ void fdbAgingThreadProc()
  *
  * We could use this table to choose switch vendor.
  */
-static service_method_table_t g_service_method_table;
+static sai_service_method_table_t g_service_method_table;
 
 void clear_local_state()
 {
@@ -312,7 +312,7 @@ void clear_local_state()
 
 sai_status_t sai_api_initialize(
         _In_ uint64_t flags,
-        _In_ const service_method_table_t *service_method_table)
+        _In_ const sai_service_method_table_t *service_method_table)
 {
     MUTEX();
 

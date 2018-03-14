@@ -2122,7 +2122,7 @@ int findAllChildsInDependencyTreeCount(
 
         auto &meta = member->attrmetadata;
 
-        if (HAS_FLAG_READ_ONLY(meta->flags))
+        if (SAI_HAS_FLAG_READ_ONLY(meta->flags))
         {
             /*
              * Skip read only attributes.
@@ -2393,7 +2393,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
 
                 const sai_attr_metadata_t* meta = attr.second->getAttrMetadata();
 
-                if (HAS_FLAG_CREATE_ONLY(meta->flags) && currentObj->hasAttr(attrId))
+                if (SAI_HAS_FLAG_CREATE_ONLY(meta->flags) && currentObj->hasAttr(attrId))
                 {
                     has_different_create_only_attr = true;
 
@@ -3064,7 +3064,7 @@ void bringNonRemovableObjectToDefaultState(
 
         const auto &meta = attr->getAttrMetadata();
 
-        if (!HAS_FLAG_CREATE_AND_SET(meta->flags))
+        if (!SAI_HAS_FLAG_CREATE_AND_SET(meta->flags))
         {
             SWSS_LOG_THROW("attribute %s is not CREATE_AND_SET, bug?", meta->attridname);
         }
@@ -3436,7 +3436,7 @@ void setAttributeOnCurrentObject(
 
     const auto meta = inattr->getAttrMetadata();
 
-    if (!HAS_FLAG_CREATE_AND_SET(meta->flags))
+    if (!SAI_HAS_FLAG_CREATE_AND_SET(meta->flags))
     {
         SWSS_LOG_THROW("can't set attribute %s on current object %s:%s since it's not CREATE_AND_SET",
                 meta->attridname,
@@ -4015,7 +4015,7 @@ bool performObjectSetTransition(
              * value on current best match object.
              */
 
-            if (HAS_FLAG_CREATE_AND_SET(meta->flags))
+            if (SAI_HAS_FLAG_CREATE_AND_SET(meta->flags))
             {
                 SWSS_LOG_DEBUG("Attr %s can be updated from %s to %s",
                         meta->attridname,
@@ -4093,14 +4093,14 @@ bool performObjectSetTransition(
          * safe to make SET operation.
          *
          * XXX previously we had (meta->flags == SAI_ATTR_FLAGS_CREATE_AND_SET)
-         * If it's not conditional current HAS_FLAG should not matter. But it
+         * If it's not conditional current SAI_HAS_FLAG should not matter. But it
          * can also be mandatory on create but this does not matter since if
          * it's mandatory on create then current object already exists co we can
          * still perform update on this attribute because it was passed during
          * creation.
          */
 
-        if (HAS_FLAG_CREATE_AND_SET(meta->flags) && !conditional)
+        if (SAI_HAS_FLAG_CREATE_AND_SET(meta->flags) && !conditional)
         {
             SWSS_LOG_INFO("Missing current attr %s can be set to %s",
                     meta->attridname,
@@ -4121,7 +4121,7 @@ bool performObjectSetTransition(
 
         if (currentBestMatch->getObjectStatus() == SAI_OBJECT_STATUS_MATCHED)
         {
-            if (HAS_FLAG_CREATE_ONLY(meta->flags))
+            if (SAI_HAS_FLAG_CREATE_ONLY(meta->flags))
             {
                 /*
                  * Attribute is create only attribute on matched object. This
@@ -4239,10 +4239,10 @@ bool performObjectSetTransition(
 
         bool conditional = meta->isconditional;
 
-        if (conditional || HAS_FLAG_MANDATORY_ON_CREATE(meta->flags))
+        if (conditional || SAI_HAS_FLAG_MANDATORY_ON_CREATE(meta->flags))
         {
             if (currentBestMatch->getObjectStatus() == SAI_OBJECT_STATUS_MATCHED &&
-                    HAS_FLAG_CREATE_AND_SET(meta->flags))
+                    SAI_HAS_FLAG_CREATE_AND_SET(meta->flags))
             {
                 if (meta->objecttype == SAI_OBJECT_TYPE_SCHEDULER_GROUP &&
                         meta->attrid == SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID)
@@ -4321,7 +4321,7 @@ bool performObjectSetTransition(
 
             if (currentBestMatch->getObjectStatus() == SAI_OBJECT_STATUS_MATCHED)
             {
-                if (HAS_FLAG_CREATE_ONLY(meta->flags))
+                if (SAI_HAS_FLAG_CREATE_ONLY(meta->flags))
                 {
                     /*
                      * Attribute is create only attribute on matched object. This

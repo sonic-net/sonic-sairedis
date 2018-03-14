@@ -9,7 +9,7 @@
 #include "swss/schema.h"
 #include "swss/notificationproducer.h"
 
-#include "../../meta/saiserialize.h"
+#include "../../meta/sai_serialize.h"
 
 extern "C" {
 #include <sai.h>
@@ -57,7 +57,7 @@ int profile_get_next_value(
     return -1;
 }
 
-service_method_table_t test_services = {
+sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -66,6 +66,12 @@ service_method_table_t test_services = {
     if ((x) != SAI_STATUS_SUCCESS) \
 {\
     SWSS_LOG_THROW("expected success on: %s", #x);\
+}
+
+#define NOT_SUCCESS(x) \
+    if ((x) == SAI_STATUS_SUCCESS) \
+{\
+    SWSS_LOG_THROW("expected failure, got success on: %s", #x);\
 }
 
 #define ASSERT_TRUE(x)\
@@ -238,6 +244,368 @@ void test_set_readonly_attribute_via_redis()
     ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) != SAI_STATUS_SUCCESS);
 }
 
+
+void sai_fdb_event_notification(
+        _In_ uint32_t count,
+        _In_ const sai_fdb_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("got fdb notification count %u", count);
+}
+
+sai_fdb_entry_t create_fdb_entry(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t vlan_id,
+        _In_ sai_object_id_t bp_id,
+        _In_ sai_fdb_entry_type_t type,
+        _In_ uint8_t mac_end)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr.value.s32 = type;
+
+    sai_mac_t mac = {1,1,0,0,0,0};
+
+    mac[5] = mac_end;
+
+    sai_fdb_entry_t fe;
+
+    fe.switch_id = switch_id;
+    fe.bv_id = vlan_id;
+    memcpy(fe.mac_address, mac, sizeof(sai_mac_t));
+
+    SUCCESS(sai_metadata_sai_fdb_api->create_fdb_entry(&fe, 1, &attr));
+
+    attr.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attr.value.oid = bp_id;
+
+    SUCCESS(sai_metadata_sai_fdb_api->set_fdb_entry_attribute(&fe, &attr));
+
+    return fe;
+}
+
+#define ASSERT_FDB_EXISTS(fdb) \
+{\
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;\
+    SUCCESS(sai_metadata_sai_fdb_api->get_fdb_entry_attribute(&fdb, 1, &attr));\
+}
+
+#define ASSERT_FDB_NOT_EXISTS(fdb) \
+{\
+    attr.id = SAI_FDB_ENTRY_ATTR_TYPE;\
+    NOT_SUCCESS(sai_metadata_sai_fdb_api->get_fdb_entry_attribute(&fdb, 1, &attr));\
+}
+
+#define CREATE_ENTRIES()\
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 0, NULL));\
+        auto v2bp1d = create_fdb_entry(switch_id, vlan2_id, bp1, SAI_FDB_ENTRY_TYPE_DYNAMIC, 1);\
+        auto v2bp1s = create_fdb_entry(switch_id, vlan2_id, bp1, SAI_FDB_ENTRY_TYPE_STATIC,  2);\
+        auto v2bp2d = create_fdb_entry(switch_id, vlan2_id, bp2, SAI_FDB_ENTRY_TYPE_DYNAMIC, 3);\
+        auto v2bp2s = create_fdb_entry(switch_id, vlan2_id, bp2, SAI_FDB_ENTRY_TYPE_STATIC,  4);\
+        auto v3bp1d = create_fdb_entry(switch_id, vlan3_id, bp1, SAI_FDB_ENTRY_TYPE_DYNAMIC, 5);\
+        auto v3bp1s = create_fdb_entry(switch_id, vlan3_id, bp1, SAI_FDB_ENTRY_TYPE_STATIC,  6);\
+        auto v3bp2d = create_fdb_entry(switch_id, vlan3_id, bp2, SAI_FDB_ENTRY_TYPE_DYNAMIC, 7);\
+        auto v3bp2s = create_fdb_entry(switch_id, vlan3_id, bp2, SAI_FDB_ENTRY_TYPE_STATIC,  8);
+
+void test_fdb_flush()
+{
+    SWSS_LOG_ENTER();
+
+    // TODO we need 10 cases, 10th where nothing was removed
+
+    sai_attribute_t attr;
+
+    sai_object_id_t switch_id;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    SUCCESS(sai_metadata_sai_switch_api->create_switch(&switch_id, 1, &attr));
+
+    // set notification callback
+
+    attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+    attr.value.ptr = (void*)&sai_fdb_event_notification;
+
+    SUCCESS(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
+
+    SUCCESS(sai_metadata_sai_switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    sai_object_id_t bridge_id = attr.value.oid;
+
+    sai_object_id_t list[100];
+
+    attr.id = SAI_BRIDGE_ATTR_PORT_LIST;
+    attr.value.objlist.count = 100;
+    attr.value.objlist.list = list;
+
+    SUCCESS(sai_metadata_sai_bridge_api->get_bridge_attribute(bridge_id, 1, &attr));
+
+    sai_object_id_t bp1 = list[1];
+    sai_object_id_t bp2 = list[2];
+
+    SWSS_LOG_NOTICE("bridge ports: %s, %s",
+            sai_serialize_object_id(bp1).c_str(),
+            sai_serialize_object_id(bp2).c_str());
+
+    // create 2nd vlan
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 2;
+
+    sai_object_id_t vlan2_id;
+
+    SUCCESS(sai_metadata_sai_vlan_api->create_vlan(&vlan2_id, switch_id, 1, &attr));
+
+    SWSS_LOG_NOTICE("vlan 2 id: %s", sai_serialize_object_id(vlan2_id).c_str());
+
+    // create 3rd vlan
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 3;
+
+    sai_object_id_t vlan3_id;
+
+    SUCCESS(sai_metadata_sai_vlan_api->create_vlan(&vlan3_id, switch_id, 1, &attr));
+
+    SWSS_LOG_NOTICE("vlan 3 id: %s", sai_serialize_object_id(vlan3_id).c_str());
+
+    SWSS_LOG_NOTICE("1. flush all entries");
+
+    {
+        CREATE_ENTRIES();
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 0, NULL));
+
+        ASSERT_FDB_NOT_EXISTS(v2bp1d);
+        ASSERT_FDB_NOT_EXISTS(v2bp1s);
+        ASSERT_FDB_NOT_EXISTS(v2bp2d);
+        ASSERT_FDB_NOT_EXISTS(v2bp2s);
+        ASSERT_FDB_NOT_EXISTS(v3bp1d);
+        ASSERT_FDB_NOT_EXISTS(v3bp1s);
+        ASSERT_FDB_NOT_EXISTS(v3bp2d);
+        ASSERT_FDB_NOT_EXISTS(v3bp2s);
+    }
+
+    SWSS_LOG_NOTICE("2a. flush dynamic entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attr.id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+        attr.value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 1, &attr));
+
+        ASSERT_FDB_NOT_EXISTS(v2bp1d);
+        ASSERT_FDB_EXISTS(v2bp1s);
+        ASSERT_FDB_NOT_EXISTS(v2bp2d);
+        ASSERT_FDB_EXISTS(v2bp2s);
+        ASSERT_FDB_NOT_EXISTS(v3bp1d);
+        ASSERT_FDB_EXISTS(v3bp1s);
+        ASSERT_FDB_NOT_EXISTS(v3bp2d);
+        ASSERT_FDB_EXISTS(v3bp2s);
+    }
+
+    SWSS_LOG_NOTICE("2b. flush static entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attr.id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+        attr.value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_STATIC;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 1, &attr));
+
+        ASSERT_FDB_EXISTS(v2bp1d);
+        ASSERT_FDB_NOT_EXISTS(v2bp1s);
+        ASSERT_FDB_EXISTS(v2bp2d);
+        ASSERT_FDB_NOT_EXISTS(v2bp2s);
+        ASSERT_FDB_EXISTS(v3bp1d);
+        ASSERT_FDB_NOT_EXISTS(v3bp1s);
+        ASSERT_FDB_EXISTS(v3bp2d);
+        ASSERT_FDB_NOT_EXISTS(v3bp2s);
+    }
+
+    SWSS_LOG_NOTICE("3a. flush vlan 2 entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attr.id = SAI_FDB_FLUSH_ATTR_BV_ID;
+        attr.value.oid = vlan2_id;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 1, &attr));
+
+        ASSERT_FDB_NOT_EXISTS(v2bp1d);
+        ASSERT_FDB_NOT_EXISTS(v2bp1s);
+        ASSERT_FDB_NOT_EXISTS(v2bp2d);
+        ASSERT_FDB_NOT_EXISTS(v2bp2s);
+        ASSERT_FDB_EXISTS(v3bp1d);
+        ASSERT_FDB_EXISTS(v3bp1s);
+        ASSERT_FDB_EXISTS(v3bp2d);
+        ASSERT_FDB_EXISTS(v3bp2s);
+    }
+
+    SWSS_LOG_NOTICE("3b. flush vlan 3 entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attr.id = SAI_FDB_FLUSH_ATTR_BV_ID;
+        attr.value.oid = vlan3_id;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 1, &attr));
+
+        ASSERT_FDB_EXISTS(v2bp1d);
+        ASSERT_FDB_EXISTS(v2bp1s);
+        ASSERT_FDB_EXISTS(v2bp2d);
+        ASSERT_FDB_EXISTS(v2bp2s);
+        ASSERT_FDB_NOT_EXISTS(v3bp1d);
+        ASSERT_FDB_NOT_EXISTS(v3bp1s);
+        ASSERT_FDB_NOT_EXISTS(v3bp2d);
+        ASSERT_FDB_NOT_EXISTS(v3bp2s);
+    }
+
+    SWSS_LOG_NOTICE("4a. flush bridge port 1 entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attr.id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+        attr.value.oid = bp1;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 1, &attr));
+
+        ASSERT_FDB_NOT_EXISTS(v2bp1d);
+        ASSERT_FDB_NOT_EXISTS(v2bp1s);
+        ASSERT_FDB_EXISTS(v2bp2d);
+        ASSERT_FDB_EXISTS(v2bp2s);
+        ASSERT_FDB_NOT_EXISTS(v3bp1d);
+        ASSERT_FDB_NOT_EXISTS(v3bp1s);
+        ASSERT_FDB_EXISTS(v3bp2d);
+        ASSERT_FDB_EXISTS(v3bp2s);
+    }
+
+    SWSS_LOG_NOTICE("4b. flush vlan 3 entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attr.id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+        attr.value.oid = bp2;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 1, &attr));
+
+        ASSERT_FDB_EXISTS(v2bp1d);
+        ASSERT_FDB_EXISTS(v2bp1s);
+        ASSERT_FDB_NOT_EXISTS(v2bp2d);
+        ASSERT_FDB_NOT_EXISTS(v2bp2s);
+        ASSERT_FDB_EXISTS(v3bp1d);
+        ASSERT_FDB_EXISTS(v3bp1s);
+        ASSERT_FDB_NOT_EXISTS(v3bp2d);
+        ASSERT_FDB_NOT_EXISTS(v3bp2s);
+    }
+
+    sai_attribute_t attrs[3];
+
+    SWSS_LOG_NOTICE("5. flush vlan 2 and and type dynamic entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attrs[0].id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+        attrs[0].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+        attrs[1].id = SAI_FDB_FLUSH_ATTR_BV_ID;
+        attrs[1].value.oid = vlan2_id;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 2, attrs));
+
+        ASSERT_FDB_NOT_EXISTS(v2bp1d);
+        ASSERT_FDB_EXISTS(v2bp1s);
+        ASSERT_FDB_NOT_EXISTS(v2bp2d);
+        ASSERT_FDB_EXISTS(v2bp2s);
+        ASSERT_FDB_EXISTS(v3bp1d);
+        ASSERT_FDB_EXISTS(v3bp1s);
+        ASSERT_FDB_EXISTS(v3bp2d);
+        ASSERT_FDB_EXISTS(v3bp2s);
+    }
+
+    SWSS_LOG_NOTICE("6. flush vlan 2 and and bridge port 2 entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attrs[0].id = SAI_FDB_FLUSH_ATTR_BV_ID;
+        attrs[0].value.oid = vlan2_id;
+        attrs[1].id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+        attrs[1].value.oid = bp2;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 2, attrs));
+
+        ASSERT_FDB_EXISTS(v2bp1d);
+        ASSERT_FDB_EXISTS(v2bp1s);
+        ASSERT_FDB_NOT_EXISTS(v2bp2d);
+        ASSERT_FDB_NOT_EXISTS(v2bp2s);
+        ASSERT_FDB_EXISTS(v3bp1d);
+        ASSERT_FDB_EXISTS(v3bp1s);
+        ASSERT_FDB_EXISTS(v3bp2d);
+        ASSERT_FDB_EXISTS(v3bp2s);
+    }
+
+    SWSS_LOG_NOTICE("7. flush type dynamic and and bridge port 2 entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attrs[0].id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+        attrs[0].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+        attrs[1].id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+        attrs[1].value.oid = bp2;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 2, attrs));
+
+        ASSERT_FDB_EXISTS(v2bp1d);
+        ASSERT_FDB_EXISTS(v2bp1s);
+        ASSERT_FDB_NOT_EXISTS(v2bp2d);
+        ASSERT_FDB_EXISTS(v2bp2s);
+        ASSERT_FDB_EXISTS(v3bp1d);
+        ASSERT_FDB_EXISTS(v3bp1s);
+        ASSERT_FDB_NOT_EXISTS(v3bp2d);
+        ASSERT_FDB_EXISTS(v3bp2s);
+    }
+
+    SWSS_LOG_NOTICE("8. flush type dynamic and and bridge port 2 and vlan 3 entries");
+
+    {
+        CREATE_ENTRIES();
+
+        attrs[0].id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+        attrs[0].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+        attrs[1].id = SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID;
+        attrs[1].value.oid = bp2;
+        attrs[2].id = SAI_FDB_FLUSH_ATTR_BV_ID;
+        attrs[2].value.oid = vlan3_id;
+
+        SUCCESS(sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 3, attrs));
+
+        ASSERT_FDB_EXISTS(v2bp1d);
+        ASSERT_FDB_EXISTS(v2bp1s);
+        ASSERT_FDB_EXISTS(v2bp2d);
+        ASSERT_FDB_EXISTS(v2bp2s);
+        ASSERT_FDB_EXISTS(v3bp1d);
+        ASSERT_FDB_EXISTS(v3bp1s);
+        ASSERT_FDB_NOT_EXISTS(v3bp2d);
+        ASSERT_FDB_EXISTS(v3bp2s);
+    }
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -246,9 +614,10 @@ int main()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    SUCCESS(sai_api_initialize(0, (service_method_table_t*)&test_services));
+    SUCCESS(sai_api_initialize(0, (sai_service_method_table_t*)&test_services));
 
-    sai_metadata_apis_query(sai_api_query);
+    sai_apis_t apis;
+    sai_metadata_apis_query(sai_api_query, &apis);
 
     //swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
@@ -257,6 +626,8 @@ int main()
     test_set_readonly_attribute();
 
     test_set_readonly_attribute_via_redis();
+
+    test_fdb_flush();
 
     // make proper unitinialize to close unittest thread
     sai_api_uninitialize();

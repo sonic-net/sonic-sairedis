@@ -2,7 +2,7 @@
 #define __SAI_VS_SWITCH_BCM56850__
 
 #include "meta/sai_meta.h"
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
 
 void init_switch_BCM56850(

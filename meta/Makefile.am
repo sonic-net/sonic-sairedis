@@ -61,7 +61,8 @@ WARN = \
 
 libsaimeta_la_SOURCES =  \
 					  ../SAI/meta/saimetadata.c \
-					  ../SAI/meta/saimetadatautils.c
+					  ../SAI/meta/saimetadatautils.c \
+					  ../SAI/meta/saiserialize.c
 
 libsaimeta_la_CFLAGS = $(DBGFLAGS) $(WARN)
 
