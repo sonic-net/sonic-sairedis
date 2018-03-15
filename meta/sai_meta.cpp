@@ -3632,6 +3632,14 @@ sai_status_t meta_sai_set_fdb_entry(
     return status;
 }
 
+#define META_LOG_STATUS(s)\
+    if (s == SAI_STATUS_SUCCESS)                                           \
+        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(s).c_str()); \
+    else if (s == SAI_STATUS_BUFFER_OVERFLOW)                              \
+        SWSS_LOG_INFO("get status: %s", sai_serialize_status(s).c_str());  \
+    else                                                                   \
+        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(s).c_str());
+
 sai_status_t meta_sai_get_fdb_entry(
         _In_ const sai_fdb_entry_t* fdb_entry,
         _In_ uint32_t attr_count,
@@ -3667,14 +3675,7 @@ sai_status_t meta_sai_get_fdb_entry(
 
     status = get(fdb_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -3962,14 +3963,7 @@ sai_status_t meta_sai_get_neighbor_entry(
 
     status = get(neighbor_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -4269,14 +4263,7 @@ sai_status_t meta_sai_get_route_entry(
 
     status = get(route_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -4567,14 +4554,7 @@ sai_status_t meta_sai_get_oid(
 
     status = get(object_type, object_id, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -4627,14 +4607,7 @@ sai_status_t meta_sai_get_stats_oid(
 
     status = get(object_type, object_id, count, counter_id_list, counter_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     return status;
 }
