@@ -5,6 +5,10 @@
 #include "swss/tokenize.h"
 #include <limits.h>
 
+extern "C" {
+#include <sai.h>
+}
+
 #include <iostream>
 #include <map>
 
@@ -65,12 +69,10 @@ std::set<sai_object_id_t> initViewRemovedVidSet;
  */
 volatile bool g_asicInitViewMode = false;
 
-#ifdef SAITHRIFT
 /*
- * SAI switch global needed for RPC server
+ * SAI switch global needed for RPC server and for remove_switch
  */
 sai_object_id_t gSwitchId;
-#endif
 
 struct cmdOptions
 {
@@ -1234,10 +1236,8 @@ sai_status_t handle_generic(
                     if (object_type == SAI_OBJECT_TYPE_SWITCH)
                     {
                         on_switch_create(switch_id);
-#ifdef SAITHRIFT
                         gSwitchId = real_object_id;
                         SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
-#endif
                     }
                 }
 
@@ -3393,6 +3393,15 @@ int syncd_main(int argc, char **argv)
 
             warmRestartHint = false;
         }
+    }
+
+    SWSS_LOG_NOTICE("Removing the switch gSwitchId=0x%lx", gSwitchId);
+    sai_switch_api_t *sai_switch_api = NULL;
+    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+    status = sai_switch_api->remove_switch(gSwitchId);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_NOTICE("Can't delete a switch. gSwitchId=0x%lx status=0xx", gSwitchId, status);
     }
 
     SWSS_LOG_NOTICE("calling api uninitialize");
