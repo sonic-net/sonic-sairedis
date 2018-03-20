@@ -580,7 +580,7 @@ void FlexCounter::flexCounterThread(void)
 
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     swss::RedisPipeline pipeline(&db);
-    swss::Table countersTable(&pipeline, COUNTERS_TABLE, DEFAULT_TABLE_NAME_SEPARATOR, true);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
 
     while (m_runFlexCounterThread)
     {
