@@ -174,6 +174,8 @@ class SwitchState
 
     ObjectHash objectHash;
 
+    std::map<std::string, std::map<int, uint64_t>> countersMap;
+
     sai_object_id_t getSwitchId() const
     {
         SWSS_LOG_ENTER();

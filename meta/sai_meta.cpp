@@ -2416,11 +2416,20 @@ sai_status_t meta_generic_validation_get(
 template <typename T>
 sai_status_t meta_generic_validation_get_stats(
         _In_ const sai_object_meta_key_t& meta_key,
-        _In_ const uint32_t count,
+        _In_ uint32_t count,
         _In_ const T *counter_id_list,
         _In_ const uint64_t *counter_list)
 {
     SWSS_LOG_ENTER();
+
+    if (meta_unittests_enabled() && (count & 0x80000000))
+    {
+        /*
+         * If last bit of counters count is set to high, and unittests are enabled,
+         * then this api can be used to SET counter values by user for debugging purposes.
+         */
+        count = count & ~0x80000000;
+    }
 
     if (count < 1)
     {
