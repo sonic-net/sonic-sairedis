@@ -518,6 +518,8 @@ void FlexCounter::collectCounters(
 
         countersTable.set(queueVidStr, values, "");
     }
+
+    countersTable.flush();
 }
 
 void FlexCounter::runPlugins(
@@ -577,7 +579,8 @@ void FlexCounter::flexCounterThread(void)
     SWSS_LOG_ENTER();
 
     swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    swss::Table countersTable(&db, COUNTERS_TABLE);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, DEFAULT_TABLE_NAME_SEPARATOR, true);
 
     while (m_runFlexCounterThread)
     {

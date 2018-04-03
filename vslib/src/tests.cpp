@@ -606,6 +606,76 @@ void test_fdb_flush()
     }
 }
 
+void test_get_stats()
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t expected_ports = 32;
+
+    sai_attribute_t attr;
+
+    sai_object_id_t switch_id;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    SUCCESS(sai_metadata_sai_switch_api->create_switch(&switch_id, 1, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+
+    SUCCESS(sai_metadata_sai_switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    ASSERT_TRUE(attr.value.u32 == expected_ports);
+
+    std::vector<sai_object_id_t> ports;
+
+    ports.resize(expected_ports);
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = expected_ports;
+    attr.value.objlist.list = ports.data();
+
+    SUCCESS(sai_metadata_sai_switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    ASSERT_TRUE(attr.value.objlist.count == expected_ports);
+
+    sai_port_stat_t ids[2];
+
+    ids[0] = SAI_PORT_STAT_IF_IN_OCTETS;
+    ids[1] = SAI_PORT_STAT_IF_OUT_OCTETS;
+
+    uint64_t values[2];
+
+    values[0] = 42;
+    values[1] = 42;
+
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, ids, values));
+
+    ASSERT_TRUE(values[0] == 0);
+    ASSERT_TRUE(values[1] == 0);
+
+    meta_unittests_enable(true);
+
+    values[0] = 77;
+    values[1] = 127;
+
+    // setting last bit of count value when unittest are enabled, will cause to perform SET on counters
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2 | 0x80000000, ids, values));
+
+    values[0] = 42;
+    values[1] = 42;
+
+    meta_unittests_enable(false);
+
+    ids[0] = SAI_PORT_STAT_IF_OUT_OCTETS;
+    ids[1] = SAI_PORT_STAT_IF_IN_OCTETS;
+
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, ids, values));
+
+    ASSERT_TRUE(values[0] == 127);
+    ASSERT_TRUE(values[1] == 77);
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -628,6 +698,8 @@ int main()
     test_set_readonly_attribute_via_redis();
 
     test_fdb_flush();
+
+    test_get_stats();
 
     // make proper unitinialize to close unittest thread
     sai_api_uninitialize();
