@@ -35,9 +35,7 @@ sai_status_t sai_redis_internal_notify_syncd(
 
         swss::Selectable *sel;
 
-        int fd;
-
-        int result = s.select(&sel, &fd, GET_RESPONSE_TIMEOUT);
+        int result = s.select(&sel, GET_RESPONSE_TIMEOUT);
 
         if (result == swss::Select::OBJECT)
         {

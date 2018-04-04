@@ -156,11 +156,10 @@ void bulk_nhgm_consumer_worker()
     swss::ConsumerTable c(&db, tableName);
     swss::Select cs;
     swss::Selectable *selectcs;
-    int tmpfd;
     int ret = 0;
 
     cs.addSelectable(&c);
-    while ((ret = cs.select(&selectcs, &tmpfd)) == swss::Select::OBJECT)
+    while ((ret = cs.select(&selectcs)) == swss::Select::OBJECT)
     {
         swss::KeyOpFieldsValuesTuple kco;
         c.pop(kco);

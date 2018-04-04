@@ -3343,9 +3343,7 @@ int syncd_main(int argc, char **argv)
         {
             swss::Selectable *sel = NULL;
 
-            int fd;
-
-            int result = s.select(&sel, &fd);
+            int result = s.select(&sel);
 
             if (sel == restartQuery.get())
             {
