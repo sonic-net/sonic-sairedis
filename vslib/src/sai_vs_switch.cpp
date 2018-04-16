@@ -215,8 +215,7 @@ void linkmsg_thread(
             {
                 swss::Selectable *temps = NULL;
 
-                int tempfd;
-                int result = s.select(&temps, &tempfd);
+                int result = s.select(&temps);
 
                 SWSS_LOG_INFO("select ended: %d", result);
             }

@@ -44,9 +44,7 @@ sai_status_t internal_redis_flush_fdb_entries(
 
         swss::Selectable *sel;
 
-        int fd;
-
-        int result = s.select(&sel, &fd, GET_RESPONSE_TIMEOUT);
+        int result = s.select(&sel, GET_RESPONSE_TIMEOUT);
 
         if (result == swss::Select::OBJECT)
         {

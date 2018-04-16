@@ -66,9 +66,7 @@ void ntf_thread()
     {
         swss::Selectable *sel;
 
-        int fd;
-
-        int result = s.select(&sel, &fd);
+        int result = s.select(&sel);
 
         if (sel == &g_redisNotificationTrheadEvent)
         {

@@ -49,10 +49,6 @@ std::string getSelectResultAsString(int result)
 
     switch (result)
     {
-        case swss::Select::FD:
-            res = "FD";
-            break;
-
         case swss::Select::ERROR:
             res = "ERROR";
             break;
@@ -198,9 +194,7 @@ sai_status_t internal_redis_generic_get(
 
         swss::Selectable *sel;
 
-        int fd;
-
-        int result = s.select(&sel, &fd, GET_RESPONSE_TIMEOUT);
+        int result = s.select(&sel, GET_RESPONSE_TIMEOUT);
 
         if (result == swss::Select::OBJECT)
         {
