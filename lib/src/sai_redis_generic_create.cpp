@@ -1,6 +1,7 @@
 #include "sai_redis.h"
 #include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
+#include "sairedis.h"
 
 bool switch_ids[MAX_SWITCHES] = {};
 
@@ -197,6 +198,94 @@ void redis_free_virtual_object_id(
     }
 }
 
+// wait for response
+sai_status_t redis_get_response(
+    _In_ std::string &key,
+    _In_ std::string op,
+    _In_ sai_object_type_t object_type)
+{
+    swss::Select s;
+
+    sai_status_t status;
+    std::string request;
+    std::string csr;
+
+    // For certain object types, no response is expected
+    if (!sai_return_obj_op_status(object_type))
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (op == "create")
+    {
+        csr = "C";
+    }
+    else if (op == "set")
+    {
+        csr = "S";
+    }
+    else if (op == "remove")
+    {
+        csr = "R";
+    }
+    else
+    {
+        //getting repsonse for other operations not supported.
+        return SAI_STATUS_SUCCESS;
+    }
+
+    s.addSelectable(g_redisApiResponseNtf.get());
+
+    while (true)
+    {
+        SWSS_LOG_DEBUG("wait for response");
+
+        swss::Selectable *sel;
+
+        int fd;
+
+        int result = s.select(&sel, &fd, CSR_RESPONSE_TIMEOUT);
+
+        if (result == swss::Select::OBJECT)
+        {
+            std::string retKey;
+            std::string str_sai_status;
+            std::vector<swss::FieldValueTuple> values;
+
+            g_redisApiResponseNtf->pop(retKey, str_sai_status, values);
+
+            // op in response should match the original request
+            if (key != retKey)
+            {
+                SWSS_LOG_ERROR("response key = %s, not matching request key %s", retKey.c_str(), key.c_str());
+                return SAI_STATUS_FAILURE;
+            }
+            SWSS_LOG_DEBUG("response: key = %s, op = %s, status = %s", key.c_str(), request.c_str(), str_sai_status.c_str());
+
+            sai_deserialize_status(str_sai_status, status);
+
+            if (g_record)
+            {
+                // first serialized is status
+                recordLine(csr + "|" + str_sai_status + "|" + key);
+            }
+
+            return status;
+        }
+
+        SWSS_LOG_ERROR("generic %s on %s failed due to SELECT operation result: %s",
+                request.c_str(), key.c_str(), getSelectResultAsString(result).c_str());
+        break;
+    }
+
+    if (g_record)
+    {
+        recordLine(csr + "|SAI_STATUS_FAILURE|" + key);
+    }
+
+    return SAI_STATUS_FAILURE;
+}
+
 sai_status_t internal_redis_generic_create(
         _In_ sai_object_type_t object_type,
         _In_ const std::string &serialized_object_id,
@@ -233,9 +322,7 @@ sai_status_t internal_redis_generic_create(
 
     g_asicState->set(key, entry, "create");
 
-    // we assume create will always succeed which may not be true
-    // we should make this synchronous call
-    return SAI_STATUS_SUCCESS;
+    return redis_get_response(key, "create", object_type);
 }
 
 sai_status_t redis_generic_create(

@@ -29,6 +29,7 @@ std::mutex g_mutex;
 std::shared_ptr<swss::RedisClient>          g_redisClient;
 std::shared_ptr<swss::ProducerTable>        getResponse;
 std::shared_ptr<swss::NotificationProducer> notifications;
+std::shared_ptr<swss::NotificationProducer> apiResponseNotifications;
 
 /*
  * TODO: Those are hard coded values for mlnx integration for v1.0.1 they need
@@ -73,6 +74,31 @@ volatile bool g_asicInitViewMode = false;
  * SAI switch global needed for RPC server and for remove_switch
  */
 sai_object_id_t gSwitchId;
+
+void internal_syncd_status_send(
+        _In_ const std::string &key,
+        _In_ sai_status_t status,
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &op)
+{
+    if (!sai_return_obj_op_status(object_type))
+    {
+        return;
+    }
+
+    // Supporting SAI api call status return for these operations.
+    if (op != "create" && op != "set" && op != "remove" && op != "none")
+    {
+        return;
+    }
+
+    std::string str_status = sai_serialize_status(status);
+
+    SWSS_LOG_INFO("sending response for %s on %s with status: %s", op.c_str(), key.c_str(), str_status.c_str());
+
+    std::vector<swss::FieldValueTuple> entry;
+    apiResponseNotifications->send(key, str_status, entry);
+}
 
 struct cmdOptions
 {
@@ -1160,7 +1186,8 @@ sai_status_t handle_generic(
 
     if (info->isnonobjectid)
     {
-        SWSS_LOG_THROW("passing non object id %s as generic object", info->objecttypename);
+        SWSS_LOG_ERROR("passing non object id %s as generic object", info->objecttypename);
+        return SAI_STATUS_INVALID_OBJECT_TYPE;
     }
 
     switch (api)
@@ -1176,7 +1203,8 @@ sai_status_t handle_generic(
 
                 if (switch_id == SAI_NULL_OBJECT_ID)
                 {
-                    SWSS_LOG_THROW("invalid switch_id translated from VID 0x%lx", object_id);
+                    SWSS_LOG_ERROR("invalid switch_id translated from VID 0x%lx", object_id);
+                    return SAI_STATUS_INVALID_OBJECT_ID;
                 }
 
                 if (object_type != SAI_OBJECT_TYPE_SWITCH)
@@ -1198,8 +1226,8 @@ sai_status_t handle_generic(
                          * NOTE: to support multiple switches we need support
                          * here for create.
                          */
-
-                        SWSS_LOG_THROW("creating multiple switches is not supported yet, FIXME");
+                        SWSS_LOG_ERROR("creating multiple switches is not supported yet, FIXME");
+                        return SAI_STATUS_NOT_SUPPORTED;
                     }
                 }
 
@@ -1338,8 +1366,8 @@ sai_status_t handle_generic(
             }
 
         default:
-
-            SWSS_LOG_THROW("common api (%s) is not implemented", sai_serialize_common_api(api).c_str());
+            SWSS_LOG_ERROR("common api (%s) is not implemented", sai_serialize_common_api(api).c_str());
+            return SAI_STATUS_NOT_SUPPORTED;
     }
 }
 
@@ -1393,7 +1421,8 @@ sai_status_t handle_non_object_id(
             return info->get(&meta_key, attr_count, attr_list);
 
         default:
-            SWSS_LOG_THROW("other apis not implemented");
+            SWSS_LOG_ERROR("other apis not implemented");
+            return SAI_STATUS_NOT_SUPPORTED;
     }
 }
 
@@ -2335,6 +2364,7 @@ sai_status_t processEvent(
 
     const std::string &str_object_type = key.substr(0, key.find(":"));
     const std::string &str_object_id = key.substr(key.find(":") + 1);
+    sai_status_t status;
 
     SWSS_LOG_INFO("key: %s op: %s", key.c_str(), op.c_str());
 
@@ -2378,7 +2408,10 @@ sai_status_t processEvent(
     }
     else
     {
-        SWSS_LOG_THROW("api '%s' is not implemented", op.c_str());
+        status = SAI_STATUS_NOT_IMPLEMENTED;
+        SWSS_LOG_ERROR("api '%s' is not implemented", op.c_str());
+        internal_syncd_status_send(key, status, SAI_OBJECT_TYPE_MAX, op);
+        return status;
     }
 
     sai_object_type_t object_type;
@@ -2390,7 +2423,10 @@ sai_status_t processEvent(
 
     if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_MAX)
     {
-        SWSS_LOG_THROW("undefined object type %s", sai_serialize_object_type(object_type).c_str());
+        status = SAI_STATUS_INVALID_OBJECT_TYPE;
+        SWSS_LOG_ERROR("undefined object type %s", sai_serialize_object_type(object_type).c_str());
+        internal_syncd_status_send(key, status, object_type, op);
+        return status;
     }
 
     const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
@@ -2449,8 +2485,6 @@ sai_status_t processEvent(
     // TODO use metadata utils
     auto info = sai_metadata_get_object_type_info(object_type);
 
-    sai_status_t status;
-
     /*
      * TODO use sai meta key deserialize
      */
@@ -2460,6 +2494,8 @@ sai_status_t processEvent(
         sai_object_meta_key_t meta_key;
 
         meta_key.objecttype = object_type;
+
+        status = SAI_STATUS_SUCCESS;
 
         switch (object_type)
         {
@@ -2476,11 +2512,13 @@ sai_status_t processEvent(
                 break;
 
             default:
-
-                SWSS_LOG_THROW("non object id %s is not supported yet, FIXME", info->objecttypename);
+                status = SAI_STATUS_NOT_SUPPORTED;
+                SWSS_LOG_ERROR("non object id %s is not supported yet, FIXME", info->objecttypename);
         }
-
-        status = handle_non_object_id(meta_key, api, attr_count, attr_list);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            status = handle_non_object_id(meta_key, api, attr_count, attr_list);
+        }
     }
     else
     {
@@ -2505,6 +2543,7 @@ sai_status_t processEvent(
         sai_object_id_t switch_vid = extractSwitchVid(object_type, str_object_id);
 
         internal_syncd_get_send(object_type, str_object_id, switch_vid, status, attr_count, attr_list);
+        return status;
     }
     else if (status != SAI_STATUS_SUCCESS)
     {
@@ -2525,12 +2564,13 @@ sai_status_t processEvent(
             SWSS_LOG_ERROR("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
         }
 
-        SWSS_LOG_THROW("failed to execute api: %s, key: %s, status: %s",
+        SWSS_LOG_ERROR("failed to execute api: %s, key: %s, status: %s",
                 op.c_str(),
                 key.c_str(),
                 sai_serialize_status(status).c_str());
     }
 
+    internal_syncd_status_send(key, status, object_type, op);
     return status;
 }
 
@@ -3269,6 +3309,7 @@ int syncd_main(int argc, char **argv)
 
     getResponse  = std::make_shared<swss::ProducerTable>(dbAsic.get(), "GETRESPONSE");
     notifications = std::make_shared<swss::NotificationProducer>(dbNtf.get(), "NOTIFICATIONS");
+    apiResponseNotifications = std::make_shared<swss::NotificationProducer>(dbNtf.get(), "APIRESPONSENTF");
 
     g_veryFirstRun = isVeryFirstRun();
 

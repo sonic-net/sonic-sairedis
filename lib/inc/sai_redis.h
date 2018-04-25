@@ -45,6 +45,11 @@ void check_notifications_pointers(
 // there is something wrong and we should fail
 #define GET_RESPONSE_TIMEOUT (6*60*1000)
 
+// if we don't receive response for create/set/remove from syncd in 5 seconds
+// there is something wrong and we should fail
+#define CSR_RESPONSE_TIMEOUT (5*60*1000)
+
+extern sai_status_t redis_get_response(std::string &key, std::string op, sai_object_type_t object_type);
 extern std::string getSelectResultAsString(int result);
 extern void clear_local_state();
 extern void setRecording(bool record);
@@ -65,6 +70,7 @@ extern sai_service_method_table_t                   g_services;
 extern std::shared_ptr<swss::ProducerTable>         g_asicState;
 extern std::shared_ptr<swss::ConsumerTable>         g_redisGetConsumer;
 extern std::shared_ptr<swss::NotificationConsumer>  g_redisNotifications;
+extern std::shared_ptr<swss::NotificationConsumer>  g_redisApiResponseNtf;
 extern std::shared_ptr<swss::RedisClient>           g_redisClient;
 
 extern std::mutex g_apimutex;

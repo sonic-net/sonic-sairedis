@@ -21,7 +21,7 @@ sai_status_t internal_redis_generic_remove(
 
     g_asicState->del(key, "remove");
 
-    return SAI_STATUS_SUCCESS;
+    return redis_get_response(key, "remove", object_type);
 }
 
 sai_status_t redis_generic_remove(

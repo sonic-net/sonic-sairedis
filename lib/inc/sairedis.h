@@ -245,4 +245,17 @@ sai_status_t sai_bulk_remove_fdb_entry(
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses);
+
+#define sai_return_obj_op_status(object_type)  ({   \
+    bool ret;                                       \
+    switch (object_type)                            \
+    {                                               \
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:           \
+            ret = false; break;                     \
+        default:                                    \
+            ret = true; break;                      \
+    }                                               \
+    ret;                                            \
+})
+
 #endif // __SAIREDIS__

@@ -28,7 +28,7 @@ sai_status_t internal_redis_generic_set(
 
     g_asicState->set(key, entry, "set");
 
-    return SAI_STATUS_SUCCESS;
+    return redis_get_response(key, "set", object_type);
 }
 
 sai_status_t internal_redis_bulk_generic_set(
