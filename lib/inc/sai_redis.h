@@ -47,7 +47,7 @@ void check_notifications_pointers(
 
 // if we don't receive response for create/set/remove from syncd in 5 seconds
 // there is something wrong and we should fail
-#define CSR_RESPONSE_TIMEOUT (5*60*1000)
+#define CSR_RESPONSE_TIMEOUT (5*1000)
 
 extern sai_status_t redis_get_response(std::string &key, std::string op, sai_object_type_t object_type);
 extern std::string getSelectResultAsString(int result);
