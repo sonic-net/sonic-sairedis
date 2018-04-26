@@ -200,8 +200,8 @@ void redis_free_virtual_object_id(
 
 // wait for response
 sai_status_t redis_get_response(
-    _In_ std::string &key,
-    _In_ std::string op,
+    _In_ const std::string &key,
+    _In_ const std::string &op,
     _In_ sai_object_type_t object_type)
 {
     SWSS_LOG_ENTER();

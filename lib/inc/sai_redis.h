@@ -49,7 +49,7 @@ void check_notifications_pointers(
 // there is something wrong and we should fail
 #define CSR_RESPONSE_TIMEOUT (5*1000)
 
-extern sai_status_t redis_get_response(std::string &key, std::string op, sai_object_type_t object_type);
+extern sai_status_t redis_get_response(const std::string &key, const std::string &op, sai_object_type_t object_type);
 extern std::string getSelectResultAsString(int result);
 extern void clear_local_state();
 extern void setRecording(bool record);

@@ -95,7 +95,7 @@ void internal_syncd_status_send(
 
     std::string str_status = sai_serialize_status(status);
 
-    SWSS_LOG_INFO("sending response for %s on %s with status: %s", op.c_str(), key.c_str(), str_status.c_str());
+    SWSS_LOG_DEBUG("sending response for %s on %s with status: %s", op.c_str(), key.c_str(), str_status.c_str());
 
     std::vector<swss::FieldValueTuple> entry;
     apiResponseNotifications->send(key, str_status, entry);
@@ -2411,7 +2411,7 @@ sai_status_t processEvent(
     {
         status = SAI_STATUS_NOT_IMPLEMENTED;
         SWSS_LOG_ERROR("api '%s' is not implemented", op.c_str());
-        internal_syncd_status_send(key, status, SAI_OBJECT_TYPE_MAX, op);
+        internal_syncd_status_send(key, status, SAI_OBJECT_TYPE_MAX, "none");
         return status;
     }
 
