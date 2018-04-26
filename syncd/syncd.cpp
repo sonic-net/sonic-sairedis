@@ -81,6 +81,7 @@ void internal_syncd_status_send(
         _In_ sai_object_type_t object_type,
         _In_ const std::string &op)
 {
+    SWSS_LOG_ENTER();
     if (!sai_return_obj_op_status(object_type))
     {
         return;
