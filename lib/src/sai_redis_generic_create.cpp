@@ -204,6 +204,8 @@ sai_status_t redis_get_response(
     _In_ std::string op,
     _In_ sai_object_type_t object_type)
 {
+    SWSS_LOG_ENTER();
+
     swss::Select s;
 
     sai_status_t status;

@@ -2466,7 +2466,9 @@ sai_status_t processEvent(
 
     if (isInitViewMode())
     {
-        return processEventInInitViewMode(object_type, str_object_id, api, attr_count, attr_list);
+        status = processEventInInitViewMode(object_type, str_object_id, api, attr_count, attr_list);
+        internal_syncd_status_send(key, status, object_type, op);
+        return status;
     }
 
     if (api != SAI_COMMON_API_GET)
