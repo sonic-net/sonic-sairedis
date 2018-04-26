@@ -242,9 +242,7 @@ sai_status_t redis_get_response(
 
         swss::Selectable *sel;
 
-        int fd;
-
-        int result = s.select(&sel, &fd, CSR_RESPONSE_TIMEOUT);
+        int result = s.select(&sel, CSR_RESPONSE_TIMEOUT);
 
         if (result == swss::Select::OBJECT)
         {
