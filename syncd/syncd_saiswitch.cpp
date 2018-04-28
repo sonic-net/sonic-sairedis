@@ -937,8 +937,9 @@ void SaiSwitch::helperDiscover()
 
     {
         SWSS_LOG_TIMER("discover");
-
+        set_sai_api_log_min_prio("SAI_LOG_LEVEL_CRITICAL");
         saiDiscover(m_switch_rid, m_discovered_rids);
+        set_sai_api_log_min_prio("SAI_LOG_LEVEL_NOTICE");
     }
 
     SWSS_LOG_NOTICE("discovered objects count: %zu", m_discovered_rids.size());
