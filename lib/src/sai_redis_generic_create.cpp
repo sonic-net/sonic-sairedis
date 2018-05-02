@@ -209,7 +209,6 @@ sai_status_t redis_get_response(
     swss::Select s;
 
     sai_status_t status;
-    std::string request;
     std::string csr;
 
     // For certain object types, no response is expected
@@ -260,7 +259,7 @@ sai_status_t redis_get_response(
                 SWSS_LOG_ERROR("response key = %s, not matching request key %s", retKey.c_str(), key.c_str());
                 return SAI_STATUS_FAILURE;
             }
-            SWSS_LOG_DEBUG("response: key = %s, op = %s, status = %s", key.c_str(), request.c_str(), str_sai_status.c_str());
+            SWSS_LOG_DEBUG("response: key = %s, op = %s, status = %s", key.c_str(), op.c_str(), str_sai_status.c_str());
 
             sai_deserialize_status(str_sai_status, status);
 
@@ -274,7 +273,7 @@ sai_status_t redis_get_response(
         }
 
         SWSS_LOG_ERROR("generic %s on %s failed due to SELECT operation result: %s",
-                request.c_str(), key.c_str(), getSelectResultAsString(result).c_str());
+                op.c_str(), key.c_str(), getSelectResultAsString(result).c_str());
         break;
     }
 
