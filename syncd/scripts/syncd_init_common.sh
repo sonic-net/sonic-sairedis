@@ -70,20 +70,14 @@ config_syncd_mlnx()
 
 config_syncd_centec()
 {
-    CMD_ARGS+=" -p /tmp/sai.profile"
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 
     [ -e /dev/linux_dal ] || mknod /dev/linux_dal c 198 0
     [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
-
-    # Read MAC address and align the last 6 bits.
-    MAC_ADDRESS=$(ip link show eth0 | grep ether | awk '{print $2}')
-    last_byte=$(python -c "print '$MAC_ADDRESS'[-2:]")
-    aligned_last_byte=$(python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')")  # put mask and take away the 0x prefix
-    ALIGNED_MAC_ADDRESS=$(python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'")          # put aligned byte into the end of MAC
-
-    # Write MAC address into /tmp/profile file.
-    cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
-    echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /tmp/sai.profile
+    
+    if [ $FAST_REBOOT == "yes" ]; then
+        CMD_ARGS+=" -t fast"
+    fi
 }
 
 config_syncd_cavium()
