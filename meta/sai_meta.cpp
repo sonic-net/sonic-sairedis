@@ -4679,7 +4679,9 @@ void meta_sai_on_fdb_flush_event_consolidated(
             continue;
         }
 
-        if (bpid != NULL)
+        // only consider bridge port id if it's defined and value is not NULL
+        // since vendor can add this attribute to fdb_entry with NULL value
+        if (bpid != NULL && bpid->value.oid != SAI_NULL_OBJECT_ID)
         {
             if (it->second.find(SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID) == it->second.end())
             {
