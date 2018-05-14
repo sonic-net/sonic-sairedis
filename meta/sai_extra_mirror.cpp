@@ -5,6 +5,8 @@ sai_status_t is_header_version_ok(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     const sai_attribute_t* attr_iphdr_version = get_attribute_by_id(SAI_MIRROR_SESSION_ATTR_IPHDR_VERSION, attr_count, attr_list);
 
     if (attr_iphdr_version != NULL)

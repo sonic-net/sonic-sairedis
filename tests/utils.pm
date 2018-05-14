@@ -25,7 +25,7 @@ sub kill_syncd
 
     print color('bright_blue') . "Killing syncd" . color('reset') . "\n";
 
-    `/usr/bin/killall -9 vssyncd lt-vssyncd 2>/dev/null`;
+    `killall -9 syncd vssyncd lt-vssyncd 2>/dev/null`;
 }
 
 sub flush_redis
@@ -33,6 +33,8 @@ sub flush_redis
     print color('bright_blue') . "Flushing redis" . color('reset') . "\n";
 
     my @ret = `redis-cli flushall`;
+
+    $ret[0] = "failed" if not defined $ret[0];
 
     chomp $ret[0];
 
@@ -46,7 +48,7 @@ sub flush_redis
 sub start_syncd
 {
     print color('bright_blue') . "Starting syncd" . color('reset') . "\n";
-    `./vssyncd -NSu -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+    `./vssyncd -Su -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
 }
 
 sub play
@@ -87,11 +89,6 @@ BEGIN
     $DIR = $1 if $script =~ /(\w+)\.pl/;
 
     print "Using scripts dir '$DIR'\n";
-}
-
-END
-{
-    kill_syncd;
 }
 
 1;

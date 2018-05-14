@@ -5,6 +5,10 @@
 #include "swss/tokenize.h"
 #include <limits.h>
 
+extern "C" {
+#include <sai.h>
+}
+
 #include <iostream>
 #include <map>
 
@@ -65,13 +69,16 @@ std::set<sai_object_id_t> initViewRemovedVidSet;
  */
 volatile bool g_asicInitViewMode = false;
 
+/*
+ * SAI switch global needed for RPC server and for remove_switch
+ */
+sai_object_id_t gSwitchId;
+
 struct cmdOptions
 {
-    int countersThreadIntervalInSeconds;
     bool diagShell;
     bool useTempView;
     int startType;
-    bool disableCountersThread;
     bool disableExitSleep;
     std::string profileMapFile;
 #ifdef SAITHRIFT
@@ -527,7 +534,6 @@ void translate_rid_to_vid_list(
 sai_object_id_t translate_vid_to_rid(
         _In_ sai_object_id_t vid)
 {
-
     SWSS_LOG_ENTER();
 
     if (vid == SAI_NULL_OBJECT_ID)
@@ -594,6 +600,8 @@ sai_object_id_t translate_vid_to_rid(
 void translate_list_vid_to_rid(
         _In_ sai_object_list_t &element)
 {
+    SWSS_LOG_ENTER();
+
     for (uint32_t i = 0; i < element.count; i++)
     {
         element.list[i] = translate_vid_to_rid(element.list[i]);
@@ -685,7 +693,14 @@ void snoop_get_attr(
 
     std::string str_object_type = sai_serialize_object_type(object_type);
 
-    std::string key = TEMP_PREFIX + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
+    std::string prefix = "";
+
+    if (isInitViewMode())
+    {
+        prefix = TEMP_PREFIX;
+    }
+
+    std::string key = prefix + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
 
     SWSS_LOG_DEBUG("%s", key.c_str());
 
@@ -824,7 +839,7 @@ void snoop_get_response(
                 break;
         }
 
-        if (HAS_FLAG_READ_ONLY(meta->flags))
+        if (SAI_HAS_FLAG_READ_ONLY(meta->flags))
         {
             /*
              * If value is read only, we skip it, since after syncd restart we
@@ -885,21 +900,11 @@ void internal_syncd_get_send(
                 attr_list,
                 false);
 
-        if (isInitViewMode())
-        {
-            /*
-             * All oid values here are VIDs.
-             */
-
-            snoop_get_response(object_type, str_object_id, attr_count, attr_list);
-        }
-
         /*
-         * TODO: When we are doing GET in non init view mode, maybe we could
-         * snoop data also, since we will put this data anyway when we will do
-         * view compare. We would need to fix snoop_get_response since
-         * currently this method is writing only to TEMP view.
+         * All oid values here are VIDs.
          */
+
+        snoop_get_response(object_type, str_object_id, attr_count, attr_list);
     }
     else if (status == SAI_STATUS_BUFFER_OVERFLOW)
     {
@@ -1010,13 +1015,15 @@ int profile_get_next_value(
     return 0;
 }
 
-service_method_table_t test_services = {
+sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
 
 void startDiagShell()
 {
+    SWSS_LOG_ENTER();
+
     if (options.diagShell)
     {
         SWSS_LOG_NOTICE("starting diag shell thread");
@@ -1229,6 +1236,8 @@ sai_status_t handle_generic(
                     if (object_type == SAI_OBJECT_TYPE_SWITCH)
                     {
                         on_switch_create(switch_id);
+                        gSwitchId = real_object_id;
+                        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
                     }
                 }
 
@@ -1755,6 +1764,11 @@ void on_switch_create_in_init_view(
                     sai_serialize_status(status).c_str());
         }
 
+#ifdef SAITHRIFT
+        gSwitchId = switch_rid;
+        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
+#endif
+
         /*
          * Object was created so new object id was generated we
          * need to save virtual id's to redis db.
@@ -2107,7 +2121,7 @@ sai_status_t handle_bulk_generic(
                 sai_deserialize_object_id(object_ids[idx], meta_key.objectkey.key.object_id);
                 break;
             default:
-                throw std::invalid_argument("object_type");
+                SWSS_LOG_THROW("invalid object_type: %s", sai_serialize_object_type(object_type).c_str());
         }
 
         if (api == (sai_common_api_t)SAI_COMMON_API_BULK_SET)
@@ -2201,7 +2215,7 @@ sai_status_t processBulkEvent(
 
     if (isInitViewMode())
     {
-        SWSS_LOG_ERROR("bulk api is not supported in init view mode", api);
+        SWSS_LOG_ERROR("bulk api (%d) is not supported in init view mode", api);
         exit_and_notify(EXIT_FAILURE);
     }
 
@@ -2241,6 +2255,48 @@ sai_status_t processBulkEvent(
 
         exit_and_notify(EXIT_FAILURE);
     }
+
+    return status;
+}
+
+sai_status_t processFdbFlush(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &key = kfvKey(kco);
+    const std::string &str_object_id = key.substr(key.find(":") + 1);
+
+    sai_object_id_t switch_vid;
+
+    sai_deserialize_object_id(str_object_id, switch_vid);
+
+    sai_object_id_t switch_rid = translate_vid_to_rid(switch_vid);
+
+    const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+    for (const auto &v: values)
+    {
+        SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+    }
+
+    SaiAttributeList list(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
+
+    /*
+     * Attribute list can't be const since we will use it to translate VID to
+     * RID inplace.
+     */
+
+    sai_attribute_t *attr_list = list.get_attr_list();
+    uint32_t attr_count = list.get_attr_count();
+
+    translate_vid_to_rid_list(SAI_OBJECT_TYPE_FDB_FLUSH, attr_count, attr_list);
+
+    sai_status_t status = sai_metadata_sai_fdb_api->flush_fdb_entries(switch_rid, attr_count, attr_list);
+
+    std::vector<swss::FieldValueTuple> en;
+
+    getResponse->set(sai_serialize_status(status), en, "flushresponse");
 
     return status;
 }
@@ -2316,9 +2372,13 @@ sai_status_t processEvent(
     {
         return processGetStatsEvent(kco);
     }
+    else if (op == "flush")
+    {
+        return processFdbFlush(kco);
+    }
     else
     {
-        SWSS_LOG_THROW("api %s is not implemented", op.c_str());
+        SWSS_LOG_THROW("api '%s' is not implemented", op.c_str());
     }
 
     sai_object_type_t object_type;
@@ -2474,8 +2534,62 @@ sai_status_t processEvent(
     return status;
 }
 
+void processFlexCounterGroupEvent(
+        _In_ swss::ConsumerTable &consumer)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(g_mutex);
+    swss::KeyOpFieldsValuesTuple kco;
+    consumer.pop(kco);
+
+    const auto &groupName = kfvKey(kco);
+    const auto &op = kfvOp(kco);
+    const auto values = kfvFieldsValues(kco);
+
+    if (op == DEL_COMMAND)
+    {
+        FlexCounter::removeCounterPlugin(groupName);
+        return;
+    }
+
+    for (const auto& valuePair : values)
+    {
+        const auto field = fvField(valuePair);
+        const auto value = fvValue(valuePair);
+
+        if (op == SET_COMMAND)
+        {
+            if (field == POLL_INTERVAL_FIELD)
+            {
+                FlexCounter::setPollInterval(stoi(value), groupName);
+            }
+            else if (field == QUEUE_PLUGIN_FIELD)
+            {
+                auto shaStrings = swss::tokenize(value, ',');
+                for (const auto &sha : shaStrings)
+                {
+                    FlexCounter::addQueueCounterPlugin(sha, groupName);
+                }
+            }
+            else if (field == PORT_PLUGIN_FIELD)
+            {
+                auto shaStrings = swss::tokenize(value, ',');
+                for (const auto &sha : shaStrings)
+                {
+                    FlexCounter::addPortCounterPlugin(sha, groupName);
+                }
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Field is not supported %s", field.c_str());
+            }
+        }
+    }
+}
+
 void processFlexCounterEvent(
-        _In_ swss::ConsumerStateTable &consumer)
+        _In_ swss::ConsumerTable &consumer)
 {
     SWSS_LOG_ENTER();
 
@@ -2487,32 +2601,37 @@ void processFlexCounterEvent(
     const auto &key = kfvKey(kco);
     const auto &op = kfvOp(kco);
 
-    std::size_t delimiter = key.find_last_of(":");
-
+    std::size_t delimiter = key.find_first_of(":");
     if (delimiter == std::string::npos)
     {
         SWSS_LOG_ERROR("Failed to parse the key %s", key.c_str());
         return;
     }
 
-    const auto intervalStr = key.substr(delimiter + 1);
-    const auto vidStr = key.substr(0, delimiter);
-    int pollInterval;
-
-    try
-    {
-        pollInterval = std::stoi(intervalStr);
-    }
-    catch(const std::invalid_argument)
-    {
-        SWSS_LOG_ERROR("Failed to convert the poll intervall, key = %s", key.c_str());
-        return;
-    }
+    const auto groupName = key.substr(0, delimiter);
+    const auto vidStr = key.substr(delimiter+1);
 
     sai_object_id_t vid = SAI_NULL_OBJECT_ID;
     sai_deserialize_object_id(vidStr, vid);
     sai_object_id_t rid = translate_vid_to_rid(vid);
     sai_object_type_t objectType = sai_object_type_query(rid);
+    std::string  objectTypeStr = sai_serialize_object_type(objectType);
+
+    if (op == DEL_COMMAND)
+    {
+        if (objectType == SAI_OBJECT_TYPE_PORT)
+        {
+            FlexCounter::removePort(vid, groupName);
+        }
+        else if (objectType == SAI_OBJECT_TYPE_QUEUE)
+        {
+            FlexCounter::removeQueue(vid, groupName);
+        }
+        else
+        {
+            SWSS_LOG_ERROR("Object type for removal not supported, %s", objectTypeStr.c_str());
+        }
+    }
 
     const auto values = kfvFieldsValues(kco);
     for (const auto& valuePair : values)
@@ -2520,26 +2639,11 @@ void processFlexCounterEvent(
         const auto field = fvField(valuePair);
         const auto value = fvValue(valuePair);
 
-        if (op == DEL_COMMAND)
-        {
-            if (objectType == SAI_OBJECT_TYPE_PORT)
-            {
-                FlexCounter::removePort(vid, pollInterval);
-            }
-            else if (objectType == SAI_OBJECT_TYPE_QUEUE)
-            {
-                FlexCounter::removeQueue(vid, pollInterval);
-            }
-            else
-            {
-                SWSS_LOG_ERROR("Object type for removal not supported");
-            }
-        }
-        else if (op == SET_COMMAND)
+        if (op == SET_COMMAND)
         {
             auto idStrings  = swss::tokenize(value, ',');
 
-            if (objectType == SAI_OBJECT_TYPE_PORT && field == PFC_WD_PORT_COUNTER_ID_LIST)
+            if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_COUNTER_ID_LIST)
             {
                 std::vector<sai_port_stat_t> portCounterIds;
                 for (const auto &str : idStrings)
@@ -2548,9 +2652,9 @@ void processFlexCounterEvent(
                     sai_deserialize_port_stat(str, stat);
                     portCounterIds.push_back(stat);
                 }
-                FlexCounter::setPortCounterList(vid, rid, pollInterval, portCounterIds);
+                FlexCounter::setPortCounterList(vid, rid, groupName, portCounterIds);
             }
-            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_COUNTER_ID_LIST)
+            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_COUNTER_ID_LIST)
             {
                 std::vector<sai_queue_stat_t> queueCounterIds;
                 for (const auto &str : idStrings)
@@ -2559,9 +2663,9 @@ void processFlexCounterEvent(
                     sai_deserialize_queue_stat(str, stat);
                     queueCounterIds.push_back(stat);
                 }
-                FlexCounter::setQueueCounterList(vid, rid, pollInterval, queueCounterIds);
+                FlexCounter::setQueueCounterList(vid, rid, groupName, queueCounterIds);
             }
-            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == PFC_WD_QUEUE_ATTR_ID_LIST)
+            else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_ATTR_ID_LIST)
             {
                 std::vector<sai_queue_attr_t> queueAttrIds;
                 for (const auto &str : idStrings)
@@ -2571,85 +2675,20 @@ void processFlexCounterEvent(
                     queueAttrIds.push_back(attr);
                 }
 
-                FlexCounter::setQueueAttrList(vid, rid, pollInterval, queueAttrIds);
+                FlexCounter::setQueueAttrList(vid, rid, groupName, queueAttrIds);
             }
             else
             {
-                SWSS_LOG_ERROR("Object type not supported");
+                SWSS_LOG_ERROR("Object type and field combination is not supported, object type %s, field %s", objectTypeStr.c_str(), field.c_str());
             }
-        }
-    }
-}
-
-void processFlexCounterPluginEvent(
-        _In_ swss::ConsumerStateTable &consumer)
-{
-    SWSS_LOG_ENTER();
-
-    std::lock_guard<std::mutex> lock(g_mutex);
-
-    swss::KeyOpFieldsValuesTuple kco;
-    consumer.pop(kco);
-
-    const auto &key = kfvKey(kco);
-    const auto &op = kfvOp(kco);
-
-    std::size_t delimiter = key.find_last_of(":");
-
-    if (delimiter == std::string::npos)
-    {
-        SWSS_LOG_ERROR("Failed to parse the key %s", key.c_str());
-        return;
-    }
-
-    const auto intervalStr = key.substr(delimiter + 1);
-    const auto sha = key.substr(0, delimiter);
-    int pollInterval;
-
-    try
-    {
-        pollInterval = std::stoi(intervalStr);
-    }
-    catch(const std::invalid_argument)
-    {
-        SWSS_LOG_ERROR("Failed to convert the poll intervall, key = %s", key.c_str());
-        return;
-    }
-
-    if (op == DEL_COMMAND)
-    {
-        FlexCounter::removeCounterPlugin(sha, pollInterval);
-        return;
-    }
-
-    const auto values = kfvFieldsValues(kco);
-    for (const auto& valuePair : values)
-    {
-        const auto field = fvField(valuePair);
-        const auto value = fvValue(valuePair);
-
-        if (field != SAI_OBJECT_TYPE)
-        {
-            continue;
-        }
-
-        if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_PORT))
-        {
-            FlexCounter::addPortCounterPlugin(sha, pollInterval);
-        }
-        else if (value == sai_serialize_object_type(SAI_OBJECT_TYPE_QUEUE))
-        {
-            FlexCounter::addQueueCounterPlugin(sha, pollInterval);
-        }
-        else
-        {
-            SWSS_LOG_ERROR("Plugin for %s is not supported", value.c_str());
         }
     }
 }
 
 void printUsage()
 {
+    SWSS_LOG_ENTER();
+
     std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u] [-S]" << std::endl;
     std::cout << "    -N --nocounters:" << std::endl;
     std::cout << "        Disable counter thread" << std::endl;
@@ -2679,9 +2718,6 @@ void handleCmdLine(int argc, char **argv)
 {
     SWSS_LOG_ENTER();
 
-    const int defaultCountersThreadIntervalInSeconds = 1;
-
-    options.countersThreadIntervalInSeconds = defaultCountersThreadIntervalInSeconds;
     options.disableExitSleep = false;
 
 #ifdef SAITHRIFT
@@ -2697,10 +2733,8 @@ void handleCmdLine(int argc, char **argv)
         {
             { "useTempView",      no_argument,       0, 'u' },
             { "diag",             no_argument,       0, 'd' },
-            { "nocounters",       no_argument,       0, 'N' },
             { "startType",        required_argument, 0, 't' },
             { "profile",          required_argument, 0, 'p' },
-            { "countersInterval", required_argument, 0, 'i' },
             { "help",             no_argument,       0, 'h' },
             { "disableExitSleep", no_argument,       0, 'S' },
 #ifdef SAITHRIFT
@@ -2726,11 +2760,6 @@ void handleCmdLine(int argc, char **argv)
                 options.useTempView = true;
                 break;
 
-            case 'N':
-                SWSS_LOG_NOTICE("disable counters thread");
-                options.disableCountersThread = true;
-                break;
-
             case 'S':
                 SWSS_LOG_NOTICE("disable crash sleep");
                 options.disableExitSleep = true;
@@ -2745,29 +2774,6 @@ void handleCmdLine(int argc, char **argv)
                 SWSS_LOG_NOTICE("profile map file: %s", optarg);
                 options.profileMapFile = std::string(optarg);
                 break;
-
-            case 'i':
-                {
-                    SWSS_LOG_NOTICE("counters thread interval: %s", optarg);
-
-                    int interval = std::stoi(std::string(optarg));
-
-                    if (interval == 0)
-                    {
-                        /*
-                         * Use zero interval to disable counters thread.
-                         */
-
-                        options.disableCountersThread = true;
-                    }
-                    else
-                    {
-                        options.countersThreadIntervalInSeconds =
-                            std::max(defaultCountersThreadIntervalInSeconds, interval);
-                    }
-
-                    break;
-                }
 
             case 't':
                 SWSS_LOG_NOTICE("start type: %s", optarg);
@@ -2866,6 +2872,8 @@ std::map<std::set<int>, std::string> gPortMap;
 // FIXME: introduce common config format for SONiC
 void handlePortMap(const std::string& portMapFile)
 {
+    SWSS_LOG_ENTER();
+
     if (portMapFile.size() == 0)
     {
         return;
@@ -2908,7 +2916,17 @@ void handlePortMap(const std::string& portMapFile)
 }
 #endif // SAITHRIFT
 
-bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
+typedef enum _syncd_restart_type_t
+{
+    SYNCD_RESTART_TYPE_COLD,
+
+    SYNCD_RESTART_TYPE_WARM,
+
+    SYNCD_RESTART_TYPE_FAST,
+
+} syncd_restart_type_t;
+
+syncd_restart_type_t handleRestartQuery(swss::NotificationConsumer &restartQuery)
 {
     SWSS_LOG_ENTER();
 
@@ -2923,22 +2941,27 @@ bool handleRestartQuery(swss::NotificationConsumer &restartQuery)
     if (op == "COLD")
     {
         SWSS_LOG_NOTICE("received COLD switch shutdown event");
-        return false;
+        return SYNCD_RESTART_TYPE_COLD;
     }
 
     if (op == "WARM")
     {
         SWSS_LOG_NOTICE("received WARM switch shutdown event");
-        return true;
+        return SYNCD_RESTART_TYPE_WARM;
+    }
+
+    if (op == "FAST")
+    {
+        SWSS_LOG_NOTICE("received FAST switch shutdown event");
+        return SYNCD_RESTART_TYPE_FAST;
     }
 
     SWSS_LOG_WARN("received '%s' unknown switch shutdown event, assuming COLD", op.c_str());
-    return false;
+    return SYNCD_RESTART_TYPE_COLD;
 }
 
 bool isVeryFirstRun()
 {
-
     SWSS_LOG_ENTER();
 
     /*
@@ -2968,6 +2991,7 @@ int get_enum_value_from_name(
         _In_ const char *name,
         _In_ const sai_enum_metadata_t* metadata)
 {
+    SWSS_LOG_ENTER();
 
     for (uint32_t idx = 0; idx < metadata->valuescount; idx++)
     {
@@ -2983,6 +3007,8 @@ int get_enum_value_from_name(
 
 void saiLoglevelNotify(std::string apiStr, std::string prioStr)
 {
+    SWSS_LOG_ENTER();
+
     using namespace swss;
 
     static const std::map<std::string, sai_log_level_t> saiLoglevelMap = {
@@ -3155,6 +3181,8 @@ void sai_meta_log_syncd(
         _In_ const char *format,
         ...)
 {
+    // SWSS_LOG_ENTER() is ommited since this is logging for metadata
+
     char buffer[0x1000];
 
     va_list ap;
@@ -3174,9 +3202,11 @@ void sai_meta_log_syncd(
             break;
         case SAI_LOG_LEVEL_ERROR:
             p = swss::Logger::SWSS_ERROR;
+            fprintf(stderr, "ERROR: %s: %s", func, buffer);
             break;
         case SAI_LOG_LEVEL_WARN:
             p = swss::Logger::SWSS_WARN;
+            fprintf(stderr, "WARN: %s: %s", func, buffer);
             break;
         case SAI_LOG_LEVEL_CRITICAL:
             p = swss::Logger::SWSS_CRIT;
@@ -3222,14 +3252,14 @@ int syncd_main(int argc, char **argv)
 
     std::shared_ptr<swss::DBConnector> dbAsic = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(PFC_WD_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(FLEX_COUNTER_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
 
     g_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());
 
     std::shared_ptr<swss::ConsumerTable> asicState = std::make_shared<swss::ConsumerTable>(dbAsic.get(), ASIC_STATE_TABLE);
     std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "RESTARTQUERY");
-    std::shared_ptr<swss::ConsumerStateTable> flexCounterState = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PFC_WD_STATE_TABLE);
-    std::shared_ptr<swss::ConsumerStateTable> flexCounterPlugin = std::make_shared<swss::ConsumerStateTable>(dbFlexCounter.get(), PLUGIN_TABLE);
+    std::shared_ptr<swss::ConsumerTable> flexCounter = std::make_shared<swss::ConsumerTable>(dbFlexCounter.get(), FLEX_COUNTER_TABLE);
+    std::shared_ptr<swss::ConsumerTable> flexCounterGroup = std::make_shared<swss::ConsumerTable>(dbFlexCounter.get(), FLEX_COUNTER_GROUP_TABLE);
 
     /*
      * At the end we cant use producer consumer concept since if one proces
@@ -3272,7 +3302,7 @@ int syncd_main(int argc, char **argv)
 
     gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(options.startType);
 
-    sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+    sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -3280,11 +3310,12 @@ int syncd_main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    int failed = sai_metadata_apis_query(sai_api_query);
+    sai_apis_t apis;
+    int failed = sai_metadata_apis_query(sai_api_query, &apis);
 
     if (failed > 0)
     {
-        SWSS_LOG_WARN("sai_api_query failed for %d apis", failed);
+        SWSS_LOG_NOTICE("sai_api_query failed for %d apis", failed);
     }
 
     /*
@@ -3302,7 +3333,7 @@ int syncd_main(int argc, char **argv)
 
     SWSS_LOG_NOTICE("syncd started");
 
-    bool warmRestartHint = false;
+    syncd_restart_type_t restartType = SYNCD_RESTART_TYPE_COLD;
 
     try
     {
@@ -3318,8 +3349,8 @@ int syncd_main(int argc, char **argv)
 
         s.addSelectable(asicState.get());
         s.addSelectable(restartQuery.get());
-        s.addSelectable(flexCounterState.get());
-        s.addSelectable(flexCounterPlugin.get());
+        s.addSelectable(flexCounter.get());
+        s.addSelectable(flexCounterGroup.get());
 
         SWSS_LOG_NOTICE("starting main loop");
 
@@ -3327,9 +3358,7 @@ int syncd_main(int argc, char **argv)
         {
             swss::Selectable *sel = NULL;
 
-            int fd;
-
-            int result = s.select(&sel, &fd);
+            int result = s.select(&sel);
 
             if (sel == restartQuery.get())
             {
@@ -3341,16 +3370,16 @@ int syncd_main(int argc, char **argv)
                  * lead to unable to find some objects.
                  */
 
-                warmRestartHint = handleRestartQuery(*restartQuery);
+                restartType = handleRestartQuery(*restartQuery);
                 break;
             }
-            else if (sel == flexCounterState.get())
+            else if (sel == flexCounter.get())
             {
-                processFlexCounterEvent(*(swss::ConsumerStateTable*)sel);
+                processFlexCounterEvent(*(swss::ConsumerTable*)sel);
             }
-            else if (sel == flexCounterPlugin.get())
+            else if (sel == flexCounterGroup.get())
             {
-                processFlexCounterPluginEvent(*(swss::ConsumerStateTable*)sel);
+                processFlexCounterGroupEvent(*(swss::ConsumerTable*)sel);
             }
             else if (result == swss::Select::OBJECT)
             {
@@ -3365,7 +3394,7 @@ int syncd_main(int argc, char **argv)
         exit_and_notify(EXIT_FAILURE);
     }
 
-    if (warmRestartHint)
+    if (restartType == SYNCD_RESTART_TYPE_WARM)
     {
         const char *warmBootWriteFile = profile_get_value(0, SAI_KEY_WARM_BOOT_WRITE_FILE);
 
@@ -3375,8 +3404,41 @@ int syncd_main(int argc, char **argv)
         {
             SWSS_LOG_WARN("user requested warm shutdown but warmBootWriteFile is not specified, forcing cold shutdown");
 
-            warmRestartHint = false;
+            restartType = SYNCD_RESTART_TYPE_COLD;
         }
+    }
+
+    SWSS_LOG_NOTICE("Removing the switch gSwitchId=0x%lx", gSwitchId);
+    sai_switch_api_t *sai_switch_api = NULL;
+    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+
+#ifdef SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL
+
+    if (restartType == SYNCD_RESTART_TYPE_FAST)
+    {
+        SWSS_LOG_NOTICE("Fast Reboot requested, keeping data plane running");
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL;
+        attr.value.booldata = false;
+
+        status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL=false: %s",
+                    sai_serialize_status(status).c_str());
+        }
+    }
+
+#endif
+
+    status = sai_switch_api->remove_switch(gSwitchId);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_NOTICE("Can't delete a switch. gSwitchId=0x%lx status=%s", gSwitchId,
+                sai_serialize_status(status).c_str());
     }
 
     SWSS_LOG_NOTICE("calling api uninitialize");

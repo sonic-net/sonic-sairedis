@@ -6,7 +6,7 @@
 
 std::mutex g_apimutex;
 
-service_method_table_t g_services;
+sai_service_method_table_t g_services;
 bool                   g_apiInitialized = false;
 volatile bool          g_run = false;
 
@@ -66,9 +66,7 @@ void ntf_thread()
     {
         swss::Selectable *sel;
 
-        int fd;
-
-        int result = s.select(&sel, &fd);
+        int result = s.select(&sel);
 
         if (sel == &g_redisNotificationTrheadEvent)
         {
@@ -95,7 +93,7 @@ void ntf_thread()
 
 sai_status_t sai_api_initialize(
         _In_ uint64_t flags,
-        _In_ const service_method_table_t* services)
+        _In_ const sai_service_method_table_t* services)
 {
     std::lock_guard<std::mutex> lock(g_apimutex);
 
@@ -179,7 +177,7 @@ sai_status_t sai_log_set(
 
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_ERROR("not implemented");
+    SWSS_LOG_NOTICE("not implemented");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }

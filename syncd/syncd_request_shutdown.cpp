@@ -19,7 +19,7 @@ int main(int argc, char **argv)
         { "warm", no_argument, 0, 'w' }
     };
 
-    bool warmRestartHint = false;
+    std::string op;
     bool optionSpecified = false;
 
     while(true)
@@ -34,12 +34,17 @@ int main(int argc, char **argv)
         switch (c)
         {
             case 'c':
-                warmRestartHint = false;
+                op = "COLD";
                 optionSpecified = true;
                 break;
 
             case 'w':
-                warmRestartHint = true;
+                op = "WARM";
+                optionSpecified = true;
+                break;
+
+            case 'f':
+                op = "FAST";
                 optionSpecified = true;
                 break;
 
@@ -57,6 +62,7 @@ int main(int argc, char **argv)
         std::cerr << "---------------------------------" << std::endl;
         std::cerr << " --warm  -w   for warm restart" << std::endl;
         std::cerr << " --cold  -c   for cold restart" << std::endl;
+        std::cerr << " --fast  -f   for fast restart" << std::endl;
 
         exit(EXIT_FAILURE);
     }
@@ -65,8 +71,6 @@ int main(int argc, char **argv)
     swss::NotificationProducer restartQuery(&db, "RESTARTQUERY");
 
     std::vector<swss::FieldValueTuple> values;
-
-    std::string op = warmRestartHint ? "WARM" : "COLD";
 
     SWSS_LOG_NOTICE("requested %s shutdown", op.c_str());
 

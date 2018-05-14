@@ -16,6 +16,8 @@ std::string sai_profile = "/tmp/sai.profile";
 
 void print_usage()
 {
+    SWSS_LOG_ENTER();
+
     std::cerr << "Following SAI dump options can be specified:" << std::endl;
     std::cerr << "-------------------------------------------" << std::endl;
     std::cerr << "--dump_file -f   Full path for dump file" << std::endl;
@@ -25,10 +27,13 @@ void print_usage()
 
 __attribute__((__noreturn__)) void exit_with_sai_failure(const char *msg, sai_status_t status)
 {
+    SWSS_LOG_ENTER();
+
     if (msg)
     {
         std::cerr << msg << " rc=" << status << std::endl;
     }
+
     SWSS_LOG_ERROR("saisdkdump exited with SAI rc: 0x%x, msg: %s .", status, (msg != NULL ? msg : ""));
     exit(EXIT_FAILURE);
 }
@@ -37,6 +42,8 @@ const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
 {
+    SWSS_LOG_ENTER();
+
     return sai_profile.c_str();
 }
 
@@ -45,10 +52,11 @@ int profile_get_next_value(
         _Out_ const char** variable,
         _Out_ const char** value)
 {
+    SWSS_LOG_ENTER();
     return -1;
 }
 
-service_method_table_t test_services = {
+sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -109,7 +117,7 @@ int main(int argc, char **argv)
         SWSS_LOG_INFO("The dump file is not specified, generated \"%s\" file name", fileName.c_str());
     }
 
-    sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+    sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
     if (status != SAI_STATUS_SUCCESS)
     {
     	exit_with_sai_failure("Failed to initialize SAI api", status);
@@ -146,7 +154,7 @@ int main(int argc, char **argv)
     status = switch_api->remove_switch(switch_id);
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("remove switch 0x%x failed: 0x%x", switch_id, status);
+        SWSS_LOG_ERROR("remove switch 0x%lx failed: 0x%x", switch_id, status);
     }
 
     status = sai_api_uninitialize();

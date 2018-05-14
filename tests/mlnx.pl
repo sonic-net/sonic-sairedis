@@ -65,3 +65,5 @@ test_mlnx_empty_to_full_to_empty;
 test_mlnx_full_to_crash;
 test_mlnx_empty_to_full_and_again;
 test_mlnx_full_to_full;
+
+kill_syncd;

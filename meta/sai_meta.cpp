@@ -1,6 +1,6 @@
 #include "sai_meta.h"
 #include "sai_extra.h"
-#include "saiserialize.h"
+#include "sai_serialize.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -14,10 +14,92 @@
 #include <map>
 #include <iterator>
 
+static volatile bool unittests_enabled = false;
+
+static std::set<std::string> meta_unittests_set_readonly_set;
+
+void meta_unittests_enable(
+        _In_ bool enable)
+{
+    SWSS_LOG_ENTER();
+
+    unittests_enabled = enable;
+}
+
+bool meta_unittests_enabled()
+{
+    SWSS_LOG_ENTER();
+
+    return unittests_enabled;
+}
+
+sai_status_t meta_unittests_allow_readonly_set_once(
+        _In_ sai_object_type_t object_type,
+        _In_ int32_t attr_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (!unittests_enabled)
+    {
+        SWSS_LOG_NOTICE("unittests are not enabled");
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto *md = sai_metadata_get_attr_metadata(object_type, attr_id);
+
+    if (md == NULL)
+    {
+        SWSS_LOG_ERROR("failed to get metadata for object type %d and attr id %d", object_type, attr_id);
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (!SAI_HAS_FLAG_READ_ONLY(md->flags))
+    {
+        SWSS_LOG_ERROR("attribute %s is not marked as READ_ONLY", md->attridname);
+        return SAI_STATUS_FAILURE;
+    }
+
+    meta_unittests_set_readonly_set.insert(md->attridname);
+
+    SWSS_LOG_INFO("enabling SET for readonly attribute: %s", md->attridname);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+static bool meta_unittests_get_and_erase_set_readonly_flag(
+        _In_ const sai_attr_metadata_t& md)
+{
+    SWSS_LOG_ENTER();
+
+    if (!unittests_enabled)
+    {
+        // explicityly  to not produce false alarms
+        SWSS_LOG_NOTICE("unittests are not enabled");
+        return false;
+    }
+
+    const auto &it = meta_unittests_set_readonly_set.find(md.attridname);
+
+    if (it == meta_unittests_set_readonly_set.end())
+    {
+        SWSS_LOG_ERROR("%s is not present in readonly set", md.attridname);
+        return false;
+    }
+
+    SWSS_LOG_INFO("%s is present in readonly set, erasing", md.attridname);
+
+    meta_unittests_set_readonly_set.erase(it);
+
+    return true;
+}
+
+
 // TODO move to metadata utils
 bool is_ipv6_mask_valid(
         _In_ const uint8_t* mask)
 {
+    SWSS_LOG_ENTER();
+
     if (mask == NULL)
     {
         SWSS_LOG_ERROR("mask is null");
@@ -109,6 +191,7 @@ class SaiAttrWrapper
 
         const sai_attribute_t* getattr() const
         {
+            SWSS_LOG_ENTER();
             return &m_attr;
         }
 
@@ -123,6 +206,8 @@ class SaiAttrWrapper
 
 std::string get_attr_info(const sai_attr_metadata_t& md)
 {
+    SWSS_LOG_ENTER();
+
     /*
      * Attribute name will contain object type as well so we don't need to
      * serialize object type separatly.
@@ -383,6 +468,8 @@ void set_object(
 const std::vector<std::shared_ptr<SaiAttrWrapper>> get_object_attributes(
         _In_ const sai_object_meta_key_t& meta_key)
 {
+    SWSS_LOG_ENTER();
+
     std::string key = sai_serialize_object_meta_key(meta_key);
 
     if (!object_exists(key))
@@ -561,6 +648,8 @@ sai_status_t meta_genetic_validation_list(
         _In_ uint32_t count,
         _In_ const void* list)
 {
+    SWSS_LOG_ENTER();
+
     if (count > MAX_LIST_COUNT)
     {
         META_LOG_ERROR(md, "list count %u is > then max list count %u", count, MAX_LIST_COUNT);
@@ -620,7 +709,7 @@ std::string construct_key(
 
         const sai_attribute_value_t& value = attr->value;
 
-        if (!HAS_FLAG_KEY(md.flags))
+        if (!SAI_HAS_FLAG_KEY(md.flags))
         {
             continue;
         }
@@ -970,14 +1059,14 @@ sai_status_t meta_generic_validation_create(
 
         attrs[attr->id] = attr;
 
-        if (HAS_FLAG_READ_ONLY(md.flags))
+        if (SAI_HAS_FLAG_READ_ONLY(md.flags))
         {
             META_LOG_ERROR(md, "attr is read only and cannot be created");
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
-        if (HAS_FLAG_KEY(md.flags))
+        if (SAI_HAS_FLAG_KEY(md.flags))
         {
             haskeys = true;
 
@@ -994,9 +1083,9 @@ sai_status_t meta_generic_validation_create(
                 {
                     const char* chardata = value.chardata;
 
-                    size_t len = strnlen(chardata, HOSTIF_NAME_SIZE);
+                    size_t len = strnlen(chardata, SAI_HOSTIF_NAME_SIZE);
 
-                    if (len == HOSTIF_NAME_SIZE)
+                    if (len == SAI_HOSTIF_NAME_SIZE)
                     {
                         META_LOG_ERROR(md, "host interface name is too long");
 
@@ -1213,8 +1302,8 @@ sai_status_t meta_generic_validation_create(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 VALIDATION_LIST(md, value.qosmap);
                 break;
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-                VALIDATION_LIST(md, value.tunnelmap);
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+                VALIDATION_LIST(md, value.aclresource);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -1336,7 +1425,7 @@ sai_status_t meta_generic_validation_create(
     {
         const sai_attr_metadata_t& md = *mdp;
 
-        if (!HAS_FLAG_MANDATORY_ON_CREATE(md.flags))
+        if (!SAI_HAS_FLAG_MANDATORY_ON_CREATE(md.flags))
         {
             continue;
         }
@@ -1645,21 +1734,28 @@ sai_status_t meta_generic_validation_set(
 
     META_LOG_DEBUG(md, "(set)");
 
-    if (HAS_FLAG_READ_ONLY(md.flags))
+    if (SAI_HAS_FLAG_READ_ONLY(md.flags))
     {
-        META_LOG_ERROR(md, "attr is read only and cannot be modified");
+        if (meta_unittests_get_and_erase_set_readonly_flag(md))
+        {
+            META_LOG_NOTICE(md, "readonly attribute is allowd to be set (unittests enabled)");
+        }
+        else
+        {
+            META_LOG_ERROR(md, "attr is read only and cannot be modified");
 
-        return SAI_STATUS_INVALID_PARAMETER;
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
     }
 
-    if (HAS_FLAG_CREATE_ONLY(md.flags))
+    if (SAI_HAS_FLAG_CREATE_ONLY(md.flags))
     {
         META_LOG_ERROR(md, "attr is create only and cannot be modified");
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    if (HAS_FLAG_KEY(md.flags))
+    if (SAI_HAS_FLAG_KEY(md.flags))
     {
         META_LOG_ERROR(md, "attr is key and cannot be modified");
 
@@ -1884,8 +1980,8 @@ sai_status_t meta_generic_validation_set(
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             VALIDATION_LIST(md, value.qosmap);
             break;
-        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-            VALIDATION_LIST(md, value.tunnelmap);
+        case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+            VALIDATION_LIST(md, value.aclresource);
             break;
 
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -2033,7 +2129,7 @@ sai_status_t meta_generic_validation_set(
 sai_status_t meta_generic_validation_get(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ const uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -2112,6 +2208,24 @@ sai_status_t meta_generic_validation_get(
             {
                 META_LOG_DEBUG(md, "conditional attr found in local db");
             }
+        }
+
+        /*
+         * When GET api is performed, later on same methods serialize/deserialize
+         * are used for create/set/get apis. User may not clear input attributes
+         * buffer (since it is in/out for example for lists) and in case of
+         * values that are validated like "enum" it will try to find best
+         * match for enum, and if not found, it will print warning message.
+         *
+         * In this place we can clear user buffer, so when it will go to
+         * serialize method it will pick first enum on the list.
+         *
+         * For primitive attributes we could just set entire attribute value to zero.
+         */
+
+        if (md.isenum)
+        {
+            attr_list[i].value.s32 = 0;
         }
 
         switch (md.attrvaluetype)
@@ -2236,8 +2350,8 @@ sai_status_t meta_generic_validation_get(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 VALIDATION_LIST(md, value.qosmap);
                 break;
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-                VALIDATION_LIST(md, value.tunnelmap);
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+                VALIDATION_LIST(md, value.aclresource);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -2302,11 +2416,20 @@ sai_status_t meta_generic_validation_get(
 template <typename T>
 sai_status_t meta_generic_validation_get_stats(
         _In_ const sai_object_meta_key_t& meta_key,
-        _In_ const uint32_t count,
+        _In_ uint32_t count,
         _In_ const T *counter_id_list,
         _In_ const uint64_t *counter_list)
 {
     SWSS_LOG_ENTER();
+
+    if (meta_unittests_enabled() && (count & 0x80000000))
+    {
+        /*
+         * If last bit of counters count is set to high, and unittests are enabled,
+         * then this api can be used to SET counter values by user for debugging purposes.
+         */
+        count = count & ~0x80000000;
+    }
 
     if (count < 1)
     {
@@ -2452,7 +2575,7 @@ void meta_generic_validation_post_create(
 
         const sai_attr_metadata_t& md = *mdp;
 
-        if (HAS_FLAG_KEY(md.flags))
+        if (SAI_HAS_FLAG_KEY(md.flags))
         {
             haskeys = true;
             META_LOG_DEBUG(md, "attr is key");
@@ -2559,9 +2682,9 @@ void meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 // no special action required
                 break;
 
@@ -2694,9 +2817,9 @@ void meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 // no special action required
                 break;
 
@@ -2763,7 +2886,7 @@ void meta_generic_validation_post_set(
      * if there is default value and if it's const.
      */
 
-    if (!HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
+    if (!SAI_HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
     {
         if ((get_object_previous_attr(meta_key, md) == NULL) &&
                 (md.defaultvaluetype != SAI_DEFAULT_VALUE_TYPE_CONST &&
@@ -2945,9 +3068,9 @@ void meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
         case SAI_ATTR_VALUE_TYPE_INT32_LIST:
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
-        case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
+        case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             // no special action required
             break;
 
@@ -2984,7 +3107,7 @@ void meta_generic_validation_post_get_objlist(
      * whether default value is present and it's const NULL.
      */
 
-    if (!HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
+    if (!SAI_HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
     {
         if (get_object_previous_attr(meta_key, md) == NULL)
         {
@@ -3241,8 +3364,8 @@ void meta_generic_validation_post_get(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 VALIDATION_LIST_GET(md, value.qosmap);
                 break;
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-                VALIDATION_LIST_GET(md, value.tunnelmap);
+            case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
+                VALIDATION_LIST_GET(md, value.aclresource);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -3518,6 +3641,14 @@ sai_status_t meta_sai_set_fdb_entry(
     return status;
 }
 
+#define META_LOG_STATUS(s)\
+    if (s == SAI_STATUS_SUCCESS)                                           \
+        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(s).c_str()); \
+    else if (s == SAI_STATUS_BUFFER_OVERFLOW)                              \
+        SWSS_LOG_INFO("get status: %s", sai_serialize_status(s).c_str());  \
+    else                                                                   \
+        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(s).c_str());
+
 sai_status_t meta_sai_get_fdb_entry(
         _In_ const sai_fdb_entry_t* fdb_entry,
         _In_ uint32_t attr_count,
@@ -3553,14 +3684,7 @@ sai_status_t meta_sai_get_fdb_entry(
 
     status = get(fdb_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -3848,14 +3972,7 @@ sai_status_t meta_sai_get_neighbor_entry(
 
     status = get(neighbor_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -4155,14 +4272,7 @@ sai_status_t meta_sai_get_route_entry(
 
     status = get(route_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -4453,14 +4563,7 @@ sai_status_t meta_sai_get_oid(
 
     status = get(object_type, object_id, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -4513,14 +4616,7 @@ sai_status_t meta_sai_get_stats_oid(
 
     status = get(object_type, object_id, count, counter_id_list, counter_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status);
 
     return status;
 }
@@ -4536,10 +4632,92 @@ sai_status_t meta_sai_get_stats_oid(
         _In_ sai_get_generic_stats_fn<sai_ ## type ## _stat_t> get);
 
 DECLARE_META_GET_STATS_OID(port);
+DECLARE_META_GET_STATS_OID(port_pool);
 DECLARE_META_GET_STATS_OID(queue);
 DECLARE_META_GET_STATS_OID(ingress_priority_group);
+DECLARE_META_GET_STATS_OID(tunnel);
 
 // NOTIFICATIONS
+
+static sai_mac_t zero_mac = { 0, 0, 0, 0, 0, 0 };
+
+void meta_sai_on_fdb_flush_event_consolidated(
+        _In_ const sai_fdb_event_notification_data_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    // since we don't keep objects by type, we need to scan via all objects
+    // and find fdb entries
+
+    auto bpid = sai_metadata_get_attr_by_id(SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID, data.attr_count, data.attr);
+    auto type = sai_metadata_get_attr_by_id(SAI_FDB_ENTRY_ATTR_TYPE, data.attr_count, data.attr);
+
+    SWSS_LOG_NOTICE("processing consolidated fdb flush event of type: %s",
+            sai_metadata_get_fdb_entry_type_name((sai_fdb_entry_type_t)type->value.s32));
+
+    std::vector<sai_object_meta_key_t> toremove;
+
+    for (auto it = ObjectAttrHash.begin(); it != ObjectAttrHash.end(); ++it)
+    {
+        const std::string &key_fdb = it->first;
+
+        if (strstr(key_fdb.c_str(), "bvid") == NULL)
+        {
+            // this is not fdb_entry key
+            continue;
+        }
+
+        sai_object_meta_key_t meta_key_fdb;
+
+        meta_key_fdb.objecttype = SAI_OBJECT_TYPE_FDB_ENTRY;
+
+        sai_deserialize_object_meta_key(key_fdb, meta_key_fdb);
+
+        if (it->second.at(SAI_FDB_ENTRY_ATTR_TYPE)->getattr()->value.s32 != type->value.s32)
+        {
+            // entry type is not matching on this fdb entry
+            continue;
+        }
+
+        if (bpid != NULL)
+        {
+            if (it->second.find(SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID) == it->second.end())
+            {
+                // port is not defined for this fdb entry
+                continue;
+            }
+
+            if (it->second.at(SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)->getattr()->value.oid != bpid->value.oid)
+            {
+                // bridge port is not matching this fdb entry
+                continue;
+            }
+        }
+
+        if (data.fdb_entry.bv_id != SAI_NULL_OBJECT_ID)
+        {
+            if (data.fdb_entry.bv_id != meta_key_fdb.objectkey.key.fdb_entry.bv_id)
+            {
+                // vlan/bridge id is not matching on this fdb entry
+                continue;
+            }
+        }
+
+        // this fdb entry is matching, removing
+
+        SWSS_LOG_INFO("removing %s", key_fdb.c_str());
+
+        // since meta_generic_validation_post_remove also modifies ObjectAttrHash
+        // we need to push this to a vector and remove in next loop
+        toremove.push_back(meta_key_fdb);
+    }
+
+    for (auto it = toremove.begin(); it != toremove.end(); ++it)
+    {
+        // remove selected objects
+        meta_generic_validation_post_remove(*it);
+    }
+}
 
 void meta_sai_on_fdb_event_single(
         _In_ const sai_fdb_event_notification_data_t& data)
@@ -4593,11 +4771,28 @@ void meta_sai_on_fdb_event_single(
             break;
 
         case SAI_FDB_EVENT_AGED:
-        case SAI_FDB_EVENT_FLUSHED:
 
             if (!object_exists(key_fdb))
             {
-                SWSS_LOG_WARN("object key %s doesn't exist but received AGED/FLUSHED event", key_fdb.c_str());
+                SWSS_LOG_WARN("object key %s doesn't exist but received AGED event", key_fdb.c_str());
+                break;
+            }
+
+            meta_generic_validation_post_remove(meta_key_fdb);
+
+            break;
+
+        case SAI_FDB_EVENT_FLUSHED:
+
+            if (memcmp(data.fdb_entry.mac_address, zero_mac, sizeof(zero_mac)) == 0)
+            {
+                meta_sai_on_fdb_flush_event_consolidated(data);
+                break;
+            }
+
+            if (!object_exists(key_fdb))
+            {
+                SWSS_LOG_WARN("object key %s doesn't exist but received FLUSHED event", key_fdb.c_str());
                 break;
             }
 
@@ -4622,4 +4817,155 @@ void meta_sai_on_fdb_event(
     {
         meta_sai_on_fdb_event_single(data[i]);
     }
+}
+
+// FDB FLUSH
+
+sai_status_t meta_sai_flush_fdb_entries(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_flush_fdb_entries_fn flush_fdb_entries)
+{
+    SWSS_LOG_ENTER();
+
+    if (flush_fdb_entries == NULL)
+    {
+        SWSS_LOG_ERROR("function pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (attr_count > MAX_LIST_COUNT)
+    {
+        SWSS_LOG_ERROR("create attribute count is too large %u > then max list count %u", attr_count, MAX_LIST_COUNT);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (attr_count != 0 && attr_list == NULL)
+    {
+        SWSS_LOG_ERROR("attribute list is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t swot = sai_object_type_query(switch_id);
+
+    if (swot != SAI_OBJECT_TYPE_SWITCH)
+    {
+        SWSS_LOG_ERROR("object type for switch_id %s is %s",
+                sai_serialize_object_id(switch_id).c_str(),
+                sai_serialize_object_type(swot).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (!object_reference_exists(switch_id))
+    {
+        SWSS_LOG_ERROR("switch id %s don't exists",
+                sai_serialize_object_id(switch_id).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // validate attributes
+    // - attribute list can be empty
+    // - validation is similar to "create" action but there is no
+    //   post create step and no references are updated
+    // - fdb entries are updated in fdb notification
+
+    std::unordered_map<sai_attr_id_t, const sai_attribute_t*> attrs;
+
+    SWSS_LOG_DEBUG("attr count = %u", attr_count);
+
+    for (uint32_t idx = 0; idx < attr_count; ++idx)
+    {
+        const sai_attribute_t* attr = &attr_list[idx];
+
+        auto mdp = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_FDB_FLUSH, attr->id);
+
+        if (mdp == NULL)
+        {
+            SWSS_LOG_ERROR("unable to find attribute metadata SAI_OBJECT_TYPE_FDB_FLUSH:%d", attr->id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        const sai_attribute_value_t& value = attr->value;
+
+        const sai_attr_metadata_t& md = *mdp;
+
+        META_LOG_DEBUG(md, "(fdbflush)");
+
+        if (attrs.find(attr->id) != attrs.end())
+        {
+            META_LOG_ERROR(md, "attribute id (%u) is defined on attr list multiple times", attr->id);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        attrs[attr->id] = attr;
+
+        if (md.flags != SAI_ATTR_FLAGS_CREATE_ONLY)
+        {
+            META_LOG_ERROR(md, "attr is expected to be marked as CREATE_ONLY");
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        if (md.isconditional || md.validonlylength > 0)
+        {
+            META_LOG_ERROR(md, "attr should not be conditional or validonly");
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+
+        switch (md.attrvaluetype)
+        {
+            case SAI_ATTR_VALUE_TYPE_UINT16:
+
+                if (md.isvlan && (value.u16 >= 0xFFF || value.u16 == 0))
+                {
+                    META_LOG_ERROR(md, "is vlan id but has invalid id %u", value.u16);
+
+                    return SAI_STATUS_INVALID_PARAMETER;
+                }
+
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_INT32:
+
+                if (md.isenum && !sai_metadata_is_allowed_enum_value(&md, value.s32))
+                {
+                    META_LOG_ERROR(md, "is enum, but value %d not found on allowed values list", value.s32);
+
+                    return SAI_STATUS_INVALID_PARAMETER;
+                }
+
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+
+                {
+                    sai_status_t status = meta_generic_validation_objlist(md, switch_id, 1, &value.oid);
+
+                    if (status != SAI_STATUS_SUCCESS)
+                    {
+                        return status;
+                    }
+
+                    break;
+                }
+
+            default:
+
+                META_LOG_THROW(md, "serialization type is not supported yet FIXME");
+        }
+    }
+
+    // there are no mandatory attributes
+    // there are no conditional attributes
+
+    return flush_fdb_entries(switch_id, attr_count, attr_list);
 }

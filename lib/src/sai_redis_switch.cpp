@@ -1,7 +1,7 @@
 #include "sai_redis.h"
 #include "sairedis.h"
 
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 
 #include <thread>
 
@@ -35,9 +35,7 @@ sai_status_t sai_redis_internal_notify_syncd(
 
         swss::Selectable *sel;
 
-        int fd;
-
-        int result = s.select(&sel, &fd, GET_RESPONSE_TIMEOUT);
+        int result = s.select(&sel, GET_RESPONSE_TIMEOUT);
 
         if (result == swss::Select::OBJECT)
         {
@@ -221,6 +219,8 @@ sai_status_t redis_set_switch_attribute(
         _In_ sai_object_id_t switch_id,
         _In_ const sai_attribute_t *attr)
 {
+    // SWSS_LOG_ENTER() omitted here, defined below after mutex
+
     if (attr != NULL && attr->id == SAI_REDIS_SWITCH_ATTR_PERFORM_LOG_ROTATE)
     {
         /*

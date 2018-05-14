@@ -1,5 +1,5 @@
 #include "sai_redis.h"
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
 
 sai_status_t internal_redis_generic_set(

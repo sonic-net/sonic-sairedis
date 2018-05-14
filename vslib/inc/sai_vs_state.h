@@ -2,7 +2,7 @@
 #define __SAI_VS_STATE__
 
 #include "meta/sai_meta.h"
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
 
 #include "swss/selectableevent.h"
@@ -61,16 +61,22 @@ class SaiAttrWrap
 
         const sai_attribute_t* getAttr() const
         {
+            SWSS_LOG_ENTER();
+
             return &m_attr;
         }
 
         const sai_attr_metadata_t* getAttrMetadata() const
         {
+            SWSS_LOG_ENTER();
+
             return m_meta;
         }
 
         const std::string& getAttrStrValue() const
         {
+            SWSS_LOG_ENTER();
+
             return m_value;
         }
 
@@ -97,6 +103,40 @@ typedef std::map<sai_object_type_t, std::map<std::string, AttrHash>> ObjectHash;
 
 #define DEFAULT_VLAN_NUMBER 1
 
+typedef struct _fdb_info_t
+{
+    sai_object_id_t port_id;
+
+    sai_vlan_id_t vlan_id;
+
+    sai_object_id_t bridge_port_id;
+
+    sai_fdb_entry_t fdb_entry;
+
+    uint32_t timestamp;
+
+    bool operator<(const _fdb_info_t& other) const
+    {
+        int res = memcmp(fdb_entry.mac_address, other.fdb_entry.mac_address, sizeof(sai_mac_t));
+
+        if (res < 0)
+            return true;
+
+        if (res > 0)
+            return false;
+
+        return vlan_id < other.vlan_id;
+    }
+
+    bool operator() (const _fdb_info_t& lhs, const _fdb_info_t & rhs) const
+    {
+        return lhs < rhs;
+    }
+
+} fdb_info_t;
+
+extern std::set<fdb_info_t> g_fdb_info_set;
+
 class SwitchState
 {
     public:
@@ -105,6 +145,8 @@ class SwitchState
                 _In_ sai_object_id_t switch_id):
             m_switch_id(switch_id)
         {
+            SWSS_LOG_ENTER();
+
             if (sai_object_type_query(switch_id) != SAI_OBJECT_TYPE_SWITCH)
             {
                 SWSS_LOG_THROW("object %s is not SWITCH, its %s",
@@ -132,35 +174,49 @@ class SwitchState
 
     ObjectHash objectHash;
 
+    std::map<std::string, std::map<int, uint64_t>> countersMap;
+
     sai_object_id_t getSwitchId() const
     {
+        SWSS_LOG_ENTER();
+
         return m_switch_id;
     }
 
     bool getRunLinkThread() const
     {
+        SWSS_LOG_ENTER();
+
         return m_run_link_thread;
     }
 
     void setRunLinkThread(
             _In_ bool run)
     {
+        SWSS_LOG_ENTER();
+
         m_run_link_thread = run;
     }
 
     swss::SelectableEvent* getLinkThreadEvent()
     {
+        SWSS_LOG_ENTER();
+
         return &m_link_thread_event;
     }
 
     void setLinkThread(
             _In_ std::shared_ptr<std::thread> thread)
     {
+        SWSS_LOG_ENTER();
+
         m_link_thread = thread;
     }
 
     std::shared_ptr<std::thread> getLinkThread() const
     {
+        SWSS_LOG_ENTER();
+
         return m_link_thread;
     }
 
@@ -168,12 +224,16 @@ class SwitchState
             _In_ const std::string& ifname,
             _In_ sai_object_id_t port_id)
     {
+        SWSS_LOG_ENTER();
+
         m_ifname_to_port_id_map[ifname] = port_id;
     }
 
     sai_object_id_t getPortIdFromIfName(
         _In_ const std::string& ifname) const
     {
+        SWSS_LOG_ENTER();
+
         auto it = m_ifname_to_port_id_map.find(ifname);
 
         if (it == m_ifname_to_port_id_map.end())
@@ -211,5 +271,9 @@ void vs_free_real_object_id(
 sai_object_id_t vs_create_real_object_id(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t switch_id);
+
+void processFdbInfo(
+        _In_ const fdb_info_t &fi,
+        _In_ sai_fdb_event_t fdb_event);
 
 #endif // __SAI_VS_STATE__
