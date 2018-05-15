@@ -3054,6 +3054,21 @@ void set_sai_api_loglevel()
     }
 }
 
+void set_sai_api_log_min_prio(const std::string &prioStr)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * We start from 1 since 0 is SAI_API_UNSPECIFIED.
+     */
+
+    for (uint32_t idx = 1; idx < sai_metadata_enum_sai_api_t.valuescount; ++idx)
+    {
+        const auto& api_name = sai_metadata_enum_sai_api_t.valuesnames[idx];
+        saiLoglevelNotify(api_name, prioStr);
+    }
+}
+
 void performWarmRestart()
 {
     SWSS_LOG_ENTER();
