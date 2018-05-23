@@ -3449,6 +3449,9 @@ int syncd_main(int argc, char **argv)
 
 #endif
 
+    // Stop notification thread before removing switch
+    stopNotificationsProcessingThread();
+
     status = sai_switch_api->remove_switch(gSwitchId);
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -3464,8 +3467,6 @@ int syncd_main(int argc, char **argv)
     {
         SWSS_LOG_ERROR("failed to uninitialize api: %s", sai_serialize_status(status).c_str());
     }
-
-    stopNotificationsProcessingThread();
 
     SWSS_LOG_NOTICE("uninitialize finished");
 
