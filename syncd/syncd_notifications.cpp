@@ -535,6 +535,7 @@ void ntf_process_function()
     while (runThread)
     {
         cv.wait(ulock);
+        if (! runThread) break;
 
         // this is notifications processing thread context, which is different
         // from SAI notifications context, we can safe use g_mutex here,
@@ -559,8 +560,6 @@ void startNotificationsProcessingThread()
     runThread = true;
 
     ntf_process_thread = std::make_shared<std::thread>(ntf_process_function);
-
-    ntf_process_thread->detach();
 }
 
 void stopNotificationsProcessingThread()
