@@ -51,6 +51,7 @@ class FlexCounter
                 _In_ std::string instanceId);
         static void removeCounterPlugin(
                 _In_ std::string instanceId);
+        static void removeAllCounters();
 
         FlexCounter(
                 _In_ const FlexCounter&) = delete;
