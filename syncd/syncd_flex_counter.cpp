@@ -331,6 +331,11 @@ void FlexCounter::removeCounterPlugin(
     }
 }
 
+void FlexCounter::removeAllCounters()
+{
+    g_flex_counters_map.clear();
+}
+
 
 FlexCounter::~FlexCounter(void)
 {

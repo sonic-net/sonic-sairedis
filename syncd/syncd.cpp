@@ -3449,6 +3449,8 @@ int syncd_main(int argc, char **argv)
 
 #endif
 
+    FlexCounter::removeAllCounters();
+
     // Stop notification thread before removing switch
     stopNotificationsProcessingThread();
 
