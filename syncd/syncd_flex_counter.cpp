@@ -42,6 +42,28 @@ void FlexCounter::setPollInterval(
     fc.m_pollInterval = pollInterval;
 }
 
+void FlexCounter::updateFlexCounterStatus(
+        _In_ std::string status,
+        _In_ std::string instanceId)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter &fc = getInstance(instanceId);
+    if (status == "enable")
+    {
+        fc.m_enable = true;
+    }
+    else if (status == "disable")
+    {
+        fc.m_enable = false;
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("Input value %s is not supported for Flex counter status, enter enable or disable", status.c_str());
+    }
+
+}
+
 /* The current implementation of 'setPortCounterList' and 'setQueueCounterList' are
  * not the same. Need to refactor these two functions to have the similar logic.
  * Either the full SAI attributes are queried once, or each of the needed counters
@@ -586,8 +608,11 @@ void FlexCounter::flexCounterThread(void)
     {
         auto start = std::chrono::steady_clock::now();
 
-        collectCounters(countersTable);
-        runPlugins(db);
+        if (m_enable)
+        {
+            collectCounters(countersTable);
+            runPlugins(db);
+        }
 
         auto finish = std::chrono::steady_clock::now();
         uint32_t delay = static_cast<uint32_t>(

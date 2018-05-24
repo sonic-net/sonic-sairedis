@@ -2580,6 +2580,10 @@ void processFlexCounterGroupEvent(
                     FlexCounter::addPortCounterPlugin(sha, groupName);
                 }
             }
+            else if (field == FLEX_COUNTER_STATUS_FIELD)
+            {
+                FlexCounter::updateFlexCounterStatus(value, groupName);
+            }
             else
             {
                 SWSS_LOG_ERROR("Field is not supported %s", field.c_str());
