@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta
+AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/test/saithrift/src
 
 bin_PROGRAMS = syncd syncd_request_shutdown tests
 
@@ -33,6 +33,7 @@ syncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.l
 if SAITHRIFT
 syncd_CPPFLAGS += -DSAITHRIFT=yes
 syncd_LDADD += -lrpcserver -lthrift
+#syncd_LDADD += -lthrift
 endif
 
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
