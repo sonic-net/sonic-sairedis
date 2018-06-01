@@ -15,6 +15,7 @@ libsaivs_la_SOURCES = \
 					  sai_vs_fdb.cpp \
 					  sai_vs_hash.cpp \
 					  sai_vs_hostintf.cpp \
+					  sai_vs_dtel.cpp \
 					  sai_vs_interfacequery.cpp \
 					  sai_vs_lag.cpp \
 					  sai_vs_mirror.cpp \

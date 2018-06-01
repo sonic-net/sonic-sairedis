@@ -243,6 +243,9 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.aclresource, dst_attr.value.aclresource, countOnly));
             break;
 
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.ipaddrlist, dst_attr.value.ipaddrlist, countOnly));
+            break;
 
             /* ACL FIELD DATA */
 
@@ -322,6 +325,11 @@ sai_status_t transfer_attribute(
             break;
 
             /* ACL ACTION DATA */
+
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
+            transfer_primitive(src_attr.value.aclaction.enable, dst_attr.value.aclaction.enable);
+            transfer_primitive(src_attr.value.aclaction.parameter.booldata, dst_attr.value.aclaction.parameter.booldata);
+            break;
 
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             transfer_primitive(src_attr.value.aclaction.enable, dst_attr.value.aclaction.enable);
@@ -904,6 +912,15 @@ std::string sai_serialize_list(
 
 }
 
+std::string sai_serialize_ip_address_list(
+        _In_ const sai_ip_address_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_list(list, countOnly, [&](sai_ip_address_t item) { return sai_serialize_ip_address(item);} );
+}
+
 std::string sai_serialize_enum_list(
         _In_ const sai_s32_list_t& list,
         _In_ const sai_enum_metadata_t* meta,
@@ -1065,6 +1082,9 @@ std::string sai_serialize_acl_action(
 
     switch (meta.attrvaluetype)
     {
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
+            return sai_serialize_bool(action.parameter.booldata);
+
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             return sai_serialize_number(action.parameter.u8);
 
@@ -1269,6 +1289,9 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             return sai_serialize_acl_resource_list(attr.value.aclresource, countOnly);
 
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            return sai_serialize_ip_address_list(attr.value.ipaddrlist, countOnly);
+
             // ACL FIELD DATA
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
@@ -1288,6 +1311,7 @@ std::string sai_serialize_attr_value(
 
             // ACL ACTION DATA
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -1982,6 +2006,16 @@ void sai_deserialize_ip_address(
     SWSS_LOG_THROW("invalid ip address %s", s.c_str());
 }
 
+void sai_deserialize_ip_address_list(
+        _In_ const std::string& s,
+        _Out_ sai_ip_address_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_list(s, list, countOnly, [&](const std::string sitem, sai_ip_address_t& item) { sai_deserialize_ip_address(sitem, item);} );
+}
+
 template <typename T>
 void sai_deserialize_range(
         _In_ const std::string& s,
@@ -2113,6 +2147,9 @@ void sai_deserialize_acl_action(
 
     switch (meta.attrvaluetype)
     {
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
+            return sai_deserialize_bool(s, action.parameter.booldata);
+
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             return sai_deserialize_number(s, action.parameter.u8);
 
@@ -2247,6 +2284,9 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             return sai_deserialize_acl_resource_list(s, attr.value.aclresource, countOnly);
 
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            return sai_deserialize_ip_address_list(s, attr.value.ipaddrlist, countOnly);
+
             // ACL FIELD DATA
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
@@ -2266,6 +2306,7 @@ void sai_deserialize_attr_value(
 
             // ACL ACTION DATA
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2688,6 +2729,10 @@ void sai_deserialize_free_attribute_value(
             sai_free_list(attr.value.aclresource);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            sai_free_list(attr.value.ipaddrlist);
+            break;
+
             /* ACL FIELD DATA */
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
@@ -2713,6 +2758,7 @@ void sai_deserialize_free_attribute_value(
 
             /* ACL ACTION DATA */
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
