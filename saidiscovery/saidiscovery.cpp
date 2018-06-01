@@ -10,7 +10,7 @@ extern "C" {
 }
 
 #include "swss/logger.h"
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 
 #include <iostream>
 #include <map>
@@ -388,7 +388,7 @@ int profile_get_next_value(
     return 0;
 }
 
-service_method_table_t test_services = {
+sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -405,7 +405,7 @@ void check_mandatory_attributes(
     {
         auto md = info->attrmetadata[idx];
 
-        if (!HAS_FLAG_MANDATORY_ON_CREATE(md->flags))
+        if (!SAI_HAS_FLAG_MANDATORY_ON_CREATE(md->flags))
         {
             continue;
         }
@@ -473,6 +473,8 @@ void handleProfileMap(
 
 void printUsage()
 {
+    SWSS_LOG_ENTER();
+
     std::cout << std::endl;
     std::cout << "Usage: saidiscovery [-I] [-D] [-f] [-d] [-p profile] [-w] [-h]" << std::endl << std::endl;
     std::cout << "    -I --noInitSwitch:" << std::endl;
@@ -576,7 +578,7 @@ int main(int argc, char **argv)
 
     handleProfileMap(gOptions.profileMapFile);
 
-    sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+    sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -591,7 +593,8 @@ int main(int argc, char **argv)
         sai_log_set((sai_api_t)api, gOptions.saiApiLogLevel);
     }
 
-    sai_metadata_apis_query(sai_api_query);
+    sai_apis_t apis;
+    sai_metadata_apis_query(sai_api_query, &apis);
 
     sai_object_id_t switch_id;
 

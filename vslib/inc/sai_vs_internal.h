@@ -139,3 +139,24 @@
     vs_remove_ ## ot,               \
     vs_set_ ## ot ##_attribute,     \
     vs_get_ ## ot ##_attribute,
+
+// stats
+
+#define VS_GENERIC_GET_STATS(OBJECT_TYPE,object_type)                      \
+    sai_status_t vs_get_ ## object_type ## _stats(                         \
+            _In_ sai_object_id_t object_type ##_id,                        \
+            _In_ uint32_t count,                                           \
+            _In_ const sai_ ## object_type ## _stat_t *counter_id_list,    \
+            _Out_ uint64_t *counter_list)                                  \
+    {                                                                      \
+        MUTEX();                                                           \
+        SWSS_LOG_ENTER();                                                  \
+                                                                           \
+        return meta_sai_get_stats_oid<sai_ ## object_type ## _stat_t>(     \
+                SAI_OBJECT_TYPE_ ## OBJECT_TYPE,                           \
+                object_type ## _id,                                        \
+                count,                                                     \
+                counter_id_list,                                           \
+                counter_list,                                              \
+                &vs_generic_get_stats);                                    \
+    }

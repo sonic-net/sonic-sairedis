@@ -45,6 +45,7 @@ void check_notifications_pointers(
 // there is something wrong and we should fail
 #define GET_RESPONSE_TIMEOUT (6*60*1000)
 
+extern std::string getSelectResultAsString(int result);
 extern void clear_local_state();
 extern void setRecording(bool record);
 extern sai_status_t setRecordingOutputDir(
@@ -60,7 +61,7 @@ extern volatile bool g_useTempView;
 extern volatile bool g_asicInitViewMode;
 extern volatile bool g_logrotate;
 
-extern service_method_table_t                       g_services;
+extern sai_service_method_table_t                   g_services;
 extern std::shared_ptr<swss::ProducerTable>         g_asicState;
 extern std::shared_ptr<swss::ConsumerTable>         g_redisGetConsumer;
 extern std::shared_ptr<swss::NotificationConsumer>  g_redisNotifications;

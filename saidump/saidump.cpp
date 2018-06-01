@@ -5,7 +5,7 @@ extern "C" {
 }
 
 #include "swss/table.h"
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 #include "sairedis.h"
 
 #include <getopt.h>

@@ -191,3 +191,5 @@ test_brcm_full_to_empty_no_queue;
 test_brcm_full_to_empty_no_queue_no_ipg;
 test_brcm_full_to_empty_hostif_remove_segfault;
 test_brcm_full_to_empty_no_queue_no_ipg_no_buffer_profile;
+
+kill_syncd;

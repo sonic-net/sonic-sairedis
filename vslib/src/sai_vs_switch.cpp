@@ -71,10 +71,13 @@ class LinkMsg : public swss::NetMsg
         LinkMsg(sai_object_id_t switch_id)
             : m_switch_id(switch_id)
         {
+            SWSS_LOG_ENTER();
         }
 
         virtual void onMsg(int nlmsg_type, struct nl_object *obj)
         {
+            SWSS_LOG_ENTER();
+
             if (nlmsg_type != RTM_NEWLINK)
             {
                 SWSS_LOG_WARN("unsupported nlmsg_type: %d", nlmsg_type);
@@ -212,8 +215,7 @@ void linkmsg_thread(
             {
                 swss::Selectable *temps = NULL;
 
-                int tempfd;
-                int result = s.select(&temps, &tempfd);
+                int result = s.select(&temps);
 
                 SWSS_LOG_INFO("select ended: %d", result);
             }

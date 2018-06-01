@@ -40,12 +40,21 @@ static sai_status_t set_default_notifications()
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_INFO("create defaultr notifications");
+    SWSS_LOG_INFO("create default notifications");
 
     sai_attribute_t attr;
 
     attr.id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
     attr.value.ptr = NULL;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
+    attr.value.u32 = 0;
 
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
@@ -201,6 +210,11 @@ static sai_status_t create_ports()
 
         attr.id = SAI_PORT_ATTR_OPER_STATUS;
         attr.value.s32 = SAI_PORT_OPER_STATUS_DOWN;
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
+        attr.value.u32 = DEFAULT_VLAN_NUMBER;
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
     }
@@ -658,6 +672,11 @@ static sai_status_t create_bridge_ports()
     attr.value.s32 = SAI_BRIDGE_PORT_TYPE_1Q_ROUTER;
 
     CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_BRIDGE_PORT, &default_bridge_port_1q_router, ss->getSwitchId(), 1, &attr));
+
+    attr.id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_BRIDGE_PORT, default_bridge_port_1q_router, &attr));
 
     attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
 
@@ -1120,6 +1139,13 @@ sai_status_t refresh_read_only_MLNX2700(
     if (meta->objecttype == SAI_OBJECT_TYPE_VLAN && meta->attrid == SAI_VLAN_ATTR_MEMBER_LIST)
     {
         return refresh_vlan_member_list(meta, object_id, switch_id);
+    }
+
+    if (meta_unittests_enabled())
+    {
+        SWSS_LOG_NOTICE("unittests enabled, SET could be performed on %s, not recalculating", meta->attridname);
+
+        return SAI_STATUS_SUCCESS;
     }
 
     SWSS_LOG_WARN("need to recalculate RO: %s", meta->attridname);

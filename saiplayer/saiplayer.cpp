@@ -6,7 +6,7 @@ extern "C" {
 #include "sai.h"
 }
 
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
 #include "swss/logger.h"
 #include "swss/tokenize.h"
@@ -52,7 +52,7 @@ int test_profile_get_next_value (
     return -1;
 }
 
-const service_method_table_t test_services = {
+const sai_service_method_table_t test_services = {
     test_profile_get_value,
     test_profile_get_next_value
 };
@@ -212,6 +212,8 @@ void translate_local_to_redis(
 
 sai_object_type_t deserialize_object_type(const std::string& s)
 {
+    SWSS_LOG_ENTER();
+
     sai_object_type_t object_type;
 
     sai_deserialize_object_type(s, object_type);
@@ -221,6 +223,8 @@ sai_object_type_t deserialize_object_type(const std::string& s)
 
 const std::vector<swss::FieldValueTuple> get_values(const std::vector<std::string>& items)
 {
+    SWSS_LOG_ENTER();
+
     std::vector<swss::FieldValueTuple> values;
 
     // timestamp|action|objecttype:objectid|attrid=value,...
@@ -309,10 +313,6 @@ void match_list_lengths(
 
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
                 CHECK_LIST(value.qosmap);
-                break;
-
-            case SAI_ATTR_VALUE_TYPE_TUNNEL_MAP_LIST:
-                CHECK_LIST(value.tunnelmap);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
@@ -454,7 +454,7 @@ sai_status_t handle_fdb(
     sai_deserialize_fdb_entry(str_object_id, fdb_entry);
 
     fdb_entry.switch_id = translate_local_to_redis(fdb_entry.switch_id);
-    fdb_entry.bridge_id = translate_local_to_redis(fdb_entry.bridge_id);
+    fdb_entry.bv_id = translate_local_to_redis(fdb_entry.bv_id);
 
     switch (api)
     {
@@ -910,7 +910,7 @@ sai_status_t handle_bulk_route(
                 (uint32_t)routes.size(),
                 routes.data(),
                 attrs.data(),
-                SAI_BULK_OP_TYPE_INGORE_ERROR, // TODO we need to get that from recording
+                SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, // TODO we need to get that from recording
                 statuses.data());
 
         if (status != SAI_STATUS_SUCCESS)
@@ -1235,6 +1235,8 @@ int replay(int argc, char **argv)
 
 void printUsage()
 {
+    SWSS_LOG_ENTER();
+
     std::cout << "Usage: saiplayer [-h] recordfile" << std::endl << std::endl;
     std::cout << "    -C --skipNotifySyncd:" << std::endl;
     std::cout << "        Will not send notify init/apply view to syncd" << std::endl << std::endl;
@@ -1338,9 +1340,11 @@ void sai_meta_log_syncd(
             break;
         case SAI_LOG_LEVEL_ERROR:
             p = swss::Logger::SWSS_ERROR;
+            fprintf(stderr, "ERROR: %s: %s", func, buffer);
             break;
         case SAI_LOG_LEVEL_WARN:
             p = swss::Logger::SWSS_WARN;
+            fprintf(stderr, "WARN: %s: %s", func, buffer);
             break;
         case SAI_LOG_LEVEL_CRITICAL:
             p = swss::Logger::SWSS_CRIT;
@@ -1369,9 +1373,10 @@ int main(int argc, char **argv)
     sai_metadata_log = &sai_meta_log_syncd;
 #pragma GCC diagnostic pop
 
-    EXIT_ON_ERROR(sai_api_initialize(0, (const service_method_table_t *)&test_services));
+    EXIT_ON_ERROR(sai_api_initialize(0, (const sai_service_method_table_t *)&test_services));
 
-    sai_metadata_apis_query(sai_api_query);
+    sai_apis_t apis;
+    sai_metadata_apis_query(sai_api_query, &apis);
 
     sai_attribute_t attr;
 

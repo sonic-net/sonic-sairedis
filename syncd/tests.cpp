@@ -10,7 +10,7 @@ extern "C" {
 #include "swss/redisreply.h"
 #include "sairedis.h"
 #include "sai_redis.h"
-#include "meta/saiserialize.h"
+#include "meta/sai_serialize.h"
 #include "syncd.h"
 
 #include <map>
@@ -32,6 +32,8 @@ sai_status_t test_create_next_hop_group_member(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     created_next_hop_group_member.emplace_back();
     auto& back = created_next_hop_group_member.back();
     std::get<0>(back) = *next_hop_group_member_id;
@@ -43,6 +45,8 @@ sai_status_t test_create_next_hop_group_member(
 
 void clearDB()
 {
+    SWSS_LOG_ENTER();
+
     swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
     swss::RedisReply r(&db, "FLUSHALL", REDIS_REPLY_STATUS);
     r.checkStatusOK();
@@ -81,7 +85,7 @@ static int profile_get_next_value(
     return -1;
 }
 
-static service_method_table_t test_services = {
+static sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
@@ -93,7 +97,7 @@ void test_sai_initialize()
     // NOTE: this is just testing whether test application will
     // link against libsairedis, this api requires running redis db
     // with enabled unix socket
-    sai_status_t status = sai_api_initialize(0, (service_method_table_t*)&test_services);
+    sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
 
     // Mock the SAI api
     test_next_hop_group_api.create_next_hop_group_member = test_create_next_hop_group_member;
@@ -138,21 +142,24 @@ sai_object_id_t create_dummy_object_id(
 
 bool starts_with(const std::string& str, const std::string& substr)
 {
+    SWSS_LOG_ENTER();
+
     return strncmp(str.c_str(), substr.c_str(), substr.size()) == 0;
 }
 
 void bulk_nhgm_consumer_worker()
 {
+    SWSS_LOG_ENTER();
+
     std::string tableName = ASIC_STATE_TABLE;
     swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
     swss::ConsumerTable c(&db, tableName);
     swss::Select cs;
     swss::Selectable *selectcs;
-    int tmpfd;
     int ret = 0;
 
     cs.addSelectable(&c);
-    while ((ret = cs.select(&selectcs, &tmpfd)) == swss::Select::OBJECT)
+    while ((ret = cs.select(&selectcs)) == swss::Select::OBJECT)
     {
         swss::KeyOpFieldsValuesTuple kco;
         c.pop(kco);
@@ -251,7 +258,7 @@ void test_bulk_next_hop_group_member_create()
     std::vector<sai_status_t> statuses(count);
     std::vector<sai_object_id_t> object_id(count);
     sai_bulk_create_next_hop_group_members(switch_id, count, nhgm_attrs_count.data(), nhgm_attrs_array.data()
-        , SAI_BULK_OP_TYPE_INGORE_ERROR, object_id.data(), statuses.data());
+        , SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, object_id.data(), statuses.data());
     ASSERT_SUCCESS("Failed to bulk create nhgm");
     for (size_t j = 0; j < statuses.size(); j++)
     {
@@ -271,7 +278,7 @@ void test_bulk_next_hop_group_member_create()
         assert(created_attrs[1].value.oid == nhgm_attrs[i][1].value.oid);
     }
 
-    status = sai_bulk_remove_next_hop_group_members(count, object_id.data(), SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+    status = sai_bulk_remove_next_hop_group_members(count, object_id.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to bulk remove nhgm");
 }
 
@@ -331,13 +338,18 @@ void test_bulk_fdb_create()
         std::string bridge_port_key = sai_serialize_object_meta_key(meta_key_bridge_port);
         ObjectAttrHash[bridge_port_key] = { };
 
+        // bridge
+        sai_object_id_t bridge = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE);
+        object_reference_insert(bridge);
+        sai_object_meta_key_t meta_key_bridge = { .objecttype = SAI_OBJECT_TYPE_BRIDGE, .objectkey = { .key = { .object_id = bridge } } };
+        std::string bridge_key = sai_serialize_object_meta_key(meta_key_bridge);
+        ObjectAttrHash[bridge_key] = { };
+
         sai_fdb_entry_t fdb_entry;
         fdb_entry.switch_id = switch_id;
         memset(fdb_entry.mac_address, 0, sizeof(sai_mac_t));
         fdb_entry.mac_address[0] = 0xD;
-        fdb_entry.bridge_type = SAI_FDB_ENTRY_BRIDGE_TYPE_1Q;
-        fdb_entry.vlan_id = (unsigned short)(1011 + i);
-        fdb_entry.bridge_id = SAI_NULL_OBJECT_ID;
+        fdb_entry.bv_id = bridge;
 
         fdbs.push_back(fdb_entry);
 
@@ -367,7 +379,7 @@ void test_bulk_fdb_create()
 
     std::vector<sai_status_t> statuses(count);
     status = sai_bulk_create_fdb_entry(count, fdbs.data(), fdb_attrs_count.data(), fdb_attrs_array.data()
-        , SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+        , SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to create fdb");
     for (size_t j = 0; j < statuses.size(); j++)
     {
@@ -376,7 +388,7 @@ void test_bulk_fdb_create()
     }
 
     // Remove route entry
-    status = sai_bulk_remove_fdb_entry(count, fdbs.data(), SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+    status = sai_bulk_remove_fdb_entry(count, fdbs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to bulk remove route entry");
 }
 
@@ -466,7 +478,7 @@ void test_bulk_route_set()
 
     std::vector<sai_status_t> statuses(count);
     status = sai_bulk_create_route_entry(count, routes.data(), route_attrs_count.data(), route_attrs_array.data()
-        , SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+        , SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to create route");
     for (size_t j = 0; j < statuses.size(); j++)
     {
@@ -499,7 +511,7 @@ void test_bulk_route_set()
         count,
         routes.data(),
         attrs.data(),
-        SAI_BULK_OP_TYPE_INGORE_ERROR,
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
         statuses.data());
 
     ASSERT_SUCCESS("Failed to bulk set route");
@@ -515,7 +527,7 @@ void test_bulk_route_set()
     // if after consume we get pop we get expectd parameters
 
     // Remove route entry
-    status = sai_bulk_remove_route_entry(count, routes.data(), SAI_BULK_OP_TYPE_INGORE_ERROR, statuses.data());
+    status = sai_bulk_remove_route_entry(count, routes.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to bulk remove route entry");
 }
 

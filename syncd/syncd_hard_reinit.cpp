@@ -47,6 +47,13 @@ static sai_object_id_t g_switch_vid = SAI_NULL_OBJECT_ID;
 
 static std::shared_ptr<SaiSwitch> g_sw;
 
+#ifdef SAITHRIFT
+/*
+ * SAI switch global needed for RPC server
+ */
+extern sai_object_id_t gSwitchId;
+#endif
+
 void processAttributesForOids(
         _In_ sai_object_type_t objectType,
         _In_ uint32_t attr_count,
@@ -379,7 +386,7 @@ void processSwitches()
         {
             auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attrList[idx].id);
 
-            if (HAS_FLAG_MANDATORY_ON_CREATE(meta->flags) || HAS_FLAG_CREATE_ONLY(meta->flags))
+            if (SAI_HAS_FLAG_MANDATORY_ON_CREATE(meta->flags) || SAI_HAS_FLAG_CREATE_ONLY(meta->flags))
             {
                 /*
                  * If attribute is mandatory on create or create only, we need
@@ -417,6 +424,11 @@ void processSwitches()
                 sai_serialize_object_id(switch_vid).c_str());
 
         sai_status_t status = sai_metadata_sai_switch_api->create_switch(&switch_rid, attr_count, attr_list);
+
+#ifdef SAITHRIFT
+        gSwitchId = switch_rid;
+        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
+#endif
 
         if (status != SAI_STATUS_SUCCESS)
         {
@@ -722,7 +734,7 @@ sai_object_id_t processSingleVid(
                 continue;
             }
 
-            if (HAS_FLAG_CREATE_ONLY(meta->flags))
+            if (SAI_HAS_FLAG_CREATE_ONLY(meta->flags))
             {
                 /*
                  * If we will be performing this on default existing created
@@ -882,6 +894,8 @@ void processAttributesForOids(
 
 void processOids()
 {
+    SWSS_LOG_ENTER();
+
     for (const auto &kv: g_oids)
     {
         const std::string &strObjectId = kv.first;
