@@ -42,6 +42,20 @@ sai_status_t redis_get_vlan_stats(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+sai_status_t redis_get_vlan_stats_ext(
+        _In_ sai_object_id_t vlan_id,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_vlan_stat_t *counter_ids,
+	_In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t redis_clear_vlan_stats(
         _In_ sai_object_id_t vlan_id,
         _In_ uint32_t number_of_counters,
@@ -65,5 +79,6 @@ const sai_vlan_api_t redis_vlan_api = {
     redis_create_vlan_members,
     redis_remove_vlan_members,
     redis_get_vlan_stats,
+    redis_get_vlan_stats_ext,
     redis_clear_vlan_stats,
 };
