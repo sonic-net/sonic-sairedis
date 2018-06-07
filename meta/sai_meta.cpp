@@ -1231,6 +1231,7 @@ sai_status_t meta_generic_validation_create(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -1304,6 +1305,9 @@ sai_status_t meta_generic_validation_create(
                 break;
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 VALIDATION_LIST(md, value.aclresource);
+                break;
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+                VALIDATION_LIST(md, value.ipaddrlist);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -1910,6 +1914,7 @@ sai_status_t meta_generic_validation_set(
 
             // ACL ACTION
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -1982,6 +1987,9 @@ sai_status_t meta_generic_validation_set(
             break;
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             VALIDATION_LIST(md, value.aclresource);
+            break;
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            VALIDATION_LIST(md, value.ipaddrlist);
             break;
 
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -2308,6 +2316,7 @@ sai_status_t meta_generic_validation_get(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2352,6 +2361,9 @@ sai_status_t meta_generic_validation_get(
                 break;
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 VALIDATION_LIST(md, value.aclresource);
+                break;
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+                VALIDATION_LIST(md, value.ipaddrlist);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -2647,6 +2659,7 @@ void meta_generic_validation_post_create(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2682,6 +2695,7 @@ void meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
@@ -2783,6 +2797,7 @@ void meta_generic_validation_post_remove(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2817,6 +2832,7 @@ void meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
@@ -3012,6 +3028,7 @@ void meta_generic_validation_post_set(
 
             // ACL ACTION
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -3068,6 +3085,7 @@ void meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
         case SAI_ATTR_VALUE_TYPE_INT32_LIST:
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
@@ -3319,6 +3337,7 @@ void meta_generic_validation_post_get(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -3366,6 +3385,9 @@ void meta_generic_validation_post_get(
                 break;
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 VALIDATION_LIST_GET(md, value.aclresource);
+                break;
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+                VALIDATION_LIST_GET(md, value.ipaddrlist);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:

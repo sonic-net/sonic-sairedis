@@ -460,7 +460,7 @@ void on_switch_state_change(
 
 void on_fdb_event(
         _In_ uint32_t count,
-        _In_ sai_fdb_event_notification_data_t *data)
+        _In_ const sai_fdb_event_notification_data_t *data)
 {
     SWSS_LOG_ENTER();
 
@@ -471,7 +471,7 @@ void on_fdb_event(
 
 void on_port_state_change(
         _In_ uint32_t count,
-        _In_ sai_port_oper_status_notification_t *data)
+        _In_ const sai_port_oper_status_notification_t *data)
 {
     SWSS_LOG_ENTER();
 
@@ -492,8 +492,8 @@ void on_switch_shutdown_request(
 
 void on_packet_event(
         _In_ sai_object_id_t switch_id,
-        _In_ const void *buffer,
         _In_ sai_size_t buffer_size,
+        _In_ const void *buffer,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
@@ -581,7 +581,7 @@ void stopNotificationsProcessingThread()
 
 void on_queue_deadlock(
         _In_ uint32_t count,
-        _In_ sai_queue_deadlock_notification_data_t *data)
+        _In_ const sai_queue_deadlock_notification_data_t *data)
 {
     std::lock_guard<std::mutex> lock(g_mutex);
 
@@ -591,7 +591,7 @@ void on_queue_deadlock(
 
     for (uint32_t i = 0; i < count; i++)
     {
-        sai_queue_deadlock_notification_data_t *deadlock_data = &data[i];
+        sai_queue_deadlock_notification_data_t *deadlock_data = const_cast<sai_queue_deadlock_notification_data_t *>(&data[i]);
 
         /*
          * We are using switch_rid as null, since queue should be already

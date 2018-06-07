@@ -14,6 +14,19 @@ sai_status_t vs_get_tunnel_stats(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+sai_status_t vs_get_tunnel_stats_ext(
+        _In_ sai_object_id_t tunnel_id,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_tunnel_stat_t *counter_ids,
+	_In_ sai_stats_mode_t mode,
+	_Out_ uint64_t *counters)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
 
 sai_status_t vs_clear_tunnel_stats(
         _In_ sai_object_id_t tunnel_id,
@@ -39,6 +52,7 @@ const sai_tunnel_api_t vs_tunnel_api = {
     VS_GENERIC_QUAD_API(tunnel)
 
     vs_get_tunnel_stats,
+    vs_get_tunnel_stats_ext,
     vs_clear_tunnel_stats,
 
     VS_GENERIC_QUAD_API(tunnel_term_table_entry)
