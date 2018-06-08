@@ -591,6 +591,7 @@ void on_queue_deadlock(
 
     for (uint32_t i = 0; i < count; i++)
     {
+	/* Removing constness for now until proper SAI v1.3 support is added to SONiC*/
         sai_queue_deadlock_notification_data_t *deadlock_data = const_cast<sai_queue_deadlock_notification_data_t *>(&data[i]);
 
         /*

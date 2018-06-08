@@ -1,5 +1,5 @@
 [submodule "SAI"]
 	path = SAI
-	url = https://github.com/p4lang/SAI.git
+	url = https://github.com/opencomputeproject/SAI.git
 	ignore = dirty
 	branch = v1.2
