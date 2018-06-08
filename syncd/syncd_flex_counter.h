@@ -123,7 +123,7 @@ class FlexCounter
 
         uint32_t m_pollInterval = 0;
         std::string m_instanceId;
-        bool m_enable = true;
+        bool m_enable = false;
 };
 
 #endif
