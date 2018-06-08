@@ -13,10 +13,38 @@ sai_status_t vs_clear_ingress_priority_group_stats(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+sai_status_t vs_get_ingress_priority_group_stats_ext(
+        _In_ sai_object_id_t ingress_priority_group_id,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_ingress_priority_group_stat_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t vs_get_buffer_pool_stats(
         _In_ sai_object_id_t pool_id,
         _In_ uint32_t number_of_counters,
         _In_ const sai_buffer_pool_stat_t *counter_ids,
+        _Out_ uint64_t *counters)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t vs_get_buffer_pool_stats_ext(
+        _In_ sai_object_id_t buffer_pool_id,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_buffer_pool_stat_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
         _Out_ uint64_t *counters)
 {
     MUTEX();
@@ -49,11 +77,13 @@ const sai_buffer_api_t vs_buffer_api = {
     VS_GENERIC_QUAD_API(buffer_pool)
 
     vs_get_buffer_pool_stats,
+    vs_get_buffer_pool_stats_ext,
     vs_clear_buffer_pool_stats,
 
     VS_GENERIC_QUAD_API(ingress_priority_group)
 
     vs_get_ingress_priority_group_stats,
+    vs_get_ingress_priority_group_stats_ext,
     vs_clear_ingress_priority_group_stats,
 
     VS_GENERIC_QUAD_API(buffer_profile)

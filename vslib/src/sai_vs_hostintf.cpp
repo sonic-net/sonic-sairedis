@@ -552,8 +552,8 @@ void process_packet_for_fdb_event(
 
 sai_status_t vs_recv_hostif_packet(
         _In_ sai_object_id_t hif_id,
-        _Out_ void *buffer,
         _Inout_ sai_size_t *buffer_size,
+        _Out_ void *buffer,
         _Inout_ uint32_t *attr_count,
         _Out_ sai_attribute_t *attr_list)
 {
@@ -566,10 +566,10 @@ sai_status_t vs_recv_hostif_packet(
 
 sai_status_t vs_send_hostif_packet(
         _In_ sai_object_id_t hif_id,
-        _In_ void *buffer,
         _In_ sai_size_t buffer_size,
+        _In_ const void *buffer,
         _In_ uint32_t attr_count,
-        _In_ sai_attribute_t *attr_list)
+        _In_ const sai_attribute_t *attr_list)
 {
     MUTEX();
 
