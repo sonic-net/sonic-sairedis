@@ -331,6 +331,13 @@ void FlexCounter::removeCounterPlugin(
     }
 }
 
+void FlexCounter::removeAllCounters()
+{
+    SWSS_LOG_ENTER();
+
+    g_flex_counters_map.clear();
+}
+
 
 FlexCounter::~FlexCounter(void)
 {

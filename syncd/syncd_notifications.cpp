@@ -559,8 +559,6 @@ void startNotificationsProcessingThread()
     runThread = true;
 
     ntf_process_thread = std::make_shared<std::thread>(ntf_process_function);
-
-    ntf_process_thread->detach();
 }
 
 void stopNotificationsProcessingThread()
