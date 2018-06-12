@@ -54,7 +54,7 @@ config_syncd_mlnx()
     [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
 
     # Read MAC address and align the last 6 bits.
-    MAC_ADDRESS=$(ip link show eth0 | grep ether | awk '{print $2}')
+    MAC_ADDRESS=$(od -vt x1 -An /sys/bus/i2c/devices/8-0051/eeprom | xargs printf "0x%s " | xargs printf "%02x:" | awk 'BEGIN { FS=":"; i=8+1+2+1} {while(i<NF) {type=$i; len=("0x"$(i+1));if(type!="24") {i=i+2+len} else {print substr($0, (i+1)*3+1, len*3-1); break}}}')
     last_byte=$(python -c "print '$MAC_ADDRESS'[-2:]")
     aligned_last_byte=$(python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')")  # put mask and take away the 0x prefix
     ALIGNED_MAC_ADDRESS=$(python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'")          # put aligned byte into the end of MAC
