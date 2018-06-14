@@ -658,7 +658,7 @@ void FlexCounter::saiUpdateSupportedPortCounters(sai_object_id_t portId)
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_WARN("Counter %s is not supported on port RID %s: %s",
+            SWSS_LOG_INFO("Counter %s is not supported on port RID %s: %s",
                     sai_serialize_port_stat(counter).c_str(),
                     sai_serialize_object_id(portId).c_str(),
                     sai_serialize_status(status).c_str());
@@ -685,7 +685,7 @@ void FlexCounter::saiUpdateSupportedQueueCounters(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_WARN("Counter %s is not supported on queue %s, rv: %s",
+            SWSS_LOG_INFO("Counter %s is not supported on queue %s, rv: %s",
                     sai_serialize_queue_stat(counter).c_str(),
                     sai_serialize_object_id(queueId).c_str(),
                     sai_serialize_status(status).c_str());
