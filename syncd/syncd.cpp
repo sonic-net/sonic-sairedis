@@ -2491,7 +2491,7 @@ sai_status_t processEvent(
     {
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_WARN("get API for key: %s op: %s returned status: %s",
+            SWSS_LOG_DEBUG("get API for key: %s op: %s returned status: %s",
                     key.c_str(),
                     op.c_str(),
                     sai_serialize_status(status).c_str());
@@ -2579,6 +2579,10 @@ void processFlexCounterGroupEvent(
                 {
                     FlexCounter::addPortCounterPlugin(sha, groupName);
                 }
+            }
+            else if (field == FLEX_COUNTER_STATUS_FIELD)
+            {
+                FlexCounter::updateFlexCounterStatus(value, groupName);
             }
             else
             {
