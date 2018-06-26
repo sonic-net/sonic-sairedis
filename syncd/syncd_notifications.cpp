@@ -281,6 +281,35 @@ void process_on_fdb_event(
     send_notification("fdb_event", s);
 }
 
+void process_on_queue_deadlock_event(
+        _In_ uint32_t count,
+        _In_ sai_queue_deadlock_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("queue deadlock notification count: %u", count);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_queue_deadlock_notification_data_t *deadlock_data = &data[i];
+
+        /*
+         * We are using switch_rid as null, since queue should be already
+         * defined inside local db after creation.
+         *
+         * If this will be faster than return from create queue then we can use
+         * query switch id and extract rid of switch id and then convert it to
+         * switch vid.
+         */
+
+        deadlock_data->queue_id = translate_rid_to_vid(deadlock_data->queue_id, SAI_NULL_OBJECT_ID);
+    }
+
+    std::string s = sai_serialize_queue_deadlock_ntf(count, data);
+
+    send_notification("queue_deadlock", s);
+}
+
 void process_on_port_state_change(
         _In_ uint32_t count,
         _In_ sai_port_oper_status_notification_t *data)
@@ -350,6 +379,21 @@ void handle_fdb_event(
     sai_deserialize_free_fdb_event_ntf(count, fdbevent);
 }
 
+void handle_queue_deadlock(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_queue_deadlock_notification_data_t *qdeadlockevent = NULL;
+
+    sai_deserialize_queue_deadlock_ntf(data, count, &qdeadlockevent);
+
+    process_on_queue_deadlock_event(count, qdeadlockevent);
+
+    sai_deserialize_free_queue_deadlock_ntf(count, qdeadlockevent);
+}
+
 void handle_port_state_change(
         _In_ const std::string &data)
 {
@@ -402,6 +446,10 @@ void processNotification(
     else if (notification == "switch_shutdown_request")
     {
         handle_switch_shutdown_request(data);
+    }
+    else if (notification == "queue_deadlock")
+    {
+        handle_queue_deadlock(data);
     }
     else
     {
@@ -467,6 +515,17 @@ void on_fdb_event(
     std::string s = sai_serialize_fdb_event_ntf(count, data);
 
     enqueue_notification("fdb_event", s);
+}
+
+void on_queue_deadlock(
+        _In_ uint32_t count,
+        _In_ const sai_queue_deadlock_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_queue_deadlock_ntf(count, data);
+
+    enqueue_notification("queue_deadlock", s);
 }
 
 void on_port_state_change(
@@ -575,37 +634,6 @@ void stopNotificationsProcessingThread()
     }
 
     ntf_process_thread = nullptr;
-}
-
-void on_queue_deadlock(
-        _In_ uint32_t count,
-        _In_ const sai_queue_deadlock_notification_data_t *data)
-{
-    std::lock_guard<std::mutex> lock(g_mutex);
-
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_DEBUG("queue deadlock notification count: %u", count);
-
-    for (uint32_t i = 0; i < count; i++)
-    {
-        //sai_queue_deadlock_notification_data_t *deadlock_data = &data[i];
-
-        /*
-         * We are using switch_rid as null, since queue should be already
-         * defined inside local db after creation.
-         *
-         * If this will be faster than return from create queue then we can use
-         * query switch id and extract rid of switch id and then convert it to
-         * switch vid.
-         */
-
-        //deadlock_data->queue_id = translate_rid_to_vid(deadlock_data->queue_id, SAI_NULL_OBJECT_ID);
-    }
-
-    std::string s = sai_serialize_queue_deadlock_ntf(count, data);
-
-    send_notification("queue_deadlock", s);
 }
 
 sai_switch_state_change_notification_fn     on_switch_state_change_ntf = on_switch_state_change;
