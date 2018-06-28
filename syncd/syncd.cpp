@@ -3,6 +3,7 @@
 #include "sairedis.h"
 #include "syncd_flex_counter.h"
 #include "swss/tokenize.h"
+#include "meta/saiplay.h"
 #include <limits.h>
 
 extern "C" {
@@ -11,6 +12,7 @@ extern "C" {
 
 #include <iostream>
 #include <map>
+#include <unordered_map>
 
 /**
  * @brief Global mutex for thread synchronization
@@ -1440,6 +1442,28 @@ void clearTempView()
     initViewRemovedVidSet.clear();
 }
 
+void handle_get_response(
+        sai_object_type_t object_type,
+        uint32_t get_attr_count,
+        sai_attribute_t* get_attr_list,
+        const std::unordered_map<std::string, std::string>& hash)
+{
+    SWSS_LOG_ENTER();
+
+    SaiAttributeList list(object_type, hash, false);
+
+    sai_attribute_t *attr_list = list.get_attr_list();
+    uint32_t attr_count = list.get_attr_count();
+
+    match_list_lengths(object_type, get_attr_count, get_attr_list, attr_count, attr_list);
+
+    SWSS_LOG_DEBUG("list match");
+
+    match_redis_with_rec(object_type, get_attr_count, get_attr_list, attr_count, attr_list);
+
+    // NOTE: Primitive values are not matched (recording vs switch/vs), we can add that check
+}
+
 sai_status_t notifySyncd(
         _In_ const std::string& op)
 {
@@ -1566,6 +1590,90 @@ sai_status_t notifySyncd(
 
             return status;
         }
+    }
+    else if (op == SYNCD_INSPECT_ASIC)
+    {
+        SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
+
+        // Fetch all the keys from ASIC DB
+        // Loop through all the keys in ASIC DB
+        std::string pattern = ASIC_STATE_TABLE + std::string(":*");
+        for (const auto &key: g_redisClient->keys(pattern))
+        {
+            sai_common_api_t api = SAI_COMMON_API_GET;;
+
+            // objecttype:objectid (object id may contain ':')
+            auto start = key.find_first_of(":");
+            auto str_object_type = key.substr(0, start);
+            auto str_object_id  = key.substr(start + 1);
+
+            // attrid=value,...
+            sai_object_type_t object_type;
+            sai_deserialize_object_type(str_object_type, object_type);
+
+            auto hash = g_redisClient->hgetall(key);
+
+            std::vector<swss::FieldValueTuple> values;
+            SaiAttributeList list(object_type, values, false);
+
+            sai_attribute_t *attr_list = list.get_attr_list();
+
+            uint32_t attr_count = list.get_attr_count();
+
+            SWSS_LOG_DEBUG("attr count: %u", list.get_attr_count());
+
+            auto info = sai_metadata_get_object_type_info(object_type);
+
+            // Call SAI Get API on this key
+            sai_status_t status;
+            switch (object_type)
+            {
+                case SAI_OBJECT_TYPE_FDB_ENTRY:
+                    status = handle_fdb(str_object_id, api, attr_count, attr_list);
+                    break;
+
+                case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+                    status = handle_neighbor(str_object_id, api, attr_count, attr_list);
+                    break;
+
+                case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+                    status = handle_route(str_object_id, api, attr_count, attr_list);
+                    break;
+
+                default:
+                    if (info->isnonobjectid)
+                    {
+                        SWSS_LOG_THROW("object %s:%s is non object id, but not handled, FIXME",
+                                sai_serialize_object_type(object_type).c_str(),
+                                str_object_id.c_str());
+                    }
+
+                    status = handle_generic(object_type, str_object_id, api, attr_count, attr_list);
+                    break;
+            }
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_THROW("failed to execute get api: %s", sai_serialize_status(status).c_str());
+            }
+
+            // Compare fields and values from ASIC DB and SAI response
+            // Log the difference
+            try
+            {
+                handle_get_response(object_type, attr_count, attr_list, hash);
+            }
+            catch (const std::exception &e)
+            {
+                // TODO: better logging
+                // SWSS_LOG_NOTICE("sai: %s", attr_list.c_str());
+                // SWSS_LOG_NOTICE("redis: %s", hash.c_str());
+
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
     else
     {

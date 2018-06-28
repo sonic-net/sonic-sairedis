@@ -74,6 +74,7 @@ clean-local:
 
 libsaimetadata_la_SOURCES = \
 							sai_meta.cpp \
+							saiplay.cpp \
 							saiattributelist.cpp \
 							saiserialize.cpp
 
