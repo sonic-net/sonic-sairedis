@@ -1602,10 +1602,19 @@ sai_status_t notifySyncd(
         {
             sai_common_api_t api = SAI_COMMON_API_GET;;
 
-            // objecttype:objectid (object id may contain ':')
+            // ASIC_STATE:objecttype:objectid (object id may contain ':')
             auto start = key.find_first_of(":");
-            auto str_object_type = key.substr(0, start);
-            auto str_object_id  = key.substr(start + 1);
+            if (start == std::string::npos)
+            {
+                SWSS_LOG_THROW("invalid ASIC_STATE_TABLE %s: no start :", key.c_str());
+            }
+            auto mid = key.find_first_of(":", start + 1);
+            if (mid == std::string::npos)
+            {
+                SWSS_LOG_THROW("invalid ASIC_STATE_TABLE %s: no mid :", key.c_str());
+            }
+            auto str_object_type = key.substr(start + 1, mid - start - 1);
+            auto str_object_id  = key.substr(mid + 1);
 
             // attrid=value,...
             sai_object_type_t object_type;
