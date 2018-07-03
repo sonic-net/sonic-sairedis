@@ -15,7 +15,9 @@ typedef enum _sai_redis_notify_syncd_t
 {
     SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW,
 
-    SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW
+    SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW,
+
+    SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC
 
 } sai_redis_notify_syncd_t;
 

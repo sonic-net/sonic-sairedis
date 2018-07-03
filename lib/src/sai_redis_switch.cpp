@@ -109,6 +109,11 @@ sai_status_t sai_redis_notify_syncd(
             g_asicInitViewMode = false;
             break;
 
+        case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
+            SWSS_LOG_NOTICE("sending syncd INSPECT ASIC");
+            op = SYNCD_INSPECT_ASIC;
+            break;
+
         default:
             SWSS_LOG_ERROR("invalid notify syncd attr value %d", attr->value.s32);
             return SAI_STATUS_FAILURE;
