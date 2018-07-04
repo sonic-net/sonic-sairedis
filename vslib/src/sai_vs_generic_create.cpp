@@ -6,7 +6,7 @@
 SwitchStateMap g_switch_state_map;
 
 #define MAX_SWITCHES 0x100
-#define OT_POSITION 32
+#define OT_POSITION 48
 #define SWID_POSITION 40
 
 /*
