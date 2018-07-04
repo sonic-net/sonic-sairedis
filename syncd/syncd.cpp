@@ -1600,8 +1600,6 @@ sai_status_t notifySyncd(
         std::string pattern = ASIC_STATE_TABLE + std::string(":*");
         for (const auto &key: g_redisClient->keys(pattern))
         {
-            sai_common_api_t api = SAI_COMMON_API_GET;;
-
             // ASIC_STATE:objecttype:objectid (object id may contain ':')
             auto start = key.find_first_of(":");
             if (start == std::string::npos)
@@ -1616,13 +1614,22 @@ sai_status_t notifySyncd(
             auto str_object_type = key.substr(start + 1, mid - start - 1);
             auto str_object_id  = key.substr(mid + 1);
 
-            // attrid=value,...
             sai_object_type_t object_type;
             sai_deserialize_object_type(str_object_type, object_type);
 
+            // Find all the attrid from ASIC DB, and use them to query ASIC
             auto hash = g_redisClient->hgetall(key);
-
             std::vector<swss::FieldValueTuple> values;
+            for (auto &kv: hash)
+            {
+                const std::string &skey = kv.first;
+                const std::string &svalue = kv.second;
+
+                swss::FieldValueTuple fvt(skey, svalue);
+
+                values.push_back(fvt);
+            }
+
             SaiAttributeList list(object_type, values, false);
 
             sai_attribute_t *attr_list = list.get_attr_list();
@@ -1631,6 +1638,12 @@ sai_status_t notifySyncd(
 
             SWSS_LOG_DEBUG("attr count: %u", list.get_attr_count());
 
+            if (attr_count == 0)
+            {
+                // TODO: how to verify ASIC on ASIC DB key with NULL:NULL hash
+                continue; // Just ignore
+            }
+
             auto info = sai_metadata_get_object_type_info(object_type);
 
             // Call SAI Get API on this key
@@ -1638,18 +1651,31 @@ sai_status_t notifySyncd(
             switch (object_type)
             {
                 case SAI_OBJECT_TYPE_FDB_ENTRY:
-                    status = handle_fdb(str_object_id, api, attr_count, attr_list);
+                {
+                    sai_fdb_entry_t fdb_entry;
+                    sai_deserialize_fdb_entry(str_object_id, fdb_entry);
+                    status = sai_metadata_sai_fdb_api->get_fdb_entry_attribute(&fdb_entry, attr_count, attr_list);
                     break;
+                }
 
                 case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
-                    status = handle_neighbor(str_object_id, api, attr_count, attr_list);
+                {
+                    sai_neighbor_entry_t neighbor_entry;
+                    sai_deserialize_neighbor_entry(str_object_id, neighbor_entry);
+                    status = sai_metadata_sai_neighbor_api->get_neighbor_entry_attribute(&neighbor_entry, attr_count, attr_list);
                     break;
+                }
 
                 case SAI_OBJECT_TYPE_ROUTE_ENTRY:
-                    status = handle_route(str_object_id, api, attr_count, attr_list);
+                {
+                    sai_route_entry_t route_entry;
+                    sai_deserialize_route_entry(str_object_id, route_entry);
+                    status = sai_metadata_sai_route_api->get_route_entry_attribute(&route_entry, attr_count, attr_list);
                     break;
+                }
 
                 default:
+                {
                     if (info->isnonobjectid)
                     {
                         SWSS_LOG_THROW("object %s:%s is non object id, but not handled, FIXME",
@@ -1657,8 +1683,17 @@ sai_status_t notifySyncd(
                                 str_object_id.c_str());
                     }
 
-                    status = handle_generic(object_type, str_object_id, api, attr_count, attr_list);
+                    sai_object_id_t object_id;
+                    sai_deserialize_object_id(str_object_id, object_id);
+
+                    sai_object_meta_key_t meta_key;
+
+                    meta_key.objecttype = object_type;
+                    meta_key.objectkey.key.object_id = object_id;
+
+                    status = info->get(&meta_key, attr_count, attr_list);
                     break;
+                }
             }
 
             if (status != SAI_STATUS_SUCCESS)

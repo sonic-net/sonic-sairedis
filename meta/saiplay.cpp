@@ -8,6 +8,7 @@ extern "C" {
 
 #include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
+#include "meta/saiplay.h"
 #include "swss/logger.h"
 
 #include <iostream>
@@ -43,7 +44,7 @@ sai_object_id_t translate_local_to_redis(
     return it->second;
 }
 
-    template <typename T>
+template <typename T>
 void translate_local_to_redis(
         _In_ T &element)
 {

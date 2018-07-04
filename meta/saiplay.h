@@ -49,18 +49,6 @@ sai_status_t handle_route(
         _In_ uint32_t attr_count,
         _In_ sai_attribute_t *attr_list);
 
-template <typename T>
-void translate_local_to_redis(
-        _In_ T &element)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t i = 0; i < element.count; i++)
-    {
-        element.list[i] = translate_local_to_redis(element.list[i]);
-    }
-}
-
 sai_object_id_t translate_local_to_redis(
         _In_ sai_object_id_t rid);
 
