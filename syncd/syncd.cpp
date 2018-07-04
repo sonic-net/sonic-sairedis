@@ -3,7 +3,6 @@
 #include "sairedis.h"
 #include "syncd_flex_counter.h"
 #include "swss/tokenize.h"
-#include "meta/saiplay.h"
 #include <limits.h>
 
 extern "C" {
@@ -1442,28 +1441,6 @@ void clearTempView()
     initViewRemovedVidSet.clear();
 }
 
-void handle_get_response(
-        sai_object_type_t object_type,
-        uint32_t get_attr_count,
-        sai_attribute_t* get_attr_list,
-        const std::unordered_map<std::string, std::string>& hash)
-{
-    SWSS_LOG_ENTER();
-
-    SaiAttributeList list(object_type, hash, false);
-
-    sai_attribute_t *attr_list = list.get_attr_list();
-    uint32_t attr_count = list.get_attr_count();
-
-    match_list_lengths(object_type, get_attr_count, get_attr_list, attr_count, attr_list);
-
-    SWSS_LOG_DEBUG("list match");
-
-    match_redis_with_rec(object_type, get_attr_count, get_attr_list, attr_count, attr_list);
-
-    // NOTE: Primitive values are not matched (recording vs switch/vs), we can add that check
-}
-
 sai_status_t notifySyncd(
         _In_ const std::string& op)
 {
@@ -1701,20 +1678,14 @@ sai_status_t notifySyncd(
                 SWSS_LOG_THROW("failed to execute get api: %s", sai_serialize_status(status).c_str());
             }
 
-            // Compare fields and values from ASIC DB and SAI response
+            // TODO: Compare fields and values from ASIC DB and SAI response
             // Log the difference
-            try
+            for (uint32_t i = 0; i < attr_count; i++)
             {
-                handle_get_response(object_type, attr_count, attr_list, hash);
             }
-            catch (const std::exception &e)
-            {
-                // TODO: better logging
-                // SWSS_LOG_NOTICE("sai: %s", attr_list.c_str());
-                // SWSS_LOG_NOTICE("redis: %s", hash.c_str());
-
-                exit(EXIT_FAILURE);
-            }
+            // TODO: better logging
+            // SWSS_LOG_NOTICE("sai: %s", attr_list.c_str());
+            // SWSS_LOG_NOTICE("redis: %s", hash.c_str());
         }
 
         sendNotifyResponse(SAI_STATUS_SUCCESS);
