@@ -1244,14 +1244,14 @@ void printUsage()
     std::cout << "        Enable syslog debug messages" << std::endl << std::endl;
     std::cout << "    -u --useTempView:" << std::endl;
     std::cout << "        Enable temporary view between init and apply" << std::endl << std::endl;
-    std::cout << "    -v --verifyAsic:" << std::endl;
-    std::cout << "        Verify ASIC by ASIC DB" << std::endl << std::endl;
+    std::cout << "    -i --inspectAsic:" << std::endl;
+    std::cout << "        Inspect ASIC by ASIC DB" << std::endl << std::endl;
     std::cout << "    -h --help:" << std::endl;
     std::cout << "        Print out this message" << std::endl << std::endl;
 }
 
 bool g_useTempView = false;
-bool g_verifyAsic = false;
+bool g_inspectAsic = false;
 
 int handleCmdLine(int argc, char **argv)
 {
@@ -1265,11 +1265,11 @@ int handleCmdLine(int argc, char **argv)
             { "help",             no_argument,       0, 'h' },
             { "skipNotifySyncd",  no_argument,       0, 'C' },
             { "enableDebug",      no_argument,       0, 'd' },
-            { "verifyAsic",       no_argument,       0, 'v' },
+            { "inspectAsic",      no_argument,       0, 'i' },
             { 0,                  0,                 0,  0  }
         };
 
-        const char* const optstring = "hCduv";
+        const char* const optstring = "hCdui";
 
         int c = getopt_long(argc, argv, optstring, long_options, 0);
 
@@ -1290,8 +1290,8 @@ int handleCmdLine(int argc, char **argv)
                 g_notifySyncd = false;
                 break;
 
-            case 'v':
-                g_verifyAsic = true;
+            case 'i':
+                g_inspectAsic = true;
                 break;
 
             case 'h':
@@ -1377,6 +1377,7 @@ int main(int argc, char **argv)
     int handled = handleCmdLine(argc, argv);
     argc -= handled;
     argv += handled;
+    printf("handled = %d, argv = %s\n", handled, argv[0]);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
@@ -1397,7 +1398,7 @@ int main(int argc, char **argv)
 
     sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
 
-    if (g_verifyAsic)
+    if (g_inspectAsic)
     {
         attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
         attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC;
