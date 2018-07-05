@@ -1619,7 +1619,7 @@ sai_status_t notifySyncd(
 
             if (attr_count == 0)
             {
-                // TODO: how to verify ASIC on ASIC DB key with NULL:NULL hash
+                // TODO: how to check ASIC on ASIC DB key with NULL:NULL hash
                 continue; // Just ignore
             }
 
@@ -1633,6 +1633,10 @@ sai_status_t notifySyncd(
                 {
                     sai_fdb_entry_t fdb_entry;
                     sai_deserialize_fdb_entry(str_object_id, fdb_entry);
+
+                    fdb_entry.switch_id = translate_vid_to_rid(fdb_entry.switch_id);
+                    fdb_entry.bv_id = translate_vid_to_rid(fdb_entry.bv_id);
+
                     status = sai_metadata_sai_fdb_api->get_fdb_entry_attribute(&fdb_entry, attr_count, attr_list);
                     break;
                 }
@@ -1641,6 +1645,10 @@ sai_status_t notifySyncd(
                 {
                     sai_neighbor_entry_t neighbor_entry;
                     sai_deserialize_neighbor_entry(str_object_id, neighbor_entry);
+
+                    neighbor_entry.switch_id = translate_vid_to_rid(neighbor_entry.switch_id);
+                    neighbor_entry.rif_id = translate_vid_to_rid(neighbor_entry.rif_id);
+
                     status = sai_metadata_sai_neighbor_api->get_neighbor_entry_attribute(&neighbor_entry, attr_count, attr_list);
                     break;
                 }
@@ -1649,6 +1657,10 @@ sai_status_t notifySyncd(
                 {
                     sai_route_entry_t route_entry;
                     sai_deserialize_route_entry(str_object_id, route_entry);
+
+                    route_entry.switch_id = translate_vid_to_rid(route_entry.switch_id);
+                    route_entry.vr_id = translate_vid_to_rid(route_entry.vr_id);
+
                     status = sai_metadata_sai_route_api->get_route_entry_attribute(&route_entry, attr_count, attr_list);
                     break;
                 }
@@ -1668,7 +1680,7 @@ sai_status_t notifySyncd(
                     sai_object_meta_key_t meta_key;
 
                     meta_key.objecttype = object_type;
-                    meta_key.objectkey.key.object_id = object_id;
+                    meta_key.objectkey.key.object_id = translate_vid_to_rid(object_id);
 
                     status = info->get(&meta_key, attr_count, attr_list);
                     break;
