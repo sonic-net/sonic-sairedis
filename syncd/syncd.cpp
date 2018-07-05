@@ -1715,9 +1715,13 @@ sai_status_t notifySyncd(
                 std::string str_attr_value = sai_serialize_attr_value(*meta, *attr, false);
 
                 std::string hash_attr_value = hash[str_attr_id];
-                if (hash_attr_value != str_attr_value)
+                if (hash_attr_value == str_attr_value)
                 {
-                    SWSS_LOG_ERROR("Failed to match %s redis attr %s with asic attr %s for %s:%s %s", str_attr_id.c_str(), hash_attr_value.c_str(), str_attr_value.c_str(), str_object_type.c_str(), str_object_id.c_str());
+                    SWSS_LOG_INFO("Matched %s redis attr %s with asic attr %s for %s:%s", str_attr_id.c_str(), hash_attr_value.c_str(), str_attr_value.c_str(), str_object_type.c_str(), str_object_id.c_str());
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("Failed to match %s redis attr %s with asic attr %s for %s:%s", str_attr_id.c_str(), hash_attr_value.c_str(), str_attr_value.c_str(), str_object_type.c_str(), str_object_id.c_str());
                 }
             }
         }
