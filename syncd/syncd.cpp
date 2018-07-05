@@ -1581,12 +1581,14 @@ sai_status_t notifySyncd(
             auto start = key.find_first_of(":");
             if (start == std::string::npos)
             {
-                SWSS_LOG_THROW("invalid ASIC_STATE_TABLE %s: no start :", key.c_str());
+                SWSS_LOG_ERROR("invalid ASIC_STATE_TABLE %s: no start :", key.c_str());
+                break;
             }
             auto mid = key.find_first_of(":", start + 1);
             if (mid == std::string::npos)
             {
-                SWSS_LOG_THROW("invalid ASIC_STATE_TABLE %s: no mid :", key.c_str());
+                SWSS_LOG_ERROR("invalid ASIC_STATE_TABLE %s: no mid :", key.c_str());
+                break;
             }
             auto str_object_type = key.substr(start + 1, mid - start - 1);
             auto str_object_id  = key.substr(mid + 1);
@@ -1673,19 +1675,39 @@ sai_status_t notifySyncd(
                 }
             }
 
-            if (status != SAI_STATUS_SUCCESS)
+            if (status == SAI_STATUS_NOT_IMPLEMENTED)
             {
-                SWSS_LOG_THROW("failed to execute get api: %s", sai_serialize_status(status).c_str());
+                SWSS_LOG_ERROR("not implemented get api: %s", str_object_type.c_str());
+            }
+            else if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("failed to execute get api: %s", sai_serialize_status(status).c_str());
             }
 
-            // TODO: Compare fields and values from ASIC DB and SAI response
+            // Compare fields and values from ASIC_DB and SAI response
             // Log the difference
-            for (uint32_t i = 0; i < attr_count; i++)
+            for (uint32_t index = 0; index < attr_count; ++index)
             {
+                const sai_attribute_t *attr = &attr_list[index];
+
+                auto meta = sai_metadata_get_attr_metadata(object_type, attr->id);
+
+                if (meta == NULL)
+                {
+                    SWSS_LOG_ERROR("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr->id);
+                    break;
+                }
+
+                std::string str_attr_id = sai_serialize_attr_id(*meta);
+
+                std::string str_attr_value = sai_serialize_attr_value(*meta, *attr, false);
+
+                std::string hash_attr_value = hash[str_attr_id];
+                if (hash_attr_value != str_attr_value)
+                {
+                    SWSS_LOG_ERROR("Failed to match %s redis attr %s with asic attr %s for %s:%s %s", str_attr_id.c_str(), hash_attr_value.c_str(), str_attr_value.c_str(), str_object_type.c_str(), str_object_id.c_str());
+                }
             }
-            // TODO: better logging
-            // SWSS_LOG_NOTICE("sai: %s", attr_list.c_str());
-            // SWSS_LOG_NOTICE("redis: %s", hash.c_str());
         }
 
         sendNotifyResponse(SAI_STATUS_SUCCESS);
