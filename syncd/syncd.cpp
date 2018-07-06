@@ -1441,6 +1441,165 @@ void clearTempView()
     initViewRemovedVidSet.clear();
 }
 
+void InspectAsic()
+{
+    SWSS_LOG_ENTER();
+
+    // Fetch all the keys from ASIC DB
+    // Loop through all the keys in ASIC DB
+    std::string pattern = ASIC_STATE_TABLE + std::string(":*");
+    for (const auto &key: g_redisClient->keys(pattern))
+    {
+        // ASIC_STATE:objecttype:objectid (object id may contain ':')
+        auto start = key.find_first_of(":");
+        if (start == std::string::npos)
+        {
+            SWSS_LOG_ERROR("invalid ASIC_STATE_TABLE %s: no start :", key.c_str());
+            break;
+        }
+        auto mid = key.find_first_of(":", start + 1);
+        if (mid == std::string::npos)
+        {
+            SWSS_LOG_ERROR("invalid ASIC_STATE_TABLE %s: no mid :", key.c_str());
+            break;
+        }
+        auto str_object_type = key.substr(start + 1, mid - start - 1);
+        auto str_object_id  = key.substr(mid + 1);
+
+        sai_object_type_t object_type;
+        sai_deserialize_object_type(str_object_type, object_type);
+
+        // Find all the attrid from ASIC DB, and use them to query ASIC
+        auto hash = g_redisClient->hgetall(key);
+        std::vector<swss::FieldValueTuple> values;
+        for (auto &kv: hash)
+        {
+            const std::string &skey = kv.first;
+            const std::string &svalue = kv.second;
+
+            swss::FieldValueTuple fvt(skey, svalue);
+
+            values.push_back(fvt);
+        }
+
+        SaiAttributeList list(object_type, values, false);
+
+        sai_attribute_t *attr_list = list.get_attr_list();
+
+        uint32_t attr_count = list.get_attr_count();
+
+        SWSS_LOG_DEBUG("attr count: %u", list.get_attr_count());
+
+        if (attr_count == 0)
+        {
+            // TODO: how to check ASIC on ASIC DB key with NULL:NULL hash
+            continue; // Just ignore
+        }
+
+        auto info = sai_metadata_get_object_type_info(object_type);
+
+        // Call SAI Get API on this key
+        sai_status_t status;
+        switch (object_type)
+        {
+            case SAI_OBJECT_TYPE_FDB_ENTRY:
+            {
+                sai_fdb_entry_t fdb_entry;
+                sai_deserialize_fdb_entry(str_object_id, fdb_entry);
+
+                fdb_entry.switch_id = translate_vid_to_rid(fdb_entry.switch_id);
+                fdb_entry.bv_id = translate_vid_to_rid(fdb_entry.bv_id);
+
+                status = sai_metadata_sai_fdb_api->get_fdb_entry_attribute(&fdb_entry, attr_count, attr_list);
+                break;
+            }
+
+            case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            {
+                sai_neighbor_entry_t neighbor_entry;
+                sai_deserialize_neighbor_entry(str_object_id, neighbor_entry);
+
+                neighbor_entry.switch_id = translate_vid_to_rid(neighbor_entry.switch_id);
+                neighbor_entry.rif_id = translate_vid_to_rid(neighbor_entry.rif_id);
+
+                status = sai_metadata_sai_neighbor_api->get_neighbor_entry_attribute(&neighbor_entry, attr_count, attr_list);
+                break;
+            }
+
+            case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+            {
+                sai_route_entry_t route_entry;
+                sai_deserialize_route_entry(str_object_id, route_entry);
+
+                route_entry.switch_id = translate_vid_to_rid(route_entry.switch_id);
+                route_entry.vr_id = translate_vid_to_rid(route_entry.vr_id);
+
+                status = sai_metadata_sai_route_api->get_route_entry_attribute(&route_entry, attr_count, attr_list);
+                break;
+            }
+
+            default:
+            {
+                if (info->isnonobjectid)
+                {
+                    SWSS_LOG_THROW("object %s:%s is non object id, but not handled, FIXME",
+                            sai_serialize_object_type(object_type).c_str(),
+                            str_object_id.c_str());
+                }
+
+                sai_object_id_t object_id;
+                sai_deserialize_object_id(str_object_id, object_id);
+
+                sai_object_meta_key_t meta_key;
+
+                meta_key.objecttype = object_type;
+                meta_key.objectkey.key.object_id = translate_vid_to_rid(object_id);
+
+                status = info->get(&meta_key, attr_count, attr_list);
+                break;
+            }
+        }
+
+        if (status == SAI_STATUS_NOT_IMPLEMENTED)
+        {
+            SWSS_LOG_ERROR("not implemented get api: %s", str_object_type.c_str());
+        }
+        else if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("failed to execute get api: %s", sai_serialize_status(status).c_str());
+        }
+
+        // Compare fields and values from ASIC_DB and SAI response
+        // Log the difference
+        for (uint32_t index = 0; index < attr_count; ++index)
+        {
+            const sai_attribute_t *attr = &attr_list[index];
+
+            auto meta = sai_metadata_get_attr_metadata(object_type, attr->id);
+
+            if (meta == NULL)
+            {
+                SWSS_LOG_ERROR("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr->id);
+                break;
+            }
+
+            std::string str_attr_id = sai_serialize_attr_id(*meta);
+
+            std::string str_attr_value = sai_serialize_attr_value(*meta, *attr, false);
+
+            std::string hash_attr_value = hash[str_attr_id];
+            if (hash_attr_value == str_attr_value)
+            {
+                SWSS_LOG_INFO("Matched %s redis attr %s with asic attr %s for %s:%s", str_attr_id.c_str(), hash_attr_value.c_str(), str_attr_value.c_str(), str_object_type.c_str(), str_object_id.c_str());
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Failed to match %s redis attr %s with asic attr %s for %s:%s", str_attr_id.c_str(), hash_attr_value.c_str(), str_attr_value.c_str(), str_object_type.c_str(), str_object_id.c_str());
+            }
+        }
+    }
+}
+
 sai_status_t notifySyncd(
         _In_ const std::string& op)
 {
@@ -1572,159 +1731,7 @@ sai_status_t notifySyncd(
     {
         SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
 
-        // Fetch all the keys from ASIC DB
-        // Loop through all the keys in ASIC DB
-        std::string pattern = ASIC_STATE_TABLE + std::string(":*");
-        for (const auto &key: g_redisClient->keys(pattern))
-        {
-            // ASIC_STATE:objecttype:objectid (object id may contain ':')
-            auto start = key.find_first_of(":");
-            if (start == std::string::npos)
-            {
-                SWSS_LOG_ERROR("invalid ASIC_STATE_TABLE %s: no start :", key.c_str());
-                break;
-            }
-            auto mid = key.find_first_of(":", start + 1);
-            if (mid == std::string::npos)
-            {
-                SWSS_LOG_ERROR("invalid ASIC_STATE_TABLE %s: no mid :", key.c_str());
-                break;
-            }
-            auto str_object_type = key.substr(start + 1, mid - start - 1);
-            auto str_object_id  = key.substr(mid + 1);
-
-            sai_object_type_t object_type;
-            sai_deserialize_object_type(str_object_type, object_type);
-
-            // Find all the attrid from ASIC DB, and use them to query ASIC
-            auto hash = g_redisClient->hgetall(key);
-            std::vector<swss::FieldValueTuple> values;
-            for (auto &kv: hash)
-            {
-                const std::string &skey = kv.first;
-                const std::string &svalue = kv.second;
-
-                swss::FieldValueTuple fvt(skey, svalue);
-
-                values.push_back(fvt);
-            }
-
-            SaiAttributeList list(object_type, values, false);
-
-            sai_attribute_t *attr_list = list.get_attr_list();
-
-            uint32_t attr_count = list.get_attr_count();
-
-            SWSS_LOG_DEBUG("attr count: %u", list.get_attr_count());
-
-            if (attr_count == 0)
-            {
-                // TODO: how to check ASIC on ASIC DB key with NULL:NULL hash
-                continue; // Just ignore
-            }
-
-            auto info = sai_metadata_get_object_type_info(object_type);
-
-            // Call SAI Get API on this key
-            sai_status_t status;
-            switch (object_type)
-            {
-                case SAI_OBJECT_TYPE_FDB_ENTRY:
-                {
-                    sai_fdb_entry_t fdb_entry;
-                    sai_deserialize_fdb_entry(str_object_id, fdb_entry);
-
-                    fdb_entry.switch_id = translate_vid_to_rid(fdb_entry.switch_id);
-                    fdb_entry.bv_id = translate_vid_to_rid(fdb_entry.bv_id);
-
-                    status = sai_metadata_sai_fdb_api->get_fdb_entry_attribute(&fdb_entry, attr_count, attr_list);
-                    break;
-                }
-
-                case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
-                {
-                    sai_neighbor_entry_t neighbor_entry;
-                    sai_deserialize_neighbor_entry(str_object_id, neighbor_entry);
-
-                    neighbor_entry.switch_id = translate_vid_to_rid(neighbor_entry.switch_id);
-                    neighbor_entry.rif_id = translate_vid_to_rid(neighbor_entry.rif_id);
-
-                    status = sai_metadata_sai_neighbor_api->get_neighbor_entry_attribute(&neighbor_entry, attr_count, attr_list);
-                    break;
-                }
-
-                case SAI_OBJECT_TYPE_ROUTE_ENTRY:
-                {
-                    sai_route_entry_t route_entry;
-                    sai_deserialize_route_entry(str_object_id, route_entry);
-
-                    route_entry.switch_id = translate_vid_to_rid(route_entry.switch_id);
-                    route_entry.vr_id = translate_vid_to_rid(route_entry.vr_id);
-
-                    status = sai_metadata_sai_route_api->get_route_entry_attribute(&route_entry, attr_count, attr_list);
-                    break;
-                }
-
-                default:
-                {
-                    if (info->isnonobjectid)
-                    {
-                        SWSS_LOG_THROW("object %s:%s is non object id, but not handled, FIXME",
-                                sai_serialize_object_type(object_type).c_str(),
-                                str_object_id.c_str());
-                    }
-
-                    sai_object_id_t object_id;
-                    sai_deserialize_object_id(str_object_id, object_id);
-
-                    sai_object_meta_key_t meta_key;
-
-                    meta_key.objecttype = object_type;
-                    meta_key.objectkey.key.object_id = translate_vid_to_rid(object_id);
-
-                    status = info->get(&meta_key, attr_count, attr_list);
-                    break;
-                }
-            }
-
-            if (status == SAI_STATUS_NOT_IMPLEMENTED)
-            {
-                SWSS_LOG_ERROR("not implemented get api: %s", str_object_type.c_str());
-            }
-            else if (status != SAI_STATUS_SUCCESS)
-            {
-                SWSS_LOG_ERROR("failed to execute get api: %s", sai_serialize_status(status).c_str());
-            }
-
-            // Compare fields and values from ASIC_DB and SAI response
-            // Log the difference
-            for (uint32_t index = 0; index < attr_count; ++index)
-            {
-                const sai_attribute_t *attr = &attr_list[index];
-
-                auto meta = sai_metadata_get_attr_metadata(object_type, attr->id);
-
-                if (meta == NULL)
-                {
-                    SWSS_LOG_ERROR("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr->id);
-                    break;
-                }
-
-                std::string str_attr_id = sai_serialize_attr_id(*meta);
-
-                std::string str_attr_value = sai_serialize_attr_value(*meta, *attr, false);
-
-                std::string hash_attr_value = hash[str_attr_id];
-                if (hash_attr_value == str_attr_value)
-                {
-                    SWSS_LOG_INFO("Matched %s redis attr %s with asic attr %s for %s:%s", str_attr_id.c_str(), hash_attr_value.c_str(), str_attr_value.c_str(), str_object_type.c_str(), str_object_id.c_str());
-                }
-                else
-                {
-                    SWSS_LOG_ERROR("Failed to match %s redis attr %s with asic attr %s for %s:%s", str_attr_id.c_str(), hash_attr_value.c_str(), str_attr_value.c_str(), str_object_type.c_str(), str_object_id.c_str());
-                }
-            }
-        }
+        InspectAsic();
 
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
