@@ -1377,7 +1377,6 @@ int main(int argc, char **argv)
     int handled = handleCmdLine(argc, argv);
     argc -= handled;
     argv += handled;
-    printf("handled = %d, argv = %s\n", handled, argv[0]);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
