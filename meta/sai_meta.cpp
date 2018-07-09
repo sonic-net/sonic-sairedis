@@ -3666,7 +3666,9 @@ sai_status_t meta_sai_set_fdb_entry(
 #define META_LOG_STATUS(s)\
     if (s == SAI_STATUS_SUCCESS)                                           \
         SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(s).c_str()); \
-    else if (s == SAI_STATUS_BUFFER_OVERFLOW)                              \
+    else if (s == SAI_STATUS_BUFFER_OVERFLOW                               \
+               || SAI_STATUS_IS_ATTR_NOT_IMPLEMENTED(s)                    \
+               || SAI_STATUS_IS_ATTR_NOT_SUPPORTED(s))                     \
         SWSS_LOG_INFO("get status: %s", sai_serialize_status(s).c_str());  \
     else                                                                   \
         SWSS_LOG_ERROR("get status: %s", sai_serialize_status(s).c_str());
@@ -4701,7 +4703,9 @@ void meta_sai_on_fdb_flush_event_consolidated(
             continue;
         }
 
-        if (bpid != NULL)
+        // only consider bridge port id if it's defined and value is not NULL
+        // since vendor can add this attribute to fdb_entry with NULL value
+        if (bpid != NULL && bpid->value.oid != SAI_NULL_OBJECT_ID)
         {
             if (it->second.find(SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID) == it->second.end())
             {

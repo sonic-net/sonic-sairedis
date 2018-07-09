@@ -2491,7 +2491,7 @@ sai_status_t processEvent(
     {
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_WARN("get API for key: %s op: %s returned status: %s",
+            SWSS_LOG_DEBUG("get API for key: %s op: %s returned status: %s",
                     key.c_str(),
                     op.c_str(),
                     sai_serialize_status(status).c_str());
@@ -2579,6 +2579,10 @@ void processFlexCounterGroupEvent(
                 {
                     FlexCounter::addPortCounterPlugin(sha, groupName);
                 }
+            }
+            else if (field == FLEX_COUNTER_STATUS_FIELD)
+            {
+                FlexCounter::updateFlexCounterStatus(value, groupName);
             }
             else
             {
@@ -3054,6 +3058,21 @@ void set_sai_api_loglevel()
     }
 }
 
+void set_sai_api_log_min_prio(const std::string &prioStr)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * We start from 1 since 0 is SAI_API_UNSPECIFIED.
+     */
+
+    for (uint32_t idx = 1; idx < sai_metadata_enum_sai_api_t.valuescount; ++idx)
+    {
+        const auto& api_name = sai_metadata_enum_sai_api_t.valuesnames[idx];
+        saiLoglevelNotify(api_name, prioStr);
+    }
+}
+
 void performWarmRestart()
 {
     SWSS_LOG_ENTER();
@@ -3434,6 +3453,11 @@ int syncd_main(int argc, char **argv)
 
 #endif
 
+    FlexCounter::removeAllCounters();
+
+    // Stop notification thread before removing switch
+    stopNotificationsProcessingThread();
+
     status = sai_switch_api->remove_switch(gSwitchId);
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -3449,8 +3473,6 @@ int syncd_main(int argc, char **argv)
     {
         SWSS_LOG_ERROR("failed to uninitialize api: %s", sai_serialize_status(status).c_str());
     }
-
-    stopNotificationsProcessingThread();
 
     SWSS_LOG_NOTICE("uninitialize finished");
 

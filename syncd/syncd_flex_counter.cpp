@@ -42,6 +42,28 @@ void FlexCounter::setPollInterval(
     fc.m_pollInterval = pollInterval;
 }
 
+void FlexCounter::updateFlexCounterStatus(
+        _In_ std::string status,
+        _In_ std::string instanceId)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter &fc = getInstance(instanceId);
+    if (status == "enable")
+    {
+        fc.m_enable = true;
+    }
+    else if (status == "disable")
+    {
+        fc.m_enable = false;
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("Input value %s is not supported for Flex counter status, enter enable or disable", status.c_str());
+    }
+
+}
+
 /* The current implementation of 'setPortCounterList' and 'setQueueCounterList' are
  * not the same. Need to refactor these two functions to have the similar logic.
  * Either the full SAI attributes are queried once, or each of the needed counters
@@ -331,6 +353,13 @@ void FlexCounter::removeCounterPlugin(
     }
 }
 
+void FlexCounter::removeAllCounters()
+{
+    SWSS_LOG_ENTER();
+
+    g_flex_counters_map.clear();
+}
+
 
 FlexCounter::~FlexCounter(void)
 {
@@ -586,8 +615,11 @@ void FlexCounter::flexCounterThread(void)
     {
         auto start = std::chrono::steady_clock::now();
 
-        collectCounters(countersTable);
-        runPlugins(db);
+        if (m_enable)
+        {
+            collectCounters(countersTable);
+            runPlugins(db);
+        }
 
         auto finish = std::chrono::steady_clock::now();
         uint32_t delay = static_cast<uint32_t>(
@@ -651,7 +683,7 @@ void FlexCounter::saiUpdateSupportedPortCounters(sai_object_id_t portId)
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_WARN("Counter %s is not supported on port RID %s: %s",
+            SWSS_LOG_INFO("Counter %s is not supported on port RID %s: %s",
                     sai_serialize_port_stat(counter).c_str(),
                     sai_serialize_object_id(portId).c_str(),
                     sai_serialize_status(status).c_str());
@@ -678,7 +710,7 @@ void FlexCounter::saiUpdateSupportedQueueCounters(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_WARN("Counter %s is not supported on queue %s, rv: %s",
+            SWSS_LOG_INFO("Counter %s is not supported on queue %s, rv: %s",
                     sai_serialize_queue_stat(counter).c_str(),
                     sai_serialize_object_id(queueId).c_str(),
                     sai_serialize_status(status).c_str());
