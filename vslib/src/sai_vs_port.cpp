@@ -63,21 +63,6 @@ sai_status_t vs_clear_port_pool_stats(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t vs_get_port_pool_stats_ext(
-        _In_ sai_object_id_t port_pool_id,
-        _In_ uint32_t number_of_counters,
-        _In_ const sai_port_pool_stat_t *counter_ids,
-	_In_ sai_stats_mode_t mode,
-	_Out_ uint64_t *counters)
-{
-    MUTEX();
-
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-
 VS_GENERIC_GET_STATS(PORT,port);
 VS_GENERIC_GET_STATS(PORT_POOL,port_pool);
 
