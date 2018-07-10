@@ -32,6 +32,10 @@ class FlexCounter
                 _In_ sai_object_id_t queueId,
                 _In_ std::string instanceId,
                 _In_ const std::vector<sai_queue_attr_t> &attrIds);
+        static void updateFlexCounterStatus(
+                _In_ std::string status,
+                _In_ std::string instanceId);
+
 
         static void removePort(
                 _In_ sai_object_id_t portVid,
@@ -51,6 +55,7 @@ class FlexCounter
                 _In_ std::string instanceId);
         static void removeCounterPlugin(
                 _In_ std::string instanceId);
+        static void removeAllCounters();
 
         FlexCounter(
                 _In_ const FlexCounter&) = delete;
@@ -119,6 +124,7 @@ class FlexCounter
 
         uint32_t m_pollInterval = 0;
         std::string m_instanceId;
+        bool m_enable = false;
 };
 
 #endif

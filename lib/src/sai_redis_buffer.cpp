@@ -13,11 +13,11 @@ sai_status_t redis_clear_ingress_priority_group_stats(
 }
 
 sai_status_t redis_get_ingress_priority_group_stats_ext(
-        _In_ sai_object_id_t ingress_pg_id,
+        _In_ sai_object_id_t ingress_priority_group_id,
         _In_ uint32_t number_of_counters,
         _In_ const sai_ingress_priority_group_stat_t *counter_ids,
-	_In_ sai_stats_mode_t mode,
-	_Out_ uint64_t *counters)
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters)
 {
     MUTEX();
 
@@ -39,10 +39,12 @@ sai_status_t redis_get_buffer_pool_stats(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t redis_clear_buffer_pool_stats(
-        _In_ sai_object_id_t pool_id,
+sai_status_t redis_get_buffer_pool_stats_ext(
+        _In_ sai_object_id_t buffer_pool_id,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_buffer_pool_stat_t *counter_ids)
+        _In_ const sai_buffer_pool_stat_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters)
 {
     MUTEX();
 
@@ -51,12 +53,10 @@ sai_status_t redis_clear_buffer_pool_stats(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t redis_get_buffer_pool_stats_ext(
+sai_status_t redis_clear_buffer_pool_stats(
         _In_ sai_object_id_t pool_id,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_buffer_pool_stat_t *counter_ids,
-	_In_ sai_stats_mode_t mode,
-	_Out_ uint64_t *counters)
+        _In_ const sai_buffer_pool_stat_t *counter_ids)
 {
     MUTEX();
 

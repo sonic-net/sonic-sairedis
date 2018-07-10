@@ -56,7 +56,7 @@ sai_status_t redis_get_bridge_port_stats_ext(
         _In_ sai_object_id_t bridge_port_id,
         _In_ uint32_t number_of_counters,
         _In_ const sai_bridge_port_stat_t *counter_ids,
-	_In_ sai_stats_mode_t mode,
+        _In_ sai_stats_mode_t mode,
         _Out_ uint64_t *counters)
 {
     MUTEX();
