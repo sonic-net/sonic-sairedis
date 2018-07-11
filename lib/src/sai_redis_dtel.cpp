@@ -8,7 +8,7 @@ REDIS_GENERIC_QUAD(DTEL_EVENT,dtel_event);
 
 const sai_dtel_api_t redis_dtel_api = {
 
-	REDIS_GENERIC_QUAD_API(dtel)
+    REDIS_GENERIC_QUAD_API(dtel)
     REDIS_GENERIC_QUAD_API(dtel_queue_report)
     REDIS_GENERIC_QUAD_API(dtel_int_session)
     REDIS_GENERIC_QUAD_API(dtel_report_session)
