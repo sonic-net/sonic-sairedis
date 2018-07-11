@@ -13,7 +13,8 @@ SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else
 if sonic_asic_platform_barefoot
 AM_CPPFLAGS += -I/opt/bfn/install/include
-SAILIB=-L/opt/bfn/install/lib -lswitchsai -lswitchapi -lbf_switchd_lib -ltofinopdfixed_thrift -ldriver -lbfutils -lbfsys -lbfutils -L/opt/bfn/install/lib/tofinopd/switch -lpd -lpdcli -lpdthrift
+AM_LDFLAGS = -Wl,-unresolved-symbols=ignore-in-shared-libs
+SAILIB=-L/opt/bfn/install/lib -lswitchsai
 else
 SAILIB=-lsai
 endif
@@ -34,7 +35,6 @@ syncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.l
 if SAITHRIFT
 syncd_CPPFLAGS += -DSAITHRIFT=yes
 syncd_LDADD += -lrpcserver -lthrift
-#syncd_LDADD += -lthrift
 endif
 
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
