@@ -9,7 +9,7 @@ VS_GENERIC_QUAD(DTEL_EVENT,dtel_event);
 
 const sai_dtel_api_t vs_dtel_api = {
 
-	VS_GENERIC_QUAD_API(dtel)
+    VS_GENERIC_QUAD_API(dtel)
     VS_GENERIC_QUAD_API(dtel_queue_report)
     VS_GENERIC_QUAD_API(dtel_int_session)
     VS_GENERIC_QUAD_API(dtel_report_session)
