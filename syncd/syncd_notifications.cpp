@@ -461,8 +461,68 @@ void processNotification(
 // that some notiffication arrived
 
 std::condition_variable cv;
-std::mutex queue_mutex;
-std::queue<swss::KeyOpFieldsValuesTuple> ntf_queue;
+
+class ntf_queue_t
+{
+public:
+    bool enqueue(swss::KeyOpFieldsValuesTuple msg);
+    bool tryDequeue (swss::KeyOpFieldsValuesTuple& msg);
+    size_t  queueStats()
+    {
+        return ntf_queue.size();
+    }
+
+private:
+    std::mutex queue_mutex;
+    std::queue<swss::KeyOpFieldsValuesTuple> ntf_queue;
+    const size_t limit = 300000;
+};
+
+static ntf_queue_t* ntf_queue_hdlr;
+
+bool ntf_queue_t::tryDequeue(
+        _Out_ swss::KeyOpFieldsValuesTuple &item)
+{
+    std::lock_guard<std::mutex> lock(queue_mutex);
+
+    SWSS_LOG_ENTER();
+
+    if (ntf_queue.empty())
+    {
+        return false;
+    }
+
+    item = ntf_queue.front();
+
+    ntf_queue.pop();
+
+    return true;
+}
+
+bool ntf_queue_t::enqueue(
+        _In_ swss::KeyOpFieldsValuesTuple item)
+{
+    // this is notification context, so we need to protect queue
+
+    std::lock_guard<std::mutex> lock(queue_mutex);
+
+    std::string notification = kfvKey(item);
+
+    /*
+     * If the queue exceeds the limit, then drop all further FDB events
+     * This is a temporary solution to handle high memory usage by syncd and the
+     * ntf-Q keeps growing. The permanent solution would be to make this stateful
+     * so that only the *latest* event is published.
+     */
+    if (queueStats() < limit || notification != "fdb_event")
+    {
+        ntf_queue.push(item);
+        return true;
+    }
+
+    SWSS_LOG_INFO("Too many messages in queue (%ld), dropping FDB events!", queueStats());
+    return false;
+}
 
 void enqueue_notification(
         _In_ std::string op,
@@ -475,13 +535,10 @@ void enqueue_notification(
 
     swss::KeyOpFieldsValuesTuple item(op, data, entry);
 
-    // this is notification context, so we need to protect queue
-
-    std::lock_guard<std::mutex> lock(queue_mutex);
-
-    ntf_queue.push(item);
-
-    cv.notify_all();
+    if(ntf_queue_hdlr->enqueue(item))
+    {
+        cv.notify_all();
+    }
 }
 
 void enqueue_notification(
@@ -568,28 +625,11 @@ volatile bool runThread;
 std::mutex ntf_mutex;
 std::unique_lock<std::mutex> ulock(ntf_mutex);
 
-bool tryDequeue(
-        _Out_ swss::KeyOpFieldsValuesTuple &item)
-{
-    std::lock_guard<std::mutex> lock(queue_mutex);
-
-    SWSS_LOG_ENTER();
-
-    if (ntf_queue.empty())
-    {
-        return false;
-    }
-
-    item = ntf_queue.front();
-
-    ntf_queue.pop();
-
-    return true;
-}
-
 void ntf_process_function()
 {
     SWSS_LOG_ENTER();
+
+    ntf_queue_hdlr = new ntf_queue_t;
 
     while (runThread)
     {
@@ -602,7 +642,7 @@ void ntf_process_function()
 
         swss::KeyOpFieldsValuesTuple item;
 
-        while (tryDequeue(item))
+        while (ntf_queue_hdlr->tryDequeue(item))
         {
             processNotification(item);
         }
