@@ -504,6 +504,8 @@ bool ntf_queue_t::tryDequeue(
 bool ntf_queue_t::enqueue(
         _In_ swss::KeyOpFieldsValuesTuple item)
 {
+    SWSS_LOG_ENTER();
+
     std::string notification = kfvKey(item);
 
     /*
