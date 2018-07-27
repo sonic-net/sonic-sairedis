@@ -466,9 +466,11 @@ class ntf_queue_t
 {
 public:
     bool enqueue(swss::KeyOpFieldsValuesTuple msg);
-    bool tryDequeue (swss::KeyOpFieldsValuesTuple& msg);
-    size_t  queueStats()
+    bool tryDequeue(swss::KeyOpFieldsValuesTuple& msg);
+    size_t queueStats()
     {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+
         return ntf_queue.size();
     }
 
@@ -478,7 +480,7 @@ private:
     const size_t limit = 300000;
 };
 
-static ntf_queue_t* ntf_queue_hdlr;
+static std::unique_ptr<ntf_queue_t> ntf_queue_hdlr;
 
 bool ntf_queue_t::tryDequeue(
         _Out_ swss::KeyOpFieldsValuesTuple &item)
@@ -502,10 +504,6 @@ bool ntf_queue_t::tryDequeue(
 bool ntf_queue_t::enqueue(
         _In_ swss::KeyOpFieldsValuesTuple item)
 {
-    // this is notification context, so we need to protect queue
-
-    std::lock_guard<std::mutex> lock(queue_mutex);
-
     std::string notification = kfvKey(item);
 
     /*
@@ -516,6 +514,8 @@ bool ntf_queue_t::enqueue(
      */
     if (queueStats() < limit || notification != "fdb_event")
     {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+
         ntf_queue.push(item);
         return true;
     }
@@ -629,7 +629,7 @@ void ntf_process_function()
 {
     SWSS_LOG_ENTER();
 
-    ntf_queue_hdlr = new ntf_queue_t;
+    ntf_queue_hdlr = std::unique_ptr<ntf_queue_t>(new ntf_queue_t);
 
     while (runThread)
     {
