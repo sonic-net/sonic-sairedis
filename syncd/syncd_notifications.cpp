@@ -469,6 +469,8 @@ public:
     bool tryDequeue(swss::KeyOpFieldsValuesTuple& msg);
     size_t queueStats()
     {
+        SWSS_LOG_ENTER();
+
         std::lock_guard<std::mutex> lock(queue_mutex);
 
         return ntf_queue.size();
@@ -477,6 +479,11 @@ public:
 private:
     std::mutex queue_mutex;
     std::queue<swss::KeyOpFieldsValuesTuple> ntf_queue;
+
+    /*
+     * Value based on typical L2 deployment with 256k MAC entries and
+     * some extra buffer for other events like port-state, q-deadlock etc
+     */
     const size_t limit = 300000;
 };
 
@@ -522,7 +529,15 @@ bool ntf_queue_t::enqueue(
         return true;
     }
 
-    SWSS_LOG_INFO("Too many messages in queue (%ld), dropping FDB events!", queueStats());
+    static uint32_t log_count = 0;
+
+    if (!log_count)
+    {
+        SWSS_LOG_NOTICE("Too many messages in queue (%ld), dropping FDB events!", queueStats());
+    }
+
+    log_count = (log_count + 1) % 1000;
+
     return false;
 }
 
