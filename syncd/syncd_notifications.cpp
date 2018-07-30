@@ -531,12 +531,13 @@ bool ntf_queue_t::enqueue(
 
     static uint32_t log_count = 0;
 
-    if (!log_count)
+    if (!(log_count % 1000))
     {
-        SWSS_LOG_NOTICE("Too many messages in queue (%ld), dropping FDB events!", queueStats());
+        SWSS_LOG_NOTICE("Too many messages in queue (%ld), dropped %ld FDB events!",
+                         queueStats(), (log_count+1));
     }
 
-    log_count = (log_count + 1) % 1000;
+    ++log_count;
 
     return false;
 }
