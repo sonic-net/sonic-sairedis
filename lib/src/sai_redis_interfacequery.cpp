@@ -20,6 +20,7 @@ std::shared_ptr<swss::ProducerTable>        g_asicState;
 std::shared_ptr<swss::ConsumerTable>        g_redisGetConsumer;
 std::shared_ptr<swss::NotificationConsumer> g_redisNotifications;
 std::shared_ptr<swss::RedisClient>          g_redisClient;
+std::shared_ptr<swss::RedisPipeline>        g_redisPipeline;
 
 void clear_local_state()
 {
@@ -117,7 +118,8 @@ sai_status_t sai_api_initialize(
 
     g_db                 = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     g_dbNtf              = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    g_asicState          = std::make_shared<swss::ProducerTable>(g_db.get(), ASIC_STATE_TABLE);
+    g_redisPipeline      = std::make_shared<swss::RedisPipeline>(g_db.get()); //enable default pipeline 128
+    g_asicState          = std::make_shared<swss::ProducerTable>(g_redisPipeline.get(), ASIC_STATE_TABLE, true);
     g_redisGetConsumer   = std::make_shared<swss::ConsumerTable>(g_db.get(), "GETRESPONSE");
     g_redisNotifications = std::make_shared<swss::NotificationConsumer>(g_dbNtf.get(), "NOTIFICATIONS");
     g_redisClient        = std::make_shared<swss::RedisClient>(g_db.get());
