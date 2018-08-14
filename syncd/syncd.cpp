@@ -2501,7 +2501,7 @@ sai_status_t processEvent(
         const std::string &op = kfvOp(kco);
 
         if (key.length() == 0) {
-            SWSS_LOG_INFO("no elements in m_buffer");
+            SWSS_LOG_DEBUG("no elements in m_buffer");
             return status;
         }
 
