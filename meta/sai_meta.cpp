@@ -457,7 +457,7 @@ void set_object(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_THROW("FATAL: object %s don't exists", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s doesn't exist", key.c_str());
     }
 
     META_LOG_DEBUG(md, "set attribute %d on %s", attr->id, key.c_str());
@@ -474,7 +474,7 @@ const std::vector<std::shared_ptr<SaiAttrWrapper>> get_object_attributes(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_THROW("FATAL: object %s don't exists", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s doesn't exist", key.c_str());
     }
 
     std::vector<std::shared_ptr<SaiAttrWrapper>> attrs;
@@ -498,7 +498,7 @@ void remove_object(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_THROW("FATAL: object %s don't exists", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s doesn't exist", key.c_str());
     }
 
     SWSS_LOG_DEBUG("removing object %s", key.c_str());
@@ -533,7 +533,7 @@ sai_status_t meta_generic_validation_objlist(
 
     if (count > MAX_LIST_COUNT)
     {
-        META_LOG_ERROR(md, "object list count %u is > then max list count %u", count, MAX_LIST_COUNT);
+        META_LOG_ERROR(md, "object list count %u > max list count %u", count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -626,7 +626,7 @@ sai_status_t meta_generic_validation_objlist(
 
         if (!object_reference_exists(query_switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", query_switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", query_switch_id);
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
@@ -652,7 +652,7 @@ sai_status_t meta_genetic_validation_list(
 
     if (count > MAX_LIST_COUNT)
     {
-        META_LOG_ERROR(md, "list count %u is > then max list count %u", count, MAX_LIST_COUNT);
+        META_LOG_ERROR(md, "list count %u > max list count %u", count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -924,7 +924,7 @@ sai_status_t meta_generic_validate_non_object_on_create(
 
         if (!object_reference_exists(oid_switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", oid_switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", oid_switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -950,7 +950,7 @@ sai_status_t meta_generic_validation_create(
 
     if (attr_count > MAX_LIST_COUNT)
     {
-        SWSS_LOG_ERROR("create attribute count is too large %u > then max list count %u", attr_count, MAX_LIST_COUNT);
+        SWSS_LOG_ERROR("create attribute count %u > max list count %u", attr_count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -1002,14 +1002,14 @@ sai_status_t meta_generic_validation_create(
 
         if (!object_exists(switch_meta_key))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists yet", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist yet", switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (!object_reference_exists(switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists yet", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist yet", switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -1691,7 +1691,7 @@ sai_status_t meta_generic_validation_remove(
 
     if (!object_reference_exists(oid))
     {
-        SWSS_LOG_ERROR("object 0x%lx reference don't exists", oid);
+        SWSS_LOG_ERROR("object 0x%lx reference doesn't exist", oid);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -1776,7 +1776,7 @@ sai_status_t meta_generic_validation_set(
 
         if (!object_reference_exists(switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", switch_id);
             return SAI_STATUS_INVALID_PARAMETER;
         }
     }
@@ -2150,7 +2150,7 @@ sai_status_t meta_generic_validation_get(
 
     if (attr_count > MAX_LIST_COUNT)
     {
-        SWSS_LOG_ERROR("get attribute count is too large %u > then max list count %u", attr_count, MAX_LIST_COUNT);
+        SWSS_LOG_ERROR("get attribute count %u > max list count %u", attr_count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2452,7 +2452,7 @@ sai_status_t meta_generic_validation_get_stats(
 
     if (count > MAX_LIST_COUNT)
     {
-        SWSS_LOG_ERROR("get stats count is too large %u > then max list count %u", count, MAX_LIST_COUNT);
+        SWSS_LOG_ERROR("get stats count %u > max list count %u", count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2558,7 +2558,7 @@ void meta_generic_validation_post_create(
 
                 if (!object_reference_exists(query_switch_id))
                 {
-                    SWSS_LOG_ERROR("switch id 0x%lx don't exists", query_switch_id);
+                    SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", query_switch_id);
                     break;
                 }
 
@@ -3138,7 +3138,7 @@ void meta_generic_validation_post_get_objlist(
 
     if (count > MAX_LIST_COUNT)
     {
-        META_LOG_ERROR(md, "returned get object list count %u is > then max list count %u", count, MAX_LIST_COUNT);
+        META_LOG_ERROR(md, "returned get object list count %u > max list count %u", count, MAX_LIST_COUNT);
     }
 
     if (list == NULL)
@@ -3208,7 +3208,7 @@ void meta_generic_validation_post_get_objlist(
 
         if (!object_reference_exists(query_switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", query_switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", query_switch_id);
         }
 
         if (query_switch_id != switch_id)
@@ -3222,7 +3222,7 @@ void meta_generic_validation_post_get_objlist(
 {\
     if (list.count > MAX_LIST_COUNT)\
     {\
-        META_LOG_ERROR(md, "list count %u is > then max list count %u", list.count, MAX_LIST_COUNT);\
+        META_LOG_ERROR(md, "list count %u > max list count %u", list.count, MAX_LIST_COUNT);\
     }\
 }
 
@@ -4595,7 +4595,7 @@ sai_status_t meta_sai_get_oid(
 
         if (!object_reference_exists(switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", switch_id);
         }
 
         meta_generic_validation_post_get(meta_key, switch_id, attr_count, attr_list);
@@ -4864,7 +4864,7 @@ sai_status_t meta_sai_flush_fdb_entries(
 
     if (attr_count > MAX_LIST_COUNT)
     {
-        SWSS_LOG_ERROR("create attribute count is too large %u > then max list count %u", attr_count, MAX_LIST_COUNT);
+        SWSS_LOG_ERROR("create attribute count %u > max list count %u", attr_count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4889,7 +4889,7 @@ sai_status_t meta_sai_flush_fdb_entries(
 
     if (!object_reference_exists(switch_id))
     {
-        SWSS_LOG_ERROR("switch id %s don't exists",
+        SWSS_LOG_ERROR("switch id %s doesn't exist",
                 sai_serialize_object_id(switch_id).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
