@@ -833,7 +833,7 @@ void uninit_switch_MLNX2700(
 
     if (g_switch_state_map.find(switch_id) == g_switch_state_map.end())
     {
-        SWSS_LOG_THROW("switch don't exists 0x%lx", switch_id);
+        SWSS_LOG_THROW("switch doesn't exist 0x%lx", switch_id);
     }
 
     SWSS_LOG_NOTICE("remove switch 0x%lx", switch_id);

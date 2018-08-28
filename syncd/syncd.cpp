@@ -1185,7 +1185,7 @@ sai_status_t handle_generic(
                     /*
                      * When we creating switch, then switch_id parameter is
                      * ignored, but we can't convert it using vid to rid map,
-                     * since rid don't exist yet, so skip translate for switch,
+                     * since rid doesn't exist yet, so skip translate for switch,
                      * but use translate for all other objects.
                      */
 
@@ -1997,7 +1997,7 @@ void on_switch_create_in_init_view(
         if (attr == NULL)
         {
             /*
-             * This is ok, attribute don't exists, so assumption is empty string.
+             * This is ok, attribute doesn't exist, so assumption is empty string.
              */
         }
         else

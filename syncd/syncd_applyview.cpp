@@ -636,7 +636,7 @@ class AsicView
 
             if (it == m_vidReference.end())
             {
-                SWSS_LOG_THROW("vid %s don't exist in reference map",
+                SWSS_LOG_THROW("vid %s doesn't exist in reference map",
                         sai_serialize_object_id(vid).c_str());
             }
 
@@ -740,7 +740,7 @@ class AsicView
 
             if (it == m_vidReference.end())
             {
-                SWSS_LOG_THROW("vid %s don't exist in reference map",
+                SWSS_LOG_THROW("vid %s doesn't exist in reference map",
                         sai_serialize_object_id(vid).c_str());
             }
 
@@ -779,7 +779,7 @@ class AsicView
          * @brief Insert new VID reference.
          *
          * Inserts new reference to be tracked. This also make sure that
-         * reference don't exists yet, as a sanity check if same reference
+         * reference doesn't exist yet, as a sanity check if same reference
          * would be inserted twice.
          *
          * @param[in] vid Virtual ID reference to be inserted.
@@ -1725,7 +1725,7 @@ void checkMatchedPorts(
  *
  * In case of really long list, easier way to solve this can be getting all the
  * RIDs from current view (they must exist), getting all the matched RIDs from
- * temporary list (if one of them don't exists then lists are not equal) sort
+ * temporary list (if one of them doesn't exist then lists are not equal) sort
  * both list nlog(n) and then compare sequentially.
  *
  * @param currentView Current view.
@@ -1814,13 +1814,13 @@ bool hasEqualObjectList(
             if (temporaryIt == temporaryView.vidToRid.end())
             {
                 /*
-                 * Temporary RID don't exist yet for this object, so it mean's
+                 * Temporary RID doesn't exist yet for this object, so it means
                  * this object will be created in the future after all
                  * comparison logic finishes.
                  *
                  * Here we know that this temporary object is not processed yet
                  * but during recursive processing we know that this OID value
-                 * was already processed, and two things could happened:
+                 * was already processed, and two things could happen:
                  *
                  * - we matched existing current object for this VID and actual
                  *   RID was assigned, or
@@ -1829,7 +1829,7 @@ bool hasEqualObjectList(
                  *   not assigned, and this object will be created later on
                  *   which will assign new RID
                  *
-                 * Since we are here where RID don't exist this is the second
+                 * Since we are here where RID doesn't exist this is the second
                  * case, also we know that current object VID exists so his RID
                  * also exists, so those RID's can't be equal, we need return
                  * false here.
@@ -1839,7 +1839,7 @@ bool hasEqualObjectList(
                  * needs to be created.
                  */
 
-                SWSS_LOG_INFO("temporary RID don't exists (VID %s), attributes are not equal",
+                SWSS_LOG_INFO("temporary RID doesn't exist (VID %s), attributes are not equal",
                         sai_serialize_object_id(temporaryVid).c_str());
 
                 return false;
@@ -2374,7 +2374,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
                  * attributes are existing and both are equal, so here it
                  * returned false, so it may mean 2 things:
                  *
-                 * - attribute don't exists in current view, or
+                 * - attribute doesn't exist in current view, or
                  * - attributes are different
                  *
                  * If we check if attribute also exists in current view and has
@@ -2382,7 +2382,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
                  * disqualify this object since new temporary object needs to
                  * pass new different attribute with CREATE_ONLY flag.
                  *
-                 * Case when attribute don't exists is much more complicated
+                 * Case when attribute doesn't exist is much more complicated
                  * since it maybe conditional and have default value, we will
                  * do that check when we select best match.
                  */
@@ -2567,7 +2567,7 @@ bool exchangeTemporaryVidToCurrentVid(
              * This is just sanity check, should never happen.
              */
 
-            SWSS_LOG_THROW("found tempoary RID %s but current VID don't exists, FATAL",
+            SWSS_LOG_THROW("found tempoary RID %s but current VID doesn't exist, FATAL",
                     sai_serialize_object_id(temporaryRid).c_str());
         }
 
@@ -2597,7 +2597,7 @@ bool exchangeTemporaryVidToCurrentVid(
  * struct and do dictionary lookup on serialized neighbor_entry.
  *
  * With this approach for many entries this is the quickest possible way. In
- * case when RID don't exist, that means we have invalid neighbor entry, so we
+ * case when RID doesn't exist, that means we have invalid neighbor entry, so we
  * must return null.
  *
  * @param currentView Current view.
@@ -2680,7 +2680,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForNeighborEntry(
  * and do dictionary lookup on serialized route_entry.
  *
  * With this approach for many entries this is the quickest possible way. In
- * case when RID don't exist, that means we have invalid route entry, so we
+ * case when RID doesn't exist, that means we have invalid route entry, so we
  * must return null.
  *
  * @param currentView Current view.
@@ -2761,7 +2761,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForRouteEntry(
  * lookup on serialized fdb_entry.
  *
  * With this approach for many entries this is the quickest possible way. In
- * case when RID don't exist, that means we have invalid fdb entry, so we must
+ * case when RID doesn't exist, that means we have invalid fdb entry, so we must
  * return null.
  *
  * @param currentView Current view.
@@ -3230,7 +3230,7 @@ sai_object_id_t translateTemporaryVidToCurrentVid(
 
     /*
      * This method is used to translate temporary VID to current VID using RID
-     * which should be present in both views.  If RID don't exist, then we
+     * which should be present in both views. If RID doesn't exist, then we
      * check whether object was created if so, then we return temporary VID
      * instead of creating new current VID and we don't need to track mapping
      * of those vids not having actual RID. This function should be used only
@@ -3496,7 +3496,7 @@ void createNewObjectFromTemporaryObject(
      * trap group to asic view, so if user will query default one, they will be
      * matched by RID.
      *
-     * Default trap group is transferred to view on init if it don't exist.
+     * Default trap group is transferred to view on init if it doesn't exist.
      *
      * There should be no such action here, since this scenario would mean that
      * there is default switch object in temporary view, but not in current
@@ -3703,7 +3703,7 @@ void UpdateObjectStatus(
             temporaryView.vidToRid[tvid] = rid;
 
             /*
-             * TODO: Set new VID if it don't exist in current view with NULL RID
+             * TODO: Set new VID if it doesn't exist in current view with NULL RID
              * that will mean we created new object, this VID will be later
              * used to count references and as a sanity check if we are
              * increasing valid reference.
@@ -3895,7 +3895,7 @@ std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
 
                 if (tg == currentView.ridToVid.end())
                 {
-                    SWSS_LOG_THROW("default trap group RID 0x%lx don't exist in current view", currentView.defaultTrapGroupRid);
+                    SWSS_LOG_THROW("default trap group RID 0x%lx doesn't exist in current view", currentView.defaultTrapGroupRid);
                 }
 
                 sai_attribute_t at;
