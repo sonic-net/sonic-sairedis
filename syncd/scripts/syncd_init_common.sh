@@ -18,7 +18,11 @@ if [ -x $CMD_DSSERVE ]; then
     CMD_ARGS=$CMD_DSSERVE_ARGS
 else
     CMD=$CMD_SYNCD
+    CMD_ARGS=
 fi
+
+# Use temporary view between init and apply
+CMD_ARGS+=" -u"
 
 case "$(cat /proc/cmdline)" in
   *fast-reboot*)
@@ -74,7 +78,7 @@ config_syncd_centec()
 
     [ -e /dev/linux_dal ] || mknod /dev/linux_dal c 198 0
     [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
-    
+
     if [ $FAST_REBOOT == "yes" ]; then
         CMD_ARGS+=" -t fast"
     fi
