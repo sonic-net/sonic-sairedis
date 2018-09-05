@@ -115,8 +115,8 @@ sai_status_t sai_api_initialize(
 
     memcpy(&g_services, services, sizeof(g_services));
 
-    g_db                 = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    g_dbNtf              = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    g_db                 = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::SECONDARY_UNIXSOCKET, 0);
+    g_dbNtf              = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::SECONDARY_UNIXSOCKET, 0);
     g_asicState          = std::make_shared<swss::ProducerTable>(g_db.get(), ASIC_STATE_TABLE);
     g_redisGetConsumer   = std::make_shared<swss::ConsumerTable>(g_db.get(), "GETRESPONSE");
     g_redisNotifications = std::make_shared<swss::NotificationConsumer>(g_dbNtf.get(), "NOTIFICATIONS");

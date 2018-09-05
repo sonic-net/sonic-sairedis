@@ -47,7 +47,7 @@ void clearDB()
 {
     SWSS_LOG_ENTER();
 
-    swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
+    swss::DBConnector db(ASIC_DB, "localhost", 6380, 0);
     swss::RedisReply r(&db, "FLUSHALL", REDIS_REPLY_STATUS);
     r.checkStatusOK();
 }
@@ -152,7 +152,7 @@ void bulk_nhgm_consumer_worker()
     SWSS_LOG_ENTER();
 
     std::string tableName = ASIC_STATE_TABLE;
-    swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
+    swss::DBConnector db(ASIC_DB, "localhost", 6380, 0);
     swss::ConsumerTable c(&db, tableName);
     swss::Select cs;
     swss::Selectable *selectcs;

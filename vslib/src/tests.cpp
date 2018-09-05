@@ -208,7 +208,7 @@ void test_set_readonly_attribute_via_redis()
 
     // this scope contains all operations needed to perform set operation on readonly attribute
     {
-        swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
+        swss::DBConnector db(ASIC_DB, "localhost", 6380, 0);
         swss::NotificationProducer vsntf(&db, SAI_VS_UNITTEST_CHANNEL);
 
         std::vector<swss::FieldValueTuple> entry;

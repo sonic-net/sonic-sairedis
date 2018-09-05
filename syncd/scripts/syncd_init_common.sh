@@ -91,6 +91,10 @@ config_syncd_cavium()
         sleep 1
     done
 
+    until [ $(redis-cli -p 6380 ping | grep -c PONG) -gt 0 ]; do
+        sleep 1
+    done
+
     if [ $FAST_REBOOT == "yes" ]; then
         CMD_ARGS+=" -t fast"
     fi

@@ -43,6 +43,18 @@ sub flush_redis
         print color('red') . "failed to flush redis: @ret" . color('reset') . "\n";
         exit 1;
     }
+
+    my @ret_sec = `redis-cli -p 6380 flushall`;
+
+    $ret_sec[0] = "failed" if not defined $ret_sec[0];
+
+    chomp $ret_sec[0];
+
+    if ($ret_sec[0] ne "OK")
+    {
+        print color('red') . "failed to flush redis port 6380: @ret" . color('reset') . "\n";
+        exit 1;
+    }
 }
 
 sub start_syncd
