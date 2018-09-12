@@ -187,18 +187,19 @@ void findBridgeVlanForPortVlan(
 
         sai_deserialize_object_id(it->first, bpid);
 
-        sai_attribute_t attr;
+        sai_attribute_t attrs[2];
 
-        attr.id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+        attrs[0].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+        attrs[1].id = SAI_BRIDGE_PORT_ATTR_TYPE;
 
-        sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bpid, 1, &attr);
+        sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bpid, sizeof(attrs)/sizeof(attrs[0]), attrs);
 
         if (status != SAI_STATUS_SUCCESS)
         {
             continue;
         }
 
-        if (port_id != attr.value.oid)
+        if (port_id != attrs[0].value.oid)
         {
             // this is not expected port
             continue;
@@ -206,42 +207,43 @@ void findBridgeVlanForPortVlan(
 
         bridge_port_id = bpid;
 
-        // XXX: need to also check the vlan_id match if the bridge port type is subport
+        // get the 1D bridge id if the bridge port type is subport
+        auto bp_type = attrs[1].value.s32;
 
-        SWSS_LOG_DEBUG("found bridge port %s for port %s",
+        SWSS_LOG_DEBUG("found bridge port %s of type %d",
                 sai_serialize_object_id(bridge_port_id).c_str(),
-                sai_serialize_object_id(port_id).c_str());
+                bp_type);
 
-        attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
-
-        status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridge_port_id, 1, &attr);
-
-        if (status != SAI_STATUS_SUCCESS)
+        if (bp_type == SAI_BRIDGE_PORT_TYPE_SUB_PORT)
         {
-            break;
-        }
+            sai_attribute_t attr;
+            attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
 
-        bridge_id = attr.value.oid;
+            status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridge_port_id, 1, &attr);
 
-        SWSS_LOG_DEBUG("found bridge %s for port %s",
-                sai_serialize_object_id(bridge_id).c_str(),
-                sai_serialize_object_id(port_id).c_str());
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                break;
+            }
 
-        attr.id = SAI_BRIDGE_ATTR_TYPE;
+            bridge_id = attr.value.oid;
 
-        status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE, bridge_id, 1, &attr);
+            SWSS_LOG_DEBUG("found bridge %s for port %s",
+                    sai_serialize_object_id(bridge_id).c_str(),
+                    sai_serialize_object_id(port_id).c_str());
 
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            break;
-        }
+            attr.id = SAI_BRIDGE_ATTR_TYPE;
 
-        SWSS_LOG_DEBUG("bridge %s type is %d",
-                sai_serialize_object_id(bridge_id).c_str(),
-                attr.value.s32);
+            status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE, bridge_id, 1, &attr);
 
-        if (attr.value.s32 == SAI_BRIDGE_TYPE_1D)
-        {
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                break;
+            }
+
+            SWSS_LOG_DEBUG("bridge %s type is %d",
+                    sai_serialize_object_id(bridge_id).c_str(),
+                    attr.value.s32);
             bv_id = bridge_id;
         }
         else
@@ -256,6 +258,7 @@ void findBridgeVlanForPortVlan(
 
                 sai_deserialize_object_id(it2->first, vlan_oid);
 
+                sai_attribute_t attr;
                 attr.id = SAI_VLAN_ATTR_VLAN_ID;
 
                 status = vs_generic_get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr);
