@@ -107,22 +107,15 @@ void redisPutFdbEntryToAsicView(
     {
         sai_object_id_t bv_id = fdb->fdb_entry.bv_id;
         sai_object_id_t port_oid = 0;
-        bool port_oid_found = false;
         
         for (uint32_t i = 0; i < fdb->attr_count; i++)
         {
             if(fdb->attr[i].id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
             {
                 port_oid = fdb->attr[i].value.oid;
-                port_oid_found = true;
             }
         }
         
-        if (!port_oid_found)
-        {
-            SWSS_LOG_ERROR("Failed to get bridge port ID for FDB entry %s",strFdbEntry.c_str());
-            return;
-        }
                 
         if (!port_oid && !bv_id)
         {
