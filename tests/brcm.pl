@@ -169,9 +169,18 @@ sub test_brcm_full_to_empty_no_queue_no_ipg_no_buffer_profile
     play "empty_sw.rec";
 }
 
+sub test_brcm_speed_init_apply
+{
+    fresh_start;
+
+    play "speed_init.rec";
+    play "speed_apply.rec";
+}
+
 
 # RUN TESTS
 
+test_brcm_speed_init_apply;
 test_brcm_start_empty;
 test_brcm_start_empty_to_empty;
 test_brcm_full;

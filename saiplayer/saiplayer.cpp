@@ -718,9 +718,16 @@ void handle_get_response(
         sai_object_type_t object_type,
         uint32_t get_attr_count,
         sai_attribute_t* get_attr_list,
-        const std::string& response)
+        const std::string& response,
+        sai_status_t status)
 {
     SWSS_LOG_ENTER();
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        // TODO check if status is correct for get
+        return;
+    }
 
     //std::cout << "processing " << response << std::endl;
 
@@ -1202,7 +1209,12 @@ int replay(int argc, char **argv)
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_THROW("failed to execute api: %c: %s", op, sai_serialize_status(status).c_str());
+            if (api == SAI_COMMON_API_GET && status == SAI_STATUS_NOT_IMPLEMENTED)
+            {
+                // TODO check if actual status for get is correct
+            }
+            else
+                SWSS_LOG_THROW("failed to execute api: %c: %s", op, sai_serialize_status(status).c_str());
         }
 
         if (api == SAI_COMMON_API_GET)
@@ -1218,7 +1230,7 @@ int replay(int argc, char **argv)
 
             try
             {
-                handle_get_response(object_type, attr_count, attr_list, response);
+                handle_get_response(object_type, attr_count, attr_list, response, status);
             }
             catch (const std::exception &e)
             {

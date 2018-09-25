@@ -4223,7 +4223,6 @@ bool performObjectSetTransition(
                             sai_serialize_object_id(vid).c_str(),
                             meta->attridname,
                             currentAttr->getStrAttrValue().c_str());
-
                 }
             }
         }
@@ -4244,6 +4243,24 @@ bool performObjectSetTransition(
             if (currentBestMatch->getObjectStatus() == SAI_OBJECT_STATUS_MATCHED &&
                     SAI_HAS_FLAG_CREATE_AND_SET(meta->flags))
             {
+                if (meta->objecttype == SAI_OBJECT_TYPE_PORT &&
+                        meta->attrid == SAI_PORT_ATTR_SPEED)
+                {
+                    /*
+                     * NOTE: for SPEED we could query each port at start and
+                     * save it's speed to recover here, or even we could query
+                     * each attribute on existing object during discovery
+                     * process.
+                     */
+
+                    SWSS_LOG_WARN("No previous value specified on %s (VID), can't bring to default, leaving attr unchanged: %s:%s",
+                            sai_serialize_object_id(currentBestMatch->getVid()).c_str(),
+                            meta->attridname,
+                            currentAttr->getStrAttrValue().c_str());
+
+                    continue;
+                }
+
                 if (meta->objecttype == SAI_OBJECT_TYPE_SCHEDULER_GROUP &&
                         meta->attrid == SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID)
                 {
@@ -4312,7 +4329,8 @@ bool performObjectSetTransition(
                 // if attribute is set we and object is in MATCHED state then that means we are able to
                 // bring this attribute to default state not for all attributes!
 
-                SWSS_LOG_ERROR("current attribute is mandatory on create, crate and set, and object MATCHED, FIXME %s:%s",
+                SWSS_LOG_ERROR("current attribute is mandatory on create, crate and set, and object MATCHED, FIXME %s %s:%s",
+                        currentBestMatch->str_object_id.c_str(),
                         meta->attridname,
                         currentAttr->getStrAttrValue().c_str());
 
@@ -4590,6 +4608,21 @@ void processObjectForViewTransition(
 
     if (!passed)
     {
+        if (temporaryObj->getObjectStatus() == SAI_OBJECT_STATUS_MATCHED)
+        {
+            /*
+             * If object status is MATCHED, then we have the same object in
+             * current view and temporary view, so it must be possible to make
+             * transition to temporary view, hence for MATCHED objects
+             * performObjectSetTransition must pass. There can be some corner
+             * cases like existing objects after switch create and their attributes
+             * that are OID set to existing objects (like QUEUES).
+             */
+
+            SWSS_LOG_THROW("performObjectSetTransition on MATCHED object (%s) FAILED! bug?",
+                    temporaryObj->str_object_id.c_str());
+        }
+
         /*
          * First pass was a failure, so we can't update existing object with
          * temporary one, probably because of CRATE_ONLY attributes.
