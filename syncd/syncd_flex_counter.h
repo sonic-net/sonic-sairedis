@@ -27,15 +27,27 @@ class FlexCounter
                 _In_ sai_object_id_t queueId,
                 _In_ std::string instanceId,
                 _In_ const std::vector<sai_queue_stat_t> &counterIds);
+        static void setPriorityGroupCounterList(
+                _In_ sai_object_id_t priorityGroupVid,
+                _In_ sai_object_id_t priorityGroupId,
+                _In_ std::string instanceId,
+                _In_ const std::vector<sai_ingress_priority_group_stat_t> &counterIds);
         static void setQueueAttrList(
                 _In_ sai_object_id_t queueVid,
                 _In_ sai_object_id_t queueId,
                 _In_ std::string instanceId,
                 _In_ const std::vector<sai_queue_attr_t> &attrIds);
+        static void setPriorityGroupAttrList(
+                _In_ sai_object_id_t priorityGroupVid,
+                _In_ sai_object_id_t priorityGroupId,
+                _In_ std::string instanceId,
+                _In_ const std::vector<sai_ingress_priority_group_attr_t> &attrIds);
         static void updateFlexCounterStatus(
                 _In_ std::string status,
                 _In_ std::string instanceId);
-
+        static void updateFlexCounterStatsMode(
+                 _In_ std::string mode,
+                 _In_ std::string instanceId);
 
         static void removePort(
                 _In_ sai_object_id_t portVid,
@@ -43,11 +55,17 @@ class FlexCounter
         static void removeQueue(
                 _In_ sai_object_id_t queueVid,
                 _In_ std::string instanceId);
+        static void removePriorityGroup(
+                _In_ sai_object_id_t priorityGroupVid,
+                _In_ std::string instanceId);
 
         static void addPortCounterPlugin(
                 _In_ std::string sha,
                 _In_ std::string instanceId);
         static void addQueueCounterPlugin(
+                _In_ std::string sha,
+                _In_ std::string instanceId);
+        static void addPriorityGroupCounterPlugin(
                 _In_ std::string sha,
                 _In_ std::string instanceId);
         static void removeCounterPlugin(
@@ -82,6 +100,26 @@ class FlexCounter
             std::vector<sai_queue_attr_t> queueAttrIds;
         };
 
+        struct IngressPriorityGroupCounterIds
+        {
+            IngressPriorityGroupCounterIds(
+                    _In_ sai_object_id_t priorityGroup,
+                    _In_ const std::vector<sai_ingress_priority_group_stat_t> &priorityGroupIds);
+
+            sai_object_id_t priorityGroupId;
+            std::vector<sai_ingress_priority_group_stat_t> priorityGroupCounterIds;
+        };
+
+        struct IngressPriorityGroupAttrIds
+        {
+            IngressPriorityGroupAttrIds(
+                    _In_ sai_object_id_t priorityGroup,
+                    _In_ const std::vector<sai_ingress_priority_group_attr_t> &priorityGroupIds);
+
+            sai_object_id_t priorityGroupId;
+            std::vector<sai_ingress_priority_group_attr_t> priorityGroupAttrIds;
+        };
+
         struct PortCounterIds
         {
             PortCounterIds(
@@ -104,18 +142,23 @@ class FlexCounter
 
         void saiUpdateSupportedPortCounters(sai_object_id_t portId);
         void saiUpdateSupportedQueueCounters(sai_object_id_t queueId, const std::vector<sai_queue_stat_t> &counterIds);
+        void saiUpdateSupportedPriorityGroupCounters(sai_object_id_t priorityGroupId, const std::vector<sai_ingress_priority_group_stat_t> &counterIds);
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
+        bool isPriorityGroupCounterSupported(sai_ingress_priority_group_stat_t counter) const;
         bool isEmpty();
 
         // Key is a Virtual ID
         std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> m_portCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> m_queueCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
+        std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupCounterIds>> m_priorityGroupCounterIdsMap;
+        std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> m_priorityGroupAttrIdsMap;
 
         // Plugins
         std::set<std::string> m_queuePlugins;
         std::set<std::string> m_portPlugins;
+        std::set<std::string> m_priorityGroupPlugins;
 
         std::atomic_bool m_runFlexCounterThread = { false };
         std::shared_ptr<std::thread> m_flexCounterThread = nullptr;
@@ -124,6 +167,7 @@ class FlexCounter
 
         uint32_t m_pollInterval = 0;
         std::string m_instanceId;
+        sai_stats_mode_t m_statsMode;
         bool m_enable = false;
 };
 

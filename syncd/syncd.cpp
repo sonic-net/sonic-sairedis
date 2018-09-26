@@ -2748,6 +2748,14 @@ void processFlexCounterGroupEvent(
                     FlexCounter::addQueueCounterPlugin(sha, groupName);
                 }
             }
+            else if (field == PG_PLUGIN_FIELD)
+            {
+                auto shaStrings = swss::tokenize(value, ',');
+                for (const auto &sha : shaStrings)
+                {
+                    FlexCounter::addPriorityGroupCounterPlugin(sha, groupName);
+                }
+            }
             else if (field == PORT_PLUGIN_FIELD)
             {
                 auto shaStrings = swss::tokenize(value, ',');
@@ -2759,6 +2767,10 @@ void processFlexCounterGroupEvent(
             else if (field == FLEX_COUNTER_STATUS_FIELD)
             {
                 FlexCounter::updateFlexCounterStatus(value, groupName);
+            }
+            else if (field == STATS_MODE_FIELD)
+            {
+                FlexCounter::updateFlexCounterStatsMode(value, groupName);
             }
             else
             {
@@ -2806,6 +2818,10 @@ void processFlexCounterEvent(
         else if (objectType == SAI_OBJECT_TYPE_QUEUE)
         {
             FlexCounter::removeQueue(vid, groupName);
+        }
+        else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP)
+        {
+            FlexCounter::removePriorityGroup(vid, groupName);
         }
         else
         {
@@ -2856,6 +2872,29 @@ void processFlexCounterEvent(
                 }
 
                 FlexCounter::setQueueAttrList(vid, rid, groupName, queueAttrIds);
+            }
+            else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP && field == PG_COUNTER_ID_LIST)
+            {
+                std::vector<sai_ingress_priority_group_stat_t> pgCounterIds;
+                for (const auto &str : idStrings)
+                {
+                    sai_ingress_priority_group_stat_t stat;
+                    sai_deserialize_ingress_priority_group_stat(str, stat);
+                    pgCounterIds.push_back(stat);
+                }
+                FlexCounter::setPriorityGroupCounterList(vid, rid, groupName, pgCounterIds);
+            }
+            else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP && field == PG_ATTR_ID_LIST)
+            {
+                std::vector<sai_ingress_priority_group_attr_t> pgAttrIds;
+                for (const auto &str : idStrings)
+                {
+                    sai_ingress_priority_group_attr_t attr;
+                    sai_deserialize_ingress_priority_group_attr(str, attr);
+                    pgAttrIds.push_back(attr);
+                }
+
+                FlexCounter::setPriorityGroupAttrList(vid, rid, groupName, pgAttrIds);
             }
             else
             {
