@@ -445,8 +445,6 @@ void processSwitches()
         g_translatedV2R[switch_vid] = switch_rid;
         g_translatedR2V[switch_rid] = switch_vid;
 
-        startDiagShell();
-
         auto sw = switches[switch_vid] = std::make_shared<SaiSwitch>(switch_vid, switch_rid);
 
         /*
@@ -457,6 +455,8 @@ void processSwitches()
         g_switch_vid = switch_vid;
 
         g_sw = sw;
+
+        startDiagShell();
 
         /*
          * We processed switch. We have switch vid/rid so we can process all
