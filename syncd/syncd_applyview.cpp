@@ -2182,6 +2182,105 @@ int findAllChildsInDependencyTreeCount(
     return count;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Find not processed LAG members, in both views, since lag member contais
+     * LAG and PORT, then it should not be processed before LAG itself. But
+     * since PORT objects on LAG members should be matched at the beggining of
+     * comparison logic, then we can find batching LAG members based on the
+     * same VID, since it will be the same in both views.
+     */
+
+    const auto tmpLagMembersNP = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+    /*
+     * First we need to find at least 1 LAG member that belongs to temporary
+     * object so we could extrac port object.
+     */
+
+    sai_object_id_t tmpLagVid = temporaryObj->getVid();
+
+    sai_object_id_t temporaryLagMemberPortVid = SAI_NULL_OBJECT_ID;
+
+    for (const auto &lagMember: tmpLagMembersNP)
+    {
+        // lag member attr lag should always exists on
+        const auto lagMemberLagAttr = lagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_LAG_ID);
+
+        if (lagMemberLagAttr->getSaiAttr()->value.oid == tmpLagVid)
+        {
+            SWSS_LOG_NOTICE("found temp LAG member %s which uses temp LAG %s",
+                    temporaryObj->str_object_id.c_str(),
+                    lagMember->str_object_id.c_str());
+
+            temporaryLagMemberPortVid = lagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID)->getSaiAttr()->value.oid;
+
+            break;
+        }
+    }
+
+    if (temporaryLagMemberPortVid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_WARN("failed to find temporary LAG member for LAG %s", sai_serialize_object_id(tmpLagVid).c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * Now since we have port VID which should be the same in both current and
+     * temporary view, let's find LAG member object that uses this port on
+     * current view.
+     */
+
+    const auto curLagMembersNP = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+    for (const auto &lagMember: curLagMembersNP)
+    {
+        // lag member attr lag should always exists on
+        const auto lagMemberPortAttr = lagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID);
+
+        if (lagMemberPortAttr->getSaiAttr()->value.oid == temporaryLagMemberPortVid)
+        {
+            SWSS_LOG_NOTICE("found current LAG member %s which uses PORT %s",
+                    lagMember->str_object_id.c_str(),
+                    sai_serialize_object_id(temporaryLagMemberPortVid).c_str());
+
+            /*
+             * We found LAG member which uses the same PORT VID, let's extract
+             * LAG and check if this LAG is on the candidate list.
+             */
+
+            sai_object_id_t currentLagVid = lagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_LAG_ID)->getSaiAttr()->value.oid;
+
+            for (auto &c: candidateObjects)
+            {
+                if (c.obj->getVid() == currentLagVid)
+                {
+                    SWSS_LOG_NOTICE("found best candidate for temp LAG %s which is current LAG %s using PORT %s",
+                            temporaryObj->str_object_id.c_str(),
+                            sai_serialize_object_id(currentLagVid).c_str(),
+                            sai_serialize_object_id(temporaryLagMemberPortVid).c_str());
+
+                    return c.obj;
+                }
+            }
+
+            break;
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for LAG using LAG member and port id");
+
+    return nullptr;
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -2189,6 +2288,19 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
 {
     SWSS_LOG_ENTER();
+
+    if (temporaryObj->getObjectType() == SAI_OBJECT_TYPE_LAG)
+    {
+        /*
+         * For lat, let's try find matching LAG member which will be using the
+         * same port, since we expect that port object can belong only to 1 lag.
+         */
+
+        std::shared_ptr<SaiObj> candidateLag = findCurrentBestMatchForLag(currentView, temporaryView, temporaryObj, candidateObjects);
+
+        if (candidateLag != nullptr)
+            return candidateLag;
+    }
 
     /*
      * Idea is to count all dependencies that uses this object.  this may not

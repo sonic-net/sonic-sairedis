@@ -177,9 +177,21 @@ sub test_brcm_speed_init_apply
     play "speed_apply.rec";
 }
 
+sub test_brcm_lag_comparison_logic
+{
+    fresh_start;
+
+    # we expect no asic operations on this test
+    # even do lags looks the same, but are matched
+    # using lag member and port
+
+    play "lag_comparison_logic.rec";
+    play "lag_comparison_logic.rec";
+}
 
 # RUN TESTS
 
+test_brcm_lag_comparison_logic;
 test_brcm_speed_init_apply;
 test_brcm_start_empty;
 test_brcm_start_empty_to_empty;
