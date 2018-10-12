@@ -34,9 +34,24 @@ case "$(cat /proc/cmdline)" in
 esac
 
 
+function check_warm_boot()
+{
+    SYSTEM_WARM_START=`/usr/bin/redis-cli -n 4 hget "WARM_RESTART|system" enable`
+    SERVICE_WARM_START=`/usr/bin/redis-cli -n 4 hget "WARM_RESTART|${SERVICE}" enable`
+    # SYSTEM_WARM_START could be empty, always make WARM_BOOT meaningful.
+    if [[ x"$SYSTEM_WARM_START" == x"true" ]] || [[ x"$SERVICE_WARM_START" == x"true" ]]; then
+        WARM_BOOT="true"
+    else
+        WARM_BOOT="false"
+    fi
+}
+
+
 function set_start_type()
 {
-    if [ $FAST_REBOOT == "yes" ]; then
+    if [ x"$WARM_BOOT" == x"true" ]; then
+        CMD_ARGS+=" -t warm"
+    elif [ $FAST_REBOOT == "yes" ]; then
         CMD_ARGS+=" -t fast"
     fi
 }
@@ -121,6 +136,8 @@ config_syncd_nephos()
 
 config_syncd()
 {
+    check_warm_boot
+
     if [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
         config_syncd_bcm
     elif [ "$SONIC_ASIC_TYPE" == "mellanox" ]; then
