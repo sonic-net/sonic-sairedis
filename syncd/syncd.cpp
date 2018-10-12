@@ -5,6 +5,8 @@
 #include "swss/tokenize.h"
 #include <limits.h>
 
+#include "swss/warm_restart.h"
+
 extern "C" {
 #include <sai.h>
 }
@@ -3412,6 +3414,9 @@ int syncd_main(int argc, char **argv)
 
     swss::Logger::linkToDbNative("syncd");
 
+    swss::WarmStart::initialize("syncd", "syncd");
+    swss::WarmStart::checkWarmStart("syncd");
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
     sai_metadata_log = &sai_meta_log_syncd;
@@ -3451,6 +3456,11 @@ int syncd_main(int argc, char **argv)
     notifications = std::make_shared<swss::NotificationProducer>(dbNtf.get(), "NOTIFICATIONS");
 
     g_veryFirstRun = isVeryFirstRun();
+
+    if (swss::WarmStart::isWarmStart())
+    {
+        options.startType = SAI_WARM_BOOT;
+    }
 
     if (options.startType == SAI_WARM_BOOT)
     {
