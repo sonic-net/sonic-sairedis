@@ -3518,7 +3518,7 @@ int syncd_main(int argc, char **argv)
     try
     {
         SWSS_LOG_NOTICE("before onSyncdStart");
-        onSyncdStart(false);
+        onSyncdStart(options.startType == SAI_WARM_BOOT);
         SWSS_LOG_NOTICE("after onSyncdStart");
 
         startNotificationsProcessingThread();
