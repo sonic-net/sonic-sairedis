@@ -13,6 +13,8 @@ extern "C" {
 #include <map>
 #include <unordered_map>
 
+#define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
+
 /**
  * @brief Global mutex for thread synchronization
  *
@@ -3058,6 +3060,13 @@ void handleProfileMap(const std::string& profileMapFile)
         SWSS_LOG_ERROR("failed to open profile map file: %s : %s", profileMapFile.c_str(), strerror(errno));
         exit(EXIT_FAILURE);
     }
+
+    // Provide default value at boot up time and let sai profile value
+    // Override following values if existing.
+    // SAI reads these values at start up time. It would be too late to
+    // set these values later when WARM BOOT is detected.
+    gProfileMap[SAI_KEY_WARM_BOOT_WRITE_FILE] = DEF_SAI_WARM_BOOT_DATA_FILE;
+    gProfileMap[SAI_KEY_WARM_BOOT_READ_FILE]  = DEF_SAI_WARM_BOOT_DATA_FILE;
 
     std::string line;
 
