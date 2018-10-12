@@ -67,6 +67,10 @@ void startDiagShell();
 
 void hardReinit();
 
+void performWarmRestart();
+
+sai_object_id_t translate_vid_to_rid(_In_ sai_object_id_t vid);
+
 void redisClearVidToRidMap();
 void redisClearRidToVidMap();
 

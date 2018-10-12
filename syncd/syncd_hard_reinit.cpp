@@ -1203,3 +1203,85 @@ void hardReinit()
 
     checkAllIds();
 }
+
+void performWarmRestart()
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * There should be no case when we are doing warm restart and there is no
+     * switch defined, we will throw at sucha case.
+     *
+     * This case could be possible when no switches were created and only api
+     * was initialized, but we will skip this scenario and address is when we
+     * will have need for it.
+     */
+
+    auto entries = g_redisClient->keys(ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_SWITCH:*"));
+
+    if (entries.size() == 0)
+    {
+        SWSS_LOG_THROW("on warm restart there is no switches defined in DB, not supported yet, FIXME");
+    }
+
+    if (entries.size() != 1)
+    {
+        SWSS_LOG_THROW("multiple switches defined in warm start: %zu, not supported yet, FIXME", entries.size());
+    }
+
+    /*
+     * Here wa have only one switch defined, let's extract his vid and rid.
+     */
+
+    /*
+     * Entry should be in format ASIC_STATE:SAI_OBJECT_TYPE_SWITCH:oid:0xYYYY
+     *
+     * Let's extract oid value
+     */
+
+    std::string key = entries.at(0);
+
+    auto start = key.find_first_of(":") + 1;
+    auto end = key.find(":", start);
+
+    std::string strSwitchVid = key.substr(end + 1);
+
+    sai_object_id_t switch_vid;
+
+    sai_deserialize_object_id(strSwitchVid, switch_vid);
+
+    sai_object_id_t orig_rid = translate_vid_to_rid(switch_vid);
+
+    sai_object_id_t switch_rid;
+    sai_attribute_t switch_attr;
+    switch_attr.id             = SAI_SWITCH_ATTR_INIT_SWITCH;
+    switch_attr.value.booldata = true;
+    sai_status_t status = sai_metadata_sai_switch_api->create_switch(&switch_rid, 1, &switch_attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_THROW("failed to create switch RID: %s",
+                       sai_serialize_status(status).c_str());
+    }
+    if (orig_rid != switch_rid)
+    {
+        SWSS_LOG_THROW("Unexpected RID 0x%lx (expected 0x%lx)",
+                       switch_rid, orig_rid);
+    }
+
+    g_translatedV2R[switch_vid] = switch_rid;
+    g_translatedR2V[switch_rid] = switch_vid;
+
+    /*
+     * Perform all get operations on existing switch.
+     */
+
+    auto sw = switches[switch_vid] = std::make_shared<SaiSwitch>(switch_vid, switch_rid);
+
+    g_switch_rid = switch_rid;
+    g_switch_vid = switch_vid;
+
+    g_sw = sw;
+
+    startDiagShell();
+}

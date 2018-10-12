@@ -3297,61 +3297,6 @@ void set_sai_api_log_min_prio(const std::string &prioStr)
     }
 }
 
-void performWarmRestart()
-{
-    SWSS_LOG_ENTER();
-
-    /*
-     * There should be no case when we are doing warm restart and there is no
-     * switch defined, we will throw at sucha case.
-     *
-     * This case could be possible when no switches were created and only api
-     * was initialized, but we will skip this scenario and address is when we
-     * will have need for it.
-     */
-
-    auto entries = g_redisClient->keys(ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_SWITCH:*"));
-
-    if (entries.size() == 0)
-    {
-        SWSS_LOG_THROW("on warm restart there is no switches defined in DB, not supported yet, FIXME");
-    }
-
-    if (entries.size() != 1)
-    {
-        SWSS_LOG_THROW("multiple switches defined in warm start: %zu, not supported yet, FIXME", entries.size());
-    }
-
-    /*
-     * Here wa have only one switch defined, let's extract his vid and rid.
-     */
-
-    /*
-     * Entry should be in format ASIC_STATE:SAI_OBJECT_TYPE_SWITCH:oid:0xYYYY
-     *
-     * Let's extract oid value
-     */
-
-    std::string key = entries.at(0);
-
-    auto start = key.find_first_of(":") + 1;
-    auto end = key.find(":", start);
-
-    std::string strSwitchVid = key.substr(end + 1);
-
-    sai_object_id_t switch_vid;
-
-    sai_deserialize_object_id(strSwitchVid, switch_vid);
-
-    sai_object_id_t switch_rid = translate_vid_to_rid(switch_vid);
-
-    /*
-     * Perform all get operations on existing switch.
-     */
-
-    switches[switch_vid] = std::make_shared<SaiSwitch>(switch_vid, switch_rid);
-}
-
 void onSyncdStart(bool warmStart)
 {
     SWSS_LOG_ENTER();
@@ -3386,14 +3331,6 @@ void onSyncdStart(bool warmStart)
         performWarmRestart();
 
         SWSS_LOG_NOTICE("skipping hard reinit since WARM start was performed");
-
-        // TODO issue here can be that in hard start there was 8 queues then
-        // user added 2, and we have 10, after warm restart, switch will
-        // discover 10 queus, and mark them as "non removable" but 2 of them
-        // can be removed. We would probably need to store all objects after
-        // hard reinit and treat that as base.
-
-        SWSS_LOG_THROW("warm restart is not yet fully supported and needs to be revisited");
         return;
     }
 
