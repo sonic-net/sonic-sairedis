@@ -189,8 +189,22 @@ sub test_brcm_lag_comparison_logic
     play "lag_comparison_logic.rec";
 }
 
+sub test_brcm_nhg_comparison_logic
+{
+    fresh_start;
+
+    # we expect no asic operations on this test
+    # even do next hop groups looks the same, but are
+    # matched using route destination prefix
+
+    play "nhg_comparison_logic.rec";
+    play "nhg_comparison_logic.rec";
+    play "nhg_comparison_logic.rec";
+}
+
 # RUN TESTS
 
+test_brcm_nhg_comparison_logic;
 test_brcm_lag_comparison_logic;
 test_brcm_speed_init_apply;
 test_brcm_start_empty;

@@ -2276,7 +2276,92 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
         }
     }
 
-    SWSS_LOG_NOTICE("failed to find best candidate for LAG using LAG member and port id");
+    SWSS_LOG_WARN("failed to find best candidate for LAG using LAG member and port id");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForNextHopGroup(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * First find route entries on which temporary NHG is assigned.
+     */
+
+    const auto tmpRouteEntries = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+
+    std::shared_ptr<SaiObj> tmpRouteCandidate = nullptr;
+
+    for (auto tmpRoute: tmpRouteEntries)
+    {
+        if (!tmpRoute->hasAttr(SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID))
+            continue;
+
+        const auto routeNH = tmpRoute->getSaiAttr(SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
+
+        if (routeNH->getSaiAttr()->value.oid != temporaryObj->getVid())
+            continue;
+
+        tmpRouteCandidate = tmpRoute;
+
+        SWSS_LOG_NOTICE("Found route candidate for NHG: %s: %s",
+                temporaryObj->str_object_id.c_str(),
+                tmpRoute->str_object_id.c_str());
+
+        break;
+    }
+
+    if (tmpRouteCandidate == nullptr)
+    {
+        SWSS_LOG_NOTICE("failed to find route candidate for NHG: %s",
+                temporaryObj->str_object_id.c_str());
+
+        return false;
+    }
+
+    /*
+     * We found route candidate, then let's find the same route on the candidate side.
+     * But we will only compare prefix value.
+     */
+
+    const auto curRouteEntries = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+
+    for (auto curRoute: curRouteEntries)
+    {
+        std::string tmpPrefix = sai_serialize_ip_prefix(tmpRouteCandidate->meta_key.objectkey.key.route_entry.destination);
+        std::string curPrefix = sai_serialize_ip_prefix(curRoute->meta_key.objectkey.key.route_entry.destination);
+
+        if (tmpPrefix != curPrefix)
+            continue;
+
+        /*
+         * Prefixes are equal, now find candidate NHG.
+         */
+
+        if (!curRoute->hasAttr(SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID))
+            continue;
+
+        const auto routeNH = curRoute->getSaiAttr(SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
+
+        sai_object_id_t curNextHopId = routeNH->getSaiAttr()->value.oid;
+
+        for (auto candidate: candidateObjects)
+        {
+            if (curNextHopId != candidate.obj->getVid())
+                continue;
+
+            SWSS_LOG_NOTICE("Found NHG candidate %s", candidate.obj->str_object_id.c_str());
+
+            return candidate.obj;
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for next hop group using route_entry");
 
     return nullptr;
 }
@@ -2292,7 +2377,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
     if (temporaryObj->getObjectType() == SAI_OBJECT_TYPE_LAG)
     {
         /*
-         * For lat, let's try find matching LAG member which will be using the
+         * For lag, let's try find matching LAG member which will be using the
          * same port, since we expect that port object can belong only to 1 lag.
          */
 
@@ -2300,6 +2385,21 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
 
         if (candidateLag != nullptr)
             return candidateLag;
+    }
+
+    if (temporaryObj->getObjectType() == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
+    {
+        /*
+         * For next hop group, let's try find matching NHG which will be based on
+         * NHG set as SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID in route_entry.
+         * We assume that each class IPv4 and IPv6 will have different NGH, and
+         * each IP prefix will only be assigned to one NHG.
+         */
+
+        std::shared_ptr<SaiObj> candidateNHG = findCurrentBestMatchForNextHopGroup(currentView, temporaryView, temporaryObj, candidateObjects);
+
+        if (candidateNHG != nullptr)
+            return candidateNHG;
     }
 
     /*
