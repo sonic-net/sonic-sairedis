@@ -2366,6 +2366,144 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForNextHopGroup(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Since we know that ports are matched, they have same VID/RID in both
+     * temporary and current view.
+     */
+
+    const auto ports = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_PORT);
+
+    for (auto port: ports)
+    {
+        if (!port->hasAttr(SAI_PORT_ATTR_INGRESS_ACL))
+            continue;
+
+        auto inACL = port->getSaiAttr(SAI_PORT_ATTR_INGRESS_ACL);
+
+        if (inACL->getSaiAttr()->value.oid != temporaryObj->getVid())
+            continue;
+
+        SWSS_LOG_DEBUG("found port candidate %s for ACL table group",
+                port->str_object_id.c_str());
+
+
+        auto curPort = currentView.oOids.at(port->getVid());
+
+        if (!curPort->hasAttr(SAI_PORT_ATTR_INGRESS_ACL))
+            continue;
+
+        inACL = curPort->getSaiAttr(SAI_PORT_ATTR_INGRESS_ACL);
+
+        sai_object_id_t atgVid = inACL->getSaiAttr()->value.oid;
+
+        for (auto c: candidateObjects)
+        {
+            if (c.obj->getVid() == atgVid)
+            {
+                SWSS_LOG_INFO("found ALC table group candidate %s using port %s",
+                        port->str_object_id.c_str(),
+                        c.obj->str_object_id.c_str());
+
+                return c.obj;
+            }
+        }
+    }
+
+    /*
+     * Port didn't work, try to find match by LAG, but lag will be tricky,
+     * since it will be not matched since if this unprocessed acl table group
+     * is processed right now, then if it's assigned to lag then by design we
+     * go recursivly be attributes to match attributes first.
+     */
+
+    // TODO this could be helper method, since we will need this for router interface
+
+    const auto tmpLags = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_LAG);
+
+    for (auto tmpLag: tmpLags)
+    {
+        if (!tmpLag->hasAttr(SAI_LAG_ATTR_INGRESS_ACL))
+            continue;
+
+        auto inACL = tmpLag->getSaiAttr(SAI_LAG_ATTR_INGRESS_ACL);
+
+        if (inACL->getSaiAttr()->value.oid != temporaryObj->getVid())
+            continue;
+
+        /*
+         * We found LAG on which this ACL is present, but this object status is
+         * not processed so we need to trace back to port using LAG member.
+         */
+
+        SWSS_LOG_INFO("found LAG candidate: lag status %d", tmpLag->getObjectStatus());
+
+        const auto tmpLagMembers = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+        for (auto tmpLagMember: tmpLagMembers)
+        {
+            const auto tmpLagMemberLagAttr = tmpLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_LAG_ID);
+
+            if (tmpLagMemberLagAttr->getSaiAttr()->value.oid != tmpLag->getVid())
+                continue;
+
+            const auto tmpLagMemberPortAttr = tmpLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID);
+
+            sai_object_id_t tmpPortVid = tmpLagMemberPortAttr->getSaiAttr()->value.oid;
+
+            SWSS_LOG_INFO("found tmp LAG member port! %s", sai_serialize_object_id(tmpPortVid).c_str());
+
+            sai_object_id_t portRid = temporaryView.vidToRid.at(tmpPortVid);
+
+            sai_object_id_t curPortVid = currentView.ridToVid.at(portRid);
+
+            const auto curLagMembers = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+            for (auto curLagMember: curLagMembers)
+            {
+                const auto curLagMemberPortAttr = curLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID);
+
+                if (curLagMemberPortAttr->getSaiAttr()->value.oid != curPortVid)
+                    continue;
+
+                const auto curLagMemberLagAttr = curLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_LAG_ID);
+
+                sai_object_id_t curLagId = curLagMemberLagAttr->getSaiAttr()->value.oid;
+
+                SWSS_LOG_INFO("found current LAG member: %s", curLagMember->str_object_id.c_str());
+
+                auto curLag = currentView.oOids.at(curLagId);
+
+                if (!curLag->hasAttr(SAI_LAG_ATTR_INGRESS_ACL))
+                    continue;
+
+                inACL = curLag->getSaiAttr(SAI_LAG_ATTR_INGRESS_ACL);
+
+                for (auto c: candidateObjects)
+                {
+                    if (c.obj->getVid() != inACL->getSaiAttr()->value.oid)
+                        continue;
+
+                    SWSS_LOG_INFO("found best ACL table group match based on LAG ingress acl: %s", c.obj->str_object_id.c_str());
+
+                    return c.obj;
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for ACL table group using port");
+
+    return nullptr;
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -2400,6 +2538,18 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
 
         if (candidateNHG != nullptr)
             return candidateNHG;
+    }
+
+    if (temporaryObj->getObjectType() == SAI_OBJECT_TYPE_ACL_TABLE_GROUP)
+    {
+        /*
+         * For acl table group let's try find matching INGRESS_ACL on matched PORT.
+         */
+
+        std::shared_ptr<SaiObj> candidateATG = findCurrentBestMatchForAclTableGroup(currentView, temporaryView, temporaryObj, candidateObjects);
+
+        if (candidateATG != nullptr)
+            return candidateATG;
     }
 
     /*
