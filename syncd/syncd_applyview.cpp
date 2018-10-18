@@ -5625,8 +5625,11 @@ sai_status_t syncdApplyView()
          * Call main method!
          */
 
-        current.dumpRef("current START");
-        temp.dumpRef("temp START");
+        if (enableRefernceCountLogs)
+        {
+            current.dumpRef("current START");
+            temp.dumpRef("temp START");
+        }
 
         applyViewTransition(current, temp);
 
