@@ -232,6 +232,41 @@ static std::unordered_map<sai_object_id_t,int32_t> ObjectReferences;
 static std::unordered_map<std::string,std::string> AttributeKeys;
 std::unordered_map<std::string,std::unordered_map<sai_attr_id_t,std::shared_ptr<SaiAttrWrapper>>> ObjectAttrHash;
 
+void dump_object_reference()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("dump references in meta");
+
+    for (auto kvp: ObjectReferences)
+    {
+        sai_object_id_t oid = kvp.first;
+
+        sai_object_type_t ot = sai_object_type_query(oid);
+
+        switch (ot)
+        {
+
+            case SAI_OBJECT_TYPE_LAG:
+            case SAI_OBJECT_TYPE_NEXT_HOP:
+            case SAI_OBJECT_TYPE_NEXT_HOP_GROUP:
+            case SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER:
+            case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+            case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
+                break;
+
+                // skip object we have no intrest into
+            default:
+                continue;
+        }
+
+        SWSS_LOG_NOTICE("ref %s: %s: %d",
+                sai_serialize_object_type(ot).c_str(),
+                sai_serialize_object_id(oid).c_str(),
+                kvp.second);
+    }
+}
+
 // GENERIC REFERENCE FUNCTIONS
 
 bool object_reference_exists(

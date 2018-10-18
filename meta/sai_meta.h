@@ -12,6 +12,7 @@ extern "C" {
 #define MINIMUM_VLAN_NUMBER 1
 #define MAXIMUM_VLAN_NUMBER 4094
 
+extern void dump_object_reference();
 extern sai_status_t meta_init_db();
 
 // GENERIC FUNCTION POINTERS
