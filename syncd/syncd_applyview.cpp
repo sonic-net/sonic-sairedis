@@ -15,7 +15,7 @@
 
 /**
  * When set to true extra logging will be added for tracking references.  This
- * is useful for duugging, but for production operations this will produce too
+ * is useful for debugging, but for production operations this will produce too
  * much noise in logs, and we still can replay scenario using recordings.
  */
 bool enableRefernceCountLogs = false;
@@ -1368,6 +1368,12 @@ class AsicView
                  * - create A
                  * - set object B with A
                  *
+                 * correct optimized logic:
+                 * - remove D
+                 * - create A
+                 * - set object B with A
+                 * - remove C
+                 *
                  * This is fixed by checking if last operation to release reference was REMOVE
                  */
 
@@ -1410,7 +1416,7 @@ class AsicView
                  * If operation is found then we need to insert this op after
                  * current iterator and forward iterator.
                  *
-                 * But here is a catch here, if taht last operation was REMOVE,
+                 * But there is a catch here, if that last operation was REMOVE,
                  * then it was forwarded all the way to the UP, but in the
                  * middle we could have some "SET" operations that would
                  * release this reference also we in this case, we can't just
@@ -1433,7 +1439,7 @@ class AsicView
                             sai_serialize_object_id(mit->first).c_str());
 
                     /*
-                     * If previous operation was REMOVE (it could be pused to
+                     * If previous operation was REMOVE (it could be pushed to
                      * the top) so push current operation to the list here,
                      * instead of possible break reference count on SET
                      * operations.

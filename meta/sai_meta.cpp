@@ -255,7 +255,7 @@ void dump_object_reference()
             case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
                 break;
 
-                // skip object we have no intrest into
+                // skip object we have no interest in
             default:
                 continue;
         }
