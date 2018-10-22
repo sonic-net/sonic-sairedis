@@ -2316,6 +2316,11 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
     SWSS_LOG_ENTER();
 
     /*
+     * For lag, let's try find matching LAG member which will be using the same
+     * port, since we expect that port object can belong only to 1 lag.
+     */
+
+    /*
      * Find not processed LAG members, in both views, since lag member contais
      * LAG and PORT, then it should not be processed before LAG itself. But
      * since PORT objects on LAG members should be matched at the beggining of
@@ -2415,6 +2420,13 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForNextHopGroup(
     SWSS_LOG_ENTER();
 
     /*
+     * For next hop group, let's try find matching NHG which will be based on
+     * NHG set as SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID in route_entry.  We assume
+     * that each class IPv4 and IPv6 will have different NGH, and each IP
+     * prefix will only be assigned to one NHG.
+     */
+
+    /*
      * First find route entries on which temporary NHG is assigned.
      */
 
@@ -2498,6 +2510,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
         _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
 {
     SWSS_LOG_ENTER();
+
+    /*
+     * For acl table group let's try find matching INGRESS_ACL on matched PORT.
+     */
 
     /*
      * Since we know that ports are matched, they have same VID/RID in both
@@ -2629,6 +2645,113 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForRouterInterface(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For router interface which is LOOPBACK, we could trace them to TUNNEL
+     * object on which they are used. It could be not obvious, when multiple
+     * tunnels will be used.
+     */
+
+    const auto typeAttr = temporaryObj->getSaiAttr(SAI_ROUTER_INTERFACE_ATTR_TYPE);
+
+    if (typeAttr->getSaiAttr()->value.s32 != SAI_ROUTER_INTERFACE_TYPE_LOOPBACK)
+    {
+        SWSS_LOG_WARN("RIF %s is not LOOPBACK", temporaryObj->str_object_id.c_str());
+
+        return nullptr;
+    }
+
+    const auto tmpTunnels = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL);
+
+    for (auto tmpTunnel: tmpTunnels)
+    {
+        /*
+         * Try match tunnel by src encap IP address.
+         */
+
+        if (!tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_ENCAP_SRC_IP))
+        {
+            // not encap src attribute, skip
+            continue;
+        }
+
+        const std::string tmpSrcIP = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_ENCAP_SRC_IP)->getStrAttrValue();
+
+        const auto curTunnels = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL);
+
+        for (auto curTunnel: curTunnels)
+        {
+            if (!tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_ENCAP_SRC_IP))
+            {
+                // not encap src attribute, skip
+                continue;
+            }
+
+            const std::string curSrcIP = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_ENCAP_SRC_IP)->getStrAttrValue();
+
+            if (curSrcIP != tmpSrcIP)
+            {
+                continue;
+            }
+
+            /*
+             * At this point we have both tunnels which ip mathces
+             */
+
+            if (tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE) &&
+                curTunnel->hasAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE))
+            {
+                auto tmpRif = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE);
+                auto curRif = curTunnel->getSaiAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE);
+
+                if (tmpRif->getSaiAttr()->value.oid == temporaryObj->getVid())
+                {
+                    for (auto c: candidateObjects)
+                    {
+                        if (c.obj->getVid() != curRif->getSaiAttr()->value.oid)
+                            continue;
+
+                        SWSS_LOG_INFO("found best ROUTER_INTERFACE based on TUNNEL underlay interface %s", c.obj->str_object_id.c_str());
+
+                        return c.obj;
+                    }
+                }
+            }
+
+            if (tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE) &&
+                curTunnel->hasAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE))
+            {
+                auto tmpRif = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE);
+                auto curRif = curTunnel->getSaiAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE);
+
+                if (tmpRif->getSaiAttr()->value.oid == temporaryObj->getVid())
+                {
+                    for (auto c: candidateObjects)
+                    {
+                        if (c.obj->getVid() != curRif->getSaiAttr()->value.oid)
+                            continue;
+
+                        SWSS_LOG_INFO("found best ROUTER_INTERFACE based on TUNNEL overlay interface %s", c.obj->str_object_id.c_str());
+
+                        return c.obj;
+                    }
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for LOOPBACK ROUTER_INTERFACE using TUNNEL");
+
+    return nullptr;
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -2637,45 +2760,32 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
 {
     SWSS_LOG_ENTER();
 
-    if (temporaryObj->getObjectType() == SAI_OBJECT_TYPE_LAG)
-    {
-        /*
-         * For lag, let's try find matching LAG member which will be using the
-         * same port, since we expect that port object can belong only to 1 lag.
-         */
+    std::shared_ptr<SaiObj> candidate = nullptr;
 
-        std::shared_ptr<SaiObj> candidateLag = findCurrentBestMatchForLag(currentView, temporaryView, temporaryObj, candidateObjects);
+    switch (temporaryObj->getObjectType())
+    {   
+        case SAI_OBJECT_TYPE_LAG:
+            candidate = findCurrentBestMatchForLag(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
 
-        if (candidateLag != nullptr)
-            return candidateLag;
+        case SAI_OBJECT_TYPE_NEXT_HOP_GROUP:
+            candidate = findCurrentBestMatchForNextHopGroup(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_ACL_TABLE_GROUP:
+            candidate = findCurrentBestMatchForAclTableGroup(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
+            candidate = findCurrentBestMatchForRouterInterface(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        default:
+            break;
     }
 
-    if (temporaryObj->getObjectType() == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
-    {
-        /*
-         * For next hop group, let's try find matching NHG which will be based on
-         * NHG set as SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID in route_entry.
-         * We assume that each class IPv4 and IPv6 will have different NGH, and
-         * each IP prefix will only be assigned to one NHG.
-         */
-
-        std::shared_ptr<SaiObj> candidateNHG = findCurrentBestMatchForNextHopGroup(currentView, temporaryView, temporaryObj, candidateObjects);
-
-        if (candidateNHG != nullptr)
-            return candidateNHG;
-    }
-
-    if (temporaryObj->getObjectType() == SAI_OBJECT_TYPE_ACL_TABLE_GROUP)
-    {
-        /*
-         * For acl table group let's try find matching INGRESS_ACL on matched PORT.
-         */
-
-        std::shared_ptr<SaiObj> candidateATG = findCurrentBestMatchForAclTableGroup(currentView, temporaryView, temporaryObj, candidateObjects);
-
-        if (candidateATG != nullptr)
-            return candidateATG;
-    }
+    if (candidate != nullptr)
+        return candidate;
 
     /*
      * Idea is to count all dependencies that uses this object.  this may not
