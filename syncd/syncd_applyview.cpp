@@ -2847,7 +2847,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForPolicer(
 
             for (auto curTrap: curTraps)
             {
-                auto curTrapTypeAttr = tmpTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
+                auto curTrapTypeAttr = curTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
 
                 if (curTrapTypeAttr->getStrAttrValue() != tmpTrapTypeAttr->getStrAttrValue())
                     continue;
@@ -2885,7 +2885,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForPolicer(
                     if (c.obj->getVid() != curTrapGroupPolicerAttr->getOid())
                         continue;
 
-                    SWSS_LOG_NOTICE("found best POLICER based on hostif trap group %s", c.obj->str_object_id.c_str());
+                    SWSS_LOG_INFO("found best POLICER based on hostif trap group %s", c.obj->str_object_id.c_str());
 
                     return c.obj;
                 }
@@ -2894,6 +2894,76 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForPolicer(
     }
 
     SWSS_LOG_NOTICE("failed to find best candidate for POLICER using hostif trap group");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForHostifTrapGroup(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For hostif trap group we can see on which hostif trap group is set.
+     * Hostif trap have SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE attribute which is KEY
+     * and there can be only one trap of that type. we can use that to match
+     * hostif trap groug.
+     */
+
+    const auto tmpTraps = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP);
+
+    for (auto tmpTrap: tmpTraps)
+    {
+        auto tmpTrapGroupAttr = tmpTrap->tryGetSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
+
+        if (tmpTrapGroupAttr == nullptr)
+            continue;
+
+        if (tmpTrapGroupAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        auto tmpTrapTypeAttr = tmpTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
+
+        SWSS_LOG_INFO("trap type: %s", tmpTrapTypeAttr->getStrAttrValue().c_str());
+
+        /*
+         * We have temporary trap type, let's find that trap in current view.
+         */
+
+        const auto curTraps = currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP);
+
+        for (auto curTrap: curTraps)
+        {
+            auto curTrapTypeAttr = curTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
+
+            if (curTrapTypeAttr->getStrAttrValue() != tmpTrapTypeAttr->getStrAttrValue())
+                continue;
+
+            /*
+             * We have that trap, let's extract trap group.
+             */
+
+            auto curTrapGroupAttr = curTrap->tryGetSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
+
+            if (curTrapGroupAttr == nullptr)
+                continue;
+
+            for (auto c: candidateObjects)
+            {
+                if (c.obj->getVid() != curTrapGroupAttr->getOid())
+                    continue;
+
+                SWSS_LOG_INFO("found best HOSTIF TRAP GROUP based on hostif trap %s", c.obj->str_object_id.c_str());
+
+                return c.obj;
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for HOSTIF TRAP GROUP using hostif trap");
 
     return nullptr;
 }
@@ -2930,7 +3000,9 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
             candidate = findCurrentBestMatchForPolicer(currentView, temporaryView, temporaryObj, candidateObjects);
             break;
 
-            // TODO we need trap group as well, since there are trap groups without policers
+        case SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP:
+            candidate = findCurrentBestMatchForHostifTrapGroup(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
 
         default:
             break;
@@ -6622,6 +6694,13 @@ void executeOperationsOnAsic(
                 const std::string &opp = kfvOp(*op.op);
 
                 SWSS_LOG_WARN("%s: %s", opp.c_str(), key.c_str());
+
+                const auto &values = kfvFieldsValues(*op.op);
+
+                for (auto v: values)
+                {
+                    SWSS_LOG_WARN("- %s %s", fvField(v).c_str(), fvValue(v).c_str());
+                }
             }
 
             SWSS_LOG_NOTICE("optimized operations!");
