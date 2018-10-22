@@ -142,6 +142,23 @@ class SaiAttr
         }
 
         /**
+         * @brief Gets value.oid of attribute value.
+         *
+         * If attribute is not OID exception will be thrown.
+         *
+         * @return Oid field of attribute value.
+         */
+        sai_object_id_t getOid() const
+        {
+            if (m_meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            {
+                SWSS_LOG_THROW("attribute %s is not OID attribute", m_meta->attridname);
+            }
+
+            return m_attr.value.oid;
+        }
+
+        /**
          * @brief Tells whether attribute contains OIDs
          *
          * @return True if attribute contains OIDs, false otherwise
@@ -364,6 +381,19 @@ class SaiObj
 
                 SWSS_LOG_THROW("object %s has no attribute %d", str_object_id.c_str(), id);
             }
+
+            return it->second;
+        }
+
+        std::shared_ptr<const SaiAttr> tryGetSaiAttr(
+                _In_ sai_attr_id_t id) const
+        {
+            SWSS_LOG_ENTER();
+
+            auto it = m_attrs.find(id);
+
+            if (it == m_attrs.end())
+                return nullptr;
 
             return it->second;
         }
@@ -2752,6 +2782,122 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForRouterInterface(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForPolicer(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For policer we can see on which hostif trap group is set, and on which
+     * hostif trap.  Hostif trap have SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE attribute
+     * which is KEY and there can be only one trap of that type. we can use
+     * that to match hostif trap group and later on policer.
+     *
+     * NOTE: policer can be set on default hostif trap group. In this case we
+     * are getting processed and not processed objects into account.
+     */
+
+    const auto tmpTrapGroups = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP);
+
+    for (auto tmpTrapGroup: tmpTrapGroups)
+    {
+        auto tmpTrapGroupPolicerAttr = tmpTrapGroup->tryGetSaiAttr(SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER);
+
+        if (tmpTrapGroupPolicerAttr == nullptr)
+        {
+            // no policer attribute
+            continue;
+        }
+
+        if (tmpTrapGroupPolicerAttr->getOid() != temporaryObj->getVid())
+        {
+            // not this policer
+            continue;
+        }
+
+        /*
+         * Found hostif trap group which have this policer, now find hostif
+         * trap type with this trap group.
+         */
+
+        const auto tmpTraps = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP);
+
+        for (auto tmpTrap: tmpTraps)
+        {
+            auto tmpTrapGroupAttr = tmpTrap->tryGetSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
+
+            if (tmpTrapGroupAttr == nullptr)
+                continue;
+
+            if (tmpTrapGroupAttr->getOid() != tmpTrapGroup->getVid())
+                continue;
+
+            auto tmpTrapTypeAttr = tmpTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
+
+            SWSS_LOG_INFO("trap type: %s", tmpTrapTypeAttr->getStrAttrValue().c_str());
+
+            /*
+             * We have temporary trap type, let's find that trap in current view.
+             */
+
+            const auto curTraps = currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP);
+
+            for (auto curTrap: curTraps)
+            {
+                auto curTrapTypeAttr = tmpTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
+
+                if (curTrapTypeAttr->getStrAttrValue() != tmpTrapTypeAttr->getStrAttrValue())
+                    continue;
+
+                /*
+                 * We have that trap, let's extract trap group.
+                 */
+
+                auto curTrapGroupAttr = curTrap->tryGetSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
+
+                if (curTrapGroupAttr == nullptr)
+                    continue;
+
+                sai_object_id_t curTrapGroupVid = curTrapGroupAttr->getOid();
+
+                /*
+                 * If calue is not set, it should point to SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP
+                 */
+
+                if (curTrapGroupVid == SAI_NULL_OBJECT_ID)
+                    continue;
+
+                auto curTrapGroup = currentView.oOids.at(curTrapGroupVid);
+
+                auto curTrapGroupPolicerAttr = curTrapGroup->tryGetSaiAttr(SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER);
+
+                if (curTrapGroupPolicerAttr == nullptr)
+                {
+                    // no policer attribute
+                    continue;
+                }
+
+                for (auto c: candidateObjects)
+                {
+                    if (c.obj->getVid() != curTrapGroupPolicerAttr->getOid())
+                        continue;
+
+                    SWSS_LOG_NOTICE("found best POLICER based on hostif trap group %s", c.obj->str_object_id.c_str());
+
+                    return c.obj;
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for POLICER using hostif trap group");
+
+    return nullptr;
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -2763,7 +2909,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
     std::shared_ptr<SaiObj> candidate = nullptr;
 
     switch (temporaryObj->getObjectType())
-    {   
+    {
         case SAI_OBJECT_TYPE_LAG:
             candidate = findCurrentBestMatchForLag(currentView, temporaryView, temporaryObj, candidateObjects);
             break;
@@ -2779,6 +2925,12 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
             candidate = findCurrentBestMatchForRouterInterface(currentView, temporaryView, temporaryObj, candidateObjects);
             break;
+
+        case SAI_OBJECT_TYPE_POLICER:
+            candidate = findCurrentBestMatchForPolicer(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+            // TODO we need trap group as well, since there are trap groups without policers
 
         default:
             break;
