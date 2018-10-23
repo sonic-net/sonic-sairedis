@@ -164,6 +164,8 @@ void print_attributes(size_t indent, const TableMap& map)
 
 void dumpGraph(const TableDump& td)
 {
+    SWSS_LOG_ENTER();
+
     std::map<sai_object_id_t, const sai_object_type_info_t*> oidtypemap;
     std::map<sai_object_type_t,const sai_object_type_info_t*> typemap;
 
