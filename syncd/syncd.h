@@ -116,4 +116,6 @@ sai_status_t processBulkEvent(
 void set_sai_api_log_min_prio(
         _In_ const std::string &prio);
 
+bool enableUnittests();
+
 #endif // __SYNCD_H__

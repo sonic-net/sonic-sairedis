@@ -81,6 +81,7 @@ struct cmdOptions
     bool useTempView;
     int startType;
     bool disableExitSleep;
+    bool enableUnittests;
     std::string profileMapFile;
 #ifdef SAITHRIFT
     bool run_rpc_server;
@@ -90,6 +91,11 @@ struct cmdOptions
 };
 
 cmdOptions options;
+
+bool enableUnittests()
+{
+    return options.enableUnittests;
+}
 
 bool isInitViewMode()
 {
@@ -2908,7 +2914,7 @@ void printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: syncd [-N] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u] [-S]" << std::endl;
+    std::cout << "Usage: syncd [-N] [-U] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u] [-S]" << std::endl;
     std::cout << "    -N --nocounters" << std::endl;
     std::cout << "        Disable counter thread" << std::endl;
     std::cout << "    -d --diag" << std::endl;
@@ -2923,6 +2929,8 @@ void printUsage()
     std::cout << "        Use temporary view between init and apply" << std::endl;
     std::cout << "    -S --disableExitSleep" << std::endl;
     std::cout << "        Disable sleep when syncd crashes" << std::endl;
+    std::cout << "    -U --eableUnittests" << std::endl;
+    std::cout << "        Metadata enable unittests" << std::endl;
 #ifdef SAITHRIFT
     std::cout << "    -r --rpcserver"           << std::endl;
     std::cout << "        Enable rpcserver"      << std::endl;
@@ -2938,12 +2946,13 @@ void handleCmdLine(int argc, char **argv)
     SWSS_LOG_ENTER();
 
     options.disableExitSleep = false;
+    options.enableUnittests = false;
 
 #ifdef SAITHRIFT
     options.run_rpc_server = false;
-    const char* const optstring = "dNt:p:i:rm:huS";
+    const char* const optstring = "dNUt:p:i:rm:huS";
 #else
-    const char* const optstring = "dNt:p:i:huS";
+    const char* const optstring = "dNUt:p:i:huS";
 #endif // SAITHRIFT
 
     while(true)
@@ -2956,6 +2965,7 @@ void handleCmdLine(int argc, char **argv)
             { "profile",          required_argument, 0, 'p' },
             { "help",             no_argument,       0, 'h' },
             { "disableExitSleep", no_argument,       0, 'S' },
+            { "enableUnittests",  no_argument,       0, 'U' },
 #ifdef SAITHRIFT
             { "rpcserver",        no_argument,       0, 'r' },
             { "portmap",          required_argument, 0, 'm' },
@@ -2974,6 +2984,11 @@ void handleCmdLine(int argc, char **argv)
 
         switch (c)
         {
+            case 'U':
+                SWSS_LOG_NOTICE("enable unittests");
+                options.enableUnittests = true;
+                break;
+
             case 'u':
                 SWSS_LOG_NOTICE("enable use temp view");
                 options.useTempView = true;

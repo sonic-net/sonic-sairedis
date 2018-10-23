@@ -6670,6 +6670,44 @@ sai_status_t asic_process_event(
             sai_serialize_status(status).c_str());
 }
 
+void dumpComparisonLogicOutput(
+        _In_ const AsicView &currentView)
+{
+    SWSS_LOG_ENTER();
+
+    std::stringstream ss;
+
+    ss << "ASIC_OPERATIONS: " << currentView.asicGetOperationsCount() << std::endl;
+
+    for (const auto &op: currentView.asicGetWithOptimizedRemoveOperations())
+    {
+        const std::string &key = kfvKey(*op.op);
+        const std::string &opp = kfvOp(*op.op);
+
+        ss << "o " << opp << ": " << key << std::endl;
+
+        const auto &values = kfvFieldsValues(*op.op);
+
+        for (auto v: values)
+            ss << "a: " << fvField(v) << " " << fvValue(v) << std::endl;
+    }
+
+    std::ofstream log("applyview.log");
+
+    if (log.is_open())
+    {
+        log << ss.str();
+
+        log.close();
+
+        SWSS_LOG_NOTICE("wrote apply_view asic operations to applyview.log");
+    }
+    else
+    {
+        SWSS_LOG_ERROR("failed to open applyview.log");
+    }
+}
+
 void executeOperationsOnAsic(
         _In_ AsicView &currentView,
         _In_ AsicView &temporaryView)
@@ -6683,6 +6721,9 @@ void executeOperationsOnAsic(
         //swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
         SWSS_LOG_TIMER("asic apply");
+
+        if (enableUnittests())
+            dumpComparisonLogicOutput(currentView);
 
         if (enableRefernceCountLogs)
         {

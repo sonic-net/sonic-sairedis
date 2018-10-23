@@ -186,7 +186,7 @@ sub test_brcm_lag_comparison_logic
     # using lag member and port
 
     play "lag_comparison_logic.rec";
-    play "lag_comparison_logic.rec";
+    play "lag_comparison_logic.rec", 0;
 }
 
 sub test_brcm_nhg_comparison_logic
@@ -198,8 +198,8 @@ sub test_brcm_nhg_comparison_logic
     # matched using route destination prefix
 
     play "nhg_comparison_logic.rec";
-    play "nhg_comparison_logic.rec";
-    play "nhg_comparison_logic.rec";
+    play "nhg_comparison_logic.rec", 0;
+    play "nhg_comparison_logic.rec", 0;
 }
 
 sub test_brcm_remove_next_hop
@@ -218,8 +218,20 @@ sub test_brcm_remove_next_hop
     play "remove_next_hop.rec";
 }
 
+sub test_brcm_hostif
+{
+    fresh_start;
+
+    # we expect no asic operation on policer, hostif trap group, router interface
+
+    play "hostif.rec";
+    play "hostif.rec", 0;
+    play "hostif.rec", 0;
+}
+
 # RUN TESTS
 
+test_brcm_hostif;
 test_brcm_remove_next_hop;
 test_brcm_nhg_comparison_logic;
 test_brcm_lag_comparison_logic;
