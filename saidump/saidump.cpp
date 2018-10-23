@@ -1,4 +1,6 @@
 #include <string>
+#include <set>
+#include <sstream>
 
 extern "C" {
 #include <sai.h>
@@ -16,6 +18,7 @@ struct CmdOptions
 {
     bool skipAttributes;
     bool dumpTempView;
+    bool dumpGraph;
 };
 
 CmdOptions g_cmdOptions;
@@ -39,13 +42,15 @@ CmdOptions handleCmdLine(int argc, char **argv)
     CmdOptions options;
 
     options.dumpTempView = false;
+    options.dumpGraph = false;
 
-    const char* const optstring = "th";
+    const char* const optstring = "gth";
 
     while(true)
     {
         static struct option long_options[] =
         {
+            { "dumpGraph",      no_argument,       0, 'g' },
             { "tempView",       no_argument,       0, 't' },
             { "help",           no_argument,       0, 'h' },
             { 0,                0,                 0,  0  }
@@ -62,6 +67,11 @@ CmdOptions handleCmdLine(int argc, char **argv)
 
         switch (c)
         {
+            case 'g':
+                SWSS_LOG_NOTICE("Dumping graph");
+                options.dumpGraph = true;
+                break;
+
             case 't':
                 SWSS_LOG_NOTICE("Dumping temp view");
                 options.dumpTempView = true;
@@ -150,6 +160,224 @@ void print_attributes(size_t indent, const TableMap& map)
     }
 }
 
+#define SAI_OBJECT_TYPE_PREFIX_LEN 16
+
+void dumpGraph(const TableDump& td)
+{
+    std::map<sai_object_id_t, const sai_object_type_info_t*> oidtypemap;
+    std::map<sai_object_type_t,const sai_object_type_info_t*> typemap;
+
+    std::cout << "digraph \"SAI Object Dependency Graph\" {" << std::endl;
+    std::cout << "size=\"30,12\"; ratio = fill;" << std::endl;
+    std::cout << "node [style=filled];" << std::endl;
+
+    // build object type map first
+
+    std::set<sai_object_type_t> definedtypes;
+
+    std::map<sai_object_type_t, int> usagemap;
+
+    for (const auto& key: td)
+    {
+        sai_object_meta_key_t meta_key;
+        sai_deserialize_object_meta_key(key.first, meta_key);
+
+        auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+        typemap[info->objecttype] = info;
+
+        if (!info->isnonobjectid)
+            oidtypemap[meta_key.objectkey.key.object_id] = info;
+
+        if (definedtypes.find(meta_key.objecttype) != definedtypes.end())
+            continue;
+
+        definedtypes.insert(meta_key.objecttype);
+    }
+
+    std::set<std::string> definedlinks;
+
+    std::set<sai_object_type_t> ref;
+    std::set<sai_object_type_t> attrref;
+
+    for (const auto& key: td)
+    {
+        sai_object_meta_key_t meta_key;
+        sai_deserialize_object_meta_key(key.first, meta_key);
+
+        auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+        // process non object id objects if any
+        for (size_t j = 0; j < info->structmemberscount; ++j)
+        {
+            const sai_struct_member_info_t *m = info->structmembers[j];
+
+            if (m->membervaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            {
+                sai_object_id_t member_oid = m->getoid(&meta_key);
+
+                auto member_info = oidtypemap.at(member_oid);
+
+                if (member_info->objecttype == SAI_OBJECT_TYPE_SWITCH)
+                {
+                    // skip link of SWITCH to non object id object types, since
+                    // all of them contain switch_id
+                    continue;
+                }
+
+                std::stringstream ss;
+
+                ss << std::string(member_info->objecttypename + SAI_OBJECT_TYPE_PREFIX_LEN) << " -> "
+                << std::string(info->objecttypename + SAI_OBJECT_TYPE_PREFIX_LEN)
+                << "[color=\"0.650 0.700 0.700\", style = dashed, penwidth=2]";
+
+                std::string link = ss.str();
+
+                if (definedlinks.find(link) != definedlinks.end())
+                    continue;
+
+                definedlinks.insert(link);
+
+                std::cout << link << std::endl;
+            }
+        }
+
+        // process attributes for this object
+
+        for (const auto&field: key.second)
+        {
+            const sai_attr_metadata_t *meta;
+            sai_deserialize_attr_id(field.first, &meta);
+
+            if (!meta->isoidattribute || meta->isreadonly)
+            {
+                // skip non oid attributes and read only attributes
+                continue;
+            }
+
+            sai_attribute_t attr;
+
+            sai_deserialize_attr_value(field.second, *meta, attr, false);
+
+            sai_object_list_t list = {0, NULL};
+
+            switch (meta->attrvaluetype)
+            {
+                case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+                    list.count = 1;
+                    list.list = &attr.value.oid;
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+                    if (attr.value.aclfield.enable)
+                    {
+                        list.count = 1;
+                        list.list = &attr.value.aclfield.data.oid;
+                    }
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+                    if (attr.value.aclaction.enable)
+                    {
+                        list.count = 1;
+                        list.list = &attr.value.aclaction.parameter.oid;
+                    }
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
+                    list = attr.value.objlist;
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+                    if (attr.value.aclfield.enable)
+                        list = attr.value.aclfield.data.objlist;
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+                    if (attr.value.aclaction.enable)
+                        list = attr.value.aclaction.parameter.objlist;
+                    break;
+
+                default:
+                    SWSS_LOG_THROW("attr value type: %d is not supported, FIXME", meta->attrvaluetype);
+            }
+
+            for (uint32_t i = 0; i < list.count; ++i)
+            {
+                sai_object_id_t oid = list.list[i];
+
+                if (oid == SAI_NULL_OBJECT_ID)
+                    continue;
+
+                // this object type is not root, can be in the middle or leaf
+                ref.insert(info->objecttype);
+
+                auto attr_oid_info = oidtypemap.at(oid);
+
+                std::stringstream ss;
+
+                attrref.insert(attr_oid_info->objecttype);
+
+                ss << std::string(attr_oid_info->objecttypename + SAI_OBJECT_TYPE_PREFIX_LEN) << " -> "
+                << std::string(info->objecttypename + SAI_OBJECT_TYPE_PREFIX_LEN)
+                << "[color=\"0.650 0.700 0.700\"]";
+
+                std::string link = ss.str();
+
+                if (definedlinks.find(link) != definedlinks.end())
+                    continue;
+
+                definedlinks.insert(link);
+
+                std::cout << link << std::endl;
+            }
+
+            sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+        }
+    }
+
+    for (auto t: typemap)
+    {
+        auto ot = t.first;
+        auto info = t.second;
+
+        auto name = std::string(info->objecttypename + SAI_OBJECT_TYPE_PREFIX_LEN);
+
+        if (info->isnonobjectid)
+        {
+            std::cout << name << " [color=plum, shape = rect];\n";
+            continue;
+        }
+
+        if (ref.find(ot) != ref.end() && attrref.find(ot) != attrref.end())
+        {
+            std::cout << name << " [color=\"0.650 0.500 1.000\"];\n";
+            continue;
+        }
+
+        if (ref.find(ot) != ref.end() && attrref.find(ot) == attrref.end())
+        {
+            std::cout << name << " [color=\"0.355 0.563 1.000\", shape = rect];\n";
+            continue;
+        }
+
+        if (ref.find(ot) == ref.end() && attrref.find(ot) != attrref.end())
+        {
+            std::cout << name << " [color=\"0.650 0.200 1.000\"];\n";
+            continue;
+        }
+
+        /* objects which are there but not referenced nowhere for example STP */
+
+        std::cout << name << " [color=\"0.650 0.200 1.000\"  shape=rect];\n";
+    }
+
+    std::cout << "SWITCH -> PORT[dir=\"none\", color=\"red\", peripheries = 2, penwidth=2.0 , style  = dashed ];" <<std::endl;
+    std::cout << "SWITCH [color=orange, shape = parallelogram, peripheries = 2];" <<std::endl;
+    std::cout << "PORT [color=gold, shape = diamond, peripheries=2];" << std::endl;
+    std::cout << "}" << std::endl;
+}
+
 int main(int argc, char ** argv)
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -199,6 +427,13 @@ int main(int argc, char ** argv)
         }
     }
 
+    if (g_cmdOptions.dumpGraph)
+    {
+        dumpGraph(dump);
+
+        return EXIT_SUCCESS;
+    }
+
     for (const auto&key: dump)
     {
         auto start = key.first.find_first_of(":");
@@ -213,4 +448,6 @@ int main(int argc, char ** argv)
 
         std::cout << std::endl;
     }
+
+    return EXIT_SUCCESS;
 }
