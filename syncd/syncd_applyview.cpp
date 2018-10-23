@@ -150,6 +150,8 @@ class SaiAttr
          */
         sai_object_id_t getOid() const
         {
+            SWSS_LOG_ENTER();
+
             if (m_meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
             {
                 SWSS_LOG_THROW("attribute %s is not OID attribute", m_meta->attridname);
