@@ -229,9 +229,21 @@ sub test_brcm_hostif
     play "hostif.rec", 0;
 }
 
+sub test_brcm_full_testbed_config
+{
+    fresh_start;
+
+    # we expect no asic operation on policer, hostif trap group, router interface
+
+    play "full_testbed_config.rec";
+    play "full_testbed_config.rec", 0;
+    play "full_testbed_config.rec", 0;
+}
+
 # RUN TESTS
 
 test_brcm_hostif;
+test_brcm_full_testbed_config;
 test_brcm_remove_next_hop;
 test_brcm_nhg_comparison_logic;
 test_brcm_lag_comparison_logic;
