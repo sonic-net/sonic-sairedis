@@ -94,6 +94,8 @@ cmdOptions options;
 
 bool enableUnittests()
 {
+    SWSS_LOG_ENTER();
+
     return options.enableUnittests;
 }
 
