@@ -3586,10 +3586,36 @@ int syncd_main(int argc, char **argv)
         s.addSelectable(flexCounter.get());
         s.addSelectable(flexCounterGroup.get());
 
+        char *platform = getenv("platform");
+
         SWSS_LOG_NOTICE("starting main loop");
 
         while(true)
         {
+            if (platform && (strstr(platform, "mellanox")) && (shutdownType == SYNCD_RESTART_TYPE_WARM))
+            {
+                if (!getenv("mlnx_warm_recover"))
+                {
+                    continue;
+                }
+
+                sai_switch_api_t *sai_switch_api = NULL;
+                sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+
+                sai_attribute_t attr;
+                attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
+                attr.value.booldata = true;
+
+                status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_WARM_RECOVER=true: %s", sai_serialize_status(status).c_str());
+                }
+
+                shutdownType = SYNCD_RESTART_TYPE_COLD;
+                unsetenv("mlnx_warm_recover");
+            }
+
             swss::Selectable *sel = NULL;
 
             int result = s.select(&sel);
@@ -3605,7 +3631,26 @@ int syncd_main(int argc, char **argv)
                  */
 
                 shutdownType = handleRestartQuery(*restartQuery);
-                break;
+
+                if (platform && (strstr(platform, "mellanox")) && (shutdownType == SYNCD_RESTART_TYPE_WARM))
+                {
+                    sai_switch_api_t *sai_switch_api = NULL;
+                    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+
+                    sai_attribute_t attr;
+                    attr.id = SAI_SWITCH_ATTR_RESTART_WARM;
+                    attr.value.booldata = true;
+
+                    status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
+                    if (status != SAI_STATUS_SUCCESS)
+                    {
+                        SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_RESTART_WARM=true: %s", sai_serialize_status(status).c_str());
+                    }
+                }
+                else
+                {
+                    break;
+                }
             }
             else if (sel == flexCounter.get())
             {
