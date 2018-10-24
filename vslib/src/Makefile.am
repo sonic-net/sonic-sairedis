@@ -42,7 +42,7 @@ libsaivs_la_SOURCES = \
 					  sai_vs_generic_get.cpp \
 					  sai_vs_generic_remove.cpp \
 					  sai_vs_generic_set.cpp \
-					  sai_vs_generic_get_stats.cpp \
+					  sai_vs_generic_stats.cpp \
 					  sai_vs.cpp \
 					  sai_vs_switch_BCM56850.cpp \
 					  sai_vs_switch_MLNX2700.cpp

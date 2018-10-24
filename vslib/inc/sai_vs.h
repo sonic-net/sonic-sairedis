@@ -176,12 +176,28 @@ sai_status_t vs_generic_get_route_entry(
 
 // STATS
 
-template <typename T>
 sai_status_t vs_generic_get_stats(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
-        _In_ uint32_t count,
-        _In_ const T* counter_id_list,
-        _Out_ uint64_t *counter_list);
+        _In_ const sai_enum_metadata_t *enum_metadata,
+        _In_ uint32_t number_of_counters,
+        _In_ const int32_t *counter_ids,
+        _Out_ uint64_t *counters);
+
+sai_status_t vs_generic_get_stats_ext(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t *enum_metadata,
+        _In_ uint32_t number_of_counters,
+        _In_ const int32_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters);
+
+sai_status_t vs_generic_clear_stats(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t *enum_metadata,
+        _In_ uint32_t number_of_counters,
+        _In_ const int32_t *counter_ids);
 
 #endif // __SAI_VS__

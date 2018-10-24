@@ -192,7 +192,7 @@ void findBridgeVlanForPortVlan(
         attrs[0].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
         attrs[1].id = SAI_BRIDGE_PORT_ATTR_TYPE;
 
-        sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bpid, sizeof(attrs)/sizeof(attrs[0]), attrs);
+        sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bpid, (uint32_t)(sizeof(attrs)/sizeof(attrs[0])), attrs);
 
         if (status != SAI_STATUS_SUCCESS)
         {
