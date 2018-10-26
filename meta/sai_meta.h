@@ -84,74 +84,46 @@ extern sai_status_t meta_sai_get_stats_oid(
         _Inout_ uint64_t *counter_list,
         _In_ sai_get_generic_stats_fn<T> get);
 
-// META FDB
+// META ENTRY QUAD
 
-extern sai_status_t meta_sai_create_fdb_entry(
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_create_fdb_entry_fn create);
+#define META_CREATE_ENTRY(ot)                               \
+    extern sai_status_t meta_sai_create_ ## ot(             \
+            _In_ const sai_ ## ot ## _t* ot,                \
+            _In_ uint32_t attr_count,                       \
+            _In_ const sai_attribute_t *attr_list,          \
+            _In_ sai_create_ ## ot ## _fn create);
 
-extern sai_status_t meta_sai_remove_fdb_entry(
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ sai_remove_fdb_entry_fn remove);
+#define META_REMOVE_ENTRY(ot)                               \
+    extern sai_status_t meta_sai_remove_ ## ot(             \
+            _In_ const sai_ ## ot ## _t* ot,                \
+            _In_ sai_remove_ ## ot ##_fn remove);
 
-extern sai_status_t meta_sai_set_fdb_entry(
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ const sai_attribute_t *attr,
-        _In_ sai_set_fdb_entry_attribute_fn set);
+#define META_SET_ENTRY(ot)                                  \
+    extern sai_status_t meta_sai_set_ ## ot(                \
+            _In_ const sai_ ## ot ## _t* ot,                \
+            _In_ const sai_attribute_t *attr,               \
+            _In_ sai_set_ ## ot ## _attribute_fn set);
 
-extern sai_status_t meta_sai_get_fdb_entry(
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_fdb_entry_attribute_fn get);
+#define META_GET_ENTRY(ot)                                  \
+    extern sai_status_t meta_sai_get_ ## ot(                \
+            _In_ const sai_ ## ot ## _t* ot,                \
+            _In_ uint32_t attr_count,                       \
+            _Inout_ sai_attribute_t *attr_list,             \
+            _In_ sai_get_ ## ot ## _attribute_fn get);
 
-// META NEIGHBOR
+#define META_QUAD_ENTRY(ot)     \
+    META_CREATE_ENTRY(ot);      \
+    META_REMOVE_ENTRY(ot);      \
+    META_SET_ENTRY(ot);         \
+    META_GET_ENTRY(ot)
 
-extern sai_status_t meta_sai_create_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_create_neighbor_entry_fn create);
-
-extern sai_status_t meta_sai_remove_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ sai_remove_neighbor_entry_fn remove);
-
-extern sai_status_t meta_sai_set_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ const sai_attribute_t *attr,
-        _In_ sai_set_neighbor_entry_attribute_fn set);
-
-extern sai_status_t meta_sai_get_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_neighbor_entry_attribute_fn get);
-
-// META ROUTE
-
-extern sai_status_t meta_sai_create_route_entry(
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_create_route_entry_fn create);
-
-extern sai_status_t meta_sai_remove_route_entry(
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ sai_remove_route_entry_fn remove);
-
-extern sai_status_t meta_sai_set_route_entry(
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ const sai_attribute_t *attr,
-        _In_ sai_set_route_entry_attribute_fn set);
-
-extern sai_status_t meta_sai_get_route_entry(
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_route_entry_attribute_fn get);
+META_QUAD_ENTRY(fdb_entry);
+META_QUAD_ENTRY(inseg_entry);
+META_QUAD_ENTRY(ipmc_entry);
+META_QUAD_ENTRY(l2mc_entry);
+META_QUAD_ENTRY(mcast_fdb_entry);
+META_QUAD_ENTRY(neighbor_entry);
+META_QUAD_ENTRY(route_entry);
 
 // NOTIFICATIONS
 

@@ -65,13 +65,21 @@ extern sai_vs_switch_type_t             g_vs_switch_type;
 extern std::recursive_mutex             g_recursive_mutex;
 
 extern const sai_acl_api_t              vs_acl_api;
+extern const sai_bfd_api_t              vs_bfd_api;
 extern const sai_bridge_api_t           vs_bridge_api;
 extern const sai_buffer_api_t           vs_buffer_api;
+extern const sai_dtel_api_t             vs_dtel_api;
 extern const sai_fdb_api_t              vs_fdb_api;
 extern const sai_hash_api_t             vs_hash_api;
 extern const sai_hostif_api_t           vs_hostif_api;
+extern const sai_ipmc_api_t             vs_ipmc_api;
+extern const sai_ipmc_group_api_t       vs_ipmc_group_api;
+extern const sai_l2mc_api_t             vs_l2mc_api;
+extern const sai_l2mc_group_api_t       vs_l2mc_group_api;
 extern const sai_lag_api_t              vs_lag_api;
+extern const sai_mcast_fdb_api_t        vs_mcast_fdb_api;
 extern const sai_mirror_api_t           vs_mirror_api;
+extern const sai_mpls_api_t             vs_mpls_api;
 extern const sai_neighbor_api_t         vs_neighbor_api;
 extern const sai_next_hop_api_t         vs_next_hop_api;
 extern const sai_next_hop_group_api_t   vs_next_hop_group_api;
@@ -81,19 +89,22 @@ extern const sai_qos_map_api_t          vs_qos_map_api;
 extern const sai_queue_api_t            vs_queue_api;
 extern const sai_route_api_t            vs_route_api;
 extern const sai_router_interface_api_t vs_router_interface_api;
+extern const sai_rpf_group_api_t        vs_rpf_group_api;
 extern const sai_samplepacket_api_t     vs_samplepacket_api;
 extern const sai_scheduler_api_t        vs_scheduler_api;
 extern const sai_scheduler_group_api_t  vs_scheduler_group_api;
+extern const sai_segmentroute_api_t     vs_segmentroute_api;
 extern const sai_stp_api_t              vs_stp_api;
 extern const sai_switch_api_t           vs_switch_api;
+extern const sai_tam_api_t              vs_tam_api;
 extern const sai_tunnel_api_t           vs_tunnel_api;
+extern const sai_uburst_api_t           vs_uburst_api;
 extern const sai_udf_api_t              vs_udf_api;
 extern const sai_virtual_router_api_t   vs_virtual_router_api;
 extern const sai_vlan_api_t             vs_vlan_api;
 extern const sai_wred_api_t             vs_wred_api;
-extern const sai_dtel_api_t             vs_dtel_api;
 
-// CREATE
+// OID QUAD
 
 sai_status_t vs_generic_create(
         _In_ sai_object_type_t object_type,
@@ -102,56 +113,14 @@ sai_status_t vs_generic_create(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
-sai_status_t vs_generic_create_fdb_entry(
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list);
-
-sai_status_t vs_generic_create_neighbor_entry(
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list);
-
-sai_status_t vs_generic_create_route_entry(
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list);
-
-// REMOVE
-
 sai_status_t vs_generic_remove(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id);
-
-sai_status_t vs_generic_remove_fdb_entry(
-        _In_ const sai_fdb_entry_t *fdb_entry);
-
-sai_status_t vs_generic_remove_neighbor_entry(
-        _In_ const sai_neighbor_entry_t *neighbor_entry);
-
-sai_status_t vs_generic_remove_route_entry(
-        _In_ const sai_route_entry_t *route_entry);
-
-// SET
 
 sai_status_t vs_generic_set(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
         _In_ const sai_attribute_t *attr);
-
-sai_status_t vs_generic_set_fdb_entry(
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ const sai_attribute_t *attr);
-
-sai_status_t vs_generic_set_neighbor_entry(
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
-        _In_ const sai_attribute_t *attr);
-
-sai_status_t vs_generic_set_route_entry(
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ const sai_attribute_t *attr);
-
-// GET
 
 sai_status_t vs_generic_get(
         _In_ sai_object_type_t object_type,
@@ -159,20 +128,42 @@ sai_status_t vs_generic_get(
         _In_ uint32_t attr_count,
         _Out_ sai_attribute_t *attr_list);
 
-sai_status_t vs_generic_get_fdb_entry(
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list);
+// ENTRY QUAD
 
-sai_status_t vs_generic_get_neighbor_entry(
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list);
+#define VS_CREATE_ENTRY_DEF(ot)                     \
+    sai_status_t vs_generic_create_ ## ot(          \
+            _In_ const sai_ ## ot ## _t * ot,       \
+            _In_ uint32_t attr_count,               \
+            _In_ const sai_attribute_t *attr_list);
 
-sai_status_t vs_generic_get_route_entry(
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list);
+#define VS_REMOVE_ENTRY_DEF(ot)                     \
+    sai_status_t vs_generic_remove_ ## ot(          \
+            _In_ const sai_ ## ot ## _t * ot);
+
+#define VS_SET_ENTRY_DEF(ot)                        \
+    sai_status_t vs_generic_set_ ## ot(             \
+            _In_ const sai_ ## ot ## _t * ot,       \
+            _In_ const sai_attribute_t *attr);
+
+#define VS_GET_ENTRY_DEF(ot)                        \
+    sai_status_t vs_generic_get_ ## ot(             \
+            _In_ const sai_ ## ot ## _t * ot,       \
+            _In_ uint32_t attr_count,               \
+            _Out_ sai_attribute_t *attr_list);
+
+#define VS_ENTRY_QUAD(ot)       \
+    VS_CREATE_ENTRY_DEF(ot)     \
+    VS_REMOVE_ENTRY_DEF(ot)     \
+    VS_SET_ENTRY_DEF(ot)        \
+    VS_GET_ENTRY_DEF(ot)
+
+VS_ENTRY_QUAD(fdb_entry);
+VS_ENTRY_QUAD(inseg_entry);
+VS_ENTRY_QUAD(ipmc_entry);
+VS_ENTRY_QUAD(l2mc_entry);
+VS_ENTRY_QUAD(mcast_fdb_entry);
+VS_ENTRY_QUAD(neighbor_entry);
+VS_ENTRY_QUAD(route_entry);
 
 // STATS
 

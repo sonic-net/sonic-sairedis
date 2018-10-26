@@ -43,6 +43,18 @@ std::string sai_serialize_neighbor_entry(
 std::string sai_serialize_route_entry(
         _In_ const sai_route_entry_t &route_entry);
 
+std::string sai_serialize_inseg_entry(
+        _In_ const sai_inseg_entry_t &inseg_entry);
+
+std::string sai_serialize_l2mc_entry(
+        _In_ const sai_l2mc_entry_t &l2mc_entry);
+
+std::string sai_serialize_ipmc_entry(
+        _In_ const sai_ipmc_entry_t &ipmc_entry);
+
+std::string sai_serialize_mcast_fdb_entry(
+        _In_ const sai_mcast_fdb_entry_t &mcast_fdb_entry);
+
 std::string sai_serialize_fdb_entry(
         _In_ const sai_fdb_entry_t &fdb_entry);
 
@@ -117,6 +129,12 @@ std::string sai_serialize_mac(
 std::string sai_serialize_port_oper_status(
         _In_ sai_port_oper_status_t status);
 
+std::string sai_serialize_l2mc_entry_type(
+        _In_ const sai_l2mc_entry_type_t type);
+
+std::string sai_serialize_ipmc_entry_type(
+        _In_ const sai_ipmc_entry_type_t type);
+
 // serialize ntf
 
 std::string sai_serialize_fdb_event_ntf(
@@ -170,6 +188,22 @@ void sai_deserialize_neighbor_entry(
 void sai_deserialize_route_entry(
         _In_ const std::string& s,
         _In_ sai_route_entry_t &route_entry);
+
+void sai_deserialize_inseg_entry(
+        _In_ const std::string& s,
+        _In_ sai_inseg_entry_t &inseg_entry);
+
+void sai_deserialize_l2mc_entry(
+        _In_ const std::string& s,
+        _In_ sai_l2mc_entry_t &l2mc_entry);
+
+void sai_deserialize_ipmc_entry(
+        _In_ const std::string& s,
+        _In_ sai_ipmc_entry_t &ipmc_entry);
+
+void sai_deserialize_mcast_fdb_entry(
+        _In_ const std::string& s,
+        _In_ sai_mcast_fdb_entry_t &mcast_fdb_entry);
 
 void sai_deserialize_vlan_id(
         _In_ const std::string& s,

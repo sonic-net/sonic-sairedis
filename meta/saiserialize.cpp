@@ -709,6 +709,65 @@ std::string sai_serialize_route_entry(
     return j.dump();
 }
 
+std::string sai_serialize_ipmc_entry(
+        _In_ const sai_ipmc_entry_t& ipmc_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(ipmc_entry.switch_id);
+    j["vr_id"] = sai_serialize_object_id(ipmc_entry.vr_id);
+    j["type"] = sai_serialize_ipmc_entry_type(ipmc_entry.type);
+    j["destination"] = sai_serialize_ip_address(ipmc_entry.destination);
+    j["sourte"] = sai_serialize_ip_address(ipmc_entry.source);
+
+    return j.dump();
+}
+
+std::string sai_serialize_l2mc_entry(
+        _In_ const sai_l2mc_entry_t& l2mc_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(l2mc_entry.switch_id);
+    j["bv_id"] = sai_serialize_object_id(l2mc_entry.bv_id);
+    j["type"] = sai_serialize_l2mc_entry_type(l2mc_entry.type);
+    j["destination"] = sai_serialize_ip_address(l2mc_entry.destination);
+    j["sourte"] = sai_serialize_ip_address(l2mc_entry.source);
+
+    return j.dump();
+}
+
+std::string sai_serialize_mcast_fdb_entry(
+        _In_ const sai_mcast_fdb_entry_t& mcast_fdb_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(mcast_fdb_entry.switch_id);
+    j["bv_id"] = sai_serialize_object_id(mcast_fdb_entry.bv_id);
+    j["mac_address"] = sai_serialize_mac(mcast_fdb_entry.mac_address);
+
+    return j.dump();
+}
+
+std::string sai_serialize_inseg_entry(
+        _In_ const sai_inseg_entry_t& inseg_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(inseg_entry.switch_id);
+    j["label"] = sai_serialize_number(inseg_entry.label);
+
+    return j.dump();
+}
+
 std::string sai_serialize_fdb_entry(
         _In_ const sai_fdb_entry_t& fdb_entry)
 {
@@ -721,6 +780,22 @@ std::string sai_serialize_fdb_entry(
     j["bvid"] = sai_serialize_object_id(fdb_entry.bv_id);
 
     return j.dump();
+}
+
+std::string sai_serialize_l2mc_entry_type(
+        _In_ const sai_l2mc_entry_type_t type)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(type, &sai_metadata_enum_sai_l2mc_entry_type_t);
+}
+
+std::string sai_serialize_ipmc_entry_type(
+        _In_ const sai_ipmc_entry_type_t type)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(type, &sai_metadata_enum_sai_ipmc_entry_type_t);
 }
 
 std::string sai_serialize_port_stat(
