@@ -5,7 +5,7 @@ sai_status_t vs_bulk_create_route_entry(
         _In_ uint32_t object_count,
         _In_ const sai_route_entry_t *route_entry,
         _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t *const *attr_list,
+        _In_ const sai_attribute_t **attr_list,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
 {
@@ -66,7 +66,8 @@ const sai_route_api_t vs_route_api = {
     VS_GENERIC_QUAD_API(route_entry)
 
     // TODO: upstream signiture fix to SAI repo
-    (sai_bulk_create_route_entry_fn)vs_bulk_create_route_entry,
+   // (sai_bulk_create_route_entry_fn)vs_bulk_create_route_entry,
+    vs_bulk_create_route_entry,
     vs_bulk_remove_route_entry,
     vs_bulk_set_route_entry_attribute,
     vs_bulk_get_route_entry_attribute,
