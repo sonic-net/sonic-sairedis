@@ -292,7 +292,7 @@ void handleUnittestChannelOp(
      * time until that value will be propagated to virtual switch.
      */
 
-    SWSS_LOG_NOTICE("read only SET: op = %s, key = %s", op.c_str(), key.c_str());
+    SWSS_LOG_NOTICE("op = %s, key = %s", op.c_str(), key.c_str());
 
     for (const auto &v: values)
     {
