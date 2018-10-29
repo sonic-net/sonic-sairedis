@@ -42,6 +42,13 @@ extern "C" {
 #define SAI_VS_UNITTEST_SET_RO_OP   "set_ro"
 
 /**
+ * @def SAI_VS_UNITTEST_SET_STATS
+ *
+ * Notification operation for "SET" stats on specific object.
+ */
+#define SAI_VS_UNITTEST_SET_STATS_OP      "set_stats"
+
+/**
  * @def SAI_VS_UNITTEST_ENABLE
  *
  * Notificatio operation for enabling unittests.

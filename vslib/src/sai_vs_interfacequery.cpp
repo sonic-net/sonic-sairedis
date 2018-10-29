@@ -4,6 +4,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <algorithm>
+
 #include "swss/notificationconsumer.h"
 #include "swss/select.h"
 
@@ -20,6 +22,257 @@ std::shared_ptr<swss::DBConnector>          g_dbNtf;
 
 volatile bool                               g_fdbAgingThreadRun;
 std::shared_ptr<std::thread>                g_fdbAgingThread;
+
+
+void channelOpEnableUnittests(
+        _In_ const std::string &key,
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    bool enable = (key == "true");
+
+    meta_unittests_enable(enable);
+}
+
+void channelOpSetReadOnlyAttribute(
+        _In_ const std::string &key,
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    for (const auto &v: values)
+    {
+        SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+    }
+
+    if (values.size() != 1)
+    {
+        SWSS_LOG_ERROR("expected 1 value only, but given: %zu", values.size());
+        return;
+    }
+
+    const std::string &str_object_type = key.substr(0, key.find(":"));
+    const std::string &str_object_id = key.substr(key.find(":") + 1);
+
+    sai_object_type_t object_type;
+    sai_deserialize_object_type(str_object_type, object_type);
+
+    if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_MAX)
+    {
+        SWSS_LOG_ERROR("invalid object type: %d", object_type);
+        return;
+    }
+
+    auto info = sai_metadata_get_object_type_info(object_type);
+
+    if (info->isnonobjectid)
+    {
+        SWSS_LOG_ERROR("non object id %s is not supported yet", str_object_type.c_str());
+        return;
+    }
+
+    sai_object_id_t object_id;
+
+    sai_deserialize_object_id(str_object_id, object_id);
+
+    sai_object_type_t ot = sai_object_type_query(object_id);
+
+    if (ot != object_type)
+    {
+        SWSS_LOG_ERROR("object type is differnt than provided %s, but oid is %s",
+                str_object_type.c_str(), sai_serialize_object_type(ot).c_str());
+        return;
+    }
+
+    sai_object_id_t switch_id = sai_switch_id_query(object_id);
+
+    if (switch_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("failed to find switch id for oid %s", str_object_id.c_str());
+        return;
+    }
+
+    // oid is validated and we got switch id
+
+    const std::string &str_attr_id = fvField(values.at(0));
+    const std::string &str_attr_value = fvValue(values.at(0));
+
+    auto meta = sai_metadata_get_attr_metadata_by_attr_id_name(str_attr_id.c_str());
+
+    if (meta == NULL)
+    {
+        SWSS_LOG_ERROR("failed to find attr %s", str_attr_id.c_str());
+        return;
+    }
+
+    if (meta->objecttype != ot)
+    {
+        SWSS_LOG_ERROR("attr %s belongs to differnt object type than oid: %s",
+                str_attr_id.c_str(), sai_serialize_object_type(ot).c_str());
+        return;
+    }
+
+    // we got attr metadata
+
+    sai_attribute_t attr;
+
+    attr.id = meta->attrid;
+
+    sai_deserialize_attr_value(str_attr_value, *meta, attr);
+
+    SWSS_LOG_NOTICE("switch id is %s", sai_serialize_object_id(switch_id).c_str());
+
+    sai_status_t status = meta_unittests_allow_readonly_set_once(meta->objecttype, meta->attrid);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to enable SET readonly attribute once: %s", sai_serialize_status(status).c_str());
+        return;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = ot, .objectkey = { .key = { .object_id = object_id } } };
+
+    status = info->set(&meta_key, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to set %s to %s on %s",
+                str_attr_id.c_str(), str_attr_value.c_str(), str_object_id.c_str());
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("SUCCESS to set %s to %s on %s",
+                str_attr_id.c_str(), str_attr_value.c_str(), str_object_id.c_str());
+    }
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+}
+
+void channelOpSetStats(
+        _In_ const std::string &key,
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    // NOTE: we need to find stats for specific object, later SAI already have
+    // this feature and this search could be optimized here:
+    // https://github.com/opencomputeproject/SAI/commit/acc83933ff21c68e8ef10c9826de45807fdc0438
+
+    sai_object_id_t oid;
+
+    sai_deserialize_object_id(key, oid);
+
+    sai_object_type_t ot = sai_object_type_query(oid);
+
+    if (ot == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("invalid object id: %s", key.c_str());
+        return;
+    }
+
+    sai_object_id_t switch_id = sai_switch_id_query(oid);
+
+    if (switch_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("unable to get switch_id from oid: %s", key.c_str());
+        return;
+    }
+
+    /*
+     * Check if object for statistics was created and exists on switch.
+     */
+
+    auto &objectHash = g_switch_state_map.at(switch_id)->objectHash.at(ot);
+
+    auto it = objectHash.find(key.c_str());
+
+    if (it == objectHash.end())
+    {
+        SWSS_LOG_ERROR("object not found: %s", key.c_str());
+        return;
+    }
+
+    /*
+     * Check if object for statistics have statistic map created, if not
+     * create empty map.
+     */
+
+    auto &countersMap = g_switch_state_map.at(switch_id)->countersMap;
+
+    auto mapit = countersMap.find(key);
+
+    if (mapit == countersMap.end())
+        countersMap[key] = std::map<int,uint64_t>();
+
+    /*
+     * Find stats enum based on object type.  In new metadata we have enum on
+     * object type, but here we need to find it manually enum is in format
+     * "sai_" + object_type + "_stat_t"
+     */
+
+    std::string lower_ot = sai_serialize_object_type(ot).substr(16);  // 16 = skip "SAI_OBJECT_TYPE_"
+
+    std::transform(lower_ot.begin(), lower_ot.end(), lower_ot.begin(), ::tolower);
+
+    std::string stat_enum_name = "sai_" + lower_ot + "_stat_t";
+
+    const sai_enum_metadata_t* statenum = NULL;
+
+    for (size_t i = 0; i < sai_metadata_all_enums_count; ++i)
+    {
+        if (sai_metadata_all_enums[i]->name == stat_enum_name)
+        {
+            SWSS_LOG_INFO("found enum %s", stat_enum_name.c_str());
+            // found
+            statenum = sai_metadata_all_enums[i];
+            break;
+        }
+    }
+
+    if (statenum == NULL)
+    {
+        SWSS_LOG_ERROR("failed to find stat enum: %s", stat_enum_name.c_str());
+        return;
+    }
+
+    for (auto v: values)
+    {
+        // value format: stat_enum_name:uint64
+
+        auto name = fvField(v);
+
+        uint64_t value;
+
+        if (sscanf(fvValue(v).c_str(), "%lu", &value) != 1)
+        {
+            SWSS_LOG_ERROR("failed to deserialize %s as couner value uint64_t", fvValue(v).c_str());
+        }
+
+        // linear search
+
+        int enumvalue = -1;
+
+        for (size_t i = 0; i < statenum->valuescount; ++i)
+        {
+            if (statenum->valuesnames[i] == name)
+            {
+                enumvalue = statenum->values[i];
+                break;
+            }
+        }
+
+        if (enumvalue == -1)
+        {
+            SWSS_LOG_ERROR("failed to find enum value: %s", name.c_str());
+            continue;
+        }
+
+        SWSS_LOG_DEBUG("writting %s = %lu on %s", name.c_str(), value, key.c_str());
+
+        countersMap.at(key)[enumvalue] = value;
+    }
+}
 
 void handleUnittestChannelOp(
         _In_ const std::string &op,
@@ -41,120 +294,22 @@ void handleUnittestChannelOp(
 
     SWSS_LOG_NOTICE("read only SET: op = %s, key = %s", op.c_str(), key.c_str());
 
+    for (const auto &v: values)
+    {
+        SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+    }
+
     if (op == SAI_VS_UNITTEST_ENABLE_UNITTESTS)
     {
-        bool enable = (key == "true");
-
-        meta_unittests_enable(enable);
+        channelOpEnableUnittests(key, values);
     }
     else if (op == SAI_VS_UNITTEST_SET_RO_OP)
     {
-        for (const auto &v: values)
-        {
-            SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
-        }
-
-        if (values.size() != 1)
-        {
-            SWSS_LOG_ERROR("expected 1 value only, but given: %zu", values.size());
-            return;
-        }
-
-        const std::string &str_object_type = key.substr(0, key.find(":"));
-        const std::string &str_object_id = key.substr(key.find(":") + 1);
-
-        sai_object_type_t object_type;
-        sai_deserialize_object_type(str_object_type, object_type);
-
-        if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_MAX)
-        {
-            SWSS_LOG_ERROR("invalid object type: %d", object_type);
-            return;
-        }
-
-        auto info = sai_metadata_get_object_type_info(object_type);
-
-        if (info->isnonobjectid)
-        {
-            SWSS_LOG_ERROR("non object id %s is not supported yet", str_object_type.c_str());
-            return;
-        }
-
-        sai_object_id_t object_id;
-
-        sai_deserialize_object_id(str_object_id, object_id);
-
-        sai_object_type_t ot = sai_object_type_query(object_id);
-
-        if (ot != object_type)
-        {
-            SWSS_LOG_ERROR("object type is differnt than provided %s, but oid is %s",
-                    str_object_type.c_str(), sai_serialize_object_type(ot).c_str());
-            return;
-        }
-
-        sai_object_id_t switch_id = sai_switch_id_query(object_id);
-
-        if (switch_id == SAI_NULL_OBJECT_ID)
-        {
-            SWSS_LOG_ERROR("failed to find switch id for oid %s", str_object_id.c_str());
-            return;
-        }
-
-        // oid is validated and we got switch id
-
-        const std::string &str_attr_id = fvField(values.at(0));
-        const std::string &str_attr_value = fvValue(values.at(0));
-
-        auto meta = sai_metadata_get_attr_metadata_by_attr_id_name(str_attr_id.c_str());
-
-        if (meta == NULL)
-        {
-            SWSS_LOG_ERROR("failed to find attr %s", str_attr_id.c_str());
-            return;
-        }
-
-        if (meta->objecttype != ot)
-        {
-            SWSS_LOG_ERROR("attr %s belongs to differnt object type than oid: %s",
-                    str_attr_id.c_str(), sai_serialize_object_type(ot).c_str());
-            return;
-        }
-
-        // we got attr metadata
-
-        sai_attribute_t attr;
-
-        attr.id = meta->attrid;
-
-        sai_deserialize_attr_value(str_attr_value, *meta, attr);
-
-        SWSS_LOG_NOTICE("switch id is %s", sai_serialize_object_id(switch_id).c_str());
-
-        sai_status_t status = meta_unittests_allow_readonly_set_once(meta->objecttype, meta->attrid);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("failed to enable SET readonly attribute once: %s", sai_serialize_status(status).c_str());
-            return;
-        }
-
-        sai_object_meta_key_t meta_key = { .objecttype = ot, .objectkey = { .key = { .object_id = object_id } } };
-
-        status = info->set(&meta_key, &attr);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("failed to set %s to %s on %s",
-                    str_attr_id.c_str(), str_attr_value.c_str(), str_object_id.c_str());
-        }
-        else
-        {
-            SWSS_LOG_NOTICE("SUCCESS to set %s to %s on %s",
-                    str_attr_id.c_str(), str_attr_value.c_str(), str_object_id.c_str());
-        }
-
-        sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+        channelOpSetReadOnlyAttribute(key, values);
+    }
+    else if (op == SAI_VS_UNITTEST_SET_STATS_OP)
+    {
+        channelOpSetStats(key, values);
     }
     else
     {
@@ -197,7 +352,14 @@ void unittestChannelThreadProc()
 
             SWSS_LOG_DEBUG("notification: op = %s, data = %s", op.c_str(), data.c_str());
 
-            handleUnittestChannelOp(op, data, values);
+            try
+            {
+                handleUnittestChannelOp(op, data, values);
+            }
+            catch (const std::exception &e)
+            {
+                SWSS_LOG_ERROR("Exception: op = %s, data = %s, %s", op.c_str(), data.c_str(), e.what());
+            }
         }
     }
 
