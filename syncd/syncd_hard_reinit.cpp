@@ -1253,10 +1253,25 @@ void performWarmRestart()
     sai_object_id_t orig_rid = translate_vid_to_rid(switch_vid);
 
     sai_object_id_t switch_rid;
-    sai_attribute_t switch_attr;
-    switch_attr.id             = SAI_SWITCH_ATTR_INIT_SWITCH;
-    switch_attr.value.booldata = true;
-    sai_status_t status = sai_metadata_sai_switch_api->create_switch(&switch_rid, 1, &switch_attr);
+    sai_attr_id_t   notifs[] = {
+        SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY,
+        SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY,
+        SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY,
+        SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY,
+        SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY,
+        SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY
+    };
+#define NELMS(arr) (sizeof(arr) / sizeof(arr[0]))
+    sai_attribute_t switch_attrs[NELMS(notifs) + 1];
+    switch_attrs[0].id             = SAI_SWITCH_ATTR_INIT_SWITCH;
+    switch_attrs[0].value.booldata = true;
+    for (size_t i = 0; i < NELMS(notifs); i++)
+    {
+        switch_attrs[i+1].id        = notifs[i];
+        switch_attrs[i+1].value.ptr = (void *)1; // any non-null pointer
+    }
+    check_notifications_pointers((uint32_t)NELMS(switch_attrs), &switch_attrs[0]);
+    sai_status_t status = sai_metadata_sai_switch_api->create_switch(&switch_rid, (uint32_t)NELMS(switch_attrs), &switch_attrs[0]);
 
     if (status != SAI_STATUS_SUCCESS)
     {
