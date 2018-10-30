@@ -28,9 +28,11 @@ void printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: saidump [-t] [-h]" << std::endl;
+    std::cout << "Usage: saidump [-t] [-g] [-h]" << std::endl;
     std::cout << "    -t --tempView:" << std::endl;
     std::cout << "        Dump temp view" << std::endl;
+    std::cout << "    -g --dumpGraph:" << std::endl;
+    std::cout << "        Dump current graph" << std::endl;
     std::cout << "    -h --help:" << std::endl;
     std::cout << "        Print out this message" << std::endl;
 }
@@ -162,6 +164,11 @@ void print_attributes(size_t indent, const TableMap& map)
 
 #define SAI_OBJECT_TYPE_PREFIX_LEN 16
 
+// colors are in HSV
+#define GV_ARROW_COLOR  "0.650 0.700 0.700"
+#define GV_ROOT_COLOR   "0.650 0.200 1.000"
+#define GV_NODE_COLOR   "0.650 0.500 1.000"
+
 void dumpGraph(const TableDump& td)
 {
     SWSS_LOG_ENTER();
@@ -170,8 +177,8 @@ void dumpGraph(const TableDump& td)
     std::map<sai_object_type_t,const sai_object_type_info_t*> typemap;
 
     std::cout << "digraph \"SAI Object Dependency Graph\" {" << std::endl;
-    std::cout << "size=\"30,12\"; ratio = fill;" << std::endl;
-    std::cout << "node [style=filled];" << std::endl;
+    std::cout << "size = \"30,12\"; ratio = fill;" << std::endl;
+    std::cout << "node [ style = filled ];" << std::endl;
 
     // build object type map first
 
@@ -231,7 +238,7 @@ void dumpGraph(const TableDump& td)
 
                 ss << std::string(member_info->objecttypename + SAI_OBJECT_TYPE_PREFIX_LEN) << " -> "
                 << std::string(info->objecttypename + SAI_OBJECT_TYPE_PREFIX_LEN)
-                << "[color=\"0.650 0.700 0.700\", style = dashed, penwidth=2]";
+                << "[ color=\"" << GV_ARROW_COLOR << "\", style = dashed, penwidth = 2 ]";
 
                 std::string link = ss.str();
 
@@ -261,7 +268,7 @@ void dumpGraph(const TableDump& td)
 
             sai_deserialize_attr_value(field.second, *meta, attr, false);
 
-            sai_object_list_t list = {0, NULL};
+            sai_object_list_t list = { 0, NULL };
 
             switch (meta->attrvaluetype)
             {
@@ -322,7 +329,7 @@ void dumpGraph(const TableDump& td)
 
                 ss << std::string(attr_oid_info->objecttypename + SAI_OBJECT_TYPE_PREFIX_LEN) << " -> "
                 << std::string(info->objecttypename + SAI_OBJECT_TYPE_PREFIX_LEN)
-                << "[color=\"0.650 0.700 0.700\"]";
+                << "[ color = \"" << GV_ARROW_COLOR << "\" ]";
 
                 std::string link = ss.str();
 
@@ -347,36 +354,44 @@ void dumpGraph(const TableDump& td)
 
         if (info->isnonobjectid)
         {
-            std::cout << name << " [color=plum, shape = rect];\n";
+            /* non object id leafs */
+
+            std::cout << name << " [ color = plum, shape = rect ];\n";
             continue;
         }
 
         if (ref.find(ot) != ref.end() && attrref.find(ot) != attrref.end())
         {
-            std::cout << name << " [color=\"0.650 0.500 1.000\"];\n";
+            /* middle nodes */
+
+            std::cout << name << " [ color =\"" << GV_NODE_COLOR << "\" ];\n";
             continue;
         }
 
         if (ref.find(ot) != ref.end() && attrref.find(ot) == attrref.end())
         {
-            std::cout << name << " [color=\"0.355 0.563 1.000\", shape = rect];\n";
+            /* leafs */
+
+            std::cout << name << " [ color = palegreen, shape = rect ];\n";
             continue;
         }
 
         if (ref.find(ot) == ref.end() && attrref.find(ot) != attrref.end())
         {
-            std::cout << name << " [color=\"0.650 0.200 1.000\"];\n";
+            /* roots */
+
+            std::cout << name << " [ color = \"" << GV_ROOT_COLOR << "\" ];\n";
             continue;
         }
 
         /* objects which are there but not referenced nowhere for example STP */
 
-        std::cout << name << " [color=\"0.650 0.200 1.000\"  shape=rect];\n";
+        std::cout << name << " [ color = \"" << GV_ROOT_COLOR << "\", shape = rect ];\n";
     }
 
-    std::cout << "SWITCH -> PORT[dir=\"none\", color=\"red\", peripheries = 2, penwidth=2.0 , style  = dashed ];" <<std::endl;
-    std::cout << "SWITCH [color=orange, shape = parallelogram, peripheries = 2];" <<std::endl;
-    std::cout << "PORT [color=gold, shape = diamond, peripheries=2];" << std::endl;
+    std::cout << "SWITCH -> PORT [ dir = none, color = red, peripheries = 2, penwidth = 2, style = dashed ];" << std::endl;
+    std::cout << "SWITCH [ color = orange, fillcolor = orange, shape = parallelogram, peripheries = 2 ];" << std::endl;
+    std::cout << "PORT [ color = gold, shape = diamond, peripheries = 2 ];" << std::endl;
     std::cout << "}" << std::endl;
 }
 
