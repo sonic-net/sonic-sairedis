@@ -162,8 +162,6 @@ void print_attributes(size_t indent, const TableMap& map)
     }
 }
 
-#define SAI_OBJECT_TYPE_PREFIX_LEN 16
-
 // colors are in HSV
 #define GV_ARROW_COLOR  "0.650 0.700 0.700"
 #define GV_ROOT_COLOR   "0.650 0.200 1.000"
@@ -208,6 +206,8 @@ void dumpGraph(const TableDump& td)
 
     std::set<sai_object_type_t> ref;
     std::set<sai_object_type_t> attrref;
+
+#define SAI_OBJECT_TYPE_PREFIX_LEN (sizeof("SAI_OBJECT_TYPE_") - 1)
 
     for (const auto& key: td)
     {
