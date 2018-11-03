@@ -2779,6 +2779,95 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForRouterInterface(
         }
     }
 
+    // try find tunnel by TUNNEL_TERM_TABLE_ENTRY using SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP
+
+    for (auto tmpTunnel: tmpTunnels)
+    {
+        const auto curTunnels = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL);
+
+        for (auto curTunnel: curTunnels)
+        {
+            const auto tmpTunnelTermTableEtnries = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY);
+
+            for (auto tmpTunnelTermTableEntry: tmpTunnelTermTableEtnries)
+            {
+                auto tmpTunnelId = tmpTunnelTermTableEntry->tryGetSaiAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_ACTION_TUNNEL_ID);
+
+                if (tmpTunnelId == nullptr)
+                    continue;
+
+                auto tmpDstIp = tmpTunnelTermTableEntry->tryGetSaiAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP);
+
+                if (tmpDstIp == nullptr)
+                    continue;
+
+                if (tmpTunnelId->getOid() != tmpTunnel->getVid())   // not this tunnel
+                    continue;
+
+                const auto curTunnelTermTableEtnries = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY);
+
+                for (auto curTunnelTermTableEntry: curTunnelTermTableEtnries)
+                {
+                    auto curTunnelId = curTunnelTermTableEntry->tryGetSaiAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_ACTION_TUNNEL_ID);
+
+                    if (curTunnelId == nullptr)
+                        continue;
+
+                    auto curDstIp = curTunnelTermTableEntry->tryGetSaiAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP);
+
+                    if (curDstIp == nullptr)
+                        continue;
+
+                    if (curTunnelId->getOid() != curTunnel->getVid())   // not this tunnel
+                        continue;
+
+                    if (curDstIp->getStrAttrValue() != tmpDstIp->getStrAttrValue())
+                        continue;
+
+                    if (tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE) &&
+                            curTunnel->hasAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE))
+                    {
+                        auto tmpRif = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE);
+                        auto curRif = curTunnel->getSaiAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE);
+
+                        if (tmpRif->getSaiAttr()->value.oid == temporaryObj->getVid())
+                        {
+                            for (auto c: candidateObjects)
+                            {
+                                if (c.obj->getVid() != curRif->getSaiAttr()->value.oid)
+                                    continue;
+
+                                SWSS_LOG_INFO("found best ROUTER_INTERFACE based on TUNNEL underlay interface %s", c.obj->str_object_id.c_str());
+
+                                return c.obj;
+                            }
+                        }
+                    }
+
+                    if (tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE) &&
+                            curTunnel->hasAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE))
+                    {
+                        auto tmpRif = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE);
+                        auto curRif = curTunnel->getSaiAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE);
+
+                        if (tmpRif->getSaiAttr()->value.oid == temporaryObj->getVid())
+                        {
+                            for (auto c: candidateObjects)
+                            {
+                                if (c.obj->getVid() != curRif->getSaiAttr()->value.oid)
+                                    continue;
+
+                                SWSS_LOG_INFO("found best ROUTER_INTERFACE based on TUNNEL overlay interface %s", c.obj->str_object_id.c_str());
+
+                                return c.obj;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     SWSS_LOG_NOTICE("failed to find best candidate for LOOPBACK ROUTER_INTERFACE using TUNNEL");
 
     return nullptr;
