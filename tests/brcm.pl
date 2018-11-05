@@ -254,8 +254,24 @@ sub test_brcm_rif_loopback
     play "rif_loopback.rec", 0;
 }
 
+sub test_brcm_lag_no_members
+{
+    fresh_start;
+
+    # we expect no asic operation on lag's that has no members
+
+    play "lag_no_members.rec";
+    play "lag_no_members.rec", 0;
+    play "lag_no_members.rec", 0;
+    play "lag_no_members.rec", 0;
+    play "lag_no_members.rec", 0;
+    play "lag_no_members.rec", 0;
+}
+
+
 # RUN TESTS
 
+test_brcm_lag_no_members;
 test_brcm_rif_loopback;
 test_brcm_hostif;
 test_brcm_full_testbed_config;
