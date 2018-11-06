@@ -2582,8 +2582,8 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
             if (c.obj->getVid() == atgVid)
             {
                 SWSS_LOG_INFO("found ALC table group candidate %s using port %s",
-                        port->str_object_id.c_str(),
-                        c.obj->str_object_id.c_str());
+                        c.obj->str_object_id.c_str(),
+                        port->str_object_id.c_str());
 
                 return c.obj;
             }
@@ -2673,6 +2673,101 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
     }
 
     SWSS_LOG_NOTICE("failed to find best candidate for ACL table group using port");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForAclTable(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For acl table we can go to acl table group member and then to acl table group and port.
+     */
+
+    const auto tmpAclTableGroupMembers = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER);
+
+    for (auto tmpAclTableGroupMember: tmpAclTableGroupMembers)
+    {
+        auto tmpAclTableId = tmpAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID);
+
+        if (tmpAclTableId->getOid() != temporaryObj->getVid())
+        {
+            // this is not the expected alc table group member
+            continue;
+        }
+
+        auto tmpAclTableGroupId = tmpAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID);
+
+        /*
+         * We have acl table group id, search on which port it's set, not let's
+         * find on which port it's set.
+         */
+
+        const auto tmpPorts = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_PORT);
+
+        for (auto tmpPort: tmpPorts)
+        {
+            if (!tmpPort->hasAttr(SAI_PORT_ATTR_INGRESS_ACL))
+                continue;
+
+            auto tmpInACL = tmpPort->getSaiAttr(SAI_PORT_ATTR_INGRESS_ACL);
+
+            if (tmpInACL->getOid() != tmpAclTableGroupId->getOid())
+                continue;
+
+            auto curPort = currentView.oOids.at(tmpPort->getVid());
+
+            if (!curPort->hasAttr(SAI_PORT_ATTR_INGRESS_ACL))
+                continue;
+
+            auto curInACL = curPort->getSaiAttr(SAI_PORT_ATTR_INGRESS_ACL);
+
+            /*
+             * We found current InACL, now let's find acl table group members
+             * that use this acl table group.
+             */
+
+            const auto curAclTableGroupMembers = currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER);
+
+            for (auto curAclTableGroupMember: curAclTableGroupMembers)
+            {
+                auto curAclTableGroupId = curAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID);
+
+                if (curAclTableGroupId->getOid() != curInACL->getOid())
+                {
+                    // this member uses different acl table group
+                    continue;
+                }
+
+                auto curAclTableId = curAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID);
+
+                /*
+                 * We found possible current acl table ID, let's see if it's on
+                 * candidate list. Note, it could be possible that many
+                 * different paths will lead multiple possible candidates.
+                 */
+
+                for (auto c: candidateObjects)
+                {
+                    if (c.obj->getVid() == curAclTableId->getOid())
+                    {
+                        SWSS_LOG_INFO("found ALC table candidate %s using port %s",
+                                c.obj->str_object_id.c_str(),
+                                tmpPort->str_object_id.c_str());
+
+                        return c.obj;
+                    }
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for ACL table using port");
 
     return nullptr;
 }
@@ -3095,6 +3190,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
             candidate = findCurrentBestMatchForHostifTrapGroup(currentView, temporaryView, temporaryObj, candidateObjects);
             break;
 
+        case SAI_OBJECT_TYPE_ACL_TABLE:
+            candidate = findCurrentBestMatchForAclTable(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
         default:
             break;
     }
@@ -3143,6 +3242,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
 
     return selectRandomCandidate(candidateObjects);
 }
+
+std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
+        _In_ const AsicView &currentView,
+        _In_ const sai_attr_metadata_t &meta);
 
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
         _In_ const AsicView &currentView,
@@ -3255,6 +3358,13 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
 
         bool has_different_create_only_attr = false;
 
+        /*
+         * NOTE: we only iterate by attributes that are present in temporary
+         * view. It may happen that current view has some additional attributes
+         * set that are create only and value can't be updated then, so in that
+         * case such object must be disqualified from being candidate.
+         */
+
         for (const auto &attr: attrs)
         {
             sai_attr_id_t attrId = attr.first;
@@ -3318,6 +3428,85 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
                      */
 
                     break;
+                }
+
+                if (SAI_HAS_FLAG_CREATE_ONLY(meta->flags) && !currentObj->hasAttr(attrId))
+                {
+                    /*
+                     * This attribute exists only on temporary view and it's
+                     * create only.  If it has default value, check if it's the
+                     * same as current.
+                     */
+
+                    auto curDefault = getSaiAttrFromDefaultValue(currentView, *meta);
+
+                    if (curDefault != nullptr)
+                    {
+                        if (curDefault->getStrAttrValue() != attr.second->getStrAttrValue())
+                        {
+                            has_different_create_only_attr = true;
+
+                            SWSS_LOG_INFO("obj has not equal create only attributes %s (default): %s",
+                                    temporaryObj->str_object_id.c_str(),
+                                    meta->attridname);
+                            break;
+                        }
+                        else
+                        {
+                            SWSS_LOG_INFO("obj has equal create only value %s (default): %s",
+                                    temporaryObj->str_object_id.c_str(),
+                                    meta->attridname);
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
+         * Before we add this object as candidate, see if there are some create
+         * only attributes which are not present in temporary object but
+         * present in current, and if there is default value that is the same.
+         */
+
+        const auto curAttrs = currentObj->getAllAttributes();
+
+        for (auto curAttr: curAttrs)
+        {
+            if (attrs.find(curAttr.first) != attrs.end())
+            {
+                // attr exists in both objects.
+                continue;
+            }
+
+            const sai_attr_metadata_t* meta = curAttr.second->getAttrMetadata();
+
+            if (SAI_HAS_FLAG_CREATE_ONLY(meta->flags) && !temporaryObj->hasAttr(curAttr.first))
+            {
+                /*
+                 * This attribute exists only on current view and it's
+                 * create only.  If it has default value, check if it's the
+                 * same as current.
+                 */
+
+                auto tmpDefault = getSaiAttrFromDefaultValue(temporaryView, *meta);
+
+                if (tmpDefault != nullptr)
+                {
+                    if (tmpDefault->getStrAttrValue() != curAttr.second->getStrAttrValue())
+                    {
+                        has_different_create_only_attr = true;
+
+                        SWSS_LOG_INFO("obj has not equal create only attributes %s (default): %s",
+                                currentObj->str_object_id.c_str(),
+                                meta->attridname);
+                        break;
+                    }
+                    else
+                    {
+                        SWSS_LOG_INFO("obj has equal create only value %s (default): %s",
+                                temporaryObj->str_object_id.c_str(),
+                                meta->attridname);
+                    }
                 }
             }
         }
@@ -3959,10 +4148,6 @@ void procesObjectAttributesForViewTransition(
         processObjectForViewTransition(currentView, temporaryView, structObject); // recursion
     }
 }
-
-std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
-        _In_ const AsicView &currentView,
-        _In_ const sai_attr_metadata_t &meta);
 
 void bringNonRemovableObjectToDefaultState(
         _In_ AsicView &currentView,
@@ -4826,6 +5011,14 @@ std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
 
             return nullptr;
 
+        case SAI_DEFAULT_VALUE_TYPE_NONE:
+
+            /*
+             * No default value present.
+             */
+
+            return nullptr;
+
         default:
 
             SWSS_LOG_ERROR("default value type %d is not supported yet for %s, FIXME",
@@ -5419,6 +5612,8 @@ void processObjectForViewTransition(
 
         return;
     }
+
+    SWSS_LOG_DEBUG("processing: %s:%s", temporaryObj->str_object_type.c_str(), temporaryObj->str_object_id.c_str());
 
     procesObjectAttributesForViewTransition(currentView, temporaryView, temporaryObj);
 
