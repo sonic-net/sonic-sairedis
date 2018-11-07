@@ -135,6 +135,9 @@ std::string sai_serialize_l2mc_entry_type(
 std::string sai_serialize_ipmc_entry_type(
         _In_ const sai_ipmc_entry_type_t type);
 
+std::string sai_serialize_qos_map_item(
+        _In_ const sai_qos_map_t& qosmap);
+
 // serialize ntf
 
 std::string sai_serialize_fdb_event_ntf(

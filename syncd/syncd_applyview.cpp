@@ -2054,6 +2054,55 @@ bool hasEqualObjectList(
 }
 
 /**
+ * @brief Compare qos map list attributes order insensitive.
+ *
+ * @param current Current object qos map attribute.
+ * @param temporary Temporary object qos map attribute.
+ *
+ * @return True if attributes are equal, false otherwise.
+ */
+bool hasEqualQosMapList(
+        _In_ const std::shared_ptr<const SaiAttr> &current,
+        _In_ const std::shared_ptr<const SaiAttr> &temporary)
+{
+    SWSS_LOG_ENTER();
+
+    auto c = current->getSaiAttr()->value.qosmap;
+    auto t = temporary->getSaiAttr()->value.qosmap;
+
+    if (c.count != t.count)
+        return false;
+
+    if (c.list == NULL || t.list == NULL)
+        return false;
+
+    std::vector<std::string> citems;
+    std::vector<std::string> titems;
+
+    for (uint32_t i = 0; i < c.count; i++)
+    {
+        citems.push_back(sai_serialize_qos_map_item(c.list[i]));
+        titems.push_back(sai_serialize_qos_map_item(t.list[i]));
+    }
+
+    std::sort(citems.begin(), citems.end());
+    std::sort(titems.begin(), titems.end());
+
+    for (uint32_t i = 0; i < c.count; i++)
+    {
+        if (citems.at(i) != titems.at(i))
+        {
+            return false;
+        }
+    }
+
+    SWSS_LOG_NOTICE("qos map are equal, but has different order");
+
+    // all items in both attributes are equal
+    return true;
+}
+
+/**
  * @brief Check if current and temporary object has
  * the same attribute and attribute has the same value on both.
  *
@@ -2115,6 +2164,16 @@ bool hasEqualAttribute(
              */
 
             return true;
+        }
+
+        if (currentAttr->getAttrMetadata()->attrvaluetype == SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST)
+        {
+            /*
+             * In case of qos map list, order of list does not matter, so
+             * compare only entries.
+             */
+
+            return hasEqualQosMapList(currentAttr, temporaryAttr);
         }
 
         if (currentAttr->isObjectIdAttr() == false)
