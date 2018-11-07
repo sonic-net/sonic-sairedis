@@ -6218,9 +6218,13 @@ void populateExistingObjects(
             continue;
         }
 
+        // TODO this object in current view may have some attributes, we need to copy them
+        // to temp view, so they match on compare, or in case of those objects matched
+        // just ignore operations ? what about attributes with oids?
+
         temporaryView.createDummyExistingObject(rid, vid);
 
-        SWSS_LOG_DEBUG("populate existing %s RID %s VID %s",
+        SWSS_LOG_INFO("populate existing %s RID %s VID %s",
                 sai_serialize_object_type(sai_object_type_query(rid)).c_str(),
                 sai_serialize_object_id(rid).c_str(),
                 sai_serialize_object_id(vid).c_str());

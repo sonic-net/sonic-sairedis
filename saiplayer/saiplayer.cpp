@@ -726,6 +726,7 @@ void handle_get_response(
     if (status != SAI_STATUS_SUCCESS)
     {
         // TODO check if status is correct for get
+        SWSS_LOG_WARN("status is not success: %s", sai_serialize_status(status).c_str());
         return;
     }
 

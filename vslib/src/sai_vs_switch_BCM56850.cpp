@@ -15,8 +15,6 @@ static std::vector<sai_object_id_t> port_list;
 static std::vector<sai_object_id_t> bridge_port_list_port_based;
 
 static sai_object_id_t default_vlan_id;
-static sai_object_id_t default_bridge_port_1q_router;
-static sai_object_id_t cpu_port_id;
 
 static sai_status_t set_switch_mac_address()
 {
@@ -38,11 +36,11 @@ static sai_status_t set_switch_mac_address()
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
 
-static sai_status_t set_default_notifications()
+static sai_status_t set_switch_default_attributes()
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_INFO("create default notifications");
+    SWSS_LOG_INFO("create switch default attributes");
 
     sai_attribute_t attr;
 
@@ -57,6 +55,16 @@ static sai_status_t set_default_notifications()
 
     attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
     attr.value.u32 = 0;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_RESTART_WARM;
+    attr.value.booldata = false;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
+    attr.value.booldata = false;
 
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
@@ -91,6 +99,8 @@ static sai_status_t create_cpu_port()
     sai_attribute_t attr;
 
     sai_object_id_t switch_id = ss->getSwitchId();
+
+    sai_object_id_t cpu_port_id;
 
     CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_PORT, &cpu_port_id, switch_id, 0, &attr));
 
@@ -265,6 +275,8 @@ static sai_status_t create_bridge_ports()
 
     attr.id = SAI_BRIDGE_PORT_ATTR_TYPE;
     attr.value.s32 = SAI_BRIDGE_PORT_TYPE_1Q_ROUTER;
+
+    sai_object_id_t default_bridge_port_1q_router;
 
     CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_BRIDGE_PORT, &default_bridge_port_1q_router, ss->getSwitchId(), 1, &attr));
 
@@ -827,20 +839,66 @@ static sai_status_t initialize_default_objects()
     CHECK_STATUS(create_qos_queues());
     CHECK_STATUS(set_maximum_number_of_childs_per_scheduler_group());
     CHECK_STATUS(set_number_of_ecmp_groups());
-    CHECK_STATUS(set_default_notifications());
+    CHECK_STATUS(set_switch_default_attributes());
     CHECK_STATUS(create_scheduler_groups());
 
     return SAI_STATUS_SUCCESS;
 }
 
+static sai_status_t warm_boot_initialize_objects()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("warm boot init objects");
+
+    /*
+     * We need to bring back previous state in case user will get some read
+     * only attributes and recalculation will need to be done.
+     *
+     * We only need to refresh ports since only ports are used in recalculation
+     * logic.
+     */
+
+    sai_object_id_t switch_id = ss->getSwitchId();
+
+    port_list.resize(SAI_VS_MAX_PORTS);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+
+    attr.value.objlist.count = SAI_VS_MAX_PORTS;
+    attr.value.objlist.list = port_list.data();
+
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr));
+
+    port_list.resize(attr.value.objlist.count);
+
+    SWSS_LOG_NOTICE("port list size: %zu", port_list.size());
+
+    return SAI_STATUS_SUCCESS;
+}
+
 void init_switch_BCM56850(
-        _In_ sai_object_id_t switch_id)
+        _In_ sai_object_id_t switch_id,
+        _In_ std::shared_ptr<SwitchState> warmBootState)
 {
     SWSS_LOG_ENTER();
 
     if (switch_id == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_THROW("init switch with NULL switch id is not allowed");
+    }
+
+    if (warmBootState != nullptr)
+    {
+        ss = g_switch_state_map[switch_id] = warmBootState;
+
+        warm_boot_initialize_objects();
+
+        SWSS_LOG_NOTICE("initialized switch %s in WARM boot mode", sai_serialize_object_id(switch_id).c_str());
+
+        return;
     }
 
     if (g_switch_state_map.find(switch_id) != g_switch_state_map.end())
@@ -857,7 +915,7 @@ void init_switch_BCM56850(
         SWSS_LOG_THROW("unable to init switch %s", sai_serialize_status(status).c_str());
     }
 
-    SWSS_LOG_NOTICE("initialized switch 0x%lx", switch_id);
+    SWSS_LOG_NOTICE("initialized switch %s", sai_serialize_object_id(switch_id).c_str());
 }
 
 void uninit_switch_BCM56850(

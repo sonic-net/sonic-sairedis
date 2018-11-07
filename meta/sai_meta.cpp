@@ -1745,6 +1745,21 @@ sai_status_t meta_generic_validation_remove(
 
     if (count != 0)
     {
+        if (object_type == SAI_OBJECT_TYPE_SWITCH)
+        {
+            /*
+             * We allow to remove switch object even if there are ROUTE_ENTRY
+             * created and refrencing this switch, since remove could be used
+             * in WARM boot scenario.
+             */
+
+            SWSS_LOG_WARN("removing switch object 0x%lx reference count is %d, removing all objects from meta DB", oid, count);
+
+            meta_init_db();
+
+            return SAI_STATUS_SUCCESS;
+        }
+
         SWSS_LOG_ERROR("object 0x%lx reference count is %d, can't remove", oid, count);
 
         return SAI_STATUS_INVALID_PARAMETER;
@@ -2767,6 +2782,16 @@ void meta_generic_validation_post_remove(
         _In_ const sai_object_meta_key_t& meta_key)
 {
     SWSS_LOG_ENTER();
+
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+    {
+        /*
+         * If switch object was removed then meta db was cleared and there are
+         * no other attributes, no need for reference counting.
+         */
+
+        return;
+    }
 
     // get all attributes that was set
 
@@ -5505,7 +5530,7 @@ sai_status_t meta_sai_validate_oid(
 
     if (oid == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_ERROR("oid is set to null object id");
+        SWSS_LOG_ERROR("oid is set to null object id on %s", otname);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }

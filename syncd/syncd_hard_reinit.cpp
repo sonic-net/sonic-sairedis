@@ -47,12 +47,10 @@ static sai_object_id_t g_switch_vid = SAI_NULL_OBJECT_ID;
 
 static std::shared_ptr<SaiSwitch> g_sw;
 
-#ifdef SAITHRIFT
 /*
  * SAI switch global needed for RPC server
  */
 extern sai_object_id_t gSwitchId;
-#endif
 
 void processAttributesForOids(
         _In_ sai_object_type_t objectType,
@@ -425,10 +423,8 @@ void processSwitches()
 
         sai_status_t status = sai_metadata_sai_switch_api->create_switch(&switch_rid, attr_count, attr_list);
 
-#ifdef SAITHRIFT
         gSwitchId = switch_rid;
         SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
-#endif
 
         if (status != SAI_STATUS_SUCCESS)
         {
@@ -1297,6 +1293,13 @@ void performWarmRestart()
     g_switch_vid = switch_vid;
 
     g_sw = sw;
+
+    /*
+     * Populate gSwitchId since it's needed if we want to make multiple warm
+     * starts in a row.
+     */
+
+    gSwitchId = g_switch_rid;
 
     startDiagShell();
 }
