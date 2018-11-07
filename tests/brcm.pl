@@ -268,6 +268,15 @@ sub test_brcm_lag_no_members
     play "lag_no_members.rec", 0;
 }
 
+sub test_brcm_qos_map_order
+{
+    fresh_start;
+
+    # we expect no asic operation on qos maps that are the same but different order
+
+    play "qos_map_order.rec", 0;
+}
+
 sub test_brcm_acl_tables
 {
     fresh_start;
@@ -285,6 +294,7 @@ sub test_brcm_acl_tables
 # RUN TESTS
 
 test_brcm_acl_tables;
+test_brcm_qos_map_order;
 test_brcm_lag_no_members;
 test_brcm_rif_loopback;
 test_brcm_hostif;

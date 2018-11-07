@@ -1065,6 +1065,19 @@ json sai_serialize_qos_map(
     return j;
 }
 
+std::string sai_serialize_qos_map_item(
+        _In_ const sai_qos_map_t& qosmap)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["key"]    = sai_serialize_qos_map_params(qosmap.key);
+    j["value"]  = sai_serialize_qos_map_params(qosmap.value);;
+
+    return j.dump();
+}
+
 std::string sai_serialize_qos_map_list(
         _In_ const sai_qos_map_list_t& qosmap,
         _In_ bool countOnly)
