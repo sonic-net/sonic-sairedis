@@ -1313,7 +1313,7 @@ sai_status_t handle_generic(
 
                         sai_object_id_t switch_vid = redis_sai_switch_id_query(object_id);
 
-                        if (switches.at(switch_vid)->isDefaultCreatedRid(rid))
+                        if (switches.at(switch_vid)->isDiscoveredRid(rid))
                         {
                             switches.at(switch_vid)->removeExistingObjectReference(rid);
                         }
@@ -3329,8 +3329,6 @@ void onSyncdStart(bool warmStart)
      * need to use a lock here to prevent that.
      */
 
-
-
     SWSS_LOG_TIMER("on syncd start");
 
     if (warmStart)
@@ -3427,9 +3425,9 @@ int syncd_main(int argc, char **argv)
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    set_sai_api_loglevel();
+    //set_sai_api_loglevel();
 
-    swss::Logger::linkToDbNative("syncd");
+    //swss::Logger::linkToDbNative("syncd");
 
     swss::WarmStart::initialize("syncd", "syncd");
     swss::WarmStart::checkWarmStart("syncd");

@@ -199,4 +199,23 @@ sai_status_t meta_unittests_allow_readonly_set_once(
         _In_ sai_object_type_t object_type,
         _In_ int32_t attr_id);
 
+// POST VALIDATE
+
+/*
+ * Those functions will be used to recreate virtual switch local metadata state
+ * after WARM BOOT.
+ */
+
+void meta_warm_boot_notify();
+
+void meta_generic_validation_post_create(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ sai_object_id_t switch_id,
+        _In_ const uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list);
+
+void meta_generic_validation_post_set(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ const sai_attribute_t *attr);
+
 #endif // __SAI_META_H__

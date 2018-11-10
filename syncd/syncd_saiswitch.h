@@ -45,11 +45,39 @@ class SaiSwitch
          * If user will remove such RID, then this function will no longer
          * return true for that RID.
          *
+         * If in WARM boot mode this function will also return true for objects
+         * that were user created and present on the switch during init.
+         *
          * @param rid Real ID to be examined.
          *
          * @return True if RID was discovered during init.
          */
-        bool isDefaultCreatedRid(
+        bool isDiscoveredRid(
+                _In_ sai_object_id_t rid) const;
+
+        /**
+         * @brief Indicates whether RID was discovered on switch init at cold boot.
+         *
+         * During switch operation some RIDs are removable, like vlan member.
+         * If user will remove such RID, then this function will no longer
+         * return true for that RID.
+         *
+         * @param rid Real ID to be examined.
+         *
+         * @return True if RID was discovered during cald boot init.
+         */
+        bool isColdBootDiscoveredRid(
+                _In_ sai_object_id_t rid) const;
+
+        /**
+         * @brfief Indicates whether RID is one of default switch objects
+         * like CPU port, default virtual router etc.
+         *
+         * @param rid Real object id to examine.
+         *
+         * @return True if object is default switch object.
+         */
+        bool isSwitchObjectDefaultRid(
                 _In_ sai_object_id_t rid) const;
 
         /**
@@ -77,16 +105,18 @@ class SaiSwitch
                 _In_ const std::string &key);
 
         /**
-         * @brief Gets existing objects on the switch.
+         * @brief Gets discovered objects on the switch.
          *
          * This set can be different from discovered objects after switch init
          * when for example default VLAN members will be removed.
          *
          * This set can't grow, but it can be reduced.
          *
-         * @returns Default existing objects on the switch.
+         * Also if in WARM boot mode it can contain user created objects.
+         *
+         * @returns Discovered objects during switch init.
          */
-        std::set<sai_object_id_t> getExistingObjects() const;
+        std::set<sai_object_id_t> getDiscoveredRids() const;
 
         /**
          * @brief Gets default object based on switch attribute.
@@ -146,6 +176,13 @@ class SaiSwitch
                 _In_ sai_object_id_t rid,
                 _In_ sai_attr_id_t attr_id);
 
+        /**
+         * @biref Get cold boot discovered VIDs.
+         *
+         * @return Set of cold boot discovered VIDs after cold boot.
+         */
+        std::set<sai_object_id_t> getColdBootDiscoveredVids() const;
+
     private:
 
         /*
@@ -203,6 +240,10 @@ class SaiSwitch
          * Set of object IDs discovered after calling saiDiscovery method.
          * This set will contain all objects present on the switch right after
          * switch init.
+         *
+         * This set depending on the boot, can contain user created objects if
+         * switch was in WARM boot mode. This set can also change if user
+         * decides to remove some objects like VLAN_MEMBER.
          */
         std::set<sai_object_id_t> m_discovered_rids;
 
@@ -252,6 +293,16 @@ class SaiSwitch
         void redisSetDummyAsicStateForRealObjectId(
                 _In_ sai_object_id_t rid) const;
 
+        /**
+         * @brief Put cold boot discovered VIDs to redis DB.
+         *
+         * This method will only be called after cold boot and it will save
+         * only VIDs that are present on the switch after swtich is initialized
+         * so it will contain only discovered objects. In case of warm boot
+         * this method will not be called.
+         */
+        void redisSaveColdBootDiscoveredVids() const;
+
         /*
          * Helper Methods.
          */
@@ -285,9 +336,11 @@ class SaiSwitch
          */
         void helperDiscover();
 
-        void helperPutDiscoveredRidsToRedis();
+        void helperSaveDiscoveredObjectsToRedis();
 
         void helperInternalOids();
+
+        void helperLoadColdVids();
 
         /*
          * Other Methods.
@@ -314,6 +367,8 @@ class SaiSwitch
          * m_defaultOidMap[0x17][SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID] == 0x16
          */
         std::unordered_map<sai_object_id_t, std::unordered_map<sai_attr_id_t, sai_object_id_t>> m_defaultOidMap;
+
+        std::set<sai_object_id_t> m_coldBootDiscoveredVids;
 };
 
 extern std::map<sai_object_id_t, std::shared_ptr<SaiSwitch>> switches;

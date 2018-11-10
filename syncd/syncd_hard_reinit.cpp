@@ -264,7 +264,7 @@ void checkAllIds()
 
     for (sai_object_type_t ot: removeOrder)
     {
-        for (sai_object_id_t rid: g_sw->getExistingObjects())
+        for (sai_object_id_t rid: g_sw->getDiscoveredRids())
         {
             if (g_translatedR2V.find(rid) != g_translatedR2V.end())
             {
@@ -275,6 +275,20 @@ void checkAllIds()
                     ot == SAI_OBJECT_TYPE_NULL)
             {
                 g_sw->removeExistingObject(rid);
+
+                /*
+                 * If removing existing object, also make sure we remove it
+                 * from DEFAULTVID map since this object will no longer exists.
+                 */
+
+                if (g_ridToVidMap.find(rid) == g_ridToVidMap.end())
+                    continue;
+
+                std::string strVid = sai_serialize_object_id(g_ridToVidMap.at(rid));
+
+                SWSS_LOG_INFO("removeing existing VID: %s", strVid.c_str());
+
+                g_redisClient->hdel(COLDVIDS, strVid);
             }
         }
     }
@@ -440,6 +454,11 @@ void processSwitches()
 
         g_translatedV2R[switch_vid] = switch_rid;
         g_translatedR2V[switch_rid] = switch_vid;
+
+        /*
+         * SaiSwitch class object must be created before before any other
+         * object, so when doing discover we will get full default ASIC view.
+         */
 
         auto sw = switches[switch_vid] = std::make_shared<SaiSwitch>(switch_vid, switch_rid);
 
@@ -634,7 +653,7 @@ sai_object_id_t processSingleVid(
 
     sai_object_id_t rid;
 
-    if (g_sw->isDefaultCreatedRid(v2rMapIt->second))
+    if (g_sw->isDiscoveredRid(v2rMapIt->second))
     {
         rid = v2rMapIt->second;
 
@@ -741,7 +760,7 @@ sai_object_id_t processSingleVid(
                  * NOTE: We could do get here to see if it actually matches.
                  */
 
-                if (g_sw->isDefaultCreatedRid(rid))
+                if (g_sw->isDiscoveredRid(rid))
                 {
                     continue;
                 }
@@ -1160,7 +1179,7 @@ void hardReinit()
     processSwitches();
 
     {
-        SWSS_LOG_TIMER("processing objects after switch create");
+        //SWSS_LOG_TIMER("processing objects after switch create");
 
         processFdbs();
         processNeighbors();
