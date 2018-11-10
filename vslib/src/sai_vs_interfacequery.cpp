@@ -515,7 +515,7 @@ sai_status_t sai_api_initialize(
     g_warm_boot_read_file   = service_method_table->profile_get_value(0, SAI_KEY_WARM_BOOT_READ_FILE);
     g_warm_boot_write_file  = service_method_table->profile_get_value(0, SAI_KEY_WARM_BOOT_WRITE_FILE);
 
-    std::string bt = (g_boot_type == NULL) ? "" : g_boot_type;
+    std::string bt = (g_boot_type == NULL) ? "cold" : g_boot_type;
 
     if (bt == "cold" || bt == "0")
     {
