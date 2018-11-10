@@ -65,8 +65,6 @@ const sai_route_api_t vs_route_api = {
 
     VS_GENERIC_QUAD_API(route_entry)
 
-    // TODO: upstream signiture fix to SAI repo
-   // (sai_bulk_create_route_entry_fn)vs_bulk_create_route_entry,
     vs_bulk_create_route_entry,
     vs_bulk_remove_route_entry,
     vs_bulk_set_route_entry_attribute,

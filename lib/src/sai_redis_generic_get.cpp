@@ -263,50 +263,25 @@ sai_status_t redis_generic_get(
             attr_list);
 }
 
-sai_status_t redis_generic_get_fdb_entry(
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    std::string str_fdb_entry = sai_serialize_fdb_entry(*fdb_entry);
-
-    return internal_redis_generic_get(
-            SAI_OBJECT_TYPE_FDB_ENTRY,
-            str_fdb_entry,
-            attr_count,
-            attr_list);
+#define REDIS_ENTRY_GET(OT,ot)                          \
+sai_status_t redis_generic_get_ ## ot(                  \
+        _In_ const sai_ ## ot ## _t *entry,             \
+        _In_ uint32_t attr_count,                       \
+        _Out_ sai_attribute_t *attr_list)               \
+{                                                       \
+    SWSS_LOG_ENTER();                                   \
+    std::string str = sai_serialize_ ## ot(*entry);     \
+    return internal_redis_generic_get(                  \
+            SAI_OBJECT_TYPE_ ## OT,                     \
+            str,                                        \
+            attr_count,                                 \
+            attr_list);                                 \
 }
 
-sai_status_t redis_generic_get_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    std::string str_neighbor_entry = sai_serialize_neighbor_entry(*neighbor_entry);
-
-    return internal_redis_generic_get(
-            SAI_OBJECT_TYPE_NEIGHBOR_ENTRY,
-            str_neighbor_entry,
-            attr_count,
-            attr_list);
-}
-
-sai_status_t redis_generic_get_route_entry(
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    std::string str_route_entry = sai_serialize_route_entry(*route_entry);
-
-    return internal_redis_generic_get(
-            SAI_OBJECT_TYPE_ROUTE_ENTRY,
-            str_route_entry,
-            attr_count,
-            attr_list);
-}
+REDIS_ENTRY_GET(FDB_ENTRY,fdb_entry);
+REDIS_ENTRY_GET(INSEG_ENTRY,inseg_entry);
+REDIS_ENTRY_GET(IPMC_ENTRY,ipmc_entry);
+REDIS_ENTRY_GET(L2MC_ENTRY,l2mc_entry);
+REDIS_ENTRY_GET(MCAST_FDB_ENTRY,mcast_fdb_entry);
+REDIS_ENTRY_GET(NEIGHBOR_ENTRY,neighbor_entry);
+REDIS_ENTRY_GET(ROUTE_ENTRY,route_entry);

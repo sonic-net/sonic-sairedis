@@ -1,6 +1,7 @@
 #include "sai_redis.h"
+#include "sai_redis_internal.h"
 
-sai_status_t redis_create_vlan_members(
+sai_status_t redis_create_segmentroute_sidlists(
         _In_ sai_object_id_t switch_id,
         _In_ uint32_t object_count,
         _In_ const uint32_t *attr_count,
@@ -16,7 +17,7 @@ sai_status_t redis_create_vlan_members(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t redis_remove_vlan_members(
+sai_status_t redis_remove_segmentroute_sidlists(
         _In_ uint32_t object_count,
         _In_ const sai_object_id_t *object_id,
         _In_ sai_bulk_op_error_mode_t mode,
@@ -29,17 +30,12 @@ sai_status_t redis_remove_vlan_members(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-REDIS_GENERIC_QUAD(VLAN,vlan);
-REDIS_GENERIC_QUAD(VLAN_MEMBER,vlan_member);
-REDIS_GENERIC_STATS(VLAN,vlan);
+REDIS_GENERIC_QUAD(SEGMENTROUTE_SIDLIST,segmentroute_sidlist);
 
-const sai_vlan_api_t redis_vlan_api = {
+const sai_segmentroute_api_t redis_segmentroute_api = {
 
-    REDIS_GENERIC_QUAD_API(vlan)
-    REDIS_GENERIC_QUAD_API(vlan_member)
+    REDIS_GENERIC_QUAD_API(segmentroute_sidlist)
 
-    redis_create_vlan_members,
-    redis_remove_vlan_members,
-
-    REDIS_GENERIC_STATS_API(vlan)
+    redis_create_segmentroute_sidlists,
+    redis_remove_segmentroute_sidlists,
 };

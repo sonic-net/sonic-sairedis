@@ -217,7 +217,7 @@ void test_bulk_next_hop_group_member_create()
     ASSERT_SUCCESS("Failed to create switch");
 
     std::vector<std::vector<sai_attribute_t>> nhgm_attrs;
-    std::vector<sai_attribute_t *> nhgm_attrs_array;
+    std::vector<const sai_attribute_t *> nhgm_attrs_array;
     std::vector<uint32_t> nhgm_attrs_count;
 
     // next hop group
@@ -257,8 +257,7 @@ void test_bulk_next_hop_group_member_create()
 
     std::vector<sai_status_t> statuses(count);
     std::vector<sai_object_id_t> object_id(count);
-    sai_bulk_create_next_hop_group_members(switch_id, count, nhgm_attrs_count.data(), nhgm_attrs_array.data()
-        , SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, object_id.data(), statuses.data());
+    sai_bulk_create_next_hop_group_members(switch_id, count, nhgm_attrs_count.data(), nhgm_attrs_array.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, object_id.data(), statuses.data());
     ASSERT_SUCCESS("Failed to bulk create nhgm");
     for (size_t j = 0; j < statuses.size(); j++)
     {
@@ -430,7 +429,7 @@ void test_bulk_route_set()
     ASSERT_SUCCESS("Failed to create switch");
 
     std::vector<std::vector<sai_attribute_t>> route_attrs;
-    std::vector<sai_attribute_t *> route_attrs_array;
+    std::vector<const sai_attribute_t *> route_attrs_array;
     std::vector<uint32_t> route_attrs_count;
 
     for (uint32_t i = index; i < index + count; ++i)
@@ -477,8 +476,7 @@ void test_bulk_route_set()
     }
 
     std::vector<sai_status_t> statuses(count);
-    status = sai_bulk_create_route_entry(count, routes.data(), route_attrs_count.data(), route_attrs_array.data()
-        , SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
+    status = sai_bulk_create_route_entry(count, routes.data(), route_attrs_count.data(), route_attrs_array.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to create route");
     for (size_t j = 0; j < statuses.size(); j++)
     {

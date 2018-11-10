@@ -7,23 +7,13 @@
  * this will need to be corrected later.
  */
 
-sai_switch_state_change_notification_fn     on_switch_state_change = NULL;
-sai_switch_shutdown_request_notification_fn on_switch_shutdown_request_notification = NULL;
-sai_fdb_event_notification_fn               on_fdb_event = NULL;
-sai_port_state_change_notification_fn       on_port_state_change = NULL;
-sai_packet_event_notification_fn            on_packet_event = NULL;
-sai_queue_pfc_deadlock_notification_fn      on_queue_deadlock = NULL;
+sai_switch_notifications_t sn;
 
 void clear_notifications()
 {
     SWSS_LOG_ENTER();
 
-    on_switch_state_change = NULL;
-    on_switch_shutdown_request_notification = NULL;
-    on_fdb_event = NULL;
-    on_port_state_change = NULL;
-    on_packet_event = NULL;
-    on_queue_deadlock = NULL;
+    memset(&sn, 0, sizeof(sn));
 }
 
 void check_notifications_pointers(
@@ -57,27 +47,27 @@ void check_notifications_pointers(
         switch (attr.id)
         {
             case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                on_switch_state_change = (sai_switch_state_change_notification_fn)attr.value.ptr;
+                sn.on_switch_state_change = (sai_switch_state_change_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                on_switch_shutdown_request_notification = (sai_switch_shutdown_request_notification_fn)attr.value.ptr;
+                sn.on_switch_shutdown_request = (sai_switch_shutdown_request_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                on_fdb_event = (sai_fdb_event_notification_fn)attr.value.ptr;
+                sn.on_fdb_event = (sai_fdb_event_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                on_port_state_change = (sai_port_state_change_notification_fn)attr.value.ptr;
+                sn.on_port_state_change = (sai_port_state_change_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
-                on_packet_event = (sai_packet_event_notification_fn)attr.value.ptr;
+                sn.on_packet_event = (sai_packet_event_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                on_queue_deadlock = (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
+                sn.on_queue_pfc_deadlock = (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
                 break;
 
             default:
@@ -99,9 +89,9 @@ void handle_switch_state_change(
 
     sai_deserialize_switch_oper_status(data, switch_id, switch_oper_status);
 
-    if (on_switch_state_change != NULL)
+    if (sn.on_switch_state_change != NULL)
     {
-        on_switch_state_change(switch_id, switch_oper_status);
+        sn.on_switch_state_change(switch_id, switch_oper_status);
     }
 }
 
@@ -127,9 +117,9 @@ void handle_fdb_event(
         meta_sai_on_fdb_event(count, fdbevent);
     }
 
-    if (on_fdb_event != NULL)
+    if (sn.on_fdb_event != NULL)
     {
-        on_fdb_event(count, fdbevent);
+        sn.on_fdb_event(count, fdbevent);
     }
 
     sai_deserialize_free_fdb_event_ntf(count, fdbevent);
@@ -147,9 +137,9 @@ void handle_port_state_change(
 
     sai_deserialize_port_oper_status_ntf(data, count, &portoperstatus);
 
-    if (on_port_state_change != NULL)
+    if (sn.on_port_state_change != NULL)
     {
-        on_port_state_change(count, portoperstatus);
+        sn.on_port_state_change(count, portoperstatus);
     }
 
     sai_deserialize_free_port_oper_status_ntf(count, portoperstatus);
@@ -166,9 +156,9 @@ void handle_switch_shutdown_request(
 
     sai_deserialize_switch_shutdown_request(data, switch_id);
 
-    if (on_switch_shutdown_request_notification != NULL)
+    if (sn.on_switch_shutdown_request != NULL)
     {
-        on_switch_shutdown_request_notification(switch_id);
+        sn.on_switch_shutdown_request(switch_id);
     }
 }
 
@@ -182,7 +172,7 @@ void handle_packet_event(
 
     SWSS_LOG_ERROR("not implemented");
 
-    if (on_packet_event != NULL)
+    if (sn.on_packet_event != NULL)
     {
         //on_packet_event(switch_id, buffer.data(), buffer_size, list.get_attr_count(), list.get_attr_list());
     }
@@ -200,9 +190,9 @@ void handle_queue_deadlock_event(
 
     sai_deserialize_queue_deadlock_ntf(data, count, &ntfData);
 
-    if (on_queue_deadlock != NULL)
+    if (sn.on_queue_pfc_deadlock != NULL)
     {
-        on_queue_deadlock(count, ntfData);
+        sn.on_queue_pfc_deadlock(count, ntfData);
     }
 
     sai_deserialize_free_queue_deadlock_ntf(count, ntfData);

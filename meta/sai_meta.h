@@ -39,14 +39,6 @@ typedef sai_status_t (*sai_get_generic_attribute_fn)(
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list);
 
-template <typename T>
-using sai_get_generic_stats_fn = sai_status_t (*)(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
-        _In_ uint32_t count,
-        _In_ const T* counter_id_list,
-        _Out_ uint64_t *counter_list);
-
 // META GENERIC
 
 extern sai_status_t meta_sai_create_oid(
@@ -74,15 +66,6 @@ extern sai_status_t meta_sai_get_oid(
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list,
         _In_ sai_get_generic_attribute_fn get);
-
-template<typename T>
-extern sai_status_t meta_sai_get_stats_oid(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
-        _In_ uint32_t count,
-        _In_ const T* counter_id_list,
-        _Inout_ uint64_t *counter_list,
-        _In_ sai_get_generic_stats_fn<T> get);
 
 // META ENTRY QUAD
 
@@ -124,6 +107,25 @@ META_QUAD_ENTRY(l2mc_entry);
 META_QUAD_ENTRY(mcast_fdb_entry);
 META_QUAD_ENTRY(neighbor_entry);
 META_QUAD_ENTRY(route_entry);
+
+// STATS
+
+typedef sai_status_t (*sai_get_generic_stats_fn)(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t *enum_metadata,
+        _In_ uint32_t number_of_counters,
+        _In_ const int32_t *counter_ids,
+        _Out_ uint64_t *counters);
+
+sai_status_t meta_sai_get_stats_oid(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t* stats_enum,
+        _In_ uint32_t count,
+        _In_ const int32_t *counter_id_list,
+        _Out_ uint64_t *counter_list,
+        _In_ sai_get_generic_stats_fn get_stats);
 
 // NOTIFICATIONS
 

@@ -2470,55 +2470,6 @@ sai_status_t meta_generic_validation_get(
     return SAI_STATUS_SUCCESS;
 }
 
-template <typename T>
-sai_status_t meta_generic_validation_get_stats(
-        _In_ const sai_object_meta_key_t& meta_key,
-        _In_ uint32_t count,
-        _In_ const T *counter_id_list,
-        _In_ const uint64_t *counter_list)
-{
-    SWSS_LOG_ENTER();
-
-    if (meta_unittests_enabled() && (count & 0x80000000))
-    {
-        /*
-         * If last bit of counters count is set to high, and unittests are enabled,
-         * then this api can be used to SET counter values by user for debugging purposes.
-         */
-        count = count & ~0x80000000;
-    }
-
-    if (count < 1)
-    {
-        SWSS_LOG_ERROR("expected at least 1 stat when calling get_stats, zero given");
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    if (count > MAX_LIST_COUNT)
-    {
-        SWSS_LOG_ERROR("get stats count %u > max list count %u", count, MAX_LIST_COUNT);
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    if (counter_id_list == NULL)
-    {
-        SWSS_LOG_ERROR("counter id list pointer is NULL");
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    if (counter_list == NULL)
-    {
-        SWSS_LOG_ERROR("counter list pointer is NULL");
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    return SAI_STATUS_SUCCESS;
-}
-
 void meta_generic_validation_post_create(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
@@ -5759,18 +5710,88 @@ sai_status_t meta_sai_get_oid(
     return status;
 }
 
-template <typename T>
-sai_status_t meta_sai_get_stats_oid(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
+// STATS
+
+sai_status_t meta_generic_validation_get_stats(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ const sai_enum_metadata_t* stats_enum,
         _In_ uint32_t count,
-        _In_ const T* counter_id_list,
-        _Out_ uint64_t *counter_list,
-        _In_ sai_get_generic_stats_fn<T> get)
+        _In_ const int32_t *counter_id_list,
+        _In_ const uint64_t *counter_list)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, SAI_NULL_OBJECT_ID, false);
+    if (meta_unittests_enabled() && (count & 0x80000000))
+    {
+        /*
+         * If last bit of counters count is set to high, and unittests are enabled,
+         * then this api can be used to SET counter values by user for debugging purposes.
+         */
+        count = count & ~0x80000000;
+    }
+
+    if (count < 1)
+    {
+        SWSS_LOG_ERROR("expected at least 1 stat when calling get_stats, zero given");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (count > MAX_LIST_COUNT)
+    {
+        SWSS_LOG_ERROR("get stats count %u > max list count %u", count, MAX_LIST_COUNT);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (counter_id_list == NULL)
+    {
+        SWSS_LOG_ERROR("counter id list pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (counter_list == NULL)
+    {
+        SWSS_LOG_ERROR("counter list pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (stats_enum == NULL)
+    {
+        SWSS_LOG_ERROR("enum metadata pointer is NULL, bug?");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        if (sai_metadata_get_enum_value_name(stats_enum, counter_id_list[i]) == NULL)
+        {
+            SWSS_LOG_ERROR("counter id %u is not allowed on %s", counter_id_list[i], stats_enum->name);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t meta_sai_get_stats_oid(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t* stats_enum,
+        _In_ uint32_t count,
+        _In_ const int32_t *counter_id_list,
+        _Out_ uint64_t *counter_list,
+        _In_ sai_get_generic_stats_fn get_stats)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_id = sai_switch_id_query(object_id);
+
+    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, switch_id, false);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -5779,42 +5800,26 @@ sai_status_t meta_sai_get_stats_oid(
 
     sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id } } };
 
-    status = meta_generic_validation_get_stats(meta_key, count, counter_id_list, counter_list);
+    status = meta_generic_validation_get_stats(meta_key, stats_enum, count, counter_id_list, counter_list);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    if (get == NULL)
+    if (get_stats == NULL)
     {
         SWSS_LOG_ERROR("get function pointer is NULL");
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    status = get(object_type, object_id, count, counter_id_list, counter_list);
+    status = get_stats(object_type, object_id, stats_enum, count, counter_id_list, counter_list);
 
     META_LOG_STATUS(status);
 
     return status;
 }
-
-#define DECLARE_META_GET_STATS_OID(type)                               \
-    template                                                           \
-    sai_status_t meta_sai_get_stats_oid<sai_ ## type ## _stat_t>(      \
-        _In_ sai_object_type_t object_type,                            \
-        _In_ sai_object_id_t object_id,                                \
-        _In_ uint32_t count,                                           \
-        _In_ const sai_ ## type ## _stat_t* counter_id_list,           \
-        _Out_ uint64_t *counter_list,                                  \
-        _In_ sai_get_generic_stats_fn<sai_ ## type ## _stat_t> get);
-
-DECLARE_META_GET_STATS_OID(port);
-DECLARE_META_GET_STATS_OID(port_pool);
-DECLARE_META_GET_STATS_OID(queue);
-DECLARE_META_GET_STATS_OID(ingress_priority_group);
-DECLARE_META_GET_STATS_OID(tunnel);
 
 // NOTIFICATIONS
 
