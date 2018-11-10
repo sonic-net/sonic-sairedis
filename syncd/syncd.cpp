@@ -3425,9 +3425,9 @@ int syncd_main(int argc, char **argv)
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    set_sai_api_loglevel();
+    //set_sai_api_loglevel();
 
-    swss::Logger::linkToDbNative("syncd");
+    //swss::Logger::linkToDbNative("syncd");
 
     swss::WarmStart::initialize("syncd", "syncd");
     swss::WarmStart::checkWarmStart("syncd", "syncd");

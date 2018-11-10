@@ -367,6 +367,179 @@ std::shared_ptr<SwitchState> vs_read_switch_database_for_warm_restart(
     return ss;
 }
 
+void vs_validate_switch_warm_boot_atributes(
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * When in warm boot, as init attributes on switch we only allow
+     * notifications and init attribute.  Actually we should check if
+     * notifications we pass are the same as the one that we have in dumped db,
+     * if not we should set missing one to NULL ptr.
+     */
+
+    for (uint32_t i = 0; i < attr_count; ++i)
+    {
+        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr_list[i].id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_THROW("failed to find metadata for switch attribute %d", attr_list[i].id);
+        }
+
+        if (meta->attrid == SAI_SWITCH_ATTR_INIT_SWITCH)
+            continue;
+
+        if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
+            continue;
+
+        SWSS_LOG_THROW("attribute %s ist not INIT and not notification, not supported in warm boot", meta->attridname);
+    }
+}
+
+void vs_update_local_metadata(
+        _In_ sai_object_id_t switch_id)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * After warm boot we recreated all ASIC state, but since we are using
+     * meta_* to check all needed data, we need to use post_create/post_set
+     * methods to recreate state in local metadata so when next APIs will be
+     * called, we could check the actual state.
+     */
+
+    auto &objectHash = g_switch_state_map.at(switch_id)->objectHash;//.at(object_type);
+
+    // first create switch
+    // first we need to create all "oid" objects to have reference base
+    // then set all object attributes on those oids
+    // then create all non oid like route etc.
+
+    /*
+     * First update switch, since all non switch objects will be using
+     * sai_switch_id_query to check if oid is valid.
+     */
+
+    sai_object_meta_key_t mk;
+
+    mk.objecttype = SAI_OBJECT_TYPE_SWITCH;
+    mk.objectkey.key.object_id = switch_id;
+
+    meta_generic_validation_post_create(mk, switch_id, 0, NULL);
+
+    /*
+     * Create every non object id except switch. Switch object was already
+     * created above, and non object ids like route may contain other obejct
+     * id's inside *_entry struct, and since metadata is checking reference of
+     * those objects, they must exists first.
+     */
+
+    for (auto kvp: objectHash)
+    {
+        sai_object_type_t ot = kvp.first;
+
+        if (ot == SAI_OBJECT_TYPE_NULL)
+            continue;
+
+        if (ot == SAI_OBJECT_TYPE_SWITCH)
+            continue;
+
+        auto info = sai_metadata_get_object_type_info(ot);
+
+        if (info == NULL)
+            SWSS_LOG_THROW("failed to get object type info for object type %d", ot);
+
+        if (info->isnonobjectid)
+            continue;
+
+        mk.objecttype = ot;
+
+        for (auto obj: kvp.second)
+        {
+            sai_deserialize_object_id(obj.first, mk.objectkey.key.object_id);
+
+            meta_generic_validation_post_create(mk, switch_id, 0, NULL);
+        }
+    }
+
+    /*
+     * Create all non object id's. All oids are created, so objects inside
+     * *_entry structs can be referenced correctly.
+     */
+
+    for (auto kvp: objectHash)
+    {
+        sai_object_type_t ot = kvp.first;
+
+        if (ot == SAI_OBJECT_TYPE_NULL)
+            continue;
+
+        auto info = sai_metadata_get_object_type_info(ot);
+
+        if (info == NULL)
+            SWSS_LOG_THROW("failed to get object type info for object type %d", ot);
+
+        if (info->isobjectid)
+            continue;
+
+        for (auto obj: kvp.second)
+        {
+            std::string key = std::string(info->objecttypename) + ":" + obj.first;
+
+            sai_deserialize_object_meta_key(key, mk);
+
+            meta_generic_validation_post_create(mk, switch_id, 0, NULL);
+        }
+    }
+
+    /*
+     * Set all attributes on all objects. Since attributes maybe OID attributes
+     * we need to set them too for correct reference count.
+     */
+
+    for (auto kvp: objectHash)
+    {
+        sai_object_type_t ot = kvp.first;
+
+        if (ot == SAI_OBJECT_TYPE_NULL)
+            continue;
+
+        auto info = sai_metadata_get_object_type_info(ot);
+
+        if (info == NULL)
+            SWSS_LOG_THROW("failed to get object type info for object type %d", ot);
+
+        for (auto obj: kvp.second)
+        {
+            std::string key = std::string(info->objecttypename) + ":" + obj.first;
+
+            sai_deserialize_object_meta_key(key, mk);
+
+            for (auto a: obj.second)
+            {
+                auto meta = a.second->getAttrMetadata();
+
+                if (meta->isreadonly)
+                    continue;
+
+                meta_generic_validation_post_set(mk, a.second->getAttr());
+            }
+        }
+    }
+
+    /*
+     * Since this method is called inside internal_vs_generic_create next
+     * meta_generic_validation_post_create will be called after success return
+     * of meta_sai_create_oid and it would fail since we already created switch
+     * so we need to notify metadata that this is warm boot.
+     */
+
+    meta_warm_boot_notify();
+}
+
 sai_status_t internal_vs_generic_create(
         _In_ sai_object_type_t object_type,
         _In_ const std::string &serialized_object_id,
@@ -383,6 +556,8 @@ sai_status_t internal_vs_generic_create(
         if (g_vs_boot_type == SAI_VS_WARM_BOOT)
         {
             warmBootState = vs_read_switch_database_for_warm_restart(switch_id);
+
+            vs_validate_switch_warm_boot_atributes(attr_count, attr_list);
         }
 
         switch (g_vs_switch_type)
@@ -403,6 +578,8 @@ sai_status_t internal_vs_generic_create(
         if (warmBootState != nullptr)
         {
             vs_update_real_object_ids(warmBootState);
+
+            vs_update_local_metadata(switch_id);
         }
     }
 

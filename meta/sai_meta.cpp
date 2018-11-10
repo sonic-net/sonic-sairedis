@@ -2485,6 +2485,17 @@ sai_status_t meta_generic_validation_get(
     return SAI_STATUS_SUCCESS;
 }
 
+bool warmBoot = false;
+
+void meta_warm_boot_notify()
+{
+    SWSS_LOG_ENTER();
+
+    warmBoot = true;
+
+    SWSS_LOG_NOTICE("warmBoot = true");
+}
+
 void meta_generic_validation_post_create(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
@@ -2497,12 +2508,26 @@ void meta_generic_validation_post_create(
 
     if (object_exists(key))
     {
-        SWSS_LOG_ERROR("object key %s already exists (vendor bug?)", key.c_str());
+        if (warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+        {
+            SWSS_LOG_NOTICE("post switch create after WARM BOOT");
+        }
+        else
+        {
+            SWSS_LOG_ERROR("object key %s already exists (vendor bug?)", key.c_str());
 
-        // this may produce inconsistency
+            // this may produce inconsistency
+        }
     }
 
-    create_object(meta_key);
+    if (warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+    {
+        SWSS_LOG_NOTICE("skipping create switch on WARM BOOT since it was already created");
+    }
+    else
+    {
+        create_object(meta_key);
+    }
 
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
 
@@ -2581,9 +2606,23 @@ void meta_generic_validation_post_create(
                 }
             }
 
-            object_reference_insert(oid);
+            if (warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+            {
+                SWSS_LOG_NOTICE("skip insert switch reference insert in WARM_BOOT");
+            }
+            else
+            {
+                object_reference_insert(oid);
+            }
 
         } while (false);
+    }
+
+    if (warmBoot)
+    {
+        SWSS_LOG_NOTICE("warmBoot = false");
+
+        warmBoot = false;
     }
 
     bool haskeys;
