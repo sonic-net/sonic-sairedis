@@ -4292,6 +4292,10 @@ bool isNonRemovableObject(
         return sw->isNonRemovableRid(rid);
     }
 
+    /*
+     * Object is non object id, like ROUTE_ENTRY etc, can be removed.
+     */
+
     return false;
 }
 
@@ -5361,8 +5365,6 @@ bool performObjectSetTransition(
          * values actually exists.
          */
 
-        bool isDefaultCreatedRid = false;
-
         if (currentBestMatch->isOidObject())
         {
             sai_object_id_t vid = currentBestMatch->getVid();
@@ -5379,9 +5381,7 @@ bool performObjectSetTransition(
 
                 auto sw = switches.begin()->second;
 
-                isDefaultCreatedRid = sw->isDefaultCreatedRid(rid);
-
-                if (isDefaultCreatedRid)
+                if (sw->isDiscoveredRid(rid))
                 {
                     SWSS_LOG_INFO("performing default on existing object VID %s: %s: %s, we need default dependency TREE, FIXME",
                             sai_serialize_object_id(vid).c_str(),
@@ -5481,7 +5481,7 @@ bool performObjectSetTransition(
                 }
 
                // SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE
-               // SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID
+               // SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID*
                // SAI_SCHEDULER_GROUP_ATTR_PARENT_NODE
                // SAI_BRIDGE_PORT_ATTR_BRIDGE_ID
                //
@@ -5492,6 +5492,7 @@ bool performObjectSetTransition(
                 // TODO SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID is mandatory on create but also SET
                 // if attribute is set we and object is in MATCHED state then that means we are able to
                 // bring this attribute to default state not for all attributes!
+                // *SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID - is not any more mandatory on create, so default should be NULL
 
                 SWSS_LOG_ERROR("current attribute is mandatory on create, crate and set, and object MATCHED, FIXME %s %s:%s",
                         currentBestMatch->str_object_id.c_str(),
@@ -6173,6 +6174,12 @@ void populateExistingObjects(
         return;
     }
 
+    // XXX we have only 1 switch, so we can get away with this
+
+    auto sw = switches.begin()->second;
+
+    auto coldBootDiscoveredVids = sw->getColdBootDiscoveredVids();
+
     /*
      * If some objects that are existing objects on switch are not present in
      * temporary view, just populate them with empty values.  Since vid2rid
@@ -6218,9 +6225,44 @@ void populateExistingObjects(
             continue;
         }
 
-        // TODO this object in current view may have some attributes, we need to copy them
-        // to temp view, so they match on compare, or in case of those objects matched
-        // just ignore operations ? what about attributes with oids?
+        /*
+         * In case of warm boot, it may happen that user set some created
+         * objects on default existing objects, like for example buffer profile
+         * on ingress priority group.  In this case buffer profile should not
+         * be considered as matched object and copied to temporary view, since
+         * this object was not decault existing object (on 1st cold boot) so in
+         * this case it must be processed by comparison logic and matched with
+         * possible new buffer profile created in temporary view. This may
+         * happen if OA will not care what was set previously on ingress
+         * priority group and just create new buffer profile and assign it.  In
+         * this case we don't want any asic operations to happen.  Also if we
+         * would pass this buffer profile as existing to temporary view, it
+         * would not be matched by comparison logic, and in the result we will
+         * end up with 2 buffer profiles, which 1st of them will be not
+         * assigned anywhere and this will be memory leak.
+         *
+         * Also a bunch of new asic operations will be generated for setting
+         * new user created buffer profile.  Thats why we need default existing
+         * vid list to distinguish between user created and default switch
+         * created obejcts.
+         *
+         * For default existing objects, we don't need to copy attributes, since
+         * if user didn't set them, we want them to be back to default values.
+         *
+         * NOTE: If we are here, then this RID exists only in current view, and
+         * if this object contains any OID attributes, discovery logic queried
+         * them so they are also existing in current view.
+         */
+
+        if (coldBootDiscoveredVids.find(vid) == coldBootDiscoveredVids.end())
+        {
+            SWSS_LOG_INFO("object is not on default existing list: %s RID %s VID %s",
+                    sai_serialize_object_type(sai_object_type_query(rid)).c_str(),
+                    sai_serialize_object_id(rid).c_str(),
+                    sai_serialize_object_id(vid).c_str());
+
+            continue;
+        }
 
         temporaryView.createDummyExistingObject(rid, vid);
 
@@ -6456,7 +6498,7 @@ sai_status_t syncdApplyView()
          * existing objects needs to be updated in the switch!
          */
 
-        const auto &existingObjects = sw->getExistingObjects();
+        const auto &existingObjects = sw->getDiscoveredRids();
 
         populateExistingObjects(current, temp, existingObjects);
 
@@ -6814,7 +6856,7 @@ sai_status_t asic_handle_generic(
 
                     auto sw = switches.begin()->second;
 
-                    if (sw->isDefaultCreatedRid(rid))
+                    if (sw->isDiscoveredRid(rid))
                     {
                         sw->removeExistingObjectReference(rid);
                     }

@@ -413,7 +413,7 @@ std::string SaiSwitch::getHardwareInfo() const
     return m_hardware_info;
 }
 
-bool SaiSwitch::isDefaultCreatedRid(
+bool SaiSwitch::isDiscoveredRid(
         _In_ sai_object_id_t rid) const
 {
     SWSS_LOG_ENTER();
@@ -421,7 +421,7 @@ bool SaiSwitch::isDefaultCreatedRid(
     return m_discovered_rids.find(rid) != m_discovered_rids.end();
 }
 
-std::set<sai_object_id_t> SaiSwitch::getExistingObjects() const
+std::set<sai_object_id_t> SaiSwitch::getDiscoveredRids() const
 {
     SWSS_LOG_ENTER();
 
@@ -619,6 +619,39 @@ sai_object_id_t SaiSwitch::getSwitchDefaultAttrOid(
     return it->second;
 }
 
+bool SaiSwitch::isColdBootDiscoveredRid(
+        _In_ sai_object_id_t rid) const
+{
+    SWSS_LOG_ENTER();
+
+    auto coldBootDiscoveredVids = getColdBootDiscoveredVids();
+
+    /*
+     * If obejct was discovered in cold boot, it must have valid RID assigned,
+     * except objects that were removed like VLAN_MEMBER.
+     */
+
+    sai_object_id_t vid = translate_rid_to_vid(rid, m_switch_vid);
+
+    return coldBootDiscoveredVids.find(vid) != coldBootDiscoveredVids.end();
+}
+
+bool SaiSwitch::isSwitchObjectDefaultRid(
+        _In_ sai_object_id_t rid) const
+{
+    SWSS_LOG_ENTER();
+
+    for (const auto &p: m_default_rid_map)
+    {
+        if (p.second == rid)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool SaiSwitch::isNonRemovableRid(
         _In_ sai_object_id_t rid) const
 {
@@ -629,21 +662,23 @@ bool SaiSwitch::isNonRemovableRid(
         SWSS_LOG_THROW("NULL rid passed");
     }
 
-    if (!isDefaultCreatedRid(rid))
+    if (!isColdBootDiscoveredRid(rid))
     {
         /*
-         * Non discovered obejct, it can be removed.
+         * This object was not discovered on cold boot so it can be removed.
          */
 
         return false;
     }
 
-    for (const auto &p: m_default_rid_map)
+    /*
+     * Check for SAI_SWITCH_ATTR_DEFAULT_* oids like cpu, default virtual
+     * router.  Those objects can't be removed if user ask for it.
+     */
+
+    if (isSwitchObjectDefaultRid(rid))
     {
-        if (p.second == rid)
-        {
-            return true;
-        }
+        return true;
     }
 
     sai_object_type_t ot = sai_object_type_query(rid);
@@ -672,6 +707,12 @@ bool SaiSwitch::isNonRemovableRid(
         case SAI_OBJECT_TYPE_VLAN_MEMBER:
         case SAI_OBJECT_TYPE_STP_PORT:
         case SAI_OBJECT_TYPE_BRIDGE_PORT:
+
+            /*
+             * Those objects were discovered during cold boot, but they can
+             * still be removed since switch allows that.
+             */
+
             return false;
 
         case SAI_OBJECT_TYPE_PORT:
@@ -752,7 +793,6 @@ void SaiSwitch::saiDiscover(
         discovered.insert(rid);
     }
 
-    // TODO later use sai_metadata_get_object_type_info(ot);
     const sai_object_type_info_t *info =  sai_metadata_get_object_type_info(ot);
 
     /*
@@ -926,8 +966,11 @@ void SaiSwitch::helperDiscover()
 
     {
         SWSS_LOG_TIMER("discover");
+
         set_sai_api_log_min_prio("SAI_LOG_LEVEL_CRITICAL");
+
         saiDiscover(m_switch_rid, m_discovered_rids);
+
         set_sai_api_log_min_prio("SAI_LOG_LEVEL_NOTICE");
     }
 
@@ -951,11 +994,100 @@ void SaiSwitch::helperDiscover()
     }
 }
 
-void SaiSwitch::helperPutDiscoveredRidsToRedis()
+void SaiSwitch::helperLoadColdVids()
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_TIMER("put discovered objects to redis");
+    auto hash = g_redisClient->hgetall(COLDVIDS);
+
+    /*
+     * NOTE: some objects may not exists after 2nd restart, like VLAN_MEMBER or
+     * BRIDGE_PORT, since user could decide to remove them on previous boot.
+     */
+
+    for (auto kvp: hash)
+    {
+        auto strVid = kvp.first;
+
+        sai_object_id_t vid;
+        sai_deserialize_object_id(strVid, vid);
+
+        /*
+         * Just make sure that vid in COLDVIDS is present in current vid2rid map
+         */
+
+        auto rid = g_redisClient->hget(VIDTORID, strVid);
+
+        if (rid == nullptr)
+        {
+            SWSS_LOG_INFO("no RID for VID %s, probably object was removed previously", strVid.c_str());
+        }
+
+         m_coldBootDiscoveredVids.insert(vid);
+    }
+
+    SWSS_LOG_NOTICE("read %zu COLD VIDS", m_coldBootDiscoveredVids.size());
+}
+
+std::set<sai_object_id_t> SaiSwitch::getColdBootDiscoveredVids() const
+{
+    SWSS_LOG_ENTER();
+
+    if (m_coldBootDiscoveredVids.size() != 0)
+    {
+        return m_coldBootDiscoveredVids;
+    }
+
+    /*
+     * Normally we should throw here, but we want to keep backward
+     * compatybility and don't break anything.
+     */
+
+    SWSS_LOG_WARN("cold boot discovered VIDs set is empty, using discovered set");
+
+    std::set<sai_object_id_t> discoveredVids;
+
+    for (sai_object_id_t rid: m_discovered_rids)
+    {
+        sai_object_id_t vid = translate_rid_to_vid(rid, m_switch_vid);
+
+        discoveredVids.insert(vid);
+    }
+
+    return discoveredVids;
+}
+
+void SaiSwitch::redisSaveColdBootDiscoveredVids() const
+{
+    SWSS_LOG_ENTER();
+
+    for (sai_object_id_t rid: m_discovered_rids)
+    {
+        sai_object_id_t vid = translate_rid_to_vid(rid, m_switch_vid);
+
+        sai_object_type_t objectType = sai_object_type_query(rid);
+
+        if (objectType == SAI_OBJECT_TYPE_NULL)
+        {
+            SWSS_LOG_THROW("sai_object_type_query returned NULL type for RID: %s",
+                    sai_serialize_object_id(rid).c_str());
+        }
+
+        std::string strObjectType = sai_serialize_object_type(objectType);
+
+        std::string strVid = sai_serialize_object_id(vid);
+
+        g_redisClient->hset(COLDVIDS, strVid, strObjectType);
+    }
+
+    SWSS_LOG_NOTICE("put default discovered vids to redis");
+}
+
+void SaiSwitch::helperSaveDiscoveredObjectsToRedis()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_TIMER("save discovered objects to redis");
 
     /*
      * There is a problem:
@@ -1030,6 +1162,24 @@ void SaiSwitch::helperPutDiscoveredRidsToRedis()
 
         redisSetDummyAsicStateForRealObjectId(rid);
     }
+
+    /*
+     * If we are here, this is probably COLD boot, since any previous boot
+     * would put lots of objects into redis DB (ports, queues, scheduler_groups
+     * etc), and since this is cold boot, we can put those discovered objects
+     * to cold boot objects map to redis DB. This will become handy when doing
+     * warm boot and figureing out which object is default created and which is
+     * user created, since after warm boot user could previously assign buffer
+     * profile on ingress priority group and this buffer profile will be
+     * discovered by sai discovery logic.
+     *
+     * Question is here whether we should put VID here or RID. And after cold
+     * boot when hard reinit logic happens, we need to remap them, also note
+     * that some object could be removed like VLAN members and they will not
+     * have existing corresponding OID.
+     */
+
+    redisSaveColdBootDiscoveredVids();
 }
 
 void SaiSwitch::helperInternalOids()
@@ -1104,11 +1254,13 @@ SaiSwitch::SaiSwitch(
 
     helperDiscover();
 
-    helperPutDiscoveredRidsToRedis();
+    helperSaveDiscoveredObjectsToRedis();
 
     helperInternalOids();
 
     helperCheckLaneMap();
+
+    helperLoadColdVids();
 
     saiGetMacAddress(m_default_mac_address);
 }
