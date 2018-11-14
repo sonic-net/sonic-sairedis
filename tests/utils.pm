@@ -51,6 +51,22 @@ sub start_syncd
     `./vssyncd -SUu -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
 }
 
+sub start_syncd_warm
+{
+    print color('bright_blue') . "Starting syncd warm" . color('reset') . "\n";
+    `./vssyncd -SUu -t warm -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+    
+    sleep 1;
+}
+
+sub request_warm_shutdown
+{
+    print color('bright_blue') . "Requesting syncd warm shutdown" . color('reset') . "\n";
+    `../syncd/syncd_request_shutdown -w`;
+    
+    sleep 2;
+}
+
 sub play
 {
     my $file = shift;
@@ -109,7 +125,7 @@ BEGIN
 {
     our @ISA    = qw(Exporter);
     our @EXPORT = qw/
-    kill_syncd flush_redis start_syncd play fresh_start
+    kill_syncd flush_redis start_syncd play fresh_start start_syncd_warm request_warm_shutdown
     /;
 
     my $script = $0;

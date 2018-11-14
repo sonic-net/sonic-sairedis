@@ -291,8 +291,98 @@ sub test_brcm_acl_tables
     play "acl_tables.rec", 0;
 }
 
+sub test_brcm_buffer_pool
+{
+    fresh_start;
+
+    # we expect no operations on asic, and all buffer pools will be matched correctly
+
+    play "full_buffer.rec";
+    play "full_buffer_second.rec",0;
+}
+
+sub test_brcm_warm_boot_full
+{
+    fresh_start;
+
+    play "full.rec";
+
+    request_warm_shutdown;
+    start_syncd_warm;
+
+    play "full_second.rec";
+
+    request_warm_shutdown;
+}
+
+sub test_brcm_warm_boot_empty
+{
+    fresh_start;
+
+    play "empty_sw.rec";
+
+    request_warm_shutdown;
+    start_syncd_warm;
+
+    play "empty_sw.rec", 0;
+
+    request_warm_shutdown;
+}
+
+sub test_brcm_warm_boot_small_buffer
+{
+    fresh_start;
+
+    play "small_buffer.rec";
+
+    request_warm_shutdown;
+    start_syncd_warm;
+
+    play "small_buffer.rec", 0;
+
+    request_warm_shutdown;
+}
+
+sub test_brcm_warm_boot_full_empty
+{
+    fresh_start;
+
+    play "full.rec";
+
+    request_warm_shutdown;
+    start_syncd_warm;
+
+    play "empty_sw.rec";
+    play "empty_sw.rec", 0;
+    play "full_second.rec";
+    play "empty_sw.rec";
+
+    request_warm_shutdown;
+}
+
+sub test_brcm_config_acl
+{
+    fresh_start;
+
+    play "config_acl.rec";
+    play "config_acl.rec", 0;
+
+    fresh_start;
+
+    play "config_acl2.rec";
+    play "config_acl2.rec", 0;
+}
+
 # RUN TESTS
 
+test_brcm_config_acl;
+
+test_brcm_warm_boot_full_empty;
+test_brcm_warm_boot_small_buffer;
+test_brcm_warm_boot_empty;
+test_brcm_warm_boot_full;
+
+test_brcm_buffer_pool;
 test_brcm_acl_tables;
 test_brcm_qos_map_order;
 test_brcm_lag_no_members;
