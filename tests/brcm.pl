@@ -291,8 +291,18 @@ sub test_brcm_acl_tables
     play "acl_tables.rec", 0;
 }
 
-# RUN TESTS
+sub test_brcm_buffer_pool
+{
+    fresh_start;
 
+    # we expect no operations on asic, and all buffer pools will be matched correctly
+
+    play "full_buffer.rec";
+    play "full_buffer_second.rec",0;
+}
+
+# RUN TESTS
+test_brcm_buffer_pool;
 test_brcm_acl_tables;
 test_brcm_qos_map_order;
 test_brcm_lag_no_members;
