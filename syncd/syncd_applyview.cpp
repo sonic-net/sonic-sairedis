@@ -7072,36 +7072,33 @@ void executeOperationsOnAsic(
         if (enableUnittests())
             dumpComparisonLogicOutput(currentView);
 
-        if (enableRefernceCountLogs)
+        currentView.dumpVidToAsicOperatioId();
+
+        SWSS_LOG_NOTICE("NOT optimized operations");
+
+        for (const auto &op: currentView.asicGetOperations())
         {
-            currentView.dumpVidToAsicOperatioId();
+            const std::string &key = kfvKey(*op.op);
+            const std::string &opp = kfvOp(*op.op);
 
-            SWSS_LOG_NOTICE("NOT optimized operations");
+            SWSS_LOG_NOTICE("%s: %s", opp.c_str(), key.c_str());
 
-            for (const auto &op: currentView.asicGetOperations())
+            const auto &values = kfvFieldsValues(*op.op);
+
+            for (auto v: values)
             {
-                const std::string &key = kfvKey(*op.op);
-                const std::string &opp = kfvOp(*op.op);
-
-                SWSS_LOG_WARN("%s: %s", opp.c_str(), key.c_str());
-
-                const auto &values = kfvFieldsValues(*op.op);
-
-                for (auto v: values)
-                {
-                    SWSS_LOG_WARN("- %s %s", fvField(v).c_str(), fvValue(v).c_str());
-                }
+                SWSS_LOG_NOTICE("- %s %s", fvField(v).c_str(), fvValue(v).c_str());
             }
+        }
 
-            SWSS_LOG_NOTICE("optimized operations!");
+        SWSS_LOG_NOTICE("optimized operations!");
 
-            for (const auto &op: currentView.asicGetWithOptimizedRemoveOperations())
-            {
-                const std::string &key = kfvKey(*op.op);
-                const std::string &opp = kfvOp(*op.op);
+        for (const auto &op: currentView.asicGetWithOptimizedRemoveOperations())
+        {
+            const std::string &key = kfvKey(*op.op);
+            const std::string &opp = kfvOp(*op.op);
 
-                SWSS_LOG_WARN("%s: %s", opp.c_str(), key.c_str());
-            }
+            SWSS_LOG_NOTICE("%s: %s", opp.c_str(), key.c_str());
         }
 
         //for (const auto &op: currentView.asicGetOperations())
