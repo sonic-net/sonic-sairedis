@@ -3344,7 +3344,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForBufferPool(
     return nullptr;
 }
 
-std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
+std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
         _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
@@ -3391,6 +3391,23 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         default:
             break;
     }
+
+    return candidate;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    std::shared_ptr<SaiObj> candidate = findCurrentBestMatchForGenericObjectUsingGraph(
+            currentView,
+            temporaryView,
+            temporaryObj,
+            candidateObjects);
 
     if (candidate != nullptr)
         return candidate;
@@ -3747,6 +3764,23 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
      * since that will reduce risk of removing and recreating that object in
      * current view.
      */
+
+    /*
+     * But at this point also let's try find best candidate using graph paths,
+     * since if some attributes are missmatched (like for example more ACLs are
+     * created) this can lead to choose wrong LAG and have implications on
+     * router interface and so on.  So matching by graph path here could be
+     * more precise.
+     */
+
+    auto graphCandidate = findCurrentBestMatchForGenericObjectUsingGraph(
+            currentView,
+            temporaryView,
+            temporaryObj,
+            candidateObjects);
+
+    if (graphCandidate != nullptr)
+        return graphCandidate;
 
     /*
      * Sort candidate objects by equal attributes in descending order, we know
