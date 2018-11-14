@@ -2492,12 +2492,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
                     return c.obj;
                 }
             }
-
-            break;
         }
     }
 
-    SWSS_LOG_WARN("failed to find best candidate for LAG using LAG member and port id");
+    SWSS_LOG_WARN("failed to find best candidate for LAG using LAG member and port id: tmp %s", temporaryObj->str_object_id.c_str());
 
     return nullptr;
 }
@@ -6509,6 +6507,38 @@ void updateRedisDatabase(
     SWSS_LOG_NOTICE("updated redis database");
 }
 
+void logViewObjectCount(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView)
+{
+    SWSS_LOG_ENTER();
+
+    bool asic_changes = false;
+
+    for (int i = SAI_OBJECT_TYPE_NULL + 1; i < SAI_OBJECT_TYPE_MAX; i++)
+    {
+        sai_object_type_t ot = (sai_object_type_t)i;
+
+        size_t c = currentView.getObjectsByObjectType(ot).size();
+        size_t t = temporaryView.getObjectsByObjectType(ot).size();
+
+        if (c == t)
+            continue;
+
+        asic_changes = true;
+
+        SWSS_LOG_WARN("object count for %s on current view %zu is differnt than on temporary view: %zu",
+                sai_serialize_object_type(ot).c_str(),
+                c,
+                t);
+    }
+
+    if (asic_changes)
+    {
+        SWSS_LOG_WARN("object count is differnt on both view, there will be ASIC OPERATIONS!");
+    }
+}
+
 sai_status_t syncdApplyView()
 {
     SWSS_LOG_ENTER();
@@ -6648,6 +6678,8 @@ sai_status_t syncdApplyView()
             current.dumpRef("current START");
             temp.dumpRef("temp START");
         }
+
+        logViewObjectCount(current, temp);
 
         applyViewTransition(current, temp);
 
