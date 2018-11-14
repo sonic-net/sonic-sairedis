@@ -3213,6 +3213,139 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForHostifTrapGroup(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForBufferPool(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For buffer pool using buffer profile which could be set on ingress
+     * priority group or queue. Those two should be already matched.
+     */
+
+    const auto tmpBufferProfiles = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_BUFFER_PROFILE);
+
+    for (auto tmpBufferProfile: tmpBufferProfiles)
+    {
+        auto tmpPoolIdAttr = tmpBufferProfile->tryGetSaiAttr(SAI_BUFFER_PROFILE_ATTR_POOL_ID);
+
+        if (tmpPoolIdAttr == nullptr)
+            continue;
+
+        if (tmpPoolIdAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        /*
+         * We have temporary buffer profile which uses this buffer pool, let's
+         * find ingress priority group or queue on which it could be set.
+         */
+
+        auto tmpQueues = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_QUEUE);
+
+        for (auto tmpQueue: tmpQueues)
+        {
+            auto tmpBufferProfileIdAttr = tmpQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID);
+
+            if (tmpBufferProfileIdAttr == nullptr)
+                continue;
+
+            if (tmpBufferProfileIdAttr->getOid() != tmpBufferProfile->getVid())
+                continue;
+
+            if (tmpQueue->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+                continue;
+
+            // we can use tmp VID since object is matched and both vids are the same
+            auto curQueue = currentView.oOids.at(tmpQueue->getVid());
+
+            auto curBufferProfileIdAttr = curQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID);
+
+            if (curBufferProfileIdAttr == nullptr)
+                continue;
+
+            if (curBufferProfileIdAttr->getOid() == SAI_NULL_OBJECT_ID)
+                continue;
+
+            // we have buffer profile
+
+            auto curBufferProfile = currentView.oOids.at(curBufferProfileIdAttr->getOid());
+
+            auto curPoolIdAttr = curBufferProfile->tryGetSaiAttr(SAI_BUFFER_PROFILE_ATTR_POOL_ID);
+
+            if (curPoolIdAttr == nullptr)
+                continue;
+
+            for (auto c: candidateObjects)
+            {
+                if (c.obj->getVid() != curPoolIdAttr->getOid())
+                    continue;
+
+                SWSS_LOG_INFO("found best BUFFER POOL based on buffer profile and queue %s", c.obj->str_object_id.c_str());
+
+                return c.obj;
+            }
+        }
+
+        /*
+         * Queues didn't worked, lets try to use ingress priority groups.
+         */
+
+        auto tmpIngressPriorityGroups = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP);
+
+        for (auto tmpIngressPriorityGroup: tmpIngressPriorityGroups)
+        {
+            auto tmpBufferProfileIdAttr = tmpIngressPriorityGroup->tryGetSaiAttr(SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE);
+
+            if (tmpBufferProfileIdAttr == nullptr)
+                continue;
+
+            if (tmpBufferProfileIdAttr->getOid() != tmpBufferProfile->getVid())
+                continue;
+
+            if (tmpIngressPriorityGroup->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+                continue;
+
+            // we can use tmp VID since object is matched and both vids are the same
+            auto curIngressPriorityGroup = currentView.oOids.at(tmpIngressPriorityGroup->getVid());
+
+            auto curBufferProfileIdAttr = curIngressPriorityGroup->tryGetSaiAttr(SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE);
+
+            if (curBufferProfileIdAttr == nullptr)
+                continue;
+
+            if (curBufferProfileIdAttr->getOid() == SAI_NULL_OBJECT_ID)
+                continue;
+
+            // we have buffer profile
+
+            auto curBufferProfile = currentView.oOids.at(curBufferProfileIdAttr->getOid());
+
+            auto curPoolIdAttr = curBufferProfile->tryGetSaiAttr(SAI_BUFFER_PROFILE_ATTR_POOL_ID);
+
+            if (curPoolIdAttr == nullptr)
+                continue;
+
+            for (auto c: candidateObjects)
+            {
+                if (c.obj->getVid() != curPoolIdAttr->getOid())
+                    continue;
+
+                SWSS_LOG_INFO("found best BUFFER POOL based on buffer profile and ingress priority group %s", c.obj->str_object_id.c_str());
+
+                return c.obj;
+            }
+        }
+
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for BUFFER POOL using buffer profile, ipg and queue");
+
+    return nullptr;
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -3251,6 +3384,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
 
         case SAI_OBJECT_TYPE_ACL_TABLE:
             candidate = findCurrentBestMatchForAclTable(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_BUFFER_POOL:
+            candidate = findCurrentBestMatchForBufferPool(currentView, temporaryView, temporaryObj, candidateObjects);
             break;
 
         default:
