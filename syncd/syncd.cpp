@@ -3432,7 +3432,7 @@ int syncd_main(int argc, char **argv)
     swss::Logger::linkToDbNative("syncd");
 
     swss::WarmStart::initialize("syncd", "syncd");
-    swss::WarmStart::checkWarmStart("syncd");
+    swss::WarmStart::checkWarmStart("syncd", "syncd");
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsuggest-attribute=format"
