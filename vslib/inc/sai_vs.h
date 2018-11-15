@@ -17,13 +17,13 @@ extern "C" {
  *
  * Bool flag, (true/false). If set to true, then during create host interface
  * sai object also tap device will be created and mac address will be assigned.
- * For this operation root privilages will be required.
+ * For this operation root privileges will be required.
  *
  * By default this flag is set to false.
  */
 #define SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE      "SAI_VS_HOSTIF_USE_TAP_DEVICE"
 
-// TODO probaby should be per switch
+// TODO probably should be per switch
 #define SAI_VALUE_VS_SWITCH_TYPE_BCM56850     "SAI_VS_SWITCH_TYPE_BCM56850"
 #define SAI_VALUE_VS_SWITCH_TYPE_MLNX2700     "SAI_VS_SWITCH_TYPE_MLNX2700"
 
@@ -57,7 +57,7 @@ extern "C" {
 /**
  * @def SAI_VS_UNITTEST_ENABLE
  *
- * Notificatio operation for enabling unittests.
+ * Notification operation for enabling unittests.
  */
 #define SAI_VS_UNITTEST_ENABLE_UNITTESTS  "enable_unittests"
 

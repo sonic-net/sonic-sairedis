@@ -18,9 +18,9 @@ extern "C" {
 #include <string>
 
 /*
- * Since this is player, we record actions from orch agent.  No special case
+ * Since this is player, we record actions from orchagent.  No special case
  * should be needed for switch in case it contains some oid values (like in
- * syncd cold restart) since orch agent should never create switch with oid
+ * syncd cold restart) since orchagent should never create switch with oid
  * values set at creation time.
  */
 
@@ -928,7 +928,7 @@ sai_status_t handle_bulk_route(
         if (status != SAI_STATUS_SUCCESS)
         {
             /*
-             * Entire API failes, so no need to compare statuses.
+             * Entire API fails, so no need to compare statuses.
              */
 
             return status;
@@ -940,7 +940,7 @@ sai_status_t handle_bulk_route(
             {
                 /*
                  * If recorded statuses are different than received, throw
-                 * excetion since data don't match.
+                 * exception since data don't match.
                  */
 
                 SWSS_LOG_THROW("recorded status is %s but returned is %s on %s",
@@ -981,7 +981,7 @@ void processBulk(
     // timestamp|action|objecttype||objectid|attrid=value|...|status||objectid||objectid|attrid=value|...|status||...
     auto fields = tokenize(line, "||");
 
-    auto first = fields.at(0); // timestamp|acion|objecttype
+    auto first = fields.at(0); // timestamp|action|objecttype
 
     std::string str_object_type = swss::tokenize(first, '|').at(2);
 

@@ -102,7 +102,7 @@ sai_status_t internal_redis_bulk_generic_remove(
     }
 
     /*
-     * We are adding number of entries to actualy add ':' to be compatible
+     * We are adding number of entries to actually add ':' to be compatible
      * with previous
      */
 
@@ -118,7 +118,7 @@ sai_status_t internal_redis_bulk_generic_remove(
         }
 
         /*
-         * Capital 'C' stads for bulk CREATE operation.
+         * Capital 'C' stands for bulk CREATE operation.
          */
 
         recordLine("C|" + str_object_type + joined);

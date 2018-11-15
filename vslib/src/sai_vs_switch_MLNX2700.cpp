@@ -514,7 +514,7 @@ static sai_status_t create_scheduler_group_tree(
 
     // 2.. - have both QUEUES, each one 2
 
-    // sg 0 (8 childs)
+    // scheduler group 0 (8 childs)
     {
         sai_object_id_t sg_0 = sgs.at(0);
 
@@ -1078,7 +1078,7 @@ static sai_status_t refresh_ingress_priority_group(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;
@@ -1094,7 +1094,7 @@ static sai_status_t refresh_qos_queues(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;
@@ -1110,7 +1110,7 @@ static sai_status_t refresh_scheduler_groups(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;

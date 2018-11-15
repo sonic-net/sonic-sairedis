@@ -635,7 +635,7 @@ class AsicView
         }
 
         /**
-         * @brief Release existing VID links (references) based on given obejct.
+         * @brief Release existing VID links (references) based on given object.
          *
          * All OID attributes will be scanned and released.
          *
@@ -729,9 +729,9 @@ class AsicView
         }
 
         /**
-         * @brief Bind existing VID links (references) based on given obejct.
+         * @brief Bind existing VID links (references) based on given object.
          *
-         * All OID attributes will be scanned and binded.
+         * All OID attributes will be scanned and bound.
          *
          * @param[in] obj Object which will be used to obtain attributes and oids
          */
@@ -1335,7 +1335,7 @@ class AsicView
                  * and group is in use by some route, then remove fails since
                  * group cant be empty.
                  *
-                 * Of course this does'nt guarantee that remove all routes will
+                 * Of course this doesn't guarantee that remove all routes will
                  * be at the beginning, also it may happen that default route
                  * will be removed first which maybe not allowed.
                  */
@@ -1441,7 +1441,7 @@ class AsicView
                 /*
                  * This last operation id that decreased VID reference to zero
                  * can be before or after current iterator, so it may be not
-                 * found on list from curernt iterator to list end.  This will
+                 * found on list from current iterator to list end.  This will
                  * mean that we can insert this remove at current iterator
                  * position.
                  *
@@ -1577,7 +1577,7 @@ class AsicView
                     case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
                         break;
 
-                        // skip object we have no intrest into
+                        // skip object we have no interest into
                     default:
                         continue;
                 }
@@ -1615,7 +1615,7 @@ class AsicView
          *
          * Since asic resources are limited like number of routes or buffer
          * pools, so if we don't match object, at first we created new object
-         * and then remove previous one. This scenarion may not be possible in
+         * and then remove previous one. This scenario may not be possible in
          * case of limited resources. Advantage here is that this approach is
          * making sure that asic data plane disruption will be minimal. But we
          * need to switch to remove object first and then create new one. This
@@ -1623,7 +1623,7 @@ class AsicView
          * but in this case we can have some asic data plane disruption.
          *
          * This asic operation id will be used to figure out what operation
-         * reduced object reference to zero, se we could move remove operation
+         * reduced object reference to zero, so we could move remove operation
          * right after this operation instead of the executing all remove
          * actions after all set/create.
          *
@@ -1633,9 +1633,9 @@ class AsicView
         /**
          * @brief VID to asic operation id map.
          *
-         * Map where key is VID that opints to last asic operation id that
+         * Map where key is VID that points to last asic operation id that
          * decreased reference on that VID to zero. This mean that if object
-         * witht that VID will be removed, we can move remove operation right
+         * with that VID will be removed, we can move remove operation right
          * after asic operation id pointed by this VID.
          */
         std::map<sai_object_id_t, int> m_vidToAsicOperationId;
@@ -2365,7 +2365,7 @@ int findAllChildsInDependencyTreeCount(
         if (meta->objecttype == obj->getObjectType())
         {
             /*
-             * Skip kiips on scheduler group.
+             * Skip loops on scheduler group.
              * Mirror session has loop on port, but we break port in next condition.
              */
 
@@ -2412,9 +2412,9 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
      */
 
     /*
-     * Find not processed LAG members, in both views, since lag member contais
+     * Find not processed LAG members, in both views, since lag member contains
      * LAG and PORT, then it should not be processed before LAG itself. But
-     * since PORT objects on LAG members should be matched at the beggining of
+     * since PORT objects on LAG members should be matched at the beginning of
      * comparison logic, then we can find batching LAG members based on the
      * same VID, since it will be the same in both views.
      */
@@ -2423,7 +2423,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
 
     /*
      * First we need to find at least 1 LAG member that belongs to temporary
-     * object so we could extrac port object.
+     * object so we could extract port object.
      */
 
     sai_object_id_t tmpLagVid = temporaryObj->getVid();
@@ -2511,7 +2511,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForNextHopGroup(
     /*
      * For next hop group, let's try find matching NHG which will be based on
      * NHG set as SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID in route_entry.  We assume
-     * that each class IPv4 and IPv6 will have different NGH, and each IP
+     * that each class IPv4 and IPv6 will have different NHG, and each IP
      * prefix will only be assigned to one NHG.
      */
 
@@ -2651,7 +2651,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
      * Port didn't work, try to find match by LAG, but lag will be tricky,
      * since it will be not matched since if this unprocessed acl table group
      * is processed right now, then if it's assigned to lag then by design we
-     * go recursivly be attributes to match attributes first.
+     * go recursively be attributes to match attributes first.
      */
 
     // TODO this could be helper method, since we will need this for router interface
@@ -2754,7 +2754,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTable(
 
         if (tmpAclTableId->getOid() != temporaryObj->getVid())
         {
-            // this is not the expected alc table group member
+            // this is not the expected acl table group member
             continue;
         }
 
@@ -2785,7 +2785,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTable(
             auto curInACL = curPort->getSaiAttr(SAI_PORT_ATTR_INGRESS_ACL);
 
             /*
-             * We found current InACL, now let's find acl table group members
+             * We found current ingress acl, now let's find acl table group members
              * that use this acl table group.
              */
 
@@ -2886,7 +2886,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForRouterInterface(
             }
 
             /*
-             * At this point we have both tunnels which ip mathces
+             * At this point we have both tunnels which ip matches.
              */
 
             if (tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE) &&
@@ -3107,7 +3107,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForPolicer(
                 sai_object_id_t curTrapGroupVid = curTrapGroupAttr->getOid();
 
                 /*
-                 * If calue is not set, it should point to SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP
+                 * If value is not set, it should point to SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP
                  */
 
                 if (curTrapGroupVid == SAI_NULL_OBJECT_ID)
@@ -3153,7 +3153,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForHostifTrapGroup(
      * For hostif trap group we can see on which hostif trap group is set.
      * Hostif trap have SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE attribute which is KEY
      * and there can be only one trap of that type. we can use that to match
-     * hostif trap groug.
+     * hostif trap group.
      */
 
     const auto tmpTraps = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP);
@@ -3480,10 +3480,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
      */
 
     /*
-     * Since our system design is to restart orch agent withourt restarting
-     * syncd and recreating objects and reassign new VIDs created inside orch
-     * agent, in our most cases values of objects will not change.  This will
-     * cause to make our comparison logic here fairly simple:
+     * Since our system design is to restart orchagent without restarting syncd
+     * and recreating objects and reassign new VIDs created inside orchagent,
+     * in our most cases values of objects will not change.  This will cause to
+     * make our comparison logic here fairly simple:
      *
      * Find all objects that have the same equal attributes on current object
      * and choose the one with the most attributes that match current and
@@ -3767,7 +3767,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
 
     /*
      * But at this point also let's try find best candidate using graph paths,
-     * since if some attributes are missmatched (like for example more ACLs are
+     * since if some attributes are mismatched (like for example more ACLs are
      * created) this can lead to choose wrong LAG and have implications on
      * router interface and so on.  So matching by graph path here could be
      * more precise.
@@ -3808,7 +3808,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
      * - select object at random, or
      * - use heuristic/smart lookup for inside graph
      *
-     * Smart lookup would be for example searching wheter current object is
+     * Smart lookup would be for example searching whether current object is
      * pointing to the same PORT as temporary object (since ports are matched
      * at the beginning). For different types of objects we need different type
      * of logic and we can start adding that when needed and when missing we
@@ -3931,7 +3931,7 @@ bool exchangeTemporaryVidToCurrentVid(
  *
  * @param currentView Current view.
  * @param temporaryView Temporary view.
- * @param temporaryObj Temporary obejct.
+ * @param temporaryObj Temporary object.
  *
  * @return Best match object if found or nullptr.
  */
@@ -4014,7 +4014,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForNeighborEntry(
  *
  * @param currentView Current view.
  * @param temporaryView Temporary view.
- * @param temporaryObj Temporary obejct.
+ * @param temporaryObj Temporary object.
  *
  * @return Best match object if found or nullptr.
  */
@@ -4095,7 +4095,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForRouteEntry(
  *
  * @param currentView Current view.
  * @param temporaryView Temporary view.
- * @param temporaryObj Temporary obejct.
+ * @param temporaryObj Temporary object.
  *
  * @return Best match object if found or nullptr.
  */
@@ -4436,7 +4436,7 @@ void bringNonRemovableObjectToDefaultState(
 /**
  * @brief Indicates whether object can be removed.
  *
- * This methos should be used on oid objects, all non oid objects (like route,
+ * This method should be used on oid objects, all non oid objects (like route,
  * neighbor, etc.) can be safely removed.
  *
  * @param currentObj Current object to be examined.
@@ -4540,7 +4540,7 @@ void removeExistingObjectFromCurrentView(
     {
         /*
          * Asic remove object is decreasing reference count on non object ID if
-         * current obejct is non object id, release existing links only looks
+         * current object is non object id, release existing links only looks
          * into attributes.
          */
 
@@ -4830,7 +4830,7 @@ void createNewObjectFromTemporaryObject(
      * There should be no such action here, since this scenario would mean that
      * there is default switch object in temporary view, but not in current
      * view. All default objects are put to ASIC state table when switch is
-     * created. So what can heppen is oposite scenario.
+     * created. So what can happen is opposite scenario.
      */
 
     /*
@@ -4973,7 +4973,7 @@ void createNewObjectFromTemporaryObject(
 
     /*
      * Move both object status to FINAL since both objects were processed
-     * succesfuly and object was created.
+     * successfully and object was created.
      */
 
     currentObj->setObjectStatus(SAI_OBJECT_STATUS_FINAL);
@@ -5015,7 +5015,7 @@ void UpdateObjectStatus(
              * objects are not processed, then RID also exists since current
              * object was selected as current best match. Other options are
              * object was removed, but the it could not be selected, or object
-             * was created, but then is in FINAL state so also couldn't be
+             * was created, but then is in FINAL state so also could not be
              * selected here.
              */
 
@@ -5384,7 +5384,7 @@ bool performObjectSetTransition(
             {
                 /*
                  * This should not happen, since this mean, that attribute is
-                 * crete only, object is matched, nad attribute value is
+                 * create only, object is matched, and attribute value is
                  * different! DB is broken?
                  */
 
@@ -5466,9 +5466,9 @@ bool performObjectSetTransition(
                  * view, those attributes were put by snoop logic. Since we
                  * skipping only read-only attributes then we snoop create-only
                  * also, but on "existing" objects this will cause problem and
-                 * during apply logic we need to skip this attribute sinec we
+                 * during apply logic we need to skip this attribute since we
                  * won't be able to SET it anyway on matched object, and value
-                 * is the same as current obejct.
+                 * is the same as current object.
                  */
 
                 SWSS_LOG_INFO("Skipping create only attr on matched object: %s:%s",
@@ -5530,7 +5530,7 @@ bool performObjectSetTransition(
          * values based on get results, so this will not be needed.
          *
          * And even if we will have dependency tree, those values may not be
-         * synced becasue of remove etc, so we will need to check if default
+         * synced because of remove etc, so we will need to check if default
          * values actually exists.
          */
 
@@ -5599,7 +5599,7 @@ bool performObjectSetTransition(
                 {
                     /*
                      * This attribute can hold reference to user created
-                     * objects which maybe required to be destroyed, thats why
+                     * objects which maybe required to be destroyed, that's why
                      * we need to bring real value. What if real value were
                      * removed?
                      */
@@ -5681,9 +5681,9 @@ bool performObjectSetTransition(
                      * view, those attributes were put by snoop logic. Since we
                      * skipping only read-only attributes then we snoop create-only
                      * also, but on "existing" objects this will cause problem and
-                     * during apply logic we need to skip this attribute sinec we
+                     * during apply logic we need to skip this attribute since we
                      * won't be able to SET it anyway on matched object, and value
-                     * is the same as current obejct.
+                     * is the same as current object.
                      */
 
                     SWSS_LOG_INFO("Skipping create only attr on matched object: %s:%s",
@@ -5881,8 +5881,8 @@ void processObjectForViewTransition(
      *   then we can just right away create this object since all keys objects
      *   were removed by finding best match
      *
-     * In both cases logic is the same, someone needs to figure out wheter
-     * updating object and set is possible or wheter we leave object alone, or
+     * In both cases logic is the same, someone needs to figure out whether
+     * updating object and set is possible or whether we leave object alone, or
      * we delete it before creating new one object.
      *
      * Preferably this logic could be in both but that duplicates compare
@@ -5936,7 +5936,7 @@ void processObjectForViewTransition(
      * that would be better approach. It could be actually param of comparison
      * logic.
      *
-     * NOTE: this function is called twice if first time will be successfull
+     * NOTE: this function is called twice if first time will be successful
      * then logs will be doubled in syslog.
      */
 
@@ -5998,7 +5998,7 @@ void processObjectForViewTransition(
     }
 
     /*
-     * First pass was successfull, so we can do update on current object, lets do that now!
+     * First pass was successful, so we can do update on current object, lets do that now!
      */
 
     if (temporaryObj->isOidObject() && (temporaryObj->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED))
@@ -6157,7 +6157,7 @@ void applyViewTransition(
      *
      * TODO what about remove? can they be removed first ?
      *
-     * There is another issue that when we are removind next hop group member
+     * There is another issue that when we are removing next hop group member
      * and it's the last next hop group member in group where group is still in
      * use by some group, then we can't remove it, we need to first remove
      * route that uses this group, this puts this task in conflict when
@@ -6231,9 +6231,9 @@ void applyViewTransition(
      * that bridge port remove will be before vlan member remove and it will
      * fail. Similar problem is on hard reinit when removing existing objects.
      *
-     * TODO we need dependency tree during sai discovery! but if we put thsoe
+     * TODO we need dependency tree during sai discovery! but if we put those
      * to redis it will cause another problem, since some of those attributes
-     * are creat only, so object will be selected to "SET" after vid processing
+     * are create only, so object will be selected to "SET" after vid processing
      * but it wont be able to set create only attributes, we would need to skip
      * those.
      *
@@ -6314,7 +6314,7 @@ void executeOperationsOnAsic(
         _In_ AsicView &currentView,
         _In_ AsicView &temporaryView);
 
-// TODO find better way to acces this
+// TODO find better way to access this
 extern std::set<sai_object_id_t> initViewRemovedVidSet;
 
 void populateExistingObjects(
@@ -6327,12 +6327,12 @@ void populateExistingObjects(
     /*
      * We should transfer existing objects from current view to temporary view.
      * But not all objects, since user could remove some default removable
-     * obejcts like vlan member, bridge port etc. We collected those removed
+     * objects like vlan member, bridge port etc. We collected those removed
      * objects to initViewRemovedVidSet and we will use this as a reference to
      * transfer objects to temporary view.
      *
      * TODO: still sairedis metadata database have no idea about existing
-     * obejcts so user can create object which already exists like vlan 1 if he
+     * objects so user can create object which already exists like vlan 1 if he
      * didn't queried it yet. We need to transfer all dependency tree to
      * sairedis after switch create.
      */
@@ -6411,9 +6411,9 @@ void populateExistingObjects(
          * assigned anywhere and this will be memory leak.
          *
          * Also a bunch of new asic operations will be generated for setting
-         * new user created buffer profile.  Thats why we need default existing
+         * new user created buffer profile.  That's why we need default existing
          * vid list to distinguish between user created and default switch
-         * created obejcts.
+         * created objects.
          *
          * For default existing objects, we don't need to copy attributes, since
          * if user didn't set them, we want them to be back to default values.
@@ -6594,9 +6594,9 @@ sai_status_t syncdApplyView()
     /*
      * This method contains 2 stages.
      *
-     * First stage is non destructive, when orch agent will build new view, and
+     * First stage is non destructive, when orchagent will build new view, and
      * there will be bug in comparison logic in first stage, then syncd will
-     * send failure when doing apply view to orch agent but it will still be
+     * send failure when doing apply view to orchagent but it will still be
      * running. No asic operations are performed during this stage.
      *
      * Second stage is destructive, so if there will be bug in comparison logic

@@ -159,7 +159,7 @@ void findBridgeVlanForPortVlan(
     /*
      * The bridge port lookup process is two steps:
      *
-     * - use (vlan_id, phyiscal port_id) to match any .1D bridge port created.
+     * - use (vlan_id, physical port_id) to match any .1D bridge port created.
      *   If there is match, then quit, found=true
      *
      * - use (physical port_id) to match any .1Q bridge created. if there is a
@@ -979,7 +979,7 @@ sai_status_t vs_create_hostif_int(
     g_switch_state_map.at(switch_id)->setIfNameToPortId(vname, obj_id);
 
     // TODO what about FDB entries notifications, they also should
-    // be generated if new mac addres will show up on the interface/arp table
+    // be generated if new mac address will show up on the interface/arp table
 
     // TODO IP address should be assigned when router interface is created
 
@@ -1011,7 +1011,7 @@ sai_status_t vs_create_hostif(
             &vs_create_hostif_int);
 }
 
-// TODO set must also be supported when we change oper status up/down
+// TODO set must also be supported when we change operational status up/down
 // and probably also generate notification then
 
 VS_REMOVE(HOSTIF,hostif);

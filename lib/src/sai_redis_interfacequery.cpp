@@ -42,7 +42,7 @@ void clear_local_state()
     clear_notifications();
 
     /*
-     * Initialize metatada database.
+     * Initialize metadata database.
      */
 
     meta_init_db();

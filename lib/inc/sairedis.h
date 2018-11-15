@@ -95,7 +95,7 @@ typedef enum _sai_redis_switch_attr_t
      * to ".n" suffix, and when we reopen file, we will actually create new
      * one.
      *
-     * This attribute is only setting variable in memroy, it's safe to call
+     * This attribute is only setting variable in memory, it's safe to call
      * this from signal handler.
      *
      * @type bool

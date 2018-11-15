@@ -93,7 +93,7 @@ sai_object_type_t sai_object_type_query(
         SWSS_LOG_ERROR("invalid object id 0x%lx", object_id);
 
         /*
-         * We can't throw here, since it would give no meaningfull message.
+         * We can't throw here, since it would give no meaningful message.
          * Throwing at one level up is better.
          */
 
@@ -356,7 +356,7 @@ sai_status_t internal_redis_bulk_generic_create(
     }
 
     /*
-     * We are adding number of entries to actualy add ':' to be compatible
+     * We are adding number of entries to actually add ':' to be compatible
      * with previous
      */
 
@@ -372,7 +372,7 @@ sai_status_t internal_redis_bulk_generic_create(
         }
 
         /*
-         * Capital 'C' stads for bulk CREATE operation.
+         * Capital 'C' stands for bulk CREATE operation.
          */
 
         recordLine("C|" + str_object_type + joined);

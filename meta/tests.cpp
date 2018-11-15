@@ -2093,7 +2093,7 @@ void test_route_entry_create()
 
     SWSS_LOG_NOTICE("create tests");
 
-    // commneted out as there is no mandatory attribute
+    // commented out as there is no mandatory attribute
     // SWSS_LOG_NOTICE("zero attribute count (but there are mandatory attributes)");
     // attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
     // status = meta_sai_create_route_entry(&route_entry, 0, &attr, &dummy_success_sai_create_route_entry);

@@ -8,8 +8,8 @@
 
 /*
  * To support multiple switches here we need to refactor this to a class
- * similar to SaiSwitch, and then have separate vid/rid map and ecah class will
- * be recreating only one switch and handling that
+ * similar to SaiSwitch, and then have separate vid/rid map and each class will
+ * be recreating only one switch and handling that.
  */
 
 typedef std::unordered_map<std::string, std::string> StringHash;
@@ -225,8 +225,8 @@ void checkAllIds()
      * Now we must check whether we need to remove some objects like VLAN
      * members etc.
      *
-     * TODO: Should this be done at start, before other oprations?
-     * We are able to determine which objets are missing from rid map
+     * TODO: Should this be done at start, before other operations?
+     * We are able to determine which objects are missing from rid map
      * as long as id's between restart don't change.
      */
 
@@ -246,7 +246,7 @@ void checkAllIds()
      * hold all id's, it only will hold defaults. But this swill mean, that we
      * need to remove those VLAN members from ASIC.
      *
-     * We could just call discover again, but thats too long, we just needto
+     * We could just call discover again, but that's too long, we just need to
      * remove removed objects since we need Existing objects for ApplyView.
      *
      * Order matters here, we can't remove bridge before removing all bridge
@@ -340,7 +340,7 @@ void processSwitches()
 
     /*
      * Sanity check in metadata make sure that there are no mandatory on create
-     * and create only attributes that are obejct id attributes, sinec we would
+     * and create only attributes that are object id attributes, since we would
      * need create those objects first but we need switch first. So here we
      * selecting only MANDATORY_ON_CREATE and CREATE_ONLY attributes to create
      * switch.
@@ -636,7 +636,7 @@ sai_object_id_t processSingleVid(
 
     /*
      * Now let's determine whether this object need to be created.  Default
-     * obejcts like default virtual router, queues or cpu can't be created.
+     * objects like default virtual router, queues or cpu can't be created.
      * When object exists on the switch (even VLAN member) it will not be
      * created, but matched. We just need to watch for RO/CO attributes.
      *
@@ -753,7 +753,7 @@ sai_object_id_t processSingleVid(
             {
                 /*
                  * If we will be performing this on default existing created
-                 * object then it may happen taht during snoop in previous
+                 * object then it may happen that during snoop in previous
                  * iteration we put some attribute that is create only, then
                  * this set will fail and we need to skip this set.
                  *
@@ -1112,8 +1112,8 @@ void readAsicState()
      */
 
     /*
-     * To support multiple switchies this needs to be refactores since we need
-     * a class with hard reinit, per switch
+     * To support multiple switches this needs to be refactored since we need
+     * a class with hard reinit, per switch.
      */
 
     g_vidToRidMap = redisGetVidToRidMap();
@@ -1225,7 +1225,7 @@ void performWarmRestart()
 
     /*
      * There should be no case when we are doing warm restart and there is no
-     * switch defined, we will throw at sucha case.
+     * switch defined, we will throw at such a case.
      *
      * This case could be possible when no switches were created and only api
      * was initialized, but we will skip this scenario and address is when we
@@ -1245,7 +1245,7 @@ void performWarmRestart()
     }
 
     /*
-     * Here wa have only one switch defined, let's extract his vid and rid.
+     * Here we have only one switch defined, let's extract his vid and rid.
      */
 
     /*

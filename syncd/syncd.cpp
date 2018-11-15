@@ -44,10 +44,10 @@ std::shared_ptr<swss::NotificationProducer> notifications;
 std::map<std::string, std::string> gProfileMap;
 
 /**
- * @brief Contais map of all created switches.
+ * @brief Contains map of all created switches.
  *
- * This syncd implementation supports only one switch but it's writeen in
- * a way that could be excented to use multple switches in t he future, some
+ * This syncd implementation supports only one switch but it's written in
+ * a way that could be extended to use multiple switches in the future, some
  * refactoring needs to be made in marked places.
  *
  * To support multiple switches VIDTORID and RIDTOVID db entries needs to be
@@ -164,7 +164,7 @@ void sai_diag_shell(
     sai_status_t status;
 
     /*
-     * This is currently blocking API on broadcom, it will block untill we exit
+     * This is currently blocking API on broadcom, it will block until we exit
      * shell.
      */
 
@@ -304,7 +304,7 @@ sai_object_id_t redis_create_virtual_object_id(
 
     /*
      * Switch id is deterministic and it comes from sairedis so make check here
-     * that we will not use this for createing switch VIDs.
+     * that we will not use this for creating switch VIDs.
      */
 
     if (object_type == SAI_OBJECT_TYPE_SWITCH)
@@ -351,7 +351,7 @@ void remove_rid_and_vid_from_local(
 }
 
 /*
- * This method will create VID for actual RID retrived from device when doing
+ * This method will create VID for actual RID retrieved from device when doing
  * GET api and snooping while in init view mode.
  *
  * This function should not be used to create VID for SWITCH object type.
@@ -430,7 +430,7 @@ sai_object_id_t translate_rid_to_vid(
     /*
      * TODO: This must be ATOMIC.
      *
-     * TODO: To support multiple swiches we need this map per switch;
+     * TODO: To support multiple switches we need this map per switch;
      */
 
     g_redisClient->hset(RIDTOVID, str_rid, str_vid);
@@ -471,7 +471,7 @@ void translate_rid_to_vid_list(
      * We receive real id's here, if they are new then create new VIDs for them
      * and put in db, if entry exists in db, use it.
      *
-     * NOTE: switch_id is VID of switch on which those RIDs are probided.
+     * NOTE: switch_id is VID of switch on which those RIDs are provided.
      */
 
     for (uint32_t i = 0; i < attr_count; i++)
@@ -524,7 +524,7 @@ void translate_rid_to_vid_list(
             default:
 
                 /*
-                 * If in futre new attribute with object id will be added this
+                 * If in future new attribute with object id will be added this
                  * will make sure that we will need to add handler here.
                  */
 
@@ -600,7 +600,7 @@ sai_object_id_t translate_vid_to_rid(
 
     /*
      * We got this RID from redis db, so put it also to local db so it will be
-     * faster to retrive it late on.
+     * faster to retrieve it late on.
      */
 
     local_vid_to_rid[vid] = rid;
@@ -677,7 +677,7 @@ void translate_vid_to_rid_list(
             default:
 
                 /*
-                 * If in futre new attribute with object id will be added this
+                 * If in future new attribute with object id will be added this
                  * will make sure that we will need to add handler here.
                  */
 
@@ -729,7 +729,7 @@ void snoop_get_oid(
     if (vid == SAI_NULL_OBJECT_ID)
     {
         /*
-         * If snooped ois is NULL then we don't need take any action.
+         * If snooped oid is NULL then we don't need take any action.
          */
 
         return;
@@ -737,8 +737,8 @@ void snoop_get_oid(
 
     /*
      * We need use redis version of object type query here since we are
-     * operating on VID value, and syncd is compiled agains real SAI
-     * implementation which has diffrent function sai_object_type_query.
+     * operating on VID value, and syncd is compiled against real SAI
+     * implementation which has different function sai_object_type_query.
      */
 
     sai_object_type_t object_type = redis_sai_object_type_query(vid);
@@ -840,7 +840,7 @@ void snoop_get_response(
             default:
 
                 /*
-                 * If in futre new attribute with object id will be added this
+                 * If in future new attribute with object id will be added this
                  * will make sure that we will need to add handler here.
                  */
 
@@ -1064,7 +1064,7 @@ void on_switch_create(
     }
 
     /*
-     * All needed data to populate switch schould be obtained inside SaiSwitch
+     * All needed data to populate switch should be obtained inside SaiSwitch
      * constructor, like getting all queues, ports, etc.
      */
 
@@ -1083,7 +1083,7 @@ void on_switch_remove(
     SWSS_LOG_ENTER();
 
     /*
-     * On remove switch there should be extra action all local obejcts and
+     * On remove switch there should be extra action all local objects and
      * redis object should be removed on remove switch local and redis db
      * objects should be cleared.
      *
@@ -1099,7 +1099,7 @@ void on_switch_remove(
 /**
  * @brief Determines whether attribute is "workaround" attribute for SET API.
  *
- * Some attributes are not supported on SET API od different platforms.
+ * Some attributes are not supported on SET API on different platforms.
  * For example SAI_SWITCH_ATTR_SRC_MAC_ADDRESS.
  *
  * @param[in] objecttype Object type.
@@ -1160,7 +1160,7 @@ sai_status_t handle_generic(
     meta_key.objectkey.key.object_id = object_id;
 
     /*
-     * We need to do translate vid/rid except for create, sinec create will
+     * We need to do translate vid/rid except for create, since create will
      * create new RID value, and we will have to map them to VID we received in
      * create query.
      */
@@ -1361,7 +1361,6 @@ void translate_vid_to_rid_non_object_id(
 {
     SWSS_LOG_ENTER();
 
-    // TODO use metadat utils
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
 
     for (size_t j = 0; j < info->structmemberscount; ++j)
@@ -1696,7 +1695,7 @@ sai_status_t notifySyncd(
         clearTempView();
 
         /*
-         * TODO: Currently as WARN to be easier to spoot, later should be NOTICE.
+         * TODO: Currently as WARN to be easier to spot, later should be NOTICE.
          */
 
         SWSS_LOG_WARN("syncd switched to INIT VIEW mode, all op will be saved to TEMP view");
@@ -1708,7 +1707,7 @@ sai_status_t notifySyncd(
         g_asicInitViewMode = false;
 
         /*
-         * TODO: Currently as WARN to be easier to spoot, later should be NOTICE.
+         * TODO: Currently as WARN to be easier to spot, later should be NOTICE.
          */
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
@@ -1720,7 +1719,7 @@ sai_status_t notifySyncd(
         if (status == SAI_STATUS_SUCCESS)
         {
             /*
-             * We succesfully applied new view, VID mapping could change, so we
+             * We successfully applied new view, VID mapping could change, so we
              * need to clear local db, and all new VIDs will be queried using
              * redis.
              */
@@ -1731,7 +1730,7 @@ sai_status_t notifySyncd(
         else
         {
             /*
-             * Apply view failed. It can fail in 2 ways, eather nothing was
+             * Apply view failed. It can fail in 2 ways, ether nothing was
              * executed, on asic, or asic is inconsistent state then we should
              * die or hang
              */
@@ -1886,7 +1885,7 @@ void on_switch_create_in_init_view(
     /*
      * We can have multiple switches here, but each switch is identified by
      * SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO. This attribute is treated as key,
-     * so each switch will have diferent hardware info.
+     * so each switch will have different hardware info.
      *
      * Currently we assume that we have only one switch.
      *
@@ -1894,15 +1893,15 @@ void on_switch_create_in_init_view(
      *
      * - we have multiple switches already existing, and in init view mode user
      *   will create the same switches, then since switch id are deterministic
-     *   we can match them byt hardware info and by switch id, it may happen
+     *   we can match them by hardware info and by switch id, it may happen
      *   that switch id will be different if user will create switches in
      *   different order, this case will be not supported unless special logic
      *   will be written to handle that case.
      *
-     * - if user creted switches but non of switch has the same hardware info
+     * - if user created switches but non of switch has the same hardware info
      *   then it means we need to create actual switch here, since user will
-     *   want to query switch ports etc values, thats why on create switch is
-     *   special case, and thats why we need to keep track of all switches
+     *   want to query switch ports etc values, that's why on create switch is
+     *   special case, and that's why we need to keep track of all switches
      *
      * Since we are creating switch here, we are sure that this switch don't
      * have any oid attributes set, so we can pass all attributes
@@ -1911,7 +1910,7 @@ void on_switch_create_in_init_view(
     /*
      * Multiple switches scenario with changed order:
      *
-     * Ff orhagent will create the same switch with the same hardware info but
+     * If orchagent will create the same switch with the same hardware info but
      * with different order since switch id is deterministic, then VID of both
      * switches will not match:
      *
@@ -1928,7 +1927,7 @@ void on_switch_create_in_init_view(
          * There are no switches currently, so we need to create this switch so
          * user in init mode could query switch properties using GET api.
          *
-         * We assume that none of attributes is obejct id attribute.
+         * We assume that none of attributes is object id attribute.
          *
          * This scenario can happen when you start syncd on empty database and
          * then you quit and restart it again.
@@ -2105,7 +2104,7 @@ sai_status_t processEventInInitViewMode(
             if (!info->isnonobjectid)
             {
                 /*
-                 * If object is existing obejct (like bridge port, vlan member)
+                 * If object is existing object (like bridge port, vlan member)
                  * user may want to remove them, but this is temporary view,
                  * and when we receive apply view, we will populate existing
                  * objects to temporary view (since not all of them user may
@@ -2188,7 +2187,7 @@ sai_status_t processEventInInitViewMode(
                 if (switches.size() == 1)
                 {
                     /*
-                     * We are in init view mode, but eather switch already
+                     * We are in init view mode, but ether switch already
                      * existed or first command was creating switch and user
                      * created switch.
                      *
@@ -2348,7 +2347,7 @@ sai_status_t processBulkEvent(
     const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
 
     // key = str_object_id
-    // val = attrid=attrval|...
+    // val = attrid=attrvalue|...
 
     std::vector<std::string> object_ids;
 
@@ -2464,7 +2463,7 @@ sai_status_t processFdbFlush(
 
     /*
      * Attribute list can't be const since we will use it to translate VID to
-     * RID inplace.
+     * RID in place.
      */
 
     sai_attribute_t *attr_list = list.get_attr_list();
@@ -2498,7 +2497,7 @@ sai_status_t processEvent(
         {
             /*
              * In init mode we put all data to TEMP view and we snoop.  We need to
-             * specify temporary view prefis in consumer since consumer puts data
+             * specify temporary view prefix in consumer since consumer puts data
              * to redis db.
              */
 
@@ -2593,7 +2592,7 @@ sai_status_t processEvent(
 
         /*
          * Attribute list can't be const since we will use it to translate VID to
-         * RID inplace.
+         * RID in place.
          */
 
         sai_attribute_t *attr_list = list.get_attr_list();
@@ -2608,7 +2607,7 @@ sai_status_t processEvent(
         if (object_type == SAI_OBJECT_TYPE_SWITCH && (api == SAI_COMMON_API_CREATE || api == SAI_COMMON_API_SET))
         {
             /*
-             * We don't need to clear those pointers on switch remove (evan last),
+             * We don't need to clear those pointers on switch remove (even last),
              * since those pointers will reside inside attributes, also sairedis
              * will internally check whether pointer is null or not, so we here
              * will receive all notifications, but redis only those that were set.
@@ -3342,7 +3341,7 @@ void onSyncdStart(bool warmStart)
          * Also this will make sure that current switch id is the same as
          * before restart.
          *
-         * If we want to support multiple switches, this needs to be addjusted.
+         * If we want to support multiple switches, this needs to be adjusted.
          */
 
         performWarmRestart();
@@ -3378,7 +3377,7 @@ void sai_meta_log_syncd(
         _In_ const char *format,
         ...)
 {
-    // SWSS_LOG_ENTER() is ommited since this is logging for metadata
+    // SWSS_LOG_ENTER() is omitted since this is logging for metadata
 
     char buffer[0x1000];
 
@@ -3462,7 +3461,7 @@ int syncd_main(int argc, char **argv)
     std::shared_ptr<swss::ConsumerTable> flexCounterGroup = std::make_shared<swss::ConsumerTable>(dbFlexCounter.get(), FLEX_COUNTER_GROUP_TABLE);
 
     /*
-     * At the end we cant use producer consumer concept since if one proces
+     * At the end we cant use producer consumer concept since if one process
      * will restart there may be something in the queue also "remove" from
      * response queue will also trigger another "response".
      */
@@ -3570,7 +3569,7 @@ int syncd_main(int argc, char **argv)
                 /*
                  * This is actual a bad design, since selectable may pick up
                  * multiple events from the queue, and after restart those
-                 * events will be forgoten since they were consumed already and
+                 * events will be forgotten since they were consumed already and
                  * this may lead to forget populate object table which will
                  * lead to unable to find some objects.
                  */

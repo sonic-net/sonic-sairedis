@@ -138,7 +138,7 @@ std::string sai_serialize_ipmc_entry_type(
 std::string sai_serialize_qos_map_item(
         _In_ const sai_qos_map_t& qosmap);
 
-// serialize ntf
+// serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
         _In_ uint32_t count,
@@ -230,7 +230,7 @@ void sai_deserialize_object_meta_key(
         _In_ const std::string &s,
         _Out_ sai_object_meta_key_t& meta_key);
 
-// deserialize ntf
+// deserialize notifications
 
 void sai_deserialize_fdb_event_ntf(
         _In_ const std::string& s,
@@ -253,7 +253,7 @@ void sai_deserialize_free_attribute_value(
         _In_ const sai_attr_value_type_t type,
         _In_ sai_attribute_t &attr);
 
-// deserialize free ntf
+// deserialize free notifications
 
 void sai_deserialize_free_fdb_event_ntf(
         _In_ uint32_t count,

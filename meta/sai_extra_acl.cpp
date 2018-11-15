@@ -162,7 +162,7 @@ sai_status_t meta_pre_get_acl_entry_attribute(
 {
     SWSS_LOG_ENTER();
 
-    // TODO for get we need to check if attrib was set previously ?
+    // TODO for get we need to check if attribute was set previously ?
     // like field or action, or can we get action that was not set?
 
     return SAI_STATUS_SUCCESS;

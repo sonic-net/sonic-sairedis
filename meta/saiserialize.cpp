@@ -2656,7 +2656,7 @@ void sai_deserialize_object_meta_key(
 }
 
 
-// deserialize ntf
+// deserialize notifications
 
 void sai_deserialize_json_fdb_event_notification_data(
         _In_ const json& j,
@@ -2876,7 +2876,7 @@ void sai_deserialize_free_attribute_value(
     }
 }
 
-// deserialize free ntf
+// deserialize free notifications
 
 void sai_deserialize_free_fdb_event(
         _In_ sai_fdb_event_notification_data_t& fdb_event)

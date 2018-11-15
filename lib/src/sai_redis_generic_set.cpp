@@ -81,7 +81,7 @@ sai_status_t internal_redis_bulk_generic_set(
     }
 
     /*
-     * We are adding number of entries to actualy add ':' to be compatible
+     * We are adding number of entries to actually add ':' to be compatible
      * with previous
      */
 
@@ -97,7 +97,7 @@ sai_status_t internal_redis_bulk_generic_set(
         }
 
         /*
-         * Capital 'S' stads for bulk SET operation.
+         * Capital 'S' stands for bulk SET operation.
          */
 
         recordLine("S|" + str_object_type + joined);

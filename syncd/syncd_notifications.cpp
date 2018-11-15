@@ -261,7 +261,7 @@ void process_on_fdb_event(
         translate_rid_to_vid_list(SAI_OBJECT_TYPE_FDB_ENTRY, fdb->fdb_entry.switch_id, fdb->attr_count, fdb->attr);
 
         /*
-         * Currently because of bcrm bug, we need to install fdb entries in
+         * Currently because of brcm bug, we need to install fdb entries in
          * asic view and currently this event don't have fdb type which is
          * required on creation.
          */
@@ -451,7 +451,7 @@ void processNotification(
 }
 
 // condition variable will be used to notify processing thread
-// that some notiffication arrived
+// that some notification arrived
 
 std::condition_variable cv;
 
@@ -509,11 +509,12 @@ bool ntf_queue_t::enqueue(
     std::string notification = kfvKey(item);
 
     /*
-     * If the queue exceeds the limit, then drop all further FDB events
-     * This is a temporary solution to handle high memory usage by syncd and the
-     * ntf-Q keeps growing. The permanent solution would be to make this stateful
-     * so that only the *latest* event is published.
+     * If the queue exceeds the limit, then drop all further FDB events This is
+     * a temporary solution to handle high memory usage by syncd and the
+     * notification queue keeps growing. The permanent solution would be to
+     * make this stateful so that only the *latest* event is published.
      */
+
     if (queueStats() < limit || notification != "fdb_event")
     {
         std::lock_guard<std::mutex> lock(queue_mutex);

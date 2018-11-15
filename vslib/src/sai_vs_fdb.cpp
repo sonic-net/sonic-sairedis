@@ -11,7 +11,7 @@ bool doesFdbEntryNotMatchFlushAttr(
     SWSS_LOG_ENTER();
 
     /*
-     * Since ther may be combination of flush attributes
+     * Since there may be combination of flush attributes
      * that user requested to flush, so when one attribute
      * is different, then this fdb entry should NOT be flushed.
      */
@@ -170,10 +170,10 @@ sai_status_t internal_vs_flush_fdb_entries(
      * 1 in that case we need to mark data in special way reusing current
      * attributes.
      *
-     * Since flush event is considered like regulat fdb event, data inside will
+     * Since flush event is considered like regular fdb event, data inside will
      * be special. Indication that this is flush event will be by actual event
      * type and consolidation will marked as MAC address 00:00:00:00:00:00.
-     * In that case user reciving notification will know that flush event is
+     * In that case user receiving notification will know that flush event is
      * consolidated event and not actual fdb entry.
      *
      * To indicate what entry type was flushed, entry_type field in fdb_entry
@@ -194,7 +194,7 @@ sai_status_t internal_vs_flush_fdb_entries(
      * event is handling.
      *
      * All other attributes in consolidated fdb event notification are
-     * irreleant.
+     * irrelevant.
      */
 
     sai_attribute_t attr;

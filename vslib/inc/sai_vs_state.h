@@ -52,8 +52,8 @@ class SaiAttrWrap
             SWSS_LOG_ENTER();
 
             /*
-             * On destructor we need to call free to dealocate possible
-             * alocated list on constructor.
+             * On destructor we need to call free to deallocate possible
+             * allocated list on constructor.
              */
 
             sai_deserialize_free_attribute_value(m_meta->attrvaluetype, m_attr);
@@ -92,7 +92,7 @@ class SaiAttrWrap
 };
 
 /**
- * @brief AttrHash key is attribute ID, value is actuall attribute
+ * @brief AttrHash key is attribute ID, value is actual attribute
  */
 typedef std::map<std::string, std::shared_ptr<SaiAttrWrap>> AttrHash;
 

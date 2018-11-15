@@ -113,8 +113,8 @@ sai_object_type_t sai_object_type_query(
         SWSS_LOG_ERROR("invalid object id 0x%lx", object_id);
 
         /*
-         * We can't throw here since it would not give meaningfull message.
-         * Tthrowing at one level up is better.
+         * We can't throw here since it would not give meaningful message.
+         * Throwing at one level up is better.
          */
 
         return SAI_OBJECT_TYPE_NULL;
@@ -197,7 +197,7 @@ sai_object_id_t vs_create_real_object_id(
 
     int index = vs_get_switch_id_index(switch_id);
 
-    // count from zero for each type separetly
+    // count from zero for each type separately
     uint64_t real_id = real_ids[object_type]++;
 
     sai_object_id_t object_id = vs_construct_object_id(object_type, index, real_id);
@@ -432,7 +432,7 @@ void vs_update_local_metadata(
 
     /*
      * Create every non object id except switch. Switch object was already
-     * created above, and non object ids like route may contain other obejct
+     * created above, and non object ids like route may contain other object
      * id's inside *_entry struct, and since metadata is checking reference of
      * those objects, they must exists first.
      */

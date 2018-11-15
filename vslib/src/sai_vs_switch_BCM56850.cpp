@@ -486,7 +486,7 @@ static sai_status_t create_ingress_priority_groups()
 {
     SWSS_LOG_ENTER();
 
-    // TODO prioirity groups size may change when we will modify pg or ports
+    // TODO priority groups size may change when we will modify pg or ports
 
     SWSS_LOG_INFO("create priority groups");
 
@@ -557,7 +557,7 @@ static sai_status_t create_scheduler_group_tree(
 
     // 3..c - have both QUEUES, each one 2
 
-    // sg 0 (2 groups)
+    // scheduler group 0 (2 groups)
     {
         sai_object_id_t sg_0 = sgs.at(0);
 
@@ -583,7 +583,7 @@ static sai_status_t create_scheduler_group_tree(
 
     uint32_t queue_index = 0;
 
-    // sg 1 (8 groups)
+    // scheduler group 1 (8 groups)
     {
         sai_object_id_t sg_1 = sgs.at(1);
 
@@ -637,7 +637,7 @@ static sai_status_t create_scheduler_group_tree(
         }
     }
 
-    // sg 2 (2 groups)
+    // scheduler group 2 (2 groups)
     {
         sai_object_id_t sg_2 = sgs.at(2);
 
@@ -1089,7 +1089,7 @@ static sai_status_t refresh_ingress_priority_group(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;
@@ -1105,7 +1105,7 @@ static sai_status_t refresh_qos_queues(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;
@@ -1121,7 +1121,7 @@ static sai_status_t refresh_scheduler_groups(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;

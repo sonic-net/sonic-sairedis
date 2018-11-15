@@ -760,7 +760,7 @@ int main()
 
     test_set_stats_via_redis();
 
-    // make proper unitinialize to close unittest thread
+    // make proper uninitialize to close unittest thread
     sai_api_uninitialize();
 
     return 0;

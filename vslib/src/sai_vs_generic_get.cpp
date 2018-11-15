@@ -90,7 +90,7 @@ sai_status_t internal_vs_generic_get(
             /*
              * Read only attributes may require recalculation.
              * Metadata makes sure that non object id's can't have
-             * read only attributes. So here is defenetly OID.
+             * read only attributes. So here is definitely OID.
              */
 
             sai_object_id_t oid;

@@ -444,7 +444,7 @@ void fdbAgingThreadProc()
 }
 
 /**
- * @brief Serviec method table.
+ * @brief Service method table.
  *
  * We could use this table to choose switch vendor.
  */
@@ -457,7 +457,7 @@ void clear_local_state()
     SWSS_LOG_NOTICE("clearing local state");
 
     /*
-     * Initialize metatada database.
+     * Initialize metadata database.
      */
 
     meta_init_db();

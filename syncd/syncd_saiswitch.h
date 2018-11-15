@@ -11,7 +11,7 @@ extern "C" {
  * Defines maximum elements that can be obtained from the OID list when
  * performing list attribute query (discovery) on the switch.
  *
- * This vlaue will be used to allocate memory on the stack for obtaining object
+ * This value will be used to allocate memory on the stack for obtaining object
  * list, and should be big enough to obtain list for all ports on the switch
  * and vlan members.
  */
@@ -70,7 +70,7 @@ class SaiSwitch
                 _In_ sai_object_id_t rid) const;
 
         /**
-         * @brfief Indicates whether RID is one of default switch objects
+         * @brief Indicates whether RID is one of default switch objects
          * like CPU port, default virtual router etc.
          *
          * @param rid Real object id to examine.
@@ -83,14 +83,14 @@ class SaiSwitch
         /**
          * @brief Indicates whether object can't be removed.
          *
-         * Checks whether object can be removed. All non discovered obejcts can
+         * Checks whether object can be removed. All non discovered objects can
          * be removed. All objects from internal attribute can't be removed.
          *
          * Currently there are some hard coded object types that can't be
          * removed like queues, ingress PG, ports. This may not be true for
          * some vendors.
          *
-         * @param rid Real obejct ID to be examined.
+         * @param rid Real object ID to be examined.
          *
          * @return True if object can't be removed from switch.
          */
@@ -125,7 +125,7 @@ class SaiSwitch
          * specified, since attribute queried by this method are explicitly
          * declared in SaiSwitch constructor.
          *
-         * @param attr_id Switch attrbute to query.
+         * @param attr_id Switch attribute to query.
          *
          * @return Valid RID or specified switch attribute received from
          * switch.  This value can be also SAI_NULL_OBJECT_ID if switch don't
@@ -177,7 +177,7 @@ class SaiSwitch
                 _In_ sai_attr_id_t attr_id);
 
         /**
-         * @biref Get cold boot discovered VIDs.
+         * @brief Get cold boot discovered VIDs.
          *
          * @return Set of cold boot discovered VIDs after cold boot.
          */
@@ -207,7 +207,7 @@ class SaiSwitch
         sai_object_id_t m_switch_vid;
 
         /**
-         * @brief Swtich real ID assigned by SAI SDK.
+         * @brief Switch real ID assigned by SAI SDK.
          */
         sai_object_id_t m_switch_rid;
 
@@ -226,7 +226,7 @@ class SaiSwitch
          */
 
         /**
-         * @brief Map of default RIDs retrived from Switch object.
+         * @brief Map of default RIDs retrieved from Switch object.
          *
          * It will contain RIDs like CPU port, default virtual router, default
          * trap group. etc. Those objects here should be considered non
@@ -262,7 +262,7 @@ class SaiSwitch
         /**
          * @brief Get MAC address.
          *
-         * Intended use is to get switch default MAC addres, for comparison
+         * Intended use is to get switch default MAC address, for comparison
          * logic, when we will try to bring it's default value, in case user
          * changed original switch MAC address.
          *
@@ -297,7 +297,7 @@ class SaiSwitch
          * @brief Put cold boot discovered VIDs to redis DB.
          *
          * This method will only be called after cold boot and it will save
-         * only VIDs that are present on the switch after swtich is initialized
+         * only VIDs that are present on the switch after switch is initialized
          * so it will contain only discovered objects. In case of warm boot
          * this method will not be called.
          */
@@ -313,13 +313,13 @@ class SaiSwitch
                 _In_ sai_attr_id_t attr_id);
 
         /**
-         * @brief Discover objects on the swtich.
+         * @brief Discover objects on the switch.
          *
-         * Method will query recursivly all OID attributes (oid and list) on
+         * Method will query recursively all OID attributes (oid and list) on
          * the given object.
          *
          * This method should be called only once inside constructor right
-         * after switch has beed breated to obtain actual ASIC view.
+         * after switch has been created to obtain actual ASIC view.
          *
          * @param rid Object to discover other objects.
          * @param processed Set of already processed objects. This set will be

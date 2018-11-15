@@ -19,7 +19,7 @@ sai_status_t meta_pre_create_scheduler_group(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    // TODO level will require some additional validation to not crete loops
+    // TODO level will require some additional validation to not create loops
 
     uint8_t max_childs = attr_max_childs->value.u8;
 

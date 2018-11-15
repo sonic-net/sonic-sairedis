@@ -83,7 +83,7 @@ static bool meta_unittests_get_and_erase_set_readonly_flag(
 
     if (!unittests_enabled)
     {
-        // explicityly  to not produce false alarms
+        // explicitly to not produce false alarms
         SWSS_LOG_NOTICE("unittests are not enabled");
         return false;
     }
@@ -192,8 +192,8 @@ class SaiAttrWrapper
             SWSS_LOG_ENTER();
 
             /*
-             * On destructor we need to call free to dealocate possible
-             * alocated list on constructor.
+             * On destructor we need to call free to deallocate possible
+             * allocated list on constructor.
              */
 
             sai_deserialize_free_attribute_value(m_meta->attrvaluetype, m_attr);
@@ -220,7 +220,7 @@ std::string get_attr_info(const sai_attr_metadata_t& md)
 
     /*
      * Attribute name will contain object type as well so we don't need to
-     * serialize object type separatly.
+     * serialize object type separately.
      */
 
     return std::string(md.attridname) + ":" + sai_serialize_attr_value_type(md.attrvaluetype);
@@ -596,7 +596,7 @@ sai_status_t meta_generic_validation_objlist(
     }
 
     /*
-     * We need oids set and object type to check whehter oids are not repeated
+     * We need oids set and object type to check whether oids are not repeated
      * on list and whether all oids are same object type.
      */
 
@@ -741,7 +741,7 @@ std::string construct_key(
     SWSS_LOG_ENTER();
 
     /*
-     * Use map to make sure that keys will be always sorded by id.
+     * Use map to make sure that keys will be always sorted by id.
      */
 
     std::map<int32_t, std::string> keys;
@@ -878,9 +878,9 @@ sai_status_t meta_generic_validate_non_object_on_create(
 
     /*
      * Since non object id objects can contain several object id's inside
-     * object id strucutre, we need to check whether they all belong to the
+     * object id structure, we need to check whether they all belong to the
      * same switch (sine multiple switches can be present and whether all those
-     * objects are allowd respectivly on their members.
+     * objects are allowed respectively on their members.
      *
      * This check is required only on creation, since on set/get/remove we
      * check in object hash whether this object exists.
@@ -894,7 +894,7 @@ sai_status_t meta_generic_validate_non_object_on_create(
     }
 
     /*
-     * This will be most utilzed for createing route entries.
+     * This will be most utilized for creating route entries.
      */
 
     for (size_t j = 0; j < info->structmemberscount; ++j)
@@ -1075,7 +1075,7 @@ sai_status_t meta_generic_validation_create(
 
     bool haskeys = false;
 
-    // check each attribute separetly
+    // check each attribute separately
     for (uint32_t idx = 0; idx < attr_count; ++idx)
     {
         const sai_attribute_t* attr = &attr_list[idx];
@@ -1468,7 +1468,7 @@ sai_status_t meta_generic_validation_create(
         return SAI_STATUS_FAILURE;
     }
 
-    // check if all mandatory attrributes were passed
+    // check if all mandatory attributes were passed
 
     for (auto mdp: metadata)
     {
@@ -1588,7 +1588,7 @@ sai_status_t meta_generic_validation_create(
         {
             const auto& c = *md.conditions[index];
 
-            // condtions may only be on the same object type
+            // conditions may only be on the same object type
             const auto& cmd = *sai_metadata_get_attr_metadata(meta_key.objecttype, c.attrid);
 
             const sai_attribute_value_t* cvalue = cmd.defaultvalue;
@@ -1749,7 +1749,7 @@ sai_status_t meta_generic_validation_remove(
         {
             /*
              * We allow to remove switch object even if there are ROUTE_ENTRY
-             * created and refrencing this switch, since remove could be used
+             * created and referencing this switch, since remove could be used
              * in WARM boot scenario.
              */
 
@@ -2255,7 +2255,7 @@ sai_status_t meta_generic_validation_get(
              * attribute also oid, and then did a "set" on that value, and now
              * reference is not decreased since previous oid was not snooped.
              *
-             * TODO This concearn all attributes not only conditionals
+             * TODO This concern all attributes not only conditionals
              *
              * If attribute is conditional, we need to check if condition is
              * met, if not then this attribute is not mandatory so we can
@@ -3180,7 +3180,7 @@ void meta_generic_validation_post_get_objlist(
      * when we doing get on acl field/action. But none of those are created
      * internally by switch.
      *
-     * TODO Similar stuff is with SET, when we will set oid obejct on existing
+     * TODO Similar stuff is with SET, when we will set oid object on existing
      * switch object, but we will not have it's previous value.  We can check
      * whether default value is present and it's const NULL.
      */
@@ -3249,7 +3249,7 @@ void meta_generic_validation_post_get_objlist(
         if (!object_reference_exists(oid))
         {
             // NOTE: there may happen that user will request multiple object lists
-            // and first list was retrived ok, but second failed with overflow
+            // and first list was retrieved ok, but second failed with overflow
             // then we may forget to snoop
 
             META_LOG_INFO(md, "returned get object on list [%u] oid 0x%lx object type %d does not exists in local DB (snoop)", i, oid, ot);
@@ -3297,7 +3297,7 @@ void meta_generic_validation_post_get(
     switch_id = meta_extract_switch_id(meta_key, switch_id);
 
     /*
-     * TODO We should snoop attributes retrived from switch and put them to
+     * TODO We should snoop attributes retrieved from switch and put them to
      * local db if they don't exist since if attr is oid it may lead to
      * inconsistency when counting reference
      */

@@ -522,7 +522,7 @@ void test_bulk_route_set()
     }
 
     // TODO we need to add consumer producer test here to see
-    // if after consume we get pop we get expectd parameters
+    // if after consume we get pop we get expected parameters
 
     // Remove route entry
     status = sai_bulk_remove_route_entry(count, routes.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());

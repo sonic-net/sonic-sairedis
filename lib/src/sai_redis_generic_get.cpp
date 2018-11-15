@@ -23,7 +23,7 @@ sai_status_t internal_redis_get_process(
 
     sai_deserialize_status(str_sai_status, status);
 
-    // we could deserialize directly to user data, but list is alocated by deserializer
+    // we could deserialize directly to user data, but list is allocated by deserializer
     if (status == SAI_STATUS_SUCCESS)
     {
         SaiAttributeList list(object_type, values, false);
@@ -117,7 +117,7 @@ void clear_oid_values(
             default:
 
                 /*
-                 * If in futre new attribute with object id will be added this
+                 * If in future new attribute with object id will be added this
                  * will make sure that we will need to add handler here.
                  */
 
@@ -155,7 +155,7 @@ sai_status_t internal_redis_generic_get(
 
     /*
      * Since user may reuse buffers, then oid list buffers maybe not cleared
-     * and contain som garbage, let's clean them so we send all oids as null to
+     * and contain some garbage, let's clean them so we send all oids as null to
      * syncd.
      */
 

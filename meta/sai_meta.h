@@ -152,19 +152,19 @@ void meta_unittests_enable(
         _In_ bool enable);
 
 /**
- * @brief Indicates whethre unittests are enabled;
+ * @brief Indicates whether unittests are enabled;
  */
 bool meta_unittests_enabled();
 
 /**
- * @bried Allow to perform SET operation on READ_ONLY attribue only once.
+ * @brief Allow to perform SET operation on READ_ONLY attribute only once.
  *
  * This function relaxes metadata checking on SET operation, it allows to
  * perform SET api on READ_ONLY attribute only once on specific object type and
- * specific attribue.
+ * specific attribute.
  *
  * Once means that SET operation is only relaxed for the very next SET call on
- * that specific object type and attrirbute id.
+ * that specific object type and attribute id.
  *
  * Function is explicitly named ONCE, since it will force test developer to not
  * forget that SET check is relaxed, and not forget for future unittests.
@@ -186,7 +186,7 @@ bool meta_unittests_enabled();
  * It can be dangerous to set any readonly attribute to different values since
  * internal metadata logic maybe using that value and in some cases metadata
  * database may get out of sync and cause unexpected results in api calls up to
- * application carash.
+ * application crash.
  *
  * This function is not thread safe.
  *
