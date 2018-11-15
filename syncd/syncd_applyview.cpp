@@ -6399,7 +6399,7 @@ void populateExistingObjects(
          * objects on default existing objects, like for example buffer profile
          * on ingress priority group.  In this case buffer profile should not
          * be considered as matched object and copied to temporary view, since
-         * this object was not decault existing object (on 1st cold boot) so in
+         * this object was not default existing object (on 1st cold boot) so in
          * this case it must be processed by comparison logic and matched with
          * possible new buffer profile created in temporary view. This may
          * happen if OA will not care what was set previously on ingress

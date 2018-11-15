@@ -64,7 +64,7 @@ class SaiSwitch
          *
          * @param rid Real ID to be examined.
          *
-         * @return True if RID was discovered during cald boot init.
+         * @return True if RID was discovered during cold boot init.
          */
         bool isColdBootDiscoveredRid(
                 _In_ sai_object_id_t rid) const;

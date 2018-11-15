@@ -278,7 +278,7 @@ void checkAllIds()
 
                 /*
                  * If removing existing object, also make sure we remove it
-                 * from DEFAULTVID map since this object will no longer exists.
+                 * from COLDVIDS map since this object will no longer exists.
                  */
 
                 if (g_ridToVidMap.find(rid) == g_ridToVidMap.end())
@@ -286,7 +286,7 @@ void checkAllIds()
 
                 std::string strVid = sai_serialize_object_id(g_ridToVidMap.at(rid));
 
-                SWSS_LOG_INFO("removeing existing VID: %s", strVid.c_str());
+                SWSS_LOG_INFO("removing existing VID: %s", strVid.c_str());
 
                 g_redisClient->hdel(COLDVIDS, strVid);
             }
