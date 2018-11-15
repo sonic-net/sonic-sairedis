@@ -360,7 +360,22 @@ sub test_brcm_warm_boot_full_empty
     request_warm_shutdown;
 }
 
+sub test_brcm_config_acl
+{
+    fresh_start;
+
+    play "config_acl.rec";
+    play "config_acl.rec", 0;
+
+    fresh_start;
+
+    play "config_acl2.rec";
+    play "config_acl2.rec", 0;
+}
+
 # RUN TESTS
+
+test_brcm_config_acl;
 
 test_brcm_warm_boot_full_empty;
 test_brcm_warm_boot_small_buffer;
