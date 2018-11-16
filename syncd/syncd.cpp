@@ -6,6 +6,7 @@
 #include <limits.h>
 
 #include "swss/warm_restart.h"
+#include "swss/table.h"
 
 extern "C" {
 #include <sai.h>
@@ -3170,6 +3171,8 @@ typedef enum _syncd_restart_type_t
 
     SYNCD_RESTART_TYPE_FAST,
 
+    SYNCD_RESTART_TYPE_PRE_SHUTDOWN,
+
 } syncd_restart_type_t;
 
 syncd_restart_type_t handleRestartQuery(swss::NotificationConsumer &restartQuery)
@@ -3200,6 +3203,12 @@ syncd_restart_type_t handleRestartQuery(swss::NotificationConsumer &restartQuery
     {
         SWSS_LOG_NOTICE("received FAST switch shutdown event");
         return SYNCD_RESTART_TYPE_FAST;
+    }
+
+    if (op == "PRE")
+    {
+        SWSS_LOG_NOTICE("received PRE_SHUTDOWN switch event");
+        return SYNCD_RESTART_TYPE_PRE_SHUTDOWN;
     }
 
     SWSS_LOG_WARN("received '%s' unknown switch shutdown event, assuming COLD", op.c_str());
@@ -3452,6 +3461,8 @@ int syncd_main(int argc, char **argv)
     std::shared_ptr<swss::DBConnector> dbAsic = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(FLEX_COUNTER_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    std::shared_ptr<swss::DBConnector> dbState = std::make_shared<swss::DBConnector>(STATE_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    std::unique_ptr<swss::Table> warmRestartTable = std::unique_ptr<swss::Table>(new swss::Table(dbState.get(), STATE_WARM_RESTART_TABLE_NAME));
 
     g_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());
 
@@ -3539,6 +3550,9 @@ int syncd_main(int argc, char **argv)
 
     syncd_restart_type_t shutdownType = SYNCD_RESTART_TYPE_COLD;
 
+    sai_switch_api_t *sai_switch_api = NULL;
+    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+
     try
     {
         SWSS_LOG_NOTICE("before onSyncdStart");
@@ -3575,7 +3589,52 @@ int syncd_main(int argc, char **argv)
                  */
 
                 shutdownType = handleRestartQuery(*restartQuery);
-                break;
+                if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN) {
+                    // break out the event handling loop to shutdown syncd
+                    break;
+                }
+
+                // Handle switch pre-shutdown and wait for the final shutdown
+                // event
+
+                FlexCounter::removeAllCounters();
+                stopNotificationsProcessingThread();
+
+                sai_attribute_t attr;
+
+                attr.id = SAI_SWITCH_ATTR_RESTART_WARM;
+                attr.value.booldata = true;
+
+                status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_RESTART_WARM=true: %s for pre-shutdown",
+                            sai_serialize_status(status).c_str());
+                    shutdownType = SYNCD_RESTART_TYPE_COLD;
+                    warmRestartTable->hset("warm-shutdown", "state", "set-flag-failed");
+                    continue;
+                }
+
+                attr.id = SAI_SWITCH_ATTR_PRE_SHUTDOWN;
+                attr.value.booldata = true;
+
+                status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
+                if (status == SAI_STATUS_SUCCESS)
+                {
+                    warmRestartTable->hset("warm-shutdown", "state", "pre-shutdown-succeeded");
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_PRE_SHUTDOWN=true: %s",
+                            sai_serialize_status(status).c_str());
+                    warmRestartTable->hset("warm-shutdown", "state", "pre-shutdown-failed");
+
+                    // Restore cold shutdown.
+                    attr.id = SAI_SWITCH_ATTR_RESTART_WARM;
+                    attr.value.booldata = false;
+                    status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
+                }
             }
             else if (sel == flexCounter.get())
             {
@@ -3598,9 +3657,6 @@ int syncd_main(int argc, char **argv)
         exit_and_notify(EXIT_FAILURE);
     }
 
-    sai_switch_api_t *sai_switch_api = NULL;
-    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
-
     if (shutdownType == SYNCD_RESTART_TYPE_WARM)
     {
         const char *warmBootWriteFile = profile_get_value(0, SAI_KEY_WARM_BOOT_WRITE_FILE);
@@ -3612,6 +3668,7 @@ int syncd_main(int argc, char **argv)
             SWSS_LOG_WARN("user requested warm shutdown but warmBootWriteFile is not specified, forcing cold shutdown");
 
             shutdownType = SYNCD_RESTART_TYPE_COLD;
+            warmRestartTable->hset("warm-shutdown", "state", "warm-shutdown-failed");
         }
         else
         {
@@ -3629,6 +3686,7 @@ int syncd_main(int argc, char **argv)
                 SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_RESTART_WARM=true: %s, fall back to cold restart",
                         sai_serialize_status(status).c_str());
                 shutdownType = SYNCD_RESTART_TYPE_COLD;
+                warmRestartTable->hset("warm-shutdown", "state", "set-flag-failed");
             }
         }
     }
@@ -3667,6 +3725,14 @@ int syncd_main(int argc, char **argv)
     {
         SWSS_LOG_NOTICE("Can't delete a switch. gSwitchId=0x%lx status=%s", gSwitchId,
                 sai_serialize_status(status).c_str());
+    }
+
+    if (shutdownType == SYNCD_RESTART_TYPE_WARM)
+    {
+        warmRestartTable->hset("warm-shutdown", "state",
+                              (status == SAI_STATUS_SUCCESS) ?
+                              "warm-shutdown-succeeded":
+                              "warm-shutdown-failed");
     }
 
     SWSS_LOG_NOTICE("calling api uninitialize");
