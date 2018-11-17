@@ -42,6 +42,11 @@ class FlexCounter
                 _In_ sai_object_id_t priorityGroupId,
                 _In_ std::string instanceId,
                 _In_ const std::vector<sai_ingress_priority_group_attr_t> &attrIds);
+        static void setSwitchSensorsList(
+                _In_ sai_object_id_t switchVid,
+                _In_ sai_object_id_t switchId,
+                _In_ std::string instanceId,
+                _In_ const std::vector<sai_switch_attr_t> &SwitchSensorIds);
         static void updateFlexCounterStatus(
                 _In_ std::string status,
                 _In_ std::string instanceId);
@@ -57,6 +62,9 @@ class FlexCounter
                 _In_ std::string instanceId);
         static void removePriorityGroup(
                 _In_ sai_object_id_t priorityGroupVid,
+                _In_ std::string instanceId);
+        static void removeSwitch(
+                _In_ sai_object_id_t SwitchVid,
                 _In_ std::string instanceId);
 
         static void addPortCounterPlugin(
@@ -130,6 +138,16 @@ class FlexCounter
             std::vector<sai_port_stat_t> portCounterIds;
         };
 
+        struct SwitchSensorIds
+        {
+            SwitchSensorIds(
+                    _In_ sai_object_id_t switchId,
+                    _In_ const std::vector<sai_switch_attr_t> &SensorIds);
+
+            sai_object_id_t switchId;
+            std::vector<sai_switch_attr_t> switchSensorIds;
+        };
+
         FlexCounter(std::string instanceId);
         static FlexCounter& getInstance(std::string instanceId);
         static void removeInstance(std::string instanceId);
@@ -143,9 +161,11 @@ class FlexCounter
         void saiUpdateSupportedPortCounters(sai_object_id_t portId);
         void saiUpdateSupportedQueueCounters(sai_object_id_t queueId, const std::vector<sai_queue_stat_t> &counterIds);
         void saiUpdateSupportedPriorityGroupCounters(sai_object_id_t priorityGroupId, const std::vector<sai_ingress_priority_group_stat_t> &counterIds);
+        void saiUpdateSupportedSwitchSensors(_In_ sai_object_id_t switchId, _In_ const std::vector<sai_switch_attr_t> &SwitchSensorIds);
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
         bool isPriorityGroupCounterSupported(sai_ingress_priority_group_stat_t counter) const;
+        bool isSwitchSensorSupported(sai_switch_attr_t sensor) const;
         bool isEmpty();
 
         // Key is a Virtual ID
@@ -154,6 +174,10 @@ class FlexCounter
         std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupCounterIds>> m_priorityGroupCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> m_priorityGroupAttrIdsMap;
+        std::map<sai_object_id_t, std::shared_ptr<SwitchSensorIds>> m_switchSensorIdsMap;
+
+        // Max number of temperature sensors
+        uint8_t max_temp_sensors;
 
         // Plugins
         std::set<std::string> m_queuePlugins;

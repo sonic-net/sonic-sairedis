@@ -138,6 +138,9 @@ std::string sai_serialize_ipmc_entry_type(
 std::string sai_serialize_qos_map_item(
         _In_ const sai_qos_map_t& qosmap);
 
+std::string sai_serialize_switch_attr(
+        _In_ const sai_switch_attr_t switch_attr);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -286,5 +289,9 @@ void sai_deserialize_ingress_priority_group_attr(
 void sai_deserialize_queue_attr(
         _In_ const std::string& s,
         _Out_ sai_queue_attr_t& attr);
+
+void sai_deserialize_switch_attr(
+        _In_ const std::string& s,
+        _Out_ sai_switch_attr_t& attr);
 
 #endif // __SAI_SERIALIZE__

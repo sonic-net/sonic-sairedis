@@ -2907,6 +2907,17 @@ void processFlexCounterEvent(
 
                 FlexCounter::setPriorityGroupAttrList(vid, rid, groupName, pgAttrIds);
             }
+            else if (objectType == SAI_OBJECT_TYPE_SWITCH && field == SWITCH_SENSOR_ID_LIST)
+            {
+                std::vector<sai_switch_attr_t> SwitchSensorIds;
+                for (const auto &str : idStrings)
+                {
+                    sai_switch_attr_t attr;
+                    sai_deserialize_switch_attr(str, attr);
+                    SwitchSensorIds.push_back(attr);
+                }
+                FlexCounter::setSwitchSensorsList(vid, rid, groupName, SwitchSensorIds);
+            }
             else
             {
                 SWSS_LOG_ERROR("Object type and field combination is not supported, object type %s, field %s", objectTypeStr.c_str(), field.c_str());

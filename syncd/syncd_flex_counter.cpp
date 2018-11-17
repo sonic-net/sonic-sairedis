@@ -8,6 +8,7 @@ static std::map<std::string, std::shared_ptr<FlexCounter>> g_flex_counters_map;
 static std::set<sai_port_stat_t> supportedPortCounters;
 static std::set<sai_queue_stat_t> supportedQueueCounters;
 static std::set<sai_ingress_priority_group_stat_t> supportedPriorityGroupCounters;
+static std::set<sai_switch_attr_t> supportedSwitchSensors;
 
 FlexCounter::PortCounterIds::PortCounterIds(
         _In_ sai_object_id_t port,
@@ -45,6 +46,14 @@ FlexCounter::IngressPriorityGroupCounterIds::IngressPriorityGroupCounterIds(
         _In_ sai_object_id_t priorityGroup,
         _In_ const std::vector<sai_ingress_priority_group_stat_t> &priorityGroupIds):
     priorityGroupId(priorityGroup), priorityGroupCounterIds(priorityGroupIds)
+{
+    SWSS_LOG_ENTER();
+}
+
+FlexCounter::SwitchSensorIds::SwitchSensorIds(
+        _In_ sai_object_id_t switch_id,
+        _In_ const std::vector<sai_switch_attr_t> &SensorIds):
+    switchId(switch_id), switchSensorIds(SensorIds)
 {
     SWSS_LOG_ENTER();
 }
@@ -364,6 +373,59 @@ void FlexCounter::setPriorityGroupAttrList(
     }
 }
 
+void FlexCounter::setSwitchSensorsList(
+        _In_ sai_object_id_t switchVid,
+        _In_ sai_object_id_t switchId,
+        _In_ std::string instanceId,
+        _In_ const std::vector<sai_switch_attr_t> &sensorIds)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter &fc = getInstance(instanceId);
+
+    fc.saiUpdateSupportedSwitchSensors(switchId, sensorIds);
+
+    // Remove unsupported sensors
+    std::vector<sai_switch_attr_t> supportedIds;
+    for (auto &sensor : sensorIds)
+    {
+        if (fc.isSwitchSensorSupported(sensor))
+        {
+            supportedIds.push_back(sensor);
+        }
+    }
+
+    if (supportedIds.size() == 0)
+    {
+        SWSS_LOG_ERROR("SWITCH %s does not has supported sensors", sai_serialize_object_id(switchId).c_str());
+
+        // Remove flex counter if all sensor IDs are unregistered
+        if (fc.isEmpty())
+        {
+            removeInstance(instanceId);
+        }
+
+        return;
+    }
+
+    auto it = fc.m_switchSensorIdsMap.find(switchVid);
+    if (it != fc.m_switchSensorIdsMap.end())
+    {
+        (*it).second->switchSensorIds = supportedIds;
+        return;
+    }
+
+    auto switchSensorIds = std::make_shared<SwitchSensorIds>(switchId, supportedIds);
+    fc.m_switchSensorIdsMap.emplace(switchVid, switchSensorIds);
+
+    // Start flex counter thread in case it was not running due to empty sensor IDs map
+    if (fc.m_pollInterval > 0)
+    {
+        fc.startFlexCounterThread();
+        SWSS_LOG_ERROR("setSwitchSensorsList startFlexCounterThread started");
+    }
+}
+
 void FlexCounter::removePort(
         _In_ sai_object_id_t portVid,
         _In_ std::string instanceId)
@@ -459,6 +521,35 @@ void FlexCounter::removePriorityGroup(
     }
 
     // Remove flex counter if all counter IDs and plugins are unregistered
+    if (fc.isEmpty())
+    {
+        removeInstance(instanceId);
+    }
+}
+
+void FlexCounter::removeSwitch(
+        _In_ sai_object_id_t switchVid,
+        _In_ std::string instanceId)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter &fc = getInstance(instanceId);
+
+    auto it = fc.m_switchSensorIdsMap.find(switchVid);
+    if (it == fc.m_switchSensorIdsMap.end())
+    {
+        SWSS_LOG_NOTICE("Trying to remove nonexisting switch sensor Ids 0x%lx", switchVid);
+        // Remove flex counter if all counter IDs and plugins are unregistered
+        if (fc.isEmpty())
+        {
+            removeInstance(instanceId);
+        }
+        return;
+    }
+
+    fc.m_switchSensorIdsMap.erase(it);
+
+    // Remove flex counter if all switch sensor IDs are unregistered
     if (fc.isEmpty())
     {
         removeInstance(instanceId);
@@ -609,6 +700,13 @@ bool FlexCounter::isPriorityGroupCounterSupported(sai_ingress_priority_group_sta
     return supportedPriorityGroupCounters.count(counter) != 0;
 }
 
+bool FlexCounter::isSwitchSensorSupported(sai_switch_attr_t sensor) const
+{
+    SWSS_LOG_ENTER();
+
+    return supportedSwitchSensors.count(sensor) != 0;
+}
+
 FlexCounter::FlexCounter(std::string instanceId) : m_instanceId(instanceId)
 {
     SWSS_LOG_ENTER();
@@ -644,6 +742,7 @@ void FlexCounter::collectCounters(
     std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> queueAttrIdsMap;
     std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupCounterIds>> priorityGroupCounterIdsMap;
     std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> priorityGroupAttrIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<SwitchSensorIds>> SwitchSensorIdsMap;
 
     {
         std::lock_guard<std::mutex> lock(g_mutex);
@@ -652,6 +751,7 @@ void FlexCounter::collectCounters(
         queueAttrIdsMap = m_queueAttrIdsMap;
         priorityGroupCounterIdsMap = m_priorityGroupCounterIdsMap;
         priorityGroupAttrIdsMap = m_priorityGroupAttrIdsMap;
+        SwitchSensorIdsMap = m_switchSensorIdsMap;
     }
 
     // Collect stats for every registered port
@@ -869,6 +969,60 @@ void FlexCounter::collectCounters(
         std::string priorityGroupVidStr = sai_serialize_object_id(priorityGroupVid);
 
         countersTable.set(priorityGroupVidStr, values, "");
+    }
+
+    // Collect stats for every registered Switch Sensor
+    for (const auto &kv: SwitchSensorIdsMap)
+    {
+        const auto &switchVid = kv.first;
+        const auto &switchId = kv.second->switchId;
+        const auto &switchSensorIds = kv.second->switchSensorIds;
+
+        std::vector<uint32_t> switchSensorValue(switchSensorIds.size());
+
+        // Push all counter values to a single vector
+        std::vector<swss::FieldValueTuple> values;
+
+        for (auto &sensor : switchSensorIds)
+        {
+            sai_attribute_t attr;
+
+            if(SAI_SWITCH_ATTR_TEMP_LIST == sensor) {
+                std::vector<int32_t> temp_list(max_temp_sensors);
+
+                attr.id = SAI_SWITCH_ATTR_TEMP_LIST;
+                attr.value.s32list.count = max_temp_sensors;
+                attr.value.s32list.list = temp_list.data();
+
+                sai_status_t status = sai_metadata_sai_switch_api->get_switch_attribute(switchId , 1, &attr);
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to get value of sensor 0x%lx: %d", sensor, status);
+                    continue;
+                }
+
+                for (size_t i = 0; i < attr.value.s32list.count ; i++) {
+                    const std::string &counterName = sai_serialize_switch_attr(sensor) + "_ITEM_" + std::to_string(i);
+                    values.emplace_back(counterName, std::to_string(temp_list[i]));
+                }
+            } else {
+                attr.id = sensor;
+                sai_status_t status = sai_metadata_sai_switch_api->get_switch_attribute(switchId , 1, &attr);
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("Failed to get value of sensor 0x%lx: %d", sensor, status);
+                    continue;
+                }
+
+                const std::string &counterName = sai_serialize_switch_attr(sensor);
+                values.emplace_back(counterName, std::to_string(attr.value.s32));
+            }
+        }
+
+        // Write counters to DB
+        std::string switchVidStr = sai_serialize_object_id(switchVid);
+
+        countersTable.set(switchVidStr, values, "");
     }
 
     countersTable.flush();
@@ -1091,6 +1245,54 @@ void FlexCounter::saiUpdateSupportedPriorityGroupCounters(
         else
         {
             supportedPriorityGroupCounters.insert(counter);
+        }
+    }
+}
+
+void FlexCounter::saiUpdateSupportedSwitchSensors(
+        _In_ sai_object_id_t switchId,
+        _In_ const std::vector<sai_switch_attr_t> &sensorIds)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    supportedSwitchSensors.clear();
+
+    for (auto &sensor : sensorIds)
+    {
+        if(SAI_SWITCH_ATTR_TEMP_LIST == sensor) {
+            attr.id = SAI_SWITCH_ATTR_MAX_NUMBER_OF_TEMP_SENSORS;
+            sai_status_t status = sai_metadata_sai_switch_api->get_switch_attribute(switchId , 1, &attr);
+            if ((status != SAI_STATUS_SUCCESS) || (0 == attr.value.u8))
+            {
+                SWSS_LOG_INFO("Temperature sensor list is not supported");
+                continue;
+            } else {
+                max_temp_sensors = attr.value.u8;
+            }
+        }
+
+        attr.id = sensor;
+
+        sai_status_t status = sai_metadata_sai_switch_api->get_switch_attribute(switchId , 1, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_INFO("Sensor %s is not supported on switch %s, rv: %s",
+                    sai_serialize_switch_attr(sensor).c_str(),
+                    sai_serialize_object_id(switchId).c_str(),
+                    sai_serialize_status(status).c_str());
+
+            continue;
+        }
+        else
+        {
+            SWSS_LOG_ERROR("Sensor %s is supported on switch %s, rv: %s",
+                    sai_serialize_switch_attr(sensor).c_str(),
+                    sai_serialize_object_id(switchId).c_str(),
+                    sai_serialize_status(status).c_str());
+            supportedSwitchSensors.insert(sensor);
         }
     }
 }
