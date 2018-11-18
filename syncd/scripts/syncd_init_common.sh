@@ -136,6 +136,11 @@ config_syncd_nephos()
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
+config_syncd_vs()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
 config_syncd()
 {
     check_warm_boot
@@ -154,6 +159,8 @@ config_syncd()
          config_syncd_barefoot
     elif [ "$SONIC_ASIC_TYPE" == "nephos" ]; then
         config_syncd_nephos
+    elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
+        config_syncd_vs
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
