@@ -681,7 +681,65 @@ int ifup(const char *dev)
         return err;
     }
 
+    if (ifr.ifr_flags & IFF_UP)
+    {
+        close(s);
+
+        return 0;
+    }
+
     ifr.ifr_flags |= IFF_UP;
+
+    err = ioctl(s, SIOCSIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCSIFFLAGS on socket %d %s failed, err %d", s, dev, err);
+    }
+
+    close(s);
+
+    return err;
+}
+
+int promisc(const char *dev)
+{
+    SWSS_LOG_ENTER();
+
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (s < 0)
+    {
+        SWSS_LOG_ERROR("failed to open socket: %d", s);
+
+        return -1;
+    }
+
+    struct ifreq ifr;
+
+    memset(&ifr, 0, sizeof ifr);
+
+    strncpy(ifr.ifr_name, dev , IFNAMSIZ);
+
+    int err = ioctl(s, SIOCGIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCGIFFLAGS on socket %d %s failed, err %d", s, dev, err);
+
+        close(s);
+
+        return err;
+    }
+
+    if (ifr.ifr_flags & IFF_PROMISC)
+    {
+        close(s);
+
+        return 0;
+    }
+
+    ifr.ifr_flags |= IFF_PROMISC;
 
     err = ioctl(s, SIOCSIFFLAGS, &ifr);
 
@@ -811,6 +869,24 @@ bool hostif_create_tap_veth_forwarding(
     }
 
     SWSS_LOG_INFO("interface index = %d %s\n", sock_address.sll_ifindex, vethname.c_str());
+
+    if (ifup(vethname.c_str()))
+    {
+        SWSS_LOG_ERROR("ifup failed on %s", vethname.c_str());
+
+        close(packet_socket);
+
+        return false;
+    }
+
+    if (promisc(vethname.c_str()))
+    {
+        SWSS_LOG_ERROR("promisc failed on %s", vethname.c_str());
+
+        close(packet_socket);
+
+        return false;
+    }
 
     if (bind(packet_socket, (struct sockaddr*) &sock_address, sizeof(sock_address)) < 0)
     {
