@@ -1,5 +1,6 @@
 #include "sai_vs.h"
 #include "sai_vs_state.h"
+#include <net/if.h>
 
 // TODO extra work may be needed on GET api if N on list will be > then actual
 
@@ -185,6 +186,21 @@ static sai_status_t create_ports()
         97,98,99,100,
         101,102,103,104
     };
+
+    if (g_lane_order.size() != port_count * 4)
+    {
+        SWSS_LOG_ERROR("only supported lane count is %d, using default", port_count * 4);
+    }
+    else if (g_ifname_to_lanes.size() != port_count)
+    {
+        SWSS_LOG_ERROR("only supported interface count is %d, using default", port_count);
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("replacing lane numbers from %s", g_interface_lane_map_file);
+
+        memcpy(lanes, g_lane_order.data(), port_count * 4);
+    }
 
     port_list.clear();
 

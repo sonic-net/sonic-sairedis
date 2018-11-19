@@ -57,6 +57,7 @@ EIO
 encap
 endl
 enum
+eth
 ethernet
 fdb
 FDB

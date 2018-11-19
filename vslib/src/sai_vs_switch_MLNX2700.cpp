@@ -186,6 +186,21 @@ static sai_status_t create_ports()
         4,5,6,7,
     };
 
+    if (g_lane_order.size() != port_count * 4)
+    {
+        SWSS_LOG_ERROR("only supported lane count is %d, using default", port_count * 4);
+    }
+    else if (g_ifname_to_lanes.size() != port_count)
+    {
+        SWSS_LOG_ERROR("only supported interface count is %d, using default", port_count);
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("replacing lane numbers from %s", g_interface_lane_map_file);
+
+        memcpy(lanes, g_lane_order.data(), port_count * 4);
+    }
+
     port_list.clear();
 
     sai_object_id_t switch_id = ss->getSwitchId();

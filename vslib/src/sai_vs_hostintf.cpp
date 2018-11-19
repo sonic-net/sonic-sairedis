@@ -840,6 +840,41 @@ bool hostif_create_tap_veth_forwarding(
 
     std::string vethname = SAI_VS_VETH_PREFIX + tapname;
 
+    // check if user override interface names
+
+    {
+        sai_attribute_t attr;
+
+        uint32_t lanes[4];
+
+        attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+
+        attr.value.u32list.count = 4;
+        attr.value.u32list.list = lanes;
+
+        if (vs_generic_get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN("failed to get port %s lanes, using veth: %s",
+                    sai_serialize_object_id(port_id).c_str(),
+                    vethname.c_str());
+        }
+        else
+        {
+            auto it = g_lane_to_ifname.find(lanes[0]);
+
+            if (it == g_lane_to_ifname.end())
+            {
+                SWSS_LOG_WARN("failed to get ifname from lane number %u", lanes[0]);
+            }
+            else
+            {
+                SWSS_LOG_NOTICE("using %s instead of %s", it->second.c_str(), vethname.c_str());
+
+                vethname = it->second;
+            }
+        }
+    }
+
     int packet_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
 
     if (packet_socket < 0)

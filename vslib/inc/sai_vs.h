@@ -6,11 +6,23 @@ extern "C" {
 }
 
 #include "swss/logger.h"
+#include "swss/tokenize.h"
 #include "meta/sai_meta.h"
 
 #include <mutex>
 
 #define SAI_KEY_VS_SWITCH_TYPE              "SAI_VS_SWITCH_TYPE"
+
+/**
+ * @def SAI_KEY_VS_INTERFACE_LANE_MAP_FILE
+ *
+ * If specified in profile.ini it should point to eth interface to lane map.
+ *
+ * Example:
+ * eth0:1,2,3,4
+ * eth1:5,6,7,8
+ */
+#define SAI_KEY_VS_INTERFACE_LANE_MAP_FILE  "SAI_VS_INTERFACE_LANE_MAP_FILE"
 
 /**
  * @def SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE
@@ -82,6 +94,12 @@ extern int g_vs_boot_type;
 extern const char *g_boot_type;
 extern const char *g_warm_boot_read_file;
 extern const char *g_warm_boot_write_file;
+
+extern const char *g_interface_lane_map_file;
+
+extern std::map<uint32_t,std::string> g_lane_to_ifname;
+extern std::map<std::string,std::vector<uint32_t>> g_ifname_to_lanes;
+extern std::vector<uint32_t> g_lane_order;
 
 extern const sai_acl_api_t              vs_acl_api;
 extern const sai_bfd_api_t              vs_bfd_api;

@@ -3,6 +3,7 @@
 #include "sai_vs_state.h"
 #include <string.h>
 #include <unistd.h>
+#include <net/if.h>
 
 #include <algorithm>
 
@@ -25,9 +26,15 @@ std::shared_ptr<std::thread>                g_fdbAgingThread;
 
 int g_vs_boot_type = SAI_VS_COLD_BOOT;
 
+std::map<uint32_t,std::string> g_lane_to_ifname;
+std::map<std::string,std::vector<uint32_t>> g_ifname_to_lanes;
+std::vector<uint32_t> g_lane_order;
+
 const char *g_boot_type             = NULL;
 const char *g_warm_boot_read_file   = NULL;
 const char *g_warm_boot_write_file  = NULL;
+
+const char *g_interface_lane_map_file = NULL;
 
 void channelOpEnableUnittests(
         _In_ const std::string &key,
@@ -475,6 +482,131 @@ void clear_local_state()
     vs_reset_id_counter();
 }
 
+bool check_ifname(
+        _In_ const std::string& name)
+{
+    SWSS_LOG_ENTER();
+
+    size_t size = name.size();
+
+    if (size == 0 || size > IFNAMSIZ)
+    {
+        SWSS_LOG_ERROR("invalid interface name %s length: %zu", name.c_str(), size);
+        return false;
+    }
+
+    for (size_t i = 0; i < size; i++)
+    {
+        char c = name[i];
+
+        if (c >= '0' && c <= '9')
+            continue;
+
+        if (c >= 'a' && c <= 'z')
+            continue;
+
+        if (c >= 'A' && c <= 'Z')
+            continue;
+
+        SWSS_LOG_ERROR("invalid character '%c' in interface name %s", c, name.c_str());
+        return false;
+    }
+
+    // interface name is valid
+    return true;
+}
+
+void load_interface_lane_map()
+{
+    SWSS_LOG_ENTER();
+
+    if (g_interface_lane_map_file == NULL)
+    {
+        SWSS_LOG_NOTICE("no interface lane map");
+        return;
+    }
+
+    std::ifstream lanemap(g_interface_lane_map_file);
+
+    if (!lanemap.is_open())
+    {
+        SWSS_LOG_ERROR("failed to open lane map file: %s", g_interface_lane_map_file);
+        return;
+    }
+
+    std::string line;
+
+    while(getline(lanemap, line))
+    {
+        if (line.size() > 0 && (line[0] == '#' || line[0] == ';'))
+        {
+            continue;
+        }
+
+        auto tokens = swss::tokenize(line, ':');
+
+        if (tokens.size() != 2)
+        {
+            SWSS_LOG_ERROR("expected 2 tokens in line %s, got %zu", line.c_str(), tokens.size());
+            continue;
+        }
+
+        auto ifname = tokens.at(0);
+        auto lanes = tokens.at(1);
+
+        if (!check_ifname(ifname))
+        {
+            continue;
+        }
+
+        if (g_ifname_to_lanes.find(ifname) != g_ifname_to_lanes.end())
+        {
+            SWSS_LOG_ERROR("interface %s was already defined", ifname.c_str());
+            continue;
+        }
+
+        tokens = swss::tokenize(lanes,',');
+
+        size_t n = tokens.size();
+
+        if (n != 1 && n != 2 && n != 4)
+        {
+            SWSS_LOG_ERROR("invalid number of lanes (%zu) assigned to interface %s", n, ifname.c_str());
+            continue;
+        }
+
+        std::vector<uint32_t> lanevec;
+
+        for (auto l: tokens)
+        {
+            uint32_t lanenumber;
+            if (sscanf(l.c_str(), "%u", &lanenumber) != 1)
+            {
+                SWSS_LOG_ERROR("failed to parse lane number: %s", l.c_str());
+                continue;
+            }
+
+            if (g_lane_to_ifname.find(lanenumber) != g_lane_to_ifname.end())
+            {
+                SWSS_LOG_ERROR("lane number %u used on %s was already defined on %s",
+                        lanenumber,
+                        ifname.c_str(),
+                        g_lane_to_ifname.at(lanenumber).c_str());
+                continue;
+            }
+
+            lanevec.push_back(lanenumber);
+            g_lane_order.push_back(lanenumber);
+
+            g_lane_to_ifname[lanenumber] = ifname;
+        }
+
+        g_ifname_to_lanes[ifname] = lanevec;
+    }
+
+    SWSS_LOG_NOTICE("loaded %zu lanes and %zu interfaces", g_lane_to_ifname.size(), g_ifname_to_lanes.size());
+}
+
 sai_status_t sai_api_initialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t *service_method_table)
@@ -510,6 +642,10 @@ sai_status_t sai_api_initialize(
 
         return SAI_STATUS_FAILURE;
     }
+
+    g_interface_lane_map_file = service_method_table->profile_get_value(0, SAI_KEY_VS_INTERFACE_LANE_MAP_FILE);
+
+    load_interface_lane_map();
 
     g_boot_type             = service_method_table->profile_get_value(0, SAI_KEY_BOOT_TYPE);
     g_warm_boot_read_file   = service_method_table->profile_get_value(0, SAI_KEY_WARM_BOOT_READ_FILE);
