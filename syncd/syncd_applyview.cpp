@@ -7338,12 +7338,22 @@ void executeOperationsOnAsic(
 
         SWSS_LOG_NOTICE("optimized operations!");
 
+        std::map<std::string,int> opByObjectType;
+
         for (const auto &op: currentView.asicGetWithOptimizedRemoveOperations())
         {
             const std::string &key = kfvKey(*op.op);
             const std::string &opp = kfvOp(*op.op);
 
             SWSS_LOG_NOTICE("%s: %s", opp.c_str(), key.c_str());
+
+            // count operations by object type
+            opByObjectType[key.substr(0, key.find(":"))]++;
+        }
+
+        for (auto kvp: opByObjectType)
+        {
+            SWSS_LOG_NOTICE("operations on %s: %d", kvp.first.c_str(), kvp.second);
         }
 
         //for (const auto &op: currentView.asicGetOperations())
