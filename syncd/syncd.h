@@ -55,6 +55,11 @@ extern "C" {
 #define SAI_COLD_BOOT               0
 #define SAI_WARM_BOOT               1
 #define SAI_FAST_BOOT               2
+/**
+ * A special type of boot used by Mellanox platforms
+ * to start in 'fast-fast' boot mode
+ */
+#define SAI_FAST_FAST_BOOT          3
 
 #ifdef SAITHRIFT
 #define SWITCH_SAI_THRIFT_RPC_SERVER_PORT 9092

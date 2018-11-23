@@ -24,12 +24,21 @@ fi
 # Use temporary view between init and apply
 CMD_ARGS+=" -u"
 
-case "$(cat /proc/cmdline)" in
-  *fast-reboot*)
+BOOT_TYPE="$(cat /proc/cmdline | grep -o 'SONIC_BOOT_TYPE=\S*' | cut -d'=' -f2)"
+
+case "$BOOT_TYPE" in
+  fast-reboot)
      FAST_REBOOT='yes'
+    ;;
+  fast-fast)
+    if [ -e /var/warmboot/issu_started ]; then
+        FAST_FAST_REBOOT='yes'
+        rm -f /var/warmboot/issu_started
+    fi
     ;;
   *)
      FAST_REBOOT='no'
+     FAST_FAST_REBOOT='no'
     ;;
 esac
 
@@ -55,6 +64,8 @@ function set_start_type()
         CMD_ARGS+=" -t warm"
     elif [ $FAST_REBOOT == "yes" ]; then
         CMD_ARGS+=" -t fast"
+    elif [ $FAST_FAST_REBOOT == "yes" ]; then
+        CMD_ARGS+=" -t fast-fast"
     fi
 }
 

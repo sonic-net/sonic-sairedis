@@ -2919,7 +2919,7 @@ void printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: syncd [-N] [-U] [-d] [-p profile] [-i interval] [-t [cold|warm|fast]] [-h] [-u] [-S]" << std::endl;
+    std::cout << "Usage: syncd [-N] [-U] [-d] [-p profile] [-i interval] [-t [cold|warm|fast|fast-fast]] [-h] [-u] [-S]" << std::endl;
     std::cout << "    -N --nocounters" << std::endl;
     std::cout << "        Disable counter thread" << std::endl;
     std::cout << "    -d --diag" << std::endl;
@@ -2929,7 +2929,7 @@ void printUsage()
     std::cout << "    -i --countersInterval interval" << std::endl;
     std::cout << "        Provide counter thread interval" << std::endl;
     std::cout << "    -t --startType type" << std::endl;
-    std::cout << "        Specify cold|warm|fast start type" << std::endl;
+    std::cout << "        Specify cold|warm|fast|fast-fast start type" << std::endl;
     std::cout << "    -u --useTempView:" << std::endl;
     std::cout << "        Use temporary view between init and apply" << std::endl;
     std::cout << "    -S --disableExitSleep" << std::endl;
@@ -3027,6 +3027,10 @@ void handleCmdLine(int argc, char **argv)
                 else if (std::string(optarg) == "fast")
                 {
                     options.startType = SAI_FAST_BOOT;
+                }
+                else if (std::string(optarg) == "fast-fast")
+                {
+                    options.startType = SAI_FAST_FAST_BOOT;
                 }
                 else
                 {
@@ -3504,7 +3508,16 @@ int syncd_main(int argc, char **argv)
         options.startType = SAI_COLD_BOOT;
     }
 
-    gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(options.startType);
+    if (options.startType == SAI_FAST_FAST_BOOT)
+    {
+        /*
+         * Mellanox SAI requieres to pass SAI_WARM_BOOT as SAI_BOOT_KEY
+         * to start 'fast-fast'
+         */
+        gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(SAI_WARM_BOOT);
+    } else {
+        gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(options.startType);
+    }
 
     sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
 
