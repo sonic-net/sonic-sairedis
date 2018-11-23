@@ -33,7 +33,6 @@ case "$BOOT_TYPE" in
   fast-fast)
     if [ -e /var/warmboot/issu_started ]; then
         FAST_FAST_REBOOT='yes'
-        rm -f /var/warmboot/issu_started
     fi
     ;;
   *)

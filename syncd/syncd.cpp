@@ -3210,6 +3210,35 @@ syncd_restart_type_t handleRestartQuery(swss::NotificationConsumer &restartQuery
     return SYNCD_RESTART_TYPE_COLD;
 }
 
+void handleFfbEvent(swss::NotificationConsumer &ffb)
+{
+    SWSS_LOG_ENTER();
+
+    std::string op;
+    std::string data;
+    std::vector<swss::FieldValueTuple> values;
+
+    ffb.pop(op, data, values);
+
+    if ((op == "SET") && (data == "ISSU_END"))
+    {
+        sai_switch_api_t *sai_switch_api = NULL;
+        sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_SWITCH_ATTR_FAST_API_ENABLE;
+        attr.value.booldata = false;
+
+        sai_status_t status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_FAST_API_ENABLE=false: %s", sai_serialize_status(status).c_str());
+        }
+    }
+}
+
 bool isVeryFirstRun()
 {
     SWSS_LOG_ENTER();
@@ -3463,6 +3492,7 @@ int syncd_main(int argc, char **argv)
     std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "RESTARTQUERY");
     std::shared_ptr<swss::ConsumerTable> flexCounter = std::make_shared<swss::ConsumerTable>(dbFlexCounter.get(), FLEX_COUNTER_TABLE);
     std::shared_ptr<swss::ConsumerTable> flexCounterGroup = std::make_shared<swss::ConsumerTable>(dbFlexCounter.get(), FLEX_COUNTER_GROUP_TABLE);
+    std::shared_ptr<swss::NotificationConsumer> ffb = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "MLNX_FFB");
 
     /*
      * At the end we cant use producer consumer concept since if one process
@@ -3568,6 +3598,7 @@ int syncd_main(int argc, char **argv)
         s.addSelectable(restartQuery.get());
         s.addSelectable(flexCounter.get());
         s.addSelectable(flexCounterGroup.get());
+        s.addSelectable(ffb.get());
 
         SWSS_LOG_NOTICE("starting main loop");
 
@@ -3589,6 +3620,10 @@ int syncd_main(int argc, char **argv)
 
                 shutdownType = handleRestartQuery(*restartQuery);
                 break;
+            }
+            else if (sel == ffb.get())
+            {
+                handleFfbEvent(*ffb);
             }
             else if (sel == flexCounter.get())
             {
