@@ -3210,7 +3210,7 @@ syncd_restart_type_t handleRestartQuery(swss::NotificationConsumer &restartQuery
         return SYNCD_RESTART_TYPE_FAST;
     }
 
-    if (op == "PRE")
+    if (op == "PRE-SHUTDOWN")
     {
         SWSS_LOG_NOTICE("received PRE_SHUTDOWN switch event");
         return SYNCD_RESTART_TYPE_PRE_SHUTDOWN;

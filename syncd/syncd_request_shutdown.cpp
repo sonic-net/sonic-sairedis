@@ -51,7 +51,7 @@ int main(int argc, char **argv)
                 break;
 
             case 'p':
-                op = "PRE";
+                op = "PRE-SHUTDOWN";
                 optionSpecified = true;
                 break;
 
