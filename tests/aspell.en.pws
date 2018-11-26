@@ -99,6 +99,7 @@ LOOPBACK
 lua
 MCAST
 md
+Mellanox
 metadata
 mlnx
 mpls

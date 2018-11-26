@@ -3541,7 +3541,7 @@ int syncd_main(int argc, char **argv)
     if (options.startType == SAI_FAST_FAST_BOOT)
     {
         /*
-         * Mellanox SAI requieres to pass SAI_WARM_BOOT as SAI_BOOT_KEY
+         * Mellanox SAI requires to pass SAI_WARM_BOOT as SAI_BOOT_KEY
          * to start 'fast-fast'
          */
         gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(SAI_WARM_BOOT);
