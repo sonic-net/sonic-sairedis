@@ -1937,10 +1937,11 @@ void on_switch_create_in_init_view(
         sai_object_id_t switch_rid;
 
         sai_status_t status;
-        do {
+
+        {
             SWSS_LOG_TIMER("cold boot: create switch");
             status = sai_metadata_sai_switch_api->create_switch(&switch_rid, attr_count, attr_list);
-        } while (0);
+        }
 
         if (status != SAI_STATUS_SUCCESS)
         {
@@ -3726,10 +3727,11 @@ int syncd_main(int argc, char **argv)
     // Stop notification thread before removing switch
     stopNotificationsProcessingThread();
 
-    do {
+    {
         SWSS_LOG_TIMER("remove switch");
         status = sai_switch_api->remove_switch(gSwitchId);
-    } while (0);
+    }
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_NOTICE("Can't delete a switch. gSwitchId=0x%lx status=%s", gSwitchId,
