@@ -3594,7 +3594,8 @@ int syncd_main(int argc, char **argv)
                  */
 
                 shutdownType = handleRestartQuery(*restartQuery);
-                if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN) {
+                if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN)
+                {
                     // break out the event handling loop to shutdown syncd
                     break;
                 }
