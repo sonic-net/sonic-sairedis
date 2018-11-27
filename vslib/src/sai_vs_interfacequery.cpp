@@ -387,6 +387,8 @@ void processFdbEntriesForAging()
         return;
     }
 
+    SWSS_LOG_INFO("fdb infos to process: %zu", g_fdb_info_set.size());
+
     uint32_t current = (uint32_t)time(NULL);
 
     // find aged fdb entries
@@ -716,6 +718,7 @@ sai_status_t sai_api_initialize(
 
     g_fdbAgingThreadRun = true;
 
+    // TODO should this be moved to create switch and SwitchState?
     g_fdbAgingThread = std::make_shared<std::thread>(std::thread(fdbAgingThreadProc));
 
     g_api_initialized = true;

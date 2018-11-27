@@ -95,6 +95,21 @@ void vs_dump_switch_database_for_warm_restart(
         }
     }
 
+    if (g_vs_hostif_use_tap_device)
+    {
+        /*
+         * If user is using tap devices we also need to dump local fdb info
+         * data and restore it on warm start.
+         */
+
+        for (auto fi: g_fdb_info_set)
+        {
+            dumpFile << SAI_VS_FDB_INFO << " " << sai_vs_serialize_fdb_info(fi) << std::endl;
+        }
+
+        SWSS_LOG_NOTICE("dumped %zu fdb infos", g_fdb_info_set.size());
+    }
+
     dumpFile.close();
 
     SWSS_LOG_NOTICE("dumped %zu objects to %s", count, g_warm_boot_write_file);

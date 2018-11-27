@@ -253,8 +253,6 @@ void vs_create_netlink_message_listener(
     std::shared_ptr<std::thread> linkThread =
         std::make_shared<std::thread>(linkmsg_thread, switch_id);
 
-    linkThread->detach();
-
     sw->setLinkThread(linkThread);
 }
 

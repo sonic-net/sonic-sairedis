@@ -41,6 +41,13 @@ sai_status_t internal_vs_generic_get(
 {
     SWSS_LOG_ENTER();
 
+    if (g_switch_state_map.find(switch_id) == g_switch_state_map.end())
+    {
+        SWSS_LOG_ERROR("failed to find switch %s in switch state map", sai_serialize_object_id(switch_id).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
     auto &objectHash = g_switch_state_map.at(switch_id)->objectHash.at(object_type);
 
     auto it = objectHash.find(serialized_object_id);

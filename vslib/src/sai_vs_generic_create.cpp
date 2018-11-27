@@ -304,7 +304,28 @@ std::shared_ptr<SwitchState> vs_read_switch_database_for_warm_restart(
         std::string str_attr_id;
         std::string str_attr_value;
 
-        iss >> str_object_type >> str_object_id >> str_attr_id >> str_attr_value;
+        iss >> str_object_type >> str_object_id;
+
+        if (str_object_type == SAI_VS_FDB_INFO)
+        {
+            /*
+             * If we read line from fdb info set and use tap device is enabled
+             * just parse line and repopulate fdb info set.
+             */
+
+            if (g_vs_hostif_use_tap_device)
+            {
+                fdb_info_t fi;
+
+                sai_vs_deserialize_fdb_info(str_object_id, fi);
+
+                g_fdb_info_set.insert(fi);
+            }
+
+            continue;
+        }
+
+        iss >> str_attr_id >> str_attr_value;
 
         sai_object_meta_key_t meta_key;
 
@@ -361,6 +382,11 @@ std::shared_ptr<SwitchState> vs_read_switch_database_for_warm_restart(
     // NOTE notification pointers should be restored by attr_list when creating switch
 
     dumpFile.close();
+
+    if (g_vs_hostif_use_tap_device)
+    {
+        SWSS_LOG_NOTICE("loaded %zu fdb infos", g_fdb_info_set.size());
+    }
 
     SWSS_LOG_NOTICE("loaded %zu objects from: %s", count, g_warm_boot_read_file);
 
@@ -580,6 +606,11 @@ sai_status_t internal_vs_generic_create(
             vs_update_real_object_ids(warmBootState);
 
             vs_update_local_metadata(switch_id);
+
+            if (g_vs_hostif_use_tap_device)
+            {
+                vs_recreate_hostif_tap_interfaces(switch_id);
+            }
         }
     }
 

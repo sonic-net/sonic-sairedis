@@ -135,6 +135,15 @@ typedef struct _fdb_info_t
 
 } fdb_info_t;
 
+extern std::string sai_vs_serialize_fdb_info(
+        _In_ const fdb_info_t& fdb_info);
+
+extern void sai_vs_deserialize_fdb_info(
+        _In_ const std::string& data,
+        _Out_ fdb_info_t& fdb_info);
+
+#define SAI_VS_FDB_INFO "SAI_VS_FDB_INFO"
+
 extern std::set<fdb_info_t> g_fdb_info_set;
 
 class SwitchState
@@ -266,6 +275,9 @@ extern SwitchStateMap g_switch_state_map;
 void vs_reset_id_counter();
 void vs_clear_switch_ids();
 void vs_free_real_object_id(
+        _In_ sai_object_id_t switch_id);
+
+sai_status_t vs_recreate_hostif_tap_interfaces(
         _In_ sai_object_id_t switch_id);
 
 sai_object_id_t vs_create_real_object_id(
