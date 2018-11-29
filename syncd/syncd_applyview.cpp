@@ -2062,13 +2062,10 @@ bool hasEqualObjectList(
  * @return True if attributes are equal, false otherwise.
  */
 bool hasEqualQosMapList(
-        _In_ const std::shared_ptr<const SaiAttr> &current,
-        _In_ const std::shared_ptr<const SaiAttr> &temporary)
+        _In_ const sai_qos_map_list_t& c,
+        _In_ const sai_qos_map_list_t& t)
 {
     SWSS_LOG_ENTER();
-
-    auto c = current->getSaiAttr()->value.qosmap;
-    auto t = temporary->getSaiAttr()->value.qosmap;
 
     if (c.count != t.count)
         return false;
@@ -2100,6 +2097,18 @@ bool hasEqualQosMapList(
 
     // all items in both attributes are equal
     return true;
+}
+
+bool hasEqualQosMapList(
+        _In_ const std::shared_ptr<const SaiAttr> &current,
+        _In_ const std::shared_ptr<const SaiAttr> &temporary)
+{
+    SWSS_LOG_ENTER();
+
+    auto c = current->getSaiAttr()->value.qosmap;
+    auto t = temporary->getSaiAttr()->value.qosmap;
+
+    return hasEqualQosMapList(c, t);
 }
 
 /**
@@ -5992,6 +6001,9 @@ void processObjectForViewTransition(
              */
         }
 
+        // No need to store VID since at this point we don't have RID yet, it will be
+        // created on execute asic and RID will be saved to maps in both views.
+
         createNewObjectFromTemporaryObject(currentView, temporaryView, temporaryObj);
 
         return;
@@ -6026,6 +6038,10 @@ void processObjectForViewTransition(
         sai_object_id_t vid = temporaryObj->getVid();
 
         currentView.insertNewVidReference(vid);
+
+        // save temporary vid to rid after match
+        // can't be here since vim to rid map will not match
+        // currentView.vidToRid[vid] = currentView.vidToRid.at(currentBestMatch->getVid());
     }
 
     performObjectSetTransition(currentView, temporaryView, currentBestMatch, temporaryObj, true);
@@ -6573,6 +6589,162 @@ void logViewObjectCount(
     }
 }
 
+void checkAsicVsDatabaseConsistency(
+        _In_ const AsicView cur,
+        _In_ const AsicView &tmp)
+{
+    SWSS_LOG_ENTER();
+
+    bool hasErrors = false;
+
+    {
+        SWSS_LOG_TIMER("consistency check");
+
+        SWSS_LOG_WARN("performing consistency check");
+
+        for (const auto &pair: tmp.soAll)
+        {
+            const auto &obj = pair.second;
+
+            const auto &attrs = obj->getAllAttributes();
+
+            // get object meta key for get (object id or *entry)
+
+            sai_object_meta_key_t meta_key = obj->meta_key;
+
+            // translate all VID's to RIDs in non object is's
+
+            translate_vid_to_rid_non_object_id(meta_key);
+
+            auto info = sai_metadata_get_object_type_info(obj->getObjectType());
+
+            sai_attribute_t attr;
+
+            memset(&attr, 0, sizeof(attr));
+
+            if (attrs.size() == 0)
+            {
+                // get first attribute and do a get query to see if object exist's
+
+                auto meta = info->attrmetadata[0];
+
+                sai_status_t status = info->get(&meta_key, 1, &attr);
+
+                switch (status)
+                {
+                    case SAI_STATUS_SUCCESS:
+                    case SAI_STATUS_BUFFER_OVERFLOW:
+                        continue;
+
+                    case SAI_STATUS_NOT_IMPLEMENTED:
+                    case SAI_STATUS_NOT_SUPPORTED:
+
+                        SWSS_LOG_WARN("GET api for %s is not implemented on %s",
+                                meta->attridname,
+                                obj->str_object_id.c_str());
+                    continue;
+                }
+
+                SWSS_LOG_ERROR("failed to get %s on %s: %s",
+                        meta->attridname,
+                        obj->str_object_id.c_str(),
+                        sai_serialize_status(status).c_str());
+
+                hasErrors = true;
+
+                continue;
+            }
+
+            for (const auto &ap: attrs)
+            {
+                const auto &saiAttr = ap.second;
+
+                auto meta = saiAttr->getAttrMetadata();
+
+                // deserialize existing attribute so deserialize will allocate
+                // memory for all list's
+
+                attr.id = meta->attrid;
+
+                sai_deserialize_attr_value(saiAttr->getStrAttrValue(), *meta, attr, false);
+
+                // translate all VIDs from DB to RIDs for compare
+
+                translate_vid_to_rid_list(obj->getObjectType(), 1, &attr);
+
+                // get attr value with RIDs
+
+                const std::string& dbValue = sai_serialize_attr_value(*meta, attr);
+
+                sai_status_t status = info->get(&meta_key, 1, &attr);
+
+                if (meta->attrid == SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST && meta->objecttype == SAI_OBJECT_TYPE_QOS_MAP && status == SAI_STATUS_SUCCESS)
+                {
+                    // order does not matter on this list
+
+                    if (hasEqualQosMapList(attr.value.qosmap, saiAttr->getSaiAttr()->value.qosmap))
+                    {
+                        sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+                        continue;
+                    }
+                }
+
+                // free possible allocated lists
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("failed to get %s on %s %s",
+                            meta->attridname,
+                            obj->str_object_id.c_str(),
+                            sai_serialize_status(status).c_str());
+
+                    hasErrors = true;
+
+                    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+                    continue;
+                }
+
+                const std::string &asicValue = sai_serialize_attr_value(*meta, attr);
+
+                sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+
+                // pointers will not be equal since those will be from
+                // different process memory maps so just check if both pointers
+                // are NULL or both are SET
+
+                if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
+                {
+                    if (attr.value.ptr == NULL && saiAttr->getSaiAttr()->value.ptr == NULL)
+                        continue;
+
+                    if (attr.value.ptr != NULL && saiAttr->getSaiAttr()->value.ptr != NULL)
+                        continue;
+                }
+
+                if (asicValue == dbValue)
+                    continue;
+
+                SWSS_LOG_ERROR("value missmatch: %s on %s: ASIC: %s DB: %s, inconsistent state!",
+                        meta->attridname,
+                        obj->str_object_id.c_str(),
+                        asicValue.c_str(),
+                        dbValue.c_str());
+
+                hasErrors = true;
+            }
+        }
+
+        swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
+    }
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
+
+    if (hasErrors && enableUnittests())
+    {
+        SWSS_LOG_THROW("ASIC content is differnt than DB content!");
+    }
+}
+
 sai_status_t syncdApplyView()
 {
     SWSS_LOG_ENTER();
@@ -6792,6 +6964,8 @@ sai_status_t syncdApplyView()
 
     updateRedisDatabase(current, temp);
 
+    checkAsicVsDatabaseConsistency(current, temp);
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -6844,6 +7018,8 @@ sai_object_id_t asic_translate_vid_to_rid(
     }
 
     sai_object_id_t rid = currentIt->second;
+
+    SWSS_LOG_INFO("translated VID 0x%lx to RID 0x%lx", vid, rid);
 
     return rid;
 }
@@ -7098,6 +7274,14 @@ void asic_translate_vid_to_rid_non_object_id(
     SWSS_LOG_ENTER();
 
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (info->isobjectid)
+    {
+        meta_key.objectkey.key.object_id =
+            asic_translate_vid_to_rid(current, temporary, meta_key.objectkey.key.object_id);
+
+        return;
+    }
 
     for (size_t idx = 0; idx < info->structmemberscount; ++idx)
     {

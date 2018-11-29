@@ -1358,11 +1358,19 @@ sai_status_t handle_generic(
 }
 
 void translate_vid_to_rid_non_object_id(
-        _In_ sai_object_meta_key_t &meta_key)
+        _Inout_ sai_object_meta_key_t &meta_key)
 {
     SWSS_LOG_ENTER();
 
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (info->isobjectid)
+    {
+        meta_key.objectkey.key.object_id =
+            translate_vid_to_rid(meta_key.objectkey.key.object_id);
+
+        return;
+    }
 
     for (size_t j = 0; j < info->structmemberscount; ++j)
     {

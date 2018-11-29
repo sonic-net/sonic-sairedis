@@ -72,6 +72,14 @@ void performWarmRestart();
 
 sai_object_id_t translate_vid_to_rid(_In_ sai_object_id_t vid);
 
+void translate_vid_to_rid_list(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list);
+
+void translate_vid_to_rid_non_object_id(
+        _Inout_ sai_object_meta_key_t &meta_key);
+
 void redisClearVidToRidMap();
 void redisClearRidToVidMap();
 

@@ -2431,6 +2431,10 @@ sai_status_t meta_generic_validation_get(
                 // primitives
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
+                VALIDATION_LIST(md, value.aclcapability.action_list);
+                break;
+
             default:
 
                 // acl capability will is more complex since is in/out we need to check stage
