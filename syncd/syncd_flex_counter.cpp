@@ -700,26 +700,12 @@ void FlexCounter::collectCounters(
         std::vector<uint64_t> queueStats(queueCounterIds.size());
 
         // Get queue stats
-        sai_status_t status = -1;
-//        TODO: replace if with get_queue_stats_ext() call when it's fully supported
-//        Example:
-//        sai_status_t status = sai_metadata_sai_queue_api->get_queue_stats_ext(
-//                queueId,
-//                static_cast<uint32_t>(queueCounterIds.size()),
-//                queueCounterIds.data(),
-//                m_statsMode,
-//                queueStats.data());
-        status = sai_metadata_sai_queue_api->get_queue_stats(
+        sai_status_t status = sai_metadata_sai_queue_api->get_queue_stats_ext(
                 queueId,
                 static_cast<uint32_t>(queueCounterIds.size()),
                 queueCounterIds.data(),
+                m_statsMode,
                 queueStats.data());
-        if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR){
-            status = sai_metadata_sai_queue_api->clear_queue_stats(
-                    queueId,
-                    static_cast<uint32_t>(queueCounterIds.size()),
-                    queueCounterIds.data());
-        }
 
         if (status != SAI_STATUS_SUCCESS)
         {
@@ -794,19 +780,12 @@ void FlexCounter::collectCounters(
         std::vector<uint64_t> priorityGroupStats(priorityGroupCounterIds.size());
 
         // Get PG stats
-        sai_status_t status = -1;
-//        TODO: replace if with get_ingress_priority_group_stats_ext() call when it's fully supported
-        status = sai_metadata_sai_buffer_api->get_ingress_priority_group_stats(
+        sai_status_t status = sai_metadata_sai_buffer_api->get_ingress_priority_group_stats_ext(
                         priorityGroupId,
                         static_cast<uint32_t>(priorityGroupCounterIds.size()),
                         priorityGroupCounterIds.data(),
+                        m_statsMode,
                         priorityGroupStats.data());
-        if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR){
-            status = sai_metadata_sai_buffer_api->clear_ingress_priority_group_stats(
-                            priorityGroupId,
-                            static_cast<uint32_t>(priorityGroupCounterIds.size()),
-                            priorityGroupCounterIds.data());
-        }
 
         if (status != SAI_STATUS_SUCCESS)
         {
