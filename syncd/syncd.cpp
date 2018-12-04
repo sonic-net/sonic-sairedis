@@ -1131,6 +1131,16 @@ bool is_set_attribute_workaround(
         return true;
     }
 
+    if (objecttype == SAI_OBJECT_TYPE_MIRROR_SESSION &&
+            (attrid == SAI_MIRROR_SESSION_ATTR_SRC_MAC_ADDRESS || attrd == SAI_MIRROR_SESSION_ATTR_DST_MAC_ADDRESS))
+    {
+        SWSS_LOG_WARN("setting %s failed: %s, workaround until will be fixed by vendor",
+                sai_metadata_get_attr_metadata(objecttype, attrid)->attridname,
+                sai_serialize_status(status).c_str());
+
+        return true;
+    }
+
     return false;
 }
 
