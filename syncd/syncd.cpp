@@ -3672,7 +3672,9 @@ int syncd_main(int argc, char **argv)
                 {
                     SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_RESTART_WARM=true: %s for pre-shutdown",
                             sai_serialize_status(status).c_str());
+
                     shutdownType = SYNCD_RESTART_TYPE_COLD;
+
                     warmRestartTable->hset("warm-shutdown", "state", "set-flag-failed");
                     continue;
                 }
@@ -3681,14 +3683,22 @@ int syncd_main(int argc, char **argv)
                 attr.value.booldata = true;
 
                 status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
+
                 if (status == SAI_STATUS_SUCCESS)
                 {
                     warmRestartTable->hset("warm-shutdown", "state", "pre-shutdown-succeeded");
+
+                    s = swss::Select();
+
+                    s.addSelectable(restartQuery.get());
+
+                    SWSS_LOG_NOTICE("switched to PRE_SHUTDOWN, from now on accepting only shurdown requests");
                 }
                 else
                 {
                     SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_PRE_SHUTDOWN=true: %s",
                             sai_serialize_status(status).c_str());
+
                     warmRestartTable->hset("warm-shutdown", "state", "pre-shutdown-failed");
 
                     // Restore cold shutdown.
