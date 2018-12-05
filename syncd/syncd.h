@@ -89,6 +89,8 @@ sai_object_type_t getObjectTypeFromVid(
 extern std::shared_ptr<swss::NotificationProducer>  notifications;
 extern std::shared_ptr<swss::RedisClient>   g_redisClient;
 
+extern bool g_enableConsistencyCheck;
+
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type);

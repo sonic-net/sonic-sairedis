@@ -6964,7 +6964,10 @@ sai_status_t syncdApplyView()
 
     updateRedisDatabase(current, temp);
 
-    checkAsicVsDatabaseConsistency(current, temp);
+    if (g_enableConsistencyCheck)
+    {
+        checkAsicVsDatabaseConsistency(current, temp);
+    }
 
     return SAI_STATUS_SUCCESS;
 }

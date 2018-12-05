@@ -71,6 +71,12 @@ std::map<sai_object_id_t, std::shared_ptr<SaiSwitch>> switches;
 std::set<sai_object_id_t> initViewRemovedVidSet;
 
 /*
+ * When set to true will enable DB vs ASIC consistency check after comparison
+ * logic.
+ */
+bool g_enableConsistencyCheck = false;
+
+/*
  * By default we are in APPLY mode.
  */
 volatile bool g_asicInitViewMode = false;
@@ -2950,6 +2956,8 @@ void printUsage()
     std::cout << "        Disable sleep when syncd crashes" << std::endl;
     std::cout << "    -U --eableUnittests" << std::endl;
     std::cout << "        Metadata enable unittests" << std::endl;
+    std::cout << "    -C --eableConsistencyCheck" << std::endl;
+    std::cout << "        Enable consisteny check DB vs ASIC after comparison logic" << std::endl;
 #ifdef SAITHRIFT
     std::cout << "    -r --rpcserver"           << std::endl;
     std::cout << "        Enable rpcserver"      << std::endl;
@@ -2969,27 +2977,28 @@ void handleCmdLine(int argc, char **argv)
 
 #ifdef SAITHRIFT
     options.run_rpc_server = false;
-    const char* const optstring = "dNUt:p:i:rm:huS";
+    const char* const optstring = "dNUCt:p:i:rm:huS";
 #else
-    const char* const optstring = "dNUt:p:i:huS";
+    const char* const optstring = "dNUCt:p:i:huS";
 #endif // SAITHRIFT
 
     while(true)
     {
         static struct option long_options[] =
         {
-            { "useTempView",      no_argument,       0, 'u' },
-            { "diag",             no_argument,       0, 'd' },
-            { "startType",        required_argument, 0, 't' },
-            { "profile",          required_argument, 0, 'p' },
-            { "help",             no_argument,       0, 'h' },
-            { "disableExitSleep", no_argument,       0, 'S' },
-            { "enableUnittests",  no_argument,       0, 'U' },
+            { "useTempView",             no_argument,       0, 'u' },
+            { "diag",                    no_argument,       0, 'd' },
+            { "startType",               required_argument, 0, 't' },
+            { "profile",                 required_argument, 0, 'p' },
+            { "help",                    no_argument,       0, 'h' },
+            { "disableExitSleep",        no_argument,       0, 'S' },
+            { "enableUnittests",         no_argument,       0, 'U' },
+            { "enableConsistencyCheck",  no_argument,       0, 'C' },
 #ifdef SAITHRIFT
-            { "rpcserver",        no_argument,       0, 'r' },
-            { "portmap",          required_argument, 0, 'm' },
+            { "rpcserver",               no_argument,       0, 'r' },
+            { "portmap",                 required_argument, 0, 'm' },
 #endif // SAITHRIFT
-            { 0,                  0,                 0,  0  }
+            { 0,                         0,                 0,  0  }
         };
 
         int option_index = 0;
@@ -3006,6 +3015,11 @@ void handleCmdLine(int argc, char **argv)
             case 'U':
                 SWSS_LOG_NOTICE("enable unittests");
                 options.enableUnittests = true;
+                break;
+
+            case 'C':
+                SWSS_LOG_NOTICE("enable consistency check");
+                g_enableConsistencyCheck = true;
                 break;
 
             case 'u':
