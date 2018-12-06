@@ -3611,13 +3611,13 @@ int syncd_main(int argc, char **argv)
 
         SWSS_LOG_NOTICE("syncd listening for events");
 
-        swss::Select s;
+        std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
 
-        s.addSelectable(asicState.get());
-        s.addSelectable(restartQuery.get());
-        s.addSelectable(flexCounter.get());
-        s.addSelectable(flexCounterGroup.get());
-        s.addSelectable(ffb.get());
+        s->addSelectable(asicState.get());
+        s->addSelectable(restartQuery.get());
+        s->addSelectable(flexCounter.get());
+        s->addSelectable(flexCounterGroup.get());
+        s->addSelectable(ffb.get());
 
         SWSS_LOG_NOTICE("starting main loop");
 
@@ -3625,7 +3625,7 @@ int syncd_main(int argc, char **argv)
         {
             swss::Selectable *sel = NULL;
 
-            int result = s.select(&sel);
+            int result = s->select(&sel);
 
             if (sel == restartQuery.get())
             {
@@ -3688,9 +3688,9 @@ int syncd_main(int argc, char **argv)
                 {
                     warmRestartTable->hset("warm-shutdown", "state", "pre-shutdown-succeeded");
 
-                    s = swss::Select();
+                    s = std::make_shared<swss::Select>(); // make sure previous select is destroyed
 
-                    s.addSelectable(restartQuery.get());
+                    s->addSelectable(restartQuery.get());
 
                     SWSS_LOG_NOTICE("switched to PRE_SHUTDOWN, from now on accepting only shurdown requests");
                 }
