@@ -3814,13 +3814,13 @@ int syncd_main(int argc, char **argv)
 
     FlexCounter::removeAllCounters();
 
-    // Stop notification thread before removing switch
-    stopNotificationsProcessingThread();
-
     {
         SWSS_LOG_TIMER("remove switch");
         status = sai_switch_api->remove_switch(gSwitchId);
     }
+
+    // Stop notification thread after removing switch
+    stopNotificationsProcessingThread();
 
     if (status != SAI_STATUS_SUCCESS)
     {
