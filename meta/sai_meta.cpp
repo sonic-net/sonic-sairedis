@@ -1377,6 +1377,25 @@ sai_status_t meta_generic_validation_create(
 
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+
+                {
+                    switch (value.ipprefix.addr_family)
+                    {
+                        case SAI_IP_ADDR_FAMILY_IPV4:
+                        case SAI_IP_ADDR_FAMILY_IPV6:
+                            break;
+
+                        default:
+
+                            SWSS_LOG_ERROR("invalid address family: %d", value.ipprefix.addr_family);
+
+                            return SAI_STATUS_INVALID_PARAMETER;
+                    }
+
+                    break;
+                }
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -2074,6 +2093,25 @@ sai_status_t meta_generic_validation_set(
 
             break;
 
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+
+                {
+                    switch (value.ipprefix.addr_family)
+                    {
+                        case SAI_IP_ADDR_FAMILY_IPV4:
+                        case SAI_IP_ADDR_FAMILY_IPV6:
+                            break;
+
+                        default:
+
+                            SWSS_LOG_ERROR("invalid address family: %d", value.ipprefix.addr_family);
+
+                            return SAI_STATUS_INVALID_PARAMETER;
+                    }
+
+                    break;
+                }
+
         default:
 
             META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -2665,6 +2703,7 @@ void meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_IPV4:
             case SAI_ATTR_VALUE_TYPE_IPV6:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
             case SAI_ATTR_VALUE_TYPE_POINTER:
                 // primitives
                 break;
@@ -2817,6 +2856,7 @@ void meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_IPV4:
             case SAI_ATTR_VALUE_TYPE_IPV6:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
             case SAI_ATTR_VALUE_TYPE_POINTER:
                 // primitives, ok
                 break;
@@ -3000,6 +3040,7 @@ void meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_IPV6:
         case SAI_ATTR_VALUE_TYPE_POINTER:
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
             // primitives, ok
             break;
 
@@ -3333,6 +3374,7 @@ void meta_generic_validation_post_get(
             case SAI_ATTR_VALUE_TYPE_IPV6:
             case SAI_ATTR_VALUE_TYPE_POINTER:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
                 // primitives, ok
                 break;
 

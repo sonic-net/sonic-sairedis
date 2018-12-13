@@ -191,6 +191,10 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.ipaddr, dst_attr.value.ipaddr);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+            transfer_primitive(src_attr.value.ipprefix, dst_attr.value.ipprefix);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
             transfer_primitive(src_attr.value.oid, dst_attr.value.oid);
             break;
@@ -1346,6 +1350,9 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
             return sai_serialize_ip_address(attr.value.ipaddr);
 
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+            return sai_serialize_ip_prefix(attr.value.ipprefix);
+
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
             return sai_serialize_object_id(attr.value.oid);
 
@@ -2102,6 +2109,42 @@ void sai_deserialize_ip_address(
     SWSS_LOG_THROW("invalid ip address %s", s.c_str());
 }
 
+void sai_deserialize_ip_prefix(
+        _In_ const std::string &s,
+        _Out_ sai_ip_prefix_t &ip_prefix)
+{
+    SWSS_LOG_ENTER();
+
+    auto tokens = swss::tokenize(s, '/');
+
+    if (tokens.size() != 2)
+    {
+        SWSS_LOG_THROW("invalid ip prefix %s", s.c_str());
+    }
+
+    uint8_t mask;
+    sai_deserialize_number(tokens[1], mask);
+
+    const std::string &ip = tokens[0];
+
+    if (inet_pton(AF_INET, ip.c_str(), &ip_prefix.addr.ip4) == 1)
+    {
+        ip_prefix.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+
+        sai_populate_ip_mask(mask, (uint8_t*)&ip_prefix.mask.ip4, false);
+    }
+    else if (inet_pton(AF_INET6, ip.c_str(), ip_prefix.addr.ip6) == 1)
+    {
+        ip_prefix.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+
+        sai_populate_ip_mask(mask, ip_prefix.mask.ip6, true);
+    }
+    else
+    {
+        SWSS_LOG_THROW("invalid ip prefix %s", s.c_str());
+    }
+}
+
 void sai_deserialize_ip_address_list(
         _In_ const std::string& s,
         _Out_ sai_ip_address_list_t& list,
@@ -2341,6 +2384,9 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
             return sai_deserialize_ip_address(s, attr.value.ipaddr);
 
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+            return sai_deserialize_ip_prefix(s, attr.value.ipprefix);
+
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
             return sai_deserialize_object_id(s, attr.value.oid);
 
@@ -2418,42 +2464,6 @@ void sai_deserialize_attr_value(
 
         default:
             SWSS_LOG_THROW("deserialize type %d is not supportd yet FIXME", meta.attrvaluetype);
-    }
-}
-
-void sai_deserialize_ip_prefix(
-        _In_ const std::string &s,
-        _Out_ sai_ip_prefix_t &ip_prefix)
-{
-    SWSS_LOG_ENTER();
-
-    auto tokens = swss::tokenize(s, '/');
-
-    if (tokens.size() != 2)
-    {
-        SWSS_LOG_THROW("invalid ip prefix %s", s.c_str());
-    }
-
-    uint8_t mask;
-    sai_deserialize_number(tokens[1], mask);
-
-    const std::string &ip = tokens[0];
-
-    if (inet_pton(AF_INET, ip.c_str(), &ip_prefix.addr.ip4) == 1)
-    {
-        ip_prefix.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-
-        sai_populate_ip_mask(mask, (uint8_t*)&ip_prefix.mask.ip4, false);
-    }
-    else if (inet_pton(AF_INET6, ip.c_str(), ip_prefix.addr.ip6) == 1)
-    {
-        ip_prefix.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
-
-        sai_populate_ip_mask(mask, ip_prefix.mask.ip6, true);
-    }
-    else
-    {
-        SWSS_LOG_THROW("invalid ip prefix %s", s.c_str());
     }
 }
 
@@ -2778,6 +2788,7 @@ void sai_deserialize_free_attribute_value(
         case SAI_ATTR_VALUE_TYPE_IPV6:
         case SAI_ATTR_VALUE_TYPE_POINTER:
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
             break;
 
