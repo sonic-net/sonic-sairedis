@@ -213,6 +213,7 @@ sai_status_t sai_api_query(
     {
         API_CASE(ACL,acl);
         API_CASE(BFD,bfd);
+        API_CASE(BMTOR,bmtor);
         API_CASE(BRIDGE,bridge);
         API_CASE(BUFFER,buffer);
         API_CASE(DTEL,dtel);
