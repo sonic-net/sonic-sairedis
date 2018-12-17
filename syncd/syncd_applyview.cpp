@@ -5453,6 +5453,30 @@ bool performObjectSetTransition(
                     temporaryAttr->getStrAttrValue().c_str());
 
             /*
+             * There is another case here, if this attribute exists only in
+             * temporary view and it has default value, and SET value is the
+             * same as default, then there is no need for ASIC operation.
+             *
+             * NOTE: This can lead to not put attributes with default VALUE to
+             * redis database and could be confusing when debugging.
+             */
+
+            const auto defaultValueAttr = getSaiAttrFromDefaultValue(currentView, *meta);
+
+            if (defaultValueAttr != nullptr)
+            {
+                std::string defStr = sai_serialize_attr_value(*meta, *defaultValueAttr->getSaiAttr());
+
+                if (defStr == temporaryAttr->getStrAttrValue())
+                {
+                    SWSS_LOG_NOTICE("explicit %s:%s is the same as default, no need for ASIC SET action",
+                            meta->attridname, defStr.c_str());
+
+                    continue;
+                }
+            }
+
+            /*
              * Generate action and update current view in second pass
              * and continue for next attribute.
              */
