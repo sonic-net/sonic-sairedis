@@ -136,7 +136,7 @@ void FlexCounter::setPortCounterList(
 
     if (supportedIds.size() == 0)
     {
-        SWSS_LOG_ERROR("Port %s does not has supported counters", sai_serialize_object_id(portId).c_str());
+        SWSS_LOG_NOTICE("Port %s does not has supported counters", sai_serialize_object_id(portId).c_str());
 
         // Remove flex counter if all counter IDs and plugins are unregistered
         if (fc.isEmpty())
@@ -188,7 +188,7 @@ void FlexCounter::setQueueCounterList(
 
     if (supportedIds.size() == 0)
     {
-        SWSS_LOG_ERROR("Queue %s does not has supported counters", sai_serialize_object_id(queueId).c_str());
+        SWSS_LOG_NOTICE("Queue %s does not has supported counters", sai_serialize_object_id(queueId).c_str());
 
         // Remove flex counter if all counter IDs and plugins are unregistered
         if (fc.isEmpty())
@@ -288,7 +288,7 @@ void FlexCounter::setPriorityGroupCounterList(
 
     if (supportedIds.size() == 0)
     {
-        SWSS_LOG_ERROR("Priority group %s does not have supported counters", sai_serialize_object_id(priorityGroupId).c_str());
+        SWSS_LOG_NOTICE("Priority group %s does not have supported counters", sai_serialize_object_id(priorityGroupId).c_str());
 
         // Remove flex counter if all counter IDs and plugins are unregistered
         if (fc.isEmpty())
