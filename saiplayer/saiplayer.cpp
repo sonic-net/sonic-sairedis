@@ -723,17 +723,27 @@ void handle_get_response(
 {
     SWSS_LOG_ENTER();
 
+    // timestamp|action|objecttype:objectid|attrid=value,...
+    auto v = swss::tokenize(response, '|');
+
     if (status != SAI_STATUS_SUCCESS)
     {
-        // TODO check if status is correct for get
-        SWSS_LOG_WARN("status is not success: %s", sai_serialize_status(status).c_str());
+        sai_status_t expectedStatus;
+        sai_deserialize_status(v.at(2), expectedStatus);
+
+        if (status == expectedStatus)
+        {
+            // GET api was not successful but status is equal to recording
+            return;
+        }
+
+        SWSS_LOG_WARN("status is: %s but expected: %s",
+                sai_serialize_status(status).c_str(),
+                sai_serialize_status(expectedStatus).c_str());
         return;
     }
 
     //std::cout << "processing " << response << std::endl;
-
-    // timestamp|action|objecttype:objectid|attrid=value,...
-    auto v = swss::tokenize(response, '|');
 
     auto values = get_values(v);
 
@@ -1210,9 +1220,9 @@ int replay(int argc, char **argv)
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            if (api == SAI_COMMON_API_GET && status == SAI_STATUS_NOT_IMPLEMENTED)
+            if (api == SAI_COMMON_API_GET)
             {
-                // TODO check if actual status for get is correct
+                // GET status is checked in handle response
             }
             else
                 SWSS_LOG_THROW("failed to execute api: %c: %s", op, sai_serialize_status(status).c_str());
