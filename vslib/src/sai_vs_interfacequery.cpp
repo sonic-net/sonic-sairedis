@@ -29,6 +29,7 @@ int g_vs_boot_type = SAI_VS_COLD_BOOT;
 std::map<uint32_t,std::string> g_lane_to_ifname;
 std::map<std::string,std::vector<uint32_t>> g_ifname_to_lanes;
 std::vector<uint32_t> g_lane_order;
+std::vector<std::vector<uint32_t>> g_laneMap;
 
 const char *g_boot_type             = NULL;
 const char *g_warm_boot_read_file   = NULL;
@@ -604,9 +605,87 @@ void load_interface_lane_map()
         }
 
         g_ifname_to_lanes[ifname] = lanevec;
+        g_laneMap.push_back(lanevec);
     }
 
     SWSS_LOG_NOTICE("loaded %zu lanes and %zu interfaces", g_lane_to_ifname.size(), g_ifname_to_lanes.size());
+}
+
+void getPortLaneMap(
+        _Inout_ std::vector<std::vector<uint32_t>> &laneMap)
+{
+    SWSS_LOG_ENTER();
+
+    laneMap.clear();
+
+    for (auto v: g_laneMap)
+    {
+        size_t s = v.size();
+
+        if (s != 1 && s != 2 && s != 4)
+        {
+            SWSS_LOG_THROW("invald number of lanes for interface: %zu", s);
+        }
+
+        laneMap.push_back(v);
+    }
+
+    if (g_laneMap.size())
+    {
+        SWSS_LOG_NOTICE("got port lane map with %zu interfaces", laneMap.size());
+        return;
+    }
+
+    const uint32_t default_port_count = 32;
+
+    sai_uint32_t default_lanes[] = {
+        29,30,31,32,
+        25,26,27,28,
+        37,38,39,40,
+        33,34,35,36,
+        41,42,43,44,
+        45,46,47,48,
+        5,6,7,8,
+        1,2,3,4,
+        9,10,11,12,
+        13,14,15,16,
+        21,22,23,24,
+        17,18,19,20,
+        49,50,51,52,
+        53,54,55,56,
+        61,62,63,64,
+        57,58,59,60,
+        65,66,67,68,
+        69,70,71,72,
+        77,78,79,80,
+        73,74,75,76,
+        105,106,107,108,
+        109,110,111,112,
+        117,118,119,120,
+        113,114,115,116,
+        121,122,123,124,
+        125,126,127,128,
+        85,86,87,88,
+        81,82,83,84,
+        89,90,91,92,
+        93,94,95,96,
+        97,98,99,100,
+        101,102,103,104
+    };
+
+    // populate default lane map
+
+    for (size_t i = 0; i < default_port_count; i++)
+    {
+        std::vector<uint32_t> portLanes;
+
+        for(int j = 0; j < 4; j++)
+            portLanes.push_back(default_lanes[4*i + j]);
+
+        laneMap.push_back(portLanes);
+    }
+
+    SWSS_LOG_NOTICE("populated default port lane map with %zu interfaces", laneMap.size());
 }
 
 sai_status_t sai_api_initialize(

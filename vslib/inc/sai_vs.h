@@ -100,6 +100,10 @@ extern const char *g_interface_lane_map_file;
 extern std::map<uint32_t,std::string> g_lane_to_ifname;
 extern std::map<std::string,std::vector<uint32_t>> g_ifname_to_lanes;
 extern std::vector<uint32_t> g_lane_order;
+extern std::vector<std::vector<uint32_t>> g_laneMap;
+
+extern void getPortLaneMap(
+        _Inout_ std::vector<std::vector<uint32_t>> &laneMap);
 
 extern const sai_acl_api_t              vs_acl_api;
 extern const sai_bfd_api_t              vs_bfd_api;

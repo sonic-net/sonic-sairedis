@@ -142,64 +142,13 @@ static sai_status_t create_ports()
 {
     SWSS_LOG_ENTER();
 
-    /*
-     * TODO currently port information is hardcoded but later on we can read
-     * this from profile.ini and use correct lane mapping.
-     */
-
-    const uint32_t port_count = 32;
-
     SWSS_LOG_INFO("create ports");
 
-    sai_uint32_t lanes[] = {
-        64,65,66,67,
-        68,69,70,71,
-        72,73,74,75,
-        76,77,78,79,
-        80,81,82,83,
-        84,85,86,87,
-        88,89,90,91,
-        92,93,94,95,
-        96,97,98,99,
-        100,101,102,103,
-        104,105,106,107,
-        108,109,110,111,
-        112,113,114,115,
-        116,117,118,119,
-        120,121,122,123,
-        124,125,126,127,
-        56,57,58,59,
-        60,61,62,63,
-        48,49,50,51,
-        52,53,54,55,
-        40,41,42,43,
-        44,45,46,47,
-        32,33,34,35,
-        36,37,38,39,
-        24,25,26,27,
-        28,29,30,31,
-        16,17,18,19,
-        20,21,22,23,
-        8,9,10,11,
-        12,13,14,15,
-        0,1,2,3,
-        4,5,6,7,
-    };
+    std::vector<std::vector<uint32_t>> laneMap;
 
-    if (g_lane_order.size() != port_count * 4)
-    {
-        SWSS_LOG_ERROR("only supported lane count is %d, using default", port_count * 4);
-    }
-    else if (g_ifname_to_lanes.size() != port_count)
-    {
-        SWSS_LOG_ERROR("only supported interface count is %d, using default", port_count);
-    }
-    else
-    {
-        SWSS_LOG_NOTICE("replacing lane numbers from %s", g_interface_lane_map_file);
+    getPortLaneMap(laneMap);
 
-        memcpy(lanes, g_lane_order.data(), port_count * 4);
-    }
+    uint32_t port_count = (uint32_t)laneMap.size();
 
     port_list.clear();
 
@@ -222,9 +171,11 @@ static sai_status_t create_ports()
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
+        std::vector<uint32_t> lanes = laneMap.at(i);
+
         attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
-        attr.value.u32list.count = 4;
-        attr.value.u32list.list = &lanes[4 * i];
+        attr.value.u32list.count = (uint32_t)lanes.size();
+        attr.value.u32list.list = lanes.data();
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
