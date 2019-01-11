@@ -146,7 +146,7 @@
     sai_status_t vs_get_ ## object_type ## _stats(                  \
             _In_ sai_object_id_t object_type ## _id,                \
             _In_ uint32_t number_of_counters,                       \
-            _In_ const sai_ ## object_type ## _stat_t *counter_ids, \
+            _In_ const sai_stat_id_t *counter_ids, \
             _Out_ uint64_t *counters)                               \
     {                                                               \
         MUTEX();                                                    \
@@ -164,7 +164,7 @@
     sai_status_t vs_get_ ## object_type ## _stats_ext(              \
             _In_ sai_object_id_t object_type ## _id,                \
             _In_ uint32_t number_of_counters,                       \
-            _In_ const sai_ ## object_type ## _stat_t *counter_ids, \
+            _In_ const sai_stat_id_t *counter_ids, \
             _In_ sai_stats_mode_t mode,                             \
             _Out_ uint64_t *counters)                               \
     {                                                               \
@@ -184,7 +184,7 @@
     sai_status_t vs_clear_ ## object_type ## _stats(                \
             _In_ sai_object_id_t object_type ## _id,                \
             _In_ uint32_t number_of_counters,                       \
-            _In_ const sai_ ## object_type ## _stat_t *counter_ids) \
+            _In_ const sai_stat_id_t *counter_ids) \
     {                                                               \
         MUTEX();                                                    \
         SWSS_LOG_ENTER();                                           \

@@ -204,7 +204,7 @@ void FlexCounter::setQueueCounterList(
     sai_status_t status = sai_metadata_sai_queue_api->get_queue_stats(
             queueId,
             static_cast<uint32_t>(supportedIds.size()),
-            supportedIds.data(),
+            (const sai_stat_id_t *)supportedIds.data(),
             queueStats.data());
 
     if (status != SAI_STATUS_SUCCESS)
@@ -304,7 +304,7 @@ void FlexCounter::setPriorityGroupCounterList(
     sai_status_t status = sai_metadata_sai_buffer_api->get_ingress_priority_group_stats(
             priorityGroupId,
             static_cast<uint32_t>(supportedIds.size()),
-            supportedIds.data(),
+            (const sai_stat_id_t *)supportedIds.data(),
             priorityGroupStats.data());
 
     if (status != SAI_STATUS_SUCCESS)
@@ -667,7 +667,7 @@ void FlexCounter::collectCounters(
         sai_status_t status = sai_metadata_sai_port_api->get_port_stats(
                 portId,
                 static_cast<uint32_t>(portCounterIds.size()),
-                portCounterIds.data(),
+                (const sai_stat_id_t *)portCounterIds.data(),
                 portStats.data());
         if (status != SAI_STATUS_SUCCESS)
         {
@@ -712,13 +712,13 @@ void FlexCounter::collectCounters(
         status = sai_metadata_sai_queue_api->get_queue_stats(
                 queueId,
                 static_cast<uint32_t>(queueCounterIds.size()),
-                queueCounterIds.data(),
+                (const sai_stat_id_t *)queueCounterIds.data(),
                 queueStats.data());
         if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR){
             status = sai_metadata_sai_queue_api->clear_queue_stats(
                     queueId,
                     static_cast<uint32_t>(queueCounterIds.size()),
-                    queueCounterIds.data());
+                    (const sai_stat_id_t *)queueCounterIds.data());
         }
 
         if (status != SAI_STATUS_SUCCESS)
@@ -799,13 +799,13 @@ void FlexCounter::collectCounters(
         status = sai_metadata_sai_buffer_api->get_ingress_priority_group_stats(
                         priorityGroupId,
                         static_cast<uint32_t>(priorityGroupCounterIds.size()),
-                        priorityGroupCounterIds.data(),
+                        (const sai_stat_id_t *)priorityGroupCounterIds.data(),
                         priorityGroupStats.data());
         if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR){
             status = sai_metadata_sai_buffer_api->clear_ingress_priority_group_stats(
                             priorityGroupId,
                             static_cast<uint32_t>(priorityGroupCounterIds.size()),
-                            priorityGroupCounterIds.data());
+                            (const sai_stat_id_t *)priorityGroupCounterIds.data());
         }
 
         if (status != SAI_STATUS_SUCCESS)
@@ -1021,7 +1021,7 @@ void FlexCounter::saiUpdateSupportedPortCounters(sai_object_id_t portId)
     {
         sai_port_stat_t counter = static_cast<sai_port_stat_t>(cntr_id);
 
-        sai_status_t status = sai_metadata_sai_port_api->get_port_stats(portId, 1, &counter, &value);
+        sai_status_t status = sai_metadata_sai_port_api->get_port_stats(portId, 1, (const sai_stat_id_t *)&counter, &value);
 
         if (status != SAI_STATUS_SUCCESS)
         {
@@ -1048,7 +1048,7 @@ void FlexCounter::saiUpdateSupportedQueueCounters(
 
     for (auto &counter : counterIds)
     {
-        sai_status_t status = sai_metadata_sai_queue_api->get_queue_stats(queueId, 1, &counter, &value);
+        sai_status_t status = sai_metadata_sai_queue_api->get_queue_stats(queueId, 1, (const sai_stat_id_t *)&counter, &value);
 
         if (status != SAI_STATUS_SUCCESS)
         {
@@ -1077,7 +1077,7 @@ void FlexCounter::saiUpdateSupportedPriorityGroupCounters(
 
     for (auto &counter : counterIds)
     {
-        sai_status_t status = sai_metadata_sai_buffer_api->get_ingress_priority_group_stats(priorityGroupId, 1, &counter, &value);
+        sai_status_t status = sai_metadata_sai_buffer_api->get_ingress_priority_group_stats(priorityGroupId, 1, (const sai_stat_id_t *)&counter, &value);
 
         if (status != SAI_STATUS_SUCCESS)
         {
