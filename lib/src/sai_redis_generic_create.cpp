@@ -88,7 +88,7 @@ sai_object_type_t sai_object_type_query(
 
     sai_object_type_t ot = (sai_object_type_t)((object_id >> 48) & 0xFF);
 
-    if (ot == SAI_OBJECT_TYPE_NULL || ot >= SAI_OBJECT_TYPE_MAX)
+    if (ot == SAI_OBJECT_TYPE_NULL || ot >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_ERROR("invalid object id 0x%lx", object_id);
 
@@ -156,7 +156,7 @@ sai_object_id_t redis_create_virtual_object_id(
     SWSS_LOG_ENTER();
 
     if ((object_type <= SAI_OBJECT_TYPE_NULL) ||
-            (object_type >= SAI_OBJECT_TYPE_MAX))
+            (object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX))
     {
         SWSS_LOG_THROW("invalid objct type: %d", object_type);
     }

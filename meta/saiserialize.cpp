@@ -1603,7 +1603,7 @@ std::string sai_serialize_object_meta_key(
 
     std::string key;
 
-    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_MAX)
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_THROW("invalid object type value %s", sai_serialize_object_type(meta_key.objecttype).c_str());
     }
@@ -2631,7 +2631,7 @@ void sai_deserialize_object_meta_key(
 
     sai_deserialize_object_type(str_object_type, meta_key.objecttype);
 
-    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_MAX)
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_THROW("invalid object type value %s", sai_serialize_object_type(meta_key.objecttype).c_str());
     }

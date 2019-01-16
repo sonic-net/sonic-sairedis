@@ -2626,7 +2626,7 @@ sai_status_t processEvent(
          * TODO: use metadata utils is object type valid.
          */
 
-        if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_MAX)
+        if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
         {
             SWSS_LOG_THROW("undefined object type %s", sai_serialize_object_type(object_type).c_str());
         }
