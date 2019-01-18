@@ -5533,7 +5533,7 @@ sai_status_t meta_sai_validate_oid(
     SWSS_LOG_ENTER();
 
     if (object_type <= SAI_OBJECT_TYPE_NULL ||
-            object_type >= SAI_OBJECT_TYPE_MAX)
+            object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_ERROR("invalid object type specified: %d, FIXME", object_type);
         return SAI_STATUS_INVALID_PARAMETER;

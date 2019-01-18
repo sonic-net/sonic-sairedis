@@ -68,7 +68,7 @@ sai_object_type_t getObjectTypeFromVid(
     sai_object_type_t objectType = redis_sai_object_type_query(object_vid);
 
     // TODO metadata is valid object type
-    if (objectType >= SAI_OBJECT_TYPE_MAX ||
+    if (objectType >= SAI_OBJECT_TYPE_EXTENSIONS_MAX ||
             objectType == SAI_OBJECT_TYPE_NULL)
     {
         SWSS_LOG_THROW("invalid object type: %s on object id: %s",
@@ -117,8 +117,7 @@ sai_object_type_t getObjectTypeFromAsicKey(
     sai_deserialize_object_type(strObjectType, objectType);
 
     // TODO metadata utils is valid object<F3>:t
-    if (objectType >= SAI_OBJECT_TYPE_MAX ||
-            objectType == SAI_OBJECT_TYPE_NULL)
+    if (objectType >= SAI_OBJECT_TYPE_EXTENSIONS_MAX || objectType == SAI_OBJECT_TYPE_NULL)
     {
         SWSS_LOG_THROW("invalid object type: %s on asic key: %s",
                 sai_serialize_object_type(objectType).c_str(),

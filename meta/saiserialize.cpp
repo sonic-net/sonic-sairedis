@@ -1603,7 +1603,7 @@ std::string sai_serialize_object_meta_key(
 
     std::string key;
 
-    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_MAX)
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_THROW("invalid object type value %s", sai_serialize_object_type(meta_key.objecttype).c_str());
     }
@@ -2631,7 +2631,7 @@ void sai_deserialize_object_meta_key(
 
     sai_deserialize_object_type(str_object_type, meta_key.objecttype);
 
-    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_MAX)
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_THROW("invalid object type value %s", sai_serialize_object_type(meta_key.objecttype).c_str());
     }
@@ -2941,33 +2941,6 @@ void sai_deserialize_free_queue_deadlock_ntf(
     SWSS_LOG_ENTER();
 
     delete[] queue_deadlock;
-}
-
-void sai_deserialize_port_stat(
-        _In_ const std::string& s,
-        _Out_ sai_port_stat_t& stat)
-{
-    SWSS_LOG_ENTER();
-
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_port_stat_t, (int32_t&)stat);
-}
-
-void sai_deserialize_queue_stat(
-        _In_ const std::string& s,
-        _Out_ sai_queue_stat_t& stat)
-{
-    SWSS_LOG_ENTER();
-
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_queue_stat_t, (int32_t&)stat);
-}
-
-void sai_deserialize_ingress_priority_group_stat(
-        _In_ const std::string& s,
-        _Out_ sai_ingress_priority_group_stat_t& stat)
-{
-    SWSS_LOG_ENTER();
-
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_ingress_priority_group_stat_t, (int32_t&)stat);
 }
 
 void sai_deserialize_ingress_priority_group_attr(

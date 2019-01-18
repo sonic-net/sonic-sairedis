@@ -1827,7 +1827,7 @@ std::vector<T> extractCounterIdsGeneric(
     {
         std::string field = fvField(v);
         T counterId;
-        deserializeIdFn(field, counterId);
+        deserializeIdFn(field.c_str(), &counterId);
 
         counterIdList.push_back(counterId);
     }
@@ -1853,7 +1853,7 @@ sai_status_t getStatsGeneric(
     return getStatsFn(
             object_id,
             (uint32_t)counter_ids.size(),
-            counter_ids.data(),
+            (const sai_stat_id_t*)counter_ids.data(),
             counters.data());
 }
 
@@ -2632,7 +2632,7 @@ sai_status_t processEvent(
          * TODO: use metadata utils is object type valid.
          */
 
-        if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_MAX)
+        if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
         {
             SWSS_LOG_THROW("undefined object type %s", sai_serialize_object_type(object_type).c_str());
         }
@@ -2912,7 +2912,7 @@ void processFlexCounterEvent(
                 for (const auto &str : idStrings)
                 {
                     sai_port_stat_t stat;
-                    sai_deserialize_port_stat(str, stat);
+                    sai_deserialize_port_stat(str.c_str(), &stat);
                     portCounterIds.push_back(stat);
                 }
                 FlexCounter::setPortCounterList(vid, rid, groupName, portCounterIds);
@@ -2923,7 +2923,7 @@ void processFlexCounterEvent(
                 for (const auto &str : idStrings)
                 {
                     sai_queue_stat_t stat;
-                    sai_deserialize_queue_stat(str, stat);
+                    sai_deserialize_queue_stat(str.c_str(), &stat);
                     queueCounterIds.push_back(stat);
                 }
                 FlexCounter::setQueueCounterList(vid, rid, groupName, queueCounterIds);
@@ -2946,7 +2946,7 @@ void processFlexCounterEvent(
                 for (const auto &str : idStrings)
                 {
                     sai_ingress_priority_group_stat_t stat;
-                    sai_deserialize_ingress_priority_group_stat(str, stat);
+                    sai_deserialize_ingress_priority_group_stat(str.c_str(), &stat);
                     pgCounterIds.push_back(stat);
                 }
                 FlexCounter::setPriorityGroupCounterList(vid, rid, groupName, pgCounterIds);

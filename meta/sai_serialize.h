@@ -267,18 +267,6 @@ void sai_deserialize_free_queue_deadlock_ntf(
         _In_ uint32_t count,
         _In_ sai_queue_deadlock_notification_data_t* deadlock_data);
 
-void sai_deserialize_port_stat(
-        _In_ const std::string& s,
-        _Out_ sai_port_stat_t& stat);
-
-void sai_deserialize_queue_stat(
-        _In_ const std::string& s,
-        _Out_ sai_queue_stat_t& stat);
-
-void sai_deserialize_ingress_priority_group_stat(
-        _In_ const std::string& s,
-        _Out_ sai_ingress_priority_group_stat_t& stat);
-
 void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,
         _Out_ sai_ingress_priority_group_attr_t& attr);

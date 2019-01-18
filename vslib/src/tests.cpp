@@ -297,7 +297,7 @@ void test_set_stats_via_redis()
     sai_port_stat_t ids[1] = { SAI_PORT_STAT_IF_IN_ERRORS };
     uint64_t counters[1] = { 0 } ;
 
-    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports.at(0), 1, ids, counters));
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports.at(0), 1, (const sai_stat_id_t *)ids, counters));
 
     ASSERT_TRUE(counters[0] == 42);
 }
@@ -706,7 +706,7 @@ void test_get_stats()
     values[0] = 42;
     values[1] = 42;
 
-    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, ids, values));
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, (const sai_stat_id_t *)ids, values));
 
     ASSERT_TRUE(values[0] == 0);
     ASSERT_TRUE(values[1] == 0);
@@ -717,7 +717,7 @@ void test_get_stats()
     values[1] = 127;
 
     // setting last bit of count value when unittest are enabled, will cause to perform SET on counters
-    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2 | 0x80000000, ids, values));
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2 | 0x80000000, (const sai_stat_id_t *)ids, values));
 
     values[0] = 42;
     values[1] = 42;
@@ -727,7 +727,7 @@ void test_get_stats()
     ids[0] = SAI_PORT_STAT_IF_OUT_OCTETS;
     ids[1] = SAI_PORT_STAT_IF_IN_OCTETS;
 
-    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, ids, values));
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, (const sai_stat_id_t *)ids, values));
 
     ASSERT_TRUE(values[0] == 127);
     ASSERT_TRUE(values[1] == 77);

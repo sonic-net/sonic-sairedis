@@ -40,7 +40,7 @@ sai_object_type_t sai_object_type_query(
     sai_object_type_t objecttype = (sai_object_type_t)((oid >> 48) & 0xFF);
 
     if ((objecttype <= SAI_OBJECT_TYPE_NULL) ||
-            (objecttype >= SAI_OBJECT_TYPE_MAX))
+            (objecttype >= SAI_OBJECT_TYPE_EXTENSIONS_MAX))
     {
         SWSS_LOG_THROW("invalid oid 0x%lx", oid);
     }
@@ -98,7 +98,7 @@ sai_object_id_t create_dummy_object_id(
     SWSS_LOG_ENTER();
 
     if ((object_type <= SAI_OBJECT_TYPE_NULL) ||
-            (object_type >= SAI_OBJECT_TYPE_MAX))
+            (object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX))
     {
         SWSS_LOG_THROW("invalid objct type: %d", object_type);
     }

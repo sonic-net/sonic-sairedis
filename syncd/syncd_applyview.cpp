@@ -6927,7 +6927,7 @@ void logViewObjectCount(
 
     bool asic_changes = false;
 
-    for (int i = SAI_OBJECT_TYPE_NULL + 1; i < SAI_OBJECT_TYPE_MAX; i++)
+    for (int i = SAI_OBJECT_TYPE_NULL + 1; i < SAI_OBJECT_TYPE_EXTENSIONS_MAX; i++)
     {
         sai_object_type_t ot = (sai_object_type_t)i;
 
