@@ -1828,6 +1828,65 @@ void matchOids(
     SWSS_LOG_NOTICE("matched oids");
 }
 
+/**
+ * @brief Check internal objects.
+ *
+ * During warm boot, when switch restarted we expect that switch will have the
+ * same number of objects like before boot, and all vendor OIDs (RIDs) will be
+ * exactly the same as before reboot.
+ *
+ * If OIDs are not the same, then this is a vendor bug.
+ *
+ * Exception of this rule is when orchagent will be restarted and it will add
+ * some more objects or remove some objects.
+ *
+ * We take special care here about INGRESS_PRIORIRITY_GROUPS, SCHEDULER_GROUPS
+ * and QUEUES, since those are internal objects created by vendor when switch
+ * is instantiated.
+ *
+ * @param currentView Current view.
+ * @param temporaryView Temporary view.
+ */
+void checkInternalObjects(
+        _In_ const AsicView &cv,
+        _In_ const AsicView &tv)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_type_t> ots =
+    {
+        SAI_OBJECT_TYPE_QUEUE,
+        SAI_OBJECT_TYPE_SCHEDULER_GROUP,
+        SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP
+    };
+
+    for (auto ot: ots)
+    {
+        auto cot = cv.getObjectsByObjectType(ot);
+        auto tot = tv.getObjectsByObjectType(ot);
+
+        auto sot = sai_serialize_object_type(ot);
+
+        if (cot.size() != tot.size())
+        {
+            SWSS_LOG_WARN("different number of objects %s, curr: %zu, tmp %zu (not expected if warm boot)",
+                    sot.c_str(),
+                    cot.size(),
+                    tot.size());
+        }
+
+        for (auto o: cot)
+            if (o->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+                SWSS_LOG_ERROR("object status is not MATCHED on curr: %s:%s",
+                        sot.c_str(), o->str_object_id.c_str());
+
+        for (auto o: tot)
+            if (o->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+                SWSS_LOG_ERROR("object status is not MATCHED on temp: %s:%s",
+                        sot.c_str(), o->str_object_id.c_str());
+    }
+}
+
 void checkMatchedPorts(
         _In_ const AsicView &temporaryView)
 {
@@ -6898,6 +6957,8 @@ sai_status_t syncdApplyView()
         const auto &existingObjects = sw->getDiscoveredRids();
 
         populateExistingObjects(current, temp, existingObjects);
+
+        checkInternalObjects(current, temp);
 
         /*
          * Call main method!
