@@ -2884,6 +2884,10 @@ void processFlexCounterEvent(
         {
             FlexCounter::removePriorityGroup(vid, groupName);
         }
+        else if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE)
+        {
+            FlexCounter::removeRif(vid, groupName);
+        }
         else
         {
             SWSS_LOG_ERROR("Object type for removal not supported, %s", objectTypeStr.c_str());
@@ -2956,6 +2960,17 @@ void processFlexCounterEvent(
                 }
 
                 FlexCounter::setPriorityGroupAttrList(vid, rid, groupName, pgAttrIds);
+            }
+            else if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE && field == RIF_COUNTER_ID_LIST)
+            {
+                std::vector<sai_router_interface_stat_t> rifCounterIds;
+                for (const auto &str : idStrings)
+                {
+                    sai_router_interface_stat_t stat;
+                    sai_deserialize_router_interface_stat(str, stat);
+                    rifCounterIds.push_back(stat);
+                }
+                FlexCounter::setRifCounterList(vid, rid, groupName, rifCounterIds);
             }
             else
             {

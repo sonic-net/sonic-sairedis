@@ -826,6 +826,14 @@ std::string sai_serialize_queue_stat(
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_queue_stat_t);
 }
 
+std::string sai_serialize_router_interface_stat(
+        _In_ const sai_router_interface_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_router_interface_stat_t);
+}
+
 std::string sai_serialize_ingress_priority_group_stat(
         _In_ const sai_ingress_priority_group_stat_t counter)
 {
@@ -2941,6 +2949,42 @@ void sai_deserialize_free_queue_deadlock_ntf(
     SWSS_LOG_ENTER();
 
     delete[] queue_deadlock;
+}
+
+void sai_deserialize_port_stat(
+        _In_ const std::string& s,
+        _Out_ sai_port_stat_t& stat)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_port_stat_t, (int32_t&)stat);
+}
+
+void sai_deserialize_queue_stat(
+        _In_ const std::string& s,
+        _Out_ sai_queue_stat_t& stat)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_queue_stat_t, (int32_t&)stat);
+}
+
+void sai_deserialize_router_interface_stat(
+        _In_ const std::string& s,
+        _Out_ sai_router_interface_stat_t& stat)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_router_interface_stat_t, (int32_t&)stat);
+}
+
+void sai_deserialize_ingress_priority_group_stat(
+        _In_ const std::string& s,
+        _Out_ sai_ingress_priority_group_stat_t& stat)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_ingress_priority_group_stat_t, (int32_t&)stat);
 }
 
 void sai_deserialize_ingress_priority_group_attr(

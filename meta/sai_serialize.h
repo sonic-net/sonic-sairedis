@@ -90,6 +90,9 @@ std::string sai_serialize_port_pool_stat(
 std::string sai_serialize_queue_stat(
         _In_ const sai_queue_stat_t counter);
 
+std::string sai_serialize_router_interface_stat(
+        _In_ const sai_router_interface_stat_t counter);
+
 std::string sai_serialize_ingress_priority_group_stat(
         _In_ const sai_ingress_priority_group_stat_t counter);
 
@@ -266,6 +269,22 @@ void sai_deserialize_free_port_oper_status_ntf(
 void sai_deserialize_free_queue_deadlock_ntf(
         _In_ uint32_t count,
         _In_ sai_queue_deadlock_notification_data_t* deadlock_data);
+
+void sai_deserialize_port_stat(
+        _In_ const std::string& s,
+        _Out_ sai_port_stat_t& stat);
+
+void sai_deserialize_queue_stat(
+        _In_ const std::string& s,
+        _Out_ sai_queue_stat_t& stat);
+
+void sai_deserialize_router_interface_stat(
+        _In_ const std::string& s,
+        _Out_ sai_router_interface_stat_t& stat);
+
+void sai_deserialize_ingress_priority_group_stat(
+        _In_ const std::string& s,
+        _Out_ sai_ingress_priority_group_stat_t& stat);
 
 void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,

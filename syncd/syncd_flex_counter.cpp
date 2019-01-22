@@ -8,6 +8,7 @@ static std::map<std::string, std::shared_ptr<FlexCounter>> g_flex_counters_map;
 static std::set<sai_port_stat_t> supportedPortCounters;
 static std::set<sai_queue_stat_t> supportedQueueCounters;
 static std::set<sai_ingress_priority_group_stat_t> supportedPriorityGroupCounters;
+static std::set<sai_router_interface_stat_t> supportedRifCounters;
 
 FlexCounter::PortCounterIds::PortCounterIds(
         _In_ sai_object_id_t port,
@@ -45,6 +46,14 @@ FlexCounter::IngressPriorityGroupCounterIds::IngressPriorityGroupCounterIds(
         _In_ sai_object_id_t priorityGroup,
         _In_ const std::vector<sai_ingress_priority_group_stat_t> &priorityGroupIds):
     priorityGroupId(priorityGroup), priorityGroupCounterIds(priorityGroupIds)
+{
+    SWSS_LOG_ENTER();
+}
+
+FlexCounter::RifCounterIds::RifCounterIds(
+        _In_ sai_object_id_t rif,
+        _In_ const std::vector<sai_router_interface_stat_t> &rifIds):
+    rifId(rif), rifCounterIds(rifIds)
 {
     SWSS_LOG_ENTER();
 }
@@ -364,6 +373,62 @@ void FlexCounter::setPriorityGroupAttrList(
     }
 }
 
+void FlexCounter::setRifCounterList(
+        _In_ sai_object_id_t rifVid,
+        _In_ sai_object_id_t rifId,
+        _In_ std::string instanceId,
+        _In_ const std::vector<sai_router_interface_stat_t> &counterIds)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter &fc = getInstance(instanceId);
+
+    // Initialize the supported counters list before setting
+    if (supportedRifCounters.empty())
+    {
+        fc.saiUpdateSupportedRifCounters(rifId);
+    }
+
+    // Remove unsupported counters
+    std::vector<sai_router_interface_stat_t> supportedIds;
+    for (auto &counter : counterIds)
+    {
+        if (fc.isRifCounterSupported(counter))
+        {
+            supportedIds.push_back(counter);
+        }
+    }
+
+    if (supportedIds.empty())
+    {
+        SWSS_LOG_ERROR("Router interface %s does not have supported counters", sai_serialize_object_id(rifId).c_str());
+
+        // Remove flex counter if all counter IDs and plugins are unregistered
+        if (fc.isEmpty())
+        {
+            removeInstance(instanceId);
+        }
+
+        return;
+    }
+
+    auto it = fc.m_rifCounterIdsMap.find(rifVid);
+    if (it != fc.m_rifCounterIdsMap.end())
+    {
+        (*it).second->rifCounterIds = supportedIds;
+        return;
+    }
+
+    auto rifCounterIds = std::make_shared<RifCounterIds>(rifId, supportedIds);
+    fc.m_rifCounterIdsMap.emplace(rifVid, rifCounterIds);
+
+    // Start flex counter thread in case it was not running due to empty counter IDs map
+    if (fc.m_pollInterval > 0)
+    {
+        fc.startFlexCounterThread();
+    }
+}
+
 void FlexCounter::removePort(
         _In_ sai_object_id_t portVid,
         _In_ std::string instanceId)
@@ -457,6 +522,35 @@ void FlexCounter::removePriorityGroup(
         SWSS_LOG_NOTICE("Trying to remove nonexisting PG from flex counter 0x%lx", priorityGroupVid);
         return;
     }
+
+    // Remove flex counter if all counter IDs and plugins are unregistered
+    if (fc.isEmpty())
+    {
+        removeInstance(instanceId);
+    }
+}
+
+void FlexCounter::removeRif(
+        _In_ sai_object_id_t rifVid,
+        _In_ std::string instanceId)
+{
+    SWSS_LOG_ENTER();
+
+    FlexCounter &fc = getInstance(instanceId);
+
+    auto it = fc.m_rifCounterIdsMap.find(rifVid);
+    if (it == fc.m_rifCounterIdsMap.end())
+    {
+        SWSS_LOG_NOTICE("Trying to remove nonexisting router interface counter from Id 0x%lx", rifVid);
+        // Remove flex counter if all counter IDs and plugins are unregistered
+        if (fc.isEmpty())
+        {
+            removeInstance(instanceId);
+        }
+        return;
+    }
+
+    fc.m_rifCounterIdsMap.erase(it);
 
     // Remove flex counter if all counter IDs and plugins are unregistered
     if (fc.isEmpty())
@@ -609,6 +703,13 @@ bool FlexCounter::isPriorityGroupCounterSupported(sai_ingress_priority_group_sta
     return supportedPriorityGroupCounters.count(counter) != 0;
 }
 
+bool FlexCounter::isRifCounterSupported(sai_router_interface_stat_t counter) const
+{
+    SWSS_LOG_ENTER();
+
+    return supportedRifCounters.count(counter) != 0;
+}
+
 FlexCounter::FlexCounter(std::string instanceId) : m_instanceId(instanceId)
 {
     SWSS_LOG_ENTER();
@@ -644,6 +745,7 @@ void FlexCounter::collectCounters(
     std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> queueAttrIdsMap;
     std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupCounterIds>> priorityGroupCounterIdsMap;
     std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> priorityGroupAttrIdsMap;
+    std::map<sai_object_id_t, std::shared_ptr<RifCounterIds>> rifCounterIdsMap;
 
     {
         std::lock_guard<std::mutex> lock(g_mutex);
@@ -652,6 +754,7 @@ void FlexCounter::collectCounters(
         queueAttrIdsMap = m_queueAttrIdsMap;
         priorityGroupCounterIdsMap = m_priorityGroupCounterIdsMap;
         priorityGroupAttrIdsMap = m_priorityGroupAttrIdsMap;
+        rifCounterIdsMap = m_rifCounterIdsMap;
     }
 
     // Collect stats for every registered port
@@ -869,6 +972,41 @@ void FlexCounter::collectCounters(
         std::string priorityGroupVidStr = sai_serialize_object_id(priorityGroupVid);
 
         countersTable.set(priorityGroupVidStr, values, "");
+    }
+    // Collect stats for every registered router interface
+    for (const auto &kv: rifCounterIdsMap)
+    {
+        const auto &rifVid = kv.first;
+        const auto &rifId = kv.second->rifId;
+        const auto &rifCounterIds = kv.second->rifCounterIds;
+
+        std::vector<uint64_t> rifStats(rifCounterIds.size());
+
+        // Get rif stats
+        sai_status_t status = sai_metadata_sai_router_interface_api->get_router_interface_stats(
+                rifId,
+                static_cast<uint32_t>(rifCounterIds.size()),
+                rifCounterIds.data(),
+                rifStats.data());
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get stats of router interface 0x%lx: %d", rifId, status);
+            continue;
+        }
+
+        // Push all counter values to a single vector
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != rifCounterIds.size(); i++)
+        {
+            const std::string &counterName = sai_serialize_router_interface_stat(rifCounterIds[i]);
+            values.emplace_back(counterName, std::to_string(rifStats[i]));
+        }
+
+        // Write counters to DB
+        std::string rifVidStr = sai_serialize_object_id(rifVid);
+
+        countersTable.set(rifVidStr, values, "");
     }
 
     countersTable.flush();
@@ -1092,5 +1230,30 @@ void FlexCounter::saiUpdateSupportedPriorityGroupCounters(
         {
             supportedPriorityGroupCounters.insert(counter);
         }
+    }
+}
+
+void FlexCounter::saiUpdateSupportedRifCounters(sai_object_id_t rifId)
+{
+    SWSS_LOG_ENTER();
+
+    uint64_t value;
+    for (int cntr_id = SAI_ROUTER_INTERFACE_STAT_IN_OCTETS; cntr_id <= SAI_ROUTER_INTERFACE_STAT_OUT_ERROR_PACKETS; ++cntr_id)
+    {
+        sai_router_interface_stat_t counter = static_cast<sai_router_interface_stat_t>(cntr_id);
+
+        sai_status_t status = sai_metadata_sai_router_interface_api->get_router_interface_stats(rifId, 1, &counter, &value);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_INFO("Counter %s is not supported on router interface RID %s: %s",
+                    sai_serialize_router_interface_stat(counter).c_str(),
+                    sai_serialize_object_id(rifId).c_str(),
+                    sai_serialize_status(status).c_str());
+
+            continue;
+        }
+
+        supportedRifCounters.insert(counter);
     }
 }
