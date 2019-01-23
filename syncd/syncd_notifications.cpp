@@ -480,7 +480,15 @@ private:
     const size_t limit = 300000;
 };
 
-static std::unique_ptr<ntf_queue_t> ntf_queue_hdlr;
+
+/*
+ * Make sure that notification queue pointer is populated before we start
+ * thread, and before we create_switch, since at switch_create we can start
+ * receiving fdb_notifications which will arrive on different thread and
+ * will call queueStats() when queue pointer could be null (this=0x0).
+ */
+
+static std::unique_ptr<ntf_queue_t> ntf_queue_hdlr = std::unique_ptr<ntf_queue_t>(new ntf_queue_t);
 
 bool ntf_queue_t::tryDequeue(
         _Out_ swss::KeyOpFieldsValuesTuple &item)
@@ -664,15 +672,6 @@ std::shared_ptr<std::thread> ntf_process_thread;
 void startNotificationsProcessingThread()
 {
     SWSS_LOG_ENTER();
-
-    /*
-     * Make sure that notification queue pointer is populated before we start
-     * thread, and before we create_switch, since at switch_create we can start
-     * receiving fdb_notifications which will arrive on different thread and
-     * will call queueStats() when queue pointer could be null (this=0x0).
-     */
-
-    ntf_queue_hdlr = std::unique_ptr<ntf_queue_t>(new ntf_queue_t);
 
     runThread = true;
 
