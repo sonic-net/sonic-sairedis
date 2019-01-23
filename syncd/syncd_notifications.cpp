@@ -668,7 +668,7 @@ void startNotificationsProcessingThread()
     /*
      * Make sure that notification queue pointer is populated before we start
      * thread, and before we create_switch, since at switch_create we can start
-     * receiving fdb_notifications which will arrive on differet thread and
+     * receiving fdb_notifications which will arrive on different thread and
      * will call queueStats() when queue pointer could be null (this=0x0).
      */
 
