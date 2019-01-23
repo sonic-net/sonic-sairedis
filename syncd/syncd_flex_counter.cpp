@@ -986,7 +986,7 @@ void FlexCounter::collectCounters(
         sai_status_t status = sai_metadata_sai_router_interface_api->get_router_interface_stats(
                 rifId,
                 static_cast<uint32_t>(rifCounterIds.size()),
-                rifCounterIds.data(),
+                (const sai_stat_id_t *)rifCounterIds.data(),
                 rifStats.data());
         if (status != SAI_STATUS_SUCCESS)
         {
@@ -1242,7 +1242,7 @@ void FlexCounter::saiUpdateSupportedRifCounters(sai_object_id_t rifId)
     {
         sai_router_interface_stat_t counter = static_cast<sai_router_interface_stat_t>(cntr_id);
 
-        sai_status_t status = sai_metadata_sai_router_interface_api->get_router_interface_stats(rifId, 1, &counter, &value);
+        sai_status_t status = sai_metadata_sai_router_interface_api->get_router_interface_stats(rifId, 1, (const sai_stat_id_t *)&counter, &value);
 
         if (status != SAI_STATUS_SUCCESS)
         {

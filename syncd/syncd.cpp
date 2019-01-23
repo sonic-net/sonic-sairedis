@@ -2967,7 +2967,7 @@ void processFlexCounterEvent(
                 for (const auto &str : idStrings)
                 {
                     sai_router_interface_stat_t stat;
-                    sai_deserialize_router_interface_stat(str, stat);
+                    sai_deserialize_router_interface_stat(str.c_str(), &stat);
                     rifCounterIds.push_back(stat);
                 }
                 FlexCounter::setRifCounterList(vid, rid, groupName, rifCounterIds);
