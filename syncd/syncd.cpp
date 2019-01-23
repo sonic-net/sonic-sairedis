@@ -3626,11 +3626,13 @@ int syncd_main(int argc, char **argv)
 
     try
     {
+        // create notifications processing thread before we create_switch
+        // to make sure, that pointer for notification queue is populated
+        startNotificationsProcessingThread();
+
         SWSS_LOG_NOTICE("before onSyncdStart");
         onSyncdStart(options.startType == SAI_WARM_BOOT);
         SWSS_LOG_NOTICE("after onSyncdStart");
-
-        startNotificationsProcessingThread();
 
         SWSS_LOG_NOTICE("syncd listening for events");
 

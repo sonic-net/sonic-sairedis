@@ -641,8 +641,6 @@ void ntf_process_function()
 {
     SWSS_LOG_ENTER();
 
-    ntf_queue_hdlr = std::unique_ptr<ntf_queue_t>(new ntf_queue_t);
-
     while (runThread)
     {
         cv.wait(ulock);
@@ -666,6 +664,15 @@ std::shared_ptr<std::thread> ntf_process_thread;
 void startNotificationsProcessingThread()
 {
     SWSS_LOG_ENTER();
+
+    /*
+     * Make sure that notification queue pointer is populated before we start
+     * thread, and before we create_switch, since at switch_create we can start
+     * receiving fdb_notifications which will arrive on differet thread and
+     * will call queueStats() when queue pointer could be null (this=0x0).
+     */
+
+    ntf_queue_hdlr = std::unique_ptr<ntf_queue_t>(new ntf_queue_t);
 
     runThread = true;
 
