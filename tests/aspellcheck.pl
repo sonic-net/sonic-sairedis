@@ -103,9 +103,15 @@ sub RunAspell
             last;
         }
 
+        chomp $res;
+        next if $res =~ /^\*?$/;
+
+        print "$res\n";
         next if not $res =~ /^\s*&\s*(\S+)/;
 
         my $word = $1;
+
+        next if $word =~ /^wred$/i;
 
         chomp $res;
 

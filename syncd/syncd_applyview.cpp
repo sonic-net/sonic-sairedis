@@ -3412,6 +3412,62 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForBufferPool(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForWred(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For WRED we will first if it's assigned to any of the queues.
+     */
+
+    auto tmpQueues = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_QUEUE);
+
+    for (auto tmpQueue: tmpQueues)
+    {
+        auto tmpWredProfileIdAttr = tmpQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_WRED_PROFILE_ID);
+
+        if (tmpWredProfileIdAttr == nullptr)
+            continue; // no WRED attribute on queue
+
+        if (tmpWredProfileIdAttr->getOid() != temporaryObj->getVid())
+            continue; // not this queue
+
+        if (tmpQueue->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+            continue; // we only look for matched queues
+
+        // we found matched queue with this WRED
+
+        // we can use tmp VID since object is matched and both vids are the same
+        auto curQueue = currentView.oOids.at(tmpQueue->getVid());
+
+        auto curWredProfileIdAttr = curQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_WRED_PROFILE_ID);
+
+        if (curWredProfileIdAttr == nullptr)
+            continue; // current queue has no WRED attribute
+
+        if (curWredProfileIdAttr->getOid() == SAI_NULL_OBJECT_ID)
+            continue; // WRED is NULL on current queue
+
+        for (auto c: candidateObjects)
+        {
+            if (c.obj->getVid() != curWredProfileIdAttr->getOid())
+                continue;
+
+            SWSS_LOG_INFO("found best WRED based on queue %s", c.obj->str_object_id.c_str());
+
+            return c.obj;
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for WRED using queue");
+
+    return nullptr;
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -3454,6 +3510,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
 
         case SAI_OBJECT_TYPE_BUFFER_POOL:
             candidate = findCurrentBestMatchForBufferPool(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_WRED:
+            candidate = findCurrentBestMatchForWred(currentView, temporaryView, temporaryObj, candidateObjects);
             break;
 
         default:

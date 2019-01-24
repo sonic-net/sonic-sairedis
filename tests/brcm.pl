@@ -373,10 +373,38 @@ sub test_brcm_config_acl
     play "config_acl2.rec", 0;
 }
 
+sub test_brcm_warm_wred_queue
+{
+    fresh_start;
+
+    play "wred_queue.rec";
+    play "wred_queue.rec", 0;
+    play "wred_queue.rec", 0;
+    play "wred_queue.rec", 0;
+    play "wred_queue.rec", 0;
+    play "wred_queue.rec", 0;
+    play "wred_queue.rec", 0;
+
+    fresh_start;
+
+    play "wred_queue.rec";
+
+    request_warm_shutdown;
+    start_syncd_warm;
+
+    play "wred_queue.rec", 0;
+
+    request_warm_shutdown;
+
+    start_syncd_warm;
+
+    play "wred_queue.rec", 0;
+}
+
 # RUN TESTS
 
 test_brcm_config_acl;
-
+test_brcm_warm_wred_queue;
 test_brcm_warm_boot_full_empty;
 test_brcm_warm_boot_small_buffer;
 test_brcm_warm_boot_empty;
