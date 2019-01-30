@@ -71,6 +71,7 @@ extern std::mutex g_apimutex;
 
 extern const sai_acl_api_t              redis_acl_api;
 extern const sai_bfd_api_t              redis_bfd_api;
+extern const sai_bmtor_api_t            redis_bmtor_api;
 extern const sai_bridge_api_t           redis_bridge_api;
 extern const sai_buffer_api_t           redis_buffer_api;
 extern const sai_dtel_api_t             redis_dtel_api;
