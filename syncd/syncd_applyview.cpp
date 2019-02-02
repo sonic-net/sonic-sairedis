@@ -6888,6 +6888,36 @@ void checkAsicVsDatabaseConsistency(
     }
 }
 
+void checkMap(
+        _In_ const ObjectIdMap& firstR2V,
+        _In_ const char* firstR2Vname,
+        _In_ const ObjectIdMap& firstV2R,
+        _In_ const char * firstV2Rname,
+        _In_ const ObjectIdMap& secondR2V,
+        _In_ const char* secondR2Vname,
+        _In_ const ObjectIdMap& secondV2R,
+        _In_ const char *secondV2Rname)
+{
+    SWSS_LOG_ENTER();
+
+    for (auto it: firstR2V)
+    {
+        sai_object_id_t r = it.first;
+        sai_object_id_t v = it.second;
+
+        if (firstV2R.find(v) == firstV2R.end())
+            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, v, firstV2Rname);
+        else if (firstV2R.at(v) != r)
+            SWSS_LOG_ERROR("mismatch on %s (0x%lx:0x%lx) vs %s (0x%lx:0x%lx)", firstR2Vname, r, v, firstV2Rname, v, firstV2R.at(v));
+
+        if (secondR2V.find(r) == secondR2V.end())
+            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, v, secondR2Vname);
+        else if (secondV2R.find(secondR2V.at(r)) == secondV2R.end())
+            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, secondR2V.at(r), secondV2Rname);
+    }
+}
+
+
 sai_status_t syncdApplyView()
 {
     SWSS_LOG_ENTER();
@@ -7053,8 +7083,11 @@ sai_status_t syncdApplyView()
                 (current.vidToRid.size() != temp.vidToRid.size()))
         {
             /*
-             * TODO for debug we need to display differences
+             * Check all possible differences.
              */
+
+            checkMap(current.ridToVid, "current R2V", current.vidToRid, "current V2R", temp.ridToVid, "temp R2V", temp.vidToRid, "temp V2R");
+            checkMap(temp.ridToVid, "temp R2V", temp.vidToRid, "temp V2R", current.ridToVid, "current R2V", current.vidToRid, "current V2R");
 
             SWSS_LOG_THROW("wrong number of vid/rid items in map, forgot to translate? R2V: %zu:%zu, V2R: %zu:%zu, FIXME",
                     current.ridToVid.size(),
