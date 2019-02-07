@@ -794,6 +794,11 @@ int promisc(const char *dev)
     return err;
 }
 
+#define ETH_JUMBO_FRAME_SIZE (9000)
+#define IEEE_8021Q_ETHER_TYPE (0x8100)
+#define MAC_ADDRESS_SIZE (6)
+#define VLAN_TAG_SIZE (4)
+
 void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
 {
     SWSS_LOG_ENTER();
@@ -804,7 +809,26 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
     {
         // TODO convert to non blocking using select
 
-        ssize_t size = read(info->packet_socket, buffer, sizeof(buffer));
+        struct msghdr  msg;
+        memset(&msg, 0, sizeof(struct msghdr));
+
+        struct sockaddr_storage src_addr;
+
+        struct iovec iov[1];
+
+        iov[0].iov_base = buffer;       // buffer for message
+        iov[0].iov_len = sizeof(buffer);
+
+        char control[0x1000];   // buffer for control messages
+
+        msg.msg_name = &src_addr;
+        msg.msg_namelen = sizeof(src_addr);
+        msg.msg_iov = iov;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control;
+        msg.msg_controllen = sizeof(control);
+
+        ssize_t size = recvmsg(info->packet_socket, &msg, 0);
 
         if (size < 0)
         {
@@ -812,6 +836,47 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
                     info->packet_socket, errno, strerror(errno));
 
             continue;
+        }
+
+        if (size < (ssize_t)sizeof(ethhdr) || size > ETH_JUMBO_FRAME_SIZE)
+        {
+            SWSS_LOG_ERROR("invalid ethernet frame length: %zu", msg.msg_controllen);
+            continue;
+        }
+
+        struct cmsghdr *cmsg;
+
+        for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))
+        {
+            if (cmsg->cmsg_level != SOL_PACKET || cmsg->cmsg_type != PACKET_AUXDATA)
+                continue;
+
+            struct tpacket_auxdata* aux = (struct tpacket_auxdata*)CMSG_DATA(cmsg);
+
+            if ((aux->tp_status & TP_STATUS_VLAN_VALID) &&
+                    (aux->tp_status & TP_STATUS_VLAN_TPID_VALID))
+            {
+                SWSS_LOG_DEBUG("got vlan tci: 0x%x, vlanid: %d", aux->tp_vlan_tci, aux->tp_vlan_tci & 0xFFF);
+
+                // inject vlan tag into frame
+
+                // for overlapping buffers
+                memmove(buffer + 2 * MAC_ADDRESS_SIZE + VLAN_TAG_SIZE,
+                        buffer + 2 * MAC_ADDRESS_SIZE,
+                        size - (2 * MAC_ADDRESS_SIZE));
+
+                uint16_t tci = htons(aux->tp_vlan_tci);
+                uint16_t tpid = htons(IEEE_8021Q_ETHER_TYPE);
+
+                uint16_t* pvlan = (uint16_t*)(buffer + 2 * MAC_ADDRESS_SIZE);
+
+                pvlan[0] = tpid;
+                pvlan[1] = tci;
+
+                size += VLAN_TAG_SIZE;
+
+                break;
+            }
         }
 
         process_packet_for_fdb_event(buffer, size, info);
@@ -931,6 +996,13 @@ bool hostif_create_tap_veth_forwarding(
     {
         SWSS_LOG_ERROR("failed to open packet socket, errno: %d", errno);
 
+        return false;
+    }
+
+    int val = 1;
+    if (setsockopt(packet_socket, SOL_PACKET, PACKET_AUXDATA, &val, sizeof(val)) < 0)
+    {
+        SWSS_LOG_ERROR("setsockopt() set PACKET_AUXDATA failed: %s", strerror(errno));
         return false;
     }
 
