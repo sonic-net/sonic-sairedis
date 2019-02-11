@@ -6015,6 +6015,45 @@ void meta_sai_on_fdb_flush_event_consolidated(
     }
 }
 
+void meta_fdb_event_snoop_oid(
+        _In_ sai_object_id_t oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (oid == SAI_NULL_OBJECT_ID)
+        return;
+
+    if (object_reference_exists(oid))
+        return;
+
+    sai_object_type_t ot = sai_object_type_query(oid);
+
+    if (ot == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("failed to get object type on fdb_event oid: 0x%lx", oid);
+        return;
+    }
+
+    sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = oid } } };
+
+    object_reference_insert(oid);
+
+    if (!object_exists(key))
+        create_object(key);
+
+    /*
+     * In normal operation orch agent should query or create all bridge, vlan
+     * and bridge port, so we should not get this message. Let's put it as
+     * warning for better visibility. Most likely if this happen  there is a
+     * vendor bug in SAI and we should also see warnings or errors reported
+     * from syncd in logs.
+     */
+
+    SWSS_LOG_WARN("fdb_entry oid (snoop): %s: %s",
+            sai_serialize_object_type(ot).c_str(),
+            sai_serialize_object_id(oid).c_str());
+}
+
 void meta_sai_on_fdb_event_single(
         _In_ const sai_fdb_event_notification_data_t& data)
 {
@@ -6023,6 +6062,35 @@ void meta_sai_on_fdb_event_single(
     const sai_object_meta_key_t meta_key_fdb = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = data.fdb_entry } } };
 
     std::string key_fdb = sai_serialize_object_meta_key(meta_key_fdb);
+
+    /*
+     * Because we could receive fdb event's before orch agent will query or
+     * create bridge/vlan/bridge port we should snoop here new OIDs and put
+     * them in local DB.
+     *
+     * Unfortunately we don't have a way to check whether those OIDs are correct
+     * or whether there maybe some bug in vendor SAI and for example is sending
+     * invalid OIDs in those event's. Also sai_object_type_query can return
+     * valid object type for OID, but this does not guarantee that this OID is
+     * valid, for example one of existing bridge ports that orch agent didn't
+     * query yet.
+     */
+
+    meta_fdb_event_snoop_oid(data.fdb_entry.bv_id);
+
+    for (uint32_t i = 0; i < data.attr_count; i++)
+    {
+        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_FDB_ENTRY, data.attr[i].id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_ERROR("failed to get metadata for fdb_entry attr.id = %d", data.attr[i].id);
+            continue;
+        }
+
+        if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            meta_fdb_event_snoop_oid(data.attr[i].value.oid);
+    }
 
     switch (data.event_type)
     {
@@ -6093,6 +6161,33 @@ void meta_sai_on_fdb_event_single(
             }
 
             meta_generic_validation_post_remove(meta_key_fdb);
+
+            break;
+
+        case SAI_FDB_EVENT_MOVE:
+
+            if (!object_exists(key_fdb))
+            {
+                SWSS_LOG_WARN("object key %s doesn't exist but received FDB MOVE event", key_fdb.c_str());
+                break;
+            }
+
+            // on MOVE event, just update attributes on existing entry
+
+            for (uint32_t i = 0; i < data.attr_count; i++)
+            {
+                const sai_attribute_t& attr = data.attr[i];
+
+                sai_status_t status = meta_generic_validation_set(meta_key_fdb, &attr);
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("object key %s FDB MOVE event, SET validateion failed on attr.id = %d", key_fdb.c_str(), attr.id);
+                    continue;
+                }
+
+                meta_generic_validation_post_set(meta_key_fdb, &attr);
+            }
 
             break;
 
