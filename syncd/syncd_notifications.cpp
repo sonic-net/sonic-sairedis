@@ -511,6 +511,7 @@ std::condition_variable cv;
 class ntf_queue_t
 {
 public:
+    ntf_queue_t() { }
     bool enqueue(swss::KeyOpFieldsValuesTuple msg);
     bool tryDequeue(swss::KeyOpFieldsValuesTuple& msg);
     size_t queueStats()
