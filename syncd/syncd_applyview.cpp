@@ -2679,38 +2679,45 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
 
     const auto ports = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_PORT);
 
-    for (auto port: ports)
+    std::vector<int> aclPortAttrs = {
+        SAI_PORT_ATTR_INGRESS_ACL,
+        SAI_PORT_ATTR_EGRESS_ACL,
+    };
+
+    for (auto attrId: aclPortAttrs)
     {
-        if (!port->hasAttr(SAI_PORT_ATTR_INGRESS_ACL))
-            continue;
-
-        auto inACL = port->getSaiAttr(SAI_PORT_ATTR_INGRESS_ACL);
-
-        if (inACL->getSaiAttr()->value.oid != temporaryObj->getVid())
-            continue;
-
-        SWSS_LOG_DEBUG("found port candidate %s for ACL table group",
-                port->str_object_id.c_str());
-
-
-        auto curPort = currentView.oOids.at(port->getVid());
-
-        if (!curPort->hasAttr(SAI_PORT_ATTR_INGRESS_ACL))
-            continue;
-
-        inACL = curPort->getSaiAttr(SAI_PORT_ATTR_INGRESS_ACL);
-
-        sai_object_id_t atgVid = inACL->getSaiAttr()->value.oid;
-
-        for (auto c: candidateObjects)
+        for (auto port: ports)
         {
-            if (c.obj->getVid() == atgVid)
-            {
-                SWSS_LOG_INFO("found ALC table group candidate %s using port %s",
-                        c.obj->str_object_id.c_str(),
-                        port->str_object_id.c_str());
+            auto portAcl = port->tryGetSaiAttr(attrId);
 
-                return c.obj;
+            if (portAcl == nullptr)
+                continue;
+
+            if (portAcl ->getSaiAttr()->value.oid != temporaryObj->getVid())
+                continue;
+
+            SWSS_LOG_DEBUG("found port candidate %s for ACL table group",
+                    port->str_object_id.c_str());
+
+            auto curPort = currentView.oOids.at(port->getVid());
+
+            portAcl = curPort->tryGetSaiAttr(attrId);
+
+            if (portAcl == nullptr)
+                continue;
+
+            sai_object_id_t atgVid = portAcl->getSaiAttr()->value.oid;
+
+            for (auto c: candidateObjects)
+            {
+                if (c.obj->getVid() == atgVid)
+                {
+                    SWSS_LOG_INFO("found ALC table group candidate %s using port %s",
+                            c.obj->str_object_id.c_str(),
+                            port->str_object_id.c_str());
+
+                    return c.obj;
+                }
             }
         }
     }
@@ -3412,6 +3419,102 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForBufferPool(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForBufferProfile(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For buffer profile we will try using SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE
+     * or SAI_QUEUE_ATTR_BUFFER_PROFILE_ID for matching.
+     *
+     * We we are here, and buffer profile has assigned buffer pool, then buffer
+     * pool was matched correctly or best effort. Then we have trouble matching
+     * buffer profile since their configuration could be the same.  This search
+     * here should solve the issue.
+     */
+
+    auto tmpQueues = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_QUEUE);
+
+    for (auto tmpQueue: tmpQueues)
+    {
+        auto tmpBufferProfileIdAttr = tmpQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID);
+
+        if (tmpBufferProfileIdAttr == nullptr)
+            continue;
+
+        if (tmpBufferProfileIdAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        if (tmpQueue->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+            continue;
+
+        // we can use tmp VID since object is matched and both vids are the same
+        auto curQueue = currentView.oOids.at(tmpQueue->getVid());
+
+        auto curBufferProfileIdAttr = curQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID);
+
+        if (curBufferProfileIdAttr == nullptr)
+            continue;
+
+        // we have buffer profile
+
+        for (auto c: candidateObjects)
+        {
+            if (c.obj->getVid() != curBufferProfileIdAttr->getOid())
+                continue;
+
+            SWSS_LOG_INFO("found best BUFFER PROFILE based on queues %s", c.obj->str_object_id.c_str());
+
+            return c.obj;
+        }
+    }
+
+    auto tmpIPGs = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP);
+
+    for (auto tmpIPG: tmpIPGs)
+    {
+        auto tmpBufferProfileIdAttr = tmpIPG->tryGetSaiAttr(SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE);
+
+        if (tmpBufferProfileIdAttr == nullptr)
+            continue;
+
+        if (tmpBufferProfileIdAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        if (tmpIPG->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+            continue;
+
+        // we can use tmp VID since object is matched and both vids are the same
+        auto curIPG = currentView.oOids.at(tmpIPG->getVid());
+
+        auto curBufferProfileIdAttr = curIPG->tryGetSaiAttr(SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE);
+
+        if (curBufferProfileIdAttr == nullptr)
+            continue;
+
+        // we have buffer profile
+
+        for (auto c: candidateObjects)
+        {
+            if (c.obj->getVid() != curBufferProfileIdAttr->getOid())
+                continue;
+
+            SWSS_LOG_INFO("found best BUFFER PROFILE based on IPG %s", c.obj->str_object_id.c_str());
+
+            return c.obj;
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for BUFFER PROFILE using queues and ipgs");
+
+    return nullptr;
+}
+
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForWred(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -3514,6 +3617,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
 
         case SAI_OBJECT_TYPE_WRED:
             candidate = findCurrentBestMatchForWred(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_BUFFER_PROFILE:
+            candidate = findCurrentBestMatchForBufferProfile(currentView, temporaryView, temporaryObj, candidateObjects);
             break;
 
         default:
