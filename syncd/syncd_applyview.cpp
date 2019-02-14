@@ -563,6 +563,8 @@ class AsicView
                         sai_deserialize_route_entry(o->str_object_id, o->meta_key.objectkey.key.route_entry);
                         soRoutes[o->str_object_id] = o;
 
+                        routesByPrefix[sai_serialize_ip_prefix(o->meta_key.objectkey.key.route_entry.destination)].push_back(o->str_object_id);
+
                         break;
 
                     default:
@@ -850,6 +852,8 @@ class AsicView
         StrObjectIdToSaiObjectHash soOids;
         StrObjectIdToSaiObjectHash soAll;
 
+        std::unordered_map<std::string,std::vector<std::string>> routesByPrefix;
+
     private:
 
         std::map<sai_object_type_t, StrObjectIdToSaiObjectHash> sotAll;
@@ -857,6 +861,8 @@ class AsicView
     public:
 
         ObjectIdToSaiObjectHash oOids;
+
+        std::unordered_map<sai_object_id_t, sai_object_id_t> preMatchMap;
 
         /*
          * On temp view this needs to be used for actual NEW rids created and
@@ -2517,7 +2523,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
 
     if (temporaryLagMemberPortVid == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_WARN("failed to find temporary LAG member for LAG %s", sai_serialize_object_id(tmpLagVid).c_str());
+        SWSS_LOG_NOTICE("failed to find temporary LAG member for LAG %s", sai_serialize_object_id(tmpLagVid).c_str());
 
         return nullptr;
     }
@@ -2563,7 +2569,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
         }
     }
 
-    SWSS_LOG_WARN("failed to find best candidate for LAG using LAG member and port id: tmp %s", temporaryObj->str_object_id.c_str());
+    SWSS_LOG_NOTICE("failed to find best candidate for LAG using lag member and port");
 
     return nullptr;
 }
@@ -2655,7 +2661,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForNextHopGroup(
         }
     }
 
-    SWSS_LOG_NOTICE("failed to find best candidate for next hop group using route_entry");
+    SWSS_LOG_NOTICE("failed to find best candidate for NEXT_HOP_GROUP using route_entry");
 
     return nullptr;
 }
@@ -2804,7 +2810,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
         }
     }
 
-    SWSS_LOG_NOTICE("failed to find best candidate for ACL table group using port");
+    SWSS_LOG_NOTICE("failed to find best candidate for ACL_TABLE_GROUP using port");
 
     return nullptr;
 }
@@ -2899,7 +2905,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTable(
         }
     }
 
-    SWSS_LOG_NOTICE("failed to find best candidate for ACL table using port");
+    SWSS_LOG_NOTICE("failed to find best candidate for ACL_TABLE using port");
 
     return nullptr;
 }
@@ -3095,7 +3101,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForRouterInterface(
         }
     }
 
-    SWSS_LOG_NOTICE("failed to find best candidate for LOOPBACK ROUTER_INTERFACE using TUNNEL");
+    SWSS_LOG_NOTICE("failed to find best candidate for LOOPBACK ROUTER_INTERFACE using tunnel");
 
     return nullptr;
 }
@@ -3281,7 +3287,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForHostifTrapGroup(
         }
     }
 
-    SWSS_LOG_NOTICE("failed to find best candidate for HOSTIF TRAP GROUP using hostif trap");
+    SWSS_LOG_NOTICE("failed to find best candidate for HOSTIF_TRAP_GROUP using hostif trap");
 
     return nullptr;
 }
@@ -3414,7 +3420,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForBufferPool(
 
     }
 
-    SWSS_LOG_NOTICE("failed to find best candidate for BUFFER POOL using buffer profile, ipg and queue");
+    SWSS_LOG_NOTICE("failed to find best candidate for BUFFER_POOL using buffer profile, ipg and queue");
 
     return nullptr;
 }
@@ -3509,7 +3515,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForBufferProfile(
         }
     }
 
-    SWSS_LOG_NOTICE("failed to find best candidate for BUFFER PROFILE using queues and ipgs");
+    SWSS_LOG_NOTICE("failed to find best candidate for BUFFER_PROFILE using queues and ipgs");
 
     return nullptr;
 }
@@ -3571,6 +3577,38 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForWred(
     return nullptr;
 }
 
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingPreMatchMap(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    if (temporaryObj->isOidObject() == false)
+        return std::shared_ptr<SaiObj>();
+
+    auto it = temporaryView.preMatchMap.find(temporaryObj->getVid());
+
+    if (it == temporaryView.preMatchMap.end()) // no luck, there was no vid in pre match
+        return nullptr;
+
+    for (auto c: candidateObjects)
+    {
+        if (c.obj->getVid() == it->second)
+        {
+            SWSS_LOG_INFO("found pre match vid %s (tmp) %s (cur)",
+                    sai_serialize_object_id(it->first).c_str(),
+                    sai_serialize_object_id(it->second).c_str());
+
+            return c.obj;
+        }
+    }
+
+    return nullptr;
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -3580,6 +3618,11 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
     SWSS_LOG_ENTER();
 
     std::shared_ptr<SaiObj> candidate = nullptr;
+
+    candidate = findCurrentBestMatchForGenericObjectUsingPreMatchMap(currentView, temporaryView, temporaryObj, candidateObjects);
+
+    if (candidate != nullptr)
+            return candidate;
 
     switch (temporaryObj->getObjectType())
     {
@@ -6840,8 +6883,8 @@ void logViewObjectCount(
 }
 
 void checkAsicVsDatabaseConsistency(
-        _In_ const AsicView cur,
-        _In_ const AsicView &tmp)
+        _In_ const AsicView& cur,
+        _In_ const AsicView& tmp)
 {
     SWSS_LOG_ENTER();
 
@@ -7024,6 +7067,152 @@ void checkMap(
     }
 }
 
+void createPreMatchMapForObject(
+        _In_ const AsicView& cur,
+        _Inout_ AsicView& tmp,
+        _In_ std::shared_ptr<const SaiObj> cObj,
+        _In_ std::shared_ptr<const SaiObj> tObj,
+        _Inout_ std::set<std::string>& processed)
+{
+    SWSS_LOG_ENTER();
+
+    if (processed.find(tObj->str_object_id) != processed.end())
+        return;
+
+    processed.insert(tObj->str_object_id);
+
+    if (cObj->getObjectType() != tObj->getObjectType())
+        return;
+
+    // this object is matched, so it have same vid/rid in both views
+    // but it can have attributes with objects which are not matched
+    // for those we want to create pre match map
+
+    for (auto& ak: tObj->getAllAttributes())
+    {
+        auto id = ak.first;
+        const auto& tAttr = ak.second;
+
+        if (cObj->hasAttr(id) == false)
+            continue;
+
+        // both objects has the same attribute
+
+        const auto& cAttr = cObj->getSaiAttr(id);
+
+        const auto& tVids = tAttr->getOidListFromAttribute();
+        const auto& cVids = cAttr->getOidListFromAttribute();
+
+        if (tVids.size() != cVids.size())
+            continue; // if number of attributes is different then skip
+
+        if (tVids.size() != 1)
+            continue; // for now skip list attributes
+
+        for (size_t i = 0; i < tVids.size(); ++i)
+        {
+            sai_object_id_t tVid = tVids[i];
+            sai_object_id_t cVid = cVids[i];
+
+            if (tVid == SAI_NULL_OBJECT_ID || cVid == SAI_NULL_OBJECT_ID)
+                continue;
+
+            if (tmp.preMatchMap.find(tVid) != tmp.preMatchMap.end())
+                continue;
+
+            // since on one attribute sometimes different object types can be set
+            // check if both obejct types are correct
+
+            if (cur.oOids.at(cVid)->getObjectType() != tmp.oOids.at(tVid)->getObjectType())
+                continue;
+
+            SWSS_LOG_INFO("inserting pre match entry for %s:%s: 0x%lx (tmp) -> 0x%lx (cur)",
+                    tObj->str_object_id.c_str(),
+                    cAttr->getAttrMetadata()->attridname,
+                    tVid,
+                    cVid);
+
+            tmp.preMatchMap[tVid] = cVid;
+
+            // continue recursivly throug object dependency tree:
+
+            createPreMatchMapForObject(cur, tmp, cur.oOids.at(cVid), tmp.oOids.at(tVid), processed);
+        }
+    }
+}
+
+void createPreMatchMap(
+        _In_ const AsicView& cur,
+        _Inout_ AsicView& tmp)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * When comparison logic is running on object A it runs recursivly on each
+     * object that was fount in object A attributes, because we need to make
+     * sure all obejcts are matched before actually processing object A.  For
+     * example before processing ROUTE_ENTRY, we process first NEXT_HOP and
+     * before that REOUTER_INTERFACE and before that PORT. Object processing
+     * could be described going from down to top. But figureing out for top
+     * object ex. WRED could be hard since we would need to check not matched
+     * yet buffer profile and buffer pool before we use QUEUE or IPG as an
+     * anhor object. We can actually leaverage that and when processing graph
+     * from top to bottom, we can create helper map which will conttain
+     * predictions which object will be suitable for current processing
+     * objects. We can have N candidates objects and instead of choosing 1 at
+     * random, to reduce number of ASIC operations we will use a pre match map
+     * which is created in this method.
+     *
+     * This map should be almost exact match im warn boot case, but it will be
+     * treated only as hint, not as actual mapping.
+     *
+     * We will create map for all matched objects and for route_entry,
+     * fdb_entry and neighbor_entry.
+     */
+
+    std::set<std::string> processed;
+
+    SWSS_LOG_TIMER("create preMatch map");
+
+    for (auto& ok: tmp.soAll)
+    {
+        auto& tObj = ok.second;
+
+        if (tObj->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+            continue;
+
+        sai_object_id_t cObjVid = cur.ridToVid.at(tmp.vidToRid.at(tObj->getVid()));
+
+        auto& cObj = cur.oOids.at(cObjVid);
+
+        createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
+    }
+
+    for (auto&pk: tmp.routesByPrefix)
+    {
+        auto& prefix = pk.first;
+
+        // look only for unique prefixes
+
+        if (pk.second.size() != 1)
+            continue;
+
+        auto it = cur.routesByPrefix.find(prefix);
+
+        if (it == cur.routesByPrefix.end())
+            continue;
+
+        if (it->second.size() != 1)
+            continue;
+
+        auto& tObj = tmp.soAll.at(pk.second.at(0));
+        auto& cObj = cur.soAll.at(it->second.at(0));
+
+        createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
+    }
+
+    SWSS_LOG_NOTICE("preMatch map size: %zu", tmp.preMatchMap.size());
+}
 
 sai_status_t syncdApplyView()
 {
@@ -7166,6 +7355,8 @@ sai_status_t syncdApplyView()
             current.dumpRef("current START");
             temp.dumpRef("temp START");
         }
+
+        createPreMatchMap(current, temp);
 
         logViewObjectCount(current, temp);
 

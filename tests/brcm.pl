@@ -401,8 +401,18 @@ sub test_brcm_warm_wred_queue
     play "wred_queue.rec", 0;
 }
 
+sub test_empty_lag_buffer_acl
+{
+    fresh_start;
+
+    play "empty_lag_buffer_acl.rec";
+
+    for (1..8) { play "empty_lag_buffer_acl.rec", 0; }
+}
+
 # RUN TESTS
 
+test_empty_lag_buffer_acl;
 test_brcm_config_acl;
 test_brcm_warm_wred_queue;
 test_brcm_warm_boot_full_empty;
