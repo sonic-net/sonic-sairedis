@@ -163,7 +163,7 @@ class SwitchState
                         sai_serialize_object_type(sai_object_type_query(switch_id)).c_str());
             }
 
-            for (int i = SAI_OBJECT_TYPE_NULL; i < (int)SAI_OBJECT_TYPE_MAX; ++i)
+            for (int i = SAI_OBJECT_TYPE_NULL; i < (int)SAI_OBJECT_TYPE_EXTENSIONS_MAX; ++i)
             {
                 /*
                  * Populate empty maps for each object to avoid checking if

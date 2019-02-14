@@ -71,7 +71,7 @@ void channelOpSetReadOnlyAttribute(
     sai_object_type_t object_type;
     sai_deserialize_object_type(str_object_type, object_type);
 
-    if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_MAX)
+    if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_ERROR("invalid object type: %d", object_type);
         return;
@@ -876,6 +876,7 @@ sai_status_t sai_api_query(
     {
         API_CASE(ACL,acl);
         API_CASE(BFD,bfd);
+        API_CASE(BMTOR,bmtor);
         API_CASE(BRIDGE,bridge);
         API_CASE(BUFFER,buffer);
         API_CASE(DTEL,dtel);
