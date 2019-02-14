@@ -7121,7 +7121,7 @@ void createPreMatchMapForObject(
                 continue;
 
             // since on one attribute sometimes different object types can be set
-            // check if both obejct types are correct
+            // check if both object types are correct
 
             if (cur.oOids.at(cVid)->getObjectType() != tmp.oOids.at(tVid)->getObjectType())
                 continue;
@@ -7134,7 +7134,7 @@ void createPreMatchMapForObject(
 
             tmp.preMatchMap[tVid] = cVid;
 
-            // continue recursivly throug object dependency tree:
+            // continue recursively through object dependency tree:
 
             createPreMatchMapForObject(cur, tmp, cur.oOids.at(cVid), tmp.oOids.at(tVid), processed);
         }
@@ -7148,22 +7148,22 @@ void createPreMatchMap(
     SWSS_LOG_ENTER();
 
     /*
-     * When comparison logic is running on object A it runs recursivly on each
+     * When comparison logic is running on object A it runs recursively on each
      * object that was fount in object A attributes, because we need to make
-     * sure all obejcts are matched before actually processing object A.  For
+     * sure all objects are matched before actually processing object A.  For
      * example before processing ROUTE_ENTRY, we process first NEXT_HOP and
      * before that REOUTER_INTERFACE and before that PORT. Object processing
-     * could be described going from down to top. But figureing out for top
+     * could be described going from down to top. But figuring out for top
      * object ex. WRED could be hard since we would need to check not matched
      * yet buffer profile and buffer pool before we use QUEUE or IPG as an
-     * anhor object. We can actually leaverage that and when processing graph
-     * from top to bottom, we can create helper map which will conttain
+     * anchor object. We can actually leverage that and when processing graph
+     * from top to bottom, we can create helper map which will contain
      * predictions which object will be suitable for current processing
      * objects. We can have N candidates objects and instead of choosing 1 at
      * random, to reduce number of ASIC operations we will use a pre match map
      * which is created in this method.
      *
-     * This map should be almost exact match im warn boot case, but it will be
+     * This map should be almost exact match in warn boot case, but it will be
      * treated only as hint, not as actual mapping.
      *
      * We will create map for all matched objects and for route_entry,
