@@ -3431,7 +3431,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForBufferProfile(
      * For buffer profile we will try using SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE
      * or SAI_QUEUE_ATTR_BUFFER_PROFILE_ID for matching.
      *
-     * We we are here, and buffer profile has assigned buffer pool, then buffer
+     * If we are here, and buffer profile has assigned buffer pool, then buffer
      * pool was matched correctly or best effort. Then we have trouble matching
      * buffer profile since their configuration could be the same.  This search
      * here should solve the issue.
