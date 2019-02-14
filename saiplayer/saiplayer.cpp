@@ -1310,7 +1310,7 @@ void printUsage()
     std::cout << "    -i --inspectAsic:" << std::endl;
     std::cout << "        Inspect ASIC by ASIC DB" << std::endl << std::endl;
     std::cout << "    -s --sleep:" << std::endl;
-    std::cout << "        Sleep after success reply, to notice fdb notifications" << std::endl << std::endl;
+    std::cout << "        Sleep after success reply, to notice any switch notifications" << std::endl << std::endl;
     std::cout << "    -h --help:" << std::endl;
     std::cout << "        Print out this message" << std::endl << std::endl;
 }
