@@ -448,6 +448,34 @@ sai_object_id_t translate_rid_to_vid(
     return vid;
 }
 
+/**
+ * @brief Check if RID exists on the ASIC DB.
+ *
+ * @param rid Real object id to check.
+ *
+ * @return True if exists or SAI_NULL_OBJECT_ID, otherwise false.
+ */
+bool check_rid_exists(
+        _In_ sai_object_id_t rid)
+{
+    SWSS_LOG_ENTER();
+
+    if (rid == SAI_NULL_OBJECT_ID)
+        return true;
+
+    if (local_rid_to_vid.find(rid) != local_rid_to_vid.end())
+        return true;
+
+    std::string str_rid = sai_serialize_object_id(rid);
+
+    auto pvid = g_redisClient->hget(RIDTOVID, str_rid);
+
+    if (pvid != NULL)
+        return true;
+
+    return false;
+}
+
 void translate_list_rid_to_vid(
         _In_ sai_object_list_t &element,
         _In_ sai_object_id_t switch_id)

@@ -166,6 +166,16 @@ static sai_status_t create_ports()
 
         sai_attribute_t attr;
 
+        attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+        attr.value.booldata = false;     /* default admin state is down as defined in SAI */
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_MTU;
+        attr.value.u32 = 1514;     /* default MTU is 1514 as defined in SAI */
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
         attr.id = SAI_PORT_ATTR_SPEED;
         attr.value.u32 = 40 * 1000;     /* TODO from config */
 

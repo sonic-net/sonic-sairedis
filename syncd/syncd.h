@@ -110,6 +110,9 @@ sai_object_id_t translate_rid_to_vid(
         _In_ sai_object_id_t rid,
         _In_ sai_object_id_t switch_vid);
 
+bool check_rid_exists(
+        _In_ sai_object_id_t rid);
+
 void translate_rid_to_vid_list(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t switch_vid,
