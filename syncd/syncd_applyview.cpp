@@ -2569,7 +2569,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
         }
     }
 
-    SWSS_LOG_NOTICE("failed to find best candidate for LAG using lag member and port");
+    SWSS_LOG_NOTICE("failed to find best candidate for LAG using LAG member and port");
 
     return nullptr;
 }
