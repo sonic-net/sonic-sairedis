@@ -240,7 +240,21 @@ void redisPutFdbEntryToAsicView(
     g_redisClient->hset(key, strAttrId, strAttrValue);
 }
 
-void check_fdb_event_notification_data(
+/**
+ * @Brief Check FDB event notification data.
+ *
+ * Every OID field in notification data as well as all OID attributes are
+ * checked if given OID (returned from ASIC) is already present in the syncd
+ * local database. All bridge ports, vlans should be already discovered by
+ * syncd discovery logic.  If vendor SAI will return unknown/invalid OID, this
+ * function will return false.
+ *
+ * @param data FDB event notification data
+ *
+ * @return False if any of OID values is not present in local DB, otherwise
+ * true.
+ */
+bool check_fdb_event_notification_data(
         _In_ const sai_fdb_event_notification_data_t& data)
 {
     SWSS_LOG_ENTER();
@@ -264,13 +278,23 @@ void check_fdb_event_notification_data(
      * state.
      */
 
+    bool result = true;
+
     if (!check_rid_exists(data.fdb_entry.bv_id))
+    {
         SWSS_LOG_ERROR("bv_id RID 0x%lx is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
                 sai_serialize_fdb_entry(data.fdb_entry).c_str());
 
+        result = false;
+    }
+
     if (!check_rid_exists(data.fdb_entry.switch_id) || data.fdb_entry.switch_id == SAI_NULL_OBJECT_ID)
+    {
         SWSS_LOG_ERROR("switch_id RID 0x%lx is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
                 sai_serialize_fdb_entry(data.fdb_entry).c_str());
+
+        result = false;
+    }
 
     for (uint32_t i = 0; i < data.attr_count; i++)
     {
@@ -289,8 +313,14 @@ void check_fdb_event_notification_data(
             continue;
 
         if (!check_rid_exists(attr.value.oid))
+        {
             SWSS_LOG_WARN("RID 0x%lx on %s is not present on local ASIC DB", attr.value.oid, meta->attridname);
+
+            result = false;
+        }
     }
+
+    return result;
 }
 
 void process_on_fdb_event(
@@ -301,11 +331,13 @@ void process_on_fdb_event(
 
     SWSS_LOG_INFO("fdb event count: %u", count);
 
+    bool sendntf = true;
+
     for (uint32_t i = 0; i < count; i++)
     {
         sai_fdb_event_notification_data_t *fdb = &data[i];
 
-        check_fdb_event_notification_data(*fdb);
+        sendntf &= check_fdb_event_notification_data(*fdb);
 
         SWSS_LOG_DEBUG("fdb %u: type: %d", i, fdb->event_type);
 
@@ -324,9 +356,16 @@ void process_on_fdb_event(
         redisPutFdbEntryToAsicView(fdb);
     }
 
-    std::string s = sai_serialize_fdb_event_ntf(count, data);
+    if (sendntf)
+    {
+        std::string s = sai_serialize_fdb_event_ntf(count, data);
 
-    send_notification("fdb_event", s);
+        send_notification("fdb_event", s);
+    }
+    else
+    {
+        SWSS_LOG_ERROR("FDB notification was not sent since it contain invalid OIDs, bug?");
+    }
 }
 
 void process_on_queue_deadlock_event(
