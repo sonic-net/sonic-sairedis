@@ -4,64 +4,64 @@
 
 // object id
 
-#define VS_CREATE(OBJECT_TYPE,object_type)              \
-    sai_status_t vs_create_ ## object_type(             \
-            _Out_ sai_object_id_t *object_type ##_id,   \
-            _In_ sai_object_id_t switch_id,             \
-            _In_ uint32_t attr_count,                   \
-            _In_ const sai_attribute_t *attr_list)      \
-    {                                                   \
-        MUTEX();                                        \
-        SWSS_LOG_ENTER();                               \
-        return meta_sai_create_oid(                     \
-                SAI_OBJECT_TYPE_ ## OBJECT_TYPE,        \
-                object_type ## _id,                     \
-                switch_id,                              \
-                attr_count,                             \
-                attr_list,                              \
-                &vs_generic_create);                    \
+#define VS_CREATE(OBJECT_TYPE,object_type)                          \
+    sai_status_t vs_create_ ## object_type(                         \
+            _Out_ sai_object_id_t *object_type ##_id,               \
+            _In_ sai_object_id_t switch_id,                         \
+            _In_ uint32_t attr_count,                               \
+            _In_ const sai_attribute_t *attr_list)                  \
+    {                                                               \
+        MUTEX();                                                    \
+        SWSS_LOG_ENTER();                                           \
+        return meta_sai_create_oid(                                 \
+                (sai_object_type_t)SAI_OBJECT_TYPE_ ## OBJECT_TYPE, \
+                object_type ## _id,                                 \
+                switch_id,                                          \
+                attr_count,                                         \
+                attr_list,                                          \
+                &vs_generic_create);                                \
     }
 
-#define VS_REMOVE(OBJECT_TYPE,object_type)              \
-    sai_status_t vs_remove_ ## object_type(             \
-            _In_ sai_object_id_t object_type ## _id)    \
-    {                                                   \
-        MUTEX();                                        \
-        SWSS_LOG_ENTER();                               \
-        return meta_sai_remove_oid(                     \
-                SAI_OBJECT_TYPE_ ## OBJECT_TYPE,        \
-                object_type ## _id,                     \
-                &vs_generic_remove);                    \
+#define VS_REMOVE(OBJECT_TYPE,object_type)                          \
+    sai_status_t vs_remove_ ## object_type(                         \
+            _In_ sai_object_id_t object_type ## _id)                \
+    {                                                               \
+        MUTEX();                                                    \
+        SWSS_LOG_ENTER();                                           \
+        return meta_sai_remove_oid(                                 \
+                (sai_object_type_t)SAI_OBJECT_TYPE_ ## OBJECT_TYPE, \
+                object_type ## _id,                                 \
+                &vs_generic_remove);                                \
     }
 
-#define VS_SET(OBJECT_TYPE,object_type)                 \
-    sai_status_t vs_set_ ## object_type ## _attribute(  \
-            _In_ sai_object_id_t object_type ## _id,    \
-            _In_ const sai_attribute_t *attr)           \
-    {                                                   \
-        MUTEX();                                        \
-        SWSS_LOG_ENTER();                               \
-        return meta_sai_set_oid(                        \
-                SAI_OBJECT_TYPE_ ## OBJECT_TYPE,        \
-                object_type ## _id,                     \
-                attr,                                   \
-                &vs_generic_set);                       \
+#define VS_SET(OBJECT_TYPE,object_type)                             \
+    sai_status_t vs_set_ ## object_type ## _attribute(              \
+            _In_ sai_object_id_t object_type ## _id,                \
+            _In_ const sai_attribute_t *attr)                       \
+    {                                                               \
+        MUTEX();                                                    \
+        SWSS_LOG_ENTER();                                           \
+        return meta_sai_set_oid(                                    \
+                (sai_object_type_t)SAI_OBJECT_TYPE_ ## OBJECT_TYPE, \
+                object_type ## _id,                                 \
+                attr,                                               \
+                &vs_generic_set);                                   \
     }
 
-#define VS_GET(OBJECT_TYPE,object_type)                 \
-    sai_status_t vs_get_ ## object_type ## _attribute(  \
-            _In_ sai_object_id_t object_type ## _id,    \
-            _In_ uint32_t attr_count,                   \
-            _Inout_ sai_attribute_t *attr_list)         \
-    {                                                   \
-        MUTEX();                                        \
-        SWSS_LOG_ENTER();                               \
-        return meta_sai_get_oid(                        \
-                SAI_OBJECT_TYPE_ ## OBJECT_TYPE,        \
-                object_type ## _id,                     \
-                attr_count,                             \
-                attr_list,                              \
-                &vs_generic_get);                       \
+#define VS_GET(OBJECT_TYPE,object_type)                             \
+    sai_status_t vs_get_ ## object_type ## _attribute(              \
+            _In_ sai_object_id_t object_type ## _id,                \
+            _In_ uint32_t attr_count,                               \
+            _Inout_ sai_attribute_t *attr_list)                     \
+    {                                                               \
+        MUTEX();                                                    \
+        SWSS_LOG_ENTER();                                           \
+        return meta_sai_get_oid(                                    \
+                (sai_object_type_t)SAI_OBJECT_TYPE_ ## OBJECT_TYPE, \
+                object_type ## _id,                                 \
+                attr_count,                                         \
+                attr_list,                                          \
+                &vs_generic_get);                                   \
     }
 
 #define VS_GENERIC_QUAD(OT,ot)  \
@@ -146,13 +146,13 @@
     sai_status_t vs_get_ ## object_type ## _stats(                  \
             _In_ sai_object_id_t object_type ## _id,                \
             _In_ uint32_t number_of_counters,                       \
-            _In_ const sai_stat_id_t *counter_ids, \
+            _In_ const sai_stat_id_t *counter_ids,                  \
             _Out_ uint64_t *counters)                               \
     {                                                               \
         MUTEX();                                                    \
         SWSS_LOG_ENTER();                                           \
         return vs_generic_get_stats(                                \
-                SAI_OBJECT_TYPE_ ## OBJECT_TYPE,                    \
+                (sai_object_type_t)SAI_OBJECT_TYPE_ ## OBJECT_TYPE, \
                 object_type ## _id,                                 \
                 &sai_metadata_enum_sai_ ## object_type ## _stat_t,  \
                 number_of_counters,                                 \
@@ -164,14 +164,14 @@
     sai_status_t vs_get_ ## object_type ## _stats_ext(              \
             _In_ sai_object_id_t object_type ## _id,                \
             _In_ uint32_t number_of_counters,                       \
-            _In_ const sai_stat_id_t *counter_ids, \
+            _In_ const sai_stat_id_t *counter_ids,                  \
             _In_ sai_stats_mode_t mode,                             \
             _Out_ uint64_t *counters)                               \
     {                                                               \
         MUTEX();                                                    \
         SWSS_LOG_ENTER();                                           \
         return vs_generic_get_stats_ext(                            \
-                SAI_OBJECT_TYPE_ ## OBJECT_TYPE,                    \
+                (sai_object_type_t)SAI_OBJECT_TYPE_ ## OBJECT_TYPE, \
                 object_type ## _id,                                 \
                 &sai_metadata_enum_sai_ ## object_type ## _stat_t,  \
                 number_of_counters,                                 \
@@ -184,12 +184,12 @@
     sai_status_t vs_clear_ ## object_type ## _stats(                \
             _In_ sai_object_id_t object_type ## _id,                \
             _In_ uint32_t number_of_counters,                       \
-            _In_ const sai_stat_id_t *counter_ids) \
+            _In_ const sai_stat_id_t *counter_ids)                  \
     {                                                               \
         MUTEX();                                                    \
         SWSS_LOG_ENTER();                                           \
         return vs_generic_clear_stats(                              \
-                SAI_OBJECT_TYPE_ ## OBJECT_TYPE,                    \
+                (sai_object_type_t)SAI_OBJECT_TYPE_ ## OBJECT_TYPE, \
                 object_type ## _id,                                 \
                 &sai_metadata_enum_sai_ ## object_type ## _stat_t,  \
                 number_of_counters,                                 \

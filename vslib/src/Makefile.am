@@ -11,6 +11,7 @@ lib_LTLIBRARIES = libsaivs.la
 libsaivs_la_SOURCES = \
 					  sai_vs_acl.cpp \
 					  sai_vs_bfd.cpp \
+                                          sai_vs_bmtor.cpp \
 					  sai_vs_bridge.cpp \
 					  sai_vs_buffer.cpp \
 					  sai_vs_dtel.cpp \
