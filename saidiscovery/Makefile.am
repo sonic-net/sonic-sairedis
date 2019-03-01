@@ -12,7 +12,8 @@ if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else
 if sonic_asic_platform_barefoot
-SAILIB=-L/opt/bfn/install/lib -lswitchsai -lswitchapi -lbf_switchd_lib -ltofinopdfixed_thrift -ldriver -lbfutils -lbfsys -lbfutils -L/opt/bfn/install/lib/tofinopd/switch -lpd -lpdcli -lpdthrift
+AM_CPPFLAGS += -I/opt/bfn/install/include
+SAILIB=-L/opt/bfn/install/lib -lswitchsai
 else
 SAILIB=-lsai
 endif

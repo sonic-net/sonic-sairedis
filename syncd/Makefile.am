@@ -13,7 +13,6 @@ SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else
 if sonic_asic_platform_barefoot
 AM_CPPFLAGS += -I/opt/bfn/install/include
-AM_LDFLAGS = -Wl,-unresolved-symbols=ignore-in-shared-libs
 SAILIB=-L/opt/bfn/install/lib -lswitchsai
 else
 SAILIB=-lsai
