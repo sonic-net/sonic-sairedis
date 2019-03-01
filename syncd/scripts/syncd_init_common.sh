@@ -88,15 +88,12 @@ config_syncd_mlnx()
 
     [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
 
-    # Read MAC address and align the last 6 bits.
-    MAC_ADDRESS=$(sonic-cfggen -d -v DEVICE_METADATA.localhost.mac)
-    last_byte=$(python -c "print '$MAC_ADDRESS'[-2:]")
-    aligned_last_byte=$(python -c "print format(int(int('$last_byte', 16) & 0b11000000), '02x')")  # put mask and take away the 0x prefix
-    ALIGNED_MAC_ADDRESS=$(python -c "print '$MAC_ADDRESS'[:-2] + '$aligned_last_byte'")          # put aligned byte into the end of MAC
+    # Read MAC address
+    MAC_ADDRESS="$(sonic-cfggen -d -v DEVICE_METADATA.localhost.mac)"
 
     # Write MAC address into /tmp/profile file.
     cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
-    echo "DEVICE_MAC_ADDRESS=$ALIGNED_MAC_ADDRESS" >> /tmp/sai.profile
+    echo "DEVICE_MAC_ADDRESS=$MAC_ADDRESS" >> /tmp/sai.profile
     echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
 }
 
