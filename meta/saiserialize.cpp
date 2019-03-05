@@ -2976,3 +2976,21 @@ void sai_deserialize_queue_attr(
 
     sai_deserialize_enum(s, &sai_metadata_enum_sai_queue_attr_t, (int32_t&)attr);
 }
+
+void sai_deserialize_port_serdes_attr(
+        _In_ const std::string& s,
+        _Out_ std::vector<uint32_t> &lane_values)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+    std::string lane_str = "lane";
+    uint32_t count = (uint32_t)j.size();
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        std::string lane_idx_str = lane_str + std::to_string(i);
+        std::string value_str = j[lane_idx_str];
+        lane_values.push_back((uint32_t)std::stoul(value_str, NULL, 16));
+    }
+}

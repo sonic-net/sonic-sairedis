@@ -12,6 +12,7 @@ extern "C" {
 #include <streambuf>
 #include <iomanip>
 #include <map>
+#include <vector>
 #include <tuple>
 #include <string.h>
 #include "swss/logger.h"
@@ -280,5 +281,9 @@ void sai_deserialize_ingress_priority_group_attr(
 void sai_deserialize_queue_attr(
         _In_ const std::string& s,
         _Out_ sai_queue_attr_t& attr);
+
+void sai_deserialize_port_serdes_attr(
+        _In_ const std::string& s,
+        _Out_ std::vector<uint32_t> &lane_values);
 
 #endif // __SAI_SERIALIZE__
