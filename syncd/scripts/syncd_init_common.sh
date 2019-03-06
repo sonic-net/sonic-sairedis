@@ -126,6 +126,15 @@ config_syncd_marvell()
 
 config_syncd_barefoot()
 {
+    PROFILE_FILE="$HWSKU_DIR/sai.profile"
+    if [ ! -f $PROFILE_FILE ]; then
+        # default profile file
+        PROFILE_FILE="/tmp/sai.profile"
+        echo "SAI_KEY_WARM_BOOT_WRITE_FILE=/var/warmboot/sai-warmboot.bin" > $PROFILE_FILE
+        echo "SAI_KEY_WARM_BOOT_READ_FILE=/var/warmboot/sai-warmboot.bin" >> $PROFILE_FILE
+    fi
+    CMD_ARGS+=" -p $PROFILE_FILE"
+
     # Check and load SDE profile
     P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
     if [[ -n "$P4_PROFILE" ]]; then
