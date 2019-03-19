@@ -2942,7 +2942,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTable(
             {
                 if (c.obj->getVid() == curAclTableIdAttr->getOid())
                 {
-                    SWSS_LOG_WARN("found ACL table candidate %s using pre match ACL TABLE GROUP %s",
+                    SWSS_LOG_INFO("found ACL table candidate %s using pre match ACL TABLE GROUP %s",
                             c.obj->str_object_id.c_str(),
                             tmpAclTableGroup->str_object_id.c_str());
 
