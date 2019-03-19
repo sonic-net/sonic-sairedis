@@ -410,8 +410,18 @@ sub test_empty_lag_buffer_acl
     for (1..8) { play "empty_lag_buffer_acl.rec", 0; }
 }
 
+sub test_acl_mask
+{
+    fresh_start;
+
+    play "acl_mask.rec";
+
+    for (1..8) { play "acl_mask.rec", 0; }
+}
+
 # RUN TESTS
 
+test_acl_mask;
 test_empty_lag_buffer_acl;
 test_brcm_config_acl;
 test_brcm_warm_wred_queue;
