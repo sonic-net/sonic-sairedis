@@ -794,7 +794,8 @@ int promisc(const char *dev)
     return err;
 }
 
-#define ETH_JUMBO_FRAME_SIZE (9000)
+#define ETH_FRAME_BUFFER_SIZE (0x4000)
+#define CONTROL_MESSAGE_BUFFER_SIZE (0x1000)
 #define IEEE_8021Q_ETHER_TYPE (0x8100)
 #define MAC_ADDRESS_SIZE (6)
 #define VLAN_TAG_SIZE (4)
@@ -803,7 +804,7 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
 {
     SWSS_LOG_ENTER();
 
-    unsigned char buffer[0x4000];
+    unsigned char buffer[ETH_FRAME_BUFFER_SIZE];
 
     while (info->run_thread)
     {
@@ -819,7 +820,7 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
         iov[0].iov_base = buffer;       // buffer for message
         iov[0].iov_len = sizeof(buffer);
 
-        char control[0x1000];   // buffer for control messages
+        char control[CONTROL_MESSAGE_BUFFER_SIZE];   // buffer for control messages
 
         msg.msg_name = &src_addr;
         msg.msg_namelen = sizeof(src_addr);
@@ -838,7 +839,7 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
             continue;
         }
 
-        if (size < (ssize_t)sizeof(ethhdr) || size > ETH_JUMBO_FRAME_SIZE)
+        if (size < (ssize_t)sizeof(ethhdr))
         {
             SWSS_LOG_ERROR("invalid ethernet frame length: %zu", msg.msg_controllen);
             continue;
@@ -905,7 +906,7 @@ void tap2veth_fun(std::shared_ptr<hostif_info_t> info)
 {
     SWSS_LOG_ENTER();
 
-    unsigned char buffer[0x4000];
+    unsigned char buffer[ETH_FRAME_BUFFER_SIZE];
 
     while (info->run_thread)
     {
