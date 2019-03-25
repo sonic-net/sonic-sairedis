@@ -794,6 +794,33 @@ int promisc(const char *dev)
     return err;
 }
 
+int vs_set_dev_mtu(
+        _In_ const char*name,
+        _In_ int mtu)
+{
+    SWSS_LOG_ENTER();
+
+    int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+
+    struct ifreq ifr;
+
+    strncpy(ifr.ifr_name, name, IFNAMSIZ);
+
+    ifr.ifr_mtu = mtu;
+
+    int err = ioctl(sock, SIOCSIFMTU, &ifr);
+
+    if (err == 0)
+    {
+        SWSS_LOG_INFO("success set mtu on %s to %d", name, mtu);
+        return 0;
+    }
+
+    SWSS_LOG_WARN("failed to set mtu on %s to %d", name, mtu);
+    return err;
+}
+
+
 #define ETH_FRAME_BUFFER_SIZE (0x4000)
 #define CONTROL_MESSAGE_BUFFER_SIZE (0x1000)
 #define IEEE_8021Q_ETHER_TYPE (0x8100)
@@ -1189,6 +1216,8 @@ sai_status_t vs_create_hostif_tap_interface(
 
         return SAI_STATUS_FAILURE;
     }
+
+    vs_set_dev_mtu(name.c_str(), ETH_FRAME_BUFFER_SIZE);
 
     if (!hostif_create_tap_veth_forwarding(name, tapfd, obj_id))
     {
