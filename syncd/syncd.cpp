@@ -119,10 +119,7 @@ bool isInitViewMode()
 
 bool g_veryFirstRun = false;
 
-void exit_and_notify(int status) __attribute__ ((__noreturn__));
-
-void exit_and_notify(
-        _In_ int status)
+void notify_OA_about_syncd_exception()
 {
     SWSS_LOG_ENTER();
 
@@ -146,20 +143,6 @@ void exit_and_notify(
     catch(...)
     {
         SWSS_LOG_ERROR("Unknown runtime error");
-    }
-
-    if (options.disableExitSleep)
-    {
-        exit(status);
-    }
-
-    SWSS_LOG_WARN("sleep forever to keep data plane active");
-
-    while (true)
-    {
-        sleep(UINT_MAX);
-
-        SWSS_LOG_NOTICE("sleep ended, sleeping again");
     }
 }
 
@@ -2395,8 +2378,7 @@ sai_status_t handle_bulk_generic(
         }
         else
         {
-            SWSS_LOG_ERROR("api %d is not supported in bulk route", api);
-            exit_and_notify(EXIT_FAILURE);
+            SWSS_LOG_THROW("api %d is not supported in bulk route", api);
         }
 
         if (status != SAI_STATUS_SUCCESS)
@@ -2472,8 +2454,7 @@ sai_status_t processBulkEvent(
 
     if (isInitViewMode())
     {
-        SWSS_LOG_ERROR("bulk api (%d) is not supported in init view mode", api);
-        exit_and_notify(EXIT_FAILURE);
+        SWSS_LOG_THROW("bulk api (%d) is not supported in init view mode", api);
     }
 
     if (api != SAI_COMMON_API_BULK_GET)
@@ -2500,17 +2481,14 @@ sai_status_t processBulkEvent(
             break;
 
         default:
-            SWSS_LOG_ERROR("bulk api for %s is not supported yet, FIXME",
+            SWSS_LOG_THROW("bulk api for %s is not supported yet, FIXME",
                     sai_serialize_object_type(object_type).c_str());
-            exit_and_notify(EXIT_FAILURE);
     }
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("failed to execute bulk api: %s",
+        SWSS_LOG_THROW("failed to execute bulk api: %s",
                 sai_serialize_status(status).c_str());
-
-        exit_and_notify(EXIT_FAILURE);
     }
 
     return status;
@@ -3667,6 +3645,10 @@ int syncd_main(int argc, char **argv)
     sai_switch_api_t *sai_switch_api = NULL;
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
 
+    volatile bool runMainLoop = true;
+
+    std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
+
     try
     {
         SWSS_LOG_NOTICE("before onSyncdStart");
@@ -3681,16 +3663,32 @@ int syncd_main(int argc, char **argv)
 
         SWSS_LOG_NOTICE("syncd listening for events");
 
-        std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
-
         s->addSelectable(asicState.get());
         s->addSelectable(restartQuery.get());
         s->addSelectable(flexCounter.get());
         s->addSelectable(flexCounterGroup.get());
 
         SWSS_LOG_NOTICE("starting main loop");
+    }
+    catch(const std::exception &e)
+    {
+        SWSS_LOG_ERROR("Runtime error during syncd init: %s", e.what());
 
-        while(true)
+        notify_OA_about_syncd_exception();
+
+        s = std::make_shared<swss::Select>();
+
+        s->addSelectable(restartQuery.get());
+
+        SWSS_LOG_NOTICE("starting main loop, ONLY restart query");
+
+        if (options.disableExitSleep)
+            runMainLoop = false;
+    }
+
+    while(runMainLoop)
+    {
+        try
         {
             swss::Selectable *sel = NULL;
 
@@ -3719,6 +3717,7 @@ int syncd_main(int argc, char **argv)
                 if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN)
                 {
                     // break out the event handling loop to shutdown syncd
+                    runMainLoop = false;
                     break;
                 }
 
@@ -3788,12 +3787,22 @@ int syncd_main(int argc, char **argv)
                 processEvent(*(swss::ConsumerTable*)sel);
             }
         }
-    }
-    catch(const std::exception &e)
-    {
-        SWSS_LOG_ERROR("Runtime error: %s", e.what());
+        catch(const std::exception &e)
+        {
+            SWSS_LOG_ERROR("Runtime error: %s", e.what());
 
-        exit_and_notify(EXIT_FAILURE);
+            notify_OA_about_syncd_exception();
+
+            s = std::make_shared<swss::Select>();
+
+            s->addSelectable(restartQuery.get());
+
+            if (options.disableExitSleep)
+                runMainLoop = false;
+
+            // make sure that if second exception will arise, then we break the loop
+            options.disableExitSleep = true;
+        }
     }
 
     if (shutdownType == SYNCD_RESTART_TYPE_WARM)
