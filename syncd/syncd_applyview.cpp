@@ -483,8 +483,8 @@ class SaiObj
 };
 
 typedef std::unordered_map<sai_object_id_t, sai_object_id_t> ObjectIdMap;
-typedef std::unordered_map<std::string, std::shared_ptr<SaiObj>> StrObjectIdToSaiObjectHash;
-typedef std::unordered_map<sai_object_id_t, std::shared_ptr<SaiObj>> ObjectIdToSaiObjectHash;
+typedef std::map<std::string, std::shared_ptr<SaiObj>> StrObjectIdToSaiObjectHash;
+typedef std::map<sai_object_id_t, std::shared_ptr<SaiObj>> ObjectIdToSaiObjectHash;
 
 /**
  * @brief Class represents ASIC view
@@ -6191,7 +6191,7 @@ void processObjectForViewTransition(
         return;
     }
 
-    SWSS_LOG_DEBUG("processing: %s:%s", temporaryObj->str_object_type.c_str(), temporaryObj->str_object_id.c_str());
+    SWSS_LOG_INFO("processing: %s:%s", temporaryObj->str_object_type.c_str(), temporaryObj->str_object_id.c_str());
 
     procesObjectAttributesForViewTransition(currentView, temporaryView, temporaryObj);
 
