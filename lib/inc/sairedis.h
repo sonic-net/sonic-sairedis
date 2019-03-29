@@ -106,6 +106,13 @@ typedef enum _sai_redis_switch_attr_t
 
 } sai_redis_switch_attr_t;
 
+
+
+void handle_meta_fdb_event(
+        _In_ uint32_t count,
+        _In_ sai_fdb_event_notification_data_t *fdbevent);
+
+
 /*
  * Those bulk APIs are provided as static functions since current SAI 0.9.4
  * doesn't support bulk API.  Also note that SDK don't support bulk route API

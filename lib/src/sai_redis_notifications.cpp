@@ -102,27 +102,29 @@ void handle_fdb_event(
 
     SWSS_LOG_DEBUG("data: %s", data.c_str());
 
-    uint32_t count;
-    sai_fdb_event_notification_data_t *fdbevent = NULL;
-
-    sai_deserialize_fdb_event_ntf(data, count, &fdbevent);
-
-    {
-        std::lock_guard<std::mutex> lock(g_apimutex);
-
-        // NOTE: this meta api must be under mutex since
-        // it will access meta DB and notification comes
-        // from different thread
-
-        meta_sai_on_fdb_event(count, fdbevent);
-    }
-
     if (sn.on_fdb_event != NULL)
     {
-        sn.on_fdb_event(count, fdbevent);
-    }
+        uint32_t count;
+        sai_fdb_event_notification_data_t *fdbevent = NULL;
 
-    sai_deserialize_free_fdb_event_ntf(count, fdbevent);
+        sai_deserialize_fdb_event_ntf(data, count, &fdbevent);
+        sn.on_fdb_event(count, fdbevent);
+        sai_deserialize_free_fdb_event_ntf(count, fdbevent);
+    }
+}
+
+void handle_meta_fdb_event(
+        _In_ uint32_t count,
+        _In_ sai_fdb_event_notification_data_t *fdbevent)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(g_apimutex);
+    // NOTE: this meta api must be under mutex since
+    // it will access meta DB and notification comes
+    // from different thread
+
+    meta_sai_on_fdb_event(count, fdbevent);
 }
 
 void handle_port_state_change(
