@@ -12,6 +12,7 @@ extern "C" {
 #define MINIMUM_VLAN_NUMBER 1
 #define MAXIMUM_VLAN_NUMBER 4094
 
+extern void dump_object_reference();
 extern sai_status_t meta_init_db();
 
 // GENERIC FUNCTION POINTERS
@@ -37,14 +38,6 @@ typedef sai_status_t (*sai_get_generic_attribute_fn)(
         _In_ sai_object_id_t object_id,
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list);
-
-template <typename T>
-using sai_get_generic_stats_fn = sai_status_t (*)(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
-        _In_ uint32_t count,
-        _In_ const T* counter_id_list,
-        _Out_ uint64_t *counter_list);
 
 // META GENERIC
 
@@ -74,83 +67,65 @@ extern sai_status_t meta_sai_get_oid(
         _Inout_ sai_attribute_t *attr_list,
         _In_ sai_get_generic_attribute_fn get);
 
-template<typename T>
-extern sai_status_t meta_sai_get_stats_oid(
+// META ENTRY QUAD
+
+#define META_CREATE_ENTRY(ot)                               \
+    extern sai_status_t meta_sai_create_ ## ot(             \
+            _In_ const sai_ ## ot ## _t* ot,                \
+            _In_ uint32_t attr_count,                       \
+            _In_ const sai_attribute_t *attr_list,          \
+            _In_ sai_create_ ## ot ## _fn create);
+
+#define META_REMOVE_ENTRY(ot)                               \
+    extern sai_status_t meta_sai_remove_ ## ot(             \
+            _In_ const sai_ ## ot ## _t* ot,                \
+            _In_ sai_remove_ ## ot ##_fn remove);
+
+#define META_SET_ENTRY(ot)                                  \
+    extern sai_status_t meta_sai_set_ ## ot(                \
+            _In_ const sai_ ## ot ## _t* ot,                \
+            _In_ const sai_attribute_t *attr,               \
+            _In_ sai_set_ ## ot ## _attribute_fn set);
+
+#define META_GET_ENTRY(ot)                                  \
+    extern sai_status_t meta_sai_get_ ## ot(                \
+            _In_ const sai_ ## ot ## _t* ot,                \
+            _In_ uint32_t attr_count,                       \
+            _Inout_ sai_attribute_t *attr_list,             \
+            _In_ sai_get_ ## ot ## _attribute_fn get);
+
+#define META_QUAD_ENTRY(ot)     \
+    META_CREATE_ENTRY(ot);      \
+    META_REMOVE_ENTRY(ot);      \
+    META_SET_ENTRY(ot);         \
+    META_GET_ENTRY(ot)
+
+META_QUAD_ENTRY(fdb_entry);
+META_QUAD_ENTRY(inseg_entry);
+META_QUAD_ENTRY(ipmc_entry);
+META_QUAD_ENTRY(l2mc_entry);
+META_QUAD_ENTRY(mcast_fdb_entry);
+META_QUAD_ENTRY(neighbor_entry);
+META_QUAD_ENTRY(route_entry);
+
+// STATS
+
+typedef sai_status_t (*sai_get_generic_stats_fn)(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t *enum_metadata,
+        _In_ uint32_t number_of_counters,
+        _In_ const int32_t *counter_ids,
+        _Out_ uint64_t *counters);
+
+sai_status_t meta_sai_get_stats_oid(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t* stats_enum,
         _In_ uint32_t count,
-        _In_ const T* counter_id_list,
-        _Inout_ uint64_t *counter_list,
-        _In_ sai_get_generic_stats_fn<T> get);
-
-// META FDB
-
-extern sai_status_t meta_sai_create_fdb_entry(
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_create_fdb_entry_fn create);
-
-extern sai_status_t meta_sai_remove_fdb_entry(
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ sai_remove_fdb_entry_fn remove);
-
-extern sai_status_t meta_sai_set_fdb_entry(
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ const sai_attribute_t *attr,
-        _In_ sai_set_fdb_entry_attribute_fn set);
-
-extern sai_status_t meta_sai_get_fdb_entry(
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_fdb_entry_attribute_fn get);
-
-// META NEIGHBOR
-
-extern sai_status_t meta_sai_create_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_create_neighbor_entry_fn create);
-
-extern sai_status_t meta_sai_remove_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ sai_remove_neighbor_entry_fn remove);
-
-extern sai_status_t meta_sai_set_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ const sai_attribute_t *attr,
-        _In_ sai_set_neighbor_entry_attribute_fn set);
-
-extern sai_status_t meta_sai_get_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_neighbor_entry_attribute_fn get);
-
-// META ROUTE
-
-extern sai_status_t meta_sai_create_route_entry(
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_create_route_entry_fn create);
-
-extern sai_status_t meta_sai_remove_route_entry(
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ sai_remove_route_entry_fn remove);
-
-extern sai_status_t meta_sai_set_route_entry(
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ const sai_attribute_t *attr,
-        _In_ sai_set_route_entry_attribute_fn set);
-
-extern sai_status_t meta_sai_get_route_entry(
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list,
-        _In_ sai_get_route_entry_attribute_fn get);
+        _In_ const int32_t *counter_id_list,
+        _Out_ uint64_t *counter_list,
+        _In_ sai_get_generic_stats_fn get_stats);
 
 // NOTIFICATIONS
 
@@ -177,19 +152,19 @@ void meta_unittests_enable(
         _In_ bool enable);
 
 /**
- * @brief Indicates whethre unittests are enabled;
+ * @brief Indicates whether unittests are enabled;
  */
 bool meta_unittests_enabled();
 
 /**
- * @bried Allow to perform SET operation on READ_ONLY attribue only once.
+ * @brief Allow to perform SET operation on READ_ONLY attribute only once.
  *
  * This function relaxes metadata checking on SET operation, it allows to
  * perform SET api on READ_ONLY attribute only once on specific object type and
- * specific attribue.
+ * specific attribute.
  *
  * Once means that SET operation is only relaxed for the very next SET call on
- * that specific object type and attrirbute id.
+ * that specific object type and attribute id.
  *
  * Function is explicitly named ONCE, since it will force test developer to not
  * forget that SET check is relaxed, and not forget for future unittests.
@@ -211,7 +186,7 @@ bool meta_unittests_enabled();
  * It can be dangerous to set any readonly attribute to different values since
  * internal metadata logic maybe using that value and in some cases metadata
  * database may get out of sync and cause unexpected results in api calls up to
- * application carash.
+ * application crash.
  *
  * This function is not thread safe.
  *
@@ -223,5 +198,24 @@ bool meta_unittests_enabled();
 sai_status_t meta_unittests_allow_readonly_set_once(
         _In_ sai_object_type_t object_type,
         _In_ int32_t attr_id);
+
+// POST VALIDATE
+
+/*
+ * Those functions will be used to recreate virtual switch local metadata state
+ * after WARM BOOT.
+ */
+
+void meta_warm_boot_notify();
+
+void meta_generic_validation_post_create(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ sai_object_id_t switch_id,
+        _In_ const uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list);
+
+void meta_generic_validation_post_set(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ const sai_attribute_t *attr);
 
 #endif // __SAI_META_H__

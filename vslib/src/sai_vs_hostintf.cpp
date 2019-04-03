@@ -21,6 +21,10 @@
 #include <net/if_arp.h>
 #include <linux/if_ether.h>
 
+#include "swss/json.hpp"
+
+using json = nlohmann::json;
+
 // TODO on hostif remove we should stop threads
 
 typedef struct _hostif_info_t
@@ -44,6 +48,43 @@ typedef struct _hostif_info_t
 std::map<std::string, std::shared_ptr<hostif_info_t>> hostif_info_map;
 
 std::set<fdb_info_t> g_fdb_info_set;
+
+std::string sai_vs_serialize_fdb_info(
+        _In_ const fdb_info_t& fi)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["port_id"] = sai_serialize_object_id(fi.port_id);
+    j["vlan_id"] = sai_serialize_vlan_id(fi.vlan_id);
+    j["bridge_port_id"] = sai_serialize_object_id(fi.bridge_port_id);
+    j["fdb_entry"] = sai_serialize_fdb_entry(fi.fdb_entry);
+    j["timestamp"] = sai_serialize_number(fi.timestamp);
+
+    SWSS_LOG_INFO("item: %s", j.dump().c_str());
+
+    return j.dump();
+}
+
+void sai_vs_deserialize_fdb_info(
+        _In_ const std::string& data,
+        _Out_ fdb_info_t& fi)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("item: %s", data.c_str());
+
+    const json& j = json::parse(data);
+
+    memset(&fi, 0, sizeof(fi));
+
+    sai_deserialize_object_id(j["port_id"], fi.port_id);
+    sai_deserialize_vlan_id(j["vlan_id"], fi.vlan_id);
+    sai_deserialize_object_id(j["bridge_port_id"], fi.bridge_port_id);
+    sai_deserialize_fdb_entry(j["fdb_entry"], fi.fdb_entry);
+    sai_deserialize_number(j["timestamp"], fi.timestamp);
+}
 
 void updateLocalDB(
         _In_ const sai_fdb_event_notification_data_t &data,
@@ -159,7 +200,7 @@ void findBridgeVlanForPortVlan(
     /*
      * The bridge port lookup process is two steps:
      *
-     * - use (vlan_id, phyiscal port_id) to match any .1D bridge port created.
+     * - use (vlan_id, physical port_id) to match any .1D bridge port created.
      *   If there is match, then quit, found=true
      *
      * - use (physical port_id) to match any .1Q bridge created. if there is a
@@ -187,18 +228,19 @@ void findBridgeVlanForPortVlan(
 
         sai_deserialize_object_id(it->first, bpid);
 
-        sai_attribute_t attr;
+        sai_attribute_t attrs[2];
 
-        attr.id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+        attrs[0].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
+        attrs[1].id = SAI_BRIDGE_PORT_ATTR_TYPE;
 
-        sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bpid, 1, &attr);
+        sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bpid, (uint32_t)(sizeof(attrs)/sizeof(attrs[0])), attrs);
 
         if (status != SAI_STATUS_SUCCESS)
         {
             continue;
         }
 
-        if (port_id != attr.value.oid)
+        if (port_id != attrs[0].value.oid)
         {
             // this is not expected port
             continue;
@@ -206,42 +248,43 @@ void findBridgeVlanForPortVlan(
 
         bridge_port_id = bpid;
 
-        // XXX: need to also check the vlan_id match if the bridge port type is subport
+        // get the 1D bridge id if the bridge port type is subport
+        auto bp_type = attrs[1].value.s32;
 
-        SWSS_LOG_DEBUG("found bridge port %s for port %s",
+        SWSS_LOG_DEBUG("found bridge port %s of type %d",
                 sai_serialize_object_id(bridge_port_id).c_str(),
-                sai_serialize_object_id(port_id).c_str());
+                bp_type);
 
-        attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
-
-        status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridge_port_id, 1, &attr);
-
-        if (status != SAI_STATUS_SUCCESS)
+        if (bp_type == SAI_BRIDGE_PORT_TYPE_SUB_PORT)
         {
-            break;
-        }
+            sai_attribute_t attr;
+            attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
 
-        bridge_id = attr.value.oid;
+            status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE_PORT, bridge_port_id, 1, &attr);
 
-        SWSS_LOG_DEBUG("found bridge %s for port %s",
-                sai_serialize_object_id(bridge_id).c_str(),
-                sai_serialize_object_id(port_id).c_str());
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                break;
+            }
 
-        attr.id = SAI_BRIDGE_ATTR_TYPE;
+            bridge_id = attr.value.oid;
 
-        status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE, bridge_id, 1, &attr);
+            SWSS_LOG_DEBUG("found bridge %s for port %s",
+                    sai_serialize_object_id(bridge_id).c_str(),
+                    sai_serialize_object_id(port_id).c_str());
 
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            break;
-        }
+            attr.id = SAI_BRIDGE_ATTR_TYPE;
 
-        SWSS_LOG_DEBUG("bridge %s type is %d",
-                sai_serialize_object_id(bridge_id).c_str(),
-                attr.value.s32);
+            status = vs_generic_get(SAI_OBJECT_TYPE_BRIDGE, bridge_id, 1, &attr);
 
-        if (attr.value.s32 == SAI_BRIDGE_TYPE_1D)
-        {
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                break;
+            }
+
+            SWSS_LOG_DEBUG("bridge %s type is %d",
+                    sai_serialize_object_id(bridge_id).c_str(),
+                    attr.value.s32);
             bv_id = bridge_id;
         }
         else
@@ -256,6 +299,7 @@ void findBridgeVlanForPortVlan(
 
                 sai_deserialize_object_id(it2->first, vlan_oid);
 
+                sai_attribute_t attr;
                 attr.id = SAI_VLAN_ATTR_VLAN_ID;
 
                 status = vs_generic_get(SAI_OBJECT_TYPE_VLAN, vlan_oid, 1, &attr);
@@ -552,8 +596,8 @@ void process_packet_for_fdb_event(
 
 sai_status_t vs_recv_hostif_packet(
         _In_ sai_object_id_t hif_id,
-        _Out_ void *buffer,
         _Inout_ sai_size_t *buffer_size,
+        _Out_ void *buffer,
         _Inout_ uint32_t *attr_count,
         _Out_ sai_attribute_t *attr_list)
 {
@@ -566,10 +610,10 @@ sai_status_t vs_recv_hostif_packet(
 
 sai_status_t vs_send_hostif_packet(
         _In_ sai_object_id_t hif_id,
-        _In_ void *buffer,
         _In_ sai_size_t buffer_size,
+        _In_ const void *buffer,
         _In_ uint32_t attr_count,
-        _In_ sai_attribute_t *attr_list)
+        _In_ const sai_attribute_t *attr_list)
 {
     MUTEX();
 
@@ -678,6 +722,13 @@ int ifup(const char *dev)
         return err;
     }
 
+    if (ifr.ifr_flags & IFF_UP)
+    {
+        close(s);
+
+        return 0;
+    }
+
     ifr.ifr_flags |= IFF_UP;
 
     err = ioctl(s, SIOCSIFFLAGS, &ifr);
@@ -692,17 +743,120 @@ int ifup(const char *dev)
     return err;
 }
 
+int promisc(const char *dev)
+{
+    SWSS_LOG_ENTER();
+
+    int s = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (s < 0)
+    {
+        SWSS_LOG_ERROR("failed to open socket: %d", s);
+
+        return -1;
+    }
+
+    struct ifreq ifr;
+
+    memset(&ifr, 0, sizeof ifr);
+
+    strncpy(ifr.ifr_name, dev , IFNAMSIZ);
+
+    int err = ioctl(s, SIOCGIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCGIFFLAGS on socket %d %s failed, err %d", s, dev, err);
+
+        close(s);
+
+        return err;
+    }
+
+    if (ifr.ifr_flags & IFF_PROMISC)
+    {
+        close(s);
+
+        return 0;
+    }
+
+    ifr.ifr_flags |= IFF_PROMISC;
+
+    err = ioctl(s, SIOCSIFFLAGS, &ifr);
+
+    if (err < 0)
+    {
+        SWSS_LOG_ERROR("ioctl SIOCSIFFLAGS on socket %d %s failed, err %d", s, dev, err);
+    }
+
+    close(s);
+
+    return err;
+}
+
+int vs_set_dev_mtu(
+        _In_ const char*name,
+        _In_ int mtu)
+{
+    SWSS_LOG_ENTER();
+
+    int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+
+    struct ifreq ifr;
+
+    strncpy(ifr.ifr_name, name, IFNAMSIZ);
+
+    ifr.ifr_mtu = mtu;
+
+    int err = ioctl(sock, SIOCSIFMTU, &ifr);
+
+    if (err == 0)
+    {
+        SWSS_LOG_INFO("success set mtu on %s to %d", name, mtu);
+        return 0;
+    }
+
+    SWSS_LOG_WARN("failed to set mtu on %s to %d", name, mtu);
+    return err;
+}
+
+
+#define ETH_FRAME_BUFFER_SIZE (0x4000)
+#define CONTROL_MESSAGE_BUFFER_SIZE (0x1000)
+#define IEEE_8021Q_ETHER_TYPE (0x8100)
+#define MAC_ADDRESS_SIZE (6)
+#define VLAN_TAG_SIZE (4)
+
 void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
 {
     SWSS_LOG_ENTER();
 
-    unsigned char buffer[0x4000];
+    unsigned char buffer[ETH_FRAME_BUFFER_SIZE];
 
     while (info->run_thread)
     {
         // TODO convert to non blocking using select
 
-        ssize_t size = read(info->packet_socket, buffer, sizeof(buffer));
+        struct msghdr  msg;
+        memset(&msg, 0, sizeof(struct msghdr));
+
+        struct sockaddr_storage src_addr;
+
+        struct iovec iov[1];
+
+        iov[0].iov_base = buffer;       // buffer for message
+        iov[0].iov_len = sizeof(buffer);
+
+        char control[CONTROL_MESSAGE_BUFFER_SIZE];   // buffer for control messages
+
+        msg.msg_name = &src_addr;
+        msg.msg_namelen = sizeof(src_addr);
+        msg.msg_iov = iov;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control;
+        msg.msg_controllen = sizeof(control);
+
+        ssize_t size = recvmsg(info->packet_socket, &msg, 0);
 
         if (size < 0)
         {
@@ -710,6 +864,47 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
                     info->packet_socket, errno, strerror(errno));
 
             continue;
+        }
+
+        if (size < (ssize_t)sizeof(ethhdr))
+        {
+            SWSS_LOG_ERROR("invalid ethernet frame length: %zu", msg.msg_controllen);
+            continue;
+        }
+
+        struct cmsghdr *cmsg;
+
+        for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))
+        {
+            if (cmsg->cmsg_level != SOL_PACKET || cmsg->cmsg_type != PACKET_AUXDATA)
+                continue;
+
+            struct tpacket_auxdata* aux = (struct tpacket_auxdata*)CMSG_DATA(cmsg);
+
+            if ((aux->tp_status & TP_STATUS_VLAN_VALID) &&
+                    (aux->tp_status & TP_STATUS_VLAN_TPID_VALID))
+            {
+                SWSS_LOG_DEBUG("got vlan tci: 0x%x, vlanid: %d", aux->tp_vlan_tci, aux->tp_vlan_tci & 0xFFF);
+
+                // inject vlan tag into frame
+
+                // for overlapping buffers
+                memmove(buffer + 2 * MAC_ADDRESS_SIZE + VLAN_TAG_SIZE,
+                        buffer + 2 * MAC_ADDRESS_SIZE,
+                        size - (2 * MAC_ADDRESS_SIZE));
+
+                uint16_t tci = htons(aux->tp_vlan_tci);
+                uint16_t tpid = htons(IEEE_8021Q_ETHER_TYPE);
+
+                uint16_t* pvlan = (uint16_t*)(buffer + 2 * MAC_ADDRESS_SIZE);
+
+                pvlan[0] = tpid;
+                pvlan[1] = tci;
+
+                size += VLAN_TAG_SIZE;
+
+                break;
+            }
         }
 
         process_packet_for_fdb_event(buffer, size, info);
@@ -738,7 +933,7 @@ void tap2veth_fun(std::shared_ptr<hostif_info_t> info)
 {
     SWSS_LOG_ENTER();
 
-    unsigned char buffer[0x4000];
+    unsigned char buffer[ETH_FRAME_BUFFER_SIZE];
 
     while (info->run_thread)
     {
@@ -766,6 +961,50 @@ void tap2veth_fun(std::shared_ptr<hostif_info_t> info)
     SWSS_LOG_NOTICE("ending thread proc for %s", info->name.c_str());
 }
 
+std::string vs_get_veth_name(
+        _In_ const std::string& tapname,
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::string vethname = SAI_VS_VETH_PREFIX + tapname;
+
+    // check if user override interface names
+
+    sai_attribute_t attr;
+
+    uint32_t lanes[4];
+
+    attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+
+    attr.value.u32list.count = 4;
+    attr.value.u32list.list = lanes;
+
+    if (vs_generic_get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_WARN("failed to get port %s lanes, using veth: %s",
+                sai_serialize_object_id(port_id).c_str(),
+                vethname.c_str());
+    }
+    else
+    {
+        auto it = g_lane_to_ifname.find(lanes[0]);
+
+        if (it == g_lane_to_ifname.end())
+        {
+            SWSS_LOG_WARN("failed to get ifname from lane number %u", lanes[0]);
+        }
+        else
+        {
+            SWSS_LOG_NOTICE("using %s instead of %s", it->second.c_str(), vethname.c_str());
+
+            vethname = it->second;
+        }
+    }
+
+    return vethname;
+}
+
 bool hostif_create_tap_veth_forwarding(
         _In_ const std::string &tapname,
         _In_ int tapfd,
@@ -775,9 +1014,9 @@ bool hostif_create_tap_veth_forwarding(
 
     // we assume here that veth devices were added by user before creating this
     // host interface, vEthernetX will be used for packet transfer between ip
-    // namespaces
+    // namespaces or ethernet device name used in lane map if provided
 
-    std::string vethname = SAI_VS_VETH_PREFIX + tapname;
+    std::string vethname = vs_get_veth_name(tapname, port_id);
 
     int packet_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
 
@@ -785,6 +1024,13 @@ bool hostif_create_tap_veth_forwarding(
     {
         SWSS_LOG_ERROR("failed to open packet socket, errno: %d", errno);
 
+        return false;
+    }
+
+    int val = 1;
+    if (setsockopt(packet_socket, SOL_PACKET, PACKET_AUXDATA, &val, sizeof(val)) < 0)
+    {
+        SWSS_LOG_ERROR("setsockopt() set PACKET_AUXDATA failed: %s", strerror(errno));
         return false;
     }
 
@@ -808,6 +1054,24 @@ bool hostif_create_tap_veth_forwarding(
     }
 
     SWSS_LOG_INFO("interface index = %d %s\n", sock_address.sll_ifindex, vethname.c_str());
+
+    if (ifup(vethname.c_str()))
+    {
+        SWSS_LOG_ERROR("ifup failed on %s", vethname.c_str());
+
+        close(packet_socket);
+
+        return false;
+    }
+
+    if (promisc(vethname.c_str()))
+    {
+        SWSS_LOG_ERROR("promisc failed on %s", vethname.c_str());
+
+        close(packet_socket);
+
+        return false;
+    }
 
     if (bind(packet_socket, (struct sockaddr*) &sock_address, sizeof(sock_address)) < 0)
     {
@@ -838,23 +1102,12 @@ bool hostif_create_tap_veth_forwarding(
     return true;
 }
 
-sai_status_t vs_create_hostif_int(
-        _In_ sai_object_type_t object_type,
-        _Out_ sai_object_id_t *hostif_id,
+sai_status_t vs_create_hostif_tap_interface(
         _In_ sai_object_id_t switch_id,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
-
-    if (g_vs_hostif_use_tap_device == false)
-    {
-        return vs_generic_create(object_type,
-                hostif_id,
-                switch_id,
-                attr_count,
-                attr_list);
-    }
 
     // validate SAI_HOSTIF_ATTR_TYPE
 
@@ -938,6 +1191,8 @@ sai_status_t vs_create_hostif_int(
 
     sai_attribute_t attr;
 
+    memset(&attr, 0, sizeof(attr));
+
     attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
 
     sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr);
@@ -962,12 +1217,14 @@ sai_status_t vs_create_hostif_int(
         return SAI_STATUS_FAILURE;
     }
 
+    vs_set_dev_mtu(name.c_str(), ETH_FRAME_BUFFER_SIZE);
+
     if (!hostif_create_tap_veth_forwarding(name, tapfd, obj_id))
     {
         SWSS_LOG_ERROR("forwarding rule on %s was not added", name.c_str());
     }
 
-    std::string vname = SAI_VS_VETH_PREFIX + name;
+    std::string vname = vs_get_veth_name(name, obj_id);
 
     SWSS_LOG_INFO("mapping interface %s to port id %s",
             vname.c_str(),
@@ -976,13 +1233,75 @@ sai_status_t vs_create_hostif_int(
     g_switch_state_map.at(switch_id)->setIfNameToPortId(vname, obj_id);
 
     // TODO what about FDB entries notifications, they also should
-    // be generated if new mac addres will show up on the interface/arp table
+    // be generated if new mac address will show up on the interface/arp table
 
     // TODO IP address should be assigned when router interface is created
 
     SWSS_LOG_INFO("created tap interface %s", name.c_str());
 
-    return vs_generic_create(object_type,
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t vs_recreate_hostif_tap_interfaces(
+        _In_ sai_object_id_t switch_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (g_vs_hostif_use_tap_device == false)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (g_switch_state_map.find(switch_id) == g_switch_state_map.end())
+    {
+        SWSS_LOG_ERROR("failed to find switch %s in switch state map", sai_serialize_object_id(switch_id).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto &objectHash = g_switch_state_map.at(switch_id)->objectHash.at(SAI_OBJECT_TYPE_HOSTIF);
+
+    SWSS_LOG_NOTICE("attempt to recreate %zu tap devices for host interfaces", objectHash.size());
+
+    for (auto okvp: objectHash)
+    {
+        std::vector<sai_attribute_t> attrs;
+
+        for (auto akvp: okvp.second)
+        {
+            attrs.push_back(*akvp.second->getAttr());
+        }
+
+        vs_create_hostif_tap_interface(switch_id, (uint32_t)attrs.size(), attrs.data());
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t vs_create_hostif_int(
+        _In_ sai_object_type_t object_type,
+        _Out_ sai_object_id_t *hostif_id,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    if (g_vs_hostif_use_tap_device == true)
+    {
+        sai_status_t status = vs_create_hostif_tap_interface(
+                switch_id,
+                attr_count,
+                attr_list);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return status;
+        }
+    }
+
+    return vs_generic_create(
+            object_type,
             hostif_id,
             switch_id,
             attr_count,
@@ -1008,7 +1327,7 @@ sai_status_t vs_create_hostif(
             &vs_create_hostif_int);
 }
 
-// TODO set must also be supported when we change oper status up/down
+// TODO set must also be supported when we change operational status up/down
 // and probably also generate notification then
 
 VS_REMOVE(HOSTIF,hostif);

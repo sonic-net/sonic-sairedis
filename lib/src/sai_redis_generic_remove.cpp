@@ -102,7 +102,7 @@ sai_status_t internal_redis_bulk_generic_remove(
     }
 
     /*
-     * We are adding number of entries to actualy add ':' to be compatible
+     * We are adding number of entries to actually add ':' to be compatible
      * with previous
      */
 
@@ -118,7 +118,7 @@ sai_status_t internal_redis_bulk_generic_remove(
         }
 
         /*
-         * Capital 'C' stads for bulk CREATE operation.
+         * Capital 'C' stands for bulk CREATE operation.
          */
 
         recordLine("C|" + str_object_type + joined);
@@ -137,38 +137,22 @@ sai_status_t internal_redis_bulk_generic_remove(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t redis_generic_remove_fdb_entry(
-        _In_ const sai_fdb_entry_t* fdb_entry)
-{
-    SWSS_LOG_ENTER();
 
-    std::string str_fdb_entry = sai_serialize_fdb_entry(*fdb_entry);
+#define REDIS_ENTRY_REMOVE(OT,ot)                           \
+    sai_status_t redis_generic_remove_ ## ot(               \
+            _In_ const sai_ ## ot ## _t *entry)             \
+        {                                                   \
+            SWSS_LOG_ENTER();                               \
+            std::string str = sai_serialize_ ## ot(*entry); \
+            return internal_redis_generic_remove(           \
+                    SAI_OBJECT_TYPE_ ## OT,                 \
+                    str);                                   \
+        }
 
-    return internal_redis_generic_remove(
-            SAI_OBJECT_TYPE_FDB_ENTRY,
-            str_fdb_entry);
-}
-
-sai_status_t redis_generic_remove_neighbor_entry(
-        _In_ const sai_neighbor_entry_t* neighbor_entry)
-{
-    SWSS_LOG_ENTER();
-
-    std::string str_neighbor_entry = sai_serialize_neighbor_entry(*neighbor_entry);
-
-    return internal_redis_generic_remove(
-            SAI_OBJECT_TYPE_NEIGHBOR_ENTRY,
-            str_neighbor_entry);
-}
-
-sai_status_t redis_generic_remove_route_entry(
-        _In_ const sai_route_entry_t* route_entry)
-{
-    SWSS_LOG_ENTER();
-
-    std::string str_route_entry = sai_serialize_route_entry(*route_entry);
-
-    return internal_redis_generic_remove(
-            SAI_OBJECT_TYPE_ROUTE_ENTRY,
-            str_route_entry);
-}
+REDIS_ENTRY_REMOVE(FDB_ENTRY,fdb_entry);
+REDIS_ENTRY_REMOVE(INSEG_ENTRY,inseg_entry);
+REDIS_ENTRY_REMOVE(IPMC_ENTRY,ipmc_entry);
+REDIS_ENTRY_REMOVE(L2MC_ENTRY,l2mc_entry);
+REDIS_ENTRY_REMOVE(MCAST_FDB_ENTRY,mcast_fdb_entry);
+REDIS_ENTRY_REMOVE(NEIGHBOR_ENTRY,neighbor_entry);
+REDIS_ENTRY_REMOVE(ROUTE_ENTRY,route_entry);

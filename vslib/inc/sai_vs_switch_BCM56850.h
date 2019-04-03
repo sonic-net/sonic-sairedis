@@ -6,7 +6,8 @@
 #include "meta/saiattributelist.h"
 
 void init_switch_BCM56850(
-        _In_ sai_object_id_t switch_id);
+        _In_ sai_object_id_t switch_id,
+        _In_ std::shared_ptr<SwitchState> warmBootState);
 
 void uninit_switch_BCM56850(
         _In_ sai_object_id_t switch_id);

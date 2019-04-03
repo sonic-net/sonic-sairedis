@@ -50,10 +50,16 @@ extern "C" {
 #define VIDCOUNTER                  "VIDCOUNTER"
 #define LANES                       "LANES"
 #define HIDDEN                      "HIDDEN"
+#define COLDVIDS                    "COLDVIDS"
 
 #define SAI_COLD_BOOT               0
 #define SAI_WARM_BOOT               1
 #define SAI_FAST_BOOT               2
+/**
+ * A special type of boot used by Mellanox platforms
+ * to start in 'fastfast' boot mode
+ */
+#define SAI_FASTFAST_BOOT          3
 
 #ifdef SAITHRIFT
 #define SWITCH_SAI_THRIFT_RPC_SERVER_PORT 9092
@@ -67,6 +73,18 @@ void startDiagShell();
 
 void hardReinit();
 
+void performWarmRestart();
+
+sai_object_id_t translate_vid_to_rid(_In_ sai_object_id_t vid);
+
+void translate_vid_to_rid_list(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list);
+
+void translate_vid_to_rid_non_object_id(
+        _Inout_ sai_object_meta_key_t &meta_key);
+
 void redisClearVidToRidMap();
 void redisClearRidToVidMap();
 
@@ -75,6 +93,8 @@ sai_object_type_t getObjectTypeFromVid(
 
 extern std::shared_ptr<swss::NotificationProducer>  notifications;
 extern std::shared_ptr<swss::RedisClient>   g_redisClient;
+
+extern bool g_enableConsistencyCheck;
 
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_id_t switch_id,
@@ -89,6 +109,9 @@ sai_object_id_t redis_sai_switch_id_query(
 sai_object_id_t translate_rid_to_vid(
         _In_ sai_object_id_t rid,
         _In_ sai_object_id_t switch_vid);
+
+bool check_rid_exists(
+        _In_ sai_object_id_t rid);
 
 void translate_rid_to_vid_list(
         _In_ sai_object_type_t object_type,
@@ -115,5 +138,7 @@ sai_status_t processBulkEvent(
 
 void set_sai_api_log_min_prio(
         _In_ const std::string &prio);
+
+bool enableUnittests();
 
 #endif // __SYNCD_H__

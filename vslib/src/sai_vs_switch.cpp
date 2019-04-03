@@ -92,7 +92,8 @@ class LinkMsg : public swss::NetMsg
             unsigned int    if_flags = rtnl_link_get_flags(link); // IFF_LOWER_UP and IFF_RUNNING
             const char*     if_name  = rtnl_link_get_name(link);
 
-            if (strncmp(if_name, SAI_VS_VETH_PREFIX, sizeof(SAI_VS_VETH_PREFIX) - 1) != 0)
+            if (strncmp(if_name, SAI_VS_VETH_PREFIX, sizeof(SAI_VS_VETH_PREFIX) - 1) != 0 &&
+                    g_ifname_to_lanes.find(if_name) == g_ifname_to_lanes.end())
             {
                 SWSS_LOG_INFO("skipping newlink for %s", if_name);
                 return;
@@ -251,8 +252,6 @@ void vs_create_netlink_message_listener(
 
     std::shared_ptr<std::thread> linkThread =
         std::make_shared<std::thread>(linkmsg_thread, switch_id);
-
-    linkThread->detach();
 
     sw->setLinkThread(linkThread);
 }

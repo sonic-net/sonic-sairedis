@@ -14,6 +14,13 @@
  */
 
 /**
+ * When set to true extra logging will be added for tracking references.  This
+ * is useful for debugging, but for production operations this will produce too
+ * much noise in logs, and we still can replay scenario using recordings.
+ */
+bool enableRefernceCountLogs = false;
+
+/**
  * @brief Represents SAI object status during comparison
  */
 typedef enum _sai_object_status_t
@@ -132,6 +139,25 @@ class SaiAttr
         {
             SWSS_LOG_ENTER();
             return &m_attr;
+        }
+
+        /**
+         * @brief Gets value.oid of attribute value.
+         *
+         * If attribute is not OID exception will be thrown.
+         *
+         * @return Oid field of attribute value.
+         */
+        sai_object_id_t getOid() const
+        {
+            SWSS_LOG_ENTER();
+
+            if (m_meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            {
+                SWSS_LOG_THROW("attribute %s is not OID attribute", m_meta->attridname);
+            }
+
+            return m_attr.value.oid;
         }
 
         /**
@@ -361,6 +387,19 @@ class SaiObj
             return it->second;
         }
 
+        std::shared_ptr<const SaiAttr> tryGetSaiAttr(
+                _In_ sai_attr_id_t id) const
+        {
+            SWSS_LOG_ENTER();
+
+            auto it = m_attrs.find(id);
+
+            if (it == m_attrs.end())
+                return nullptr;
+
+            return it->second;
+        }
+
         /**
          * @brief Sets object status
          *
@@ -524,6 +563,8 @@ class AsicView
                         sai_deserialize_route_entry(o->str_object_id, o->meta_key.objectkey.key.route_entry);
                         soRoutes[o->str_object_id] = o;
 
+                        routesByPrefix[sai_serialize_ip_prefix(o->meta_key.objectkey.key.route_entry.destination)].push_back(o->str_object_id);
+
                         break;
 
                     default:
@@ -596,7 +637,7 @@ class AsicView
         }
 
         /**
-         * @brief Release existing VID links (references) based on given obejct.
+         * @brief Release existing VID links (references) based on given object.
          *
          * All OID attributes will be scanned and released.
          *
@@ -636,7 +677,7 @@ class AsicView
 
             if (it == m_vidReference.end())
             {
-                SWSS_LOG_THROW("vid %s don't exist in reference map",
+                SWSS_LOG_THROW("vid %s doesn't exist in reference map",
                         sai_serialize_object_id(vid).c_str());
             }
 
@@ -690,9 +731,9 @@ class AsicView
         }
 
         /**
-         * @brief Bind existing VID links (references) based on given obejct.
+         * @brief Bind existing VID links (references) based on given object.
          *
-         * All OID attributes will be scanned and binded.
+         * All OID attributes will be scanned and bound.
          *
          * @param[in] obj Object which will be used to obtain attributes and oids
          */
@@ -740,7 +781,7 @@ class AsicView
 
             if (it == m_vidReference.end())
             {
-                SWSS_LOG_THROW("vid %s don't exist in reference map",
+                SWSS_LOG_THROW("vid %s doesn't exist in reference map",
                         sai_serialize_object_id(vid).c_str());
             }
 
@@ -779,7 +820,7 @@ class AsicView
          * @brief Insert new VID reference.
          *
          * Inserts new reference to be tracked. This also make sure that
-         * reference don't exists yet, as a sanity check if same reference
+         * reference doesn't exist yet, as a sanity check if same reference
          * would be inserted twice.
          *
          * @param[in] vid Virtual ID reference to be inserted.
@@ -811,6 +852,8 @@ class AsicView
         StrObjectIdToSaiObjectHash soOids;
         StrObjectIdToSaiObjectHash soAll;
 
+        std::unordered_map<std::string,std::vector<std::string>> routesByPrefix;
+
     private:
 
         std::map<sai_object_type_t, StrObjectIdToSaiObjectHash> sotAll;
@@ -818,6 +861,8 @@ class AsicView
     public:
 
         ObjectIdToSaiObjectHash oOids;
+
+        std::unordered_map<sai_object_id_t, sai_object_id_t> preMatchMap;
 
         /*
          * On temp view this needs to be used for actual NEW rids created and
@@ -1002,6 +1047,9 @@ class AsicView
         {
             SWSS_LOG_ENTER();
 
+            SWSS_LOG_INFO("%s: %s -> %s:%s", currentObj->str_object_type.c_str(), currentObj->str_object_id.c_str(),
+                    attr->getStrAttrId().c_str(), attr->getStrAttrValue().c_str());
+
             m_asicOperationId++;
 
             /*
@@ -1059,6 +1107,8 @@ class AsicView
             sai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
 
             m_asicOperations.push_back(AsicOperation(m_asicOperationId, vid, false, kco));
+
+            dumpRef("set");
         }
 
         /**
@@ -1078,6 +1128,8 @@ class AsicView
                 _In_ const std::shared_ptr<SaiObj> &currentObj)
         {
             SWSS_LOG_ENTER();
+
+            SWSS_LOG_INFO("%s: %s", currentObj->str_object_type.c_str(), currentObj->str_object_id.c_str());
 
             m_asicOperationId++;
 
@@ -1173,6 +1225,8 @@ class AsicView
             sai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
 
             m_asicOperations.push_back(AsicOperation(m_asicOperationId, vid, false, kco));
+
+            dumpRef("create");
         }
 
         /**
@@ -1184,6 +1238,8 @@ class AsicView
                 _In_ const std::shared_ptr<SaiObj> &currentObj)
         {
             SWSS_LOG_ENTER();
+
+            SWSS_LOG_INFO("%s: %s", currentObj->str_object_type.c_str(), currentObj->str_object_id.c_str());
 
             m_asicOperationId++;
 
@@ -1285,13 +1341,15 @@ class AsicView
                  * and group is in use by some route, then remove fails since
                  * group cant be empty.
                  *
-                 * Of course this does'nt guarantee that remove all routes will
+                 * Of course this doesn't guarantee that remove all routes will
                  * be at the beginning, also it may happen that default route
                  * will be removed first which maybe not allowed.
                  */
 
                 m_asicRemoveOperationsNonObjectId.push_back(AsicOperation(m_asicOperationId, vid, true, kco));
             }
+
+            dumpRef("remove");
         }
 
         std::vector<AsicOperation> asicGetWithOptimizedRemoveOperations() const
@@ -1330,6 +1388,33 @@ class AsicView
                     continue;
                 }
 
+                /*
+                 * NOTE: When operation is SET on OID object it can release
+                 * references on that OID, and if that OID is later to be
+                 * removed a wrong order of operations will happen:
+                 *
+                 * not optimized scenario:
+                 * - create object A
+                 * - set object B attr (releases reference on C)
+                 * - remove object D (release reference on C)
+                 * - remove object C
+                 *
+                 * this logic could result with wrong order:
+                 * - remove D
+                 * - remove C (will break reference count on C, since used in B)
+                 *   since D is considered last OP releasing C reference
+                 * - create A
+                 * - set object B with A
+                 *
+                 * correct optimized logic:
+                 * - remove D
+                 * - create A
+                 * - set object B with A
+                 * - remove C
+                 *
+                 * This is fixed by checking if last operation to release reference was REMOVE
+                 */
+
                 if (op.vid == SAI_NULL_OBJECT_ID)
                 {
                     SWSS_LOG_THROW("non object id remove not exected here");
@@ -1349,7 +1434,7 @@ class AsicView
 
                     v.insert(v.begin() + index, op);
 
-                    SWSS_LOG_DEBUG("move 0x%lx all way up (not in map): %s to index: %zu", op.vid,
+                    SWSS_LOG_INFO("move 0x%lx all way up (not in map): %s to index: %zu", op.vid,
                             sai_serialize_object_type(redis_sai_object_type_query(op.vid)).c_str(),index);
 
                     index++;
@@ -1362,13 +1447,18 @@ class AsicView
                 /*
                  * This last operation id that decreased VID reference to zero
                  * can be before or after current iterator, so it may be not
-                 * found on list from curernt iterator to list end.  This will
+                 * found on list from current iterator to list end.  This will
                  * mean that we can insert this remove at current iterator
                  * position.
                  *
                  * If operation is found then we need to insert this op after
                  * current iterator and forward iterator.
                  *
+                 * But there is a catch here, if that last operation was REMOVE,
+                 * then it was forwarded all the way to the UP, but in the
+                 * middle we could have some "SET" operations that would
+                 * release this reference also we in this case, we can't just
+                 * move this remove just after previous remove.
                  */
 
                 int lastOpIdDecRef = mit->second;
@@ -1381,6 +1471,23 @@ class AsicView
                             sai_serialize_object_id(op.vid).c_str());
                 }
 
+                if (itr->isRemove)
+                {
+                    SWSS_LOG_INFO("previous operation to release reference %s was also REMOVE, we push current REMOVE op at the list end",
+                            sai_serialize_object_id(mit->first).c_str());
+
+                    /*
+                     * If previous operation was REMOVE (it could be pushed to
+                     * the top) so push current operation to the list here,
+                     * instead of possible break reference count on SET
+                     * operations.
+                     */
+
+                    v.push_back(op);
+
+                    continue;
+                }
+
                 /*
                  * We add +1 since we need to insert current object AFTER the one that we found
                  */
@@ -1389,14 +1496,14 @@ class AsicView
 
                 if (lastOpIdDecRefIndex > index)
                 {
-                    SWSS_LOG_DEBUG("index update from %zu to %zu", index, lastOpIdDecRefIndex);
+                    SWSS_LOG_INFO("index update from %zu to %zu", index, lastOpIdDecRefIndex);
 
                     index = lastOpIdDecRefIndex;
                 }
 
                 v.insert(v.begin() + index, op);
 
-                SWSS_LOG_DEBUG("move 0x%lx in the middle up: %s (last: %zu curr: %zu)", op.vid,
+                SWSS_LOG_INFO("move 0x%lx in the middle up: %s (last: %zu curr: %zu)", op.vid,
                             sai_serialize_object_type(redis_sai_object_type_query(op.vid)).c_str(), lastOpIdDecRefIndex, index);
 
                 index++;
@@ -1451,6 +1558,55 @@ class AsicView
             return vidToRid.find(vid) != vidToRid.end();
         }
 
+        void dumpRef(const std::string & asicName)
+        {
+            SWSS_LOG_ENTER();
+
+            if (enableRefernceCountLogs == false)
+                return;
+
+            SWSS_LOG_NOTICE("dump references in ASIC VIEW: %s", asicName.c_str());
+
+            for (auto kvp: m_vidReference)
+            {
+                sai_object_id_t oid = kvp.first;
+
+                sai_object_type_t ot = redis_sai_object_type_query(oid);
+
+                switch (ot)
+                {
+                    case SAI_OBJECT_TYPE_LAG:
+                    case SAI_OBJECT_TYPE_NEXT_HOP:
+                    case SAI_OBJECT_TYPE_NEXT_HOP_GROUP:
+                    case SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER:
+                    case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+                    case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
+                        break;
+
+                        // skip object we have no interest into
+                    default:
+                        continue;
+                }
+
+                SWSS_LOG_NOTICE("ref %s: %s: %d",
+                        sai_serialize_object_type(ot).c_str(),
+                        sai_serialize_object_id(oid).c_str(),
+                        kvp.second);
+            }
+        }
+
+        void dumpVidToAsicOperatioId()
+        {
+            SWSS_LOG_ENTER();
+
+            for (auto a:  m_vidToAsicOperationId)
+            {
+                SWSS_LOG_WARN("%d: %s:%s", a.second,
+                        sai_serialize_object_type(redis_sai_object_type_query(a.first)).c_str(),
+                        sai_serialize_object_id(a.first).c_str());
+            }
+        }
+
     private:
 
         /**
@@ -1465,7 +1621,7 @@ class AsicView
          *
          * Since asic resources are limited like number of routes or buffer
          * pools, so if we don't match object, at first we created new object
-         * and then remove previous one. This scenarion may not be possible in
+         * and then remove previous one. This scenario may not be possible in
          * case of limited resources. Advantage here is that this approach is
          * making sure that asic data plane disruption will be minimal. But we
          * need to switch to remove object first and then create new one. This
@@ -1473,7 +1629,7 @@ class AsicView
          * but in this case we can have some asic data plane disruption.
          *
          * This asic operation id will be used to figure out what operation
-         * reduced object reference to zero, se we could move remove operation
+         * reduced object reference to zero, so we could move remove operation
          * right after this operation instead of the executing all remove
          * actions after all set/create.
          *
@@ -1483,9 +1639,9 @@ class AsicView
         /**
          * @brief VID to asic operation id map.
          *
-         * Map where key is VID that opints to last asic operation id that
+         * Map where key is VID that points to last asic operation id that
          * decreased reference on that VID to zero. This mean that if object
-         * witht that VID will be removed, we can move remove operation right
+         * with that VID will be removed, we can move remove operation right
          * after asic operation id pointed by this VID.
          */
         std::map<sai_object_id_t, int> m_vidToAsicOperationId;
@@ -1541,6 +1697,13 @@ class AsicView
                     sai_object_id_t vid = m->getoid(&currentObj->meta_key);
 
                     m_vidReference[vid] += value;
+
+                    if (enableRefernceCountLogs)
+                    {
+                        SWSS_LOG_WARN("updated vid %s refrence to %d",
+                                sai_serialize_object_id(vid).c_str(),
+                                m_vidReference[vid]);
+                    }
 
                     if (m_vidReference[vid] == 0)
                     {
@@ -1671,6 +1834,65 @@ void matchOids(
     SWSS_LOG_NOTICE("matched oids");
 }
 
+/**
+ * @brief Check internal objects.
+ *
+ * During warm boot, when switch restarted we expect that switch will have the
+ * same number of objects like before boot, and all vendor OIDs (RIDs) will be
+ * exactly the same as before reboot.
+ *
+ * If OIDs are not the same, then this is a vendor bug.
+ *
+ * Exception of this rule is when orchagent will be restarted and it will add
+ * some more objects or remove some objects.
+ *
+ * We take special care here about INGRESS_PRIORIRITY_GROUPS, SCHEDULER_GROUPS
+ * and QUEUES, since those are internal objects created by vendor when switch
+ * is instantiated.
+ *
+ * @param currentView Current view.
+ * @param temporaryView Temporary view.
+ */
+void checkInternalObjects(
+        _In_ const AsicView &cv,
+        _In_ const AsicView &tv)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_type_t> ots =
+    {
+        SAI_OBJECT_TYPE_QUEUE,
+        SAI_OBJECT_TYPE_SCHEDULER_GROUP,
+        SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP
+    };
+
+    for (auto ot: ots)
+    {
+        auto cot = cv.getObjectsByObjectType(ot);
+        auto tot = tv.getObjectsByObjectType(ot);
+
+        auto sot = sai_serialize_object_type(ot);
+
+        if (cot.size() != tot.size())
+        {
+            SWSS_LOG_WARN("different number of objects %s, curr: %zu, tmp %zu (not expected if warm boot)",
+                    sot.c_str(),
+                    cot.size(),
+                    tot.size());
+        }
+
+        for (auto o: cot)
+            if (o->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+                SWSS_LOG_ERROR("object status is not MATCHED on curr: %s:%s",
+                        sot.c_str(), o->str_object_id.c_str());
+
+        for (auto o: tot)
+            if (o->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+                SWSS_LOG_ERROR("object status is not MATCHED on temp: %s:%s",
+                        sot.c_str(), o->str_object_id.c_str());
+    }
+}
+
 void checkMatchedPorts(
         _In_ const AsicView &temporaryView)
 {
@@ -1725,7 +1947,7 @@ void checkMatchedPorts(
  *
  * In case of really long list, easier way to solve this can be getting all the
  * RIDs from current view (they must exist), getting all the matched RIDs from
- * temporary list (if one of them don't exists then lists are not equal) sort
+ * temporary list (if one of them doesn't exist then lists are not equal) sort
  * both list nlog(n) and then compare sequentially.
  *
  * @param currentView Current view.
@@ -1814,13 +2036,13 @@ bool hasEqualObjectList(
             if (temporaryIt == temporaryView.vidToRid.end())
             {
                 /*
-                 * Temporary RID don't exist yet for this object, so it mean's
+                 * Temporary RID doesn't exist yet for this object, so it means
                  * this object will be created in the future after all
                  * comparison logic finishes.
                  *
                  * Here we know that this temporary object is not processed yet
                  * but during recursive processing we know that this OID value
-                 * was already processed, and two things could happened:
+                 * was already processed, and two things could happen:
                  *
                  * - we matched existing current object for this VID and actual
                  *   RID was assigned, or
@@ -1829,7 +2051,7 @@ bool hasEqualObjectList(
                  *   not assigned, and this object will be created later on
                  *   which will assign new RID
                  *
-                 * Since we are here where RID don't exist this is the second
+                 * Since we are here where RID doesn't exist this is the second
                  * case, also we know that current object VID exists so his RID
                  * also exists, so those RID's can't be equal, we need return
                  * false here.
@@ -1839,7 +2061,7 @@ bool hasEqualObjectList(
                  * needs to be created.
                  */
 
-                SWSS_LOG_INFO("temporary RID don't exists (VID %s), attributes are not equal",
+                SWSS_LOG_INFO("temporary RID doesn't exist (VID %s), attributes are not equal",
                         sai_serialize_object_id(temporaryVid).c_str());
 
                 return false;
@@ -1894,6 +2116,64 @@ bool hasEqualObjectList(
      */
 
     return true;
+}
+
+/**
+ * @brief Compare qos map list attributes order insensitive.
+ *
+ * @param current Current object qos map attribute.
+ * @param temporary Temporary object qos map attribute.
+ *
+ * @return True if attributes are equal, false otherwise.
+ */
+bool hasEqualQosMapList(
+        _In_ const sai_qos_map_list_t& c,
+        _In_ const sai_qos_map_list_t& t)
+{
+    SWSS_LOG_ENTER();
+
+    if (c.count != t.count)
+        return false;
+
+    if (c.list == NULL || t.list == NULL)
+        return false;
+
+    std::vector<std::string> citems;
+    std::vector<std::string> titems;
+
+    for (uint32_t i = 0; i < c.count; i++)
+    {
+        citems.push_back(sai_serialize_qos_map_item(c.list[i]));
+        titems.push_back(sai_serialize_qos_map_item(t.list[i]));
+    }
+
+    std::sort(citems.begin(), citems.end());
+    std::sort(titems.begin(), titems.end());
+
+    for (uint32_t i = 0; i < c.count; i++)
+    {
+        if (citems.at(i) != titems.at(i))
+        {
+            return false;
+        }
+    }
+
+    SWSS_LOG_NOTICE("qos map are equal, but has different order");
+
+    // all items in both attributes are equal
+    return true;
+}
+
+bool hasEqualQosMapList(
+        _In_ const std::shared_ptr<const SaiAttr> &current,
+        _In_ const std::shared_ptr<const SaiAttr> &temporary)
+{
+    SWSS_LOG_ENTER();
+
+    auto c = current->getSaiAttr()->value.qosmap;
+    auto t = temporary->getSaiAttr()->value.qosmap;
+
+    return hasEqualQosMapList(c, t);
 }
 
 /**
@@ -1958,6 +2238,16 @@ bool hasEqualAttribute(
              */
 
             return true;
+        }
+
+        if (currentAttr->getAttrMetadata()->attrvaluetype == SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST)
+        {
+            /*
+             * In case of qos map list, order of list does not matter, so
+             * compare only entries.
+             */
+
+            return hasEqualQosMapList(currentAttr, temporaryAttr);
         }
 
         if (currentAttr->isObjectIdAttr() == false)
@@ -2149,7 +2439,7 @@ int findAllChildsInDependencyTreeCount(
         if (meta->objecttype == obj->getObjectType())
         {
             /*
-             * Skip kiips on scheduler group.
+             * Skip loops on scheduler group.
              * Mirror session has loop on port, but we break port in next condition.
              */
 
@@ -2182,6 +2472,1207 @@ int findAllChildsInDependencyTreeCount(
     return count;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForLag(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For lag, let's try find matching LAG member which will be using the same
+     * port, since we expect that port object can belong only to 1 lag.
+     */
+
+    /*
+     * Find not processed LAG members, in both views, since lag member contains
+     * LAG and PORT, then it should not be processed before LAG itself. But
+     * since PORT objects on LAG members should be matched at the beginning of
+     * comparison logic, then we can find batching LAG members based on the
+     * same VID, since it will be the same in both views.
+     */
+
+    const auto tmpLagMembersNP = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+    /*
+     * First we need to find at least 1 LAG member that belongs to temporary
+     * object so we could extract port object.
+     */
+
+    sai_object_id_t tmpLagVid = temporaryObj->getVid();
+
+    sai_object_id_t temporaryLagMemberPortVid = SAI_NULL_OBJECT_ID;
+
+    for (const auto &lagMember: tmpLagMembersNP)
+    {
+        // lag member attr lag should always exists on
+        const auto lagMemberLagAttr = lagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_LAG_ID);
+
+        if (lagMemberLagAttr->getSaiAttr()->value.oid == tmpLagVid)
+        {
+            SWSS_LOG_NOTICE("found temp LAG member %s which uses temp LAG %s",
+                    temporaryObj->str_object_id.c_str(),
+                    lagMember->str_object_id.c_str());
+
+            temporaryLagMemberPortVid = lagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID)->getSaiAttr()->value.oid;
+
+            break;
+        }
+    }
+
+    if (temporaryLagMemberPortVid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_NOTICE("failed to find temporary LAG member for LAG %s", sai_serialize_object_id(tmpLagVid).c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * Now since we have port VID which should be the same in both current and
+     * temporary view, let's find LAG member object that uses this port on
+     * current view.
+     */
+
+    const auto curLagMembersNP = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+    for (const auto &lagMember: curLagMembersNP)
+    {
+        // lag member attr lag should always exists on
+        const auto lagMemberPortAttr = lagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID);
+
+        if (lagMemberPortAttr->getSaiAttr()->value.oid == temporaryLagMemberPortVid)
+        {
+            SWSS_LOG_NOTICE("found current LAG member %s which uses PORT %s",
+                    lagMember->str_object_id.c_str(),
+                    sai_serialize_object_id(temporaryLagMemberPortVid).c_str());
+
+            /*
+             * We found LAG member which uses the same PORT VID, let's extract
+             * LAG and check if this LAG is on the candidate list.
+             */
+
+            sai_object_id_t currentLagVid = lagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_LAG_ID)->getSaiAttr()->value.oid;
+
+            for (auto &c: candidateObjects)
+            {
+                if (c.obj->getVid() == currentLagVid)
+                {
+                    SWSS_LOG_NOTICE("found best candidate for temp LAG %s which is current LAG %s using PORT %s",
+                            temporaryObj->str_object_id.c_str(),
+                            sai_serialize_object_id(currentLagVid).c_str(),
+                            sai_serialize_object_id(temporaryLagMemberPortVid).c_str());
+
+                    return c.obj;
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for LAG using LAG member and port");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForNextHopGroup(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For next hop group, let's try find matching NHG which will be based on
+     * NHG set as SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID in route_entry.  We assume
+     * that each class IPv4 and IPv6 will have different NHG, and each IP
+     * prefix will only be assigned to one NHG.
+     */
+
+    /*
+     * First find route entries on which temporary NHG is assigned.
+     */
+
+    const auto tmpRouteEntries = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+
+    std::shared_ptr<SaiObj> tmpRouteCandidate = nullptr;
+
+    for (auto tmpRoute: tmpRouteEntries)
+    {
+        if (!tmpRoute->hasAttr(SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID))
+            continue;
+
+        const auto routeNH = tmpRoute->getSaiAttr(SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
+
+        if (routeNH->getSaiAttr()->value.oid != temporaryObj->getVid())
+            continue;
+
+        tmpRouteCandidate = tmpRoute;
+
+        SWSS_LOG_NOTICE("Found route candidate for NHG: %s: %s",
+                temporaryObj->str_object_id.c_str(),
+                tmpRoute->str_object_id.c_str());
+
+        break;
+    }
+
+    if (tmpRouteCandidate == nullptr)
+    {
+        SWSS_LOG_NOTICE("failed to find route candidate for NHG: %s",
+                temporaryObj->str_object_id.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found route candidate, then let's find the same route on the candidate side.
+     * But we will only compare prefix value.
+     */
+
+    const auto curRouteEntries = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+
+    for (auto curRoute: curRouteEntries)
+    {
+        std::string tmpPrefix = sai_serialize_ip_prefix(tmpRouteCandidate->meta_key.objectkey.key.route_entry.destination);
+        std::string curPrefix = sai_serialize_ip_prefix(curRoute->meta_key.objectkey.key.route_entry.destination);
+
+        if (tmpPrefix != curPrefix)
+            continue;
+
+        /*
+         * Prefixes are equal, now find candidate NHG.
+         */
+
+        if (!curRoute->hasAttr(SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID))
+            continue;
+
+        const auto routeNH = curRoute->getSaiAttr(SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
+
+        sai_object_id_t curNextHopId = routeNH->getSaiAttr()->value.oid;
+
+        for (auto candidate: candidateObjects)
+        {
+            if (curNextHopId != candidate.obj->getVid())
+                continue;
+
+            SWSS_LOG_NOTICE("Found NHG candidate %s", candidate.obj->str_object_id.c_str());
+
+            return candidate.obj;
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for NEXT_HOP_GROUP using route_entry");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For acl table group let's try find matching INGRESS_ACL on matched PORT.
+     */
+
+    /*
+     * Since we know that ports are matched, they have same VID/RID in both
+     * temporary and current view.
+     */
+
+    const auto ports = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_PORT);
+
+    std::vector<int> aclPortAttrs = {
+        SAI_PORT_ATTR_INGRESS_ACL,
+        SAI_PORT_ATTR_EGRESS_ACL,
+    };
+
+    for (auto attrId: aclPortAttrs)
+    {
+        for (auto port: ports)
+        {
+            auto portAcl = port->tryGetSaiAttr(attrId);
+
+            if (portAcl == nullptr)
+                continue;
+
+            if (portAcl ->getSaiAttr()->value.oid != temporaryObj->getVid())
+                continue;
+
+            SWSS_LOG_DEBUG("found port candidate %s for ACL table group",
+                    port->str_object_id.c_str());
+
+            auto curPort = currentView.oOids.at(port->getVid());
+
+            portAcl = curPort->tryGetSaiAttr(attrId);
+
+            if (portAcl == nullptr)
+                continue;
+
+            sai_object_id_t atgVid = portAcl->getSaiAttr()->value.oid;
+
+            for (auto c: candidateObjects)
+            {
+                if (c.obj->getVid() == atgVid)
+                {
+                    SWSS_LOG_INFO("found ALC table group candidate %s using port %s",
+                            c.obj->str_object_id.c_str(),
+                            port->str_object_id.c_str());
+
+                    return c.obj;
+                }
+            }
+        }
+    }
+
+    /*
+     * Port didn't work, try to find match by LAG, but lag will be tricky,
+     * since it will be not matched since if this unprocessed acl table group
+     * is processed right now, then if it's assigned to lag then by design we
+     * go recursively be attributes to match attributes first.
+     */
+
+    // TODO this could be helper method, since we will need this for router interface
+
+    const auto tmpLags = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_LAG);
+
+    for (auto tmpLag: tmpLags)
+    {
+        if (!tmpLag->hasAttr(SAI_LAG_ATTR_INGRESS_ACL))
+            continue;
+
+        auto inACL = tmpLag->getSaiAttr(SAI_LAG_ATTR_INGRESS_ACL);
+
+        if (inACL->getSaiAttr()->value.oid != temporaryObj->getVid())
+            continue;
+
+        /*
+         * We found LAG on which this ACL is present, but this object status is
+         * not processed so we need to trace back to port using LAG member.
+         */
+
+        SWSS_LOG_INFO("found LAG candidate: lag status %d", tmpLag->getObjectStatus());
+
+        const auto tmpLagMembers = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+        for (auto tmpLagMember: tmpLagMembers)
+        {
+            const auto tmpLagMemberLagAttr = tmpLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_LAG_ID);
+
+            if (tmpLagMemberLagAttr->getSaiAttr()->value.oid != tmpLag->getVid())
+                continue;
+
+            const auto tmpLagMemberPortAttr = tmpLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID);
+
+            sai_object_id_t tmpPortVid = tmpLagMemberPortAttr->getSaiAttr()->value.oid;
+
+            SWSS_LOG_INFO("found tmp LAG member port! %s", sai_serialize_object_id(tmpPortVid).c_str());
+
+            sai_object_id_t portRid = temporaryView.vidToRid.at(tmpPortVid);
+
+            sai_object_id_t curPortVid = currentView.ridToVid.at(portRid);
+
+            const auto curLagMembers = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+            for (auto curLagMember: curLagMembers)
+            {
+                const auto curLagMemberPortAttr = curLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID);
+
+                if (curLagMemberPortAttr->getSaiAttr()->value.oid != curPortVid)
+                    continue;
+
+                const auto curLagMemberLagAttr = curLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_LAG_ID);
+
+                sai_object_id_t curLagId = curLagMemberLagAttr->getSaiAttr()->value.oid;
+
+                SWSS_LOG_INFO("found current LAG member: %s", curLagMember->str_object_id.c_str());
+
+                auto curLag = currentView.oOids.at(curLagId);
+
+                if (!curLag->hasAttr(SAI_LAG_ATTR_INGRESS_ACL))
+                    continue;
+
+                inACL = curLag->getSaiAttr(SAI_LAG_ATTR_INGRESS_ACL);
+
+                for (auto c: candidateObjects)
+                {
+                    if (c.obj->getVid() != inACL->getSaiAttr()->value.oid)
+                        continue;
+
+                    SWSS_LOG_INFO("found best ACL table group match based on LAG ingress acl: %s", c.obj->str_object_id.c_str());
+
+                    return c.obj;
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for ACL_TABLE_GROUP using port");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForAclTable(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For acl table we can go to acl table group member and then to acl table group and port.
+     */
+
+    const auto tmpAclTableGroupMembers = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER);
+
+    for (auto tmpAclTableGroupMember: tmpAclTableGroupMembers)
+    {
+        auto tmpAclTableId = tmpAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID);
+
+        if (tmpAclTableId->getOid() != temporaryObj->getVid())
+        {
+            // this is not the expected acl table group member
+            continue;
+        }
+
+        auto tmpAclTableGroupId = tmpAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID);
+
+        /*
+         * We have acl table group id, search on which port it's set, not let's
+         * find on which port it's set.
+         */
+
+        const auto tmpPorts = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_PORT);
+
+        for (auto tmpPort: tmpPorts)
+        {
+            if (!tmpPort->hasAttr(SAI_PORT_ATTR_INGRESS_ACL))
+                continue;
+
+            auto tmpInACL = tmpPort->getSaiAttr(SAI_PORT_ATTR_INGRESS_ACL);
+
+            if (tmpInACL->getOid() != tmpAclTableGroupId->getOid())
+                continue;
+
+            auto curPort = currentView.oOids.at(tmpPort->getVid());
+
+            if (!curPort->hasAttr(SAI_PORT_ATTR_INGRESS_ACL))
+                continue;
+
+            auto curInACL = curPort->getSaiAttr(SAI_PORT_ATTR_INGRESS_ACL);
+
+            /*
+             * We found current ingress acl, now let's find acl table group members
+             * that use this acl table group.
+             */
+
+            const auto curAclTableGroupMembers = currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER);
+
+            for (auto curAclTableGroupMember: curAclTableGroupMembers)
+            {
+                auto curAclTableGroupId = curAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID);
+
+                if (curAclTableGroupId->getOid() != curInACL->getOid())
+                {
+                    // this member uses different acl table group
+                    continue;
+                }
+
+                auto curAclTableId = curAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID);
+
+                /*
+                 * We found possible current acl table ID, let's see if it's on
+                 * candidate list. Note, it could be possible that many
+                 * different paths will lead multiple possible candidates.
+                 */
+
+                for (auto c: candidateObjects)
+                {
+                    if (c.obj->getVid() == curAclTableId->getOid())
+                    {
+                        SWSS_LOG_INFO("found ALC table candidate %s using port %s",
+                                c.obj->str_object_id.c_str(),
+                                tmpPort->str_object_id.c_str());
+
+                        return c.obj;
+                    }
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for ACL_TABLE using port");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForRouterInterface(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For router interface which is LOOPBACK, we could trace them to TUNNEL
+     * object on which they are used. It could be not obvious, when multiple
+     * tunnels will be used.
+     */
+
+    const auto typeAttr = temporaryObj->getSaiAttr(SAI_ROUTER_INTERFACE_ATTR_TYPE);
+
+    if (typeAttr->getSaiAttr()->value.s32 != SAI_ROUTER_INTERFACE_TYPE_LOOPBACK)
+    {
+        SWSS_LOG_WARN("RIF %s is not LOOPBACK", temporaryObj->str_object_id.c_str());
+
+        return nullptr;
+    }
+
+    const auto tmpTunnels = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL);
+
+    for (auto tmpTunnel: tmpTunnels)
+    {
+        /*
+         * Try match tunnel by src encap IP address.
+         */
+
+        if (!tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_ENCAP_SRC_IP))
+        {
+            // not encap src attribute, skip
+            continue;
+        }
+
+        const std::string tmpSrcIP = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_ENCAP_SRC_IP)->getStrAttrValue();
+
+        const auto curTunnels = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL);
+
+        for (auto curTunnel: curTunnels)
+        {
+            if (!tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_ENCAP_SRC_IP))
+            {
+                // not encap src attribute, skip
+                continue;
+            }
+
+            const std::string curSrcIP = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_ENCAP_SRC_IP)->getStrAttrValue();
+
+            if (curSrcIP != tmpSrcIP)
+            {
+                continue;
+            }
+
+            /*
+             * At this point we have both tunnels which ip matches.
+             */
+
+            if (tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE) &&
+                curTunnel->hasAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE))
+            {
+                auto tmpRif = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE);
+                auto curRif = curTunnel->getSaiAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE);
+
+                if (tmpRif->getSaiAttr()->value.oid == temporaryObj->getVid())
+                {
+                    for (auto c: candidateObjects)
+                    {
+                        if (c.obj->getVid() != curRif->getSaiAttr()->value.oid)
+                            continue;
+
+                        SWSS_LOG_INFO("found best ROUTER_INTERFACE based on TUNNEL underlay interface %s", c.obj->str_object_id.c_str());
+
+                        return c.obj;
+                    }
+                }
+            }
+
+            if (tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE) &&
+                curTunnel->hasAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE))
+            {
+                auto tmpRif = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE);
+                auto curRif = curTunnel->getSaiAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE);
+
+                if (tmpRif->getSaiAttr()->value.oid == temporaryObj->getVid())
+                {
+                    for (auto c: candidateObjects)
+                    {
+                        if (c.obj->getVid() != curRif->getSaiAttr()->value.oid)
+                            continue;
+
+                        SWSS_LOG_INFO("found best ROUTER_INTERFACE based on TUNNEL overlay interface %s", c.obj->str_object_id.c_str());
+
+                        return c.obj;
+                    }
+                }
+            }
+        }
+    }
+
+    // try find tunnel by TUNNEL_TERM_TABLE_ENTRY using SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP
+
+    for (auto tmpTunnel: tmpTunnels)
+    {
+        const auto curTunnels = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL);
+
+        for (auto curTunnel: curTunnels)
+        {
+            const auto tmpTunnelTermTableEtnries = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY);
+
+            for (auto tmpTunnelTermTableEntry: tmpTunnelTermTableEtnries)
+            {
+                auto tmpTunnelId = tmpTunnelTermTableEntry->tryGetSaiAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_ACTION_TUNNEL_ID);
+
+                if (tmpTunnelId == nullptr)
+                    continue;
+
+                auto tmpDstIp = tmpTunnelTermTableEntry->tryGetSaiAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP);
+
+                if (tmpDstIp == nullptr)
+                    continue;
+
+                if (tmpTunnelId->getOid() != tmpTunnel->getVid())   // not this tunnel
+                    continue;
+
+                const auto curTunnelTermTableEtnries = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY);
+
+                for (auto curTunnelTermTableEntry: curTunnelTermTableEtnries)
+                {
+                    auto curTunnelId = curTunnelTermTableEntry->tryGetSaiAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_ACTION_TUNNEL_ID);
+
+                    if (curTunnelId == nullptr)
+                        continue;
+
+                    auto curDstIp = curTunnelTermTableEntry->tryGetSaiAttr(SAI_TUNNEL_TERM_TABLE_ENTRY_ATTR_DST_IP);
+
+                    if (curDstIp == nullptr)
+                        continue;
+
+                    if (curTunnelId->getOid() != curTunnel->getVid())   // not this tunnel
+                        continue;
+
+                    if (curDstIp->getStrAttrValue() != tmpDstIp->getStrAttrValue())
+                        continue;
+
+                    if (tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE) &&
+                            curTunnel->hasAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE))
+                    {
+                        auto tmpRif = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE);
+                        auto curRif = curTunnel->getSaiAttr(SAI_TUNNEL_ATTR_UNDERLAY_INTERFACE);
+
+                        if (tmpRif->getSaiAttr()->value.oid == temporaryObj->getVid())
+                        {
+                            for (auto c: candidateObjects)
+                            {
+                                if (c.obj->getVid() != curRif->getSaiAttr()->value.oid)
+                                    continue;
+
+                                SWSS_LOG_INFO("found best ROUTER_INTERFACE based on TUNNEL underlay interface %s", c.obj->str_object_id.c_str());
+
+                                return c.obj;
+                            }
+                        }
+                    }
+
+                    if (tmpTunnel->hasAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE) &&
+                            curTunnel->hasAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE))
+                    {
+                        auto tmpRif = tmpTunnel->getSaiAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE);
+                        auto curRif = curTunnel->getSaiAttr(SAI_TUNNEL_ATTR_OVERLAY_INTERFACE);
+
+                        if (tmpRif->getSaiAttr()->value.oid == temporaryObj->getVid())
+                        {
+                            for (auto c: candidateObjects)
+                            {
+                                if (c.obj->getVid() != curRif->getSaiAttr()->value.oid)
+                                    continue;
+
+                                SWSS_LOG_INFO("found best ROUTER_INTERFACE based on TUNNEL overlay interface %s", c.obj->str_object_id.c_str());
+
+                                return c.obj;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for LOOPBACK ROUTER_INTERFACE using tunnel");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForPolicer(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For policer we can see on which hostif trap group is set, and on which
+     * hostif trap.  Hostif trap have SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE attribute
+     * which is KEY and there can be only one trap of that type. we can use
+     * that to match hostif trap group and later on policer.
+     *
+     * NOTE: policer can be set on default hostif trap group. In this case we
+     * are getting processed and not processed objects into account.
+     */
+
+    const auto tmpTrapGroups = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP);
+
+    for (auto tmpTrapGroup: tmpTrapGroups)
+    {
+        auto tmpTrapGroupPolicerAttr = tmpTrapGroup->tryGetSaiAttr(SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER);
+
+        if (tmpTrapGroupPolicerAttr == nullptr)
+        {
+            // no policer attribute
+            continue;
+        }
+
+        if (tmpTrapGroupPolicerAttr->getOid() != temporaryObj->getVid())
+        {
+            // not this policer
+            continue;
+        }
+
+        /*
+         * Found hostif trap group which have this policer, now find hostif
+         * trap type with this trap group.
+         */
+
+        const auto tmpTraps = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP);
+
+        for (auto tmpTrap: tmpTraps)
+        {
+            auto tmpTrapGroupAttr = tmpTrap->tryGetSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
+
+            if (tmpTrapGroupAttr == nullptr)
+                continue;
+
+            if (tmpTrapGroupAttr->getOid() != tmpTrapGroup->getVid())
+                continue;
+
+            auto tmpTrapTypeAttr = tmpTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
+
+            SWSS_LOG_INFO("trap type: %s", tmpTrapTypeAttr->getStrAttrValue().c_str());
+
+            /*
+             * We have temporary trap type, let's find that trap in current view.
+             */
+
+            const auto curTraps = currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP);
+
+            for (auto curTrap: curTraps)
+            {
+                auto curTrapTypeAttr = curTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
+
+                if (curTrapTypeAttr->getStrAttrValue() != tmpTrapTypeAttr->getStrAttrValue())
+                    continue;
+
+                /*
+                 * We have that trap, let's extract trap group.
+                 */
+
+                auto curTrapGroupAttr = curTrap->tryGetSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
+
+                if (curTrapGroupAttr == nullptr)
+                    continue;
+
+                sai_object_id_t curTrapGroupVid = curTrapGroupAttr->getOid();
+
+                /*
+                 * If value is not set, it should point to SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP
+                 */
+
+                if (curTrapGroupVid == SAI_NULL_OBJECT_ID)
+                    continue;
+
+                auto curTrapGroup = currentView.oOids.at(curTrapGroupVid);
+
+                auto curTrapGroupPolicerAttr = curTrapGroup->tryGetSaiAttr(SAI_HOSTIF_TRAP_GROUP_ATTR_POLICER);
+
+                if (curTrapGroupPolicerAttr == nullptr)
+                {
+                    // no policer attribute
+                    continue;
+                }
+
+                for (auto c: candidateObjects)
+                {
+                    if (c.obj->getVid() != curTrapGroupPolicerAttr->getOid())
+                        continue;
+
+                    SWSS_LOG_INFO("found best POLICER based on hostif trap group %s", c.obj->str_object_id.c_str());
+
+                    return c.obj;
+                }
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for POLICER using hostif trap group");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForHostifTrapGroup(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For hostif trap group we can see on which hostif trap group is set.
+     * Hostif trap have SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE attribute which is KEY
+     * and there can be only one trap of that type. we can use that to match
+     * hostif trap group.
+     */
+
+    const auto tmpTraps = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP);
+
+    for (auto tmpTrap: tmpTraps)
+    {
+        auto tmpTrapGroupAttr = tmpTrap->tryGetSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
+
+        if (tmpTrapGroupAttr == nullptr)
+            continue;
+
+        if (tmpTrapGroupAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        auto tmpTrapTypeAttr = tmpTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
+
+        SWSS_LOG_INFO("trap type: %s", tmpTrapTypeAttr->getStrAttrValue().c_str());
+
+        /*
+         * We have temporary trap type, let's find that trap in current view.
+         */
+
+        const auto curTraps = currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_HOSTIF_TRAP);
+
+        for (auto curTrap: curTraps)
+        {
+            auto curTrapTypeAttr = curTrap->getSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_TYPE);
+
+            if (curTrapTypeAttr->getStrAttrValue() != tmpTrapTypeAttr->getStrAttrValue())
+                continue;
+
+            /*
+             * We have that trap, let's extract trap group.
+             */
+
+            auto curTrapGroupAttr = curTrap->tryGetSaiAttr(SAI_HOSTIF_TRAP_ATTR_TRAP_GROUP);
+
+            if (curTrapGroupAttr == nullptr)
+                continue;
+
+            for (auto c: candidateObjects)
+            {
+                if (c.obj->getVid() != curTrapGroupAttr->getOid())
+                    continue;
+
+                SWSS_LOG_INFO("found best HOSTIF TRAP GROUP based on hostif trap %s", c.obj->str_object_id.c_str());
+
+                return c.obj;
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for HOSTIF_TRAP_GROUP using hostif trap");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForBufferPool(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For buffer pool using buffer profile which could be set on ingress
+     * priority group or queue. Those two should be already matched.
+     */
+
+    const auto tmpBufferProfiles = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_BUFFER_PROFILE);
+
+    for (auto tmpBufferProfile: tmpBufferProfiles)
+    {
+        auto tmpPoolIdAttr = tmpBufferProfile->tryGetSaiAttr(SAI_BUFFER_PROFILE_ATTR_POOL_ID);
+
+        if (tmpPoolIdAttr == nullptr)
+            continue;
+
+        if (tmpPoolIdAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        /*
+         * We have temporary buffer profile which uses this buffer pool, let's
+         * find ingress priority group or queue on which it could be set.
+         */
+
+        auto tmpQueues = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_QUEUE);
+
+        for (auto tmpQueue: tmpQueues)
+        {
+            auto tmpBufferProfileIdAttr = tmpQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID);
+
+            if (tmpBufferProfileIdAttr == nullptr)
+                continue;
+
+            if (tmpBufferProfileIdAttr->getOid() != tmpBufferProfile->getVid())
+                continue;
+
+            if (tmpQueue->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+                continue;
+
+            // we can use tmp VID since object is matched and both vids are the same
+            auto curQueue = currentView.oOids.at(tmpQueue->getVid());
+
+            auto curBufferProfileIdAttr = curQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID);
+
+            if (curBufferProfileIdAttr == nullptr)
+                continue;
+
+            if (curBufferProfileIdAttr->getOid() == SAI_NULL_OBJECT_ID)
+                continue;
+
+            // we have buffer profile
+
+            auto curBufferProfile = currentView.oOids.at(curBufferProfileIdAttr->getOid());
+
+            auto curPoolIdAttr = curBufferProfile->tryGetSaiAttr(SAI_BUFFER_PROFILE_ATTR_POOL_ID);
+
+            if (curPoolIdAttr == nullptr)
+                continue;
+
+            for (auto c: candidateObjects)
+            {
+                if (c.obj->getVid() != curPoolIdAttr->getOid())
+                    continue;
+
+                SWSS_LOG_INFO("found best BUFFER POOL based on buffer profile and queue %s", c.obj->str_object_id.c_str());
+
+                return c.obj;
+            }
+        }
+
+        /*
+         * Queues didn't worked, lets try to use ingress priority groups.
+         */
+
+        auto tmpIngressPriorityGroups = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP);
+
+        for (auto tmpIngressPriorityGroup: tmpIngressPriorityGroups)
+        {
+            auto tmpBufferProfileIdAttr = tmpIngressPriorityGroup->tryGetSaiAttr(SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE);
+
+            if (tmpBufferProfileIdAttr == nullptr)
+                continue;
+
+            if (tmpBufferProfileIdAttr->getOid() != tmpBufferProfile->getVid())
+                continue;
+
+            if (tmpIngressPriorityGroup->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+                continue;
+
+            // we can use tmp VID since object is matched and both vids are the same
+            auto curIngressPriorityGroup = currentView.oOids.at(tmpIngressPriorityGroup->getVid());
+
+            auto curBufferProfileIdAttr = curIngressPriorityGroup->tryGetSaiAttr(SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE);
+
+            if (curBufferProfileIdAttr == nullptr)
+                continue;
+
+            if (curBufferProfileIdAttr->getOid() == SAI_NULL_OBJECT_ID)
+                continue;
+
+            // we have buffer profile
+
+            auto curBufferProfile = currentView.oOids.at(curBufferProfileIdAttr->getOid());
+
+            auto curPoolIdAttr = curBufferProfile->tryGetSaiAttr(SAI_BUFFER_PROFILE_ATTR_POOL_ID);
+
+            if (curPoolIdAttr == nullptr)
+                continue;
+
+            for (auto c: candidateObjects)
+            {
+                if (c.obj->getVid() != curPoolIdAttr->getOid())
+                    continue;
+
+                SWSS_LOG_INFO("found best BUFFER POOL based on buffer profile and ingress priority group %s", c.obj->str_object_id.c_str());
+
+                return c.obj;
+            }
+        }
+
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for BUFFER_POOL using buffer profile, ipg and queue");
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForBufferProfile(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For buffer profile we will try using SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE
+     * or SAI_QUEUE_ATTR_BUFFER_PROFILE_ID for matching.
+     *
+     * If we are here, and buffer profile has assigned buffer pool, then buffer
+     * pool was matched correctly or best effort. Then we have trouble matching
+     * buffer profile since their configuration could be the same.  This search
+     * here should solve the issue.
+     */
+
+    auto tmpQueues = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_QUEUE);
+
+    for (auto tmpQueue: tmpQueues)
+    {
+        auto tmpBufferProfileIdAttr = tmpQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID);
+
+        if (tmpBufferProfileIdAttr == nullptr)
+            continue;
+
+        if (tmpBufferProfileIdAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        if (tmpQueue->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+            continue;
+
+        // we can use tmp VID since object is matched and both vids are the same
+        auto curQueue = currentView.oOids.at(tmpQueue->getVid());
+
+        auto curBufferProfileIdAttr = curQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_BUFFER_PROFILE_ID);
+
+        if (curBufferProfileIdAttr == nullptr)
+            continue;
+
+        // we have buffer profile
+
+        for (auto c: candidateObjects)
+        {
+            if (c.obj->getVid() != curBufferProfileIdAttr->getOid())
+                continue;
+
+            SWSS_LOG_INFO("found best BUFFER PROFILE based on queues %s", c.obj->str_object_id.c_str());
+
+            return c.obj;
+        }
+    }
+
+    auto tmpIPGs = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP);
+
+    for (auto tmpIPG: tmpIPGs)
+    {
+        auto tmpBufferProfileIdAttr = tmpIPG->tryGetSaiAttr(SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE);
+
+        if (tmpBufferProfileIdAttr == nullptr)
+            continue;
+
+        if (tmpBufferProfileIdAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        if (tmpIPG->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+            continue;
+
+        // we can use tmp VID since object is matched and both vids are the same
+        auto curIPG = currentView.oOids.at(tmpIPG->getVid());
+
+        auto curBufferProfileIdAttr = curIPG->tryGetSaiAttr(SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE);
+
+        if (curBufferProfileIdAttr == nullptr)
+            continue;
+
+        // we have buffer profile
+
+        for (auto c: candidateObjects)
+        {
+            if (c.obj->getVid() != curBufferProfileIdAttr->getOid())
+                continue;
+
+            SWSS_LOG_INFO("found best BUFFER PROFILE based on IPG %s", c.obj->str_object_id.c_str());
+
+            return c.obj;
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for BUFFER_PROFILE using queues and ipgs");
+
+    return nullptr;
+}
+
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForWred(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For WRED we will first if it's assigned to any of the queues.
+     */
+
+    auto tmpQueues = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_QUEUE);
+
+    for (auto tmpQueue: tmpQueues)
+    {
+        auto tmpWredProfileIdAttr = tmpQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_WRED_PROFILE_ID);
+
+        if (tmpWredProfileIdAttr == nullptr)
+            continue; // no WRED attribute on queue
+
+        if (tmpWredProfileIdAttr->getOid() != temporaryObj->getVid())
+            continue; // not this queue
+
+        if (tmpQueue->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+            continue; // we only look for matched queues
+
+        // we found matched queue with this WRED
+
+        // we can use tmp VID since object is matched and both vids are the same
+        auto curQueue = currentView.oOids.at(tmpQueue->getVid());
+
+        auto curWredProfileIdAttr = curQueue->tryGetSaiAttr(SAI_QUEUE_ATTR_WRED_PROFILE_ID);
+
+        if (curWredProfileIdAttr == nullptr)
+            continue; // current queue has no WRED attribute
+
+        if (curWredProfileIdAttr->getOid() == SAI_NULL_OBJECT_ID)
+            continue; // WRED is NULL on current queue
+
+        for (auto c: candidateObjects)
+        {
+            if (c.obj->getVid() != curWredProfileIdAttr->getOid())
+                continue;
+
+            SWSS_LOG_INFO("found best WRED based on queue %s", c.obj->str_object_id.c_str());
+
+            return c.obj;
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for WRED using queue");
+
+    return nullptr;
+}
+
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingPreMatchMap(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    if (temporaryObj->isOidObject() == false)
+        return std::shared_ptr<SaiObj>();
+
+    auto it = temporaryView.preMatchMap.find(temporaryObj->getVid());
+
+    if (it == temporaryView.preMatchMap.end()) // no luck, there was no vid in pre match
+        return nullptr;
+
+    for (auto c: candidateObjects)
+    {
+        if (c.obj->getVid() == it->second)
+        {
+            SWSS_LOG_INFO("found pre match vid %s (tmp) %s (cur)",
+                    sai_serialize_object_id(it->first).c_str(),
+                    sai_serialize_object_id(it->second).c_str());
+
+            return c.obj;
+        }
+    }
+
+    return nullptr;
+}
+
+std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    std::shared_ptr<SaiObj> candidate = nullptr;
+
+    candidate = findCurrentBestMatchForGenericObjectUsingPreMatchMap(currentView, temporaryView, temporaryObj, candidateObjects);
+
+    if (candidate != nullptr)
+            return candidate;
+
+    switch (temporaryObj->getObjectType())
+    {
+        case SAI_OBJECT_TYPE_LAG:
+            candidate = findCurrentBestMatchForLag(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_NEXT_HOP_GROUP:
+            candidate = findCurrentBestMatchForNextHopGroup(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_ACL_TABLE_GROUP:
+            candidate = findCurrentBestMatchForAclTableGroup(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
+            candidate = findCurrentBestMatchForRouterInterface(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_POLICER:
+            candidate = findCurrentBestMatchForPolicer(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_HOSTIF_TRAP_GROUP:
+            candidate = findCurrentBestMatchForHostifTrapGroup(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_ACL_TABLE:
+            candidate = findCurrentBestMatchForAclTable(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_BUFFER_POOL:
+            candidate = findCurrentBestMatchForBufferPool(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_WRED:
+            candidate = findCurrentBestMatchForWred(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_BUFFER_PROFILE:
+            candidate = findCurrentBestMatchForBufferProfile(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        default:
+            break;
+    }
+
+    return candidate;
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -2189,6 +3680,15 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
         _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
 {
     SWSS_LOG_ENTER();
+
+    std::shared_ptr<SaiObj> candidate = findCurrentBestMatchForGenericObjectUsingGraph(
+            currentView,
+            temporaryView,
+            temporaryObj,
+            candidateObjects);
+
+    if (candidate != nullptr)
+        return candidate;
 
     /*
      * Idea is to count all dependencies that uses this object.  this may not
@@ -2232,6 +3732,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingHeuristic(
     return selectRandomCandidate(candidateObjects);
 }
 
+std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
+        _In_ const AsicView &currentView,
+        _In_ const sai_attr_metadata_t &meta);
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -2254,10 +3758,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
      */
 
     /*
-     * Since our system design is to restart orch agent withourt restarting
-     * syncd and recreating objects and reassign new VIDs created inside orch
-     * agent, in our most cases values of objects will not change.  This will
-     * cause to make our comparison logic here fairly simple:
+     * Since our system design is to restart orchagent without restarting syncd
+     * and recreating objects and reassign new VIDs created inside orchagent,
+     * in our most cases values of objects will not change.  This will cause to
+     * make our comparison logic here fairly simple:
      *
      * Find all objects that have the same equal attributes on current object
      * and choose the one with the most attributes that match current and
@@ -2343,6 +3847,13 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
 
         bool has_different_create_only_attr = false;
 
+        /*
+         * NOTE: we only iterate by attributes that are present in temporary
+         * view. It may happen that current view has some additional attributes
+         * set that are create only and value can't be updated then, so in that
+         * case such object must be disqualified from being candidate.
+         */
+
         for (const auto &attr: attrs)
         {
             sai_attr_id_t attrId = attr.first;
@@ -2374,7 +3885,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
                  * attributes are existing and both are equal, so here it
                  * returned false, so it may mean 2 things:
                  *
-                 * - attribute don't exists in current view, or
+                 * - attribute doesn't exist in current view, or
                  * - attributes are different
                  *
                  * If we check if attribute also exists in current view and has
@@ -2382,7 +3893,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
                  * disqualify this object since new temporary object needs to
                  * pass new different attribute with CREATE_ONLY flag.
                  *
-                 * Case when attribute don't exists is much more complicated
+                 * Case when attribute doesn't exist is much more complicated
                  * since it maybe conditional and have default value, we will
                  * do that check when we select best match.
                  */
@@ -2406,6 +3917,85 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
                      */
 
                     break;
+                }
+
+                if (SAI_HAS_FLAG_CREATE_ONLY(meta->flags) && !currentObj->hasAttr(attrId))
+                {
+                    /*
+                     * This attribute exists only on temporary view and it's
+                     * create only.  If it has default value, check if it's the
+                     * same as current.
+                     */
+
+                    auto curDefault = getSaiAttrFromDefaultValue(currentView, *meta);
+
+                    if (curDefault != nullptr)
+                    {
+                        if (curDefault->getStrAttrValue() != attr.second->getStrAttrValue())
+                        {
+                            has_different_create_only_attr = true;
+
+                            SWSS_LOG_INFO("obj has not equal create only attributes %s (default): %s",
+                                    temporaryObj->str_object_id.c_str(),
+                                    meta->attridname);
+                            break;
+                        }
+                        else
+                        {
+                            SWSS_LOG_INFO("obj has equal create only value %s (default): %s",
+                                    temporaryObj->str_object_id.c_str(),
+                                    meta->attridname);
+                        }
+                    }
+                }
+            }
+        }
+
+        /*
+         * Before we add this object as candidate, see if there are some create
+         * only attributes which are not present in temporary object but
+         * present in current, and if there is default value that is the same.
+         */
+
+        const auto curAttrs = currentObj->getAllAttributes();
+
+        for (auto curAttr: curAttrs)
+        {
+            if (attrs.find(curAttr.first) != attrs.end())
+            {
+                // attr exists in both objects.
+                continue;
+            }
+
+            const sai_attr_metadata_t* meta = curAttr.second->getAttrMetadata();
+
+            if (SAI_HAS_FLAG_CREATE_ONLY(meta->flags) && !temporaryObj->hasAttr(curAttr.first))
+            {
+                /*
+                 * This attribute exists only on current view and it's
+                 * create only.  If it has default value, check if it's the
+                 * same as current.
+                 */
+
+                auto tmpDefault = getSaiAttrFromDefaultValue(temporaryView, *meta);
+
+                if (tmpDefault != nullptr)
+                {
+                    if (tmpDefault->getStrAttrValue() != curAttr.second->getStrAttrValue())
+                    {
+                        has_different_create_only_attr = true;
+
+                        SWSS_LOG_INFO("obj has not equal create only attributes %s (default): %s",
+                                currentObj->str_object_id.c_str(),
+                                meta->attridname);
+                        break;
+                    }
+                    else
+                    {
+                        SWSS_LOG_INFO("obj has equal create only value %s (default): %s",
+                                temporaryObj->str_object_id.c_str(),
+                                meta->attridname);
+                    }
                 }
             }
         }
@@ -2454,6 +4044,23 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
      */
 
     /*
+     * But at this point also let's try find best candidate using graph paths,
+     * since if some attributes are mismatched (like for example more ACLs are
+     * created) this can lead to choose wrong LAG and have implications on
+     * router interface and so on.  So matching by graph path here could be
+     * more precise.
+     */
+
+    auto graphCandidate = findCurrentBestMatchForGenericObjectUsingGraph(
+            currentView,
+            temporaryView,
+            temporaryObj,
+            candidateObjects);
+
+    if (graphCandidate != nullptr)
+        return graphCandidate;
+
+    /*
      * Sort candidate objects by equal attributes in descending order, we know
      * here that we have at least 2 candidates.
      *
@@ -2479,7 +4086,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
      * - select object at random, or
      * - use heuristic/smart lookup for inside graph
      *
-     * Smart lookup would be for example searching wheter current object is
+     * Smart lookup would be for example searching whether current object is
      * pointing to the same PORT as temporary object (since ports are matched
      * at the beginning). For different types of objects we need different type
      * of logic and we can start adding that when needed and when missing we
@@ -2567,7 +4174,7 @@ bool exchangeTemporaryVidToCurrentVid(
              * This is just sanity check, should never happen.
              */
 
-            SWSS_LOG_THROW("found tempoary RID %s but current VID don't exists, FATAL",
+            SWSS_LOG_THROW("found tempoary RID %s but current VID doesn't exist, FATAL",
                     sai_serialize_object_id(temporaryRid).c_str());
         }
 
@@ -2597,12 +4204,12 @@ bool exchangeTemporaryVidToCurrentVid(
  * struct and do dictionary lookup on serialized neighbor_entry.
  *
  * With this approach for many entries this is the quickest possible way. In
- * case when RID don't exist, that means we have invalid neighbor entry, so we
+ * case when RID doesn't exist, that means we have invalid neighbor entry, so we
  * must return null.
  *
  * @param currentView Current view.
  * @param temporaryView Temporary view.
- * @param temporaryObj Temporary obejct.
+ * @param temporaryObj Temporary object.
  *
  * @return Best match object if found or nullptr.
  */
@@ -2680,12 +4287,12 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForNeighborEntry(
  * and do dictionary lookup on serialized route_entry.
  *
  * With this approach for many entries this is the quickest possible way. In
- * case when RID don't exist, that means we have invalid route entry, so we
+ * case when RID doesn't exist, that means we have invalid route entry, so we
  * must return null.
  *
  * @param currentView Current view.
  * @param temporaryView Temporary view.
- * @param temporaryObj Temporary obejct.
+ * @param temporaryObj Temporary object.
  *
  * @return Best match object if found or nullptr.
  */
@@ -2761,12 +4368,12 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForRouteEntry(
  * lookup on serialized fdb_entry.
  *
  * With this approach for many entries this is the quickest possible way. In
- * case when RID don't exist, that means we have invalid fdb entry, so we must
+ * case when RID doesn't exist, that means we have invalid fdb entry, so we must
  * return null.
  *
  * @param currentView Current view.
  * @param temporaryView Temporary view.
- * @param temporaryObj Temporary obejct.
+ * @param temporaryObj Temporary object.
  *
  * @return Best match object if found or nullptr.
  */
@@ -3048,10 +4655,6 @@ void procesObjectAttributesForViewTransition(
     }
 }
 
-std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
-        _In_ const AsicView &currentView,
-        _In_ const sai_attr_metadata_t &meta);
-
 void bringNonRemovableObjectToDefaultState(
         _In_ AsicView &currentView,
         _In_ const std::shared_ptr<SaiObj> &currentObj)
@@ -3111,7 +4714,7 @@ void bringNonRemovableObjectToDefaultState(
 /**
  * @brief Indicates whether object can be removed.
  *
- * This methos should be used on oid objects, all non oid objects (like route,
+ * This method should be used on oid objects, all non oid objects (like route,
  * neighbor, etc.) can be safely removed.
  *
  * @param currentObj Current object to be examined.
@@ -3135,6 +4738,10 @@ bool isNonRemovableObject(
 
         return sw->isNonRemovableRid(rid);
     }
+
+    /*
+     * Object is non object id, like ROUTE_ENTRY etc, can be removed.
+     */
 
     return false;
 }
@@ -3211,7 +4818,7 @@ void removeExistingObjectFromCurrentView(
     {
         /*
          * Asic remove object is decreasing reference count on non object ID if
-         * current obejct is non object id, release existing links only looks
+         * current object is non object id, release existing links only looks
          * into attributes.
          */
 
@@ -3230,7 +4837,7 @@ sai_object_id_t translateTemporaryVidToCurrentVid(
 
     /*
      * This method is used to translate temporary VID to current VID using RID
-     * which should be present in both views.  If RID don't exist, then we
+     * which should be present in both views. If RID doesn't exist, then we
      * check whether object was created if so, then we return temporary VID
      * instead of creating new current VID and we don't need to track mapping
      * of those vids not having actual RID. This function should be used only
@@ -3496,12 +5103,12 @@ void createNewObjectFromTemporaryObject(
      * trap group to asic view, so if user will query default one, they will be
      * matched by RID.
      *
-     * Default trap group is transferred to view on init if it don't exist.
+     * Default trap group is transferred to view on init if it doesn't exist.
      *
      * There should be no such action here, since this scenario would mean that
      * there is default switch object in temporary view, but not in current
      * view. All default objects are put to ASIC state table when switch is
-     * created. So what can heppen is oposite scenario.
+     * created. So what can happen is opposite scenario.
      */
 
     /*
@@ -3644,7 +5251,7 @@ void createNewObjectFromTemporaryObject(
 
     /*
      * Move both object status to FINAL since both objects were processed
-     * succesfuly and object was created.
+     * successfully and object was created.
      */
 
     currentObj->setObjectStatus(SAI_OBJECT_STATUS_FINAL);
@@ -3686,7 +5293,7 @@ void UpdateObjectStatus(
              * objects are not processed, then RID also exists since current
              * object was selected as current best match. Other options are
              * object was removed, but the it could not be selected, or object
-             * was created, but then is in FINAL state so also couldn't be
+             * was created, but then is in FINAL state so also could not be
              * selected here.
              */
 
@@ -3703,7 +5310,7 @@ void UpdateObjectStatus(
             temporaryView.vidToRid[tvid] = rid;
 
             /*
-             * TODO: Set new VID if it don't exist in current view with NULL RID
+             * TODO: Set new VID if it doesn't exist in current view with NULL RID
              * that will mean we created new object, this VID will be later
              * used to count references and as a sanity check if we are
              * increasing valid reference.
@@ -3895,7 +5502,7 @@ std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
 
                 if (tg == currentView.ridToVid.end())
                 {
-                    SWSS_LOG_THROW("default trap group RID 0x%lx don't exist in current view", currentView.defaultTrapGroupRid);
+                    SWSS_LOG_THROW("default trap group RID 0x%lx doesn't exist in current view", currentView.defaultTrapGroupRid);
                 }
 
                 sai_attribute_t at;
@@ -3911,6 +5518,14 @@ std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
             SWSS_LOG_ERROR("default value type %d is not supported yet for %s, FIXME",
                     meta.defaultvaluetype,
                     meta.attridname);
+
+            return nullptr;
+
+        case SAI_DEFAULT_VALUE_TYPE_NONE:
+
+            /*
+             * No default value present.
+             */
 
             return nullptr;
 
@@ -4047,7 +5662,7 @@ bool performObjectSetTransition(
             {
                 /*
                  * This should not happen, since this mean, that attribute is
-                 * crete only, object is matched, nad attribute value is
+                 * create only, object is matched, and attribute value is
                  * different! DB is broken?
                  */
 
@@ -4107,6 +5722,30 @@ bool performObjectSetTransition(
                     temporaryAttr->getStrAttrValue().c_str());
 
             /*
+             * There is another case here, if this attribute exists only in
+             * temporary view and it has default value, and SET value is the
+             * same as default, then there is no need for ASIC operation.
+             *
+             * NOTE: This can lead to not put attributes with default VALUE to
+             * redis database and could be confusing when debugging.
+             */
+
+            const auto defaultValueAttr = getSaiAttrFromDefaultValue(currentView, *meta);
+
+            if (defaultValueAttr != nullptr)
+            {
+                std::string defStr = sai_serialize_attr_value(*meta, *defaultValueAttr->getSaiAttr());
+
+                if (defStr == temporaryAttr->getStrAttrValue())
+                {
+                    SWSS_LOG_NOTICE("explicit %s:%s is the same as default, no need for ASIC SET action",
+                            meta->attridname, defStr.c_str());
+
+                    continue;
+                }
+            }
+
+            /*
              * Generate action and update current view in second pass
              * and continue for next attribute.
              */
@@ -4129,9 +5768,9 @@ bool performObjectSetTransition(
                  * view, those attributes were put by snoop logic. Since we
                  * skipping only read-only attributes then we snoop create-only
                  * also, but on "existing" objects this will cause problem and
-                 * during apply logic we need to skip this attribute sinec we
+                 * during apply logic we need to skip this attribute since we
                  * won't be able to SET it anyway on matched object, and value
-                 * is the same as current obejct.
+                 * is the same as current object.
                  */
 
                 SWSS_LOG_INFO("Skipping create only attr on matched object: %s:%s",
@@ -4193,11 +5832,9 @@ bool performObjectSetTransition(
          * values based on get results, so this will not be needed.
          *
          * And even if we will have dependency tree, those values may not be
-         * synced becasue of remove etc, so we will need to check if default
+         * synced because of remove etc, so we will need to check if default
          * values actually exists.
          */
-
-        bool isDefaultCreatedRid = false;
 
         if (currentBestMatch->isOidObject())
         {
@@ -4215,15 +5852,12 @@ bool performObjectSetTransition(
 
                 auto sw = switches.begin()->second;
 
-                isDefaultCreatedRid = sw->isDefaultCreatedRid(rid);
-
-                if (isDefaultCreatedRid)
+                if (sw->isDiscoveredRid(rid))
                 {
                     SWSS_LOG_INFO("performing default on existing object VID %s: %s: %s, we need default dependency TREE, FIXME",
                             sai_serialize_object_id(vid).c_str(),
                             meta->attridname,
                             currentAttr->getStrAttrValue().c_str());
-
                 }
             }
         }
@@ -4244,12 +5878,30 @@ bool performObjectSetTransition(
             if (currentBestMatch->getObjectStatus() == SAI_OBJECT_STATUS_MATCHED &&
                     SAI_HAS_FLAG_CREATE_AND_SET(meta->flags))
             {
+                if (meta->objecttype == SAI_OBJECT_TYPE_PORT &&
+                        meta->attrid == SAI_PORT_ATTR_SPEED)
+                {
+                    /*
+                     * NOTE: for SPEED we could query each port at start and
+                     * save it's speed to recover here, or even we could query
+                     * each attribute on existing object during discovery
+                     * process.
+                     */
+
+                    SWSS_LOG_WARN("No previous value specified on %s (VID), can't bring to default, leaving attr unchanged: %s:%s",
+                            sai_serialize_object_id(currentBestMatch->getVid()).c_str(),
+                            meta->attridname,
+                            currentAttr->getStrAttrValue().c_str());
+
+                    continue;
+                }
+
                 if (meta->objecttype == SAI_OBJECT_TYPE_SCHEDULER_GROUP &&
                         meta->attrid == SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID)
                 {
                     /*
                      * This attribute can hold reference to user created
-                     * objects which maybe required to be destroyed, thats why
+                     * objects which maybe required to be destroyed, that's why
                      * we need to bring real value. What if real value were
                      * removed?
                      */
@@ -4300,7 +5952,7 @@ bool performObjectSetTransition(
                 }
 
                // SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE
-               // SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID
+               // SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID*
                // SAI_SCHEDULER_GROUP_ATTR_PARENT_NODE
                // SAI_BRIDGE_PORT_ATTR_BRIDGE_ID
                //
@@ -4311,8 +5963,10 @@ bool performObjectSetTransition(
                 // TODO SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID is mandatory on create but also SET
                 // if attribute is set we and object is in MATCHED state then that means we are able to
                 // bring this attribute to default state not for all attributes!
+                // *SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID - is not any more mandatory on create, so default should be NULL
 
-                SWSS_LOG_ERROR("current attribute is mandatory on create, crate and set, and object MATCHED, FIXME %s:%s",
+                SWSS_LOG_ERROR("current attribute is mandatory on create, crate and set, and object MATCHED, FIXME %s %s:%s",
+                        currentBestMatch->str_object_id.c_str(),
                         meta->attridname,
                         currentAttr->getStrAttrValue().c_str());
 
@@ -4329,9 +5983,9 @@ bool performObjectSetTransition(
                      * view, those attributes were put by snoop logic. Since we
                      * skipping only read-only attributes then we snoop create-only
                      * also, but on "existing" objects this will cause problem and
-                     * during apply logic we need to skip this attribute sinec we
+                     * during apply logic we need to skip this attribute since we
                      * won't be able to SET it anyway on matched object, and value
-                     * is the same as current obejct.
+                     * is the same as current object.
                      */
 
                     SWSS_LOG_INFO("Skipping create only attr on matched object: %s:%s",
@@ -4490,6 +6144,8 @@ void processObjectForViewTransition(
         return;
     }
 
+    SWSS_LOG_DEBUG("processing: %s:%s", temporaryObj->str_object_type.c_str(), temporaryObj->str_object_id.c_str());
+
     procesObjectAttributesForViewTransition(currentView, temporaryView, temporaryObj);
 
     /*
@@ -4527,8 +6183,8 @@ void processObjectForViewTransition(
      *   then we can just right away create this object since all keys objects
      *   were removed by finding best match
      *
-     * In both cases logic is the same, someone needs to figure out wheter
-     * updating object and set is possible or wheter we leave object alone, or
+     * In both cases logic is the same, someone needs to figure out whether
+     * updating object and set is possible or whether we leave object alone, or
      * we delete it before creating new one object.
      *
      * Preferably this logic could be in both but that duplicates compare
@@ -4582,7 +6238,7 @@ void processObjectForViewTransition(
      * that would be better approach. It could be actually param of comparison
      * logic.
      *
-     * NOTE: this function is called twice if first time will be successfull
+     * NOTE: this function is called twice if first time will be successful
      * then logs will be doubled in syslog.
      */
 
@@ -4590,6 +6246,21 @@ void processObjectForViewTransition(
 
     if (!passed)
     {
+        if (temporaryObj->getObjectStatus() == SAI_OBJECT_STATUS_MATCHED)
+        {
+            /*
+             * If object status is MATCHED, then we have the same object in
+             * current view and temporary view, so it must be possible to make
+             * transition to temporary view, hence for MATCHED objects
+             * performObjectSetTransition must pass. There can be some corner
+             * cases like existing objects after switch create and their attributes
+             * that are OID set to existing objects (like QUEUES).
+             */
+
+            SWSS_LOG_THROW("performObjectSetTransition on MATCHED object (%s) FAILED! bug?",
+                    temporaryObj->str_object_id.c_str());
+        }
+
         /*
          * First pass was a failure, so we can't update existing object with
          * temporary one, probably because of CRATE_ONLY attributes.
@@ -4623,13 +6294,16 @@ void processObjectForViewTransition(
              */
         }
 
+        // No need to store VID since at this point we don't have RID yet, it will be
+        // created on execute asic and RID will be saved to maps in both views.
+
         createNewObjectFromTemporaryObject(currentView, temporaryView, temporaryObj);
 
         return;
     }
 
     /*
-     * First pass was successfull, so we can do update on current object, lets do that now!
+     * First pass was successful, so we can do update on current object, lets do that now!
      */
 
     if (temporaryObj->isOidObject() && (temporaryObj->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED))
@@ -4657,6 +6331,10 @@ void processObjectForViewTransition(
         sai_object_id_t vid = temporaryObj->getVid();
 
         currentView.insertNewVidReference(vid);
+
+        // save temporary vid to rid after match
+        // can't be here since vim to rid map will not match
+        // currentView.vidToRid[vid] = currentView.vidToRid.at(currentBestMatch->getVid());
     }
 
     performObjectSetTransition(currentView, temporaryView, currentBestMatch, temporaryObj, true);
@@ -4788,7 +6466,7 @@ void applyViewTransition(
      *
      * TODO what about remove? can they be removed first ?
      *
-     * There is another issue that when we are removind next hop group member
+     * There is another issue that when we are removing next hop group member
      * and it's the last next hop group member in group where group is still in
      * use by some group, then we can't remove it, we need to first remove
      * route that uses this group, this puts this task in conflict when
@@ -4862,9 +6540,9 @@ void applyViewTransition(
      * that bridge port remove will be before vlan member remove and it will
      * fail. Similar problem is on hard reinit when removing existing objects.
      *
-     * TODO we need dependency tree during sai discovery! but if we put thsoe
+     * TODO we need dependency tree during sai discovery! but if we put those
      * to redis it will cause another problem, since some of those attributes
-     * are creat only, so object will be selected to "SET" after vid processing
+     * are create only, so object will be selected to "SET" after vid processing
      * but it wont be able to set create only attributes, we would need to skip
      * those.
      *
@@ -4945,7 +6623,7 @@ void executeOperationsOnAsic(
         _In_ AsicView &currentView,
         _In_ AsicView &temporaryView);
 
-// TODO find better way to acces this
+// TODO find better way to access this
 extern std::set<sai_object_id_t> initViewRemovedVidSet;
 
 void populateExistingObjects(
@@ -4958,12 +6636,12 @@ void populateExistingObjects(
     /*
      * We should transfer existing objects from current view to temporary view.
      * But not all objects, since user could remove some default removable
-     * obejcts like vlan member, bridge port etc. We collected those removed
+     * objects like vlan member, bridge port etc. We collected those removed
      * objects to initViewRemovedVidSet and we will use this as a reference to
      * transfer objects to temporary view.
      *
      * TODO: still sairedis metadata database have no idea about existing
-     * obejcts so user can create object which already exists like vlan 1 if he
+     * objects so user can create object which already exists like vlan 1 if he
      * didn't queried it yet. We need to transfer all dependency tree to
      * sairedis after switch create.
      */
@@ -4973,6 +6651,12 @@ void populateExistingObjects(
         SWSS_LOG_NOTICE("no switch present in temporary view, skipping");
         return;
     }
+
+    // XXX we have only 1 switch, so we can get away with this
+
+    auto sw = switches.begin()->second;
+
+    auto coldBootDiscoveredVids = sw->getColdBootDiscoveredVids();
 
     /*
      * If some objects that are existing objects on switch are not present in
@@ -5019,9 +6703,48 @@ void populateExistingObjects(
             continue;
         }
 
+        /*
+         * In case of warm boot, it may happen that user set some created
+         * objects on default existing objects, like for example buffer profile
+         * on ingress priority group.  In this case buffer profile should not
+         * be considered as matched object and copied to temporary view, since
+         * this object was not default existing object (on 1st cold boot) so in
+         * this case it must be processed by comparison logic and matched with
+         * possible new buffer profile created in temporary view. This may
+         * happen if OA will not care what was set previously on ingress
+         * priority group and just create new buffer profile and assign it.  In
+         * this case we don't want any asic operations to happen.  Also if we
+         * would pass this buffer profile as existing to temporary view, it
+         * would not be matched by comparison logic, and in the result we will
+         * end up with 2 buffer profiles, which 1st of them will be not
+         * assigned anywhere and this will be memory leak.
+         *
+         * Also a bunch of new asic operations will be generated for setting
+         * new user created buffer profile.  That's why we need default existing
+         * vid list to distinguish between user created and default switch
+         * created objects.
+         *
+         * For default existing objects, we don't need to copy attributes, since
+         * if user didn't set them, we want them to be back to default values.
+         *
+         * NOTE: If we are here, then this RID exists only in current view, and
+         * if this object contains any OID attributes, discovery logic queried
+         * them so they are also existing in current view.
+         */
+
+        if (coldBootDiscoveredVids.find(vid) == coldBootDiscoveredVids.end())
+        {
+            SWSS_LOG_INFO("object is not on default existing list: %s RID %s VID %s",
+                    sai_serialize_object_type(sai_object_type_query(rid)).c_str(),
+                    sai_serialize_object_id(rid).c_str(),
+                    sai_serialize_object_id(vid).c_str());
+
+            continue;
+        }
+
         temporaryView.createDummyExistingObject(rid, vid);
 
-        SWSS_LOG_DEBUG("populate existing %s RID %s VID %s",
+        SWSS_LOG_INFO("populate existing %s RID %s VID %s",
                 sai_serialize_object_type(sai_object_type_query(rid)).c_str(),
                 sai_serialize_object_id(rid).c_str(),
                 sai_serialize_object_id(vid).c_str());
@@ -5127,9 +6850,378 @@ void updateRedisDatabase(
     SWSS_LOG_NOTICE("updated redis database");
 }
 
+void logViewObjectCount(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView)
+{
+    SWSS_LOG_ENTER();
+
+    bool asic_changes = false;
+
+    for (int i = SAI_OBJECT_TYPE_NULL + 1; i < SAI_OBJECT_TYPE_EXTENSIONS_MAX; i++)
+    {
+        sai_object_type_t ot = (sai_object_type_t)i;
+
+        size_t c = currentView.getObjectsByObjectType(ot).size();
+        size_t t = temporaryView.getObjectsByObjectType(ot).size();
+
+        if (c == t)
+            continue;
+
+        asic_changes = true;
+
+        SWSS_LOG_WARN("object count for %s on current view %zu is differnt than on temporary view: %zu",
+                sai_serialize_object_type(ot).c_str(),
+                c,
+                t);
+    }
+
+    if (asic_changes)
+    {
+        SWSS_LOG_WARN("object count is differnt on both view, there will be ASIC OPERATIONS!");
+    }
+}
+
+void checkAsicVsDatabaseConsistency(
+        _In_ const AsicView &cur,
+        _In_ const AsicView &tmp)
+{
+    SWSS_LOG_ENTER();
+
+    bool hasErrors = false;
+
+    {
+        SWSS_LOG_TIMER("consistency check");
+
+        SWSS_LOG_WARN("performing consistency check");
+
+        for (const auto &pair: tmp.soAll)
+        {
+            const auto &obj = pair.second;
+
+            const auto &attrs = obj->getAllAttributes();
+
+            // get object meta key for get (object id or *entry)
+
+            sai_object_meta_key_t meta_key = obj->meta_key;
+
+            // translate all VID's to RIDs in non object is's
+
+            translate_vid_to_rid_non_object_id(meta_key);
+
+            auto info = sai_metadata_get_object_type_info(obj->getObjectType());
+
+            sai_attribute_t attr;
+
+            memset(&attr, 0, sizeof(attr));
+
+            if (attrs.size() == 0)
+            {
+                // get first attribute and do a get query to see if object exist's
+
+                auto meta = info->attrmetadata[0];
+
+                sai_status_t status = info->get(&meta_key, 1, &attr);
+
+                switch (status)
+                {
+                    case SAI_STATUS_SUCCESS:
+                    case SAI_STATUS_BUFFER_OVERFLOW:
+                        continue;
+
+                    case SAI_STATUS_NOT_IMPLEMENTED:
+                    case SAI_STATUS_NOT_SUPPORTED:
+
+                        SWSS_LOG_WARN("GET api for %s is not implemented on %s",
+                                meta->attridname,
+                                obj->str_object_id.c_str());
+                    continue;
+                }
+
+                SWSS_LOG_ERROR("failed to get %s on %s: %s",
+                        meta->attridname,
+                        obj->str_object_id.c_str(),
+                        sai_serialize_status(status).c_str());
+
+                hasErrors = true;
+
+                continue;
+            }
+
+            for (const auto &ap: attrs)
+            {
+                const auto &saiAttr = ap.second;
+
+                auto meta = saiAttr->getAttrMetadata();
+
+                // deserialize existing attribute so deserialize will allocate
+                // memory for all list's
+
+                attr.id = meta->attrid;
+
+                sai_deserialize_attr_value(saiAttr->getStrAttrValue(), *meta, attr, false);
+
+                // translate all VIDs from DB to RIDs for compare
+
+                translate_vid_to_rid_list(obj->getObjectType(), 1, &attr);
+
+                // get attr value with RIDs
+
+                const std::string& dbValue = sai_serialize_attr_value(*meta, attr);
+
+                sai_status_t status = info->get(&meta_key, 1, &attr);
+
+                if (meta->attrid == SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST && meta->objecttype == SAI_OBJECT_TYPE_QOS_MAP && status == SAI_STATUS_SUCCESS)
+                {
+                    // order does not matter on this list
+
+                    if (hasEqualQosMapList(attr.value.qosmap, saiAttr->getSaiAttr()->value.qosmap))
+                    {
+                        sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+                        continue;
+                    }
+                }
+
+                // free possible allocated lists
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("failed to get %s on %s %s",
+                            meta->attridname,
+                            obj->str_object_id.c_str(),
+                            sai_serialize_status(status).c_str());
+
+                    hasErrors = true;
+
+                    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+                    continue;
+                }
+
+                const std::string &asicValue = sai_serialize_attr_value(*meta, attr);
+
+                sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+
+                // pointers will not be equal since those will be from
+                // different process memory maps so just check if both pointers
+                // are NULL or both are SET
+
+                if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
+                {
+                    if (attr.value.ptr == NULL && saiAttr->getSaiAttr()->value.ptr == NULL)
+                        continue;
+
+                    if (attr.value.ptr != NULL && saiAttr->getSaiAttr()->value.ptr != NULL)
+                        continue;
+                }
+
+                if (asicValue == dbValue)
+                    continue;
+
+                SWSS_LOG_ERROR("value missmatch: %s on %s: ASIC: %s DB: %s, inconsistent state!",
+                        meta->attridname,
+                        obj->str_object_id.c_str(),
+                        asicValue.c_str(),
+                        dbValue.c_str());
+
+                hasErrors = true;
+            }
+        }
+
+        swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
+    }
+
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
+
+    if (hasErrors && enableUnittests())
+    {
+        SWSS_LOG_THROW("ASIC content is differnt than DB content!");
+    }
+}
+
+void checkMap(
+        _In_ const ObjectIdMap& firstR2V,
+        _In_ const char* firstR2Vname,
+        _In_ const ObjectIdMap& firstV2R,
+        _In_ const char * firstV2Rname,
+        _In_ const ObjectIdMap& secondR2V,
+        _In_ const char* secondR2Vname,
+        _In_ const ObjectIdMap& secondV2R,
+        _In_ const char *secondV2Rname)
+{
+    SWSS_LOG_ENTER();
+
+    for (auto it: firstR2V)
+    {
+        sai_object_id_t r = it.first;
+        sai_object_id_t v = it.second;
+
+        if (firstV2R.find(v) == firstV2R.end())
+            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, v, firstV2Rname);
+        else if (firstV2R.at(v) != r)
+            SWSS_LOG_ERROR("mismatch on %s (0x%lx:0x%lx) vs %s (0x%lx:0x%lx)", firstR2Vname, r, v, firstV2Rname, v, firstV2R.at(v));
+
+        if (secondR2V.find(r) == secondR2V.end())
+            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, v, secondR2Vname);
+        else if (secondV2R.find(secondR2V.at(r)) == secondV2R.end())
+            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, secondR2V.at(r), secondV2Rname);
+    }
+}
+
+void createPreMatchMapForObject(
+        _In_ const AsicView& cur,
+        _Inout_ AsicView& tmp,
+        _In_ std::shared_ptr<const SaiObj> cObj,
+        _In_ std::shared_ptr<const SaiObj> tObj,
+        _Inout_ std::set<std::string>& processed)
+{
+    SWSS_LOG_ENTER();
+
+    if (processed.find(tObj->str_object_id) != processed.end())
+        return;
+
+    processed.insert(tObj->str_object_id);
+
+    if (cObj->getObjectType() != tObj->getObjectType())
+        return;
+
+    // this object is matched, so it have same vid/rid in both views
+    // but it can have attributes with objects which are not matched
+    // for those we want to create pre match map
+
+    for (auto& ak: tObj->getAllAttributes())
+    {
+        auto id = ak.first;
+        const auto& tAttr = ak.second;
+
+        if (cObj->hasAttr(id) == false)
+            continue;
+
+        // both objects has the same attribute
+
+        const auto& cAttr = cObj->getSaiAttr(id);
+
+        const auto& tVids = tAttr->getOidListFromAttribute();
+        const auto& cVids = cAttr->getOidListFromAttribute();
+
+        if (tVids.size() != cVids.size())
+            continue; // if number of attributes is different then skip
+
+        if (tVids.size() != 1)
+            continue; // for now skip list attributes
+
+        for (size_t i = 0; i < tVids.size(); ++i)
+        {
+            sai_object_id_t tVid = tVids[i];
+            sai_object_id_t cVid = cVids[i];
+
+            if (tVid == SAI_NULL_OBJECT_ID || cVid == SAI_NULL_OBJECT_ID)
+                continue;
+
+            if (tmp.preMatchMap.find(tVid) != tmp.preMatchMap.end())
+                continue;
+
+            // since on one attribute sometimes different object types can be set
+            // check if both object types are correct
+
+            if (cur.oOids.at(cVid)->getObjectType() != tmp.oOids.at(tVid)->getObjectType())
+                continue;
+
+            SWSS_LOG_INFO("inserting pre match entry for %s:%s: 0x%lx (tmp) -> 0x%lx (cur)",
+                    tObj->str_object_id.c_str(),
+                    cAttr->getAttrMetadata()->attridname,
+                    tVid,
+                    cVid);
+
+            tmp.preMatchMap[tVid] = cVid;
+
+            // continue recursively through object dependency tree:
+
+            createPreMatchMapForObject(cur, tmp, cur.oOids.at(cVid), tmp.oOids.at(tVid), processed);
+        }
+    }
+}
+
+void createPreMatchMap(
+        _In_ const AsicView& cur,
+        _Inout_ AsicView& tmp)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * When comparison logic is running on object A it runs recursively on each
+     * object that was fount in object A attributes, because we need to make
+     * sure all objects are matched before actually processing object A.  For
+     * example before processing ROUTE_ENTRY, we process first NEXT_HOP and
+     * before that REOUTER_INTERFACE and before that PORT. Object processing
+     * could be described going from down to top. But figuring out for top
+     * object ex. WRED could be hard since we would need to check not matched
+     * yet buffer profile and buffer pool before we use QUEUE or IPG as an
+     * anchor object. We can actually leverage that and when processing graph
+     * from top to bottom, we can create helper map which will contain
+     * predictions which object will be suitable for current processing
+     * objects. We can have N candidates objects and instead of choosing 1 at
+     * random, to reduce number of ASIC operations we will use a pre match map
+     * which is created in this method.
+     *
+     * This map should be almost exact match in warn boot case, but it will be
+     * treated only as hint, not as actual mapping.
+     *
+     * We will create map for all matched objects and for route_entry,
+     * fdb_entry and neighbor_entry.
+     */
+
+    std::set<std::string> processed;
+
+    SWSS_LOG_TIMER("create preMatch map");
+
+    for (auto& ok: tmp.soAll)
+    {
+        auto& tObj = ok.second;
+
+        if (tObj->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
+            continue;
+
+        sai_object_id_t cObjVid = cur.ridToVid.at(tmp.vidToRid.at(tObj->getVid()));
+
+        auto& cObj = cur.oOids.at(cObjVid);
+
+        createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
+    }
+
+    for (auto&pk: tmp.routesByPrefix)
+    {
+        auto& prefix = pk.first;
+
+        // look only for unique prefixes
+
+        if (pk.second.size() != 1)
+            continue;
+
+        auto it = cur.routesByPrefix.find(prefix);
+
+        if (it == cur.routesByPrefix.end())
+            continue;
+
+        if (it->second.size() != 1)
+            continue;
+
+        auto& tObj = tmp.soAll.at(pk.second.at(0));
+        auto& cObj = cur.soAll.at(it->second.at(0));
+
+        createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
+    }
+
+    SWSS_LOG_NOTICE("preMatch map size: %zu", tmp.preMatchMap.size());
+}
+
 sai_status_t syncdApplyView()
 {
     SWSS_LOG_ENTER();
+
+    if (enableRefernceCountLogs)
+    {
+        dump_object_reference();
+    }
 
     SWSS_LOG_TIMER("apply");
 
@@ -5143,9 +7235,9 @@ sai_status_t syncdApplyView()
     /*
      * This method contains 2 stages.
      *
-     * First stage is non destructive, when orch agent will build new view, and
+     * First stage is non destructive, when orchagent will build new view, and
      * there will be bug in comparison logic in first stage, then syncd will
-     * send failure when doing apply view to orch agent but it will still be
+     * send failure when doing apply view to orchagent but it will still be
      * running. No asic operations are performed during this stage.
      *
      * Second stage is destructive, so if there will be bug in comparison logic
@@ -5248,13 +7340,25 @@ sai_status_t syncdApplyView()
          * existing objects needs to be updated in the switch!
          */
 
-        const auto &existingObjects = sw->getExistingObjects();
+        const auto &existingObjects = sw->getDiscoveredRids();
 
         populateExistingObjects(current, temp, existingObjects);
+
+        checkInternalObjects(current, temp);
 
         /*
          * Call main method!
          */
+
+        if (enableRefernceCountLogs)
+        {
+            current.dumpRef("current START");
+            temp.dumpRef("temp START");
+        }
+
+        createPreMatchMap(current, temp);
+
+        logViewObjectCount(current, temp);
 
         applyViewTransition(current, temp);
 
@@ -5277,8 +7381,11 @@ sai_status_t syncdApplyView()
                 (current.vidToRid.size() != temp.vidToRid.size()))
         {
             /*
-             * TODO for debug we need to display differences
+             * Check all possible differences.
              */
+
+            checkMap(current.ridToVid, "current R2V", current.vidToRid, "current V2R", temp.ridToVid, "temp R2V", temp.vidToRid, "temp V2R");
+            checkMap(temp.ridToVid, "temp R2V", temp.vidToRid, "temp V2R", current.ridToVid, "current R2V", current.vidToRid, "current V2R");
 
             SWSS_LOG_THROW("wrong number of vid/rid items in map, forgot to translate? R2V: %zu:%zu, V2R: %zu:%zu, FIXME",
                     current.ridToVid.size(),
@@ -5333,6 +7440,11 @@ sai_status_t syncdApplyView()
 
     updateRedisDatabase(current, temp);
 
+    if (g_enableConsistencyCheck)
+    {
+        checkAsicVsDatabaseConsistency(current, temp);
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -5385,6 +7497,8 @@ sai_object_id_t asic_translate_vid_to_rid(
     }
 
     sai_object_id_t rid = currentIt->second;
+
+    SWSS_LOG_INFO("translated VID 0x%lx to RID 0x%lx", vid, rid);
 
     return rid;
 }
@@ -5600,7 +7714,7 @@ sai_status_t asic_handle_generic(
 
                     auto sw = switches.begin()->second;
 
-                    if (sw->isDefaultCreatedRid(rid))
+                    if (sw->isDiscoveredRid(rid))
                     {
                         sw->removeExistingObjectReference(rid);
                     }
@@ -5639,6 +7753,14 @@ void asic_translate_vid_to_rid_non_object_id(
     SWSS_LOG_ENTER();
 
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
+
+    if (info->isobjectid)
+    {
+        meta_key.objectkey.key.object_id =
+            asic_translate_vid_to_rid(current, temporary, meta_key.objectkey.key.object_id);
+
+        return;
+    }
 
     for (size_t idx = 0; idx < info->structmemberscount; ++idx)
     {
@@ -5708,6 +7830,15 @@ sai_status_t asic_process_event(
 
     SWSS_LOG_INFO("key: %s op: %s", key.c_str(), op.c_str());
 
+    if (enableRefernceCountLogs)
+    {
+        SWSS_LOG_NOTICE("ASIC OP BEFORE : key: %s op: %s", key.c_str(), op.c_str());
+
+        dump_object_reference();
+        current.dumpRef("current before");
+        temporary.dumpRef("temp before");
+    }
+
     sai_common_api_t api = SAI_COMMON_API_MAX;
 
     // TODO convert those in common to use sai_common_api
@@ -5765,6 +7896,15 @@ sai_status_t asic_process_event(
         status = asic_handle_generic(current, temporary, meta_key, api, attr_count, attr_list);
     }
 
+    if (enableRefernceCountLogs)
+    {
+        SWSS_LOG_NOTICE("ASIC OP AFTER : key: %s op: %s", key.c_str(), op.c_str());
+
+        dump_object_reference();
+        current.dumpRef("current after");
+        temporary.dumpRef("temp after");
+    }
+
     if (status == SAI_STATUS_SUCCESS)
     {
         return status;
@@ -5785,6 +7925,44 @@ sai_status_t asic_process_event(
             sai_serialize_status(status).c_str());
 }
 
+void dumpComparisonLogicOutput(
+        _In_ const AsicView &currentView)
+{
+    SWSS_LOG_ENTER();
+
+    std::stringstream ss;
+
+    ss << "ASIC_OPERATIONS: " << currentView.asicGetOperationsCount() << std::endl;
+
+    for (const auto &op: currentView.asicGetWithOptimizedRemoveOperations())
+    {
+        const std::string &key = kfvKey(*op.op);
+        const std::string &opp = kfvOp(*op.op);
+
+        ss << "o " << opp << ": " << key << std::endl;
+
+        const auto &values = kfvFieldsValues(*op.op);
+
+        for (auto v: values)
+            ss << "a: " << fvField(v) << " " << fvValue(v) << std::endl;
+    }
+
+    std::ofstream log("applyview.log");
+
+    if (log.is_open())
+    {
+        log << ss.str();
+
+        log.close();
+
+        SWSS_LOG_NOTICE("wrote apply_view asic operations to applyview.log");
+    }
+    else
+    {
+        SWSS_LOG_ERROR("failed to open applyview.log");
+    }
+}
+
 void executeOperationsOnAsic(
         _In_ AsicView &currentView,
         _In_ AsicView &temporaryView)
@@ -5798,6 +7976,48 @@ void executeOperationsOnAsic(
         //swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
         SWSS_LOG_TIMER("asic apply");
+
+        if (enableUnittests())
+            dumpComparisonLogicOutput(currentView);
+
+        currentView.dumpVidToAsicOperatioId();
+
+        SWSS_LOG_NOTICE("NOT optimized operations");
+
+        for (const auto &op: currentView.asicGetOperations())
+        {
+            const std::string &key = kfvKey(*op.op);
+            const std::string &opp = kfvOp(*op.op);
+
+            SWSS_LOG_NOTICE("%s: %s", opp.c_str(), key.c_str());
+
+            const auto &values = kfvFieldsValues(*op.op);
+
+            for (auto v: values)
+            {
+                SWSS_LOG_NOTICE("- %s %s", fvField(v).c_str(), fvValue(v).c_str());
+            }
+        }
+
+        SWSS_LOG_NOTICE("optimized operations!");
+
+        std::map<std::string,int> opByObjectType;
+
+        for (const auto &op: currentView.asicGetWithOptimizedRemoveOperations())
+        {
+            const std::string &key = kfvKey(*op.op);
+            const std::string &opp = kfvOp(*op.op);
+
+            SWSS_LOG_NOTICE("%s: %s", opp.c_str(), key.c_str());
+
+            // count operations by object type
+            opByObjectType[key.substr(0, key.find(":"))]++;
+        }
+
+        for (auto kvp: opByObjectType)
+        {
+            SWSS_LOG_NOTICE("operations on %s: %d", kvp.first.c_str(), kvp.second);
+        }
 
         //for (const auto &op: currentView.asicGetOperations())
         for (const auto &op: currentView.asicGetWithOptimizedRemoveOperations())

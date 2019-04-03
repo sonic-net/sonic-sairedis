@@ -1,5 +1,6 @@
 #include "sai_vs.h"
 #include "sai_vs_state.h"
+#include <net/if.h>
 
 // TODO extra work may be needed on GET api if N on list will be > then actual
 
@@ -15,8 +16,6 @@ static std::vector<sai_object_id_t> port_list;
 static std::vector<sai_object_id_t> bridge_port_list_port_based;
 
 static sai_object_id_t default_vlan_id;
-static sai_object_id_t default_bridge_port_1q_router;
-static sai_object_id_t cpu_port_id;
 
 static sai_status_t set_switch_mac_address()
 {
@@ -38,11 +37,11 @@ static sai_status_t set_switch_mac_address()
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
 
-static sai_status_t set_default_notifications()
+static sai_status_t set_switch_default_attributes()
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_INFO("create default notifications");
+    SWSS_LOG_INFO("create switch default attributes");
 
     sai_attribute_t attr;
 
@@ -57,6 +56,16 @@ static sai_status_t set_default_notifications()
 
     attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
     attr.value.u32 = 0;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_RESTART_WARM;
+    attr.value.booldata = false;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
+    attr.value.booldata = false;
 
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
@@ -91,6 +100,8 @@ static sai_status_t create_cpu_port()
     sai_attribute_t attr;
 
     sai_object_id_t switch_id = ss->getSwitchId();
+
+    sai_object_id_t cpu_port_id;
 
     CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_PORT, &cpu_port_id, switch_id, 0, &attr));
 
@@ -134,47 +145,13 @@ static sai_status_t create_ports()
 {
     SWSS_LOG_ENTER();
 
-    // TODO currently port information is hardcoded
-    // but later on we can read this from config file
-
-    const uint32_t port_count = 32;
-
     SWSS_LOG_INFO("create ports");
 
-    sai_uint32_t lanes[] = {
-        29,30,31,32,
-        25,26,27,28,
-        37,38,39,40,
-        33,34,35,36,
-        41,42,43,44,
-        45,46,47,48,
-        5,6,7,8,
-        1,2,3,4,
-        9,10,11,12,
-        13,14,15,16,
-        21,22,23,24,
-        17,18,19,20,
-        49,50,51,52,
-        53,54,55,56,
-        61,62,63,64,
-        57,58,59,60,
-        65,66,67,68,
-        69,70,71,72,
-        77,78,79,80,
-        73,74,75,76,
-        105,106,107,108,
-        109,110,111,112,
-        117,118,119,120,
-        113,114,115,116,
-        121,122,123,124,
-        125,126,127,128,
-        85,86,87,88,
-        81,82,83,84,
-        89,90,91,92,
-        93,94,95,96,
-        97,98,99,100,
-        101,102,103,104
-    };
+    std::vector<std::vector<uint32_t>> laneMap;
+
+    getPortLaneMap(laneMap);
+
+    uint32_t port_count = (uint32_t)laneMap.size();
 
     port_list.clear();
 
@@ -192,14 +169,26 @@ static sai_status_t create_ports()
 
         sai_attribute_t attr;
 
+        attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+        attr.value.booldata = false;     /* default admin state is down as defined in SAI */
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_MTU;
+        attr.value.u32 = 1514;     /* default MTU is 1514 as defined in SAI */
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
         attr.id = SAI_PORT_ATTR_SPEED;
         attr.value.u32 = 10 * 1000;
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
+        std::vector<uint32_t> lanes = laneMap.at(i);
+
         attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
-        attr.value.u32list.count = 4;
-        attr.value.u32list.list = &lanes[4 * i];
+        attr.value.u32list.count = (uint32_t)lanes.size();
+        attr.value.u32list.list = lanes.data();
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
@@ -265,6 +254,8 @@ static sai_status_t create_bridge_ports()
 
     attr.id = SAI_BRIDGE_PORT_ATTR_TYPE;
     attr.value.s32 = SAI_BRIDGE_PORT_TYPE_1Q_ROUTER;
+
+    sai_object_id_t default_bridge_port_1q_router;
 
     CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_BRIDGE_PORT, &default_bridge_port_1q_router, ss->getSwitchId(), 1, &attr));
 
@@ -474,7 +465,7 @@ static sai_status_t create_ingress_priority_groups()
 {
     SWSS_LOG_ENTER();
 
-    // TODO prioirity groups size may change when we will modify pg or ports
+    // TODO priority groups size may change when we will modify pg or ports
 
     SWSS_LOG_INFO("create priority groups");
 
@@ -545,7 +536,7 @@ static sai_status_t create_scheduler_group_tree(
 
     // 3..c - have both QUEUES, each one 2
 
-    // sg 0 (2 groups)
+    // scheduler group 0 (2 groups)
     {
         sai_object_id_t sg_0 = sgs.at(0);
 
@@ -571,7 +562,7 @@ static sai_status_t create_scheduler_group_tree(
 
     uint32_t queue_index = 0;
 
-    // sg 1 (8 groups)
+    // scheduler group 1 (8 groups)
     {
         sai_object_id_t sg_1 = sgs.at(1);
 
@@ -625,7 +616,7 @@ static sai_status_t create_scheduler_group_tree(
         }
     }
 
-    // sg 2 (2 groups)
+    // scheduler group 2 (2 groups)
     {
         sai_object_id_t sg_2 = sgs.at(2);
 
@@ -827,20 +818,66 @@ static sai_status_t initialize_default_objects()
     CHECK_STATUS(create_qos_queues());
     CHECK_STATUS(set_maximum_number_of_childs_per_scheduler_group());
     CHECK_STATUS(set_number_of_ecmp_groups());
-    CHECK_STATUS(set_default_notifications());
+    CHECK_STATUS(set_switch_default_attributes());
     CHECK_STATUS(create_scheduler_groups());
 
     return SAI_STATUS_SUCCESS;
 }
 
+static sai_status_t warm_boot_initialize_objects()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("warm boot init objects");
+
+    /*
+     * We need to bring back previous state in case user will get some read
+     * only attributes and recalculation will need to be done.
+     *
+     * We only need to refresh ports since only ports are used in recalculation
+     * logic.
+     */
+
+    sai_object_id_t switch_id = ss->getSwitchId();
+
+    port_list.resize(SAI_VS_MAX_PORTS);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+
+    attr.value.objlist.count = SAI_VS_MAX_PORTS;
+    attr.value.objlist.list = port_list.data();
+
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr));
+
+    port_list.resize(attr.value.objlist.count);
+
+    SWSS_LOG_NOTICE("port list size: %zu", port_list.size());
+
+    return SAI_STATUS_SUCCESS;
+}
+
 void init_switch_BCM56850(
-        _In_ sai_object_id_t switch_id)
+        _In_ sai_object_id_t switch_id,
+        _In_ std::shared_ptr<SwitchState> warmBootState)
 {
     SWSS_LOG_ENTER();
 
     if (switch_id == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_THROW("init switch with NULL switch id is not allowed");
+    }
+
+    if (warmBootState != nullptr)
+    {
+        ss = g_switch_state_map[switch_id] = warmBootState;
+
+        warm_boot_initialize_objects();
+
+        SWSS_LOG_NOTICE("initialized switch %s in WARM boot mode", sai_serialize_object_id(switch_id).c_str());
+
+        return;
     }
 
     if (g_switch_state_map.find(switch_id) != g_switch_state_map.end())
@@ -857,7 +894,7 @@ void init_switch_BCM56850(
         SWSS_LOG_THROW("unable to init switch %s", sai_serialize_status(status).c_str());
     }
 
-    SWSS_LOG_NOTICE("initialized switch 0x%lx", switch_id);
+    SWSS_LOG_NOTICE("initialized switch %s", sai_serialize_object_id(switch_id).c_str());
 }
 
 void uninit_switch_BCM56850(
@@ -1031,7 +1068,7 @@ static sai_status_t refresh_ingress_priority_group(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;
@@ -1047,7 +1084,7 @@ static sai_status_t refresh_qos_queues(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;
@@ -1063,7 +1100,7 @@ static sai_status_t refresh_scheduler_groups(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;

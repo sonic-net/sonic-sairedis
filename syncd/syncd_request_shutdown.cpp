@@ -16,7 +16,9 @@ int main(int argc, char **argv)
     static struct option long_options[] =
     {
         { "cold", no_argument, 0, 'c' },
-        { "warm", no_argument, 0, 'w' }
+        { "warm", no_argument, 0, 'w' },
+        { "fast", no_argument, 0, 'f' },
+        { "pre",  no_argument, 0, 'p' }, // Requesting pre shutdown
     };
 
     std::string op;
@@ -26,7 +28,7 @@ int main(int argc, char **argv)
     {
         int option_index = 0;
 
-        int c = getopt_long(argc, argv, "cw", long_options, &option_index);
+        int c = getopt_long(argc, argv, "cwfp", long_options, &option_index);
 
         if (c == -1)
             break;
@@ -48,6 +50,11 @@ int main(int argc, char **argv)
                 optionSpecified = true;
                 break;
 
+            case 'p':
+                op = "PRE-SHUTDOWN";
+                optionSpecified = true;
+                break;
+
             default:
                 SWSS_LOG_ERROR("getopt failure");
                 exit(EXIT_FAILURE);
@@ -61,6 +68,7 @@ int main(int argc, char **argv)
         std::cerr << "Shutdown option must be specified" << std::endl;
         std::cerr << "---------------------------------" << std::endl;
         std::cerr << " --warm  -w   for warm restart" << std::endl;
+        std::cerr << " --pre   -p   for warm pre-shutdown" << std::endl;
         std::cerr << " --cold  -c   for cold restart" << std::endl;
         std::cerr << " --fast  -f   for fast restart" << std::endl;
 

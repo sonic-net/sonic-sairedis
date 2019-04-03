@@ -7,6 +7,7 @@ extern "C" {
 
 #define SYNCD_INIT_VIEW  "INIT_VIEW"
 #define SYNCD_APPLY_VIEW "APPLY_VIEW"
+#define SYNCD_INSPECT_ASIC "SYNCD_INSPECT_ASIC"
 #define ASIC_STATE_TABLE "ASIC_STATE"
 #define TEMP_PREFIX      "TEMP_"
 
@@ -14,7 +15,9 @@ typedef enum _sai_redis_notify_syncd_t
 {
     SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW,
 
-    SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW
+    SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW,
+
+    SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC
 
 } sai_redis_notify_syncd_t;
 
@@ -92,7 +95,7 @@ typedef enum _sai_redis_switch_attr_t
      * to ".n" suffix, and when we reopen file, we will actually create new
      * one.
      *
-     * This attribute is only setting variable in memroy, it's safe to call
+     * This attribute is only setting variable in memory, it's safe to call
      * this from signal handler.
      *
      * @type bool
@@ -146,7 +149,7 @@ sai_status_t sai_bulk_create_route_entry(
         _In_ uint32_t object_count,
         _In_ const sai_route_entry_t *route_entry,
         _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t *const *attr_list,
+        _In_ const sai_attribute_t **attr_list,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses);
 
@@ -221,7 +224,7 @@ sai_status_t sai_bulk_create_next_hop_group_members(
         _In_ sai_object_id_t switch_id,
         _In_ uint32_t object_count,
         _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t *const *attrs,
+        _In_ const sai_attribute_t **attrs,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_object_id_t *object_id,
         _Out_ sai_status_t *object_statuses);

@@ -38,6 +38,40 @@ SaiAttributeList::SaiAttributeList(
     }
 }
 
+SaiAttributeList::SaiAttributeList(
+        _In_ const sai_object_type_t object_type,
+        _In_ const std::unordered_map<std::string, std::string>& hash,
+        _In_ bool countOnly)
+{
+    for (auto it = hash.begin(); it != hash.end(); it++)
+    {
+        const std::string &str_attr_id = it->first;
+        const std::string &str_attr_value = it->second;
+
+        if (str_attr_id == "NULL")
+        {
+            continue;
+        }
+
+        sai_attribute_t attr;
+        memset(&attr, 0, sizeof(sai_attribute_t));
+
+        sai_deserialize_attr_id(str_attr_id, attr.id);
+
+        auto meta = sai_metadata_get_attr_metadata(object_type, attr.id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_THROW("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr.id);
+        }
+
+        sai_deserialize_attr_value(str_attr_value, *meta, attr, countOnly);
+
+        m_attr_list.push_back(attr);
+        m_attr_value_type_list.push_back(meta->attrvaluetype);
+    }
+}
+
 SaiAttributeList::~SaiAttributeList()
 {
     size_t attr_count = m_attr_list.size();

@@ -191,6 +191,10 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.ipaddr, dst_attr.value.ipaddr);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+            transfer_primitive(src_attr.value.ipprefix, dst_attr.value.ipprefix);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
             transfer_primitive(src_attr.value.oid, dst_attr.value.oid);
             break;
@@ -243,6 +247,9 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.aclresource, dst_attr.value.aclresource, countOnly));
             break;
 
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.ipaddrlist, dst_attr.value.ipaddrlist, countOnly));
+            break;
 
             /* ACL FIELD DATA */
 
@@ -322,6 +329,11 @@ sai_status_t transfer_attribute(
             break;
 
             /* ACL ACTION DATA */
+
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
+            transfer_primitive(src_attr.value.aclaction.enable, dst_attr.value.aclaction.enable);
+            transfer_primitive(src_attr.value.aclaction.parameter.booldata, dst_attr.value.aclaction.parameter.booldata);
+            break;
 
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             transfer_primitive(src_attr.value.aclaction.enable, dst_attr.value.aclaction.enable);
@@ -701,6 +713,65 @@ std::string sai_serialize_route_entry(
     return j.dump();
 }
 
+std::string sai_serialize_ipmc_entry(
+        _In_ const sai_ipmc_entry_t& ipmc_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(ipmc_entry.switch_id);
+    j["vr_id"] = sai_serialize_object_id(ipmc_entry.vr_id);
+    j["type"] = sai_serialize_ipmc_entry_type(ipmc_entry.type);
+    j["destination"] = sai_serialize_ip_address(ipmc_entry.destination);
+    j["sourte"] = sai_serialize_ip_address(ipmc_entry.source);
+
+    return j.dump();
+}
+
+std::string sai_serialize_l2mc_entry(
+        _In_ const sai_l2mc_entry_t& l2mc_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(l2mc_entry.switch_id);
+    j["bv_id"] = sai_serialize_object_id(l2mc_entry.bv_id);
+    j["type"] = sai_serialize_l2mc_entry_type(l2mc_entry.type);
+    j["destination"] = sai_serialize_ip_address(l2mc_entry.destination);
+    j["sourte"] = sai_serialize_ip_address(l2mc_entry.source);
+
+    return j.dump();
+}
+
+std::string sai_serialize_mcast_fdb_entry(
+        _In_ const sai_mcast_fdb_entry_t& mcast_fdb_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(mcast_fdb_entry.switch_id);
+    j["bv_id"] = sai_serialize_object_id(mcast_fdb_entry.bv_id);
+    j["mac_address"] = sai_serialize_mac(mcast_fdb_entry.mac_address);
+
+    return j.dump();
+}
+
+std::string sai_serialize_inseg_entry(
+        _In_ const sai_inseg_entry_t& inseg_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(inseg_entry.switch_id);
+    j["label"] = sai_serialize_number(inseg_entry.label);
+
+    return j.dump();
+}
+
 std::string sai_serialize_fdb_entry(
         _In_ const sai_fdb_entry_t& fdb_entry)
 {
@@ -713,6 +784,22 @@ std::string sai_serialize_fdb_entry(
     j["bvid"] = sai_serialize_object_id(fdb_entry.bv_id);
 
     return j.dump();
+}
+
+std::string sai_serialize_l2mc_entry_type(
+        _In_ const sai_l2mc_entry_type_t type)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(type, &sai_metadata_enum_sai_l2mc_entry_type_t);
+}
+
+std::string sai_serialize_ipmc_entry_type(
+        _In_ const sai_ipmc_entry_type_t type)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(type, &sai_metadata_enum_sai_ipmc_entry_type_t);
 }
 
 std::string sai_serialize_port_stat(
@@ -739,12 +826,28 @@ std::string sai_serialize_queue_stat(
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_queue_stat_t);
 }
 
+std::string sai_serialize_router_interface_stat(
+        _In_ const sai_router_interface_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_router_interface_stat_t);
+}
+
 std::string sai_serialize_ingress_priority_group_stat(
         _In_ const sai_ingress_priority_group_stat_t counter)
 {
     SWSS_LOG_ENTER();
 
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_ingress_priority_group_stat_t);
+}
+
+std::string sai_serialize_ingress_priority_group_attr(
+        _In_ const sai_ingress_priority_group_attr_t attr)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(attr, &sai_metadata_enum_sai_ingress_priority_group_attr_t);
 }
 
 std::string sai_serialize_tunnel_stat(
@@ -904,6 +1007,15 @@ std::string sai_serialize_list(
 
 }
 
+std::string sai_serialize_ip_address_list(
+        _In_ const sai_ip_address_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_list(list, countOnly, [&](sai_ip_address_t item) { return sai_serialize_ip_address(item);} );
+}
+
 std::string sai_serialize_enum_list(
         _In_ const sai_s32_list_t& list,
         _In_ const sai_enum_metadata_t* meta,
@@ -963,6 +1075,19 @@ json sai_serialize_qos_map(
     j["value"]  = sai_serialize_qos_map_params(qosmap.value);;
 
     return j;
+}
+
+std::string sai_serialize_qos_map_item(
+        _In_ const sai_qos_map_t& qosmap)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["key"]    = sai_serialize_qos_map_params(qosmap.key);
+    j["value"]  = sai_serialize_qos_map_params(qosmap.value);;
+
+    return j.dump();
 }
 
 std::string sai_serialize_qos_map_list(
@@ -1065,6 +1190,9 @@ std::string sai_serialize_acl_action(
 
     switch (meta.attrvaluetype)
     {
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
+            return sai_serialize_bool(action.parameter.booldata);
+
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             return sai_serialize_number(action.parameter.u8);
 
@@ -1230,6 +1358,9 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
             return sai_serialize_ip_address(attr.value.ipaddr);
 
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+            return sai_serialize_ip_prefix(attr.value.ipprefix);
+
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
             return sai_serialize_object_id(attr.value.oid);
 
@@ -1269,6 +1400,9 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             return sai_serialize_acl_resource_list(attr.value.aclresource, countOnly);
 
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            return sai_serialize_ip_address_list(attr.value.ipaddrlist, countOnly);
+
             // ACL FIELD DATA
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
@@ -1288,6 +1422,7 @@ std::string sai_serialize_attr_value(
 
             // ACL ACTION DATA
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -1476,7 +1611,7 @@ std::string sai_serialize_object_meta_key(
 
     std::string key;
 
-    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_MAX)
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_THROW("invalid object type value %s", sai_serialize_object_type(meta_key.objecttype).c_str());
     }
@@ -1982,6 +2117,52 @@ void sai_deserialize_ip_address(
     SWSS_LOG_THROW("invalid ip address %s", s.c_str());
 }
 
+void sai_deserialize_ip_prefix(
+        _In_ const std::string &s,
+        _Out_ sai_ip_prefix_t &ip_prefix)
+{
+    SWSS_LOG_ENTER();
+
+    auto tokens = swss::tokenize(s, '/');
+
+    if (tokens.size() != 2)
+    {
+        SWSS_LOG_THROW("invalid ip prefix %s", s.c_str());
+    }
+
+    uint8_t mask;
+    sai_deserialize_number(tokens[1], mask);
+
+    const std::string &ip = tokens[0];
+
+    if (inet_pton(AF_INET, ip.c_str(), &ip_prefix.addr.ip4) == 1)
+    {
+        ip_prefix.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+
+        sai_populate_ip_mask(mask, (uint8_t*)&ip_prefix.mask.ip4, false);
+    }
+    else if (inet_pton(AF_INET6, ip.c_str(), ip_prefix.addr.ip6) == 1)
+    {
+        ip_prefix.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+
+        sai_populate_ip_mask(mask, ip_prefix.mask.ip6, true);
+    }
+    else
+    {
+        SWSS_LOG_THROW("invalid ip prefix %s", s.c_str());
+    }
+}
+
+void sai_deserialize_ip_address_list(
+        _In_ const std::string& s,
+        _Out_ sai_ip_address_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_list(s, list, countOnly, [&](const std::string sitem, sai_ip_address_t& item) { sai_deserialize_ip_address(sitem, item);} );
+}
+
 template <typename T>
 void sai_deserialize_range(
         _In_ const std::string& s,
@@ -2113,6 +2294,9 @@ void sai_deserialize_acl_action(
 
     switch (meta.attrvaluetype)
     {
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
+            return sai_deserialize_bool(s, action.parameter.booldata);
+
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             return sai_deserialize_number(s, action.parameter.u8);
 
@@ -2208,6 +2392,9 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
             return sai_deserialize_ip_address(s, attr.value.ipaddr);
 
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+            return sai_deserialize_ip_prefix(s, attr.value.ipprefix);
+
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
             return sai_deserialize_object_id(s, attr.value.oid);
 
@@ -2247,6 +2434,9 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             return sai_deserialize_acl_resource_list(s, attr.value.aclresource, countOnly);
 
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            return sai_deserialize_ip_address_list(s, attr.value.ipaddrlist, countOnly);
+
             // ACL FIELD DATA
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
@@ -2266,6 +2456,7 @@ void sai_deserialize_attr_value(
 
             // ACL ACTION DATA
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2281,42 +2472,6 @@ void sai_deserialize_attr_value(
 
         default:
             SWSS_LOG_THROW("deserialize type %d is not supportd yet FIXME", meta.attrvaluetype);
-    }
-}
-
-void sai_deserialize_ip_prefix(
-        _In_ const std::string &s,
-        _Out_ sai_ip_prefix_t &ip_prefix)
-{
-    SWSS_LOG_ENTER();
-
-    auto tokens = swss::tokenize(s, '/');
-
-    if (tokens.size() != 2)
-    {
-        SWSS_LOG_THROW("invalid ip prefix %s", s.c_str());
-    }
-
-    uint8_t mask;
-    sai_deserialize_number(tokens[1], mask);
-
-    const std::string &ip = tokens[0];
-
-    if (inet_pton(AF_INET, ip.c_str(), &ip_prefix.addr.ip4) == 1)
-    {
-        ip_prefix.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-
-        sai_populate_ip_mask(mask, (uint8_t*)&ip_prefix.mask.ip4, false);
-    }
-    else if (inet_pton(AF_INET6, ip.c_str(), ip_prefix.addr.ip6) == 1)
-    {
-        ip_prefix.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
-
-        sai_populate_ip_mask(mask, ip_prefix.mask.ip6, true);
-    }
-    else
-    {
-        SWSS_LOG_THROW("invalid ip prefix %s", s.c_str());
     }
 }
 
@@ -2484,7 +2639,7 @@ void sai_deserialize_object_meta_key(
 
     sai_deserialize_object_type(str_object_type, meta_key.objecttype);
 
-    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_MAX)
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_NULL || meta_key.objecttype >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_THROW("invalid object type value %s", sai_serialize_object_type(meta_key.objecttype).c_str());
     }
@@ -2519,7 +2674,7 @@ void sai_deserialize_object_meta_key(
 }
 
 
-// deserialize ntf
+// deserialize notifications
 
 void sai_deserialize_json_fdb_event_notification_data(
         _In_ const json& j,
@@ -2641,6 +2796,7 @@ void sai_deserialize_free_attribute_value(
         case SAI_ATTR_VALUE_TYPE_IPV6:
         case SAI_ATTR_VALUE_TYPE_POINTER:
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
             break;
 
@@ -2688,6 +2844,10 @@ void sai_deserialize_free_attribute_value(
             sai_free_list(attr.value.aclresource);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            sai_free_list(attr.value.ipaddrlist);
+            break;
+
             /* ACL FIELD DATA */
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
@@ -2713,6 +2873,7 @@ void sai_deserialize_free_attribute_value(
 
             /* ACL ACTION DATA */
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2734,7 +2895,7 @@ void sai_deserialize_free_attribute_value(
     }
 }
 
-// deserialize free ntf
+// deserialize free notifications
 
 void sai_deserialize_free_fdb_event(
         _In_ sai_fdb_event_notification_data_t& fdb_event)
@@ -2790,31 +2951,13 @@ void sai_deserialize_free_queue_deadlock_ntf(
     delete[] queue_deadlock;
 }
 
-void sai_deserialize_port_stat(
+void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,
-        _Out_ sai_port_stat_t& stat)
+        _Out_ sai_ingress_priority_group_attr_t& attr)
 {
     SWSS_LOG_ENTER();
 
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_port_stat_t, (int32_t&)stat);
-}
-
-void sai_deserialize_queue_stat(
-        _In_ const std::string& s,
-        _Out_ sai_queue_stat_t& stat)
-{
-    SWSS_LOG_ENTER();
-
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_queue_stat_t, (int32_t&)stat);
-}
-
-void sai_deserialize_ingress_priority_group_stat(
-        _In_ const std::string& s,
-        _Out_ sai_ingress_priority_group_stat_t& stat)
-{
-    SWSS_LOG_ENTER();
-
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_ingress_priority_group_stat_t, (int32_t&)stat);
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_ingress_priority_group_attr_t, (int32_t&)attr);
 }
 
 void sai_deserialize_queue_attr(

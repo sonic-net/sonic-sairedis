@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta
+AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
 
 bin_PROGRAMS = saisdkdump
 
@@ -8,10 +8,15 @@ else
 DBGFLAGS = -g
 endif
 
+
 if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else
+if sonic_asic_platform_barefoot
+SAILIB=-L/opt/bfn/install/lib -lswitchsai
+else
 SAILIB=-lsai
+endif
 endif
 
 saisdkdump_SOURCES = saisdkdump.cpp

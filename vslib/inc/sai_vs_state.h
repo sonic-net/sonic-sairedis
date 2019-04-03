@@ -52,8 +52,8 @@ class SaiAttrWrap
             SWSS_LOG_ENTER();
 
             /*
-             * On destructor we need to call free to dealocate possible
-             * alocated list on constructor.
+             * On destructor we need to call free to deallocate possible
+             * allocated list on constructor.
              */
 
             sai_deserialize_free_attribute_value(m_meta->attrvaluetype, m_attr);
@@ -92,7 +92,7 @@ class SaiAttrWrap
 };
 
 /**
- * @brief AttrHash key is attribute ID, value is actuall attribute
+ * @brief AttrHash key is attribute ID, value is actual attribute
  */
 typedef std::map<std::string, std::shared_ptr<SaiAttrWrap>> AttrHash;
 
@@ -135,6 +135,15 @@ typedef struct _fdb_info_t
 
 } fdb_info_t;
 
+extern std::string sai_vs_serialize_fdb_info(
+        _In_ const fdb_info_t& fdb_info);
+
+extern void sai_vs_deserialize_fdb_info(
+        _In_ const std::string& data,
+        _Out_ fdb_info_t& fdb_info);
+
+#define SAI_VS_FDB_INFO "SAI_VS_FDB_INFO"
+
 extern std::set<fdb_info_t> g_fdb_info_set;
 
 class SwitchState
@@ -154,7 +163,7 @@ class SwitchState
                         sai_serialize_object_type(sai_object_type_query(switch_id)).c_str());
             }
 
-            for (int i = SAI_OBJECT_TYPE_NULL; i < (int)SAI_OBJECT_TYPE_MAX; ++i)
+            for (int i = SAI_OBJECT_TYPE_NULL; i < (int)SAI_OBJECT_TYPE_EXTENSIONS_MAX; ++i)
             {
                 /*
                  * Populate empty maps for each object to avoid checking if
@@ -266,6 +275,9 @@ extern SwitchStateMap g_switch_state_map;
 void vs_reset_id_counter();
 void vs_clear_switch_ids();
 void vs_free_real_object_id(
+        _In_ sai_object_id_t switch_id);
+
+sai_status_t vs_recreate_hostif_tap_interfaces(
         _In_ sai_object_id_t switch_id);
 
 sai_object_id_t vs_create_real_object_id(

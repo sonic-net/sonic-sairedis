@@ -36,11 +36,11 @@ static sai_status_t set_switch_mac_address()
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
 
-static sai_status_t set_default_notifications()
+static sai_status_t set_switch_default_attributes()
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_INFO("create default notifications");
+    SWSS_LOG_INFO("create switch default attributes");
 
     sai_attribute_t attr;
 
@@ -55,6 +55,16 @@ static sai_status_t set_default_notifications()
 
     attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
     attr.value.u32 = 0;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_RESTART_WARM;
+    attr.value.booldata = false;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
+    attr.value.booldata = false;
 
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
@@ -132,49 +142,13 @@ static sai_status_t create_ports()
 {
     SWSS_LOG_ENTER();
 
-    /*
-     * TODO currently port information is hardcoded but later on we can read
-     * this from profile.ini and use correct lane mapping.
-     */
-
-    const uint32_t port_count = 32;
-
     SWSS_LOG_INFO("create ports");
 
-    sai_uint32_t lanes[] = {
-        64,65,66,67,
-        68,69,70,71,
-        72,73,74,75,
-        76,77,78,79,
-        80,81,82,83,
-        84,85,86,87,
-        88,89,90,91,
-        92,93,94,95,
-        96,97,98,99,
-        100,101,102,103,
-        104,105,106,107,
-        108,109,110,111,
-        112,113,114,115,
-        116,117,118,119,
-        120,121,122,123,
-        124,125,126,127,
-        56,57,58,59,
-        60,61,62,63,
-        48,49,50,51,
-        52,53,54,55,
-        40,41,42,43,
-        44,45,46,47,
-        32,33,34,35,
-        36,37,38,39,
-        24,25,26,27,
-        28,29,30,31,
-        16,17,18,19,
-        20,21,22,23,
-        8,9,10,11,
-        12,13,14,15,
-        0,1,2,3,
-        4,5,6,7,
-    };
+    std::vector<std::vector<uint32_t>> laneMap;
+
+    getPortLaneMap(laneMap);
+
+    uint32_t port_count = (uint32_t)laneMap.size();
 
     port_list.clear();
 
@@ -192,14 +166,26 @@ static sai_status_t create_ports()
 
         sai_attribute_t attr;
 
+        attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+        attr.value.booldata = false;     /* default admin state is down as defined in SAI */
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_MTU;
+        attr.value.u32 = 1514;     /* default MTU is 1514 as defined in SAI */
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
         attr.id = SAI_PORT_ATTR_SPEED;
         attr.value.u32 = 40 * 1000;     /* TODO from config */
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
+        std::vector<uint32_t> lanes = laneMap.at(i);
+
         attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
-        attr.value.u32list.count = 4;
-        attr.value.u32list.list = &lanes[4 * i];
+        attr.value.u32list.count = (uint32_t)lanes.size();
+        attr.value.u32list.list = lanes.data();
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
@@ -504,7 +490,7 @@ static sai_status_t create_scheduler_group_tree(
 
     // 2.. - have both QUEUES, each one 2
 
-    // sg 0 (8 childs)
+    // scheduler group 0 (8 childs)
     {
         sai_object_id_t sg_0 = sgs.at(0);
 
@@ -791,14 +777,59 @@ static sai_status_t initialize_default_objects()
     CHECK_STATUS(create_ingress_priority_groups());
     CHECK_STATUS(create_qos_queues());
     CHECK_STATUS(set_maximum_number_of_childs_per_scheduler_group());
-    CHECK_STATUS(set_default_notifications());
+    CHECK_STATUS(set_switch_default_attributes());
     CHECK_STATUS(create_scheduler_groups());
 
     return SAI_STATUS_SUCCESS;
 }
 
+static sai_status_t warm_boot_initialize_objects()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("warm boot init objects");
+
+    /*
+     * We need to bring back previous state in case user will get some read
+     * only attributes and recalculation will need to be done.
+     *
+     * We need to refresh:
+     * - ports
+     * - default bridge port 1q router
+     */
+
+    sai_object_id_t switch_id = ss->getSwitchId();
+
+    port_list.resize(SAI_VS_MAX_PORTS);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+
+    attr.value.objlist.count = SAI_VS_MAX_PORTS;
+    attr.value.objlist.list = port_list.data();
+
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr));
+
+    port_list.resize(attr.value.objlist.count);
+
+    SWSS_LOG_NOTICE("port list size: %zu", port_list.size());
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
+
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr));
+
+    default_bridge_port_1q_router = attr.value.oid;
+
+    SWSS_LOG_NOTICE("default bridge port 1q router: %s",
+            sai_serialize_object_id(default_bridge_port_1q_router).c_str());
+
+    return SAI_STATUS_SUCCESS;
+}
+
 void init_switch_MLNX2700(
-        _In_ sai_object_id_t switch_id)
+        _In_ sai_object_id_t switch_id,
+        _In_ std::shared_ptr<SwitchState> warmBootState)
 {
     SWSS_LOG_ENTER();
 
@@ -807,6 +838,17 @@ void init_switch_MLNX2700(
     if (switch_id == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_THROW("init switch with NULL switch id is not allowed");
+    }
+
+    if (warmBootState != nullptr)
+    {
+        ss = g_switch_state_map[switch_id] = warmBootState;
+
+        warm_boot_initialize_objects();
+
+        SWSS_LOG_NOTICE("initialized switch %s in WARM boot mode", sai_serialize_object_id(switch_id).c_str());
+
+        return;
     }
 
     if (g_switch_state_map.find(switch_id) != g_switch_state_map.end())
@@ -833,7 +875,7 @@ void uninit_switch_MLNX2700(
 
     if (g_switch_state_map.find(switch_id) == g_switch_state_map.end())
     {
-        SWSS_LOG_THROW("switch don't exists 0x%lx", switch_id);
+        SWSS_LOG_THROW("switch doesn't exist 0x%lx", switch_id);
     }
 
     SWSS_LOG_NOTICE("remove switch 0x%lx", switch_id);
@@ -1012,7 +1054,7 @@ static sai_status_t refresh_ingress_priority_group(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;
@@ -1028,7 +1070,7 @@ static sai_status_t refresh_qos_queues(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;
@@ -1044,7 +1086,7 @@ static sai_status_t refresh_scheduler_groups(
     /*
      * TODO Currently we don't have index in groups, so we don't know how to
      * sort.  Returning success, since assuming that we will not create more
-     * ingreess priority groups.
+     * ingress priority groups.
      */
 
     return SAI_STATUS_SUCCESS;

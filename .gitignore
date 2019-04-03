@@ -7,24 +7,44 @@
 # Packaging Files #
 ###################
 debian/files
+debian/libsairedis-dbg/
+debian/libsairedis-dbg.debhelper.log
+debian/libsairedis-dbg.substvars
 debian/libsairedis-dev.debhelper.log
 debian/libsairedis-dev.substvars
 debian/libsairedis.debhelper.log
 debian/libsairedis.postinst.debhelper
 debian/libsairedis.postrm.debhelper
 debian/libsairedis.substvars
+debian/libsaimetadata-dbg.debhelper.log
+debian/libsaimetadata-dbg.substvars
+debian/libsaimetadata-dbg/
 debian/libsaimetadata-dev.debhelper.log
 debian/libsaimetadata-dev.substvars
 debian/libsaimetadata.debhelper.log
 debian/libsaimetadata.postinst.debhelper
 debian/libsaimetadata.postrm.debhelper
 debian/libsaimetadata.substvars
+debian/libsaivs-dbg/
+debian/libsaivs-dbg.debhelper.log
+debian/libsaivs-dbg.substvars
 debian/libsaivs-dev.debhelper.log
 debian/libsaivs-dev.substvars
 debian/libsaivs.debhelper.log
 debian/libsaivs.postinst.debhelper
 debian/libsaivs.postrm.debhelper
 debian/libsaivs.substvars
+debian/syncd-rpc-dbg.debhelper.log
+debian/syncd-rpc-dbg.substvars
+debian/syncd-rpc-dbg/
+debian/syncd-rpc.debhelper.log
+debian/syncd-vs-dbg.debhelper.log
+debian/syncd-vs-dbg.substvars
+debian/syncd-vs-dbg/
+debian/syncd-vs.debhelper.log
+debian/syncd-dbg.debhelper.log
+debian/syncd-dbg.substvars
+debian/syncd-dbg/
 debian/syncd.debhelper.log
 debian/syncd.postinst.debhelper
 debian/syncd.postrm.debhelper
@@ -57,6 +77,28 @@ stamp-h1
 m4
 config
 
+# Test Files #
+##############
+meta/test-suite.log
+meta/tests.log
+meta/tests.trs
+
+syncd/test-suite.log
+syncd/tests
+
+tests/brcm.pl.log
+tests/brcm.pl.trs
+tests/mlnx.pl.log
+tests/mlnx.pl.trs
+tests/swsslogentercheck.sh.log
+tests/swsslogentercheck.sh.trs
+tests/test-suite.log
+
+vslib/src/test-suite.log
+vslib/src/tests
+vslib/src/tests.log
+vslib/src/tests.trs
+
 # Dependency Folder #
 #####################
 deps/
@@ -65,10 +107,12 @@ deps/
 ###############
 syncd/syncd
 syncd/syncd_request_shutdown
+saidiscovery/saidiscovery
 saiplayer/saiplayer
 saidump/saidump
 saisdkdump/saisdkdump
 meta/tests
+tests/vssyncd
 
 # Temporary files #
 ###################

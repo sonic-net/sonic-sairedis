@@ -14,6 +14,16 @@
 #include <map>
 #include <iterator>
 
+#define META_LOG_STATUS(s)\
+    if (s == SAI_STATUS_SUCCESS)                                           \
+        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(s).c_str()); \
+    else if (s == SAI_STATUS_BUFFER_OVERFLOW                               \
+               || SAI_STATUS_IS_ATTR_NOT_IMPLEMENTED(s)                    \
+               || SAI_STATUS_IS_ATTR_NOT_SUPPORTED(s))                     \
+        SWSS_LOG_INFO("get status: %s", sai_serialize_status(s).c_str());  \
+    else                                                                   \
+        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(s).c_str());
+
 static volatile bool unittests_enabled = false;
 
 static std::set<std::string> meta_unittests_set_readonly_set;
@@ -73,7 +83,7 @@ static bool meta_unittests_get_and_erase_set_readonly_flag(
 
     if (!unittests_enabled)
     {
-        // explicityly  to not produce false alarms
+        // explicitly to not produce false alarms
         SWSS_LOG_NOTICE("unittests are not enabled");
         return false;
     }
@@ -182,8 +192,8 @@ class SaiAttrWrapper
             SWSS_LOG_ENTER();
 
             /*
-             * On destructor we need to call free to dealocate possible
-             * alocated list on constructor.
+             * On destructor we need to call free to deallocate possible
+             * allocated list on constructor.
              */
 
             sai_deserialize_free_attribute_value(m_meta->attrvaluetype, m_attr);
@@ -210,7 +220,7 @@ std::string get_attr_info(const sai_attr_metadata_t& md)
 
     /*
      * Attribute name will contain object type as well so we don't need to
-     * serialize object type separatly.
+     * serialize object type separately.
      */
 
     return std::string(md.attridname) + ":" + sai_serialize_attr_value_type(md.attrvaluetype);
@@ -231,6 +241,41 @@ std::string get_attr_info(const sai_attr_metadata_t& md)
 static std::unordered_map<sai_object_id_t,int32_t> ObjectReferences;
 static std::unordered_map<std::string,std::string> AttributeKeys;
 std::unordered_map<std::string,std::unordered_map<sai_attr_id_t,std::shared_ptr<SaiAttrWrapper>>> ObjectAttrHash;
+
+void dump_object_reference()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("dump references in meta");
+
+    for (auto kvp: ObjectReferences)
+    {
+        sai_object_id_t oid = kvp.first;
+
+        sai_object_type_t ot = sai_object_type_query(oid);
+
+        switch (ot)
+        {
+
+            case SAI_OBJECT_TYPE_LAG:
+            case SAI_OBJECT_TYPE_NEXT_HOP:
+            case SAI_OBJECT_TYPE_NEXT_HOP_GROUP:
+            case SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER:
+            case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+            case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
+                break;
+
+                // skip object we have no interest in
+            default:
+                continue;
+        }
+
+        SWSS_LOG_NOTICE("ref %s: %s: %d",
+                sai_serialize_object_type(ot).c_str(),
+                sai_serialize_object_id(oid).c_str(),
+                kvp.second);
+    }
+}
 
 // GENERIC REFERENCE FUNCTIONS
 
@@ -457,7 +502,7 @@ void set_object(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_THROW("FATAL: object %s don't exists", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s doesn't exist", key.c_str());
     }
 
     META_LOG_DEBUG(md, "set attribute %d on %s", attr->id, key.c_str());
@@ -474,7 +519,7 @@ const std::vector<std::shared_ptr<SaiAttrWrapper>> get_object_attributes(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_THROW("FATAL: object %s don't exists", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s doesn't exist", key.c_str());
     }
 
     std::vector<std::shared_ptr<SaiAttrWrapper>> attrs;
@@ -498,7 +543,7 @@ void remove_object(
 
     if (!object_exists(key))
     {
-        SWSS_LOG_THROW("FATAL: object %s don't exists", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s doesn't exist", key.c_str());
     }
 
     SWSS_LOG_DEBUG("removing object %s", key.c_str());
@@ -533,7 +578,7 @@ sai_status_t meta_generic_validation_objlist(
 
     if (count > MAX_LIST_COUNT)
     {
-        META_LOG_ERROR(md, "object list count %u is > then max list count %u", count, MAX_LIST_COUNT);
+        META_LOG_ERROR(md, "object list count %u > max list count %u", count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -551,7 +596,7 @@ sai_status_t meta_generic_validation_objlist(
     }
 
     /*
-     * We need oids set and object type to check whehter oids are not repeated
+     * We need oids set and object type to check whether oids are not repeated
      * on list and whether all oids are same object type.
      */
 
@@ -626,7 +671,7 @@ sai_status_t meta_generic_validation_objlist(
 
         if (!object_reference_exists(query_switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", query_switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", query_switch_id);
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
@@ -652,7 +697,7 @@ sai_status_t meta_genetic_validation_list(
 
     if (count > MAX_LIST_COUNT)
     {
-        META_LOG_ERROR(md, "list count %u is > then max list count %u", count, MAX_LIST_COUNT);
+        META_LOG_ERROR(md, "list count %u > max list count %u", count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -696,7 +741,7 @@ std::string construct_key(
     SWSS_LOG_ENTER();
 
     /*
-     * Use map to make sure that keys will be always sorded by id.
+     * Use map to make sure that keys will be always sorted by id.
      */
 
     std::map<int32_t, std::string> keys;
@@ -833,9 +878,9 @@ sai_status_t meta_generic_validate_non_object_on_create(
 
     /*
      * Since non object id objects can contain several object id's inside
-     * object id strucutre, we need to check whether they all belong to the
+     * object id structure, we need to check whether they all belong to the
      * same switch (sine multiple switches can be present and whether all those
-     * objects are allowd respectivly on their members.
+     * objects are allowed respectively on their members.
      *
      * This check is required only on creation, since on set/get/remove we
      * check in object hash whether this object exists.
@@ -849,7 +894,7 @@ sai_status_t meta_generic_validate_non_object_on_create(
     }
 
     /*
-     * This will be most utilzed for createing route entries.
+     * This will be most utilized for creating route entries.
      */
 
     for (size_t j = 0; j < info->structmemberscount; ++j)
@@ -924,7 +969,7 @@ sai_status_t meta_generic_validate_non_object_on_create(
 
         if (!object_reference_exists(oid_switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", oid_switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", oid_switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -950,7 +995,7 @@ sai_status_t meta_generic_validation_create(
 
     if (attr_count > MAX_LIST_COUNT)
     {
-        SWSS_LOG_ERROR("create attribute count is too large %u > then max list count %u", attr_count, MAX_LIST_COUNT);
+        SWSS_LOG_ERROR("create attribute count %u > max list count %u", attr_count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -1002,14 +1047,14 @@ sai_status_t meta_generic_validation_create(
 
         if (!object_exists(switch_meta_key))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists yet", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist yet", switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (!object_reference_exists(switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists yet", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist yet", switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -1030,7 +1075,7 @@ sai_status_t meta_generic_validation_create(
 
     bool haskeys = false;
 
-    // check each attribute separetly
+    // check each attribute separately
     for (uint32_t idx = 0; idx < attr_count; ++idx)
     {
         const sai_attribute_t* attr = &attr_list[idx];
@@ -1231,6 +1276,7 @@ sai_status_t meta_generic_validation_create(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -1305,6 +1351,9 @@ sai_status_t meta_generic_validation_create(
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 VALIDATION_LIST(md, value.aclresource);
                 break;
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+                VALIDATION_LIST(md, value.ipaddrlist);
+                break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
 
@@ -1327,6 +1376,25 @@ sai_status_t meta_generic_validation_create(
                 }
 
                 break;
+
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+
+                {
+                    switch (value.ipprefix.addr_family)
+                    {
+                        case SAI_IP_ADDR_FAMILY_IPV4:
+                        case SAI_IP_ADDR_FAMILY_IPV6:
+                            break;
+
+                        default:
+
+                            SWSS_LOG_ERROR("invalid address family: %d", value.ipprefix.addr_family);
+
+                            return SAI_STATUS_INVALID_PARAMETER;
+                    }
+
+                    break;
+                }
 
             default:
 
@@ -1419,7 +1487,7 @@ sai_status_t meta_generic_validation_create(
         return SAI_STATUS_FAILURE;
     }
 
-    // check if all mandatory attrributes were passed
+    // check if all mandatory attributes were passed
 
     for (auto mdp: metadata)
     {
@@ -1539,7 +1607,7 @@ sai_status_t meta_generic_validation_create(
         {
             const auto& c = *md.conditions[index];
 
-            // condtions may only be on the same object type
+            // conditions may only be on the same object type
             const auto& cmd = *sai_metadata_get_attr_metadata(meta_key.objecttype, c.attrid);
 
             const sai_attribute_value_t* cvalue = cmd.defaultvalue;
@@ -1687,7 +1755,7 @@ sai_status_t meta_generic_validation_remove(
 
     if (!object_reference_exists(oid))
     {
-        SWSS_LOG_ERROR("object 0x%lx reference don't exists", oid);
+        SWSS_LOG_ERROR("object 0x%lx reference doesn't exist", oid);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -1696,6 +1764,21 @@ sai_status_t meta_generic_validation_remove(
 
     if (count != 0)
     {
+        if (object_type == SAI_OBJECT_TYPE_SWITCH)
+        {
+            /*
+             * We allow to remove switch object even if there are ROUTE_ENTRY
+             * created and referencing this switch, since remove could be used
+             * in WARM boot scenario.
+             */
+
+            SWSS_LOG_WARN("removing switch object 0x%lx reference count is %d, removing all objects from meta DB", oid, count);
+
+            meta_init_db();
+
+            return SAI_STATUS_SUCCESS;
+        }
+
         SWSS_LOG_ERROR("object 0x%lx reference count is %d, can't remove", oid, count);
 
         return SAI_STATUS_INVALID_PARAMETER;
@@ -1772,7 +1855,7 @@ sai_status_t meta_generic_validation_set(
 
         if (!object_reference_exists(switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", switch_id);
             return SAI_STATUS_INVALID_PARAMETER;
         }
     }
@@ -1910,6 +1993,7 @@ sai_status_t meta_generic_validation_set(
 
             // ACL ACTION
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -1983,6 +2067,9 @@ sai_status_t meta_generic_validation_set(
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             VALIDATION_LIST(md, value.aclresource);
             break;
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            VALIDATION_LIST(md, value.ipaddrlist);
+            break;
 
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
 
@@ -2005,6 +2092,25 @@ sai_status_t meta_generic_validation_set(
             }
 
             break;
+
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
+
+                {
+                    switch (value.ipprefix.addr_family)
+                    {
+                        case SAI_IP_ADDR_FAMILY_IPV4:
+                        case SAI_IP_ADDR_FAMILY_IPV6:
+                            break;
+
+                        default:
+
+                            SWSS_LOG_ERROR("invalid address family: %d", value.ipprefix.addr_family);
+
+                            return SAI_STATUS_INVALID_PARAMETER;
+                    }
+
+                    break;
+                }
 
         default:
 
@@ -2142,7 +2248,7 @@ sai_status_t meta_generic_validation_get(
 
     if (attr_count > MAX_LIST_COUNT)
     {
-        SWSS_LOG_ERROR("get attribute count is too large %u > then max list count %u", attr_count, MAX_LIST_COUNT);
+        SWSS_LOG_ERROR("get attribute count %u > max list count %u", attr_count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2187,7 +2293,7 @@ sai_status_t meta_generic_validation_get(
              * attribute also oid, and then did a "set" on that value, and now
              * reference is not decreased since previous oid was not snooped.
              *
-             * TODO This concearn all attributes not only conditionals
+             * TODO This concern all attributes not only conditionals
              *
              * If attribute is conditional, we need to check if condition is
              * met, if not then this attribute is not mandatory so we can
@@ -2308,6 +2414,7 @@ sai_status_t meta_generic_validation_get(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2353,10 +2460,17 @@ sai_status_t meta_generic_validation_get(
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 VALIDATION_LIST(md, value.aclresource);
                 break;
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+                VALIDATION_LIST(md, value.ipaddrlist);
+                break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
                 // primitives
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
+                VALIDATION_LIST(md, value.aclcapability.action_list);
                 break;
 
             default:
@@ -2413,53 +2527,15 @@ sai_status_t meta_generic_validation_get(
     return SAI_STATUS_SUCCESS;
 }
 
-template <typename T>
-sai_status_t meta_generic_validation_get_stats(
-        _In_ const sai_object_meta_key_t& meta_key,
-        _In_ uint32_t count,
-        _In_ const T *counter_id_list,
-        _In_ const uint64_t *counter_list)
+bool warmBoot = false;
+
+void meta_warm_boot_notify()
 {
     SWSS_LOG_ENTER();
 
-    if (meta_unittests_enabled() && (count & 0x80000000))
-    {
-        /*
-         * If last bit of counters count is set to high, and unittests are enabled,
-         * then this api can be used to SET counter values by user for debugging purposes.
-         */
-        count = count & ~0x80000000;
-    }
+    warmBoot = true;
 
-    if (count < 1)
-    {
-        SWSS_LOG_ERROR("expected at least 1 stat when calling get_stats, zero given");
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    if (count > MAX_LIST_COUNT)
-    {
-        SWSS_LOG_ERROR("get stats count is too large %u > then max list count %u", count, MAX_LIST_COUNT);
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    if (counter_id_list == NULL)
-    {
-        SWSS_LOG_ERROR("counter id list pointer is NULL");
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    if (counter_list == NULL)
-    {
-        SWSS_LOG_ERROR("counter list pointer is NULL");
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    return SAI_STATUS_SUCCESS;
+    SWSS_LOG_NOTICE("warmBoot = true");
 }
 
 void meta_generic_validation_post_create(
@@ -2474,12 +2550,26 @@ void meta_generic_validation_post_create(
 
     if (object_exists(key))
     {
-        SWSS_LOG_ERROR("object key %s already exists (vendor bug?)", key.c_str());
+        if (warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+        {
+            SWSS_LOG_NOTICE("post switch create after WARM BOOT");
+        }
+        else
+        {
+            SWSS_LOG_ERROR("object key %s already exists (vendor bug?)", key.c_str());
 
-        // this may produce inconsistency
+            // this may produce inconsistency
+        }
     }
 
-    create_object(meta_key);
+    if (warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+    {
+        SWSS_LOG_NOTICE("skipping create switch on WARM BOOT since it was already created");
+    }
+    else
+    {
+        create_object(meta_key);
+    }
 
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
 
@@ -2546,7 +2636,7 @@ void meta_generic_validation_post_create(
 
                 if (!object_reference_exists(query_switch_id))
                 {
-                    SWSS_LOG_ERROR("switch id 0x%lx don't exists", query_switch_id);
+                    SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", query_switch_id);
                     break;
                 }
 
@@ -2558,9 +2648,23 @@ void meta_generic_validation_post_create(
                 }
             }
 
-            object_reference_insert(oid);
+            if (warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+            {
+                SWSS_LOG_NOTICE("skip insert switch reference insert in WARM_BOOT");
+            }
+            else
+            {
+                object_reference_insert(oid);
+            }
 
         } while (false);
+    }
+
+    if (warmBoot)
+    {
+        SWSS_LOG_NOTICE("warmBoot = false");
+
+        warmBoot = false;
     }
 
     bool haskeys;
@@ -2599,6 +2703,7 @@ void meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_IPV4:
             case SAI_ATTR_VALUE_TYPE_IPV6:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
             case SAI_ATTR_VALUE_TYPE_POINTER:
                 // primitives
                 break;
@@ -2647,6 +2752,7 @@ void meta_generic_validation_post_create(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2682,6 +2788,7 @@ void meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
@@ -2708,6 +2815,16 @@ void meta_generic_validation_post_remove(
         _In_ const sai_object_meta_key_t& meta_key)
 {
     SWSS_LOG_ENTER();
+
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+    {
+        /*
+         * If switch object was removed then meta db was cleared and there are
+         * no other attributes, no need for reference counting.
+         */
+
+        return;
+    }
 
     // get all attributes that was set
 
@@ -2739,6 +2856,7 @@ void meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_IPV4:
             case SAI_ATTR_VALUE_TYPE_IPV6:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
             case SAI_ATTR_VALUE_TYPE_POINTER:
                 // primitives, ok
                 break;
@@ -2783,6 +2901,7 @@ void meta_generic_validation_post_remove(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -2817,6 +2936,7 @@ void meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
             case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
@@ -2920,6 +3040,7 @@ void meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_IPV6:
         case SAI_ATTR_VALUE_TYPE_POINTER:
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
             // primitives, ok
             break;
 
@@ -3012,6 +3133,7 @@ void meta_generic_validation_post_set(
 
             // ACL ACTION
 
+        case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
         case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -3068,6 +3190,7 @@ void meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_UINT32_LIST:
         case SAI_ATTR_VALUE_TYPE_INT32_LIST:
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
+        case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
@@ -3102,7 +3225,7 @@ void meta_generic_validation_post_get_objlist(
      * when we doing get on acl field/action. But none of those are created
      * internally by switch.
      *
-     * TODO Similar stuff is with SET, when we will set oid obejct on existing
+     * TODO Similar stuff is with SET, when we will set oid object on existing
      * switch object, but we will not have it's previous value.  We can check
      * whether default value is present and it's const NULL.
      */
@@ -3120,7 +3243,7 @@ void meta_generic_validation_post_get_objlist(
 
     if (count > MAX_LIST_COUNT)
     {
-        META_LOG_ERROR(md, "returned get object list count %u is > then max list count %u", count, MAX_LIST_COUNT);
+        META_LOG_ERROR(md, "returned get object list count %u > max list count %u", count, MAX_LIST_COUNT);
     }
 
     if (list == NULL)
@@ -3171,7 +3294,7 @@ void meta_generic_validation_post_get_objlist(
         if (!object_reference_exists(oid))
         {
             // NOTE: there may happen that user will request multiple object lists
-            // and first list was retrived ok, but second failed with overflow
+            // and first list was retrieved ok, but second failed with overflow
             // then we may forget to snoop
 
             META_LOG_INFO(md, "returned get object on list [%u] oid 0x%lx object type %d does not exists in local DB (snoop)", i, oid, ot);
@@ -3190,7 +3313,7 @@ void meta_generic_validation_post_get_objlist(
 
         if (!object_reference_exists(query_switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", query_switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", query_switch_id);
         }
 
         if (query_switch_id != switch_id)
@@ -3204,7 +3327,7 @@ void meta_generic_validation_post_get_objlist(
 {\
     if (list.count > MAX_LIST_COUNT)\
     {\
-        META_LOG_ERROR(md, "list count %u is > then max list count %u", list.count, MAX_LIST_COUNT);\
+        META_LOG_ERROR(md, "list count %u > max list count %u", list.count, MAX_LIST_COUNT);\
     }\
 }
 
@@ -3219,7 +3342,7 @@ void meta_generic_validation_post_get(
     switch_id = meta_extract_switch_id(meta_key, switch_id);
 
     /*
-     * TODO We should snoop attributes retrived from switch and put them to
+     * TODO We should snoop attributes retrieved from switch and put them to
      * local db if they don't exist since if attr is oid it may lead to
      * inconsistency when counting reference
      */
@@ -3251,6 +3374,7 @@ void meta_generic_validation_post_get(
             case SAI_ATTR_VALUE_TYPE_IPV6:
             case SAI_ATTR_VALUE_TYPE_POINTER:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
                 // primitives, ok
                 break;
 
@@ -3319,6 +3443,7 @@ void meta_generic_validation_post_get(
 
                 // ACL ACTION
 
+            case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_BOOL:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT8:
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_UINT16:
@@ -3366,6 +3491,9 @@ void meta_generic_validation_post_get(
                 break;
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 VALIDATION_LIST_GET(md, value.aclresource);
+                break;
+            case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+                VALIDATION_LIST_GET(md, value.ipaddrlist);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -3641,16 +3769,6 @@ sai_status_t meta_sai_set_fdb_entry(
     return status;
 }
 
-#define META_LOG_STATUS(s)\
-    if (s == SAI_STATUS_SUCCESS)                                           \
-        SWSS_LOG_DEBUG("get status: %s", sai_serialize_status(s).c_str()); \
-    else if (s == SAI_STATUS_BUFFER_OVERFLOW                               \
-               || SAI_STATUS_IS_ATTR_NOT_IMPLEMENTED(s)                    \
-               || SAI_STATUS_IS_ATTR_NOT_SUPPORTED(s))                     \
-        SWSS_LOG_INFO("get status: %s", sai_serialize_status(s).c_str());  \
-    else                                                                   \
-        SWSS_LOG_ERROR("get status: %s", sai_serialize_status(s).c_str());
-
 sai_status_t meta_sai_get_fdb_entry(
         _In_ const sai_fdb_entry_t* fdb_entry,
         _In_ uint32_t attr_count,
@@ -3691,6 +3809,284 @@ sai_status_t meta_sai_get_fdb_entry(
     if (status == SAI_STATUS_SUCCESS)
     {
         meta_generic_validation_post_get(meta_key, fdb_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}
+
+// MCAST FDB ENTRY
+
+sai_status_t meta_sai_validate_mcast_fdb_entry(
+        _In_ const sai_mcast_fdb_entry_t* mcast_fdb_entry,
+        _In_ bool create,
+        _In_ bool get = false)
+{
+    SWSS_LOG_ENTER();
+
+    if (mcast_fdb_entry == NULL)
+    {
+        SWSS_LOG_ERROR("mcast_fdb_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_id_t bv_id = mcast_fdb_entry->bv_id;
+
+    if (bv_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("bv_id set to null object id");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t object_type = sai_object_type_query(bv_id);
+
+    if (object_type == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("bv_id oid 0x%lx is not valid object type, returned null object type", bv_id);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (object_type != SAI_OBJECT_TYPE_BRIDGE && object_type != SAI_OBJECT_TYPE_VLAN)
+    {
+        SWSS_LOG_ERROR("bv_id oid 0x%lx type %d is wrong type, expected BRIDGE or VLAN", bv_id, object_type);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // check if bv_id exists
+
+    sai_object_meta_key_t meta_key_bv = { .objecttype = object_type, .objectkey = { .key = { .object_id = bv_id } } };
+
+    std::string key_bv = sai_serialize_object_meta_key(meta_key_bv);
+
+    if (!object_exists(key_bv))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_bv.c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // check if fdb entry exists
+
+    sai_object_meta_key_t meta_key_fdb = { .objecttype = SAI_OBJECT_TYPE_MCAST_FDB_ENTRY, .objectkey = { .key = { .mcast_fdb_entry = *mcast_fdb_entry } } };
+
+    std::string key_fdb = sai_serialize_object_meta_key(meta_key_fdb);
+
+    if (create)
+    {
+        if (object_exists(key_fdb))
+        {
+            SWSS_LOG_ERROR("object key %s already exists", key_fdb.c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+
+    if (!object_exists(key_fdb) && !get)
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_fdb.c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // fdb entry is valid
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t meta_sai_create_mcast_fdb_entry(
+        _In_ const sai_mcast_fdb_entry_t* mcast_fdb_entry,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_create_mcast_fdb_entry_fn create)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_mcast_fdb_entry(mcast_fdb_entry, true);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_MCAST_FDB_ENTRY, .objectkey = { .key = { .mcast_fdb_entry = *mcast_fdb_entry  } } };
+
+    status = meta_generic_validation_create(meta_key, mcast_fdb_entry->switch_id, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (create == NULL)
+    {
+        SWSS_LOG_ERROR("create function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = create(mcast_fdb_entry, attr_count, attr_list);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_create(meta_key, mcast_fdb_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_remove_mcast_fdb_entry(
+        _In_ const sai_mcast_fdb_entry_t* mcast_fdb_entry,
+        _In_ sai_remove_mcast_fdb_entry_fn remove)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_mcast_fdb_entry(mcast_fdb_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_MCAST_FDB_ENTRY, .objectkey = { .key = { .mcast_fdb_entry = *mcast_fdb_entry  } } };
+
+    status = meta_generic_validation_remove(meta_key);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (remove == NULL)
+    {
+        SWSS_LOG_ERROR("remove function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = remove(mcast_fdb_entry);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_remove(meta_key);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_set_mcast_fdb_entry(
+        _In_ const sai_mcast_fdb_entry_t* mcast_fdb_entry,
+        _In_ const sai_attribute_t *attr,
+        _In_ sai_set_mcast_fdb_entry_attribute_fn set)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_mcast_fdb_entry(mcast_fdb_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_MCAST_FDB_ENTRY, .objectkey = { .key = { .mcast_fdb_entry = *mcast_fdb_entry  } } };
+
+    status = meta_generic_validation_set(meta_key, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (set == NULL)
+    {
+        SWSS_LOG_ERROR("set function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = set(mcast_fdb_entry, attr);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_set(meta_key, attr);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_get_mcast_fdb_entry(
+        _In_ const sai_mcast_fdb_entry_t* mcast_fdb_entry,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list,
+        _In_ sai_get_mcast_fdb_entry_attribute_fn get)
+{
+    SWSS_LOG_ENTER();
+
+    // NOTE: when doing get, entry may not exist on metadata db
+
+    sai_status_t status = meta_sai_validate_mcast_fdb_entry(mcast_fdb_entry, false, true);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_MCAST_FDB_ENTRY, .objectkey = { .key = { .mcast_fdb_entry = *mcast_fdb_entry } } };
+
+    status = meta_generic_validation_get(meta_key, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (get == NULL)
+    {
+        SWSS_LOG_ERROR("get function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = get(mcast_fdb_entry, attr_count, attr_list);
+
+    META_LOG_STATUS(status);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_get(meta_key, mcast_fdb_entry->switch_id, attr_count, attr_list);
     }
 
     return status;
@@ -4284,6 +4680,848 @@ sai_status_t meta_sai_get_route_entry(
     return status;
 }
 
+// L2MC ENTRY
+
+sai_status_t meta_sai_validate_l2mc_entry(
+        _In_ const sai_l2mc_entry_t* l2mc_entry,
+        _In_ bool create)
+{
+    SWSS_LOG_ENTER();
+
+    if (l2mc_entry == NULL)
+    {
+        SWSS_LOG_ERROR("l2mc_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    switch (l2mc_entry->type)
+    {
+        case SAI_L2MC_ENTRY_TYPE_SG:
+        case SAI_L2MC_ENTRY_TYPE_XG:
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("invalid l2mc_entry type: %d", l2mc_entry->type);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto family = l2mc_entry->destination.addr_family;
+
+    switch (family)
+    {
+        case SAI_IP_ADDR_FAMILY_IPV4:
+        case SAI_IP_ADDR_FAMILY_IPV6:
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("invalid destination family: %d", family);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    family = l2mc_entry->source.addr_family;
+
+    switch (family)
+    {
+        case SAI_IP_ADDR_FAMILY_IPV4:
+        case SAI_IP_ADDR_FAMILY_IPV6:
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("invalid source family: %d", family);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_id_t bv_id = l2mc_entry->bv_id;
+
+    if (bv_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("bv_id set to null object id");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t object_type = sai_object_type_query(bv_id);
+
+    if (object_type == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("bv_id oid 0x%lx is not valid object type, returned null object type", bv_id);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (object_type != SAI_OBJECT_TYPE_BRIDGE && object_type != SAI_OBJECT_TYPE_VLAN)
+    {
+        SWSS_LOG_ERROR("bv_id oid 0x%lx type %d is wrong type, expected BRIDGE or VLAN", bv_id, object_type);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // check if bv_id exists
+
+    sai_object_meta_key_t meta_key_bv = { .objecttype = object_type, .objectkey = { .key = { .object_id = bv_id } } };
+
+    std::string key_bv = sai_serialize_object_meta_key(meta_key_bv);
+
+    if (!object_exists(key_bv))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_bv.c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // check if l2mc entry exists
+
+    sai_object_meta_key_t meta_key_route = { .objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY, .objectkey = { .key = { .l2mc_entry = *l2mc_entry } } };
+
+    std::string key_route = sai_serialize_object_meta_key(meta_key_route);
+
+    if (create)
+    {
+        if (object_exists(key_route))
+        {
+            SWSS_LOG_ERROR("object key %s already exists", key_route.c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+
+    if (!object_exists(key_route))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_route.c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t meta_sai_create_l2mc_entry(
+        _In_ const sai_l2mc_entry_t* l2mc_entry,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_create_l2mc_entry_fn create)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_l2mc_entry(l2mc_entry, true);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY, .objectkey = { .key = { .l2mc_entry = *l2mc_entry  } } };
+
+    status = meta_generic_validation_create(meta_key, l2mc_entry->switch_id, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (create == NULL)
+    {
+        SWSS_LOG_ERROR("create function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = create(l2mc_entry, attr_count, attr_list);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_create(meta_key, l2mc_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_remove_l2mc_entry(
+        _In_ const sai_l2mc_entry_t* l2mc_entry,
+        _In_ sai_remove_l2mc_entry_fn remove)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_l2mc_entry(l2mc_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY, .objectkey = { .key = { .l2mc_entry = *l2mc_entry  } } };
+
+    status = meta_generic_validation_remove(meta_key);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (remove == NULL)
+    {
+        SWSS_LOG_ERROR("remove function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = remove(l2mc_entry);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_remove(meta_key);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_set_l2mc_entry(
+        _In_ const sai_l2mc_entry_t* l2mc_entry,
+        _In_ const sai_attribute_t *attr,
+        _In_ sai_set_l2mc_entry_attribute_fn set)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_l2mc_entry(l2mc_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY, .objectkey = { .key = { .l2mc_entry = *l2mc_entry  } } };
+
+    status = meta_generic_validation_set(meta_key, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (set == NULL)
+    {
+        SWSS_LOG_ERROR("set function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = set(l2mc_entry, attr);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_set(meta_key, attr);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_get_l2mc_entry(
+        _In_ const sai_l2mc_entry_t* l2mc_entry,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list,
+        _In_ sai_get_l2mc_entry_attribute_fn get)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_l2mc_entry(l2mc_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY, .objectkey = { .key = { .l2mc_entry = *l2mc_entry } } };
+
+    status = meta_generic_validation_get(meta_key, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (get == NULL)
+    {
+        SWSS_LOG_ERROR("get function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = get(l2mc_entry, attr_count, attr_list);
+
+    META_LOG_STATUS(status);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_get(meta_key, l2mc_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}
+
+// IPMC ENTRY
+
+sai_status_t meta_sai_validate_ipmc_entry(
+        _In_ const sai_ipmc_entry_t* ipmc_entry,
+        _In_ bool create)
+{
+    SWSS_LOG_ENTER();
+
+    if (ipmc_entry == NULL)
+    {
+        SWSS_LOG_ERROR("ipmc_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    switch (ipmc_entry->type)
+    {
+        case SAI_IPMC_ENTRY_TYPE_SG:
+        case SAI_IPMC_ENTRY_TYPE_XG:
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("invalid ipmc_entry type: %d", ipmc_entry->type);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto family = ipmc_entry->destination.addr_family;
+
+    switch (family)
+    {
+        case SAI_IP_ADDR_FAMILY_IPV4:
+        case SAI_IP_ADDR_FAMILY_IPV6:
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("invalid destination family: %d", family);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    family = ipmc_entry->source.addr_family;
+
+    switch (family)
+    {
+        case SAI_IP_ADDR_FAMILY_IPV4:
+        case SAI_IP_ADDR_FAMILY_IPV6:
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("invalid source family: %d", family);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_id_t vr_id = ipmc_entry->vr_id;
+
+    if (vr_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("vr_id set to null object id");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t object_type = sai_object_type_query(vr_id);
+
+    if (object_type == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("vr_id oid 0x%lx is not valid object type, returned null object type", vr_id);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (object_type != SAI_OBJECT_TYPE_VIRTUAL_ROUTER)
+    {
+        SWSS_LOG_ERROR("vr_id oid 0x%lx type %d is wrong type, expected VIRTUAL_ROUTER", vr_id, object_type);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // check if vr_id exists
+
+    sai_object_meta_key_t meta_key_bv = { .objecttype = object_type, .objectkey = { .key = { .object_id = vr_id } } };
+
+    std::string key_bv = sai_serialize_object_meta_key(meta_key_bv);
+
+    if (!object_exists(key_bv))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_bv.c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // check if ipmc entry exists
+
+    sai_object_meta_key_t meta_key_route = { .objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY, .objectkey = { .key = { .ipmc_entry = *ipmc_entry } } };
+
+    std::string key_route = sai_serialize_object_meta_key(meta_key_route);
+
+    if (create)
+    {
+        if (object_exists(key_route))
+        {
+            SWSS_LOG_ERROR("object key %s already exists", key_route.c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+
+    if (!object_exists(key_route))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_route.c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t meta_sai_create_ipmc_entry(
+        _In_ const sai_ipmc_entry_t* ipmc_entry,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_create_ipmc_entry_fn create)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_ipmc_entry(ipmc_entry, true);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY, .objectkey = { .key = { .ipmc_entry = *ipmc_entry  } } };
+
+    status = meta_generic_validation_create(meta_key, ipmc_entry->switch_id, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (create == NULL)
+    {
+        SWSS_LOG_ERROR("create function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = create(ipmc_entry, attr_count, attr_list);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_create(meta_key, ipmc_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_remove_ipmc_entry(
+        _In_ const sai_ipmc_entry_t* ipmc_entry,
+        _In_ sai_remove_ipmc_entry_fn remove)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_ipmc_entry(ipmc_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY, .objectkey = { .key = { .ipmc_entry = *ipmc_entry  } } };
+
+    status = meta_generic_validation_remove(meta_key);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (remove == NULL)
+    {
+        SWSS_LOG_ERROR("remove function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = remove(ipmc_entry);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_remove(meta_key);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_set_ipmc_entry(
+        _In_ const sai_ipmc_entry_t* ipmc_entry,
+        _In_ const sai_attribute_t *attr,
+        _In_ sai_set_ipmc_entry_attribute_fn set)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_ipmc_entry(ipmc_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY, .objectkey = { .key = { .ipmc_entry = *ipmc_entry  } } };
+
+    status = meta_generic_validation_set(meta_key, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (set == NULL)
+    {
+        SWSS_LOG_ERROR("set function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = set(ipmc_entry, attr);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_set(meta_key, attr);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_get_ipmc_entry(
+        _In_ const sai_ipmc_entry_t* ipmc_entry,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list,
+        _In_ sai_get_ipmc_entry_attribute_fn get)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_ipmc_entry(ipmc_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY, .objectkey = { .key = { .ipmc_entry = *ipmc_entry } } };
+
+    status = meta_generic_validation_get(meta_key, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (get == NULL)
+    {
+        SWSS_LOG_ERROR("get function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = get(ipmc_entry, attr_count, attr_list);
+
+    META_LOG_STATUS(status);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_get(meta_key, ipmc_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}
+
+// INSEG ENTRY
+
+sai_status_t meta_sai_validate_inseg_entry(
+        _In_ const sai_inseg_entry_t* inseg_entry,
+        _In_ bool create)
+{
+    SWSS_LOG_ENTER();
+
+    if (inseg_entry == NULL)
+    {
+        SWSS_LOG_ERROR("inseg_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // validate mpls label
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t meta_sai_create_inseg_entry(
+        _In_ const sai_inseg_entry_t* inseg_entry,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_create_inseg_entry_fn create)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_inseg_entry(inseg_entry, true);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY, .objectkey = { .key = { .inseg_entry = *inseg_entry  } } };
+
+    status = meta_generic_validation_create(meta_key, inseg_entry->switch_id, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (create == NULL)
+    {
+        SWSS_LOG_ERROR("create function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = create(inseg_entry, attr_count, attr_list);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_create(meta_key, inseg_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_remove_inseg_entry(
+        _In_ const sai_inseg_entry_t* inseg_entry,
+        _In_ sai_remove_inseg_entry_fn remove)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_inseg_entry(inseg_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY, .objectkey = { .key = { .inseg_entry = *inseg_entry  } } };
+
+    status = meta_generic_validation_remove(meta_key);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (remove == NULL)
+    {
+        SWSS_LOG_ERROR("remove function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = remove(inseg_entry);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_remove(meta_key);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_set_inseg_entry(
+        _In_ const sai_inseg_entry_t* inseg_entry,
+        _In_ const sai_attribute_t *attr,
+        _In_ sai_set_inseg_entry_attribute_fn set)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_inseg_entry(inseg_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY, .objectkey = { .key = { .inseg_entry = *inseg_entry  } } };
+
+    status = meta_generic_validation_set(meta_key, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (set == NULL)
+    {
+        SWSS_LOG_ERROR("set function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = set(inseg_entry, attr);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_set(meta_key, attr);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_get_inseg_entry(
+        _In_ const sai_inseg_entry_t* inseg_entry,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list,
+        _In_ sai_get_inseg_entry_attribute_fn get)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_inseg_entry(inseg_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY, .objectkey = { .key = { .inseg_entry = *inseg_entry } } };
+
+    status = meta_generic_validation_get(meta_key, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (get == NULL)
+    {
+        SWSS_LOG_ERROR("get function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = get(inseg_entry, attr_count, attr_list);
+
+    META_LOG_STATUS(status);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_get(meta_key, inseg_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}
+
 // GENERIC
 
 sai_status_t meta_sai_validate_oid(
@@ -4295,7 +5533,7 @@ sai_status_t meta_sai_validate_oid(
     SWSS_LOG_ENTER();
 
     if (object_type <= SAI_OBJECT_TYPE_NULL ||
-            object_type >= SAI_OBJECT_TYPE_MAX)
+            object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
         SWSS_LOG_ERROR("invalid object type specified: %d, FIXME", object_type);
         return SAI_STATUS_INVALID_PARAMETER;
@@ -4328,7 +5566,7 @@ sai_status_t meta_sai_validate_oid(
 
     if (oid == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_ERROR("oid is set to null object id");
+        SWSS_LOG_ERROR("oid is set to null object id on %s", otname);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4573,7 +5811,7 @@ sai_status_t meta_sai_get_oid(
 
         if (!object_reference_exists(switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx don't exists", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", switch_id);
         }
 
         meta_generic_validation_post_get(meta_key, switch_id, attr_count, attr_list);
@@ -4582,18 +5820,88 @@ sai_status_t meta_sai_get_oid(
     return status;
 }
 
-template <typename T>
-sai_status_t meta_sai_get_stats_oid(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
+// STATS
+
+sai_status_t meta_generic_validation_get_stats(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ const sai_enum_metadata_t* stats_enum,
         _In_ uint32_t count,
-        _In_ const T* counter_id_list,
-        _Out_ uint64_t *counter_list,
-        _In_ sai_get_generic_stats_fn<T> get)
+        _In_ const int32_t *counter_id_list,
+        _In_ const uint64_t *counter_list)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, SAI_NULL_OBJECT_ID, false);
+    if (meta_unittests_enabled() && (count & 0x80000000))
+    {
+        /*
+         * If last bit of counters count is set to high, and unittests are enabled,
+         * then this api can be used to SET counter values by user for debugging purposes.
+         */
+        count = count & ~0x80000000;
+    }
+
+    if (count < 1)
+    {
+        SWSS_LOG_ERROR("expected at least 1 stat when calling get_stats, zero given");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (count > MAX_LIST_COUNT)
+    {
+        SWSS_LOG_ERROR("get stats count %u > max list count %u", count, MAX_LIST_COUNT);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (counter_id_list == NULL)
+    {
+        SWSS_LOG_ERROR("counter id list pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (counter_list == NULL)
+    {
+        SWSS_LOG_ERROR("counter list pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (stats_enum == NULL)
+    {
+        SWSS_LOG_ERROR("enum metadata pointer is NULL, bug?");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        if (sai_metadata_get_enum_value_name(stats_enum, counter_id_list[i]) == NULL)
+        {
+            SWSS_LOG_ERROR("counter id %u is not allowed on %s", counter_id_list[i], stats_enum->name);
+
+            return SAI_STATUS_INVALID_PARAMETER;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t meta_sai_get_stats_oid(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t* stats_enum,
+        _In_ uint32_t count,
+        _In_ const int32_t *counter_id_list,
+        _Out_ uint64_t *counter_list,
+        _In_ sai_get_generic_stats_fn get_stats)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_id = sai_switch_id_query(object_id);
+
+    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, switch_id, false);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -4602,42 +5910,26 @@ sai_status_t meta_sai_get_stats_oid(
 
     sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id } } };
 
-    status = meta_generic_validation_get_stats(meta_key, count, counter_id_list, counter_list);
+    status = meta_generic_validation_get_stats(meta_key, stats_enum, count, counter_id_list, counter_list);
 
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
 
-    if (get == NULL)
+    if (get_stats == NULL)
     {
         SWSS_LOG_ERROR("get function pointer is NULL");
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    status = get(object_type, object_id, count, counter_id_list, counter_list);
+    status = get_stats(object_type, object_id, stats_enum, count, counter_id_list, counter_list);
 
     META_LOG_STATUS(status);
 
     return status;
 }
-
-#define DECLARE_META_GET_STATS_OID(type)                               \
-    template                                                           \
-    sai_status_t meta_sai_get_stats_oid<sai_ ## type ## _stat_t>(      \
-        _In_ sai_object_type_t object_type,                            \
-        _In_ sai_object_id_t object_id,                                \
-        _In_ uint32_t count,                                           \
-        _In_ const sai_ ## type ## _stat_t* counter_id_list,           \
-        _Out_ uint64_t *counter_list,                                  \
-        _In_ sai_get_generic_stats_fn<sai_ ## type ## _stat_t> get);
-
-DECLARE_META_GET_STATS_OID(port);
-DECLARE_META_GET_STATS_OID(port_pool);
-DECLARE_META_GET_STATS_OID(queue);
-DECLARE_META_GET_STATS_OID(ingress_priority_group);
-DECLARE_META_GET_STATS_OID(tunnel);
 
 // NOTIFICATIONS
 
@@ -4723,6 +6015,45 @@ void meta_sai_on_fdb_flush_event_consolidated(
     }
 }
 
+void meta_fdb_event_snoop_oid(
+        _In_ sai_object_id_t oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (oid == SAI_NULL_OBJECT_ID)
+        return;
+
+    if (object_reference_exists(oid))
+        return;
+
+    sai_object_type_t ot = sai_object_type_query(oid);
+
+    if (ot == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("failed to get object type on fdb_event oid: 0x%lx", oid);
+        return;
+    }
+
+    sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = oid } } };
+
+    object_reference_insert(oid);
+
+    if (!object_exists(key))
+        create_object(key);
+
+    /*
+     * In normal operation orch agent should query or create all bridge, vlan
+     * and bridge port, so we should not get this message. Let's put it as
+     * warning for better visibility. Most likely if this happen  there is a
+     * vendor bug in SAI and we should also see warnings or errors reported
+     * from syncd in logs.
+     */
+
+    SWSS_LOG_WARN("fdb_entry oid (snoop): %s: %s",
+            sai_serialize_object_type(ot).c_str(),
+            sai_serialize_object_id(oid).c_str());
+}
+
 void meta_sai_on_fdb_event_single(
         _In_ const sai_fdb_event_notification_data_t& data)
 {
@@ -4731,6 +6062,35 @@ void meta_sai_on_fdb_event_single(
     const sai_object_meta_key_t meta_key_fdb = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = data.fdb_entry } } };
 
     std::string key_fdb = sai_serialize_object_meta_key(meta_key_fdb);
+
+    /*
+     * Because we could receive fdb event's before orch agent will query or
+     * create bridge/vlan/bridge port we should snoop here new OIDs and put
+     * them in local DB.
+     *
+     * Unfortunately we don't have a way to check whether those OIDs are correct
+     * or whether there maybe some bug in vendor SAI and for example is sending
+     * invalid OIDs in those event's. Also sai_object_type_query can return
+     * valid object type for OID, but this does not guarantee that this OID is
+     * valid, for example one of existing bridge ports that orch agent didn't
+     * query yet.
+     */
+
+    meta_fdb_event_snoop_oid(data.fdb_entry.bv_id);
+
+    for (uint32_t i = 0; i < data.attr_count; i++)
+    {
+        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_FDB_ENTRY, data.attr[i].id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_ERROR("failed to get metadata for fdb_entry attr.id = %d", data.attr[i].id);
+            continue;
+        }
+
+        if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            meta_fdb_event_snoop_oid(data.attr[i].value.oid);
+    }
 
     switch (data.event_type)
     {
@@ -4804,6 +6164,33 @@ void meta_sai_on_fdb_event_single(
 
             break;
 
+        case SAI_FDB_EVENT_MOVE:
+
+            if (!object_exists(key_fdb))
+            {
+                SWSS_LOG_WARN("object key %s doesn't exist but received FDB MOVE event", key_fdb.c_str());
+                break;
+            }
+
+            // on MOVE event, just update attributes on existing entry
+
+            for (uint32_t i = 0; i < data.attr_count; i++)
+            {
+                const sai_attribute_t& attr = data.attr[i];
+
+                sai_status_t status = meta_generic_validation_set(meta_key_fdb, &attr);
+
+                if (status != SAI_STATUS_SUCCESS)
+                {
+                    SWSS_LOG_ERROR("object key %s FDB MOVE event, SET validateion failed on attr.id = %d", key_fdb.c_str(), attr.id);
+                    continue;
+                }
+
+                meta_generic_validation_post_set(meta_key_fdb, &attr);
+            }
+
+            break;
+
         default:
 
             SWSS_LOG_ERROR("got FDB_ENTRY notification with unknown event_type %d, bug?", data.event_type);
@@ -4842,7 +6229,7 @@ sai_status_t meta_sai_flush_fdb_entries(
 
     if (attr_count > MAX_LIST_COUNT)
     {
-        SWSS_LOG_ERROR("create attribute count is too large %u > then max list count %u", attr_count, MAX_LIST_COUNT);
+        SWSS_LOG_ERROR("create attribute count %u > max list count %u", attr_count, MAX_LIST_COUNT);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4867,7 +6254,7 @@ sai_status_t meta_sai_flush_fdb_entries(
 
     if (!object_reference_exists(switch_id))
     {
-        SWSS_LOG_ERROR("switch id %s don't exists",
+        SWSS_LOG_ERROR("switch id %s doesn't exist",
                 sai_serialize_object_id(switch_id).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;

@@ -44,7 +44,7 @@ sai_status_t meta_pre_create_buffer_profile(
     SWSS_LOG_ENTER();
 
     // TODO extra logic on checking profile buffer size may be needed
-    // TODO we need to query other attribute pool id assigned and check wheter mode is dynamic/static
+    // TODO we need to query other attribute pool id assigned and check whether mode is dynamic/static
 
     const sai_attribute_t* attr_shared_dynamic_th = get_attribute_by_id(SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH, attr_count, attr_list);
 
@@ -80,7 +80,7 @@ sai_status_t meta_pre_set_buffer_profile_attr(
 {
     SWSS_LOG_ENTER();
 
-    // TODO on set, changing buffer pool on profiles should noe be possible
+    // TODO on set, changing buffer pool on profiles should not be possible
     // to change dynamic to static on the fly
     // pool_id on profile should be create_only ?
 

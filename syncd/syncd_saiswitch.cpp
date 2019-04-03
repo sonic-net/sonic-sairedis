@@ -88,7 +88,7 @@ std::string SaiSwitch::saiGetHardwareInfo() const
         /*
          * TODO: We should have THROW here, but currently getting hardware info
          * is not supported, so we just return empty string like it's not set.
-         * Later on basing on this entry we will distinquish whether previous
+         * Later on basing on this entry we will distinguish whether previous
          * switch and next switch are the same.
          */
         SWSS_LOG_WARN("failed to get switch hardware info: %s",
@@ -148,7 +148,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> SaiSwitch::saiGetHardwareLaneM
      * addressed in future.
      */
 
-    const int lanesPerPort = 4;
+    const int lanesPerPort = 8;
 
     for (const auto &port_rid : portList)
     {
@@ -189,7 +189,7 @@ std::string SaiSwitch::getRedisLanesKey() const
     /*
      * Each switch will have it's own lanes in format LANES:oid:0xYYYYYYYY.
      *
-     * NOTE: To support multple switches LANES needs to be made per switch.
+     * NOTE: To support multiple switches LANES needs to be made per switch.
      *
      * return std::string(LANES) + ":" + sai_serialize_object_id(m_switch_vid);
      */
@@ -413,7 +413,7 @@ std::string SaiSwitch::getHardwareInfo() const
     return m_hardware_info;
 }
 
-bool SaiSwitch::isDefaultCreatedRid(
+bool SaiSwitch::isDiscoveredRid(
         _In_ sai_object_id_t rid) const
 {
     SWSS_LOG_ENTER();
@@ -421,7 +421,7 @@ bool SaiSwitch::isDefaultCreatedRid(
     return m_discovered_rids.find(rid) != m_discovered_rids.end();
 }
 
-std::set<sai_object_id_t> SaiSwitch::getExistingObjects() const
+std::set<sai_object_id_t> SaiSwitch::getDiscoveredRids() const
 {
     SWSS_LOG_ENTER();
 
@@ -501,7 +501,7 @@ void SaiSwitch::removeExistingObject(
  *
  * @param attr_id Attribute id to obtain oid from it.
  *
- * @return Valid object id (riD) if present, SAI_NULL_OBJECT_ID on failure.
+ * @return Valid object id (rid) if present, SAI_NULL_OBJECT_ID on failure.
  */
 sai_object_id_t SaiSwitch::helperGetSwitchAttrOid(
         _In_ sai_attr_id_t attr_id)
@@ -619,6 +619,39 @@ sai_object_id_t SaiSwitch::getSwitchDefaultAttrOid(
     return it->second;
 }
 
+bool SaiSwitch::isColdBootDiscoveredRid(
+        _In_ sai_object_id_t rid) const
+{
+    SWSS_LOG_ENTER();
+
+    auto coldBootDiscoveredVids = getColdBootDiscoveredVids();
+
+    /*
+     * If object was discovered in cold boot, it must have valid RID assigned,
+     * except objects that were removed like VLAN_MEMBER.
+     */
+
+    sai_object_id_t vid = translate_rid_to_vid(rid, m_switch_vid);
+
+    return coldBootDiscoveredVids.find(vid) != coldBootDiscoveredVids.end();
+}
+
+bool SaiSwitch::isSwitchObjectDefaultRid(
+        _In_ sai_object_id_t rid) const
+{
+    SWSS_LOG_ENTER();
+
+    for (const auto &p: m_default_rid_map)
+    {
+        if (p.second == rid)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool SaiSwitch::isNonRemovableRid(
         _In_ sai_object_id_t rid) const
 {
@@ -629,21 +662,23 @@ bool SaiSwitch::isNonRemovableRid(
         SWSS_LOG_THROW("NULL rid passed");
     }
 
-    if (!isDefaultCreatedRid(rid))
+    if (!isColdBootDiscoveredRid(rid))
     {
         /*
-         * Non discovered obejct, it can be removed.
+         * This object was not discovered on cold boot so it can be removed.
          */
 
         return false;
     }
 
-    for (const auto &p: m_default_rid_map)
+    /*
+     * Check for SAI_SWITCH_ATTR_DEFAULT_* oids like cpu, default virtual
+     * router.  Those objects can't be removed if user ask for it.
+     */
+
+    if (isSwitchObjectDefaultRid(rid))
     {
-        if (p.second == rid)
-        {
-            return true;
-        }
+        return true;
     }
 
     sai_object_type_t ot = sai_object_type_query(rid);
@@ -672,6 +707,12 @@ bool SaiSwitch::isNonRemovableRid(
         case SAI_OBJECT_TYPE_VLAN_MEMBER:
         case SAI_OBJECT_TYPE_STP_PORT:
         case SAI_OBJECT_TYPE_BRIDGE_PORT:
+
+            /*
+             * Those objects were discovered during cold boot, but they can
+             * still be removed since switch allows that.
+             */
+
             return false;
 
         case SAI_OBJECT_TYPE_PORT:
@@ -707,7 +748,7 @@ void SaiSwitch::saiDiscover(
 
     /*
      * NOTE: This method is only good after switch init since we are making
-     * assumptions that tere are no ACL after initialization.
+     * assumptions that there are no ACL after initialization.
      *
      * NOTE: Input set could be a map of sets, this way we will also have
      * dependency on each oid.
@@ -738,7 +779,7 @@ void SaiSwitch::saiDiscover(
     /*
      * We will ignore STP ports by now, since when removing bridge port, then
      * associated stp port is automatically removed, and we don't use STP in
-     * out solution.  This causing inconsestincy with redis ASIC view vs
+     * out solution.  This causing inconsistency with redis ASIC view vs
      * actual ASIC asic state.
      *
      * TODO: This needs to be solved by sending discovered state to sairedis
@@ -752,7 +793,6 @@ void SaiSwitch::saiDiscover(
         discovered.insert(rid);
     }
 
-    // TODO later use sai_metadata_get_object_type_info(ot);
     const sai_object_type_info_t *info =  sai_metadata_get_object_type_info(ot);
 
     /*
@@ -803,7 +843,7 @@ void SaiSwitch::saiDiscover(
                         md->attrid == SAI_BRIDGE_PORT_ATTR_RIF_ID)
                 {
                     /*
-                     * We know that bridge port is binded on PORT, no need
+                     * We know that bridge port is bound on PORT, no need
                      * to query those attributes.
                      */
 
@@ -926,8 +966,11 @@ void SaiSwitch::helperDiscover()
 
     {
         SWSS_LOG_TIMER("discover");
+
         set_sai_api_log_min_prio("SAI_LOG_LEVEL_CRITICAL");
+
         saiDiscover(m_switch_rid, m_discovered_rids);
+
         set_sai_api_log_min_prio("SAI_LOG_LEVEL_NOTICE");
     }
 
@@ -951,21 +994,110 @@ void SaiSwitch::helperDiscover()
     }
 }
 
-void SaiSwitch::helperPutDiscoveredRidsToRedis()
+void SaiSwitch::helperLoadColdVids()
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_TIMER("put discovered objects to redis");
+    auto hash = g_redisClient->hgetall(COLDVIDS);
+
+    /*
+     * NOTE: some objects may not exists after 2nd restart, like VLAN_MEMBER or
+     * BRIDGE_PORT, since user could decide to remove them on previous boot.
+     */
+
+    for (auto kvp: hash)
+    {
+        auto strVid = kvp.first;
+
+        sai_object_id_t vid;
+        sai_deserialize_object_id(strVid, vid);
+
+        /*
+         * Just make sure that vid in COLDVIDS is present in current vid2rid map
+         */
+
+        auto rid = g_redisClient->hget(VIDTORID, strVid);
+
+        if (rid == nullptr)
+        {
+            SWSS_LOG_INFO("no RID for VID %s, probably object was removed previously", strVid.c_str());
+        }
+
+         m_coldBootDiscoveredVids.insert(vid);
+    }
+
+    SWSS_LOG_NOTICE("read %zu COLD VIDS", m_coldBootDiscoveredVids.size());
+}
+
+std::set<sai_object_id_t> SaiSwitch::getColdBootDiscoveredVids() const
+{
+    SWSS_LOG_ENTER();
+
+    if (m_coldBootDiscoveredVids.size() != 0)
+    {
+        return m_coldBootDiscoveredVids;
+    }
+
+    /*
+     * Normally we should throw here, but we want to keep backward
+     * compatibility and don't break anything.
+     */
+
+    SWSS_LOG_WARN("cold boot discovered VIDs set is empty, using discovered set");
+
+    std::set<sai_object_id_t> discoveredVids;
+
+    for (sai_object_id_t rid: m_discovered_rids)
+    {
+        sai_object_id_t vid = translate_rid_to_vid(rid, m_switch_vid);
+
+        discoveredVids.insert(vid);
+    }
+
+    return discoveredVids;
+}
+
+void SaiSwitch::redisSaveColdBootDiscoveredVids() const
+{
+    SWSS_LOG_ENTER();
+
+    for (sai_object_id_t rid: m_discovered_rids)
+    {
+        sai_object_id_t vid = translate_rid_to_vid(rid, m_switch_vid);
+
+        sai_object_type_t objectType = sai_object_type_query(rid);
+
+        if (objectType == SAI_OBJECT_TYPE_NULL)
+        {
+            SWSS_LOG_THROW("sai_object_type_query returned NULL type for RID: %s",
+                    sai_serialize_object_id(rid).c_str());
+        }
+
+        std::string strObjectType = sai_serialize_object_type(objectType);
+
+        std::string strVid = sai_serialize_object_id(vid);
+
+        g_redisClient->hset(COLDVIDS, strVid, strObjectType);
+    }
+
+    SWSS_LOG_NOTICE("put default discovered vids to redis");
+}
+
+void SaiSwitch::helperSaveDiscoveredObjectsToRedis()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_TIMER("save discovered objects to redis");
 
     /*
      * There is a problem:
      *
      * After switch creation, on the switch objects are created internally like
-     * VLAN members, queys, SGs etc.  Some of those obejct's are removable.
+     * VLAN members, queues, SGs etc.  Some of those objects are removable.
      * User can decide that he don't want VLAN members and he will remove them.
-     * Those obejcts will be removed from ASIC view in redis as well.
+     * Those objects will be removed from ASIC view in redis as well.
      *
-     * Now after hard reinit, syncd will picku up what is in the db and it will
+     * Now after hard reinit, syncd will pick up what is in the db and it will
      * try to recreate ASIC state.  First it will create switch, and this
      * switch will create those VLAN members again inside ASIC and it will try
      * to put them back to the DB, since we need to keep track of all default
@@ -975,8 +1107,7 @@ void SaiSwitch::helperPutDiscoveredRidsToRedis()
      * not. Since we are performing syncd hard reinit and recreating switch
      * that there was something in the DB already. And basing on that we can
      * deduce that we don't need to put again all our discovered objects to the
-     * DB, since some of thsoe obects could be removed as statet at the
-     * beginning.
+     * DB, since some of those objects could be removed at the beginning.
      *
      * Hard reinit is performed before taking any action from the redis queue.
      * But when user will decide to create switch, table consumer will put that
@@ -993,11 +1124,11 @@ void SaiSwitch::helperPutDiscoveredRidsToRedis()
      * PS. This is not the best way to solve this problem, but works.
      *
      * TODO: Some of those objects could be removed, like vlan members etc, we
-     * could actually put those objects back, but only those obejcts which we
+     * could actually put those objects back, but only those objects which we
      * would consider non removable, and this is hard to determine now. A
      * method getNonRemovableObjects would be nice, then we could put those
      * objects to the view every time, and not put only discovered objects that
-     * reflect removable obejcts liek vlan member.
+     * reflect removable objects like vlan member.
      */
 
     auto keys = g_redisClient->keys(ASIC_STATE_TABLE ":*");
@@ -1030,6 +1161,24 @@ void SaiSwitch::helperPutDiscoveredRidsToRedis()
 
         redisSetDummyAsicStateForRealObjectId(rid);
     }
+
+    /*
+     * If we are here, this is probably COLD boot, since any previous boot
+     * would put lots of objects into redis DB (ports, queues, scheduler_groups
+     * etc), and since this is cold boot, we can put those discovered objects
+     * to cold boot objects map to redis DB. This will become handy when doing
+     * warm boot and figuring out which object is default created and which is
+     * user created, since after warm boot user could previously assign buffer
+     * profile on ingress priority group and this buffer profile will be
+     * discovered by sai discovery logic.
+     *
+     * Question is here whether we should put VID here or RID. And after cold
+     * boot when hard reinit logic happens, we need to remap them, also note
+     * that some object could be removed like VLAN members and they will not
+     * have existing corresponding OID.
+     */
+
+    redisSaveColdBootDiscoveredVids();
 }
 
 void SaiSwitch::helperInternalOids()
@@ -1076,7 +1225,7 @@ sai_object_id_t SaiSwitch::getDefaultValueForOidAttr(
 /*
  * NOTE: If real ID will change during hard restarts, then we need to remap all
  * VID/RID, but we can only do that if we will save entire tree with all
- * dependencises.
+ * dependencies.
  */
 
 SaiSwitch::SaiSwitch(
@@ -1094,7 +1243,7 @@ SaiSwitch::SaiSwitch(
 
     /*
      * Discover put objects to redis needs to be called before checking lane
-     * map and ports, since it will deduce whether put discoverd objects to
+     * map and ports, since it will deduce whether put discovered objects to
      * redis to not interfere with possible user created objects previously.
      *
      * TODO: When user will use sairedis we need to send discovered view
@@ -1104,11 +1253,13 @@ SaiSwitch::SaiSwitch(
 
     helperDiscover();
 
-    helperPutDiscoveredRidsToRedis();
+    helperSaveDiscoveredObjectsToRedis();
 
     helperInternalOids();
 
     helperCheckLaneMap();
+
+    helperLoadColdVids();
 
     saiGetMacAddress(m_default_mac_address);
 }

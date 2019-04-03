@@ -6,7 +6,8 @@
 #include "meta/saiattributelist.h"
 
 void init_switch_MLNX2700(
-        _In_ sai_object_id_t switch_id);
+        _In_ sai_object_id_t switch_id,
+        _In_ std::shared_ptr<SwitchState> warmBootState);
 
 void uninit_switch_MLNX2700(
         _In_ sai_object_id_t switch_id);

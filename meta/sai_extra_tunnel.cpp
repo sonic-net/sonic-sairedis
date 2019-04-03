@@ -77,10 +77,10 @@ sai_status_t meta_pre_create_tunnel(
     // TODO for GRE/VXLAN it may be different type (router interface, overlay/underlay
     //
     // TODO validate object on that list! if they exist
-    // shoud this list contain at least 1 element ? or can it be empty?
+    // should this list contain at least 1 element ? or can it be empty?
     // check for duplicates on list ? - ecn mappers
 
-    // TODO sai spec is inconsisten here, if this is mandatory attribute on some condition,
+    // TODO sai spec is inconsistent here, if this is mandatory attribute on some condition,
     // then it cannot have default value, dscp mode and ttl mode
 
     return SAI_STATUS_SUCCESS;
@@ -145,7 +145,7 @@ sai_status_t meta_pre_create_tunnel_term_table_entry (
     // TODO check is this conditional attribute, maybe this action is only
     // required for ip in ip tunnel types
 
-    // TODO additional checks may be required sinec this action tunnel id is used for
+    // TODO additional checks may be required since this action tunnel id is used for
     // decap so maybe this tunnel must have special attributes on creation set
 
     return SAI_STATUS_SUCCESS;

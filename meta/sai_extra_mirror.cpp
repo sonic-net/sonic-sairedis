@@ -57,7 +57,7 @@ sai_status_t meta_pre_set_mirror_session_attribute(
     // TODO we need to type to decide which parameters are safe to set
     // SAI_MIRROR_SESSION_ATTR_MONITOR_PORT:
     // TODO should changing port during mirror session should be possible ?
-    // what if new port is somehow incompattible with current session?
+    // what if new port is somehow incompatible with current session?
 
     // SAI_MIRROR_SESSION_ATTR_GRE_PROTOCOL_TYPE: // TODO validate GRE protocol
     return is_header_version_ok(1, attr);

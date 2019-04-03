@@ -244,6 +244,63 @@ void test_set_readonly_attribute_via_redis()
     ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) != SAI_STATUS_SUCCESS);
 }
 
+void test_set_stats_via_redis()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    sai_object_id_t switch_id;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    SUCCESS(sai_metadata_sai_switch_api->create_switch(&switch_id, 1, &attr));
+
+    std::vector<sai_object_id_t> ports;
+
+    uint32_t expected_ports = 32;
+
+    ports.resize(expected_ports);
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = expected_ports;
+    attr.value.objlist.list = ports.data();
+
+    SUCCESS(sai_metadata_sai_switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    // this scope contains all operations needed to perform set stats on object
+    {
+        swss::DBConnector db(ASIC_DB, "localhost", 6379, 0);
+        swss::NotificationProducer vsntf(&db, SAI_VS_UNITTEST_CHANNEL);
+
+        std::vector<swss::FieldValueTuple> entry;
+
+        // needs to be done only once
+        vsntf.send(SAI_VS_UNITTEST_ENABLE_UNITTESTS, "true", entry);
+
+        std::string field = "SAI_PORT_STAT_IF_IN_ERRORS";
+        std::string value = "42"; // uint64_t
+
+        swss::FieldValueTuple fvt(field, value);
+
+        entry.push_back(fvt);
+
+        std::string data = sai_serialize_object_id(ports.at(0)); // set on 1st port
+
+        vsntf.send(SAI_VS_UNITTEST_SET_STATS_OP, data, entry);
+    }
+
+    // give some time for notification to propagate to vs via redis
+    usleep(200*1000);
+
+    sai_port_stat_t ids[1] = { SAI_PORT_STAT_IF_IN_ERRORS };
+    uint64_t counters[1] = { 0 } ;
+
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports.at(0), 1, (const sai_stat_id_t *)ids, counters));
+
+    ASSERT_TRUE(counters[0] == 42);
+}
 
 void sai_fdb_event_notification(
         _In_ uint32_t count,
@@ -649,7 +706,7 @@ void test_get_stats()
     values[0] = 42;
     values[1] = 42;
 
-    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, ids, values));
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, (const sai_stat_id_t *)ids, values));
 
     ASSERT_TRUE(values[0] == 0);
     ASSERT_TRUE(values[1] == 0);
@@ -660,7 +717,7 @@ void test_get_stats()
     values[1] = 127;
 
     // setting last bit of count value when unittest are enabled, will cause to perform SET on counters
-    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2 | 0x80000000, ids, values));
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2 | 0x80000000, (const sai_stat_id_t *)ids, values));
 
     values[0] = 42;
     values[1] = 42;
@@ -670,7 +727,7 @@ void test_get_stats()
     ids[0] = SAI_PORT_STAT_IF_OUT_OCTETS;
     ids[1] = SAI_PORT_STAT_IF_IN_OCTETS;
 
-    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, ids, values));
+    SUCCESS(sai_metadata_sai_port_api->get_port_stats(ports[0], 2, (const sai_stat_id_t *)ids, values));
 
     ASSERT_TRUE(values[0] == 127);
     ASSERT_TRUE(values[1] == 77);
@@ -701,7 +758,9 @@ int main()
 
     test_get_stats();
 
-    // make proper unitinialize to close unittest thread
+    test_set_stats_via_redis();
+
+    // make proper uninitialize to close unittest thread
     sai_api_uninitialize();
 
     return 0;

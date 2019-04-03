@@ -40,7 +40,7 @@ sai_status_t meta_pre_create_wred_profile(
     // green_min < green_max < yellow_min < yellow_max < red_min < red_max
     // This logic will be required also inside SET, so
 
-    // TODO need to be obrained from switch, also will be required during set
+    // TODO need to be obtained from switch, also will be required during set
     uint32_t max_buffer_size = 0x10000; // is this SAI_SWITCH_ATTR_TOTAL_BUFFER_SIZE ?
 
     // TODO change numbers to defines

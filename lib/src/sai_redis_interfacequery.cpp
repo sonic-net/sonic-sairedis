@@ -20,6 +20,7 @@ std::shared_ptr<swss::ProducerTable>        g_asicState;
 std::shared_ptr<swss::ConsumerTable>        g_redisGetConsumer;
 std::shared_ptr<swss::NotificationConsumer> g_redisNotifications;
 std::shared_ptr<swss::RedisClient>          g_redisClient;
+std::shared_ptr<swss::RedisPipeline>        g_redisPipeline;
 
 void clear_local_state()
 {
@@ -41,7 +42,7 @@ void clear_local_state()
     clear_notifications();
 
     /*
-     * Initialize metatada database.
+     * Initialize metadata database.
      */
 
     meta_init_db();
@@ -117,7 +118,8 @@ sai_status_t sai_api_initialize(
 
     g_db                 = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     g_dbNtf              = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    g_asicState          = std::make_shared<swss::ProducerTable>(g_db.get(), ASIC_STATE_TABLE);
+    g_redisPipeline      = std::make_shared<swss::RedisPipeline>(g_db.get()); //enable default pipeline 128
+    g_asicState          = std::make_shared<swss::ProducerTable>(g_redisPipeline.get(), ASIC_STATE_TABLE, true);
     g_redisGetConsumer   = std::make_shared<swss::ConsumerTable>(g_db.get(), "GETRESPONSE");
     g_redisNotifications = std::make_shared<swss::NotificationConsumer>(g_dbNtf.get(), "NOTIFICATIONS");
     g_redisClient        = std::make_shared<swss::RedisClient>(g_db.get());
@@ -210,34 +212,42 @@ sai_status_t sai_api_query(
     switch (sai_api_id)
     {
         API_CASE(ACL,acl);
+        API_CASE(BFD,bfd);
+        API_CASE(BMTOR,bmtor);
         API_CASE(BRIDGE,bridge);
         API_CASE(BUFFER,buffer);
+        API_CASE(DTEL,dtel);
         API_CASE(FDB,fdb);
         API_CASE(HASH,hash);
         API_CASE(HOSTIF,hostif);
-        //API_CASE(IPMC,ipmc);
-        //API_CASE(IPMC_GROUP,ipmc_group);
-        //API_CASE(L2MC,l2mc);
-        //API_CASE(L2MC_GROUP,l2mc_group);
+        API_CASE(IPMC_GROUP,ipmc_group);
+        API_CASE(IPMC,ipmc);
+        //API_CASE(ISOLATION_GROUP,isolation_group);
+        API_CASE(L2MC_GROUP,l2mc_group);
+        API_CASE(L2MC,l2mc);
         API_CASE(LAG,lag);
-        //API_CASE(MCAST_FDB,mcast_fdb);
+        API_CASE(MCAST_FDB,mcast_fdb);
         API_CASE(MIRROR,mirror);
+        API_CASE(MPLS,mpls);
         API_CASE(NEIGHBOR,neighbor);
-        API_CASE(NEXT_HOP,next_hop);
         API_CASE(NEXT_HOP_GROUP,next_hop_group);
+        API_CASE(NEXT_HOP,next_hop);
         API_CASE(POLICER,policer);
         API_CASE(PORT,port);
         API_CASE(QOS_MAP,qos_map);
         API_CASE(QUEUE,queue);
-        API_CASE(ROUTE,route);
         API_CASE(ROUTER_INTERFACE,router_interface);
-        //API_CASE(RPF_GROUP,rpf_group);
+        API_CASE(ROUTE,route);
+        API_CASE(RPF_GROUP,rpf_group);
         API_CASE(SAMPLEPACKET,samplepacket);
-        API_CASE(SCHEDULER,scheduler);
         API_CASE(SCHEDULER_GROUP,scheduler_group);
+        API_CASE(SCHEDULER,scheduler);
+        API_CASE(SEGMENTROUTE,segmentroute);
         API_CASE(STP,stp);
         API_CASE(SWITCH,switch);
+        API_CASE(TAM,tam);
         API_CASE(TUNNEL,tunnel);
+        API_CASE(UBURST,uburst);
         API_CASE(UDF,udf);
         API_CASE(VIRTUAL_ROUTER,virtual_router);
         API_CASE(VLAN,vlan);

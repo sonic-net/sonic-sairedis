@@ -107,22 +107,15 @@ void redisPutFdbEntryToAsicView(
     {
         sai_object_id_t bv_id = fdb->fdb_entry.bv_id;
         sai_object_id_t port_oid = 0;
-        bool port_oid_found = false;
         
         for (uint32_t i = 0; i < fdb->attr_count; i++)
         {
             if(fdb->attr[i].id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
             {
                 port_oid = fdb->attr[i].value.oid;
-                port_oid_found = true;
             }
         }
         
-        if (!port_oid_found)
-        {
-            SWSS_LOG_ERROR("Failed to get bridge port ID for FDB entry %s",strFdbEntry.c_str());
-            return;
-        }
                 
         if (!port_oid && !bv_id)
         {
@@ -247,17 +240,104 @@ void redisPutFdbEntryToAsicView(
     g_redisClient->hset(key, strAttrId, strAttrValue);
 }
 
+/**
+ * @Brief Check FDB event notification data.
+ *
+ * Every OID field in notification data as well as all OID attributes are
+ * checked if given OID (returned from ASIC) is already present in the syncd
+ * local database. All bridge ports, vlans should be already discovered by
+ * syncd discovery logic.  If vendor SAI will return unknown/invalid OID, this
+ * function will return false.
+ *
+ * @param data FDB event notification data
+ *
+ * @return False if any of OID values is not present in local DB, otherwise
+ * true.
+ */
+bool check_fdb_event_notification_data(
+        _In_ const sai_fdb_event_notification_data_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Any new RID value spotted in fdb notification can happen for 2 reasons:
+     *
+     * - a bug is present on the vendor SAI, all RID's are already in local or
+     *   REDIS ASIC DB but vendor SAI returned new or invalid RID
+     *
+     * - orch agent didn't query yet bridge ID/vlan ID and already
+     *   started to receive fdb notifications in which case warn message
+     *   could be ignored.
+     *
+     * If vendor SAI will return invalid RID, then this will later on lead to
+     * inconsistent DB state and possible failure on apply view after cold or
+     * warm boot.
+     *
+     * On switch init we do discover phase, and we should discover all objects
+     * so we should not get any of those messages if SAI is in consistent
+     * state.
+     */
+
+    bool result = true;
+
+    if (!check_rid_exists(data.fdb_entry.bv_id))
+    {
+        SWSS_LOG_ERROR("bv_id RID 0x%lx is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
+                sai_serialize_fdb_entry(data.fdb_entry).c_str());
+
+        result = false;
+    }
+
+    if (!check_rid_exists(data.fdb_entry.switch_id) || data.fdb_entry.switch_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("switch_id RID 0x%lx is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
+                sai_serialize_fdb_entry(data.fdb_entry).c_str());
+
+        result = false;
+    }
+
+    for (uint32_t i = 0; i < data.attr_count; i++)
+    {
+        const sai_attribute_t& attr = data.attr[i];
+
+        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_FDB_ENTRY, attr.id);
+
+        if (meta == NULL)
+        {
+            SWSS_LOG_ERROR("unable to get metadata for fdb_entry attr.id = %d", attr.id);
+            continue;
+        }
+
+        // skip non oid attributes
+        if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            continue;
+
+        if (!check_rid_exists(attr.value.oid))
+        {
+            SWSS_LOG_WARN("RID 0x%lx on %s is not present on local ASIC DB", attr.value.oid, meta->attridname);
+
+            result = false;
+        }
+    }
+
+    return result;
+}
+
 void process_on_fdb_event(
         _In_ uint32_t count,
         _In_ sai_fdb_event_notification_data_t *data)
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("fdb event count: %d", count);
+    SWSS_LOG_INFO("fdb event count: %u", count);
+
+    bool sendntf = true;
 
     for (uint32_t i = 0; i < count; i++)
     {
         sai_fdb_event_notification_data_t *fdb = &data[i];
+
+        sendntf &= check_fdb_event_notification_data(*fdb);
 
         SWSS_LOG_DEBUG("fdb %u: type: %d", i, fdb->event_type);
 
@@ -268,7 +348,7 @@ void process_on_fdb_event(
         translate_rid_to_vid_list(SAI_OBJECT_TYPE_FDB_ENTRY, fdb->fdb_entry.switch_id, fdb->attr_count, fdb->attr);
 
         /*
-         * Currently because of bcrm bug, we need to install fdb entries in
+         * Currently because of brcm bug, we need to install fdb entries in
          * asic view and currently this event don't have fdb type which is
          * required on creation.
          */
@@ -276,9 +356,45 @@ void process_on_fdb_event(
         redisPutFdbEntryToAsicView(fdb);
     }
 
-    std::string s = sai_serialize_fdb_event_ntf(count, data);
+    if (sendntf)
+    {
+        std::string s = sai_serialize_fdb_event_ntf(count, data);
 
-    send_notification("fdb_event", s);
+        send_notification("fdb_event", s);
+    }
+    else
+    {
+        SWSS_LOG_ERROR("FDB notification was not sent since it contain invalid OIDs, bug?");
+    }
+}
+
+void process_on_queue_deadlock_event(
+        _In_ uint32_t count,
+        _In_ sai_queue_deadlock_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("queue deadlock notification count: %u", count);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_queue_deadlock_notification_data_t *deadlock_data = &data[i];
+
+        /*
+         * We are using switch_rid as null, since queue should be already
+         * defined inside local db after creation.
+         *
+         * If this will be faster than return from create queue then we can use
+         * query switch id and extract rid of switch id and then convert it to
+         * switch vid.
+         */
+
+        deadlock_data->queue_id = translate_rid_to_vid(deadlock_data->queue_id, SAI_NULL_OBJECT_ID);
+    }
+
+    std::string s = sai_serialize_queue_deadlock_ntf(count, data);
+
+    send_notification("queue_deadlock", s);
 }
 
 void process_on_port_state_change(
@@ -350,6 +466,21 @@ void handle_fdb_event(
     sai_deserialize_free_fdb_event_ntf(count, fdbevent);
 }
 
+void handle_queue_deadlock(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_queue_deadlock_notification_data_t *qdeadlockevent = NULL;
+
+    sai_deserialize_queue_deadlock_ntf(data, count, &qdeadlockevent);
+
+    process_on_queue_deadlock_event(count, qdeadlockevent);
+
+    sai_deserialize_free_queue_deadlock_ntf(count, qdeadlockevent);
+}
+
 void handle_port_state_change(
         _In_ const std::string &data)
 {
@@ -403,6 +534,10 @@ void processNotification(
     {
         handle_switch_shutdown_request(data);
     }
+    else if (notification == "queue_deadlock")
+    {
+        handle_queue_deadlock(data);
+    }
     else
     {
         SWSS_LOG_ERROR("unknow notification: %s", notification.c_str());
@@ -410,11 +545,99 @@ void processNotification(
 }
 
 // condition variable will be used to notify processing thread
-// that some notiffication arrived
+// that some notification arrived
 
 std::condition_variable cv;
-std::mutex queue_mutex;
-std::queue<swss::KeyOpFieldsValuesTuple> ntf_queue;
+
+class ntf_queue_t
+{
+public:
+    ntf_queue_t() { }
+    bool enqueue(swss::KeyOpFieldsValuesTuple msg);
+    bool tryDequeue(swss::KeyOpFieldsValuesTuple& msg);
+    size_t queueStats()
+    {
+        SWSS_LOG_ENTER();
+
+        std::lock_guard<std::mutex> lock(queue_mutex);
+
+        return ntf_queue.size();
+    }
+
+private:
+    std::mutex queue_mutex;
+    std::queue<swss::KeyOpFieldsValuesTuple> ntf_queue;
+
+    /*
+     * Value based on typical L2 deployment with 256k MAC entries and
+     * some extra buffer for other events like port-state, q-deadlock etc
+     */
+    const size_t limit = 300000;
+};
+
+
+/*
+ * Make sure that notification queue pointer is populated before we start
+ * thread, and before we create_switch, since at switch_create we can start
+ * receiving fdb_notifications which will arrive on different thread and
+ * will call queueStats() when queue pointer could be null (this=0x0).
+ */
+
+static std::unique_ptr<ntf_queue_t> ntf_queue_hdlr = std::unique_ptr<ntf_queue_t>(new ntf_queue_t);
+
+bool ntf_queue_t::tryDequeue(
+        _Out_ swss::KeyOpFieldsValuesTuple &item)
+{
+    std::lock_guard<std::mutex> lock(queue_mutex);
+
+    SWSS_LOG_ENTER();
+
+    if (ntf_queue.empty())
+    {
+        return false;
+    }
+
+    item = ntf_queue.front();
+
+    ntf_queue.pop();
+
+    return true;
+}
+
+bool ntf_queue_t::enqueue(
+        _In_ swss::KeyOpFieldsValuesTuple item)
+{
+    SWSS_LOG_ENTER();
+
+    std::string notification = kfvKey(item);
+
+    /*
+     * If the queue exceeds the limit, then drop all further FDB events This is
+     * a temporary solution to handle high memory usage by syncd and the
+     * notification queue keeps growing. The permanent solution would be to
+     * make this stateful so that only the *latest* event is published.
+     */
+
+    if (queueStats() < limit || notification != "fdb_event")
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+
+        ntf_queue.push(item);
+        return true;
+    }
+
+    static uint32_t log_count = 0;
+
+    if (!(log_count % 1000))
+    {
+        SWSS_LOG_NOTICE("Too many messages in queue (%zu), dropped %u FDB events!",
+                         queueStats(), (log_count+1));
+    }
+
+    ++log_count;
+
+    return false;
+}
 
 void enqueue_notification(
         _In_ std::string op,
@@ -427,13 +650,10 @@ void enqueue_notification(
 
     swss::KeyOpFieldsValuesTuple item(op, data, entry);
 
-    // this is notification context, so we need to protect queue
-
-    std::lock_guard<std::mutex> lock(queue_mutex);
-
-    ntf_queue.push(item);
-
-    cv.notify_all();
+    if(ntf_queue_hdlr->enqueue(item))
+    {
+        cv.notify_all();
+    }
 }
 
 void enqueue_notification(
@@ -460,7 +680,7 @@ void on_switch_state_change(
 
 void on_fdb_event(
         _In_ uint32_t count,
-        _In_ sai_fdb_event_notification_data_t *data)
+        _In_ const sai_fdb_event_notification_data_t *data)
 {
     SWSS_LOG_ENTER();
 
@@ -469,9 +689,20 @@ void on_fdb_event(
     enqueue_notification("fdb_event", s);
 }
 
+void on_queue_deadlock(
+        _In_ uint32_t count,
+        _In_ const sai_queue_deadlock_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_queue_deadlock_ntf(count, data);
+
+    enqueue_notification("queue_deadlock", s);
+}
+
 void on_port_state_change(
         _In_ uint32_t count,
-        _In_ sai_port_oper_status_notification_t *data)
+        _In_ const sai_port_oper_status_notification_t *data)
 {
     SWSS_LOG_ENTER();
 
@@ -492,8 +723,8 @@ void on_switch_shutdown_request(
 
 void on_packet_event(
         _In_ sai_object_id_t switch_id,
-        _In_ const void *buffer,
         _In_ sai_size_t buffer_size,
+        _In_ const void *buffer,
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
@@ -508,25 +739,6 @@ volatile bool runThread;
 
 std::mutex ntf_mutex;
 std::unique_lock<std::mutex> ulock(ntf_mutex);
-
-bool tryDequeue(
-        _Out_ swss::KeyOpFieldsValuesTuple &item)
-{
-    std::lock_guard<std::mutex> lock(queue_mutex);
-
-    SWSS_LOG_ENTER();
-
-    if (ntf_queue.empty())
-    {
-        return false;
-    }
-
-    item = ntf_queue.front();
-
-    ntf_queue.pop();
-
-    return true;
-}
 
 void ntf_process_function()
 {
@@ -543,7 +755,7 @@ void ntf_process_function()
 
         swss::KeyOpFieldsValuesTuple item;
 
-        while (tryDequeue(item))
+        while (ntf_queue_hdlr->tryDequeue(item))
         {
             processNotification(item);
         }
@@ -575,37 +787,6 @@ void stopNotificationsProcessingThread()
     }
 
     ntf_process_thread = nullptr;
-}
-
-void on_queue_deadlock(
-        _In_ uint32_t count,
-        _In_ sai_queue_deadlock_notification_data_t *data)
-{
-    std::lock_guard<std::mutex> lock(g_mutex);
-
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_DEBUG("queue deadlock notification count: %u", count);
-
-    for (uint32_t i = 0; i < count; i++)
-    {
-        sai_queue_deadlock_notification_data_t *deadlock_data = &data[i];
-
-        /*
-         * We are using switch_rid as null, since queue should be already
-         * defined inside local db after creation.
-         *
-         * If this will be faster than return from create queue then we can use
-         * query switch id and extract rid of switch id and then convert it to
-         * switch vid.
-         */
-
-        deadlock_data->queue_id = translate_rid_to_vid(deadlock_data->queue_id, SAI_NULL_OBJECT_ID);
-    }
-
-    std::string s = sai_serialize_queue_deadlock_ntf(count, data);
-
-    send_notification("queue_deadlock", s);
 }
 
 sai_switch_state_change_notification_fn     on_switch_state_change_ntf = on_switch_state_change;
@@ -695,6 +876,6 @@ void check_notifications_pointers(
          * Here we translated pointer, just log it.
          */
 
-        SWSS_LOG_INFO("%s: %lp (orch) => %lp (syncd)", meta->attridname, prev, attr.value.ptr);
+        SWSS_LOG_INFO("%s: 0x%lX (orch) => 0x%lX (syncd)", meta->attridname, (uint64_t)prev, (uint64_t)attr.value.ptr);
     }
 }

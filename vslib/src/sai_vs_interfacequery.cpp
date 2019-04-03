@@ -3,6 +3,9 @@
 #include "sai_vs_state.h"
 #include <string.h>
 #include <unistd.h>
+#include <net/if.h>
+
+#include <algorithm>
 
 #include "swss/notificationconsumer.h"
 #include "swss/select.h"
@@ -20,6 +23,269 @@ std::shared_ptr<swss::DBConnector>          g_dbNtf;
 
 volatile bool                               g_fdbAgingThreadRun;
 std::shared_ptr<std::thread>                g_fdbAgingThread;
+
+int g_vs_boot_type = SAI_VS_COLD_BOOT;
+
+std::map<uint32_t,std::string> g_lane_to_ifname;
+std::map<std::string,std::vector<uint32_t>> g_ifname_to_lanes;
+std::vector<uint32_t> g_lane_order;
+std::vector<std::vector<uint32_t>> g_laneMap;
+
+const char *g_boot_type             = NULL;
+const char *g_warm_boot_read_file   = NULL;
+const char *g_warm_boot_write_file  = NULL;
+
+const char *g_interface_lane_map_file = NULL;
+
+void channelOpEnableUnittests(
+        _In_ const std::string &key,
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    bool enable = (key == "true");
+
+    meta_unittests_enable(enable);
+}
+
+void channelOpSetReadOnlyAttribute(
+        _In_ const std::string &key,
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    for (const auto &v: values)
+    {
+        SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+    }
+
+    if (values.size() != 1)
+    {
+        SWSS_LOG_ERROR("expected 1 value only, but given: %zu", values.size());
+        return;
+    }
+
+    const std::string &str_object_type = key.substr(0, key.find(":"));
+    const std::string &str_object_id = key.substr(key.find(":") + 1);
+
+    sai_object_type_t object_type;
+    sai_deserialize_object_type(str_object_type, object_type);
+
+    if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
+    {
+        SWSS_LOG_ERROR("invalid object type: %d", object_type);
+        return;
+    }
+
+    auto info = sai_metadata_get_object_type_info(object_type);
+
+    if (info->isnonobjectid)
+    {
+        SWSS_LOG_ERROR("non object id %s is not supported yet", str_object_type.c_str());
+        return;
+    }
+
+    sai_object_id_t object_id;
+
+    sai_deserialize_object_id(str_object_id, object_id);
+
+    sai_object_type_t ot = sai_object_type_query(object_id);
+
+    if (ot != object_type)
+    {
+        SWSS_LOG_ERROR("object type is differnt than provided %s, but oid is %s",
+                str_object_type.c_str(), sai_serialize_object_type(ot).c_str());
+        return;
+    }
+
+    sai_object_id_t switch_id = sai_switch_id_query(object_id);
+
+    if (switch_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("failed to find switch id for oid %s", str_object_id.c_str());
+        return;
+    }
+
+    // oid is validated and we got switch id
+
+    const std::string &str_attr_id = fvField(values.at(0));
+    const std::string &str_attr_value = fvValue(values.at(0));
+
+    auto meta = sai_metadata_get_attr_metadata_by_attr_id_name(str_attr_id.c_str());
+
+    if (meta == NULL)
+    {
+        SWSS_LOG_ERROR("failed to find attr %s", str_attr_id.c_str());
+        return;
+    }
+
+    if (meta->objecttype != ot)
+    {
+        SWSS_LOG_ERROR("attr %s belongs to differnt object type than oid: %s",
+                str_attr_id.c_str(), sai_serialize_object_type(ot).c_str());
+        return;
+    }
+
+    // we got attr metadata
+
+    sai_attribute_t attr;
+
+    attr.id = meta->attrid;
+
+    sai_deserialize_attr_value(str_attr_value, *meta, attr);
+
+    SWSS_LOG_NOTICE("switch id is %s", sai_serialize_object_id(switch_id).c_str());
+
+    sai_status_t status = meta_unittests_allow_readonly_set_once(meta->objecttype, meta->attrid);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to enable SET readonly attribute once: %s", sai_serialize_status(status).c_str());
+        return;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = ot, .objectkey = { .key = { .object_id = object_id } } };
+
+    status = info->set(&meta_key, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to set %s to %s on %s",
+                str_attr_id.c_str(), str_attr_value.c_str(), str_object_id.c_str());
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("SUCCESS to set %s to %s on %s",
+                str_attr_id.c_str(), str_attr_value.c_str(), str_object_id.c_str());
+    }
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+}
+
+void channelOpSetStats(
+        _In_ const std::string &key,
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    // NOTE: we need to find stats for specific object, later SAI already have
+    // this feature and this search could be optimized here:
+    // https://github.com/opencomputeproject/SAI/commit/acc83933ff21c68e8ef10c9826de45807fdc0438
+
+    sai_object_id_t oid;
+
+    sai_deserialize_object_id(key, oid);
+
+    sai_object_type_t ot = sai_object_type_query(oid);
+
+    if (ot == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("invalid object id: %s", key.c_str());
+        return;
+    }
+
+    sai_object_id_t switch_id = sai_switch_id_query(oid);
+
+    if (switch_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("unable to get switch_id from oid: %s", key.c_str());
+        return;
+    }
+
+    /*
+     * Check if object for statistics was created and exists on switch.
+     */
+
+    auto &objectHash = g_switch_state_map.at(switch_id)->objectHash.at(ot);
+
+    auto it = objectHash.find(key.c_str());
+
+    if (it == objectHash.end())
+    {
+        SWSS_LOG_ERROR("object not found: %s", key.c_str());
+        return;
+    }
+
+    /*
+     * Check if object for statistics have statistic map created, if not
+     * create empty map.
+     */
+
+    auto &countersMap = g_switch_state_map.at(switch_id)->countersMap;
+
+    auto mapit = countersMap.find(key);
+
+    if (mapit == countersMap.end())
+        countersMap[key] = std::map<int,uint64_t>();
+
+    /*
+     * Find stats enum based on object type.  In new metadata we have enum on
+     * object type, but here we need to find it manually enum is in format
+     * "sai_" + object_type + "_stat_t"
+     */
+
+    std::string lower_ot = sai_serialize_object_type(ot).substr(16);  // 16 = skip "SAI_OBJECT_TYPE_"
+
+    std::transform(lower_ot.begin(), lower_ot.end(), lower_ot.begin(), ::tolower);
+
+    std::string stat_enum_name = "sai_" + lower_ot + "_stat_t";
+
+    const sai_enum_metadata_t* statenum = NULL;
+
+    for (size_t i = 0; i < sai_metadata_all_enums_count; ++i)
+    {
+        if (sai_metadata_all_enums[i]->name == stat_enum_name)
+        {
+            SWSS_LOG_INFO("found enum %s", stat_enum_name.c_str());
+            // found
+            statenum = sai_metadata_all_enums[i];
+            break;
+        }
+    }
+
+    if (statenum == NULL)
+    {
+        SWSS_LOG_ERROR("failed to find stat enum: %s", stat_enum_name.c_str());
+        return;
+    }
+
+    for (auto v: values)
+    {
+        // value format: stat_enum_name:uint64
+
+        auto name = fvField(v);
+
+        uint64_t value;
+
+        if (sscanf(fvValue(v).c_str(), "%lu", &value) != 1)
+        {
+            SWSS_LOG_ERROR("failed to deserialize %s as couner value uint64_t", fvValue(v).c_str());
+        }
+
+        // linear search
+
+        int enumvalue = -1;
+
+        for (size_t i = 0; i < statenum->valuescount; ++i)
+        {
+            if (statenum->valuesnames[i] == name)
+            {
+                enumvalue = statenum->values[i];
+                break;
+            }
+        }
+
+        if (enumvalue == -1)
+        {
+            SWSS_LOG_ERROR("failed to find enum value: %s", name.c_str());
+            continue;
+        }
+
+        SWSS_LOG_DEBUG("writting %s = %lu on %s", name.c_str(), value, key.c_str());
+
+        countersMap.at(key)[enumvalue] = value;
+    }
+}
 
 void handleUnittestChannelOp(
         _In_ const std::string &op,
@@ -39,122 +305,24 @@ void handleUnittestChannelOp(
      * time until that value will be propagated to virtual switch.
      */
 
-    SWSS_LOG_NOTICE("read only SET: op = %s, key = %s", op.c_str(), key.c_str());
+    SWSS_LOG_NOTICE("op = %s, key = %s", op.c_str(), key.c_str());
+
+    for (const auto &v: values)
+    {
+        SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+    }
 
     if (op == SAI_VS_UNITTEST_ENABLE_UNITTESTS)
     {
-        bool enable = (key == "true");
-
-        meta_unittests_enable(enable);
+        channelOpEnableUnittests(key, values);
     }
     else if (op == SAI_VS_UNITTEST_SET_RO_OP)
     {
-        for (const auto &v: values)
-        {
-            SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
-        }
-
-        if (values.size() != 1)
-        {
-            SWSS_LOG_ERROR("expected 1 value only, but given: %zu", values.size());
-            return;
-        }
-
-        const std::string &str_object_type = key.substr(0, key.find(":"));
-        const std::string &str_object_id = key.substr(key.find(":") + 1);
-
-        sai_object_type_t object_type;
-        sai_deserialize_object_type(str_object_type, object_type);
-
-        if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_MAX)
-        {
-            SWSS_LOG_ERROR("invalid object type: %d", object_type);
-            return;
-        }
-
-        auto info = sai_metadata_get_object_type_info(object_type);
-
-        if (info->isnonobjectid)
-        {
-            SWSS_LOG_ERROR("non object id %s is not supported yet", str_object_type.c_str());
-            return;
-        }
-
-        sai_object_id_t object_id;
-
-        sai_deserialize_object_id(str_object_id, object_id);
-
-        sai_object_type_t ot = sai_object_type_query(object_id);
-
-        if (ot != object_type)
-        {
-            SWSS_LOG_ERROR("object type is differnt than provided %s, but oid is %s",
-                    str_object_type.c_str(), sai_serialize_object_type(ot).c_str());
-            return;
-        }
-
-        sai_object_id_t switch_id = sai_switch_id_query(object_id);
-
-        if (switch_id == SAI_NULL_OBJECT_ID)
-        {
-            SWSS_LOG_ERROR("failed to find switch id for oid %s", str_object_id.c_str());
-            return;
-        }
-
-        // oid is validated and we got switch id
-
-        const std::string &str_attr_id = fvField(values.at(0));
-        const std::string &str_attr_value = fvValue(values.at(0));
-
-        auto meta = sai_metadata_get_attr_metadata_by_attr_id_name(str_attr_id.c_str());
-
-        if (meta == NULL)
-        {
-            SWSS_LOG_ERROR("failed to find attr %s", str_attr_id.c_str());
-            return;
-        }
-
-        if (meta->objecttype != ot)
-        {
-            SWSS_LOG_ERROR("attr %s belongs to differnt object type than oid: %s",
-                    str_attr_id.c_str(), sai_serialize_object_type(ot).c_str());
-            return;
-        }
-
-        // we got attr metadata
-
-        sai_attribute_t attr;
-
-        attr.id = meta->attrid;
-
-        sai_deserialize_attr_value(str_attr_value, *meta, attr);
-
-        SWSS_LOG_NOTICE("switch id is %s", sai_serialize_object_id(switch_id).c_str());
-
-        sai_status_t status = meta_unittests_allow_readonly_set_once(meta->objecttype, meta->attrid);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("failed to enable SET readonly attribute once: %s", sai_serialize_status(status).c_str());
-            return;
-        }
-
-        sai_object_meta_key_t meta_key = { .objecttype = ot, .objectkey = { .key = { .object_id = object_id } } };
-
-        status = info->set(&meta_key, &attr);
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            SWSS_LOG_ERROR("failed to set %s to %s on %s",
-                    str_attr_id.c_str(), str_attr_value.c_str(), str_object_id.c_str());
-        }
-        else
-        {
-            SWSS_LOG_NOTICE("SUCCESS to set %s to %s on %s",
-                    str_attr_id.c_str(), str_attr_value.c_str(), str_object_id.c_str());
-        }
-
-        sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+        channelOpSetReadOnlyAttribute(key, values);
+    }
+    else if (op == SAI_VS_UNITTEST_SET_STATS_OP)
+    {
+        channelOpSetStats(key, values);
     }
     else
     {
@@ -197,7 +365,14 @@ void unittestChannelThreadProc()
 
             SWSS_LOG_DEBUG("notification: op = %s, data = %s", op.c_str(), data.c_str());
 
-            handleUnittestChannelOp(op, data, values);
+            try
+            {
+                handleUnittestChannelOp(op, data, values);
+            }
+            catch (const std::exception &e)
+            {
+                SWSS_LOG_ERROR("Exception: op = %s, data = %s, %s", op.c_str(), data.c_str(), e.what());
+            }
         }
     }
 
@@ -212,6 +387,8 @@ void processFdbEntriesForAging()
     {
         return;
     }
+
+    SWSS_LOG_INFO("fdb infos to process: %zu", g_fdb_info_set.size());
 
     uint32_t current = (uint32_t)time(NULL);
 
@@ -277,7 +454,7 @@ void fdbAgingThreadProc()
 }
 
 /**
- * @brief Serviec method table.
+ * @brief Service method table.
  *
  * We could use this table to choose switch vendor.
  */
@@ -290,7 +467,7 @@ void clear_local_state()
     SWSS_LOG_NOTICE("clearing local state");
 
     /*
-     * Initialize metatada database.
+     * Initialize metadata database.
      */
 
     meta_init_db();
@@ -306,6 +483,209 @@ void clear_local_state()
      */
 
     vs_reset_id_counter();
+}
+
+bool check_ifname(
+        _In_ const std::string& name)
+{
+    SWSS_LOG_ENTER();
+
+    size_t size = name.size();
+
+    if (size == 0 || size > IFNAMSIZ)
+    {
+        SWSS_LOG_ERROR("invalid interface name %s length: %zu", name.c_str(), size);
+        return false;
+    }
+
+    for (size_t i = 0; i < size; i++)
+    {
+        char c = name[i];
+
+        if (c >= '0' && c <= '9')
+            continue;
+
+        if (c >= 'a' && c <= 'z')
+            continue;
+
+        if (c >= 'A' && c <= 'Z')
+            continue;
+
+        SWSS_LOG_ERROR("invalid character '%c' in interface name %s", c, name.c_str());
+        return false;
+    }
+
+    // interface name is valid
+    return true;
+}
+
+void load_interface_lane_map()
+{
+    SWSS_LOG_ENTER();
+
+    if (g_interface_lane_map_file == NULL)
+    {
+        SWSS_LOG_NOTICE("no interface lane map");
+        return;
+    }
+
+    std::ifstream lanemap(g_interface_lane_map_file);
+
+    if (!lanemap.is_open())
+    {
+        SWSS_LOG_ERROR("failed to open lane map file: %s", g_interface_lane_map_file);
+        return;
+    }
+
+    std::string line;
+
+    while(getline(lanemap, line))
+    {
+        if (line.size() > 0 && (line[0] == '#' || line[0] == ';'))
+        {
+            continue;
+        }
+
+        auto tokens = swss::tokenize(line, ':');
+
+        if (tokens.size() != 2)
+        {
+            SWSS_LOG_ERROR("expected 2 tokens in line %s, got %zu", line.c_str(), tokens.size());
+            continue;
+        }
+
+        auto ifname = tokens.at(0);
+        auto lanes = tokens.at(1);
+
+        if (!check_ifname(ifname))
+        {
+            continue;
+        }
+
+        if (g_ifname_to_lanes.find(ifname) != g_ifname_to_lanes.end())
+        {
+            SWSS_LOG_ERROR("interface %s was already defined", ifname.c_str());
+            continue;
+        }
+
+        tokens = swss::tokenize(lanes,',');
+
+        size_t n = tokens.size();
+
+        if (n != 1 && n != 2 && n != 4)
+        {
+            SWSS_LOG_ERROR("invalid number of lanes (%zu) assigned to interface %s", n, ifname.c_str());
+            continue;
+        }
+
+        std::vector<uint32_t> lanevec;
+
+        for (auto l: tokens)
+        {
+            uint32_t lanenumber;
+            if (sscanf(l.c_str(), "%u", &lanenumber) != 1)
+            {
+                SWSS_LOG_ERROR("failed to parse lane number: %s", l.c_str());
+                continue;
+            }
+
+            if (g_lane_to_ifname.find(lanenumber) != g_lane_to_ifname.end())
+            {
+                SWSS_LOG_ERROR("lane number %u used on %s was already defined on %s",
+                        lanenumber,
+                        ifname.c_str(),
+                        g_lane_to_ifname.at(lanenumber).c_str());
+                continue;
+            }
+
+            lanevec.push_back(lanenumber);
+            g_lane_order.push_back(lanenumber);
+
+            g_lane_to_ifname[lanenumber] = ifname;
+        }
+
+        g_ifname_to_lanes[ifname] = lanevec;
+        g_laneMap.push_back(lanevec);
+    }
+
+    SWSS_LOG_NOTICE("loaded %zu lanes and %zu interfaces", g_lane_to_ifname.size(), g_ifname_to_lanes.size());
+}
+
+void getPortLaneMap(
+        _Inout_ std::vector<std::vector<uint32_t>> &laneMap)
+{
+    SWSS_LOG_ENTER();
+
+    laneMap.clear();
+
+    for (auto v: g_laneMap)
+    {
+        size_t s = v.size();
+
+        if (s != 1 && s != 2 && s != 4)
+        {
+            SWSS_LOG_THROW("invald number of lanes for interface: %zu", s);
+        }
+
+        laneMap.push_back(v);
+    }
+
+    if (g_laneMap.size())
+    {
+        SWSS_LOG_NOTICE("got port lane map with %zu interfaces", laneMap.size());
+        return;
+    }
+
+    const uint32_t default_port_count = 32;
+
+    sai_uint32_t default_lanes[] = {
+        29,30,31,32,
+        25,26,27,28,
+        37,38,39,40,
+        33,34,35,36,
+        41,42,43,44,
+        45,46,47,48,
+        5,6,7,8,
+        1,2,3,4,
+        9,10,11,12,
+        13,14,15,16,
+        21,22,23,24,
+        17,18,19,20,
+        49,50,51,52,
+        53,54,55,56,
+        61,62,63,64,
+        57,58,59,60,
+        65,66,67,68,
+        69,70,71,72,
+        77,78,79,80,
+        73,74,75,76,
+        105,106,107,108,
+        109,110,111,112,
+        117,118,119,120,
+        113,114,115,116,
+        121,122,123,124,
+        125,126,127,128,
+        85,86,87,88,
+        81,82,83,84,
+        89,90,91,92,
+        93,94,95,96,
+        97,98,99,100,
+        101,102,103,104
+    };
+
+    // populate default lane map
+
+    for (size_t i = 0; i < default_port_count; i++)
+    {
+        std::vector<uint32_t> portLanes;
+
+        for(int j = 0; j < 4; j++)
+            portLanes.push_back(default_lanes[4*i + j]);
+
+        laneMap.push_back(portLanes);
+    }
+
+    SWSS_LOG_NOTICE("populated default port lane map with %zu interfaces", laneMap.size());
 }
 
 sai_status_t sai_api_initialize(
@@ -340,6 +720,35 @@ sai_status_t sai_api_initialize(
     if (type == NULL)
     {
         SWSS_LOG_ERROR("failed to obtain service method table value: %s", SAI_KEY_VS_SWITCH_TYPE);
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    g_interface_lane_map_file = service_method_table->profile_get_value(0, SAI_KEY_VS_INTERFACE_LANE_MAP_FILE);
+
+    load_interface_lane_map();
+
+    g_boot_type             = service_method_table->profile_get_value(0, SAI_KEY_BOOT_TYPE);
+    g_warm_boot_read_file   = service_method_table->profile_get_value(0, SAI_KEY_WARM_BOOT_READ_FILE);
+    g_warm_boot_write_file  = service_method_table->profile_get_value(0, SAI_KEY_WARM_BOOT_WRITE_FILE);
+
+    std::string bt = (g_boot_type == NULL) ? "cold" : g_boot_type;
+
+    if (bt == "cold" || bt == "0")
+    {
+        g_vs_boot_type = SAI_VS_COLD_BOOT;
+    }
+    else if (bt == "warm" || bt == "1")
+    {
+        g_vs_boot_type = SAI_VS_WARM_BOOT;
+    }
+    else if (bt == "fast" || bt == "2")
+    {
+        g_vs_boot_type = SAI_VS_FAST_BOOT;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("unsupported boot type: %s", g_boot_type);
 
         return SAI_STATUS_FAILURE;
     }
@@ -388,6 +797,7 @@ sai_status_t sai_api_initialize(
 
     g_fdbAgingThreadRun = true;
 
+    // TODO should this be moved to create switch and SwitchState?
     g_fdbAgingThread = std::make_shared<std::thread>(std::thread(fdbAgingThreadProc));
 
     g_api_initialized = true;
@@ -465,34 +875,42 @@ sai_status_t sai_api_query(
     switch (sai_api_id)
     {
         API_CASE(ACL,acl);
+        API_CASE(BFD,bfd);
+        API_CASE(BMTOR,bmtor);
         API_CASE(BRIDGE,bridge);
         API_CASE(BUFFER,buffer);
+        API_CASE(DTEL,dtel);
         API_CASE(FDB,fdb);
         API_CASE(HASH,hash);
         API_CASE(HOSTIF,hostif);
-        //API_CASE(IPMC,ipmc);
-        //API_CASE(IPMC_GROUP,ipmc_group);
-        //API_CASE(L2MC,l2mc);
-        //API_CASE(L2MC_GROUP,l2mc_group);
+        API_CASE(IPMC_GROUP,ipmc_group);
+        API_CASE(IPMC,ipmc);
+        //API_CASE(ISOLATION_GROUP,isolation_group);
+        API_CASE(L2MC_GROUP,l2mc_group);
+        API_CASE(L2MC,l2mc);
         API_CASE(LAG,lag);
-        //API_CASE(MCAST_FDB,mcast_fdb);
+        API_CASE(MCAST_FDB,mcast_fdb);
         API_CASE(MIRROR,mirror);
+        API_CASE(MPLS,mpls);
         API_CASE(NEIGHBOR,neighbor);
-        API_CASE(NEXT_HOP,next_hop);
         API_CASE(NEXT_HOP_GROUP,next_hop_group);
+        API_CASE(NEXT_HOP,next_hop);
         API_CASE(POLICER,policer);
         API_CASE(PORT,port);
         API_CASE(QOS_MAP,qos_map);
         API_CASE(QUEUE,queue);
-        API_CASE(ROUTE,route);
         API_CASE(ROUTER_INTERFACE,router_interface);
-        //API_CASE(RPF_GROUP,rpf_group);
+        API_CASE(ROUTE,route);
+        API_CASE(RPF_GROUP,rpf_group);
         API_CASE(SAMPLEPACKET,samplepacket);
-        API_CASE(SCHEDULER,scheduler);
         API_CASE(SCHEDULER_GROUP,scheduler_group);
+        API_CASE(SCHEDULER,scheduler);
+        API_CASE(SEGMENTROUTE,segmentroute);
         API_CASE(STP,stp);
         API_CASE(SWITCH,switch);
+        API_CASE(TAM,tam);
         API_CASE(TUNNEL,tunnel);
+        API_CASE(UBURST,uburst);
         API_CASE(UDF,udf);
         API_CASE(VIRTUAL_ROUTER,virtual_router);
         API_CASE(VLAN,vlan);

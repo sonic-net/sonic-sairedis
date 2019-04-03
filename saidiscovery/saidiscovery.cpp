@@ -55,13 +55,13 @@ typedef std::chrono::duration<double, std::ratio<1>> second_t;
  * @brief Discover all objects on given object ID.
  *
  * This method is only good after switch init since we are making
- * assumptions that tere are no user created objects after initialization,
- * like ACL and other obejct's we can discover using this approach. If
- * vendor wil support sai_get_object_count and sai_get_object_key then
+ * assumptions that there are no user created objects after initialization,
+ * like ACL and other objects we can discover using this approach. If
+ * vendor will support sai_get_object_count and sai_get_object_key then
  * alter on we can use those methods.
  *
  * @param[in] id Object ID to be examined.
- * @param[inout] discovered Map of already discovered obejcts. Map will be
+ * @param[inout] discovered Map of already discovered objects. Map will be
  * updated if new object will be found.
  *
  * @return Number of calls performed to SAI.
@@ -242,7 +242,7 @@ int discover(
                 (md->objecttype == SAI_OBJECT_TYPE_PORT && md->attrid == SAI_PORT_ATTR_GLOBAL_FLOW_CONTROL_MODE) ||
                 (md->objecttype == SAI_OBJECT_TYPE_SWITCH && md->attrid == SAI_SWITCH_ATTR_INIT_SWITCH))
             {
-                // woakaround since return invalid values
+                // workaround since return invalid values
                 continue;
             }
 
@@ -637,7 +637,7 @@ int main(int argc, char **argv)
 
     double duration = std::chrono::duration_cast<second_t>(end - m_start).count();
 
-    SWSS_LOG_NOTICE("discovered obejcts: %zu took %.3lf sec, call count: %d",
+    SWSS_LOG_NOTICE("discovered objects: %zu took %.3lf sec, call count: %d",
             discovered.size(), duration, callCount);
 
     std::map<sai_object_type_t,int> map;

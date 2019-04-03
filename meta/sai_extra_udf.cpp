@@ -9,7 +9,7 @@ sai_status_t meta_pre_create_udf(
     SWSS_LOG_ENTER();
 
     // TODO validate offset value range
-    // TODO length must be quual to group attr length ?
+    // TODO length must be equal to group attr length ?
     // TODO extra validation may be required here on mask
 
     return SAI_STATUS_SUCCESS;

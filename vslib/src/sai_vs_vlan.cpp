@@ -30,33 +30,9 @@ sai_status_t vs_remove_vlan_members(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t vs_get_vlan_stats(
-        _In_ sai_object_id_t vlan_id,
-        _In_ uint32_t number_of_counters,
-        _In_ const sai_vlan_stat_t *counter_ids,
-        _Out_ uint64_t *counters)
-{
-    MUTEX();
-
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t vs_clear_vlan_stats(
-        _In_ sai_object_id_t vlan_id,
-        _In_ uint32_t number_of_counters,
-        _In_ const sai_vlan_stat_t *counter_ids)
-{
-    MUTEX();
-
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
 VS_GENERIC_QUAD(VLAN,vlan);
 VS_GENERIC_QUAD(VLAN_MEMBER,vlan_member);
+VS_GENERIC_STATS(VLAN,vlan);
 
 const sai_vlan_api_t vs_vlan_api = {
 
@@ -65,6 +41,6 @@ const sai_vlan_api_t vs_vlan_api = {
 
     vs_create_vlan_members,
     vs_remove_vlan_members,
-    vs_get_vlan_stats,
-    vs_clear_vlan_stats,
+
+    VS_GENERIC_STATS_API(vlan)
 };

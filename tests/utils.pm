@@ -48,12 +48,29 @@ sub flush_redis
 sub start_syncd
 {
     print color('bright_blue') . "Starting syncd" . color('reset') . "\n";
-    `./vssyncd -Su -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+    `./vssyncd -SUu -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+}
+
+sub start_syncd_warm
+{
+    print color('bright_blue') . "Starting syncd warm" . color('reset') . "\n";
+    `./vssyncd -SUu -t warm -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+    
+    sleep 1;
+}
+
+sub request_warm_shutdown
+{
+    print color('bright_blue') . "Requesting syncd warm shutdown" . color('reset') . "\n";
+    `../syncd/syncd_request_shutdown -w`;
+    
+    sleep 2;
 }
 
 sub play
 {
     my $file = shift;
+    my $asicop = shift;
 
     print color('bright_blue') . "Replay $file" . color('reset') . "\n";
 
@@ -64,11 +81,38 @@ sub play
         print color('red') . "player $DIR/$file: exitcode: $?:" . color('reset') . "\n";
         exit 1;
     }
+
+    return if not defined $asicop;
+
+    # asic operation count is defined
+    # we need to check log for that
+
+    open (my $H, "<", "applyview.log") or die "failed to open applyview.log $!";
+
+    my $line = <$H>;
+
+    close ($H);
+
+    chomp$line;
+
+    if (not $line =~ /ASIC_OPERATIONS: (\d+)/)
+    {
+        print color('red') . "expected ASIC_OPERATIONS count on first line, but got: '$line'" . color('reset') . "\n";
+        exit 1;
+    }
+
+    if ($1 > $asicop)
+    {
+        print color('red') . "expected ASIC_OPERATIONS count is $asicop but got $1" . color('reset') . "\n";
+        exit 1;
+    }
 }
 
 sub fresh_start
 {
     my $caller = GetCaller();
+
+    `rm -f applyview.log`;
 
     print "$caller: " . color('bright_blue') . "Fresh start" . color('reset') . "\n";
 
@@ -81,7 +125,7 @@ BEGIN
 {
     our @ISA    = qw(Exporter);
     our @EXPORT = qw/
-    kill_syncd flush_redis start_syncd play fresh_start
+    kill_syncd flush_redis start_syncd play fresh_start start_syncd_warm request_warm_shutdown
     /;
 
     my $script = $0;
