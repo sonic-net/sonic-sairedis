@@ -1656,6 +1656,28 @@ class AsicView
             {
                 std::shared_ptr<SaiAttr> attr = std::make_shared<SaiAttr>(field.first, field.second);
 
+                if (obj->getObjectType() == SAI_OBJECT_TYPE_ACL_COUNTER)
+                {
+                    auto* meta = attr->getAttrMetadata();
+
+                    switch (meta->attrid)
+                    {
+
+                        case SAI_ACL_COUNTER_ATTR_PACKETS:
+                        case SAI_ACL_COUNTER_ATTR_BYTES:
+
+                            // when reading asic view, ignore acl counter packets and bytes
+                            // this will result to not compare them during comparison logic
+
+                            SWSS_LOG_INFO("ignoring %s for %s", meta->attridname, obj->str_object_id.c_str());
+
+                            continue;
+
+                        default:
+                            break;
+                    }
+                }
+
                 obj->setAttr(attr);
 
                 /*
