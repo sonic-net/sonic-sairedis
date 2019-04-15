@@ -45,7 +45,6 @@ libsairedis_la_SOURCES = \
 						 sai_redis_switch.cpp \
 						 sai_redis_tam.cpp \
 						 sai_redis_tunnel.cpp \
-						 sai_redis_uburst.cpp \
 						 sai_redis_udf.cpp \
 						 sai_redis_virtual_router.cpp \
 						 sai_redis_vlan.cpp \
