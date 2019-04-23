@@ -139,7 +139,6 @@ extern const sai_stp_api_t              vs_stp_api;
 extern const sai_switch_api_t           vs_switch_api;
 extern const sai_tam_api_t              vs_tam_api;
 extern const sai_tunnel_api_t           vs_tunnel_api;
-extern const sai_uburst_api_t           vs_uburst_api;
 extern const sai_udf_api_t              vs_udf_api;
 extern const sai_virtual_router_api_t   vs_virtual_router_api;
 extern const sai_vlan_api_t             vs_vlan_api;
