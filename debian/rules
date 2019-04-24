@@ -22,7 +22,7 @@ clean:
 build:
 	echo build stage is skipped. Please use binary to generate debian packages
 
-binary: binary-syncd binary-syncd-rpc
+binary: binary-syncd-rpc binary-syncd
 
 binary-syncd:
 	$(shell echo > /tmp/syncd-build)
