@@ -1210,3 +1210,119 @@ sai_status_t refresh_read_only_BCM56850(
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
+
+sai_status_t vs_create_port_BCM56850(
+        _In_ sai_object_id_t port_id,
+        _In_ sai_object_id_t switch_id)
+{
+    SWSS_LOG_ENTER();
+ 
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+    attr.value.booldata = false;     /* default admin state is down as defined in SAI */
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    /* create priority groups */
+    const uint32_t port_pgs_count = 8;
+
+    std::vector<sai_object_id_t> pgs;
+
+    for (uint32_t i = 0; i < port_pgs_count; ++i)
+    {
+        sai_object_id_t pg_id;
+
+        CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, &pg_id, switch_id, 0, NULL));
+
+        pgs.push_back(pg_id);
+    }
+
+    attr.id = SAI_PORT_ATTR_NUMBER_OF_INGRESS_PRIORITY_GROUPS;
+    attr.value.u32 = port_pgs_count;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_INGRESS_PRIORITY_GROUP_LIST;
+    attr.value.objlist.count = port_pgs_count;
+    attr.value.objlist.list = pgs.data();
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    /* create qos queues */
+    const uint32_t port_qos_queues_count = 20;
+
+    std::vector<sai_object_id_t> queues;
+
+    for (uint32_t i = 0; i < port_qos_queues_count; ++i)
+    {
+        sai_object_id_t queue_id;
+
+        CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_QUEUE, &queue_id, switch_id, 0, NULL));
+
+        queues.push_back(queue_id);
+    }
+
+    attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
+    attr.value.u32 = port_qos_queues_count;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+    attr.value.objlist.count = port_qos_queues_count;
+    attr.value.objlist.list = queues.data();
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t vs_remove_port_BCM56850(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    /* remove priority groups */
+    uint32_t port_pgs_count;
+    std::vector<sai_object_id_t> pgs;
+
+    attr.id = SAI_PORT_ATTR_NUMBER_OF_INGRESS_PRIORITY_GROUPS;
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+    port_pgs_count = attr.value.u32;
+    pgs.resize(port_pgs_count);
+
+    attr.id = SAI_PORT_ATTR_INGRESS_PRIORITY_GROUP_LIST;
+    attr.value.objlist.count = port_pgs_count;
+    attr.value.objlist.list = pgs.data();
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+
+    for (uint32_t i = 0; i < pgs.size(); ++i)
+    {
+        CHECK_STATUS(vs_generic_remove(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, pgs[i]));
+    }
+
+
+    /* remove qos queues */
+    uint32_t port_qos_queues_count;
+    std::vector<sai_object_id_t> queues;
+
+    attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+    port_qos_queues_count = attr.value.u32;
+    queues.resize(port_qos_queues_count);
+
+    attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+    attr.value.objlist.count = port_qos_queues_count;
+    attr.value.objlist.list = queues.data();
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+
+    for (uint32_t i = 0; i < queues.size(); ++i)
+    {
+        CHECK_STATUS(vs_generic_remove(SAI_OBJECT_TYPE_QUEUE, queues[i]));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+

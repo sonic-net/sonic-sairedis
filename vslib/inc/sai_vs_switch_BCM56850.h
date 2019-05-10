@@ -17,4 +17,11 @@ sai_status_t refresh_read_only_BCM56850(
         _In_ sai_object_id_t object_id,
         _In_ sai_object_id_t switch_id);
 
+sai_status_t vs_create_port_BCM56850(
+        _In_ sai_object_id_t port_id,
+        _In_ sai_object_id_t switch_id);
+
+sai_status_t vs_remove_port_BCM56850(
+        _In_ sai_object_id_t port_id);
+
 #endif // __SAI_VS_SWITCH_BCM56850__
