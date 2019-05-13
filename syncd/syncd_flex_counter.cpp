@@ -976,6 +976,7 @@ void FlexCounter::collectCounters(
     // Collect stats for every registered router interface
     for (const auto &kv: rifCounterIdsMap)
     {
+        sai_status_t status;
         const auto &rifVid = kv.first;
         const auto &rifId = kv.second->rifId;
         const auto &rifCounterIds = kv.second->rifCounterIds;
@@ -983,11 +984,21 @@ void FlexCounter::collectCounters(
         std::vector<uint64_t> rifStats(rifCounterIds.size());
 
         // Get rif stats
-        sai_status_t status = sai_metadata_sai_router_interface_api->get_router_interface_stats(
+        /*
+         * add null function pointer checking to preven crashing
+         * Need a better solution
+         */
+        if (sai_metadata_sai_router_interface_api->get_router_interface_stats) {
+            status = sai_metadata_sai_router_interface_api->get_router_interface_stats(
                 rifId,
                 static_cast<uint32_t>(rifCounterIds.size()),
                 (const sai_stat_id_t *)rifCounterIds.data(),
                 rifStats.data());
+        } else {
+            SWSS_LOG_WARN("SAI API get_router_interface_stats not supportted. Skipping\n");
+            status = SAI_STATUS_NOT_SUPPORTED;
+        }
+
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to get stats of router interface 0x%lx: %d", rifId, status);
@@ -1238,11 +1249,22 @@ void FlexCounter::saiUpdateSupportedRifCounters(sai_object_id_t rifId)
     SWSS_LOG_ENTER();
 
     uint64_t value;
+    sai_status_t status;
+
     for (int cntr_id = SAI_ROUTER_INTERFACE_STAT_IN_OCTETS; cntr_id <= SAI_ROUTER_INTERFACE_STAT_OUT_ERROR_PACKETS; ++cntr_id)
     {
         sai_router_interface_stat_t counter = static_cast<sai_router_interface_stat_t>(cntr_id);
 
-        sai_status_t status = sai_metadata_sai_router_interface_api->get_router_interface_stats(rifId, 1, (const sai_stat_id_t *)&counter, &value);
+        /*
+         * add null function pointer checking to preven crashing
+         * Need a better solution
+         */
+        if (sai_metadata_sai_router_interface_api->get_router_interface_stats) {
+            status = sai_metadata_sai_router_interface_api->get_router_interface_stats(rifId, 1, (const sai_stat_id_t *)&counter, &value);
+        } else {
+            SWSS_LOG_WARN("SAI API get_router_interface_stats not supportted. Skipping\n");
+            status = SAI_STATUS_NOT_SUPPORTED;
+        }
 
         if (status != SAI_STATUS_SUCCESS)
         {
