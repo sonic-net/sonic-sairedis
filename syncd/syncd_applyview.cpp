@@ -483,8 +483,8 @@ class SaiObj
 };
 
 typedef std::unordered_map<sai_object_id_t, sai_object_id_t> ObjectIdMap;
-typedef std::map<std::string, std::shared_ptr<SaiObj>> StrObjectIdToSaiObjectHash;
-typedef std::map<sai_object_id_t, std::shared_ptr<SaiObj>> ObjectIdToSaiObjectHash;
+typedef std::unordered_map<std::string, std::shared_ptr<SaiObj>> StrObjectIdToSaiObjectHash;
+typedef std::unordered_map<sai_object_id_t, std::shared_ptr<SaiObj>> ObjectIdToSaiObjectHash;
 
 /**
  * @brief Class represents ASIC view
@@ -2916,59 +2916,12 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclTable(
                 {
                     if (c.obj->getVid() == curAclTableId->getOid())
                     {
-                        SWSS_LOG_INFO("found ACL table candidate %s using port %s",
+                        SWSS_LOG_INFO("found ALC table candidate %s using port %s",
                                 c.obj->str_object_id.c_str(),
                                 tmpPort->str_object_id.c_str());
 
                         return c.obj;
                     }
-                }
-            }
-        }
-    }
-
-    // try using pre match in this case
-
-    const auto tmpMembers = temporaryView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER);
-
-    for (auto tmpAclTableGroupMember: tmpMembers)
-    {
-        auto tmpAclTableIdAttr = tmpAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID);
-
-        if (tmpAclTableIdAttr->getOid() != temporaryObj->getVid())
-            continue;
-
-        auto tmpAclTableGroupIdAttr = tmpAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID);
-
-        auto tmpAclTableGroup = temporaryView.oOids.at(tmpAclTableGroupIdAttr->getOid());
-
-        auto it = temporaryView.preMatchMap.find(tmpAclTableGroup->getVid());
-
-        if (it == temporaryView.preMatchMap.end())
-            continue;
-
-        auto curAclTableGroupMembers = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER);
-
-        for (auto curAclTableGroupMember: curAclTableGroupMembers)
-        {
-            auto curAclTableGroupIdAttr = curAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID);
-
-            if (curAclTableGroupIdAttr->getOid() != it->second)
-                continue;
-
-            // we got acl table group member current that uses same acl table group as temporary
-
-            auto curAclTableIdAttr = curAclTableGroupMember->getSaiAttr(SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID);
-
-            for (auto c: candidateObjects)
-            {
-                if (c.obj->getVid() == curAclTableIdAttr->getOid())
-                {
-                    SWSS_LOG_INFO("found ACL table candidate %s using pre match ACL TABLE GROUP %s",
-                            c.obj->str_object_id.c_str(),
-                            tmpAclTableGroup->str_object_id.c_str());
-
-                    return c.obj;
                 }
             }
         }
@@ -6213,7 +6166,7 @@ void processObjectForViewTransition(
         return;
     }
 
-    SWSS_LOG_INFO("processing: %s:%s", temporaryObj->str_object_type.c_str(), temporaryObj->str_object_id.c_str());
+    SWSS_LOG_DEBUG("processing: %s:%s", temporaryObj->str_object_type.c_str(), temporaryObj->str_object_id.c_str());
 
     procesObjectAttributesForViewTransition(currentView, temporaryView, temporaryObj);
 
@@ -7280,17 +7233,7 @@ void createPreMatchMap(
         createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
     }
 
-    size_t count = 0;
-
-    for (auto& ok: tmp.soOids)
-    {
-        if (ok.second->getObjectStatus() != SAI_OBJECT_STATUS_MATCHED)
-            count++;
-    }
-
-    SWSS_LOG_NOTICE("preMatch map size: %zu, tmp oid obj: %zu",
-            tmp.preMatchMap.size(),
-            count);
+    SWSS_LOG_NOTICE("preMatch map size: %zu", tmp.preMatchMap.size());
 }
 
 sai_status_t syncdApplyView()
