@@ -572,6 +572,8 @@ void update_notifications_pointers(
             continue;
         }
 
+        if (attr.value.ptr == nullptr) // allow nulls
+            continue;
 
         switch (attr.id)
         {

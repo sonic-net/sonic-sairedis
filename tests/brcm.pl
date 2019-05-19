@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+BEGIN { push @INC,'.'; }
+
 use strict;
 use warnings;
 use diagnostics;
@@ -419,8 +421,20 @@ sub test_acl_mask
     for (1..8) { play "acl_mask.rec", 0; }
 }
 
+sub test_ntf
+{
+    fresh_start;
+
+    play "ntf1.rec";
+    play "ntf2.rec", 1;
+    play "ntf2.rec", 0;
+    play "ntf1.rec", 1;
+    play "ntf1.rec", 0;
+}
+
 # RUN TESTS
 
+test_ntf;
 test_acl_mask;
 test_empty_lag_buffer_acl;
 test_brcm_config_acl;

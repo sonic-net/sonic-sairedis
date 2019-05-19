@@ -2241,6 +2241,30 @@ bool hasEqualAttribute(
         const auto &currentAttr = current->getSaiAttr(id);
         const auto &temporaryAttr = temporary->getSaiAttr(id);
 
+        if (currentAttr->getAttrMetadata()->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
+        {
+            auto c = currentAttr->getSaiAttr()->value.ptr;
+            auto t = temporaryAttr->getSaiAttr()->value.ptr;
+
+            /*
+             * When comparing pointers, actual value's can't be checked since
+             * actual value is pointer in sairedis/OA address space. Syncd
+             * translates those pointers before executing SAI API. Pointers are
+             * considered equal if they are both null, or both not null since
+             * the same handler method in syncd is used.
+             */
+
+            if (c == nullptr && t == nullptr)
+                return true;
+
+            if (c != nullptr && t != nullptr)
+                return true;
+
+            SWSS_LOG_NOTICE("current ptr on %s is %p, tmp ptr is %p", currentAttr->getAttrMetadata()->attridname, c, t);
+
+            return false;
+        }
+
         if (currentAttr->getStrAttrValue() == temporaryAttr->getStrAttrValue())
         {
             /*
