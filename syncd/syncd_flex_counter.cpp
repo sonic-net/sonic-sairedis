@@ -677,6 +677,7 @@ bool FlexCounter::isEmpty()
            m_priorityGroupPlugins.empty() &&
            m_queueCounterIdsMap.empty() &&
            m_portCounterIdsMap.empty() &&
+           m_rifCounterIdsMap.empty() &&
            m_queueAttrIdsMap.empty() &&
            m_queuePlugins.empty() &&
            m_portPlugins.empty();
