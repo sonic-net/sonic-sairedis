@@ -34,21 +34,7 @@ sai_status_t vs_create_port(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t vs_remove_port(
-            _In_ sai_object_id_t port_id)
-{
-    MUTEX();
-    SWSS_LOG_ENTER();
-
-    if (g_vs_switch_type == SAI_VS_SWITCH_TYPE_BCM56850)
-    {
-	vs_remove_port_BCM56850(port_id);
-    }
-
-    return meta_sai_remove_oid((sai_object_type_t)SAI_OBJECT_TYPE_PORT,
-                port_id,&vs_generic_remove);
-}
-
+VS_REMOVE(PORT,port);
 VS_SET(PORT,port);
 VS_GET(PORT,port);
 VS_GENERIC_QUAD(PORT_POOL,port_pool);
