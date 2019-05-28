@@ -350,6 +350,44 @@ static sai_status_t create_default_trap_group()
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
 }
 
+static sai_status_t create_qos_queues_per_port(sai_object_id_t switch_id, sai_object_id_t port_id)
+{
+    // 8 in and 8 out queues per port
+    const uint32_t port_qos_queues_count = 16;
+    std::vector<sai_object_id_t> queues;
+
+    for (uint32_t i = 0; i < port_qos_queues_count; ++i)
+    {
+        sai_object_id_t queue_id;
+
+        sai_attribute_t attr[2];
+
+        attr[0].id = SAI_QUEUE_ATTR_INDEX;
+        attr[0].value.u8 = (uint8_t)i;
+        attr[1].id = SAI_QUEUE_ATTR_PORT;
+        attr[1].value.oid = port_id;
+
+        CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_QUEUE, &queue_id, switch_id, 2, attr));
+
+        queues.push_back(queue_id);
+    }
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
+    attr.value.u32 = port_qos_queues_count;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+    attr.value.objlist.count = port_qos_queues_count;
+    attr.value.objlist.list = queues.data();
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 static sai_status_t create_qos_queues()
 {
     SWSS_LOG_ENTER();
@@ -358,47 +396,60 @@ static sai_status_t create_qos_queues()
 
     sai_object_id_t switch_id = ss->getSwitchId();
 
-    // 8 in and 8 out queues per port
-    const uint32_t port_qos_queues_count = 16;
-
     std::vector<sai_object_id_t> copy = port_list;
 
     copy.push_back(cpu_port_id);
 
     for (auto &port_id : copy)
     {
-        std::vector<sai_object_id_t> queues;
-
-        for (uint32_t i = 0; i < port_qos_queues_count; ++i)
-        {
-            sai_object_id_t queue_id;
-
-            sai_attribute_t attr[2];
-
-            attr[0].id = SAI_QUEUE_ATTR_INDEX;
-            attr[0].value.u8 = (uint8_t)i;
-
-            attr[1].id = SAI_QUEUE_ATTR_PORT;
-            attr[1].value.oid = port_id;
-
-            CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_QUEUE, &queue_id, switch_id, 2, attr));
-
-            queues.push_back(queue_id);
-        }
-
-        sai_attribute_t attr;
-
-        attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
-        attr.value.u32 = port_qos_queues_count;
-
-        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
-
-        attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
-        attr.value.objlist.count = port_qos_queues_count;
-        attr.value.objlist.list = queues.data();
-
-        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        create_qos_queues_per_port(switch_id, port_id);
     }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+static sai_status_t create_ingress_priority_groups_per_port(sai_object_id_t switch_id, sai_object_id_t port_id)
+{
+    const uint32_t port_pgs_count = 8;
+    std::vector<sai_object_id_t> pgs;
+
+    for (uint32_t i = 0; i < port_pgs_count; ++i)
+    {
+        sai_object_id_t pg_id;
+
+        sai_attribute_t attr[3];
+
+        attr[0].id = SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE;
+        attr[0].value.oid = SAI_NULL_OBJECT_ID;
+
+        /*
+         * not in headers yet
+         *
+         * attr[1].id = SAI_INGRESS_PRIORITY_GROUP_ATTR_PORT;
+         * attr[1].value.oid = port_id;
+
+         * attr[2].id = SAI_INGRESS_PRIORITY_GROUP_ATTR_INDEX;
+         * attr[2].value.oid = i;
+
+         * fix number of attributes
+         */
+
+        CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, &pg_id, switch_id, 1, attr));
+        pgs.push_back(pg_id);
+    }
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_NUMBER_OF_INGRESS_PRIORITY_GROUPS;
+    attr.value.u32 = port_pgs_count;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_INGRESS_PRIORITY_GROUP_LIST;
+    attr.value.objlist.count = port_pgs_count;
+    attr.value.objlist.list = pgs.data();
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
     return SAI_STATUS_SUCCESS;
 }
@@ -411,50 +462,9 @@ static sai_status_t create_ingress_priority_groups()
 
     sai_object_id_t switch_id = ss->getSwitchId();
 
-    const uint32_t port_pgs_count = 8;
-
     for (auto &port_id : port_list)
     {
-        std::vector<sai_object_id_t> pgs;
-
-        for (uint32_t i = 0; i < port_pgs_count; ++i)
-        {
-            sai_object_id_t pg_id;
-
-            sai_attribute_t attr[3];
-
-            attr[0].id = SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE;
-            attr[0].value.oid = SAI_NULL_OBJECT_ID;
-
-            /*
-             * not in headers yet
-             *
-             * attr[1].id = SAI_INGRESS_PRIORITY_GROUP_ATTR_PORT;
-             * attr[1].value.oid = port_id;
-
-             * attr[2].id = SAI_INGRESS_PRIORITY_GROUP_ATTR_INDEX;
-             * attr[2].value.oid = i;
-
-             * fix number of attributes
-             */
-
-            CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, &pg_id, switch_id, 1, attr));
-
-            pgs.push_back(pg_id);
-        }
-
-        sai_attribute_t attr;
-
-        attr.id = SAI_PORT_ATTR_NUMBER_OF_INGRESS_PRIORITY_GROUPS;
-        attr.value.u32 = port_pgs_count;
-
-        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
-
-        attr.id = SAI_PORT_ATTR_INGRESS_PRIORITY_GROUP_LIST;
-        attr.value.objlist.count = port_pgs_count;
-        attr.value.objlist.list = pgs.data();
-
-        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+        create_ingress_priority_groups_per_port(switch_id, port_id);
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1194,3 +1204,26 @@ sai_status_t refresh_read_only_MLNX2700(
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
+
+sai_status_t vs_create_port_MLNX2700(
+        _In_ sai_object_id_t port_id,
+        _In_ sai_object_id_t switch_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+    attr.value.booldata = false;     /* default admin state is down as defined in SAI */
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    /* create priority groups */
+    create_ingress_priority_groups_per_port(switch_id, port_id);
+
+    /* create qos queues */
+    create_qos_queues_per_port(switch_id, port_id);
+
+    return SAI_STATUS_SUCCESS;
+}
+

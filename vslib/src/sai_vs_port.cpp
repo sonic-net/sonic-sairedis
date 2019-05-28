@@ -2,6 +2,7 @@
 #include "sai_vs_internal.h"
 #include "sai_vs_state.h"
 #include "sai_vs_switch_BCM56850.h"
+#include "sai_vs_switch_MLNX2700.h"
 
 sai_status_t vs_clear_port_all_stats(
         _In_ sai_object_id_t port_id)
@@ -29,6 +30,10 @@ sai_status_t vs_create_port(
     if (g_vs_switch_type == SAI_VS_SWITCH_TYPE_BCM56850)
     {
         vs_create_port_BCM56850(*port_id, switch_id);
+    }
+    else if (g_vs_switch_type == SAI_VS_SWITCH_TYPE_MLNX2700)
+    {
+        vs_create_port_MLNX2700(*port_id, switch_id);
     }
 
     return SAI_STATUS_SUCCESS;
