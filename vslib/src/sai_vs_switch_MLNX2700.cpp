@@ -352,6 +352,8 @@ static sai_status_t create_default_trap_group()
 
 static sai_status_t create_qos_queues_per_port(sai_object_id_t switch_id, sai_object_id_t port_id)
 {
+    SWSS_LOG_ENTER();
+
     // 8 in and 8 out queues per port
     const uint32_t port_qos_queues_count = 16;
     std::vector<sai_object_id_t> queues;
@@ -410,6 +412,8 @@ static sai_status_t create_qos_queues()
 
 static sai_status_t create_ingress_priority_groups_per_port(sai_object_id_t switch_id, sai_object_id_t port_id)
 {
+    SWSS_LOG_ENTER();
+
     const uint32_t port_pgs_count = 8;
     std::vector<sai_object_id_t> pgs;
 
