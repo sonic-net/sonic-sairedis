@@ -350,7 +350,9 @@ static sai_status_t create_default_trap_group()
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
 }
 
-static sai_status_t create_qos_queues_per_port(sai_object_id_t switch_id, sai_object_id_t port_id)
+static sai_status_t create_qos_queues_per_port(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id)
 {
     SWSS_LOG_ENTER();
 
@@ -410,7 +412,9 @@ static sai_status_t create_qos_queues()
     return SAI_STATUS_SUCCESS;
 }
 
-static sai_status_t create_ingress_priority_groups_per_port(sai_object_id_t switch_id, sai_object_id_t port_id)
+static sai_status_t create_ingress_priority_groups_per_port(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id)
 {
     SWSS_LOG_ENTER();
 
