@@ -286,7 +286,7 @@ bool object_reference_exists(
 
     bool exists = ObjectReferences.find(oid) != ObjectReferences.end();
 
-    SWSS_LOG_DEBUG("object 0x%lx refrence: %s", oid, exists ? "exists" : "missing");
+    SWSS_LOG_DEBUG("object 0x%"PRIx64" refrence: %s", oid, exists ? "exists" : "missing");
 
     return exists;
 }
@@ -307,12 +307,12 @@ void object_reference_inc(
 
     if (!object_reference_exists(oid))
     {
-        SWSS_LOG_THROW("FATAL: object oid 0x%lx not in reference map", oid);
+        SWSS_LOG_THROW("FATAL: object oid 0x%"PRIx64" not in reference map", oid);
     }
 
     ObjectReferences[oid]++;
 
-    SWSS_LOG_DEBUG("increased reference on oid 0x%lx to %d", oid, ObjectReferences[oid]);
+    SWSS_LOG_DEBUG("increased reference on oid 0x%"PRIx64" to %d", oid, ObjectReferences[oid]);
 }
 
 void object_reference_dec(
@@ -331,17 +331,17 @@ void object_reference_dec(
 
     if (!object_reference_exists(oid))
     {
-        SWSS_LOG_THROW("FATAL: object oid 0x%lx not in reference map", oid);
+        SWSS_LOG_THROW("FATAL: object oid 0x%"PRIx64" not in reference map", oid);
     }
 
     ObjectReferences[oid]--;
 
     if (ObjectReferences[oid] < 0)
     {
-        SWSS_LOG_THROW("FATAL: object oid 0x%lx reference count is negative!", oid);
+        SWSS_LOG_THROW("FATAL: object oid 0x%"PRIx64" reference count is negative!", oid);
     }
 
-    SWSS_LOG_DEBUG("decreased reference on oid 0x%lx to %d", oid, ObjectReferences[oid]);
+    SWSS_LOG_DEBUG("decreased reference on oid 0x%"PRIx64" to %d", oid, ObjectReferences[oid]);
 }
 
 void object_reference_dec(
@@ -373,12 +373,12 @@ void object_reference_insert(
 
     if (object_reference_exists(oid))
     {
-        SWSS_LOG_THROW("FATAL: object oid 0x%lx already in reference map", oid);
+        SWSS_LOG_THROW("FATAL: object oid 0x%"PRIx64" already in reference map", oid);
     }
 
     ObjectReferences[oid] = 0;
 
-    SWSS_LOG_DEBUG("inserted reference on 0x%lx", oid);
+    SWSS_LOG_DEBUG("inserted reference on 0x%"PRIx64"", oid);
 }
 
 int32_t object_reference_count(
@@ -390,12 +390,12 @@ int32_t object_reference_count(
     {
         int32_t count = ObjectReferences[oid];
 
-        SWSS_LOG_DEBUG("reference count on oid 0x%lx is %d", oid, count);
+        SWSS_LOG_DEBUG("reference count on oid 0x%"PRIx64" is %d", oid, count);
 
         return count;
     }
 
-    SWSS_LOG_THROW("FATAL: object oid 0x%lx reference not in map", oid);
+    SWSS_LOG_THROW("FATAL: object oid 0x%"PRIx64" reference not in map", oid);
 }
 
 void object_reference_remove(
@@ -409,11 +409,11 @@ void object_reference_remove(
 
         if (count > 0)
         {
-            SWSS_LOG_THROW("FATAL: removing object oid 0x%lx but reference count is: %d", oid, count);
+            SWSS_LOG_THROW("FATAL: removing object oid 0x%"PRIx64" but reference count is: %d", oid, count);
         }
     }
 
-    SWSS_LOG_DEBUG("removing object oid 0x%lx reference", oid);
+    SWSS_LOG_DEBUG("removing object oid 0x%"PRIx64" reference", oid);
 
     ObjectReferences.erase(oid);
 }
@@ -610,7 +610,7 @@ sai_status_t meta_generic_validation_objlist(
 
         if (oids.find(oid) != oids.end())
         {
-            META_LOG_ERROR(md, "object on list [%u] oid 0x%lx is duplicated, but not allowed", i, oid);
+            META_LOG_ERROR(md, "object on list [%u] oid 0x%"PRIx64" is duplicated, but not allowed", i, oid);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -634,21 +634,21 @@ sai_status_t meta_generic_validation_objlist(
 
         if (ot == SAI_NULL_OBJECT_ID)
         {
-            META_LOG_ERROR(md, "object on list [%u] oid 0x%lx is not valid, returned null object id", i, oid);
+            META_LOG_ERROR(md, "object on list [%u] oid 0x%"PRIx64" is not valid, returned null object id", i, oid);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (!sai_metadata_is_allowed_object_type(&md, ot))
         {
-            META_LOG_ERROR(md, "object on list [%u] oid 0x%lx object type %d is not allowed on this attribute", i, oid, ot);
+            META_LOG_ERROR(md, "object on list [%u] oid 0x%"PRIx64" object type %d is not allowed on this attribute", i, oid, ot);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (!object_reference_exists(oid))
         {
-            META_LOG_ERROR(md, "object on list [%u] oid 0x%lx object type %d does not exists in local DB", i, oid, ot);
+            META_LOG_ERROR(md, "object on list [%u] oid 0x%"PRIx64" object type %d does not exists in local DB", i, oid, ot);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -671,13 +671,13 @@ sai_status_t meta_generic_validation_objlist(
 
         if (!object_reference_exists(query_switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", query_switch_id);
+            SWSS_LOG_ERROR("switch id 0x%"PRIx64" doesn't exist", query_switch_id);
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (query_switch_id != switch_id)
         {
-            SWSS_LOG_ERROR("oid 0x%lx is from switch 0x%lx but expected switch 0x%lx", oid, query_switch_id, switch_id);
+            SWSS_LOG_ERROR("oid 0x%"PRIx64" is from switch 0x%"PRIx64" but expected switch 0x%"PRIx64"", oid, query_switch_id, switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -934,7 +934,7 @@ sai_status_t meta_generic_validate_non_object_on_create(
 
         if (!object_reference_exists(oid))
         {
-            SWSS_LOG_ERROR("object don't exist 0x%lx (%s)", oid, m->membername);
+            SWSS_LOG_ERROR("object don't exist 0x%"PRIx64" (%s)", oid, m->membername);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -959,7 +959,7 @@ sai_status_t meta_generic_validate_non_object_on_create(
 
         if (!allowed)
         {
-            SWSS_LOG_ERROR("object id 0x%lx is %s, but it's not allowed on member %s",
+            SWSS_LOG_ERROR("object id 0x%"PRIx64" is %s, but it's not allowed on member %s",
                     oid, sai_serialize_object_type(ot).c_str(), m->membername);
 
             return SAI_STATUS_INVALID_PARAMETER;
@@ -969,14 +969,14 @@ sai_status_t meta_generic_validate_non_object_on_create(
 
         if (!object_reference_exists(oid_switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", oid_switch_id);
+            SWSS_LOG_ERROR("switch id 0x%"PRIx64" doesn't exist", oid_switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (switch_id != oid_switch_id)
         {
-            SWSS_LOG_ERROR("oid 0x%lx is on switch 0x%lx but required switch is 0x%lx", oid, oid_switch_id, switch_id);
+            SWSS_LOG_ERROR("oid 0x%"PRIx64" is on switch 0x%"PRIx64" but required switch is 0x%"PRIx64"", oid, oid_switch_id, switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -1036,7 +1036,7 @@ sai_status_t meta_generic_validation_create(
 
         if (sw_type != SAI_OBJECT_TYPE_SWITCH)
         {
-            SWSS_LOG_ERROR("switch id 0x%lx type is %s, expected SWITCH", switch_id, sai_serialize_object_type(sw_type).c_str());
+            SWSS_LOG_ERROR("switch id 0x%"PRIx64" type is %s, expected SWITCH", switch_id, sai_serialize_object_type(sw_type).c_str());
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -1047,14 +1047,14 @@ sai_status_t meta_generic_validation_create(
 
         if (!object_exists(switch_meta_key))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist yet", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%"PRIx64" doesn't exist yet", switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (!object_reference_exists(switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist yet", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%"PRIx64" doesn't exist yet", switch_id);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -1741,21 +1741,21 @@ sai_status_t meta_generic_validation_remove(
 
     if (object_type == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_ERROR("oid 0x%lx is not valid, returned null object id", oid);
+        SWSS_LOG_ERROR("oid 0x%"PRIx64" is not valid, returned null object id", oid);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
     if (object_type != meta_key.objecttype)
     {
-        SWSS_LOG_ERROR("oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.objecttype);
+        SWSS_LOG_ERROR("oid 0x%"PRIx64" type %d is not accepted, expected object type %d", oid, object_type, meta_key.objecttype);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
     if (!object_reference_exists(oid))
     {
-        SWSS_LOG_ERROR("object 0x%lx reference doesn't exist", oid);
+        SWSS_LOG_ERROR("object 0x%"PRIx64" reference doesn't exist", oid);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -1772,14 +1772,14 @@ sai_status_t meta_generic_validation_remove(
              * in WARM boot scenario.
              */
 
-            SWSS_LOG_WARN("removing switch object 0x%lx reference count is %d, removing all objects from meta DB", oid, count);
+            SWSS_LOG_WARN("removing switch object 0x%"PRIx64" reference count is %d, removing all objects from meta DB", oid, count);
 
             meta_init_db();
 
             return SAI_STATUS_SUCCESS;
         }
 
-        SWSS_LOG_ERROR("object 0x%lx reference count is %d, can't remove", oid, count);
+        SWSS_LOG_ERROR("object 0x%"PRIx64" reference count is %d, can't remove", oid, count);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -1855,7 +1855,7 @@ sai_status_t meta_generic_validation_set(
 
         if (!object_reference_exists(switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%"PRIx64" doesn't exist", switch_id);
             return SAI_STATUS_INVALID_PARAMETER;
         }
     }
@@ -2216,14 +2216,14 @@ sai_status_t meta_generic_validation_set(
 
         if (object_type == SAI_NULL_OBJECT_ID)
         {
-            META_LOG_ERROR(md, "oid 0x%lx is not valid, returned null object id", oid);
+            META_LOG_ERROR(md, "oid 0x%"PRIx64" is not valid, returned null object id", oid);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (object_type != meta_key.objecttype)
         {
-            META_LOG_ERROR(md, "oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.objecttype);
+            META_LOG_ERROR(md, "oid 0x%"PRIx64" type %d is not accepted, expected object type %d", oid, object_type, meta_key.objecttype);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -2509,14 +2509,14 @@ sai_status_t meta_generic_validation_get(
 
         if (object_type == SAI_NULL_OBJECT_ID)
         {
-            SWSS_LOG_ERROR("oid 0x%lx is not valid, returned null object id", oid);
+            SWSS_LOG_ERROR("oid 0x%"PRIx64" is not valid, returned null object id", oid);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
 
         if (object_type != meta_key.objecttype)
         {
-            SWSS_LOG_ERROR("oid 0x%lx type %d is not accepted, expected object type %d", oid, object_type, meta_key.objecttype);
+            SWSS_LOG_ERROR("oid 0x%"PRIx64" type %d is not accepted, expected object type %d", oid, object_type, meta_key.objecttype);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -2613,13 +2613,13 @@ void meta_generic_validation_post_create(
 
             if (object_type == SAI_NULL_OBJECT_ID)
             {
-                SWSS_LOG_ERROR("created oid 0x%lx is not valid object type after create (null) (vendor bug?)", oid);
+                SWSS_LOG_ERROR("created oid 0x%"PRIx64" is not valid object type after create (null) (vendor bug?)", oid);
                 break;
             }
 
             if (object_type != meta_key.objecttype)
             {
-                SWSS_LOG_ERROR("created oid 0x%lx type %s, expected %s (vendor bug?)",
+                SWSS_LOG_ERROR("created oid 0x%"PRIx64" type %s, expected %s (vendor bug?)",
                         oid,
                         sai_serialize_object_type(object_type).c_str(),
                         sai_serialize_object_type(meta_key.objecttype).c_str());
@@ -2636,13 +2636,13 @@ void meta_generic_validation_post_create(
 
                 if (!object_reference_exists(query_switch_id))
                 {
-                    SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", query_switch_id);
+                    SWSS_LOG_ERROR("switch id 0x%"PRIx64" doesn't exist", query_switch_id);
                     break;
                 }
 
                 if (switch_id != query_switch_id)
                 {
-                    SWSS_LOG_ERROR("created oid 0x%lx switch id 0x%lx is different than requested 0x%lx",
+                    SWSS_LOG_ERROR("created oid 0x%"PRIx64" switch id 0x%"PRIx64" is different than requested 0x%"PRIx64"",
                             oid, query_switch_id, switch_id);
                     break;
                 }
@@ -3282,13 +3282,13 @@ void meta_generic_validation_post_get_objlist(
 
         if (ot == SAI_OBJECT_TYPE_NULL)
         {
-            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%lx is not valid, returned null object type", i, oid);
+            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%"PRIx64" is not valid, returned null object type", i, oid);
             continue;
         }
 
         if (!sai_metadata_is_allowed_object_type(&md, ot))
         {
-            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%lx object type %d is not allowed on this attribute", i, oid, ot);
+            META_LOG_ERROR(md, "returned get object on list [%u] oid 0x%"PRIx64" object type %d is not allowed on this attribute", i, oid, ot);
         }
 
         if (!object_reference_exists(oid))
@@ -3297,7 +3297,7 @@ void meta_generic_validation_post_get_objlist(
             // and first list was retrieved ok, but second failed with overflow
             // then we may forget to snoop
 
-            META_LOG_INFO(md, "returned get object on list [%u] oid 0x%lx object type %d does not exists in local DB (snoop)", i, oid, ot);
+            META_LOG_INFO(md, "returned get object on list [%u] oid 0x%"PRIx64" object type %d does not exists in local DB (snoop)", i, oid, ot);
 
             sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = oid } } };
 
@@ -3313,12 +3313,12 @@ void meta_generic_validation_post_get_objlist(
 
         if (!object_reference_exists(query_switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", query_switch_id);
+            SWSS_LOG_ERROR("switch id 0x%"PRIx64" doesn't exist", query_switch_id);
         }
 
         if (query_switch_id != switch_id)
         {
-            SWSS_LOG_ERROR("oid 0x%lx is from switch 0x%lx but expected switch 0x%lx", oid, query_switch_id, switch_id);
+            SWSS_LOG_ERROR("oid 0x%"PRIx64" is from switch 0x%"PRIx64" but expected switch 0x%"PRIx64"", oid, query_switch_id, switch_id);
         }
     }
 }
@@ -3847,14 +3847,14 @@ sai_status_t meta_sai_validate_mcast_fdb_entry(
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("bv_id oid 0x%lx is not valid object type, returned null object type", bv_id);
+        SWSS_LOG_ERROR("bv_id oid 0x%"PRIx64" is not valid object type, returned null object type", bv_id);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
     if (object_type != SAI_OBJECT_TYPE_BRIDGE && object_type != SAI_OBJECT_TYPE_VLAN)
     {
-        SWSS_LOG_ERROR("bv_id oid 0x%lx type %d is wrong type, expected BRIDGE or VLAN", bv_id, object_type);
+        SWSS_LOG_ERROR("bv_id oid 0x%"PRIx64" type %d is wrong type, expected BRIDGE or VLAN", bv_id, object_type);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4137,7 +4137,7 @@ sai_status_t meta_sai_validate_neighbor_entry(
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("router interface oid 0x%lx is not valid object type, returned null object type", rif);
+        SWSS_LOG_ERROR("router interface oid 0x%"PRIx64" is not valid object type, returned null object type", rif);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4146,7 +4146,7 @@ sai_status_t meta_sai_validate_neighbor_entry(
 
     if (object_type != expected)
     {
-        SWSS_LOG_ERROR("router interface oid 0x%lx type %d is wrong type, expected object type %d", rif, object_type, expected);
+        SWSS_LOG_ERROR("router interface oid 0x%"PRIx64" type %d is wrong type, expected object type %d", rif, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4437,7 +4437,7 @@ sai_status_t meta_sai_validate_route_entry(
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%lx is not valid object type, returned null object type", vr);
+        SWSS_LOG_ERROR("virtual router oid 0x%"PRIx64" is not valid object type, returned null object type", vr);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4446,7 +4446,7 @@ sai_status_t meta_sai_validate_route_entry(
 
     if (object_type != expected)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%lx type %d is wrong type, expected object type %d", vr, object_type, expected);
+        SWSS_LOG_ERROR("virtual router oid 0x%"PRIx64" type %d is wrong type, expected object type %d", vr, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4755,14 +4755,14 @@ sai_status_t meta_sai_validate_l2mc_entry(
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("bv_id oid 0x%lx is not valid object type, returned null object type", bv_id);
+        SWSS_LOG_ERROR("bv_id oid 0x%"PRIx64" is not valid object type, returned null object type", bv_id);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
     if (object_type != SAI_OBJECT_TYPE_BRIDGE && object_type != SAI_OBJECT_TYPE_VLAN)
     {
-        SWSS_LOG_ERROR("bv_id oid 0x%lx type %d is wrong type, expected BRIDGE or VLAN", bv_id, object_type);
+        SWSS_LOG_ERROR("bv_id oid 0x%"PRIx64" type %d is wrong type, expected BRIDGE or VLAN", bv_id, object_type);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -5071,14 +5071,14 @@ sai_status_t meta_sai_validate_ipmc_entry(
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("vr_id oid 0x%lx is not valid object type, returned null object type", vr_id);
+        SWSS_LOG_ERROR("vr_id oid 0x%"PRIx64" is not valid object type, returned null object type", vr_id);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
     if (object_type != SAI_OBJECT_TYPE_VIRTUAL_ROUTER)
     {
-        SWSS_LOG_ERROR("vr_id oid 0x%lx type %d is wrong type, expected VIRTUAL_ROUTER", vr_id, object_type);
+        SWSS_LOG_ERROR("vr_id oid 0x%"PRIx64" type %d is wrong type, expected VIRTUAL_ROUTER", vr_id, object_type);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -5579,7 +5579,7 @@ sai_status_t meta_sai_validate_oid(
 
     if (ot == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("%s oid 0x%lx is not valid object type, returned null object type", otname, oid);
+        SWSS_LOG_ERROR("%s oid 0x%"PRIx64" is not valid object type, returned null object type", otname, oid);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -5588,7 +5588,7 @@ sai_status_t meta_sai_validate_oid(
 
     if (ot != expected)
     {
-        SWSS_LOG_ERROR("%s oid 0x%lx type %d is wrong type, expected object type %d", otname, oid, ot, expected);
+        SWSS_LOG_ERROR("%s oid 0x%"PRIx64" type %d is wrong type, expected object type %d", otname, oid, ot, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -5815,7 +5815,7 @@ sai_status_t meta_sai_get_oid(
 
         if (!object_reference_exists(switch_id))
         {
-            SWSS_LOG_ERROR("switch id 0x%lx doesn't exist", switch_id);
+            SWSS_LOG_ERROR("switch id 0x%"PRIx64" doesn't exist", switch_id);
         }
 
         meta_generic_validation_post_get(meta_key, switch_id, attr_count, attr_list);
@@ -6137,7 +6137,7 @@ void meta_fdb_event_snoop_oid(
 
     if (ot == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("failed to get object type on fdb_event oid: 0x%lx", oid);
+        SWSS_LOG_ERROR("failed to get object type on fdb_event oid: 0x%"PRIx64"", oid);
         return;
     }
 
