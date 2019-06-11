@@ -2,6 +2,7 @@
 #include "sai_extra.h"
 #include "sai_serialize.h"
 
+#include <inttypes.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
