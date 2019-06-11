@@ -3,6 +3,7 @@
 #include "swss/tokenize.h"
 #include "swss/json.hpp"
 
+#include <inttypes.h>
 #include <vector>
 #include <climits>
 
@@ -593,7 +594,7 @@ std::string sai_serialize_number(
     {
         char buf[32];
 
-        snprintf(buf, sizeof(buf), "0x%"PRIx64, (uint64_t)number);
+        snprintf(buf, sizeof(buf), "0x%" PRIx64, (uint64_t)number);
 
         return buf;
     }
@@ -979,7 +980,7 @@ std::string sai_serialize_object_id(
 
     char buf[32];
 
-    snprintf(buf, sizeof(buf), "oid:0x%"PRIx64, oid);
+    snprintf(buf, sizeof(buf), "oid:0x%" PRIx64, oid);
 
     return buf;
 }

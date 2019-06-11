@@ -1,6 +1,7 @@
 #include "sai_redis.h"
 #include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
+#include <inttypes.h>
 
 bool switch_ids[MAX_SWITCHES] = {};
 
@@ -90,7 +91,7 @@ sai_object_type_t sai_object_type_query(
 
     if (ot == SAI_OBJECT_TYPE_NULL || ot >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
-        SWSS_LOG_ERROR("invalid object id 0x%"PRIx64, object_id);
+        SWSS_LOG_ERROR("invalid object id 0x%" PRIx64, object_id);
 
         /*
          * We can't throw here, since it would give no meaningful message.
@@ -117,7 +118,7 @@ sai_object_id_t sai_switch_id_query(
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_THROW("invalid object type of oid 0x%"PRIx64, oid);
+        SWSS_LOG_THROW("invalid object type of oid 0x%" PRIx64, oid);
     }
 
     if (object_type == SAI_OBJECT_TYPE_SWITCH)
@@ -170,7 +171,7 @@ sai_object_id_t redis_create_virtual_object_id(
     {
         sai_object_id_t object_id = redis_create_switch_virtual_object_id();
 
-        SWSS_LOG_DEBUG("created SWITCH VID 0x%"PRIx64, object_id);
+        SWSS_LOG_DEBUG("created SWITCH VID 0x%" PRIx64, object_id);
 
         return object_id;
     }
@@ -181,7 +182,7 @@ sai_object_id_t redis_create_virtual_object_id(
 
     sai_object_id_t object_id = redis_construct_object_id(object_type, index, virtual_id);
 
-    SWSS_LOG_DEBUG("created VID 0x%"PRIx64, object_id);
+    SWSS_LOG_DEBUG("created VID 0x%" PRIx64, object_id);
 
     return object_id;
 }
@@ -224,7 +225,7 @@ sai_status_t internal_redis_generic_create(
 
     std::string key = str_object_type + ":" + serialized_object_id;
 
-    SWSS_LOG_DEBUG("generic create key: %s, fields: %"PRIu64, key.c_str(), entry.size());
+    SWSS_LOG_DEBUG("generic create key: %s, fields: %" PRIu64, key.c_str(), entry.size());
 
     if (g_record)
     {
