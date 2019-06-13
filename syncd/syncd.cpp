@@ -3831,6 +3831,8 @@ int syncd_main(int argc, char **argv)
 
     TimerWatchdog twd(30 * 1000); // watch for executions over 30 seconds
 
+    twd.setCallback(timerWatchdogCallback);
+
     while(runMainLoop)
     {
         try
