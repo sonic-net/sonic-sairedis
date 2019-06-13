@@ -108,7 +108,7 @@ void TimerWatchdog::threadFunction()
 
                 // function probably hanged
 
-                SWSS_LOG_WARN("time (span < 0) watchdog exceeded %ld milliseconds", span);
+                SWSS_LOG_WARN("time (span < 0) watchdog exceeded %ld microseconds", span);
 
                 auto callback = m_callback;
 
@@ -129,5 +129,5 @@ int64_t TimerWatchdog::getTimeSinceEpoch()
 {
     SWSS_LOG_ENTER();
 
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }

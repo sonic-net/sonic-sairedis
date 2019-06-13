@@ -3829,7 +3829,7 @@ int syncd_main(int argc, char **argv)
             runMainLoop = false;
     }
 
-    TimerWatchdog twd(30 * 1000); // watch for executions over 30 seconds
+    TimerWatchdog twd(30 * 1000000); // watch for executions over 30 seconds
 
     twd.setCallback(timerWatchdogCallback);
 

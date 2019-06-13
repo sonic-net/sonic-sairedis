@@ -32,7 +32,7 @@ class TimerWatchdog
     /**
      * @brief Gets timestamp since epoch.
      *
-     * @return Time since epoch in milliseconds.
+     * @return Time since epoch in microseconds.
      */
     static int64_t getTimeSinceEpoch();
 
@@ -44,7 +44,7 @@ class TimerWatchdog
 
     volatile bool m_run;
 
-    // all values are in milliseconds
+    // all values are in microseconds
 
     std::atomic_int_fast64_t m_warnTimespan;
     std::atomic_int_fast64_t m_startTimestamp;
