@@ -3647,6 +3647,8 @@ void sai_meta_log_syncd(
 void timerWatchdogCallback(
         _In_ int64_t span)
 {
+    SWSS_LOG_ENTER();
+
     SWSS_LOG_ERROR("main loop execution exceeded %ld ms", span);
 }
 
