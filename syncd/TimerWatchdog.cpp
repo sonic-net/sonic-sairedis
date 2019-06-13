@@ -75,7 +75,7 @@ void TimerWatchdog::threadFunction()
         id++;
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
-        // we make local copies, since executing fuctions can be so fast that
+        // we make local copies, since executing functions can be so fast that
         // when we will read second time start timestamp it can be different
         // than previous one
  
@@ -90,7 +90,7 @@ void TimerWatchdog::threadFunction()
             SWSS_LOG_NOTICE(" span < 0 = %ld at %ld", span, now);
 
             // this means start > end, so new function is currently executing,
-            // or that function hanged, so see how long that functio is
+            // or that function hanged, so see how long that function is
             // executing, this negative span can be arbitrary long even hours,
             // and that is fine, since we don't know when OA makes next
             // function call
