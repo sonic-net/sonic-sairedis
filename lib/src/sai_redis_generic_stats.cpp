@@ -244,7 +244,7 @@ std::vector<swss::FieldValueTuple> serialize_counter_id_list(
         values.emplace_back(name, "");
     }
 
-    return std::move(values);
+    return values;
 }
 
 sai_status_t internal_redis_generic_get_stats(

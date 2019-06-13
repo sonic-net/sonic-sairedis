@@ -1,0 +1,133 @@
+#include "TimerWatchdog.h"
+
+#include "swss/logger.h"
+
+#include <chrono>
+
+TimerWatchdog::TimerWatchdog(
+        _In_ int64_t warnTimespan):
+    m_run(true),
+    m_warnTimespan(warnTimespan),
+    m_callback(0)
+{
+    SWSS_LOG_ENTER();
+
+    int64_t start = getTimeSinceEpoch();
+    m_startTimestamp = start;
+    m_endTimestamp = start;
+    m_lastCheckTimestamp = start;
+
+    m_thread = std::make_shared<std::thread>(&TimerWatchdog::threadFunction, this);
+
+    // m_thread->detach()
+}
+
+TimerWatchdog::~TimerWatchdog()
+{
+    SWSS_LOG_ENTER();
+
+    m_run = false;
+
+    m_thread->join();
+}
+
+void TimerWatchdog::setStartTime()
+{
+    SWSS_LOG_ENTER();
+
+    do 
+    {
+        m_startTimestamp = getTimeSinceEpoch();
+    } 
+    while (m_startTimestamp <= m_endTimestamp); // make sure new start time is always past last end time
+
+}
+
+void TimerWatchdog::setEndTime()
+{
+    SWSS_LOG_ENTER();
+
+    do
+    {
+        m_endTimestamp = getTimeSinceEpoch();
+    }
+    while (m_endTimestamp <= m_startTimestamp); // make sure new end time is always past last start time
+}
+
+void TimerWatchdog::setCallback(
+        _In_ Callback callback)
+{
+    SWSS_LOG_ENTER();
+
+    m_callback = callback;
+}
+
+void TimerWatchdog::threadFunction()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("starting timer watchdog thread");
+
+    int id = 0;
+
+    while (m_run)
+    {
+        id++;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        // we make local copies, since executing fuctions can be so fast that
+        // when we will read second time start timestamp it can be different
+        // than previous one
+ 
+        int64_t start = m_startTimestamp;
+        int64_t end = m_endTimestamp;
+        int64_t now = getTimeSinceEpoch(); // now needs to be obtained after obtaining start
+
+        int64_t span = end - start;
+
+        if (span < 0 && start > m_lastCheckTimestamp)
+        {
+            SWSS_LOG_NOTICE(" span < 0 = %ld at %ld", span, now);
+
+            // this means start > end, so new function is currently executing,
+            // or that function hanged, so see how long that functio is
+            // executing, this negative span can be arbitrary long even hours,
+            // and that is fine, since we don't know when OA makes next
+            // function call
+            
+            span = now - start; // this must be always non negative
+
+            SWSS_LOG_NOTICE(" new span  = %ld", span);
+            
+            if (span < 0)
+                SWSS_LOG_THROW("negative span 'now - start': %ld - %ld", now, start);
+
+            if (span > m_warnTimespan)
+            {
+                m_lastCheckTimestamp = start;
+
+                // function probably hanged
+
+                SWSS_LOG_WARN("time (span < 0) watchdog exceeded %ld milliseconds", span);
+
+                auto callback = m_callback;
+
+                if (callback)
+                    callback(span);
+            }
+
+            continue;
+        }
+
+        m_lastCheckTimestamp = start;
+    }
+
+    SWSS_LOG_NOTICE("ending timer watchdog thread");
+}
+
+int64_t TimerWatchdog::getTimeSinceEpoch()
+{
+    SWSS_LOG_ENTER();
+
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}

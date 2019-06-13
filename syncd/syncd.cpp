@@ -8,6 +8,8 @@
 #include "swss/warm_restart.h"
 #include "swss/table.h"
 
+#include "TimerWatchdog.h"
+
 extern "C" {
 #include <sai.h>
 }
@@ -3642,6 +3644,12 @@ void sai_meta_log_syncd(
     swss::Logger::getInstance().write(p, ":- %s: %s", func, buffer);
 }
 
+void timerWatchdogCallback(
+        _In_ int64_t span)
+{
+    SWSS_LOG_ERROR("main loop execution exceeded %ld ms", span);
+}
+
 int syncd_main(int argc, char **argv)
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -3821,6 +3829,8 @@ int syncd_main(int argc, char **argv)
             runMainLoop = false;
     }
 
+    TimerWatchdog twd(30 * 1000); // watch for executions over 30 seconds
+
     while(runMainLoop)
     {
         try
@@ -3828,6 +3838,8 @@ int syncd_main(int argc, char **argv)
             swss::Selectable *sel = NULL;
 
             int result = s->select(&sel);
+
+            twd.setStartTime();
 
             if (sel == restartQuery.get())
             {
@@ -3921,6 +3933,8 @@ int syncd_main(int argc, char **argv)
             {
                 processEvent(*(swss::ConsumerTable*)sel);
             }
+
+            twd.setEndTime();
         }
         catch(const std::exception &e)
         {
@@ -3937,6 +3951,8 @@ int syncd_main(int argc, char **argv)
 
             // make sure that if second exception will arise, then we break the loop
             options.disableExitSleep = true;
+
+            twd.setEndTime();
         }
     }
 

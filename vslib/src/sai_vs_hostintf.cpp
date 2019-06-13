@@ -21,7 +21,10 @@
 #include <net/if_arp.h>
 #include <linux/if_ether.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
 #include "swss/json.hpp"
+#pragma GCC diagnostic pop
 
 using json = nlohmann::json;
 

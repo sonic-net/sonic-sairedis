@@ -116,7 +116,7 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
         entry.push_back(fvt);
     }
 
-    return std::move(entry);
+    return entry;
 }
 
 sai_attribute_t* SaiAttributeList::get_attr_list()
