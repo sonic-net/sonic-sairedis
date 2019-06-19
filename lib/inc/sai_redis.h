@@ -43,7 +43,7 @@ void check_notifications_pointers(
 
 // if we don't receive response from syncd in 60 seconds
 // there is something wrong and we should fail
-#define GET_RESPONSE_TIMEOUT (6*60*1000)
+#define GET_RESPONSE_TIMEOUT (60*1000)
 
 extern std::string getSelectResultAsString(int result);
 extern void clear_local_state();
