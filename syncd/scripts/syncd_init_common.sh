@@ -135,6 +135,9 @@ config_syncd_barefoot()
     fi
     CMD_ARGS+=" -p $PROFILE_FILE"
 
+    export PYTHONHOME=/opt/bfn/install/
+    export PYTHONPATH=/opt/bfn/install/
+
     # Check and load SDE profile
     P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
     if [[ -n "$P4_PROFILE" ]]; then
