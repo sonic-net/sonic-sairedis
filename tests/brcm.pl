@@ -440,8 +440,22 @@ sub test_bridge_create
     play "bridge_create_2.rec", 0;
 }
 
+sub test_tunnel_map
+{
+    fresh_start;
+
+    play "tunnel_map.rec";
+    play "tunnel_map.rec", 0;
+    play "tunnel_map.rec", 0;
+    play "tunnel_map.rec", 0;
+    play "tunnel_map.rec", 0;
+    play "tunnel_map.rec", 0;
+}
+
+
 # RUN TESTS
 
+test_tunnel_map;
 test_bridge_create;
 test_ntf;
 test_acl_mask;

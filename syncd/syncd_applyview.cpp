@@ -3613,6 +3613,83 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForBufferProfile(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForTunnelMap(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For tunnel map, lets find tunnel map entry with unique
+     * SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE and use it's value for matching.
+     */
+
+    auto tmpTunnelMapEntries = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+
+    for (auto& tmpTunnelMapEntry: tmpTunnelMapEntries)
+    {
+        auto tmpTunnelMapAttr = tmpTunnelMapEntry->tryGetSaiAttr(SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP);
+
+        if (tmpTunnelMapAttr == nullptr)
+            continue;
+
+        if (tmpTunnelMapAttr->getOid() != temporaryObj->getVid())
+            continue;
+
+        auto tmpVlanIdValueAttr = tmpTunnelMapEntry->tryGetSaiAttr(SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE);
+
+        if (tmpVlanIdValueAttr == nullptr)
+            continue;
+
+        uint16_t vlanId = tmpVlanIdValueAttr->getSaiAttr()->value.u16;
+
+        // now find map entry with same vlan id on current object list
+
+        auto curTunnelMapEntries = currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+
+        for (auto& curTunnelMapEntry: curTunnelMapEntries)
+        {
+            auto curVlanIdValueAttr = curTunnelMapEntry->tryGetSaiAttr(SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE);
+
+            if (curVlanIdValueAttr == nullptr)
+                continue;
+
+            if (curVlanIdValueAttr->getSaiAttr()->value.u16 != vlanId)
+                continue; // wrong vlan id, keep looking
+
+            auto curTunnelMapAttr = curTunnelMapEntry->tryGetSaiAttr(SAI_TUNNEL_MAP_ENTRY_ATTR_TUNNEL_MAP);
+
+            if (curTunnelMapAttr == nullptr)
+                continue;
+
+            if (curTunnelMapAttr->getOid() == SAI_NULL_OBJECT_ID)
+                continue;
+
+            auto curTunnelMap = currentView.oOids.at(curTunnelMapAttr->getOid());
+
+            if (curTunnelMap->getObjectStatus() == SAI_OBJECT_STATUS_MATCHED)
+                continue; // object already matched, we need to search more
+
+            // we have current tunnel map, see if it's on candidate list
+
+            for (auto c: candidateObjects)
+            {
+                if (c.obj->getVid() != curTunnelMap->getVid())
+                    continue;
+
+                SWSS_LOG_INFO("found best TUNNEL MAP based on tunnel map entry vlan id value %s", c.obj->str_object_id.c_str());
+
+                return c.obj;
+            }
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for TUNNEL_MAP using tunnel map entry vlan id value");
+
+    return nullptr;
+}
 
 std::shared_ptr<SaiObj> findCurrentBestMatchForWred(
         _In_ const AsicView &currentView,
@@ -3757,6 +3834,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
 
         case SAI_OBJECT_TYPE_BUFFER_PROFILE:
             candidate = findCurrentBestMatchForBufferProfile(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_TUNNEL_MAP:
+            candidate = findCurrentBestMatchForTunnelMap(currentView, temporaryView, temporaryObj, candidateObjects);
             break;
 
         default:
