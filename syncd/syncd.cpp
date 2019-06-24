@@ -1000,6 +1000,23 @@ void internal_syncd_get_send(
     SWSS_LOG_INFO("response for GET api was send");
 }
 
+void internal_syncd_api_send_response(
+        _In_ sai_common_api_t api,
+        _In_ sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    std::string str_status = sai_serialize_status(status);
+
+    SWSS_LOG_INFO("sending response for %d api with status: %s", api, str_status.c_str());
+
+    getResponse->set(str_status, entry, "getresponse");
+
+    SWSS_LOG_INFO("response for %d api was send", api);
+}
+
 const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
@@ -1462,7 +1479,7 @@ void sendNotifyResponse(
 
     std::vector<swss::FieldValueTuple> entry;
 
-    SWSS_LOG_NOTICE("sending response: %s", str_status.c_str());
+    SWSS_LOG_INFO("sending response: %s", str_status.c_str());
 
     getResponse->set(str_status, entry, "notify");
 }
@@ -2235,6 +2252,8 @@ sai_status_t processEventInInitViewMode(
                 }
             }
 
+            internal_syncd_api_send_response(api, SAI_STATUS_SUCCESS);
+
             return SAI_STATUS_SUCCESS;
 
         case SAI_COMMON_API_REMOVE:
@@ -2272,6 +2291,8 @@ sai_status_t processEventInInitViewMode(
                 initViewRemovedVidSet.insert(object_vid);
             }
 
+            internal_syncd_api_send_response(api, SAI_STATUS_SUCCESS);
+
             return SAI_STATUS_SUCCESS;
 
         case SAI_COMMON_API_SET:
@@ -2279,6 +2300,8 @@ sai_status_t processEventInInitViewMode(
             /*
              * We support SET api on all objects in init view mode.
              */
+
+            internal_syncd_api_send_response(api, SAI_STATUS_SUCCESS);
 
             return SAI_STATUS_SUCCESS;
 
@@ -2474,6 +2497,7 @@ sai_status_t handle_bulk_generic(
 
         if (status != SAI_STATUS_SUCCESS)
         {
+            internal_syncd_api_send_response(api, status);
             return status;
         }
     }
@@ -2581,6 +2605,8 @@ sai_status_t processBulkEvent(
         SWSS_LOG_THROW("failed to execute bulk api: %s",
                 sai_serialize_status(status).c_str());
     }
+
+    internal_syncd_api_send_response(api, status);
 
     return status;
 }
@@ -2845,6 +2871,8 @@ sai_status_t processEvent(
         }
         else if (status != SAI_STATUS_SUCCESS)
         {
+            internal_syncd_api_send_response(api, status);
+
             if (!info->isnonobjectid && api == SAI_COMMON_API_SET)
             {
                 sai_object_id_t vid;
@@ -2867,6 +2895,11 @@ sai_status_t processEvent(
                     key.c_str(),
                     sai_serialize_status(status).c_str());
         }
+        else // non GET api, status is SUCCESS
+        {
+            internal_syncd_api_send_response(api, status);
+        }
+
     } while (!consumer.empty());
 
     return status;

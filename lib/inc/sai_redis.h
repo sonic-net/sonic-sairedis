@@ -54,6 +54,9 @@ extern void recordLine(std::string s);
 extern std::string joinFieldValues(
         _In_ const std::vector<swss::FieldValueTuple> &values);
 
+extern sai_status_t internal_api_wait_for_response(
+        _In_ sai_common_api_t api);
+
 // other global declarations
 
 extern volatile bool g_record;

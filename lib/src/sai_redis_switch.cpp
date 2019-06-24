@@ -267,7 +267,7 @@ sai_status_t redis_set_switch_attribute(
                 return SAI_STATUS_SUCCESS;
 
             case SAI_REDIS_SWITCH_ATTR_USE_PIPELINE:
-                g_asicState->setBuffered(attr->value.booldata);
+                // g_asicState->setBuffered(attr->value.booldata); // this is ignored in sync mode
                 return SAI_STATUS_SUCCESS;
 
             case SAI_REDIS_SWITCH_ATTR_FLUSH:
