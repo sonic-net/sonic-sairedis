@@ -30,7 +30,7 @@ case "$(cat /proc/cmdline)" in
         FASTFAST_REBOOT='yes'
     fi
     ;;
-  *SONIC_BOOT_TYPE=fast*|fast-reboot*)
+  *SONIC_BOOT_TYPE=fast*|*fast-reboot*)
      FAST_REBOOT='yes'
     ;;
   *)
