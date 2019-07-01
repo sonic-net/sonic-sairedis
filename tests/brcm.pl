@@ -432,8 +432,17 @@ sub test_ntf
     play "ntf1.rec", 0;
 }
 
+sub test_bridge_create
+{
+    fresh_start;
+
+    play "bridge_create_1.rec";
+    play "bridge_create_2.rec", 0;
+}
+
 # RUN TESTS
 
+test_bridge_create;
 test_ntf;
 test_acl_mask;
 test_empty_lag_buffer_acl;
