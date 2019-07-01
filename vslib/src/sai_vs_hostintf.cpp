@@ -26,7 +26,6 @@
 #include "swss/json.hpp"
 #pragma GCC diagnostic pop
 
-
 using json = nlohmann::json;
 
 // TODO on hostif remove we should stop threads

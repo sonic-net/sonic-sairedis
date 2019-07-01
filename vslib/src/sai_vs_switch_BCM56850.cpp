@@ -424,6 +424,8 @@ static sai_status_t create_qos_queues_per_port(
 {
     SWSS_LOG_ENTER();
 
+    sai_attribute_t attr;
+
     // 10 in and 10 out queues per port
     const uint32_t port_qos_queues_count = 20;
 
@@ -436,9 +438,18 @@ static sai_status_t create_qos_queues_per_port(
         CHECK_STATUS(vs_generic_create(SAI_OBJECT_TYPE_QUEUE, &queue_id, switch_object_id, 0, NULL));
 
         queues.push_back(queue_id);
-    }
 
-    sai_attribute_t attr;
+        attr.id = SAI_QUEUE_ATTR_TYPE;
+
+        attr.value.s32 = (i < port_qos_queues_count / 2) ?  SAI_QUEUE_TYPE_UNICAST : SAI_QUEUE_TYPE_MULTICAST;
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_INDEX;
+        attr.value.u8 = (uint8_t)i;
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
+    }
 
     attr.id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
     attr.value.u32 = port_qos_queues_count;
@@ -952,19 +963,64 @@ static sai_status_t refresh_bridge_port_list(
     auto m_port_list = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE, SAI_BRIDGE_ATTR_PORT_LIST);
     auto m_port_id = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
     auto m_bridge_id = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_BRIDGE_ID);
+    auto m_type = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_TYPE);
 
     /*
      * First get all port's that belong to this bridge id.
      */
 
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
+
+    CHECK_STATUS(vs_generic_get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr));
+
+    /*
+     * Create bridge ports for regular ports.
+     */
+
+    sai_object_id_t default_1q_bridge_id = attr.value.oid;
+
     std::map<sai_object_id_t, AttrHash> bridge_port_list_on_bridge_id;
 
+    // update default bridge port id's for bridge port if attr type is missing
+    for (const auto &bp: all_bridge_ports)
+    {
+        auto it = bp.second.find(m_type->attridname);
+
+        if (it == bp.second.end())
+            continue;
+
+        if (it->second->getAttr()->value.s32 != SAI_BRIDGE_PORT_TYPE_PORT)
+            continue;
+
+        it = bp.second.find(m_bridge_id->attridname);
+
+        if (it != bp.second.end())
+            continue;
+
+        // this bridge port is type PORT, and it's missing BRIDGE_ID attr
+
+        SWSS_LOG_NOTICE("setting default bridge id (%s) on bridge port %s",
+                sai_serialize_object_id(default_1q_bridge_id).c_str(),
+                bp.first.c_str());
+
+        attr.id = SAI_BRIDGE_PORT_ATTR_BRIDGE_ID;
+        attr.value.oid = default_1q_bridge_id;
+
+        sai_object_id_t bridge_port;
+        sai_deserialize_object_id(bp.first, bridge_port);
+
+        CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_BRIDGE_PORT, bridge_port, &attr));
+    }
+
+    // will contain 1q router bridge port, which we want to skip?
     for (const auto &bp: all_bridge_ports)
     {
         auto it = bp.second.find(m_bridge_id->attridname);
 
         if (it == bp.second.end())
         {
+            // fine on router 1q
+            SWSS_LOG_NOTICE("not found %s on bridge port: %s", m_bridge_id->attridname, bp.first.c_str());
             continue;
         }
 

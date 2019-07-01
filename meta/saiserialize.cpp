@@ -6,7 +6,6 @@
 #include "swss/json.hpp"
 #pragma GCC diagnostic pop
 
-
 #include <inttypes.h>
 #include <vector>
 #include <climits>
