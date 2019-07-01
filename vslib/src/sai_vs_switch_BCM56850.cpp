@@ -440,7 +440,7 @@ static sai_status_t create_qos_queues_per_port(
         queues.push_back(queue_id);
 
         attr.id = SAI_QUEUE_ATTR_TYPE;
-        attr.value.s32 = SAI_QUEUE_TYPE_ALL;
+        attr.value.s32 = (i < port_qos_queues_count / 2) ?  SAI_QUEUE_TYPE_UNICAST : SAI_QUEUE_TYPE_MULTICAST;
 
         CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_QUEUE, queue_id, &attr));
 

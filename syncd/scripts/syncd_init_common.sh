@@ -24,16 +24,14 @@ fi
 # Use temporary view between init and apply
 CMD_ARGS+=" -u"
 
-BOOT_TYPE="$(cat /proc/cmdline | grep -o 'SONIC_BOOT_TYPE=\S*' | cut -d'=' -f2)"
-
-case "$BOOT_TYPE" in
-  fast-reboot)
-     FAST_REBOOT='yes'
-    ;;
-  fastfast)
+case "$(cat /proc/cmdline)" in
+  *SONIC_BOOT_TYPE=fastfast*)
     if [ -e /var/warmboot/warm-starting ]; then
         FASTFAST_REBOOT='yes'
     fi
+    ;;
+  *SONIC_BOOT_TYPE=fast*|*fast-reboot*)
+     FAST_REBOOT='yes'
     ;;
   *)
      FAST_REBOOT='no'
@@ -134,6 +132,9 @@ config_syncd_barefoot()
         echo "SAI_KEY_WARM_BOOT_READ_FILE=/var/warmboot/sai-warmboot.bin" >> $PROFILE_FILE
     fi
     CMD_ARGS+=" -p $PROFILE_FILE"
+
+    export PYTHONHOME=/opt/bfn/install/
+    export PYTHONPATH=/opt/bfn/install/
 
     # Check and load SDE profile
     P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
