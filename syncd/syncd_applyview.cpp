@@ -2712,6 +2712,62 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForNextHopGroup(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> findCurrentBestMatchForAclCounter(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * For acl counter we use SAI_ACL_COUNTER_ATTR_TABLE_ID to match exact
+     * counter since if set, then table id will be matched previously.
+     */
+
+    const auto tmpAclTables = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_TABLE);
+
+    for (auto& tmpAclTable: tmpAclTables)
+    {
+        auto tmpAclCounterTableIdAttr = temporaryObj->tryGetSaiAttr(SAI_ACL_COUNTER_ATTR_TABLE_ID);
+
+        if (tmpAclCounterTableIdAttr == nullptr)
+            continue;
+
+        if (tmpAclCounterTableIdAttr->getOid() == SAI_NULL_OBJECT_ID)
+            continue;
+
+        if (tmpAclTable->getVid() != tmpAclCounterTableIdAttr->getOid())
+            continue; // not this table
+
+        if (tmpAclTable->getObjectStatus() != SAI_OBJECT_STATUS_FINAL)
+            continue; // not processed
+
+        sai_object_id_t aclTableRid = temporaryView.vidToRid.at(tmpAclTable->getVid());
+
+        sai_object_id_t curAclTableVid = currentView.ridToVid.at(aclTableRid);
+
+        for (auto c: candidateObjects)
+        {
+            auto curAclCounterTableIdAttr = c.obj->tryGetSaiAttr(SAI_ACL_COUNTER_ATTR_TABLE_ID);
+
+            if (curAclCounterTableIdAttr == nullptr)
+                continue;
+
+            if (curAclCounterTableIdAttr->getOid() != curAclTableVid)
+                continue;
+
+            SWSS_LOG_INFO("found best ACL counter match based on ACL table: %s", c.obj->str_object_id.c_str());
+
+            return c.obj;
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for ACL_COUNTER using ACL table");
+
+    return nullptr;
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatchForAclTableGroup(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -3806,6 +3862,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
 
         case SAI_OBJECT_TYPE_ACL_TABLE_GROUP:
             candidate = findCurrentBestMatchForAclTableGroup(currentView, temporaryView, temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_ACL_COUNTER:
+            candidate = findCurrentBestMatchForAclCounter(currentView, temporaryView, temporaryObj, candidateObjects);
             break;
 
         case SAI_OBJECT_TYPE_ROUTER_INTERFACE:

@@ -452,9 +452,21 @@ sub test_tunnel_map
     play "tunnel_map.rec", 0;
 }
 
+sub test_acl_counter
+{
+    fresh_start;
+
+    play "acl_counter.rec";
+    play "acl_counter.rec", 0;
+    play "acl_counter.rec", 0;
+    play "acl_counter.rec", 0;
+    play "acl_counter.rec", 0;
+    play "acl_counter.rec", 0;
+}
 
 # RUN TESTS
 
+test_acl_counter;
 test_tunnel_map;
 test_bridge_create;
 test_ntf;
