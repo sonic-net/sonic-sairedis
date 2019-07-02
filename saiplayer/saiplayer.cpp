@@ -970,7 +970,7 @@ sai_status_t handle_bulk_route(
 
         std::vector<const sai_attribute_t*> attr_list;
 
-        // route can have multiple attributes, so we need to hangle them all
+        // route can have multiple attributes, so we need to handle them all
         for (const auto &alist: attributes)
         {
             attr_list.push_back(alist->get_attr_list());
