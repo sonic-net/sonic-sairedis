@@ -98,6 +98,7 @@ struct cmdOptions
     bool run_rpc_server;
     std::string portMapFile;
 #endif // SAITHRIFT
+    bool syncMode;
     ~cmdOptions() {}
 };
 
@@ -1005,6 +1006,16 @@ void internal_syncd_api_send_response(
         _In_ sai_status_t status)
 {
     SWSS_LOG_ENTER();
+
+    /*
+     * By default synchronous mode is disabled and can be enabled by command
+     * line on syncd start. This will also require to enable synchronous mode
+     * in OA/sairedis because same GET RESPONSE channel is used to generate
+     * response for sairedis quad API.
+     */
+
+    if (!options.syncMode)
+        return;
 
     std::vector<swss::FieldValueTuple> entry;
 
@@ -3015,7 +3026,7 @@ void processFlexCounterEvent(
 
     if (!try_translate_vid_to_rid(vid, rid))
     {
-        SWSS_LOG_WARN("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now", 
+        SWSS_LOG_WARN("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
                 sai_serialize_object_id(vid).c_str());
 
         op = DEL_COMMAND;
@@ -3158,7 +3169,7 @@ void printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: syncd [-N] [-U] [-d] [-p profile] [-i interval] [-t [cold|warm|fast|fastfast]] [-h] [-u] [-S]" << std::endl;
+    std::cout << "Usage: syncd [-N] [-U] [-d] [-p profile] [-i interval] [-t [cold|warm|fast|fastfast]] [-h] [-u] [-S] [-s]" << std::endl;
     std::cout << "    -N --nocounters" << std::endl;
     std::cout << "        Disable counter thread" << std::endl;
     std::cout << "    -d --diag" << std::endl;
@@ -3183,6 +3194,8 @@ void printUsage()
     std::cout << "    -m --portmap"             << std::endl;
     std::cout << "        Specify port map file" << std::endl;
 #endif // SAITHRIFT
+    std::cout << "    -s --syncMode"             << std::endl;
+    std::cout << "        Enable synchronous mode" << std::endl;
     std::cout << "    -h --help" << std::endl;
     std::cout << "        Print out this message" << std::endl;
 }
@@ -3193,6 +3206,7 @@ void handleCmdLine(int argc, char **argv)
 
     options.disableExitSleep = false;
     options.enableUnittests = false;
+    options.syncMode = false;
 
 #ifdef SAITHRIFT
     options.run_rpc_server = false;
@@ -3217,6 +3231,7 @@ void handleCmdLine(int argc, char **argv)
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
 #endif // SAITHRIFT
+            { "syncMode",                no_argument,       0, 's' },
             { 0,                         0,                 0,  0  }
         };
 
@@ -3296,6 +3311,11 @@ void handleCmdLine(int argc, char **argv)
                 options.portMapFile = std::string(optarg);
                 break;
 #endif // SAITHRIFT
+
+            case 's':
+                SWSS_LOG_NOTICE("enable synchronous mode");
+                options.syncMode = true;
+                break;
 
             case 'h':
                 printUsage();

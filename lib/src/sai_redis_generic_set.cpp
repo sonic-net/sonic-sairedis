@@ -7,6 +7,16 @@ sai_status_t internal_api_wait_for_response(
 {
     SWSS_LOG_ENTER();
 
+    if (!g_syncMode)
+    {
+        /*
+         * By default sync mode is disabled and all create/set/remove are
+         * considered success operations.
+         */
+
+        return SAI_STATUS_SUCCESS;
+    }
+
     SWSS_LOG_INFO("waiting for response %d", api);
 
     swss::Select s;
