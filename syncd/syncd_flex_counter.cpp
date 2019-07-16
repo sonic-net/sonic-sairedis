@@ -61,8 +61,9 @@ FlexCounter::RifCounterIds::RifCounterIds(
 
 FlexCounter::BufferPoolCounterIds::BufferPoolCounterIds(
         _In_ sai_object_id_t bufferPool,
-        _In_ const std::vector<sai_buffer_pool_stat_t> &bufferPoolIds):
-    bufferPoolId(bufferPool), bufferPoolCounterIds(bufferPoolIds)
+        _In_ const std::vector<sai_buffer_pool_stat_t> &bufferPoolIds,
+        _In_ sai_stats_mode_t statsMode):
+    bufferPoolId(bufferPool), bufferPoolStatsMode(statsMode), bufferPoolCounterIds(bufferPoolIds)
 {
     SWSS_LOG_ENTER();
 }
@@ -463,14 +464,29 @@ void FlexCounter::setRifCounterList(
 void FlexCounter::setBufferPoolCounterList(
         _In_ sai_object_id_t bufferPoolVid,
         _In_ sai_object_id_t bufferPoolId,
-        _In_ std::string instanceId,
-        _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds)
+        _In_ const std::string &instanceId,
+        _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds,
+        _In_ const std::string &statsMode)
 {
     SWSS_LOG_ENTER();
 
     FlexCounter &fc = getInstance(instanceId);
 
-    fc.saiUpdateSupportedBufferPoolCounters(bufferPoolId, counterIds);
+    sai_stats_mode_t bufferPoolStatsMode = SAI_STATS_MODE_READ_AND_CLEAR;
+    if (statsMode == STATS_MODE_READ_AND_CLEAR)
+    {
+        bufferPoolStatsMode = SAI_STATS_MODE_READ_AND_CLEAR;
+    }
+    else if (statsMode == STATS_MODE_READ)
+    {
+        bufferPoolStatsMode = SAI_STATS_MODE_READ;
+    }
+    else
+    {
+        SWSS_LOG_WARN("Stats mode %s not supported for flex counter. Using STATS_MODE_READ_AND_CLEAR", statsMode.c_str());
+    }
+
+    fc.saiUpdateSupportedBufferPoolCounters(bufferPoolId, counterIds, bufferPoolStatsMode);
 
     // Filter unsupported counters
     std::vector<sai_buffer_pool_stat_t> supportedIds;
@@ -504,7 +520,7 @@ void FlexCounter::setBufferPoolCounterList(
         return;
     }
 
-    auto bufferPoolCounterIds = std::make_shared<BufferPoolCounterIds>(bufferPoolId, supportedIds);
+    auto bufferPoolCounterIds = std::make_shared<BufferPoolCounterIds>(bufferPoolId, supportedIds, bufferPoolStatsMode);
     fc.m_bufferPoolCounterIdsMap.emplace(bufferPoolVid, bufferPoolCounterIds);
 
     // Start flex counter thread in case it was not running due to empty counter IDs map
@@ -1194,6 +1210,7 @@ void FlexCounter::collectCounters(
         const auto &bufferPoolVid = it.first;
         const auto &bufferPoolId = it.second->bufferPoolId;
         const auto &bufferPoolCounterIds = it.second->bufferPoolCounterIds;
+        const auto &bufferPoolStatsMode = it.second->bufferPoolStatsMode;
 
         std::vector<uint64_t> bufferPoolStats(bufferPoolCounterIds.size());
 
@@ -1215,22 +1232,22 @@ void FlexCounter::collectCounters(
                     sai_serialize_status(status).c_str());
             continue;
         }
-        if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR)
+        if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR || bufferPoolStatsMode == SAI_STATS_MODE_READ_AND_CLEAR)
         {
             status = sai_metadata_sai_buffer_api->clear_buffer_pool_stats(
                             bufferPoolId,
                             static_cast<uint32_t>(bufferPoolCounterIds.size()),
                             reinterpret_cast<const sai_stat_id_t *>(bufferPoolCounterIds.data()));
-        }
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            // Because of stat pre-qualification in setting the buffer pool counter list,
-            // it is less likely that we will get a failure return here in clearing the stats
-            SWSS_LOG_ERROR("%s: failed to clear stats of buffer pool %s, rv: %s",
-                    m_instanceId.c_str(),
-                    sai_serialize_object_id(bufferPoolId).c_str(),
-                    sai_serialize_status(status).c_str());
-            continue;
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                // Because of stat pre-qualification in setting the buffer pool counter list,
+                // it is less likely that we will get a failure return here in clearing the stats
+                SWSS_LOG_ERROR("%s: failed to clear stats of buffer pool %s, rv: %s",
+                        m_instanceId.c_str(),
+                        sai_serialize_object_id(bufferPoolId).c_str(),
+                        sai_serialize_status(status).c_str());
+                continue;
+            }
         }
 
         // Write counter values to DB table
@@ -1529,7 +1546,8 @@ void FlexCounter::saiUpdateSupportedRifCounters(sai_object_id_t rifId)
 
 void FlexCounter::saiUpdateSupportedBufferPoolCounters(
         _In_ sai_object_id_t bufferPoolId,
-        _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds)
+        _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds,
+        _In_ sai_stats_mode_t statsMode)
 {
     SWSS_LOG_ENTER();
 
@@ -1550,7 +1568,7 @@ void FlexCounter::saiUpdateSupportedBufferPoolCounters(
             continue;
         }
 
-        if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR)
+        if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR || statsMode == SAI_STATS_MODE_READ_AND_CLEAR)
         {
             status = sai_metadata_sai_buffer_api->clear_buffer_pool_stats(bufferPoolId, 1, (const sai_stat_id_t *)&counterId);
             if (status != SAI_STATUS_SUCCESS)

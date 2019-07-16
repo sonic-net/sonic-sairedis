@@ -15,6 +15,9 @@ static std::shared_ptr<SwitchState> ss;
 static std::vector<sai_object_id_t> port_list;
 static std::vector<sai_object_id_t> bridge_port_list_port_based;
 
+static std::vector<sai_acl_action_type_t> ingress_acl_action_list;
+static std::vector<sai_acl_action_type_t> egress_acl_action_list;
+
 static sai_object_id_t default_vlan_id;
 
 static sai_status_t set_switch_mac_address()
@@ -815,6 +818,37 @@ static sai_status_t create_acl_entry_min_prio()
     return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
 }
 
+static sai_status_t create_acl_capabilities()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create acl capabilities");
+
+    sai_attribute_t attr;
+
+    for (int action_type = SAI_ACL_ENTRY_ATTR_ACTION_START; action_type <= SAI_ACL_ENTRY_ATTR_ACTION_END; action_type++)
+    {
+        ingress_acl_action_list.push_back(static_cast<sai_acl_action_type_t>(action_type - SAI_ACL_ENTRY_ATTR_ACTION_START));
+        egress_acl_action_list.push_back(static_cast<sai_acl_action_type_t>(action_type - SAI_ACL_ENTRY_ATTR_ACTION_START));
+    }
+
+    attr.id = SAI_SWITCH_ATTR_MAX_ACL_ACTION_COUNT;
+    attr.value.u32 = static_cast<uint32_t>(std::max(ingress_acl_action_list.size(), egress_acl_action_list.size()));
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_ACL_STAGE_INGRESS;
+    attr.value.aclcapability.action_list.list = reinterpret_cast<int32_t*>(ingress_acl_action_list.data());
+    attr.value.aclcapability.action_list.count = static_cast<uint32_t>(ingress_acl_action_list.size());
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_ACL_STAGE_EGRESS;
+    attr.value.aclcapability.action_list.list = reinterpret_cast<int32_t*>(egress_acl_action_list.data());
+    attr.value.aclcapability.action_list.count = static_cast<uint32_t>(egress_acl_action_list.size());
+
+    return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
+}
+
 static sai_status_t set_number_of_ecmp_groups()
 {
     SWSS_LOG_ENTER();
@@ -846,6 +880,7 @@ static sai_status_t initialize_default_objects()
     CHECK_STATUS(create_bridge_ports());
     CHECK_STATUS(create_vlan_members());
     CHECK_STATUS(create_acl_entry_min_prio());
+    CHECK_STATUS(create_acl_capabilities());
     CHECK_STATUS(create_ingress_priority_groups());
     CHECK_STATUS(create_qos_queues());
     CHECK_STATUS(set_maximum_number_of_childs_per_scheduler_group());
@@ -1213,6 +1248,11 @@ sai_status_t refresh_read_only_BCM56850(
 
             case SAI_SWITCH_ATTR_ACL_ENTRY_MINIMUM_PRIORITY:
             case SAI_SWITCH_ATTR_ACL_ENTRY_MAXIMUM_PRIORITY:
+                return SAI_STATUS_SUCCESS;
+
+            case SAI_SWITCH_ATTR_MAX_ACL_ACTION_COUNT:
+            case SAI_SWITCH_ATTR_ACL_STAGE_INGRESS:
+            case SAI_SWITCH_ATTR_ACL_STAGE_EGRESS:
                 return SAI_STATUS_SUCCESS;
 
             case SAI_SWITCH_ATTR_NUMBER_OF_ECMP_GROUPS:

@@ -3098,6 +3098,8 @@ bool processFlexCounterEvent(
     }
 
     const auto values = kfvFieldsValues(kco);
+    std::vector<std::string> counterIds;
+    std::string statsMode;
     for (const auto& valuePair : values)
     {
         const auto field = fvField(valuePair);
@@ -3105,7 +3107,7 @@ bool processFlexCounterEvent(
 
         if (op == SET_COMMAND)
         {
-            auto idStrings  = swss::tokenize(value, ',');
+            auto idStrings = swss::tokenize(value, ',');
 
             if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_COUNTER_ID_LIST)
             {
@@ -3181,21 +3183,30 @@ bool processFlexCounterEvent(
             }
             else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
             {
-                std::vector<sai_buffer_pool_stat_t> bufferPoolCounterIds;
-                for (const auto &str : idStrings)
-                {
-                    sai_buffer_pool_stat_t stat;
-                    sai_deserialize_buffer_pool_stat(str.c_str(), &stat);
-                    bufferPoolCounterIds.push_back(stat);
-                }
-
-                FlexCounter::setBufferPoolCounterList(vid, rid, groupName, bufferPoolCounterIds);
+                counterIds = idStrings;
+            }
+            else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == STATS_MODE_FIELD)
+            {
+                statsMode = value;
             }
             else
             {
                 SWSS_LOG_ERROR("Object type and field combination is not supported, object type %s, field %s", objectTypeStr.c_str(), field.c_str());
             }
         }
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && counterIds.size())
+    {
+        std::vector<sai_buffer_pool_stat_t> bufferPoolCounterIds;
+        for (const auto &str : counterIds)
+        {
+            sai_buffer_pool_stat_t stat;
+            sai_deserialize_buffer_pool_stat(str.c_str(), &stat);
+            bufferPoolCounterIds.push_back(stat);
+        }
+
+        FlexCounter::setBufferPoolCounterList(vid, rid, groupName, bufferPoolCounterIds, statsMode);
     }
 
     return true;

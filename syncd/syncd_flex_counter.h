@@ -40,8 +40,9 @@ class FlexCounter
         static void setBufferPoolCounterList(
                 _In_ sai_object_id_t bufferPoolVid,
                 _In_ sai_object_id_t bufferPoolId,
-                _In_ std::string instanceId,
-                _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds);
+                _In_ const std::string &instanceId,
+                _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds,
+                _In_ const std::string &statsMode = "");
         static void setQueueAttrList(
                 _In_ sai_object_id_t queueVid,
                 _In_ sai_object_id_t queueId,
@@ -143,9 +144,11 @@ class FlexCounter
         {
             BufferPoolCounterIds(
                 _In_ sai_object_id_t bufferPool,
-                _In_ const std::vector<sai_buffer_pool_stat_t> &bufferPoolIds);
+                _In_ const std::vector<sai_buffer_pool_stat_t> &bufferPoolIds,
+                _In_ sai_stats_mode_t statsMode);
 
             sai_object_id_t bufferPoolId;
+            sai_stats_mode_t bufferPoolStatsMode;
             std::vector<sai_buffer_pool_stat_t> bufferPoolCounterIds;
         };
 
@@ -183,7 +186,9 @@ class FlexCounter
         void saiUpdateSupportedQueueCounters(sai_object_id_t queueId, const std::vector<sai_queue_stat_t> &counterIds);
         void saiUpdateSupportedPriorityGroupCounters(sai_object_id_t priorityGroupId, const std::vector<sai_ingress_priority_group_stat_t> &counterIds);
         void saiUpdateSupportedRifCounters(sai_object_id_t rifId);
-        void saiUpdateSupportedBufferPoolCounters(sai_object_id_t bufferPoolId, const std::vector<sai_buffer_pool_stat_t> &counterIds);
+        void saiUpdateSupportedBufferPoolCounters(sai_object_id_t bufferPoolId,
+                                                  const std::vector<sai_buffer_pool_stat_t> &counterIds,
+                                                  sai_stats_mode_t statsMode = SAI_STATS_MODE_READ_AND_CLEAR);
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
         bool isPriorityGroupCounterSupported(sai_ingress_priority_group_stat_t counter) const;
