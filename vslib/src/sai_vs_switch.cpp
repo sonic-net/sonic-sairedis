@@ -14,6 +14,8 @@
 
 #include <thread>
 
+sai_object_id_t g_vs_switch_id = SAI_NULL_OBJECT_ID;
+
 /**
  * @brief Get SwitchState by switch id.
  *
@@ -305,6 +307,8 @@ sai_status_t vs_create_switch(
     {
         vs_create_netlink_message_listener(*switch_id);
     }
+
+    g_vs_switch_id = *switch_id;
 
     return status;
 }

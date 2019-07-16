@@ -86,6 +86,7 @@ typedef enum _sai_vs_switch_type_t
 
 } sai_vs_switch_type_t;
 
+extern sai_object_id_t                  g_vs_switch_id;
 extern bool                             g_vs_hostif_use_tap_device;
 extern sai_vs_switch_type_t             g_vs_switch_type;
 extern std::recursive_mutex             g_recursive_mutex;

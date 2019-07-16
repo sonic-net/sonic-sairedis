@@ -1235,6 +1235,7 @@ sai_status_t vs_create_hostif_tap_interface(
 
     g_switch_state_map.at(switch_id)->setIfNameToPortId(vname, obj_id);
 
+    g_switch_state_map.at(switch_id)->setTapNameToPortId(name, obj_id);
     // TODO what about FDB entries notifications, they also should
     // be generated if new mac address will show up on the interface/arp table
 

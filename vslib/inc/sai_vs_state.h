@@ -253,11 +253,34 @@ class SwitchState
         return it->second;
     }
 
+    void setTapNameToPortId(
+            _In_ const std::string& tapname,
+            _In_ sai_object_id_t port_id)
+    {
+        SWSS_LOG_ENTER();
+
+        m_port_id_to_tapname[port_id] = tapname;
+    }
+
+    bool  getTapNameFromPortId(
+            _In_ const sai_object_id_t port_id,
+            _Out_ std::string& if_name)
+    {
+        SWSS_LOG_ENTER();
+
+        if (m_port_id_to_tapname.find(port_id) != m_port_id_to_tapname.end())
+        {
+            if_name = m_port_id_to_tapname[port_id];
+            return true;
+        }
+        return false;
+    }
+
     private:
 
         sai_object_id_t m_switch_id;
 
-        std::map<std::string, sai_object_id_t> m_ifname_to_port_id;
+        std::map<sai_object_id_t, std::string> m_port_id_to_tapname;
 
         swss::SelectableEvent m_link_thread_event;
 
