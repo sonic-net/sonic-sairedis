@@ -7,6 +7,7 @@
 
 volatile bool g_asicInitViewMode = false; // default mode is apply mode
 volatile bool g_useTempView = false;
+volatile bool g_syncMode = false;
 
 sai_status_t sai_redis_internal_notify_syncd(
         _In_ const std::string& key)
@@ -266,7 +267,26 @@ sai_status_t redis_set_switch_attribute(
                 g_useTempView = attr->value.booldata;
                 return SAI_STATUS_SUCCESS;
 
+            case SAI_REDIS_SWITCH_ATTR_SYNC_MODE:
+
+                g_syncMode = attr->value.booldata;
+
+                if (g_syncMode)
+                {
+                    SWSS_LOG_NOTICE("disabling buffered pipeline in sync mode");
+                    g_asicState->setBuffered(false);
+                }
+
+                return SAI_STATUS_SUCCESS;
+
             case SAI_REDIS_SWITCH_ATTR_USE_PIPELINE:
+
+                if (g_syncMode)
+                {
+                    SWSS_LOG_WARN("use pipeline is not supported in sync mode");
+                    return SAI_STATUS_NOT_SUPPORTED;
+                }
+
                 g_asicState->setBuffered(attr->value.booldata);
                 return SAI_STATUS_SUCCESS;
 

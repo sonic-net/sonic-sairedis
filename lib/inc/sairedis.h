@@ -104,6 +104,19 @@ typedef enum _sai_redis_switch_attr_t
      */
     SAI_REDIS_SWITCH_ATTR_PERFORM_LOG_ROTATE,
 
+    /**
+     * @brief Synchronous mode.
+     *
+     * Enable or disable synchronous mode. When enabled syncd also needs to be
+     * running in synchronous mode. Command pipeline will be disabled when this
+     * flag will be set to true.
+     *
+     * @type bool
+     * @flags CREATE_AND_SET
+     * @default false
+     */
+    SAI_REDIS_SWITCH_ATTR_SYNC_MODE,
+
 } sai_redis_switch_attr_t;
 
 /*

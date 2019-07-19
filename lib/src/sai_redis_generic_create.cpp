@@ -234,9 +234,7 @@ sai_status_t internal_redis_generic_create(
 
     g_asicState->set(key, entry, "create");
 
-    // we assume create will always succeed which may not be true
-    // we should make this synchronous call
-    return SAI_STATUS_SUCCESS;
+    return internal_api_wait_for_response(SAI_COMMON_API_CREATE);
 }
 
 sai_status_t redis_generic_create(
@@ -389,7 +387,7 @@ sai_status_t internal_redis_bulk_generic_create(
         g_asicState->set(key, entries, "bulkcreate");
     }
 
-    return SAI_STATUS_SUCCESS;
+    return internal_api_wait_for_response(SAI_COMMON_API_CREATE);
 }
 
 #define REDIS_ENTRY_CREATE(OT,ot)                       \

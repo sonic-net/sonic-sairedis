@@ -59,9 +59,9 @@ function set_start_type()
 {
     if [ x"$WARM_BOOT" == x"true" ]; then
         CMD_ARGS+=" -t warm"
-    elif [ $FAST_REBOOT == "yes" ]; then
+    elif [ x"$FAST_REBOOT" == x"yes" ]; then
         CMD_ARGS+=" -t fast"
-    elif [ $FASTFAST_REBOOT == "yes" ]; then
+    elif [ x"$FASTFAST_REBOOT" == x"yes" ]; then
         CMD_ARGS+=" -t fastfast"
     fi
 }
