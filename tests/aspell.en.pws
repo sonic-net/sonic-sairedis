@@ -244,5 +244,3 @@ VXLAN
 workaroung
 xoff
 xon
-booldata
-setBuffered

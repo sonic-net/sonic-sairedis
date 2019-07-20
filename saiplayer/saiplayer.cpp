@@ -964,54 +964,6 @@ sai_status_t handle_bulk_route(
 
         return status;
     }
-    else if (api == (sai_common_api_t)SAI_COMMON_API_BULK_CREATE)
-    {
-        std::vector<uint32_t> attr_count;
-
-        std::vector<const sai_attribute_t*> attr_list;
-
-        // route can have multiple attributes, so we need to handle them all
-        for (const auto &alist: attributes)
-        {
-            attr_list.push_back(alist->get_attr_list());
-            attr_count.push_back(alist->get_attr_count());
-        }
-
-        SWSS_LOG_NOTICE("executing BULK route create with %zu routes", attr_count.size());
-
-        sai_status_t status = sai_bulk_create_route_entry(
-                (uint32_t)routes.size(),
-                routes.data(),
-                attr_count.data(),
-                attr_list.data(),
-                SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, // TODO we need to get that from recording
-                statuses.data());
-
-        if (status != SAI_STATUS_SUCCESS)
-        {
-             // Entire API fails, so no need to compare statuses.
-            return status;
-        }
-
-        for (size_t i = 0; i < statuses.size(); ++i)
-        {
-            if (statuses[i] != recorded_statuses[i])
-            {
-                /*
-                 * If recorded statuses are different than received, throw
-                 * exception since data don't match.
-                 */
-
-                SWSS_LOG_THROW("recorded status is %s but returned is %s on %s",
-                        sai_serialize_status(recorded_statuses[i]).c_str(),
-                        sai_serialize_status(statuses[i]).c_str(),
-                        object_ids[i].c_str());
-            }
-        }
-
-        return status;
-
-    }
     else
     {
         SWSS_LOG_THROW("api %d is not supported in bulk route", api);
@@ -1029,8 +981,7 @@ void processBulk(
         return;
     }
 
-    if (api != (sai_common_api_t)SAI_COMMON_API_BULK_SET &&
-            api != (sai_common_api_t)SAI_COMMON_API_BULK_CREATE)
+    if (api != (sai_common_api_t)SAI_COMMON_API_BULK_SET)
     {
         SWSS_LOG_THROW("bulk common api %d is not supported yet, FIXME", api);
     }
@@ -1202,9 +1153,6 @@ int replay(int argc, char **argv)
                 break;
             case 'S':
                 processBulk((sai_common_api_t)SAI_COMMON_API_BULK_SET, line);
-                continue;
-            case 'C':
-                processBulk((sai_common_api_t)SAI_COMMON_API_BULK_CREATE, line);
                 continue;
             case 'g':
                 api = SAI_COMMON_API_GET;

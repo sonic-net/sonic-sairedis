@@ -21,7 +21,7 @@ sai_status_t internal_redis_generic_remove(
 
     g_asicState->del(key, "remove");
 
-    return internal_api_wait_for_response(SAI_COMMON_API_REMOVE);
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t redis_generic_remove(
@@ -118,10 +118,10 @@ sai_status_t internal_redis_bulk_generic_remove(
         }
 
         /*
-         * Capital 'R' stands for bulk CREATE operation.
+         * Capital 'C' stands for bulk CREATE operation.
          */
 
-        recordLine("R|" + str_object_type + joined);
+        recordLine("C|" + str_object_type + joined);
     }
 
     // key:         object_type:count
@@ -134,7 +134,7 @@ sai_status_t internal_redis_bulk_generic_remove(
         g_asicState->set(key, entries, "bulkremove");
     }
 
-    return internal_api_wait_for_response(SAI_COMMON_API_CREATE);
+    return SAI_STATUS_SUCCESS;
 }
 
 

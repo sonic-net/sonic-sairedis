@@ -124,8 +124,6 @@ sai_status_t sai_api_initialize(
     g_redisNotifications = std::make_shared<swss::NotificationConsumer>(g_dbNtf.get(), "NOTIFICATIONS");
     g_redisClient        = std::make_shared<swss::RedisClient>(g_db.get());
 
-    g_asicState->setBuffered(false); // in sync mode, always false
-
     clear_local_state();
 
     g_asicInitViewMode = false;
