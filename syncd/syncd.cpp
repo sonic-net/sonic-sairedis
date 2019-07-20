@@ -3106,7 +3106,7 @@ bool processFlexCounterEvent(
         if (!try_translate_vid_to_rid(vid, rid))
         { 
             SWSS_LOG_WARN("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
-            sai_serialize_object_id(vid).c_str());
+              sai_serialize_object_id(vid).c_str());
             return false;
         }
     }
