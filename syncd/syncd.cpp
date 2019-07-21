@@ -136,7 +136,7 @@ void notify_OA_about_syncd_exception()
             std::vector<swss::FieldValueTuple> entry;
 
             SWSS_LOG_NOTICE("sending switch_shutdown_request notification to OA");
- 
+
             notifications->send("switch_shutdown_request", "", entry);
 
             SWSS_LOG_NOTICE("notification send successfull");
@@ -544,19 +544,19 @@ void translate_rid_to_vid_list(
                 if (attr.value.aclaction.enable)
                     translate_list_rid_to_vid(attr.value.aclaction.parameter.objlist, switch_id);
                 break;
- 
+
             default:
- 
+
                 /*
                  * If in future new attribute with object id will be added this
                  * will make sure that we will need to add handler here.
                  */
- 
+
                 if (meta->isoidattribute)
                 {
                     SWSS_LOG_THROW("attribute %s is object id, but not processed, FIXME", meta->attridname);
                 }
- 
+
                 break;
         }
     }
@@ -576,7 +576,7 @@ sai_object_id_t translate_vid_to_rid(
     if (vid == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_DEBUG("translated VID null to RID null");
- 
+
         return SAI_NULL_OBJECT_ID;
     }
 
@@ -612,7 +612,7 @@ sai_object_id_t translate_vid_to_rid(
 
             SWSS_LOG_THROW("can't get RID in init view mode - don't query created objects");
         }
- 
+
         SWSS_LOG_THROW("unable to get RID for VID: 0x%lx", vid);
     }
 
@@ -630,7 +630,7 @@ sai_object_id_t translate_vid_to_rid(
     local_vid_to_rid[vid] = rid;
 
     SWSS_LOG_DEBUG("translated VID 0x%lx to RID 0x%lx", vid, rid);
- 
+
     return rid;
 }
 
@@ -674,60 +674,60 @@ void translate_vid_to_rid_list(
      * All id's received from sairedis should be virtual, so lets translate
      * them to real id's before we execute actual api.
      */
- 
+
     for (uint32_t i = 0; i < attr_count; i++)
     {
         sai_attribute_t &attr = attr_list[i];
- 
+
         auto meta = sai_metadata_get_attr_metadata(object_type, attr.id);
- 
+
         if (meta == NULL)
         {
             SWSS_LOG_THROW("unable to get metadata for object type %x, attribute %d", object_type, attr.id);
         }
- 
+
         switch (meta->attrvaluetype)
         {
             case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
                 attr.value.oid = translate_vid_to_rid(attr.value.oid);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
                 translate_list_vid_to_rid(attr.value.objlist);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
                 if (attr.value.aclfield.enable)
                     attr.value.aclfield.data.oid = translate_vid_to_rid(attr.value.aclfield.data.oid);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
                 if (attr.value.aclfield.enable)
                     translate_list_vid_to_rid(attr.value.aclfield.data.objlist);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
                 if (attr.value.aclaction.enable)
                     attr.value.aclaction.parameter.oid = translate_vid_to_rid(attr.value.aclaction.parameter.oid);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
                 if (attr.value.aclaction.enable)
                     translate_list_vid_to_rid(attr.value.aclaction.parameter.objlist);
                 break;
- 
+
             default:
- 
+
                 /*
                  * If in future new attribute with object id will be added this
                  * will make sure that we will need to add handler here.
                  */
- 
+
                 if (meta->isoidattribute)
                 {
                     SWSS_LOG_THROW("attribute %s is object id, but not processed, FIXME", meta->attridname);
                 }
- 
+
                 break;
         }
     }
@@ -745,18 +745,18 @@ void snoop_get_attr(
      * Note: str_object_type + ":" + str_object_id is meta_key we can us that
      * here later on.
      */
- 
+
     std::string str_object_type = sai_serialize_object_type(object_type);
- 
+
     std::string prefix = "";
- 
+
     if (isInitViewMode())
     {
         prefix = TEMP_PREFIX;
     }
- 
+
     std::string key = prefix + (ASIC_STATE_TABLE + (":" + str_object_type + ":" + str_object_id));
- 
+
     SWSS_LOG_DEBUG("%s", key.c_str());
 
 
@@ -773,20 +773,20 @@ void snoop_get_oid(
         /*
          * If snooped oid is NULL then we don't need take any action.
          */
- 
+
         return;
     }
- 
+
     /*
      * We need use redis version of object type query here since we are
      * operating on VID value, and syncd is compiled against real SAI
      * implementation which has different function sai_object_type_query.
      */
- 
+
     sai_object_type_t object_type = redis_sai_object_type_query(vid);
- 
+
     std::string str_vid = sai_serialize_object_id(vid);
- 
+
     snoop_get_attr(object_type, str_vid, "NULL", "NULL");
 }
 
@@ -809,9 +809,9 @@ void snoop_get_attr_value(
     SWSS_LOG_ENTER();
 
     std::string value = sai_serialize_attr_value(*meta, attr);
- 
+
     SWSS_LOG_DEBUG("%s:%s", meta->attridname, value.c_str());
- 
+
     snoop_get_attr(meta->objecttype, str_object_id, meta->attridname, value);
 }
 
@@ -832,89 +832,89 @@ void snoop_get_response(
      * Vlan (including vlan 1) will need to be put into TEMP view this should
      * also be valid for all objects that were queried.
      */
- 
+
     for (uint32_t idx = 0; idx < attr_count; ++idx)
     {
         const sai_attribute_t &attr = attr_list[idx];
- 
+
         auto meta = sai_metadata_get_attr_metadata(object_type, attr.id);
- 
+
         if (meta == NULL)
         {
             SWSS_LOG_THROW("unable to get metadata for object type %d, attribute %d", object_type, attr.id);
         }
- 
+
         /*
          * We should snoop oid values even if they are readonly we just note in
          * temp view that those objects exist on switch.
          */
- 
+
         switch (meta->attrvaluetype)
         {
             case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
                 snoop_get_oid(attr.value.oid);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
                 snoop_get_oid_list(attr.value.objlist);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
                 if (attr.value.aclfield.enable)
                     snoop_get_oid(attr.value.aclfield.data.oid);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
                 if (attr.value.aclfield.enable)
                     snoop_get_oid_list(attr.value.aclfield.data.objlist);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
                 if (attr.value.aclaction.enable)
                     snoop_get_oid(attr.value.aclaction.parameter.oid);
                 break;
- 
+
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
                 if (attr.value.aclaction.enable)
                     snoop_get_oid_list(attr.value.aclaction.parameter.objlist);
                 break;
- 
+
             default:
- 
+
                 /*
                  * If in future new attribute with object id will be added this
                  * will make sure that we will need to add handler here.
                  */
- 
+
                 if (meta->isoidattribute)
                 {
                     SWSS_LOG_THROW("attribute %s is object id, but not processed, FIXME", meta->attridname);
                 }
- 
+
                 break;
         }
- 
+
         if (SAI_HAS_FLAG_READ_ONLY(meta->flags))
         {
             /*
              * If value is read only, we skip it, since after syncd restart we
              * won't be able to set/create it anyway.
              */
- 
+
             continue;
         }
- 
+
         if (meta->objecttype == SAI_OBJECT_TYPE_PORT &&
                 meta->attrid == SAI_PORT_ATTR_HW_LANE_LIST)
         {
             /*
              * Skip port lanes for now since we don't create ports.
              */
- 
+
             SWSS_LOG_INFO("skipping %s for %s", meta->attridname, str_object_id.c_str());
             continue;
         }
- 
+
         /*
          * Put non readonly, and non oid attribute value to temp view.
          *
@@ -924,7 +924,7 @@ void snoop_get_response(
          * Similar action can happen when we will do this on asicSet during
          * apply view.
          */
- 
+
         snoop_get_attr_value(str_object_id, meta, attr);
     }
 }
@@ -940,25 +940,25 @@ void internal_syncd_get_send(
     SWSS_LOG_ENTER();
 
     std::vector<swss::FieldValueTuple> entry;
- 
+
     if (status == SAI_STATUS_SUCCESS)
     {
         translate_rid_to_vid_list(object_type, switch_id, attr_count, attr_list);
- 
+
         /*
          * Normal serialization + translate RID to VID.
          */
- 
+
         entry = SaiAttributeList::serialize_attr_list(
                 object_type,
                 attr_count,
                 attr_list,
                 false);
- 
+
         /*
          * All oid values here are VIDs.
          */
- 
+
         snoop_get_response(object_type, str_object_id, attr_count, attr_list);
     }
     else if (status == SAI_STATUS_BUFFER_OVERFLOW)
@@ -972,7 +972,7 @@ void internal_syncd_get_send(
          * different attributes can have different lists, many of them may
          * serialize only count, and will need to support that on the receiver.
          */
- 
+
         entry = SaiAttributeList::serialize_attr_list(
                 object_type,
                 attr_count,
@@ -985,24 +985,24 @@ void internal_syncd_get_send(
          * Some other error, don't send attributes at all.
          */
     }
- 
+
     for (const auto &e: entry)
     {
         SWSS_LOG_DEBUG("attr: %s: %s", fvField(e).c_str(), fvValue(e).c_str());
     }
- 
+
     std::string str_status = sai_serialize_status(status);
- 
+
     SWSS_LOG_INFO("sending response for GET api with status: %s", str_status.c_str());
- 
+
     /*
      * Since we have only one get at a time, we don't have to serialize object
      * type and object id, only get status is required to be returned.  Get
      * response will not put any data to table, only queue is used.
      */
- 
+
     getResponse->set(str_status, entry, "getresponse");
- 
+
     SWSS_LOG_INFO("response for GET api was send");
 }
 
@@ -1018,16 +1018,16 @@ void internal_syncd_api_send_response(
      * in OA/sairedis because same GET RESPONSE channel is used to generate
      * response for sairedis quad API.
      */
- 
+
     if (!options.syncMode)
         return;
- 
+
     std::vector<swss::FieldValueTuple> entry;
- 
+
     std::string str_status = sai_serialize_status(status);
- 
+
     SWSS_LOG_INFO("sending response for %d api with status: %s", api, str_status.c_str());
- 
+
     getResponse->set(str_status, entry, "getresponse");
  
     SWSS_LOG_INFO("response for %d api was send", api);
@@ -1046,15 +1046,15 @@ const char* profile_get_value(
     }
 
     auto it = gProfileMap.find(variable);
- 
+
     if (it == gProfileMap.end())
     {
         SWSS_LOG_NOTICE("%s: NULL", variable);
         return NULL;
     }
- 
+
     SWSS_LOG_NOTICE("%s: %s", variable, it->second.c_str());
- 
+
     return it->second.c_str();
 }
 
@@ -1070,11 +1070,11 @@ int profile_get_next_value(
     if (value == NULL)
     {
         SWSS_LOG_INFO("resetting profile map iterator");
- 
+
         gProfileIter = gProfileMap.begin();
         return 0;
     }
- 
+
     if (variable == NULL)
     {
         SWSS_LOG_WARN("variable is null");
@@ -1086,14 +1086,14 @@ int profile_get_next_value(
         SWSS_LOG_INFO("iterator reached end");
         return -1;
     }
- 
+
     *variable = gProfileIter->first.c_str();
     *value = gProfileIter->second.c_str();
- 
+
     SWSS_LOG_INFO("key: %s:%s", *variable, *value);
- 
+
     gProfileIter++;
- 
+
     return 0;
 }
 
@@ -1109,13 +1109,13 @@ void startDiagShell()
     if (options.diagShell)
     {
         SWSS_LOG_NOTICE("starting diag shell thread");
- 
+
         /*
          * TODO actual switch id must be supplied
          */
- 
+
         std::thread diag_shell_thread = std::thread(sai_diag_shell, SAI_NULL_OBJECT_ID);
- 
+
         diag_shell_thread.detach();
     }
 }
@@ -1126,19 +1126,19 @@ void on_switch_create(
     SWSS_LOG_ENTER();
 
     sai_object_id_t switch_rid = translate_vid_to_rid(switch_vid);
- 
+
     if (switches.size() > 0)
     {
         SWSS_LOG_THROW("creating multiple switches is not supported yet, FIXME");
     }
- 
+
     /*
      * All needed data to populate switch should be obtained inside SaiSwitch
      * constructor, like getting all queues, ports, etc.
      */
- 
+
     switches[switch_vid] = std::make_shared<SaiSwitch>(switch_vid, switch_rid);
- 
+
     startDiagShell();
 }
 
@@ -1161,7 +1161,7 @@ void on_switch_remove(
      *
      * To support multiple switches this function needs to be refactored.
      */
- 
+
     SWSS_LOG_THROW("remove switch is not implemented, FIXME");
 }
 
@@ -1215,31 +1215,31 @@ sai_status_t handle_generic(
      * TODO: Could deserialize to meta key and then we could combine with non
      * object id.
      */
- 
+
     sai_object_id_t object_id;
     sai_deserialize_object_id(str_object_id, object_id);
- 
+
     SWSS_LOG_DEBUG("calling %s for %s",
             sai_serialize_common_api(api).c_str(),
             sai_serialize_object_type(object_type).c_str());
- 
+
     sai_object_meta_key_t meta_key;
- 
+
     meta_key.objecttype = object_type;
     meta_key.objectkey.key.object_id = object_id;
- 
+
     /*
      * We need to do translate vid/rid except for create, since create will
      * create new RID value, and we will have to map them to VID we received in
      * create query.
      */
- 
+
     /*
      * TODO: use metadata utils.
      */
 
     auto info = sai_metadata_get_object_type_info(object_type);
- 
+
     if (info->isnonobjectid)
     {
         SWSS_LOG_THROW("passing non object id %s as generic object", info->objecttypename);
@@ -1248,19 +1248,19 @@ sai_status_t handle_generic(
     switch (api)
     {
         case SAI_COMMON_API_CREATE:
- 
+
             {
                 /*
                  * Object id is VID, we can use it to extract switch id.
                  */
- 
+
                 sai_object_id_t switch_id = redis_sai_switch_id_query(object_id);
- 
+
                 if (switch_id == SAI_NULL_OBJECT_ID)
                 {
                     SWSS_LOG_THROW("invalid switch_id translated from VID 0x%lx", object_id);
                 }
- 
+
                 if (object_type != SAI_OBJECT_TYPE_SWITCH)
                 {
                     /*
@@ -1269,7 +1269,7 @@ sai_status_t handle_generic(
                      * since rid doesn't exist yet, so skip translate for switch,
                      * but use translate for all other objects.
                      */
- 
+
                     switch_id = translate_vid_to_rid(switch_id);
                 }
                 else
@@ -1280,39 +1280,39 @@ sai_status_t handle_generic(
                          * NOTE: to support multiple switches we need support
                          * here for create.
                          */
- 
+
                         SWSS_LOG_THROW("creating multiple switches is not supported yet, FIXME");
                     }
                 }
- 
+
                 sai_status_t status = info->create(&meta_key, switch_id, attr_count, attr_list);
- 
+
                 if (status == SAI_STATUS_SUCCESS)
                 {
                     sai_object_id_t real_object_id = meta_key.objectkey.key.object_id;
- 
+
                     /*
                      * Object was created so new object id was generated we
                      * need to save virtual id's to redis db.
                      */
- 
+
                     std::string str_vid = sai_serialize_object_id(object_id);
                     std::string str_rid = sai_serialize_object_id(real_object_id);
- 
+
                     /*
                      * TODO: This must be ATOMIC.
                      *
                      * To support multiple switches vid/rid map must be per switch.
                      */
- 
+
                     {
- 
+
                         g_redisClient->hset(VIDTORID, str_vid, str_rid);
                         g_redisClient->hset(RIDTOVID, str_rid, str_vid);
- 
+
                         save_rid_and_vid_to_local(real_object_id, object_id);
                     }
- 
+
                     SWSS_LOG_INFO("saved VID %s to RID %s", str_vid.c_str(), str_rid.c_str());
 
                     if (object_type == SAI_OBJECT_TYPE_SWITCH)
@@ -1322,36 +1322,36 @@ sai_status_t handle_generic(
                         SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
                     }
                 }
- 
+
                 return status;
             }
- 
+
         case SAI_COMMON_API_REMOVE:
- 
+
             {
                 sai_object_id_t rid = translate_vid_to_rid(object_id);
- 
+
                 meta_key.objectkey.key.object_id = rid;
- 
+
                 sai_status_t status = info->remove(&meta_key);
- 
+
                 if (status == SAI_STATUS_SUCCESS)
                 {
                     std::string str_vid = sai_serialize_object_id(object_id);
                     std::string str_rid = sai_serialize_object_id(rid);
- 
+
                     /*
                      * TODO: This must be ATOMIC.
                      */
- 
+
                     {
- 
+
                         g_redisClient->hdel(VIDTORID, str_vid);
                         g_redisClient->hdel(RIDTOVID, str_rid);
- 
+
                         remove_rid_and_vid_from_local(rid, object_id);
                     }
- 
+
                     if (object_type == SAI_OBJECT_TYPE_SWITCH)
                     {
                         on_switch_remove(object_id);
@@ -1379,48 +1379,48 @@ sai_status_t handle_generic(
                          * also needs to be of internal/vendor default but we
                          * can already deduce that.
                          */
- 
+
                         sai_object_id_t switch_vid = redis_sai_switch_id_query(object_id);
- 
+
                         if (switches.at(switch_vid)->isDiscoveredRid(rid))
                         {
                             switches.at(switch_vid)->removeExistingObjectReference(rid);
                         }
                     }
                 }
- 
+
                 return status;
             }
- 
+
         case SAI_COMMON_API_SET:
- 
+
             {
                 sai_object_id_t rid = translate_vid_to_rid(object_id);
- 
+
                 meta_key.objectkey.key.object_id = rid;
- 
+
                 sai_status_t status = info->set(&meta_key, attr_list);
- 
+
                 if (is_set_attribute_workaround(meta_key.objecttype, attr_list->id, status))
                 {
                     return SAI_STATUS_SUCCESS;
                 }
- 
+
                 return status;
             }
- 
+
         case SAI_COMMON_API_GET:
- 
+
             {
                 sai_object_id_t rid = translate_vid_to_rid(object_id);
- 
+
                 meta_key.objectkey.key.object_id = rid;
- 
+
                 return info->get(&meta_key, attr_count, attr_list);
             }
- 
+
         default:
- 
+
             SWSS_LOG_THROW("common api (%s) is not implemented", sai_serialize_common_api(api).c_str());
     }
 }
@@ -1431,25 +1431,25 @@ void translate_vid_to_rid_non_object_id(
     SWSS_LOG_ENTER();
 
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
- 
+
     if (info->isobjectid)
     {
         meta_key.objectkey.key.object_id =
             translate_vid_to_rid(meta_key.objectkey.key.object_id);
- 
+
         return;
     }
- 
+
     for (size_t j = 0; j < info->structmemberscount; ++j)
     {
         const sai_struct_member_info_t *m = info->structmembers[j];
- 
+
         if (m->membervaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
         {
             sai_object_id_t vid = m->getoid(&meta_key);
- 
+
             sai_object_id_t rid = translate_vid_to_rid(vid);
- 
+
             m->setoid(&meta_key, rid);
         }
     }
@@ -1464,23 +1464,23 @@ sai_status_t handle_non_object_id(
     SWSS_LOG_ENTER();
 
     translate_vid_to_rid_non_object_id(meta_key);
- 
+
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
- 
+
     switch (api)
     {
         case SAI_COMMON_API_CREATE:
             return info->create(&meta_key, SAI_NULL_OBJECT_ID, attr_count, attr_list);
- 
+
         case SAI_COMMON_API_REMOVE:
             return info->remove(&meta_key);
- 
+
         case SAI_COMMON_API_SET:
             return info->set(&meta_key, attr_list);
- 
+
         case SAI_COMMON_API_GET:
             return info->get(&meta_key, attr_count, attr_list);
- 
+
         default:
             SWSS_LOG_THROW("other apis not implemented");
     }
@@ -1492,11 +1492,11 @@ void sendNotifyResponse(
     SWSS_LOG_ENTER();
 
     std::string str_status = sai_serialize_status(status);
- 
+
     std::vector<swss::FieldValueTuple> entry;
- 
+
     SWSS_LOG_INFO("sending response: %s", str_status.c_str());
- 
+
     getResponse->set(str_status, entry, "notify");
 }
 
@@ -1505,11 +1505,11 @@ void clearTempView()
     SWSS_LOG_ENTER();
 
     SWSS_LOG_NOTICE("clearing current TEMP VIEW");
- 
+
     SWSS_LOG_TIMER("clear temp view");
- 
+
     std::string pattern = TEMP_PREFIX + (ASIC_STATE_TABLE + std::string(":*"));
- 
+
     /*
      * TODO this must be ATOMIC, and could use lua script.
      *
@@ -1521,11 +1521,11 @@ void clearTempView()
     {
         g_redisClient->del(key);
     }
- 
+
     /*
      * Also clear list of objects removed in init view mode.
      */
- 
+
     initViewRemovedVidSet.clear();
 }
 
@@ -1553,10 +1553,10 @@ void InspectAsic()
         }
         auto str_object_type = key.substr(start + 1, mid - start - 1);
         auto str_object_id  = key.substr(mid + 1);
- 
+
         sai_object_type_t object_type;
         sai_deserialize_object_type(str_object_type, object_type);
- 
+
         // Find all the attrid from ASIC DB, and use them to query ASIC
         auto hash = g_redisClient->hgetall(key);
         std::vector<swss::FieldValueTuple> values;
@@ -1564,28 +1564,28 @@ void InspectAsic()
         {
             const std::string &skey = kv.first;
             const std::string &svalue = kv.second;
- 
+
             swss::FieldValueTuple fvt(skey, svalue);
- 
+
             values.push_back(fvt);
         }
- 
+
         SaiAttributeList list(object_type, values, false);
- 
+
         sai_attribute_t *attr_list = list.get_attr_list();
- 
+
         uint32_t attr_count = list.get_attr_count();
- 
+
         SWSS_LOG_DEBUG("attr count: %u", list.get_attr_count());
- 
+
         if (attr_count == 0)
         {
             // TODO: how to check ASIC on ASIC DB key with NULL:NULL hash
             continue; // Just ignore
         }
- 
+
         auto info = sai_metadata_get_object_type_info(object_type);
- 
+
         // Call SAI Get API on this key
         sai_status_t status;
         switch (object_type)
@@ -1594,38 +1594,38 @@ void InspectAsic()
             {
                 sai_fdb_entry_t fdb_entry;
                 sai_deserialize_fdb_entry(str_object_id, fdb_entry);
- 
+
                 fdb_entry.switch_id = translate_vid_to_rid(fdb_entry.switch_id);
                 fdb_entry.bv_id = translate_vid_to_rid(fdb_entry.bv_id);
- 
+
                 status = sai_metadata_sai_fdb_api->get_fdb_entry_attribute(&fdb_entry, attr_count, attr_list);
                 break;
             }
- 
+
             case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
             {
                 sai_neighbor_entry_t neighbor_entry;
                 sai_deserialize_neighbor_entry(str_object_id, neighbor_entry);
- 
+
                 neighbor_entry.switch_id = translate_vid_to_rid(neighbor_entry.switch_id);
                 neighbor_entry.rif_id = translate_vid_to_rid(neighbor_entry.rif_id);
- 
+
                 status = sai_metadata_sai_neighbor_api->get_neighbor_entry_attribute(&neighbor_entry, attr_count, attr_list);
                 break;
             }
- 
+
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
             {
                 sai_route_entry_t route_entry;
                 sai_deserialize_route_entry(str_object_id, route_entry);
- 
+
                 route_entry.switch_id = translate_vid_to_rid(route_entry.switch_id);
                 route_entry.vr_id = translate_vid_to_rid(route_entry.vr_id);
- 
+
                 status = sai_metadata_sai_route_api->get_route_entry_attribute(&route_entry, attr_count, attr_list);
                 break;
             }
- 
+
             default:
             {
                 if (info->isnonobjectid)
@@ -1634,20 +1634,20 @@ void InspectAsic()
                             sai_serialize_object_type(object_type).c_str(),
                             str_object_id.c_str());
                 }
- 
+
                 sai_object_id_t object_id;
                 sai_deserialize_object_id(str_object_id, object_id);
- 
+
                 sai_object_meta_key_t meta_key;
- 
+
                 meta_key.objecttype = object_type;
                 meta_key.objectkey.key.object_id = translate_vid_to_rid(object_id);
- 
+
                 status = info->get(&meta_key, attr_count, attr_list);
                 break;
             }
         }
- 
+
         if (status == SAI_STATUS_NOT_IMPLEMENTED)
         {
             SWSS_LOG_ERROR("not implemented get api: %s", str_object_type.c_str());
@@ -1656,25 +1656,25 @@ void InspectAsic()
         {
             SWSS_LOG_ERROR("failed to execute get api: %s", sai_serialize_status(status).c_str());
         }
- 
+
         // Compare fields and values from ASIC_DB and SAI response
         // Log the difference
         for (uint32_t index = 0; index < attr_count; ++index)
         {
             const sai_attribute_t *attr = &attr_list[index];
- 
+
             auto meta = sai_metadata_get_attr_metadata(object_type, attr->id);
- 
+
             if (meta == NULL)
             {
                 SWSS_LOG_ERROR("FATAL: failed to find metadata for object type %d and attr id %d", object_type, attr->id);
                 break;
             }
- 
+
             std::string str_attr_id = sai_serialize_attr_id(*meta);
- 
+
             std::string str_attr_value = sai_serialize_attr_value(*meta, *attr, false);
- 
+
             std::string hash_attr_value = hash[str_attr_id];
             if (hash_attr_value == str_attr_value)
             {
@@ -1694,19 +1694,19 @@ sai_status_t onApplyViewInFastFastBoot()
 
     sai_switch_api_t* sai_switch_api = nullptr;
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
- 
+
     sai_attribute_t attr;
- 
+
     attr.id = SAI_SWITCH_ATTR_FAST_API_ENABLE;
     attr.value.booldata = false;
- 
+
     sai_status_t status = sai_switch_api->set_switch_attribute(gSwitchId, &attr);
- 
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_FAST_API_ENABLE=false: %s", sai_serialize_status(status).c_str());
     }
- 
+
     return status;
 }
 
@@ -1718,14 +1718,14 @@ sai_status_t notifySyncd(
     if (!options.useTempView)
     {
         SWSS_LOG_NOTICE("received %s, ignored since TEMP VIEW is not used, returning success", op.c_str());
- 
+
         sendNotifyResponse(SAI_STATUS_SUCCESS);
- 
+
         return SAI_STATUS_SUCCESS;
     }
- 
+
     static bool firstInitWasPerformed = false;
- 
+
     if (g_veryFirstRun && firstInitWasPerformed && op == SYNCD_INIT_VIEW)
     {
         /*
@@ -1734,95 +1734,95 @@ sai_status_t notifySyncd(
          * already exists and will fail with creating multiple switches
          * error.
          */
- 
+
         g_veryFirstRun = false;
     }
     else if (g_veryFirstRun)
     {
         SWSS_LOG_NOTICE("very first run is TRUE, op = %s", op.c_str());
- 
+
         sai_status_t status = SAI_STATUS_SUCCESS;
- 
+
         /*
          * On the very first start of syncd, "compile" view is directly applied
          * on device, since it will make it easier to switch to new asic state
          * later on when we restart orch agent.
          */
- 
+
         if (op == SYNCD_INIT_VIEW)
         {
             /*
              * On first start we just do "apply" directly on asic so we set
              * init to false instead of true.
              */
- 
+
             g_asicInitViewMode = false;
- 
+
             firstInitWasPerformed = true;
- 
+
             /*
              * We need to clear current temp view to make space for new one.
              */
- 
+
             clearTempView();
         }
         else if (op == SYNCD_APPLY_VIEW)
         {
             g_veryFirstRun = false;
- 
+
             g_asicInitViewMode = false;
- 
+
             if (options.startType == SAI_FASTFAST_BOOT)
             {
                 /* fastfast boot configuration end */
                 status = onApplyViewInFastFastBoot();
             }
- 
+
             SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", op.c_str());
         }
         else
         {
             SWSS_LOG_THROW("unknown operation: %s", op.c_str());
         }
- 
+
         sendNotifyResponse(status);
- 
+
         return status;
     }
- 
+
     if (op == SYNCD_INIT_VIEW)
     {
         if (g_asicInitViewMode)
         {
             SWSS_LOG_WARN("syncd is already in asic INIT VIEW mode, but received init again, orchagent restarted before apply?");
         }
- 
+
         g_asicInitViewMode = true;
- 
+
         clearTempView();
- 
+
         /*
          * TODO: Currently as WARN to be easier to spot, later should be NOTICE.
          */
- 
+
         SWSS_LOG_WARN("syncd switched to INIT VIEW mode, all op will be saved to TEMP view");
- 
+
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
     else if (op == SYNCD_APPLY_VIEW)
     {
         g_asicInitViewMode = false;
- 
+
         /*
          * TODO: Currently as WARN to be easier to spot, later should be NOTICE.
          */
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
- 
+
         sai_status_t status = syncdApplyView();
- 
+
         sendNotifyResponse(status);
- 
+
         if (status == SAI_STATUS_SUCCESS)
         {
             /*
@@ -1830,7 +1830,7 @@ sai_status_t notifySyncd(
              * need to clear local db, and all new VIDs will be queried using
              * redis.
              */
- 
+
             local_rid_to_vid.clear();
             local_vid_to_rid.clear();
         }
@@ -1841,27 +1841,27 @@ sai_status_t notifySyncd(
              * executed, on asic, or asic is inconsistent state then we should
              * die or hang
              */
- 
+
             return status;
         }
     }
     else if (op == SYNCD_INSPECT_ASIC)
     {
         SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
- 
+
         InspectAsic();
- 
+
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
     else
     {
         SWSS_LOG_ERROR("unknown operation: %s", op.c_str());
- 
+
         sendNotifyResponse(SAI_STATUS_NOT_IMPLEMENTED);
- 
+
         SWSS_LOG_THROW("notify syncd %s operation failed", op.c_str());
     }
- 
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -1879,10 +1879,10 @@ std::vector<T> extractCounterIdsGeneric(
         std::string field = fvField(v);
         T counterId;
         deserializeIdFn(field.c_str(), &counterId);
- 
+
         counterIdList.push_back(counterId);
     }
- 
+
     return counterIdList;
 }
 
@@ -1900,7 +1900,7 @@ sai_status_t getStatsGeneric(
             kco,
             deserializeIdFn);
     counters.resize(counter_ids.size());
- 
+
     return getStatsFn(
             object_id,
             (uint32_t)counter_ids.size(),
@@ -1920,7 +1920,7 @@ sai_status_t clearStatsGeneric(
     const std::vector<T> counter_ids = extractCounterIdsGeneric<T>(
             kco,
             deserializeIdFn);
- 
+
     return clearStatsFn(
             object_id,
             static_cast<uint32_t>(counter_ids.size()),
@@ -1935,17 +1935,17 @@ sai_status_t processGetStatsEvent(
     const std::string &key = kfvKey(kco);
     const std::string &str_object_type = key.substr(0, key.find(":"));
     const std::string &str_object_id = key.substr(key.find(":") + 1);
- 
+
     sai_object_id_t object_id;
     sai_deserialize_object_id(str_object_id, object_id);
     sai_object_id_t rid = translate_vid_to_rid(object_id);
     sai_object_type_t object_type;
     sai_deserialize_object_type(str_object_type, object_type);
- 
+
     std::vector<uint64_t> result;
- 
+
     sai_status_t status = SAI_STATUS_SUCCESS;
- 
+
     switch (object_type)
     {
         case SAI_OBJECT_TYPE_PORT:
@@ -1976,9 +1976,9 @@ sai_status_t processGetStatsEvent(
             SWSS_LOG_ERROR("SAI object type %s not supported", str_object_type.c_str());
             status = SAI_STATUS_NOT_SUPPORTED;
     }
- 
+
     std::vector<swss::FieldValueTuple> entry;
- 
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("Failed to get stats");
@@ -1991,9 +1991,9 @@ sai_status_t processGetStatsEvent(
             entry.emplace_back(fvField(values[i]), std::to_string(result[i]));
         }
     }
- 
+
     getResponse->set(sai_serialize_status(status), entry, "getresponse");
- 
+
     return status;
 }
 
