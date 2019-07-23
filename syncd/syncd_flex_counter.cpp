@@ -1,6 +1,7 @@
 #include "syncd_flex_counter.h"
 #include "syncd.h"
 #include "swss/redisapi.h"
+#include <inttypes.h>
 
 /* Global map with FlexCounter instances for different polling interval */
 static std::map<std::string, std::shared_ptr<FlexCounter>> g_flex_counters_map;
@@ -543,7 +544,7 @@ void FlexCounter::removePort(
     auto it = fc.m_portCounterIdsMap.find(portVid);
     if (it == fc.m_portCounterIdsMap.end())
     {
-        SWSS_LOG_NOTICE("Trying to remove nonexisting port counter Ids 0x%lx", portVid);
+        SWSS_LOG_NOTICE("Trying to remove nonexisting port counter Ids 0x%" PRIx64, portVid);
         // Remove flex counter if all counter IDs and plugins are unregistered
         if (fc.isEmpty())
         {
@@ -590,7 +591,7 @@ void FlexCounter::removeQueue(
 
     if (!found)
     {
-        SWSS_LOG_NOTICE("Trying to remove nonexisting queue from flex counter 0x%lx", queueVid);
+        SWSS_LOG_NOTICE("Trying to remove nonexisting queue from flex counter 0x%" PRIx64, queueVid);
         return;
     }
 
@@ -629,7 +630,7 @@ void FlexCounter::removePriorityGroup(
 
     if (!found)
     {
-        SWSS_LOG_NOTICE("Trying to remove nonexisting PG from flex counter 0x%lx", priorityGroupVid);
+        SWSS_LOG_NOTICE("Trying to remove nonexisting PG from flex counter 0x%" PRIx64, priorityGroupVid);
         return;
     }
 
@@ -654,7 +655,7 @@ void FlexCounter::removeRif(
     auto it = fc.m_rifCounterIdsMap.find(rifVid);
     if (it == fc.m_rifCounterIdsMap.end())
     {
-        SWSS_LOG_NOTICE("Trying to remove nonexisting router interface counter from Id 0x%lx", rifVid);
+        SWSS_LOG_NOTICE("Trying to remove nonexisting router interface counter from Id 0x%" PRIx64, rifVid);
         // Remove flex counter if all counter IDs and plugins are unregistered
         if (fc.isEmpty())
         {
@@ -694,7 +695,7 @@ void FlexCounter::removeBufferPool(
 
     if (!found)
     {
-        SWSS_LOG_NOTICE("Trying to remove nonexisting buffer pool 0x%lx from flex counter %s", bufferPoolVid, fc.m_instanceId.c_str());
+        SWSS_LOG_NOTICE("Trying to remove nonexisting buffer pool 0x%" PRIx64 " from flex counter %s", bufferPoolVid, fc.m_instanceId.c_str());
         return;
     }
 
@@ -960,7 +961,7 @@ void FlexCounter::collectCounters(
                 portStats.data());
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Failed to get stats of port 0x%lx: %d", portId, status);
+            SWSS_LOG_ERROR("Failed to get stats of port 0x%" PRIx64 ": %d", portId, status);
             continue;
         }
 
@@ -1005,7 +1006,7 @@ void FlexCounter::collectCounters(
                 queueStats.data());
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("%s: failed to get stats of queue 0x%lx: %d", m_instanceId.c_str(), queueVid, status);
+            SWSS_LOG_ERROR("%s: failed to get stats of queue 0x%" PRIx64 ": %d", m_instanceId.c_str(), queueVid, status);
             continue;
         }
         if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR){
@@ -1015,7 +1016,7 @@ void FlexCounter::collectCounters(
                     (const sai_stat_id_t *)queueCounterIds.data());
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("%s: failed to clear stats of queue 0x%lx: %d", m_instanceId.c_str(), queueVid, status);
+                SWSS_LOG_ERROR("%s: failed to clear stats of queue 0x%" PRIx64 ": %d", m_instanceId.c_str(), queueVid, status);
                 continue;
             }
         }
@@ -1057,7 +1058,7 @@ void FlexCounter::collectCounters(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Failed to get attr of queue 0x%lx: %d", queueVid, status);
+            SWSS_LOG_ERROR("Failed to get attr of queue 0x%" PRIx64 ": %d", queueVid, status);
             continue;
         }
 
@@ -1096,7 +1097,7 @@ void FlexCounter::collectCounters(
                         priorityGroupStats.data());
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("%s: failed to get %ld/%ld stats of PG 0x%lx: %d", m_instanceId.c_str(), priorityGroupCounterIds.size(), priorityGroupStats.size(), priorityGroupVid, status);
+            SWSS_LOG_ERROR("%s: failed to get %ld/%ld stats of PG 0x%" PRIx64 ": %d", m_instanceId.c_str(), priorityGroupCounterIds.size(), priorityGroupStats.size(), priorityGroupVid, status);
             continue;
         }
         if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR){
@@ -1106,7 +1107,7 @@ void FlexCounter::collectCounters(
                             (const sai_stat_id_t *)priorityGroupCounterIds.data());
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("%s: failed to clear %ld/%ld stats of PG 0x%lx: %d", m_instanceId.c_str(), priorityGroupCounterIds.size(), priorityGroupStats.size(), priorityGroupVid, status);
+                SWSS_LOG_ERROR("%s: failed to clear %ld/%ld stats of PG 0x%" PRIx64 ": %d", m_instanceId.c_str(), priorityGroupCounterIds.size(), priorityGroupStats.size(), priorityGroupVid, status);
                 continue;
             }
         }
@@ -1148,7 +1149,7 @@ void FlexCounter::collectCounters(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Failed to get attr of PG 0x%lx: %d", priorityGroupVid, status);
+            SWSS_LOG_ERROR("Failed to get attr of PG 0x%" PRIx64 ": %d", priorityGroupVid, status);
             continue;
         }
 
@@ -1185,7 +1186,7 @@ void FlexCounter::collectCounters(
                 rifStats.data());
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Failed to get stats of router interface 0x%lx: %d", rifId, status);
+            SWSS_LOG_ERROR("Failed to get stats of router interface 0x%" PRIx64 ": %d", rifId, status);
             continue;
         }
 

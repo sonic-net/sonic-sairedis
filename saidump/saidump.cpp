@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <string>
 #include <set>
 #include <sstream>
@@ -133,7 +134,7 @@ const TableMap* get_table_map(sai_object_id_t object_id)
 
     if (it == g_oid_map.end())
     {
-        SWSS_LOG_THROW("unable to find oid 0x%lx in oid map", object_id);
+        SWSS_LOG_THROW("unable to find oid 0x%" PRIx64 " in oid map", object_id);
     }
 
     return it->second;

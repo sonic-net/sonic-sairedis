@@ -4,6 +4,7 @@
 #include "swss/logger.h"
 #include "swss/dbconnector.h"
 
+#include <inttypes.h>
 #include <algorithm>
 #include <list>
 
@@ -1434,7 +1435,7 @@ class AsicView
 
                     v.insert(v.begin() + index, op);
 
-                    SWSS_LOG_INFO("move 0x%lx all way up (not in map): %s to index: %zu", op.vid,
+                    SWSS_LOG_INFO("move 0x%" PRIx64 " all way up (not in map): %s to index: %zu", op.vid,
                             sai_serialize_object_type(redis_sai_object_type_query(op.vid)).c_str(),index);
 
                     index++;
@@ -1503,7 +1504,7 @@ class AsicView
 
                 v.insert(v.begin() + index, op);
 
-                SWSS_LOG_INFO("move 0x%lx in the middle up: %s (last: %zu curr: %zu)", op.vid,
+                SWSS_LOG_INFO("move 0x%" PRIx64 " in the middle up: %s (last: %zu curr: %zu)", op.vid,
                             sai_serialize_object_type(redis_sai_object_type_query(op.vid)).c_str(), lastOpIdDecRefIndex, index);
 
                 index++;
@@ -5736,7 +5737,7 @@ std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
 
                 if (tg == currentView.ridToVid.end())
                 {
-                    SWSS_LOG_THROW("default trap group RID 0x%lx doesn't exist in current view", currentView.defaultTrapGroupRid);
+                    SWSS_LOG_THROW("default trap group RID 0x%" PRIx64 " doesn't exist in current view", currentView.defaultTrapGroupRid);
                 }
 
                 sai_attribute_t at;
@@ -7290,14 +7291,14 @@ void checkMap(
         sai_object_id_t v = it.second;
 
         if (firstV2R.find(v) == firstV2R.end())
-            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, v, firstV2Rname);
+            SWSS_LOG_ERROR("%s (0x%" PRIx64 ":0x%" PRIx64 ") is missing from %s", firstR2Vname, r, v, firstV2Rname);
         else if (firstV2R.at(v) != r)
-            SWSS_LOG_ERROR("mismatch on %s (0x%lx:0x%lx) vs %s (0x%lx:0x%lx)", firstR2Vname, r, v, firstV2Rname, v, firstV2R.at(v));
+            SWSS_LOG_ERROR("mismatch on %s (0x%" PRIx64 ":0x%" PRIx64 ") vs %s (0x%" PRIx64 ":0x%" PRIx64 ")", firstR2Vname, r, v, firstV2Rname, v, firstV2R.at(v));
 
         if (secondR2V.find(r) == secondR2V.end())
-            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, v, secondR2Vname);
+            SWSS_LOG_ERROR("%s (0x%" PRIx64 ":0x%" PRIx64 ") is missing from %s", firstR2Vname, r, v, secondR2Vname);
         else if (secondV2R.find(secondR2V.at(r)) == secondV2R.end())
-            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, secondR2V.at(r), secondV2Rname);
+            SWSS_LOG_ERROR("%s (0x%" PRIx64 ":0x%" PRIx64 ") is missing from %s", firstR2Vname, r, secondR2V.at(r), secondV2Rname);
     }
 }
 
@@ -7360,7 +7361,7 @@ void createPreMatchMapForObject(
             if (cur.oOids.at(cVid)->getObjectType() != tmp.oOids.at(tVid)->getObjectType())
                 continue;
 
-            SWSS_LOG_INFO("inserting pre match entry for %s:%s: 0x%lx (tmp) -> 0x%lx (cur)",
+            SWSS_LOG_INFO("inserting pre match entry for %s:%s: 0x%" PRIx64 " (tmp) -> 0x%" PRIx64 " (cur)",
                     tObj->str_object_id.c_str(),
                     cAttr->getAttrMetadata()->attridname,
                     tVid,
@@ -7742,7 +7743,7 @@ sai_object_id_t asic_translate_vid_to_rid(
 
     sai_object_id_t rid = currentIt->second;
 
-    SWSS_LOG_INFO("translated VID 0x%lx to RID 0x%lx", vid, rid);
+    SWSS_LOG_INFO("translated VID 0x%" PRIx64 " to RID 0x%" PRIx64, vid, rid);
 
     return rid;
 }

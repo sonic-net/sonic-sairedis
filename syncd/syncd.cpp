@@ -3,6 +3,7 @@
 #include "sairedis.h"
 #include "syncd_flex_counter.h"
 #include "swss/tokenize.h"
+#include <inttypes.h>
 #include <limits.h>
 
 #include "swss/warm_restart.h"
@@ -220,7 +221,7 @@ sai_object_type_t redis_sai_object_type_query(
 
     if (!sai_metadata_is_object_type_valid(ot))
     {
-        SWSS_LOG_THROW("invalid object id 0x%lx", object_id);
+        SWSS_LOG_THROW("invalid object id 0x%" PRIx64, object_id);
     }
 
     return ot;
@@ -257,7 +258,7 @@ sai_object_id_t redis_sai_switch_id_query(
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_THROW("invalid object type of oid 0x%lx", oid);
+        SWSS_LOG_THROW("invalid object type of oid 0x%" PRIx64, oid);
     }
 
     if (object_type == SAI_OBJECT_TYPE_SWITCH)
@@ -316,7 +317,7 @@ sai_object_id_t redis_create_virtual_object_id(
 
     auto info = sai_metadata_get_object_type_info(object_type);
 
-    SWSS_LOG_DEBUG("created virtual object id 0x%lx for object type %s",
+    SWSS_LOG_DEBUG("created virtual object id 0x%" PRIx64 " for object type %s",
             vid,
             info->objecttypename);
 
@@ -393,18 +394,18 @@ sai_object_id_t translate_rid_to_vid(
 
         sai_deserialize_object_id(str_vid, vid);
 
-        SWSS_LOG_DEBUG("translated RID 0x%lx to VID 0x%lx", rid, vid);
+        SWSS_LOG_DEBUG("translated RID 0x%" PRIx64 " to VID 0x%" PRIx64, rid, vid);
 
         return vid;
     }
 
-    SWSS_LOG_DEBUG("spotted new RID 0x%lx", rid);
+    SWSS_LOG_DEBUG("spotted new RID 0x%" PRIx64, rid);
 
     sai_object_type_t object_type = sai_object_type_query(rid);
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_THROW("sai_object_type_query returned NULL type for RID 0x%lx", rid);
+        SWSS_LOG_THROW("sai_object_type_query returned NULL type for RID 0x%" PRIx64, rid);
     }
 
     if (object_type == SAI_OBJECT_TYPE_SWITCH)
@@ -414,12 +415,12 @@ sai_object_id_t translate_rid_to_vid(
          * created switch, so we should never get here.
          */
 
-        SWSS_LOG_THROW("RID 0x%lx is switch object, but not in local or redis db, bug!", rid);
+        SWSS_LOG_THROW("RID 0x%" PRIx64 " is switch object, but not in local or redis db, bug!", rid);
     }
 
     vid = redis_create_virtual_object_id(switch_vid, object_type);
 
-    SWSS_LOG_DEBUG("translated RID 0x%lx to VID 0x%lx", rid, vid);
+    SWSS_LOG_DEBUG("translated RID 0x%" PRIx64 " to VID 0x%" PRIx64, rid, vid);
 
     std::string str_vid = sai_serialize_object_id(vid);
 
@@ -613,7 +614,7 @@ sai_object_id_t translate_vid_to_rid(
             SWSS_LOG_THROW("can't get RID in init view mode - don't query created objects");
         }
 
-        SWSS_LOG_THROW("unable to get RID for VID: 0x%lx", vid);
+        SWSS_LOG_THROW("unable to get RID for VID: 0x%" PRIx64, vid);
     }
 
     str_rid = *prid;
@@ -629,7 +630,7 @@ sai_object_id_t translate_vid_to_rid(
 
     local_vid_to_rid[vid] = rid;
 
-    SWSS_LOG_DEBUG("translated VID 0x%lx to RID 0x%lx", vid, rid);
+    SWSS_LOG_DEBUG("translated VID 0x%" PRIx64 " to RID 0x%" PRIx64, vid, rid);
 
     return rid;
 }
@@ -1258,7 +1259,7 @@ sai_status_t handle_generic(
 
                 if (switch_id == SAI_NULL_OBJECT_ID)
                 {
-                    SWSS_LOG_THROW("invalid switch_id translated from VID 0x%lx", object_id);
+                    SWSS_LOG_THROW("invalid switch_id translated from VID 0x%" PRIx64, object_id);
                 }
 
                 if (object_type != SAI_OBJECT_TYPE_SWITCH)
@@ -1319,7 +1320,7 @@ sai_status_t handle_generic(
                     {
                         on_switch_create(switch_id);
                         gSwitchId = real_object_id;
-                        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
+                        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%" PRIx64, gSwitchId);
                     }
                 }
 
@@ -2130,7 +2131,7 @@ void on_switch_create_in_init_view(
 
 #ifdef SAITHRIFT
         gSwitchId = switch_rid;
-        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%lx", gSwitchId);
+        SWSS_LOG_NOTICE("Initialize gSwitchId with ID = 0x%" PRIx64, gSwitchId);
 #endif
 
         /*
@@ -4141,7 +4142,7 @@ int syncd_main(int argc, char **argv)
         }
     }
 
-    SWSS_LOG_NOTICE("Removing the switch gSwitchId=0x%lx", gSwitchId);
+    SWSS_LOG_NOTICE("Removing the switch gSwitchId=0x%" PRIx64, gSwitchId);
 
 #ifdef SAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
 
@@ -4181,7 +4182,7 @@ int syncd_main(int argc, char **argv)
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_NOTICE("Can't delete a switch. gSwitchId=0x%lx status=%s", gSwitchId,
+        SWSS_LOG_NOTICE("Can't delete a switch. gSwitchId=0x%" PRIx64 " status=%s", gSwitchId,
                 sai_serialize_status(status).c_str());
     }
 

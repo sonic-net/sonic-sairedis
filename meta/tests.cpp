@@ -2,6 +2,7 @@
 #include "sai_extra.h"
 #include "sai_serialize.h"
 
+#include <inttypes.h>
 #include <string.h>
 #include <arpa/inet.h>
 
@@ -42,7 +43,7 @@ sai_object_type_t sai_object_type_query(
     if ((objecttype <= SAI_OBJECT_TYPE_NULL) ||
             (objecttype >= SAI_OBJECT_TYPE_EXTENSIONS_MAX))
     {
-        SWSS_LOG_THROW("invalid oid 0x%lx", oid);
+        SWSS_LOG_THROW("invalid oid 0x%" PRIx64, oid);
     }
 
     return objecttype;
@@ -121,7 +122,7 @@ sai_object_id_t create_dummy_object_id(
 
     sai_object_id_t oid = construct_object_id(object_type, sw_index, vid_index++);
 
-    SWSS_LOG_DEBUG("created oid 0x%lx", oid);
+    SWSS_LOG_DEBUG("created oid 0x%" PRIx64, oid);
 
     return oid;
 }
@@ -3077,7 +3078,7 @@ void test_acl_entry_field_and_action()
 
             list[0] = insert_dummy_object(SAI_OBJECT_TYPE_QUEUE,switch_id);
 
-            SWSS_LOG_NOTICE("0x%lx", list[0]);
+            SWSS_LOG_NOTICE("0x%" PRIx64, list[0]);
 
             attr.value.aclaction.parameter.objlist.count = 1;
             attr.value.aclaction.parameter.objlist.list = list;
@@ -4016,7 +4017,7 @@ std::string serialize_number(
     {
         char buf[32];
 
-        snprintf(buf, sizeof(buf), "0x%lx", (uint64_t)number);
+        snprintf(buf, sizeof(buf), "0x%" PRIx64, (uint64_t)number);
 
         return buf;
     }
