@@ -158,6 +158,15 @@ config_syncd_vs()
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
+config_syncd_innovium()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    ulimit -s 65536
+    export II_ROOT="/var/log/invm"
+    export II_APPEND_LOG=1
+    mkdir -p $II_ROOT
+}
+
 config_syncd()
 {
     check_warm_boot
@@ -178,6 +187,8 @@ config_syncd()
         config_syncd_nephos
     elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
         config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
+        config_syncd_innovium
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
