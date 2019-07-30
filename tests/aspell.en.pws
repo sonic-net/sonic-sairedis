@@ -1,4 +1,3 @@
-personal_ws-1.1 en 0
 acl
 ACL
 ACLs
@@ -25,6 +24,7 @@ attrs
 attrvalue
 bool
 Bool
+booldata
 brcm
 broadcom
 candidateObjects
@@ -89,6 +89,7 @@ INSEG
 ip
 IP
 IPG
+ipgs
 ipmc
 IPv
 isobjectid
@@ -107,9 +108,9 @@ Mellanox
 metadata
 mlnx
 mpls
+MTU
 mutex
 mutexes
-MTU
 namespace
 namespaces
 NHG
@@ -133,6 +134,7 @@ orchagent
 param
 params
 performTransition
+personal_ws-1.1 en 0
 policer
 PORTs
 pre
@@ -175,9 +177,11 @@ sanitycheck
 sdk
 SDK
 selectable
+setBuffered
 setMinPrio
 setPortCounterList
 setQueueCounterList
+sg
 SGs
 sleeptime
 soAll
@@ -244,5 +248,3 @@ VXLAN
 workaroung
 xoff
 xon
-booldata
-setBuffered

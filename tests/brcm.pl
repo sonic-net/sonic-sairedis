@@ -464,8 +464,24 @@ sub test_acl_counter
     play "acl_counter.rec", 0;
 }
 
+sub test_remove_port
+{
+    fresh_start;
+
+    play "remove_port.rec";
+}
+
+sub test_remove_create_port
+{
+    fresh_start;
+
+    play "remove_create_port.rec";
+}
+
 # RUN TESTS
 
+test_remove_port;
+test_remove_create_port;
 test_acl_counter;
 test_tunnel_map;
 test_bridge_create;
