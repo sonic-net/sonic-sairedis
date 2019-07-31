@@ -28,7 +28,6 @@ WARN = \
 	-Winit-self \
 	-Winline \
 	-Winvalid-pch \
-	-Wlong-long \
 	-Wmissing-field-initializers \
 	-Wmissing-format-attribute \
 	-Wmissing-include-dirs \
