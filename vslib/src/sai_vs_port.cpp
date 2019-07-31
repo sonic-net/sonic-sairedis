@@ -48,13 +48,13 @@ sai_status_t vs_set_port_attribute(
 
     std::string cmd;
 
-    // For samplepacket attr, 'tc sample' command is invoked
+    // Special handling for the sampling attribute modification
     if (attr->id == SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE)
     {
-        // Get the samplepacket object id
+        // Get the sample-packet object id
         sai_object_id_t samplepacket_oid = attr->value.oid;
 
-        // Get the if_name from the port_id
+        // Get the interface name from the port id
         std::string if_name;
         if (g_vs_switch_id == SAI_NULL_OBJECT_ID)
         {
