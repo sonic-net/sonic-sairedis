@@ -936,6 +936,12 @@ void SaiSwitch::saiDiscover(
             {
                 sai_object_id_t oid = attr.value.objlist.list[i];
 
+                if(SAI_NULL_OBJECT_ID == oid)
+                {
+                    SWSS_LOG_DEBUG("oid is NULL for %s index %u", md->attridname, i);
+                    continue;
+                }
+
                 ot = sai_object_type_query(oid);
 
                 if (ot == SAI_OBJECT_TYPE_NULL)
