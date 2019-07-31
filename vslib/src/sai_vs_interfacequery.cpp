@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <net/if.h>
+#include <inttypes.h>
 
 #include <algorithm>
 
@@ -257,7 +258,7 @@ void channelOpSetStats(
 
         uint64_t value;
 
-        if (sscanf(fvValue(v).c_str(), "%lu", &value) != 1)
+        if (sscanf(fvValue(v).c_str(), "%" PRIu64, &value) != 1)
         {
             SWSS_LOG_ERROR("failed to deserialize %s as couner value uint64_t", fvValue(v).c_str());
         }
