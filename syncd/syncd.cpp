@@ -3302,9 +3302,9 @@ void handleCmdLine(int argc, char **argv)
 
 #ifdef SAITHRIFT
     options.run_rpc_server = false;
-    const char* const optstring = "dNUCt:p:i:rm:huS";
+    const char* const optstring = "dNUCt:p:i:rm:huSs";
 #else
-    const char* const optstring = "dNUCt:p:i:huS";
+    const char* const optstring = "dNUCt:p:i:huSs";
 #endif // SAITHRIFT
 
     while(true)
