@@ -3427,7 +3427,7 @@ void test_serialize_uint64()
     s = sai_serialize_attr_value(*meta, attr);
 
     char buf[32];
-    sprintf(buf, "%" PRIx64, attr.value.u64);
+    sprintf(buf, "%" PRIu64, attr.value.u64);
 
     ASSERT_TRUE(s, std::string(buf));
 
