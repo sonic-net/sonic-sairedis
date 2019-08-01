@@ -3102,13 +3102,14 @@ bool processFlexCounterEvent(
     sai_object_id_t vid = SAI_NULL_OBJECT_ID;
     sai_deserialize_object_id(vidStr, vid);
     sai_object_id_t rid;
-
-    if (!try_translate_vid_to_rid(vid, rid))
     {
-        SWSS_LOG_WARN("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
-                sai_serialize_object_id(vid).c_str());
-
-        return false;
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (!try_translate_vid_to_rid(vid, rid))
+        { 
+            SWSS_LOG_WARN("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
+              sai_serialize_object_id(vid).c_str());
+            return false;
+        }
     }
 
     sai_object_type_t objectType = redis_sai_object_type_query(vid); // VID and RID will have the same object type

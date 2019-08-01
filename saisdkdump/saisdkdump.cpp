@@ -131,10 +131,12 @@ int main(int argc, char **argv)
     }
 
     sai_object_id_t switch_id;
-    const uint32_t AttributesCount = 1;
+    const uint32_t AttributesCount = 2;
     sai_attribute_t attrs[AttributesCount];
     attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attrs[0].value.booldata = false;
+    attrs[1].id = SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL;
+    attrs[1].value.booldata = false;
     
     status = switch_api->create_switch(&switch_id, AttributesCount, attrs);
     if (status != SAI_STATUS_SUCCESS)
