@@ -2111,7 +2111,7 @@ void sai_deserialize_pointer(
 {
     SWSS_LOG_ENTER();
 
-    sai_deserialize_number(s, (uint64_t &)ptr, true);
+    sai_deserialize_number(s, (uintptr_t &)ptr, true);
 }
 
 void sai_deserialize_ip_address(
