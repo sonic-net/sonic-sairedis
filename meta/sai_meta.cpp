@@ -1733,10 +1733,6 @@ bool meta_is_object_in_default_state(
     if (oid == SAI_NULL_OBJECT_ID)
         SWSS_LOG_THROW("not expected NULL object id");
 
-    //sai_object_type_t object_type = sai_object_type_query(oid);
-
-    // TODO for each oid - check reference count if it's safe to remove
-
     if (!object_reference_exists(oid))
     {
         SWSS_LOG_WARN("object %s refrence not exists, bug!",
