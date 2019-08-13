@@ -340,6 +340,12 @@ void process_on_fdb_event(
 
         sendntf &= check_fdb_event_notification_data(*fdb);
 
+        if (!sendntf)
+        {
+            SWSS_LOG_ERROR("invalid OIDs in fdb notifications, NOT translating and NOT storing in ASIC DB");
+            continue;
+        }
+
         SWSS_LOG_DEBUG("fdb %u: type: %d", i, fdb->event_type);
 
         fdb->fdb_entry.switch_id = translate_rid_to_vid(fdb->fdb_entry.switch_id, SAI_NULL_OBJECT_ID);
