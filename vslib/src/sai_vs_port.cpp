@@ -56,17 +56,19 @@ sai_status_t vs_set_port_attribute(
 
         // Get the interface name from the port id
         std::string if_name;
-        if (g_vs_switch_id == SAI_NULL_OBJECT_ID)
+
+        sai_object_id_t vs_switch_id = sai_switch_id_query(port_id);
+        if (vs_switch_id == SAI_NULL_OBJECT_ID)
         {
-              SWSS_LOG_ERROR("g_vs_switch_id is null");
+              SWSS_LOG_ERROR("vs_switch_id is null");
               return SAI_STATUS_FAILURE;
         }
 
-        auto it = g_switch_state_map.find(g_vs_switch_id);
+        auto it = g_switch_state_map.find(vs_switch_id);
         if (it == g_switch_state_map.end())
         {
               SWSS_LOG_ERROR("No switch state found for the switch id %s",
-                 sai_serialize_object_id(g_vs_switch_id).c_str());
+                 sai_serialize_object_id(vs_switch_id).c_str());
               return SAI_STATUS_FAILURE;
         }
 
@@ -74,7 +76,7 @@ sai_status_t vs_set_port_attribute(
         if (sw == nullptr)
         {
               SWSS_LOG_ERROR("switch state for the switch id %s is null",
-                 sai_serialize_object_id(g_vs_switch_id).c_str());
+                 sai_serialize_object_id(vs_switch_id).c_str());
               return SAI_STATUS_FAILURE;
         }
 
@@ -111,27 +113,39 @@ sai_status_t vs_set_port_attribute(
                   std::string group("1");
 
                   //Check if sampling is already enabled on the port
-                  //If yes, the session would not be re-created
                   sai_attribute_t port_attr;
                   port_attr.id = SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
 
+                  // When the sampling parameters are updated,
+                  // a delete and add operation is performed on the sampling session.
+                  // If the sampling session is already created, it is deleted below.
                   if ((vs_generic_get(SAI_OBJECT_TYPE_PORT, port_id, 1, &port_attr) \
                        == SAI_STATUS_SUCCESS) && (port_attr.value.oid != SAI_NULL_OBJECT_ID))
                   {
                       //Sampling session is already created
-                      SWSS_LOG_INFO("sampling is already enabled on the port: %s", \
+                      SWSS_LOG_INFO("sampling is already enabled on the port: %s .. Deleting it", \
                                     sai_serialize_object_id(port_id).c_str());
-                  } else {
-                      //Create a new sampling session
-                      cmd.assign("tc qdisc add dev " + if_name + " handle ffff: ingress");
-                      if (system(cmd.c_str()) == -1)
-                      {
-                         SWSS_LOG_ERROR("unable to create a sampling session for the interface %s", if_name);
+
+                      //Delete the sampling session
+                      cmd.assign("tc qdisc delete dev " + if_name + " handle ffff: ingress");
+                      if (system(cmd.c_str()) == -1){
+                         SWSS_LOG_ERROR("unable to delete the sampling session \
+                                         for the interface %s",if_name);
                          SWSS_LOG_ERROR("failed to apply the command: %s",cmd);
                          return SAI_STATUS_FAILURE;
                       }
                       SWSS_LOG_INFO("successfully applied the command: %s", cmd);
                   }
+
+                  //Create a new sampling session
+                  cmd.assign("tc qdisc add dev " + if_name + " handle ffff: ingress");
+                  if (system(cmd.c_str()) == -1)
+                  {
+                      SWSS_LOG_ERROR("unable to create a sampling session for the interface %s", if_name);
+                      SWSS_LOG_ERROR("failed to apply the command: %s",cmd);
+                      return SAI_STATUS_FAILURE;
+                  }
+                  SWSS_LOG_INFO("successfully applied the command: %s", cmd);
 
                   //Set the sampling rate of the port
                   cmd.assign("tc filter add dev " + if_name + \
