@@ -456,7 +456,7 @@ void FlexCounter::setRifCounterList(
 
     if (supportedIds.empty())
     {
-        SWSS_LOG_ERROR("Router interface %s does not have supported counters", sai_serialize_object_id(rifId).c_str());
+        SWSS_LOG_NOTICE("Router interface %s does not have supported counters", sai_serialize_object_id(rifId).c_str());
 
         // Remove flex counter if all counter IDs and plugins are unregistered
         if (fc.isEmpty())
