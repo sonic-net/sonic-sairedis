@@ -187,7 +187,7 @@ sai_status_t internal_redis_bulk_generic_set(
         g_asicState->set(key, entries, "bulkset");
     }
 
-    return internal_api_wait_for_response(SAI_COMMON_API_SET);
+    return internal_api_wait_for_response(SAI_COMMON_API_BULK_SET);
 }
 
 
