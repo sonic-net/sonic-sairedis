@@ -334,9 +334,28 @@ void process_on_fdb_event(
 
     bool sendntf = true;
 
+    std::vector<sai_fdb_event_notification_data_t> ntf_data;
+
+    sai_object_meta_key_t meta_key;
+    meta_key.objecttype = SAI_OBJECT_TYPE_SWITCH;
+    meta_key.objectkey.key.object_id = data[0].fdb_entry.switch_id;
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+    auto info = sai_metadata_get_object_type_info(SAI_OBJECT_TYPE_SWITCH);
+    sai_status_t status = info->get(&meta_key, 1, &attr);
+
     for (uint32_t i = 0; i < count; i++)
     {
         sai_fdb_event_notification_data_t *fdb = &data[i];
+
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (!memcmp(fdb->fdb_entry.mac_address, attr.value.mac, sizeof(sai_mac_t)))
+            {
+                // skip switch MAC address entry
+                continue;
+            }
+        }
 
         sendntf &= check_fdb_event_notification_data(*fdb);
 
@@ -361,13 +380,19 @@ void process_on_fdb_event(
          */
 
         redisPutFdbEntryToAsicView(fdb);
+
+        ntf_data.push_back(data[i]);
     }
 
     if (sendntf)
     {
-        std::string s = sai_serialize_fdb_event_ntf(count, data);
+        uint32_t ntf_count = static_cast<uint32_t>(ntf_data.size());
+        if (ntf_count != 0)
+        {
+            std::string s = sai_serialize_fdb_event_ntf(ntf_count, ntf_data.data());
 
-        send_notification("fdb_event", s);
+            send_notification("fdb_event", s);
+        }
     }
     else
     {
