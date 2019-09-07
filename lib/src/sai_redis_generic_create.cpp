@@ -387,7 +387,7 @@ sai_status_t internal_redis_bulk_generic_create(
         g_asicState->set(key, entries, "bulkcreate");
     }
 
-    return internal_api_wait_for_response(SAI_COMMON_API_CREATE);
+    return internal_api_wait_for_response(SAI_COMMON_API_BULK_CREATE);
 }
 
 #define REDIS_ENTRY_CREATE(OT,ot)                       \

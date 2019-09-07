@@ -967,11 +967,13 @@ void SaiSwitch::helperDiscover()
     {
         SWSS_LOG_TIMER("discover");
 
+        // Change sai log level before discovery to prevent SAI ERR spam to the log
         set_sai_api_log_min_prio("SAI_LOG_LEVEL_CRITICAL");
 
         saiDiscover(m_switch_rid, m_discovered_rids);
 
-        set_sai_api_log_min_prio("SAI_LOG_LEVEL_NOTICE");
+        // Restore sai log levels from LOGLEVEL_DB
+        set_sai_api_loglevel();
     }
 
     SWSS_LOG_NOTICE("discovered objects count: %zu", m_discovered_rids.size());

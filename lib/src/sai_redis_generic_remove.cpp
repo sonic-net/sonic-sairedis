@@ -118,7 +118,7 @@ sai_status_t internal_redis_bulk_generic_remove(
         }
 
         /*
-         * Capital 'R' stands for bulk CREATE operation.
+         * Capital 'R' stands for bulk REMOVE operation.
          */
 
         recordLine("R|" + str_object_type + joined);
@@ -134,7 +134,7 @@ sai_status_t internal_redis_bulk_generic_remove(
         g_asicState->set(key, entries, "bulkremove");
     }
 
-    return internal_api_wait_for_response(SAI_COMMON_API_CREATE);
+    return internal_api_wait_for_response(SAI_COMMON_API_REMOVE);
 }
 
 

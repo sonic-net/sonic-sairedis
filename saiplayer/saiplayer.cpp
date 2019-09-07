@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <getopt.h>
 #include <unistd.h>
 
@@ -354,7 +355,7 @@ void match_redis_with_rec(
 
     if (oid != redis_to_local[get_oid])
     {
-        SWSS_LOG_THROW("match failed, oid order is mismatch :( oid 0x%lx get_oid 0x%lx second 0x%lx",
+        SWSS_LOG_THROW("match failed, oid order is mismatch :( oid 0x%" PRIx64 " get_oid 0x%" PRIx64 " second 0x%" PRIx64,
                 oid,
                 get_oid,
                 redis_to_local[get_oid]);

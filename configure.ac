@@ -72,7 +72,6 @@ CFLAGS_COMMON+=" -Wimport"
 CFLAGS_COMMON+=" -Winit-self"
 CFLAGS_COMMON+=" -Winline"
 CFLAGS_COMMON+=" -Winvalid-pch"
-CFLAGS_COMMON+=" -Wlong-long"
 CFLAGS_COMMON+=" -Wmissing-field-initializers"
 CFLAGS_COMMON+=" -Wmissing-format-attribute"
 CFLAGS_COMMON+=" -Wmissing-include-dirs"
@@ -95,7 +94,6 @@ CFLAGS_COMMON+=" -Wvariadic-macros"
 CFLAGS_COMMON+=" -Wwrite-strings"
 CFLAGS_COMMON+=" -Wno-switch-default"
 CFLAGS_COMMON+=" -Wconversion"
-CFLAGS_COMMON+=" -Wlong-long"
 
 AC_SUBST(CFLAGS_COMMON)
 
