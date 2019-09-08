@@ -153,12 +153,18 @@ class SaiAttr
         {
             SWSS_LOG_ENTER();
 
-            if (m_meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            if (m_meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
             {
-                SWSS_LOG_THROW("attribute %s is not OID attribute", m_meta->attridname);
+                return m_attr.value.oid;
             }
 
-            return m_attr.value.oid;
+            if (m_meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID &&
+                    m_attr.value.aclaction.enable)
+            {
+                return m_attr.value.aclaction.parameter.oid;
+            }
+
+            SWSS_LOG_THROW("attribute %s is not OID attribute", m_meta->attridname);
         }
 
         /**
@@ -2726,6 +2732,8 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclCounter(
      * counter since if set, then table id will be matched previously.
      */
 
+    std::vector<std::shared_ptr<SaiObj>> objs;
+
     const auto tmpAclTables = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_TABLE);
 
     for (auto& tmpAclTable: tmpAclTables)
@@ -2758,10 +2766,85 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclCounter(
             if (curAclCounterTableIdAttr->getOid() != curAclTableVid)
                 continue;
 
-            SWSS_LOG_INFO("found best ACL counter match based on ACL table: %s", c.obj->str_object_id.c_str());
-
-            return c.obj;
+            objs.push_back(c.obj);
+            continue;
         }
+    }
+
+    if (objs.size() > 1)
+    {
+        // in this case more than 1 acl counters has the same acl table associated,
+        // try to find best acl counter matching same acl entry field
+
+        SWSS_LOG_INFO("more than 1 (%zu) best match on acl counter using acl table", objs.size());
+
+        const auto tmpAclEntries = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_ENTRY);
+
+        for (auto& tmpAclEntry: tmpAclEntries)
+        {
+            auto tmpAclEntryActionCounterAttr = tmpAclEntry->tryGetSaiAttr(SAI_ACL_ENTRY_ATTR_ACTION_COUNTER);
+
+            if (tmpAclEntryActionCounterAttr == nullptr)
+                continue; // skip acl entries with no counter
+
+            if (tmpAclEntryActionCounterAttr->getOid() != temporaryObj->getVid())
+                continue; // not the counter we are looking for
+
+            for (auto&attr: tmpAclEntry->getAllAttributes())
+            {
+                auto*meta = attr.second->getAttrMetadata();
+
+                if (!meta->isaclfield)
+                    continue; // looking only for acl fields
+
+                if (meta->isoidattribute)
+                    continue; // only non oid fields
+
+                auto tmpValue = attr.second->getStrAttrValue();
+
+                const auto curAclEntries = currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_ENTRY);
+
+                for (auto& curAclEntry: curAclEntries)
+                {
+                    auto curAclEntryAclFieldAttr = curAclEntry->tryGetSaiAttr(meta->attrid);
+
+                    if (curAclEntryAclFieldAttr == nullptr)
+                        continue; // this field is missing from current view
+
+                    if (curAclEntryAclFieldAttr->getStrAttrValue() != tmpValue)
+                        continue; // values are different, keep looking
+
+                    auto curAclEntryActionCounterAttr = curAclEntry->tryGetSaiAttr(SAI_ACL_ENTRY_ATTR_ACTION_COUNTER);
+
+                    if (curAclEntryActionCounterAttr == nullptr)
+                        continue; // no counter
+
+                    auto curAclCounter = currentView.oOids.at(curAclEntryActionCounterAttr->getOid());
+
+                    if (curAclCounter->getObjectStatus() != SAI_OBJECT_STATUS_NOT_PROCESSED)
+                        continue;
+
+                    for (auto c: candidateObjects)
+                    {
+                        if (c.obj->getVid() == curAclCounter->getVid())
+                        {
+                            SWSS_LOG_NOTICE("found best ACL counter match based on ACL entry field: %s, %s",
+                                    c.obj->str_object_id.c_str(),
+                                    meta->attridname);
+                            return c.obj;
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
+    if (objs.size())
+    {
+        SWSS_LOG_NOTICE("found best ACL counter match based on ACL table: %s", objs.at(0)->str_object_id.c_str());
+
+        return objs.at(0);
     }
 
     SWSS_LOG_NOTICE("failed to find best candidate for ACL_COUNTER using ACL table");
@@ -4101,7 +4184,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
             {
                 soci.equal_attributes++;
 
-                SWSS_LOG_DEBUG("ob equal %s %s, %s: %s",
+                SWSS_LOG_INFO("ob equal %s %s, %s: %s",
                         temporaryObj->str_object_id.c_str(),
                         currentObj->str_object_id.c_str(),
                         attr.second->getStrAttrId().c_str(),
@@ -4109,7 +4192,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
             }
             else
             {
-                SWSS_LOG_DEBUG("ob not equal %s %s, %s: %s",
+                SWSS_LOG_INFO("ob not equal %s %s, %s: %s",
                         temporaryObj->str_object_id.c_str(),
                         currentObj->str_object_id.c_str(),
                         attr.second->getStrAttrId().c_str(),
@@ -4310,6 +4393,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
          * We have only 1 object with the greatest number of equal attributes
          * lets choose that object as our best match.
          */
+
+        SWSS_LOG_INFO("eq attributes: %ld vs %ld",
+            candidateObjects.at(0).equal_attributes,
+            candidateObjects.at(1).equal_attributes);
 
         return candidateObjects.begin()->obj;
     }
@@ -5844,6 +5931,12 @@ bool performObjectSetTransition(
              */
 
             auto currentAttr = currentBestMatch->getSaiAttr(attr.id);
+
+            SWSS_LOG_INFO("compare attr value curr %s vs temp %s",
+                     currentBestMatch->getSaiAttr(attr.id)->getStrAttrValue().c_str(),
+                     temporaryObj->getSaiAttr(attr.id)->getStrAttrValue().c_str());
+
+
 
             if (hasEqualAttribute(currentView, temporaryView, currentBestMatch, temporaryObj, attr.id))
             {
