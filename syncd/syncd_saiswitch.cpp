@@ -148,7 +148,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> SaiSwitch::saiGetHardwareLaneM
      * addressed in future.
      */
 
-    const int lanesPerPort = 4;
+    const int lanesPerPort = 8;
 
     for (const auto &port_rid : portList)
     {
