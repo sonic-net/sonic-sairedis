@@ -112,6 +112,7 @@ extern const sai_udf_api_t              redis_udf_api;
 extern const sai_virtual_router_api_t   redis_virtual_router_api;
 extern const sai_vlan_api_t             redis_vlan_api;
 extern const sai_wred_api_t             redis_wred_api;
+extern const sai_debug_counter_api_t    redis_debug_counter_api;
 
 #define UNREFERENCED_PARAMETER(X)
 
