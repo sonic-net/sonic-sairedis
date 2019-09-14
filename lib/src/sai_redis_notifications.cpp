@@ -216,7 +216,11 @@ void handle_notification(
     }
     else if (notification == "fdb_event")
     {
-        handle_fdb_event(data);
+        /* The fdb handling is moved to fdbOrch so that both
+         * reference count updates (sai_redis and portsOrch)
+         * happen in same context to avoid any mismatch.
+         */
+        /* handle_fdb_event(data);*/
     }
     else if (notification == "port_state_change")
     {
