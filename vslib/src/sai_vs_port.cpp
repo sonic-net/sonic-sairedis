@@ -593,7 +593,6 @@ sai_status_t vs_set_port_attribute(
     return meta_sai_set_oid((sai_object_type_t)SAI_OBJECT_TYPE_PORT, port_id, attr, &vs_generic_set);
 }
 
-VS_REMOVE(PORT,port);
 VS_GET(PORT,port);
 VS_GENERIC_QUAD(PORT_POOL,port_pool);
 VS_GENERIC_STATS(PORT,port);
