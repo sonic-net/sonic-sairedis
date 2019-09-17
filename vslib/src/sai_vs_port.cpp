@@ -94,11 +94,11 @@ sai_status_t vs_set_port_attribute(
               if (system(cmd.c_str()) == -1)
               {
                   SWSS_LOG_ERROR("unable to delete the sampling session \
-                                 for the interface %s",if_name);
-                  SWSS_LOG_ERROR("failed to apply the command: %s",cmd);
+                                 for the interface %s",if_name.c_str());
+                  SWSS_LOG_ERROR("failed to apply the command: %s",cmd.c_str());
                   return SAI_STATUS_FAILURE;
               }
-              SWSS_LOG_INFO("successfully applied the command: %s", cmd);
+              SWSS_LOG_INFO("successfully applied the command: %s", cmd.c_str());
         } else {
               //Get the sample rate from the sample object
               sai_attribute_t samplepacket_attr;
@@ -130,22 +130,22 @@ sai_status_t vs_set_port_attribute(
                       cmd.assign("tc qdisc delete dev " + if_name + " handle ffff: ingress");
                       if (system(cmd.c_str()) == -1){
                          SWSS_LOG_ERROR("unable to delete the sampling session \
-                                         for the interface %s",if_name);
-                         SWSS_LOG_ERROR("failed to apply the command: %s",cmd);
+                                         for the interface %s",if_name.c_str());
+                         SWSS_LOG_ERROR("failed to apply the command: %s",cmd.c_str());
                          return SAI_STATUS_FAILURE;
                       }
-                      SWSS_LOG_INFO("successfully applied the command: %s", cmd);
+                      SWSS_LOG_INFO("successfully applied the command: %s", cmd.c_str());
                   }
 
                   //Create a new sampling session
                   cmd.assign("tc qdisc add dev " + if_name + " handle ffff: ingress");
                   if (system(cmd.c_str()) == -1)
                   {
-                      SWSS_LOG_ERROR("unable to create a sampling session for the interface %s", if_name);
-                      SWSS_LOG_ERROR("failed to apply the command: %s",cmd);
+                      SWSS_LOG_ERROR("unable to create a sampling session for the interface %s", if_name.c_str());
+                      SWSS_LOG_ERROR("failed to apply the command: %s",cmd.c_str());
                       return SAI_STATUS_FAILURE;
                   }
-                  SWSS_LOG_INFO("successfully applied the command: %s", cmd);
+                  SWSS_LOG_INFO("successfully applied the command: %s", cmd.c_str());
 
                   //Set the sampling rate of the port
                   cmd.assign("tc filter add dev " + if_name + \
@@ -153,13 +153,13 @@ sai_status_t vs_set_port_attribute(
                         " group " + group);
                   if (system(cmd.c_str()) == -1)
                   {
-                      SWSS_LOG_ERROR("unable to update the sampling rate of the interface %s",if_name);
-                      SWSS_LOG_ERROR("failed to apply the command: %s",cmd);
+                      SWSS_LOG_ERROR("unable to update the sampling rate of the interface %s",if_name.c_str());
+                      SWSS_LOG_ERROR("failed to apply the command: %s",cmd.c_str());
                       return SAI_STATUS_FAILURE;
                   }
-                  SWSS_LOG_INFO("successfully applied the command: %s", cmd);
+                  SWSS_LOG_INFO("successfully applied the command: %s", cmd.c_str());
               } else {
-                  SWSS_LOG_ERROR("failed to update the port %s, unable to read the sample attr", if_name);
+                  SWSS_LOG_ERROR("failed to update the port %s, unable to read the sample attr", if_name.c_str());
                   return SAI_STATUS_FAILURE;
               }
         }
