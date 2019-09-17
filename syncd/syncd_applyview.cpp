@@ -4,6 +4,7 @@
 #include "swss/logger.h"
 #include "swss/dbconnector.h"
 
+#include <inttypes.h>
 #include <algorithm>
 #include <list>
 
@@ -152,12 +153,18 @@ class SaiAttr
         {
             SWSS_LOG_ENTER();
 
-            if (m_meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+            if (m_meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
             {
-                SWSS_LOG_THROW("attribute %s is not OID attribute", m_meta->attridname);
+                return m_attr.value.oid;
             }
 
-            return m_attr.value.oid;
+            if (m_meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID &&
+                    m_attr.value.aclaction.enable)
+            {
+                return m_attr.value.aclaction.parameter.oid;
+            }
+
+            SWSS_LOG_THROW("attribute %s is not OID attribute", m_meta->attridname);
         }
 
         /**
@@ -1434,7 +1441,7 @@ class AsicView
 
                     v.insert(v.begin() + index, op);
 
-                    SWSS_LOG_INFO("move 0x%lx all way up (not in map): %s to index: %zu", op.vid,
+                    SWSS_LOG_INFO("move 0x%" PRIx64 " all way up (not in map): %s to index: %zu", op.vid,
                             sai_serialize_object_type(redis_sai_object_type_query(op.vid)).c_str(),index);
 
                     index++;
@@ -1503,7 +1510,7 @@ class AsicView
 
                 v.insert(v.begin() + index, op);
 
-                SWSS_LOG_INFO("move 0x%lx in the middle up: %s (last: %zu curr: %zu)", op.vid,
+                SWSS_LOG_INFO("move 0x%" PRIx64 " in the middle up: %s (last: %zu curr: %zu)", op.vid,
                             sai_serialize_object_type(redis_sai_object_type_query(op.vid)).c_str(), lastOpIdDecRefIndex, index);
 
                 index++;
@@ -2725,6 +2732,8 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclCounter(
      * counter since if set, then table id will be matched previously.
      */
 
+    std::vector<std::shared_ptr<SaiObj>> objs;
+
     const auto tmpAclTables = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_TABLE);
 
     for (auto& tmpAclTable: tmpAclTables)
@@ -2757,10 +2766,85 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForAclCounter(
             if (curAclCounterTableIdAttr->getOid() != curAclTableVid)
                 continue;
 
-            SWSS_LOG_INFO("found best ACL counter match based on ACL table: %s", c.obj->str_object_id.c_str());
-
-            return c.obj;
+            objs.push_back(c.obj);
+            continue;
         }
+    }
+
+    if (objs.size() > 1)
+    {
+        // in this case more than 1 acl counters has the same acl table associated,
+        // try to find best acl counter matching same acl entry field
+
+        SWSS_LOG_INFO("more than 1 (%zu) best match on acl counter using acl table", objs.size());
+
+        const auto tmpAclEntries = temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_ENTRY);
+
+        for (auto& tmpAclEntry: tmpAclEntries)
+        {
+            auto tmpAclEntryActionCounterAttr = tmpAclEntry->tryGetSaiAttr(SAI_ACL_ENTRY_ATTR_ACTION_COUNTER);
+
+            if (tmpAclEntryActionCounterAttr == nullptr)
+                continue; // skip acl entries with no counter
+
+            if (tmpAclEntryActionCounterAttr->getOid() != temporaryObj->getVid())
+                continue; // not the counter we are looking for
+
+            for (auto&attr: tmpAclEntry->getAllAttributes())
+            {
+                auto*meta = attr.second->getAttrMetadata();
+
+                if (!meta->isaclfield)
+                    continue; // looking only for acl fields
+
+                if (meta->isoidattribute)
+                    continue; // only non oid fields
+
+                auto tmpValue = attr.second->getStrAttrValue();
+
+                const auto curAclEntries = currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_ENTRY);
+
+                for (auto& curAclEntry: curAclEntries)
+                {
+                    auto curAclEntryAclFieldAttr = curAclEntry->tryGetSaiAttr(meta->attrid);
+
+                    if (curAclEntryAclFieldAttr == nullptr)
+                        continue; // this field is missing from current view
+
+                    if (curAclEntryAclFieldAttr->getStrAttrValue() != tmpValue)
+                        continue; // values are different, keep looking
+
+                    auto curAclEntryActionCounterAttr = curAclEntry->tryGetSaiAttr(SAI_ACL_ENTRY_ATTR_ACTION_COUNTER);
+
+                    if (curAclEntryActionCounterAttr == nullptr)
+                        continue; // no counter
+
+                    auto curAclCounter = currentView.oOids.at(curAclEntryActionCounterAttr->getOid());
+
+                    if (curAclCounter->getObjectStatus() != SAI_OBJECT_STATUS_NOT_PROCESSED)
+                        continue;
+
+                    for (auto c: candidateObjects)
+                    {
+                        if (c.obj->getVid() == curAclCounter->getVid())
+                        {
+                            SWSS_LOG_NOTICE("found best ACL counter match based on ACL entry field: %s, %s",
+                                    c.obj->str_object_id.c_str(),
+                                    meta->attridname);
+                            return c.obj;
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
+    if (objs.size())
+    {
+        SWSS_LOG_NOTICE("found best ACL counter match based on ACL table: %s", objs.at(0)->str_object_id.c_str());
+
+        return objs.at(0);
     }
 
     SWSS_LOG_NOTICE("failed to find best candidate for ACL_COUNTER using ACL table");
@@ -4100,7 +4184,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
             {
                 soci.equal_attributes++;
 
-                SWSS_LOG_DEBUG("ob equal %s %s, %s: %s",
+                SWSS_LOG_INFO("ob equal %s %s, %s: %s",
                         temporaryObj->str_object_id.c_str(),
                         currentObj->str_object_id.c_str(),
                         attr.second->getStrAttrId().c_str(),
@@ -4108,7 +4192,7 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
             }
             else
             {
-                SWSS_LOG_DEBUG("ob not equal %s %s, %s: %s",
+                SWSS_LOG_INFO("ob not equal %s %s, %s: %s",
                         temporaryObj->str_object_id.c_str(),
                         currentObj->str_object_id.c_str(),
                         attr.second->getStrAttrId().c_str(),
@@ -4309,6 +4393,10 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(
          * We have only 1 object with the greatest number of equal attributes
          * lets choose that object as our best match.
          */
+
+        SWSS_LOG_INFO("eq attributes: %ld vs %ld",
+            candidateObjects.at(0).equal_attributes,
+            candidateObjects.at(1).equal_attributes);
 
         return candidateObjects.begin()->obj;
     }
@@ -5736,7 +5824,7 @@ std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
 
                 if (tg == currentView.ridToVid.end())
                 {
-                    SWSS_LOG_THROW("default trap group RID 0x%lx doesn't exist in current view", currentView.defaultTrapGroupRid);
+                    SWSS_LOG_THROW("default trap group RID 0x%" PRIx64 " doesn't exist in current view", currentView.defaultTrapGroupRid);
                 }
 
                 sai_attribute_t at;
@@ -5843,6 +5931,12 @@ bool performObjectSetTransition(
              */
 
             auto currentAttr = currentBestMatch->getSaiAttr(attr.id);
+
+            SWSS_LOG_INFO("compare attr value curr %s vs temp %s",
+                     currentBestMatch->getSaiAttr(attr.id)->getStrAttrValue().c_str(),
+                     temporaryObj->getSaiAttr(attr.id)->getStrAttrValue().c_str());
+
+
 
             if (hasEqualAttribute(currentView, temporaryView, currentBestMatch, temporaryObj, attr.id))
             {
@@ -7290,14 +7384,14 @@ void checkMap(
         sai_object_id_t v = it.second;
 
         if (firstV2R.find(v) == firstV2R.end())
-            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, v, firstV2Rname);
+            SWSS_LOG_ERROR("%s (0x%" PRIx64 ":0x%" PRIx64 ") is missing from %s", firstR2Vname, r, v, firstV2Rname);
         else if (firstV2R.at(v) != r)
-            SWSS_LOG_ERROR("mismatch on %s (0x%lx:0x%lx) vs %s (0x%lx:0x%lx)", firstR2Vname, r, v, firstV2Rname, v, firstV2R.at(v));
+            SWSS_LOG_ERROR("mismatch on %s (0x%" PRIx64 ":0x%" PRIx64 ") vs %s (0x%" PRIx64 ":0x%" PRIx64 ")", firstR2Vname, r, v, firstV2Rname, v, firstV2R.at(v));
 
         if (secondR2V.find(r) == secondR2V.end())
-            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, v, secondR2Vname);
+            SWSS_LOG_ERROR("%s (0x%" PRIx64 ":0x%" PRIx64 ") is missing from %s", firstR2Vname, r, v, secondR2Vname);
         else if (secondV2R.find(secondR2V.at(r)) == secondV2R.end())
-            SWSS_LOG_ERROR("%s (0x%lx:0x%lx) is missing from %s", firstR2Vname, r, secondR2V.at(r), secondV2Rname);
+            SWSS_LOG_ERROR("%s (0x%" PRIx64 ":0x%" PRIx64 ") is missing from %s", firstR2Vname, r, secondR2V.at(r), secondV2Rname);
     }
 }
 
@@ -7360,7 +7454,7 @@ void createPreMatchMapForObject(
             if (cur.oOids.at(cVid)->getObjectType() != tmp.oOids.at(tVid)->getObjectType())
                 continue;
 
-            SWSS_LOG_INFO("inserting pre match entry for %s:%s: 0x%lx (tmp) -> 0x%lx (cur)",
+            SWSS_LOG_INFO("inserting pre match entry for %s:%s: 0x%" PRIx64 " (tmp) -> 0x%" PRIx64 " (cur)",
                     tObj->str_object_id.c_str(),
                     cAttr->getAttrMetadata()->attridname,
                     tVid,
@@ -7631,6 +7725,8 @@ sai_status_t syncdApplyView()
             checkMap(current.ridToVid, "current R2V", current.vidToRid, "current V2R", temp.ridToVid, "temp R2V", temp.vidToRid, "temp V2R");
             checkMap(temp.ridToVid, "temp R2V", temp.vidToRid, "temp V2R", current.ridToVid, "current R2V", current.vidToRid, "current V2R");
 
+            current.dumpVidToAsicOperatioId();
+
             SWSS_LOG_THROW("wrong number of vid/rid items in map, forgot to translate? R2V: %zu:%zu, V2R: %zu:%zu, FIXME",
                     current.ridToVid.size(),
                     temp.ridToVid.size(),
@@ -7742,7 +7838,7 @@ sai_object_id_t asic_translate_vid_to_rid(
 
     sai_object_id_t rid = currentIt->second;
 
-    SWSS_LOG_INFO("translated VID 0x%lx to RID 0x%lx", vid, rid);
+    SWSS_LOG_INFO("translated VID 0x%" PRIx64 " to RID 0x%" PRIx64, vid, rid);
 
     return rid;
 }

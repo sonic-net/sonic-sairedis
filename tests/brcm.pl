@@ -478,10 +478,23 @@ sub test_remove_create_port
     play "remove_create_port.rec";
 }
 
+sub test_acl_counter2
+{
+    fresh_start;
+
+    play "acl_counter2.rec";
+    play "acl_counter2.rec", 0;
+    play "acl_counter2.rec", 0;
+    play "acl_counter2.rec", 0;
+    play "acl_counter2.rec", 0;
+    play "acl_counter2.rec", 0;
+}
+
 # RUN TESTS
 
 test_remove_port;
 test_remove_create_port;
+test_acl_counter2;
 test_acl_counter;
 test_tunnel_map;
 test_bridge_create;

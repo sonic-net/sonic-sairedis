@@ -899,10 +899,9 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
                 uint16_t tci = htons(aux->tp_vlan_tci);
                 uint16_t tpid = htons(IEEE_8021Q_ETHER_TYPE);
 
-                uint16_t* pvlan = (uint16_t*)(buffer + 2 * MAC_ADDRESS_SIZE);
-
-                pvlan[0] = tpid;
-                pvlan[1] = tci;
+                uint8_t* pvlan =  (uint8_t *)(buffer + 2 * MAC_ADDRESS_SIZE);
+                memcpy(pvlan, &tpid, sizeof(uint16_t));
+                memcpy(pvlan + sizeof(uint16_t), &tci, sizeof(uint16_t));
 
                 size += VLAN_TAG_SIZE;
 
@@ -1235,6 +1234,7 @@ sai_status_t vs_create_hostif_tap_interface(
 
     g_switch_state_map.at(switch_id)->setIfNameToPortId(vname, obj_id);
 
+    g_switch_state_map.at(switch_id)->setTapNameToPortId(name, obj_id);
     // TODO what about FDB entries notifications, they also should
     // be generated if new mac address will show up on the interface/arp table
 

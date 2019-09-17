@@ -1,6 +1,7 @@
 #include "syncd.h"
 #include "sairedis.h"
 
+#include <inttypes.h>
 #include <queue>
 #include <memory>
 #include <condition_variable>
@@ -175,7 +176,7 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush port fdb event, port_oid = 0x%lx, bv_id = 0x%lx, unsupported", port_oid, bv_id);
+            SWSS_LOG_ERROR("received a flush port fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
         }
         else if (!port_oid && bv_id)
         {
@@ -196,12 +197,12 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush vlan fdb event, port_oid = 0x%lx, bv_id = 0x%lx, unsupported", port_oid, bv_id);
+            SWSS_LOG_ERROR("received a flush vlan fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
             
         }
         else
         {
-            SWSS_LOG_ERROR("received a flush fdb event, port_oid = 0x%lx, bv_id = 0x%lx, unsupported", port_oid, bv_id);
+            SWSS_LOG_ERROR("received a flush fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
         }
 
         return;
@@ -282,7 +283,7 @@ bool check_fdb_event_notification_data(
 
     if (!check_rid_exists(data.fdb_entry.bv_id))
     {
-        SWSS_LOG_ERROR("bv_id RID 0x%lx is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
+        SWSS_LOG_ERROR("bv_id RID 0x%" PRIx64 " is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
                 sai_serialize_fdb_entry(data.fdb_entry).c_str());
 
         result = false;
@@ -290,7 +291,7 @@ bool check_fdb_event_notification_data(
 
     if (!check_rid_exists(data.fdb_entry.switch_id) || data.fdb_entry.switch_id == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_ERROR("switch_id RID 0x%lx is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
+        SWSS_LOG_ERROR("switch_id RID 0x%" PRIx64 " is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
                 sai_serialize_fdb_entry(data.fdb_entry).c_str());
 
         result = false;
@@ -314,7 +315,7 @@ bool check_fdb_event_notification_data(
 
         if (!check_rid_exists(attr.value.oid))
         {
-            SWSS_LOG_WARN("RID 0x%lx on %s is not present on local ASIC DB", attr.value.oid, meta->attridname);
+            SWSS_LOG_WARN("RID 0x%" PRIx64 " on %s is not present on local ASIC DB", attr.value.oid, meta->attridname);
 
             result = false;
         }
@@ -338,6 +339,12 @@ void process_on_fdb_event(
         sai_fdb_event_notification_data_t *fdb = &data[i];
 
         sendntf &= check_fdb_event_notification_data(*fdb);
+
+        if (!sendntf)
+        {
+            SWSS_LOG_ERROR("invalid OIDs in fdb notifications, NOT translating and NOT storing in ASIC DB");
+            continue;
+        }
 
         SWSS_LOG_DEBUG("fdb %u: type: %d", i, fdb->event_type);
 
@@ -876,6 +883,6 @@ void check_notifications_pointers(
          * Here we translated pointer, just log it.
          */
 
-        SWSS_LOG_INFO("%s: 0x%lX (orch) => 0x%lX (syncd)", meta->attridname, (uint64_t)prev, (uint64_t)attr.value.ptr);
+        SWSS_LOG_INFO("%s: 0x%" PRIx64 " (orch) => 0x%" PRIx64 " (syncd)", meta->attridname, (uint64_t)prev, (uint64_t)attr.value.ptr);
     }
 }

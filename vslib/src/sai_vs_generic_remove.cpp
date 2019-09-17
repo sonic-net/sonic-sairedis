@@ -3,6 +3,7 @@
 #include "sai_vs_switch_BCM56850.h"
 #include "sai_vs_switch_MLNX2700.h"
 
+#include <inttypes.h>
 #include <fstream>
 
 sai_status_t internal_vs_generic_remove(
@@ -39,7 +40,7 @@ void vs_dump_switch_database_for_warm_restart(
 
     if (it == g_switch_state_map.end())
     {
-        SWSS_LOG_THROW("switch don't exists 0x%lx", switch_id);
+        SWSS_LOG_THROW("switch don't exists 0x%" PRIx64, switch_id);
     }
 
     if (g_warm_boot_write_file == NULL)

@@ -1223,6 +1223,40 @@ void hardReinit()
     checkAllIds();
 }
 
+void checkWarmBootDiscoveredRids(
+        _In_ std::shared_ptr<SaiSwitch> sw)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * After switch was created, rid discovery method was called, and all
+     * discovered RIDs should be present in current RID2VID map in redis
+     * database. If any RID is missing, then ether there is bug in vendor code,
+     * and after warm boot some RID values changed or we have a bug and forgot
+     * to put rid/vid pair to redis.
+     *
+     * Assumption here is that during warm boot ASIC state will not change.
+     */
+
+    auto rid2vid = redisGetRidToVidMap();
+    bool success = true;
+
+    for (auto rid: sw->getDiscoveredRids())
+    {
+        if (rid2vid.find(rid) != rid2vid.end())
+            continue;
+
+        SWSS_LOG_ERROR("RID 0x%lx is missing from current RID2VID map after WARM boot!", rid);
+
+        success = false;
+    }
+
+    if (!success)
+        SWSS_LOG_THROW("FATAL, some discovered RIDs are not present in current RID2VID map, bug");
+
+    SWSS_LOG_NOTICE("all discovered RIDs are present in current RID2VID map");
+}
+
 void performWarmRestart()
 {
     SWSS_LOG_ENTER();
@@ -1328,6 +1362,8 @@ void performWarmRestart()
      */
 
     gSwitchId = g_switch_rid;
+
+    checkWarmBootDiscoveredRids(sw);
 
     startDiagShell();
 }

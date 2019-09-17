@@ -345,9 +345,12 @@ sai_status_t redis_get_switch_attribute(
 /**
  * @brief Switch method table retrieved with sai_api_query()
  */
+REDIS_GENERIC_STATS(SWITCH, switch);
+
 const sai_switch_api_t redis_switch_api = {
     redis_create_switch,
     redis_remove_switch,
     redis_set_switch_attribute,
     redis_get_switch_attribute,
+    REDIS_GENERIC_STATS_API(switch)
 };
