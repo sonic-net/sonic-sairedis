@@ -205,7 +205,7 @@ class SaiSwitch
         /**
          * @brief On post port remove.
          *
-         * Perfroms actions after port remove. Will remove lanes associated
+         * Performs actions after port remove. Will remove lanes associated
          * with port from redis lane map.
          */
         void onPostPortRemove(
@@ -290,7 +290,7 @@ class SaiSwitch
         /**
          * @brief Get port lanes for specific port.
          *
-         * @param port_rid Port RID for which lanes should be retrived.
+         * @param port_rid Port RID for which lanes should be retrieved.
          *
          * @returns Lanes vector.
          */
