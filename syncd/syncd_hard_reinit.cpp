@@ -1349,7 +1349,7 @@ void performWarmRestart()
      * Perform all get operations on existing switch.
      */
 
-    auto sw = switches[switch_vid] = std::make_shared<SaiSwitch>(switch_vid, switch_rid);
+    auto sw = switches[switch_vid] = std::make_shared<SaiSwitch>(switch_vid, switch_rid, true);
 
     g_switch_rid = switch_rid;
     g_switch_vid = switch_vid;

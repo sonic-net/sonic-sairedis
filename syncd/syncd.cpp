@@ -1257,6 +1257,7 @@ void get_port_related_objects(
 
 void post_port_remove(
         _In_ std::shared_ptr<SaiSwitch> sw,
+        _In_ sai_object_id_t port_rid,
         _In_ const std::vector<sai_object_id_t>& relatedRids)
 {
     SWSS_LOG_ENTER();
@@ -1307,16 +1308,16 @@ void post_port_remove(
 
         sai_object_type_t ot = redis_sai_object_type_query(vid);
 
-        std::string key = sai_serialize_object_type(ot) + ":" + str_vid;
+        std::string key = ASIC_STATE_TABLE + std::string(":") + sai_serialize_object_type(ot) + ":" + str_vid;
 
         SWSS_LOG_INFO("removing ASIC DB key: %s", key.c_str());
 
         g_redisClient->del(key);
     }
 
-    SWSS_LOG_NOTICE("post port remove actions succeeded");
+    sw->onPostPortRemove(port_rid);
 
-    // TODO lane map must be updated (for warm boot)
+    SWSS_LOG_NOTICE("post port remove actions succeeded");
 }
 
 void post_port_create(
@@ -1328,7 +1329,7 @@ void post_port_create(
 
     sw->onPostPortCreate(port_rid, port_vid);
 
-    // TODO lane map must be updated (for warm boot)
+    SWSS_LOG_NOTICE("post port create actions succeeded");
 }
 
 sai_status_t handle_generic(
@@ -1560,7 +1561,7 @@ sai_status_t handle_generic(
 
                         if (object_type == SAI_OBJECT_TYPE_PORT)
                         {
-                            post_port_remove(switches.at(switch_vid), related);
+                            post_port_remove(switches.at(switch_vid), rid, related);
                         }
                     }
                 }
@@ -2418,6 +2419,16 @@ sai_status_t processEventInInitViewMode(
     {
         case SAI_COMMON_API_CREATE:
 
+            if (object_type == SAI_OBJECT_TYPE_PORT)
+            {
+                // reason for this is that if user will create port,
+                // new port is not actually created so when for example
+                // querying new queues for new created port, there are
+                // not there, since no actual port create was issued on
+                // the ASIC
+                SWSS_LOG_THROW("port object can't be created in init view mode");
+            }
+
             if (info->isnonobjectid)
             {
                 /*
@@ -2449,6 +2460,17 @@ sai_status_t processEventInInitViewMode(
             return SAI_STATUS_SUCCESS;
 
         case SAI_COMMON_API_REMOVE:
+
+            if (object_type == SAI_OBJECT_TYPE_PORT)
+            {
+                // reason for this is that if user will remove port, actual
+                // resources for it wont be release, lanes would be still
+                // occupied and there is extra logic required in post port
+                // remove which clears OIDs (ipgs,queues,SGs) from redis db
+                // that are automatically removed by vendor SAI, and comparison
+                // logic don't support that
+                SWSS_LOG_THROW("port object can't be removed in init view mode");
+            }
 
             if (object_type == SAI_OBJECT_TYPE_SWITCH)
             {

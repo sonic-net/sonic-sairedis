@@ -27,7 +27,8 @@ class SaiSwitch
 
         SaiSwitch(
                 _In_ sai_object_id_t switch_vid,
-                _In_ sai_object_id_t switch_rid);
+                _In_ sai_object_id_t switch_rid,
+                _In_ bool warmBoot = false);
 
         /*
          * Methods.
@@ -184,6 +185,13 @@ class SaiSwitch
         std::set<sai_object_id_t> getColdBootDiscoveredVids() const;
 
         /**
+         * @brief Get warm boot discovered VIDs.
+         *
+         * @return Set of warm boot discovered VIDs after warm boot.
+         */
+        std::set<sai_object_id_t> getWarmBootDiscoveredVids() const;
+
+        /**
          * @brief On post port create.
          *
          * Performs actions needed after port creation. Will discover new
@@ -193,6 +201,15 @@ class SaiSwitch
         void onPostPortCreate(
                 _In_ sai_object_id_t port_rid,
                 _In_ sai_object_id_t port_vid);
+
+        /**
+         * @brief On post port remove.
+         *
+         * Perfroms actions after port remove. Will remove lanes associated
+         * with port from redis lane map.
+         */
+        void onPostPortRemove(
+                _In_ sai_object_id_t port_rid);
 
     private:
 
@@ -271,6 +288,16 @@ class SaiSwitch
         std::unordered_map<sai_uint32_t, sai_object_id_t> saiGetHardwareLaneMap() const;
 
         /**
+         * @brief Get port lanes for specific port.
+         *
+         * @param port_rid Port RID for which lanes should be retrived.
+         *
+         * @returns Lanes vector.
+         */
+        std::vector<uint32_t> saiGetPortLanes(
+                _In_ sai_object_id_t port_rid);
+
+        /**
          * @brief Get MAC address.
          *
          * Intended use is to get switch default MAC address, for comparison
@@ -314,6 +341,14 @@ class SaiSwitch
          */
         void redisSaveColdBootDiscoveredVids() const;
 
+        /**
+         * @brief Update lane map for specific port.
+         *
+         * @param port_rid Port RID for which lane map should be updated
+         */
+        void redisUpdatePortLaneMap(
+                _In_ sai_object_id_t port_rid);
+
         /*
          * Helper Methods.
          */
@@ -353,12 +388,16 @@ class SaiSwitch
 
         void helperLoadColdVids();
 
+        void helperPopulateWarmBootVids();
+
         /*
          * Other Methods.
          */
 
         std::string getRedisLanesKey() const;
         std::string getRedisHiddenKey() const;
+
+        bool isWarmBoot() const;
 
         /**
          * @brief Default oid map.
@@ -380,6 +419,10 @@ class SaiSwitch
         std::unordered_map<sai_object_id_t, std::unordered_map<sai_attr_id_t, sai_object_id_t>> m_defaultOidMap;
 
         std::set<sai_object_id_t> m_coldBootDiscoveredVids;
+
+        std::set<sai_object_id_t> m_warmBootDiscoveredVids;
+
+        bool m_warmBoot;
 };
 
 extern std::map<sai_object_id_t, std::shared_ptr<SaiSwitch>> switches;

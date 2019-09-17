@@ -490,8 +490,38 @@ sub test_acl_counter2
     play "acl_counter2.rec", 0;
 }
 
+sub test_brcm_warm_boot_port_remove
+{
+    fresh_start;
+
+    play "wb_port_remove_a.rec";
+
+    request_warm_shutdown;
+    start_syncd_warm;
+
+    play "wb_port_remove_b.rec";
+
+    request_warm_shutdown;
+}
+
+sub test_brcm_warm_boot_port_create
+{
+    fresh_start;
+
+    play "wb_port_create_a.rec";
+
+    request_warm_shutdown;
+    start_syncd_warm;
+
+    play "wb_port_create_b.rec";
+
+    request_warm_shutdown;
+}
+
 # RUN TESTS
 
+test_brcm_warm_boot_port_remove;
+test_brcm_warm_boot_port_create;
 test_remove_port;
 test_remove_create_port;
 test_acl_counter2;

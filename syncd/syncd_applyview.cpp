@@ -6985,6 +6985,7 @@ void populateExistingObjects(
     auto sw = switches.begin()->second;
 
     auto coldBootDiscoveredVids = sw->getColdBootDiscoveredVids();
+    auto warmBootDiscoveredVids = sw->getWarmBootDiscoveredVids();
 
     /*
      * If some objects that are existing objects on switch are not present in
@@ -7058,9 +7059,47 @@ void populateExistingObjects(
          * NOTE: If we are here, then this RID exists only in current view, and
          * if this object contains any OID attributes, discovery logic queried
          * them so they are also existing in current view.
+         *
+         * Also in warm boot, when user removed port, and then created some new
+         * ports, new QUEUEs, IPGs and SGs will be created automatically by
+         * SAI.  Those new created objects mot likely will have different RID
+         * values then previous instances for given port. Those values should
+         * also be copied to temporary view, since they will not exist on cold
+         * boot discovered VIDs. If not, then comparison logic will try to remove
+         * them which is not what we want.
+         *
+         * This is tricky scenario, and there could be some issues also when
+         * other object types would be created by user.
          */
 
-        if (coldBootDiscoveredVids.find(vid) == coldBootDiscoveredVids.end())
+        bool performColdCheck = true;
+
+        if (warmBootDiscoveredVids.find(vid) != warmBootDiscoveredVids.end())
+        {
+            sai_object_type_t ot = redis_sai_object_type_query(vid);
+
+            switch (ot)
+            {
+                case SAI_OBJECT_TYPE_QUEUE:
+                case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
+                case SAI_OBJECT_TYPE_SCHEDULER_GROUP:
+
+                    // TODO this case may require adjustment, if user will do a
+                    // warm boot then remove/add some ports and make another
+                    // warm boot, it may happen that current logic will be
+                    // confused which of those objects are from previous warm
+                    // boot or second one, need better way to mark changes to
+                    // those objects in redis DB between warm boots
+
+                    performColdCheck = false;
+
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (performColdCheck && coldBootDiscoveredVids.find(vid) == coldBootDiscoveredVids.end())
         {
             SWSS_LOG_INFO("object is not on default existing list: %s RID %s VID %s",
                     sai_serialize_object_type(sai_object_type_query(rid)).c_str(),

@@ -296,6 +296,48 @@ bool vs_check_object_default_state(
     return true;
 }
 
+bool vs_check_port_reference_count(
+        _In_ sai_object_id_t port_id,
+        _In_ const ObjectHash& objectHash)
+{
+    SWSS_LOG_ENTER();
+
+    // TODO currently when switch is initialized, there is no metadata yet
+    // and objects are created without reference count, this needs to be
+    // addressed in refactoring metadata and meta_create_oid to correct
+    // count references, but now we need to check if port is used in any
+    // bridge port (and bridge port in any vlan member), after metadata
+    // refactor this function can be removed.
+
+    // check if port is used on any bridge port object (only switch init one
+    // matters, user created bridge ports will have correct reference count
+
+    auto& bridgePorts = objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT);
+
+    auto* meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
+
+    for (auto& bp: bridgePorts)
+    {
+        for (auto&attr: bp.second)
+        {
+            if (attr.first != meta->attridname)
+                continue; // not this attribute
+
+            if (attr.second->getAttr()->value.oid == port_id)
+            {
+                SWSS_LOG_ERROR("port id %s is in use on bridge port %s",
+                        sai_serialize_object_id(port_id).c_str(),
+                        bp.first.c_str());
+
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+
 bool vs_check_object_list_default_state(
         _Out_ const std::vector<sai_object_id_t>& objlist)
 {
@@ -353,6 +395,17 @@ sai_status_t vs_check_port_dependencies(
     SWSS_LOG_NOTICE("port %s found, for removal",
                 sai_serialize_object_id(port_id).c_str());
 
+    // check port reference count on bridge port
+
+    if (!vs_check_port_reference_count(port_id, g_switch_state_map.at(switch_id)->objectHash))
+    {
+        SWSS_LOG_ERROR("port %s reference count IS NOT ZERO, can't remove, remove dependencies first",
+                sai_serialize_object_id(port_id).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+
     // obtain objects to examine
 
     std::vector<sai_object_id_t> queues;
@@ -395,9 +448,11 @@ sai_status_t vs_check_port_dependencies(
     dep.insert(dep.end(), ipgs.begin(), ipgs.end());
     dep.insert(dep.end(), sg.begin(), sg.end());
 
-    // TODO there may be issues with bridge ports created on that port if they
-    // are not removed before port remove, this needs to be addressed for warm
-    // boot support
+    // BRIDGE PORT (and also VLAN MEMBER using that bridge port) must be
+    // removed before removing port itself, since bridge port holds reference
+    // to port being removed.
+
+    // bridge ports and vlan members must be removed before port can be removed
 
     return SAI_STATUS_SUCCESS;
 }

@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <set>
 
+const int maxLanesPerPort = 8;
+
 /*
  * NOTE: all those methods could be implemented inside SaiSwitch class so then
  * we could skip using switch_id in params and even they could be public then.
@@ -148,18 +150,16 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> SaiSwitch::saiGetHardwareLaneM
      * addressed in future.
      */
 
-    const int lanesPerPort = 8;
-
     for (const auto &port_rid : portList)
     {
-        sai_uint32_t lanes[lanesPerPort];
+        sai_uint32_t lanes[maxLanesPerPort];
 
         memset(lanes, 0, sizeof(lanes));
 
         sai_attribute_t attr;
 
         attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
-        attr.value.u32list.count = lanesPerPort;
+        attr.value.u32list.count = maxLanesPerPort;
         attr.value.u32list.list = lanes;
 
         sai_status_t status = sai_metadata_sai_port_api->get_port_attribute(port_rid, 1, &attr);
@@ -1059,6 +1059,13 @@ std::set<sai_object_id_t> SaiSwitch::getColdBootDiscoveredVids() const
     return discoveredVids;
 }
 
+std::set<sai_object_id_t> SaiSwitch::getWarmBootDiscoveredVids() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_warmBootDiscoveredVids;
+}
+
 void SaiSwitch::redisSaveColdBootDiscoveredVids() const
 {
     SWSS_LOG_ENTER();
@@ -1224,6 +1231,21 @@ sai_object_id_t SaiSwitch::getDefaultValueForOidAttr(
     return ita->second;
 }
 
+void SaiSwitch::helperPopulateWarmBootVids()
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_warmBoot)
+        return;
+
+    for (sai_object_id_t rid: m_discovered_rids)
+    {
+        sai_object_id_t vid = translate_rid_to_vid(rid, m_switch_vid);
+
+       m_warmBootDiscoveredVids.insert(vid);
+    }
+}
+
 /*
  * NOTE: If real ID will change during hard restarts, then we need to remap all
  * VID/RID, but we can only do that if we will save entire tree with all
@@ -1232,7 +1254,9 @@ sai_object_id_t SaiSwitch::getDefaultValueForOidAttr(
 
 SaiSwitch::SaiSwitch(
         _In_ sai_object_id_t switch_vid,
-        _In_ sai_object_id_t switch_rid)
+        _In_ sai_object_id_t switch_rid,
+        _In_ bool warmBoot):
+    m_warmBoot(warmBoot)
 {
     SWSS_LOG_ENTER();
 
@@ -1263,7 +1287,66 @@ SaiSwitch::SaiSwitch(
 
     helperLoadColdVids();
 
+    helperPopulateWarmBootVids();
+
     saiGetMacAddress(m_default_mac_address);
+}
+
+std::vector<uint32_t> SaiSwitch::saiGetPortLanes(
+        _In_ sai_object_id_t port_rid)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<uint32_t> lanes;
+
+    lanes.resize(maxLanesPerPort);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+    attr.value.u32list.count = maxLanesPerPort;
+    attr.value.u32list.list = lanes.data();
+
+    sai_status_t status = sai_metadata_sai_port_api->get_port_attribute(port_rid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_THROW("failed to get hardware lane list port RID %s: %s",
+                sai_serialize_object_id(port_rid).c_str(),
+                sai_serialize_status(status).c_str());
+    }
+
+    if (attr.value.u32list.count == 0)
+    {
+        SWSS_LOG_THROW("switch returned lane count ZERO for port RID %s",
+                sai_serialize_object_id(port_rid).c_str());
+    }
+
+    lanes.resize(attr.value.u32list.count);
+
+    return lanes;
+}
+
+void SaiSwitch::redisUpdatePortLaneMap(
+        _In_ sai_object_id_t port_rid)
+{
+    SWSS_LOG_ENTER();
+
+    auto lanes = saiGetPortLanes(port_rid);
+
+    for (uint32_t lane: lanes)
+    {
+        std::string strLane = sai_serialize_number(lane);
+        std::string strPortId = sai_serialize_object_id(port_rid);
+
+        auto key = getRedisLanesKey();
+
+        g_redisClient->hset(key, strLane, strPortId);
+    }
+
+    SWSS_LOG_NOTICE("added %zu lanes to redis lane map for port RID %s",
+            lanes.size(),
+            sai_serialize_object_id(port_rid).c_str());
 }
 
 void SaiSwitch::onPostPortCreate(
@@ -1282,7 +1365,8 @@ void SaiSwitch::onPostPortCreate(
 
     m_discovered_rids.insert(discovered.begin(), discovered.end());
 
-    SWSS_LOG_NOTICE("putting ALL new discovered objects to redis");
+    SWSS_LOG_NOTICE("putting ALL new discovered objects to redis for port %s",
+            sai_serialize_object_id(port_vid).c_str());
 
     for (sai_object_id_t rid: discovered)
     {
@@ -1296,5 +1380,48 @@ void SaiSwitch::onPostPortCreate(
 
         redisSetDummyAsicStateForRealObjectId(rid);
     }
+
+    redisUpdatePortLaneMap(port_rid);
 }
 
+void SaiSwitch::onPostPortRemove(
+        _In_ sai_object_id_t port_rid)
+{
+    SWSS_LOG_ENTER();
+
+    int removed = 0;
+
+    // key - lane number, value - port RID
+    auto map = redisGetLaneMap();
+
+    for (auto& kv: map)
+    {
+        if (kv.second == port_rid)
+        {
+            auto key = getRedisLanesKey();
+
+            std::string strLane = sai_serialize_number(kv.first);
+
+            g_redisClient->hdel(key, strLane);
+
+            removed++;
+        }
+    }
+
+    SWSS_LOG_NOTICE("removed %u lanes from redis lane map for port RID %s",
+            removed,
+            sai_serialize_object_id(port_rid).c_str());
+
+    if (removed == 0)
+    {
+        SWSS_LOG_THROW("NO LANES found in redis lane map for given port RID %s",
+            sai_serialize_object_id(port_rid).c_str());
+    }
+}
+
+bool SaiSwitch::isWarmBoot() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_warmBoot;
+}
