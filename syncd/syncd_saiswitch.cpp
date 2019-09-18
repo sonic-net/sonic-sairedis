@@ -1265,3 +1265,36 @@ SaiSwitch::SaiSwitch(
 
     saiGetMacAddress(m_default_mac_address);
 }
+
+void SaiSwitch::onPostPortCreate(
+        _In_ sai_object_id_t port_rid,
+        _In_ sai_object_id_t port_vid)
+{
+    SWSS_LOG_ENTER();
+
+    std::set<sai_object_id_t> discovered;
+
+    saiDiscover(port_rid, discovered);
+
+    SWSS_LOG_NOTICE("discovered %zu new objects (including port) after creating port VID: %s",
+            discovered.size(),
+            sai_serialize_object_id(port_vid).c_str());
+
+    m_discovered_rids.insert(discovered.begin(), discovered.end());
+
+    SWSS_LOG_NOTICE("putting ALL new discovered objects to redis");
+
+    for (sai_object_id_t rid: discovered)
+    {
+        /*
+         * We also could thing of optimizing this since it's one call to redis
+         * per rid, and probably this should be ATOMIC.
+         *
+         * NOTE: We are also storing read only object's here, like default
+         * virtual router, CPU, default trap group, etc.
+         */
+
+        redisSetDummyAsicStateForRealObjectId(rid);
+    }
+}
+

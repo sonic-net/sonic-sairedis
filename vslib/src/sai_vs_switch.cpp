@@ -326,6 +326,7 @@ sai_status_t vs_remove_switch(
 
 VS_SET(SWITCH,switch);
 VS_GET(SWITCH,switch);
+VS_GENERIC_STATS(SWITCH, switch);
 
 const sai_switch_api_t vs_switch_api = {
 
@@ -333,4 +334,5 @@ const sai_switch_api_t vs_switch_api = {
     vs_remove_switch,
     vs_set_switch_attribute,
     vs_get_switch_attribute,
+    VS_GENERIC_STATS_API(switch)
 };

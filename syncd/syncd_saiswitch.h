@@ -183,6 +183,17 @@ class SaiSwitch
          */
         std::set<sai_object_id_t> getColdBootDiscoveredVids() const;
 
+        /**
+         * @brief On post port create.
+         *
+         * Performs actions needed after port creation. Will discover new
+         * queues, ipgs and scheduler groups that belong to new created port,
+         * and updated ASIC DB accordingly.
+         */
+        void onPostPortCreate(
+                _In_ sai_object_id_t port_rid,
+                _In_ sai_object_id_t port_vid);
+
     private:
 
         /*

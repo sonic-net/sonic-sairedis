@@ -44,6 +44,17 @@ bool meta_unittests_enabled()
     return unittests_enabled;
 }
 
+/**
+ * @brief Port map to related objects set.
+ *
+ * Key in map is port OID, and value is set of related objects ids
+ * like queues, ipgs and scheduler groups.
+ *
+ * This map will help to identify objects to be automatically removed
+ * when port will be removed.
+ */
+std::map<sai_object_id_t, std::set<sai_object_id_t>> map_port_to_related_set;
+
 sai_status_t meta_unittests_allow_readonly_set_once(
         _In_ sai_object_type_t object_type,
         _In_ int32_t attr_id)
@@ -204,6 +215,13 @@ class SaiAttrWrapper
         {
             SWSS_LOG_ENTER();
             return &m_attr;
+        }
+
+        const sai_attr_metadata_t* getMeta() const
+        {
+            SWSS_LOG_ENTER();
+
+            return m_meta;
         }
 
     private:
@@ -452,6 +470,8 @@ sai_status_t meta_init_db()
     ObjectReferences.clear();
     ObjectAttrHash.clear();
     AttributeKeys.clear();
+
+    map_port_to_related_set.clear();
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1705,6 +1725,147 @@ sai_status_t meta_generic_validation_create(
     return SAI_STATUS_SUCCESS;
 }
 
+bool meta_is_object_in_default_state(
+        _In_ sai_object_id_t oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (oid == SAI_NULL_OBJECT_ID)
+        SWSS_LOG_THROW("not expected NULL object id");
+
+    if (!object_reference_exists(oid))
+    {
+        SWSS_LOG_WARN("object %s refrence not exists, bug!",
+                sai_serialize_object_id(oid).c_str());
+        return false;
+    }
+
+    sai_object_meta_key_t meta_key;
+
+    meta_key.objecttype = sai_object_type_query(oid);
+    meta_key.objectkey.key.object_id = oid;
+
+    std::string key = sai_serialize_object_meta_key(meta_key);
+
+    if (!object_exists(key))
+    {
+        SWSS_LOG_WARN("object %s don't exists in local database, bug!",
+                sai_serialize_object_id(oid).c_str());
+        return false;
+    }
+
+    auto& attrs =  ObjectAttrHash[key];
+
+    for (const auto& attr: attrs)
+    {
+        auto &md = *attr.second->getMeta();
+
+        auto *a = attr.second->getattr();
+
+        if (md.isreadonly)
+            continue;
+
+        if (!md.isoidattribute)
+            continue;
+
+        if (md.attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+        {
+            if (a->value.oid != SAI_NULL_OBJECT_ID)
+            {
+                SWSS_LOG_ERROR("object %s has non default state on %s: %s, expected NULL",
+                        sai_serialize_object_id(oid).c_str(),
+                        md.attridname,
+                        sai_serialize_object_id(a->value.oid).c_str());
+
+                return false;
+            }
+        }
+        else if (md.attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_LIST)
+        {
+            for (uint32_t i = 0; i < a->value.objlist.count; i++)
+            {
+                if (a->value.objlist.list[i] != SAI_NULL_OBJECT_ID)
+                {
+                    SWSS_LOG_ERROR("object %s has non default state on %s[%u]: %s, expected NULL",
+                            sai_serialize_object_id(oid).c_str(),
+                            md.attridname,
+                            i,
+                            sai_serialize_object_id(a->value.objlist.list[i]).c_str());
+
+                    return false;
+                }
+            }
+        }
+        else
+        {
+            // unable to check whether object is in default state, need fix
+
+            SWSS_LOG_ERROR("unsupported oid attribute: %s, FIX ME!", md.attridname);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+sai_status_t meta_port_remove_validation(
+        _In_ const sai_object_meta_key_t& meta_key)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t port_id = meta_key.objectkey.key.object_id;
+
+    auto it = map_port_to_related_set.find(port_id);
+
+    if (it == map_port_to_related_set.end())
+    {
+        // user didn't query any queues, ipgs or scheduler groups
+        // for this port, then we can just skip this
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (object_reference_count(port_id) != 0)
+    {
+        SWSS_LOG_ERROR("port %s reference count is not zero, can't remove",
+                sai_serialize_object_id(port_id).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (!meta_is_object_in_default_state(port_id))
+    {
+        SWSS_LOG_ERROR("port %s is not in default state, can't remove",
+                sai_serialize_object_id(port_id).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (auto oid: it->second)
+    {
+        if (object_reference_count(oid) != 0)
+        {
+            SWSS_LOG_ERROR("port %s related object %s reference count is not zero, can't remove",
+                    sai_serialize_object_id(port_id).c_str(),
+                    sai_serialize_object_id(oid).c_str());
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        if (!meta_is_object_in_default_state(oid))
+        {
+            SWSS_LOG_ERROR("port related object %s is not in default state, can't remove",
+                    sai_serialize_object_id(oid).c_str());
+
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    SWSS_LOG_NOTICE("all objects related to port %s are in default state, can be remove",
+                sai_serialize_object_id(port_id).c_str());
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t meta_generic_validation_remove(
         _In_ const sai_object_meta_key_t& meta_key)
 {
@@ -1783,6 +1944,11 @@ sai_status_t meta_generic_validation_remove(
         SWSS_LOG_ERROR("object 0x%" PRIx64 " reference count is %d, can't remove", oid, count);
 
         return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_PORT)
+    {
+        return meta_port_remove_validation(meta_key);
     }
 
     // should be safe to remove
@@ -2817,6 +2983,51 @@ void meta_generic_validation_post_create(
 }
 
 void meta_generic_validation_post_remove(
+        _In_ const sai_object_meta_key_t& meta_key);
+
+void post_port_remove(
+        _In_ const sai_object_meta_key_t& meta_key)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t port_id = meta_key.objectkey.key.object_id;
+
+    auto it = map_port_to_related_set.find(port_id);
+
+    if (it == map_port_to_related_set.end())
+    {
+        // user didn't query any queues, ipgs or scheduler groups
+        // for this port, then we can just skip this
+
+        return;
+    }
+
+    for (auto oid: it->second)
+    {
+        // to remove existing objects, let's just call post remove for them
+        // and metadata will take the rest
+
+        sai_object_meta_key_t meta;
+
+        meta.objecttype = sai_object_type_query(oid);
+        meta.objectkey.key.object_id = oid;
+
+        SWSS_LOG_INFO("attempt to remove port related object: %s: %s",
+                sai_serialize_object_type(meta.objecttype).c_str(),
+                sai_serialize_object_id(oid).c_str());
+
+        meta_generic_validation_post_remove(meta);
+    }
+
+    // all related objects were removed, we need to clear current state
+
+    it->second.clear();
+
+    SWSS_LOG_NOTICE("success executing post port remove actions: %s",
+            sai_serialize_object_id(port_id).c_str());
+}
+
+void meta_generic_validation_post_remove(
         _In_ const sai_object_meta_key_t& meta_key)
 {
     SWSS_LOG_ENTER();
@@ -2991,6 +3202,11 @@ void meta_generic_validation_post_remove(
         SWSS_LOG_DEBUG("erasing attributes key %s", AttributeKeys[ok].c_str());
 
         AttributeKeys.erase(ok);
+    }
+
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_PORT)
+    {
+        post_port_remove(meta_key);
     }
 }
 
@@ -3337,6 +3553,69 @@ void meta_generic_validation_post_get_objlist(
     }\
 }
 
+void meta_add_port_to_related_map(
+        _In_ sai_object_id_t port_id,
+        _In_ const sai_object_list_t& list)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t i = 0; i < list.count; i++)
+    {
+        sai_object_id_t rel = list.list[i];
+
+        if (rel == SAI_NULL_OBJECT_ID)
+            SWSS_LOG_THROW("not expected NULL oid on the list");
+
+        map_port_to_related_set[port_id].insert(rel);
+    }
+}
+
+void meta_post_port_get(
+        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ sai_object_id_t switch_id,
+        _In_ const uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * User may or may not query one of below attributes to get some port
+     * objects, and those objects are special since when user decide to remove
+     * port, then those object will be removed automatically by vendor SAI, and
+     * this action needs to be reflected here too, so if user will remove port,
+     * those objects would need to be remove from local database too.
+     *
+     * TODO: There will be issue here, since we need to know which of those
+     * objects are user created, for example if user will create some extra
+     * queues with specific port, and then query queues list, those extra
+     * queues would need to be explicitly removed first by user, otherwise this
+     * logic here will also consider those user created queues as switch
+     * default, and it will remove them when port will be removed.  Such action
+     * should be prevented.
+     */
+
+    const sai_object_id_t port_id = meta_key.objectkey.key.object_id;
+
+    for (uint32_t idx = 0; idx < attr_count; ++idx)
+    {
+        const sai_attribute_t& attr = attr_list[idx];
+
+        auto& md = *sai_metadata_get_attr_metadata(meta_key.objecttype, attr.id);
+
+        switch (md.attrid)
+        {
+            case SAI_PORT_ATTR_QOS_QUEUE_LIST:
+            case SAI_PORT_ATTR_QOS_SCHEDULER_GROUP_LIST:
+            case SAI_PORT_ATTR_INGRESS_PRIORITY_GROUP_LIST:
+                meta_add_port_to_related_map(port_id, attr.value.objlist);
+                break;
+
+            default:
+                break;
+        }
+    }
+}
+
 void meta_generic_validation_post_get(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
@@ -3572,6 +3851,11 @@ void meta_generic_validation_post_get(
                 }
             }
         }
+    }
+
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_PORT)
+    {
+        meta_post_port_get(meta_key, switch_id, attr_count, attr_list);
     }
 }
 

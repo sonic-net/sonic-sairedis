@@ -25,6 +25,7 @@ attrs
 attrvalue
 bool
 Bool
+booldata
 brcm
 broadcom
 candidateObjects
@@ -89,6 +90,7 @@ INSEG
 ip
 IP
 IPG
+ipgs
 ipmc
 IPv
 isobjectid
@@ -107,9 +109,9 @@ Mellanox
 metadata
 mlnx
 mpls
+MTU
 mutex
 mutexes
-MTU
 namespace
 namespaces
 NHG
@@ -175,9 +177,11 @@ sanitycheck
 sdk
 SDK
 selectable
+setBuffered
 setMinPrio
 setPortCounterList
 setQueueCounterList
+sg
 SGs
 sleeptime
 soAll
@@ -244,5 +248,3 @@ VXLAN
 workaroung
 xoff
 xon
-booldata
-setBuffered
