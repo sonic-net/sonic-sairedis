@@ -14,6 +14,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_bmtor.cpp \
 						 sai_redis_bridge.cpp \
 						 sai_redis_buffer.cpp \
+                         sai_redis_debug_counter.cpp \
 						 sai_redis_dtel.cpp \
 						 sai_redis_fdb.cpp \
 						 sai_redis_hash.cpp \
@@ -55,8 +56,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_generic_get.cpp \
 						 sai_redis_generic_stats.cpp \
 						 sai_redis_notifications.cpp \
-						 sai_redis_record.cpp \
-                         sai_redis_debug_counter.cpp
+						 sai_redis_record.cpp
 
 libsairedis_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 libsairedis_la_LIBADD = -lhiredis -lswsscommon
