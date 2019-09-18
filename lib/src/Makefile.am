@@ -14,7 +14,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_bmtor.cpp \
 						 sai_redis_bridge.cpp \
 						 sai_redis_buffer.cpp \
-                         sai_redis_debug_counter.cpp \
+						 sai_redis_debug_counter.cpp \
 						 sai_redis_dtel.cpp \
 						 sai_redis_fdb.cpp \
 						 sai_redis_hash.cpp \
