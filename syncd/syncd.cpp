@@ -2917,6 +2917,10 @@ sai_status_t processEvent(
         {
             return processBulkEvent((sai_common_api_t)SAI_COMMON_API_BULK_CREATE, kco);
         }
+        else if (op == "bulkremove")
+        {
+            return processBulkEvent((sai_common_api_t)SAI_COMMON_API_BULK_REMOVE, kco);
+        }
         else if (op == "notify")
         {
             return notifySyncd(key);
