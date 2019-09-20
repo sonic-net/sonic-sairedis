@@ -10,6 +10,7 @@ extern "C" {
 #include <set>
 #include <condition_variable>
 #include <unordered_map>
+#include <unordered_set>
 #include "swss/table.h"
 
 class FlexCounter
@@ -19,6 +20,11 @@ class FlexCounter
                 _In_ uint32_t pollInterval,
                 _In_ std::string instanceId);
         static void setPortCounterList(
+                _In_ sai_object_id_t portVid,
+                _In_ sai_object_id_t portId,
+                _In_ std::string instanceId,
+                _In_ const std::vector<sai_port_stat_t> &counterIds);
+        static void setPortDebugCounterList(
                 _In_ sai_object_id_t portVid,
                 _In_ sai_object_id_t portId,
                 _In_ std::string instanceId,
@@ -62,6 +68,9 @@ class FlexCounter
                  _In_ std::string instanceId);
 
         static void removePort(
+                _In_ sai_object_id_t portVid,
+                _In_ std::string instanceId);
+        static void removePortDebugCounters(
                 _In_ sai_object_id_t portVid,
                 _In_ std::string instanceId);
         static void removeQueue(
@@ -190,6 +199,9 @@ class FlexCounter
         void saiUpdateSupportedBufferPoolCounters(sai_object_id_t bufferPoolId,
                                                   const std::vector<sai_buffer_pool_stat_t> &counterIds,
                                                   sai_stats_mode_t statsMode = SAI_STATS_MODE_READ_AND_CLEAR);
+
+        std::vector<sai_port_stat_t> saiCheckSupportedPortDebugCounters(sai_object_id_t portId, _In_ const std::vector<sai_port_stat_t> &counterIds);
+
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
         bool isPriorityGroupCounterSupported(sai_ingress_priority_group_stat_t counter) const;
@@ -203,6 +215,7 @@ class FlexCounter
         typedef std::unordered_map<std::string, collect_counters_handler_t> collect_counters_handler_unordered_map_t;
 
         void collectPortCounters(_In_ swss::Table &countersTable);
+        void collectPortDebugCounters(_In_ swss::Table &countersTable);
         void collectQueueCounters(_In_ swss::Table &countersTable);
         void collectQueueAttrs(_In_ swss::Table &countersTable);
         void collectPriorityGroupCounters(_In_ swss::Table &countersTable);
@@ -215,6 +228,7 @@ class FlexCounter
 
         // Key is a Virtual ID
         std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> m_portCounterIdsMap;
+        std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> m_portDebugCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> m_queueCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupCounterIds>> m_priorityGroupCounterIdsMap;

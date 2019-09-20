@@ -3376,6 +3376,7 @@ void processFlexCounterEvent(
         if (objectType == SAI_OBJECT_TYPE_PORT)
         {
             FlexCounter::removePort(vid, groupName);
+            FlexCounter::removePortDebugCounters(vid, groupName);
         }
         else if (objectType == SAI_OBJECT_TYPE_QUEUE)
         {
@@ -3422,6 +3423,18 @@ void processFlexCounterEvent(
                 }
 
                 FlexCounter::setPortCounterList(vid, rid, groupName, portCounterIds);
+            }
+            else if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_DEBUG_COUNTER_ID_LIST)
+            {
+                std::vector<sai_port_stat_t> portDebugCounterIds;
+                for (const auto &str : idStrings)
+                {
+                    sai_port_stat_t stat;
+                    sai_deserialize_port_stat(str.c_str(), &stat);
+                    portDebugCounterIds.push_back(stat);
+                }
+
+                FlexCounter::setPortDebugCounterList(vid, rid, groupName, portDebugCounterIds);
             }
             else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_COUNTER_ID_LIST)
             {
