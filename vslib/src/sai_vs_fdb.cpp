@@ -220,7 +220,7 @@ sai_status_t internal_vs_flush_fdb_entries(
      * response causes syncd to delete ASIC_DB entries in a loop  and
      * stuck for long time when a large number of FDB entries are present.
      */
-#if 0
+
     /*
      * We can have 3 attributes (so far) to flush by:
      * - entry type
@@ -274,7 +274,12 @@ sai_status_t internal_vs_flush_fdb_entries(
 
     SWSS_LOG_NOTICE("generating fdb flush notifications");
 
+    /* notification has been sent for individual mac delete, so 
+     * not sending the bulk flush notification
+     */
+#if 0
     sai_fdb_event_notification_fn ntf = (sai_fdb_event_notification_fn)attr.value.ptr;
+#endif
 
     sai_fdb_event_notification_data_t data;
     sai_attribute_t attrs[2];
@@ -313,11 +318,16 @@ sai_status_t internal_vs_flush_fdb_entries(
         attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
 
         meta_sai_on_fdb_event(1, &data); // update metadata
-
+        
+        /* notification has been sent for individual mac delete, so 
+         * not sending the bulk flush notification
+         */
+#if 0
         if (ntf != NULL)
         {
             ntf(1, &data);
         }
+#endif
     }
 
     if (dynamic_fdbs.size() > 0)
@@ -328,18 +338,21 @@ sai_status_t internal_vs_flush_fdb_entries(
         attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
 
         meta_sai_on_fdb_event(1, &data); // update metadata
-
+        
+        /* notification has been sent for individual mac delete, so 
+         * not sending the bulk flush notification
+         */
+#if 0    
         if (ntf != NULL)
         {
             ntf(1, &data);
         }
-
+#endif
         SWSS_LOG_NOTICE("1");
     }
 
     // TODO: we can add config entry to send notifications 1 by 1 as option to consolidated
 
-#endif
     return SAI_STATUS_SUCCESS;
 }
 
