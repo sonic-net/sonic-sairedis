@@ -2844,6 +2844,55 @@ sai_status_t processFdbFlush(
 
     return status;
 }
+bool checkErrorAndSkipOAAbort(sai_object_type_t object_type, sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("object_type %s status %d", sai_serialize_object_type(object_type).c_str(),
+                                               sai_serialize_status(status).c_str());
+
+    switch (object_type)
+    {
+        case SAI_OBJECT_TYPE_QOS_MAP:
+        {
+            switch (status)
+            {
+                case SAI_STATUS_NOT_IMPLEMENTED:
+                    return true;
+
+                default:
+                    break;
+            }
+        }
+        case SAI_OBJECT_TYPE_PORT:
+        {
+            switch (status)
+            {
+                case SAI_STATUS_ATTR_NOT_SUPPORTED_0:
+                    return true;
+
+                default:
+                    break;
+            }
+        }
+        case SAI_OBJECT_TYPE_BUFFER_POOL:
+        {
+            switch (status)
+            {
+                case SAI_STATUS_ATTR_NOT_IMPLEMENTED_0:
+                    return true;
+
+                default:
+                    break;
+            }
+        }
+
+        default:
+            break;
+    }
+
+    return false;
+}
 
 sai_status_t processEvent(
         _In_ swss::ConsumerTable &consumer)
@@ -3086,10 +3135,25 @@ sai_status_t processEvent(
                 SWSS_LOG_ERROR("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
             }
 
-            SWSS_LOG_THROW("failed to execute api: %s, key: %s, status: %s",
-                    op.c_str(),
-                    key.c_str(),
-                    sai_serialize_status(status).c_str());
+            /*
+             * Handling SAI errors (not implemented or not supported) objects
+             * like qos_map, bufferPool objects etc gracefully by logging error
+             * and not throwing run time error to avoid OA abort.
+             */
+            if (checkErrorAndSkipOAAbort(object_type, status))
+            {
+                SWSS_LOG_ERROR("failed to execute api: %s, key: %s, status: %s",
+                        op.c_str(),
+                        key.c_str(),
+                        sai_serialize_status(status).c_str());
+            }
+            else
+            {
+                SWSS_LOG_THROW("failed to execute api: %s, key: %s, status: %s",
+                        op.c_str(),
+                        key.c_str(),
+                        sai_serialize_status(status).c_str());
+            }
         }
         else // non GET api, status is SUCCESS
         {
