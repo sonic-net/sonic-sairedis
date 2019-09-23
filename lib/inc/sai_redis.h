@@ -113,6 +113,7 @@ extern const sai_virtual_router_api_t   redis_virtual_router_api;
 extern const sai_vlan_api_t             redis_vlan_api;
 extern const sai_wred_api_t             redis_wred_api;
 extern const sai_debug_counter_api_t    redis_debug_counter_api;
+extern const sai_nat_api_t              redis_nat_api;
 
 #define UNREFERENCED_PARAMETER(X)
 
@@ -194,6 +195,7 @@ REDIS_ENTRY_QUAD(l2mc_entry);
 REDIS_ENTRY_QUAD(mcast_fdb_entry);
 REDIS_ENTRY_QUAD(neighbor_entry);
 REDIS_ENTRY_QUAD(route_entry);
+REDIS_ENTRY_QUAD(nat_entry);
 
 // BULK
 

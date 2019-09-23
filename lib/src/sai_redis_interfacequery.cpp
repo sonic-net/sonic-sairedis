@@ -255,6 +255,7 @@ sai_status_t sai_api_query(
         API_CASE(VLAN,vlan);
         API_CASE(WRED,wred);
         API_CASE(DEBUG_COUNTER,debug_counter);
+        API_CASE(NAT,nat);
 
         default:
             SWSS_LOG_ERROR("Invalid API type %d", sai_api_id);

@@ -107,6 +107,7 @@ META_QUAD_ENTRY(l2mc_entry);
 META_QUAD_ENTRY(mcast_fdb_entry);
 META_QUAD_ENTRY(neighbor_entry);
 META_QUAD_ENTRY(route_entry);
+META_QUAD_ENTRY(nat_entry);
 
 // STATS
 

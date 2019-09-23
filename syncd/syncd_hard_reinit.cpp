@@ -27,6 +27,7 @@ static StringHash g_switches;
 static StringHash g_fdbs;
 static StringHash g_routes;
 static StringHash g_neighbors;
+static StringHash g_nat_entries;
 
 #define ENABLE_PERF
 
@@ -1098,6 +1099,45 @@ void processRoutes(bool defaultOnly)
     }
 }
 
+void processNatEntries()
+{
+    SWSS_LOG_ENTER();
+
+    for (auto &kv: g_nat_entries)
+    {
+        const std::string &strNatEntry = kv.first;
+        const std::string &asicKey = kv.second;
+
+        sai_object_meta_key_t meta_key;
+
+        meta_key.objecttype = SAI_OBJECT_TYPE_NAT_ENTRY;
+
+        sai_deserialize_nat_entry(strNatEntry, meta_key.objectkey.key.nat_entry);
+
+        processStructNonObjectIds(meta_key);
+
+        std::shared_ptr<SaiAttributeList> list = g_attributesLists[asicKey];
+
+        sai_attribute_t *attrList = list->get_attr_list();
+
+        uint32_t attrCount = list->get_attr_count();
+
+        processAttributesForOids(SAI_OBJECT_TYPE_NAT_ENTRY, attrCount, attrList);
+
+        sai_status_t status = sai_metadata_sai_nat_api->
+            create_nat_entry(&meta_key.objectkey.key.nat_entry, attrCount, attrList);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            listFailedAttributes(SAI_OBJECT_TYPE_NAT_ENTRY, attrCount, attrList);
+
+            SWSS_LOG_THROW("failed to create_nat_entry %s: %s",
+                    strNatEntry.c_str(),
+                    sai_serialize_status(status).c_str());
+        }
+    }
+}
+
 std::vector<std::string> redisGetAsicStateKeys()
 {
     SWSS_LOG_ENTER();
@@ -1150,6 +1190,10 @@ void readAsicState()
                 g_neighbors[strObjectId] = key;
                 break;
 
+            case SAI_OBJECT_TYPE_NAT_ENTRY:
+                g_nat_entries[strObjectId] = key;
+                break;
+
             case SAI_OBJECT_TYPE_SWITCH:
                 g_switches[strObjectId] = key;
                 g_oids[strObjectId] = key;
@@ -1190,6 +1234,7 @@ void hardReinit()
         processOids();
         processRoutes(true);
         processRoutes(false);
+        processNatEntries();
     }
 
 #ifdef ENABLE_PERF

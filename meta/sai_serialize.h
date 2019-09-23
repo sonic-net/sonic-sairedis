@@ -43,6 +43,9 @@ std::string sai_serialize_neighbor_entry(
 std::string sai_serialize_route_entry(
         _In_ const sai_route_entry_t &route_entry);
 
+std::string sai_serialize_nat_entry(
+        _In_ const sai_nat_entry_t &nat_entry);
+
 std::string sai_serialize_inseg_entry(
         _In_ const sai_inseg_entry_t &inseg_entry);
 
@@ -206,6 +209,10 @@ void sai_deserialize_neighbor_entry(
 void sai_deserialize_route_entry(
         _In_ const std::string& s,
         _In_ sai_route_entry_t &route_entry);
+
+void sai_deserialize_nat_entry(
+        _In_ const std::string& s,
+        _In_ sai_nat_entry_t &nat_entry);
 
 void sai_deserialize_inseg_entry(
         _In_ const std::string& s,

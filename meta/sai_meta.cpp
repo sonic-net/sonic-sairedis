@@ -6757,3 +6757,283 @@ sai_status_t meta_sai_flush_fdb_entries(
 
     return flush_fdb_entries(switch_id, attr_count, attr_list);
 }
+
+// NAT
+
+sai_status_t meta_sai_validate_nat_entry(
+        _In_ const sai_nat_entry_t* nat_entry,
+        _In_ bool create)
+{
+    SWSS_LOG_ENTER();
+
+    if (nat_entry == NULL)
+    {
+        SWSS_LOG_ERROR("nat_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_id_t vr = nat_entry->vr_id;
+
+    if (vr == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("virtual router is set to null object id");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t object_type = sai_object_type_query(vr);
+
+    if (object_type == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("virtual router oid 0x%lx is not valid object type, "
+                        "returned null object type", vr);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t expected = SAI_OBJECT_TYPE_VIRTUAL_ROUTER;
+
+    if (object_type != expected)
+    {
+        SWSS_LOG_ERROR("virtual router oid 0x%lx type %d is wrong type, "
+                       "expected object type %d", vr, object_type, expected);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // check if virtual router exists
+    sai_object_meta_key_t meta_key_vr = { .objecttype = expected, .objectkey = { .key = { .object_id = vr } } };
+
+    std::string key_vr = sai_serialize_object_meta_key(meta_key_vr);
+
+    if (!object_exists(key_vr))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_vr.c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // check if NAT entry exists
+    sai_object_meta_key_t meta_key_nat = { .objecttype = SAI_OBJECT_TYPE_NAT_ENTRY, .objectkey = { .key = { .nat_entry = *nat_entry } } };
+
+    std::string key_nat = sai_serialize_object_meta_key(meta_key_nat);
+
+    if (create)
+    {
+        if (object_exists(key_nat))
+        {
+            SWSS_LOG_ERROR("object key %s already exists", key_nat.c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+    if (!object_exists(key_nat))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist", key_nat.c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+
+sai_status_t meta_sai_create_nat_entry(
+        _In_ const sai_nat_entry_t* nat_entry,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_create_nat_entry_fn create)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_nat_entry(nat_entry, true);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_NAT_ENTRY, .objectkey = { .key = { .nat_entry = *nat_entry  } } };
+
+    status = meta_generic_validation_create(meta_key, nat_entry->switch_id, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (create == NULL)
+    {
+        SWSS_LOG_ERROR("create function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = create(nat_entry, attr_count, attr_list);
+
+    META_LOG_STATUS(create, status);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_create(meta_key, nat_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_remove_nat_entry(
+        _In_ const sai_nat_entry_t* nat_entry,
+        _In_ sai_remove_nat_entry_fn remove)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_nat_entry(nat_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_NAT_ENTRY, .objectkey = { .key = { .nat_entry = *nat_entry  } } };
+
+    status = meta_generic_validation_remove(meta_key);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (remove == NULL)
+    {
+        SWSS_LOG_ERROR("remove function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = remove(nat_entry);
+
+    META_LOG_STATUS(remove, status);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+      meta_generic_validation_post_remove(meta_key);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_set_nat_entry(
+        _In_ const sai_nat_entry_t* nat_entry,
+        _In_ const sai_attribute_t *attr,
+        _In_ sai_set_nat_entry_attribute_fn set)
+{
+    SWSS_LOG_ENTER();
+    sai_status_t status = meta_sai_validate_nat_entry(nat_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_NAT_ENTRY, .objectkey = { .key = { .nat_entry = *nat_entry  } } };
+
+    status = meta_generic_validation_set(meta_key, attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (set == NULL)
+    {
+        SWSS_LOG_ERROR("set function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = set(nat_entry, attr);
+
+    META_LOG_STATUS(set, status);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
+    }
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        meta_generic_validation_post_set(meta_key, attr);
+    }
+
+    return status;
+}
+
+sai_status_t meta_sai_get_nat_entry(
+        _In_ const sai_nat_entry_t* nat_entry,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list,
+        _In_ sai_get_nat_entry_attribute_fn get)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = meta_sai_validate_nat_entry(nat_entry, false);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_NAT_ENTRY, .objectkey = { .key = { .nat_entry = *nat_entry  } } };
+
+    status = meta_generic_validation_get(meta_key, attr_count, attr_list);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
+
+    if (get == NULL)
+    {
+        SWSS_LOG_ERROR("get function pointer is NULL");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    status = get(nat_entry, attr_count, attr_list);
+
+    META_LOG_STATUS(get, status);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+      meta_generic_validation_post_get(meta_key, nat_entry->switch_id, attr_count, attr_list);
+    }
+
+    return status;
+}

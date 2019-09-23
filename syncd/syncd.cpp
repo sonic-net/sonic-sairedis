@@ -1803,6 +1803,18 @@ void InspectAsic()
                 break;
             }
 
+            case SAI_OBJECT_TYPE_NAT_ENTRY:
+            {
+                sai_nat_entry_t nat_entry;
+                sai_deserialize_nat_entry(str_object_id, nat_entry);
+
+                nat_entry.switch_id = translate_vid_to_rid(nat_entry.switch_id);
+                nat_entry.vr_id = translate_vid_to_rid(nat_entry.vr_id);
+
+                status = sai_metadata_sai_nat_api->get_nat_entry_attribute(&nat_entry, attr_count, attr_list);
+                break;
+            }
+
             default:
             {
                 if (info->isnonobjectid)
@@ -2624,6 +2636,7 @@ sai_object_id_t extractSwitchVid(
     sai_fdb_entry_t fdb_entry;
     sai_neighbor_entry_t neighbor_entry;
     sai_route_entry_t route_entry;
+    sai_nat_entry_t nat_entry;
     sai_object_id_t oid;
 
     switch (object_type)
@@ -2639,6 +2652,10 @@ sai_object_id_t extractSwitchVid(
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
             sai_deserialize_route_entry(str_object_id, route_entry);
             return route_entry.switch_id;
+
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+            sai_deserialize_nat_entry(str_object_id, nat_entry);
+            return nat_entry.switch_id;
 
         default:
 
@@ -3179,6 +3196,10 @@ sai_status_t processEvent(
 
                 case SAI_OBJECT_TYPE_ROUTE_ENTRY:
                     sai_deserialize_route_entry(str_object_id, meta_key.objectkey.key.route_entry);
+                    break;
+
+                case SAI_OBJECT_TYPE_NAT_ENTRY:
+                    sai_deserialize_nat_entry(str_object_id, meta_key.objectkey.key.nat_entry);
                     break;
 
                 default:

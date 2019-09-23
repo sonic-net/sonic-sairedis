@@ -146,6 +146,7 @@ extern const sai_virtual_router_api_t   vs_virtual_router_api;
 extern const sai_vlan_api_t             vs_vlan_api;
 extern const sai_wred_api_t             vs_wred_api;
 extern const sai_debug_counter_api_t    vs_debug_counter_api;
+extern const sai_nat_api_t              vs_nat_api;
 
 // OID QUAD
 
@@ -207,6 +208,7 @@ VS_ENTRY_QUAD(l2mc_entry);
 VS_ENTRY_QUAD(mcast_fdb_entry);
 VS_ENTRY_QUAD(neighbor_entry);
 VS_ENTRY_QUAD(route_entry);
+VS_ENTRY_QUAD(nat_entry);
 
 // STATS
 

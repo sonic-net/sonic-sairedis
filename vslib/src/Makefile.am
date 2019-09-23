@@ -50,6 +50,7 @@ libsaivs_la_SOURCES = \
 					  sai_vs_virtual_router.cpp \
 					  sai_vs_vlan.cpp \
 					  sai_vs_wred.cpp \
+					  sai_vs_nat.cpp \
 					  sai_vs_generic_create.cpp \
 					  sai_vs_generic_get.cpp \
 					  sai_vs_generic_remove.cpp \

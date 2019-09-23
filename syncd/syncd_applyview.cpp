@@ -574,6 +574,11 @@ class AsicView
 
                         break;
 
+                    case SAI_OBJECT_TYPE_NAT_ENTRY:
+                        sai_deserialize_nat_entry(o->str_object_id, o->meta_key.objectkey.key.nat_entry);    
+                        soNatEntries[o->str_object_id] = o;
+                        break;
+
                     default:
 
                         if (o->info->isnonobjectid)
@@ -856,6 +861,7 @@ class AsicView
         StrObjectIdToSaiObjectHash soFdbs;
         StrObjectIdToSaiObjectHash soNeighbors;
         StrObjectIdToSaiObjectHash soRoutes;
+        StrObjectIdToSaiObjectHash soNatEntries;
         StrObjectIdToSaiObjectHash soOids;
         StrObjectIdToSaiObjectHash soAll;
 
@@ -1183,6 +1189,10 @@ class AsicView
                         soRoutes[currentObj->str_object_id] = currentObj;
                         break;
 
+                    case SAI_OBJECT_TYPE_NAT_ENTRY:
+                        soNatEntries[currentObj->str_object_id] = currentObj;
+                        break;
+
                     default:
 
                         SWSS_LOG_THROW("unsupported object type: %s",
@@ -1307,6 +1317,10 @@ class AsicView
 
                     case SAI_OBJECT_TYPE_ROUTE_ENTRY:
                         soRoutes.erase(currentObj->str_object_id);
+                        break;
+
+                    case SAI_OBJECT_TYPE_NAT_ENTRY:
+                        soNatEntries[currentObj->str_object_id] = currentObj;
                         break;
 
                     default:
@@ -1674,6 +1688,27 @@ class AsicView
                         case SAI_ACL_COUNTER_ATTR_BYTES:
 
                             // when reading asic view, ignore acl counter packets and bytes
+                            // this will result to not compare them during comparison logic
+
+                            SWSS_LOG_INFO("ignoring %s for %s", meta->attridname, obj->str_object_id.c_str());
+
+                            continue;
+
+                        default:
+                            break;
+                    }
+                }
+                if (obj->getObjectType() == SAI_OBJECT_TYPE_NAT_ENTRY)
+                {
+                    auto* meta = attr->getAttrMetadata();
+
+                    switch (meta->attrid)
+                    {
+
+                        case SAI_NAT_ENTRY_ATTR_HIT_BIT_COR:
+                        case SAI_NAT_ENTRY_ATTR_HIT_BIT:
+
+                            // when reading asic view, ignore nat entry hitbit attribute
                             // this will result to not compare them during comparison logic
 
                             SWSS_LOG_INFO("ignoring %s for %s", meta->attridname, obj->str_object_id.c_str());
@@ -4810,6 +4845,78 @@ std::shared_ptr<SaiObj> findCurrentBestMatchForSwitch(
             currentSwitchObj->getObjectStatus());
 }
 
+/**
+ * @brief Find current best match for NAT entry.
+ *
+ *
+ * @param currentView Current view.
+ * @param temporaryView Temporary view.
+ * @param temporaryObj Temporary object.
+ *
+ * @return Best match object if found or nullptr.
+ */
+std::shared_ptr<SaiObj> findCurrentBestMatchForNatEntry(
+        _In_ const AsicView &currentView,
+        _In_ const AsicView &temporaryView,
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Make a copy here to not destroy object data, later
+     * on this data should be read only.
+     */
+
+    sai_object_meta_key_t mk = temporaryObj->meta_key;
+
+    if (!exchangeTemporaryVidToCurrentVid(currentView, temporaryView, mk))
+    {
+        /*
+         * Not all oids inside struct object were translated, so there is no
+         * matching object in current view, we need to return null.
+         */
+
+        return nullptr;
+    }
+
+    std::string str_nat_entry = sai_serialize_nat_entry(mk.objectkey.key.nat_entry);
+
+    /*
+     * Now when we have serialized NAT entry with temporary vr_id VID
+     * replaced to current vr_id VID we can do dictionary lookup for NAT entry.
+     */
+    auto currentNatEntry = currentView.soNatEntries.find(str_nat_entry);
+
+    if (currentNatEntry == currentView.soNatEntries.end())
+    {
+        SWSS_LOG_DEBUG("unable to find NAT entry %s in current asic view", str_nat_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same NAT entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentNatObj = currentNatEntry->second;
+
+    if (currentNatObj->getObjectStatus() == SAI_OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentNatObj;
+    }
+
+
+    /*
+     * If we are here, that means this NAT entry was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_THROW("found NAT entry %s in current view, but it status is %d, FATAL",
+            str_nat_entry.c_str(),
+            currentNatObj->getObjectStatus());
+}
+
 std::shared_ptr<SaiObj> findCurrentBestMatch(
         _In_ const AsicView &currentView,
         _In_ const AsicView &temporaryView,
@@ -4852,6 +4959,9 @@ std::shared_ptr<SaiObj> findCurrentBestMatch(
         case SAI_OBJECT_TYPE_FDB_ENTRY:
             return findCurrentBestMatchForFdbEntry(currentView, temporaryView, temporaryObj);
 
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+            return findCurrentBestMatchForNatEntry(currentView, temporaryView, temporaryObj);
+ 
             /*
              * We can have special case for switch since we know there should
              * be only one switch.
@@ -5518,6 +5628,10 @@ void createNewObjectFromTemporaryObject(
 
             case SAI_OBJECT_TYPE_FDB_ENTRY:
                 currentObj->str_object_id = sai_serialize_fdb_entry(currentObj->meta_key.objectkey.key.fdb_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_NAT_ENTRY:
+                currentObj->str_object_id = sai_serialize_nat_entry(currentObj->meta_key.objectkey.key.nat_entry);
                 break;
 
             default:

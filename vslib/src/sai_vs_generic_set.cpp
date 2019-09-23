@@ -71,3 +71,4 @@ VS_ENTRY_SET(L2MC_ENTRY,l2mc_entry);
 VS_ENTRY_SET(MCAST_FDB_ENTRY,mcast_fdb_entry);
 VS_ENTRY_SET(NEIGHBOR_ENTRY,neighbor_entry);
 VS_ENTRY_SET(ROUTE_ENTRY,route_entry);
+VS_ENTRY_SET(NAT_ENTRY, nat_entry);
