@@ -3136,9 +3136,9 @@ sai_status_t processEvent(
             }
 
             /*
-             * Handling SAI errors (not implemented or not supported) objects
-             * like qos_map, bufferPool objects etc gracefully by logging error
-             * and not throwing run time error to avoid OA abort.
+             * Handling SAI errors (not implemented or not supported) for objects
+             * like qos_map, buffer pool etc gracefully by logging error and not
+             * throwing run time error to avoid orchagent abort.
              */
             if (checkErrorAndSkipOAAbort(object_type, status))
             {
