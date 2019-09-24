@@ -1708,7 +1708,7 @@ class AsicView
                         case SAI_NAT_ENTRY_ATTR_HIT_BIT_COR:
                         case SAI_NAT_ENTRY_ATTR_HIT_BIT:
 
-                            // when reading asic view, ignore nat entry hitbit attribute
+                            // when reading asic view, ignore Nat entry hit-bit attribute
                             // this will result to not compare them during comparison logic
 
                             SWSS_LOG_INFO("ignoring %s for %s", meta->attridname, obj->str_object_id.c_str());
