@@ -10,7 +10,6 @@ extern "C" {
 #include <set>
 #include <condition_variable>
 #include <unordered_map>
-#include <unordered_set>
 #include "swss/table.h"
 
 class FlexCounter
