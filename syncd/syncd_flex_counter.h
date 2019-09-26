@@ -180,7 +180,7 @@ class FlexCounter
         void collectCounters(_In_ swss::Table &countersTable);
         void runPlugins(_In_ swss::DBConnector& db);
         void flexCounterThread(void);
-        void startFlexCounterThread(void);
+        void startFlexCounterThread(bool notify=false);
         void endFlexCounterThread(void);
 
         void saiUpdateSupportedPortCounters(sai_object_id_t portId);

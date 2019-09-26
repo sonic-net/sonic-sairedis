@@ -80,7 +80,7 @@ void FlexCounter::setPollInterval(
     fc.m_pollInterval = pollInterval;
     if (pollInterval > 0)
     {
-        fc.startFlexCounterThread();
+        fc.startFlexCounterThread(true);
     }
 }
 
@@ -95,7 +95,7 @@ void FlexCounter::updateFlexCounterStatus(
     {
         std::lock_guard<std::mutex> lkMgr(fc.m_mtx);
         fc.m_enable = true;
-        fc.startFlexCounterThread();
+        fc.startFlexCounterThread(true);
     }
     else if (status == "disable")
     {
@@ -1462,13 +1462,16 @@ void FlexCounter::flexCounterThread(void)
     }
 }
 
-void FlexCounter::startFlexCounterThread(void)
+void FlexCounter::startFlexCounterThread(bool notify)
 {
     SWSS_LOG_ENTER();
 
     if (m_runFlexCounterThread == true)
     {
-        m_pollCond.notify_all();
+		// Notifying will lead to back to back counter collection during reload.
+		// This has to be done carefully on case to case basis. e.g. change in polling interval.
+		if(notify)
+			m_pollCond.notify_all();
         return;
     }
 
