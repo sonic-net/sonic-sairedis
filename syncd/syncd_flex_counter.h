@@ -11,6 +11,7 @@ extern "C" {
 #include <condition_variable>
 #include <unordered_map>
 #include "swss/table.h"
+#include "swss/logger.h"
 
 class FlexCounter
 {
@@ -49,6 +50,11 @@ class FlexCounter
                 _In_ const std::string &instanceId,
                 _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds,
                 _In_ const std::string &statsMode = "");
+        static void setSwitchDebugCounterList(
+                _In_ sai_object_id_t switchVid,
+                _In_ sai_object_id_t switchId,
+                _In_ std::string instanceId,
+                _In_ const std::vector<sai_switch_stat_t> &counterIds);
         static void setQueueAttrList(
                 _In_ sai_object_id_t queueVid,
                 _In_ sai_object_id_t queueId,
@@ -83,6 +89,9 @@ class FlexCounter
                 _In_ std::string instanceId);
         static void removeBufferPool(
                 _In_ sai_object_id_t bufferPoolVid,
+                _In_ std::string instanceId);
+        static void removeSwitchDebugCounters(
+                _In_ sai_object_id_t switchVid,
                 _In_ std::string instanceId);
 
         static void addPortCounterPlugin(
@@ -171,6 +180,20 @@ class FlexCounter
             std::vector<sai_port_stat_t> portCounterIds;
         };
 
+        struct SwitchCounterIds
+        {
+            SwitchCounterIds(
+                _In_ sai_object_id_t oid, 
+                _In_ const std::vector<sai_switch_stat_t> &counterIds)
+                    : switchId(oid), switchCounterIds(counterIds)
+            {
+                SWSS_LOG_ENTER();
+            }
+
+            sai_object_id_t switchId;
+            std::vector<sai_switch_stat_t> switchCounterIds;
+        };
+
         struct RifCounterIds
         {
             RifCounterIds(
@@ -199,7 +222,10 @@ class FlexCounter
                                                   const std::vector<sai_buffer_pool_stat_t> &counterIds,
                                                   sai_stats_mode_t statsMode = SAI_STATS_MODE_READ_AND_CLEAR);
 
-        std::vector<sai_port_stat_t> saiCheckSupportedPortDebugCounters(sai_object_id_t portId, _In_ const std::vector<sai_port_stat_t> &counterIds);
+        std::vector<sai_port_stat_t> saiCheckSupportedPortDebugCounters(sai_object_id_t portId, 
+                                                                        const std::vector<sai_port_stat_t> &counterIds);
+        std::vector<sai_switch_stat_t> saiCheckSupportedSwitchDebugCounters(sai_object_id_t switchId, 
+                                                                            const std::vector<sai_switch_stat_t> &counterIds);                                                               
 
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
@@ -221,6 +247,7 @@ class FlexCounter
         void collectPriorityGroupAttrs(_In_ swss::Table &countersTable);
         void collectRifCounters(_In_ swss::Table &countersTable);
         void collectBufferPoolCounters(_In_ swss::Table &countersTable);
+        void collectSwitchDebugCounters(_In_ swss::Table &countersTable);
 
         void addCollectCountersHandler(const std::string &key, const collect_counters_handler_t &handler);
         void removeCollectCountersHandler(const std::string &key);
@@ -234,6 +261,7 @@ class FlexCounter
         std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> m_priorityGroupAttrIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<RifCounterIds>> m_rifCounterIdsMap;
         std::map<sai_object_id_t, std::shared_ptr<BufferPoolCounterIds>> m_bufferPoolCounterIdsMap;
+        std::map<sai_object_id_t, std::shared_ptr<SwitchCounterIds>> m_switchDebugCounterIdsMap;
 
         // Plugins
         std::set<std::string> m_queuePlugins;
