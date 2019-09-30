@@ -820,6 +820,14 @@ std::string sai_serialize_port_stat(
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_port_stat_t);
 }
 
+std::string sai_serialize_switch_stat(
+        _In_ const sai_switch_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_switch_stat_t);
+}
+
 std::string sai_serialize_port_pool_stat(
         _In_ const sai_port_pool_stat_t counter)
 {
@@ -896,6 +904,22 @@ std::string sai_serialize_switch_oper_status(
     j["status"] = sai_serialize_enum(status, &sai_metadata_enum_sai_switch_oper_status_t);
 
     return j.dump();
+}
+
+std::string sai_serialize_ingress_drop_reason(
+        _In_ const sai_in_drop_reason_t reason)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(reason, &sai_metadata_enum_sai_in_drop_reason_t);
+}
+
+std::string sai_serialize_egress_drop_reason(
+        _In_ const sai_out_drop_reason_t reason)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(reason, &sai_metadata_enum_sai_out_drop_reason_t);
 }
 
 std::string sai_serialize_switch_shutdown_request(

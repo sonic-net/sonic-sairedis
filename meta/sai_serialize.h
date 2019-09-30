@@ -84,6 +84,9 @@ std::string sai_serialize_common_api(
 std::string sai_serialize_port_stat(
         _In_ const sai_port_stat_t counter);
 
+std::string sai_serialize_switch_stat(
+        _In_ const sai_switch_stat_t counter);
+
 std::string sai_serialize_port_pool_stat(
         _In_ const sai_port_pool_stat_t counter);
 
@@ -134,6 +137,12 @@ std::string sai_serialize_mac(
 
 std::string sai_serialize_port_oper_status(
         _In_ sai_port_oper_status_t status);
+
+std::string sai_serialize_ingress_drop_reason(
+        _In_ const sai_in_drop_reason_t reason);
+
+std::string sai_serialize_egress_drop_reason(
+        _In_ const sai_out_drop_reason_t reason);
 
 std::string sai_serialize_l2mc_entry_type(
         _In_ const sai_l2mc_entry_type_t type);
