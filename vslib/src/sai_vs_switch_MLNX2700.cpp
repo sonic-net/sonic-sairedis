@@ -1241,6 +1241,11 @@ sai_status_t refresh_read_only_MLNX2700(
         return refresh_vlan_member_list(meta, object_id, switch_id);
     }
 
+    if (meta->objecttype == SAI_OBJECT_TYPE_DEBUG_COUNTER && meta->attrid == SAI_DEBUG_COUNTER_ATTR_INDEX)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (meta_unittests_enabled())
     {
         SWSS_LOG_NOTICE("unittests enabled, SET could be performed on %s, not recalculating", meta->attridname);
