@@ -68,56 +68,6 @@ bool doesFdbEntryNotMatchFlushAttr(
     return false;
 }
 
-void sendFdbDelNotification(
-        _In_ const fdb_info_t &fi)
-{
-    SWSS_LOG_ENTER();
-
-    sai_attribute_t attrs[2];
-
-    attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
-    attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
-
-    attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
-    attrs[1].value.oid = fi.bridge_port_id;
-
-    sai_fdb_event_notification_data_t data;
-
-    data.event_type = SAI_FDB_EVENT_AGED;
-
-    data.fdb_entry = fi.fdb_entry;
-
-    data.attr_count = 2;
-    data.attr = attrs;
-
-    // update metadata DB
-    meta_sai_on_fdb_event(1, &data);
-
-    sai_attribute_t attr;
-
-    attr.id = SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY;
-
-    sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_SWITCH, data.fdb_entry.switch_id, 1, &attr);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("failed to get fdb event notify from switch %s",
-                sai_serialize_object_id(data.fdb_entry.switch_id).c_str());
-        return;
-    }
-
-    std::string s = sai_serialize_fdb_event_ntf(1, &data);
-
-    SWSS_LOG_DEBUG("calling user fdb event callback: %s", s.c_str());
-
-    sai_fdb_event_notification_fn ntf = (sai_fdb_event_notification_fn)attr.value.ptr;
-
-    if (ntf != NULL)
-    {
-        ntf(1, &data);
-    }
-}
-
 sai_status_t internal_vs_flush_fdb_entries(
         _In_ sai_object_id_t switch_id,
         _In_ uint32_t attr_count,
@@ -206,21 +156,10 @@ sai_status_t internal_vs_flush_fdb_entries(
              * data base.
              */
 
-            fi.bridge_port_id = it->second.at("SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID")->getAttr()->value.oid;
-
-            SWSS_LOG_INFO("FDBDelNotification: fdb_entry:%s bpid:%s", sai_serialize_fdb_entry(fi.fdb_entry).c_str(), sai_serialize_object_id(fi.bridge_port_id).c_str());
-
             it = fdbs.erase(it);
-
-            sendFdbDelNotification(fi);
         }
     }
 
-    /* Sending notification for each fdb entry individually above, as a single
-     * response causes syncd to delete ASIC_DB entries in a loop  and
-     * stuck for long time when a large number of FDB entries are present.
-     */
-#if 0
     /*
      * We can have 3 attributes (so far) to flush by:
      * - entry type
@@ -339,7 +278,6 @@ sai_status_t internal_vs_flush_fdb_entries(
     }
 
     // TODO: we can add config entry to send notifications 1 by 1 as option to consolidated
-#endif
     return SAI_STATUS_SUCCESS;
 }
 

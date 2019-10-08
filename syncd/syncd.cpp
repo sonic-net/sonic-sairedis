@@ -8,6 +8,7 @@
 
 #include "swss/warm_restart.h"
 #include "swss/table.h"
+#include "swss/redisapi.h"
 
 #include "TimerWatchdog.h"
 
@@ -35,6 +36,7 @@ extern "C" {
  */
 std::mutex g_mutex;
 
+std::shared_ptr<swss::DBConnector>          dbAsic;
 std::shared_ptr<swss::RedisClient>          g_redisClient;
 std::shared_ptr<swss::ProducerTable>        getResponse;
 std::shared_ptr<swss::NotificationProducer> notifications;
@@ -88,6 +90,9 @@ volatile bool g_asicInitViewMode = false;
  * SAI switch global needed for RPC server and for remove_switch
  */
 sai_object_id_t gSwitchId;
+
+string fdbFlushSha;
+string fdbFlushLuaScriptName = "fdb_flush.lua";
 
 struct cmdOptions
 {
@@ -3756,7 +3761,7 @@ int syncd_main(int argc, char **argv)
     }
 #endif // SAITHRIFT
 
-    std::shared_ptr<swss::DBConnector> dbAsic = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    dbAsic = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(FLEX_COUNTER_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbState = std::make_shared<swss::DBConnector>(STATE_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
@@ -3778,6 +3783,9 @@ int syncd_main(int argc, char **argv)
     getResponse  = std::make_shared<swss::ProducerTable>(dbAsic.get(), "GETRESPONSE");
     notifications = std::make_shared<swss::NotificationProducer>(dbNtf.get(), "NOTIFICATIONS");
 
+    string fdbFlushLuaScript = swss::loadLuaScript(fdbFlushLuaScriptName);
+    fdbFlushSha = swss::loadRedisScript(dbAsic.get(), fdbFlushLuaScript);
+    
     g_veryFirstRun = isVeryFirstRun();
 
     /* ignore warm logic here if syncd starts in Mellanox fastfast boot mode */

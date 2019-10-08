@@ -93,6 +93,8 @@ sai_object_type_t getObjectTypeFromVid(
 
 extern std::shared_ptr<swss::NotificationProducer>  notifications;
 extern std::shared_ptr<swss::RedisClient>   g_redisClient;
+extern std::shared_ptr<swss::DBConnector>   dbAsic;
+extern std::string fdbFlushSha;
 
 extern bool g_enableConsistencyCheck;
 

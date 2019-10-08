@@ -108,12 +108,17 @@ void redisPutFdbEntryToAsicView(
     {
         sai_object_id_t bv_id = fdb->fdb_entry.bv_id;
         sai_object_id_t port_oid = 0;
+        int flush_static = 0;
         
         for (uint32_t i = 0; i < fdb->attr_count; i++)
         {
             if(fdb->attr[i].id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
             {
                 port_oid = fdb->attr[i].value.oid;
+            }
+            else if(fdb->attr[i].id == SAI_FDB_ENTRY_ATTR_TYPE)
+            {
+                flush_static = (fdb->attr[i].value.s32 == SAI_FDB_ENTRY_TYPE_STATIC) ? 1 : 0;
             }
         }
         
@@ -138,24 +143,14 @@ void redisPutFdbEntryToAsicView(
             */
             SWSS_LOG_NOTICE("received a flush all fdb event");
             std::string pattern = ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_FDB_ENTRY:*");
-            for (const auto &fdbkey: g_redisClient->keys(pattern))
-            {
-                /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
-                auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
-                if (pEntryType != NULL)
-                {
-                    std::string strEntryType = *pEntryType;
-                    if (strEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
-                    {
-                        SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
-                        g_redisClient->del(fdbkey);
-                    }
-                }
-                else
-                {
-                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
-                }
-            }
+            swss::RedisCommand command;
+            command.format(
+                "EVALSHA %s 3 %s %s %s",
+                fdbFlushSha.c_str(),
+                pattern.c_str(),
+                "",
+                std::to_string(flush_static).c_str());
+            swss::RedisReply r(dbAsic.get(), command);
         }
         else if (port_oid && !bv_id)
         {
@@ -176,7 +171,18 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush port fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
+            SWSS_LOG_NOTICE("received a flush port fdb event, port_oid = 0x%lx, bv_id = 0x%lx", port_oid, bv_id);
+            std::string pattern = ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_FDB_ENTRY:*");
+            std::string port_str = sai_serialize_object_id(port_oid);
+            SWSS_LOG_NOTICE("pattern %s port_str %s", pattern.c_str(), port_str.c_str());
+            swss::RedisCommand command;
+            command.format(
+                "EVALSHA %s 3 %s %s %s",
+                fdbFlushSha.c_str(),
+                pattern.c_str(),
+                port_str.c_str(),
+                std::to_string(flush_static).c_str());
+            swss::RedisReply r(dbAsic.get(), command);
         }
         else if (!port_oid && bv_id)
         {
@@ -197,12 +203,30 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush vlan fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
-            
+            SWSS_LOG_NOTICE("received a flush vlan fdb event, port_oid = 0x%lx, bv_id = 0x%lx", port_oid, bv_id);
+            std::string pattern = ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_FDB_ENTRY:*") + sai_serialize_object_id(bv_id) + std::string("*");
+            swss::RedisCommand command;
+            command.format(
+                "EVALSHA %s 3 %s %s %s",
+                fdbFlushSha.c_str(),
+                pattern.c_str(),
+                "",
+                std::to_string(flush_static).c_str());
+            swss::RedisReply r(dbAsic.get(), command);            
         }
         else
         {
-            SWSS_LOG_ERROR("received a flush fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
+            SWSS_LOG_NOTICE("received a flush fdb event, port_oid = 0x%lx, bv_id = 0x%lx", port_oid, bv_id);
+            std::string pattern = ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_FDB_ENTRY:*") + sai_serialize_object_id(bv_id) + std::string("*");
+            std::string port_str = sai_serialize_object_id(port_oid);
+            swss::RedisCommand command;
+            command.format(
+                "EVALSHA %s 3 %s %s %s",
+                fdbFlushSha.c_str(),
+                pattern.c_str(),
+                port_str.c_str(),
+                std::to_string(flush_static).c_str());
+            swss::RedisReply r(dbAsic.get(), command);
         }
 
         return;
