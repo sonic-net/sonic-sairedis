@@ -215,7 +215,6 @@ sai_status_t internal_vs_flush_fdb_entries(
 
     sai_fdb_event_notification_fn ntf = (sai_fdb_event_notification_fn)attr.value.ptr;
 
-
     sai_fdb_event_notification_data_t data;
     sai_attribute_t attrs[2];
 
@@ -253,7 +252,7 @@ sai_status_t internal_vs_flush_fdb_entries(
         attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
 
         meta_sai_on_fdb_event(1, &data); // update metadata
-        
+
         if (ntf != NULL)
         {
             ntf(1, &data);
@@ -268,7 +267,7 @@ sai_status_t internal_vs_flush_fdb_entries(
         attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
 
         meta_sai_on_fdb_event(1, &data); // update metadata
-          
+
         if (ntf != NULL)
         {
             ntf(1, &data);
@@ -278,6 +277,7 @@ sai_status_t internal_vs_flush_fdb_entries(
     }
 
     // TODO: we can add config entry to send notifications 1 by 1 as option to consolidated
+
     return SAI_STATUS_SUCCESS;
 }
 
