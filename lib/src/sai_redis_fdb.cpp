@@ -19,7 +19,7 @@ sai_status_t internal_redis_flush_fdb_entries(
 
     std::string key = str_object_type + ":" + sai_serialize_object_id(switch_id);
 
-    SWSS_LOG_DEBUG("flush key: %s, fields: %lu", key.c_str(), entry.size());
+    SWSS_LOG_NOTICE("flush key: %s, fields: %lu", key.c_str(), entry.size());
 
     if (g_record)
     {
@@ -76,7 +76,7 @@ sai_status_t internal_redis_flush_fdb_entries(
                 recordLine("F|" + str_status);
             }
 
-            SWSS_LOG_DEBUG("flush status: %d", status);
+            SWSS_LOG_NOTICE("flush status: %d", status);
 
             return status;
         }

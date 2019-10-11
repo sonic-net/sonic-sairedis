@@ -857,6 +857,76 @@ void performNotifySyncd(const std::string& request, const std::string response)
     // OK
 }
 
+void performFdbFlush(
+        _In_ const std::string& request,
+        _In_ const std::string response)
+{
+    SWSS_LOG_ENTER();
+
+    // 2017-05-13.20:47:24.883499|f|SAI_OBJECT_TYPE_FDB_FLUSH:oid:0x21000000000000|
+    // 2017-05-13.20:47:24.883499|F|SAI_STATUS_SUCCESS
+
+    // timestamp|action|data
+    auto r = swss::tokenize(request, '|');
+    auto R = swss::tokenize(response, '|');
+
+    if (r[1] != "f" || R[1] != "F")
+    {
+        SWSS_LOG_THROW("invalid fdb flush request/response %s/%s", request.c_str(), response.c_str());
+    }
+
+    if (r.size() > 3 && r[3].size() != 0)
+    {
+        SWSS_LOG_NOTICE("%zu %zu, %s", r.size(), r[3].size(), r[3].c_str());
+        // TODO currently we support only flush fdb entries with no attributes
+        SWSS_LOG_THROW("currently fdb flush supports only no attributes, but some given: %s", request.c_str());
+    }
+
+    // objecttype:objectid (object id may contain ':')
+    auto& data = r[2];
+    auto start = data.find_first_of(":");
+    auto str_object_type = data.substr(0, start);
+    auto str_object_id  = data.substr(start + 1);
+
+    sai_object_type_t ot = deserialize_object_type(str_object_type);
+
+    if (ot != SAI_OBJECT_TYPE_FDB_FLUSH)
+    {
+        SWSS_LOG_THROW("expected object type %s, but got: %s on %s",
+                sai_serialize_object_type(SAI_OBJECT_TYPE_FDB_FLUSH).c_str(),
+                str_object_type.c_str(),
+                request.c_str());
+    }
+
+    sai_object_id_t local_switch_id;
+    sai_deserialize_object_id(str_object_id, local_switch_id);
+
+    if (sai_switch_id_query(local_switch_id) != local_switch_id)
+    {
+        SWSS_LOG_THROW("fdb flush object is not switch id: %s, switch_id_query: %s",
+                str_object_id.c_str(),
+                sai_serialize_object_id(sai_switch_id_query(local_switch_id)).c_str());
+    }
+
+    auto switch_id = translate_local_to_redis(local_switch_id);
+
+    // TODO currently we support only flush fdb entries with no attributes
+    sai_status_t status = sai_metadata_sai_fdb_api->flush_fdb_entries(switch_id, 0, NULL);
+
+    // check status
+    sai_status_t expected_status;
+    sai_deserialize_status(R[2], expected_status);
+
+    if (status != expected_status)
+    {
+        SWSS_LOG_THROW("fdb flush got status %s, but expecting: %s",
+                sai_serialize_status(status).c_str(),
+                R[2].c_str());
+    }
+
+    // fdb flush OK
+}
+
 std::vector<std::string> tokenize(
         _In_ std::string input,
         _In_ const std::string &delim)
@@ -1189,6 +1259,25 @@ int replay(int argc, char **argv)
                     performNotifySyncd(line, response);
                 }
                 continue;
+
+            case 'f':
+                {
+                    std::string response;
+
+                    do
+                    {
+                        // this line may be notification, we need to skip
+                        if (!std::getline(infile, response))
+                        {
+                            SWSS_LOG_THROW("failed to read next file from file, previous: %s", line.c_str());
+                        }
+                    }
+                    while (response[response.find_first_of("|") + 1] == 'n');
+
+                    performFdbFlush(line, response);
+                }
+                continue;
+
             case '@':
                 performSleep(line);
                 continue;
@@ -1212,6 +1301,7 @@ int replay(int argc, char **argv)
                 break;
             case '#':
             case 'n':
+                SWSS_LOG_INFO("skipping op %c line %s", op, line.c_str());
                 continue; // skip comment and notification
 
             default:
