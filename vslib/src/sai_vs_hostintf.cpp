@@ -1122,6 +1122,13 @@ sai_status_t vs_create_hostif_tap_interface(
         return SAI_STATUS_FAILURE;
     }
 
+    if (attr_type->value.s32 == SAI_HOSTIF_TYPE_GENETLINK)
+    {
+        SWSS_LOG_DEBUG("Skipping tap create for hostif type genetlink");
+
+        return SAI_STATUS_SUCCESS;
+    }
+
     if (attr_type->value.s32 != SAI_HOSTIF_TYPE_NETDEV)
     {
         SWSS_LOG_ERROR("only SAI_HOSTIF_TYPE_NETDEV is supported");
