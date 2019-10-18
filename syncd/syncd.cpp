@@ -8,6 +8,7 @@
 
 #include "swss/warm_restart.h"
 #include "swss/table.h"
+#include "swss/json.hpp"
 
 #include "TimerWatchdog.h"
 
@@ -18,6 +19,7 @@ extern "C" {
 #include <iostream>
 #include <map>
 #include <unordered_map>
+using json = nlohmann::json;
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define MAX_OBJLIST_LEN 128
@@ -39,6 +41,8 @@ std::mutex g_mutex;
 std::shared_ptr<swss::RedisClient>          g_redisClient;
 std::shared_ptr<swss::ProducerTable>        getResponse;
 std::shared_ptr<swss::NotificationProducer> notifications;
+std::shared_ptr<swss::NotificationProducer> errorNotifications;
+std::string ehfConfigEnable = "false";
 
 /*
  * TODO: Those are hard coded values for mlnx integration for v1.0.1 they need
@@ -149,6 +153,72 @@ void notify_OA_about_syncd_exception()
     {
         SWSS_LOG_ERROR("Unknown runtime error");
     }
+}
+
+bool notificationToOASupported(_In_ const std::string& str_object_type,
+        _In_ const sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_type_t object_type;
+    sai_deserialize_object_type(str_object_type, object_type);
+
+    if ((ehfConfigEnable == "false") && (status == SAI_STATUS_SUCCESS))
+    {
+        return false;
+    }
+    switch(object_type)
+    {
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            return true;
+        default:
+            return false;
+    }
+
+    return false;
+}
+
+bool notifySAIAPIStatus(_In_ const swss::KeyOpFieldsValuesTuple &kco,
+        _In_ const sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &key = kfvKey(kco);
+    const std::string &op = kfvOp(kco);
+    const std::string &str_object_type = key.substr(0, key.find(":"));
+
+    if(!notificationToOASupported(str_object_type, status))
+    {
+        SWSS_LOG_DEBUG("Error handling notification is not supported for object type %s",
+                str_object_type.c_str());
+        return false;
+    }
+
+    /* Notify SAI API status to Error handling framework */
+    if (errorNotifications != NULL)
+    {
+        /* Add error details to the list of values received from OA
+         * and send it in the notification */
+
+        json j;
+        j["key"] = key; /* object_type + Key */
+        j["operation"] = op;
+
+        const std::vector<swss::FieldValueTuple> &vals = kfvFieldsValues(kco);
+        for (const auto &v: vals)
+        {
+            j[fvField(v)] = fvValue(v);
+        }
+
+        j["rc"] = sai_serialize_status(status);
+        std::string s = j.dump();
+
+        sendSaiApiStatusNotification("saiapi_status", s);
+        return true;
+    }
+    SWSS_LOG_ERROR("Notification is not sent as the notification channel is not ready yet");
+    return false;
 }
 
 void sai_diag_shell(
@@ -2877,6 +2947,7 @@ sai_status_t processEvent(
     swss::KeyOpFieldsValuesTuple kco;
 
     sai_status_t status = SAI_STATUS_SUCCESS;
+    bool notifSent;
 
     do {
 
@@ -3087,35 +3158,50 @@ sai_status_t processEvent(
 
             internal_syncd_get_send(object_type, str_object_id, switch_vid, status, attr_count, attr_list);
         }
-        else if (status != SAI_STATUS_SUCCESS)
+        else
         {
             internal_syncd_api_send_response(api, status);
 
-            if (!info->isnonobjectid && api == SAI_COMMON_API_SET)
+            notifSent = notifySAIAPIStatus(kco, status);
+
+            if (status != SAI_STATUS_SUCCESS)
             {
-                sai_object_id_t vid;
-                sai_deserialize_object_id(str_object_id, vid);
+                if (!info->isnonobjectid && api == SAI_COMMON_API_SET)
+                {
+                    sai_object_id_t vid;
+                    sai_deserialize_object_id(str_object_id, vid);
 
-                sai_object_id_t rid = translate_vid_to_rid(vid);
+                    sai_object_id_t rid = translate_vid_to_rid(vid);
 
-                SWSS_LOG_ERROR("VID: %s RID: %s",
-                        sai_serialize_object_id(vid).c_str(),
-                        sai_serialize_object_id(rid).c_str());
+                    SWSS_LOG_ERROR("VID: %s RID: %s",
+                            sai_serialize_object_id(vid).c_str(),
+                            sai_serialize_object_id(rid).c_str());
+                }
+
+                for (const auto &v: values)
+                {
+                    SWSS_LOG_ERROR("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+                }
+
+                if (notifSent)
+                {
+                    SWSS_LOG_ERROR("failed to execute api: %s, key: %s, status: %s",
+                            op.c_str(),
+                            key.c_str(),
+                            sai_serialize_status(status).c_str());
+                }
+                else
+                {
+                    SWSS_LOG_THROW("failed to execute api: %s, key: %s, status: %s",
+                            op.c_str(),
+                            key.c_str(),
+                            sai_serialize_status(status).c_str());
+                }
             }
-
-            for (const auto &v: values)
+            else // non GET api, status is SUCCESS
             {
-                SWSS_LOG_ERROR("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+                internal_syncd_api_send_response(api, status);
             }
-
-            SWSS_LOG_THROW("failed to execute api: %s, key: %s, status: %s",
-                    op.c_str(),
-                    key.c_str(),
-                    sai_serialize_status(status).c_str());
-        }
-        else // non GET api, status is SUCCESS
-        {
-            internal_syncd_api_send_response(api, status);
         }
 
     } while (!consumer.empty());
@@ -3964,6 +4050,7 @@ int syncd_main(int argc, char **argv)
     std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(FLEX_COUNTER_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::shared_ptr<swss::DBConnector> dbState = std::make_shared<swss::DBConnector>(STATE_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    std::shared_ptr<swss::DBConnector> dbCfg = std::make_shared<swss::DBConnector>(CONFIG_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
     std::unique_ptr<swss::Table> warmRestartTable = std::unique_ptr<swss::Table>(new swss::Table(dbState.get(), STATE_WARM_RESTART_TABLE_NAME));
 
     g_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());
@@ -3972,6 +4059,7 @@ int syncd_main(int argc, char **argv)
     std::shared_ptr<swss::NotificationConsumer> restartQuery = std::make_shared<swss::NotificationConsumer>(dbAsic.get(), "RESTARTQUERY");
     std::shared_ptr<swss::ConsumerTable> flexCounter = std::make_shared<swss::ConsumerTable>(dbFlexCounter.get(), FLEX_COUNTER_TABLE);
     std::shared_ptr<swss::ConsumerTable> flexCounterGroup = std::make_shared<swss::ConsumerTable>(dbFlexCounter.get(), FLEX_COUNTER_GROUP_TABLE);
+    swss::SubscriberStateTable ehfConfig(dbCfg.get(), CFG_BGP_ERROR_TABLE_NAME);
 
     /*
      * At the end we cant use producer consumer concept since if one process
@@ -3981,6 +4069,7 @@ int syncd_main(int argc, char **argv)
 
     getResponse  = std::make_shared<swss::ProducerTable>(dbAsic.get(), "GETRESPONSE");
     notifications = std::make_shared<swss::NotificationProducer>(dbNtf.get(), "NOTIFICATIONS");
+    errorNotifications = std::make_shared<swss::NotificationProducer>(dbNtf.get(), "ERROR_NOTIFICATIONS");
 
     g_veryFirstRun = isVeryFirstRun();
 
@@ -4087,6 +4176,7 @@ int syncd_main(int argc, char **argv)
         s->addSelectable(restartQuery.get());
         s->addSelectable(flexCounter.get());
         s->addSelectable(flexCounterGroup.get());
+        s->addSelectable(&ehfConfig);
 
         SWSS_LOG_NOTICE("starting main loop");
     }
@@ -4207,6 +4297,17 @@ int syncd_main(int argc, char **argv)
             else if (sel == flexCounterGroup.get())
             {
                 processFlexCounterGroupEvent(*(swss::ConsumerTable*)sel);
+            }
+            else if (sel == (swss::Selectable *)&ehfConfig)
+            {
+                swss::KeyOpFieldsValuesTuple entry;
+                ehfConfig.pop(entry);
+                for (auto i : kfvFieldsValues(entry))
+                {
+                    if (fvField(i) == "enable")
+                        ehfConfigEnable = fvValue(i);
+                }
+                SWSS_LOG_NOTICE("EHF Configuration is %s\n", ehfConfigEnable.c_str());
             }
             else if (result == swss::Select::OBJECT)
             {

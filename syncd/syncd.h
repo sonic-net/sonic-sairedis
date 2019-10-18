@@ -32,6 +32,7 @@ extern "C" {
 #include "swss/producertable.h"
 #include "swss/consumertable.h"
 #include "swss/consumerstatetable.h"
+#include "swss/subscriberstatetable.h"
 #include "swss/notificationconsumer.h"
 #include "swss/notificationproducer.h"
 #include "swss/selectableevent.h"
@@ -92,6 +93,7 @@ sai_object_type_t getObjectTypeFromVid(
         _In_ sai_object_id_t sai_object_id);
 
 extern std::shared_ptr<swss::NotificationProducer>  notifications;
+extern std::shared_ptr<swss::NotificationProducer>  errorNotifications;
 extern std::shared_ptr<swss::RedisClient>   g_redisClient;
 
 extern bool g_enableConsistencyCheck;
@@ -142,5 +144,14 @@ void set_sai_api_log_min_prio(
         _In_ const std::string &prio);
 
 bool enableUnittests();
+
+void sendSaiApiStatusNotification(
+        _In_ std::string op,
+        _In_ std::string data,
+        _In_ std::vector<swss::FieldValueTuple> &entry);
+
+void sendSaiApiStatusNotification(
+        _In_ std::string op,
+        _In_ std::string data);
 
 #endif // __SYNCD_H__

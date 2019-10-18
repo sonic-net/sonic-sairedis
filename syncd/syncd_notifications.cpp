@@ -31,6 +31,29 @@ void send_notification(
     send_notification(op, data, entry);
 }
 
+void sendSaiApiStatusNotification(
+        _In_ std::string op,
+        _In_ std::string data,
+        _In_ std::vector<swss::FieldValueTuple> &entry)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("%s %s", op.c_str(), data.c_str());
+
+    errorNotifications->send(op, data, entry);
+}
+
+void sendSaiApiStatusNotification(
+        _In_ std::string op,
+        _In_ std::string data)
+{
+    SWSS_LOG_ENTER();
+    std::vector<swss::FieldValueTuple> entry;
+
+    sendSaiApiStatusNotification(op, data, entry);
+}
+
+
 void process_on_switch_state_change(
         _In_ sai_object_id_t switch_rid,
         _In_ sai_switch_oper_status_t switch_oper_status)
