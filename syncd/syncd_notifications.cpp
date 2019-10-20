@@ -324,6 +324,23 @@ bool check_fdb_event_notification_data(
     return result;
 }
 
+bool contains_fdb_flush_event(
+        _In_ uint32_t count,
+        _In_ const sai_fdb_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_mac_t mac = { 0, 0, 0, 0, 0, 0 };
+
+    for (uint32_t idx = 0; idx < count; idx++)
+    {
+        if (memcmp(mac, data[idx].fdb_entry.mac_address, sizeof(mac)) == 0)
+            return true;
+    }
+
+    return false;
+}
+
 void process_on_fdb_event(
         _In_ uint32_t count,
         _In_ sai_fdb_event_notification_data_t *data)
@@ -467,6 +484,11 @@ void handle_fdb_event(
     sai_fdb_event_notification_data_t *fdbevent = NULL;
 
     sai_deserialize_fdb_event_ntf(data, count, &fdbevent);
+
+    if (contains_fdb_flush_event(count, fdbevent))
+    {
+        SWSS_LOG_NOTICE("got fdb flush event: %s", data.c_str());
+    }
 
     process_on_fdb_event(count, fdbevent);
 
