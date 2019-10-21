@@ -139,8 +139,8 @@ sai_status_t internal_vs_flush_fdb_entries(
             memset(&fi, 0, sizeof(fi));
 
             // If fdb entry has bv_id set to vlan object type then we can try to get vlan number from
-            // taht object and populate vlan_id in fdb_info. If bv_id is bridge object type then vlan
-            // must be zero, sicen there can be only 1 (assuming) mac address on a given bridge.
+            // that object and populate vlan_id in fdb_info. If bv_id is bridge object type then vlan
+            // must be zero, since there can be only 1 (assuming) mac address on a given bridge.
 
             sai_deserialize_fdb_entry(it->first, fi.fdb_entry);
 
