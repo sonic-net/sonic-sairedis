@@ -1122,6 +1122,9 @@ sai_status_t vs_create_hostif_tap_interface(
         return SAI_STATUS_FAILURE;
     }
 
+    /* The genetlink host interface is created to associate trap group to genetlink family and multicast group
+     * created by driver. It does not create any netdev interface. Hence skipping tap interface creation
+     */
     if (attr_type->value.s32 == SAI_HOSTIF_TYPE_GENETLINK)
     {
         SWSS_LOG_DEBUG("Skipping tap create for hostif type genetlink");
