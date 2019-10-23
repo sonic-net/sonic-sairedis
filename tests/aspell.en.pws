@@ -69,6 +69,7 @@ FDBs
 filename
 FIXME
 FlexCounter
+genetlink
 getInstance
 getSwitchId
 getVid
@@ -111,10 +112,12 @@ metadata
 mlnx
 mpls
 MTU
+multicast
 mutex
 mutexes
 namespace
 namespaces
+netdev
 NHG
 nhgm
 nlog
