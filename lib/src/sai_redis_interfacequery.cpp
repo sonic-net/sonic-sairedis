@@ -1,6 +1,8 @@
 #include "sai_redis.h"
 #include "sairedis.h"
 
+#include "meta/sai_serialize.h"
+
 #include "swss/selectableevent.h"
 #include <string.h>
 
@@ -257,4 +259,154 @@ sai_status_t sai_api_query(
             SWSS_LOG_ERROR("Invalid API type %d", sai_api_id);
             return SAI_STATUS_INVALID_PARAMETER;
     }
+}
+
+sai_status_t sai_query_attribute_enum_values_capability(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _In_ sai_attr_id_t attr_id,
+        _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    const std::string switch_id_str = sai_serialize_object_id(switch_id);
+    const std::string object_type_str = sai_serialize_object_type(object_type);
+
+    auto meta = sai_metadata_get_attr_metadata(object_type, attr_id);
+    if (meta == NULL)
+    {
+        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", object_type_str.c_str(), attr_id);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    const std::string attr_id_str = sai_serialize_attr_id(*meta);
+    const std::string list_size = std::to_string(enum_values_capability->count);
+
+    const std::vector<swss::FieldValueTuple> query_arguments =
+    {
+        swss::FieldValueTuple("OBJECT_TYPE", object_type_str),
+        swss::FieldValueTuple("ATTR_ID", attr_id_str),
+        swss::FieldValueTuple("LIST_SIZE", list_size)
+    };
+
+    SWSS_LOG_DEBUG(
+            "Query arguments: switch %s, object type: %s, attribute: %s, count: %s",
+            switch_id_str.c_str(),
+            object_type_str.c_str(),
+            attr_id_str.c_str(),
+            list_size.c_str()
+    );
+
+    if (g_record)
+    {
+        recordLine("q|" + switch_id_str + "|" + joinFieldValues(query_arguments));
+    }
+
+    // This query will not put any data into the ASIC view, just into the
+    // message queue
+    g_asicState->set(switch_id_str, query_arguments, attrEnumValuesCapabilityQuery);
+
+    swss::Select callback;
+    callback.addSelectable(g_redisGetConsumer.get());
+
+    while (true)
+    {
+        SWSS_LOG_DEBUG("Waiting for a response");
+
+        swss::Selectable *sel;
+
+        auto result = callback.select(&sel, GET_RESPONSE_TIMEOUT);
+
+        if (result == swss::Select::OBJECT)
+        {
+            swss::KeyOpFieldsValuesTuple kco;
+
+            g_redisGetConsumer->pop(kco);
+
+            const std::string &message_type = kfvOp(kco);
+            const std::string &status_str = kfvKey(kco);
+
+            SWSS_LOG_DEBUG("Received response: op = %s, key = %s", message_type.c_str(), status_str.c_str());
+
+            // Ignore messages that aren't in response to our query
+            if (message_type != attrEnumValuesCapabilityResponse)
+            {
+                continue;
+            }
+
+            sai_status_t status;
+            sai_deserialize_status(status_str, status);
+
+            if (status == SAI_STATUS_SUCCESS)
+            {
+                const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+                if (values.size() != 2)
+                {
+                    if (g_record)
+                    {
+                        recordLine("Q|SAI_STATUS_FAILURE");
+                    }
+
+                    SWSS_LOG_ERROR("Invalid response from syncd: expected 2 values, received %d", values.size());
+                    return SAI_STATUS_FAILURE;
+                }
+
+                const std::string &capability_str = fvValue(values[0]);
+                const uint32_t num_capabilities = std::stoi(fvValue(values[1]));
+
+                SWSS_LOG_DEBUG("Received payload: capabilites = '%s', count = %d", capability_str.c_str(), num_capabilities);
+
+                enum_values_capability->count = num_capabilities;
+
+                size_t position = 0;
+                for (uint32_t i = 0; i < num_capabilities; i++)
+                {
+                    size_t old_position = position;
+                    position = capability_str.find(",", old_position);
+                    std::string capability = capability_str.substr(old_position, position - old_position);
+                    enum_values_capability->list[i] = std::stoi(capability);
+
+                    // We've run out of values to add to our list
+                    if (position == std::string::npos)
+                    {
+                        if (num_capabilities != i + 1)
+                        {
+                            SWSS_LOG_WARN("Query returned less attributes than expected: expected %d, recieved %d");
+                        }
+
+                        break;
+                    }
+
+                    // Skip the commas
+                    position++;
+                }
+
+                if (g_record)
+                {
+                    recordLine("Q|" + status_str + "|" + capability_str);
+                }
+            }
+            else
+            {
+                if (g_record)
+                {
+                    recordLine("Q|" + status_str);
+                }
+            }
+
+            SWSS_LOG_DEBUG("Status: %s", status_str.c_str());
+            return status;
+        }
+    }
+
+    if (g_record)
+    {
+        recordLine("Q|SAI_STATUS_FAILURE");
+    }
+
+    SWSS_LOG_ERROR("Failed to receive a response from syncd");
+    return SAI_STATUS_FAILURE;
 }

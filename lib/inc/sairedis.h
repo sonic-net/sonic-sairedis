@@ -11,6 +11,9 @@ extern "C" {
 #define ASIC_STATE_TABLE "ASIC_STATE"
 #define TEMP_PREFIX      "TEMP_"
 
+const std::string attrEnumValuesCapabilityQuery("attr_enum_values_capability_query");
+const std::string attrEnumValuesCapabilityResponse("attr_enum_values_capability_response");
+
 typedef enum _sai_redis_notify_syncd_t
 {
     SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW,

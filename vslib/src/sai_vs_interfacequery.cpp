@@ -921,3 +921,42 @@ sai_status_t sai_api_query(
             return SAI_STATUS_INVALID_PARAMETER;
     }
 }
+
+sai_status_t sai_query_attribute_enum_values_capability(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _In_ sai_attr_id_t attr_id,
+        _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER && attr_id == SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST)
+    {
+        if (enum_values_capability->count < 3)
+        {
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        enum_values_capability->count = 3;
+        enum_values_capability->list[0] = SAI_IN_DROP_REASON_L2_ANY;
+        enum_values_capability->list[1] = SAI_IN_DROP_REASON_L3_ANY;
+        enum_values_capability->list[2] = SAI_IN_DROP_REASON_ACL_ANY;
+
+        return SAI_STATUS_SUCCESS;
+    }
+    else if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER && attr_id == SAI_DEBUG_COUNTER_ATTR_OUT_DROP_REASON_LIST)
+    {
+        if (enum_values_capability->count < 2)
+        {
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        enum_values_capability->count = 2;
+        enum_values_capability->list[0] = SAI_OUT_DROP_REASON_L2_ANY;
+        enum_values_capability->list[1] = SAI_OUT_DROP_REASON_L3_ANY;
+
+        return SAI_STATUS_SUCCESS;
+    }
+    else
+    {
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+}

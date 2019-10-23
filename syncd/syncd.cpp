@@ -2867,6 +2867,66 @@ sai_status_t processFdbFlush(
     return status;
 }
 
+sai_status_t processAttrEnumValuesCapabilityQuery(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &switch_str_id = kfvKey(kco);
+
+    sai_object_id_t switch_vid;
+    sai_deserialize_object_id(switch_str_id, switch_vid);
+
+    const sai_object_id_t switch_rid = translate_vid_to_rid(switch_vid);
+
+    const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+    if (values.size() != 3)
+    {
+        SWSS_LOG_ERROR("Invalid input: expected 3 arguments, received %d", values.size());
+        getResponse->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, attrEnumValuesCapabilityResponse);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t object_type;
+    sai_deserialize_object_type(fvValue(values[0]), object_type);
+
+    sai_attr_id_t attr_id;
+    sai_deserialize_attr_id(fvValue(values[1]), attr_id);
+
+    const uint32_t list_size = std::stoi(fvValue(values[2]));
+    std::vector<int32_t> enum_capabilities_list(list_size);
+
+    sai_s32_list_t enum_values_capability;
+    enum_values_capability.count = list_size;
+    enum_values_capability.list = enum_capabilities_list.data();
+
+    sai_status_t status = sai_query_attribute_enum_values_capability(switch_rid, object_type, attr_id, &enum_values_capability);
+
+    std::vector<swss::FieldValueTuple> response_payload;
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        std::string serialized_enum_capabilities;
+        for (uint32_t i = 0; i < enum_values_capability.count; i++)
+        {
+            serialized_enum_capabilities += ',';
+            serialized_enum_capabilities += std::to_string(enum_capabilities_list[i]);
+        }
+
+        response_payload =
+        {
+            swss::FieldValueTuple("ENUM_CAPABILITIES", serialized_enum_capabilities.substr(1)),
+            swss::FieldValueTuple("ENUM_COUNT", std::to_string(enum_values_capability.count))
+        };
+
+        SWSS_LOG_DEBUG("Sending response: capabilities = '%s', count = %d", serialized_enum_capabilities.substr(1).c_str(), enum_values_capability.count);
+    }
+
+    getResponse->set(sai_serialize_status(status), response_payload, attrEnumValuesCapabilityResponse);
+    return status;
+}
+
 sai_status_t processEvent(
         _In_ swss::ConsumerTable &consumer)
 {
@@ -2958,6 +3018,10 @@ sai_status_t processEvent(
         else if (op == "flush")
         {
             return processFdbFlush(kco);
+        }
+        else if (op == attrEnumValuesCapabilityQuery)
+        {
+            return processAttrEnumValuesCapabilityQuery(kco);
         }
         else
         {
