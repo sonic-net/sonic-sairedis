@@ -2933,6 +2933,57 @@ sai_status_t processAttrEnumValuesCapabilityQuery(
     return status;
 }
 
+sai_status_t processObjectTypeGetAvailabilityQuery(
+    _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &switch_str_id = kfvKey(kco);
+
+    sai_object_id_t switch_vid;
+    sai_deserialize_object_id(switch_str_id, switch_vid);
+
+    const sai_object_id_t switch_rid = translate_vid_to_rid(switch_vid);
+
+    std::vector<swss::FieldValueTuple> values = kfvFieldsValues(kco);
+
+    // Syncd needs to pop the object type off the end of the list in order to
+    // retrieve the attribute list
+    sai_object_type_t object_type;
+    sai_deserialize_object_type(fvValue(values.back()), object_type);
+    values.pop_back();
+
+    SaiAttributeList attr_list(object_type, values, false);
+
+    sai_attribute_t *sai_attr_list = attr_list.get_attr_list();
+    uint32_t attr_count = attr_list.get_attr_count();
+
+    translate_vid_to_rid_list(object_type, attr_count, sai_attr_list);
+
+    uint64_t count;
+    sai_status_t status = sai_object_type_get_availability(
+            switch_rid,
+            object_type,
+            attr_count,
+            sai_attr_list,
+            &count);
+
+    std::vector<swss::FieldValueTuple> response_payload;
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        response_payload =
+        {
+            swss::FieldValueTuple("OBJECT_COUNT", std::to_string(count))
+        };
+
+        SWSS_LOG_DEBUG("Sending response: count = %lu", count);
+    }
+
+    getResponse->set(sai_serialize_status(status), response_payload, objectTypeGetAvailabilityResponse);
+    return status;
+}
+
 sai_status_t processEvent(
         _In_ swss::ConsumerTable &consumer)
 {
@@ -3028,6 +3079,10 @@ sai_status_t processEvent(
         else if (op == attrEnumValuesCapabilityQuery)
         {
             return processAttrEnumValuesCapabilityQuery(kco);
+        }
+        else if (op == objectTypeGetAvailabilityQuery)
+        {
+            return processObjectTypeGetAvailabilityQuery(kco);
         }
         else
         {

@@ -2,6 +2,7 @@
 #include "sairedis.h"
 
 #include "meta/sai_serialize.h"
+#include "meta/saiattributelist.h"
 
 #include "swss/selectableevent.h"
 #include <string.h>
@@ -405,6 +406,122 @@ sai_status_t sai_query_attribute_enum_values_capability(
     if (g_record)
     {
         recordLine("Q|attribute_enum_values_capability|SAI_STATUS_FAILURE");
+    }
+
+    SWSS_LOG_ERROR("Failed to receive a response from syncd");
+    return SAI_STATUS_FAILURE;
+}
+
+sai_status_t sai_object_type_get_availability(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _Out_ uint64_t *count)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    const std::string switch_id_str = sai_serialize_object_id(switch_id);
+    const std::string object_type_str = sai_serialize_object_type(object_type);
+    std::vector<swss::FieldValueTuple> query_arguments = SaiAttributeList::serialize_attr_list(
+        object_type,
+        attr_count,
+        attr_list,
+        false);
+
+    SWSS_LOG_DEBUG(
+            "Query arguments: switch: %s, object type: %s, attributes: %s",
+            switch_id_str.c_str(),
+            object_type_str.c_str(),
+            joinFieldValues(query_arguments).c_str()
+    );
+
+    // Syncd will pop this argument off before trying to deserialize the attribute list
+    query_arguments.push_back(swss::FieldValueTuple("OBJECT_TYPE", object_type_str));
+
+    if (g_record)
+    {
+        recordLine("q|object_type_get_availability|" + switch_id_str + "|" + joinFieldValues(query_arguments));
+    }
+
+    // This query will not put any data into the ASIC view, just into the
+    // message queue
+    g_asicState->set(switch_id_str, query_arguments, objectTypeGetAvailabilityQuery);
+
+    swss::Select callback;
+    callback.addSelectable(g_redisGetConsumer.get());
+
+    while (true)
+    {
+        SWSS_LOG_DEBUG("Waiting for a response");
+
+        swss::Selectable *sel;
+
+        auto result = callback.select(&sel, GET_RESPONSE_TIMEOUT);
+
+        if (result == swss::Select::OBJECT)
+        {
+            swss::KeyOpFieldsValuesTuple kco;
+
+            g_redisGetConsumer->pop(kco);
+
+            const std::string &message_type = kfvOp(kco);
+            const std::string &status_str = kfvKey(kco);
+
+            SWSS_LOG_DEBUG("Received response: op = %s, key = %s", message_type.c_str(), status_str.c_str());
+
+            // Ignore messages that are not in response to our query
+            if (message_type != objectTypeGetAvailabilityResponse)
+            {
+                continue;
+            }
+
+            sai_status_t status;
+            sai_deserialize_status(status_str, status);
+
+            if (status == SAI_STATUS_SUCCESS)
+            {
+                const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+                if (values.size() != 1)
+                {
+                    if (g_record)
+                    {
+                        recordLine("Q|object_type_get_availability|SAI_STATUS_FAILURE");
+                    }
+
+                    SWSS_LOG_ERROR("Invalid response from syncd: expected 1 value, received %d", values.size());
+                    return SAI_STATUS_FAILURE;
+                }
+
+                const std::string &availability_str = fvValue(values[0]);
+                *count = std::stol(availability_str);
+
+                SWSS_LOG_DEBUG("Received payload: count = %lu", *count);
+
+                if (g_record)
+                {
+                    recordLine("Q|object_type_get_availability|" + status_str + "|" + joinFieldValues(values));
+                }
+            }
+            else
+            {
+                if (g_record)
+                {
+                    recordLine("Q|object_type_get_availability|" + status_str);
+                }
+            }
+
+            SWSS_LOG_DEBUG("Status: %s", status_str.c_str());
+            return status;
+        }
+    }
+
+    if (g_record)
+    {
+        recordLine("Q|object_type_get_availability|SAI_STATUS_FAILURE");
     }
 
     SWSS_LOG_ERROR("Failed to receive a response from syncd");

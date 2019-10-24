@@ -963,3 +963,22 @@ sai_status_t sai_query_attribute_enum_values_capability(
         return SAI_STATUS_NOT_SUPPORTED;
     }
 }
+
+sai_status_t sai_object_type_get_availability(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list,
+        _Out_ uint64_t *count)
+{
+    SWSS_LOG_ENTER();
+
+    // TODO: We should generate this metadata for the virtual switch rather than hard-coding it here.
+    if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER)
+    {
+        *count = 3;
+        return SAI_STATUS_SUCCESS;
+    }
+
+    return SAI_STATUS_NOT_SUPPORTED;
+}
