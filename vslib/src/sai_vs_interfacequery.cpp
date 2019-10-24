@@ -930,6 +930,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
 {
     SWSS_LOG_ENTER();
 
+    // TODO: We should generate this metadata for the virtual switch rather than hard-coding it here.
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER && attr_id == SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST)
     {
         if (enum_values_capability->count < 3)

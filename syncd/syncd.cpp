@@ -2910,13 +2910,19 @@ sai_status_t processAttrEnumValuesCapabilityQuery(
         std::string serialized_enum_capabilities;
         for (uint32_t i = 0; i < enum_values_capability.count; i++)
         {
+            // We will remove the leading comma before sending the response
             serialized_enum_capabilities += ',';
             serialized_enum_capabilities += std::to_string(enum_capabilities_list[i]);
         }
 
+        if (!serialized_enum_capabilities.empty())
+        {
+            serialized_enum_capabilities = serialized_enum_capabilities.substr(1);
+        }
+
         response_payload =
         {
-            swss::FieldValueTuple("ENUM_CAPABILITIES", serialized_enum_capabilities.substr(1)),
+            swss::FieldValueTuple("ENUM_CAPABILITIES", serialized_enum_capabilities),
             swss::FieldValueTuple("ENUM_COUNT", std::to_string(enum_values_capability.count))
         };
 
