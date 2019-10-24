@@ -330,7 +330,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
 
             SWSS_LOG_DEBUG("Received response: op = %s, key = %s", message_type.c_str(), status_str.c_str());
 
-            // Ignore messages that aren't in response to our query
+            // Ignore messages that are not in response to our query
             if (message_type != attrEnumValuesCapabilityResponse)
             {
                 continue;
@@ -369,7 +369,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
                     std::string capability = capability_str.substr(old_position, position - old_position);
                     enum_values_capability->list[i] = std::stoi(capability);
 
-                    // We've run out of values to add to our list
+                    // We have run out of values to add to our list
                     if (position == std::string::npos)
                     {
                         if (num_capabilities != i + 1)

@@ -928,6 +928,8 @@ sai_status_t sai_query_attribute_enum_values_capability(
         _In_ sai_attr_id_t attr_id,
         _Inout_ sai_s32_list_t *enum_values_capability)
 {
+    SWSS_LOG_ENTER();
+
     if (object_type == SAI_OBJECT_TYPE_DEBUG_COUNTER && attr_id == SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST)
     {
         if (enum_values_capability->count < 3)
