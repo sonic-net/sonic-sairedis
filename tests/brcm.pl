@@ -518,6 +518,13 @@ sub test_brcm_warm_boot_port_create
     request_warm_shutdown;
 }
 
+sub test_brcm_query_attr_enum_values_capability
+{
+    fresh_start;
+
+    play "query_attr_enum_values_capability.rec";
+}
+
 # RUN TESTS
 
 test_brcm_warm_boot_port_remove;
@@ -568,5 +575,6 @@ test_brcm_full_to_empty_no_queue;
 test_brcm_full_to_empty_no_queue_no_ipg;
 test_brcm_full_to_empty_hostif_remove_segfault;
 test_brcm_full_to_empty_no_queue_no_ipg_no_buffer_profile;
+test_brcm_query_attr_enum_values_capability;
 
 kill_syncd;

@@ -301,7 +301,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
 
     if (g_record)
     {
-        recordLine("q|" + switch_id_str + "|" + joinFieldValues(query_arguments));
+        recordLine("q|attribute_enum_values_capability|" + switch_id_str + "|" + joinFieldValues(query_arguments));
     }
 
     // This query will not put any data into the ASIC view, just into the
@@ -347,7 +347,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
                 {
                     if (g_record)
                     {
-                        recordLine("Q|SAI_STATUS_FAILURE");
+                        recordLine("Q|attribute_enum_values_capability|SAI_STATUS_FAILURE");
                     }
 
                     SWSS_LOG_ERROR("Invalid response from syncd: expected 2 values, received %d", values.size());
@@ -386,14 +386,14 @@ sai_status_t sai_query_attribute_enum_values_capability(
 
                 if (g_record)
                 {
-                    recordLine("Q|" + status_str + "|" + capability_str);
+                    recordLine("Q|attribute_enum_values_capability|" + status_str + "|" + joinFieldValues(values));
                 }
             }
             else
             {
                 if (g_record)
                 {
-                    recordLine("Q|" + status_str);
+                    recordLine("Q|attribute_enum_values_capability|" + status_str);
                 }
             }
 
@@ -404,7 +404,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
 
     if (g_record)
     {
-        recordLine("Q|SAI_STATUS_FAILURE");
+        recordLine("Q|attribute_enum_values_capability|SAI_STATUS_FAILURE");
     }
 
     SWSS_LOG_ERROR("Failed to receive a response from syncd");

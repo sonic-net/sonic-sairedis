@@ -1210,6 +1210,11 @@ int replay(int argc, char **argv)
             case 'g':
                 api = SAI_COMMON_API_GET;
                 break;
+            case 'q':
+                // TODO: implement SAI player support for query commands
+                continue;
+            case 'Q':
+                continue; // skip over query responses
             case '#':
             case 'n':
                 continue; // skip comment and notification
