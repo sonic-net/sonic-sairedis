@@ -7,6 +7,8 @@ static std::unordered_set<uint32_t> indices;
 
 static uint32_t get_index()
 {
+    SWSS_LOG_ENTER();
+
     for (uint32_t i = 0; i < 32; i++)
     {
         if (indices.find(i) == indices.end())
