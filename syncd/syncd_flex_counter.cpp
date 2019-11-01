@@ -5,7 +5,7 @@
 
 /* Global map with FlexCounter instances for different polling interval */
 static std::map<std::string, std::shared_ptr<FlexCounter>> g_flex_counters_map;
-// List with supported counters 
+// List with supported counters
 static std::set<sai_port_stat_t> supportedPortCounters;
 static std::set<sai_queue_stat_t> supportedQueueCounters;
 static std::set<sai_ingress_priority_group_stat_t> supportedPriorityGroupCounters;
@@ -1625,7 +1625,7 @@ void FlexCounter::runPlugins(
 {
     SWSS_LOG_ENTER();
 
-    const std::vector<std::string> argv = 
+    const std::vector<std::string> argv =
     {
         std::to_string(COUNTERS_DB),
         COUNTERS_TABLE,
@@ -1818,7 +1818,7 @@ std::vector<sai_port_stat_t> FlexCounter::saiCheckSupportedPortDebugCounters(sai
 
         supportedPortDebugCounters.push_back(counter);
     }
-    
+
     return supportedPortDebugCounters;
 }
 
@@ -2004,6 +2004,6 @@ std::vector<sai_switch_stat_t> FlexCounter::saiCheckSupportedSwitchDebugCounters
 
         supportedSwitchDebugCounters.push_back(counter);
     }
-    
+
     return supportedSwitchDebugCounters;
 }
