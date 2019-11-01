@@ -20,6 +20,15 @@ FlexCounter::PortCounterIds::PortCounterIds(
     SWSS_LOG_ENTER();
 }
 
+FlexCounter::SwitchCounterIds::SwitchCounterIds(
+        _In_ sai_object_id_t oid,
+        _In_ const std::vector<sai_switch_stat_t> &counterIds)
+    : switchId(oid),
+      switchCounterIds(counterIds)
+{
+    SWSS_LOG_ENTER();
+}
+
 FlexCounter::QueueCounterIds::QueueCounterIds(
         _In_ sai_object_id_t queue,
         _In_ const std::vector<sai_queue_stat_t> &queueIds):
@@ -1790,7 +1799,9 @@ void FlexCounter::saiUpdateSupportedPortCounters(sai_object_id_t portId)
     }
 }
 
-std::vector<sai_port_stat_t> FlexCounter::saiCheckSupportedPortDebugCounters(sai_object_id_t portId, _In_ const std::vector<sai_port_stat_t> &counterIds)
+std::vector<sai_port_stat_t> FlexCounter::saiCheckSupportedPortDebugCounters(
+    _In_ sai_object_id_t portId,
+    _In_ const std::vector<sai_port_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 
@@ -1976,7 +1987,9 @@ void FlexCounter::saiUpdateSupportedBufferPoolCounters(
     }
 }
 
-std::vector<sai_switch_stat_t> FlexCounter::saiCheckSupportedSwitchDebugCounters(sai_object_id_t switchId, _In_ const std::vector<sai_switch_stat_t> &counterIds)
+std::vector<sai_switch_stat_t> FlexCounter::saiCheckSupportedSwitchDebugCounters(
+    _In_ sai_object_id_t switchId,
+    _In_ const std::vector<sai_switch_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 

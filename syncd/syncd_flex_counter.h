@@ -184,11 +184,7 @@ class FlexCounter
         {
             SwitchCounterIds(
                 _In_ sai_object_id_t oid,
-                _In_ const std::vector<sai_switch_stat_t> &counterIds)
-                    : switchId(oid), switchCounterIds(counterIds)
-            {
-                SWSS_LOG_ENTER();
-            }
+                _In_ const std::vector<sai_switch_stat_t> &counterIds);
 
             sai_object_id_t switchId;
             std::vector<sai_switch_stat_t> switchCounterIds;
@@ -222,10 +218,12 @@ class FlexCounter
                                                   const std::vector<sai_buffer_pool_stat_t> &counterIds,
                                                   sai_stats_mode_t statsMode = SAI_STATS_MODE_READ_AND_CLEAR);
 
-        std::vector<sai_port_stat_t> saiCheckSupportedPortDebugCounters(sai_object_id_t portId,
-                                                                        const std::vector<sai_port_stat_t> &counterIds);
-        std::vector<sai_switch_stat_t> saiCheckSupportedSwitchDebugCounters(sai_object_id_t switchId,
-                                                                            const std::vector<sai_switch_stat_t> &counterIds);
+        std::vector<sai_port_stat_t> saiCheckSupportedPortDebugCounters(
+                _In_ sai_object_id_t portId,
+                _In_ const std::vector<sai_port_stat_t> &counterIds);
+        std::vector<sai_switch_stat_t> saiCheckSupportedSwitchDebugCounters(
+                _In_ sai_object_id_t switchId,
+                _In_ const std::vector<sai_switch_stat_t> &counterIds);
 
         bool isPortCounterSupported(sai_port_stat_t counter) const;
         bool isQueueCounterSupported(sai_queue_stat_t counter) const;
