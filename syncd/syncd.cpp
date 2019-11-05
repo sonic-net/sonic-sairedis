@@ -91,8 +91,8 @@ volatile bool g_asicInitViewMode = false;
  */
 sai_object_id_t gSwitchId;
 
-string fdbFlushSha;
-string fdbFlushLuaScriptName = "fdb_flush.lua";
+std::string fdbFlushSha;
+std::string fdbFlushLuaScriptName = "fdb_flush.lua";
 
 struct cmdOptions
 {
@@ -3783,7 +3783,7 @@ int syncd_main(int argc, char **argv)
     getResponse  = std::make_shared<swss::ProducerTable>(dbAsic.get(), "GETRESPONSE");
     notifications = std::make_shared<swss::NotificationProducer>(dbNtf.get(), "NOTIFICATIONS");
 
-    string fdbFlushLuaScript = swss::loadLuaScript(fdbFlushLuaScriptName);
+    std::string fdbFlushLuaScript = swss::loadLuaScript(fdbFlushLuaScriptName);
     fdbFlushSha = swss::loadRedisScript(dbAsic.get(), fdbFlushLuaScript);
     
     g_veryFirstRun = isVeryFirstRun();
