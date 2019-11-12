@@ -31,7 +31,12 @@ case "$(cat /proc/cmdline)" in
     fi
     ;;
   *SONIC_BOOT_TYPE=fast*|*fast-reboot*)
-     FAST_REBOOT='yes'
+    # check that the key exists
+    if [[ $(redis-cli -n 6 GET "FAST_REBOOT|system") == "1" ]]; then
+       FAST_REBOOT='yes'
+    else
+       FAST_REBOOT='no'
+    fi
     ;;
   *)
      FAST_REBOOT='no'
