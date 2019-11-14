@@ -12,11 +12,7 @@ endif
 if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else
-if sonic_asic_platform_barefoot
-SAILIB=-L/opt/bfn/install/lib -lswitchsai
-else
 SAILIB=-lsai
-endif
 endif
 
 saisdkdump_SOURCES = saisdkdump.cpp

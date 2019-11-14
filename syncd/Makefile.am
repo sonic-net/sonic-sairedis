@@ -11,12 +11,7 @@ endif
 if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else
-if sonic_asic_platform_barefoot
-AM_CPPFLAGS += -I/opt/bfn/install/include
-SAILIB=-L/opt/bfn/install/lib -lswitchsai
-else
 SAILIB=-lsai
-endif
 endif
 
 syncd_SOURCES = \
