@@ -48,6 +48,8 @@ typedef struct _hostif_info_t
 
 } hostif_info_t;
 
+// TODO must be per switch when multiple swich support will be used
+// since interface names can be the same in each switch
 std::map<std::string, std::shared_ptr<hostif_info_t>> hostif_info_map;
 
 std::set<fdb_info_t> g_fdb_info_set;
@@ -644,7 +646,9 @@ sai_status_t vs_send_hostif_packet(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-int vs_create_tap_device(const char *dev, int flags)
+int vs_create_tap_device(
+        _In_ const char *dev,
+        _In_ int flags)
 {
     SWSS_LOG_ENTER();
 
@@ -681,7 +685,9 @@ int vs_create_tap_device(const char *dev, int flags)
     return fd;
 }
 
-int vs_set_dev_mac_address(const char *dev, const sai_mac_t& mac)
+int vs_set_dev_mac_address(
+        _In_ const char *dev,
+        _In_ const sai_mac_t& mac)
 {
     SWSS_LOG_ENTER();
 
@@ -943,6 +949,13 @@ void veth2tap_fun(std::shared_ptr<hostif_info_t> info)
                         info->tapfd, errno, strerror(errno));
             }
 
+            if (errno == EBADF)
+            {
+                // bad file descriptor, just end thread
+                SWSS_LOG_NOTICE("ending thread for tap fd %d", info->tapfd);
+                return;
+            }
+
             continue;
         }
     }
@@ -966,6 +979,13 @@ void tap2veth_fun(std::shared_ptr<hostif_info_t> info)
         {
             SWSS_LOG_ERROR("failed to read from tapfd fd %d, errno(%d): %s",
                     info->tapfd, errno, strerror(errno));
+
+            if (errno == EBADF)
+            {
+                // bad file descriptor, just close the thread
+                SWSS_LOG_NOTICE("ending thread for tap fd %d", info->tapfd);
+                return;
+            }
 
             continue;
         }
@@ -1262,8 +1282,8 @@ sai_status_t vs_create_hostif_tap_interface(
             sai_serialize_object_id(obj_id).c_str());
 
     g_switch_state_map.at(switch_id)->setIfNameToPortId(vname, obj_id);
+    g_switch_state_map.at(switch_id)->setPortIdToTapName(obj_id, name);
 
-    g_switch_state_map.at(switch_id)->setTapNameToPortId(name, obj_id);
     // TODO what about FDB entries notifications, they also should
     // be generated if new mac address will show up on the interface/arp table
 
@@ -1306,6 +1326,103 @@ sai_status_t vs_recreate_hostif_tap_interfaces(
 
         vs_create_hostif_tap_interface(switch_id, (uint32_t)attrs.size(), attrs.data());
     }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+bool stop_tap_device_threads(
+        _In_ std::shared_ptr<hostif_info_t> info)
+{
+    SWSS_LOG_ENTER();
+
+
+
+
+    return true;
+}
+
+sai_status_t vs_remove_hostif_tap_interface(
+        _In_ sai_object_id_t hostif_id)
+{
+    SWSS_LOG_ENTER();
+
+    // get tap interface name
+
+    sai_object_id_t switch_id = sai_switch_id_query(hostif_id);
+
+    if (switch_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("failed to obtain switch_id from hostif_id %s",
+                sai_serialize_object_id(hostif_id).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_HOSTIF_ATTR_NAME;
+
+    sai_status_t status = vs_generic_get(SAI_OBJECT_TYPE_HOSTIF, hostif_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get attr name for hostif %s",
+                sai_serialize_object_id(hostif_id).c_str());
+
+        return status;
+    }
+
+    if (strnlen(attr.value.chardata, sizeof(attr.value.chardata)) >= MAX_INTERFACE_NAME_LEN)
+    {
+        SWSS_LOG_ERROR("interface name is too long: %.*s", MAX_INTERFACE_NAME_LEN, attr.value.chardata);
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::string name = std::string(attr.value.chardata);
+
+    auto it = hostif_info_map.find(name);
+
+    if (it == hostif_info_map.end())
+    {
+        SWSS_LOG_ERROR("failed to find host info entry for tap device: %s", name.c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    SWSS_LOG_NOTICE("attempting to remove tap device: %s", name.c_str());
+
+    // TODO add hostif id into hostif info entry and search by this but id is
+    // created after creating tap device
+
+    auto info = it->second;
+
+    if (!stop_tap_device_threads(info))
+    {
+        SWSS_LOG_ERROR("failed to close tap device threads");
+    }
+
+    // remove host info entry from map
+
+    hostif_info_map.erase(it);
+
+    // remove tap devie
+
+    int err = close(info->tapfd);
+
+    if (err)
+    {
+        SWSS_LOG_ERROR("failed to remove tap device: %s, err: %d", name.c_str(), err);
+    }
+
+    // remove interface mapping
+
+    std::string vname = vs_get_veth_name(name, info->portid);
+
+    g_switch_state_map.at(switch_id)->removeIfNameToPortId(vname);
+    g_switch_state_map.at(switch_id)->removePortIdToTapName(info->portid);
+
+    SWSS_LOG_NOTICE("successfully removed hostif tap device: %s", name.c_str());
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1362,7 +1479,41 @@ sai_status_t vs_create_hostif(
 // TODO set must also be supported when we change operational status up/down
 // and probably also generate notification then
 
-VS_REMOVE(HOSTIF,hostif);
+sai_status_t vs_remove_hostif_int(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t hostif_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (g_vs_hostif_use_tap_device == true)
+    {
+        sai_status_t status = vs_remove_hostif_tap_interface(
+                hostif_id);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            return status;
+        }
+    }
+
+    return vs_generic_remove(
+            SAI_OBJECT_TYPE_HOSTIF,
+            hostif_id);
+}
+
+sai_status_t vs_remove_hostif(
+        _In_ sai_object_id_t hostif_id)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    return meta_sai_remove_oid(
+            SAI_OBJECT_TYPE_HOSTIF,
+            hostif_id,
+            &vs_remove_hostif_int);
+}
+
 VS_SET(HOSTIF,hostif);
 VS_GET(HOSTIF,hostif);
 

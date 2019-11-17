@@ -238,6 +238,15 @@ class SwitchState
         m_ifname_to_port_id_map[ifname] = port_id;
     }
 
+
+    void removeIfNameToPortId(
+            _In_ const std::string& ifname)
+    {
+        SWSS_LOG_ENTER();
+
+        m_ifname_to_port_id_map.erase(ifname);
+    }
+
     sai_object_id_t getPortIdFromIfName(
         _In_ const std::string& ifname) const
     {
@@ -253,13 +262,21 @@ class SwitchState
         return it->second;
     }
 
-    void setTapNameToPortId(
-            _In_ const std::string& tapname,
-            _In_ sai_object_id_t port_id)
+    void setPortIdToTapName(
+            _In_ sai_object_id_t port_id,
+            _In_ const std::string& tapname)
     {
         SWSS_LOG_ENTER();
 
         m_port_id_to_tapname[port_id] = tapname;
+    }
+
+    void removePortIdToTapName(
+            _In_ sai_object_id_t port_id)
+    {
+        SWSS_LOG_ENTER();
+
+        m_port_id_to_tapname.erase(port_id);
     }
 
     bool  getTapNameFromPortId(

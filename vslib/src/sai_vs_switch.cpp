@@ -78,6 +78,15 @@ class LinkMsg : public swss::NetMsg
         {
             SWSS_LOG_ENTER();
 
+            if (nlmsg_type == RTM_DELLINK)
+            {
+                struct rtnl_link *link = (struct rtnl_link *)obj;
+                const char* name = rtnl_link_get_name(link);
+
+                SWSS_LOG_NOTICE("received RTM_DELLINK for %s", name);
+                return;
+            }
+
             if (nlmsg_type != RTM_NEWLINK)
             {
                 SWSS_LOG_WARN("unsupported nlmsg_type: %d", nlmsg_type);
@@ -115,7 +124,7 @@ class LinkMsg : public swss::NetMsg
                 return;
             }
 
-            auto port_id = sw->getPortIdFromIfName(ifname);
+            auto port_id = sw->getPortIdFromIfName(ifname); // TODO needs to be protected under lock
 
             if (port_id == SAI_NULL_OBJECT_ID)
             {
