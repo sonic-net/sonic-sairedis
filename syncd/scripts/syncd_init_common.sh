@@ -32,11 +32,7 @@ case "$(cat /proc/cmdline)" in
     ;;
   *SONIC_BOOT_TYPE=fast*|*fast-reboot*)
     # check that the key exists
-    if [[ $(redis-cli -n 6 GET "FAST_REBOOT|system") == "1" ]]; then
-       FAST_REBOOT='yes'
-    else
-       FAST_REBOOT='no'
-    fi
+    FAST_REBOOT=$(awk '{ if ($1 <= 180) print "yes"; else print "no" }' /proc/uptime)
     ;;
   *)
      FAST_REBOOT='no'
