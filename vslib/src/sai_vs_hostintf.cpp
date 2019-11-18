@@ -119,7 +119,7 @@ typedef struct _hostif_info_t
 
 } hostif_info_t;
 
-// TODO must be per switch when multiple swich support will be used
+// TODO must be per switch when multiple switch support will be used
 // since interface names can be the same in each switch
 std::map<std::string, std::shared_ptr<hostif_info_t>> hostif_info_map;
 
@@ -1492,7 +1492,7 @@ sai_status_t vs_remove_hostif_tap_interface(
 
     hostif_info_map.erase(it); // will stop threads
 
-    // remove tap devie
+    // remove tap device
 
     int err = close(info->tapfd);
 
