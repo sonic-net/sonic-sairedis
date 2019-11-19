@@ -49,11 +49,12 @@ class SelectableFd :
             return m_fd;
         }
 
-        void readData() override
+        uint64_t readData() override
         {
             SWSS_LOG_ENTER();
 
             // empty
+            return 0;
         }
 
     private:
