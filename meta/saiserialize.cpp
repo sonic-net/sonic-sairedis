@@ -1646,6 +1646,51 @@ std::string sai_serialize_queue_deadlock_ntf(
     return j.dump();
 }
 
+json sai_serialize_nat_entry_key(
+        _In_ const sai_nat_entry_key_t& nat_entry_key)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["src_ip"]      = sai_serialize_ipv4(nat_entry_key.src_ip);
+    j["dst_ip"]      = sai_serialize_ipv4(nat_entry_key.dst_ip);
+    j["proto"]       = sai_serialize_number(nat_entry_key.proto);
+    j["l4_src_port"] = sai_serialize_number(nat_entry_key.l4_src_port);
+    j["l4_dst_port"] = sai_serialize_number(nat_entry_key.l4_dst_port);
+
+    return j;
+}
+
+json sai_serialize_nat_entry_mask(
+        _In_ const sai_nat_entry_mask_t& nat_entry_mask)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["src_ip"]      = sai_serialize_ipv4(nat_entry_mask.src_ip);
+    j["dst_ip"]      = sai_serialize_ipv4(nat_entry_mask.dst_ip);
+    j["proto"]       = sai_serialize_number(nat_entry_mask.proto);
+    j["l4_src_port"] = sai_serialize_number(nat_entry_mask.l4_src_port);
+    j["l4_dst_port"] = sai_serialize_number(nat_entry_mask.l4_dst_port);
+
+    return j;
+}
+
+json sai_serialize_nat_entry_data(
+        _In_ const sai_nat_entry_data_t& nat_entry_data)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["key"]  = sai_serialize_nat_entry_key(nat_entry_data.key);
+    j["mask"] = sai_serialize_nat_entry_mask(nat_entry_data.mask);
+
+    return j;
+}
+
 std::string sai_serialize_nat_entry(
         _In_ const sai_nat_entry_t& nat_entry)
 {
@@ -1654,17 +1699,8 @@ std::string sai_serialize_nat_entry(
     json j;
 
     j["switch_id"] = sai_serialize_object_id(nat_entry.switch_id);
-    j["vr"] = sai_serialize_object_id(nat_entry.vr_id);
-    j["key.src_ip"] = sai_serialize_ipv4(nat_entry.data.key.src_ip);
-    j["key.dst_ip"] = sai_serialize_ipv4(nat_entry.data.key.dst_ip);
-    j["key.proto"] = sai_serialize_number(nat_entry.data.key.proto);
-    j["key.l4_src_port"] = sai_serialize_number(nat_entry.data.key.l4_src_port);
-    j["key.l4_dst_port"] = sai_serialize_number(nat_entry.data.key.l4_dst_port);
-    j["mask.src_ip"] = sai_serialize_ipv4(nat_entry.data.mask.src_ip);
-    j["mask.dst_ip"] = sai_serialize_ipv4(nat_entry.data.mask.dst_ip);
-    j["mask.proto"] = sai_serialize_number(nat_entry.data.mask.proto);
-    j["mask.l4_src_port"] = sai_serialize_number(nat_entry.data.mask.l4_src_port);
-    j["mask.l4_dst_port"] = sai_serialize_number(nat_entry.data.mask.l4_dst_port);
+    j["vr"]        = sai_serialize_object_id(nat_entry.vr_id);
+    j["nat_data"]  = sai_serialize_nat_entry_data(nat_entry.data);
 
     return j.dump();
 }
@@ -2684,6 +2720,42 @@ void sai_deserialize_route_entry(
     sai_deserialize_ip_prefix(j["dest"], route_entry.destination);
 }
 
+void sai_deserialize_nat_entry_key(
+        _In_ const json& j,
+        _Out_ sai_nat_entry_key_t& nat_entry_key)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_ipv4(j["src_ip"], nat_entry_key.src_ip);
+    sai_deserialize_ipv4(j["dst_ip"], nat_entry_key.dst_ip);
+    sai_deserialize_number(j["proto"], nat_entry_key.proto);
+    sai_deserialize_number(j["l4_src_port"], nat_entry_key.l4_src_port);
+    sai_deserialize_number(j["l4_dst_port"], nat_entry_key.l4_dst_port);
+}
+
+void sai_deserialize_nat_entry_mask(
+        _In_ const json& j,
+        _Out_ sai_nat_entry_mask_t& nat_entry_mask)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_ipv4(j["src_ip"], nat_entry_mask.src_ip);
+    sai_deserialize_ipv4(j["dst_ip"], nat_entry_mask.dst_ip);
+    sai_deserialize_number(j["proto"], nat_entry_mask.proto);
+    sai_deserialize_number(j["l4_src_port"], nat_entry_mask.l4_src_port);
+    sai_deserialize_number(j["l4_dst_port"], nat_entry_mask.l4_dst_port);
+}
+
+void sai_deserialize_nat_entry_data(
+        _In_ const json& j,
+        _Out_ sai_nat_entry_data_t& nat_entry_data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_nat_entry_key(j["key"], nat_entry_data.key);
+    sai_deserialize_nat_entry_mask(j["mask"], nat_entry_data.mask);
+}
+ 
 void sai_deserialize_nat_entry(
         _In_ const std::string &s,
         _Out_ sai_nat_entry_t& nat_entry)
@@ -2694,17 +2766,7 @@ void sai_deserialize_nat_entry(
 
     sai_deserialize_object_id(j["switch_id"], nat_entry.switch_id);
     sai_deserialize_object_id(j["vr"], nat_entry.vr_id);
-    sai_deserialize_ipv4(j["key.src_ip"], nat_entry.data.key.src_ip);
-    sai_deserialize_ipv4(j["key.dst_ip"], nat_entry.data.key.dst_ip);
-    sai_deserialize_number(j["key.proto"], nat_entry.data.key.proto);
-    sai_deserialize_number(j["key.l4_src_port"], nat_entry.data.key.l4_src_port);
-    sai_deserialize_number(j["key.l4_dst_port"], nat_entry.data.key.l4_dst_port);
-
-    sai_deserialize_ipv4(j["mask.src_ip"], nat_entry.data.mask.src_ip);
-    sai_deserialize_ipv4(j["mask.dst_ip"], nat_entry.data.mask.dst_ip);
-    sai_deserialize_number(j["mask.proto"], nat_entry.data.mask.proto);
-    sai_deserialize_number(j["mask.l4_src_port"], nat_entry.data.mask.l4_src_port);
-    sai_deserialize_number(j["mask.l4_dst_port"], nat_entry.data.mask.l4_dst_port);
+    sai_deserialize_nat_entry_data(j["nat_data"], nat_entry.data);
 }
 
 void sai_deserialize_attr_id(
