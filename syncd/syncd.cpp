@@ -2883,7 +2883,7 @@ sai_status_t processAttrEnumValuesCapabilityQuery(
 
     if (values.size() != 3)
     {
-        SWSS_LOG_ERROR("Invalid input: expected 3 arguments, received %d", values.size());
+        SWSS_LOG_ERROR("Invalid input: expected 3 arguments, received %zu", values.size());
         getResponse->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, attrEnumValuesCapabilityResponse);
         return SAI_STATUS_INVALID_PARAMETER;
     }

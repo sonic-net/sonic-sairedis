@@ -791,7 +791,71 @@ int vs_set_dev_mac_address(
     return err;
 }
 
-int ifup(const char *dev)
+void send_port_up_notification(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_id = sai_switch_id_query(port_id);
+
+    if (switch_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("failed to get switch OID from port id %s",
+                sai_serialize_object_id(port_id).c_str());
+        return;
+    }
+
+    std::shared_ptr<SwitchState> sw = vs_get_switch_state(switch_id);
+
+    if (sw == nullptr)
+    {
+        SWSS_LOG_ERROR("failed to get switch state for switch id %s",
+                sai_serialize_object_id(switch_id).c_str());
+        return;
+    }
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
+
+    if (vs_switch_api.get_switch_attribute(switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY for switch %s",
+                sai_serialize_object_id(switch_id).c_str());
+        return;
+    }
+
+    sai_port_state_change_notification_fn callback =
+        (sai_port_state_change_notification_fn)attr.value.ptr;
+
+    if (callback == NULL)
+    {
+        SWSS_LOG_INFO("SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY callback is NULL");
+        return;
+    }
+
+    sai_port_oper_status_notification_t data;
+
+    data.port_id = port_id;
+    data.port_state = SAI_PORT_OPER_STATUS_UP;
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+
+    update_port_oper_status(port_id, data.port_state);
+
+    SWSS_LOG_NOTICE("explicitly send SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY for port %s: %s (port was UP)",
+            sai_serialize_object_id(data.port_id).c_str(),
+            sai_serialize_port_oper_status(data.port_state).c_str());
+
+    // NOTE this callback should be executed from separate non blocking thread
+
+    if (callback)
+        callback(1, &data);
+}
+
+int ifup(
+        _In_ const char *dev,
+        _In_ sai_object_id_t port_id)
 {
     SWSS_LOG_ENTER();
 
@@ -824,6 +888,14 @@ int ifup(const char *dev)
     if (ifr.ifr_flags & IFF_UP)
     {
         close(s);
+
+        // interface status didn't changed, we need to send manual notification
+        // that interface status is UP but that notification would need to be
+        // sent after actual interface creation, since user may receive that
+        // notification before hostif create function will actually return,
+        // this can happen when syncd will be operating in synchronous mode
+
+        send_port_up_notification(port_id);
 
         return 0;
     }
@@ -1201,7 +1273,7 @@ bool hostif_create_tap_veth_forwarding(
 
     SWSS_LOG_INFO("interface index = %d %s\n", sock_address.sll_ifindex, vethname.c_str());
 
-    if (ifup(vethname.c_str()))
+    if (ifup(vethname.c_str(), port_id))
     {
         SWSS_LOG_ERROR("ifup failed on %s", vethname.c_str());
 

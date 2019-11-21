@@ -351,7 +351,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
                         recordLine("Q|attribute_enum_values_capability|SAI_STATUS_FAILURE");
                     }
 
-                    SWSS_LOG_ERROR("Invalid response from syncd: expected 2 values, received %d", values.size());
+                    SWSS_LOG_ERROR("Invalid response from syncd: expected 2 values, received %zu", values.size());
                     return SAI_STATUS_FAILURE;
                 }
 
@@ -375,7 +375,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
                     {
                         if (num_capabilities != i + 1)
                         {
-                            SWSS_LOG_WARN("Query returned less attributes than expected: expected %d, recieved %d");
+                            SWSS_LOG_WARN("Query returned less attributes than expected: expected %d, recieved %d", num_capabilities, i+1);
                         }
 
                         break;
@@ -492,7 +492,7 @@ sai_status_t sai_object_type_get_availability(
                         recordLine("Q|object_type_get_availability|SAI_STATUS_FAILURE");
                     }
 
-                    SWSS_LOG_ERROR("Invalid response from syncd: expected 1 value, received %d", values.size());
+                    SWSS_LOG_ERROR("Invalid response from syncd: expected 1 value, received %zu", values.size());
                     return SAI_STATUS_FAILURE;
                 }
 

@@ -328,4 +328,11 @@ void processFdbInfo(
         _In_ const fdb_info_t &fi,
         _In_ sai_fdb_event_t fdb_event);
 
+void update_port_oper_status(
+        _In_ sai_object_id_t port_id,
+        _In_ sai_port_oper_status_t port_oper_status);
+
+std::shared_ptr<SwitchState> vs_get_switch_state(
+        _In_ sai_object_id_t switch_id);
+
 #endif // __SAI_VS_STATE__
