@@ -2926,7 +2926,7 @@ sai_status_t processAttrEnumValuesCapabilityQuery(
             swss::FieldValueTuple("ENUM_COUNT", std::to_string(enum_values_capability.count))
         };
 
-        SWSS_LOG_DEBUG("Sending response: capabilities = '%s', count = %d", serialized_enum_capabilities.substr(1).c_str(), enum_values_capability.count);
+        SWSS_LOG_DEBUG("Sending response: capabilities = '%s', count = %d", serialized_enum_capabilities.c_str(), enum_values_capability.count);
     }
 
     getResponse->set(sai_serialize_status(status), response_payload, attrEnumValuesCapabilityResponse);
