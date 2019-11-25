@@ -261,6 +261,10 @@ void processFdbInfo(
     }
 }
 
+bool getLagFromPort(
+        _In_ sai_object_id_t port_id,
+        _Inout_ sai_object_id_t& lag_id);
+
 void findBridgeVlanForPortVlan(
         _In_ sai_object_id_t port_id,
         _In_ sai_vlan_id_t vlan_id,
@@ -299,6 +303,15 @@ void findBridgeVlanForPortVlan(
 
     // iterate via all bridge ports to find match on port id
 
+    sai_object_id_t lag_id = SAI_NULL_OBJECT_ID;
+
+    if (getLagFromPort(port_id,lag_id))
+    {
+        SWSS_LOG_INFO("got lag %s for port %s",
+                sai_serialize_object_id(lag_id).c_str(),
+                sai_serialize_object_id(port_id).c_str());
+    }
+
     bool bv_id_set = false;
 
     for (auto it = objectHash.begin(); it != objectHash.end(); ++it)
@@ -316,10 +329,33 @@ void findBridgeVlanForPortVlan(
 
         if (status != SAI_STATUS_SUCCESS)
         {
+            SWSS_LOG_WARN("failed to get attr PORT_ID and TYPE for bridge port %s",
+                    sai_serialize_object_id(bpid).c_str());
             continue;
         }
 
-        if (port_id != attrs[0].value.oid)
+        if (lag_id != SAI_NULL_OBJECT_ID)
+        {
+            // if port is member of lag, we should check if port_id is that LAG
+
+            if (port_id == attrs[0].value.oid)
+            {
+                // there should be no case that the same port is lag member and has bridge port object on it
+
+                SWSS_LOG_ERROR("port %s is member of lag %s, and also has bridge port created: %s",
+                        sai_serialize_object_id(port_id).c_str(),
+                        sai_serialize_object_id(lag_id).c_str(),
+                        sai_serialize_object_id(attrs[0].value.oid).c_str());
+                continue;
+            }
+
+            if (lag_id != attrs[0].value.oid)
+            {
+                // this is not expected port
+                continue;
+            }
+        }
+        else if (port_id != attrs[0].value.oid)
         {
             // this is not expected port
             continue;
@@ -403,6 +439,7 @@ void findBridgeVlanForPortVlan(
 
     if (!bv_id_set)
     {
+        // if port is lag member, then we didn't found bridge_port for that lag (expected for rif lag)
         SWSS_LOG_WARN("failed to find bv_id for vlan %d and port_id %s",
                 vlan_id,
                 sai_serialize_object_id(port_id).c_str());
@@ -630,6 +667,15 @@ void hostif_info_t::process_packet_for_fdb_event(
         }
     }
 
+    sai_object_id_t lag_id;
+    if (getLagFromPort(portid, lag_id) && isLagOrPortRifBased(lag_id))
+    {
+        SWSS_LOG_DEBUG("lag %s is rif based, skip mac learning for port %s",
+                sai_serialize_object_id(lag_id).c_str(),
+                sai_serialize_object_id(portid).c_str());
+        return;
+    }
+
     if (isLagOrPortRifBased(portid))
     {
         SWSS_LOG_DEBUG("port %s is rif based, skip mac learning",
@@ -641,7 +687,7 @@ void hostif_info_t::process_packet_for_fdb_event(
 
     fdb_info_t fi;
 
-    fi.port_id = portid;
+    fi.port_id = (lag_id != SAI_NULL_OBJECT_ID) ? lag_id : portid;
     fi.vlan_id = vlan_id;
 
     memcpy(fi.fdb_entry.mac_address, eh->h_source, sizeof(sai_mac_t));
