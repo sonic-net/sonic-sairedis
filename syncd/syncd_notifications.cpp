@@ -6,6 +6,8 @@
 #include <memory>
 #include <condition_variable>
 
+#include "NotificationQueue.h"
+
 void send_notification(
         _In_ std::string op,
         _In_ std::string data,
@@ -602,95 +604,14 @@ void processNotification(
 
 std::condition_variable cv;
 
-class ntf_queue_t
-{
-public:
-    ntf_queue_t() { }
-    bool enqueue(swss::KeyOpFieldsValuesTuple msg);
-    bool tryDequeue(swss::KeyOpFieldsValuesTuple& msg);
-    size_t queueStats()
-    {
-        SWSS_LOG_ENTER();
-
-        std::lock_guard<std::mutex> lock(queue_mutex);
-
-        return ntf_queue.size();
-    }
-
-private:
-    std::mutex queue_mutex;
-    std::queue<swss::KeyOpFieldsValuesTuple> ntf_queue;
-
-    /*
-     * Value based on typical L2 deployment with 256k MAC entries and
-     * some extra buffer for other events like port-state, q-deadlock etc
-     */
-    const size_t limit = 300000;
-};
-
-
 /*
  * Make sure that notification queue pointer is populated before we start
  * thread, and before we create_switch, since at switch_create we can start
  * receiving fdb_notifications which will arrive on different thread and
- * will call queueStats() when queue pointer could be null (this=0x0).
+ * will call getQueueSize() when queue pointer could be null (this=0x0).
  */
 
-static std::unique_ptr<ntf_queue_t> ntf_queue_hdlr = std::unique_ptr<ntf_queue_t>(new ntf_queue_t);
-
-bool ntf_queue_t::tryDequeue(
-        _Out_ swss::KeyOpFieldsValuesTuple &item)
-{
-    std::lock_guard<std::mutex> lock(queue_mutex);
-
-    SWSS_LOG_ENTER();
-
-    if (ntf_queue.empty())
-    {
-        return false;
-    }
-
-    item = ntf_queue.front();
-
-    ntf_queue.pop();
-
-    return true;
-}
-
-bool ntf_queue_t::enqueue(
-        _In_ swss::KeyOpFieldsValuesTuple item)
-{
-    SWSS_LOG_ENTER();
-
-    std::string notification = kfvKey(item);
-
-    /*
-     * If the queue exceeds the limit, then drop all further FDB events This is
-     * a temporary solution to handle high memory usage by syncd and the
-     * notification queue keeps growing. The permanent solution would be to
-     * make this stateful so that only the *latest* event is published.
-     */
-
-    if (queueStats() < limit || notification != "fdb_event")
-    {
-        std::lock_guard<std::mutex> lock(queue_mutex);
-
-        ntf_queue.push(item);
-        return true;
-    }
-
-    static uint32_t log_count = 0;
-
-    if (!(log_count % 1000))
-    {
-        SWSS_LOG_NOTICE("Too many messages in queue (%zu), dropped %u FDB events!",
-                         queueStats(), (log_count+1));
-    }
-
-    ++log_count;
-
-    return false;
-}
+static auto g_notificationQueue = std::make_shared<NotificationQueue>();
 
 void enqueue_notification(
         _In_ std::string op,
@@ -703,7 +624,7 @@ void enqueue_notification(
 
     swss::KeyOpFieldsValuesTuple item(op, data, entry);
 
-    if(ntf_queue_hdlr->enqueue(item))
+    if (g_notificationQueue->enqueue(item))
     {
         cv.notify_all();
     }
@@ -808,7 +729,7 @@ void ntf_process_function()
 
         swss::KeyOpFieldsValuesTuple item;
 
-        while (ntf_queue_hdlr->tryDequeue(item))
+        while (g_notificationQueue->tryDequeue(item))
         {
             processNotification(item);
         }
