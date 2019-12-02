@@ -4,9 +4,13 @@
 #include "swss/logger.h"
 #include "swss/dbconnector.h"
 
+#include "CommandLineOptions.h"
+
 #include <inttypes.h>
 #include <algorithm>
 #include <list>
+
+extern std::shared_ptr<CommandLineOptions> g_commandLineOptions; // TODO move to syncd object
 
 /*
  * NOTE: All methods taking current and temporary view could be moved to
@@ -7933,7 +7937,7 @@ sai_status_t syncdApplyView()
 
     updateRedisDatabase(current, temp);
 
-    if (g_enableConsistencyCheck)
+    if (g_commandLineOptions->m_enableConsistencyCheck)
     {
         checkAsicVsDatabaseConsistency(current, temp);
     }

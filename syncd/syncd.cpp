@@ -11,6 +11,7 @@
 #include "swss/redisapi.h"
 
 #include "TimerWatchdog.h"
+#include "CommandLineOptionsParser.h"
 
 extern "C" {
 #include <sai.h>
@@ -77,12 +78,6 @@ std::map<sai_object_id_t, std::shared_ptr<SaiSwitch>> switches;
 std::set<sai_object_id_t> initViewRemovedVidSet;
 
 /*
- * When set to true will enable DB vs ASIC consistency check after comparison
- * logic.
- */
-bool g_enableConsistencyCheck = false;
-
-/*
  * By default we are in APPLY mode.
  */
 volatile bool g_asicInitViewMode = false;
@@ -95,36 +90,20 @@ sai_object_id_t gSwitchId;
 std::string fdbFlushSha;
 std::string fdbFlushLuaScriptName = "fdb_flush.lua";
 
-struct cmdOptions
-{
-    bool diagShell;
-    bool useTempView;
-    int startType;
-    bool disableExitSleep;
-    bool enableUnittests;
-    std::string profileMapFile;
-#ifdef SAITHRIFT
-    bool run_rpc_server;
-    std::string portMapFile;
-#endif // SAITHRIFT
-    bool syncMode;
-    ~cmdOptions() {}
-};
-
-cmdOptions options;
+std::shared_ptr<CommandLineOptions> g_commandLineOptions; // TODO move to syncd object
 
 bool enableUnittests()
 {
     SWSS_LOG_ENTER();
 
-    return options.enableUnittests;
+    return g_commandLineOptions->m_enableUnittests;
 }
 
 bool isInitViewMode()
 {
     SWSS_LOG_ENTER();
 
-    return g_asicInitViewMode && options.useTempView;
+    return g_asicInitViewMode && g_commandLineOptions->m_enableTempView;
 }
 
 bool g_veryFirstRun = false;
@@ -1023,7 +1002,7 @@ void internal_syncd_api_send_response(
      * response for sairedis quad API.
      */
 
-    if (!options.syncMode)
+    if (!g_commandLineOptions->m_enableSyncMode)
         return;
 
     std::vector<swss::FieldValueTuple> entry;
@@ -1110,7 +1089,7 @@ void startDiagShell()
 {
     SWSS_LOG_ENTER();
 
-    if (options.diagShell)
+    if (g_commandLineOptions->m_enableDiagShell)
     {
         SWSS_LOG_NOTICE("starting diag shell thread");
 
@@ -1909,7 +1888,7 @@ sai_status_t notifySyncd(
 {
     SWSS_LOG_ENTER();
 
-    if (!options.useTempView)
+    if (!g_commandLineOptions->m_enableTempView)
     {
         SWSS_LOG_NOTICE("received %s, ignored since TEMP VIEW is not used, returning success", op.c_str());
 
@@ -1966,7 +1945,7 @@ sai_status_t notifySyncd(
 
             g_asicInitViewMode = false;
 
-            if (options.startType == SAI_FASTFAST_BOOT)
+            if (g_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT)
             {
                 /* fastfast boot configuration end */
                 status = onApplyViewInFastFastBoot();
@@ -3569,174 +3548,6 @@ void processFlexCounterEvent(
     return;
 }
 
-void printUsage()
-{
-    SWSS_LOG_ENTER();
-
-    std::cout << "Usage: syncd [-N] [-U] [-d] [-p profile] [-i interval] [-t [cold|warm|fast|fastfast]] [-h] [-u] [-S] [-s]" << std::endl;
-    std::cout << "    -N --nocounters" << std::endl;
-    std::cout << "        Disable counter thread" << std::endl;
-    std::cout << "    -d --diag" << std::endl;
-    std::cout << "        Enable diagnostic shell" << std::endl;
-    std::cout << "    -p --profile profile" << std::endl;
-    std::cout << "        Provide profile map file" << std::endl;
-    std::cout << "    -i --countersInterval interval" << std::endl;
-    std::cout << "        Provide counter thread interval" << std::endl;
-    std::cout << "    -t --startType type" << std::endl;
-    std::cout << "        Specify cold|warm|fast|fastfast start type" << std::endl;
-    std::cout << "    -u --useTempView:" << std::endl;
-    std::cout << "        Use temporary view between init and apply" << std::endl;
-    std::cout << "    -S --disableExitSleep" << std::endl;
-    std::cout << "        Disable sleep when syncd crashes" << std::endl;
-    std::cout << "    -U --eableUnittests" << std::endl;
-    std::cout << "        Metadata enable unittests" << std::endl;
-    std::cout << "    -C --eableConsistencyCheck" << std::endl;
-    std::cout << "        Enable consisteny check DB vs ASIC after comparison logic" << std::endl;
-#ifdef SAITHRIFT
-    std::cout << "    -r --rpcserver"           << std::endl;
-    std::cout << "        Enable rpcserver"      << std::endl;
-    std::cout << "    -m --portmap"             << std::endl;
-    std::cout << "        Specify port map file" << std::endl;
-#endif // SAITHRIFT
-    std::cout << "    -s --syncMode"             << std::endl;
-    std::cout << "        Enable synchronous mode" << std::endl;
-    std::cout << "    -h --help" << std::endl;
-    std::cout << "        Print out this message" << std::endl;
-}
-
-void handleCmdLine(int argc, char **argv)
-{
-    SWSS_LOG_ENTER();
-
-    options.disableExitSleep = false;
-    options.enableUnittests = false;
-    options.syncMode = false;
-
-#ifdef SAITHRIFT
-    options.run_rpc_server = false;
-    const char* const optstring = "dNUCt:p:i:rm:huSs";
-#else
-    const char* const optstring = "dNUCt:p:i:huSs";
-#endif // SAITHRIFT
-
-    while(true)
-    {
-        static struct option long_options[] =
-        {
-            { "useTempView",             no_argument,       0, 'u' },
-            { "diag",                    no_argument,       0, 'd' },
-            { "startType",               required_argument, 0, 't' },
-            { "profile",                 required_argument, 0, 'p' },
-            { "help",                    no_argument,       0, 'h' },
-            { "disableExitSleep",        no_argument,       0, 'S' },
-            { "enableUnittests",         no_argument,       0, 'U' },
-            { "enableConsistencyCheck",  no_argument,       0, 'C' },
-#ifdef SAITHRIFT
-            { "rpcserver",               no_argument,       0, 'r' },
-            { "portmap",                 required_argument, 0, 'm' },
-#endif // SAITHRIFT
-            { "syncMode",                no_argument,       0, 's' },
-            { 0,                         0,                 0,  0  }
-        };
-
-        int option_index = 0;
-
-        int c = getopt_long(argc, argv, optstring, long_options, &option_index);
-
-        if (c == -1)
-        {
-            break;
-        }
-
-        switch (c)
-        {
-            case 'U':
-                SWSS_LOG_NOTICE("enable unittests");
-                options.enableUnittests = true;
-                break;
-
-            case 'C':
-                SWSS_LOG_NOTICE("enable consistency check");
-                g_enableConsistencyCheck = true;
-                break;
-
-            case 'u':
-                SWSS_LOG_NOTICE("enable use temp view");
-                options.useTempView = true;
-                break;
-
-            case 'S':
-                SWSS_LOG_NOTICE("disable crash sleep");
-                options.disableExitSleep = true;
-                break;
-
-            case 'd':
-                SWSS_LOG_NOTICE("enable diag shell");
-                options.diagShell = true;
-                break;
-
-            case 'p':
-                SWSS_LOG_NOTICE("profile map file: %s", optarg);
-                options.profileMapFile = std::string(optarg);
-                break;
-
-            case 't':
-                SWSS_LOG_NOTICE("start type: %s", optarg);
-                if (std::string(optarg) == "cold")
-                {
-                    options.startType = SAI_COLD_BOOT;
-                }
-                else if (std::string(optarg) == "warm")
-                {
-                    options.startType = SAI_WARM_BOOT;
-                }
-                else if (std::string(optarg) == "fast")
-                {
-                    options.startType = SAI_FAST_BOOT;
-                }
-                else if (std::string(optarg) == "fastfast")
-                {
-                    options.startType = SAI_FASTFAST_BOOT;
-                }
-                else
-                {
-                    SWSS_LOG_ERROR("unknown start type %s", optarg);
-                    exit(EXIT_FAILURE);
-                }
-                break;
-
-#ifdef SAITHRIFT
-            case 'r':
-                SWSS_LOG_NOTICE("enable rpc server");
-                options.run_rpc_server = true;
-                break;
-            case 'm':
-                SWSS_LOG_NOTICE("port map file: %s", optarg);
-                options.portMapFile = std::string(optarg);
-                break;
-#endif // SAITHRIFT
-
-            case 's':
-                SWSS_LOG_NOTICE("enable synchronous mode");
-                options.syncMode = true;
-                break;
-
-            case 'h':
-                printUsage();
-                exit(EXIT_SUCCESS);
-
-            case '?':
-                SWSS_LOG_WARN("unknown option %c", optopt);
-                printUsage();
-                exit(EXIT_FAILURE);
-
-            default:
-                SWSS_LOG_ERROR("getopt_long failure");
-                exit(EXIT_FAILURE);
-        }
-    }
-}
-
 void handleProfileMap(const std::string& profileMapFile)
 {
     SWSS_LOG_ENTER();
@@ -4129,14 +3940,17 @@ int syncd_main(int argc, char **argv)
 
     meta_init_db();
 
-    handleCmdLine(argc, argv);
+    // TODO move to syncd object
+    g_commandLineOptions = CommandLineOptionsParser::parseCommandLine(argc, argv);
 
-    handleProfileMap(options.profileMapFile);
+    SWSS_LOG_NOTICE("command line: %s", g_commandLineOptions->getCommandLineString().c_str());
+
+    handleProfileMap(g_commandLineOptions->m_profileMapFile);
 
 #ifdef SAITHRIFT
-    if (options.portMapFile.size() > 0)
+    if (g_commandLineOption.portMapFile.size() > 0)
     {
-        handlePortMap(options.portMapFile);
+        handlePortMap(g_commandLineOptions->m_portMapFile);
     }
 #endif // SAITHRIFT
 
@@ -4168,12 +3982,12 @@ int syncd_main(int argc, char **argv)
     g_veryFirstRun = isVeryFirstRun();
 
     /* ignore warm logic here if syncd starts in Mellanox fastfast boot mode */
-    if (swss::WarmStart::isWarmStart() && (options.startType != SAI_FASTFAST_BOOT))
+    if (swss::WarmStart::isWarmStart() && (g_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT))
     {
-        options.startType = SAI_WARM_BOOT;
+        g_commandLineOptions->m_startType = SAI_START_TYPE_WARM_BOOT;
     }
 
-    if (options.startType == SAI_WARM_BOOT)
+    if (g_commandLineOptions->m_startType == SAI_START_TYPE_WARM_BOOT)
     {
         const char *warmBootReadFile = profile_get_value(0, SAI_KEY_WARM_BOOT_READ_FILE);
 
@@ -4183,11 +3997,11 @@ int syncd_main(int argc, char **argv)
         {
             SWSS_LOG_WARN("user requested warmStart but warmBootReadFile is not specified or not accesible, forcing cold start");
 
-            options.startType = SAI_COLD_BOOT;
+            g_commandLineOptions->m_startType = SAI_START_TYPE_COLD_BOOT;
         }
     }
 
-    if (options.startType == SAI_WARM_BOOT && g_veryFirstRun)
+    if (g_commandLineOptions->m_startType == SAI_START_TYPE_WARM_BOOT && g_veryFirstRun)
     {
         SWSS_LOG_WARN("warm start requested, but this is very first syncd start, forcing cold start");
 
@@ -4198,25 +4012,26 @@ int syncd_main(int argc, char **argv)
          * repopulate asic view.
          */
 
-        options.startType = SAI_COLD_BOOT;
+        g_commandLineOptions->m_startType = SAI_START_TYPE_COLD_BOOT;
     }
 
-    if (options.startType == SAI_FASTFAST_BOOT)
+    if (g_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT)
     {
         /*
          * Mellanox SAI requires to pass SAI_WARM_BOOT as SAI_BOOT_KEY
          * to start 'fastfast'
          */
-        gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(SAI_WARM_BOOT);
+        gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(SAI_START_TYPE_WARM_BOOT);
     } else {
-        gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(options.startType);
+        gProfileMap[SAI_KEY_BOOT_TYPE] = std::to_string(g_commandLineOptions->m_startType); // number value is needed
     }
 
     sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("fail to sai_api_initialize: %d", status);
+        SWSS_LOG_ERROR("fail to sai_api_initialize: %s", 
+                sai_serialize_status(status).c_str());
         return EXIT_FAILURE;
     }
 
@@ -4234,7 +4049,7 @@ int syncd_main(int argc, char **argv)
      */
 
 #ifdef SAITHRIFT
-    if (options.run_rpc_server)
+    if (g_commandLineOptions->m_runRPCServer)
     {
         start_sai_thrift_rpc_server(SWITCH_SAI_THRIFT_RPC_SERVER_PORT);
         SWSS_LOG_NOTICE("rpcserver started");
@@ -4255,7 +4070,7 @@ int syncd_main(int argc, char **argv)
     try
     {
         SWSS_LOG_NOTICE("before onSyncdStart");
-        onSyncdStart(options.startType == SAI_WARM_BOOT);
+        onSyncdStart(g_commandLineOptions->m_startType == SAI_START_TYPE_WARM_BOOT);
         SWSS_LOG_NOTICE("after onSyncdStart");
 
         // create notifications processing thread after we create_switch to
@@ -4285,7 +4100,7 @@ int syncd_main(int argc, char **argv)
 
         SWSS_LOG_NOTICE("starting main loop, ONLY restart query");
 
-        if (options.disableExitSleep)
+        if (g_commandLineOptions->m_disableExitSleep)
             runMainLoop = false;
     }
 
@@ -4408,11 +4223,11 @@ int syncd_main(int argc, char **argv)
 
             s->addSelectable(restartQuery.get());
 
-            if (options.disableExitSleep)
+            if (g_commandLineOptions->m_disableExitSleep)
                 runMainLoop = false;
 
             // make sure that if second exception will arise, then we break the loop
-            options.disableExitSleep = true;
+            g_commandLineOptions->m_disableExitSleep = true;
 
             twd.setEndTime();
         }

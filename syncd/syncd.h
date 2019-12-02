@@ -12,7 +12,6 @@
 #include <unistd.h>
 #include <execinfo.h>
 #include <signal.h>
-#include <getopt.h>
 
 #ifdef SAITHRIFT
 #include <utility>
@@ -52,14 +51,6 @@ extern "C" {
 #define HIDDEN                      "HIDDEN"
 #define COLDVIDS                    "COLDVIDS"
 
-#define SAI_COLD_BOOT               0
-#define SAI_WARM_BOOT               1
-#define SAI_FAST_BOOT               2
-/**
- * A special type of boot used by Mellanox platforms
- * to start in 'fastfast' boot mode
- */
-#define SAI_FASTFAST_BOOT          3
 
 #ifdef SAITHRIFT
 #define SWITCH_SAI_THRIFT_RPC_SERVER_PORT 9092
@@ -95,8 +86,6 @@ extern std::shared_ptr<swss::NotificationProducer>  notifications;
 extern std::shared_ptr<swss::RedisClient>   g_redisClient;
 extern std::shared_ptr<swss::DBConnector>   dbAsic;
 extern std::string fdbFlushSha;
-
-extern bool g_enableConsistencyCheck;
 
 sai_object_id_t redis_create_virtual_object_id(
         _In_ sai_object_id_t switch_id,
