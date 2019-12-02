@@ -21,7 +21,9 @@ vssyncd_SOURCES = \
 				../syncd/TimerWatchdog.cpp \
 				../syncd/NotificationQueue.cpp \
 				../syncd/CommandLineOptions.cpp \
-				../syncd/CommandLineOptionsParser.cpp
+				../syncd/CommandLineOptionsParser.cpp \
+				../syncd/PortMap.cpp \
+				../syncd/PortMapParser.cpp
 
 vssyncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
 vssyncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl

@@ -12,10 +12,7 @@
 
 #include "TimerWatchdog.h"
 #include "CommandLineOptionsParser.h"
-
-extern "C" {
-#include <sai.h>
-}
+#include "PortMapParser.h"
 
 #include <iostream>
 #include <map>
@@ -3598,56 +3595,6 @@ void handleProfileMap(const std::string& profileMapFile)
     }
 }
 
-#ifdef SAITHRIFT
-std::map<std::set<int>, std::string> gPortMap;
-
-// FIXME: introduce common config format for SONiC
-void handlePortMap(const std::string& portMapFile)
-{
-    SWSS_LOG_ENTER();
-
-    if (portMapFile.size() == 0)
-    {
-        return;
-    }
-
-    std::ifstream portmap(portMapFile);
-
-    if (!portmap.is_open())
-    {
-        std::cerr << "failed to open port map file:" << portMapFile.c_str() << " : "<< strerror(errno) << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
-    std::string line;
-
-    while(getline(portmap, line))
-    {
-        if (line.size() > 0 && (line[0] == '#' || line[0] == ';'))
-        {
-            continue;
-        }
-
-        std::istringstream iss(line);
-        std::string name, lanes, alias;
-        iss >> name >> lanes >> alias;
-
-        iss.clear();
-        iss.str(lanes);
-        std::string lane_str;
-        std::set<int> lane_set;
-
-        while (getline(iss, lane_str, ','))
-        {
-            int lane = stoi(lane_str);
-            lane_set.insert(lane);
-        }
-
-        gPortMap.insert(std::pair<std::set<int>,std::string>(lane_set, name));
-    }
-}
-#endif // SAITHRIFT
-
 typedef enum _syncd_restart_type_t
 {
     SYNCD_RESTART_TYPE_COLD,
@@ -3948,9 +3895,11 @@ int syncd_main(int argc, char **argv)
     handleProfileMap(g_commandLineOptions->m_profileMapFile);
 
 #ifdef SAITHRIFT
-    if (g_commandLineOption.portMapFile.size() > 0)
+    if (g_commandLineOptions->m_portMapFile.size() > 0)
     {
-        handlePortMap(g_commandLineOptions->m_portMapFile);
+        auto map = PortMapParser::parsePortMap(g_commandLineOptions->m_portMapFile);
+
+        PortMap::setGlobalPortMap(map);
     }
 #endif // SAITHRIFT
 
