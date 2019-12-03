@@ -1,5 +1,6 @@
 #include "sai_redis.h"
 #include "sairedis.h"
+#include "sairediscommon.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
@@ -308,7 +309,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
 
     // This query will not put any data into the ASIC view, just into the
     // message queue
-    g_asicState->set(switch_id_str, query_arguments, attrEnumValuesCapabilityQuery);
+    g_asicState->set(switch_id_str, query_arguments, STRING_ATTR_ENUM_VALUES_CAPABILITY_QUERY);
 
     swss::Select callback;
     callback.addSelectable(g_redisGetConsumer.get());
@@ -333,7 +334,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
             SWSS_LOG_DEBUG("Received response: op = %s, key = %s", message_type.c_str(), status_str.c_str());
 
             // Ignore messages that are not in response to our query
-            if (message_type != attrEnumValuesCapabilityResponse)
+            if (message_type != STRING_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE)
             {
                 continue;
             }
@@ -449,7 +450,7 @@ sai_status_t sai_object_type_get_availability(
 
     // This query will not put any data into the ASIC view, just into the
     // message queue
-    g_asicState->set(switch_id_str, query_arguments, objectTypeGetAvailabilityQuery);
+    g_asicState->set(switch_id_str, query_arguments, STRING_OBJECT_TYPE_GET_AVAILABILITY_QUERY);
 
     swss::Select callback;
     callback.addSelectable(g_redisGetConsumer.get());
@@ -474,7 +475,7 @@ sai_status_t sai_object_type_get_availability(
             SWSS_LOG_DEBUG("Received response: op = %s, key = %s", message_type.c_str(), status_str.c_str());
 
             // Ignore messages that are not in response to our query
-            if (message_type != objectTypeGetAvailabilityResponse)
+            if (message_type != STRING_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE)
             {
                 continue;
             }

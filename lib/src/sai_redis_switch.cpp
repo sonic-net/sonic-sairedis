@@ -1,5 +1,6 @@
 #include "sai_redis.h"
 #include "sairedis.h"
+#include "sairediscommon.h"
 
 #include "meta/sai_serialize.h"
 
