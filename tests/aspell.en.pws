@@ -71,6 +71,7 @@ FIXME
 FlexCounter
 genetlink
 getInstance
+getQueueSize
 getSwitchId
 getVid
 github
@@ -91,8 +92,8 @@ INSEG
 ip
 IP
 IPG
-IPGs
 ipgs
+IPGs
 ipmc
 IPv
 isobjectid
