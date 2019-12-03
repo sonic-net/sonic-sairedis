@@ -145,7 +145,7 @@ sai_status_t sai_bulk_create_fdb_entry(
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
 {
-    std::lock_guard<std::mutex> lock(g_apimutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
 
@@ -257,7 +257,7 @@ sai_status_t sai_bulk_remove_fdb_entry(
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
 {
-    std::lock_guard<std::mutex> lock(g_apimutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
 
