@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <list>
 
-extern std::shared_ptr<CommandLineOptions> g_commandLineOptions; // TODO move to syncd object
+extern std::shared_ptr<CommandLineOptions> g_commandLineOptions;
 
 /*
  * NOTE: All methods taking current and temporary view could be moved to
@@ -7517,7 +7517,7 @@ void checkAsicVsDatabaseConsistency(
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    if (hasErrors && enableUnittests())
+    if (hasErrors && g_commandLineOptions->m_enableUnittests)
     {
         SWSS_LOG_THROW("ASIC content is differnt than DB content!");
     }
@@ -8474,7 +8474,7 @@ void executeOperationsOnAsic(
 
         SWSS_LOG_TIMER("asic apply");
 
-        if (enableUnittests())
+        if (g_commandLineOptions->m_enableUnittests)
             dumpComparisonLogicOutput(currentView);
 
         currentView.dumpVidToAsicOperatioId();

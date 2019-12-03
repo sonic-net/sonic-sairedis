@@ -1,14 +1,14 @@
 #pragma once
 
-#include "syncd.h"
+#include "sal.h"
 
 #include <string>
 
-#define DEF_STRING_SAI_START_TYPE_COLD_BOOT         "cold"
-#define DEF_STRING_SAI_START_TYPE_WARM_BOOT         "warm"
-#define DEF_STRING_SAI_START_TYPE_FAST_BOOT         "fast"
-#define DEF_STRING_SAI_START_TYPE_FASTFAST_BOOT     "fastfast"
-#define DEF_STRING_SAI_START_TYPE_UNKNOWN           "unknown"
+#define STRING_SAI_START_TYPE_COLD_BOOT         "cold"
+#define STRING_SAI_START_TYPE_WARM_BOOT         "warm"
+#define STRING_SAI_START_TYPE_FAST_BOOT         "fast"
+#define STRING_SAI_START_TYPE_FASTFAST_BOOT     "fastfast"
+#define STRING_SAI_START_TYPE_UNKNOWN           "unknown"
 
 typedef enum _sai_start_type_t
 {
