@@ -1,6 +1,6 @@
 #pragma once
 
-#include "sal.h"
+#include "swss/sal.h"
 
 #include <string>
 

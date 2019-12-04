@@ -92,13 +92,6 @@ std::string fdbFlushLuaScriptName = "fdb_flush.lua";
 
 std::shared_ptr<CommandLineOptions> g_commandLineOptions; // TODO move to syncd object
 
-bool enableUnittests()
-{
-    SWSS_LOG_ENTER();
-
-    return g_commandLineOptions->m_enableUnittests;
-}
-
 bool isInitViewMode()
 {
     SWSS_LOG_ENTER();
