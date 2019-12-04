@@ -58,7 +58,9 @@ libsairedis_la_SOURCES = \
 						 sai_redis_generic_stats.cpp \
 						 sai_redis_notifications.cpp \
 						 sai_redis_record.cpp \
-						 Globals.cpp
+						 Globals.cpp \
+						 Switch.cpp \
+						 SwitchContainer.cpp
 
 libsairedis_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 libsairedis_la_LIBADD = -lhiredis -lswsscommon

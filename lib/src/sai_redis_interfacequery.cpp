@@ -25,35 +25,25 @@ std::shared_ptr<swss::NotificationConsumer> g_redisNotifications;
 std::shared_ptr<swss::RedisClient>          g_redisClient;
 std::shared_ptr<swss::RedisPipeline>        g_redisPipeline;
 
+// TODO must be per syncd instance
+std::shared_ptr<SwitchContainer>            g_switchContainer;
+
 void clear_local_state()
 {
     SWSS_LOG_ENTER();
 
     SWSS_LOG_NOTICE("clearing local state");
 
-    /*
-     * Will need to be executed after init VIEW
-     */
+    // Will need to be executed after init VIEW
 
-    /*
-     * Clear current notifications pointers.
-     *
-     * Clear notifications before clearing metadata database to not cause
-     * potential race condition for updating db right after clear.
-     */
+    // will clear switch container
+    g_switchContainer = std::make_shared<SwitchContainer>();
 
-    clear_notifications();
-
-    /*
-     * Initialize metadata database.
-     */
-
+    // Initialize metadata database.
+    // TODO must be done per syncd instance
     meta_init_db();
 
-    /*
-     * Reset used switch ids.
-     */
-
+    // Reset used switch ids.
     redis_clear_switch_ids();
 }
 
@@ -159,14 +149,20 @@ sai_status_t sai_api_uninitialize(void)
         return SAI_STATUS_FAILURE;
     }
 
-    clear_local_state();
-
     g_run = false;
 
     // notify thread that it should end
     g_redisNotificationThreadEvent.notify();
 
     notification_thread->join();
+
+    // NOTE on remove switch, it's possible that Switch object will be
+    // in use in notification thread
+    //
+    //
+
+    // clear everything after stopping notification thread
+    clear_local_state();
 
     Globals::apiInitialized = false;
 

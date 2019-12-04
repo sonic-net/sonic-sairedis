@@ -77,6 +77,7 @@ sai_object_id_t redis_create_switch_virtual_object_id()
     return redis_construct_object_id(SAI_OBJECT_TYPE_SWITCH, index, index);
 }
 
+// TODO must be protected using api MUTEX (but first remove usage from metadata) - use std::function
 sai_object_type_t sai_object_type_query(
         _In_ sai_object_id_t object_id)
 {
@@ -104,6 +105,7 @@ sai_object_type_t sai_object_type_query(
     return ot;
 }
 
+// TODO must be protected using api MUTEX (but first remove usage from metadata) - use std::function
 sai_object_id_t sai_switch_id_query(
         _In_ sai_object_id_t oid)
 {

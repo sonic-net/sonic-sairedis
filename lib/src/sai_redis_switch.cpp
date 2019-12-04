@@ -6,6 +6,8 @@
 
 #include <thread>
 
+using namespace sairedis;
+
 volatile bool g_asicInitViewMode = false; // default mode is apply mode
 volatile bool g_useTempView = false;
 volatile bool g_syncMode = false;
@@ -135,11 +137,18 @@ sai_status_t sai_redis_notify_syncd(
     {
         SWSS_LOG_NOTICE("clearing current local state since init view is called on initialized switch");
 
+        // TODO this must be per syncd instance
         clear_local_state();
     }
 
     return SAI_STATUS_SUCCESS;
 }
+
+// Also it's possible that when we create switch we will
+// immediately start getting notifications from it, and
+// it may happen that this switch will not be put to
+// a switch map/set/container yet and notification won't find
+// it
 
 sai_status_t redis_create_switch(
         _Out_ sai_object_id_t* switch_id,
@@ -186,12 +195,13 @@ sai_status_t redis_create_switch(
     {
         /*
          * When doing CREATE operation user may want to update notification
-         * pointers. TODO this be per switch.
-         *
-         * Currently we will have same notifications for all switches.
+         * pointers, since notifications can be defined per switch we need to
+         * update them.
          */
 
-        check_notifications_pointers(attr_count, attr_list);
+        auto sw = std::make_shared<Switch>(*switch_id, attr_count, attr_list);
+
+        g_switchContainer->insert(sw);
     }
 
     return status;
@@ -311,16 +321,19 @@ sai_status_t redis_set_switch_attribute(
 
     if (status == SAI_STATUS_SUCCESS)
     {
+        auto sw = g_switchContainer->getSwitch(switch_id);
+
+        if (!sw)
+        {
+            SWSS_LOG_THROW("failed to find switch %s in container",
+                    sai_serialize_object_id(switch_id).c_str());
+        }
+
         /*
          * When doing SET operation user may want to update notification
          * pointers.
-         *
-         * TODO this should be per switch.
-         *
-         * Currently we will have same notifications for all switches.
          */
-
-        check_notifications_pointers(1, attr);
+        sw->updateNotifications(1, attr);
     }
 
     return status;

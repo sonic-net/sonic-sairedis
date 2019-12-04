@@ -2,80 +2,41 @@
 #include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
 
-/*
- * NOTE: currently we only support 1 set of notifications per all switches,
- * this will need to be corrected later.
+/**
+ * @brief Get switch notifications structure.
+ *
+ * This function is executed in notifications thread, and it may happen that
+ * during switch remove some notification arrived for that switch, so we need
+ * to prevent race condition that switch will be removed before notification
+ * will be processed.
+ *
+ * @return Copy of requested switch notifications struct or empty struct is
+ * switch is not present in container.
  */
-
-sai_switch_notifications_t sn;
-
-void clear_notifications()
+sai_switch_notifications_t getSwitchNotifications(
+        _In_ sai_object_id_t switchId)
 {
+    MUTEX();
+
     SWSS_LOG_ENTER();
 
-    memset(&sn, 0, sizeof(sn));
-}
+    auto sw = g_switchContainer->getSwitch(switchId);
 
-void check_notifications_pointers(
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    /*
-     * This function should only be called on CREATE/SET
-     * api when object is SWITCH.
-     */
-
-    for (uint32_t index = 0; index < attr_count; ++index)
+    if (sw)
     {
-        const sai_attribute_t &attr = attr_list[index];
-
-        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
-
-        if (meta == NULL)
-        {
-            SWSS_LOG_ERROR("failed to find metadata for switch attr %d", attr.id);
-            continue;
-        }
-
-        if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_POINTER)
-        {
-            continue;
-        }
-
-        switch (attr.id)
-        {
-            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                sn.on_switch_state_change = (sai_switch_state_change_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                sn.on_switch_shutdown_request = (sai_switch_shutdown_request_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                sn.on_fdb_event = (sai_fdb_event_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                sn.on_port_state_change = (sai_port_state_change_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
-                sn.on_packet_event = (sai_packet_event_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                sn.on_queue_pfc_deadlock = (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
-                break;
-
-            default:
-                SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
-                break;
-        }
+        return sw->getSwitchNotifications(); // explicit copy
     }
+
+    SWSS_LOG_WARN("switch %s not present in container, returning empty switch notifications",
+            sai_serialize_object_id(switchId).c_str());
+
+    return sai_switch_notifications_t { };
 }
+
+// We are assuming that notifications that has "count" member and don't have
+// explicit switch_id defined in struct (like fdb event), they will always come
+// from the same switch instance (same switch id). This is because we can define
+// different notifications pointers per switch instance.
 
 void handle_switch_state_change(
         _In_ const std::string &data)
@@ -88,6 +49,8 @@ void handle_switch_state_change(
     sai_object_id_t switch_id;
 
     sai_deserialize_switch_oper_status(data, switch_id, switch_oper_status);
+
+    auto sn = getSwitchNotifications(switch_id);
 
     if (sn.on_switch_state_change != NULL)
     {
@@ -126,6 +89,14 @@ void handle_fdb_event(
 
     process_metadata_on_fdb_event(count, fdbevent);
 
+    // since notification don't contain switch id, obtain it from fdb_entry
+    sai_object_id_t switchId = SAI_NULL_OBJECT_ID;
+
+    if (count)
+        switchId = fdbevent[0].fdb_entry.switch_id;
+
+    auto sn = getSwitchNotifications(switchId);
+
     if (sn.on_fdb_event != NULL)
     {
         sn.on_fdb_event(count, fdbevent);
@@ -146,6 +117,14 @@ void handle_port_state_change(
 
     sai_deserialize_port_oper_status_ntf(data, count, &portoperstatus);
 
+    sai_object_id_t switchId = SAI_NULL_OBJECT_ID;
+
+    // since notification don't contain switch id, obtain it from port id
+    if (count)
+        switchId = sai_switch_id_query(portoperstatus[0].port_id);
+
+    auto sn = getSwitchNotifications(switchId);
+
     if (sn.on_port_state_change != NULL)
     {
         sn.on_port_state_change(count, portoperstatus);
@@ -165,6 +144,8 @@ void handle_switch_shutdown_request(
 
     sai_deserialize_switch_shutdown_request(data, switch_id);
 
+    auto sn = getSwitchNotifications(switch_id);
+
     if (sn.on_switch_shutdown_request != NULL)
     {
         sn.on_switch_shutdown_request(switch_id);
@@ -180,11 +161,6 @@ void handle_packet_event(
     SWSS_LOG_DEBUG("data: %s, values: %lu", data.c_str(), values.size());
 
     SWSS_LOG_ERROR("not implemented");
-
-    if (sn.on_packet_event != NULL)
-    {
-        //on_packet_event(switch_id, buffer.data(), buffer_size, list.get_attr_count(), list.get_attr_list());
-    }
 }
 
 void handle_queue_deadlock_event(
@@ -201,6 +177,14 @@ void handle_queue_deadlock_event(
 
     // TODO metadata validate under mutex, possible snoop queue_id
 
+    // since notification don't contain switch id, obtain it from queue id
+    sai_object_id_t switchId = SAI_NULL_OBJECT_ID;
+
+    if (count)
+        switchId = sai_switch_id_query(ntfData[0].queue_id);
+
+    auto sn = getSwitchNotifications(switchId);
+
     if (sn.on_queue_pfc_deadlock != NULL)
     {
         sn.on_queue_pfc_deadlock(count, ntfData);
@@ -215,6 +199,8 @@ void handle_notification(
         _In_ const std::vector<swss::FieldValueTuple> &values)
 {
     SWSS_LOG_ENTER();
+
+    // TODO to pass switch_id for every notification we could add it to values at syncd side
 
     if (g_record)
     {

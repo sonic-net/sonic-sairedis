@@ -25,6 +25,8 @@ extern "C" {
 #include "swss/logger.h"
 #include "meta/sai_meta.h"
 
+#include "SwitchContainer.h"
+
 /*
  * Switch index is encoded on 1 byte so we can have
  * max 0x100 switches at the same time.
@@ -35,12 +37,6 @@ extern "C" {
 void redis_clear_switch_ids();
 void redis_free_virtual_object_id(
         _In_ sai_object_id_t object_id);
-
-void clear_notifications();
-
-void check_notifications_pointers(
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list);
 
 // if we don't receive response from syncd in 60 seconds
 // there is something wrong and we should fail
@@ -71,6 +67,8 @@ extern std::shared_ptr<swss::ProducerTable>         g_asicState;
 extern std::shared_ptr<swss::ConsumerTable>         g_redisGetConsumer;
 extern std::shared_ptr<swss::NotificationConsumer>  g_redisNotifications;
 extern std::shared_ptr<swss::RedisClient>           g_redisClient;
+
+extern std::shared_ptr<sairedis::SwitchContainer>   g_switchContainer;
 
 extern const sai_acl_api_t              redis_acl_api;
 extern const sai_bfd_api_t              redis_bfd_api;
