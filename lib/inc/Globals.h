@@ -26,5 +26,10 @@ namespace sairedis
              * a global API mutex is declared.
              */
             static std::mutex apimutex;
+
+            /**
+             * @brief Indicates whether SAI interface API is initialised.
+             */
+            static bool apiInitialized;
     };
 }

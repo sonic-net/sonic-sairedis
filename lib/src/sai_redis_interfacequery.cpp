@@ -7,8 +7,9 @@
 #include "swss/selectableevent.h"
 #include <string.h>
 
+using namespace sairedis;
+
 sai_service_method_table_t g_services;
-bool                   g_apiInitialized = false;
 volatile bool          g_run = false;
 
 // this event is used to nice end notifications thread
@@ -101,7 +102,7 @@ sai_status_t sai_api_initialize(
 
     SWSS_LOG_ENTER();
 
-    if (g_apiInitialized)
+    if (Globals::apiInitialized)
     {
         SWSS_LOG_ERROR("api already initialized");
 
@@ -139,7 +140,7 @@ sai_status_t sai_api_initialize(
 
     notification_thread = std::make_shared<std::thread>(ntf_thread);
 
-    g_apiInitialized = true;
+    Globals::apiInitialized = true;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -150,7 +151,7 @@ sai_status_t sai_api_uninitialize(void)
 
     SWSS_LOG_ENTER();
 
-    if (!g_apiInitialized)
+    if (!Globals::apiInitialized)
     {
         SWSS_LOG_ERROR("api not initialized");
 
@@ -166,7 +167,7 @@ sai_status_t sai_api_uninitialize(void)
 
     notification_thread->join();
 
-    g_apiInitialized = false;
+    Globals::apiInitialized = false;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -204,7 +205,7 @@ sai_status_t sai_api_query(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    if (!g_apiInitialized)
+    if (!Globals::apiInitialized)
     {
         SWSS_LOG_ERROR("SAI API not initialized before calling API query");
         return SAI_STATUS_UNINITIALIZED;
