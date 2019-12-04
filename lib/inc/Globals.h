@@ -28,7 +28,7 @@ namespace sairedis
             static std::mutex apimutex;
 
             /**
-             * @brief Indicates whether SAI interface API is initialised.
+             * @brief Indicates whether SAI interface API is initialized.
              */
             static bool apiInitialized;
     };
