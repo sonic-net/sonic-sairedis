@@ -156,11 +156,6 @@ sai_status_t sai_api_uninitialize(void)
 
     notification_thread->join();
 
-    // NOTE on remove switch, it's possible that Switch object will be
-    // in use in notification thread
-    //
-    //
-
     // clear everything after stopping notification thread
     clear_local_state();
 

@@ -221,12 +221,8 @@ sai_status_t redis_remove_switch(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        /*
-         * NOTE: Should we remove notifications here? Probably not since we can
-         * have multiple switches and then other switches also may send
-         * notifications and they still can be used since we have global
-         * notifications and not per switch.
-         */
+        // remove switch from container
+        g_switchContainer->removeSwitch(switch_id);
     }
 
     return status;
