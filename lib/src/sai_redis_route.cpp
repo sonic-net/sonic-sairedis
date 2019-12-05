@@ -20,7 +20,7 @@ sai_status_t redis_dummy_create_route_entry(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t sai_bulk_create_route_entry(
+sai_status_t redis_bulk_create_route_entry(
         _In_ uint32_t object_count,
         _In_ const sai_route_entry_t *route_entry,
         _In_ const uint32_t *attr_count,
@@ -149,7 +149,7 @@ sai_status_t redis_dummy_remove_route_entry(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t sai_bulk_remove_route_entry(
+sai_status_t redis_bulk_remove_route_entry(
         _In_ uint32_t object_count,
         _In_ const sai_route_entry_t *route_entry,
         _In_ sai_bulk_op_error_mode_t mode,
@@ -252,7 +252,7 @@ sai_status_t redis_dummy_set_route_entry(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t sai_bulk_set_route_entry_attribute(
+sai_status_t redis_bulk_set_route_entry_attribute(
         _In_ uint32_t object_count,
         _In_ const sai_route_entry_t *route_entry,
         _In_ const sai_attribute_t *attr_list,
@@ -355,7 +355,7 @@ sai_status_t sai_bulk_set_route_entry_attribute(
             object_statuses);
 }
 
-sai_status_t sai_bulk_get_route_entry_attribute(
+sai_status_t redis_bulk_get_route_entry_attribute(
         _In_ uint32_t object_count,
         _In_ const sai_route_entry_t *route_entry,
         _In_ const uint32_t *attr_count,
@@ -376,8 +376,8 @@ const sai_route_api_t redis_route_api = {
 
     REDIS_GENERIC_QUAD_API(route_entry)
 
-    sai_bulk_create_route_entry,
-    sai_bulk_remove_route_entry,
-    sai_bulk_set_route_entry_attribute,
-    sai_bulk_get_route_entry_attribute,
+    redis_bulk_create_route_entry,
+    redis_bulk_remove_route_entry,
+    redis_bulk_set_route_entry_attribute,
+    redis_bulk_get_route_entry_attribute,
 };

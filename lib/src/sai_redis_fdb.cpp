@@ -137,7 +137,7 @@ sai_status_t redis_dummy_create_fdb_entry(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t sai_bulk_create_fdb_entry(
+sai_status_t redis_bulk_create_fdb_entry(
         _In_ uint32_t object_count,
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ const uint32_t *attr_count,
@@ -251,7 +251,7 @@ sai_status_t sai_bulk_create_fdb_entry(
             object_statuses);
 }
 
-sai_status_t sai_bulk_remove_fdb_entry(
+sai_status_t redis_bulk_remove_fdb_entry(
         _In_ uint32_t object_count,
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ sai_bulk_op_error_mode_t mode,
