@@ -106,6 +106,16 @@ static sai_service_method_table_t test_services = {
     profile_get_next_value
 };
 
+void sai_reinit()
+{
+    SWSS_LOG_ENTER();
+
+    clearDB();
+
+    sai_api_uninitialize();
+    sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
+}
+
 void test_sai_initialize()
 {
     SWSS_LOG_ENTER();
@@ -201,9 +211,7 @@ void test_bulk_next_hop_group_member_create()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    clearDB();
-    meta_init_db();
-    redis_clear_switch_ids();
+    sai_reinit();
 
     auto consumerThreads = new std::thread(bulk_nhgm_consumer_worker);
 
@@ -303,9 +311,7 @@ void test_bulk_fdb_create()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    clearDB();
-    meta_init_db();
-    redis_clear_switch_ids();
+    sai_reinit();
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
@@ -413,9 +419,7 @@ void test_bulk_route_set()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    clearDB();
-    meta_init_db();
-    redis_clear_switch_ids();
+    sai_reinit();
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 

@@ -41,7 +41,7 @@ sai_status_t redis_generic_remove(
     {
         SWSS_LOG_NOTICE("removing switch id %s", sai_serialize_object_id(object_id).c_str());
 
-        redis_free_virtual_object_id(object_id);
+        g_virtualObjectIdManager->releaseObjectId(object_id);
 
         // TODO do we need some more actions here ? to clean all
         // objects that are in the same switch that were snooped

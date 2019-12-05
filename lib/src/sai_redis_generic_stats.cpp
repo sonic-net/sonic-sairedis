@@ -49,7 +49,7 @@ sai_status_t redis_generic_stats_function(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    sai_object_type_t ot = sai_object_type_query(object_id);
+    sai_object_type_t ot = g_virtualObjectIdManager->saiObjectTypeQuery(object_id);
 
     if (ot != object_type)
     {
@@ -61,7 +61,7 @@ sai_status_t redis_generic_stats_function(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    sai_object_id_t switch_id = sai_switch_id_query(object_id);
+    sai_object_id_t switch_id = g_virtualObjectIdManager->saiSwitchIdQuery(object_id);
 
     if (switch_id == SAI_NULL_OBJECT_ID)
     {

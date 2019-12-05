@@ -8,6 +8,8 @@
 #include "swss/selectableevent.h"
 #include <string.h>
 
+#include "VirtualObjectIdManager.h"
+
 using namespace sairedis;
 
 sai_service_method_table_t g_services;
@@ -27,6 +29,7 @@ std::shared_ptr<swss::RedisPipeline>        g_redisPipeline;
 
 // TODO must be per syncd instance
 std::shared_ptr<SwitchContainer>            g_switchContainer;
+std::shared_ptr<VirtualObjectIdManager>     g_virtualObjectIdManager;
 
 void clear_local_state()
 {
@@ -43,8 +46,11 @@ void clear_local_state()
     // TODO must be done per syncd instance
     meta_init_db();
 
-    // Reset used switch ids.
-    redis_clear_switch_ids();
+    // TODO since we create new manager, we need to create new meta db with
+    // updated functions for query object type and switch id
+    // TODO update global context when supporting multiple syncd instances
+    g_virtualObjectIdManager = std::make_shared<VirtualObjectIdManager>(0);
+
 }
 
 void ntf_thread()
@@ -518,4 +524,40 @@ sai_status_t sai_object_type_get_availability(
 
     SWSS_LOG_ERROR("Failed to receive a response from syncd");
     return SAI_STATUS_FAILURE;
+}
+
+sai_object_type_t sai_object_type_query(
+        _In_ sai_object_id_t objectId)
+{
+    // TODO must be protected using api MUTEX (but first remove usage from metadata) - use std::function
+
+    SWSS_LOG_ENTER();
+
+    if (!Globals::apiInitialized)
+    {
+        SWSS_LOG_ERROR("SAI API not initialized before calling sai_object_type_query");
+        return SAI_OBJECT_TYPE_NULL;
+    }
+
+    // TODO support global context
+
+    return g_virtualObjectIdManager->saiObjectTypeQuery(objectId);
+}
+
+sai_object_id_t sai_switch_id_query(
+        _In_ sai_object_id_t objectId)
+{
+    // TODO must be protected using api MUTEX (but first remove usage from metadata) - use std::function
+
+    SWSS_LOG_ENTER();
+
+    if (!Globals::apiInitialized)
+    {
+        SWSS_LOG_ERROR("SAI API not initialized before calling sai_switch_id_query");
+        return SAI_OBJECT_TYPE_NULL;
+    }
+
+    // TODO support global context
+
+    return g_virtualObjectIdManager->saiSwitchIdQuery(objectId);
 }

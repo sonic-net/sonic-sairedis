@@ -121,7 +121,7 @@ void handle_port_state_change(
 
     // since notification don't contain switch id, obtain it from port id
     if (count)
-        switchId = sai_switch_id_query(portoperstatus[0].port_id);
+        switchId = sai_switch_id_query(portoperstatus[0].port_id); // under api mutex (may come from any global context)
 
     auto sn = getSwitchNotifications(switchId);
 
@@ -181,7 +181,7 @@ void handle_queue_deadlock_event(
     sai_object_id_t switchId = SAI_NULL_OBJECT_ID;
 
     if (count)
-        switchId = sai_switch_id_query(ntfData[0].queue_id);
+        switchId = sai_switch_id_query(ntfData[0].queue_id); // under api mutex (may come from any global context)
 
     auto sn = getSwitchNotifications(switchId);
 
