@@ -1,6 +1,6 @@
 #include "syncd.h"
 #include "syncd_saiswitch.h"
-#include "sairedis.h"
+#include "sairediscommon.h"
 
 #include <string>
 #include <vector>

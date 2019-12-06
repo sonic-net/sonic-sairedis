@@ -1,5 +1,5 @@
 
-#define MUTEX() std::lock_guard<std::mutex> lock(g_apimutex)
+#define MUTEX() std::lock_guard<std::mutex> _lock(sairedis::Globals::apimutex)
 
 // object id
 

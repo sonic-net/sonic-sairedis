@@ -9,7 +9,7 @@ extern "C" {
 
 #include "swss/table.h"
 #include "meta/sai_serialize.h"
-#include "sairedis.h"
+#include "sairediscommon.h"
 
 #include <getopt.h>
 

@@ -95,6 +95,23 @@ void handle_switch_state_change(
     }
 }
 
+void process_metadata_on_fdb_event(
+        _In_ uint32_t count,
+        _In_ sai_fdb_event_notification_data_t* data)
+{
+    MUTEX();
+
+    SWSS_LOG_ENTER();
+
+    // NOTE: this meta api must be under mutex since
+    // it will access meta DB and notification comes
+    // from different thread
+    //
+    // TODO move this to future notification processor
+
+    meta_sai_on_fdb_event(count, data);
+}
+
 void handle_fdb_event(
         _In_ const std::string &data)
 {
@@ -107,15 +124,7 @@ void handle_fdb_event(
 
     sai_deserialize_fdb_event_ntf(data, count, &fdbevent);
 
-    {
-        std::lock_guard<std::mutex> lock(g_apimutex);
-
-        // NOTE: this meta api must be under mutex since
-        // it will access meta DB and notification comes
-        // from different thread
-
-        meta_sai_on_fdb_event(count, fdbevent);
-    }
+    process_metadata_on_fdb_event(count, fdbevent);
 
     if (sn.on_fdb_event != NULL)
     {
@@ -189,6 +198,8 @@ void handle_queue_deadlock_event(
     sai_queue_deadlock_notification_data_t *ntfData = NULL;
 
     sai_deserialize_queue_deadlock_ntf(data, count, &ntfData);
+
+    // TODO metadata validate under mutex, possible snoop queue_id
 
     if (sn.on_queue_pfc_deadlock != NULL)
     {

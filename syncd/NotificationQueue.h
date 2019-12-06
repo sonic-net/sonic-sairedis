@@ -1,11 +1,17 @@
 #pragma once
 
-#include "syncd.h"
+extern "C" {
+#include <sai.h>
+}
+
+#include "swss/table.h"
 
 #include <queue>
 #include <mutex>
 
 /**
+ * @brief Default notification queue size limit.
+ *
  * Value based on typical L2 deployment with 256k MAC entries and
  * some extra buffer for other events like port-state, q-deadlock etc
  *

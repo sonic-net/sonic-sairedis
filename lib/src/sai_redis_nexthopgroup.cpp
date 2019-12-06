@@ -1,6 +1,6 @@
 #include "sai_redis.h"
 
-sai_status_t sai_bulk_create_next_hop_group_members(
+sai_status_t redis_bulk_create_next_hop_group_members(
         _In_ sai_object_id_t switch_id,
         _In_ uint32_t object_count,
         _In_ const uint32_t *attr_count,
@@ -23,7 +23,7 @@ sai_status_t sai_bulk_create_next_hop_group_members(
             object_statuses);
 }
 
-sai_status_t sai_bulk_remove_next_hop_group_members(
+sai_status_t redis_bulk_remove_next_hop_group_members(
         _In_ uint32_t object_count,
         _In_ const sai_object_id_t *object_id,
         _In_ sai_bulk_op_error_mode_t mode,
@@ -48,6 +48,6 @@ const sai_next_hop_group_api_t redis_next_hop_group_api = {
     REDIS_GENERIC_QUAD_API(next_hop_group)
     REDIS_GENERIC_QUAD_API(next_hop_group_member)
 
-    sai_bulk_create_next_hop_group_members,
-    sai_bulk_remove_next_hop_group_members,
+    redis_bulk_create_next_hop_group_members,
+    redis_bulk_remove_next_hop_group_members,
 };

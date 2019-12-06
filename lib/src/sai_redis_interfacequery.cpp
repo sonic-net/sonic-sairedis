@@ -1,13 +1,12 @@
 #include "sai_redis.h"
 #include "sairedis.h"
+#include "sairediscommon.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
 
 #include "swss/selectableevent.h"
 #include <string.h>
-
-std::mutex g_apimutex;
 
 sai_service_method_table_t g_services;
 bool                   g_apiInitialized = false;
@@ -99,7 +98,7 @@ sai_status_t sai_api_initialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t* services)
 {
-    std::lock_guard<std::mutex> lock(g_apimutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
 
@@ -148,7 +147,7 @@ sai_status_t sai_api_initialize(
 
 sai_status_t sai_api_uninitialize(void)
 {
-    std::lock_guard<std::mutex> lock(g_apimutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
 
@@ -178,7 +177,7 @@ sai_status_t sai_log_set(
         _In_ sai_api_t sai_api_id,
         _In_ sai_log_level_t log_level)
 {
-    std::lock_guard<std::mutex> lock(g_apimutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
 
@@ -196,7 +195,7 @@ sai_status_t sai_api_query(
         _In_ sai_api_t sai_api_id,
         _Out_ void** api_method_table)
 {
-    std::lock_guard<std::mutex> lock(g_apimutex);
+    MUTEX();
 
     SWSS_LOG_ENTER();
 
@@ -308,7 +307,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
 
     // This query will not put any data into the ASIC view, just into the
     // message queue
-    g_asicState->set(switch_id_str, query_arguments, attrEnumValuesCapabilityQuery);
+    g_asicState->set(switch_id_str, query_arguments, STRING_ATTR_ENUM_VALUES_CAPABILITY_QUERY);
 
     swss::Select callback;
     callback.addSelectable(g_redisGetConsumer.get());
@@ -333,7 +332,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
             SWSS_LOG_DEBUG("Received response: op = %s, key = %s", message_type.c_str(), status_str.c_str());
 
             // Ignore messages that are not in response to our query
-            if (message_type != attrEnumValuesCapabilityResponse)
+            if (message_type != STRING_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE)
             {
                 continue;
             }
@@ -449,7 +448,7 @@ sai_status_t sai_object_type_get_availability(
 
     // This query will not put any data into the ASIC view, just into the
     // message queue
-    g_asicState->set(switch_id_str, query_arguments, objectTypeGetAvailabilityQuery);
+    g_asicState->set(switch_id_str, query_arguments, STRING_OBJECT_TYPE_GET_AVAILABILITY_QUERY);
 
     swss::Select callback;
     callback.addSelectable(g_redisGetConsumer.get());
@@ -474,7 +473,7 @@ sai_status_t sai_object_type_get_availability(
             SWSS_LOG_DEBUG("Received response: op = %s, key = %s", message_type.c_str(), status_str.c_str());
 
             // Ignore messages that are not in response to our query
-            if (message_type != objectTypeGetAvailabilityResponse)
+            if (message_type != STRING_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE)
             {
                 continue;
             }

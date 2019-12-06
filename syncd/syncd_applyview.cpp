@@ -1,5 +1,5 @@
 #include "syncd.h"
-#include "sairedis.h"
+#include "sairediscommon.h"
 #include "swss/table.h"
 #include "swss/logger.h"
 #include "swss/dbconnector.h"
