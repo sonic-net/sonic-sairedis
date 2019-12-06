@@ -1,6 +1,6 @@
 #include "syncd.h"
 #include "syncd_saiswitch.h"
-#include "sairedis.h"
+#include "sairediscommon.h"
 #include "syncd_flex_counter.h"
 #include "swss/tokenize.h"
 #include <inttypes.h>
@@ -88,13 +88,6 @@ std::string fdbFlushSha;
 std::string fdbFlushLuaScriptName = "fdb_flush.lua";
 
 std::shared_ptr<CommandLineOptions> g_commandLineOptions; // TODO move to syncd object
-
-bool enableUnittests()
-{
-    SWSS_LOG_ENTER();
-
-    return g_commandLineOptions->m_enableUnittests;
-}
 
 bool isInitViewMode()
 {
@@ -2690,15 +2683,15 @@ sai_status_t handle_bulk_generic(
                 SWSS_LOG_THROW("invalid object_type: %s", sai_serialize_object_type(object_type).c_str());
         }
 
-        if (api == (sai_common_api_t)SAI_COMMON_API_BULK_SET)
+        if (api == SAI_COMMON_API_BULK_SET)
         {
             status = handle_non_object_id(meta_key, SAI_COMMON_API_SET, attr_count, attr_list);
         }
-        else if (api == (sai_common_api_t)SAI_COMMON_API_BULK_CREATE)
+        else if (api == SAI_COMMON_API_BULK_CREATE)
         {
             status = handle_non_object_id(meta_key, SAI_COMMON_API_CREATE, attr_count, attr_list);
         }
-        else if (api == (sai_common_api_t)SAI_COMMON_API_BULK_REMOVE)
+        else if (api == SAI_COMMON_API_BULK_REMOVE)
         {
             status = handle_non_object_id(meta_key, SAI_COMMON_API_REMOVE, attr_count, attr_list);
         }
@@ -2882,7 +2875,7 @@ sai_status_t processAttrEnumValuesCapabilityQuery(
     if (values.size() != 3)
     {
         SWSS_LOG_ERROR("Invalid input: expected 3 arguments, received %zu", values.size());
-        getResponse->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, attrEnumValuesCapabilityResponse);
+        getResponse->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, STRING_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
@@ -2927,7 +2920,7 @@ sai_status_t processAttrEnumValuesCapabilityQuery(
         SWSS_LOG_DEBUG("Sending response: capabilities = '%s', count = %d", serialized_enum_capabilities.c_str(), enum_values_capability.count);
     }
 
-    getResponse->set(sai_serialize_status(status), response_payload, attrEnumValuesCapabilityResponse);
+    getResponse->set(sai_serialize_status(status), response_payload, STRING_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
     return status;
 }
 
@@ -2978,7 +2971,7 @@ sai_status_t processObjectTypeGetAvailabilityQuery(
         SWSS_LOG_DEBUG("Sending response: count = %lu", count);
     }
 
-    getResponse->set(sai_serialize_status(status), response_payload, objectTypeGetAvailabilityResponse);
+    getResponse->set(sai_serialize_status(status), response_payload, STRING_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE);
     return status;
 }
 
@@ -3048,15 +3041,15 @@ sai_status_t processEvent(
         }
         else if (op == "bulkset")
         {
-            return processBulkEvent((sai_common_api_t)SAI_COMMON_API_BULK_SET, kco);
+            return processBulkEvent(SAI_COMMON_API_BULK_SET, kco);
         }
         else if (op == "bulkcreate")
         {
-            return processBulkEvent((sai_common_api_t)SAI_COMMON_API_BULK_CREATE, kco);
+            return processBulkEvent(SAI_COMMON_API_BULK_CREATE, kco);
         }
         else if (op == "bulkremove")
         {
-            return processBulkEvent((sai_common_api_t)SAI_COMMON_API_BULK_REMOVE, kco);
+            return processBulkEvent(SAI_COMMON_API_BULK_REMOVE, kco);
         }
         else if (op == "notify")
         {
@@ -3074,11 +3067,11 @@ sai_status_t processEvent(
         {
             return processFdbFlush(kco);
         }
-        else if (op == attrEnumValuesCapabilityQuery)
+        else if (op == STRING_ATTR_ENUM_VALUES_CAPABILITY_QUERY)
         {
             return processAttrEnumValuesCapabilityQuery(kco);
         }
-        else if (op == objectTypeGetAvailabilityQuery)
+        else if (op == STRING_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE)
         {
             return processObjectTypeGetAvailabilityQuery(kco);
         }

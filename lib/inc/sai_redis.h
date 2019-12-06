@@ -1,7 +1,8 @@
 #ifndef __SAI_REDIS__
 #define __SAI_REDIS__
 
-#include <mutex>
+#include "Globals.h"
+
 #include <set>
 #include <unordered_map>
 
@@ -70,8 +71,6 @@ extern std::shared_ptr<swss::ProducerTable>         g_asicState;
 extern std::shared_ptr<swss::ConsumerTable>         g_redisGetConsumer;
 extern std::shared_ptr<swss::NotificationConsumer>  g_redisNotifications;
 extern std::shared_ptr<swss::RedisClient>           g_redisClient;
-
-extern std::mutex g_apimutex;
 
 extern const sai_acl_api_t              redis_acl_api;
 extern const sai_bfd_api_t              redis_bfd_api;

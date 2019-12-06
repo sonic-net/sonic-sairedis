@@ -12,6 +12,7 @@ extern "C" {
 #include "swss/logger.h"
 #include "swss/tokenize.h"
 #include "sairedis.h"
+#include "sairediscommon.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -962,6 +963,10 @@ sai_status_t handle_bulk_route(
 {
     SWSS_LOG_ENTER();
 
+    sai_route_api_t *route_api = NULL;
+
+    sai_api_query(SAI_API_ROUTE, (void**)&route_api);
+
     std::vector<sai_route_entry_t> routes;
 
     for (size_t i = 0; i < object_ids.size(); ++i)
@@ -980,7 +985,7 @@ sai_status_t handle_bulk_route(
 
     statuses.resize(recorded_statuses.size());
 
-    if (api == (sai_common_api_t)SAI_COMMON_API_BULK_SET)
+    if (api == SAI_COMMON_API_BULK_SET)
     {
         /*
          * TODO: since SDK don't support bulk route api yet, we just use our
@@ -1001,7 +1006,7 @@ sai_status_t handle_bulk_route(
             attrs.push_back(a->get_attr_list()[0]);
         }
 
-        sai_status_t status = sai_bulk_set_route_entry_attribute(
+        sai_status_t status = route_api->set_route_entries_attribute(
                 (uint32_t)routes.size(),
                 routes.data(),
                 attrs.data(),
@@ -1035,7 +1040,7 @@ sai_status_t handle_bulk_route(
 
         return status;
     }
-    else if (api == (sai_common_api_t)SAI_COMMON_API_BULK_CREATE)
+    else if (api == SAI_COMMON_API_BULK_CREATE)
     {
         std::vector<uint32_t> attr_count;
 
@@ -1050,7 +1055,7 @@ sai_status_t handle_bulk_route(
 
         SWSS_LOG_NOTICE("executing BULK route create with %zu routes", attr_count.size());
 
-        sai_status_t status = sai_bulk_create_route_entry(
+        sai_status_t status = route_api->create_route_entries(
                 (uint32_t)routes.size(),
                 routes.data(),
                 attr_count.data(),
@@ -1100,8 +1105,8 @@ void processBulk(
         return;
     }
 
-    if (api != (sai_common_api_t)SAI_COMMON_API_BULK_SET &&
-            api != (sai_common_api_t)SAI_COMMON_API_BULK_CREATE)
+    if (api != SAI_COMMON_API_BULK_SET &&
+            api != SAI_COMMON_API_BULK_CREATE)
     {
         SWSS_LOG_THROW("bulk common api %d is not supported yet, FIXME", api);
     }
@@ -1173,7 +1178,7 @@ void processBulk(
 
         uint32_t attr_count = list->get_attr_count();
 
-        if (api != (sai_common_api_t)SAI_COMMON_API_BULK_GET)
+        if (api != SAI_COMMON_API_BULK_GET)
         {
             translate_local_to_redis(object_type, attr_count, attr_list);
         }
@@ -1291,10 +1296,10 @@ int replay(int argc, char **argv)
                 api = SAI_COMMON_API_SET;
                 break;
             case 'S':
-                processBulk((sai_common_api_t)SAI_COMMON_API_BULK_SET, line);
+                processBulk(SAI_COMMON_API_BULK_SET, line);
                 continue;
             case 'C':
-                processBulk((sai_common_api_t)SAI_COMMON_API_BULK_CREATE, line);
+                processBulk(SAI_COMMON_API_BULK_CREATE, line);
                 continue;
             case 'g':
                 api = SAI_COMMON_API_GET;

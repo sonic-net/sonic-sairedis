@@ -8,6 +8,7 @@
 #include <mutex>
 #include <thread>
 #include <set>
+#include <memory>
 
 #include <unistd.h>
 #include <execinfo.h>
@@ -131,7 +132,5 @@ void set_sai_api_loglevel();
 
 void set_sai_api_log_min_prio(
         _In_ const std::string &prio);
-
-bool enableUnittests();
 
 #endif // __SYNCD_H__

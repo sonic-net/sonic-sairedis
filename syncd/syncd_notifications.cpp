@@ -1,5 +1,5 @@
 #include "syncd.h"
-#include "sairedis.h"
+#include "sairediscommon.h"
 
 #include <inttypes.h>
 #include <queue>

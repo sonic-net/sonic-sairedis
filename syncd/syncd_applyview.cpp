@@ -1,5 +1,5 @@
 #include "syncd.h"
-#include "sairedis.h"
+#include "sairediscommon.h"
 #include "swss/table.h"
 #include "swss/logger.h"
 #include "swss/dbconnector.h"
@@ -7517,7 +7517,7 @@ void checkAsicVsDatabaseConsistency(
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    if (hasErrors && enableUnittests())
+    if (hasErrors && g_commandLineOptions->m_enableUnittests)
     {
         SWSS_LOG_THROW("ASIC content is differnt than DB content!");
     }
@@ -8474,7 +8474,7 @@ void executeOperationsOnAsic(
 
         SWSS_LOG_TIMER("asic apply");
 
-        if (enableUnittests())
+        if (g_commandLineOptions->m_enableUnittests)
             dumpComparisonLogicOutput(currentView);
 
         currentView.dumpVidToAsicOperatioId();

@@ -1,5 +1,7 @@
 #include "CommandLineOptions.h"
 
+#include "swss/logger.h"
+
 #include <sstream>
 
 CommandLineOptions::CommandLineOptions()
@@ -59,19 +61,19 @@ sai_start_type_t CommandLineOptions::startTypeStringToStartType(
 {
     SWSS_LOG_ENTER();
 
-    if (startType == DEF_STRING_SAI_START_TYPE_COLD_BOOT)
+    if (startType == STRING_SAI_START_TYPE_COLD_BOOT)
         return SAI_START_TYPE_COLD_BOOT;
 
-    if (startType == DEF_STRING_SAI_START_TYPE_WARM_BOOT)
+    if (startType == STRING_SAI_START_TYPE_WARM_BOOT)
         return SAI_START_TYPE_WARM_BOOT;
 
-    if (startType == DEF_STRING_SAI_START_TYPE_FAST_BOOT)
+    if (startType == STRING_SAI_START_TYPE_FAST_BOOT)
         return SAI_START_TYPE_FAST_BOOT;
 
-    if (startType == DEF_STRING_SAI_START_TYPE_FASTFAST_BOOT)
+    if (startType == STRING_SAI_START_TYPE_FASTFAST_BOOT)
         return SAI_START_TYPE_FASTFAST_BOOT;
 
-    if (startType == DEF_STRING_SAI_START_TYPE_UNKNOWN)
+    if (startType == STRING_SAI_START_TYPE_UNKNOWN)
         return SAI_START_TYPE_UNKNOWN;
 
     SWSS_LOG_WARN("unknown startType: '%s'", startType.c_str());
@@ -87,25 +89,25 @@ std::string CommandLineOptions::startTypeToString(
     switch (startType)
     {
         case SAI_START_TYPE_COLD_BOOT:
-            return  DEF_STRING_SAI_START_TYPE_COLD_BOOT;
+            return  STRING_SAI_START_TYPE_COLD_BOOT;
 
         case SAI_START_TYPE_WARM_BOOT:
-            return DEF_STRING_SAI_START_TYPE_WARM_BOOT;
+            return STRING_SAI_START_TYPE_WARM_BOOT;
 
         case SAI_START_TYPE_FAST_BOOT:
-            return DEF_STRING_SAI_START_TYPE_FAST_BOOT;
+            return STRING_SAI_START_TYPE_FAST_BOOT;
 
         case SAI_START_TYPE_FASTFAST_BOOT:
-            return DEF_STRING_SAI_START_TYPE_FASTFAST_BOOT;
+            return STRING_SAI_START_TYPE_FASTFAST_BOOT;
 
         case SAI_START_TYPE_UNKNOWN:
-            return DEF_STRING_SAI_START_TYPE_UNKNOWN;
+            return STRING_SAI_START_TYPE_UNKNOWN;
 
         default:
 
             SWSS_LOG_WARN("unknown startType '%d'", startType);
 
-            return DEF_STRING_SAI_START_TYPE_UNKNOWN;
+            return STRING_SAI_START_TYPE_UNKNOWN;
     }
 }
 
