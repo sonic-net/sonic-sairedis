@@ -1,5 +1,12 @@
 #include "PortMapParser.h"
 
+#include "swss/logger.h"
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <cstring>
+
 // FIXME: introduce common config format for SONiC
 std::shared_ptr<PortMap> PortMapParser::parsePortMap(
         _In_ const std::string& portMapFile)

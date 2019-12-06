@@ -1,10 +1,11 @@
 #pragma once
 
-#include "syncd.h"
+#include "swss/sal.h"
 
 #include <map>
 #include <set>
 #include <string>
+#include <memory>
 
 class PortMap
 {

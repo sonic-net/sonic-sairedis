@@ -1,6 +1,5 @@
 #pragma once
 
-#include "syncd.h"
 #include "PortMap.h"
 
 #include <memory>
