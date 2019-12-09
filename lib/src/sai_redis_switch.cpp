@@ -268,6 +268,10 @@ sai_status_t redis_set_switch_attribute(
                 g_useTempView = attr->value.booldata;
                 return SAI_STATUS_SUCCESS;
 
+            case SAI_REDIS_SWITCH_ATTR_RECORD_STATS:
+                g_recordStats = attr->value.booldata;
+                return SAI_STATUS_SUCCESS;
+
             case SAI_REDIS_SWITCH_ATTR_SYNC_MODE:
 
                 g_syncMode = attr->value.booldata;

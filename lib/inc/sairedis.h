@@ -111,6 +111,20 @@ typedef enum _sai_redis_switch_attr_t
      */
     SAI_REDIS_SWITCH_ATTR_SYNC_MODE,
 
+    /**
+     * @brief Record statistics counters API calls.
+     *
+     * Get statistic counters can be queried periodically and can produce a lot
+     * of logs in sairedis recording file. There are no OIDs retrieved in those
+     * APIs, so user can disable recording statistics calls by setting this
+     * attribute to false.
+     *
+     * @type bool
+     * @flags CREATE_AND_SET
+     * @default true
+     */
+    SAI_REDIS_SWITCH_ATTR_RECORD_STATS,
+
 } sai_redis_switch_attr_t;
 
 #endif // __SAIREDIS__

@@ -1,6 +1,8 @@
 #include "sai_redis.h"
 #include "meta/sai_serialize.h"
 
+volatile bool g_recordStats = true;
+
 /*
  * Max number of counters used in 1 api call
  */
@@ -268,7 +270,7 @@ sai_status_t internal_redis_generic_get_stats(
 
     SWSS_LOG_DEBUG("generic get stats key: %s, fields: %lu", key.c_str(), entry.size());
 
-    if (g_record)
+    if (g_record && g_recordStats)
     {
         recordLine("m|" + key + "|" + joinFieldValues(entry));
     }
@@ -313,7 +315,7 @@ sai_status_t internal_redis_generic_get_stats(
                     counter_list,
                     kco);
 
-            if (g_record)
+            if (g_record && g_recordStats)
             {
                 const auto &str_status = kfvKey(kco);
                 const auto &values = kfvFieldsValues(kco);
@@ -331,7 +333,7 @@ sai_status_t internal_redis_generic_get_stats(
         break;
     }
 
-    if (g_record)
+    if (g_record && g_recordStats)
     {
         recordLine("M|SAI_STATUS_FAILURE");
     }
@@ -402,7 +404,7 @@ sai_status_t internal_redis_generic_clear_stats(
 
     SWSS_LOG_DEBUG("generic clear stats key: %s, fields: %lu", key.c_str(), fvTuples.size());
 
-    if (g_record)
+    if (g_record && g_recordStats)
     {
         recordLine("m|" + key + "|" + joinFieldValues(fvTuples));
     }
@@ -433,7 +435,7 @@ sai_status_t internal_redis_generic_clear_stats(
                 continue;
             }
 
-            if (g_record)
+            if (g_record && g_recordStats)
             {
                 const auto &respFvTuples = kfvFieldsValues(kco);
 
@@ -455,7 +457,7 @@ sai_status_t internal_redis_generic_clear_stats(
         break;
     }
 
-    if (g_record)
+    if (g_record && g_recordStats)
     {
         recordLine("M|SAI_STATUS_FAILURE");
     }
