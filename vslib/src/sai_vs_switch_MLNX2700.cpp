@@ -66,6 +66,21 @@ static sai_status_t set_switch_default_attributes()
 
     CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
 
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY;
+    attr.value.u32 = 100;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY;
+    attr.value.u32 = 100;
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY;
+    attr.value.u32 = 50; /* Half of single NAT entry */
+
+    CHECK_STATUS(vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr));
+
     attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
     attr.value.booldata = false;
 
@@ -1191,6 +1206,11 @@ sai_status_t refresh_read_only_MLNX2700(
                 return SAI_STATUS_SUCCESS;
 
             case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP:
+                return SAI_STATUS_SUCCESS;
+
+            case SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY:
                 return SAI_STATUS_SUCCESS;
         }
     }
