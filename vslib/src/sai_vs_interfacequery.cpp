@@ -787,7 +787,7 @@ sai_status_t sai_api_initialize(
 
     clear_local_state();
 
-    g_dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    g_dbNtf = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
     g_unittestChannelNotificationConsumer = std::make_shared<swss::NotificationConsumer>(g_dbNtf.get(), SAI_VS_UNITTEST_CHANNEL);
 
     g_unittestChannelRun = true;

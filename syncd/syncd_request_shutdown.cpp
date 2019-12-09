@@ -75,7 +75,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    swss::DBConnector db(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    swss::DBConnector db("ASIC_DB", 0);
     swss::NotificationProducer restartQuery(&db, "RESTARTQUERY");
 
     std::vector<swss::FieldValueTuple> values;

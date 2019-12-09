@@ -1690,7 +1690,7 @@ void FlexCounter::flexCounterThread(void)
 {
     SWSS_LOG_ENTER();
 
-    swss::DBConnector db(COUNTERS_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    swss::DBConnector db("COUNTERS_DB", 0);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
 

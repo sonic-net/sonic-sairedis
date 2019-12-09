@@ -119,8 +119,8 @@ sai_status_t sai_api_initialize(
 
     memcpy(&g_services, services, sizeof(g_services));
 
-    g_db                 = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    g_dbNtf              = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    g_db                 = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    g_dbNtf              = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
     g_redisPipeline      = std::make_shared<swss::RedisPipeline>(g_db.get()); //enable default pipeline 128
     g_asicState          = std::make_shared<swss::ProducerTable>(g_redisPipeline.get(), ASIC_STATE_TABLE, true);
     g_redisGetConsumer   = std::make_shared<swss::ConsumerTable>(g_db.get(), "GETRESPONSE");

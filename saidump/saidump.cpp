@@ -410,7 +410,7 @@ int main(int argc, char ** argv)
 
     g_cmdOptions = handleCmdLine(argc, argv);
 
-    swss::DBConnector db(ASIC_DB, DBConnector::DEFAULT_UNIXSOCKET, 0);
+    swss::DBConnector db("ASIC_DB", 0);
 
     std::string table = ASIC_STATE_TABLE;
 

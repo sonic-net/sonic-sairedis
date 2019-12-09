@@ -3947,10 +3947,10 @@ int syncd_main(int argc, char **argv)
     }
 #endif // SAITHRIFT
 
-    dbAsic = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>(FLEX_COUNTER_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
-    std::shared_ptr<swss::DBConnector> dbState = std::make_shared<swss::DBConnector>(STATE_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    std::shared_ptr<swss::DBConnector> dbNtf = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    std::shared_ptr<swss::DBConnector> dbFlexCounter = std::make_shared<swss::DBConnector>("FLEX_COUNTER_DB", 0);
+    std::shared_ptr<swss::DBConnector> dbState = std::make_shared<swss::DBConnector>("STATE_DB", 0);
     std::unique_ptr<swss::Table> warmRestartTable = std::unique_ptr<swss::Table>(new swss::Table(dbState.get(), STATE_WARM_RESTART_TABLE_NAME));
 
     g_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());

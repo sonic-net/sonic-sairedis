@@ -1809,7 +1809,7 @@ void redisGetAsicView(
 
     SWSS_LOG_TIMER("get asic view from %s", tableName.c_str());
 
-    swss::DBConnector db(ASIC_DB, swss::DBConnector::DEFAULT_UNIXSOCKET, 0);
+    swss::DBConnector db("ASIC_DB", 0);
 
     swss::Table table(&db, tableName);
 
