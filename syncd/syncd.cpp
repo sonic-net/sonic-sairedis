@@ -3074,7 +3074,7 @@ sai_status_t processEvent(
         {
             return processAttrEnumValuesCapabilityQuery(kco);
         }
-        else if (op == STRING_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE)
+        else if (op == STRING_OBJECT_TYPE_GET_AVAILABILITY_QUERY)
         {
             return processObjectTypeGetAvailabilityQuery(kco);
         }
