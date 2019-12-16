@@ -93,6 +93,8 @@ tests/mlnx.pl.trs
 tests/swsslogentercheck.sh.log
 tests/swsslogentercheck.sh.trs
 tests/test-suite.log
+tests/applyview.log
+tests/sai_warmboot.bin
 
 vslib/src/test-suite.log
 vslib/src/tests
@@ -113,6 +115,8 @@ saidump/saidump
 saisdkdump/saisdkdump
 meta/tests
 tests/vssyncd
+lib/src/tests
+tests/syncd
 
 # Temporary files #
 ###################
