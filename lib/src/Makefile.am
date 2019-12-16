@@ -59,6 +59,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_notifications.cpp \
 						 sai_redis_record.cpp \
 						 Globals.cpp \
+						 SkipRecordAttrContainer.cpp \
 						 Switch.cpp \
 						 SwitchContainer.cpp
 

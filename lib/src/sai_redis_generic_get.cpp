@@ -2,6 +2,12 @@
 #include "meta/sai_serialize.h"
 #include "meta/saiattributelist.h"
 
+#include "SkipRecordAttrContainer.h"
+
+using namespace sairedis;
+
+static auto g_skipRecordAttrContainer = std::make_shared<SkipRecordAttrContainer>();
+
 sai_status_t internal_redis_get_process(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t attr_count,
@@ -153,6 +159,8 @@ sai_status_t internal_redis_generic_get(
 {
     SWSS_LOG_ENTER();
 
+    bool skipRecord = g_skipRecordAttrContainer->canSkipRecording(object_type, attr_count, attr_list);
+
     /*
      * Since user may reuse buffers, then oid list buffers maybe not cleared
      * and contain some garbage, let's clean them so we send all oids as null to
@@ -173,7 +181,7 @@ sai_status_t internal_redis_generic_get(
 
     SWSS_LOG_DEBUG("generic get key: %s, fields: %lu", key.c_str(), entry.size());
 
-    if (g_record)
+    if (g_record && !skipRecord)
     {
         recordLine("g|" + key + "|" + joinFieldValues(entry));
     }
@@ -218,7 +226,7 @@ sai_status_t internal_redis_generic_get(
                     attr_list,
                     kco);
 
-            if (g_record)
+            if (g_record && !skipRecord)
             {
                 const std::string &str_status = kfvKey(kco);
                 const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
@@ -236,7 +244,7 @@ sai_status_t internal_redis_generic_get(
         break;
     }
 
-    if (g_record)
+    if (g_record && !skipRecord)
     {
         recordLine("G|SAI_STATUS_FAILURE");
     }
