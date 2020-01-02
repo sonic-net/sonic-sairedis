@@ -1829,7 +1829,7 @@ sai_status_t meta_port_remove_validation(
         SWSS_LOG_ERROR("port %s reference count is not zero, can't remove",
                 sai_serialize_object_id(port_id).c_str());
 
-        return SAI_STATUS_FAILURE;
+        return SAI_STATUS_OBJECT_IN_USE;
     }
 
     if (!meta_is_object_in_default_state(port_id))
@@ -1837,7 +1837,7 @@ sai_status_t meta_port_remove_validation(
         SWSS_LOG_ERROR("port %s is not in default state, can't remove",
                 sai_serialize_object_id(port_id).c_str());
 
-        return SAI_STATUS_FAILURE;
+        return SAI_STATUS_OBJECT_IN_USE;
     }
 
     for (auto oid: it->second)
@@ -1848,7 +1848,7 @@ sai_status_t meta_port_remove_validation(
                     sai_serialize_object_id(port_id).c_str(),
                     sai_serialize_object_id(oid).c_str());
 
-            return SAI_STATUS_FAILURE;
+            return SAI_STATUS_OBJECT_IN_USE;
         }
 
         if (!meta_is_object_in_default_state(oid))
@@ -1856,7 +1856,7 @@ sai_status_t meta_port_remove_validation(
             SWSS_LOG_ERROR("port related object %s is not in default state, can't remove",
                     sai_serialize_object_id(oid).c_str());
 
-            return SAI_STATUS_FAILURE;
+            return SAI_STATUS_OBJECT_IN_USE;
         }
     }
 
