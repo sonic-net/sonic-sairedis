@@ -6412,31 +6412,16 @@ void meta_sai_on_fdb_flush_event_consolidated(
     }
 }
 
-void meta_fdb_event_snoop_oid(
+int meta_fdb_event_snoop_oid(
         _In_ sai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
 
     if (oid == SAI_NULL_OBJECT_ID)
-        return;
+        return -1;
 
     if (object_reference_exists(oid))
-        return;
-
-    sai_object_type_t ot = sai_object_type_query(oid);
-
-    if (ot == SAI_OBJECT_TYPE_NULL)
-    {
-        SWSS_LOG_ERROR("failed to get object type on fdb_event oid: 0x%" PRIx64 "", oid);
-        return;
-    }
-
-    sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = oid } } };
-
-    object_reference_insert(oid);
-
-    if (!object_exists(key))
-        create_object(key);
+        return 0;
 
     /*
      * In normal operation orch agent should query or create all bridge, vlan
@@ -6444,11 +6429,26 @@ void meta_fdb_event_snoop_oid(
      * warning for better visibility. Most likely if this happen  there is a
      * vendor bug in SAI and we should also see warnings or errors reported
      * from syncd in logs.
+     *
+     * Originally the solution was to create the object and then continue to
+     * learn fdb_entry, which causes other issue on SONiC. Consider the following
+     * scenario:
+     * 1. SWITCH ASIC reports fdb learnt on a certain vlan/port
+     * 2. Create object for the vlan/port
+     * 3. Learn the mac address, which will increase the reference count of port
+     * 4. On SONiC, all port will be removed from bridge during creating switch,
+     *    which is done by calling removeDefaultBridgePorts. It contains a logic
+     *    of checking the reference number of ports being removed and fails if 
+     *    not zero. For the ports have fdb learnt ahead of this, their were
+     *    referenced by the fdb and thus fails.
+     * This issue can be reproduced on a normal switch.
+     * As eventually we will remove ports from the bridge, we don't need to learn
+     * the fdb here.
      */
 
-    SWSS_LOG_WARN("fdb_entry oid (snoop): %s: %s",
-            sai_serialize_object_type(ot).c_str(),
+    SWSS_LOG_WARN("fdb_entry oid (snoop): oid doesn't exist, ignored %s",
             sai_serialize_object_id(oid).c_str());
+    return -1;
 }
 
 void meta_sai_on_fdb_event_single(
@@ -6473,7 +6473,11 @@ void meta_sai_on_fdb_event_single(
      * query yet.
      */
 
-    meta_fdb_event_snoop_oid(data.fdb_entry.bv_id);
+    if (meta_fdb_event_snoop_oid(data.fdb_entry.bv_id) < 0)
+    {
+        SWSS_LOG_WARN("fdb_entry oid (snoop): ignore the mac address learning during creating switch");
+        return;
+    }
 
     for (uint32_t i = 0; i < data.attr_count; i++)
     {
