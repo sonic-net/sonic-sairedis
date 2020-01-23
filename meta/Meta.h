@@ -281,7 +281,7 @@ namespace saimeta
             void meta_sai_on_fdb_flush_event_consolidated(
                     _In_ const sai_fdb_event_notification_data_t& data);
 
-            void meta_fdb_event_snoop_oid(
+            int meta_fdb_event_snoop_oid(
                     _In_ sai_object_id_t oid);
 
             void meta_sai_on_fdb_event_single(
