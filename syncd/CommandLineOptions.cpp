@@ -48,7 +48,7 @@ std::string CommandLineOptions::getCommandLineString() const
 
 #ifdef SAITHRIFT
 
-    ss << " RunRPCServer=" << (m_runRPCServer ? "YES" ? "NO");
+    ss << " RunRPCServer=" << (m_runRPCServer ? "YES" : "NO");
     ss << " PortMapFile=" << m_portMapFile;
 
 #endif // SAITHRIFT
