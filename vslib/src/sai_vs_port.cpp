@@ -517,12 +517,23 @@ sai_status_t vs_remove_port(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t vs_set_admin_state(
+            _In_ sai_object_id_t port_id,
+            _In_ bool up);
+
 sai_status_t vs_set_port_attribute(
             _In_ sai_object_id_t port_id,
             _In_ const sai_attribute_t *attr)
 {
     MUTEX();
     SWSS_LOG_ENTER();
+
+    if (attr && attr->id == SAI_PORT_ATTR_ADMIN_STATE)
+    {
+        bool up = attr->value.booldata;
+
+        vs_set_admin_state(port_id, up);
+    }
 
     std::string cmd;
 

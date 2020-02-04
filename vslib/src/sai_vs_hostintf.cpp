@@ -901,7 +901,9 @@ void send_port_up_notification(
 
 int ifup(
         _In_ const char *dev,
-        _In_ sai_object_id_t port_id)
+        _In_ sai_object_id_t port_id,
+        _In_ bool up,
+        _In_ bool explicitNotification)
 {
     SWSS_LOG_ENTER();
 
@@ -931,7 +933,7 @@ int ifup(
         return err;
     }
 
-    if (ifr.ifr_flags & IFF_UP)
+    if (up && explicitNotification && (ifr.ifr_flags & IFF_UP))
     {
         close(s);
 
@@ -946,7 +948,14 @@ int ifup(
         return 0;
     }
 
-    ifr.ifr_flags |= IFF_UP;
+    if (up)
+    {
+        ifr.ifr_flags |= IFF_UP;
+    }
+    else
+    {
+        ifr.ifr_flags &= ~IFF_UP;
+    }
 
     err = ioctl(s, SIOCSIFFLAGS, &ifr);
 
@@ -1094,8 +1103,11 @@ void hostif_info_t::veth2tap_fun()
 
         if (size < 0)
         {
-            SWSS_LOG_ERROR("failed to read from socket fd %d, errno(%d): %s",
-                    packet_socket, errno, strerror(errno));
+            if (errno != ENETDOWN)
+            {
+                SWSS_LOG_ERROR("failed to read from socket fd %d, errno(%d): %s",
+                        packet_socket, errno, strerror(errno));
+            }
 
             continue;
         }
@@ -1215,8 +1227,11 @@ void hostif_info_t::tap2veth_fun()
 
         if (write(packet_socket, buffer, (int)size) < 0)
         {
-            SWSS_LOG_ERROR("failed to write to socket fd %d, errno(%d): %s",
-                    packet_socket, errno, strerror(errno));
+            if (errno != ENETDOWN)
+            {
+                SWSS_LOG_ERROR("failed to write to socket fd %d, errno(%d): %s",
+                        packet_socket, errno, strerror(errno));
+            }
 
             continue;
         }
@@ -1319,7 +1334,7 @@ bool hostif_create_tap_veth_forwarding(
 
     SWSS_LOG_INFO("interface index = %d %s\n", sock_address.sll_ifindex, vethname.c_str());
 
-    if (ifup(vethname.c_str(), port_id))
+    if (ifup(vethname.c_str(), port_id, true, true))
     {
         SWSS_LOG_ERROR("ifup failed on %s", vethname.c_str());
 
@@ -1679,6 +1694,37 @@ sai_status_t vs_create_hostif(
             attr_count,
             attr_list,
             &vs_create_hostif_int);
+}
+
+sai_status_t vs_set_admin_state(
+            _In_ sai_object_id_t portId,
+            _In_ bool up)
+{
+    SWSS_LOG_ENTER();
+
+    // find correnspoding host if interface and bring it down !
+    for (auto& kvp: hostif_info_map)
+    {
+        auto tapname = kvp.first;
+
+        if (kvp.second->portid == portId)
+        {
+            std::string vethname = vs_get_veth_name(tapname, portId);
+
+            if (ifup(vethname.c_str(), portId, up, false))
+            {
+                SWSS_LOG_ERROR("if admin %s failed on %s failed: %s", (up ? "UP" : "DOWN"), vethname.c_str(),  strerror(errno));
+
+                return SAI_STATUS_FAILURE;
+            }
+
+            SWSS_LOG_NOTICE("if admin %s success on %s", (up ? "UP" : "DOWN"), vethname.c_str());
+
+            break;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 // TODO set must also be supported when we change operational status up/down
