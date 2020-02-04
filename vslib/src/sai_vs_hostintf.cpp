@@ -1702,7 +1702,7 @@ sai_status_t vs_set_admin_state(
 {
     SWSS_LOG_ENTER();
 
-    // find correnspoding host if interface and bring it down !
+    // find corresponding host if interface and bring it down !
     for (auto& kvp: hostif_info_map)
     {
         auto tapname = kvp.first;
