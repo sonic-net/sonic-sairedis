@@ -786,7 +786,7 @@ int vs_create_tap_device(
 
     ifr.ifr_flags = (short int)flags;  // IFF_TUN or IFF_TAP, IFF_NO_PI
 
-    strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+    strncpy(ifr.ifr_name, dev, IFNAMSIZ-1);
 
     int err = ioctl(fd, TUNSETIFF, (void *) &ifr);
 
@@ -819,7 +819,7 @@ int vs_set_dev_mac_address(
 
     struct ifreq ifr;
 
-    strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+    strncpy(ifr.ifr_name, dev, IFNAMSIZ-1);
 
     memcpy(ifr.ifr_hwaddr.sa_data, mac, 6);
 
@@ -918,7 +918,7 @@ int ifup(
 
     memset(&ifr, 0, sizeof ifr);
 
-    strncpy(ifr.ifr_name, dev , IFNAMSIZ);
+    strncpy(ifr.ifr_name, dev , IFNAMSIZ-1);
 
     int err = ioctl(s, SIOCGIFFLAGS, &ifr);
 
@@ -977,7 +977,7 @@ int promisc(const char *dev)
 
     memset(&ifr, 0, sizeof ifr);
 
-    strncpy(ifr.ifr_name, dev , IFNAMSIZ);
+    strncpy(ifr.ifr_name, dev , IFNAMSIZ-1);
 
     int err = ioctl(s, SIOCGIFFLAGS, &ifr);
 
@@ -1021,7 +1021,7 @@ int vs_set_dev_mtu(
 
     struct ifreq ifr;
 
-    strncpy(ifr.ifr_name, name, IFNAMSIZ);
+    strncpy(ifr.ifr_name, name, IFNAMSIZ-1);
 
     ifr.ifr_mtu = mtu;
 
