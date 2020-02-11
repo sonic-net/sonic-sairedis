@@ -1,5 +1,6 @@
 #include "sai_vs.h"
 #include "sai_vs_state.h"
+#include "sai_vs_switch_common.h"
 #include <net/if.h>
 #include <algorithm>
 
@@ -20,26 +21,6 @@ static std::vector<sai_acl_action_type_t> ingress_acl_action_list;
 static std::vector<sai_acl_action_type_t> egress_acl_action_list;
 
 static sai_object_id_t default_vlan_id;
-
-static sai_status_t set_switch_mac_address()
-{
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_INFO("create switch src mac address");
-
-    sai_attribute_t attr;
-
-    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
-
-    attr.value.mac[0] = 0x11;
-    attr.value.mac[1] = 0x22;
-    attr.value.mac[2] = 0x33;
-    attr.value.mac[3] = 0x44;
-    attr.value.mac[4] = 0x55;
-    attr.value.mac[5] = 0x66;
-
-    return vs_generic_set(SAI_OBJECT_TYPE_SWITCH, ss->getSwitchId(), &attr);
-}
 
 static sai_status_t set_switch_default_attributes()
 {
@@ -887,7 +868,7 @@ static sai_status_t initialize_default_objects()
 {
     SWSS_LOG_ENTER();
 
-    CHECK_STATUS(set_switch_mac_address());
+    CHECK_STATUS(set_switch_mac_address(ss));
 
     CHECK_STATUS(create_cpu_port());
     CHECK_STATUS(create_default_vlan());
