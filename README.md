@@ -1,7 +1,4 @@
-Broadcom[![Build Status](https://sonic-jenkins.westus2.cloudapp.azure.com/job/broadcom/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus2.cloudapp.azure.com/job/broadcom/job/sonic-sairedis-build/)
-Cavium[![Build Status](https://sonic-jenkins.westus2.cloudapp.azure.com/job/cavium/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus2.cloudapp.azure.com/job/cavium/job/sonic-sairedis-build/)
-Mellanox[![Build Status](https://sonic-jenkins.westus2.cloudapp.azure.com/job/mellanox/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus2.cloudapp.azure.com/job/mellanox/job/sonic-sairedis-build/)
-P4[![Build Status](https://sonic-jenkins.westus2.cloudapp.azure.com/job/p4/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus2.cloudapp.azure.com/job/p4/job/sonic-sairedis-build/)
+VS[![Build Status](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/sonic-sairedis-build/)
 
 # SONiC - SAI Redis - sairedis
 
