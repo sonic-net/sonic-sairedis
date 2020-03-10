@@ -12,7 +12,7 @@ using namespace sairedis;
 /**
  * @brief Get response timeout in milliseconds.
  */
-#define REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS (60*1000)
+#define REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS (120*1000)
 
 RedisChannel::RedisChannel(
         _In_ const std::string& dbAsic,
