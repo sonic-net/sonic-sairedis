@@ -190,7 +190,7 @@ sai_status_t VendorSai::set(
         _In_ sai_object_id_t objectId,
         _In_ const sai_attribute_t *attr)
 {
-    MUTEX();
+    std::unique_lock<std::mutex> _lock(m_apimutex);
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
@@ -221,6 +221,13 @@ sai_status_t VendorSai::set(
     }
 
     sai_object_meta_key_t mk = { .objecttype = objectType, .objectkey = { .key = { .object_id = objectId } } };
+
+    if (objectType == SAI_OBJECT_TYPE_SWITCH && attr && attr->id == SAI_SWITCH_ATTR_SWITCH_SHELL_ENABLE)
+    {
+        // in case of diagnostic shell, this vendor api can be blocking, so
+        // release lock here to not cause deadlock for other events in syncd
+        _lock.unlock();
+    }
 
     return info->set(&mk, attr);
 }
