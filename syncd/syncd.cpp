@@ -3,8 +3,15 @@
 #include "CommandLineOptionsParser.h"
 #include "Syncd.h"
 #include "MetadataLogger.h"
+#include "PortMapParser.h"
 
 #include "swss/warm_restart.h"
+
+#ifdef SAITHRIFT
+#include <utility>
+#include <algorithm>
+#include <switch_sai_rpc_server.h>
+#endif // SAITHRIFT
 
 #ifdef SAITHRIFT
 #define SWITCH_SAI_THRIFT_RPC_SERVER_PORT 9092
