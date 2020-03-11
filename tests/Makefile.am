@@ -15,4 +15,8 @@ vssyncd_SOURCES = ../syncd/main.cpp
 vssyncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
 vssyncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl ../syncd/libsyncd.a
 
+if SAITHRIFT
+vssyncd_LDADD += -lrpcserver -lthrift
+endif
+
 TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh brcm.pl mlnx.pl
