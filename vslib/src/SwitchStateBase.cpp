@@ -401,7 +401,7 @@ sai_status_t SwitchStateBase::setPort(
 
         if (getTapNameFromPortId(portId, name))
         {
-            SWSS_LOG_WARN("setting new MTU: %d on %s", mtu, name.c_str());
+            SWSS_LOG_INFO("setting new MTU: %d on %s", mtu, name.c_str());
 
             std::string vname = vs_get_veth_name(name, portId);
 

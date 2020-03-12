@@ -646,7 +646,7 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
     {
         mtu = attrmtu.value.u32;
 
-        SWSS_LOG_WARN("setting new MTU: %d on %s", mtu, vname.c_str());
+        SWSS_LOG_INFO("setting new MTU: %d on %s", mtu, vname.c_str());
     }
 
     vs_set_dev_mtu(name.c_str(), mtu);
