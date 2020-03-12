@@ -634,14 +634,28 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
         return SAI_STATUS_FAILURE;
     }
 
-    vs_set_dev_mtu(name.c_str(), ETH_FRAME_BUFFER_SIZE);
+    std::string vname = vs_get_veth_name(name, obj_id);
+
+    int mtu = ETH_FRAME_BUFFER_SIZE;
+
+    sai_attribute_t attrmtu;
+
+    attrmtu.id = SAI_PORT_ATTR_MTU;
+
+    if (get(SAI_OBJECT_TYPE_PORT, obj_id, 1, &attrmtu) == SAI_STATUS_SUCCESS)
+    {
+        mtu = attrmtu.value.u32;
+
+        SWSS_LOG_WARN("setting new MTU: %d on %s", mtu, vname.c_str());
+    }
+
+    vs_set_dev_mtu(name.c_str(), mtu);
+    vs_set_dev_mtu(vname.c_str(), mtu);
 
     if (!hostif_create_tap_veth_forwarding(name, tapfd, obj_id))
     {
         SWSS_LOG_ERROR("forwarding rule on %s was not added", name.c_str());
     }
-
-    std::string vname = vs_get_veth_name(name, obj_id);
 
     SWSS_LOG_INFO("mapping interface %s to port id %s",
             vname.c_str(),

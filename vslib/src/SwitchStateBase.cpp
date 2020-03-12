@@ -393,6 +393,27 @@ sai_status_t SwitchStateBase::setPort(
             }
         }
     }
+    else if (attr && attr->id == SAI_PORT_ATTR_MTU && m_switchConfig->m_useTapDevice)
+    {
+        uint32_t mtu = attr->value.u32;
+
+        std::string name;
+
+        if (getTapNameFromPortId(portId, name))
+        {
+            SWSS_LOG_WARN("setting new MTU: %d on %s", mtu, name.c_str());
+
+            std::string vname = vs_get_veth_name(name, portId);
+
+            if (vs_set_dev_mtu(name.c_str(), mtu) < 0 || vs_set_dev_mtu(vname.c_str(), mtu) < 0)
+            {
+                SWSS_LOG_ERROR("failed to set MTU on portId %s",
+                    sai_serialize_object_id(portId).c_str());
+
+                return SAI_STATUS_FAILURE;
+            }
+        }
+    }
 
     auto sid = sai_serialize_object_id(portId);
 
