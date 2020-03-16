@@ -350,6 +350,13 @@ int SwitchStateBase::vs_set_dev_mtu(
 
     int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
 
+    if (sock < 0)
+    {
+        SWSS_LOG_ERROR("create socket failed: %s", strerror(errno));
+
+        return sock;
+    }
+
     struct ifreq ifr;
 
     strncpy(ifr.ifr_name, name, MAX_INTERFACE_NAME_LEN);
@@ -364,7 +371,7 @@ int SwitchStateBase::vs_set_dev_mtu(
         return 0;
     }
 
-    SWSS_LOG_WARN("failed to set mtu on %s to %d", name, mtu);
+    SWSS_LOG_WARN("failed to set mtu on %s to %d: %s", name, mtu, strerror(errno));
     return err;
 }
 
