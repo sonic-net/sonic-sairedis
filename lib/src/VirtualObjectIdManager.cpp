@@ -146,7 +146,7 @@ sai_object_type_t VirtualObjectIdManager::saiObjectTypeQuery(
 
     if (objectType == SAI_OBJECT_TYPE_NULL || objectType >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
     {
-        SWSS_LOG_ERROR("invalid object id 0x%s",
+        SWSS_LOG_ERROR("invalid object id %s",
                 sai_serialize_object_id(objectId).c_str());
 
         /*
@@ -359,7 +359,7 @@ sai_object_type_t VirtualObjectIdManager::objectTypeQuery(
 
     if (!sai_metadata_is_object_type_valid(objectType))
     {
-        SWSS_LOG_ERROR("invalid object id 0x%s",
+        SWSS_LOG_ERROR("invalid object id %s",
                 sai_serialize_object_id(objectId).c_str());
 
         return SAI_OBJECT_TYPE_NULL;

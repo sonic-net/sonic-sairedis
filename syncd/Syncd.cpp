@@ -742,7 +742,7 @@ sai_status_t Syncd::processBulkEntry(
 }
 
 sai_status_t Syncd::processEntry(
-        _In_ sai_object_meta_key_t &metaKey,
+        _In_ sai_object_meta_key_t metaKey,
         _In_ sai_common_api_t api,
         _In_ uint32_t attr_count,
         _In_ sai_attribute_t *attr_list)
