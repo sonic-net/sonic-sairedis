@@ -4,21 +4,15 @@ extern "C" {
 #include <sai.h>
 }
 
-#include "sairedis.h"
-#include "sairediscommon.h"
-
-#include "meta/sai_serialize.h"
-#include "meta/OidRefCounter.h"
-#include "meta/SaiAttrWrapper.h"
-#include "meta/SaiObjectCollection.h"
-
 #include "swss/logger.h"
 #include "swss/dbconnector.h"
 #include "swss/schema.h"
 #include "swss/redisreply.h"
-#include "swss/consumertable.h"
-#include "swss/select.h"
-#include "swss/redisclient.h"
+#include "sairedis.h"
+#include "sairediscommon.h"
+#include "sai_redis.h"
+#include "meta/sai_serialize.h"
+#include "syncd.h"
 
 #include <map>
 #include <unordered_map>
@@ -27,29 +21,23 @@ extern "C" {
 #include <tuple>
 
 // TODO remove when SAI will introduce bulk APIs to those objects
-sai_status_t sai_bulk_create_fdb_entry(
+sai_status_t redis_bulk_create_fdb_entry(
         _In_ uint32_t object_count,
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
+        _In_ const sai_attribute_t *const *attr_list,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses);
 
-sai_status_t sai_bulk_remove_fdb_entry(
+sai_status_t redis_bulk_remove_fdb_entry(
         _In_ uint32_t object_count,
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses);
-
-//static bool g_syncMode;
 
 #define ASSERT_SUCCESS(format,...) \
     if ((status)!=SAI_STATUS_SUCCESS) \
         SWSS_LOG_THROW(format ": %s", ##__VA_ARGS__, sai_serialize_status(status).c_str());
-
-using namespace saimeta;
-static std::shared_ptr<swss::RedisClient>   g_redisClient;
-static std::shared_ptr<swss::DBConnector> g_db1;
 
 static sai_next_hop_group_api_t test_next_hop_group_api;
 static std::vector<std::tuple<sai_object_id_t, sai_object_id_t, std::vector<sai_attribute_t>>> created_next_hop_group_member;
@@ -75,10 +63,8 @@ void clearDB()
 {
     SWSS_LOG_ENTER();
 
-    g_db1 = std::make_shared<swss::DBConnector>(ASIC_DB, "localhost", 6379, 0);
-    swss::RedisReply r(g_db1.get(), "FLUSHALL", REDIS_REPLY_STATUS);
-    g_redisClient = std::make_shared<swss::RedisClient>(g_db1.get());
-
+    swss::DBConnector db("ASIC_DB", 0, true);
+    swss::RedisReply r(&db, "FLUSHALL", REDIS_REPLY_STATUS);
     r.checkStatusOK();
 }
 
@@ -120,16 +106,6 @@ static sai_service_method_table_t test_services = {
     profile_get_next_value
 };
 
-void sai_reinit()
-{
-    SWSS_LOG_ENTER();
-
-    clearDB();
-
-    sai_api_uninitialize();
-    sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
-}
-
 void test_sai_initialize()
 {
     SWSS_LOG_ENTER();
@@ -164,20 +140,27 @@ void test_enable_recording()
     ASSERT_SUCCESS("Failed to enable recording");
 }
 
+class SaiAttrWrapper;
+extern std::unordered_map<std::string,
+       std::unordered_map<sai_attr_id_t,
+       std::shared_ptr<SaiAttrWrapper>>> ObjectAttrHash;
+extern void object_reference_insert(sai_object_id_t oid);
+
+sai_object_id_t create_dummy_object_id(
+        _In_ sai_object_type_t objecttype)
+{
+    SWSS_LOG_ENTER();
+
+    static uint64_t index = 0;
+
+    return (((sai_object_id_t)objecttype) << 48) | ++index;
+}
+
 bool starts_with(const std::string& str, const std::string& substr)
 {
     SWSS_LOG_ENTER();
 
     return strncmp(str.c_str(), substr.c_str(), substr.size()) == 0;
-}
-
-sai_status_t processBulkEvent(
-        _In_ sai_common_api_t api,
-        _In_ const swss::KeyOpFieldsValuesTuple &kco)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_FAILURE;
 }
 
 void bulk_nhgm_consumer_worker()
@@ -204,16 +187,7 @@ void bulk_nhgm_consumer_worker()
 
         if (op == "bulkcreate")
         {
-            sai_status_t status = SAI_STATUS_FAILURE;
-
-            try
-            {
-                status = processBulkEvent((sai_common_api_t)SAI_COMMON_API_BULK_CREATE, kco);
-            }
-            catch(std::exception&e)
-            {
-                SWSS_LOG_ERROR("got exception: %s", e.what());
-            }
+            sai_status_t status = processBulkEvent(SAI_COMMON_API_BULK_CREATE, kco);
             ASSERT_SUCCESS("Failed to processBulkEvent");
             break;
         }
@@ -227,19 +201,19 @@ void test_bulk_next_hop_group_member_create()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    sai_reinit();
+    clearDB();
+    meta_init_db();
+    redis_clear_switch_ids();
 
-  // auto consumerThreads = new std::thread(bulk_nhgm_consumer_worker);
+    auto consumerThreads = new std::thread(bulk_nhgm_consumer_worker);
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     sai_status_t    status;
 
-    sai_next_hop_api_t  *sai_next_hop_api = NULL;
     sai_next_hop_group_api_t  *sai_next_hop_group_api = NULL;
     sai_switch_api_t *sai_switch_api = NULL;
 
-    sai_api_query(SAI_API_NEXT_HOP, (void**)&sai_next_hop_api);
     sai_api_query(SAI_API_NEXT_HOP_GROUP, (void**)&sai_next_hop_group_api);
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
 
@@ -262,31 +236,23 @@ void test_bulk_next_hop_group_member_create()
     std::vector<const sai_attribute_t *> nhgm_attrs_array;
     std::vector<uint32_t> nhgm_attrs_count;
 
-    sai_object_id_t hopgroup_vid;
-    sai_attribute_t nhgattr;
-
-    nhgattr.id = SAI_NEXT_HOP_GROUP_ATTR_TYPE;
-    nhgattr.value.s32 = SAI_NEXT_HOP_GROUP_TYPE_ECMP;
-    status = sai_next_hop_group_api->create_next_hop_group(&hopgroup_vid, switch_id, 1,&nhgattr);
-
-    ASSERT_SUCCESS("failed to create next hop group");
+    // next hop group
+    sai_object_id_t hopgroup = create_dummy_object_id(SAI_OBJECT_TYPE_NEXT_HOP_GROUP);
+    object_reference_insert(hopgroup);
+    sai_object_meta_key_t meta_key_hopgruop = { .objecttype = SAI_OBJECT_TYPE_NEXT_HOP_GROUP, .objectkey = { .key = { .object_id = hopgroup } } };
+    std::string hopgroup_key = sai_serialize_object_meta_key(meta_key_hopgruop);
+    ObjectAttrHash[hopgroup_key] = { };
+    sai_object_id_t hopgroup_vid = translate_rid_to_vid(hopgroup, switch_id);
 
     for (uint32_t i = 0; i <  count; ++i)
     {
-        sai_object_id_t hop_vid;
-
-        sai_attribute_t nhattr[3] = { };
-
-        nhattr[0].id = SAI_NEXT_HOP_ATTR_TYPE;
-        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_SEGMENTROUTE_ENDPOINT;
-
-        nhattr[1].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_TYPE;
-
-        nhattr[2].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_POP_TYPE;
-
-        status = sai_next_hop_api->create_next_hop(&hop_vid, switch_id, 3, nhattr);
-
-        ASSERT_SUCCESS("failed to create next hop");
+        // next hop
+        sai_object_id_t hop = create_dummy_object_id(SAI_OBJECT_TYPE_NEXT_HOP);
+        object_reference_insert(hop);
+        sai_object_meta_key_t meta_key_hop = { .objecttype = SAI_OBJECT_TYPE_NEXT_HOP, .objectkey = { .key = { .object_id = hop } } };
+        std::string hop_key = sai_serialize_object_meta_key(meta_key_hop);
+        ObjectAttrHash[hop_key] = { };
+        sai_object_id_t hop_vid = translate_rid_to_vid(hop, switch_id);
 
         std::vector<sai_attribute_t> list(2);
         sai_attribute_t &attr1 = list[0];
@@ -296,7 +262,6 @@ void test_bulk_next_hop_group_member_create()
         attr1.value.oid = hopgroup_vid;
         attr2.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
         attr2.value.oid = hop_vid;
-
         nhgm_attrs.push_back(list);
         nhgm_attrs_count.push_back(2);
     }
@@ -316,9 +281,8 @@ void test_bulk_next_hop_group_member_create()
         ASSERT_SUCCESS("Failed to create nhgm # %zu", j);
     }
 
-    return ;
-    //consumerThreads->join();
-    //delete consumerThreads;
+    consumerThreads->join();
+    delete consumerThreads;
 
     // check the created nhgm
     for (size_t i = 0; i < created_next_hop_group_member.size(); i++)
@@ -339,21 +303,19 @@ void test_bulk_fdb_create()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    sai_reinit();
+    clearDB();
+    meta_init_db();
+    redis_clear_switch_ids();
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     sai_status_t    status;
 
+    sai_route_api_t  *sai_fdb_api = NULL;
     sai_switch_api_t *sai_switch_api = NULL;
-    sai_lag_api_t *sai_lag_api = NULL;
-    sai_bridge_api_t *sai_bridge_api = NULL;
-    sai_virtual_router_api_t * sai_virtual_router_api = NULL;
 
-    sai_api_query(SAI_API_BRIDGE, (void**)&sai_bridge_api);
-    sai_api_query(SAI_API_LAG, (void**)&sai_lag_api);
+    sai_api_query(SAI_API_FDB, (void**)&sai_fdb_api);
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
-    sai_api_query(SAI_API_VIRTUAL_ROUTER, (void**)&sai_virtual_router_api);
 
     uint32_t count = 3;
 
@@ -372,48 +334,31 @@ void test_bulk_fdb_create()
     ASSERT_SUCCESS("Failed to create switch");
 
     std::vector<std::vector<sai_attribute_t>> fdb_attrs;
-    std::vector<const sai_attribute_t *> fdb_attrs_array;
+    std::vector<sai_attribute_t *> fdb_attrs_array;
     std::vector<uint32_t> fdb_attrs_count;
 
     for (uint32_t i = index; i < index + count; ++i)
     {
         // virtual router
-        sai_object_id_t vr;
-
-        status = sai_virtual_router_api->create_virtual_router(&vr, switch_id, 0, NULL);
-
-        ASSERT_SUCCESS("failed to create virtual router");
-
-        // bridge
-        sai_object_id_t bridge;
-
-        sai_attribute_t battr;
-
-        battr.id = SAI_BRIDGE_ATTR_TYPE;
-        battr.value.s32 = SAI_BRIDGE_TYPE_1Q;
-
-        status = sai_bridge_api->create_bridge(&bridge, switch_id, 1, &battr);
-
-        ASSERT_SUCCESS("failed to create bridge");
-
-        sai_object_id_t lag;
-        status = sai_lag_api->create_lag(&lag, switch_id, 0, NULL);
-
-        ASSERT_SUCCESS("failed to create lag");
+        sai_object_id_t vr = create_dummy_object_id(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+        object_reference_insert(vr);
+        sai_object_meta_key_t meta_key_vr = { .objecttype = SAI_OBJECT_TYPE_VIRTUAL_ROUTER, .objectkey = { .key = { .object_id = vr } } };
+        std::string vr_key = sai_serialize_object_meta_key(meta_key_vr);
+        ObjectAttrHash[vr_key] = { };
 
         // bridge port
-        sai_object_id_t bridge_port;
+        sai_object_id_t bridge_port = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE_PORT);
+        object_reference_insert(bridge_port);
+        sai_object_meta_key_t meta_key_bridge_port = { .objecttype = SAI_OBJECT_TYPE_BRIDGE_PORT, .objectkey = { .key = { .object_id = bridge_port } } };
+        std::string bridge_port_key = sai_serialize_object_meta_key(meta_key_bridge_port);
+        ObjectAttrHash[bridge_port_key] = { };
 
-        sai_attribute_t bpattr[2];
-
-        bpattr[0].id = SAI_BRIDGE_PORT_ATTR_TYPE;
-        bpattr[0].value.s32 = SAI_BRIDGE_PORT_TYPE_PORT;
-        bpattr[1].id = SAI_BRIDGE_PORT_ATTR_PORT_ID;
-        bpattr[1].value.oid = lag;
-
-        status = sai_bridge_api->create_bridge_port(&bridge_port, switch_id, 2, bpattr);
-
-        ASSERT_SUCCESS("failed to create bridge port");
+        // bridge
+        sai_object_id_t bridge = create_dummy_object_id(SAI_OBJECT_TYPE_BRIDGE);
+        object_reference_insert(bridge);
+        sai_object_meta_key_t meta_key_bridge = { .objecttype = SAI_OBJECT_TYPE_BRIDGE, .objectkey = { .key = { .object_id = bridge } } };
+        std::string bridge_key = sai_serialize_object_meta_key(meta_key_bridge);
+        ObjectAttrHash[bridge_key] = { };
 
         sai_fdb_entry_t fdb_entry;
         fdb_entry.switch_id = switch_id;
@@ -448,18 +393,18 @@ void test_bulk_fdb_create()
     }
 
     std::vector<sai_status_t> statuses(count);
-    status = sai_bulk_create_fdb_entry(count, fdbs.data(), fdb_attrs_count.data(), (const sai_attribute_t**)fdb_attrs_array.data()
+    status = redis_bulk_create_fdb_entry(count, fdbs.data(), fdb_attrs_count.data(), fdb_attrs_array.data()
         , SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to create fdb");
     for (size_t j = 0; j < statuses.size(); j++)
     {
         status = statuses[j];
-        ASSERT_SUCCESS("Failed to create fdb # %zu", j);
+        ASSERT_SUCCESS("Failed to create route # %zu", j);
     }
 
-    // Remove fdb entry
-    status = sai_bulk_remove_fdb_entry(count, fdbs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
-    ASSERT_SUCCESS("Failed to bulk remove fdb entry");
+    // Remove route entry
+    status = redis_bulk_remove_fdb_entry(count, fdbs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
+    ASSERT_SUCCESS("Failed to bulk remove route entry");
 }
 
 void test_bulk_route_set()
@@ -468,7 +413,9 @@ void test_bulk_route_set()
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
-    sai_reinit();
+    clearDB();
+    meta_init_db();
+    redis_clear_switch_ids();
 
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
@@ -476,13 +423,9 @@ void test_bulk_route_set()
 
     sai_route_api_t  *sai_route_api = NULL;
     sai_switch_api_t *sai_switch_api = NULL;
-    sai_virtual_router_api_t * sai_virtual_router_api = NULL;
-    sai_next_hop_api_t  *sai_next_hop_api = NULL;
 
     sai_api_query(SAI_API_ROUTE, (void**)&sai_route_api);
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
-    sai_api_query(SAI_API_VIRTUAL_ROUTER, (void**)&sai_virtual_router_api);
-    sai_api_query(SAI_API_NEXT_HOP, (void**)&sai_next_hop_api);
 
     uint32_t count = 3;
 
@@ -510,25 +453,18 @@ void test_bulk_route_set()
         sai_route_entry_t route_entry;
 
         // virtual router
-        sai_object_id_t vr;
-
-        status = sai_virtual_router_api->create_virtual_router(&vr, switch_id, 0, NULL);
-
-        ASSERT_SUCCESS("failed to create virtual router");
+        sai_object_id_t vr = create_dummy_object_id(SAI_OBJECT_TYPE_VIRTUAL_ROUTER);
+        object_reference_insert(vr);
+        sai_object_meta_key_t meta_key_vr = { .objecttype = SAI_OBJECT_TYPE_VIRTUAL_ROUTER, .objectkey = { .key = { .object_id = vr } } };
+        std::string vr_key = sai_serialize_object_meta_key(meta_key_vr);
+        ObjectAttrHash[vr_key] = { };
 
         // next hop
-        sai_object_id_t hop;
-
-        sai_attribute_t nhattr[3] = { };
-
-        nhattr[0].id = SAI_NEXT_HOP_ATTR_TYPE;
-        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_SEGMENTROUTE_ENDPOINT;
-        nhattr[1].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_TYPE;
-        nhattr[2].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_POP_TYPE;
-
-        status = sai_next_hop_api->create_next_hop(&hop, switch_id, 3, nhattr);
-
-        ASSERT_SUCCESS("failed to create next hop");
+        sai_object_id_t hop = create_dummy_object_id(SAI_OBJECT_TYPE_NEXT_HOP);
+        object_reference_insert(hop);
+        sai_object_meta_key_t meta_key_hop = { .objecttype = SAI_OBJECT_TYPE_NEXT_HOP, .objectkey = { .key = { .object_id = hop } } };
+        std::string hop_key = sai_serialize_object_meta_key(meta_key_hop);
+        ObjectAttrHash[hop_key] = { };
 
         route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
         route_entry.destination.addr.ip4 = htonl(0x0a000000 | i);
@@ -604,7 +540,6 @@ void test_bulk_route_set()
     // TODO we need to add consumer producer test here to see
     // if after consume we get pop we get expected parameters
 
-    // TODO in async mode this api will always return success
     // Remove route entry
     status = sai_route_api->remove_route_entries(count, routes.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to bulk remove route entry");
@@ -621,8 +556,6 @@ int main()
     try
     {
         test_sai_initialize();
-
-        // g_syncMode = true;
 
         test_enable_recording();
 

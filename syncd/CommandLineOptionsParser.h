@@ -1,25 +1,23 @@
 #pragma once
 
+#include "syncd.h"
 #include "CommandLineOptions.h"
 
 #include <memory>
 
-namespace syncd
+class CommandLineOptionsParser
 {
-    class CommandLineOptionsParser
-    {
-        private:
+    private:
 
-            CommandLineOptionsParser() = delete;
+        CommandLineOptionsParser() = delete;
 
-            ~CommandLineOptionsParser() = delete;
+        ~CommandLineOptionsParser() = delete;
 
-        public:
+    public:
 
-            static std::shared_ptr<CommandLineOptions> parseCommandLine(
-                    _In_ int argc,
-                    _In_ char **argv);
+        static std::shared_ptr<CommandLineOptions> parseCommandLine(
+                _In_ int argc,
+                _In_ char **argv);
 
-            static void printUsage();
-    };
-}
+        static void printUsage();
+};

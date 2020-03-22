@@ -1,4 +1,5 @@
 #include "sai_serialize.h"
+#include "meta/sai_meta.h"
 #include "swss/tokenize.h"
 
 #pragma GCC diagnostic push
@@ -425,7 +426,7 @@ sai_status_t transfer_attributes(
 
         if (src_attr.id != dst_attr.id)
         {
-            SWSS_LOG_THROW("src (%d) vs dst (%d) attr id don't match GET mismatch", src_attr.id, dst_attr.id);
+            SWSS_LOG_THROW("src vs dst attr id don't match GET mismatch");
         }
 
         if (meta == NULL)
@@ -668,22 +669,6 @@ std::string sai_serialize_object_type(
     SWSS_LOG_ENTER();
 
     return sai_serialize_enum(object_type, &sai_metadata_enum_sai_object_type_t);
-}
-
-std::string sai_serialize_log_level(
-        _In_ sai_log_level_t log_level)
-{
-    SWSS_LOG_ENTER();
-
-    return sai_serialize_enum(log_level, &sai_metadata_enum_sai_log_level_t);
-}
-
-std::string sai_serialize_api(
-        _In_ sai_api_t api)
-{
-    SWSS_LOG_ENTER();
-
-    return sai_serialize_enum(api, &sai_metadata_enum_sai_api_t);
 }
 
 std::string sai_serialize_attr_value_type(
@@ -1771,34 +1756,6 @@ std::string sai_serialize_object_meta_key(
     return key;
 }
 
-#define SYNCD_INIT_VIEW     "INIT_VIEW"
-#define SYNCD_APPLY_VIEW    "APPLY_VIEW"
-#define SYNCD_INSPECT_ASIC  "SYNCD_INSPECT_ASIC"
-
-std::string sai_serialize(
-        _In_ const sai_redis_notify_syncd_t& value)
-{
-    SWSS_LOG_ENTER();
-
-    switch (value)
-    {
-        case SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW:
-            return SYNCD_INIT_VIEW;
-
-        case SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW:
-            return SYNCD_APPLY_VIEW;
-
-        case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
-            return SYNCD_INSPECT_ASIC;
-
-        default:
-
-            SWSS_LOG_WARN("unknown value on sai_redis_notify_syncd_t: %d", value);
-
-            return std::to_string(value);
-    }
-}
-
 // deserialize
 
 void sai_deserialize_bool(
@@ -2715,24 +2672,6 @@ void sai_deserialize_object_type(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_object_type_t, (int32_t&)object_type);
 }
 
-void sai_deserialize_log_level(
-        _In_ const std::string& s,
-        _Out_ sai_log_level_t& log_level)
-{
-    SWSS_LOG_ENTER();
-
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_log_level_t, (int32_t&)log_level);
-}
-
-void sai_deserialize_api(
-        _In_ const std::string& s,
-        _Out_ sai_api_t& api)
-{
-    SWSS_LOG_ENTER();
-
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_api_t, (int32_t&)api);
-}
-
 void sai_deserialize_vlan_id(
         _In_ const std::string& s,
         _In_ sai_vlan_id_t& vlan_id)
@@ -2816,7 +2755,7 @@ void sai_deserialize_nat_entry_data(
     sai_deserialize_nat_entry_key(j["key"], nat_entry_data.key);
     sai_deserialize_nat_entry_mask(j["mask"], nat_entry_data.mask);
 }
-
+ 
 void sai_deserialize_nat_entry(
         _In_ const std::string &s,
         _Out_ sai_nat_entry_t& nat_entry)
@@ -3213,44 +3152,4 @@ void sai_deserialize_queue_attr(
     SWSS_LOG_ENTER();
 
     sai_deserialize_enum(s, &sai_metadata_enum_sai_queue_attr_t, (int32_t&)attr);
-}
-
-// sairedis
-
-void sai_deserialize(
-        _In_ const std::string& s,
-        _Out_ sai_redis_notify_syncd_t& value)
-{
-    SWSS_LOG_ENTER();
-
-    if (s == SYNCD_INIT_VIEW)
-    {
-        value = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
-    }
-    else if (s == SYNCD_APPLY_VIEW)
-    {
-        value = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
-    }
-    else if (s == SYNCD_INSPECT_ASIC)
-    {
-        value = SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC;
-    }
-    else
-    {
-        SWSS_LOG_WARN("enum %s not found in sai_redis_notify_syncd_t", s.c_str());
-
-        sai_deserialize_number(s, value);
-    }
-}
-
-sai_redis_notify_syncd_t sai_deserialize_redis_notify_syncd(
-        _In_ const std::string& s)
-{
-    SWSS_LOG_ENTER();
-
-    sai_redis_notify_syncd_t value;
-
-    sai_deserialize(s,value);
-
-    return value;
 }

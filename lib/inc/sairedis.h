@@ -1,17 +1,9 @@
-#pragma once
+#ifndef __SAIREDIS__
+#define __SAIREDIS__
 
 extern "C" {
 #include "sai.h"
 }
-
-/**
- * @brief Redis key context config.
- *
- * Optional. Should point to a context_config.json which will contain how many
- * contexts (syncd) we have in the system globally and each context how many
- * switches it manages.
- */
-#define SAI_REDIS_KEY_CONTEXT_CONFIG              "SAI_REDIS_CONTEXT_CONFIG"
 
 typedef enum _sai_redis_notify_syncd_t
 {
@@ -133,19 +125,6 @@ typedef enum _sai_redis_switch_attr_t
      */
     SAI_REDIS_SWITCH_ATTR_RECORD_STATS,
 
-    /**
-     * @brief Global context.
-     *
-     * When creating switch, this attribute can be specified (and must be
-     * passed as last attribute on the list), will determine which context to
-     * talk to.  Context is a syncd instance. Also this value is encoded
-     * internally into each object ID, so each API call will know internally to
-     * which instance of syncd send API requests.
-     *
-     * @type uint32_t
-     * @flags CREATE_ONLY
-     * @default 0
-     */
-    SAI_REDIS_SWITCH_ATTR_CONTEXT,
-
 } sai_redis_switch_attr_t;
+
+#endif // __SAIREDIS__

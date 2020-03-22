@@ -123,8 +123,3 @@ tests/syncd
 **/*~
 **/*.swp
 **/*.rec
-
-tests/applyview.log
-tests/sai_warmboot.bin
-tests/syncd
-

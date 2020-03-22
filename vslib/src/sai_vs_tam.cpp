@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include "sai_vs_internal.h"
 
 VS_GENERIC_QUAD(TAM,tam);
 VS_GENERIC_QUAD(TAM_MATH_FUNC,tam_math_func);

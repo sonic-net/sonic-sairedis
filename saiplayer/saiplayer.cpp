@@ -1,27 +1,23 @@
+#include <inttypes.h>
+#include <getopt.h>
+#include <unistd.h>
+
+#include "string.h"
 extern "C" {
 #include "sai.h"
 }
 
-#include "sairedis.h"
-#include "sairediscommon.h"
-
 #include "meta/sai_serialize.h"
-#include "meta/SaiAttributeList.h"
-
+#include "meta/saiattributelist.h"
 #include "swss/logger.h"
 #include "swss/tokenize.h"
-
-#include <inttypes.h>
-#include <getopt.h>
-#include <unistd.h>
-#include <string.h>
+#include "sairedis.h"
+#include "sairediscommon.h"
 
 #include <iostream>
 #include <stdexcept>
 #include <sstream>
 #include <string>
-
-using namespace saimeta;
 
 /*
  * Since this is player, we record actions from orchagent.  No special case
@@ -29,8 +25,6 @@ using namespace saimeta;
  * syncd cold restart) since orchagent should never create switch with oid
  * values set at creation time.
  */
-
-sai_apis_t apis;
 
 std::map<std::string, std::string> profile_map;
 
@@ -819,7 +813,21 @@ void performNotifySyncd(const std::string& request, const std::string response)
     // tell syncd that we are compiling new view
     sai_attribute_t attr;
     attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
-    attr.value.s32 = sai_deserialize_redis_notify_syncd(r[2]);
+
+    const std::string requestAction = r[2];
+
+    if (requestAction == SYNCD_INIT_VIEW)
+    {
+        attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+    }
+    else if (requestAction == SYNCD_APPLY_VIEW)
+    {
+        attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
+    }
+    else
+    {
+        SWSS_LOG_THROW("invalid syncd notify request: %s", request.c_str());
+    }
 
     /*
      * NOTE: We don't need actual switch to set those attributes.
@@ -1602,6 +1610,7 @@ int main(int argc, char **argv)
 
     EXIT_ON_ERROR(sai_api_initialize(0, (const sai_service_method_table_t *)&test_services));
 
+    sai_apis_t apis;
     sai_metadata_apis_query(sai_api_query, &apis);
 
     sai_attribute_t attr;

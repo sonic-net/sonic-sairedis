@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include "sai_vs_internal.h"
 
 VS_GENERIC_QUAD(BRIDGE,bridge);
 VS_GENERIC_QUAD(BRIDGE_PORT,bridge_port);

@@ -1,4 +1,5 @@
 #include "sai_redis.h"
+#include "sai_redis_internal.h"
 
 REDIS_GENERIC_QUAD_ENTRY(INSEG_ENTRY,inseg_entry);
 

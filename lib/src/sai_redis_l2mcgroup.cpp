@@ -1,4 +1,5 @@
 #include "sai_redis.h"
+#include "sai_redis_internal.h"
 
 REDIS_GENERIC_QUAD(L2MC_GROUP,l2mc_group);
 REDIS_GENERIC_QUAD(L2MC_GROUP_MEMBER,l2mc_group_member);

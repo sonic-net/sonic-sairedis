@@ -1,5 +1,5 @@
 # since we have SAI sumbodule we will use submodule headers
-AM_CPPFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/lib/inc
+AM_CPPFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
 
 if DEBUG
 DBGFLAGS = -ggdb -D_DEBUG_
@@ -74,18 +74,9 @@ clean-local:
 	make -C $(top_srcdir)/SAI/meta clean
 
 libsaimetadata_la_SOURCES = \
-							../lib/src/SaiInterface.cpp \
-							SaiAttributeList.cpp \
-							saiserialize.cpp \
-							SaiAttrWrapper.cpp \
-							OidRefCounter.cpp \
-							AttrKeyMap.cpp \
-							Globals.cpp \
-							SaiObject.cpp \
-							SaiObjectCollection.cpp \
-							PortRelatedSet.cpp \
-							Meta.cpp
-
+							sai_meta.cpp \
+							saiattributelist.cpp \
+							saiserialize.cpp
 
 BUILT_SOURCES = $(top_srcdir)/SAI/meta/saimetadata.h $(top_srcdir)/SAI/meta/saimetadata.c
 
@@ -94,15 +85,7 @@ libsaimetadata_la_LIBADD = -lhiredis -lswsscommon libsaimeta.la
 
 bin_PROGRAMS = tests
 
-tests_SOURCES = \
-				tests.cpp \
-				DummySaiInterface.cpp \
-				MetaTestSaiInterface.cpp \
-				NumberOidIndexGenerator.cpp \
-				../lib/src/VirtualObjectIdManager.cpp \
-				../lib/src/SwitchConfig.cpp \
-				../lib/src/SwitchConfigContainer.cpp
-
+tests_SOURCES = tests.cpp
 tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread libsaimetadata.la libsaimeta.la
 

@@ -15,7 +15,7 @@ extern "C" {
 #include <sai.h>
 }
 
-#include "saivs.h"
+#include "../inc/sai_vs.h"
 
 const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
@@ -116,33 +116,9 @@ void on_packet_event(
     SWSS_LOG_ENTER();
 }
 
-static void clearDB()
-{
-    SWSS_LOG_ENTER();
-
-    auto db = std::make_shared<swss::DBConnector>(ASIC_DB, "localhost", 6379, 0);
-
-    swss::RedisReply r(db.get(), "FLUSHALL", REDIS_REPLY_STATUS);
-
-    r.checkStatusOK();
-}
-
-static void sai_reinit()
-{
-    SWSS_LOG_ENTER();
-
-    SUCCESS(sai_api_uninitialize());
-
-    clearDB();
-
-    SUCCESS(sai_api_initialize(0, (sai_service_method_table_t*)&test_services));
-}
-
 void test_ports()
 {
     SWSS_LOG_ENTER();
-
-    sai_reinit();
 
     uint32_t expected_ports = 32;
 
@@ -178,8 +154,6 @@ void test_set_readonly_attribute()
 {
     SWSS_LOG_ENTER();
 
-    sai_reinit();
-
     sai_attribute_t attr;
 
     sai_object_id_t switch_id;
@@ -194,18 +168,10 @@ void test_set_readonly_attribute()
 
     ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) != SAI_STATUS_SUCCESS);
 
-    attr.id = SAI_VS_SWITCH_ATTR_META_ENABLE_UNITTESTS;
-    attr.value.booldata = true;
-    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) == SAI_STATUS_SUCCESS);
+    meta_unittests_enable(true);
 
     // allow set on readonly attribute
-
-    attr.id = SAI_VS_SWITCH_ATTR_META_ALLOW_READ_ONLY_ONCE;
-    attr.value.s32 = SAI_SWITCH_ATTR_PORT_MAX_MTU;
-    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) == SAI_STATUS_SUCCESS);
-
-    attr.id = SAI_SWITCH_ATTR_PORT_MAX_MTU;
-    attr.value.u32 = 42;
+    SUCCESS(meta_unittests_allow_readonly_set_once(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PORT_MAX_MTU));
 
     // set on readonly attribute should pass
     SUCCESS(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr));
@@ -224,8 +190,6 @@ void test_set_readonly_attribute()
 void test_set_readonly_attribute_via_redis()
 {
     SWSS_LOG_ENTER();
-
-    sai_reinit();
 
     sai_attribute_t attr;
 
@@ -283,8 +247,6 @@ void test_set_readonly_attribute_via_redis()
 void test_set_stats_via_redis()
 {
     SWSS_LOG_ENTER();
-
-    sai_reinit();
 
     sai_attribute_t attr;
 
@@ -409,8 +371,6 @@ sai_fdb_entry_t create_fdb_entry(
 void test_fdb_flush()
 {
     SWSS_LOG_ENTER();
-
-    sai_reinit();
 
     // TODO we need 10 cases, 10th where nothing was removed
 
@@ -707,8 +667,6 @@ void test_get_stats()
 {
     SWSS_LOG_ENTER();
 
-    sai_reinit();
-
     uint32_t expected_ports = 32;
 
     sai_attribute_t attr;
@@ -753,9 +711,7 @@ void test_get_stats()
     ASSERT_TRUE(values[0] == 0);
     ASSERT_TRUE(values[1] == 0);
 
-    attr.id = SAI_VS_SWITCH_ATTR_META_ENABLE_UNITTESTS;
-    attr.value.booldata = true;
-    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) == SAI_STATUS_SUCCESS);
+    meta_unittests_enable(true);
 
     values[0] = 77;
     values[1] = 127;
@@ -766,9 +722,7 @@ void test_get_stats()
     values[0] = 42;
     values[1] = 42;
 
-    attr.id = SAI_VS_SWITCH_ATTR_META_ENABLE_UNITTESTS;
-    attr.value.booldata = true;
-    ASSERT_TRUE(sai_metadata_sai_switch_api->set_switch_attribute(switch_id, &attr) == SAI_STATUS_SUCCESS);
+    meta_unittests_enable(false);
 
     ids[0] = SAI_PORT_STAT_IF_OUT_OCTETS;
     ids[1] = SAI_PORT_STAT_IF_IN_OCTETS;
@@ -788,6 +742,7 @@ int main()
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     SUCCESS(sai_api_initialize(0, (sai_service_method_table_t*)&test_services));
+
     sai_apis_t apis;
     sai_metadata_apis_query(sai_api_query, &apis);
 

@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include "sai_vs_internal.h"
 
 VS_GENERIC_QUAD_ENTRY(IPMC_ENTRY,ipmc_entry);
 

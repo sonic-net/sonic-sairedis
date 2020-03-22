@@ -40,7 +40,7 @@ for my $arg (@ARGV)
         my $line1 = $5;
         my $line2 = $6;
 
-        next if $name =~ /^(if|else|while|for|switch|\d+)$/;
+        next if $name =~ /^(if|else|while|for|\d+)$/;
         next if $rt =~ /^(if|else|while|for)$/;
         next if $line1 =~ /^\s+SWSS_LOG_ENTER/;
         next if $line1 =~ /mutex/i and $line2 =~ /^\s*SWSS_LOG_ENTER/;

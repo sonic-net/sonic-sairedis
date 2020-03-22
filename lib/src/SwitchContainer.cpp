@@ -18,14 +18,6 @@ void SwitchContainer::insert(
                 sai_serialize_object_id(switchId).c_str());
     }
 
-    // NOTE: this check should be also checked by metadata and return SAI
-    // failure before calling this constructor
-    if (getSwitchByHardwareInfo(sw->getHardwareInfo()))
-    {
-        SWSS_LOG_THROW("switch with hardware info '%s' already exists in container!",
-                sw->getHardwareInfo().c_str());
-    }
-
     m_switchMap[switchId] = sw;
 }
 
@@ -80,18 +72,3 @@ bool SwitchContainer::contains(
 
     return m_switchMap.find(switchId) != m_switchMap.end();
 }
-
-std::shared_ptr<Switch> SwitchContainer::getSwitchByHardwareInfo(
-        _In_ const std::string& hardwareInfo) const
-{
-    SWSS_LOG_ENTER();
-
-    for (auto&kvp: m_switchMap)
-    {
-        if (kvp.second->getHardwareInfo() == hardwareInfo)
-            return kvp.second;
-    }
-
-    return nullptr;
-}
-

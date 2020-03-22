@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include "sai_vs_internal.h"
 
 VS_GENERIC_QUAD(RPF_GROUP,rpf_group);
 VS_GENERIC_QUAD(RPF_GROUP_MEMBER,rpf_group_member);

@@ -3,7 +3,6 @@
 
 extern "C" {
 #include "sai.h"
-#include "saimetadata.h"
 }
 
 #include <iostream>
@@ -14,11 +13,9 @@ extern "C" {
 #include <iomanip>
 #include <map>
 #include <tuple>
-#include <cstring>
-
+#include <string.h>
 #include "swss/logger.h"
-
-#include "sairedis.h"
+#include "sai_meta.h"
 
 // util
 
@@ -30,9 +27,6 @@ sai_status_t transfer_attributes(
         _In_ bool countOnly = false);
 
 // serialize
-
-std::string sai_serialize_fdb_event(
-        _In_ sai_fdb_event_t event);
 
 std::string sai_serialize_ipv6(
         _In_ const sai_ip6_t& ip);
@@ -75,12 +69,6 @@ std::string sai_serialize_object_type(
 
 std::string sai_serialize_object_id(
         _In_ const sai_object_id_t object_id);
-
-std::string sai_serialize_log_level(
-        _In_ const sai_log_level_t log_level);
-
-std::string sai_serialize_api(
-        _In_ const sai_api_t api);
 
 std::string sai_serialize_attr_value_type(
         _In_ const sai_attr_value_type_t attr_value_type);
@@ -182,17 +170,7 @@ std::string sai_serialize_queue_deadlock_ntf(
         _In_ uint32_t count,
         _In_ const sai_queue_deadlock_notification_data_t* deadlock_data);
 
-// sairedis
-
-std::string sai_serialize(
-        _In_ const sai_redis_notify_syncd_t& value);
-
 // deserialize
-
-void sai_deserialize_enum(
-        _In_ const std::string& s,
-        _In_ const sai_enum_metadata_t * meta,
-        _Out_ int32_t& value);
 
 void sai_deserialize_number(
         _In_ const std::string& s,
@@ -219,14 +197,6 @@ void sai_deserialize_object_type(
 void sai_deserialize_object_id(
         _In_ const std::string& s,
         _Out_ sai_object_id_t& oid);
-
-void sai_deserialize_log_level(
-        _In_ const std::string& s,
-        _Out_ sai_log_level_t& log_level);
-
-void sai_deserialize_api(
-        _In_ const std::string& s,
-        _Out_ sai_api_t& api);
 
 void sai_deserialize_fdb_entry(
         _In_ const std::string& s,
@@ -326,14 +296,5 @@ void sai_deserialize_ingress_priority_group_attr(
 void sai_deserialize_queue_attr(
         _In_ const std::string& s,
         _Out_ sai_queue_attr_t& attr);
-
-// sairedis
-
-void sai_deserialize(
-        _In_ const std::string& s,
-        _Out_ sai_redis_notify_syncd_t& value);
-
-sai_redis_notify_syncd_t sai_deserialize_redis_notify_syncd(
-        _In_ const std::string& s);
 
 #endif // __SAI_SERIALIZE__

@@ -60,14 +60,6 @@ namespace sairedis
             bool contains(
                     _In_ sai_object_id_t switchId) const;
 
-            /**
-             * @brief Get switch by hardware info.
-             *
-             * Container allows only one switch with specific hardware info.
-             */
-            std::shared_ptr<Switch> getSwitchByHardwareInfo(
-                    _In_ const std::string& hardwareInfo) const;
-
         private:
 
             std::map<sai_object_id_t, std::shared_ptr<Switch>> m_switchMap;

@@ -1,4 +1,5 @@
 #include "sai_redis.h"
+#include "sai_redis_internal.h"
 
 REDIS_GENERIC_QUAD(IPMC_GROUP,ipmc_group);
 REDIS_GENERIC_QUAD(IPMC_GROUP_MEMBER,ipmc_group_member);

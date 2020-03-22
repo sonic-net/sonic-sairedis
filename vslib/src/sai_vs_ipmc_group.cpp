@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include "sai_vs_internal.h"
 
 VS_GENERIC_QUAD(IPMC_GROUP,ipmc_group);
 VS_GENERIC_QUAD(IPMC_GROUP_MEMBER,ipmc_group_member);

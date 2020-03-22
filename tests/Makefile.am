@@ -10,13 +10,22 @@ endif
 
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 
-vssyncd_SOURCES = ../syncd/main.cpp
+vssyncd_SOURCES = \
+				../syncd/main.cpp \
+				../syncd/syncd.cpp \
+				../syncd/syncd_saiswitch.cpp \
+				../syncd/syncd_hard_reinit.cpp \
+				../syncd/syncd_notifications.cpp \
+				../syncd/syncd_applyview.cpp \
+				../syncd/syncd_flex_counter.cpp \
+				../syncd/TimerWatchdog.cpp \
+				../syncd/NotificationQueue.cpp \
+				../syncd/CommandLineOptions.cpp \
+				../syncd/CommandLineOptionsParser.cpp \
+				../syncd/PortMap.cpp \
+				../syncd/PortMapParser.cpp
 
 vssyncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
-vssyncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl ../syncd/libsyncd.a
+vssyncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl
 
-if SAITHRIFT
-vssyncd_LDADD += -lrpcserver -lthrift
-endif
-
-TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh brcm.pl mlnx.pl
+TESTS = aspellcheck.pl mlnx.pl brcm.pl swsslogentercheck.sh

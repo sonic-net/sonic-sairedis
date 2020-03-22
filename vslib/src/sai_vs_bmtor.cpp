@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include "sai_vs_internal.h"
 
 VS_GENERIC_QUAD(TABLE_BITMAP_CLASSIFICATION_ENTRY,table_bitmap_classification_entry);
 VS_GENERIC_STATS(TABLE_BITMAP_CLASSIFICATION_ENTRY,table_bitmap_classification_entry);

@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include "sai_vs_internal.h"
 
 VS_GENERIC_QUAD(TUNNEL_MAP,tunnel_map);
 VS_GENERIC_QUAD(TUNNEL,tunnel);

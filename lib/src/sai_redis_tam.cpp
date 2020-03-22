@@ -1,4 +1,5 @@
 #include "sai_redis.h"
+#include "sai_redis_internal.h"
 
 REDIS_GENERIC_QUAD(TAM,tam);
 REDIS_GENERIC_QUAD(TAM_MATH_FUNC,tam_math_func);

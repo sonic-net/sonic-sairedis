@@ -1,424 +1,276 @@
-#pragma once
+#ifndef __SAI_REDIS__
+#define __SAI_REDIS__
+
+#include "Globals.h"
+
+#include <set>
+#include <unordered_map>
+
+#include <stdio.h>
 
 extern "C" {
 #include "sai.h"
-#include "saiextensions.h"
 }
 
-#include "Sai.h"
+#include "sai_redis_internal.h"
 
-#include <memory>
+#include "swss/redisclient.h"
+#include "swss/dbconnector.h"
+#include "swss/producertable.h"
+#include "swss/consumertable.h"
+#include "swss/notificationconsumer.h"
+#include "swss/notificationproducer.h"
+#include "swss/table.h"
+#include "swss/select.h"
+#include "swss/logger.h"
+#include "meta/sai_meta.h"
 
-#define PRIVATE __attribute__((visibility("hidden")))
+#include "SwitchContainer.h"
 
-PRIVATE extern const sai_acl_api_t              redis_acl_api;
-PRIVATE extern const sai_bfd_api_t              redis_bfd_api;
-PRIVATE extern const sai_bmtor_api_t            redis_bmtor_api;
-PRIVATE extern const sai_bridge_api_t           redis_bridge_api;
-PRIVATE extern const sai_buffer_api_t           redis_buffer_api;
-PRIVATE extern const sai_counter_api_t          redis_counter_api;
-PRIVATE extern const sai_debug_counter_api_t    redis_debug_counter_api;
-PRIVATE extern const sai_dtel_api_t             redis_dtel_api;
-PRIVATE extern const sai_fdb_api_t              redis_fdb_api;
-PRIVATE extern const sai_hash_api_t             redis_hash_api;
-PRIVATE extern const sai_hostif_api_t           redis_hostif_api;
-PRIVATE extern const sai_ipmc_api_t             redis_ipmc_api;
-PRIVATE extern const sai_ipmc_group_api_t       redis_ipmc_group_api;
-PRIVATE extern const sai_isolation_group_api_t  redis_isolation_group_api;
-PRIVATE extern const sai_l2mc_api_t             redis_l2mc_api;
-PRIVATE extern const sai_l2mc_group_api_t       redis_l2mc_group_api;
-PRIVATE extern const sai_lag_api_t              redis_lag_api;
-PRIVATE extern const sai_mcast_fdb_api_t        redis_mcast_fdb_api;
-PRIVATE extern const sai_mirror_api_t           redis_mirror_api;
-PRIVATE extern const sai_mpls_api_t             redis_mpls_api;
-PRIVATE extern const sai_nat_api_t              redis_nat_api;
-PRIVATE extern const sai_neighbor_api_t         redis_neighbor_api;
-PRIVATE extern const sai_next_hop_api_t         redis_next_hop_api;
-PRIVATE extern const sai_next_hop_group_api_t   redis_next_hop_group_api;
-PRIVATE extern const sai_policer_api_t          redis_policer_api;
-PRIVATE extern const sai_port_api_t             redis_port_api;
-PRIVATE extern const sai_qos_map_api_t          redis_qos_map_api;
-PRIVATE extern const sai_queue_api_t            redis_queue_api;
-PRIVATE extern const sai_route_api_t            redis_route_api;
-PRIVATE extern const sai_router_interface_api_t redis_router_interface_api;
-PRIVATE extern const sai_rpf_group_api_t        redis_rpf_group_api;
-PRIVATE extern const sai_samplepacket_api_t     redis_samplepacket_api;
-PRIVATE extern const sai_scheduler_api_t        redis_scheduler_api;
-PRIVATE extern const sai_scheduler_group_api_t  redis_scheduler_group_api;
-PRIVATE extern const sai_segmentroute_api_t     redis_segmentroute_api;
-PRIVATE extern const sai_stp_api_t              redis_stp_api;
-PRIVATE extern const sai_switch_api_t           redis_switch_api;
-PRIVATE extern const sai_tam_api_t              redis_tam_api;
-PRIVATE extern const sai_tunnel_api_t           redis_tunnel_api;
-PRIVATE extern const sai_udf_api_t              redis_udf_api;
-PRIVATE extern const sai_virtual_router_api_t   redis_virtual_router_api;
-PRIVATE extern const sai_vlan_api_t             redis_vlan_api;
-PRIVATE extern const sai_wred_api_t             redis_wred_api;
+/*
+ * Switch index is encoded on 1 byte so we can have
+ * max 0x100 switches at the same time.
+ */
 
-PRIVATE extern std::shared_ptr<sairedis::Sai>   redis_sai;
+#define MAX_SWITCHES 0x100
 
-// QUAD OID
+void redis_clear_switch_ids();
+void redis_free_virtual_object_id(
+        _In_ sai_object_id_t object_id);
 
-#define REDIS_CREATE(OT,ot)                             \
-    static sai_status_t redis_create_ ## ot(            \
-            _Out_ sai_object_id_t *object_id,           \
-            _In_ sai_object_id_t switch_id,             \
-            _In_ uint32_t attr_count,                   \
-            _In_ const sai_attribute_t *attr_list)      \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->create(                           \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,  \
-            object_id,                                  \
-            switch_id,                                  \
-            attr_count,                                 \
-            attr_list);                                 \
-}
+// if we don't receive response from syncd in 60 seconds
+// there is something wrong and we should fail
+#define GET_RESPONSE_TIMEOUT (60*1000)
 
-#define REDIS_REMOVE(OT,ot)                             \
-    static sai_status_t redis_remove_ ## ot(            \
-            _In_ sai_object_id_t object_id)             \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->remove(                           \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,  \
-            object_id);                                 \
-}
+extern std::string getSelectResultAsString(int result);
+extern void clear_local_state();
+extern void setRecording(bool record);
+extern sai_status_t setRecordingOutputDir(
+        _In_ const sai_attribute_t &attr);
+extern void recordLine(std::string s);
+extern std::string joinFieldValues(
+        _In_ const std::vector<swss::FieldValueTuple> &values);
 
-#define REDIS_SET(OT,ot)                                \
-    static sai_status_t redis_set_ ## ot ## _attribute( \
-            _In_ sai_object_id_t object_id,             \
-            _In_ const sai_attribute_t *attr)           \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->set(                              \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,  \
-            object_id,                                  \
-            attr);                                      \
-}
+extern sai_status_t internal_api_wait_for_response(
+        _In_ sai_common_api_t api);
 
-#define REDIS_GET(OT,ot)                                \
-    static sai_status_t redis_get_ ## ot ## _attribute( \
-            _In_ sai_object_id_t object_id,             \
-            _In_ uint32_t attr_count,                   \
-            _Inout_ sai_attribute_t *attr_list)         \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->get(                              \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,  \
-            object_id,                                  \
-            attr_count,                                 \
-            attr_list);                                 \
-}
+// other global declarations
 
-// QUAD DECLARE
+extern volatile bool g_record;
+extern volatile bool g_useTempView;
+extern volatile bool g_asicInitViewMode;
+extern volatile bool g_logrotate;
+extern volatile bool g_syncMode;
+extern volatile bool g_recordStats;
 
-#define REDIS_GENERIC_QUAD(OT,ot)  \
-    REDIS_CREATE(OT,ot);           \
-    REDIS_REMOVE(OT,ot);           \
-    REDIS_SET(OT,ot);              \
-    REDIS_GET(OT,ot);
+extern sai_service_method_table_t                   g_services;
+extern std::shared_ptr<swss::ProducerTable>         g_asicState;
+extern std::shared_ptr<swss::ConsumerTable>         g_redisGetConsumer;
+extern std::shared_ptr<swss::NotificationConsumer>  g_redisNotifications;
+extern std::shared_ptr<swss::RedisClient>           g_redisClient;
 
-// QUAD ENTRY
+extern std::shared_ptr<sairedis::SwitchContainer>   g_switchContainer;
 
-#define REDIS_CREATE_ENTRY(OT,ot)                       \
-    static sai_status_t redis_create_ ## ot(            \
-            _In_ const sai_ ## ot ##_t *entry,          \
-            _In_ uint32_t attr_count,                   \
-            _In_ const sai_attribute_t *attr_list)      \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->create(                           \
-            entry,                                      \
-            attr_count,                                 \
-            attr_list);                                 \
-}
+extern const sai_acl_api_t              redis_acl_api;
+extern const sai_bfd_api_t              redis_bfd_api;
+extern const sai_bmtor_api_t            redis_bmtor_api;
+extern const sai_bridge_api_t           redis_bridge_api;
+extern const sai_buffer_api_t           redis_buffer_api;
+extern const sai_dtel_api_t             redis_dtel_api;
+extern const sai_fdb_api_t              redis_fdb_api;
+extern const sai_hash_api_t             redis_hash_api;
+extern const sai_hostif_api_t           redis_hostif_api;
+extern const sai_ipmc_api_t             redis_ipmc_api;
+extern const sai_ipmc_group_api_t       redis_ipmc_group_api;
+extern const sai_l2mc_api_t             redis_l2mc_api;
+extern const sai_l2mc_group_api_t       redis_l2mc_group_api;
+extern const sai_lag_api_t              redis_lag_api;
+extern const sai_mcast_fdb_api_t        redis_mcast_fdb_api;
+extern const sai_mirror_api_t           redis_mirror_api;
+extern const sai_mpls_api_t             redis_mpls_api;
+extern const sai_neighbor_api_t         redis_neighbor_api;
+extern const sai_next_hop_api_t         redis_next_hop_api;
+extern const sai_next_hop_group_api_t   redis_next_hop_group_api;
+extern const sai_policer_api_t          redis_policer_api;
+extern const sai_port_api_t             redis_port_api;
+extern const sai_qos_map_api_t          redis_qos_map_api;
+extern const sai_queue_api_t            redis_queue_api;
+extern const sai_route_api_t            redis_route_api;
+extern const sai_router_interface_api_t redis_router_interface_api;
+extern const sai_rpf_group_api_t        redis_rpf_group_api;
+extern const sai_samplepacket_api_t     redis_samplepacket_api;
+extern const sai_scheduler_api_t        redis_scheduler_api;
+extern const sai_scheduler_group_api_t  redis_scheduler_group_api;
+extern const sai_segmentroute_api_t     redis_segmentroute_api;
+extern const sai_stp_api_t              redis_stp_api;
+extern const sai_switch_api_t           redis_switch_api;
+extern const sai_tam_api_t              redis_tam_api;
+extern const sai_tunnel_api_t           redis_tunnel_api;
+extern const sai_udf_api_t              redis_udf_api;
+extern const sai_virtual_router_api_t   redis_virtual_router_api;
+extern const sai_vlan_api_t             redis_vlan_api;
+extern const sai_wred_api_t             redis_wred_api;
+extern const sai_debug_counter_api_t    redis_debug_counter_api;
+extern const sai_nat_api_t              redis_nat_api;
 
-#define REDIS_REMOVE_ENTRY(OT,ot)                       \
-    static sai_status_t redis_remove_ ## ot(            \
-            _In_ const sai_ ## ot ## _t *entry)         \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->remove(                           \
-            entry);                                     \
-}
+#define UNREFERENCED_PARAMETER(X)
 
-#define REDIS_SET_ENTRY(OT,ot)                          \
-    static sai_status_t redis_set_ ## ot ## _attribute( \
-            _In_ const sai_ ## ot ## _t *entry,         \
-            _In_ const sai_attribute_t *attr)           \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->set(                              \
-            entry,                                      \
-            attr);                                      \
-}
+bool redis_validate_contains_attribute(
+        _In_ sai_attr_id_t required_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list);
 
-#define REDIS_GET_ENTRY(OT,ot)                          \
-    static sai_status_t redis_get_ ## ot ## _attribute( \
-            _In_ const sai_ ## ot ## _t *entry,         \
-            _In_ uint32_t attr_count,                   \
-            _Inout_ sai_attribute_t *attr_list)         \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->get(                              \
-            entry,                                      \
-            attr_count,                                 \
-            attr_list);                                 \
-}
+const sai_attribute_t* redis_get_attribute_by_id(
+        _In_ sai_attr_id_t id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list);
 
-// QUAD ENTRY DECLARE
+sai_object_id_t redis_create_virtual_object_id(
+        _In_ sai_object_type_t object_type);
 
-#define REDIS_GENERIC_QUAD_ENTRY(OT,ot)    \
-    REDIS_CREATE_ENTRY(OT,ot);             \
-    REDIS_REMOVE_ENTRY(OT,ot);             \
-    REDIS_SET_ENTRY(OT,ot);                \
-    REDIS_GET_ENTRY(OT,ot);
+void translate_rid_to_vid(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list);
 
-// QUAD API
+// OID QUAD
 
-#define REDIS_GENERIC_QUAD_API(ot)      \
-    redis_create_ ## ot,                \
-    redis_remove_ ## ot,                \
-    redis_set_ ## ot ##_attribute,      \
-    redis_get_ ## ot ##_attribute,
+sai_status_t redis_generic_create(
+        _In_ sai_object_type_t object_type,
+        _Out_ sai_object_id_t *object_id,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list);
+
+sai_status_t redis_generic_remove(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id);
+
+sai_status_t redis_generic_set(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_attribute_t *attr);
+
+sai_status_t redis_generic_get(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t attr_count,
+        _Out_ sai_attribute_t *attr_list);
+
+// ENTRY QUAD
+
+#define REDIS_CREATE_ENTRY_DEF(ot)                  \
+    sai_status_t redis_generic_create_ ## ot(       \
+            _In_ const sai_ ## ot ## _t * ot,       \
+            _In_ uint32_t attr_count,               \
+            _In_ const sai_attribute_t *attr_list);
+
+#define REDIS_REMOVE_ENTRY_DEF(ot)                  \
+    sai_status_t redis_generic_remove_ ## ot(       \
+            _In_ const sai_ ## ot ## _t * ot);
+
+#define REDIS_SET_ENTRY_DEF(ot)                     \
+    sai_status_t redis_generic_set_ ## ot(          \
+            _In_ const sai_ ## ot ## _t * ot,       \
+            _In_ const sai_attribute_t *attr);
+
+#define REDIS_GET_ENTRY_DEF(ot)                     \
+    sai_status_t redis_generic_get_ ## ot(          \
+            _In_ const sai_ ## ot ## _t * ot,       \
+            _In_ uint32_t attr_count,               \
+            _Out_ sai_attribute_t *attr_list);
+
+#define REDIS_ENTRY_QUAD(ot)       \
+    REDIS_CREATE_ENTRY_DEF(ot)     \
+    REDIS_REMOVE_ENTRY_DEF(ot)     \
+    REDIS_SET_ENTRY_DEF(ot)        \
+    REDIS_GET_ENTRY_DEF(ot)
+
+REDIS_ENTRY_QUAD(fdb_entry);
+REDIS_ENTRY_QUAD(inseg_entry);
+REDIS_ENTRY_QUAD(ipmc_entry);
+REDIS_ENTRY_QUAD(l2mc_entry);
+REDIS_ENTRY_QUAD(mcast_fdb_entry);
+REDIS_ENTRY_QUAD(neighbor_entry);
+REDIS_ENTRY_QUAD(route_entry);
+REDIS_ENTRY_QUAD(nat_entry);
+
+// BULK
+
+sai_status_t redis_bulk_generic_create(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _Out_ sai_object_id_t *object_id, /* array */
+        _In_ sai_object_id_t switch_id,
+        _In_ const uint32_t *attr_count, /* array */
+        _In_ const sai_attribute_t *const *attr_list, /* array */
+        _Inout_ sai_status_t *object_statuses); /* array */
+
+sai_status_t internal_redis_bulk_generic_create(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t *const *attr_list, /* array */
+        _Inout_ sai_status_t *object_statuses) /* array */;
+
+sai_status_t redis_bulk_generic_remove(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id, /* array */
+        _Inout_ sai_status_t *object_statuses) /* array */;
+
+sai_status_t internal_redis_bulk_generic_remove(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _Out_ sai_status_t *object_statuses); /* array */
+
+sai_status_t internal_redis_bulk_generic_set(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const sai_attribute_t *attr_list, /* array */
+        _In_ const sai_status_t *object_statuses); /* array */
+
+// get_stats
+
+template <typename T>
+sai_status_t redis_generic_get_stats(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t count,
+        _In_ const T* counter_id_list,
+        _Out_ uint64_t *counter_list);
+
+// notifications
+
+void handle_notification(
+        _In_ const std::string &notification,
+        _In_ const std::string &data,
+        _In_ const std::vector<swss::FieldValueTuple> &values);
 
 // STATS
 
-#define REDIS_GET_STATS(OT,ot)                          \
-    static sai_status_t redis_get_ ## ot ## _stats(     \
-            _In_ sai_object_id_t object_id,             \
-            _In_ uint32_t number_of_counters,           \
-            _In_ const sai_stat_id_t *counter_ids,      \
-            _Out_ uint64_t *counters)                   \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->getStats(                         \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,  \
-            object_id,                                  \
-            number_of_counters,                         \
-            counter_ids,                                \
-            counters);                                  \
-}
+sai_status_t redis_generic_get_stats(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t *enum_metadata,
+        _In_ uint32_t number_of_counters,
+        _In_ const int32_t *counter_ids,
+        _Out_ uint64_t *counters);
 
-#define REDIS_GET_STATS_EXT(OT,ot)                      \
-    static sai_status_t redis_get_ ## ot ## _stats_ext( \
-            _In_ sai_object_id_t object_id,             \
-            _In_ uint32_t number_of_counters,           \
-            _In_ const sai_stat_id_t *counter_ids,      \
-            _In_ sai_stats_mode_t mode,                 \
-            _Out_ uint64_t *counters)                   \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->getStatsExt(                      \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,  \
-            object_id,                                  \
-            number_of_counters,                         \
-            counter_ids,                                \
-            mode,                                       \
-            counters);                                  \
-}
+sai_status_t redis_generic_get_stats_ext(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t *enum_metadata,
+        _In_ uint32_t number_of_counters,
+        _In_ const int32_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters);
 
-#define REDIS_CLEAR_STATS(OT,ot)                        \
-    static sai_status_t redis_clear_ ## ot ## _stats(   \
-            _In_ sai_object_id_t object_id,             \
-            _In_ uint32_t number_of_counters,           \
-            _In_ const sai_stat_id_t *counter_ids)      \
-{                                                       \
-    SWSS_LOG_ENTER();                                   \
-    return redis_sai->clearStats(                       \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,  \
-            object_id,                                  \
-            number_of_counters,                         \
-            counter_ids);                               \
-}
+sai_status_t redis_generic_clear_stats(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ const sai_enum_metadata_t *enum_metadata,
+        _In_ uint32_t number_of_counters,
+        _In_ const int32_t *counter_ids);
 
-// STATS DECLARE
-
-#define REDIS_GENERIC_STATS(OT, ot)    \
-    REDIS_GET_STATS(OT,ot);            \
-    REDIS_GET_STATS_EXT(OT,ot);        \
-    REDIS_CLEAR_STATS(OT,ot);
-
-// STATS API
-
-#define REDIS_GENERIC_STATS_API(ot)     \
-    redis_get_ ## ot ## _stats,         \
-    redis_get_ ## ot ## _stats_ext,     \
-    redis_clear_ ## ot ## _stats,
-
-// BULK QUAD
-
-#define REDIS_BULK_CREATE(OT,fname)                 \
-    static sai_status_t redis_bulk_create_ ## fname(\
-            _In_ sai_object_id_t switch_id,         \
-            _In_ uint32_t object_count,             \
-            _In_ const uint32_t *attr_count,        \
-            _In_ const sai_attribute_t **attr_list, \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_object_id_t *object_id,       \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return redis_sai->bulkCreate(                   \
-            SAI_OBJECT_TYPE_ ## OT,                 \
-            switch_id,                              \
-            object_count,                           \
-            attr_count,                             \
-            attr_list,                              \
-            mode,                                   \
-            object_id,                              \
-            object_statuses);                       \
-}
-
-#define REDIS_BULK_REMOVE(OT,fname)                 \
-    static sai_status_t redis_bulk_remove_ ## fname(\
-            _In_ uint32_t object_count,             \
-            _In_ const sai_object_id_t *object_id,  \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return redis_sai->bulkRemove(                   \
-            SAI_OBJECT_TYPE_ ## OT,                 \
-            object_count,                           \
-            object_id,                              \
-            mode,                                   \
-            object_statuses);                       \
-}
-
-#define REDIS_BULK_SET(OT,fname)                    \
-    static sai_status_t redis_bulk_set_ ## fname(   \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_object_id_t *object_id,  \
-            _In_ const sai_attribute_t *attr_list,  \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return redis_sai->bulkSet(                      \
-            SAI_OBJECT_TYPE_ ## OT,                 \
-            object_count,                           \
-            object_id,                              \
-            attr_list,                              \
-            mode,                                   \
-            object_statuses);                       \
-}
-
-#define REDIS_BULK_GET(OT,fname)                    \
-    static sai_status_t redis_bulk_get_ ## fname(   \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_object_id_t *object_id,  \
-            _In_ const uint32_t *attr_count,        \
-            _Inout_ sai_attribute_t **attr_list,    \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    SWSS_LOG_ERROR("not implemented");              \
-    return SAI_STATUS_NOT_IMPLEMENTED;              \
-}
-
-// BULK QUAD DECLARE
-
-#define REDIS_BULK_QUAD(OT,ot)     \
-    REDIS_BULK_CREATE(OT,ot);      \
-    REDIS_BULK_REMOVE(OT,ot);      \
-    REDIS_BULK_SET(OT,ot);         \
-    REDIS_BULK_GET(OT,ot);
-
-// BULK QUAD ENTRY
-
-#define REDIS_BULK_CREATE_ENTRY(OT,ot)              \
-    static sai_status_t redis_bulk_create_ ## ot(   \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_ ## ot ## _t *entry,     \
-            _In_ const uint32_t *attr_count,        \
-            _In_ const sai_attribute_t **attr_list, \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return redis_sai->bulkCreate(                   \
-            object_count,                           \
-            entry,                                  \
-            attr_count,                             \
-            attr_list,                              \
-            mode,                                   \
-            object_statuses);                       \
-}
-
-#define REDIS_BULK_REMOVE_ENTRY(OT,ot)              \
-    static sai_status_t redis_bulk_remove_ ## ot(   \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_ ## ot ##_t *entry,      \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return redis_sai->bulkRemove(                   \
-            object_count,                           \
-            entry,                                  \
-            mode,                                   \
-            object_statuses);                       \
-}
-
-#define REDIS_BULK_SET_ENTRY(OT,ot)                 \
-    static sai_status_t redis_bulk_set_ ## ot(      \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_ ## ot ## _t *entry,     \
-            _In_ const sai_attribute_t *attr_list,  \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return redis_sai->bulkSet(                      \
-            object_count,                           \
-            entry,                                  \
-            attr_list,                              \
-            mode,                                   \
-            object_statuses);                       \
-}
-
-#define REDIS_BULK_GET_ENTRY(OT,ot)                 \
-    static sai_status_t redis_bulk_get_ ## ot(      \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_ ## ot ## _t *entry,     \
-            _In_ const uint32_t *attr_count,        \
-            _Inout_ sai_attribute_t **attr_list,    \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    SWSS_LOG_ERROR("not implemented");              \
-    return SAI_STATUS_NOT_IMPLEMENTED;              \
-}
-
-// BULK QUAD ENTRY DECLARE
-
-#define REDIS_BULK_QUAD_ENTRY(OT,ot)   \
-    REDIS_BULK_CREATE_ENTRY(OT,ot);    \
-    REDIS_BULK_REMOVE_ENTRY(OT,ot);    \
-    REDIS_BULK_SET_ENTRY(OT,ot);       \
-    REDIS_BULK_GET_ENTRY(OT,ot);
-
-// BULK QUAD API
-
-#define REDIS_BULK_QUAD_API(ot)     \
-    redis_bulk_create_ ## ot,       \
-    redis_bulk_remove_ ## ot,       \
-    redis_bulk_set_ ## ot,          \
-    redis_bulk_get_ ## ot,
-
-// DECLARE EVERY ENTRY
-
-#define REDIS_DECLARE_EVERY_ENTRY(_X)       \
-    _X(FDB_ENTRY,fdb_entry);                \
-    _X(INSEG_ENTRY,inseg_entry);            \
-    _X(IPMC_ENTRY,ipmc_entry);              \
-    _X(L2MC_ENTRY,l2mc_entry);              \
-    _X(MCAST_FDB_ENTRY,mcast_fdb_entry);    \
-    _X(NEIGHBOR_ENTRY,neighbor_entry);      \
-    _X(ROUTE_ENTRY,route_entry);            \
-    _X(NAT_ENTRY,nat_entry);                \
-
+#endif // __SAI_REDIS__

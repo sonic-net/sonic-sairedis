@@ -1,4 +1,5 @@
 #include "sai_redis.h"
+#include "sai_redis_internal.h"
 
 REDIS_GENERIC_QUAD_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
 

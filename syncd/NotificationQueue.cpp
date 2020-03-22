@@ -1,11 +1,6 @@
 #include "NotificationQueue.h"
-#include "sairediscommon.h"
 
 #define NOTIFICATION_QUEUE_DROP_COUNT_INDICATOR (1000)
-
-using namespace syncd;
-
-#define MUTEX std::lock_guard<std::mutex> _lock(m_mutex);
 
 NotificationQueue::NotificationQueue(
         _In_ size_t queueLimit):
@@ -27,8 +22,6 @@ NotificationQueue::~NotificationQueue()
 bool NotificationQueue::enqueue(
         _In_ const swss::KeyOpFieldsValuesTuple& item)
 {
-    MUTEX;
-
     SWSS_LOG_ENTER();
 
     /*
@@ -37,10 +30,11 @@ bool NotificationQueue::enqueue(
      * notification queue keeps growing. The permanent solution would be to
      * make this stateful so that only the *latest* event is published.
      */
-    auto queueSize = m_queue.size();
 
-    if (queueSize < m_queueSizeLimit || kfvOp(item) != SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT) // TODO use enum instead of strings
+    if (getQueueSize() < m_queueSizeLimit || kfvOp(item) != "fdb_event") // TODO use enum instead of strings
     {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
         m_queue.push(item);
 
         return true;
@@ -52,7 +46,7 @@ bool NotificationQueue::enqueue(
     {
         SWSS_LOG_NOTICE(
                 "Too many messages in queue (%zu), dropped %zu FDB events!",
-                queueSize,
+                getQueueSize(),
                 m_dropCount);
     }
 
@@ -62,9 +56,9 @@ bool NotificationQueue::enqueue(
 bool NotificationQueue::tryDequeue(
         _Out_ swss::KeyOpFieldsValuesTuple& item)
 {
-    MUTEX;
-
     SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     if (m_queue.empty())
     {
@@ -80,9 +74,10 @@ bool NotificationQueue::tryDequeue(
 
 size_t NotificationQueue::getQueueSize()
 {
-    MUTEX;
-
     SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     return m_queue.size();
 }
+

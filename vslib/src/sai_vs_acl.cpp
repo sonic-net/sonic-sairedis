@@ -1,4 +1,5 @@
 #include "sai_vs.h"
+#include "sai_vs_internal.h"
 
 VS_GENERIC_QUAD(ACL_TABLE,acl_table);
 VS_GENERIC_QUAD(ACL_ENTRY,acl_entry);

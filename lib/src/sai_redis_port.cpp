@@ -1,8 +1,10 @@
 #include "sai_redis.h"
 
-static sai_status_t redis_clear_port_all_stats(
+sai_status_t redis_clear_port_all_stats(
         _In_ sai_object_id_t port_id)
 {
+    MUTEX();
+
     SWSS_LOG_ENTER();
 
     return SAI_STATUS_NOT_IMPLEMENTED;

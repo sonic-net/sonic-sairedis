@@ -4,8 +4,6 @@
 
 #include <sstream>
 
-using namespace syncd;
-
 CommandLineOptions::CommandLineOptions()
 {
     SWSS_LOG_ENTER();
@@ -22,10 +20,6 @@ CommandLineOptions::CommandLineOptions()
     m_startType = SAI_START_TYPE_COLD_BOOT;
 
     m_profileMapFile = "";
-
-    m_globalContext = 0;
-
-    m_contextConfig = "";
 
 #ifdef SAITHRIFT
 
@@ -51,12 +45,10 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " EnableSyncMode=" << (m_enableSyncMode ? "YES" : "NO");
     ss << " StartType=" << startTypeToString(m_startType);
     ss << " ProfileMapFile=" << m_profileMapFile;
-    ss << " GlobalContext=" << m_globalContext;
-    ss << " ContextConfig=" << m_contextConfig;
 
 #ifdef SAITHRIFT
 
-    ss << " RunRPCServer=" << (m_runRPCServer ? "YES" : "NO");
+    ss << " RunRPCServer=" << (m_runRPCServer ? "YES" ? "NO");
     ss << " PortMapFile=" << m_portMapFile;
 
 #endif // SAITHRIFT

@@ -19,35 +19,33 @@ extern "C" {
  */
 #define DEFAULT_NOTIFICATION_QUEUE_SIZE_LIMIT (300000)
 
-namespace syncd
+class NotificationQueue
 {
-    class NotificationQueue
-    {
-        public:
+    public:
 
-            NotificationQueue(
-                    _In_ size_t limit = DEFAULT_NOTIFICATION_QUEUE_SIZE_LIMIT);
+        NotificationQueue(
+                _In_ size_t limit = DEFAULT_NOTIFICATION_QUEUE_SIZE_LIMIT);
 
-            virtual ~NotificationQueue();
+        virtual ~NotificationQueue();
 
-        public:
+    public:
 
-            bool enqueue(
-                    _In_ const swss::KeyOpFieldsValuesTuple& msg);
+        bool enqueue(
+                _In_ const swss::KeyOpFieldsValuesTuple& msg);
 
-            bool tryDequeue(
-                    _Out_ swss::KeyOpFieldsValuesTuple& msg);
+        bool tryDequeue(
+                _Out_ swss::KeyOpFieldsValuesTuple& msg);
 
-            size_t getQueueSize();
+        size_t getQueueSize();
 
-        private:
+    private:
 
-            std::mutex m_mutex;
+        std::mutex m_mutex;
 
-            std::queue<swss::KeyOpFieldsValuesTuple> m_queue;
+        std::queue<swss::KeyOpFieldsValuesTuple> m_queue;
 
-            size_t m_queueSizeLimit;
+        size_t m_queueSizeLimit;
 
-            size_t m_dropCount;
-    };
-}
+        size_t m_dropCount;
+};
+

@@ -1,3 +1,2 @@
 SAI/inc/*.h usr/include/sai/
 SAI/experimental/*.h usr/include/sai/
-vslib/inc/saivs.h
