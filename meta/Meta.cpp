@@ -7014,7 +7014,7 @@ int Meta::meta_fdb_event_snoop_oid(
     if (oid == SAI_NULL_OBJECT_ID)
         return -1;
 
-    if (m_oids.object_reference_exists(oid))
+    if (m_oids.objectReferenceExists(oid))
         return 0;
 
     /*
