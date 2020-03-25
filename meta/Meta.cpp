@@ -1683,7 +1683,29 @@ sai_status_t Meta::flushFdbEntries(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_WARN("TODO, remove all matching fdb entries here, currently removed in FDB notification");
+        // use same logic as notification, so create notification event
+
+        sai_fdb_event_notification_data_t data = {};
+
+        auto *bv_id = sai_metadata_get_attr_by_id(SAI_FDB_FLUSH_ATTR_BV_ID, attr_count, attr_list);
+        auto *bp_id = sai_metadata_get_attr_by_id(SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID, attr_count, attr_list);
+        auto *et = sai_metadata_get_attr_by_id(SAI_FDB_FLUSH_ATTR_ENTRY_TYPE, attr_count, attr_list);
+
+        sai_attribute_t list[2];
+
+        list[0].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+        list[0].value.oid = bp_id ? bp_id->value.oid : SAI_NULL_OBJECT_ID;
+
+        list[1].id = SAI_FDB_ENTRY_ATTR_TYPE;
+        list[1].value.s32 = et ? et->value.s32 : SAI_FDB_FLUSH_ENTRY_TYPE_ALL;
+
+        data.event_type = SAI_FDB_EVENT_FLUSHED;
+        data.fdb_entry.switch_id = switch_id;
+        data.fdb_entry.bv_id = (bv_id) ? bv_id->value.oid : SAI_NULL_OBJECT_ID;
+        data.attr_count = 2;
+        data.attr = list;
+
+        meta_sai_on_fdb_flush_event_consolidated(data);
     }
 
     return status;
@@ -6954,7 +6976,8 @@ void Meta::meta_sai_on_fdb_flush_event_consolidated(
             continue;
         }
 
-        if (fdbTypeAttr->getSaiAttr()->value.s32 != type->value.s32)
+        if ((type->value.s32 != SAI_FDB_FLUSH_ENTRY_TYPE_ALL) &&
+            (fdbTypeAttr->getSaiAttr()->value.s32 != type->value.s32))
         {
             // entry type is not matching on this fdb entry
             continue;
