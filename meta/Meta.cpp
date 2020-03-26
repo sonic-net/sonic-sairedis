@@ -1691,7 +1691,21 @@ sai_status_t Meta::flushFdbEntries(
 
         if (et)
         {
-            types.push_back(et->value.s32);
+            switch (et->value.s32)
+            {
+                case SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC:
+                    types.push_back(SAI_FDB_ENTRY_TYPE_DYNAMIC);
+                    break;
+
+                case SAI_FDB_FLUSH_ENTRY_TYPE_STATIC:
+                    types.push_back(SAI_FDB_ENTRY_TYPE_STATIC);
+                    break;
+
+                default:
+                    types.push_back(SAI_FDB_ENTRY_TYPE_DYNAMIC);
+                    types.push_back(SAI_FDB_ENTRY_TYPE_STATIC);
+                    break;
+            }
         }
         else
         {
