@@ -684,6 +684,12 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 {
     SWSS_LOG_ENTER();
 
+    int32_t supported_obj_list[] = {
+                                SAI_OBJECT_TYPE_NULL,
+                                SAI_OBJECT_TYPE_PORT,
+                                SAI_OBJECT_TYPE_LAG
+                              };
+
     SWSS_LOG_INFO("create switch default attributes");
 
     sai_attribute_t attr;
@@ -724,6 +730,12 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
     attr.value.booldata = false;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST;
+    attr.value.s32list.count = sizeof(supported_obj_list);
+    attr.value.s32list.list = supported_obj_list;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
@@ -1538,6 +1550,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_DEFAULT_VLAN_ID:
             case SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID:
             case SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID:
+            case SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST:
                 return SAI_STATUS_SUCCESS;
 
             case SAI_SWITCH_ATTR_ACL_ENTRY_MINIMUM_PRIORITY:
