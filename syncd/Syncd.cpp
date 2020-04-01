@@ -537,7 +537,7 @@ sai_status_t Syncd::processGetStatsEvent(
         counter_ids.push_back(val);
     }
 
-    std::vector<uint64_t> result;
+    std::vector<uint64_t> result(counter_ids.size());
 
     auto status = m_vendorSai->getStats(
             metaKey.objecttype,

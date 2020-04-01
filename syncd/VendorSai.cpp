@@ -388,6 +388,12 @@ sai_status_t VendorSai::getStats(
             _In_ const sai_stat_id_t *counter_ids,
             _Out_ uint64_t *counters);
 
+    if (!counter_ids || !counters)
+    {
+        SWSS_LOG_ERROR("NULL pointer function argument");
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
     switch ((int)object_type)
     {
         case SAI_OBJECT_TYPE_PORT:
