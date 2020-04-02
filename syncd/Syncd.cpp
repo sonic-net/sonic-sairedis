@@ -1476,7 +1476,7 @@ sai_status_t Syncd::processOidCreate(
 
             m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai);
 
-            startDiagShell(switchRid);
+            startDiagShell(objectRid);
         }
 
         if (objectType == SAI_OBJECT_TYPE_PORT)
