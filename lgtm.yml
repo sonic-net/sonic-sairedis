@@ -1,0 +1,25 @@
+extraction:
+  cpp:
+    prepare:
+      packages:
+      - libxml-simple-perl
+      - aspell
+      - aspell-en
+      - libhiredis-dev
+      - libnl-3-dev
+      - libnl-genl-3-dev
+      - libnl-route-3-dev
+      - libnl-nf-3-dev
+      - swig3.0
+      - libpython2.7-dev
+      - libgtest-dev
+      - dh-exec
+    after_prepare:
+      - ls -l
+      - git clone https://github.com/Azure/sonic-swss-common; pushd sonic-swss-common; ./autogen.sh; fakeroot dpkg-buildpackage -us -uc -b; popd
+      - dpkg-deb -x libswsscommon_1.0.0_amd64.deb $LGTM_WORKSPACE
+      - dpkg-deb -x libswsscommon-dev_1.0.0_amd64.deb $LGTM_WORKSPACE
+    configure:
+      command:
+      - ./autogen.sh
+      - ./configure --prefix=/usr --with-sai=vs --with-swss-common-inc=$LGTM_WORKSPACE/usr/include --with-swss-common-lib=$LGTM_WORKSPACE/usr/lib/x86_64-linux-gnu
