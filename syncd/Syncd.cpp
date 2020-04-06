@@ -95,7 +95,7 @@ Syncd::Syncd(
 
     m_virtualObjectIdManager =
         std::make_shared<sairedis::VirtualObjectIdManager>(
-                0, // TODO global context, get from command line
+                m_commandLineOptions->m_globalContext,
                 m_switchConfigContainer,
                 m_redisVidIndexGenerator);
 
