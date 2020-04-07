@@ -657,7 +657,6 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
     }
 
     vs_set_dev_mtu(name.c_str(), mtu);
-    vs_set_dev_mtu(vname.c_str(), mtu);
 
     if (!hostif_create_tap_veth_forwarding(name, tapfd, obj_id))
     {
