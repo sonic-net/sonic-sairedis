@@ -24,12 +24,22 @@ esac],[debug=false])
 AM_CONDITIONAL(DEBUG, test x$debug = xtrue)
 
 AC_ARG_WITH(sai,
-[  --with-sai              compiling against specific SAI],
+[  --with-sai=vs           compiling against specific SAI],
 [case "${withval}" in
 	vs)   sai=vs ;;
 	*) AC_MSG_ERROR(bad value ${withval} for --with-sai) ;;
 esac])
 AM_CONDITIONAL(SAIVS,   test x$sai = xvs)
+
+AC_ARG_WITH(swss-common-inc,
+[  --with-swss-common-inc=DIR
+                          prefix where swss-common includes are installed],
+[AC_SUBST(CPPFLAGS, "$CPPFLAGS -I${withval}")])
+
+AC_ARG_WITH(swss-common-lib,
+[  --with-swss-common-lib=DIR
+                          prefix where swss-common libraries are installed],
+[AC_SUBST(LDFLAGS, "$LDFLAGS -L${withval}")])
 
 AC_ARG_ENABLE(rpcserver,
 [  --enable-rpcserver      compile with thrift rpcserver included],
