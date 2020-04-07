@@ -62,7 +62,7 @@ libsyncd_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS) -s
 syncd_SOURCES = main.cpp
 
 syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
-syncd_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl libsyncd.a
+syncd_LDADD = -L$(top_srcdir)/meta/.libs libsyncd.a -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread
 
 if SAITHRIFT
 libsyncd_a_CPPFLAGS += -DSAITHRIFT=yes
@@ -91,6 +91,5 @@ syncd_request_shutdown_LDADD = -lhiredis -lswsscommon -lpthread
 tests_SOURCES = tests.cpp
 
 tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta libsyncd.a
-
+tests_LDADD = libsyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta
 TESTS = tests
