@@ -1064,6 +1064,8 @@ sai_status_t RedisRemoteSaiInterface::bulkRemove(
     // value:       object_attrs
     std::string key = serializedObjectType + ":" + std::to_string(entries.size());
 
+    m_recorder->recordBulkGenericRemove(serializedObjectType, entries);
+
     m_redisChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_REMOVE);
 
     return waitForBulkResponse(SAI_COMMON_API_BULK_REMOVE, (uint32_t)serialized_object_ids.size(), object_statuses);
@@ -1291,7 +1293,11 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
      * with previous
      */
 
-    std::string key = sai_serialize_object_type(object_type) + ":" + std::to_string(entries.size());
+    auto serializedObjectType = sai_serialize_object_type(object_type);
+
+    std::string key = serializedObjectType + ":" + std::to_string(entries.size());
+
+    m_recorder->recordBulkGenericSet(serializedObjectType, entries);
 
     m_redisChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_SET);
 
@@ -1364,6 +1370,15 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     {
         auto entry = SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
 
+        if (entry.empty())
+        {
+            // make sure that we put object into db
+            // even if there are no attributes set
+            swss::FieldValueTuple null("NULL", "NULL");
+
+            entry.push_back(null);
+        }
+
         std::string str_attr = joinFieldValues(entry);
 
         swss::FieldValueTuple fvtNoStatus(serialized_object_ids[idx] , str_attr);
@@ -1381,7 +1396,7 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     // value:       object_attrs
     std::string key = str_object_type + ":" + std::to_string(entries.size());
 
-    // TODO record
+    m_recorder->recordBulkGenericCreate(str_object_type, entries);
 
     m_redisChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_CREATE);
 

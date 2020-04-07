@@ -573,12 +573,6 @@ sai_status_t Syncd::processBulkQuadEvent(
 {
     SWSS_LOG_ENTER();
 
-    if (isInitViewMode())
-    {
-        SWSS_LOG_THROW("bulk api (%s) is not supported in init view mode, FIXME",
-                sai_serialize_common_api(api).c_str());
-    }
-
     const std::string& key = kfvKey(kco); // objectType:count
 
     std::string strObjectType = key.substr(0, key.find(":"));
@@ -644,6 +638,11 @@ sai_status_t Syncd::processBulkQuadEvent(
         }
     }
 
+    if (isInitViewMode())
+    {
+        return processBulkQuadEventInInitViewMode(objectType, objectIds, api, attributes);
+    }
+
     auto info = sai_metadata_get_object_type_info(objectType);
 
     if (info->isobjectid)
@@ -653,6 +652,54 @@ sai_status_t Syncd::processBulkQuadEvent(
     else
     {
         return processBulkEntry(objectType, objectIds, api, attributes);
+    }
+}
+
+sai_status_t Syncd::processBulkQuadEventInInitViewMode(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string> &object_ids,
+        _In_ sai_common_api_t api,
+        _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes)
+{
+    SWSS_LOG_ENTER();
+
+    auto info = sai_metadata_get_object_type_info(objectType);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_BULK_CREATE:
+        case SAI_COMMON_API_BULK_REMOVE:
+        case SAI_COMMON_API_BULK_SET:
+
+            if (info->isnonobjectid)
+            {
+                sendApiResponse(api, SAI_STATUS_SUCCESS);
+                return SAI_STATUS_SUCCESS;
+            }
+
+            switch (objectType)
+            {
+                case SAI_OBJECT_TYPE_SWITCH:
+                case SAI_OBJECT_TYPE_PORT:
+                case SAI_OBJECT_TYPE_SCHEDULER_GROUP:
+                case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
+
+                    SWSS_LOG_THROW("%s is not supported in init view mode",
+                            sai_serialize_object_type(objectType).c_str());
+
+                default:
+
+                    sendApiResponse(api, SAI_STATUS_SUCCESS);
+                    return SAI_STATUS_SUCCESS;
+            }
+
+        case SAI_COMMON_API_BULK_GET:
+            SWSS_LOG_THROW("GET bulk api is not implemented in init view mode, FIXME");
+
+        default:
+
+            SWSS_LOG_THROW("common bulk api (%s) is not implemented in init view mode",
+                    sai_serialize_common_api(api).c_str());
     }
 }
 

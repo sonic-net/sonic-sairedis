@@ -1,9 +1,13 @@
 #include <arpa/inet.h>
+#include <unistd.h>
 
 extern "C" {
 #include <sai.h>
 }
 
+#include "../lib/inc/Sai.h"
+#include "Syncd.h"
+#include "MetadataLogger.h"
 #include "sairedis.h"
 #include "sairediscommon.h"
 
@@ -25,6 +29,9 @@ extern "C" {
 #include <vector>
 #include <thread>
 #include <tuple>
+
+using namespace syncd;
+
 
 // TODO remove when SAI will introduce bulk APIs to those objects
 sai_status_t sai_bulk_create_fdb_entry(
@@ -225,13 +232,11 @@ void test_bulk_next_hop_group_member_create()
 {
     SWSS_LOG_ENTER();
 
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     sai_reinit();
 
   // auto consumerThreads = new std::thread(bulk_nhgm_consumer_worker);
 
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     sai_status_t    status;
 
@@ -337,11 +342,9 @@ void test_bulk_fdb_create()
 {
     SWSS_LOG_ENTER();
 
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     sai_reinit();
 
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     sai_status_t    status;
 
@@ -466,11 +469,9 @@ void test_bulk_route_set()
 {
     SWSS_LOG_ENTER();
 
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     sai_reinit();
 
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     sai_status_t    status;
 
@@ -610,13 +611,177 @@ void test_bulk_route_set()
     ASSERT_SUCCESS("Failed to bulk remove route entry");
 }
 
+#define CHECK_STATUS(x)  \
+    if (status != SAI_STATUS_SUCCESS) { exit(1); }
+
+void syncdThread()
+{
+    SWSS_LOG_ENTER();
+
+    MetadataLogger::initialize();
+
+    auto vendorSai = std::make_shared<VendorSai>();
+
+    bool isWarmStart = false;
+
+    auto commandLineOptions = std::make_shared<CommandLineOptions>();
+
+    commandLineOptions->m_enableTempView = true;
+    commandLineOptions->m_enableUnittests = false;
+    commandLineOptions->m_disableExitSleep = true;
+    commandLineOptions->m_profileMapFile = "testprofile.ini";
+
+    auto syncd = std::make_shared<Syncd>(vendorSai, commandLineOptions, isWarmStart);
+
+    SWSS_LOG_WARN("starting run");
+    syncd->run();
+}
+
+void test_bulk_route_create()
+{
+    SWSS_LOG_ENTER();
+
+    clearDB();
+
+    auto syncd = std::make_shared<std::thread>(syncdThread);
+
+    sleep(2);
+
+    auto sairedis = std::make_shared<sairedis::Sai>();
+
+    sai_status_t status = sairedis->initialize(0, &test_services);
+
+    CHECK_STATUS(status);
+
+    sai_object_id_t switchId;
+
+    sai_attribute_t attrs[1];
+
+    // enable recordind
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_RECORD;
+    attrs[0].value.booldata = true;
+
+    status = sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    CHECK_STATUS(status);
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    status = sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    CHECK_STATUS(status);
+
+    // apply view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
+
+    status = sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    CHECK_STATUS(status);
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    status = sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    CHECK_STATUS(status);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    CHECK_STATUS(status);
+
+    attrs[0].id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+    status = sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    CHECK_STATUS(status);
+
+    sai_object_id_t vr = attrs[0].value.oid;
+
+    // create routes bulk routes in init view mode
+
+    std::vector<std::vector<sai_attribute_t>> route_attrs;
+    std::vector<const sai_attribute_t *> route_attrs_array;
+    std::vector<uint32_t> route_attrs_count;
+    std::vector<sai_route_entry_t> routes;
+    //std::vector<sai_attribute_t> attrs;
+
+    uint32_t count = 3;
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_route_entry_t route_entry;
+
+        route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+        route_entry.destination.addr.ip4 = htonl(0x0a000000 | i);
+        route_entry.destination.mask.ip4 = htonl(0xffffffff);
+        route_entry.vr_id = vr;
+        route_entry.switch_id = switchId;
+        route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+
+        routes.push_back(route_entry);
+
+        std::vector<sai_attribute_t> list; // no attributes
+
+        route_attrs.push_back(list);
+        route_attrs_count.push_back(0);
+    }
+
+    for (size_t j = 0; j < route_attrs.size(); j++)
+    {
+        route_attrs_array.push_back(route_attrs[j].data());
+    }
+
+    std::vector<sai_status_t> statuses(count);
+
+    status = sairedis->bulkCreate(
+            count,
+            routes.data(),
+            route_attrs_count.data(),
+            route_attrs_array.data(),
+            SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+            statuses.data());
+
+    CHECK_STATUS(status);
+
+    // create single route in init view
+
+    sai_route_entry_t route;
+    route.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    route.destination.addr.ip4 = htonl(0x0b000000);
+    route.destination.mask.ip4 = htonl(0xffffffff);
+    route.vr_id = vr;
+    route.switch_id = switchId;
+    route.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+
+    status = sairedis->create(&route, 0, nullptr);
+    CHECK_STATUS(status);
+
+    // apply view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
+
+    status = sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    CHECK_STATUS(status);
+
+    SWSS_LOG_ERROR("sleep");
+
+    sleep(10000);
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
 
     SWSS_LOG_ENTER();
 
-//    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
 
     try
     {

@@ -155,6 +155,12 @@ namespace syncd
                     _In_ sai_common_api_t api,
                     _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes);
 
+            sai_status_t processBulkQuadEventInInitViewMode(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::vector<std::string> &object_ids,
+                    _In_ sai_common_api_t api,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes);
+
             sai_status_t processOid(
                     _In_ sai_object_type_t objectType,
                     _In_ const std::string &strObjectId,

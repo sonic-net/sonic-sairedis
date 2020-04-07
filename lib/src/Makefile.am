@@ -8,7 +8,8 @@ endif
 
 lib_LTLIBRARIES = libsairedis.la
 
-libsairedis_la_SOURCES = \
+noinst_LIBRARIES = libSaiRedis.a
+libSaiRedis_a_SOURCES = \
 						 Context.cpp \
 						 ContextConfigContainer.cpp \
 						 ContextConfig.cpp \
@@ -31,7 +32,9 @@ libsairedis_la_SOURCES = \
 						 Recorder.cpp \
 						 RedisRemoteSaiInterface.cpp \
 						 Utils.cpp \
-						 SkipRecordAttrContainer.cpp \
+						 SkipRecordAttrContainer.cpp
+
+libsairedis_la_SOURCES = \
 						 sai_redis_acl.cpp \
 						 sai_redis_bfd.cpp \
 						 sai_redis_bmtor.cpp \
@@ -77,9 +80,10 @@ libsairedis_la_SOURCES = \
 						 sai_redis_vlan.cpp \
 						 sai_redis_wred.cpp
 
+libSaiRedis_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 
 libsairedis_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-libsairedis_la_LIBADD = -lhiredis -lswsscommon
+libsairedis_la_LIBADD = -lhiredis -lswsscommon libSaiRedis.a
 
 
 bin_PROGRAMS = tests

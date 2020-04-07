@@ -8,7 +8,8 @@ endif
 
 lib_LTLIBRARIES = libsaivs.la
 
-libsaivs_la_SOURCES = \
+noinst_LIBRARIES = libSaiVS.a
+libSaiVS_a_SOURCES = \
 					  ../../lib/src/NotificationFdbEvent.cpp \
 					  ../../lib/src/Notification.cpp \
 					  ../../lib/src/NotificationPortStateChange.cpp \
@@ -44,7 +45,9 @@ libsaivs_la_SOURCES = \
 					  SelectableFd.cpp \
 					  SwitchState.cpp \
 					  SwitchBCM56850.cpp \
-					  SwitchMLNX2700.cpp \
+					  SwitchMLNX2700.cpp
+
+libsaivs_la_SOURCES = \
 					  sai_vs_fdb.cpp \
 					  sai_vs_hostintf.cpp \
 					  sai_vs_interfacequery.cpp \
@@ -91,8 +94,10 @@ libsaivs_la_SOURCES = \
 					  sai_vs_vlan.cpp \
 					  sai_vs_wred.cpp
 
+libSaiVS_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+
 libsaivs_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-libsaivs_la_LIBADD = -lhiredis -lswsscommon
+libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a
 
 bin_PROGRAMS = tests
 
