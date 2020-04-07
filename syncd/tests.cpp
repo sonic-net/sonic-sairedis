@@ -657,7 +657,7 @@ void test_bulk_route_create()
 
     sai_attribute_t attrs[1];
 
-    // enable recordind
+    // enable recording
 
     attrs[0].id = SAI_REDIS_SWITCH_ATTR_RECORD;
     attrs[0].value.booldata = true;
