@@ -7,6 +7,15 @@
 DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/default.mk
 
+ifneq (${SWSS_COMMON_INC},)
+	SWSS_COMMON_CONFIG = "--with-swss-common-inc=${SWSS_COMMON_INC}"
+endif
+
+ifneq (${SWSS_COMMON_LIB},)
+	SWSS_COMMON_CONFIG += "--with-swss-common-lib=${SWSS_COMMON_LIB}"
+	LD_LIBRARY_PATH_CONFIG = LD_LIBRARY_PATH=${SWSS_COMMON_LIB}
+endif
+
 # see FEATURE AREAS in dpkg-buildflags(1)
 #export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
@@ -50,7 +59,7 @@ binary-syncd-vs:
 
 override_dh_auto_configure:
 	./autogen.sh
-	dh_auto_configure -- $(shell cat /tmp/syncd-build)
+	dh_auto_configure -- $(shell cat /tmp/syncd-build) ${SWSS_COMMON_CONFIG}
 
 override_dh_install:
 	dh_install
@@ -62,7 +71,7 @@ override_dh_installinit:
 	dh_installinit --init-script=syncd
 
 override_dh_shlibdeps:
-	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
+	$(LD_LIBRARY_PATH_CONFIG) dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
 
 override_dh_strip:
 	dh_strip -psyncd-rpc --dbg-package=syncd-rpc-dbg
