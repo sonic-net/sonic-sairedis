@@ -1,3 +1,6 @@
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/Azure/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Azure/sonic-sairedis/alerts/)
+[![Language grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/Azure/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Azure/sonic-sairedis/context:cpp)
+
 VS[![Build Status](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/sonic-sairedis-build/)
 
 # SONiC - SAI Redis - sairedis
