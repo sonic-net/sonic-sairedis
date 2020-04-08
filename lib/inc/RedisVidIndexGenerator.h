@@ -1,3 +1,5 @@
+#pragma once
+
 #include "OidIndexGenerator.h"
 
 #include "swss/redisclient.h"
