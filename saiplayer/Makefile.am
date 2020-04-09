@@ -8,6 +8,15 @@ else
 DBGFLAGS = -g
 endif
 
+noinst_LIBRARIES = libSaiPlayer.a
+libSaiPlayer_a_SOURCES = \
+						 CommandLineOptions.cpp \
+						 CommandLineOptionsParser.cpp \
+						 SaiPlayer.cpp
+
+
+libSaiPlayer_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) -std=c++14
+
 saiplayer_SOURCES = saiplayer.cpp
-saiplayer_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-saiplayer_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -L$(top_srcdir)/lib/src/.libs -lsairedis
+saiplayer_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) -std=c++14
+saiplayer_LDADD = libSaiPlayer.a ../syncd/libSyncd.a ../lib/src/libSaiRedis.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta 
