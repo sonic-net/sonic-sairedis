@@ -625,6 +625,11 @@ sai_status_t Syncd::processBulkQuadEvent(
             strObjectType.c_str(),
             objectIds.size());
 
+    if (isInitViewMode())
+    {
+        return processBulkQuadEventInInitViewMode(objectType, objectIds, api, attributes);
+    }
+
     if (api != SAI_COMMON_API_BULK_GET)
     {
         // translate attributes for all objects
@@ -636,11 +641,6 @@ sai_status_t Syncd::processBulkQuadEvent(
 
             m_translator->translateVidToRid(objectType, attr_count, attr_list);
         }
-    }
-
-    if (isInitViewMode())
-    {
-        return processBulkQuadEventInInitViewMode(objectType, objectIds, api, attributes);
     }
 
     auto info = sai_metadata_get_object_type_info(objectType);
