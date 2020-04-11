@@ -8,6 +8,8 @@
 #include "AttrKeyMap.h"
 #include "OidRefCounter.h"
 
+#include "swss/table.h"
+
 #include <vector>
 #include <memory>
 #include <set>
@@ -529,6 +531,9 @@ namespace saimeta
              */
 
             void meta_warm_boot_notify();
+
+            void populate(
+                    _In_ const swss::TableDump& dump);
 
         private:
 
