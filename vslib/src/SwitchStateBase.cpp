@@ -378,13 +378,6 @@ sai_status_t SwitchStateBase::setPort(
 
             if (kvp.second->m_portId == portId)
             {
-                if (ifup(tapname.c_str(), portId, up, false))
-                {
-                    SWSS_LOG_ERROR("if admin %s failed on %s failed: %s", (up ? "UP" : "DOWN"), tapname.c_str(),  strerror(errno));
-
-                    return SAI_STATUS_FAILURE;
-                }
-
                 std::string vethname = vs_get_veth_name(tapname, portId);
 
                 if (ifup(vethname.c_str(), portId, up, false))

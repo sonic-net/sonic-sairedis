@@ -611,34 +611,15 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
         return SAI_STATUS_FAILURE;
     }
 
-    sai_attribute_t attr;
-
-    attr.id = SAI_PORT_ATTR_ADMIN_STATE;
-
-    sai_status_t status = get(SAI_OBJECT_TYPE_PORT, obj_id, 1, &attr);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("failed to get admin state for port %s",
-                sai_serialize_object_id(obj_id).c_str());
-
-        return false;
-    }
-
-    if (ifup(name.c_str(), obj_id, attr.value.booldata, false))
-    {
-        SWSS_LOG_ERROR("ifup failed on %s", name.c_str());
-
-        return false;
-    }
-
     SWSS_LOG_INFO("created TAP device for %s, fd: %d", name.c_str(), tapfd);
+
+    sai_attribute_t attr;
 
     memset(&attr, 0, sizeof(attr));
 
     attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
 
-    status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
+    sai_status_t status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -676,6 +657,25 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
     }
 
     vs_set_dev_mtu(vname.c_str(), mtu);
+
+    attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+
+    status = get(SAI_OBJECT_TYPE_PORT, obj_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get admin state for port %s",
+                sai_serialize_object_id(obj_id).c_str());
+
+        return false;
+    }
+
+    if (ifup(vname.c_str(), obj_id, attr.value.booldata, false))
+    {
+        SWSS_LOG_ERROR("ifup failed on %s", name.c_str());
+
+        return false;
+    }
 
     if (!hostif_create_tap_veth_forwarding(name, tapfd, obj_id))
     {
