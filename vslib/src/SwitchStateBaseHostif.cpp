@@ -672,7 +672,7 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
 
     if (ifup(vname.c_str(), obj_id, attr.value.booldata, false))
     {
-        SWSS_LOG_ERROR("ifup failed on %s", name.c_str());
+        SWSS_LOG_ERROR("ifup failed on %s", vname.c_str());
 
         return false;
     }
