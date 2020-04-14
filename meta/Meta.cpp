@@ -7474,8 +7474,6 @@ void Meta::populate(
         sai_object_meta_key_t mk;
         sai_deserialize_object_meta_key(key.first, mk);
 
-        //sai_object_id_t switchId = switchIdQuery(mk.objectkey.key.object_id);
-
         std::unordered_map<std::string, std::string> hash;
 
         for (const auto &field: key.second)
