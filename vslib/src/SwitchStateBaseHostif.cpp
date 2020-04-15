@@ -479,7 +479,7 @@ bool SwitchStateBase::hostif_create_tap_veth_forwarding(
 
     SWSS_LOG_NOTICE("interface index = %d, %s\n", sock_address.sll_ifindex, vethname.c_str());
 
-    if (ifup(vethname.c_str(), port_id, true, true))
+    if (ifup(vethname.c_str(), port_id, false, false))
     {
         SWSS_LOG_ERROR("ifup failed on %s", vethname.c_str());
 
