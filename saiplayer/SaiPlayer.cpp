@@ -582,23 +582,23 @@ void SaiPlayer::update_notifications_pointers(
         switch (attr.id)
         {
             case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)&m_switchNotifications.on_switch_state_change;
+                attr.value.ptr = (void*)m_switchNotifications.on_switch_state_change;
                 break;
 
             case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                attr.value.ptr = (void*)&m_switchNotifications.on_switch_shutdown_request;
+                attr.value.ptr = (void*)m_switchNotifications.on_switch_shutdown_request;
                 break;
 
             case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                attr.value.ptr = (void*)&m_switchNotifications.on_fdb_event;
+                attr.value.ptr = (void*)m_switchNotifications.on_fdb_event;
                 break;
 
             case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)&m_switchNotifications.on_port_state_change;
+                attr.value.ptr = (void*)m_switchNotifications.on_port_state_change;
                 break;
 
             case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                attr.value.ptr = (void*)&m_switchNotifications.on_queue_pfc_deadlock;
+                attr.value.ptr = (void*)m_switchNotifications.on_queue_pfc_deadlock;
                 break;
 
             default:
