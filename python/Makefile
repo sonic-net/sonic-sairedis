@@ -1,6 +1,5 @@
 
-all: 
-	make clean
+all: sairedis.cpp setup.py
 	python setup.py build
 
 install: all
