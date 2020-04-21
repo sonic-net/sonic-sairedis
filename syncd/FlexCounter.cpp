@@ -1478,7 +1478,9 @@ void FlexCounter::runPlugins(
     {
         std::to_string(COUNTERS_DB), // TODO
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval * 1000)
+        std::to_string(m_pollInterval * 1000),
+        std::to_string(ASIC_DB),
+        std::to_string(CONFIG_DB)
     };
 
     std::vector<std::string> portList;
