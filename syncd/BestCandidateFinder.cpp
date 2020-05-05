@@ -71,9 +71,23 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForLag(
         }
     }
 
-    if (temporaryLagMemberPortVid == SAI_NULL_OBJECT_ID)
+    if (temporaryLagMemberPortVid == SAI_NULL_OBJECT_ID && temporaryObj->hasAttr(SAI_LAG_ATTR_NAME))
     {
-        SWSS_LOG_NOTICE("failed to find temporary LAG member for LAG %s", sai_serialize_object_id(tmpLagVid).c_str());
+        std::string lag_alias;
+
+        lag_alias = temporaryObj->getSaiAttr(SAI_LAG_ATTR_NAME)->getSaiAttr()->value.chardata;
+        for (auto &c: candidateObjects)
+        {
+            if (!c.obj->hasAttr(SAI_LAG_ATTR_NAME))
+                break;
+            if (c.obj->getSaiAttr(SAI_LAG_ATTR_NAME)->getSaiAttr()->value.chardata == lag_alias)
+            {
+                SWSS_LOG_NOTICE("Find best match for LAG %s by alias %s", sai_serialize_object_id(tmpLagVid).c_str(),lag_alias.c_str());
+                return c.obj;
+            }
+        }
+
+        SWSS_LOG_NOTICE("failed to find best match for LAG %s", sai_serialize_object_id(tmpLagVid).c_str());
 
         return nullptr;
     }
@@ -418,6 +432,8 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForAclTableGrou
 
     for (auto tmpLag: tmpLags)
     {
+        bool find_lag_member = false;
+
         if (!tmpLag->hasAttr(SAI_LAG_ATTR_INGRESS_ACL))
             continue;
 
@@ -441,6 +457,8 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForAclTableGrou
 
             if (tmpLagMemberLagAttr->getSaiAttr()->value.oid != tmpLag->getVid())
                 continue;
+
+            find_lag_member = true;
 
             const auto tmpLagMemberPortAttr = tmpLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID);
 
@@ -480,6 +498,38 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForAclTableGrou
                         continue;
 
                     SWSS_LOG_INFO("found best ACL table group match based on LAG ingress acl: %s", c.obj->m_str_object_id.c_str());
+
+                    return c.obj;
+                }
+            }
+        }
+
+        if(find_lag_member == false && tmpLag->hasAttr(SAI_LAG_ATTR_NAME))
+        {
+            std::string lag_alias;
+
+            lag_alias = tmpLag->getSaiAttr(SAI_LAG_ATTR_NAME)->getSaiAttr()->value.chardata;
+
+            const auto curLags = currentView.getNotProcessedObjectsByObjectType(SAI_OBJECT_TYPE_LAG);
+
+            for (auto curLag: curLags)
+            {
+                if (!curLag->hasAttr(SAI_LAG_ATTR_NAME))
+                    break;
+
+                const auto curLagAliasAttr = curLag->getSaiAttr(SAI_LAG_ATTR_NAME);
+
+                if (curLagAliasAttr->getSaiAttr()->value.chardata != lag_alias)
+                    continue;
+
+                inACL = curLag->getSaiAttr(SAI_LAG_ATTR_INGRESS_ACL);
+
+                for (auto c: candidateObjects)
+                {
+                    if (c.obj->getVid() != inACL->getSaiAttr()->value.oid)
+                        continue;
+
+                    SWSS_LOG_INFO("found best ACL table group match based on LAG ingress acl: %s", c.obj->str_object_id.c_str());
 
                     return c.obj;
                 }
