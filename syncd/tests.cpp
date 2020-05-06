@@ -82,7 +82,7 @@ void clearDB()
 {
     SWSS_LOG_ENTER();
 
-    g_db1 = std::make_shared<swss::DBConnector>(ASIC_DB, "localhost", 6379, 0);
+    g_db1 = std::make_shared<swss::DBConnector>("ASIC_DB", 0, true);
     swss::RedisReply r(g_db1.get(), "FLUSHALL", REDIS_REPLY_STATUS);
     g_redisClient = std::make_shared<swss::RedisClient>(g_db1.get());
 
