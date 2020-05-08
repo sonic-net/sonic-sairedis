@@ -1,5 +1,9 @@
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <time.h>
+#include <sys/time.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 extern "C" {
 #include <sai.h>
@@ -10,6 +14,7 @@ extern "C" {
 #include "MetadataLogger.h"
 #include "sairedis.h"
 #include "sairediscommon.h"
+#include "TimerWatchdog.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/OidRefCounter.h"
@@ -775,6 +780,32 @@ void test_bulk_route_create()
     sleep(10000);
 }
 
+void test_watchdog_timer_clock_rollback()
+{
+    SWSS_LOG_ENTER();
+
+    const int64_t WARN_TIMESPAN_USEC = 30 * 1000000;
+    const uint8_t ROLLBACK_TIME_SEC = 5;
+    const uint8_t LONG_RUNNING_API_TIME_SEC = 3;
+
+    // take note of current time
+    struct timeval currentTime;
+    gettimeofday(&currentTime, NULL);
+
+    // start watchdog timer
+    TimerWatchdog twd(WARN_TIMESPAN_USEC);
+    twd.setStartTime();
+
+    // roll back time by ROLLBACK_TIME_SEC
+    currentTime.tv_sec -= ROLLBACK_TIME_SEC;
+    assert(settimeofday(&currentTime, NULL) == 0);
+
+    // Simulate long running API
+    sleep(LONG_RUNNING_API_TIME_SEC);
+
+    twd.setEndTime();
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -800,6 +831,8 @@ int main()
         sai_api_uninitialize();
 
         printf("\n[ %s ]\n\n", sai_serialize_status(SAI_STATUS_SUCCESS).c_str());
+
+        test_watchdog_timer_clock_rollback();
     }
     catch (const std::exception &e)
     {
