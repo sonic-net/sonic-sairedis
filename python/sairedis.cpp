@@ -16,7 +16,8 @@ extern "C" {
 #include <memory>
 #include <vector>
 
-
+#if 0
+#endif
 
 #define MAX_LIST_SIZE (0x1000)
 #define LIST_ITEM_MAX_SIZE (sizeof(sai_attribute_t))
