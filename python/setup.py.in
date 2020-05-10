@@ -5,6 +5,10 @@ import os
 
 os.environ["CC"] = "g++"
 
+swss_common_inc_dir = '@SWSS_COMMON_INC_DIR@'
+
+swss_common_lib_dir = '@SWSS_COMMON_LIB_DIR@'
+
 cpp_args = [
         "-ansi",
         "-fPIC",
@@ -48,9 +52,17 @@ cpp_args = [
         "-Wno-switch-default",
         "-Wconversion"]
 
+include_dirs = ["..", "../lib/inc", "../SAI/inc", "../SAI/experimental", "../SAI/meta"]
+if swss_common_inc_dir:
+    include_dirs.append(swss_common_inc_dir)
+
+library_dirs = ["../meta/.libs"]
+if swss_common_lib_dir:
+    library_dirs.append(swss_common_lib_dir)
+
 modsairedis = Extension('sairedis',
-        include_dirs = ["..", "../lib/inc", "../SAI/inc", "../SAI/experimental", "../SAI/meta"],
-        library_dirs = ["../meta/.libs"],
+        include_dirs = include_dirs,
+        library_dirs = library_dirs,
         libraries = ['saimeta', 'saimetadata'],
         extra_objects = ['../lib/src/libSaiRedis.a'],
         language='c++',

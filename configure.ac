@@ -34,12 +34,14 @@ AM_CONDITIONAL(SAIVS,   test x$sai = xvs)
 AC_ARG_WITH(swss-common-inc,
 [  --with-swss-common-inc=DIR
                           prefix where swss-common includes are installed],
-[AC_SUBST(CPPFLAGS, "$CPPFLAGS -I${withval}")])
+[AC_SUBST(CPPFLAGS, "$CPPFLAGS -I${withval}")
+ AC_SUBST(SWSS_COMMON_INC_DIR, "${withval}")])
 
 AC_ARG_WITH(swss-common-lib,
 [  --with-swss-common-lib=DIR
                           prefix where swss-common libraries are installed],
-[AC_SUBST(LDFLAGS, "$LDFLAGS -L${withval}")])
+[AC_SUBST(LDFLAGS, "$LDFLAGS -L${withval}")
+ AC_SUBST(SWSS_COMMON_LIB_DIR, "${withval}")])
 
 AC_ARG_ENABLE(rpcserver,
 [  --enable-rpcserver      compile with thrift rpcserver included],
@@ -118,4 +120,5 @@ AC_OUTPUT(Makefile
           saidump/Makefile
           saisdkdump/Makefile
           saidiscovery/Makefile
-          tests/Makefile)
+          tests/Makefile
+          python/setup.py)
