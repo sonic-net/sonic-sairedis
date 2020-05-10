@@ -16,6 +16,8 @@ extern "C" {
 #include <memory>
 #include <vector>
 
+
+
 #define MAX_LIST_SIZE (0x1000)
 #define LIST_ITEM_MAX_SIZE (sizeof(sai_attribute_t))
 
@@ -131,7 +133,7 @@ PyMODINIT_FUNC initsairedis(void)
 
 static PyObject * generic_create(
         _In_ sai_object_type_t objectType,
-        _In_ PyObject *self, 
+        _In_ PyObject *self,
         _In_ PyObject *args)
 {
     SWSS_LOG_ENTER();
@@ -289,7 +291,7 @@ static PyObject * generic_create(
 
 static PyObject * generic_remove(
         _In_ sai_object_type_t objectType,
-        _In_ PyObject *self, 
+        _In_ PyObject *self,
         _In_ PyObject *args)
 {
     SWSS_LOG_ENTER();
@@ -354,7 +356,7 @@ static PyObject * generic_remove(
 
 static PyObject * generic_set(
         _In_ sai_object_type_t objectType,
-        _In_ PyObject *self, 
+        _In_ PyObject *self,
         _In_ PyObject *args)
 {
     SWSS_LOG_ENTER();
@@ -453,7 +455,7 @@ static PyObject * generic_set(
 
 static PyObject * generic_get(
         _In_ sai_object_type_t objectType,
-        _In_ PyObject *self, 
+        _In_ PyObject *self,
         _In_ PyObject *args)
 {
     SWSS_LOG_ENTER();
@@ -650,7 +652,7 @@ static PyObject * generic_get(
                     auto tokens = swss::tokenize(val, ',');
 
                     auto *list = PyList_New(0);
-                    
+
                     for(auto&tok: tokens)
                     {
                         PyList_Append(list, PyString_FromString(tok.c_str()));
