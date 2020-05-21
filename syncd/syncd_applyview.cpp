@@ -1704,7 +1704,8 @@ class AsicView
 
                     switch (meta->attrid)
                     {
-
+                        case SAI_NAT_ENTRY_ATTR_PACKET_COUNT:
+                        case SAI_NAT_ENTRY_ATTR_BYTE_COUNT:
                         case SAI_NAT_ENTRY_ATTR_HIT_BIT_COR:
                         case SAI_NAT_ENTRY_ATTR_HIT_BIT:
 
