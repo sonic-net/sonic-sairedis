@@ -31,6 +31,8 @@ namespace saiplayer
 
             bool m_sleep;
 
+            bool m_syncMode;
+
             std::vector<std::string> m_files;
     };
 }

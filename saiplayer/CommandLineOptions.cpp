@@ -17,6 +17,7 @@ CommandLineOptions::CommandLineOptions()
     m_skipNotifySyncd = false;
     m_enableDebug = false;
     m_sleep = false;
+    m_syncMode = false;
 }
 
 std::string CommandLineOptions::getCommandLineString() const
@@ -30,6 +31,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " SkipNotifySyncd=" << (m_skipNotifySyncd ? "YES" : "NO");
     ss << " EnableDebug=" << (m_enableDebug ? "YES" : "NO");
     ss << " Sleep=" << (m_sleep ? "YES" : "NO");
+    ss << " SyncMode=" << (m_syncMode ? "YES" : "NO");
 
     return ss.str();
 }

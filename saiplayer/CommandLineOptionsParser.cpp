@@ -16,7 +16,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     auto options = std::make_shared<CommandLineOptions>();
 
-    const char* const optstring = "uiCdsh";
+    const char* const optstring = "uiCdsmh";
 
     while(true)
     {
@@ -27,6 +27,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "skipNotifySyncd",  no_argument,       0, 'C' },
             { "enableDebug",      no_argument,       0, 'd' },
             { "sleep",            no_argument,       0, 's' },
+            { "syncMode",         no_argument,       0, 'm' },
             { "help",             no_argument,       0, 'h' },
         };
 
@@ -59,6 +60,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
             case 's':
                 options->m_sleep = true;
+                break;
+
+            case 'm':
+                options->m_syncMode = true;
                 break;
 
             case 'h':
@@ -95,7 +100,7 @@ void CommandLineOptionsParser::printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: saiplayer [-u] [-i] [-C] [-d] [-s] [-h] recordfile" << std::endl << std::endl;
+    std::cout << "Usage: saiplayer [-u] [-i] [-C] [-d] [-s] [-m] [-h] recordfile" << std::endl << std::endl;
 
     std::cout << "    -u --useTempView:" << std::endl;
     std::cout << "        Enable temporary view between init and apply" << std::endl << std::endl;
@@ -107,6 +112,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Enable syslog debug messages" << std::endl << std::endl;
     std::cout << "    -s --sleep:" << std::endl;
     std::cout << "        Sleep after success reply, to notice any switch notifications" << std::endl << std::endl;
+    std::cout << "    -m --syncMode:" << std::endl;
+    std::cout << "        Enable synchronous mode" << std::endl << std::endl;
 
     std::cout << "    -h --help:" << std::endl;
     std::cout << "        Print out this message" << std::endl << std::endl;
