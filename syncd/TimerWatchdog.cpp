@@ -8,7 +8,7 @@ TimerWatchdog::TimerWatchdog(
         _In_ int64_t warnTimespan):
     m_run(true),
     m_warnTimespan(warnTimespan),
-    m_callback(0)
+    m_callback(nullptr)
 {
     SWSS_LOG_ENTER();
 
@@ -68,11 +68,8 @@ void TimerWatchdog::threadFunction()
 
     SWSS_LOG_NOTICE("starting timer watchdog thread");
 
-    int id = 0;
-
     while (m_run)
     {
-        id++;
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // we make local copies, since executing functions can be so fast that
@@ -94,11 +91,11 @@ void TimerWatchdog::threadFunction()
             // executing, this negative span can be arbitrary long even hours,
             // and that is fine, since we don't know when OA makes next
             // function call
-            
+
             span = now - start; // this must be always non negative
 
             SWSS_LOG_NOTICE(" new span  = %ld", span);
-            
+
             if (span < 0)
                 SWSS_LOG_THROW("negative span 'now - start': %ld - %ld", now, start);
 
@@ -129,5 +126,5 @@ int64_t TimerWatchdog::getTimeSinceEpoch()
 {
     SWSS_LOG_ENTER();
 
-    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }

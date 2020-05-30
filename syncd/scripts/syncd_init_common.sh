@@ -115,7 +115,7 @@ config_syncd_cavium()
     export XP_ROOT=/usr/bin/
 
     # Wait until redis-server starts
-    until [ $(redis-cli ping | grep -c PONG) -gt 0 ]; do
+    until [ $(sonic-db-cli PING | grep -c PONG) -gt 0 ]; do
         sleep 1
     done
 }

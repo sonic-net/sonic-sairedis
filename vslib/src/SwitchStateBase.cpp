@@ -557,7 +557,7 @@ sai_status_t SwitchStateBase::get(
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("%s read only not implemented on %s",
+                SWSS_LOG_INFO("%s read only not implemented on %s",
                         meta->attridname,
                         serializedObjectId.c_str());
 
@@ -569,7 +569,7 @@ sai_status_t SwitchStateBase::get(
 
         if (ait == attrHash.end())
         {
-            SWSS_LOG_ERROR("%s not implemented on %s",
+            SWSS_LOG_INFO("%s not implemented on %s",
                     meta->attridname,
                     serializedObjectId.c_str());
 
