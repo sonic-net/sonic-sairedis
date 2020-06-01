@@ -83,7 +83,14 @@ namespace syncd
             void removeAsicObject(
                     _In_ const sai_object_meta_key_t& metaKey);
 
+            void removeTempAsicObject(
+                    _In_ const sai_object_meta_key_t& metaKey);
+
             void createAsicObject(
+                    _In_ const sai_object_meta_key_t& metaKey,
+                    _In_ const std::vector<swss::FieldValueTuple>& attrs);
+
+            void createTempAsicObject(
                     _In_ const sai_object_meta_key_t& metaKey,
                     _In_ const std::vector<swss::FieldValueTuple>& attrs);
 

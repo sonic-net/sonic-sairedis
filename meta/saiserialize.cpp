@@ -1934,6 +1934,13 @@ void sai_deserialize_enum(
         }
     }
 
+    // for backward compatibility from SAI v1.6
+    if (s == "SAI_NEXT_HOP_GROUP_TYPE_ECMP")
+    {
+        value = SAI_NEXT_HOP_GROUP_TYPE_ECMP;
+        return;
+    }
+
     SWSS_LOG_WARN("enum %s not found in enum %s", s.c_str(), meta->name);
 
     sai_deserialize_number(s, value);
@@ -2090,7 +2097,16 @@ void sai_deserialize_qos_map_params(
     params.prio           = j["prio"];
     params.pg             = j["pg"];
     params.queue_index    = j["qidx"];
-    params.mpls_exp       = j["mpls_exp"];
+
+    if (j.find("mpls_exp") == j.end())
+    {
+        // for backward compatibility
+        params.mpls_exp       = 0;
+    }
+    else
+    {
+        params.mpls_exp       = j["mpls_exp"];
+    }
 
     sai_deserialize_packet_color(j["color"], params.color);
 }

@@ -1524,6 +1524,14 @@ int SaiPlayer::run()
         EXIT_ON_ERROR(m_sai->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
     }
 
+    if (m_commandLineOptions->m_syncMode)
+    {
+        attr.id = SAI_REDIS_SWITCH_ATTR_SYNC_MODE;
+        attr.value.booldata = true;
+
+        EXIT_ON_ERROR(m_sai->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
+    }
+
     int exitcode = 0;
 
     if (m_commandLineOptions->m_files.size() > 0)
