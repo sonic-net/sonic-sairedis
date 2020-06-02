@@ -1448,13 +1448,13 @@ void FlexCounter::collectBufferPoolCounters(
 }
 
 void FlexCounter::runPlugins(
-        _In_ swss::DBConnector& db)
+        _In_ swss::DBConnector& counters_db)
 {
     SWSS_LOG_ENTER();
 
     const std::vector<std::string> argv =
     {
-        std::to_string(COUNTERS_DB), // TODO
+        std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
         std::to_string(m_pollInterval * 1000)
     };
@@ -1470,7 +1470,7 @@ void FlexCounter::runPlugins(
 
     for (const auto& sha : m_portPlugins)
     {
-        runRedisScript(db, sha, portList, argv);
+        runRedisScript(counters_db, sha, portList, argv);
     }
 
     std::vector<std::string> queueList;
@@ -1484,7 +1484,7 @@ void FlexCounter::runPlugins(
 
     for (const auto& sha : m_queuePlugins)
     {
-        runRedisScript(db, sha, queueList, argv);
+        runRedisScript(counters_db, sha, queueList, argv);
     }
 
     std::vector<std::string> priorityGroupList;
@@ -1498,7 +1498,7 @@ void FlexCounter::runPlugins(
 
     for (const auto& sha : m_priorityGroupPlugins)
     {
-        runRedisScript(db, sha, priorityGroupList, argv);
+        runRedisScript(counters_db, sha, priorityGroupList, argv);
     }
 
     std::vector<std::string> bufferPoolVids;
@@ -1512,7 +1512,7 @@ void FlexCounter::runPlugins(
 
     for (const auto& sha : m_bufferPoolPlugins)
     {
-        runRedisScript(db, sha, bufferPoolVids, argv);
+        runRedisScript(counters_db, sha, bufferPoolVids, argv);
     }
 }
 
