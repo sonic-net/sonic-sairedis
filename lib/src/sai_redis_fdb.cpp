@@ -14,9 +14,7 @@ static sai_status_t redis_flush_fdb_entries(
 }
 
 REDIS_GENERIC_QUAD_ENTRY(FDB_ENTRY,fdb_entry);
-
-REDIS_BULK_CREATE_ENTRY(FDB_ENTRY,fdb_entry);
-REDIS_BULK_REMOVE_ENTRY(FDB_ENTRY,fdb_entry);
+REDIS_BULK_QUAD_ENTRY(FDB_ENTRY,fdb_entry);
 
 // TODO remove when test corrected (SAI pointer must be advanced for this)
 
@@ -59,4 +57,6 @@ const sai_fdb_api_t redis_fdb_api = {
     REDIS_GENERIC_QUAD_API(fdb_entry)
 
     redis_flush_fdb_entries,
+
+    REDIS_BULK_QUAD_API(fdb_entry)
 };

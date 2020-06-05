@@ -187,6 +187,35 @@ sai_status_t RedisRemoteSaiInterface::create(
 
             return SAI_STATUS_FAILURE;
         }
+
+        auto *attr = sai_metadata_get_attr_by_id(
+                SAI_SWITCH_ATTR_INIT_SWITCH,
+                attr_count,
+                attr_list);
+
+        if (attr && attr->value.booldata == false)
+        {
+            refreshTableDump();
+
+            if (m_tableDump.find(switchId) == m_tableDump.end())
+            {
+                SWSS_LOG_ERROR("failed to find switch %s to connect (init=false)",
+                        sai_serialize_object_id(switchId).c_str());
+
+                m_virtualObjectIdManager->releaseObjectId(switchId);
+
+                return SAI_STATUS_FAILURE;
+            }
+
+            // when init is false, don't send query to syncd, just return success
+            // that we found switch and we connected to it
+
+            auto sw = std::make_shared<Switch>(*objectId, attr_count, attr_list);
+
+            m_switchContainer->insert(sw);
+
+            return SAI_STATUS_SUCCESS;
+        }
     }
     else
     {
@@ -1064,6 +1093,8 @@ sai_status_t RedisRemoteSaiInterface::bulkRemove(
     // value:       object_attrs
     std::string key = serializedObjectType + ":" + std::to_string(entries.size());
 
+    m_recorder->recordBulkGenericRemove(serializedObjectType, entries);
+
     m_redisChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_REMOVE);
 
     return waitForBulkResponse(SAI_COMMON_API_BULK_REMOVE, (uint32_t)serialized_object_ids.size(), object_statuses);
@@ -1291,7 +1322,11 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
      * with previous
      */
 
-    std::string key = sai_serialize_object_type(object_type) + ":" + std::to_string(entries.size());
+    auto serializedObjectType = sai_serialize_object_type(object_type);
+
+    std::string key = serializedObjectType + ":" + std::to_string(entries.size());
+
+    m_recorder->recordBulkGenericSet(serializedObjectType, entries);
 
     m_redisChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_SET);
 
@@ -1364,6 +1399,15 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     {
         auto entry = SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
 
+        if (entry.empty())
+        {
+            // make sure that we put object into db
+            // even if there are no attributes set
+            swss::FieldValueTuple null("NULL", "NULL");
+
+            entry.push_back(null);
+        }
+
         std::string str_attr = joinFieldValues(entry);
 
         swss::FieldValueTuple fvtNoStatus(serialized_object_ids[idx] , str_attr);
@@ -1381,7 +1425,7 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     // value:       object_attrs
     std::string key = str_object_type + ":" + std::to_string(entries.size());
 
-    // TODO record
+    m_recorder->recordBulkGenericCreate(str_object_type, entries);
 
     m_redisChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_CREATE);
 
@@ -1730,4 +1774,49 @@ sai_switch_notifications_t RedisRemoteSaiInterface::syncProcessNotification(
             sai_serialize_object_id(switchId).c_str());
 
     return { };
+}
+
+const std::map<sai_object_id_t, swss::TableDump>& RedisRemoteSaiInterface::getTableDump() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_tableDump;
+}
+
+void RedisRemoteSaiInterface::refreshTableDump()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_TIMER("get asic view from %s", ASIC_STATE_TABLE);
+
+    auto db = m_redisChannel->getDbConnector();
+
+    swss::Table table(db.get(), ASIC_STATE_TABLE);
+
+    swss::TableDump dump;
+
+    table.dump(dump);
+
+    auto& map = m_tableDump;
+
+    map.clear();
+
+    for (auto& key: dump)
+    {
+        sai_object_meta_key_t mk;
+        sai_deserialize_object_meta_key(key.first, mk);
+
+        auto switchVID = switchIdQuery(mk.objectkey.key.object_id);
+
+        map[switchVID][key.first] = key.second;
+    }
+
+    SWSS_LOG_NOTICE("%s switch count: %zu:", ASIC_STATE_TABLE, map.size());
+
+    for (auto& kvp: map)
+    {
+        SWSS_LOG_NOTICE("%s: objects count: %zu",
+                sai_serialize_object_id(kvp.first).c_str(),
+                kvp.second.size());
+    }
 }

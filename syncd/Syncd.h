@@ -155,6 +155,12 @@ namespace syncd
                     _In_ sai_common_api_t api,
                     _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes);
 
+            sai_status_t processBulkQuadEventInInitViewMode(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::vector<std::string> &object_ids,
+                    _In_ sai_common_api_t api,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes);
+
             sai_status_t processOid(
                     _In_ sai_object_type_t objectType,
                     _In_ const std::string &strObjectId,
@@ -207,6 +213,13 @@ namespace syncd
                     _In_ const std::string& strObjectId,
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
+
+        private:
+
+            void syncUpdateRedisQuadEvent(
+                    _In_ sai_status_t status,
+                    _In_ sai_common_api_t api,
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
         public: // TODO to private
 

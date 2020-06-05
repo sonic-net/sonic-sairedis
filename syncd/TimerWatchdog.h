@@ -1,5 +1,4 @@
-#ifndef __TIMER_WATCHDOG_H__
-#define __TIMER_WATCHDOG_H__
+#pragma once
 
 #include <thread>
 #include <atomic>
@@ -56,5 +55,3 @@ class TimerWatchdog
     Callback m_callback;
 
 };
-
-#endif // __TIMER_WATCHDOG_H__

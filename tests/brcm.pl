@@ -504,6 +504,20 @@ sub test_brcm_warm_boot_port_remove
     request_warm_shutdown;
 }
 
+sub test_sync_brcm_warm_boot_port_remove
+{
+    sync_fresh_start;
+
+    sync_play "wb_port_remove_a.rec";
+
+    request_warm_shutdown;
+    sync_start_syncd_warm;
+
+    sync_play "wb_port_remove_b.rec";
+
+    request_warm_shutdown;
+}
+
 sub test_brcm_warm_boot_port_create
 {
     fresh_start;
@@ -534,6 +548,7 @@ sub test_brcm_query_object_type_get_availability
 
 # RUN TESTS
 
+test_sync_brcm_warm_boot_port_remove;
 test_brcm_warm_boot_port_remove;
 test_brcm_warm_boot_port_create;
 test_remove_port;

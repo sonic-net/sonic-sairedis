@@ -28,6 +28,7 @@ PRIVATE extern const sai_isolation_group_api_t  redis_isolation_group_api;
 PRIVATE extern const sai_l2mc_api_t             redis_l2mc_api;
 PRIVATE extern const sai_l2mc_group_api_t       redis_l2mc_group_api;
 PRIVATE extern const sai_lag_api_t              redis_lag_api;
+PRIVATE extern const sai_macsec_api_t           redis_macsec_api;
 PRIVATE extern const sai_mcast_fdb_api_t        redis_mcast_fdb_api;
 PRIVATE extern const sai_mirror_api_t           redis_mirror_api;
 PRIVATE extern const sai_mpls_api_t             redis_mpls_api;

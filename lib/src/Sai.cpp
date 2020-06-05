@@ -148,12 +148,29 @@ sai_status_t Sai::create(
         }
     }
 
-    return context->m_meta->create(
+    auto status = context->m_meta->create(
             objectType,
             objectId,
             switchId,
             attr_count,
             attr_list);
+
+    if (objectType == SAI_OBJECT_TYPE_SWITCH && status == SAI_STATUS_SUCCESS)
+    {
+        auto *attr = sai_metadata_get_attr_by_id(
+                SAI_SWITCH_ATTR_INIT_SWITCH,
+                attr_count,
+                attr_list);
+
+        if (attr && attr->value.booldata == false)
+        {
+            // request to connect to existing switch
+
+            context->populateMetadata(*objectId);
+        }
+    }
+
+    return status;
 }
 
 sai_status_t Sai::remove(

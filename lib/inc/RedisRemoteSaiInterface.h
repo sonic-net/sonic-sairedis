@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <functional>
+#include <map>
 
 #define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(ot)   \
     virtual sai_status_t remove(                                    \
@@ -282,6 +283,8 @@ namespace sairedis
             sai_switch_notifications_t syncProcessNotification(
                     _In_ std::shared_ptr<Notification> notification);
 
+            const std::map<sai_object_id_t, swss::TableDump>& getTableDump() const;
+
         private: // QUAD API helpers
 
             sai_status_t create(
@@ -422,6 +425,8 @@ namespace sairedis
                     _In_ uint32_t attrCount,
                     _In_ const sai_attribute_t *attrList) const;
 
+            void refreshTableDump();
+
         private:
 
             uint32_t m_globalContext;
@@ -453,5 +458,7 @@ namespace sairedis
             std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> m_notificationCallback;
 
             std::string m_dbAsic;
+
+            std::map<sai_object_id_t, swss::TableDump> m_tableDump;
     };
 }

@@ -120,7 +120,7 @@ static void clearDB()
 {
     SWSS_LOG_ENTER();
 
-    auto db = std::make_shared<swss::DBConnector>(ASIC_DB, "localhost", 6379, 0);
+    auto db = std::make_shared<swss::DBConnector>("ASIC_DB", 0, true);
 
     swss::RedisReply r(db.get(), "FLUSHALL", REDIS_REPLY_STATUS);
 

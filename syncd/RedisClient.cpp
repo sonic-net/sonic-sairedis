@@ -479,6 +479,16 @@ void RedisClient::removeAsicObject(
     m_redisClient->del(key);
 }
 
+void RedisClient::removeTempAsicObject(
+        _In_ const sai_object_meta_key_t& metaKey)
+{
+    SWSS_LOG_ENTER();
+
+    std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
+
+    m_redisClient->del(key);
+}
+
 void RedisClient::setAsicObject(
         _In_ const sai_object_meta_key_t& metaKey,
         _In_ const std::string& attr,
@@ -510,6 +520,26 @@ void RedisClient::createAsicObject(
     SWSS_LOG_ENTER();
 
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
+
+    if (attrs.size() == 0)
+    {
+        m_redisClient->hset(key, "NULL", "NULL");
+        return;
+    }
+
+    for (const auto& e: attrs)
+    {
+        m_redisClient->hset(key, fvField(e), fvValue(e));
+    }
+}
+
+void RedisClient::createTempAsicObject(
+        _In_ const sai_object_meta_key_t& metaKey,
+        _In_ const std::vector<swss::FieldValueTuple>& attrs)
+{
+    SWSS_LOG_ENTER();
+
+    std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
     if (attrs.size() == 0)
     {

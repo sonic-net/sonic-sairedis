@@ -14,8 +14,8 @@ else
 SAILIB=-lsai
 endif
 
-noinst_LIBRARIES = libsyncd.a
-libsyncd_a_SOURCES = \
+noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
+libSyncd_a_SOURCES = \
 				Syncd.cpp \
 				RedisClient.cpp \
 				WarmRestartTable.cpp \
@@ -36,12 +36,6 @@ libsyncd_a_SOURCES = \
 				BestCandidateFinder.cpp \
 				FlexCounterManager.cpp \
 				FlexCounter.cpp \
-				../lib/src/SwitchConfig.cpp \
-				../lib/src/SwitchConfigContainer.cpp \
-				../lib/src/VirtualObjectIdManager.cpp \
-				../lib/src/RedisVidIndexGenerator.cpp \
-				../lib/src/ContextConfig.cpp \
-				../lib/src/ContextConfigContainer.cpp \
 				VidManager.cpp \
 				VidManager.cpp \
 				AsicOperation.cpp \
@@ -57,39 +51,36 @@ libsyncd_a_SOURCES = \
 				PortMap.cpp \
 				PortMapParser.cpp
 
-libsyncd_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS) -std=c++14
+libSyncd_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS) -std=c++14
 
 syncd_SOURCES = main.cpp
-
 syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
-syncd_LDADD = -L$(top_srcdir)/meta/.libs libsyncd.a -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread
+syncd_LDADD = libSyncd.a ../lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread
 
 if SAITHRIFT
-libsyncd_a_CPPFLAGS += -DSAITHRIFT=yes
+libSyncd_a_CPPFLAGS += -DSAITHRIFT=yes
 syncd_CPPFLAGS += -DSAITHRIFT=yes
 syncd_LDADD += -lrpcserver -lthrift
 endif
 
 if sonic_asic_platform_mellanox
 syncd_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
-libsyncd_a_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
+libSyncd_a_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
 endif
 
-syncd_request_shutdown_SOURCES = \
+libSyncdRequestShutdown_a_SOURCES = \
 								 RequestShutdown.cpp \
 								 RequestShutdownCommandLineOptions.cpp \
-								 RequestShutdownCommandLineOptionsParser.cpp \
-								 ../lib/src/SwitchConfig.cpp \
-								 ../lib/src/SwitchConfigContainer.cpp \
-								 ../lib/src/ContextConfig.cpp \
-								 ../lib/src/ContextConfigContainer.cpp \
-								 syncd_request_shutdown.cpp
+								 RequestShutdownCommandLineOptionsParser.cpp
 
+libSyncdRequestShutdown_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+
+syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
 syncd_request_shutdown_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-syncd_request_shutdown_LDADD = -lhiredis -lswsscommon -lpthread
+syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a ../lib/src/libSaiRedis.a -lhiredis -lswsscommon -lpthread
 
 tests_SOURCES = tests.cpp
 
 tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-tests_LDADD = libsyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta
+tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta
 TESTS = tests

@@ -3779,8 +3779,8 @@ void test_serialize_qos_map()
     attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
 
     sai_qos_map_t qm = {
-        .key   = { .tc = 1, .dscp = 2, .dot1p = 3, .prio = 4, .pg = 5, .queue_index = 6, .color = SAI_PACKET_COLOR_RED },
-        .value = { .tc = 11, .dscp = 22, .dot1p = 33, .prio = 44, .pg = 55, .queue_index = 66, .color = SAI_PACKET_COLOR_GREEN } };
+        .key   = { .tc = 1, .dscp = 2, .dot1p = 3, .prio = 4, .pg = 5, .queue_index = 6, .color = SAI_PACKET_COLOR_RED, .mpls_exp = 0 },
+        .value = { .tc = 11, .dscp = 22, .dot1p = 33, .prio = 44, .pg = 55, .queue_index = 66, .color = SAI_PACKET_COLOR_GREEN, .mpls_exp = 0 } };
 
     attr.value.qosmap.count = 1;
     attr.value.qosmap.list = &qm;
@@ -3789,7 +3789,7 @@ void test_serialize_qos_map()
 
     s = sai_serialize_attr_value(*meta, attr);
 
-    std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"color\":\"SAI_PACKET_COLOR_RED\",\"dot1p\":3,\"dscp\":2,\"pg\":5,\"prio\":4,\"qidx\":6,\"tc\":1},\"value\":{\"color\":\"SAI_PACKET_COLOR_GREEN\",\"dot1p\":33,\"dscp\":22,\"pg\":55,\"prio\":44,\"qidx\":66,\"tc\":11}}]}";
+    std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"color\":\"SAI_PACKET_COLOR_RED\",\"dot1p\":3,\"dscp\":2,\"mpls_exp\":0,\"pg\":5,\"prio\":4,\"qidx\":6,\"tc\":1},\"value\":{\"color\":\"SAI_PACKET_COLOR_GREEN\",\"dot1p\":33,\"dscp\":22,\"mpls_exp\":0,\"pg\":55,\"prio\":44,\"qidx\":66,\"tc\":11}}]}";
 
     ASSERT_TRUE(s, ret);
 
@@ -3814,6 +3814,7 @@ void test_serialize_qos_map()
     ASSERT_TRUE(l.key.pg, 5);
     ASSERT_TRUE(l.key.queue_index, 6);
     ASSERT_TRUE(l.key.color, SAI_PACKET_COLOR_RED);
+    ASSERT_TRUE(l.key.mpls_exp, 0);
 
     ASSERT_TRUE(l.value.tc, 11);
     ASSERT_TRUE(l.value.dscp, 22);
@@ -3822,6 +3823,7 @@ void test_serialize_qos_map()
     ASSERT_TRUE(l.value.pg, 55);
     ASSERT_TRUE(l.value.queue_index, 66);
     ASSERT_TRUE(l.value.color, SAI_PACKET_COLOR_GREEN);
+    ASSERT_TRUE(l.value.mpls_exp, 0);
 }
 
 template<typename T>

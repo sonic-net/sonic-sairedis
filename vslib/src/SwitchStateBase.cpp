@@ -403,7 +403,9 @@ sai_status_t SwitchStateBase::setPort(
         {
             SWSS_LOG_INFO("setting new MTU: %d on %s", mtu, name.c_str());
 
-            if (vs_set_dev_mtu(name.c_str(), mtu) < 0)
+            std::string vname = vs_get_veth_name(name, portId);
+
+            if (vs_set_dev_mtu(vname.c_str(), mtu) < 0)
             {
                 SWSS_LOG_ERROR("failed to set MTU on portId %s",
                     sai_serialize_object_id(portId).c_str());
@@ -555,7 +557,7 @@ sai_status_t SwitchStateBase::get(
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("%s read only not implemented on %s",
+                SWSS_LOG_INFO("%s read only not implemented on %s",
                         meta->attridname,
                         serializedObjectId.c_str());
 
@@ -567,7 +569,7 @@ sai_status_t SwitchStateBase::get(
 
         if (ait == attrHash.end())
         {
-            SWSS_LOG_ERROR("%s not implemented on %s",
+            SWSS_LOG_INFO("%s not implemented on %s",
                     meta->attridname,
                     serializedObjectId.c_str());
 

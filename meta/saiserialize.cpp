@@ -1110,13 +1110,14 @@ json sai_serialize_qos_map_params(
 
     json j;
 
-    j["tc"]     = params.tc;
-    j["dscp"]   = params.dscp;
-    j["dot1p"]  = params.dot1p;
-    j["prio"]   = params.prio;
-    j["pg"]     = params.pg;
-    j["qidx"]   = params.queue_index;
-    j["color"]  = sai_serialize_packet_color(params.color);
+    j["tc"]       = params.tc;
+    j["dscp"]     = params.dscp;
+    j["dot1p"]    = params.dot1p;
+    j["prio"]     = params.prio;
+    j["pg"]       = params.pg;
+    j["qidx"]     = params.queue_index;
+    j["mpls_exp"] = params.mpls_exp;
+    j["color"]    = sai_serialize_packet_color(params.color);
 
     return j;
 }
@@ -1933,6 +1934,13 @@ void sai_deserialize_enum(
         }
     }
 
+    // for backward compatibility from SAI v1.6
+    if (s == "SAI_NEXT_HOP_GROUP_TYPE_ECMP")
+    {
+        value = SAI_NEXT_HOP_GROUP_TYPE_ECMP;
+        return;
+    }
+
     SWSS_LOG_WARN("enum %s not found in enum %s", s.c_str(), meta->name);
 
     sai_deserialize_number(s, value);
@@ -2089,6 +2097,16 @@ void sai_deserialize_qos_map_params(
     params.prio           = j["prio"];
     params.pg             = j["pg"];
     params.queue_index    = j["qidx"];
+
+    if (j.find("mpls_exp") == j.end())
+    {
+        // for backward compatibility
+        params.mpls_exp       = 0;
+    }
+    else
+    {
+        params.mpls_exp       = j["mpls_exp"];
+    }
 
     sai_deserialize_packet_color(j["color"], params.color);
 }

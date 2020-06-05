@@ -46,3 +46,13 @@ sai_switch_notifications_t Context::handle_notification(
 
     return m_notificationCallback(notification, this);
 }
+
+void Context::populateMetadata(
+        _In_ sai_object_id_t switchId)
+{
+    SWSS_LOG_ENTER();
+
+    auto& dump = m_redisSai->getTableDump();
+
+    m_meta->populate(dump.at(switchId));
+}

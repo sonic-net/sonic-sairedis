@@ -19,6 +19,11 @@ namespace sairedis
 
             virtual ~Context();
 
+        public:
+
+            void populateMetadata(
+                    _In_ sai_object_id_t switchId);
+
         private:
 
             sai_switch_notifications_t handle_notification(

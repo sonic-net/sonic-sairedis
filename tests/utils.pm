@@ -59,6 +59,20 @@ sub start_syncd_warm
     sleep 1;
 }
 
+sub sync_start_syncd
+{
+    print color('bright_blue') . "Starting syncd" . color('reset') . "\n";
+    `./vssyncd -s -SUu -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+}
+
+sub sync_start_syncd_warm
+{
+    print color('bright_blue') . "Starting syncd warm" . color('reset') . "\n";
+    `./vssyncd -s -SUu -t warm -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+    
+    sleep 1;
+}
+
 sub request_warm_shutdown
 {
     print color('bright_blue') . "Requesting syncd warm shutdown" . color('reset') . "\n";
@@ -67,14 +81,15 @@ sub request_warm_shutdown
     sleep 2;
 }
 
-sub play
+sub play_common
 {
+    my $sync = shift;
     my $file = shift;
     my $asicop = shift;
 
     print color('bright_blue') . "Replay $file" . color('reset') . "\n";
 
-    my @ret = `../saiplayer/saiplayer -u "$DIR/$file"`;
+    my @ret = `../saiplayer/saiplayer $sync -u "$DIR/$file"`;
 
     if ($? != 0)
     {
@@ -108,6 +123,16 @@ sub play
     }
 }
 
+sub play
+{
+    play_common "", @_;
+}
+
+sub sync_play
+{
+    play_common "-m", @_;
+}
+
 sub fresh_start
 {
     my $caller = GetCaller();
@@ -121,11 +146,26 @@ sub fresh_start
     start_syncd;
 }
 
+sub sync_fresh_start
+{
+    my $caller = GetCaller();
+
+    `rm -f applyview.log`;
+
+    print "$caller: " . color('bright_blue') . "Fresh start" . color('reset') . "\n";
+
+    kill_syncd;
+    flush_redis;
+    sync_start_syncd;
+}
+
+
 BEGIN
 {
     our @ISA    = qw(Exporter);
     our @EXPORT = qw/
     kill_syncd flush_redis start_syncd play fresh_start start_syncd_warm request_warm_shutdown
+    sync_start_syncd sync_fresh_start sync_start_syncd_warm sync_start_syncd sync_play
     /;
 
     my $script = $0;

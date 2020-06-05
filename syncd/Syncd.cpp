@@ -85,6 +85,8 @@ Syncd::Syncd(
     m_asicState = std::make_shared<swss::ConsumerTable>(m_dbAsic.get(), ASIC_STATE_TABLE);
     m_restartQuery = std::make_shared<swss::NotificationConsumer>(m_dbAsic.get(), SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY);
 
+    m_asicState->setModifyRedis(m_commandLineOptions->m_enableSyncMode ? false : true);
+
     // TODO to be moved to ASIC_DB
     m_dbFlexCounter = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbFlex, 0);
     m_flexCounter = std::make_shared<swss::ConsumerTable>(m_dbFlexCounter.get(), FLEX_COUNTER_TABLE);
@@ -573,12 +575,6 @@ sai_status_t Syncd::processBulkQuadEvent(
 {
     SWSS_LOG_ENTER();
 
-    if (isInitViewMode())
-    {
-        SWSS_LOG_THROW("bulk api (%s) is not supported in init view mode, FIXME",
-                sai_serialize_common_api(api).c_str());
-    }
-
     const std::string& key = kfvKey(kco); // objectType:count
 
     std::string strObjectType = key.substr(0, key.find(":"));
@@ -631,6 +627,11 @@ sai_status_t Syncd::processBulkQuadEvent(
             strObjectType.c_str(),
             objectIds.size());
 
+    if (isInitViewMode())
+    {
+        return processBulkQuadEventInInitViewMode(objectType, objectIds, api, attributes);
+    }
+
     if (api != SAI_COMMON_API_BULK_GET)
     {
         // translate attributes for all objects
@@ -653,6 +654,61 @@ sai_status_t Syncd::processBulkQuadEvent(
     else
     {
         return processBulkEntry(objectType, objectIds, api, attributes);
+    }
+}
+
+sai_status_t Syncd::processBulkQuadEventInInitViewMode(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string> &object_ids,
+        _In_ sai_common_api_t api,
+        _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_status_t> statuses(object_ids.size());
+
+    for (auto &a: statuses)
+    {
+        a = SAI_STATUS_SUCCESS;
+    }
+
+    auto info = sai_metadata_get_object_type_info(objectType);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_BULK_CREATE:
+        case SAI_COMMON_API_BULK_REMOVE:
+        case SAI_COMMON_API_BULK_SET:
+
+            if (info->isnonobjectid)
+            {
+                sendApiResponse(api, SAI_STATUS_SUCCESS, (uint32_t)statuses.size(), statuses.data());
+                return SAI_STATUS_SUCCESS;
+            }
+
+            switch (objectType)
+            {
+                case SAI_OBJECT_TYPE_SWITCH:
+                case SAI_OBJECT_TYPE_PORT:
+                case SAI_OBJECT_TYPE_SCHEDULER_GROUP:
+                case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
+
+                    SWSS_LOG_THROW("%s is not supported in init view mode",
+                            sai_serialize_object_type(objectType).c_str());
+
+                default:
+
+                    sendApiResponse(api, SAI_STATUS_SUCCESS, (uint32_t)statuses.size(), statuses.data());
+                    return SAI_STATUS_SUCCESS;
+            }
+
+        case SAI_COMMON_API_BULK_GET:
+            SWSS_LOG_THROW("GET bulk api is not implemented in init view mode, FIXME");
+
+        default:
+
+            SWSS_LOG_THROW("common bulk api (%s) is not implemented in init view mode",
+                    sai_serialize_common_api(api).c_str());
     }
 }
 
@@ -1233,6 +1289,88 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
     }
 }
 
+void Syncd::syncUpdateRedisQuadEvent(
+        _In_ sai_status_t status,
+        _In_ sai_common_api_t api,
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_commandLineOptions->m_enableSyncMode)
+    {
+        return;
+    }
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return;
+    }
+
+    // When in synchronous mode, we need to modify redis database when status
+    // is success, since consumer table on synchronous mode is not making redis
+    // changes and we only want to apply changes when api succeeded. This
+    // applies to init view mode and apply view mode.
+
+    const std::string& key = kfvKey(kco);
+
+    auto& values = kfvFieldsValues(kco);
+
+    const std::string& strObjectId = key.substr(key.find(":") + 1);
+
+    sai_object_meta_key_t metaKey;
+    sai_deserialize_object_meta_key(key, metaKey);
+
+    const bool initView = isInitViewMode();
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+
+            {
+                if (initView)
+                    m_client->createTempAsicObject(metaKey, values);
+                else
+                    m_client->createAsicObject(metaKey, values);
+
+                return;
+            }
+
+        case SAI_COMMON_API_REMOVE:
+
+            {
+                if (initView)
+                    m_client->removeTempAsicObject(metaKey);
+                else
+                    m_client->removeAsicObject(metaKey);
+
+                return;
+            }
+
+        case SAI_COMMON_API_SET:
+
+            {
+                auto& first = values.at(0);
+
+                auto& attr = fvField(first);
+                auto& value = fvValue(first);
+
+                if (initView)
+                    m_client->setTempAsicObject(metaKey, attr, value);
+                else
+                    m_client->setAsicObject(metaKey, attr, value);
+
+                return;
+            }
+
+        case SAI_COMMON_API_GET:
+            return; // ignore get since get is not modifying db
+
+        default:
+
+            SWSS_LOG_THROW("api %d is not supported", api);
+    }
+}
+
 sai_status_t Syncd::processQuadEvent(
         _In_ sai_common_api_t api,
         _In_ const swss::KeyOpFieldsValuesTuple &kco)
@@ -1291,7 +1429,11 @@ sai_status_t Syncd::processQuadEvent(
 
     if (isInitViewMode())
     {
-        return processQuadEventInInitViewMode(metaKey.objecttype, strObjectId, api, attr_count, attr_list);
+        sai_status_t status = processQuadEventInInitViewMode(metaKey.objecttype, strObjectId, api, attr_count, attr_list);
+
+        syncUpdateRedisQuadEvent(status, api, kco);
+
+        return status;
     }
 
     if (api != SAI_COMMON_API_GET)
@@ -1355,15 +1497,22 @@ sai_status_t Syncd::processQuadEvent(
             SWSS_LOG_ERROR("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
         }
 
-        SWSS_LOG_THROW("failed to execute api: %s, key: %s, status: %s",
-                op.c_str(),
-                key.c_str(),
-                sai_serialize_status(status).c_str());
+        if (!m_commandLineOptions->m_enableSyncMode)
+        {
+            // throw only when sync mode is not enabled
+
+            SWSS_LOG_THROW("failed to execute api: %s, key: %s, status: %s",
+                    op.c_str(),
+                    key.c_str(),
+                    sai_serialize_status(status).c_str());
+        }
     }
     else // non GET api, status is SUCCESS
     {
         sendApiResponse(api, status);
     }
+
+    syncUpdateRedisQuadEvent(status, api, kco);
 
     return status;
 }

@@ -479,15 +479,6 @@ bool SwitchStateBase::hostif_create_tap_veth_forwarding(
 
     SWSS_LOG_NOTICE("interface index = %d, %s\n", sock_address.sll_ifindex, vethname.c_str());
 
-    if (ifup(vethname.c_str(), port_id, true, true))
-    {
-        SWSS_LOG_ERROR("ifup failed on %s", vethname.c_str());
-
-        close(packet_socket);
-
-        return false;
-    }
-
     if (promisc(vethname.c_str()))
     {
         SWSS_LOG_ERROR("promisc failed on %s", vethname.c_str());
@@ -656,7 +647,26 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
         SWSS_LOG_INFO("setting new MTU: %d on %s", mtu, vname.c_str());
     }
 
-    vs_set_dev_mtu(name.c_str(), mtu);
+    vs_set_dev_mtu(vname.c_str(), mtu);
+
+    attr.id = SAI_PORT_ATTR_ADMIN_STATE;
+
+    status = get(SAI_OBJECT_TYPE_PORT, obj_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get admin state for port %s",
+                sai_serialize_object_id(obj_id).c_str());
+
+        return false;
+    }
+
+    if (ifup(vname.c_str(), obj_id, attr.value.booldata, false))
+    {
+        SWSS_LOG_ERROR("ifup failed on %s", vname.c_str());
+
+        return false;
+    }
 
     if (!hostif_create_tap_veth_forwarding(name, tapfd, obj_id))
     {

@@ -4,6 +4,7 @@
 #include "sai_serialize.h"
 
 #include "Globals.h"
+#include "SaiAttributeList.h"
 
 #include <inttypes.h>
 
@@ -7458,3 +7459,162 @@ bool Meta::objectExists(
     return m_saiObjectCollection.objectExists(mk);
 }
 
+void Meta::populate(
+        _In_ const swss::TableDump& dump)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_TIMER("table dump populate");
+
+    // table dump contains only 1 switch the one that user wanted to connect
+    // using init=false
+
+    for (const auto &key: dump)
+    {
+        sai_object_meta_key_t mk;
+        sai_deserialize_object_meta_key(key.first, mk);
+
+        std::unordered_map<std::string, std::string> hash;
+
+        for (const auto &field: key.second)
+        {
+            hash[field.first] = field.second;
+        }
+
+        SaiAttributeList alist(mk.objecttype, hash, false);
+
+        auto attr_count = alist.get_attr_count();
+        auto attr_list = alist.get_attr_list();
+
+        // make references and objects from object id
+
+        if (!m_saiObjectCollection.objectExists(key.first))
+            m_saiObjectCollection.createObject(mk);
+
+        auto info = sai_metadata_get_object_type_info(mk.objecttype);
+
+        if (info->isnonobjectid)
+        {
+            /*
+             * Increase object reference count for all object ids in non object id
+             * members.
+             */
+
+            for (size_t j = 0; j < info->structmemberscount; ++j)
+            {
+                const sai_struct_member_info_t *m = info->structmembers[j];
+
+                if (m->membervaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+                {
+                    continue;
+                }
+
+                if (!m_oids.objectReferenceExists(m->getoid(&mk)))
+                    m_oids.objectReferenceInsert(m->getoid(&mk));
+
+                m_oids.objectReferenceIncrement(m->getoid(&mk));
+            }
+        }
+        else
+        {
+            if (!m_oids.objectReferenceExists(mk.objectkey.key.object_id))
+                m_oids.objectReferenceInsert(mk.objectkey.key.object_id);
+        }
+
+        bool haskeys;
+
+        for (uint32_t idx = 0; idx < attr_count; ++idx)
+        {
+            const sai_attribute_t* attr = &attr_list[idx];
+
+            auto mdp = sai_metadata_get_attr_metadata(mk.objecttype, attr->id);
+
+            const sai_attribute_value_t& value = attr->value;
+
+            const sai_attr_metadata_t& md = *mdp;
+
+            if (SAI_HAS_FLAG_KEY(md.flags))
+            {
+                haskeys = true;
+                META_LOG_DEBUG(md, "attr is key");
+            }
+
+            // increase reference on object id types
+
+            uint32_t count = 0;
+            const sai_object_id_t *list;
+
+            switch (md.attrvaluetype)
+            {
+                case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+                    count = 1;
+                    list = &value.oid;
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
+                    count = value.objlist.count;
+                    list = value.objlist.list;
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
+                    if (value.aclfield.enable)
+                    {
+                        count = 1;
+                        list = &value.aclfield.data.oid;
+                    }
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
+                    if (value.aclfield.enable)
+                    {
+                        count = value.aclfield.data.objlist.count;
+                        list = value.aclfield.data.objlist.list;
+                    }
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
+                    if (value.aclaction.enable)
+                    {
+                        count = 1;
+                        list = &value.aclaction.parameter.oid;
+                    }
+                    break;
+
+                case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
+                    if (value.aclaction.enable)
+                    {
+                        count = value.aclaction.parameter.objlist.count;
+                        list = value.aclaction.parameter.objlist.list;
+                    }
+                    break;
+
+                default:
+
+                    if (md.isoidattribute)
+                    {
+                        META_LOG_THROW(md, "missing process of oid attribute, FIXME");
+                    }
+                    break;
+            }
+
+            for (uint32_t index = 0; index < count; index++)
+            {
+                if (!m_oids.objectReferenceExists(list[index]))
+                    m_oids.objectReferenceInsert(list[index]);
+
+                m_oids.objectReferenceIncrement(list[index]);
+            }
+
+            m_saiObjectCollection.setObjectAttr(mk, md, attr);
+        }
+
+        if (haskeys)
+        {
+            auto mKey = sai_serialize_object_meta_key(mk);
+
+            auto attrKey = AttrKeyMap::constructKey(mk, attr_count, attr_list);
+
+            m_attrKeys.insert(mKey, attrKey);
+        }
+    }
+}
