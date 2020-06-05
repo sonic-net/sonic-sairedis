@@ -1476,11 +1476,9 @@ void FlexCounter::runPlugins(
 
     const std::vector<std::string> argv =
     {
-        std::to_string(COUNTERS_DB), // TODO
+        std::to_string(m_dbCounters), // TODO
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval * 1000),
-        std::to_string(ASIC_DB),
-        std::to_string(CONFIG_DB)
+        std::to_string(m_pollInterval * 1000)
     };
 
     std::vector<std::string> portList;
