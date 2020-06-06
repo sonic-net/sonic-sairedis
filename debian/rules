@@ -3,6 +3,10 @@
 # output every command that modifies files on the build system.
 #export DH_VERBOSE = 1
 
+.ONESHELL:
+SHELL = /bin/bash
+.SHELLFLAGS += -x
+
 # see EXAMPLES in dpkg-buildflags(1) and read /usr/share/dpkg/*
 DPKG_EXPORT_BUILDFLAGS = 1
 include /usr/share/dpkg/default.mk
@@ -34,19 +38,19 @@ build:
 binary: binary-syncd-rpc binary-syncd
 
 binary-syncd:
-	$(shell echo > /tmp/syncd-build)
+	echo > /tmp/syncd-build
 	dh clean  --with autotools-dev
 	dh build  -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
 	dh binary -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
 
 binary-syncd-rpc: | binary-syncd
-	$(shell echo '--enable-rpcserver=yes' > /tmp/syncd-build)
+	echo '--enable-rpcserver=yes' > /tmp/syncd-build
 	dh clean  --with autotools-dev
 	dh build  -N syncd -N syncd-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
 	dh binary -N syncd -N syncd-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
 
 binary-syncd-vs:
-	$(shell echo '--with-sai=vs' > /tmp/syncd-build)
+	echo '--with-sai=vs' > /tmp/syncd-build
 	dh clean  --with autotools-dev
 	dh build  -N syncd -N syncd-dbg -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
 	dh binary -N syncd -N syncd-dbg -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
@@ -63,9 +67,10 @@ override_dh_auto_configure:
 
 override_dh_install:
 	dh_install
-ifeq ($(shell cat /tmp/syncd-build), --enable-rpcserver=yes)
-	sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
-endif
+	# Note: escape $ with an extra $ symbol
+	if egrep -q '(^| )--enable-rpcserver=yes( |$$)' /tmp/syncd-build && [ -f debian/syncd-rpc/usr/bin/syncd_init_common.sh ] ; then
+		sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
+	fi
 
 override_dh_installinit:
 	dh_installinit --init-script=syncd
