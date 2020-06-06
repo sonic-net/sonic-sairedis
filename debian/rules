@@ -67,8 +67,8 @@ override_dh_auto_configure:
 
 override_dh_install:
 	dh_install
-	# Note: escape $ with an extra $
-	if egrep -q '(^| )--enable-rpcserver=yes( |$$)' /tmp/syncd-build
+	# Note: escape $ with an extra $ symbol
+	if egrep -q '(^| )--enable-rpcserver=yes( |$$)' /tmp/syncd-build && [ -f debian/syncd-rpc/usr/bin/syncd_init_common.sh ] ; then
 		sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
 	fi
 
