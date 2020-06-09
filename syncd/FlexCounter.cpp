@@ -1503,7 +1503,7 @@ void FlexCounter::runPlugins(
     }
     for (const auto& sha : m_rifPlugins)
     {
-        runRedisScript(db, sha, rifList, argv);
+        runRedisScript(counters_db, sha, rifList, argv);
     }
 
     std::vector<std::string> queueList;
