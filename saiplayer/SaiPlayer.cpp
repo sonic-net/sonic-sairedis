@@ -40,6 +40,8 @@ SaiPlayer::SaiPlayer(
 
     SWSS_LOG_NOTICE("cmd: %s", cmd->getCommandLineString().c_str());
 
+    loadProfileMap();
+
     m_profileIter = m_profileMap.begin();
 
     m_smt.profileGetValue = std::bind(&SaiPlayer::profileGetValue, this, _1, _2);
@@ -59,6 +61,53 @@ SaiPlayer::~SaiPlayer()
     SWSS_LOG_ENTER();
 
     // empty
+}
+
+void SaiPlayer::loadProfileMap()
+{
+    SWSS_LOG_ENTER();
+
+    if (m_commandLineOptions->m_profileMapFile.size() == 0)
+    {
+        SWSS_LOG_NOTICE("profile map file not specified");
+        return;
+    }
+
+    std::ifstream profile(m_commandLineOptions->m_profileMapFile);
+
+    if (!profile.is_open())
+    {
+        SWSS_LOG_ERROR("failed to open profile map file: %s: %s",
+                m_commandLineOptions->m_profileMapFile.c_str(),
+                strerror(errno));
+
+        exit(EXIT_FAILURE);
+    }
+
+    std::string line;
+
+    while (getline(profile, line))
+    {
+        if (line.size() > 0 && (line[0] == '#' || line[0] == ';'))
+        {
+            continue;
+        }
+
+        size_t pos = line.find("=");
+
+        if (pos == std::string::npos)
+        {
+            SWSS_LOG_WARN("not found '=' in line %s", line.c_str());
+            continue;
+        }
+
+        std::string key = line.substr(0, pos);
+        std::string value = line.substr(pos + 1);
+
+        m_profileMap[key] = value;
+
+        SWSS_LOG_INFO("insert: %s:%s", key.c_str(), value.c_str());
+    }
 }
 
 void SaiPlayer::onFdbEvent(

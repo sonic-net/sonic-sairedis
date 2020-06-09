@@ -28,6 +28,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "enableDebug",      no_argument,       0, 'd' },
             { "sleep",            no_argument,       0, 's' },
             { "syncMode",         no_argument,       0, 'm' },
+            { "profile",          required_argument, 0, 'p' },
             { "help",             no_argument,       0, 'h' },
         };
 
@@ -70,6 +71,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 printUsage();
                 exit(EXIT_SUCCESS);
 
+            case 'p':
+                options->m_profileMapFile = std::string(optarg);
+                break;
+
             case '?':
                 SWSS_LOG_WARN("unknown option %c", optopt);
                 printUsage();
@@ -100,7 +105,7 @@ void CommandLineOptionsParser::printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: saiplayer [-u] [-i] [-C] [-d] [-s] [-m] [-h] recordfile" << std::endl << std::endl;
+    std::cout << "Usage: saiplayer [-u] [-i] [-C] [-d] [-s] [-m] [-p profile] [-h] recordfile" << std::endl << std::endl;
 
     std::cout << "    -u --useTempView:" << std::endl;
     std::cout << "        Enable temporary view between init and apply" << std::endl << std::endl;
@@ -114,6 +119,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Sleep after success reply, to notice any switch notifications" << std::endl << std::endl;
     std::cout << "    -m --syncMode:" << std::endl;
     std::cout << "        Enable synchronous mode" << std::endl << std::endl;
+    std::cout << "    -p --profile profile" << std::endl;
+    std::cout << "        Provide profile map file" << std::endl;
 
     std::cout << "    -h --help:" << std::endl;
     std::cout << "        Print out this message" << std::endl << std::endl;

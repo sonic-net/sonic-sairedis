@@ -18,6 +18,8 @@ CommandLineOptions::CommandLineOptions()
     m_enableDebug = false;
     m_sleep = false;
     m_syncMode = false;
+
+    m_profileMapFile = "";
 }
 
 std::string CommandLineOptions::getCommandLineString() const
@@ -32,6 +34,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " EnableDebug=" << (m_enableDebug ? "YES" : "NO");
     ss << " Sleep=" << (m_sleep ? "YES" : "NO");
     ss << " SyncMode=" << (m_syncMode ? "YES" : "NO");
+    ss << " ProfileMapFile=" << m_profileMapFile;
 
     return ss.str();
 }
