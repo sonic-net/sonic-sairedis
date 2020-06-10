@@ -738,6 +738,7 @@ void FlexCounter::checkPluginRegistered(
 
     if (
             m_portPlugins.find(sha) != m_portPlugins.end() ||
+            m_rifPlugins.find(sha) != m_rifPlugins.end() ||
             m_queuePlugins.find(sha) != m_queuePlugins.end() ||
             m_priorityGroupPlugins.find(sha) != m_priorityGroupPlugins.end() ||
             m_bufferPoolPlugins.find(sha) != m_bufferPoolPlugins.end()
@@ -757,6 +758,18 @@ void FlexCounter::addPortCounterPlugin(
     m_portPlugins.insert(sha);
 
     SWSS_LOG_NOTICE("Port counters plugin %s registered", sha.c_str());
+}
+
+void FlexCounter::addRifCounterPlugin(
+        _In_ const std::string& sha)
+{
+    SWSS_LOG_ENTER();
+
+    checkPluginRegistered(sha);
+
+    m_rifPlugins.insert(sha);
+
+    SWSS_LOG_NOTICE("Rif counters plugin %s registered", sha.c_str());
 }
 
 void FlexCounter::addQueueCounterPlugin(
@@ -803,6 +816,7 @@ void FlexCounter::removeCounterPlugins()
 
     m_queuePlugins.clear();
     m_portPlugins.clear();
+    m_rifPlugins.clear();
     m_priorityGroupPlugins.clear();
     m_bufferPoolPlugins.clear();
 }
@@ -854,6 +868,13 @@ void FlexCounter::addCounterPlugin(
                 addPortCounterPlugin(sha);
             }
         }
+        else if (field == RIF_PLUGIN_FIELD)
+        {
+            for (auto& sha: shaStrings)
+            {
+                addRifCounterPlugin(sha);
+            } 
+        }
         else if (field == BUFFER_POOL_PLUGIN_FIELD)
         {
             for (auto& sha: shaStrings)
@@ -900,9 +921,10 @@ bool FlexCounter::allPluginsEmpty() const
     SWSS_LOG_ENTER();
 
     return m_priorityGroupPlugins.empty() &&
-        m_queuePlugins.empty() &&
-        m_portPlugins.empty() &&
-        m_bufferPoolPlugins.empty();
+           m_queuePlugins.empty() &&
+           m_portPlugins.empty() &&
+           m_rifPlugins.empty() &&
+           m_bufferPoolPlugins.empty();
 }
 
 bool FlexCounter::isPortCounterSupported(sai_port_stat_t counter) const
@@ -1471,6 +1493,17 @@ void FlexCounter::runPlugins(
     for (const auto& sha : m_portPlugins)
     {
         runRedisScript(counters_db, sha, portList, argv);
+    }
+
+    std::vector<std::string> rifList;
+    rifList.reserve(m_rifCounterIdsMap.size());
+    for (const auto& kv : m_rifCounterIdsMap)
+    {
+        rifList.push_back(sai_serialize_object_id(kv.first));
+    }
+    for (const auto& sha : m_rifPlugins)
+    {
+        runRedisScript(counters_db, sha, rifList, argv);
     }
 
     std::vector<std::string> queueList;
