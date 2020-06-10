@@ -16,7 +16,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     auto options = std::make_shared<CommandLineOptions>();
 
-    const char* const optstring = "uiCdsmh";
+    const char* const optstring = "uiCdsmp:h";
 
     while(true)
     {
