@@ -42,6 +42,11 @@ SaiPlayer::SaiPlayer(
 
     loadProfileMap();
 
+    if (cmd->m_contextConfig.size())
+    {
+        m_profileMap[SAI_REDIS_KEY_CONTEXT_CONFIG] = cmd->m_contextConfig;
+    }
+
     m_profileIter = m_profileMap.begin();
 
     m_smt.profileGetValue = std::bind(&SaiPlayer::profileGetValue, this, _1, _2);
