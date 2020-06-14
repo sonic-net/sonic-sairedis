@@ -45,6 +45,8 @@ SaiPlayer::SaiPlayer(
 
     if (cmd->m_contextConfig.size())
     {
+        SWSS_LOG_NOTICE("using command line contextConfig instead SAI_REDIS_KEY_CONTEXT_CONFIG in profile.ini");
+
         m_profileMap[SAI_REDIS_KEY_CONTEXT_CONFIG] = cmd->m_contextConfig;
     }
 
