@@ -2,6 +2,7 @@
 
 #include "sairedis.h"
 #include "sairediscommon.h"
+#include "VirtualObjectIdManager.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
@@ -683,6 +684,8 @@ sai_status_t SaiPlayer::handle_generic(
 
     meta_key.objecttype = object_type;
 
+    std::vector<sai_attribute_t> swattr;
+
     switch (api)
     {
         case SAI_COMMON_API_CREATE:
@@ -704,6 +707,23 @@ sai_status_t SaiPlayer::handle_generic(
                      * We are creating switch, in both cases local and redis
                      * switch id is deterministic and should be the same.
                      */
+
+                    /*
+                     * Since now recording could contain switches from multiple
+                     * contexts, we need to pass extra attribute to point to
+                     * the right context when creating switch.
+                     */
+
+                    swattr.resize(attr_count + 1);
+
+                    memcpy(swattr.data(), attr_list, attr_count * sizeof(sai_attribute_t));
+
+                    swattr[attr_count].id = SAI_REDIS_SWITCH_ATTR_CONTEXT;
+                    swattr[attr_count].value.u32 = sairedis::VirtualObjectIdManager::getGlobalContext(switch_id);
+
+                    attr_count++;
+
+                    attr_list = swattr.data();
                 }
                 else
                 {
