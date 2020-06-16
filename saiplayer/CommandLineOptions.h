@@ -33,6 +33,10 @@ namespace saiplayer
 
             bool m_syncMode;
 
+            std::string m_profileMapFile;
+
+            std::string m_contextConfig;
+
             std::vector<std::string> m_files;
     };
 }

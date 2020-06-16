@@ -144,6 +144,8 @@ namespace saiplayer
                     _Out_ const char** variable,
                     _Out_ const char** value);
 
+            void loadProfileMap();
+
         private: // notification handlers
 
             void onFdbEvent(
