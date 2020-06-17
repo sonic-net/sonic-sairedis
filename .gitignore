@@ -1,81 +1,56 @@
 # Compiled Source #
 ###################
+*.a
 *.la
 *.lo
 *.o
 
 # Packaging Files #
 ###################
+debian/*.debhelper.log
+debian/*.substvars
+debian/.debhelper/
+debian/autoreconf.after
+debian/autoreconf.before
+debian/debhelper-build-stamp
 debian/files
-debian/libsairedis-dbg/
-debian/libsairedis-dbg.debhelper.log
-debian/libsairedis-dbg.substvars
-debian/libsairedis-dev.debhelper.log
-debian/libsairedis-dev.substvars
-debian/libsairedis.debhelper.log
-debian/libsairedis.postinst.debhelper
-debian/libsairedis.postrm.debhelper
-debian/libsairedis.substvars
-debian/libsaimetadata-dbg.debhelper.log
-debian/libsaimetadata-dbg.substvars
-debian/libsaimetadata-dbg/
-debian/libsaimetadata-dev.debhelper.log
-debian/libsaimetadata-dev.substvars
-debian/libsaimetadata.debhelper.log
-debian/libsaimetadata.postinst.debhelper
-debian/libsaimetadata.postrm.debhelper
-debian/libsaimetadata.substvars
-debian/libsaivs-dbg/
-debian/libsaivs-dbg.debhelper.log
-debian/libsaivs-dbg.substvars
-debian/libsaivs-dev.debhelper.log
-debian/libsaivs-dev.substvars
-debian/libsaivs.debhelper.log
-debian/libsaivs.postinst.debhelper
-debian/libsaivs.postrm.debhelper
-debian/libsaivs.substvars
-debian/syncd-rpc-dbg.debhelper.log
-debian/syncd-rpc-dbg.substvars
-debian/syncd-rpc-dbg/
-debian/syncd-rpc.debhelper.log
-debian/syncd-vs-dbg.debhelper.log
-debian/syncd-vs-dbg.substvars
-debian/syncd-vs-dbg/
-debian/syncd-vs.debhelper.log
-debian/syncd-dbg.debhelper.log
-debian/syncd-dbg.substvars
-debian/syncd-dbg/
-debian/syncd.debhelper.log
-debian/syncd.postinst.debhelper
-debian/syncd.postrm.debhelper
-debian/syncd.prerm.debhelper
-debian/syncd.substvars
 
-debian/libsairedis-dev/
-debian/libsairedis/
+debian/libsaimetadata-dbg/
 debian/libsaimetadata-dev/
 debian/libsaimetadata/
+debian/libsairedis-dbg/
+debian/libsairedis-dev/
+debian/libsairedis/
+debian/libsaivs-dbg/
 debian/libsaivs-dev/
 debian/libsaivs/
+debian/syncd-dbg/
+debian/syncd-rpc-dbg/
+debian/syncd-rpc/
+debian/syncd-vs-dbg/
+debian/syncd-vs/
 debian/syncd/
 debian/tmp/
 
+**/.deps/
+**/.dirstamp
+**/.libs/
+**/Makefile
+Makefile.in
 aclocal.m4
 autom4te.cache/
 config.h
 config.h.in
 config.log
 config.status
+config/
 configure
 libtool
-Makefile.in
+m4/
 stamp-h1
-**/.deps/
-**/.dirstamp
-**/.libs/
-**/Makefile
-m4
-config
+
+python/build/
+python/setup.py
 
 # Test Files #
 ##############
@@ -86,15 +61,15 @@ meta/tests.trs
 syncd/test-suite.log
 syncd/tests
 
+tests/applyview.log
 tests/brcm.pl.log
 tests/brcm.pl.trs
 tests/mlnx.pl.log
 tests/mlnx.pl.trs
+tests/sai_warmboot.bin
 tests/swsslogentercheck.sh.log
 tests/swsslogentercheck.sh.trs
 tests/test-suite.log
-tests/applyview.log
-tests/sai_warmboot.bin
 
 vslib/src/test-suite.log
 vslib/src/tests
@@ -107,24 +82,22 @@ deps/
 
 # Executables #
 ###############
+lib/src/tests
+meta/tests
+saidiscovery/saidiscovery
+saidump/saidump
+saiplayer/saiplayer
+saisdkdump/saisdkdump
 syncd/syncd
 syncd/syncd_request_shutdown
-saidiscovery/saidiscovery
-saiplayer/saiplayer
-saidump/saidump
-saisdkdump/saisdkdump
-meta/tests
-tests/vssyncd
-lib/src/tests
 tests/syncd
+tests/vssyncd
 
 # Temporary files #
 ###################
 **/*~
-**/*.swp
 **/*.rec
+**/*.swp
 
 tests/applyview.log
 tests/sai_warmboot.bin
-tests/syncd
-
