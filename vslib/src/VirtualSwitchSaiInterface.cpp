@@ -10,6 +10,7 @@
 #include "meta/sai_serialize.h"
 
 #include "SwitchStateBase.h"
+#include "SwitchBCM81724.h"
 #include "SwitchBCM56850.h"
 #include "SwitchMLNX2700.h"
 
@@ -532,6 +533,11 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
         case SAI_VS_SWITCH_TYPE_BCM56850:
 
             m_switchStateMap[switch_id] = std::make_shared<SwitchBCM56850>(switch_id, m_realObjectIdManager, config, warmBootState);
+            break;
+
+        case SAI_VS_SWITCH_TYPE_BCM81724:
+
+            m_switchStateMap[switch_id] = std::make_shared<SwitchBCM81724>(switch_id, m_realObjectIdManager, config, warmBootState);
             break;
 
         case SAI_VS_SWITCH_TYPE_MLNX2700:

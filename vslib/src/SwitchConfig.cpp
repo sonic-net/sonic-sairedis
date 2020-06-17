@@ -6,6 +6,7 @@
 using namespace saivs;
 
 SwitchConfig::SwitchConfig():
+    m_saiSwitchType(SAI_SWITCH_TYPE_NPU),
     m_switchType(SAI_VS_SWITCH_TYPE_NONE),
     m_bootType(SAI_VS_BOOT_TYPE_COLD),
     m_switchIndex(0),
@@ -17,6 +18,35 @@ SwitchConfig::SwitchConfig():
     // empty
 }
 
+
+bool SwitchConfig::parseSaiSwitchType(
+        _In_ const char* saiSwitchTypeStr,
+        _Out_ sai_switch_type_t& saiSwitchType)
+{
+    SWSS_LOG_ENTER();
+
+    std::string st = (saiSwitchTypeStr == NULL) ? "unknown" : saiSwitchTypeStr;
+
+    if (st == SAI_VALUE_SAI_SWITCH_TYPE_NPU)
+    {
+        saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    }
+    else if (st == SAI_VALUE_SAI_SWITCH_TYPE_PHY)
+    {
+        saiSwitchType = SAI_SWITCH_TYPE_PHY;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("unknown SAI switch type: '%s', expected (%s|%s)",
+                saiSwitchTypeStr,
+                SAI_VALUE_SAI_SWITCH_TYPE_NPU,
+                SAI_VALUE_SAI_SWITCH_TYPE_PHY);
+
+        return false;
+    }
+
+    return true;
+}
 
 bool SwitchConfig::parseSwitchType(
         _In_ const char* switchTypeStr,
@@ -30,14 +60,19 @@ bool SwitchConfig::parseSwitchType(
     {
         switchType = SAI_VS_SWITCH_TYPE_BCM56850;
     }
+    else if (st == SAI_VALUE_VS_SWITCH_TYPE_BCM81724)
+    {
+        switchType = SAI_VS_SWITCH_TYPE_BCM81724;
+    }
     else if (st == SAI_VALUE_VS_SWITCH_TYPE_MLNX2700)
     {
         switchType = SAI_VS_SWITCH_TYPE_MLNX2700;
     }
     else
     {
-        SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s|%s)",
+        SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s|%s)(%s)",
                 switchTypeStr,
+                SAI_VALUE_VS_SWITCH_TYPE_BCM81724,
                 SAI_VALUE_VS_SWITCH_TYPE_BCM56850,
                 SAI_VALUE_VS_SWITCH_TYPE_MLNX2700);
 

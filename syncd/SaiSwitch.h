@@ -41,6 +41,7 @@ namespace syncd
             sai_object_id_t getVid() const;
             sai_object_id_t getRid() const;
 
+            sai_switch_type_t getSwitchType() const;
             std::string getHardwareInfo() const;
 
             std::unordered_map<sai_object_id_t, sai_object_id_t> getVidToRidMap() const;

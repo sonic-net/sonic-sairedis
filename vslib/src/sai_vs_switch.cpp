@@ -51,5 +51,5 @@ const sai_switch_api_t vs_switch_api = {
     VS_GENERIC_STATS_API(switch)
 
     vs_mdio_read,
-    vs_mdio_write,
+    vs_mdio_write
 };

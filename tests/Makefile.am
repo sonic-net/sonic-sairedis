@@ -19,4 +19,4 @@ if SAITHRIFT
 vssyncd_LDADD += -lrpcserver -lthrift
 endif
 
-TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh brcm.pl mlnx.pl
+TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh BCM56850.pl MLNX2700.pl

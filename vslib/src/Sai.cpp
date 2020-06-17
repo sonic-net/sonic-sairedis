@@ -94,6 +94,18 @@ sai_status_t Sai::initialize(
         return SAI_STATUS_FAILURE;
     }
 
+    auto sai_switch_type = service_method_table->profile_get_value(0, SAI_KEY_VS_SAI_SWITCH_TYPE);
+    sai_switch_type_t saiSwitchType;
+
+    if (sai_switch_type == NULL)
+    {
+        SWSS_LOG_NOTICE("failed to obtain service method table value: %s", SAI_KEY_VS_SAI_SWITCH_TYPE);
+        saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    } else if (!SwitchConfig::parseSaiSwitchType(sai_switch_type, saiSwitchType))
+    {
+      return SAI_STATUS_FAILURE;
+    }
+
     auto *laneMapFile = service_method_table->profile_get_value(0, SAI_KEY_VS_INTERFACE_LANE_MAP_FILE);
 
     m_laneMapContainer = LaneMapFileParser::parseLaneMapFile(laneMapFile);
@@ -128,6 +140,7 @@ sai_status_t Sai::initialize(
 
     auto sc = std::make_shared<SwitchConfig>();
 
+    sc->m_saiSwitchType = saiSwitchType;
     sc->m_switchType = switchType;
     sc->m_bootType = bootType;
     sc->m_switchIndex = 0;
@@ -161,7 +174,11 @@ sai_status_t Sai::initialize(
 
     startUnittestThread();
 
-    startFdbAgingThread();
+    if (saiSwitchType == SAI_SWITCH_TYPE_NPU) 
+    {
+      
+      startFdbAgingThread();
+    }
 
     m_apiInitialized = true;
 

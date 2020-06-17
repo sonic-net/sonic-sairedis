@@ -21,10 +21,10 @@
         {
             "guid" : 1,
             "name" : "syncd1",
-            "dbAsic" : "ASIC_DB2",
-            "dbCounters" : "COUNTERS_DB2",
-            "dbFlex": "FLEX_COUNTER_DB2",
-            "dbState" : "STATE_DB2",
+            "dbAsic" : "GB_ASIC_DB",
+            "dbCounters" : "GB_COUNTERS_DB",
+            "dbFlex": "GB_FLEX_COUNTER_DB",
+            "dbState" : "STATE_DB",
             "switches": [
                 {
                     "index" : 0,
