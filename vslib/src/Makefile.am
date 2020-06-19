@@ -45,7 +45,7 @@ libSaiVS_a_SOURCES = \
 					  SelectableFd.cpp \
 					  SwitchState.cpp \
 					  SwitchBCM56850.cpp \
-            SwitchBCM81724.cpp \
+					  SwitchBCM81724.cpp \
 					  SwitchMLNX2700.cpp
 
 libsaivs_la_SOURCES = \

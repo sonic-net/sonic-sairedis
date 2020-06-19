@@ -61,7 +61,7 @@ SaiSwitch::SaiSwitch(
 
     if (getSwitchType() == SAI_SWITCH_TYPE_NPU) 
     {
-      helperCheckLaneMap();
+        helperCheckLaneMap();
     }
 
     helperLoadColdVids();
@@ -70,7 +70,7 @@ SaiSwitch::SaiSwitch(
 
     if (getSwitchType() == SAI_SWITCH_TYPE_NPU) 
     {
-      saiGetMacAddress(m_default_mac_address);
+        saiGetMacAddress(m_default_mac_address);
     }
 
     if (warmBoot)
@@ -149,7 +149,7 @@ sai_switch_type_t SaiSwitch::getSwitchType() const
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("failed to get switch type");
+        SWSS_LOG_THROW("failed to get switch type");
     }
 
     SWSS_LOG_ERROR("switch type: '%s'", (attr.value.s32 == SAI_SWITCH_TYPE_NPU ? "SAI_SWITCH_TYPE_NPU" : "SAI_SWITCH_TYPE_PHY"));
@@ -911,7 +911,7 @@ void SaiSwitch::helperPopulateWarmBootVids()
     {
         sai_object_id_t vid = m_translator->translateRidToVid(rid, m_switch_vid);
 
-       m_warmBootDiscoveredVids.insert(vid);
+        m_warmBootDiscoveredVids.insert(vid);
     }
 }
 

@@ -101,9 +101,10 @@ sai_status_t Sai::initialize(
     {
         SWSS_LOG_NOTICE("failed to obtain service method table value: %s", SAI_KEY_VS_SAI_SWITCH_TYPE);
         saiSwitchType = SAI_SWITCH_TYPE_NPU;
-    } else if (!SwitchConfig::parseSaiSwitchType(sai_switch_type, saiSwitchType))
+    } 
+    else if (!SwitchConfig::parseSaiSwitchType(sai_switch_type, saiSwitchType))
     {
-      return SAI_STATUS_FAILURE;
+        return SAI_STATUS_FAILURE;
     }
 
     auto *laneMapFile = service_method_table->profile_get_value(0, SAI_KEY_VS_INTERFACE_LANE_MAP_FILE);
@@ -176,8 +177,7 @@ sai_status_t Sai::initialize(
 
     if (saiSwitchType == SAI_SWITCH_TYPE_NPU) 
     {
-      
-      startFdbAgingThread();
+        startFdbAgingThread();
     }
 
     m_apiInitialized = true;

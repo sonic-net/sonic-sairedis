@@ -175,7 +175,7 @@ sai_status_t RedisChannel::wait(
 
         swss::Selectable *sel;
 
-        int result = s.select(&sel, REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS * 10);
+        int result = s.select(&sel, REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS);
 
         if (result == swss::Select::OBJECT)
         {

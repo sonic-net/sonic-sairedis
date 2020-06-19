@@ -70,7 +70,7 @@ bool SwitchConfig::parseSwitchType(
     }
     else
     {
-        SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s|%s)(%s)",
+        SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s|%s|%s)",
                 switchTypeStr,
                 SAI_VALUE_VS_SWITCH_TYPE_BCM81724,
                 SAI_VALUE_VS_SWITCH_TYPE_BCM56850,
