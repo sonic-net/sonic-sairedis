@@ -29,7 +29,7 @@ sai_status_t sai_log_set(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-#define API(api) .api ## _api = const_cast<sai_ ## api ## _api_t*>(&redis_ ## api ## _api)
+#define API(api) api ## _api : const_cast<sai_ ## api ## _api_t*>(&redis_ ## api ## _api)
 
 static sai_apis_t redis_apis = {
     API(switch),
