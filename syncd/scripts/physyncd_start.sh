@@ -4,9 +4,9 @@
 #
 
 # Source the file that holds common code for systemd and supervisord
-. /usr/bin/physyncd_init_common.sh
+. /usr/bin/syncd_init_common.sh -p
 
-config_physyncd
+config_syncd_phy
 
 exec "/usr/bin/physyncd_startup.py"
 

@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 
-CMD_SYNCD=/usr/bin/syncd
+CHIP_TYPE="npu"
+
+while getopts p option
+do
+case "${option}"
+in
+p) CHIP_TYPE="phy";;
+esac
+done
+
+if [ x"$CHIP_TYPE" == x"phy" ]; then
+    CMD_SYNCD=/usr/bin/physyncd
+else
+    CMD_SYNCD=/usr/bin/syncd
+fi
 
 # dsserve: domain socket server for stdio
 CMD_DSSERVE=/usr/bin/dsserve
@@ -10,6 +24,7 @@ ENABLE_SAITHRIFT=0
 
 PLATFORM_DIR=/usr/share/sonic/platform
 HWSKU_DIR=/usr/share/sonic/hwsku
+
 
 SONIC_ASIC_TYPE=$(sonic-cfggen -y /etc/sonic/sonic_version.yml -v asic_type)
 
@@ -71,6 +86,14 @@ function set_start_type()
     fi
 }
 
+config_syncd_phy()
+{
+    if [ ${ENABLE_SAITHRIFT} == 1 ]; then
+        CMD_ARGS+=" -r -m $HWSKU_DIR/port_config.ini"
+    fi
+
+    [ -r $PLATFORM_DIR/physyncd.conf ] && . $PLATFORM_DIR/physyncd.conf
+}
 
 config_syncd_bcm()
 {
@@ -175,35 +198,43 @@ config_syncd()
 {
     check_warm_boot
 
-    if [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
-        config_syncd_bcm
-    elif [ "$SONIC_ASIC_TYPE" == "mellanox" ]; then
-        config_syncd_mlnx
-    elif [ "$SONIC_ASIC_TYPE" == "cavium" ]; then
-        config_syncd_cavium
-    elif [ "$SONIC_ASIC_TYPE" == "centec" ]; then
-        config_syncd_centec
-    elif [ "$SONIC_ASIC_TYPE" == "marvell" ]; then
-        config_syncd_marvell
-     elif [ "$SONIC_ASIC_TYPE" == "barefoot" ]; then
-         config_syncd_barefoot
-    elif [ "$SONIC_ASIC_TYPE" == "nephos" ]; then
-        config_syncd_nephos
-    elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
-        config_syncd_vs
-    elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
-        config_syncd_innovium
+    if [ x"$CHIP_TYPE" == x"npu" ]; then
+        if [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
+            config_syncd_bcm
+        elif [ "$SONIC_ASIC_TYPE" == "mellanox" ]; then
+            config_syncd_mlnx
+        elif [ "$SONIC_ASIC_TYPE" == "cavium" ]; then
+            config_syncd_cavium
+        elif [ "$SONIC_ASIC_TYPE" == "centec" ]; then
+            config_syncd_centec
+        elif [ "$SONIC_ASIC_TYPE" == "marvell" ]; then
+            config_syncd_marvell
+        elif [ "$SONIC_ASIC_TYPE" == "barefoot" ]; then
+            config_syncd_barefoot
+        elif [ "$SONIC_ASIC_TYPE" == "nephos" ]; then
+            config_syncd_nephos
+        elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
+            config_syncd_vs
+        elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
+            config_syncd_innovium
+        else
+            echo "Unknown ASIC type $SONIC_ASIC_TYPE"
+            exit 1
+        fi
     else
-        echo "Unknown ASIC type $SONIC_ASIC_TYPE"
-        exit 1
+        config_syncd_phy
     fi
-
+    
     set_start_type
 
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then
         CMD_ARGS+=" -r -m $HWSKU_DIR/port_config.ini"
     fi
 
-    [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf
+    if [ x"$CHIP_TYPE" == "npu" ]; then
+        [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf
+    else
+        [ -r $PLATFORM_DIR/physyncd.conf ] && . $PLATFORM_DIR/physyncd.conf
+    fi
 }
 
