@@ -49,6 +49,7 @@ PRIVATE extern const sai_scheduler_group_api_t  vs_scheduler_group_api;
 PRIVATE extern const sai_segmentroute_api_t     vs_segmentroute_api;
 PRIVATE extern const sai_stp_api_t              vs_stp_api;
 PRIVATE extern const sai_switch_api_t           vs_switch_api;
+PRIVATE extern const sai_system_port_api_t      vs_system_port_api;
 PRIVATE extern const sai_tam_api_t              vs_tam_api;
 PRIVATE extern const sai_tunnel_api_t           vs_tunnel_api;
 PRIVATE extern const sai_udf_api_t              vs_udf_api;

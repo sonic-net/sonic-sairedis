@@ -74,6 +74,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_segmentroute.cpp \
 						 sai_redis_stp.cpp \
 						 sai_redis_switch.cpp \
+						 sai_redis_system_port.cpp \
 						 sai_redis_tam.cpp \
 						 sai_redis_tunnel.cpp \
 						 sai_redis_udf.cpp \
