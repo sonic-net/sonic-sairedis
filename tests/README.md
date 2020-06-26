@@ -41,7 +41,7 @@ $ rm target/sonic-vs.img.gz
 and try again.
 
 The first docker you will drop into is jessie, exit that docker by typing 
-exit at the prompt, the build will continue wth stretch:
+exit at the prompt, and the build will continue with stretch:
 
 ```
 make: Nothing to be done for 'jessie'.
