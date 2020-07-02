@@ -722,9 +722,30 @@ sai_status_t SwitchStateBase::vs_remove_hostif_tap_interface(
 
     sai_attribute_t attr;
 
+
+    attr.id = SAI_HOSTIF_ATTR_TYPE;
+    sai_status_t status = get(SAI_OBJECT_TYPE_HOSTIF, hostif_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to get attr type for hostif %s",
+                sai_serialize_object_id(hostif_id).c_str());
+        return status;
+    }
+
+
+    /* The genetlink host interface is created to associate trap group to genetlink family and multicast group
+     * created by driver. It does not create any netdev interface. Hence skipping tap interface deletion
+     */
+    if (attr.value.s32 == SAI_HOSTIF_TYPE_GENETLINK)
+    {
+        SWSS_LOG_DEBUG("Skipping tap delete for hostif type genetlink");
+        return SAI_STATUS_SUCCESS;
+    }
+
     attr.id = SAI_HOSTIF_ATTR_NAME;
 
-    sai_status_t status = get(SAI_OBJECT_TYPE_HOSTIF, hostif_id, 1, &attr);
+    status = get(SAI_OBJECT_TYPE_HOSTIF, hostif_id, 1, &attr);
 
     if (status != SAI_STATUS_SUCCESS)
     {
