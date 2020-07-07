@@ -76,6 +76,9 @@ AC_ARG_ENABLE(redis-test,
 esac],[rtest=false])
 AM_CONDITIONAL(RTEST, test x$rtest = xtrue)
 
+VENDORHEADERS=$( ./tests/checkvendorheaders.sh )
+AS_IF([ test $? != 0 ], [AC_MSG_ERROR([Vendor headers check failed: $VENDORHEADERS], 1)])
+
 CFLAGS_COMMON=""
 CFLAGS_COMMON+=" -ansi"
 CFLAGS_COMMON+=" -fPIC"
