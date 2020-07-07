@@ -3170,6 +3170,8 @@ void Syncd::sendShutdownRequest(
         return;
     }
 
+    s = sai_serialize_switch_shutdown_request(switchVid);
+
     m_notifications->send(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST, s, entry);
 }
 
