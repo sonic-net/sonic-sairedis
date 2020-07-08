@@ -747,7 +747,7 @@ void on_switch_shutdown_request(
 
     std::string s = sai_serialize_switch_shutdown_request(switch_id);
 
-    enqueue_notification("switch_shutdown_request", "");
+    enqueue_notification("switch_shutdown_request", s);
 }
 
 void on_packet_event(
