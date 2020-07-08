@@ -3156,6 +3156,12 @@ void Syncd::sendShutdownRequest(
 {
     SWSS_LOG_ENTER();
 
+    if (m_notifications == nullptr)
+    {
+        SWSS_LOG_WARN("notifications pointer is NULL");
+        return;
+    }
+
     auto s = sai_serialize_object_id(switchVid);
 
     SWSS_LOG_NOTICE("sending switch_shutdown_request notification to OA for switch: %s", s.c_str());
@@ -3163,12 +3169,6 @@ void Syncd::sendShutdownRequest(
     std::vector<swss::FieldValueTuple> entry;
 
     // TODO use m_handler->onSwitchShutdownRequest(switchVid); (but this should be per switch)
-
-    if (m_notifications == nullptr)
-    {
-        SWSS_LOG_WARN("notifications pointer is NULL");
-        return;
-    }
 
     s = sai_serialize_switch_shutdown_request(switchVid);
 
