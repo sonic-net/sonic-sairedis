@@ -133,7 +133,9 @@ void notify_OA_about_syncd_exception()
 
             SWSS_LOG_NOTICE("sending switch_shutdown_request notification to OA");
 
-            notifications->send("switch_shutdown_request", "", entry);
+            std::string s = sai_serialize_switch_shutdown_request(SAI_NULL_OBJECT_ID);
+
+            notifications->send("switch_shutdown_request", s, entry);
 
             SWSS_LOG_NOTICE("notification send successfull");
         }
