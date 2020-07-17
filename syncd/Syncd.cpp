@@ -2347,7 +2347,25 @@ sai_status_t Syncd::processNotifySyncd(
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
 
-        sai_status_t status = applyView();
+        sai_status_t status;
+
+        try
+        {
+            status = applyView();
+        }
+        catch(...)
+        {
+            /*
+             * If apply view will fail with exception, try to send fail
+             * response to sairedis, since later there can be switch shutdown
+             * notification sent, and it will be synchronized with mutex, and
+             * it will not be processed until get response timeout will hit.
+             */
+
+            sendNotifyResponse(SAI_STATUS_FAILURE);
+
+            throw;
+        }
 
         sendNotifyResponse(status);
 
