@@ -321,7 +321,8 @@ void SaiPlayer::match_list_lengths(
 
     if (get_attr_count != attr_count)
     {
-        SWSS_LOG_THROW("list number don't match %u != %u", get_attr_count, attr_count);
+        SWSS_LOG_THROW("list number don't match %u != %u (%s)", get_attr_count, attr_count,
+                sai_serialize_object_type(object_type).c_str());
     }
 
     for (uint32_t i = 0; i < attr_count; ++i)
@@ -447,7 +448,8 @@ void SaiPlayer::match_redis_with_rec(
 
     if (get_attr_count != attr_count)
     {
-        SWSS_LOG_THROW("list number don't match %u != %u", get_attr_count, attr_count);
+        SWSS_LOG_THROW("list number don't match %u != %u (%s)", get_attr_count, attr_count,
+                sai_serialize_object_type(object_type).c_str());
     }
 
     for (uint32_t i = 0; i < attr_count; ++i)
