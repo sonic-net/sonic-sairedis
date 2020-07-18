@@ -2358,6 +2358,117 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatch(
     }
 }
 
+std::shared_ptr<SaiObj> BestCandidateFinder::findSimilarBestMatch(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    // will find object in current view that have most same attributes
+
+    auto notProcessedObjects = m_currentView.getNotProcessedObjectsByObjectType(temporaryObj->getObjectType());
+
+    const auto attrs = temporaryObj->getAllAttributes();
+
+    SWSS_LOG_INFO("not processed objects for %s: %zu, temp attrs: %zu",
+            temporaryObj->m_str_object_type.c_str(),
+            notProcessedObjects.size(),
+            attrs.size());
+
+    std::vector<sai_object_compare_info_t> candidateObjects;
+
+    for (const auto &currentObj: notProcessedObjects)
+    {
+        // log how many attributes current object have
+
+        SWSS_LOG_INFO("current obj %s, attrs: %zu",
+                currentObj->m_str_object_id.c_str(),
+                currentObj->getAllAttributes().size());
+
+        sai_object_compare_info_t soci = { 0, currentObj };
+
+        /*
+         * NOTE: we only iterate by attributes that are present in temporary
+         * view. It may happen that current view has some additional attributes
+         * set that are create only and value can't be updated, we ignore that
+         * since we want to find object with most matching attributes.
+         */
+
+        for (const auto &attr: attrs)
+        {
+            sai_attr_id_t attrId = attr.first;
+
+            // Function hasEqualAttribute check if attribute exists on both objects.
+
+            if (hasEqualAttribute(m_currentView, m_temporaryView, currentObj, temporaryObj, attrId))
+            {
+                soci.equal_attributes++;
+
+                SWSS_LOG_INFO("ob equal %s %s, %s: %s",
+                        temporaryObj->m_str_object_id.c_str(),
+                        currentObj->m_str_object_id.c_str(),
+                        attr.second->getStrAttrId().c_str(),
+                        attr.second->getStrAttrValue().c_str());
+            }
+            else
+            {
+                SWSS_LOG_INFO("ob not equal %s %s, %s: %s",
+                        temporaryObj->m_str_object_id.c_str(),
+                        currentObj->m_str_object_id.c_str(),
+                        attr.second->getStrAttrId().c_str(),
+                        attr.second->getStrAttrValue().c_str());
+            }
+        }
+
+        // NOTE: we could check if current object has some attributes that are
+        // default value on temporary object, and count them in
+
+        candidateObjects.push_back(soci);
+    }
+
+    SWSS_LOG_INFO("number candidate objects for %s is %zu",
+            temporaryObj->m_str_object_id.c_str(),
+            candidateObjects.size());
+
+    if (candidateObjects.size() == 0)
+    {
+        SWSS_LOG_WARN("not processed objects in current view is zero");
+
+        return nullptr;
+    }
+
+    if (candidateObjects.size() == 1)
+    {
+        // We found only one object so return it as candidate
+
+        return candidateObjects.begin()->obj;
+    }
+
+    /*
+     * Sort candidate objects by equal attributes in descending order, we know
+     * here that we have at least 2 candidates.
+     */
+
+    std::sort(candidateObjects.begin(), candidateObjects.end(), compareByEqualAttributes);
+
+    if (candidateObjects.at(0).equal_attributes > candidateObjects.at(1).equal_attributes)
+    {
+        /*
+         * We have only 1 object with the greatest number of equal attributes
+         * lets choose that object as our best match.
+         */
+
+        SWSS_LOG_INFO("eq attributes: %ld vs %ld",
+            candidateObjects.at(0).equal_attributes,
+            candidateObjects.at(1).equal_attributes);
+
+        return candidateObjects.begin()->obj;
+    }
+
+    SWSS_LOG_WARN("same number of attributes equal, selecting first");
+
+    return candidateObjects.begin()->obj;
+}
+
 int BestCandidateFinder::findAllChildsInDependencyTreeCount(
         _In_ const AsicView &view,
         _In_ const std::shared_ptr<const SaiObj> &obj)
