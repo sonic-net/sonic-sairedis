@@ -17,6 +17,7 @@ endif
 noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
 libSyncd_a_SOURCES = \
 				Syncd.cpp \
+				BreakConfig.cpp \
 				RedisClient.cpp \
 				WarmRestartTable.cpp \
 				RequestShutdownCommandLineOptions.cpp \

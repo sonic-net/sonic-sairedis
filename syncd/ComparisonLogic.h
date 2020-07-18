@@ -9,6 +9,7 @@ extern "C"{
 #include "SaiSwitch.h"
 #include "VirtualOidTranslator.h"
 #include "NotificationHandler.h"
+#include "BreakConfig.h"
 
 #include <set>
 
@@ -24,7 +25,8 @@ namespace syncd
                 _In_ std::shared_ptr<NotificationHandler> handler,
                 _In_ std::set<sai_object_id_t> initViewRemovedVids,
                 _In_ std::shared_ptr<AsicView> current,
-                _In_ std::shared_ptr<AsicView> temp);
+                _In_ std::shared_ptr<AsicView> temp,
+                _In_ std::shared_ptr<BreakConfig> breakConfig);
 
             virtual ~ComparisonLogic();;
 
@@ -138,6 +140,17 @@ namespace syncd
                     _In_ const std::shared_ptr<const SaiObj>& temporaryObj,
                     _In_ bool performTransition);
 
+            void breakBeforeMake(
+                    _In_ AsicView &currentView,
+                    _In_ AsicView &temporaryView,
+                    _In_ const std::shared_ptr<SaiObj>& currentBestMatch,
+                    _In_ const std::shared_ptr<SaiObj>& temporaryObj);
+
+            void removeCurrentObjectDependencyTree(
+                    _In_ AsicView &currentView,
+                    _In_ AsicView &temporaryView,
+                    _In_ const std::shared_ptr<SaiObj>& currentObj);
+
             void processObjectForViewTransition(
                     _In_ AsicView& currentView,
                     _In_ AsicView& temporaryView,
@@ -226,5 +239,7 @@ namespace syncd
             std::shared_ptr<AsicView> m_temp;
 
             std::shared_ptr<NotificationHandler> m_handler;
+
+            std::shared_ptr<BreakConfig> m_breakConfig;
     };
 }

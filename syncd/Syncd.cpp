@@ -133,6 +133,10 @@ Syncd::Syncd(
         abort();
     }
 
+    m_breakConfig = std::make_shared<BreakConfig>();
+
+    //m_breakConfig->insert(SAI_OBJECT_TYPE_ACL_TABLE); // TODO XXX add break config parser
+
     SWSS_LOG_NOTICE("syncd started");
 }
 
@@ -2571,7 +2575,7 @@ sai_status_t Syncd::applyView()
             auto current = std::make_shared<AsicView>(currentMap.at(switchVid));
             auto temp = std::make_shared<AsicView>(temporaryMap.at(switchVid));
 
-            auto cl = std::make_shared<ComparisonLogic>(m_vendorSai, sw, m_handler, m_initViewRemovedVidSet, current, temp);
+            auto cl = std::make_shared<ComparisonLogic>(m_vendorSai, sw, m_handler, m_initViewRemovedVidSet, current, temp, m_breakConfig);
 
             cl->compareViews();
 
