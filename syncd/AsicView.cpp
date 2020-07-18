@@ -754,6 +754,11 @@ void AsicView::asicRemoveObject(
 
     SWSS_LOG_INFO("%s: %s", currentObj->m_str_object_type.c_str(), currentObj->m_str_object_id.c_str());
 
+    if (currentObj->getObjectStatus() != SAI_OBJECT_STATUS_NOT_PROCESSED)
+    {
+        SWSS_LOG_THROW("FATAL: removing object with status: %d, logic error", currentObj->getObjectStatus());
+    }
+
     m_asicOperationId++;
 
     if (currentObj->isOidObject())
@@ -762,6 +767,16 @@ void AsicView::asicRemoveObject(
          * Reference count is already check externally, but we can move
          * that check here also as sanity check.
          */
+
+        int count = getVidReferenceCount(currentObj->getVid());
+
+        if (count != 0)
+        {
+            SWSS_LOG_THROW("can't remove existing object %s:%s since reference count is %d, FIXME",
+                    currentObj->m_str_object_type.c_str(),
+                    currentObj->m_str_object_id.c_str(),
+                    count);
+        }
 
         m_soOids.erase(currentObj->m_str_object_id);
         m_oOids.erase(currentObj->m_meta_key.objectkey.key.object_id);
