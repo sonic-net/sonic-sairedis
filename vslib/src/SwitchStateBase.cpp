@@ -168,6 +168,20 @@ sai_status_t SwitchStateBase::create_internal(
 
     auto &objectHash = m_objectHash.at(object_type);
 
+    if (m_switchConfig->m_resourceLimiter)
+    {
+        size_t limit = m_switchConfig->m_resourceLimiter->getObjectTypeLimit(object_type);
+
+        if (objectHash.size() >= limit)
+        {
+            SWSS_LOG_ERROR("too many %s, created %zu is resource limit",
+                    sai_serialize_object_type(object_type).c_str(),
+                    limit);
+
+            return SAI_STATUS_INSUFFICIENT_RESOURCES;
+        }
+    }
+
     auto it = objectHash.find(serializedObjectId);
 
     if (object_type != SAI_OBJECT_TYPE_SWITCH)

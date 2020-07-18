@@ -29,7 +29,7 @@ VirtualSwitchSaiInterface::VirtualSwitchSaiInterface(
 {
     SWSS_LOG_ENTER();
 
-    m_realObjectIdManager = std::make_shared<RealObjectIdManager>(0, scc);
+    m_realObjectIdManager = std::make_shared<RealObjectIdManager>(0, scc); // TODO fix global context
 
     m_switchConfigContainer = scc;
 }
