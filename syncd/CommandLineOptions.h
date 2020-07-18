@@ -76,6 +76,8 @@ namespace syncd
 
             std::string m_contextConfig;
 
+            std::string m_breakConfig;
+
 #ifdef SAITHRIFT
             bool m_runRPCServer;
             std::string m_portMapFile;

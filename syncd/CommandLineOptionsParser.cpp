@@ -17,9 +17,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:uSUCsrm:h";
+    const char* const optstring = "dp:t:g:x:b:uSUCsrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:uSUCsh";
+    const char* const optstring = "dp:t:g:x:b:uSUCsh";
 #endif // SAITHRIFT
 
     while(true)
@@ -36,6 +36,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "syncMode",                no_argument,       0, 's' },
             { "globalContext",           required_argument, 0, 'g' },
             { "contextContig",           required_argument, 0, 'x' },
+            { "breakContig",             required_argument, 0, 'b' },
 #ifdef SAITHRIFT
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
@@ -99,6 +100,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
             case 'x':
                 options->m_contextConfig = std::string(optarg);
+                break;
+
+            case 'b':
+                options->m_breakConfig = std::string(optarg);
                 break;
 
 #ifdef SAITHRIFT
