@@ -8,6 +8,7 @@
 #include "RequestShutdown.h"
 #include "WarmRestartTable.h"
 #include "ContextConfigContainer.h"
+#include "BreakConfigParser.h"
 
 #include "sairediscommon.h"
 
@@ -133,9 +134,7 @@ Syncd::Syncd(
         abort();
     }
 
-    m_breakConfig = std::make_shared<BreakConfig>();
-
-    //m_breakConfig->insert(SAI_OBJECT_TYPE_ACL_TABLE); // TODO XXX add break config parser
+    m_breakConfig = BreakConfigParser::parseBreakConfig(m_commandLineOptions->m_breakConfig);
 
     SWSS_LOG_NOTICE("syncd started");
 }
