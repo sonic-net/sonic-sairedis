@@ -29,6 +29,8 @@ namespace syncd
             bool shouldBreakBeforeMake(
                     _In_ sai_object_type_t objectType) const;
 
+            size_t size() const;
+
         private:
 
             std::set<sai_object_type_t> m_set;

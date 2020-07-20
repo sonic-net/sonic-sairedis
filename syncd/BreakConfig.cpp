@@ -40,3 +40,10 @@ bool BreakConfig::shouldBreakBeforeMake(
     return m_set.find(objectType) != m_set.end();
 }
 
+size_t BreakConfig::size() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_set.size();
+}
+
