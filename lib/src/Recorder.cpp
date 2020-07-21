@@ -941,7 +941,7 @@ void Recorder::recordQueryAattributeCapability(
 }
 
 
-void Recorder::recordQueryAattributeCapabilityResponse(
+void Recorder::recordQueryAttributeCapabilityResponse(
         _In_ sai_status_t status,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,

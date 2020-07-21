@@ -870,7 +870,7 @@ sai_status_t RedisRemoteSaiInterface::queryAttributeCapability(
 
     auto status = waitForQueryAttributeCapabilityResponse(capability);
 
-    m_recorder->recordQueryAattributeCapabilityResponse(status, objectType, attrId, capability);
+    m_recorder->recordQueryAttributeCapabilityResponse(status, objectType, attrId, capability);
 
     return status;
 }
@@ -903,19 +903,30 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeCapabilityResponse(
             create_implemented, set_implemented, get_implemented);
 
         if(create_implemented)
+        {
             capability->create_implemented = true;
+        }
         else
+        {
             capability->create_implemented = false;
-
+        }
         if(set_implemented)
+        {
             capability->set_implemented = true;
+        }
         else
+        {
             capability->set_implemented = false;
+        }
 
         if(get_implemented)
+        {
             capability->get_implemented = true;
+        }
         else
+        {
             capability->get_implemented = false;
+        }
     }
 
     return status;

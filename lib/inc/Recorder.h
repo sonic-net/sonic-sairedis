@@ -296,7 +296,7 @@ namespace sairedis
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability);
 
-            void recordQueryAattributeCapabilityResponse(
+            void recordQueryAttributeCapabilityResponse(
                     _In_ sai_status_t status,
                     _In_ sai_object_type_t objectType,
                     _In_ sai_attr_id_t attrId,
