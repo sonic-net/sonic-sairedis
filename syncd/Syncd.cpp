@@ -301,6 +301,9 @@ sai_status_t Syncd::processSingleEvent(
     if (op == REDIS_ASIC_STATE_COMMAND_FLUSH)
         return processFdbFlush(kco);
 
+    if (op == REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY)
+        return processAttrCapabilityQuery(kco);
+
     if (op == REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_QUERY)
         return processAttrEnumValuesCapabilityQuery(kco);
 
@@ -308,6 +311,59 @@ sai_status_t Syncd::processSingleEvent(
         return processObjectTypeGetAvailabilityQuery(kco);
 
     SWSS_LOG_THROW("event op '%s' is not implemented, FIXME", op.c_str());
+}
+
+sai_status_t Syncd::processAttrCapabilityQuery(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto& strSwitchVid = kfvKey(kco);
+
+    sai_object_id_t switchVid;
+    sai_deserialize_object_id(strSwitchVid, switchVid);
+
+    sai_object_id_t switchRid = m_translator->translateVidToRid(switchVid);
+
+    auto& values = kfvFieldsValues(kco);
+
+    if (values.size() != 2)
+    {
+        SWSS_LOG_ERROR("Invalid input: expected 2 arguments, received %zu", values.size());
+
+        m_getResponse->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t objectType;
+    sai_deserialize_object_type(fvValue(values[0]), objectType);
+
+    sai_attr_id_t attrId;
+    sai_deserialize_attr_id(fvValue(values[1]), attrId);
+
+    sai_attr_capability_t capability;
+
+    sai_status_t status = m_vendorSai->queryAattributeCapability(switchRid, objectType, attrId, &capability);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        entry =
+        {
+            swss::FieldValueTuple("CREATE_IMPLEMENTED", std::to_string(capability.create_implemented)),
+            swss::FieldValueTuple("SET_IMPLEMENTED", std::to_string(capability.set_implemented)),
+            swss::FieldValueTuple("GET_IMPLEMENTED", std::to_string(capability.get_implemented))
+        };
+
+        SWSS_LOG_DEBUG("Sending response: create_implemented:%d, set_implemented:%d, get_implemented:%d",
+            capability.create_implemented, capability.set_implemented, capability.get_implemented);
+    }
+
+    m_getResponse->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
+
+    return status;
 }
 
 sai_status_t Syncd::processAttrEnumValuesCapabilityQuery(

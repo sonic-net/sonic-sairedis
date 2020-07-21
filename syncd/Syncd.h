@@ -120,6 +120,9 @@ namespace syncd
             sai_status_t processSingleEvent(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
+            sai_status_t processAttrCapabilityQuery(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
             sai_status_t processAttrEnumValuesCapabilityQuery(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 

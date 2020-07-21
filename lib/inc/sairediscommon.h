@@ -37,6 +37,9 @@
 #define REDIS_ASIC_STATE_COMMAND_FLUSH              "flush"
 #define REDIS_ASIC_STATE_COMMAND_FLUSHRESPONSE      "flushresponse"
 
+#define REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY      "attribute_capability_query"
+#define REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE   "attribute_capability_response"
+
 #define REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_QUERY      "attr_enum_values_capability_query"
 #define REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE   "attr_enum_values_capability_response"
 
