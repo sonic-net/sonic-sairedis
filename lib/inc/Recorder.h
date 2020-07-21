@@ -290,7 +290,7 @@ namespace sairedis
                     _In_ sai_status_t status,
                     _In_ const uint64_t *count);
 
-            void recordQueryAattributeCapability(
+            void recordQueryAttributeCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id,

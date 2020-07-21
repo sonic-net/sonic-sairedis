@@ -864,7 +864,7 @@ sai_status_t RedisRemoteSaiInterface::queryAttributeCapability(
     // This query will not put any data into the ASIC view, just into the
     // message queue
 
-    m_recorder->recordQueryAattributeCapability(switchId, objectType, attrId, capability);
+    m_recorder->recordQueryAttributeCapability(switchId, objectType, attrId, capability);
 
     m_redisChannel->set(switchIdStr, entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY);
 

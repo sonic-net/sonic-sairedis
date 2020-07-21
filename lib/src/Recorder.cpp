@@ -905,7 +905,7 @@ void Recorder::recordObjectTypeGetAvailabilityResponse(
     recordObjectTypeGetAvailabilityResponse(status, values);
 }
 
-void Recorder::recordQueryAattributeCapability(
+void Recorder::recordQueryAttributeCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
