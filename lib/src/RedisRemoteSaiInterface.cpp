@@ -827,7 +827,7 @@ sai_status_t RedisRemoteSaiInterface::waitForObjectTypeGetAvailabilityResponse(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::queryAattributeCapability(
+sai_status_t RedisRemoteSaiInterface::queryAttributeCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
@@ -835,30 +835,30 @@ sai_status_t RedisRemoteSaiInterface::queryAattributeCapability(
 {
     SWSS_LOG_ENTER();
 
-    auto switch_id_str = sai_serialize_object_id(switchId);
-    auto object_type_str = sai_serialize_object_type(objectType);
+    auto switchIdStr = sai_serialize_object_id(switchId);
+    auto objectTypeStr = sai_serialize_object_type(objectType);
 
     auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
 
     if (meta == NULL)
     {
-        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", object_type_str.c_str(), attrId);
+        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", objectTypeStr.c_str(), attrId);
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    const std::string attr_id_str = meta->attridname;
+    const std::string attrIdStr = meta->attridname;
 
     const std::vector<swss::FieldValueTuple> entry =
     {
-        swss::FieldValueTuple("OBJECT_TYPE", object_type_str),
-        swss::FieldValueTuple("ATTR_ID", attr_id_str)
+        swss::FieldValueTuple("OBJECT_TYPE", objectTypeStr),
+        swss::FieldValueTuple("ATTR_ID", attrIdStr)
     };
 
     SWSS_LOG_DEBUG(
             "Query arguments: switch %s, object type: %s, attribute: %s",
-            switch_id_str.c_str(),
-            object_type_str.c_str(),
-            attr_id_str.c_str()
+            switchIdStr.c_str(),
+            objectTypeStr.c_str(),
+            attrIdStr.c_str()
     );
 
     // This query will not put any data into the ASIC view, just into the
@@ -866,16 +866,16 @@ sai_status_t RedisRemoteSaiInterface::queryAattributeCapability(
 
     m_recorder->recordQueryAattributeCapability(switchId, objectType, attrId, capability);
 
-    m_redisChannel->set(switch_id_str, entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY);
+    m_redisChannel->set(switchIdStr, entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY);
 
-    auto status = waitForQueryAattributeCapabilityResponse(capability);
+    auto status = waitForQueryAttributeCapabilityResponse(capability);
 
     m_recorder->recordQueryAattributeCapabilityResponse(status, objectType, attrId, capability);
 
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::waitForQueryAattributeCapabilityResponse(
+sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeCapabilityResponse(
         _Out_ sai_attr_capability_t* capability)
 {
     SWSS_LOG_ENTER();
@@ -916,12 +916,6 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAattributeCapabilityResponse(
             capability->get_implemented = true;
         else
             capability->get_implemented = false;
-    }
-    else if (status ==  SAI_STATUS_BUFFER_OVERFLOW)
-    {
-        // TODO on sai status overflow we should populate correct count on the list
-
-        SWSS_LOG_ERROR("TODO need to handle SAI_STATUS_BUFFER_OVERFLOW, FIXME");
     }
 
     return status;

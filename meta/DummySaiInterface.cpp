@@ -153,7 +153,7 @@ sai_status_t DummySaiInterface::objectTypeGetAvailability(
     return m_status;
 }
 
-sai_status_t DummySaiInterface::queryAattributeCapability(
+sai_status_t DummySaiInterface::queryAttributeCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,

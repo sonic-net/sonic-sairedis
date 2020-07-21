@@ -113,7 +113,7 @@ sai_status_t sai_query_attribute_capability(
 {
     SWSS_LOG_ENTER();
 
-    return redis_sai->queryAattributeCapability(
+    return redis_sai->queryAttributeCapability(
             switch_id,
             object_type,
             attr_id,

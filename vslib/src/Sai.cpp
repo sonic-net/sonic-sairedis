@@ -706,20 +706,20 @@ sai_status_t Sai::objectTypeGetAvailability(
             count);
 }
 
-sai_status_t Sai::queryAattributeCapability(
-        _In_ sai_object_id_t switch_id,
-        _In_ sai_object_type_t object_type,
-        _In_ sai_attr_id_t attr_id,
+sai_status_t Sai::queryAttributeCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
         _Out_ sai_attr_capability_t *capability)
 {
     MUTEX();
     SWSS_LOG_ENTER();
     VS_CHECK_API_INITIALIZED();
 
-    return m_meta->queryAattributeCapability(
-            switch_id,
-            object_type,
-            attr_id,
+    return m_meta->queryAttributeCapability(
+            switchId,
+            objectType,
+            attrId,
             capability);
 }
 

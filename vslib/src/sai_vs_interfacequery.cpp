@@ -112,7 +112,7 @@ sai_status_t sai_query_attribute_capability(
 {
     SWSS_LOG_ENTER();
 
-    return vs_sai->queryAattributeCapability(
+    return vs_sai->queryAttributeCapability(
             switch_id,
             object_type,
             attr_id,

@@ -1856,11 +1856,11 @@ sai_status_t Meta::objectTypeGetAvailability(
     return status;
 }
 
-sai_status_t Meta::queryAattributeCapability(
+sai_status_t Meta::queryAttributeCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
-        _Out_ sai_attr_capability_t *Capability)
+        _Out_ sai_attr_capability_t *capability)
 {
     SWSS_LOG_ENTER();
 
@@ -1879,9 +1879,9 @@ sai_status_t Meta::queryAattributeCapability(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    PARAMETER_CHECK_IF_NOT_NULL(Capability);
+    PARAMETER_CHECK_IF_NOT_NULL(capability);
 
-    auto status = m_implementation->queryAattributeCapability(switchId, objectType, attrId, Capability);
+    auto status = m_implementation->queryAttributeCapability(switchId, objectType, attrId, capability);
 
     return status;
 }

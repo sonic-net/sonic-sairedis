@@ -344,7 +344,7 @@ sai_status_t Syncd::processAttrCapabilityQuery(
 
     sai_attr_capability_t capability;
 
-    sai_status_t status = m_vendorSai->queryAattributeCapability(switchRid, objectType, attrId, &capability);
+    sai_status_t status = m_vendorSai->queryAttributeCapability(switchRid, objectType, attrId, &capability);
 
     std::vector<swss::FieldValueTuple> entry;
 
@@ -357,7 +357,7 @@ sai_status_t Syncd::processAttrCapabilityQuery(
             swss::FieldValueTuple("GET_IMPLEMENTED", std::to_string(capability.get_implemented))
         };
 
-        SWSS_LOG_DEBUG("Sending response: create_implemented:%d, set_implemented:%d, get_implemented:%d",
+        SWSS_LOG_INFO("Sending response: create_implemented:%d, set_implemented:%d, get_implemented:%d",
             capability.create_implemented, capability.set_implemented, capability.get_implemented);
     }
 

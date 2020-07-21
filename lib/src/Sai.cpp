@@ -576,7 +576,7 @@ sai_status_t Sai::objectTypeGetAvailability(
             count);
 }
 
-sai_status_t Sai::queryAattributeCapability(
+sai_status_t Sai::queryAttributeCapability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,
         _In_ sai_attr_id_t attr_id,
@@ -587,7 +587,7 @@ sai_status_t Sai::queryAattributeCapability(
     REDIS_CHECK_API_INITIALIZED();
     REDIS_CHECK_CONTEXT(switch_id);
 
-    return context->m_meta->queryAattributeCapability(
+    return context->m_meta->queryAttributeCapability(
             switch_id,
             object_type,
             attr_id,
