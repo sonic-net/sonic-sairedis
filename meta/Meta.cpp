@@ -4025,7 +4025,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%lx is not valid object type, "
+        SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " is not valid object type, "
                         "returned null object type", vr);
 
         return SAI_STATUS_INVALID_PARAMETER;
@@ -4035,7 +4035,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
 
     if (object_type != expected)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%lx type %d is wrong type, "
+        SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " type %d is wrong type, "
                        "expected object type %d", vr, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
