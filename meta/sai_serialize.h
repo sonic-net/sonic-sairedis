@@ -165,6 +165,9 @@ std::string sai_serialize_l2mc_entry_type(
 std::string sai_serialize_ipmc_entry_type(
         _In_ const sai_ipmc_entry_type_t type);
 
+std::string sai_serialize_nat_entry_type(
+        _In_ const sai_nat_type_t type);
+
 std::string sai_serialize_qos_map_item(
         _In_ const sai_qos_map_t& qosmap);
 
@@ -239,6 +242,10 @@ void sai_deserialize_neighbor_entry(
 void sai_deserialize_route_entry(
         _In_ const std::string& s,
         _In_ sai_route_entry_t &route_entry);
+
+void sai_deserialize_nat_entry_type(
+        _In_ const std::string& s,
+        _Out_ sai_nat_type_t& type);
 
 void sai_deserialize_nat_entry(
         _In_ const std::string& s,

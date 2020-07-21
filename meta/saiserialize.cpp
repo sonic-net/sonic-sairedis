@@ -1707,6 +1707,14 @@ json sai_serialize_nat_entry_data(
     return j;
 }
 
+std::string sai_serialize_nat_entry_type(
+        _In_ const sai_nat_type_t type)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(type, &sai_metadata_enum_sai_nat_type_t);
+}
+
 std::string sai_serialize_nat_entry(
         _In_ const sai_nat_entry_t& nat_entry)
 {
@@ -1716,6 +1724,7 @@ std::string sai_serialize_nat_entry(
 
     j["switch_id"] = sai_serialize_object_id(nat_entry.switch_id);
     j["vr"]        = sai_serialize_object_id(nat_entry.vr_id);
+    j["nat_type"]  = sai_serialize_nat_entry_type(nat_entry.nat_type);
     j["nat_data"]  = sai_serialize_nat_entry_data(nat_entry.data);
 
     return j.dump();
@@ -2835,6 +2844,15 @@ void sai_deserialize_nat_entry_data(
     sai_deserialize_nat_entry_mask(j["mask"], nat_entry_data.mask);
 }
 
+void sai_deserialize_nat_entry_type(
+        _In_ const std::string& s,
+        _Out_ sai_nat_type_t& type)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_nat_type_t, (int32_t&)type);
+}
+
 void sai_deserialize_nat_entry(
         _In_ const std::string &s,
         _Out_ sai_nat_entry_t& nat_entry)
@@ -2845,6 +2863,7 @@ void sai_deserialize_nat_entry(
 
     sai_deserialize_object_id(j["switch_id"], nat_entry.switch_id);
     sai_deserialize_object_id(j["vr"], nat_entry.vr_id);
+    sai_deserialize_nat_entry_type(j["nat_type"], nat_entry.nat_type);
     sai_deserialize_nat_entry_data(j["nat_data"], nat_entry.data);
 }
 
