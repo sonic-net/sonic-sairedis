@@ -10,6 +10,7 @@
 #include "meta/sai_serialize.h"
 
 #include <unistd.h>
+#include <inttypes.h>
 
 using namespace syncd;
 using namespace saimeta;
