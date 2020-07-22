@@ -352,9 +352,9 @@ sai_status_t Syncd::processAttrCapabilityQuery(
     {
         entry =
         {
-            swss::FieldValueTuple("CREATE_IMPLEMENTED", std::to_string(capability.create_implemented)),
-            swss::FieldValueTuple("SET_IMPLEMENTED", std::to_string(capability.set_implemented)),
-            swss::FieldValueTuple("GET_IMPLEMENTED", std::to_string(capability.get_implemented))
+            swss::FieldValueTuple("CREATE_IMPLEMENTED", (capability.create_implemented ? "true" : "false")),
+            swss::FieldValueTuple("SET_IMPLEMENTED",    (capability.set_implemented    ? "true" : "false")),
+            swss::FieldValueTuple("GET_IMPLEMENTED",    (capability.get_implemented    ? "true" : "false"))
         };
 
         SWSS_LOG_INFO("Sending response: create_implemented:%d, set_implemented:%d, get_implemented:%d",

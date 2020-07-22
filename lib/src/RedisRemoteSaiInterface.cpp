@@ -895,38 +895,12 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeCapabilityResponse(
             return SAI_STATUS_FAILURE;
         }
 
-        const uint32_t create_implemented = std::stoi(fvValue(values[0]));
-        const uint32_t set_implemented = std::stoi(fvValue(values[1]));
-        const uint32_t get_implemented = std::stoi(fvValue(values[2]));
+        capability->create_implemented = (fvValue(values[0]) == "true" ? true : false);
+        capability->set_implemented    = (fvValue(values[1]) == "true" ? true : false);
+        capability->get_implemented    = (fvValue(values[2]) == "true" ? true : false);
 
-        SWSS_LOG_DEBUG("Received payload: create_implemented:%d, set_implemented:%d, get_implemented:%d",
-            create_implemented, set_implemented, get_implemented);
-
-        if(create_implemented)
-        {
-            capability->create_implemented = true;
-        }
-        else
-        {
-            capability->create_implemented = false;
-        }
-        if(set_implemented)
-        {
-            capability->set_implemented = true;
-        }
-        else
-        {
-            capability->set_implemented = false;
-        }
-
-        if(get_implemented)
-        {
-            capability->get_implemented = true;
-        }
-        else
-        {
-            capability->get_implemented = false;
-        }
+        SWSS_LOG_DEBUG("Received payload: create_implemented:%s, set_implemented:%s, get_implemented:%s",
+            (capability->create_implemented? "true":"false"), (capability->set_implemented? "true":"false"), (capability->get_implemented? "true":"false"));
     }
 
     return status;
