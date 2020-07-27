@@ -140,7 +140,6 @@ void SaiSwitch::getDefaultMacAddress(
 sai_switch_type_t SaiSwitch::getSwitchType() const
 {
     SWSS_LOG_ENTER();
-
     sai_attribute_t attr;
 
     attr.id = SAI_SWITCH_ATTR_TYPE;
@@ -149,10 +148,12 @@ sai_switch_type_t SaiSwitch::getSwitchType() const
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_THROW("failed to get switch type");
+        SWSS_LOG_ERROR("failed to get switch type with status:0x%x. Assume default SAI_SWITCH_TYPE_NPU", status);
+        // Set to SAI_SWITCH_TYPE_NPU and move on
+        attr.value.s32 = SAI_SWITCH_TYPE_NPU;
     }
 
-    SWSS_LOG_ERROR("switch type: '%s'", (attr.value.s32 == SAI_SWITCH_TYPE_NPU ? "SAI_SWITCH_TYPE_NPU" : "SAI_SWITCH_TYPE_PHY"));
+    SWSS_LOG_INFO("switch type: '%s'", (attr.value.s32 == SAI_SWITCH_TYPE_NPU ? "SAI_SWITCH_TYPE_NPU" : "SAI_SWITCH_TYPE_PHY"));
 
     return (sai_switch_type_t) attr.value.s32;
 }
