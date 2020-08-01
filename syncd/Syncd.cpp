@@ -1497,7 +1497,7 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
                     else
                         m_client->createAsicObject(metaKey, values);
 
-                    return;
+                    break;
                 }
 
             case SAI_COMMON_API_BULK_REMOVE:
@@ -1508,7 +1508,7 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
                     else
                         m_client->removeAsicObject(metaKey);
 
-                    return;
+                    break;
                 }
 
             case SAI_COMMON_API_BULK_SET:
@@ -1524,11 +1524,11 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
                     else
                         m_client->setAsicObject(metaKey, attr, value);
 
-                    return;
+                    break;
                 }
 
             case SAI_COMMON_API_GET:
-                return; // ignore get since get is not modifying db
+                break; // ignore get since get is not modifying db
 
             default:
 
