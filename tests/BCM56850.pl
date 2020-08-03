@@ -546,8 +546,16 @@ sub test_brcm_query_object_type_get_availability
     play "query_object_type_get_availability.rec";
 }
 
+sub test_brcm_acl_limit
+{
+    fresh_start("-b", "$utils::DIR/bbm.ini", "-p", "$utils::DIR/vsprofile_acl_limit.ini");
+
+    play "acl_limit.rec";
+}
+
 # RUN TESTS
 
+test_brcm_acl_limit;
 test_sync_brcm_warm_boot_port_remove;
 test_brcm_warm_boot_port_remove;
 test_brcm_warm_boot_port_create;
