@@ -827,6 +827,85 @@ sai_status_t RedisRemoteSaiInterface::waitForObjectTypeGetAvailabilityResponse(
     return status;
 }
 
+sai_status_t RedisRemoteSaiInterface::queryAttributeCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
+        _Out_ sai_attr_capability_t *capability)
+{
+    SWSS_LOG_ENTER();
+
+    auto switchIdStr = sai_serialize_object_id(switchId);
+    auto objectTypeStr = sai_serialize_object_type(objectType);
+
+    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+
+    if (meta == NULL)
+    {
+        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", objectTypeStr.c_str(), attrId);
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    const std::string attrIdStr = meta->attridname;
+
+    const std::vector<swss::FieldValueTuple> entry =
+    {
+        swss::FieldValueTuple("OBJECT_TYPE", objectTypeStr),
+        swss::FieldValueTuple("ATTR_ID", attrIdStr)
+    };
+
+    SWSS_LOG_DEBUG(
+            "Query arguments: switch %s, object type: %s, attribute: %s",
+            switchIdStr.c_str(),
+            objectTypeStr.c_str(),
+            attrIdStr.c_str()
+    );
+
+    // This query will not put any data into the ASIC view, just into the
+    // message queue
+
+    m_recorder->recordQueryAttributeCapability(switchId, objectType, attrId, capability);
+
+    m_redisChannel->set(switchIdStr, entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY);
+
+    auto status = waitForQueryAttributeCapabilityResponse(capability);
+
+    m_recorder->recordQueryAttributeCapabilityResponse(status, objectType, attrId, capability);
+
+    return status;
+}
+
+sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeCapabilityResponse(
+        _Out_ sai_attr_capability_t* capability)
+{
+    SWSS_LOG_ENTER();
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_redisChannel->wait(REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE, kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+        if (values.size() != 3)
+        {
+            SWSS_LOG_ERROR("Invalid response from syncd: expected 3 values, received %zu", values.size());
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        capability->create_implemented = (fvValue(values[0]) == "true" ? true : false);
+        capability->set_implemented    = (fvValue(values[1]) == "true" ? true : false);
+        capability->get_implemented    = (fvValue(values[2]) == "true" ? true : false);
+
+        SWSS_LOG_DEBUG("Received payload: create_implemented:%s, set_implemented:%s, get_implemented:%s",
+            (capability->create_implemented? "true":"false"), (capability->set_implemented? "true":"false"), (capability->get_implemented? "true":"false"));
+    }
+
+    return status;
+}
+
 sai_status_t RedisRemoteSaiInterface::queryAattributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,

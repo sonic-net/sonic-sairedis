@@ -290,6 +290,18 @@ namespace sairedis
                     _In_ sai_status_t status,
                     _In_ const uint64_t *count);
 
+            void recordQueryAttributeCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Out_ sai_attr_capability_t *capability);
+
+            void recordQueryAttributeCapabilityResponse(
+                    _In_ sai_status_t status,
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_attr_id_t attrId,
+                    _In_ const sai_attr_capability_t* capability);
+
             void recordQueryAattributeEnumValuesCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
@@ -303,6 +315,14 @@ namespace sairedis
                     _In_ const sai_s32_list_t* enumValuesCapability);
 
             // TODO move to private
+            void recordQueryAttributeCapability(
+                    _In_ const std::string& key,
+                    _In_ const std::vector<swss::FieldValueTuple>& arguments);
+
+            void recordQueryAttributeCapabilityResponse(
+                    _In_ sai_status_t status,
+                    _In_ const std::vector<swss::FieldValueTuple>& arguments);
+
             void recordQueryAttributeEnumValuesCapability(
                     _In_ const std::string& key,
                     _In_ const std::vector<swss::FieldValueTuple>& arguments);

@@ -789,6 +789,26 @@ sai_status_t VirtualSwitchSaiInterface::objectTypeGetAvailability(
     return SAI_STATUS_NOT_SUPPORTED;
 }
 
+sai_status_t VirtualSwitchSaiInterface::queryAttributeCapability(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _In_ sai_attr_id_t attr_id,
+        _Out_ sai_attr_capability_t *capability)
+{
+    SWSS_LOG_ENTER();
+
+    // TODO: We should generate this metadata for the virtual switch rather
+    // than hard-coding it here.
+
+    // in virtual switch by default all apis are implemented for all objects. SUCCESS for all attributes
+
+    capability->create_implemented = true;
+    capability->set_implemented    = true;
+    capability->get_implemented    = true;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t VirtualSwitchSaiInterface::queryAattributeEnumValuesCapability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,

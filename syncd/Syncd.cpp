@@ -20,6 +20,7 @@
 #include "meta/sai_serialize.h"
 
 #include <unistd.h>
+#include <inttypes.h>
 
 #include <iterator>
 #include <algorithm>
@@ -303,6 +304,9 @@ sai_status_t Syncd::processSingleEvent(
     if (op == REDIS_ASIC_STATE_COMMAND_FLUSH)
         return processFdbFlush(kco);
 
+    if (op == REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY)
+        return processAttrCapabilityQuery(kco);
+
     if (op == REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_QUERY)
         return processAttrEnumValuesCapabilityQuery(kco);
 
@@ -310,6 +314,59 @@ sai_status_t Syncd::processSingleEvent(
         return processObjectTypeGetAvailabilityQuery(kco);
 
     SWSS_LOG_THROW("event op '%s' is not implemented, FIXME", op.c_str());
+}
+
+sai_status_t Syncd::processAttrCapabilityQuery(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto& strSwitchVid = kfvKey(kco);
+
+    sai_object_id_t switchVid;
+    sai_deserialize_object_id(strSwitchVid, switchVid);
+
+    sai_object_id_t switchRid = m_translator->translateVidToRid(switchVid);
+
+    auto& values = kfvFieldsValues(kco);
+
+    if (values.size() != 2)
+    {
+        SWSS_LOG_ERROR("Invalid input: expected 2 arguments, received %zu", values.size());
+
+        m_getResponse->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t objectType;
+    sai_deserialize_object_type(fvValue(values[0]), objectType);
+
+    sai_attr_id_t attrId;
+    sai_deserialize_attr_id(fvValue(values[1]), attrId);
+
+    sai_attr_capability_t capability;
+
+    sai_status_t status = m_vendorSai->queryAttributeCapability(switchRid, objectType, attrId, &capability);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        entry =
+        {
+            swss::FieldValueTuple("CREATE_IMPLEMENTED", (capability.create_implemented ? "true" : "false")),
+            swss::FieldValueTuple("SET_IMPLEMENTED",    (capability.set_implemented    ? "true" : "false")),
+            swss::FieldValueTuple("GET_IMPLEMENTED",    (capability.get_implemented    ? "true" : "false"))
+        };
+
+        SWSS_LOG_INFO("Sending response: create_implemented:%d, set_implemented:%d, get_implemented:%d",
+            capability.create_implemented, capability.set_implemented, capability.get_implemented);
+    }
+
+    m_getResponse->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
+
+    return status;
 }
 
 sai_status_t Syncd::processAttrEnumValuesCapabilityQuery(
@@ -587,6 +644,8 @@ sai_status_t Syncd::processBulkQuadEvent(
 
     const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
 
+    std::vector<std::vector<swss::FieldValueTuple>> strAttributes;
+
     // field = objectId
     // value = attrid=attrvalue|...
 
@@ -619,6 +678,8 @@ sai_status_t Syncd::processBulkQuadEvent(
             entries.emplace_back(field, value);
         }
 
+        strAttributes.push_back(entries);
+
         // since now we converted this to proper list, we can extract attributes
 
         auto list = std::make_shared<SaiAttributeList>(objectType, entries, false);
@@ -632,7 +693,7 @@ sai_status_t Syncd::processBulkQuadEvent(
 
     if (isInitViewMode())
     {
-        return processBulkQuadEventInInitViewMode(objectType, objectIds, api, attributes);
+        return processBulkQuadEventInInitViewMode(objectType, objectIds, api, attributes, strAttributes);
     }
 
     if (api != SAI_COMMON_API_BULK_GET)
@@ -652,23 +713,24 @@ sai_status_t Syncd::processBulkQuadEvent(
 
     if (info->isobjectid)
     {
-        return processBulkOid(objectType, objectIds, api, attributes);
+        return processBulkOid(objectType, objectIds, api, attributes, strAttributes);
     }
     else
     {
-        return processBulkEntry(objectType, objectIds, api, attributes);
+        return processBulkEntry(objectType, objectIds, api, attributes, strAttributes);
     }
 }
 
 sai_status_t Syncd::processBulkQuadEventInInitViewMode(
         _In_ sai_object_type_t objectType,
-        _In_ const std::vector<std::string> &object_ids,
+        _In_ const std::vector<std::string>& objectIds,
         _In_ sai_common_api_t api,
-        _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes)
+        _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+        _In_ const std::vector<std::vector<swss::FieldValueTuple>>& strAttributes)
 {
     SWSS_LOG_ENTER();
 
-    std::vector<sai_status_t> statuses(object_ids.size());
+    std::vector<sai_status_t> statuses(objectIds.size());
 
     for (auto &a: statuses)
     {
@@ -686,6 +748,9 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
             if (info->isnonobjectid)
             {
                 sendApiResponse(api, SAI_STATUS_SUCCESS, (uint32_t)statuses.size(), statuses.data());
+
+                syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+
                 return SAI_STATUS_SUCCESS;
             }
 
@@ -702,6 +767,9 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
                 default:
 
                     sendApiResponse(api, SAI_STATUS_SUCCESS, (uint32_t)statuses.size(), statuses.data());
+
+                    syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+
                     return SAI_STATUS_SUCCESS;
             }
 
@@ -717,9 +785,10 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
 
 sai_status_t Syncd::processBulkEntry(
         _In_ sai_object_type_t objectType,
-        _In_ const std::vector<std::string> &objectIds,
+        _In_ const std::vector<std::string>& objectIds,
         _In_ sai_common_api_t api,
-        _In_ const std::vector<std::shared_ptr<SaiAttributeList>> &attributes)
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>>& attributes,
+        _In_ const std::vector<std::vector<swss::FieldValueTuple>>& strAttributes)
 {
     SWSS_LOG_ENTER();
 
@@ -797,6 +866,8 @@ sai_status_t Syncd::processBulkEntry(
 
     sendApiResponse(api, all, (uint32_t)objectIds.size(), statuses.data());
 
+    syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+
     return all;
 }
 
@@ -832,9 +903,10 @@ sai_status_t Syncd::processEntry(
 
 sai_status_t Syncd::processBulkOid(
         _In_ sai_object_type_t objectType,
-        _In_ const std::vector<std::string> &objectIds,
+        _In_ const std::vector<std::string>& objectIds,
         _In_ sai_common_api_t api,
-        _In_ const std::vector<std::shared_ptr<SaiAttributeList>> &attributes)
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>>& attributes,
+        _In_ const std::vector<std::vector<swss::FieldValueTuple>>& strAttributes)
 {
     SWSS_LOG_ENTER();
 
@@ -894,6 +966,8 @@ sai_status_t Syncd::processBulkOid(
     }
 
     sendApiResponse(api, all, (uint32_t)objectIds.size(), statuses.data());
+
+    syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
 
     return all;
 }
@@ -1371,6 +1445,98 @@ void Syncd::syncUpdateRedisQuadEvent(
         default:
 
             SWSS_LOG_THROW("api %d is not supported", api);
+    }
+}
+
+void Syncd::syncUpdateRedisBulkQuadEvent(
+        _In_ sai_common_api_t api,
+        _In_ const std::vector<sai_status_t>& statuses,
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& objectIds,
+        _In_ const std::vector<std::vector<swss::FieldValueTuple>>& strAttributes)
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_commandLineOptions->m_enableSyncMode)
+    {
+        return;
+    }
+
+    // When in synchronous mode, we need to modify redis database when status
+    // is success, since consumer table on synchronous mode is not making redis
+    // changes and we only want to apply changes when api succeeded. This
+    // applies to init view mode and apply view mode.
+
+    const std::string strObjectType = sai_serialize_object_type(objectType);
+
+    for (size_t idx = 0; idx < statuses.size(); idx++)
+    {
+        sai_status_t status = statuses[idx];
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            // in case of failure, don't modify database
+            continue;
+        }
+
+        auto& objectId = objectIds.at(idx);
+
+        auto& values = strAttributes.at(idx);
+
+        auto key = strObjectType + ":" + objectId;
+
+        sai_object_meta_key_t metaKey;
+        sai_deserialize_object_meta_key(key, metaKey);
+
+        const bool initView = isInitViewMode();
+
+        switch (api)
+        {
+            case SAI_COMMON_API_BULK_CREATE:
+
+                {
+                    if (initView)
+                        m_client->createTempAsicObject(metaKey, values);
+                    else
+                        m_client->createAsicObject(metaKey, values);
+
+                    break;
+                }
+
+            case SAI_COMMON_API_BULK_REMOVE:
+
+                {
+                    if (initView)
+                        m_client->removeTempAsicObject(metaKey);
+                    else
+                        m_client->removeAsicObject(metaKey);
+
+                    break;
+                }
+
+            case SAI_COMMON_API_BULK_SET:
+
+                {
+                    auto& first = values.at(0);
+
+                    auto& attr = fvField(first);
+                    auto& value = fvValue(first);
+
+                    if (initView)
+                        m_client->setTempAsicObject(metaKey, attr, value);
+                    else
+                        m_client->setAsicObject(metaKey, attr, value);
+
+                    break;
+                }
+
+            case SAI_COMMON_API_GET:
+                break; // ignore get since get is not modifying db
+
+            default:
+
+                SWSS_LOG_THROW("api %d is not supported", api);
+        }
     }
 }
 
@@ -3084,7 +3250,7 @@ void Syncd::performWarmRestartSingleSwitch(
 
     if (originalSwitchRid != switchRid)
     {
-        SWSS_LOG_THROW("Unexpected RID 0x%lx (expected 0x%lx)",
+        SWSS_LOG_THROW("Unexpected RID 0x%" PRIx64 " (expected 0x%" PRIx64 " )",
                        switchRid, originalSwitchRid);
     }
 

@@ -941,6 +941,27 @@ sai_status_t VendorSai::objectTypeGetAvailability(
             count);
 }
 
+sai_status_t VendorSai::queryAttributeCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
+        _Out_ sai_attr_capability_t *capability)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+#if 0 // Wait until BRCM fix their SAI issue then enable this
+    return sai_query_attribute_capability(
+            switchId,
+            objectType,
+            attrId,
+            capability);
+#else
+    return SAI_STATUS_NOT_IMPLEMENTED;
+#endif
+}
+
 sai_status_t VendorSai::queryAattributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
