@@ -951,15 +951,11 @@ sai_status_t VendorSai::queryAttributeCapability(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-#if 0 // Wait until BRCM fix their SAI issue then enable this
     return sai_query_attribute_capability(
             switchId,
             objectType,
             attrId,
             capability);
-#else
-    return SAI_STATUS_NOT_IMPLEMENTED;
-#endif
 }
 
 sai_status_t VendorSai::queryAattributeEnumValuesCapability(
