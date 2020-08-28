@@ -1253,7 +1253,7 @@ void Syncd::sendApiResponse(
          * - in case set fail, bring back previous value if it was set
          */
 
-        SWSS_LOG_THROW("api %s failed in syncd mode: %s, FIXME",
+        SWSS_LOG_ERROR("api %s failed in syncd mode: %s, FIXME",
                     sai_serialize_common_api(api).c_str(),
                     sai_serialize_status(status).c_str());
     }
