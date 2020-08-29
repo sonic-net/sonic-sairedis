@@ -517,7 +517,7 @@ sai_object_id_t SaiSwitch::helperGetSwitchAttrOid(
          * Redis value of this attribute is not present yet, save it!
          */
 
-        redisSetDummyAsicStateForRealObjectId(rid);
+        redisSaveInternalOids(rid);
 
         SWSS_LOG_INFO("redis %s id is not defined yet in redis", meta->attridname);
 
@@ -742,6 +742,25 @@ std::set<sai_object_id_t> SaiSwitch::getWarmBootDiscoveredVids() const
     SWSS_LOG_ENTER();
 
     return m_warmBootDiscoveredVids;
+}
+
+void SaiSwitch::redisSaveInternalOids(_In_ sai_object_id_t rid) const
+{
+    SWSS_LOG_ENTER();
+
+    std::set<sai_object_id_t> coldVids;
+
+    sai_object_id_t vid = m_translator->translateRidToVid(rid, m_switch_vid);
+
+    coldVids.insert(vid);
+
+    m_client->setDummyAsicStateObject(vid);
+
+    m_client->saveColdBootDiscoveredVids(m_switch_vid, coldVids);
+
+    SWSS_LOG_NOTICE("put switch internal discovered rid %s to Asic View and COLDVIDS", 
+                    sai_serialize_object_id(rid).c_str());
+
 }
 
 void SaiSwitch::redisSaveColdBootDiscoveredVids() const
