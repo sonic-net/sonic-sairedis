@@ -1244,15 +1244,6 @@ void Syncd::sendApiResponse(
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        /*
-         * TODO: If api fill fail in sync mode, we need to take some actions to
-         * handle that, and those are not trivial tasks:
-         *
-         * - in case create fail, remove object from redis database
-         * - in case remove fail, bring back removed object to database
-         * - in case set fail, bring back previous value if it was set
-         */
-
         SWSS_LOG_ERROR("api %s failed in syncd mode: %s, FIXME",
                     sai_serialize_common_api(api).c_str(),
                     sai_serialize_status(status).c_str());
