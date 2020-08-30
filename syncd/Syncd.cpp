@@ -802,6 +802,64 @@ sai_status_t Syncd::processBulkEntry(
 
     sai_status_t all = SAI_STATUS_SUCCESS;
 
+#ifdef SAI_SUPPORT_BULK_API
+    std::vector<sai_object_meta_key_t> metaKeys(objectIds.size());
+    std::vector<uint32_t> attr_counts(objectIds.size());
+
+    std::vector<const sai_attribute_t*> attr_lists(objectIds.size());
+    for (size_t idx = 0; idx < objectIds.size(); idx++) {
+        metaKeys[idx].objecttype = objectType;
+
+        switch (objectType)
+        {
+            case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+                sai_deserialize_route_entry(objectIds[idx], metaKeys[idx].objectkey.key.route_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_FDB_ENTRY:
+                sai_deserialize_fdb_entry(objectIds[idx], metaKeys[idx].objectkey.key.fdb_entry);
+                break;
+
+            default:
+                SWSS_LOG_THROW("object %s not implemented, FIXME", sai_serialize_object_type(objectType).c_str());
+        }
+        m_translator->translateVidToRid(metaKeys[idx]);
+
+        attr_counts[idx] = attributes[idx]->get_attr_count();
+        attr_lists[idx] = attributes[idx]->get_attr_list();
+    }
+
+    sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
+
+    switch (api)
+    {
+        case SAI_COMMON_API_BULK_CREATE:
+            all = m_vendorSai->bulkCreate(metaKeys.data(), SAI_NULL_OBJECT_ID, (uint32_t)objectIds.size(), attr_counts.data(),
+                                            attr_lists.data(), mode, statuses.data());
+            break;
+
+        case SAI_COMMON_API_BULK_REMOVE:
+            all = m_vendorSai->bulkRemove(metaKeys.data(), (uint32_t)objectIds.size(), mode, statuses.data());
+            break;
+
+        case SAI_COMMON_API_BULK_SET:
+            all = m_vendorSai->bulkSet(metaKeys.data(), (uint32_t)objectIds.size(),
+                                             attr_lists[0], mode, statuses.data());
+            break;
+
+        default:
+            SWSS_LOG_THROW("api %d is not supported in bulk mode", api);
+    }
+
+    if (all != SAI_STATUS_NOT_SUPPORTED && all != SAI_STATUS_NOT_IMPLEMENTED) {
+        sendApiResponse(api, all, (uint32_t)objectIds.size(), statuses.data());
+
+        syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+
+        return all;
+    }
+#endif
+
     for (size_t idx = 0; idx < objectIds.size(); ++idx)
     {
         sai_object_meta_key_t metaKey;

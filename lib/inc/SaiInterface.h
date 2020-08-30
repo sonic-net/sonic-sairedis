@@ -203,6 +203,30 @@ namespace sairedis
                     _In_ uint32_t attr_count,
                     _Inout_ sai_attribute_t *attr_list);
 
+        public: // bulk QUAD meta key
+
+            virtual sai_status_t bulkCreate(
+                    _Inout_ sai_object_meta_key_t* metaKey,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t object_count,
+                    _In_ uint32_t *attr_count,
+                    _In_ const sai_attribute_t **attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
+            virtual sai_status_t bulkRemove(
+                    _Inout_ sai_object_meta_key_t* metaKey,
+                    _In_ uint32_t object_count,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
+            virtual sai_status_t bulkSet(
+                    _Inout_ sai_object_meta_key_t* metaKey,
+                    _In_ uint32_t object_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
         public: // stats API
 
             virtual sai_status_t getStats(

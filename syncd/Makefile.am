@@ -68,6 +68,11 @@ syncd_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
 libSyncd_a_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
 endif
 
+if sonic_asic_platform_barefoot
+syncd_CPPFLAGS += -DSAI_SUPPORT_BULK_API
+libSyncd_a_CPPFLAGS += -DSAI_SUPPORT_BULK_API
+endif
+
 libSyncdRequestShutdown_a_SOURCES = \
 								 RequestShutdown.cpp \
 								 RequestShutdownCommandLineOptions.cpp \
