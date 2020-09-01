@@ -10,6 +10,7 @@
 
 #include <set>
 #include <unordered_set>
+#include <vector>
 
 #define SAI_VS_FDB_INFO "SAI_VS_FDB_INFO"
 
@@ -186,6 +187,28 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _Out_ sai_attribute_t *attr_list);
 
+            virtual sai_status_t bulkCreate(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const uint32_t *attr_count,
+                    _In_ const sai_attribute_t **attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
+            virtual sai_status_t bulkRemove(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
+            virtual sai_status_t bulkSet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const sai_attribute_t *attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
         protected:
 
             virtual sai_status_t remove_internal(
@@ -328,7 +351,7 @@ namespace saivs
 
             sai_status_t removeHostif(
                     _In_ sai_object_id_t objectId);
-            
+
             sai_status_t vs_remove_hostif_tap_interface(
                     _In_ sai_object_id_t hostif_id);
 

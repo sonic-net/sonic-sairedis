@@ -980,7 +980,9 @@ sai_status_t VirtualSwitchSaiInterface::bulkRemove(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    auto ss = m_switchStateMap.at(switchId);
+
+    return ss->bulkRemove(object_type, serialized_object_ids, mode, object_statuses);
 }
 
 sai_status_t VirtualSwitchSaiInterface::bulkRemove(
@@ -1147,7 +1149,9 @@ sai_status_t VirtualSwitchSaiInterface::bulkSet(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    auto ss = m_switchStateMap.at(switchId);
+
+    return ss->bulkSet(object_type, serialized_object_ids, attr_list, mode, object_statuses);
 }
 
 sai_status_t VirtualSwitchSaiInterface::bulkCreate(
@@ -1192,9 +1196,9 @@ sai_status_t VirtualSwitchSaiInterface::bulkCreate(
 {
     SWSS_LOG_ENTER();
 
-    // support mode !
+    auto ss = m_switchStateMap.at(switchId);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return ss->bulkCreate(switchId, object_type, serialized_object_ids, attr_count, attr_list, mode, object_statuses);;
 }
 
 sai_status_t VirtualSwitchSaiInterface::bulkCreate(

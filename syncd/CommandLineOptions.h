@@ -68,6 +68,8 @@ namespace syncd
 
             bool m_enableSyncMode;
 
+            bool m_enableSaiBulkSupport;
+
             sai_start_type_t m_startType;
 
             std::string m_profileMapFile;

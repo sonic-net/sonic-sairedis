@@ -629,6 +629,142 @@ sai_status_t SwitchStateBase::get(
     return final_status;
 }
 
+sai_status_t SwitchStateBase::bulkCreate(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+
+    if (!object_count || !attr_count || !attr_list || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    uint32_t it;
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = create_internal(object_type, serialized_object_ids[it], switch_id, attr_count[it], attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to create object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
+sai_status_t SwitchStateBase::bulkRemove(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+
+    if (!object_count || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    uint32_t it;
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = remove_internal(object_type, serialized_object_ids[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to remove object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
+sai_status_t SwitchStateBase::bulkSet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+
+    if (!object_count || !attr_list || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    uint32_t it;
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = set_internal(object_type, serialized_object_ids[it], &attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set attribute for object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
 static int get_default_gw_mac_address(
         _Out_ sai_mac_t& mac)
 {
