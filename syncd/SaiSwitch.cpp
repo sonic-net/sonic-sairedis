@@ -748,7 +748,8 @@ std::set<sai_object_id_t> SaiSwitch::getWarmBootDiscoveredVids() const
     return m_warmBootDiscoveredVids;
 }
 
-void SaiSwitch::redisSaveInternalOids(_In_ sai_object_id_t rid) const
+void SaiSwitch::redisSaveInternalOids(
+                                      _In_ sai_object_id_t rid) const
 {
     SWSS_LOG_ENTER();
 
@@ -762,7 +763,10 @@ void SaiSwitch::redisSaveInternalOids(_In_ sai_object_id_t rid) const
      * in ColdVid Table discovered as cold or warm boot.
      * Please note it is possible to discover new Switch internal OID in warm-boot also
      * if SAI gets upgraded as part of warm-boot so we are adding to ColdVid also
-     * so that comparison logic do not remove this OID in warm-boot case */
+     * so that comparison logic do not remove this OID in warm-boot case. One example
+     * is SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID which is discovered in warm-boot 
+     * when upgrading to new SAI Version*/
+
 
     m_client->setDummyAsicStateObject(vid);
 
