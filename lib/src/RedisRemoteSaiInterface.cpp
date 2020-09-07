@@ -77,9 +77,9 @@ sai_status_t RedisRemoteSaiInterface::initialize(
             m_dbAsic,
             std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
 
-    auto db = m_redisChannel->getDbConnector();
+    m_db = std::make_shared<swss::DBConnector>(m_dbAsic, 0);
 
-    m_redisVidIndexGenerator = std::make_shared<RedisVidIndexGenerator>(db, REDIS_KEY_VIDCOUNTER);
+    m_redisVidIndexGenerator = std::make_shared<RedisVidIndexGenerator>(m_db, REDIS_KEY_VIDCOUNTER);
 
     clear_local_state();
 

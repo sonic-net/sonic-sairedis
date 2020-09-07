@@ -456,6 +456,8 @@ namespace sairedis
 
             std::shared_ptr<VirtualObjectIdManager> m_virtualObjectIdManager;
 
+            std::shared_ptr<swss::DBConnector> m_db;
+
             std::shared_ptr<RedisVidIndexGenerator> m_redisVidIndexGenerator;
 
             std::weak_ptr<saimeta::Meta> m_meta;
