@@ -16,8 +16,8 @@ using namespace sairedis;
 
 RedisChannel::RedisChannel(
         _In_ const std::string& dbAsic,
-        _In_ Callback callback):
-    m_callback(callback),
+        _In_ Channel::Callback callback):
+    Channel(callback),
     m_dbAsic(dbAsic)
 {
     SWSS_LOG_ENTER();
@@ -48,7 +48,11 @@ RedisChannel::~RedisChannel()
     // notify thread that it should end
     m_notificationThreadShouldEndEvent.notify();
 
+    SWSS_LOG_NOTICE("join ntf thread begin");
+
     m_notificationThread->join();
+
+    SWSS_LOG_NOTICE("join ntf thread end");
 }
 
 std::shared_ptr<swss::DBConnector> RedisChannel::getDbConnector() const
@@ -210,4 +214,3 @@ sai_status_t RedisChannel::wait(
 
     return SAI_STATUS_FAILURE;
 }
-

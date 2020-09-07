@@ -10,6 +10,7 @@ lib_LTLIBRARIES = libsairedis.la
 
 noinst_LIBRARIES = libSaiRedis.a
 libSaiRedis_a_SOURCES = \
+						 Channel.cpp \
 						 Context.cpp \
 						 ContextConfigContainer.cpp \
 						 ContextConfig.cpp \
