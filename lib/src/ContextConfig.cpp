@@ -16,7 +16,8 @@ ContextConfig::ContextConfig(
     m_dbAsic(dbAsic),
     m_dbCounters(dbCounters),
     m_dbFlex(dbFlex),
-    m_dbState(dbState)
+    m_dbState(dbState),
+    m_zmqEnable(false)
 {
     SWSS_LOG_ENTER();
 
