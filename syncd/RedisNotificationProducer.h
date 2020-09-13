@@ -1,6 +1,5 @@
 #pragma once
 
-#include "RedisNotificationProducer.h"
 #include "NotificationProducerBase.h"
 
 #include "swss/dbconnector.h"
@@ -32,4 +31,3 @@ namespace syncd
             std::shared_ptr<swss::NotificationProducer> m_notificationProducer;
     };
 }
-

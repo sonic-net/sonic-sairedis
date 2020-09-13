@@ -16,6 +16,7 @@ endif
 
 noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
 libSyncd_a_SOURCES = \
+				ZeroMQNotificationProducer.cpp \
 				RedisNotificationProducer.cpp \
 				Syncd.cpp \
 				BreakConfig.cpp \
@@ -85,5 +86,5 @@ syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a ../lib/src/libSaiRedis.
 tests_SOURCES = tests.cpp
 
 tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta
+tests_LDADD = libSyncd.a -lzmq -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta
 TESTS = tests

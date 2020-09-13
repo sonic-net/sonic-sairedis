@@ -10,6 +10,7 @@
 #include "ContextConfigContainer.h"
 #include "BreakConfigParser.h"
 #include "RedisNotificationProducer.h"
+#include "ZeroMQNotificationProducer.h"
 
 #include "sairediscommon.h"
 
@@ -68,7 +69,14 @@ Syncd::Syncd(
 
     m_dbAsic = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
 
-    m_notifications = std::make_shared<RedisNotificationProducer>(m_contextConfig->m_dbAsic);
+    if (m_contextConfig->m_zmqEnable)
+    {
+        m_notifications = std::make_shared<ZeroMQNotificationProducer>(m_contextConfig->m_zmqNtfEndpoint);
+    }
+    else
+    {
+        m_notifications = std::make_shared<RedisNotificationProducer>(m_contextConfig->m_dbAsic);
+    }
 
     m_client = std::make_shared<RedisClient>(m_dbAsic);
 
