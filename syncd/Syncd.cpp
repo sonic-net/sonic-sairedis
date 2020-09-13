@@ -9,6 +9,7 @@
 #include "WarmRestartTable.h"
 #include "ContextConfigContainer.h"
 #include "BreakConfigParser.h"
+#include "RedisNotificationProducer.h"
 
 #include "sairediscommon.h"
 
@@ -67,9 +68,7 @@ Syncd::Syncd(
 
     m_dbAsic = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
 
-    m_dbNtf = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
-
-    m_notifications = std::make_shared<swss::NotificationProducer>(m_dbNtf.get(), REDIS_TABLE_NOTIFICATIONS);
+    m_notifications = std::make_shared<RedisNotificationProducer>(m_contextConfig->m_dbAsic);
 
     m_client = std::make_shared<RedisClient>(m_dbAsic);
 

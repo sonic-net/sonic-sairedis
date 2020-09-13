@@ -16,6 +16,7 @@ endif
 
 noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
 libSyncd_a_SOURCES = \
+				RedisNotificationProducer.cpp \
 				Syncd.cpp \
 				BreakConfig.cpp \
 				BreakConfigParser.cpp \

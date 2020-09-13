@@ -15,6 +15,7 @@
 #include "RequestShutdown.h"
 #include "ContextConfig.h"
 #include "BreakConfig.h"
+#include "NotificationProducerBase.h"
 
 #include "meta/SaiAttributeList.h"
 
@@ -438,8 +439,6 @@ namespace syncd
 
             std::shared_ptr<swss::DBConnector> m_dbAsic;
 
-            std::shared_ptr<swss::DBConnector> m_dbNtf;
-
             std::shared_ptr<swss::ConsumerTable> m_asicState;
 
             std::shared_ptr<swss::NotificationConsumer> m_restartQuery;
@@ -448,7 +447,7 @@ namespace syncd
             std::shared_ptr<swss::ConsumerTable> m_flexCounter;
             std::shared_ptr<swss::ConsumerTable> m_flexCounterGroup;
 
-            std::shared_ptr<swss::NotificationProducer> m_notifications;
+            std::shared_ptr<NotificationProducerBase> m_notifications;
 
             std::shared_ptr<sairedis::SwitchConfigContainer> m_switchConfigContainer;
             std::shared_ptr<sairedis::RedisVidIndexGenerator> m_redisVidIndexGenerator;
