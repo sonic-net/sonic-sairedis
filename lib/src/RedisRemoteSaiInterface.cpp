@@ -5,6 +5,7 @@
 #include "VirtualObjectIdManager.h"
 #include "SkipRecordAttrContainer.h"
 #include "SwitchContainer.h"
+#include "ZeroMQChannel.h"
 
 #include "sairediscommon.h"
 
@@ -69,9 +70,19 @@ sai_status_t RedisRemoteSaiInterface::initialize(
     m_useTempView = false;
     m_syncMode = false;
 
-    m_communicationChannel = std::make_shared<RedisChannel>(
-            m_contextConfig->m_dbAsic,
-            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+    if (m_contextConfig->m_zmqEnable)
+    {
+        m_communicationChannel = std::make_shared<ZeroMQChannel>(
+                m_contextConfig->m_zmqEndpoint,
+                m_contextConfig->m_zmqNtfEndpoint,
+                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+    }
+    else
+    {
+        m_communicationChannel = std::make_shared<RedisChannel>(
+                m_contextConfig->m_dbAsic,
+                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+    }
 
     m_db = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
 
