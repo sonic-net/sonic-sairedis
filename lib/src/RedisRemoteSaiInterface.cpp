@@ -76,6 +76,10 @@ sai_status_t RedisRemoteSaiInterface::initialize(
                 m_contextConfig->m_zmqEndpoint,
                 m_contextConfig->m_zmqNtfEndpoint,
                 std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+        SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
+
+        m_syncMode = true;
     }
     else
     {
@@ -350,6 +354,13 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
         case SAI_REDIS_SWITCH_ATTR_SYNC_MODE:
 
             m_syncMode = attr->value.booldata;
+
+            if (m_contextConfig->m_zmqEnable)
+            {
+                SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
+
+                m_syncMode = true;
+            }
 
             if (m_syncMode)
             {
