@@ -59,7 +59,7 @@ libSyncd_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS) -s
 
 syncd_SOURCES = main.cpp
 syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
-syncd_LDADD = libSyncd.a ../lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread
+syncd_LDADD = libSyncd.a ../lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lzmq -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread
 
 if SAITHRIFT
 libSyncd_a_CPPFLAGS += -DSAITHRIFT=yes
