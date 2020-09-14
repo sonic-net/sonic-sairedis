@@ -11,6 +11,7 @@
 #include "BreakConfigParser.h"
 #include "RedisNotificationProducer.h"
 #include "ZeroMQNotificationProducer.h"
+#include "RedisSelectableChannel.h"
 
 #include "sairediscommon.h"
 
@@ -80,6 +81,15 @@ Syncd::Syncd(
     else
     {
         m_notifications = std::make_shared<RedisNotificationProducer>(m_contextConfig->m_dbAsic);
+
+        bool modifyRedis = m_commandLineOptions->m_enableSyncMode ? false : true;
+
+        m_selectableChannel = std::make_shared<RedisSelectableChannel>(
+                m_dbAsic,
+                ASIC_STATE_TABLE,
+                REDIS_TABLE_GETRESPONSE,
+                TEMP_PREFIX,
+                modifyRedis);
     }
 
     m_client = std::make_shared<RedisClient>(m_dbAsic);
@@ -95,10 +105,7 @@ Syncd::Syncd(
 
     m_handler->setSwitchNotifications(m_sn.getSwitchNotifications());
 
-    m_asicState = std::make_shared<swss::ConsumerTable>(m_dbAsic.get(), ASIC_STATE_TABLE);
     m_restartQuery = std::make_shared<swss::NotificationConsumer>(m_dbAsic.get(), SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY);
-
-    m_asicState->setModifyRedis(m_commandLineOptions->m_enableSyncMode ? false : true);
 
     // TODO to be moved to ASIC_DB
     m_dbFlexCounter = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbFlex, 0);
@@ -118,14 +125,6 @@ Syncd::Syncd(
     m_translator = std::make_shared<VirtualOidTranslator>(m_client, m_virtualObjectIdManager,  vendorSai);
 
     m_processor->m_translator = m_translator; // TODO as param
-
-    /*
-     * At the end we cant use producer consumer concept since if one process
-     * will restart there may be something in the queue also "remove" from
-     * response queue will also trigger another "response".
-     */
-
-    m_getResponse  = std::make_shared<swss::ProducerTable>(m_dbAsic.get(), REDIS_TABLE_GETRESPONSE);
 
     m_veryFirstRun = isVeryFirstRun();
 
@@ -235,7 +234,7 @@ bool Syncd::isInitViewMode() const
 }
 
 void Syncd::processEvent(
-        _In_ swss::ConsumerTable &consumer)
+        _In_ SelectableChannel& consumer)
 {
     SWSS_LOG_ENTER();
 
@@ -245,20 +244,13 @@ void Syncd::processEvent(
     {
         swss::KeyOpFieldsValuesTuple kco;
 
-        if (isInitViewMode())
-        {
-            /*
-             * In init mode we put all data to TEMP view and we snoop.  We need
-             * to specify temporary view prefix in consumer since consumer puts
-             * data to redis db.
-             */
+        /*
+         * In init mode we put all data to TEMP view and we snoop.  We need
+         * to specify temporary view prefix in consumer since consumer puts
+         * data to redis db.
+         */
 
-            consumer.pop(kco, TEMP_PREFIX);
-        }
-        else
-        {
-            consumer.pop(kco);
-        }
+        consumer.pop(kco, isInitViewMode());
 
         processSingleEvent(kco);
     }
@@ -345,7 +337,7 @@ sai_status_t Syncd::processAttrCapabilityQuery(
     {
         SWSS_LOG_ERROR("Invalid input: expected 2 arguments, received %zu", values.size());
 
-        m_getResponse->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
+        m_selectableChannel->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -375,7 +367,7 @@ sai_status_t Syncd::processAttrCapabilityQuery(
             capability.create_implemented, capability.set_implemented, capability.get_implemented);
     }
 
-    m_getResponse->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
 
     return status;
 }
@@ -398,7 +390,7 @@ sai_status_t Syncd::processAttrEnumValuesCapabilityQuery(
     {
         SWSS_LOG_ERROR("Invalid input: expected 3 arguments, received %zu", values.size());
 
-        m_getResponse->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
+        m_selectableChannel->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -442,7 +434,7 @@ sai_status_t Syncd::processAttrEnumValuesCapabilityQuery(
         SWSS_LOG_DEBUG("Sending response: capabilities = '%s', count = %d", strCap.c_str(), enumCapList.count);
     }
 
-    m_getResponse->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
 
     return status;
 }
@@ -495,7 +487,7 @@ sai_status_t Syncd::processObjectTypeGetAvailabilityQuery(
         SWSS_LOG_DEBUG("Sending response: count = %lu", count);
     }
 
-    m_getResponse->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE);
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE);
 
     return status;
 }
@@ -534,7 +526,7 @@ sai_status_t Syncd::processFdbFlush(
 
     sai_status_t status = m_vendorSai->flushFdbEntries(switchRid, attr_count, attr_list);
 
-    m_getResponse->set(sai_serialize_status(status), {} , REDIS_ASIC_STATE_COMMAND_FLUSHRESPONSE);
+    m_selectableChannel->set(sai_serialize_status(status), {} , REDIS_ASIC_STATE_COMMAND_FLUSHRESPONSE);
 
     return status;
 }
@@ -574,7 +566,7 @@ sai_status_t Syncd::processClearStatsEvent(
             (uint32_t)counter_ids.size(),
             counter_ids.data());
 
-    m_getResponse->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+    m_selectableChannel->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
 
     return status;
 }
@@ -635,7 +627,7 @@ sai_status_t Syncd::processGetStatsEvent(
         }
     }
 
-    m_getResponse->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
 
     return status;
 }
@@ -1278,7 +1270,7 @@ void Syncd::sendApiResponse(
             sai_serialize_common_api(api).c_str(),
             strStatus.c_str());
 
-    m_getResponse->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+    m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
 
     SWSS_LOG_INFO("response for %s api was send",
             sai_serialize_common_api(api).c_str());
@@ -2116,7 +2108,7 @@ void Syncd::sendGetResponse(
      * response will not put any data to table, only queue is used.
      */
 
-    m_getResponse->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+    m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
 
     SWSS_LOG_INFO("response for GET api was send");
 }
@@ -2599,7 +2591,7 @@ void Syncd::sendNotifyResponse(
 
     SWSS_LOG_INFO("sending response: %s", strStatus.c_str());
 
-    m_getResponse->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_NOTIFY);
+    m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_NOTIFY);
 }
 
 void Syncd::clearTempView()
@@ -3641,7 +3633,7 @@ void Syncd::run()
 
         SWSS_LOG_NOTICE("syncd listening for events");
 
-        s->addSelectable(m_asicState.get());
+        s->addSelectable(m_selectableChannel.get());
         s->addSelectable(m_restartQuery.get());
         s->addSelectable(m_flexCounter.get());
         s->addSelectable(m_flexCounterGroup.get());
@@ -3682,11 +3674,11 @@ void Syncd::run()
                  * lead to unable to find some objects.
                  */
 
-                SWSS_LOG_NOTICE("is asic queue empty: %d", m_asicState->empty());
+                SWSS_LOG_NOTICE("is asic queue empty: %d", m_selectableChannel->empty());
 
-                while (!m_asicState->empty())
+                while (!m_selectableChannel->empty())
                 {
-                    processEvent(*m_asicState.get());
+                    processEvent(*m_selectableChannel.get());
                 }
 
                 SWSS_LOG_NOTICE("drained queue");
@@ -3752,9 +3744,9 @@ void Syncd::run()
             {
                 processFlexCounterGroupEvent(*(swss::ConsumerTable*)sel);
             }
-            else if (sel == m_asicState.get())
+            else if (sel == m_selectableChannel.get())
             {
-                processEvent(*(swss::ConsumerTable*)sel);
+                processEvent(*m_selectableChannel.get());
             }
             else
             {
