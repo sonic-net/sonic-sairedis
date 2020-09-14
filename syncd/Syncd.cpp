@@ -72,6 +72,10 @@ Syncd::Syncd(
     if (m_contextConfig->m_zmqEnable)
     {
         m_notifications = std::make_shared<ZeroMQNotificationProducer>(m_contextConfig->m_zmqNtfEndpoint);
+
+        SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
+
+        m_commandLineOptions->m_enableSyncMode = true;
     }
     else
     {
