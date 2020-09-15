@@ -1,11 +1,6 @@
 #include "Channel.h"
 
-#include "sairediscommon.h"
-
-#include "meta/sai_serialize.h"
-
 #include "swss/logger.h"
-#include "swss/select.h"
 
 using namespace sairedis;
 

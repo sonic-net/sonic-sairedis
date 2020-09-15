@@ -1,12 +1,6 @@
 #pragma once
 
 #include "Channel.h"
-#include "RemoteSaiInterface.h"
-#include "SwitchContainer.h"
-#include "VirtualObjectIdManager.h"
-#include "Notification.h"
-#include "Recorder.h"
-#include "SkipRecordAttrContainer.h"
 
 #include "swss/producertable.h"
 #include "swss/consumertable.h"

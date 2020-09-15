@@ -1,16 +1,14 @@
 #pragma once
 
-#include "RemoteSaiInterface.h"
-#include "SwitchContainer.h"
-#include "VirtualObjectIdManager.h"
-#include "Notification.h"
-#include "Recorder.h"
-#include "SkipRecordAttrContainer.h"
-
 #include "swss/producertable.h"
 #include "swss/consumertable.h"
 #include "swss/notificationconsumer.h"
 #include "swss/selectableevent.h"
+#include "swss/sal.h"
+
+extern "C" {
+#include "sai.h"
+}
 
 #include <memory>
 #include <functional>
