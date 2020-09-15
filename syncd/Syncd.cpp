@@ -12,6 +12,7 @@
 #include "RedisNotificationProducer.h"
 #include "ZeroMQNotificationProducer.h"
 #include "RedisSelectableChannel.h"
+#include "ZeroMQSelectableChannel.h"
 
 #include "sairediscommon.h"
 
@@ -77,6 +78,8 @@ Syncd::Syncd(
         SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
 
         m_commandLineOptions->m_enableSyncMode = true;
+
+        m_selectableChannel = std::make_shared<ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint);
     }
     else
     {

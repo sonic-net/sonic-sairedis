@@ -16,6 +16,7 @@ endif
 
 noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
 libSyncd_a_SOURCES = \
+				ZeroMQSelectableChannel.cpp \
 				RedisSelectableChannel.cpp \
 				SelectableChannel.cpp \
 				ZeroMQNotificationProducer.cpp \
