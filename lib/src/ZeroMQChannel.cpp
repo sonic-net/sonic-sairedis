@@ -44,7 +44,7 @@ ZeroMQChannel::ZeroMQChannel(
 
     int rc = zmq_connect(m_socket, endpoint.c_str());
 
-    if (rc == 0)
+    if (rc != 0)
     {
         SWSS_LOG_THROW("failed to open zmq main endpoint %s, zmqerrno: %d",
                 endpoint.c_str(),
@@ -61,7 +61,7 @@ ZeroMQChannel::ZeroMQChannel(
 
     rc = zmq_connect(m_ntfSocket, ntfEndpoint.c_str());
 
-    if (rc == 0)
+    if (rc != 0)
     {
         SWSS_LOG_THROW("failed to open zmq ntf endpoint %s, zmqerrno: %d",
                 ntfEndpoint.c_str(),
@@ -70,7 +70,7 @@ ZeroMQChannel::ZeroMQChannel(
 
     rc = zmq_setsockopt(m_ntfSocket, ZMQ_SUBSCRIBE, "", 0);
 
-    if (rc == 0)
+    if (rc != 0)
     {
         SWSS_LOG_THROW("failed to set sock opt ZMQ_SUBSCRIBE on ntf endpoint %s, zmqerrno: %d",
                 ntfEndpoint.c_str(),
@@ -199,7 +199,7 @@ void ZeroMQChannel::set(
 
     swss::FieldValueTuple opdata(key, command);
 
-    copy.push_back(opdata);
+    copy.insert(copy.begin(), opdata);
 
     std::string msg = swss::JSon::buildJson(copy);
 
@@ -225,7 +225,7 @@ void ZeroMQChannel::del(
 
     swss::FieldValueTuple opdata(key, command);
 
-    values.push_back(opdata);
+    values.insert(values.begin(), opdata);
 
     std::string msg = swss::JSon::buildJson(values);
 
@@ -268,7 +268,7 @@ sai_status_t ZeroMQChannel::wait(
 
     if (rc < 0)
     {
-        SWSS_LOG_THROW("zmq_pool failed, zmqerrno: %d", zmq_errno());
+        SWSS_LOG_THROW("zmq_poll failed, zmqerrno: %d", zmq_errno());
     }
 
     rc = zmq_recv(m_socket, m_buffer.data(), ZMQ_RESPONSE_BUFFER_SIZE, 0);
@@ -295,8 +295,8 @@ sai_status_t ZeroMQChannel::wait(
 
     swss::FieldValueTuple fvt = values.at(0);
 
-    const std::string& op = fvField(fvt);
-    const std::string& opkey= fvValue(fvt);
+    const std::string& opkey = fvField(fvt);
+    const std::string& op= fvValue(fvt);
 
     values.erase(values.begin());
 
@@ -312,7 +312,7 @@ sai_status_t ZeroMQChannel::wait(
         // as well, if there will be multiple "GET" messages, then
         // we can receive response from not the expected GET
 
-        SWSS_LOG_THROW("got not expected response: %s:%s", opkey.c_str(), op.c_str());
+        SWSS_LOG_THROW("got not expected response: %s:%s, expected: %s", opkey.c_str(), op.c_str(), command.c_str());
     }
 
     sai_status_t status;
