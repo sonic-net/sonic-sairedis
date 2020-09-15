@@ -19,7 +19,7 @@ ZeroMQNotificationProducer::ZeroMQNotificationProducer(
 
     int rc = zmq_connect(m_ntfSocket, ntfEndpoint.c_str());
 
-    if (rc == 0)
+    if (rc != 0)
     {
         SWSS_LOG_THROW("failed to open zmq ntf endpoint %s, zmqerrno: %d",
                 ntfEndpoint.c_str(),
