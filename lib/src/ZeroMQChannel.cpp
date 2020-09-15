@@ -136,7 +136,7 @@ void ZeroMQChannel::notificationThreadFunction()
         {
             SWSS_LOG_ERROR("zmq_recv failed, zmqerrno: %d", zmq_errno());
 
-            // at this point we don't know if next zmq_recv wil succeed
+            // at this point we don't know if next zmq_recv will succeed
 
             continue;
         }
@@ -260,7 +260,7 @@ sai_status_t ZeroMQChannel::wait(
     {
         SWSS_LOG_ERROR("zmq_poll timed out for: %s", command.c_str());
 
-        // notice, at this point we could throw, since in REP/REQ patern
+        // notice, at this point we could throw, since in REP/REQ pattern
         // we are forced to use send/recv in that specific order
 
         return SAI_STATUS_FAILURE;
