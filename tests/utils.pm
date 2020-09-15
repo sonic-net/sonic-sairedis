@@ -83,17 +83,34 @@ sub request_warm_shutdown
 
 sub play_common
 {
-    my $sync = shift;
-    my $file = shift;
-    my $asicop = shift;
+    my @params = @_;
 
-    print color('bright_blue') . "Replay $file" . color('reset') . "\n";
+    my $len = @params;
 
-    my @ret = `../saiplayer/saiplayer $sync -u "$DIR/$file"`;
+    my $asicop = $params[$len-1];
+
+    if ($asicop =~ /^\d+$/)
+    {
+        pop@params;
+        $len = @params;
+    }
+    else
+    {
+        undef $asicop;
+    }
+
+    for (my $i = 0; $i < $len; $i++)
+    {
+        $params[$i] = "$DIR/$params[$i]" if $params[$i] =~ /\.rec$/;
+    }
+
+    print color('bright_blue') . "Replay @params" . color('reset') . "\n";
+
+    my @ret = `../saiplayer/saiplayer -u @params`;
 
     if ($? != 0)
     {
-        print color('red') . "player $DIR/$file: exitcode: $?:" . color('reset') . "\n";
+        print color('red') . "player @params: exitcode: $?:" . color('reset') . "\n";
         exit 1;
     }
 
@@ -125,7 +142,7 @@ sub play_common
 
 sub play
 {
-    play_common "", @_;
+    play_common @_;
 }
 
 sub sync_play
