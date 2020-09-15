@@ -4,8 +4,11 @@
 #include "swss/json.h"
 
 #include <zmq.h>
+#include <unistd.h>
 
 #define ZMQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
+
+#define ZMQ_POLL_TIMEOUT (60*1000)
 
 using namespace syncd;
 
@@ -14,7 +17,9 @@ ZeroMQSelectableChannel::ZeroMQSelectableChannel(
     m_endpoint(endpoint),
     m_context(nullptr),
     m_socket(nullptr),
-    m_fd(0)
+    m_fd(0),
+    m_allowZmqPoll(false),
+    m_runThread(true)
 {
     SWSS_LOG_ENTER();
 
@@ -43,14 +48,92 @@ ZeroMQSelectableChannel::ZeroMQSelectableChannel(
                 endpoint.c_str(),
                 zmq_errno());
     }
+
+    m_zmlPollThread = std::make_shared<std::thread>(&ZeroMQSelectableChannel::zmqPollThread, this);
 }
 
 ZeroMQSelectableChannel::~ZeroMQSelectableChannel()
 {
     SWSS_LOG_ENTER();
 
+    m_runThread = false;
+    m_allowZmqPoll = true;
+
     zmq_close(m_socket);
     zmq_ctx_destroy(m_context);
+
+    SWSS_LOG_NOTICE("ending zmq poll thread");
+
+    m_zmlPollThread = nullptr;
+
+    SWSS_LOG_NOTICE("ended zmq poll thread");
+}
+
+void ZeroMQSelectableChannel::zmqPollThread()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("begin");
+
+    while (m_runThread)
+    {
+        zmq_pollitem_t items [1] = { };
+
+        items[0].socket = m_socket;
+        items[0].events = ZMQ_POLLIN;
+
+        m_allowZmqPoll = false;
+
+        int rc = zmq_poll(items, 1, ZMQ_POLL_TIMEOUT);
+
+        if (rc <= 0 && zmq_errno() == ETERM)
+        {
+            SWSS_LOG_NOTICE("zmq_poll ETERM");
+            break;
+        }
+
+        if (rc == 0)
+        {
+            SWSS_LOG_INFO("zmq_poll: no events, continue");
+            continue;
+        }
+
+        // TODO we should have loop here in case we get multiple events since
+        // zmq poll will only signal events once, but in our case we don't
+        // expect multiple events, since we want to send/receive
+
+        int zmq_events = 0;
+        size_t zmq_events_len = sizeof(zmq_events);
+
+        rc = zmq_getsockopt(m_socket, ZMQ_EVENTS, &zmq_events, &zmq_events_len);
+
+        if (rc != 0)
+        {
+            SWSS_LOG_ERROR("zmq_getsockopt FAILED, zmq_errno: %d", zmq_errno());
+            break;
+        }
+
+        if (rc == 0 && zmq_events & ZMQ_POLLIN)
+        {
+            m_selectableEvent.notify(); // will release epoll
+
+            while (m_runThread && !m_allowZmqPoll)
+            {
+                usleep(10); // could be increased or replaced by spin lock
+
+                //SWSS_LOG_NOTICE("m_allowZmqPoll == false");
+            }
+        }
+        else
+        {
+            // should not happen, we only except ZMQ_POLLIN events
+
+            SWSS_LOG_ERROR("unknown condition: rc: %d, zmq_events: %d, bug?", rc, zmq_events);
+            break;
+        }
+    }
+
+    SWSS_LOG_NOTICE("end");
 }
 
 // SelectableChannel overrides
@@ -58,8 +141,6 @@ ZeroMQSelectableChannel::~ZeroMQSelectableChannel()
 bool ZeroMQSelectableChannel::empty()
 {
     SWSS_LOG_ENTER();
-
-    // TODO
 
     return m_queue.size() == 0;
 }
@@ -104,7 +185,6 @@ void ZeroMQSelectableChannel::set(
 
     swss::FieldValueTuple opdata(key, op);
 
-    //copy.push_back(opdata);
     copy.insert(copy.begin(), opdata);
 
     std::string msg = swss::JSon::buildJson(copy);
@@ -112,6 +192,10 @@ void ZeroMQSelectableChannel::set(
     SWSS_LOG_DEBUG("sending: %s", msg.c_str());
 
     int rc = zmq_send(m_socket, msg.c_str(), msg.length(), 0);
+
+    // at this point we already did send/receive patern, so we can notify
+    // thread taht we can poll again
+    m_allowZmqPoll = true;
 
     if (rc <= 0)
     {
@@ -127,21 +211,15 @@ int ZeroMQSelectableChannel::getFd()
 {
     SWSS_LOG_ENTER();
 
-    return m_fd;
+    return m_selectableEvent.getFd();
 }
 
 uint64_t ZeroMQSelectableChannel::readData()
 {
     SWSS_LOG_ENTER();
 
-//    int zmq_events;
-//    size_t zmq_events_len = sizeof(zmq_events);
-//
-//    int rc1 = zmq_getsockopt(m_socket, ZMQ_EVENTS, &zmq_events, &zmq_events_len);
-//
-//    printf("rc1 = %d\n", rc1);
-//
-//    printf("calling recv\n");
+    // clear selectable event so it could be triggered in next select()
+    m_selectableEvent.readData();
 
     int rc = zmq_recv(m_socket, m_buffer.data(), ZMQ_RESPONSE_BUFFER_SIZE, 0);
 

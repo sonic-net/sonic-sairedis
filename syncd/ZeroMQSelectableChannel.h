@@ -3,8 +3,11 @@
 #include "SelectableChannel.h"
 
 #include "swss/table.h"
+#include "swss/selectableevent.h"
 
 #include <deque>
+#include <thread>
+#include <memory>
 
 namespace syncd
 {
@@ -49,6 +52,10 @@ namespace syncd
 
         private:
 
+            void zmqPollThread();
+
+        private:
+
             std::string m_endpoint;
 
             void* m_context;
@@ -60,5 +67,13 @@ namespace syncd
             std::queue<std::string> m_queue;
 
             std::vector<uint8_t> m_buffer;
+
+            volatile bool m_allowZmqPoll;
+
+            volatile bool m_runThread;
+
+            std::shared_ptr<std::thread> m_zmlPollThread;
+
+            swss::SelectableEvent m_selectableEvent;
     };
 }
