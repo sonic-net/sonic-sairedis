@@ -72,6 +72,8 @@ encap
 endif
 endl
 enum
+epoll
+errno
 ETERM
 eth
 ethernet
@@ -174,6 +176,7 @@ queueId
 QUEUEs
 queueStats
 readonly
+recv
 redis
 Redis
 refactor
@@ -288,4 +291,5 @@ WRED
 www
 xoff
 xon
+zmq
 ZMQ
