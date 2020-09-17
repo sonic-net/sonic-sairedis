@@ -32,7 +32,5 @@ namespace sairedis
             std::shared_ptr<swss::DBConnector> m_dbConnector;
 
             std::string m_vidCounterName;
-
-            std::shared_ptr<swss::RedisClient> m_redisClient;
     };
 }

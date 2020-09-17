@@ -60,7 +60,6 @@ sai_status_t sai_bulk_remove_fdb_entry(
         SWSS_LOG_THROW(format ": %s", ##__VA_ARGS__, sai_serialize_status(status).c_str());
 
 using namespace saimeta;
-static std::shared_ptr<swss::RedisClient>   g_redisClient;
 static std::shared_ptr<swss::DBConnector> g_db1;
 
 static sai_next_hop_group_api_t test_next_hop_group_api;
@@ -89,7 +88,6 @@ void clearDB()
 
     g_db1 = std::make_shared<swss::DBConnector>("ASIC_DB", 0, true);
     swss::RedisReply r(g_db1.get(), "FLUSHALL", REDIS_REPLY_STATUS);
-    g_redisClient = std::make_shared<swss::RedisClient>(g_db1.get());
 
     r.checkStatusOK();
 }
