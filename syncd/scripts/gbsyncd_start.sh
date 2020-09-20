@@ -3,5 +3,5 @@
 # Script to start syncd using supervisord
 #
 
-exec "/usr/bin/physyncd_startup.py"
+exec "/usr/bin/gbsyncd_startup.py"
 
