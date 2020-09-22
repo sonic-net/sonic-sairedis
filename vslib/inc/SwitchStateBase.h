@@ -114,6 +114,9 @@ namespace saivs
             virtual sai_status_t refresh_port_list(
                     _In_ const sai_attr_metadata_t *meta);
 
+            virtual sai_status_t refresh_macsec_sci_in_ingress_macsec_acl(
+                    _In_ sai_object_id_t object_id);
+
         public:
 
             virtual sai_status_t warm_boot_initialize_objects();

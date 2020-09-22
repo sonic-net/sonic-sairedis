@@ -298,6 +298,12 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.aclfield.data.s32, dst_attr.value.aclfield.data.s32);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT64:
+            transfer_primitive(src_attr.value.aclfield.enable, dst_attr.value.aclfield.enable);
+            transfer_primitive(src_attr.value.aclfield.mask.u64, dst_attr.value.aclfield.mask.u64);
+            transfer_primitive(src_attr.value.aclfield.data.u64, dst_attr.value.aclfield.data.u64);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
             transfer_primitive(src_attr.value.aclfield.enable, dst_attr.value.aclfield.enable);
             transfer_primitive(src_attr.value.aclfield.mask.mac, dst_attr.value.aclfield.mask.mac);
@@ -1325,6 +1331,9 @@ std::string sai_serialize_acl_field(
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
             return sai_serialize_enum(field.data.s32, meta.enummetadata) + "&mask:" + sai_serialize_number(field.mask.s32, true);
 
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT64:
+            return sai_serialize_number(field.data.u64) + "&mask:" + sai_serialize_number(field.mask.u64, true);
+
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
             return sai_serialize_mac(field.data.mac) +"&mask:" + sai_serialize_mac(field.mask.mac);
 
@@ -1360,6 +1369,34 @@ std::string sai_serialize_acl_capability(
     auto list = sai_serialize_enum_list(cap.action_list, &sai_metadata_enum_sai_acl_action_type_t, countOnly);
 
     return mandatory + ":" + list;
+}
+
+std::string sai_serialize_hex_binary(const void *buffer, size_t length)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s(2 * length, '0');
+
+    if (buffer == NULL || length == 0)
+    {
+        return s;
+    }
+    const char *input = (const char *)buffer;
+    char *output = &s[0];
+    for (unsigned long long i = 0; i < length; i++)
+    {
+        snprintf(&output[i * 2], 3, "%02X", input[i]);
+    }
+
+    return s;
+}
+
+template <typename T>
+std::string sai_serialize_hex_binary(const T &value)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_hex_binary(&value, sizeof(T));
 }
 
 std::string sai_serialize_attr_value(
@@ -1470,6 +1507,7 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT64:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
@@ -1496,6 +1534,19 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
             return sai_serialize_acl_capability(meta, attr.value.aclcapability, countOnly);
+
+            // MACsec Attributions
+
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:
+            return sai_serialize_hex_binary(attr.value.macsecsak);
+        case SAI_ATTR_VALUE_TYPE_MACSEC_AUTH_KEY:
+            return sai_serialize_hex_binary(attr.value.macsecauthkey);
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SALT:
+            return sai_serialize_hex_binary(attr.value.macsecsalt);
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SCI:
+            return sai_serialize_number(attr.value.u64);
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SSCI:
+            return sai_serialize_number(attr.value.u32);
 
         default:
             SWSS_LOG_THROW("FATAL: invalid serialization type %d", meta.attrvaluetype);
@@ -2422,6 +2473,11 @@ void sai_deserialize_acl_field(
             sai_deserialize_number(smask, field.mask.s32, true);
             return;
 
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT64:
+            sai_deserialize_number(sfield, field.data.u64);
+            sai_deserialize_number(smask, field.mask.u64, true);
+            return;
+
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
             sai_deserialize_mac(sfield, field.data.mac);
             sai_deserialize_mac(smask, field.mask.mac);
@@ -2528,6 +2584,47 @@ void sai_deserialize_acl_capability(
 
     sai_deserialize_bool(mandatory_on_create_str, cap.is_action_list_mandatory);
     sai_deserialize_enum_list(list, &sai_metadata_enum_sai_acl_action_type_t, cap.action_list, false);
+}
+
+void sai_deserialize_hex_binary(const std::string &s, void *buffer, size_t length)
+{
+    SWSS_LOG_ENTER();
+
+    size_t buffer_cur = 0;
+    size_t hex_cur = 0;
+    char *output = static_cast<char *>(buffer);
+    while (buffer_cur < length)
+    {
+        if ((hex_cur + 1) >= s.length())
+        {
+            break;
+        }
+        std::stringstream stream;
+        if (
+            !!!std::isxdigit(static_cast<std::uint8_t>(s[hex_cur]))
+            || !!!std::isxdigit(static_cast<std::uint8_t>(s[hex_cur + 1])))
+        {
+            break;
+        }
+        stream << std::hex;
+        stream << s[hex_cur++];
+        stream << s[hex_cur++];
+        std::uint32_t value;
+        stream >> value;
+        output[buffer_cur++] = static_cast<std::uint8_t>(value);
+    }
+    if (hex_cur != s.length())
+    {
+        SWSS_LOG_THROW("Invalid binary hex %s", s.c_str());
+    }
+}
+
+template<typename T>
+void sai_deserialize_hex_binary(const std::string &s, T &value)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_deserialize_hex_binary(s, &value, sizeof(T));
 }
 
 void sai_deserialize_attr_value(
@@ -2641,6 +2738,7 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT64:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
@@ -2667,6 +2765,17 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
             return sai_deserialize_acl_capability(s, attr.value.aclcapability);
+
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:
+            return sai_deserialize_hex_binary(s, attr.value.macsecsak);
+        case SAI_ATTR_VALUE_TYPE_MACSEC_AUTH_KEY:
+            return sai_deserialize_hex_binary(s, attr.value.macsecauthkey);
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SALT:
+            return sai_deserialize_hex_binary(s, attr.value.macsecsalt);
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SCI:
+            return sai_deserialize_number(s, attr.value.u64);
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SSCI:
+            return sai_deserialize_number(s, attr.value.u32);
 
         default:
             SWSS_LOG_THROW("deserialize type %d is not supportd yet FIXME", meta.attrvaluetype);
@@ -3136,6 +3245,7 @@ void sai_deserialize_free_attribute_value(
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
+        case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT64:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
@@ -3171,6 +3281,13 @@ void sai_deserialize_free_attribute_value(
 
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
             sai_free_list(attr.value.aclcapability.action_list);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:
+        case SAI_ATTR_VALUE_TYPE_MACSEC_AUTH_KEY:
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SALT:
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SCI:
+        case SAI_ATTR_VALUE_TYPE_MACSEC_SSCI:
             break;
 
         default:
