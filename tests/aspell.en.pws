@@ -291,5 +291,6 @@ WRED
 www
 xoff
 xon
+zeromq
 zmq
 ZMQ
