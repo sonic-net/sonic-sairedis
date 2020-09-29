@@ -8,7 +8,7 @@
 
 #define ZMQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
 
-#define ZMQ_POLL_TIMEOUT (60*1000)
+#define ZMQ_POLL_TIMEOUT (2*60*1000)
 
 using namespace syncd;
 
@@ -193,8 +193,8 @@ void ZeroMQSelectableChannel::set(
 
     int rc = zmq_send(m_socket, msg.c_str(), msg.length(), 0);
 
-    // at this point we already did send/receive patern, so we can notify
-    // thread taht we can poll again
+    // at this point we already did send/receive pattern, so we can notify
+    // thread that we can poll again
     m_allowZmqPoll = true;
 
     if (rc <= 0)
