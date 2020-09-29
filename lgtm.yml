@@ -14,7 +14,7 @@ extraction:
       - libpython2.7-dev
       - libgtest-dev
       - dh-exec
-      - libmzq3-dev
+      - libzmq3-dev
       - libzmq5
     after_prepare:
       - ls -l
