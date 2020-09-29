@@ -14,6 +14,12 @@ extern "C" {
 #include <unordered_map>
 #include <memory>
 
+// The following definitions should be moved to schema.h
+
+#define MACSEC_SA_ATTR_ID_LIST              "MACSEC_SA_ATTR_ID_LIST"
+
+// End define
+
 namespace syncd
 {
     class FlexCounter
@@ -158,6 +164,11 @@ namespace syncd
                     _In_ sai_object_id_t priorityGroupRid,
                     _In_ const std::vector<sai_ingress_priority_group_attr_t> &attrIds);
 
+            void setMACsecSAAttrList(
+                    _In_ sai_object_id_t macsecSAVid,
+                    _In_ sai_object_id_t macsecSARid,
+                    _In_ const std::vector<sai_macsec_sa_attr_t> &attrIds);
+
         private: // is counter supported
 
             bool isPortCounterSupported(
@@ -288,6 +299,16 @@ namespace syncd
                 std::vector<sai_router_interface_stat_t> rifCounterIds;
             };
 
+            struct MACsecSAAttrIds
+            {
+                MACsecSAAttrIds(
+                        _In_ sai_object_id_t macsecSA,
+                        _In_ const std::vector<sai_macsec_sa_attr_t> &macsecSAIds);
+
+                sai_object_id_t macsecSAId;
+                std::vector<sai_macsec_sa_attr_t> macsecSAAttrIds;
+            };
+
         private:
 
             void collectCounters(
@@ -340,6 +361,9 @@ namespace syncd
             void collectPriorityGroupAttrs(
                     _In_ swss::Table &countersTable);
 
+            void collectMACsecSAAttrs(
+                    _In_ swss::Table &countersTable);
+
         private:
 
             void addCollectCountersHandler(
@@ -377,6 +401,8 @@ namespace syncd
 
             std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
             std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> m_priorityGroupAttrIdsMap;
+
+            std::map<sai_object_id_t, std::shared_ptr<MACsecSAAttrIds>> m_macsecSAAttrIdsMap;
 
         private:
 

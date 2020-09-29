@@ -7,6 +7,7 @@
 #include "SwitchConfig.h"
 #include "RealObjectIdManager.h"
 #include "EventPayloadNetLinkMsg.h"
+#include "MACsec.h"
 
 #include <set>
 #include <unordered_set>
@@ -392,6 +393,39 @@ namespace saivs
 
             void send_fdb_event_notification(
                     _In_ const sai_fdb_event_notification_data_t& data);
+
+        protected:
+
+            sai_status_t setAclEntry(
+                    _In_ sai_object_id_t entry_id,
+                    _In_ const sai_attribute_t* attr);
+
+            sai_status_t setAclEntryMACsecFlowActive(
+                    _In_ sai_object_id_t entry_id,
+                    _In_ const sai_attribute_t* attr);
+
+            sai_status_t createMACsecSA(
+                    _In_ sai_object_id_t sa_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t removeMACsecSA(
+                    _In_ sai_object_id_t sa_id);
+
+            sai_status_t getACLTable(
+                    _In_ sai_object_id_t entry_id,
+                    _Out_ sai_object_id_t &table_id);
+
+            sai_status_t loadMACsecSAAttr(
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _Out_ MACsecSAAttr &macsec_sa_attr);
+
+            sai_status_t loadMACsecSAAttrs(
+                    _In_ sai_object_id_t entry_id,
+                    _In_ const sai_attribute_t* entry_attr,
+                    _Out_ std::vector<MACsecSAAttr> &macsec_sa_attrs);
 
         protected:
 

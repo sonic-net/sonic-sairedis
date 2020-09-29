@@ -103,6 +103,14 @@ FlexCounter::BufferPoolCounterIds::BufferPoolCounterIds(
     SWSS_LOG_ENTER();
 }
 
+FlexCounter::MACsecSAAttrIds::MACsecSAAttrIds(
+        _In_ sai_object_id_t macsecSA,
+        _In_ const std::vector<sai_macsec_sa_attr_t> &macsecSAIds):
+        macsecSAId(macsecSA), macsecSAAttrIds(macsecSAIds)
+{
+    SWSS_LOG_ENTER();
+}
+
 void FlexCounter::setPollInterval(
         _In_ uint32_t pollInterval)
 {
@@ -434,6 +442,28 @@ void FlexCounter::setPriorityGroupAttrList(
     m_priorityGroupAttrIdsMap.emplace(priorityGroupVid, priorityGroupAttrIds);
 
     addCollectCountersHandler(PG_ATTR_ID_LIST, &FlexCounter::collectPriorityGroupAttrs);
+}
+
+void FlexCounter::setMACsecSAAttrList(
+        _In_ sai_object_id_t macsecSAVid,
+        _In_ sai_object_id_t macsecSARid,
+        _In_ const std::vector<sai_macsec_sa_attr_t> &attrIds)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_macsecSAAttrIdsMap.find(macsecSAVid);
+
+    if (it != m_macsecSAAttrIdsMap.end())
+    {
+        it->second->macsecSAAttrIds = attrIds;
+        return;
+    }
+
+    auto macsecSAAttrIds = std::make_shared<MACsecSAAttrIds>(macsecSARid, attrIds);
+
+    m_macsecSAAttrIdsMap.emplace(macsecSAVid, macsecSAAttrIds);
+
+    addCollectCountersHandler(MACSEC_SA_ATTR_ID_LIST, &FlexCounter::collectMACsecSAAttrs);
 }
 
 void FlexCounter::setRifCounterList(
@@ -1357,6 +1387,55 @@ void FlexCounter::collectPriorityGroupAttrs(
     }
 }
 
+void FlexCounter::collectMACsecSAAttrs(
+        _In_ swss::Table &countersTable)
+{
+    SWSS_LOG_ENTER();
+    // Collect attrs for every registered MACsec SA
+    for (const auto &kv: m_macsecSAAttrIdsMap)
+    {
+        const auto &macsecSAVid = kv.first;
+        const auto &macsecSARid = kv.second->macsecSAId;
+        const auto &macsecSAAttrIds = kv.second->macsecSAAttrIds;
+
+        std::vector<sai_attribute_t> macsecSAAttr(macsecSAAttrIds.size());
+
+        for (size_t i = 0; i < macsecSAAttrIds.size(); i++)
+        {
+            macsecSAAttr[i].id = macsecSAAttrIds[i];
+        }
+
+        // Get MACsec SA attr
+        sai_status_t status = m_vendorSai->get(
+                SAI_OBJECT_TYPE_MACSEC_SA,
+                macsecSARid,
+                static_cast<uint32_t>(macsecSAAttr.size()),
+                macsecSAAttr.data());
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get attr of MACsec SA 0x%" PRIx64 ": %d", macsecSAVid, status);
+            continue;
+        }
+
+        // Push all counter values to a single vector
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != macsecSAAttrIds.size(); i++)
+        {
+            const std::string &attrName = sai_serialize_macsec_sa_attr(macsecSAAttrIds[i]);
+
+            auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_MACSEC_SA, macsecSAAttr[i].id);
+
+            values.emplace_back(attrName, sai_serialize_attr_value(*meta, macsecSAAttr[i]));
+        }
+        // Write counters to DB
+        std::string macsecSAVidStr = sai_serialize_object_id(macsecSAVid);
+
+        countersTable.set(macsecSAVidStr, values, "");
+    }
+}
+
 void FlexCounter::collectRifCounters(
         _In_ swss::Table &countersTable)
 {
@@ -2111,6 +2190,19 @@ void FlexCounter::addCounter(
             }
 
             setSwitchDebugCounterList(vid, rid, switchCounterIds);
+        }
+        else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_ATTR_ID_LIST)
+        {
+            std::vector<sai_macsec_sa_attr_t> MACsecSAIds;
+
+            for (const auto &str : idStrings)
+            {
+                sai_macsec_sa_attr_t attr;
+                sai_deserialize_macsec_sa_attr(str.c_str(), attr);
+                MACsecSAIds.push_back(attr);
+            }
+
+            setMACsecSAAttrList(vid, rid, MACsecSAIds);
         }
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
         {
