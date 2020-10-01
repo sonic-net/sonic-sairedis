@@ -129,6 +129,16 @@ std::string sai_serialize_queue_attr(
 std::string sai_serialize_macsec_sa_attr(
         _In_ const  sai_macsec_sa_attr_t attr);
 
+std::string sai_serialize_hex_binary(const void *buffer, size_t length);
+
+template <typename T>
+std::string sai_serialize_hex_binary(const T &value)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_hex_binary(&value, sizeof(T));
+}
+
 std::string sai_serialize_switch_oper_status(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t status);

@@ -1383,28 +1383,21 @@ std::string sai_serialize_hex_binary(const void *buffer, size_t length)
 {
     SWSS_LOG_ENTER();
 
-    std::string s(2 * length, '0');
+    std::string s;
 
     if (buffer == NULL || length == 0)
     {
         return s;
     }
-    const unsigned char *input = (const unsigned char *)buffer;
+    s.resize(2 * length, '0');
+    const unsigned char *input = static_cast<const unsigned char *>(buffer);
     char *output = &s[0];
-    for (unsigned long long i = 0; i < length; i++)
+    for (size_t i = 0; i < length; i++)
     {
         snprintf(&output[i * 2], 3, "%02X", input[i]);
     }
 
     return s;
-}
-
-template <typename T>
-std::string sai_serialize_hex_binary(const T &value)
-{
-    SWSS_LOG_ENTER();
-
-    return sai_serialize_hex_binary(&value, sizeof(T));
 }
 
 std::string sai_serialize_attr_value(

@@ -405,27 +405,67 @@ namespace saivs
                     _In_ const sai_attribute_t* attr);
 
             sai_status_t createMACsecSA(
-                    _In_ sai_object_id_t sa_id,
+                    _In_ sai_object_id_t macsec_sa_id,
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            sai_status_t removeMACsecPort(
+                    _In_ sai_object_id_t macsec_port_id);
+
+            sai_status_t removeMACsecSC(
+                    _In_ sai_object_id_t macsec_sc_id);
+
             sai_status_t removeMACsecSA(
-                    _In_ sai_object_id_t sa_id);
+                    _In_ sai_object_id_t macsec_sa_id);
 
             sai_status_t getACLTable(
                     _In_ sai_object_id_t entry_id,
                     _Out_ sai_object_id_t &table_id);
 
-            sai_status_t loadMACsecSAAttr(
+            sai_status_t findLinePortByMACsecFlow(
+                    _In_ sai_object_id_t macsec_flow_id,
+                    _Out_ sai_object_id_t &line_port_id);
+
+            sai_status_t findVethNameByLinePort(
+                    _In_ sai_object_id_t &line_port_id,
+                    _Out_ std::string &veth_name);
+
+            sai_status_t loadMACsecAttrFromMACsecPort(
+                    _In_ sai_object_id_t object_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list,
-                    _Out_ MACsecSAAttr &macsec_sa_attr);
+                    _Out_ MACsecAttr &macsec_attr);
 
-            sai_status_t loadMACsecSAAttrs(
+            sai_status_t loadMACsecAttrFromMACsecSC(
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _Out_ MACsecAttr &macsec_attr);
+
+            sai_status_t loadMACsecAttrFromMACsecSA(
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _Out_ MACsecAttr &macsec_attr);
+
+            sai_status_t loadMACsecAttr(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_object_id_t object_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list,
+                    _Out_ MACsecAttr &macsec_attr);
+
+            sai_status_t loadMACsecAttr(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_object_id_t object_id,
+                    _Out_ MACsecAttr &macsec_attr);
+
+            sai_status_t loadMACsecAttrsFromACLEntry(
                     _In_ sai_object_id_t entry_id,
                     _In_ const sai_attribute_t* entry_attr,
-                    _Out_ std::vector<MACsecSAAttr> &macsec_sa_attrs);
+                    _In_ sai_object_type_t object_type,
+                    _Out_ std::vector<MACsecAttr> &macsec_attrs);
 
         protected:
 

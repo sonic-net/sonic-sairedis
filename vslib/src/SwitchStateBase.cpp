@@ -341,7 +341,19 @@ sai_status_t SwitchStateBase::remove(
         return removeHostif(objectId);
     }
 
-    if (object_type == SAI_OBJECT_TYPE_MACSEC_SA)
+    if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return removeMACsecPort(objectId);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_MACSEC_SC)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return removeMACsecSC(objectId);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_MACSEC_SA)
     {
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
