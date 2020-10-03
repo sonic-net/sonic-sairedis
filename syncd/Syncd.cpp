@@ -3209,16 +3209,17 @@ void Syncd::performWarmRestartSingleSwitch(
         /*
          * If we want to handle multiple switches, then during warm boot switch
          * create we need to pass hardware info so vendor sai could know which
-         * switch to initialize.
+         * switch to initialize. We also need to update pointer values since
+         * new process could be loaded at different address space.
          */
 
-        if (id != SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO)
+        if (id == SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO || meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
         {
-            SWSS_LOG_NOTICE("skiping warm boot: %s", meta->attridname);
+            attrs.push_back(attrList[idx]);
             continue;
         }
 
-        attrs.push_back(attrList[idx]);
+        SWSS_LOG_NOTICE("skiping warm boot: %s", meta->attridname);
     }
 
     // TODO support multiple notification handlers
