@@ -288,8 +288,8 @@ sai_status_t transfer_attribute(
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
             transfer_primitive(src_attr.value.aclfield.enable, dst_attr.value.aclfield.enable);
-            transfer_primitive(src_attr.value.aclfield.mask.u32, dst_attr.value.aclfield.mask.u32);
-            transfer_primitive(src_attr.value.aclfield.data.u32, dst_attr.value.aclfield.data.u32);
+            transfer_primitive(src_attr.value.aclfield.mask.u16, dst_attr.value.aclfield.mask.u16);
+            transfer_primitive(src_attr.value.aclfield.data.u16, dst_attr.value.aclfield.data.u16);
             break;
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
@@ -724,18 +724,54 @@ std::string sai_serialize_neighbor_entry(
     return j.dump();
 }
 
+#define EMIT(x)        buf += sprintf(buf, x)
+#define EMIT_QUOTE     EMIT("\"")
+#define EMIT_KEY(k)    EMIT("\"" k "\":")
+#define EMIT_NEXT_KEY(k) { EMIT(","); EMIT_KEY(k); }
+#define EMIT_CHECK(expr, suffix) {                              \
+    ret = (expr);                                               \
+    if (ret < 0) {                                              \
+        SWSS_LOG_THROW("failed to serialize " #suffix ""); }    \
+    buf += ret; }
+#define EMIT_QUOTE_CHECK(expr, suffix) {\
+    EMIT_QUOTE; EMIT_CHECK(expr, suffix); EMIT_QUOTE; }
+
 std::string sai_serialize_route_entry(
         _In_ const sai_route_entry_t& route_entry)
 {
     SWSS_LOG_ENTER();
 
-    json j;
+    // NOTE: this serialize is copy from SAI/meta auto generated serialization
+    // but since previously we used json.hpp, then order of serialized item is
+    // different, so we copy actual serialize method and reorder names
 
-    j["switch_id"] = sai_serialize_object_id(route_entry.switch_id);
-    j["vr"] = sai_serialize_object_id(route_entry.vr_id);
-    j["dest"] = sai_serialize_ip_prefix(route_entry.destination);
+    // {"dest":"0.0.0.0/0","switch_id":"oid:0x21000000000000","vr":"oid:0x3000000000022"}
 
-    return j.dump();
+    char buffer[256];
+    char *buf = buffer;
+
+    char *begin_buf = buf;
+    int ret;
+
+    EMIT("{");
+
+    EMIT_KEY("dest");
+
+    EMIT_QUOTE_CHECK(sai_serialize_ip_prefix(buf, &route_entry.destination), ip_prefix);
+
+    EMIT_NEXT_KEY("switch_id");
+
+    EMIT_QUOTE_CHECK(sai_serialize_object_id(buf, route_entry.switch_id), object_id);
+
+    EMIT_NEXT_KEY("vr");
+
+    EMIT_QUOTE_CHECK(sai_serialize_object_id(buf, route_entry.vr_id), object_id);
+
+    EMIT("}");
+
+    *buf = 0;
+
+    return std::string(begin_buf, (int)(buf - begin_buf));
 }
 
 std::string sai_serialize_ipmc_entry(
@@ -2795,17 +2831,77 @@ void sai_deserialize_neighbor_entry(
     sai_deserialize_ip_address(j["ip"], ne.ip_address);
 }
 
+#define EXPECT(x) { \
+    if (strncmp(buf, x, sizeof(x) - 1) == 0) { buf += sizeof(x) - 1; }  \
+    else { \
+        SWSS_LOG_THROW("failed to expect %s on %s", x, buf); } }
+#define EXPECT_QUOTE     EXPECT("\"")
+#define EXPECT_KEY(k)    EXPECT("\"" k "\":")
+#define EXPECT_NEXT_KEY(k) { EXPECT(","); EXPECT_KEY(k); }
+#define EXPECT_CHECK(expr, suffix) {                                    \
+    ret = (expr);                                                       \
+    if (ret < 0) {                                                      \
+        SWSS_LOG_THROW("failed to deserialize " #suffix ""); }          \
+    buf += ret; }
+#define EXPECT_QUOTE_CHECK(expr, suffix) {\
+    EXPECT_QUOTE; EXPECT_CHECK(expr, suffix); EXPECT_QUOTE; }
+
+static int sai_deserialize_object_id_buf(
+        _In_ const char* buf,
+        _Out_ sai_object_id_t* oid)
+{
+    SWSS_LOG_ENTER();
+
+    if (strncmp(buf,"oid:0x",6) != 0)
+    {
+        SWSS_LOG_THROW("invalid oid %s", buf);
+    }
+
+    errno = 0;
+
+    char *endptr = NULL;
+
+    *oid = (sai_object_id_t)strtoull(buf+4, &endptr, 16);
+
+    if (errno != 0 || !sai_serialize_is_char_allowed(*endptr))
+    {
+        SWSS_LOG_THROW("invalid oid %s", buf);
+    }
+
+    return (int)(endptr - buf);
+}
+
 void sai_deserialize_route_entry(
         _In_ const std::string &s,
         _Out_ sai_route_entry_t& route_entry)
 {
     SWSS_LOG_ENTER();
 
-    json j = json::parse(s);
+    // NOTE: this serialize is copy from SAI/meta auto generated serialization
+    // but since previously we used json.hpp, then order of serialized item is
+    // different, so we copy actual serialize method and reorder names
 
-    sai_deserialize_object_id(j["switch_id"], route_entry.switch_id);
-    sai_deserialize_object_id(j["vr"], route_entry.vr_id);
-    sai_deserialize_ip_prefix(j["dest"], route_entry.destination);
+    // {"dest":"0.0.0.0/0","switch_id":"oid:0x21000000000000","vr":"oid:0x3000000000022"}
+
+    const char* buf = s.c_str();
+
+    int ret;
+
+    EXPECT("{");
+
+    EXPECT_KEY("dest");
+
+    EXPECT_QUOTE_CHECK(sai_deserialize_ip_prefix(buf, &route_entry.destination), ip_prefix);
+
+    EXPECT_NEXT_KEY("switch_id");
+
+    EXPECT_QUOTE_CHECK(sai_deserialize_object_id_buf(buf, &route_entry.switch_id), object_id);
+
+    EXPECT_NEXT_KEY("vr");
+
+    EXPECT_QUOTE_CHECK(sai_deserialize_object_id_buf(buf, &route_entry.vr_id), object_id);
+
+    EXPECT("}");
 }
 
 void sai_deserialize_nat_entry_key(
