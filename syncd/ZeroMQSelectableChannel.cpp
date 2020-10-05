@@ -64,7 +64,7 @@ ZeroMQSelectableChannel::~ZeroMQSelectableChannel()
 
     SWSS_LOG_NOTICE("ending zmq poll thread");
 
-    m_zmlPollThread = nullptr;
+    m_zmlPollThread->join();
 
     SWSS_LOG_NOTICE("ended zmq poll thread");
 }
@@ -85,6 +85,9 @@ void ZeroMQSelectableChannel::zmqPollThread()
         m_allowZmqPoll = false;
 
         int rc = zmq_poll(items, 1, ZMQ_POLL_TIMEOUT);
+
+        if (m_runThread == false)
+            break;
 
         if (rc <= 0 && zmq_errno() == ETERM)
         {
