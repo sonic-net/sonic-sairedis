@@ -13,6 +13,7 @@
 #include "ZeroMQNotificationProducer.h"
 #include "RedisSelectableChannel.h"
 #include "ZeroMQSelectableChannel.h"
+#include "PerformanceIntervalTimer.h"
 
 #include "sairediscommon.h"
 
@@ -33,6 +34,7 @@
 
 using namespace syncd;
 using namespace saimeta;
+using namespace sairediscommon;
 using namespace std::placeholders;
 
 Syncd::Syncd(
@@ -699,7 +701,7 @@ sai_status_t Syncd::processBulkQuadEvent(
         attributes.push_back(list);
     }
 
-    SWSS_LOG_NOTICE("bulk %s execute with %zu items",
+    SWSS_LOG_INFO("bulk %s executing with %zu items",
             strObjectType.c_str(),
             objectIds.size());
 
@@ -846,7 +848,22 @@ sai_status_t Syncd::processBulkEntry(
 
         if (api == SAI_COMMON_API_BULK_CREATE)
         {
-            status = processEntry(metaKey, SAI_COMMON_API_CREATE, attr_count, attr_list);
+            if (objectType == SAI_OBJECT_TYPE_ROUTE_ENTRY)
+            {
+                static PerformanceIntervalTimer timer("Syncd::processBulkEntry::processEntry(route_entry) CREATE");
+
+                timer.start();
+
+                status = processEntry(metaKey, SAI_COMMON_API_CREATE, attr_count, attr_list);
+
+                timer.stop();
+
+                timer.inc();
+            }
+            else
+            {
+                status = processEntry(metaKey, SAI_COMMON_API_CREATE, attr_count, attr_list);
+            }
         }
         else if (api == SAI_COMMON_API_BULK_REMOVE)
         {
@@ -1402,6 +1419,10 @@ void Syncd::syncUpdateRedisQuadEvent(
 
     const bool initView = isInitViewMode();
 
+    static PerformanceIntervalTimer timer("Syncd::syncUpdateRedisQuadEvent");
+
+    timer.start();
+
     switch (api)
     {
         case SAI_COMMON_API_CREATE:
@@ -1412,7 +1433,7 @@ void Syncd::syncUpdateRedisQuadEvent(
                 else
                     m_client->createAsicObject(metaKey, values);
 
-                return;
+                break;
             }
 
         case SAI_COMMON_API_REMOVE:
@@ -1423,7 +1444,7 @@ void Syncd::syncUpdateRedisQuadEvent(
                 else
                     m_client->removeAsicObject(metaKey);
 
-                return;
+                break;
             }
 
         case SAI_COMMON_API_SET:
@@ -1439,16 +1460,20 @@ void Syncd::syncUpdateRedisQuadEvent(
                 else
                     m_client->setAsicObject(metaKey, attr, value);
 
-                return;
+                break;
             }
 
         case SAI_COMMON_API_GET:
-            return; // ignore get since get is not modifying db
+            break; // ignore get since get is not modifying db
 
         default:
 
             SWSS_LOG_THROW("api %d is not supported", api);
     }
+
+    timer.stop();
+
+    timer.inc();
 }
 
 void Syncd::syncUpdateRedisBulkQuadEvent(
@@ -1469,6 +1494,10 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
     // is success, since consumer table on synchronous mode is not making redis
     // changes and we only want to apply changes when api succeeded. This
     // applies to init view mode and apply view mode.
+
+    static PerformanceIntervalTimer timer("Syncd::syncUpdateRedisBulkQuadEvent");
+
+    timer.start();
 
     const std::string strObjectType = sai_serialize_object_type(objectType);
 
@@ -1541,6 +1570,10 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
                 SWSS_LOG_THROW("api %d is not supported", api);
         }
     }
+
+    timer.stop();
+
+    timer.inc(statuses.size());
 }
 
 sai_status_t Syncd::processQuadEvent(
@@ -1627,7 +1660,22 @@ sai_status_t Syncd::processQuadEvent(
 
     if (info->isnonobjectid)
     {
-        status = processEntry(metaKey, api, attr_count, attr_list);
+        if (info->objecttype == SAI_OBJECT_TYPE_ROUTE_ENTRY)
+        {
+            static PerformanceIntervalTimer timer("Syncd::processQuadEvent::processEntry(route_entry)");
+
+            timer.start();
+
+            status = processEntry(metaKey, api, attr_count, attr_list);
+
+            timer.stop();
+
+            timer.inc();
+        }
+        else
+        {
+            status = processEntry(metaKey, api, attr_count, attr_list);
+        }
     }
     else
     {
