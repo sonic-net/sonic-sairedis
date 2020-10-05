@@ -6,6 +6,7 @@
 #include "SkipRecordAttrContainer.h"
 #include "SwitchContainer.h"
 #include "ZeroMQChannel.h"
+#include "PerformanceIntervalTimer.h"
 
 #include "sairediscommon.h"
 
@@ -16,6 +17,7 @@
 
 using namespace sairedis;
 using namespace saimeta;
+using namespace sairediscommon;
 using namespace std::placeholders;
 
 std::string joinFieldValues(
@@ -1541,6 +1543,10 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
 
     // TODO support mode
 
+    static PerformanceIntervalTimer timer("RedisRemoteSaiInterface::bulkCreate(route_entry)");
+
+    timer.start();
+
     std::vector<std::string> serialized_object_ids;
 
     // on create vid is put in db by syncd
@@ -1550,15 +1556,20 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
         serialized_object_ids.push_back(str_object_id);
     }
 
-    return bulkCreate(
+    auto status = bulkCreate(
             SAI_OBJECT_TYPE_ROUTE_ENTRY,
             serialized_object_ids,
             attr_count,
             attr_list,
             mode,
             object_statuses);
-}
 
+    timer.stop();
+
+    timer.inc(object_count);
+
+    return status;
+}
 
 sai_status_t RedisRemoteSaiInterface::bulkCreate(
         _In_ uint32_t object_count,
