@@ -3,6 +3,7 @@
 #include "sairedis.h"
 #include "sairediscommon.h"
 #include "VirtualObjectIdManager.h"
+#include "PerformanceIntervalTimer.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
@@ -29,6 +30,7 @@
 
 using namespace saiplayer;
 using namespace saimeta;
+using namespace sairediscommon;
 using namespace std::placeholders;
 
 SaiPlayer::SaiPlayer(
@@ -869,7 +871,7 @@ void SaiPlayer::performSleep(
 }
 
 void SaiPlayer::performNotifySyncd(
-        _In_ const std::string& request, 
+        _In_ const std::string& request,
         _In_ const std::string& response)
 {
     SWSS_LOG_ENTER();
@@ -1024,7 +1026,7 @@ sai_status_t SaiPlayer::handle_bulk_route(
         _In_ const std::vector<std::string> &object_ids,
         _In_ sai_common_api_t api,
         _In_ const std::vector<std::shared_ptr<SaiAttributeList>> &attributes,
-        _In_ const std::vector<sai_status_t> &recorded_statuses)
+        _In_ const std::vector<sai_status_t>& expectedStatuses)
 {
     SWSS_LOG_ENTER();
 
@@ -1044,7 +1046,7 @@ sai_status_t SaiPlayer::handle_bulk_route(
 
     std::vector<sai_status_t> statuses;
 
-    statuses.resize(recorded_statuses.size());
+    statuses.resize(expectedStatuses.size());
 
     if (api == SAI_COMMON_API_BULK_SET)
     {
@@ -1067,6 +1069,8 @@ sai_status_t SaiPlayer::handle_bulk_route(
             attrs.push_back(a->get_attr_list()[0]);
         }
 
+        SWSS_LOG_INFO("executing BULK set route_entry with %zu routes", routes.size());
+
         sai_status_t status = m_sai->bulkSet(
                 (uint32_t)routes.size(),
                 routes.data(),
@@ -1074,18 +1078,11 @@ sai_status_t SaiPlayer::handle_bulk_route(
                 SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, // TODO we need to get that from recording
                 statuses.data());
 
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            /*
-             * Entire API fails, so no need to compare statuses.
-             */
-
-            return status;
-        }
+        // even if API will fail, we swill need to compare all statuses for each entry
 
         for (size_t i = 0; i < statuses.size(); ++i)
         {
-            if (statuses[i] != recorded_statuses[i])
+            if (statuses[i] != expectedStatuses[i])
             {
                 /*
                  * If recorded statuses are different than received, throw
@@ -1093,7 +1090,7 @@ sai_status_t SaiPlayer::handle_bulk_route(
                  */
 
                 SWSS_LOG_THROW("recorded status is %s but returned is %s on %s",
-                        sai_serialize_status(recorded_statuses[i]).c_str(),
+                        sai_serialize_status(expectedStatuses[i]).c_str(),
                         sai_serialize_status(statuses[i]).c_str(),
                         object_ids[i].c_str());
             }
@@ -1114,7 +1111,11 @@ sai_status_t SaiPlayer::handle_bulk_route(
             attr_count.push_back(alist->get_attr_count());
         }
 
-        SWSS_LOG_NOTICE("executing BULK route create with %zu routes", attr_count.size());
+        SWSS_LOG_INFO("executing BULK create route_entry with %zu routes", routes.size());
+
+        static PerformanceIntervalTimer timer("SaiPlayer::handle_bulk_route::bulkCreate(route_entry)");
+
+        timer.start();
 
         sai_status_t status = m_sai->bulkCreate(
                 (uint32_t)routes.size(),
@@ -1124,15 +1125,13 @@ sai_status_t SaiPlayer::handle_bulk_route(
                 SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, // TODO we need to get that from recording
                 statuses.data());
 
-        if (status != SAI_STATUS_SUCCESS)
-        {
-            // Entire API fails, so no need to compare statuses.
-            return status;
-        }
+        timer.stop();
+
+        timer.inc(routes.size());
 
         for (size_t i = 0; i < statuses.size(); ++i)
         {
-            if (statuses[i] != recorded_statuses[i])
+            if (statuses[i] != expectedStatuses[i])
             {
                 /*
                  * If recorded statuses are different than received, throw
@@ -1140,7 +1139,7 @@ sai_status_t SaiPlayer::handle_bulk_route(
                  */
 
                 SWSS_LOG_THROW("recorded status is %s but returned is %s on %s",
-                        sai_serialize_status(recorded_statuses[i]).c_str(),
+                        sai_serialize_status(expectedStatuses[i]).c_str(),
                         sai_serialize_status(statuses[i]).c_str(),
                         object_ids[i].c_str());
             }
@@ -1152,6 +1151,179 @@ sai_status_t SaiPlayer::handle_bulk_route(
     else
     {
         SWSS_LOG_THROW("api %d is not supported in bulk route", api);
+    }
+}
+
+sai_status_t SaiPlayer::handle_bulk_generic(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& strObjectIds,
+        _In_ sai_common_api_t api,
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>>& attributes,
+        _In_ const std::vector<sai_status_t>& expectedStatuses)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_id_t> objectIds;
+
+    for (const auto& oid: strObjectIds)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(oid, objectId);
+
+        if (api != SAI_COMMON_API_BULK_CREATE)
+        {
+            // when creating OID objects, ID don't exists yet, it needs to be created
+            // and after success create, it should be matched to local redis db
+            objectId = translate_local_to_redis(objectId);
+        }
+
+        objectIds.push_back(objectId);
+    }
+
+    std::vector<sai_status_t> statuses;
+
+    statuses.resize(expectedStatuses.size());
+
+    if (api == SAI_COMMON_API_BULK_CREATE)
+    {
+        std::vector<sai_object_id_t> oids;
+
+        oids.resize(expectedStatuses.size());
+
+        std::vector<uint32_t> attr_count;
+
+        std::vector<const sai_attribute_t*> attr_list;
+
+        // object can have multiple attributes, so we need to handle them all
+        for (const auto &alist: attributes)
+        {
+            attr_list.push_back(alist->get_attr_list());
+            attr_count.push_back(alist->get_attr_count());
+        }
+
+        SWSS_LOG_INFO("executing BULK create %s with %zu entries",
+                sai_serialize_object_type(objectType).c_str(),
+                objectIds.size());
+
+        // get switch ID from first local object
+        sai_object_id_t localSwitchId = m_sai->switchIdQuery(objectIds[0]);
+        sai_object_id_t switchId = translate_local_to_redis(localSwitchId);
+
+        sai_status_t status = m_sai->bulkCreate(
+                objectType,
+                switchId,
+                (uint32_t)oids.size(),
+                attr_count.data(),
+                attr_list.data(),
+                SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, // TODO we need to get that from recording
+                oids.data(),
+                statuses.data());
+
+        for (size_t i = 0; i < statuses.size(); ++i)
+        {
+            if (statuses[i] != expectedStatuses[i])
+            {
+                /*
+                 * If recorded statuses are different than received, throw
+                 * exception since data don't match.
+                 */
+
+                SWSS_LOG_THROW("recorded status is %s but returned is %s on %s",
+                        sai_serialize_status(expectedStatuses[i]).c_str(),
+                        sai_serialize_status(statuses[i]).c_str(),
+                        strObjectIds[i].c_str());
+            }
+
+            if (statuses[i] == SAI_STATUS_SUCCESS)
+            {
+                // object was created, we need to match local id and redis id
+                match_redis_with_rec(oids[i], objectIds[i]);
+            }
+        }
+
+        return status;
+    }
+    else if (api == SAI_COMMON_API_BULK_REMOVE)
+    {
+        SWSS_LOG_INFO("executing BULK remove %s with %zu entries",
+                sai_serialize_object_type(objectType).c_str(),
+                objectIds.size());
+
+        sai_status_t status = m_sai->bulkRemove(
+                objectType,
+                (uint32_t)objectIds.size(),
+                objectIds.data(),
+                SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, // TODO we need to get that from recording
+                statuses.data());
+
+        // even if API will fail, we swill need to compare all statuses for each entry
+
+        for (size_t i = 0; i < statuses.size(); ++i)
+        {
+            if (statuses[i] != expectedStatuses[i])
+            {
+                /*
+                 * If recorded statuses are different than received, throw
+                 * exception since data don't match.
+                 */
+
+                SWSS_LOG_THROW("recorded status is %s but returned is %s on %s",
+                        sai_serialize_status(expectedStatuses[i]).c_str(),
+                        sai_serialize_status(statuses[i]).c_str(),
+                        strObjectIds[i].c_str());
+            }
+        }
+
+        return status;
+    }
+    else if (api == SAI_COMMON_API_BULK_SET)
+    {
+        std::vector<sai_attribute_t> attrs;
+
+        for (const auto &a: attributes)
+        {
+            // set has only 1 attribute, so we can just join them nicely here.
+
+            attrs.push_back(a->get_attr_list()[0]);
+        }
+
+        SWSS_LOG_INFO("executing BULK set %s with %zu entries",
+                sai_serialize_object_type(objectType).c_str(),
+                objectIds.size());
+
+        sai_status_t status = m_sai->bulkSet(
+                objectType,
+                (uint32_t)objectIds.size(),
+                objectIds.data(),
+                attrs.data(),
+                SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, // TODO we need to get that from recording
+                statuses.data());
+
+        // even if API will fail, we swill need to compare all statuses for each entry
+
+        for (size_t i = 0; i < statuses.size(); ++i)
+        {
+            if (statuses[i] != expectedStatuses[i])
+            {
+                /*
+                 * If recorded statuses are different than received, throw
+                 * exception since data don't match.
+                 */
+
+                SWSS_LOG_THROW("recorded status is %s but returned is %s on %s",
+                        sai_serialize_status(expectedStatuses[i]).c_str(),
+                        sai_serialize_status(statuses[i]).c_str(),
+                        strObjectIds[i].c_str());
+            }
+        }
+
+        return status;
+    }
+    else
+    {
+        SWSS_LOG_THROW("api %s is not supported in bulk %s",
+                sai_serialize_common_api(api).c_str(),
+                sai_serialize_object_type(objectType).c_str());
     }
 }
 
@@ -1167,7 +1339,8 @@ void SaiPlayer::processBulk(
     }
 
     if (api != SAI_COMMON_API_BULK_SET &&
-            api != SAI_COMMON_API_BULK_CREATE)
+            api != SAI_COMMON_API_BULK_CREATE &&
+            api != SAI_COMMON_API_BULK_REMOVE)
     {
         SWSS_LOG_THROW("bulk common api %d is not supported yet, FIXME", api);
     }
@@ -1176,7 +1349,7 @@ void SaiPlayer::processBulk(
      * Here we know we have bulk SET api
      */
 
-    // timestamp|action|objecttype||objectid|attrid=value|...|status||objectid||objectid|attrid=value|...|status||...
+    // timestamp|action|objecttype||objectid|attrid=value|...||objectid||objectid|attrid=value|...||...
     auto fields = tokenize(line, "||");
 
     auto first = fields.at(0); // timestamp|action|objecttype
@@ -1189,11 +1362,11 @@ void SaiPlayer::processBulk(
 
     std::vector<std::shared_ptr<SaiAttributeList>> attributes;
 
-    std::vector<sai_status_t> statuses;
+    std::vector<sai_status_t> expectedStatuses;
 
     for (size_t idx = 1; idx < fields.size(); ++idx)
     {
-        // object_id|attr=value|...|status
+        // object_id|attr=value|...
         const std::string &joined = fields[idx];
 
         auto split = swss::tokenize(joined, '|');
@@ -1202,13 +1375,9 @@ void SaiPlayer::processBulk(
 
         object_ids.push_back(str_object_id);
 
-        std::string str_status = split.back();
-
-        sai_status_t status;
-
-        sai_deserialize_status(str_status, status);
-
-        statuses.push_back(status);
+        // TODO currently we expect all bulk API will always succeed in sync mode
+        // we will need to update that, needs to be obtained from recording file
+        expectedStatuses.push_back(SAI_STATUS_SUCCESS);
 
         std::vector<swss::FieldValueTuple> entries; // attributes per object id
 
@@ -1216,7 +1385,7 @@ void SaiPlayer::processBulk(
 
         SWSS_LOG_DEBUG("processing: %s", joined.c_str());
 
-        for (size_t i = 1; i < split.size() - 1; ++i)
+        for (size_t i = 1; i < split.size(); ++i)
         {
             const auto &item = split[i];
 
@@ -1252,7 +1421,11 @@ void SaiPlayer::processBulk(
     switch (object_type)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
-            status = handle_bulk_route(object_ids, api, attributes, statuses);
+            status = handle_bulk_route(object_ids, api, attributes, expectedStatuses);
+            break;
+
+        case SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER:
+            status = handle_bulk_generic(object_type, object_ids, api, attributes, expectedStatuses);
             break;
 
         default:
@@ -1261,6 +1434,8 @@ void SaiPlayer::processBulk(
                     sai_serialize_object_type(object_type).c_str());
     }
 
+    // TODO currently bulk API assume that always succeed, but this may not be
+    // the case when using synchronous mode, so this needs to be updated
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_THROW("failed to execute bulk api, FIXME");
@@ -1359,6 +1534,9 @@ int SaiPlayer::replay()
                 continue;
             case 'C':
                 processBulk(SAI_COMMON_API_BULK_CREATE, line);
+                continue;
+            case 'R':
+                processBulk(SAI_COMMON_API_BULK_REMOVE, line);
                 continue;
             case 'g':
                 api = SAI_COMMON_API_GET;
@@ -1609,6 +1787,11 @@ int SaiPlayer::run()
 
         EXIT_ON_ERROR(m_sai->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
     }
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_RECORD;
+    attr.value.booldata = false;
+
+    EXIT_ON_ERROR(m_sai->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
 
     int exitcode = 0;
 
