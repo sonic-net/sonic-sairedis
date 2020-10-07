@@ -1651,7 +1651,7 @@ void FlexCounter::updateSupportedPortCounters(
 
     uint64_t value;
 
-    for (int id = SAI_PORT_STAT_IF_IN_OCTETS; id <= SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS; ++id)
+    for (int id = SAI_PORT_STAT_IF_IN_OCTETS; id <= SAI_PORT_STAT_IF_OUT_FABRIC_DATA_UNITS; ++id)
     {
         sai_port_stat_t counter = static_cast<sai_port_stat_t>(id);
 
