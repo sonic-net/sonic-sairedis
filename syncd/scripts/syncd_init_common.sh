@@ -26,7 +26,7 @@ CMD_ARGS+=" -u"
 
 # Set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(sonic-cfggen -d -v DEVICE_METADATA.localhost.synchronous_mode)
-if [ "$SYNC_MODE" == "enable" ]; then
+if [ "$SYNC_MODE" != "disable" ]; then
     CMD_ARGS+=" -s"
 fi
 
