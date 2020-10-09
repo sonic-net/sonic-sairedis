@@ -108,7 +108,6 @@ extern void getPortLaneMap(
 
 extern const sai_acl_api_t              vs_acl_api;
 extern const sai_bfd_api_t              vs_bfd_api;
-extern const sai_bmtor_api_t            vs_bmtor_api;
 extern const sai_bridge_api_t           vs_bridge_api;
 extern const sai_buffer_api_t           vs_buffer_api;
 extern const sai_dtel_api_t             vs_dtel_api;
