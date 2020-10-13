@@ -90,6 +90,30 @@ void HostInterfaceInfo::async_process_packet_for_fdb_event(
     m_eventQueue->enqueue(std::make_shared<Event>(EventType::EVENT_TYPE_PACKET, payload));
 }
 
+bool HostInterfaceInfo::installEth2TapFilter(
+    int priority,
+    std::shared_ptr<TrafficFilter> filter)
+{
+    return m_e2tFilters.installFilter(priority, filter);
+}
+
+bool HostInterfaceInfo::uninstallEth2TapFilter(std::shared_ptr<TrafficFilter> filter)
+{
+    return m_e2tFilters.uninstallFilter(filter);
+}
+
+bool HostInterfaceInfo::installTap2EthFilter(
+    int priority,
+    std::shared_ptr<TrafficFilter> filter)
+{
+    return m_t2eFilters.installFilter(priority, filter);
+}
+
+bool HostInterfaceInfo::uninstallTap2EthFilter(std::shared_ptr<TrafficFilter> filter)
+{
+    return m_t2eFilters.uninstallFilter(filter);
+}
+
 #define ETH_FRAME_BUFFER_SIZE (0x4000)
 #define CONTROL_MESSAGE_BUFFER_SIZE (0x1000)
 #define IEEE_8021Q_ETHER_TYPE (0x8100)
@@ -197,6 +221,17 @@ void HostInterfaceInfo::veth2tap_fun()
 
         async_process_packet_for_fdb_event(buffer, size);
 
+        auto ret = m_e2tFilters.execute(buffer, size);
+        if (ret == TrafficFilter::TERMINATE)
+        {
+            continue;
+        }
+        else if (ret == TrafficFilter::ERROR)
+        {
+            // Error log should be recorded in filter
+            return;
+        }
+
         if (write(m_tapfd, buffer, size) < 0)
         {
             /*
@@ -266,6 +301,17 @@ void HostInterfaceInfo::tap2veth_fun()
             }
 
             continue;
+        }
+
+        auto ret = m_t2eFilters.execute(buffer, size);
+        if (ret == TrafficFilter::TERMINATE)
+        {
+            continue;
+        }
+        else if (ret == TrafficFilter::ERROR)
+        {
+            // Error log should be recorded in filter
+            return;
         }
 
         if (write(m_packet_socket, buffer, (int)size) < 0)

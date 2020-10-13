@@ -16,7 +16,7 @@ using namespace saivs;
 
 #define SAI_VS_MACSEC_PREFIX "macsec_"
 
-#define TRY_SAI_METADATA_GET_ATTR_BY_ID(ATTR, ATTR_ID, ATTR_COUNT, ATTR_LIST) \
+#define SAI_METADATA_GET_ATTR_BY_ID(ATTR, ATTR_ID, ATTR_COUNT, ATTR_LIST) \
     {                                                                         \
         ATTR = sai_metadata_get_attr_by_id(ATTR_ID, ATTR_COUNT, ATTR_LIST);   \
         if (ATTR == NULL)                                                     \
@@ -25,210 +25,7 @@ using namespace saivs;
             return SAI_STATUS_FAILURE;                                        \
         }                                                                     \
     }                                                                         \
-    while (0)                                                                 \
-        ;
-
-static std::string shellquote(const std::string &str)
-{
-    static const std::regex re("([$`\"\\\n])");
-    return "\"" + std::regex_replace(str, re, "\\$1") + "\"";
-}
-
-static sai_status_t exec(const std::string &command)
-{
-    std::string res;
-    if (swss::exec(command, res) != 0)
-    {
-        SWSS_LOG_DEBUG("FAIL %s", command.c_str());
-        return SAI_STATUS_FAILURE;
-    }
-    return SAI_STATUS_SUCCESS;
-}
-
-// Create MACsec Port
-// $ ip link add link <VETH_NAME> name <MACSEC_NAME> type macsec sci <SCI>
-static sai_status_t create_macsec_port(const MACsecAttr &attr)
-{
-    SWSS_LOG_ENTER();
-    std::ostringstream ostream;
-    ostream
-        << "ip link add link "
-        << shellquote(attr.m_veth_name)
-        << " name "
-        << shellquote(attr.m_macsec_name)
-        << " type macsec sci "
-        << attr.m_sci;
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    return ::exec(ostream.str());
-}
-
-// Create MACsec Egress SA
-// $ ip macsec add macsec0 tx sa 0 pn 1 on key 00 <SAK>
-static sai_status_t create_macsec_egress_sa(const MACsecAttr &attr)
-{
-    SWSS_LOG_ENTER();
-    std::ostringstream ostream;
-    ostream
-        << "ip macsec add "
-        << shellquote(attr.m_macsec_name)
-        << " tx sa "
-        << attr.m_an
-        << " pn "
-        << attr.m_pn
-        << " on key 00 "
-        << attr.m_sak;
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    return ::exec(ostream.str());
-}
-
-// Create MACsec Ingress SC
-// $ ip macsec add macsec0 rx sci <SCI>
-static sai_status_t create_macsec_ingress_sc(const MACsecAttr &attr)
-{
-    SWSS_LOG_ENTER();
-    std::ostringstream ostream;
-    ostream
-        << "ip macsec add "
-        << shellquote(attr.m_macsec_name)
-        << " rx sci "
-        << attr.m_sci
-        << " on";
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    return ::exec(ostream.str());
-}
-
-// Create MACsec Ingress SA
-// $ ip macsec add macsec0 rx sci <SCI> sa <SA> pn <PN> on key 00 <SAK>
-static sai_status_t create_macsec_ingress_sa(const MACsecAttr &attr)
-{
-    SWSS_LOG_ENTER();
-    std::ostringstream ostream;
-    ostream
-        << "ip macsec add "
-        << shellquote(attr.m_macsec_name)
-        << " rx sci "
-        << attr.m_sci
-        << " sa "
-        << attr.m_an
-        << " pn "
-        << attr.m_pn
-        << " on key 00 "
-        << attr.m_sak;
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    return ::exec(ostream.str());
-}
-
-static sai_status_t enable_macsec(const MACsecAttr &attr)
-{
-    SWSS_LOG_ENTER();
-    create_macsec_port(attr);
-    if (attr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
-    {
-        create_macsec_egress_sa(attr);
-    }
-    else
-    {
-        create_macsec_ingress_sc(attr);
-        create_macsec_ingress_sa(attr);
-    }
-
-    return SAI_STATUS_SUCCESS;
-}
-
-// Delete MACsec Port
-// $ ip link del link <VETH_NAME> name <MACSEC_NAME> type macsec
-static sai_status_t delete_macsec_port(const MACsecAttr &attr)
-{
-    SWSS_LOG_ENTER();
-    std::ostringstream ostream;
-    ostream
-        << "ip link del link "
-        << shellquote(attr.m_veth_name)
-        << " name "
-        << shellquote(attr.m_macsec_name)
-        << " type macsec";
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    return ::exec(ostream.str());
-}
-
-// Delete MACsec Egress SA
-// $ ip macsec set macsec0 tx sa 0 off
-// $ ip macsec del macsec0 tx sa 0
-static sai_status_t delete_macsec_egress_sa(const MACsecAttr &attr)
-{
-    SWSS_LOG_ENTER();
-    std::ostringstream ostream;
-    ostream
-        << "ip macsec set "
-        << shellquote(attr.m_macsec_name)
-        << " tx sa "
-        << attr.m_an
-        << " off";
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    ::exec(ostream.str());
-    ostream.str("");
-    ostream
-        << "ip macsec del "
-        << shellquote(attr.m_macsec_name)
-        << " tx sa "
-        << attr.m_an;
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    return ::exec(ostream.str());
-}
-
-// Delete MACsec Ingress SC
-// $ ip macsec set macsec0 rx sci <SCI> off
-// $ ip macsec del macsec0 rx sci <SCI>
-static sai_status_t delete_macsec_ingress_sc(const MACsecAttr &attr)
-{
-    SWSS_LOG_ENTER();
-    std::ostringstream ostream;
-    ostream
-        << "ip macsec add "
-        << shellquote(attr.m_macsec_name)
-        << " rx sci "
-        << attr.m_sci
-        << " off";
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    ::exec(ostream.str());
-    ostream.str("");
-    ostream
-        << "ip macsec del "
-        << shellquote(attr.m_macsec_name)
-        << " rx sci "
-        << attr.m_sci;
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    return ::exec(ostream.str());
-}
-
-// Delete MACsec Ingress SA
-// $ ip macsec set macsec0 rx sci <SCI> sa <SA> off
-// $ ip macsec del macsec0 rx sci <SCI> sa <SA>
-static sai_status_t delete_macsec_ingress_sa(const MACsecAttr &attr)
-{
-    SWSS_LOG_ENTER();
-    std::ostringstream ostream;
-    ostream
-        << "ip macsec set "
-        << shellquote(attr.m_macsec_name)
-        << " rx sci "
-        << attr.m_sci
-        << " sa "
-        << attr.m_an
-        << " off";
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    ::exec(ostream.str());
-    ostream.str("");
-    ostream
-        << "ip macsec del "
-        << shellquote(attr.m_macsec_name)
-        << " rx sci "
-        << attr.m_sci
-        << " sa "
-        << attr.m_an;
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    return ::exec(ostream.str());
-}
+    while (0);
 
 sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
     _In_ sai_object_id_t entry_id,
@@ -261,7 +58,7 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
         {
             for (auto &sa_attr : macsec_attrs)
             {
-                enable_macsec(sa_attr);
+                m_macsec_manager.enable_macsec(sa_attr);
             }
         }
         else
@@ -286,13 +83,13 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
                 if (macsec_attrs.size() > 1)
                 {
                     SWSS_LOG_ERROR(
-                        "Duplicated line ports for the ACL entry %s",
+                        "Duplicated ports for the ACL entry %s",
                         sai_serialize_object_id(entry_id).c_str());
                     auto sid = sai_serialize_object_id(entry_id);
                     CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid, attr));
                     return SAI_STATUS_FAILURE;
                 }
-                delete_macsec_port(macsec_attrs.back());
+                m_macsec_manager.delete_macsec_port(macsec_attrs.back());
             }
         }
         else
@@ -324,7 +121,7 @@ sai_status_t SwitchStateBase::createMACsecSA(
             attr_list,
             macsec_attr) == SAI_STATUS_SUCCESS)
     {
-        enable_macsec(macsec_attr);
+        m_macsec_manager.enable_macsec(macsec_attr);
     }
 
     auto sid = sai_serialize_object_id(macsec_sa_id);
@@ -342,7 +139,7 @@ sai_status_t SwitchStateBase::removeMACsecPort(
             macsec_port_id,
             macsec_attr) == SAI_STATUS_SUCCESS)
     {
-        delete_macsec_port(macsec_attr);
+        m_macsec_manager.delete_macsec_port(macsec_attr);
     }
 
     auto sid = sai_serialize_object_id(macsec_port_id);
@@ -365,7 +162,7 @@ sai_status_t SwitchStateBase::removeMACsecSC(
         // has to include one and can only include one SC
         if (macsec_attr.m_direction == SAI_MACSEC_DIRECTION_INGRESS)
         {
-            delete_macsec_ingress_sc(macsec_attr);
+            m_macsec_manager.delete_macsec_ingress_sc(macsec_attr);
         }
     }
 
@@ -386,11 +183,11 @@ sai_status_t SwitchStateBase::removeMACsecSA(
     {
         if (macsec_attr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
         {
-            delete_macsec_egress_sa(macsec_attr);
+            m_macsec_manager.delete_macsec_egress_sa(macsec_attr);
         }
         else
         {
-            delete_macsec_ingress_sa(macsec_attr);
+            m_macsec_manager.delete_macsec_ingress_sa(macsec_attr);
         }
         
     }
@@ -420,9 +217,9 @@ sai_status_t SwitchStateBase::getACLTable(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchStateBase::findLinePortByMACsecFlow(
+sai_status_t SwitchStateBase::findPortByMACsecFlow(
         _In_ sai_object_id_t macsec_flow_id,
-        _Out_ sai_object_id_t &line_port_id)
+        _Out_ sai_object_id_t &port_id)
 {
     SWSS_LOG_ENTER();
 
@@ -430,7 +227,7 @@ sai_status_t SwitchStateBase::findLinePortByMACsecFlow(
     sai_attribute_t attr;
     // MACsec flow => ACL entry => ACL table
     // MACsec flow => MACsec SC
-    // (ACL table & MACsec SC) => line port
+    // (ACL table & MACsec SC) => port
     // Find ACL Entry
     attr.id = SAI_ACL_ENTRY_ATTR_ACTION_MACSEC_FLOW;
     attr.value.aclaction.parameter.oid = macsec_flow_id;
@@ -481,7 +278,7 @@ sai_status_t SwitchStateBase::findLinePortByMACsecFlow(
             attrs.data()));
     auto direction = attrs.back().value.s32;
 
-    // Find line port
+    // Find port
     attrs.clear();
     attrs.emplace_back();
     if (direction == SAI_MACSEC_DIRECTION_EGRESS)
@@ -493,44 +290,45 @@ sai_status_t SwitchStateBase::findLinePortByMACsecFlow(
         attrs.back().id = SAI_PORT_ATTR_INGRESS_MACSEC_ACL;
     }
     attrs.back().value.oid = acl_table_id;
-    std::vector<sai_object_id_t> line_port_ids;
-    findObjects(SAI_OBJECT_TYPE_PORT, attrs.back(), line_port_ids);
-    if (line_port_ids.empty())
+    std::vector<sai_object_id_t> port_ids;
+    findObjects(SAI_OBJECT_TYPE_PORT, attrs.back(), port_ids);
+    if (port_ids.empty())
     {
         SWSS_LOG_ERROR(
-            "Cannot find corresponding line port for the ACL table %s",
+            "Cannot find corresponding port for the ACL table %s",
             sai_serialize_object_id(acl_table_id).c_str());
         return SAI_STATUS_FAILURE;
     }
-    else if (line_port_ids.size() > 1)
+    else if (port_ids.size() > 1)
     {
         SWSS_LOG_ERROR(
-            "Duplicated line ports for the ACL table %s",
+            "Duplicated ports for the ACL table %s",
             sai_serialize_object_id(acl_table_id).c_str());
         return SAI_STATUS_FAILURE;
     }
-    line_port_id = line_port_ids.front();
+    port_id = port_ids.front();
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchStateBase::findVethNameByLinePort(
-        _In_ sai_object_id_t &line_port_id,
-        _Out_ std::string &veth_name)
+sai_status_t SwitchStateBase::findHostInterfaceInfoByPort(
+        _In_ sai_object_id_t &port_id,
+        _Out_ std::shared_ptr<HostInterfaceInfo> &info)
 {
     SWSS_LOG_ENTER();
-    veth_name.clear();
+    info.reset();
     for (auto &kvp : m_hostif_info_map)
     {
-        if (kvp.second->m_portId == line_port_id)
+        if (kvp.second->m_portId == port_id)
         {
-            veth_name = vs_get_veth_name(kvp.first, line_port_id);
+            info = kvp.second;
+            break;
         }
     }
-    if (veth_name.empty())
+    if (info == nullptr)
     {
         SWSS_LOG_ERROR(
-            "Cannot find corresponding line port %s",
-            sai_serialize_object_id(line_port_id).c_str());
+            "Cannot find corresponding port %s",
+            sai_serialize_object_id(port_id).c_str());
         return SAI_STATUS_FAILURE;
     }
     return SAI_STATUS_SUCCESS;
@@ -551,12 +349,13 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecPort(
     }
 
     const sai_attribute_t *attr = nullptr;
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_PORT_ATTR_MACSEC_DIRECTION, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_PORT_ATTR_MACSEC_DIRECTION, attr_count, attr_list);
     macsec_attr.m_direction = attr->value.s32;
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_PORT_ATTR_PORT_ID, attr_count, attr_list);
-    auto line_port_id = attr->value.oid;
-    CHECK_STATUS(findVethNameByLinePort(line_port_id, macsec_attr.m_veth_name));
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_PORT_ATTR_PORT_ID, attr_count, attr_list);
+    auto port_id = attr->value.oid;
+    CHECK_STATUS(findHostInterfaceInfoByPort(port_id, macsec_attr.m_info));
+    macsec_attr.m_veth_name = vs_get_veth_name(macsec_attr.m_info->m_name, port_id);
     macsec_attr.m_macsec_name = SAI_VS_MACSEC_PREFIX + macsec_attr.m_veth_name;
 
     return SAI_STATUS_SUCCESS;
@@ -577,21 +376,22 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
 
     const sai_attribute_t *attr = nullptr;
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_DIRECTION, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_DIRECTION, attr_count, attr_list);
     macsec_attr.m_direction = attr->value.s32;
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_SCI, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_SCI, attr_count, attr_list);
     auto sci = attr->value.u64;
     std::stringstream sci_convert;
     sci_convert << std::hex << __builtin_bswap64(sci);
     macsec_attr.m_sci = sci_convert.str();
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_FLOW_ID, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_FLOW_ID, attr_count, attr_list);
     auto flow_id = attr->value.oid;
 
-    sai_object_id_t line_port_id = SAI_NULL_OBJECT_ID;
-    CHECK_STATUS(findLinePortByMACsecFlow(flow_id, line_port_id));
-    CHECK_STATUS(findVethNameByLinePort(line_port_id, macsec_attr.m_veth_name));
+    sai_object_id_t port_id = SAI_NULL_OBJECT_ID;
+    CHECK_STATUS(findPortByMACsecFlow(flow_id, port_id));
+    CHECK_STATUS(findHostInterfaceInfoByPort(port_id, macsec_attr.m_info));
+    macsec_attr.m_veth_name = vs_get_veth_name(macsec_attr.m_info->m_name, port_id);
     macsec_attr.m_macsec_name = SAI_VS_MACSEC_PREFIX + macsec_attr.m_veth_name;
 
     return SAI_STATUS_SUCCESS;
@@ -614,7 +414,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     const sai_attribute_t *attr = nullptr;
     std::vector<sai_attribute_t> attrs;
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SC_ID, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SC_ID, attr_count, attr_list);
 
     // Find SCI and MACsec flow
     attrs.clear();
@@ -634,26 +434,27 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     sci_convert << std::hex << __builtin_bswap64(sci);
     macsec_attr.m_sci = sci_convert.str();
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_DIRECTION, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_DIRECTION, attr_count, attr_list);
     macsec_attr.m_direction = attr->value.s32;
 
     // Find veth name
-    // TODO, right now the line port is same as port
-    sai_object_id_t line_port_id = SAI_NULL_OBJECT_ID;
-    CHECK_STATUS(findLinePortByMACsecFlow(flow_id, line_port_id));
-    CHECK_STATUS(findVethNameByLinePort(line_port_id, macsec_attr.m_veth_name));
+    // TODO, right now the port is same as port
+    sai_object_id_t port_id = SAI_NULL_OBJECT_ID;
+    CHECK_STATUS(findPortByMACsecFlow(flow_id, port_id));
+    CHECK_STATUS(findHostInterfaceInfoByPort(port_id, macsec_attr.m_info));
+    macsec_attr.m_veth_name = vs_get_veth_name(macsec_attr.m_info->m_name, port_id);
     macsec_attr.m_macsec_name = SAI_VS_MACSEC_PREFIX + macsec_attr.m_veth_name;
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_AN, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_AN, attr_count, attr_list);
     macsec_attr.m_an = attr->value.u8;
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_ENCRYPTION_ENABLE, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_ENCRYPTION_ENABLE, attr_count, attr_list);
     macsec_attr.m_encryption_enable = attr->value.booldata;
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SAK, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SAK, attr_count, attr_list);
     macsec_attr.m_sak = sai_serialize_hex_binary(attr->value.macsecsak);
 
-    TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SAK_256_BITS, attr_count, attr_list);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SAK_256_BITS, attr_count, attr_list);
     if (!attr->value.booldata)
     {
         macsec_attr.m_sak.resize(macsec_attr.m_sak.length() / 2);
@@ -661,11 +462,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     if (macsec_attr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
     {
-        TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_XPN, attr_count, attr_list);
+        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_XPN, attr_count, attr_list);
     }
     else
     {
-        TRY_SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MINIMUM_XPN, attr_count, attr_list);
+        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MINIMUM_XPN, attr_count, attr_list);
     }
     macsec_attr.m_pn = attr->value.u64;
 
@@ -766,18 +567,21 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
 
     if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
     {
-        sai_object_id_t line_port_id = SAI_NULL_OBJECT_ID;
-        CHECK_STATUS(findLinePortByMACsecFlow(flow_id, line_port_id));
+        sai_object_id_t port_id = SAI_NULL_OBJECT_ID;
+        CHECK_STATUS(findPortByMACsecFlow(flow_id, port_id));
         macsec_attrs.emplace_back();
-        if (findVethNameByLinePort(
-                line_port_id,
-                macsec_attrs.back().m_veth_name) != SAI_STATUS_SUCCESS)
+        if (findHostInterfaceInfoByPort(
+                port_id,
+                macsec_attrs.back().m_info) != SAI_STATUS_SUCCESS)
         {
-            // The fail log has been record in findVethNameByLinePort
+            // The fail log has been record in findHostInterfaceInfoByPort
             macsec_attrs.clear();
             return SAI_STATUS_FAILURE;
         }
-        macsec_attrs.back().m_macsec_name = SAI_VS_MACSEC_PREFIX + macsec_attrs.back().m_veth_name;
+        macsec_attrs.back().m_veth_name =
+            vs_get_veth_name(macsec_attrs.back().m_info->m_name, port_id);
+        macsec_attrs.back().m_macsec_name =
+            SAI_VS_MACSEC_PREFIX + macsec_attrs.back().m_veth_name;
         return SAI_STATUS_SUCCESS;
     }
 

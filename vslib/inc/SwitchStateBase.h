@@ -322,6 +322,10 @@ namespace saivs
             sai_status_t removeDebugCounter(
                     _In_ sai_object_id_t objectId);
 
+        public:
+            static int promisc(
+                    _In_ const char *dev);
+
         protected: // custom hostif
 
             sai_status_t createHostif(
@@ -352,9 +356,6 @@ namespace saivs
             static int vs_set_dev_mac_address(
                     _In_ const char *dev,
                     _In_ const sai_mac_t& mac);
-
-            static int promisc(
-                    _In_ const char *dev);
 
             int vs_set_dev_mtu(
                     _In_ const char*name,
@@ -423,13 +424,13 @@ namespace saivs
                     _In_ sai_object_id_t entry_id,
                     _Out_ sai_object_id_t &table_id);
 
-            sai_status_t findLinePortByMACsecFlow(
+            sai_status_t findPortByMACsecFlow(
                     _In_ sai_object_id_t macsec_flow_id,
                     _Out_ sai_object_id_t &line_port_id);
 
-            sai_status_t findVethNameByLinePort(
+            sai_status_t findHostInterfaceInfoByPort(
                     _In_ sai_object_id_t &line_port_id,
-                    _Out_ std::string &veth_name);
+                    _Out_ std::shared_ptr<HostInterfaceInfo> &info);
 
             sai_status_t loadMACsecAttrFromMACsecPort(
                     _In_ sai_object_id_t object_id,
@@ -466,6 +467,8 @@ namespace saivs
                     _In_ const sai_attribute_t* entry_attr,
                     _In_ sai_object_type_t object_type,
                     _Out_ std::vector<MACsecAttr> &macsec_attrs);
+
+            MACsecManager m_macsec_manager;
 
         protected:
 

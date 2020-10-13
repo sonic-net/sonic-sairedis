@@ -47,7 +47,9 @@ libSaiVS_a_SOURCES = \
 					  SwitchBCM56850.cpp \
 					  SwitchBCM81724.cpp \
 					  SwitchMLNX2700.cpp \
-					  SwitchStateBaseMACsec.cpp
+					  SwitchStateBaseMACsec.cpp \
+					  MACsec.cpp \
+					  TrafficFilter.cpp
 
 libsaivs_la_SOURCES = \
 					  sai_vs_fdb.cpp \
