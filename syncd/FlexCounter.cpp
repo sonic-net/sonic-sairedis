@@ -693,6 +693,28 @@ void FlexCounter::removePriorityGroup(
     }
 }
 
+void FlexCounter::removeMACsecSA(
+        _In_ sai_object_id_t macsecSAVid)
+{
+    SWSS_LOG_NOTICE("Try remove MACsec SA %s",
+            sai_serialize_object_id(macsecSAVid).c_str());
+
+    auto itr = m_macsecSAAttrIdsMap.find(macsecSAVid);
+    if (itr != m_macsecSAAttrIdsMap.end())
+    {
+        m_macsecSAAttrIdsMap.erase(itr);
+        if (m_macsecSAAttrIdsMap.empty())
+        {
+            removeCollectCountersHandler(MACSEC_SA_ATTR_ID_LIST);
+        }
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("Trying to remove nonexisting MACsec SA %s",
+                sai_serialize_object_id(macsecSAVid).c_str());
+    }
+}
+
 void FlexCounter::removeRif(
         _In_ sai_object_id_t rifVid)
 {
@@ -943,7 +965,8 @@ bool FlexCounter::allIdsEmpty() const
         m_portDebugCounterIdsMap.empty() &&
         m_rifCounterIdsMap.empty() &&
         m_bufferPoolCounterIdsMap.empty() &&
-        m_switchDebugCounterIdsMap.empty();
+        m_switchDebugCounterIdsMap.empty() &&
+        m_macsecSAAttrIdsMap.empty();
 }
 
 bool FlexCounter::allPluginsEmpty() const
@@ -2056,6 +2079,10 @@ void FlexCounter::removeCounter(
     else if (objectType == SAI_OBJECT_TYPE_SWITCH)
     {
         removeSwitchDebugCounters(vid);
+    }
+    else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
+    {
+        removeMACsecSA(vid);
     }
     else
     {

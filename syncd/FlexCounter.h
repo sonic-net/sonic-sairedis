@@ -104,6 +104,9 @@ namespace syncd
 
             void removePriorityGroup(
                     _In_ sai_object_id_t priorityGroupVid);
+        
+            void removeMACsecSA(
+                    _In_ sai_object_id_t macsecSAVid);
 
             void removeRif(
                     _In_ sai_object_id_t rifVid);
