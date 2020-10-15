@@ -548,7 +548,7 @@ sai_status_t Syncd::processClearStatsEvent(
     {
         SWSS_LOG_WARN("VID to RID translation failure: %s", key.c_str());
         sai_status_t status = SAI_STATUS_INVALID_OBJECT_ID;
-        m_getResponse->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+        m_selectableChannel->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
         return status;
     }
 
