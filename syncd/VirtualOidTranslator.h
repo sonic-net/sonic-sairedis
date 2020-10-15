@@ -86,6 +86,9 @@ namespace syncd
             void translateVidToRid(
                     _Inout_ sai_object_meta_key_t &metaKey);
 
+            bool tryTranslateVidToRid(
+                    _Inout_ sai_object_meta_key_t &metaKey);
+
             void eraseRidAndVid(
                     _In_ sai_object_id_t rid,
                     _In_ sai_object_id_t vid);

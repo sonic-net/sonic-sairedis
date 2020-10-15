@@ -3351,6 +3351,11 @@ void Meta::meta_generic_validation_post_remove(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                // no special action required
+                break;
+
             default:
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
@@ -4565,6 +4570,13 @@ sai_status_t Meta::meta_generic_validation_create(
                     break;
                 }
 
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                VALIDATION_LIST(md, value.sysportconfiglist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -5196,6 +5208,13 @@ sai_status_t Meta::meta_generic_validation_set(
             VALIDATION_LIST(md, value.aclcapability.action_list);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+            VALIDATION_LIST(md, value.sysportconfiglist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+            break;
+
         default:
 
             META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -5557,6 +5576,13 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.aclcapability.action_list);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                VALIDATION_LIST(md, value.sysportconfiglist);
+                break;
+
             default:
 
                 // acl capability will is more complex since is in/out we need to check stage
@@ -5796,6 +5822,13 @@ void Meta::meta_generic_validation_post_get(
                     META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min, value.s32range.max);
                 }
 
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                VALIDATION_LIST_GET(md, value.sysportconfiglist);
                 break;
 
             default:
@@ -6679,6 +6712,11 @@ void Meta::meta_generic_validation_post_create(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                // no special action required
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -6903,6 +6941,11 @@ void Meta::meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
+            // no special action required
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+        case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
             // no special action required
             break;
 

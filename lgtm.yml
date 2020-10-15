@@ -14,6 +14,8 @@ extraction:
       - libpython2.7-dev
       - libgtest-dev
       - dh-exec
+      - libzmq3-dev
+      - libzmq5
     after_prepare:
       - ls -l
       - git clone https://github.com/Azure/sonic-swss-common; pushd sonic-swss-common; ./autogen.sh; fakeroot dpkg-buildpackage -us -uc -b; popd

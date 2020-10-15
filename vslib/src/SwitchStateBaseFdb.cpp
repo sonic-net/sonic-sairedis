@@ -547,13 +547,41 @@ void SwitchStateBase::process_packet_for_fdb_event(
         return;
     }
 
-    SWSS_LOG_INFO("inserting to fdb_info set: %s, vlan id: %d",
-            sai_serialize_fdb_entry(fi.getFdbEntry()).c_str(),
-            fi.getVlanId());
+    sai_attribute_t attr;
 
-    m_fdb_info_set.insert(fi);
+    attr.id = SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE;
 
-    processFdbInfo(fi, SAI_FDB_EVENT_LEARNED);
+    sai_status_t status = get(SAI_OBJECT_TYPE_BRIDGE_PORT, fi.getBridgePortId(), 1, &attr);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        if (attr.value.s32 == SAI_BRIDGE_PORT_FDB_LEARNING_MODE_HW)
+        {
+            SWSS_LOG_INFO("inserting to fdb_info set: %s, vlan id: %d",
+                    sai_serialize_fdb_entry(fi.getFdbEntry()).c_str(),
+                    fi.getVlanId());
+
+            m_fdb_info_set.insert(fi);
+
+            processFdbInfo(fi, SAI_FDB_EVENT_LEARNED);
+        }
+        else if (attr.value.s32 == SAI_BRIDGE_PORT_FDB_LEARNING_MODE_DISABLE)
+        {
+            // do not learn, actually linux kernel will learn that MAC
+        }
+        else
+        {
+            SWSS_LOG_WARN("not supported SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE: %d, for %s",
+                    attr.value.s32,
+                    sai_serialize_fdb_entry(fi.getFdbEntry()).c_str());
+        }
+    }
+    else
+    {
+        SWSS_LOG_ERROR("failed to get SAI_BRIDGE_PORT_ATTR_FDB_LEARNING_MODE for %s: %s",
+                sai_serialize_object_id(fi.getBridgePortId()).c_str(),
+                sai_serialize_status(status).c_str());
+    }
 }
 
 void SwitchStateBase::send_fdb_event_notification(

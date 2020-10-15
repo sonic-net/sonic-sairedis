@@ -11,8 +11,6 @@ RedisVidIndexGenerator::RedisVidIndexGenerator(
     m_vidCounterName(vidCounterName)
 {
     SWSS_LOG_ENTER();
-
-    m_redisClient = std::make_shared<swss::RedisClient>(m_dbConnector.get());
 }
 
 uint64_t RedisVidIndexGenerator::increment()
@@ -22,7 +20,7 @@ uint64_t RedisVidIndexGenerator::increment()
     // this counter must be atomic since it can be independently accessed by
     // sairedis and syncd
 
-    return m_redisClient->incr(m_vidCounterName); // "VIDCOUNTER"
+    return m_dbConnector->incr(m_vidCounterName); // "VIDCOUNTER"
 }
 
 void RedisVidIndexGenerator::reset()

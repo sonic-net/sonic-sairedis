@@ -544,7 +544,13 @@ sai_status_t Syncd::processClearStatsEvent(
     sai_object_meta_key_t metaKey;
     sai_deserialize_object_meta_key(key, metaKey);
 
-    m_translator->translateVidToRid(metaKey);
+    if (!m_translator->tryTranslateVidToRid(metaKey))
+    {
+        SWSS_LOG_WARN("VID to RID translation failure: %s", key.c_str());
+        sai_status_t status = SAI_STATUS_INVALID_OBJECT_ID;
+        m_getResponse->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+        return status;
+    }
 
     auto info = sai_metadata_get_object_type_info(metaKey.objecttype);
 
@@ -3215,16 +3221,17 @@ void Syncd::performWarmRestartSingleSwitch(
         /*
          * If we want to handle multiple switches, then during warm boot switch
          * create we need to pass hardware info so vendor sai could know which
-         * switch to initialize.
+         * switch to initialize. We also need to update pointer values since
+         * new process could be loaded at different address space.
          */
 
-        if (id != SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO)
+        if (id == SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO || meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
         {
-            SWSS_LOG_NOTICE("skiping warm boot: %s", meta->attridname);
+            attrs.push_back(attrList[idx]);
             continue;
         }
 
-        attrs.push_back(attrList[idx]);
+        SWSS_LOG_NOTICE("skiping warm boot: %s", meta->attridname);
     }
 
     // TODO support multiple notification handlers
