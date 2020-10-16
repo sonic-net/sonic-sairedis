@@ -98,7 +98,7 @@ bool SwitchConfig::parseBootType(
     {
         bootType = SAI_VS_BOOT_TYPE_WARM;
     }
-    else if (bt == "fast" || bt == SAI_VALUE_VS_BOOT_TYPE_COLD)
+    else if (bt == "fast" || bt == SAI_VALUE_VS_BOOT_TYPE_FAST)
     {
         bootType = SAI_VS_BOOT_TYPE_FAST;
     }
