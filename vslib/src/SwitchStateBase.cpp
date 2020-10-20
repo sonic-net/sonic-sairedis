@@ -525,38 +525,12 @@ sai_status_t SwitchStateBase::set_internal(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchStateBase::set(
-        _In_ sai_object_type_t objectType,
-        _In_ sai_object_id_t objectId,
-        _In_ const sai_attribute_t* attr)
-{
-    SWSS_LOG_ENTER();
-
-    auto sid = sai_serialize_object_id(objectId);
-
-    return set(objectType, sid, attr);
-}
-
-sai_status_t SwitchStateBase::get(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    auto sid = sai_serialize_object_id(object_id);
-
-    return get(object_type, sid, attr_count, attr_list);
-}
-
-sai_status_t SwitchStateBase::get(
+sai_status_t SwitchStateBase::get_internal(
         _In_ sai_object_type_t objectType,
         _In_ const std::string &serializedObjectId,
         _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list)
+        _Out_ sai_attribute_t* attr_list)
 {
-    SWSS_LOG_ENTER();
 
     const auto &objectHash = m_objectHash.at(objectType);
 
@@ -674,6 +648,49 @@ sai_status_t SwitchStateBase::get(
     }
 
     return final_status;
+}
+
+sai_status_t SwitchStateBase::set(
+        _In_ sai_object_type_t objectType,
+        _In_ sai_object_id_t objectId,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(objectId);
+
+    return set(objectType, sid, attr);
+}
+
+sai_status_t SwitchStateBase::get(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t object_id,
+        _In_ uint32_t attr_count,
+        _Out_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto sid = sai_serialize_object_id(object_id);
+
+    return get(object_type, sid, attr_count, attr_list);
+}
+
+sai_status_t SwitchStateBase::get(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::string &serializedObjectId,
+        _In_ uint32_t attr_count,
+        _Out_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
+    {
+        return getMACsecSAAttr(
+            serializedObjectId,
+            attr_count,
+            attr_list);
+    }
+    return get_internal(objectType, serializedObjectId, attr_count, attr_list);
 }
 
 static int get_default_gw_mac_address(

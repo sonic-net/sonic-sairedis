@@ -208,6 +208,12 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t* attr);
 
+            virtual sai_status_t get_internal(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ uint32_t attr_count,
+                    _Out_ sai_attribute_t* attr_list);
+
         private:
 
             sai_object_type_t objectTypeQuery(
@@ -467,6 +473,15 @@ namespace saivs
                     _In_ const sai_attribute_t* entry_attr,
                     _In_ sai_object_type_t object_type,
                     _Out_ std::vector<MACsecAttr> &macsec_attrs);
+
+            sai_status_t getMACsecSAAttr(
+                    _In_ const std::string &serializedObjectId,
+                    _In_ uint32_t attr_count,
+                    _Out_ sai_attribute_t *attr_list);
+
+            sai_status_t getMACsecSAPacketNumber(
+                    _In_ sai_object_id_t macsec_sa_id,
+                    _Out_ sai_attribute_t &attr);
 
             MACsecManager m_macsec_manager;
 

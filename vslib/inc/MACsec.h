@@ -121,6 +121,7 @@ class MACsecManager
     bool delete_macsec_egress_sa(const MACsecAttr &attr);
     bool delete_macsec_ingress_sc(const MACsecAttr &attr);
     bool delete_macsec_ingress_sa(const MACsecAttr &attr);
+    bool get_macsec_sa_pn(const MACsecAttr &attr, sai_uint64_t &pn);
 
  private:
 
@@ -145,6 +146,7 @@ class MACsecManager
     std::map<std::string, MACsecTrafficManager> m_managers;
 
     std::string shellquote(const std::string &str);
+    bool exec(const std::string &command, std::string &output);
     bool exec(const std::string &command);
 
 };

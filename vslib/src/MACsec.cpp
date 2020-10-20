@@ -145,7 +145,7 @@ void MACsecForwarder::forward()
 
         if (size < 0)
         {
-            SWSS_LOG_ERROR(
+            SWSS_LOG_WARN(
                 "failed to read from macsec device %s fd %d, errno(%d): %s",
                 m_macsec_interface_name.c_str(),
                 m_macsecfd,
@@ -332,17 +332,24 @@ std::string MACsecManager::shellquote(const std::string &str)
     return "\"" + std::regex_replace(str, re, "\\$1") + "\"";
 }
 
-bool MACsecManager::exec(const std::string &command)
+bool MACsecManager::exec(const std::string &command, std::string &output)
 {
     SWSS_LOG_ENTER();
 
-    std::string res;
-    if (swss::exec(command, res) != 0)
+    if (swss::exec(command, output) != 0)
     {
         SWSS_LOG_DEBUG("FAIL %s", command.c_str());
         return false;
     }
     return true;
+}
+
+bool MACsecManager::exec(const std::string &command)
+{
+    SWSS_LOG_ENTER();
+
+    std::string res;
+    return exec(command, res);
 }
 
 bool MACsecManager::create_macsec_port(const MACsecAttr &attr)
@@ -473,8 +480,8 @@ bool MACsecManager::delete_macsec_port(const MACsecAttr &attr)
 bool MACsecManager::delete_macsec_egress_sa(const MACsecAttr &attr)
 {
     // Delete MACsec Egress SA
-    // $ ip macsec set macsec0 tx sa 0 off
-    // $ ip macsec del macsec0 tx sa 0
+    // $ ip macsec set <MACSEC_NAME> tx sa 0 off
+    // $ ip macsec del <MACSEC_NAME> tx sa 0
     SWSS_LOG_ENTER();
     std::ostringstream ostream;
     ostream
@@ -498,8 +505,8 @@ bool MACsecManager::delete_macsec_egress_sa(const MACsecAttr &attr)
 bool MACsecManager::delete_macsec_ingress_sc(const MACsecAttr &attr)
 {
     // Delete MACsec Ingress SC
-    // $ ip macsec set macsec0 rx sci <SCI> off
-    // $ ip macsec del macsec0 rx sci <SCI>
+    // $ ip macsec set <MACSEC_NAME> rx sci <SCI> off
+    // $ ip macsec del <MACSEC_NAME> rx sci <SCI>
     SWSS_LOG_ENTER();
     std::ostringstream ostream;
     ostream
@@ -523,8 +530,8 @@ bool MACsecManager::delete_macsec_ingress_sc(const MACsecAttr &attr)
 bool MACsecManager::delete_macsec_ingress_sa(const MACsecAttr &attr)
 {
     // Delete MACsec Ingress SA
-    // $ ip macsec set macsec0 rx sci <SCI> sa <SA> off
-    // $ ip macsec del macsec0 rx sci <SCI> sa <SA>
+    // $ ip macsec set <MACSEC_NAME> rx sci <SCI> sa <SA> off
+    // $ ip macsec del <MACSEC_NAME> rx sci <SCI> sa <SA>
     SWSS_LOG_ENTER();
     std::ostringstream ostream;
     ostream
@@ -547,4 +554,69 @@ bool MACsecManager::delete_macsec_ingress_sa(const MACsecAttr &attr)
         << attr.m_an;
     SWSS_LOG_NOTICE("%s", ostream.str().c_str());
     return exec(ostream.str());
+}
+
+bool MACsecManager::get_macsec_sa_pn(const MACsecAttr &attr, sai_uint64_t &pn)
+{
+    // $ ip macsec show <MACSEC_NAME>
+    SWSS_LOG_ENTER();
+    pn = 1;
+    std::ostringstream ostream;
+    ostream
+        << "ip macsec show "
+        << shellquote(attr.m_macsec_name);
+    std::string output;
+    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
+    if (!exec(ostream.str(), output))
+    {
+        return false;
+    }
+
+    const char *direction = nullptr;
+    if (attr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
+    {
+        direction = "TXSC";
+    }
+    else
+    {
+        direction = "RXSC";
+    }
+    // Here is an example for "ip macsec show xxxx"
+    // cipher suite: GCM-AES-128, using ICV length 16
+    // TXSC: fe5400bd9b360001 on SA 0
+    //     0: PN 84, state on, key ebe9123ecbbfd96bee92c8ab01000000
+    // RXSC: 5254001234560001, state on
+    //     0: PN 28, state on, key ebe9123ecbbfd96bee92c8ab01000000
+    // Use pattern "%s:\\s*%s,?[\\s\\w]+\\d:\\s+PN\\s+(\\d+)" to extract PN
+    ostream.str("");
+    ostream
+        << direction
+        << ":\\s*"
+        << attr.m_sci
+        << ",?[\\s\\w]+"
+        << attr.m_an
+        <<":\\s+PN\\s+(\\d+)";
+    const std::regex pattern(ostream.str());
+    std::smatch matches;
+    if (std::regex_search(output, matches, pattern))
+    {
+        if (matches.size() != 2)
+        {
+            SWSS_LOG_ERROR(
+                "Wrong match result %s in %s",
+                matches.str(),
+                output.c_str());
+            return false;
+        }
+        std::istringstream iss(matches[1].str());
+        iss >> pn;
+    }
+    else
+    {
+        SWSS_LOG_WARN(
+            "The MACsec SA %s %d has been removed.",
+            attr.m_sci.c_str(),
+            attr.m_an);
+    }
+    return true;
 }

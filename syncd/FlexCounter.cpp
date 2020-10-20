@@ -696,9 +696,6 @@ void FlexCounter::removePriorityGroup(
 void FlexCounter::removeMACsecSA(
         _In_ sai_object_id_t macsecSAVid)
 {
-    SWSS_LOG_NOTICE("Try remove MACsec SA %s",
-            sai_serialize_object_id(macsecSAVid).c_str());
-
     auto itr = m_macsecSAAttrIdsMap.find(macsecSAVid);
     if (itr != m_macsecSAAttrIdsMap.end())
     {
@@ -710,7 +707,7 @@ void FlexCounter::removeMACsecSA(
     }
     else
     {
-        SWSS_LOG_NOTICE("Trying to remove nonexisting MACsec SA %s",
+        SWSS_LOG_WARN("Trying to remove nonexisting MACsec SA %s",
                 sai_serialize_object_id(macsecSAVid).c_str());
     }
 }
@@ -1414,6 +1411,7 @@ void FlexCounter::collectMACsecSAAttrs(
         _In_ swss::Table &countersTable)
 {
     SWSS_LOG_ENTER();
+
     // Collect attrs for every registered MACsec SA
     for (const auto &kv: m_macsecSAAttrIdsMap)
     {
@@ -1447,9 +1445,7 @@ void FlexCounter::collectMACsecSAAttrs(
         for (size_t i = 0; i != macsecSAAttrIds.size(); i++)
         {
             const std::string &attrName = sai_serialize_macsec_sa_attr(macsecSAAttrIds[i]);
-
             auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_MACSEC_SA, macsecSAAttr[i].id);
-
             values.emplace_back(attrName, sai_serialize_attr_value(*meta, macsecSAAttr[i]));
         }
         // Write counters to DB

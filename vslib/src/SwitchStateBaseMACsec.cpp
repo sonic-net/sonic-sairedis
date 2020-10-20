@@ -11,6 +11,7 @@
 #include <regex>
 
 #include <net/if.h>
+#include <byteswap.h>
 
 using namespace saivs;
 
@@ -382,7 +383,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_SCI, attr_count, attr_list);
     auto sci = attr->value.u64;
     std::stringstream sci_convert;
-    sci_convert << std::hex << __builtin_bswap64(sci);
+    sci_convert << std::hex << bswap_64(sci);
     macsec_attr.m_sci = sci_convert.str();
 
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_FLOW_ID, attr_count, attr_list);
@@ -431,7 +432,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     auto flow_id = attrs[0].value.oid;
     auto sci = attrs[1].value.u64;
     std::stringstream sci_convert;
-    sci_convert << std::hex << __builtin_bswap64(sci);
+    sci_convert << std::hex << bswap_64(sci);
     macsec_attr.m_sci = sci_convert.str();
 
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_DIRECTION, attr_count, attr_list);
@@ -457,7 +458,9 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SAK_256_BITS, attr_count, attr_list);
     if (!attr->value.booldata)
     {
-        macsec_attr.m_sak.resize(macsec_attr.m_sak.length() / 2);
+        macsec_attr.m_sak = macsec_attr.m_sak.substr(
+            macsec_attr.m_sak.length() / 2,
+            macsec_attr.m_sak.length() / 2);
     }
 
     if (macsec_attr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
@@ -646,4 +649,63 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
         return SAI_STATUS_SUCCESS;
     }
     return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t SwitchStateBase::getMACsecSAAttr(
+        _In_ const std::string &serializedObjectId,
+        _In_ uint32_t attr_count,
+        _Out_ sai_attribute_t *attr_list)
+{
+    auto ret = get_internal(
+        SAI_OBJECT_TYPE_MACSEC_SA,
+        serializedObjectId,
+        attr_count,
+        attr_list);
+    if (ret != SAI_STATUS_SUCCESS)
+    {
+        return ret;
+    }
+    sai_object_id_t macsec_id = SAI_NULL_OBJECT_ID;
+    sai_deserialize_object_id(serializedObjectId, macsec_id);
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_MACSEC_SA_ATTR_XPN)
+        {
+            ret = getMACsecSAPacketNumber(macsec_id, attr_list[i]);
+        }
+        else if (attr_list[i].id == SAI_MACSEC_SA_ATTR_MINIMUM_XPN)
+        {
+            ret = getMACsecSAPacketNumber(macsec_id, attr_list[i]);
+        }
+        if (ret != SAI_STATUS_SUCCESS)
+        {
+            return ret;
+        }
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::getMACsecSAPacketNumber(
+        _In_ sai_object_id_t macsec_sa_id,
+        _Out_ sai_attribute_t &attr)
+{
+    MACsecAttr macsec_attr;
+    if (loadMACsecAttr(
+            SAI_OBJECT_TYPE_MACSEC_SA,
+            macsec_sa_id,
+            macsec_attr) == SAI_STATUS_SUCCESS)
+    {
+        if (m_macsec_manager.get_macsec_sa_pn(macsec_attr, attr.value.u64))
+        {
+            return SAI_STATUS_SUCCESS;
+        }
+    }
+    else
+    {
+        SWSS_LOG_WARN(
+            "The MACsec SA %s has been removed",
+            sai_serialize_object_id(macsec_sa_id).c_str());
+    }
+
+    return SAI_STATUS_FAILURE;
 }
