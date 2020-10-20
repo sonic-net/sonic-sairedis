@@ -763,7 +763,9 @@ sai_status_t SwitchStateBase::set_static_crm_values()
     return set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP, m_maxAclTableGroups);
 }
 
-sai_status_t SwitchStateBase::set_static_acl_resource_list(sai_switch_attr_t acl_resource, int max_count)
+sai_status_t SwitchStateBase::set_static_acl_resource_list(
+        _In_ sai_switch_attr_t acl_resource,
+        _In_ int max_count)
 {
     auto acl_stages = {SAI_ACL_STAGE_INGRESS, SAI_ACL_STAGE_EGRESS};
     auto acl_bind_points = {

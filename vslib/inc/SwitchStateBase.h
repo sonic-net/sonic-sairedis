@@ -84,7 +84,9 @@ namespace saivs
 
             virtual sai_status_t set_static_crm_values();
 
-            virtual sai_status_t set_static_acl_resource_list(sai_switch_attr_t acl_resource, int max_count);
+            virtual sai_status_t set_static_acl_resource_list(
+                    _In_ sai_switch_attr_t acl_resource,
+                    _In_ int max_count);
 
         public:
 
