@@ -8,6 +8,7 @@
 #include "RequestShutdown.h"
 #include "WarmRestartTable.h"
 #include "ContextConfigContainer.h"
+#include "BreakConfigParser.h"
 
 #include "sairediscommon.h"
 
@@ -133,6 +134,8 @@ Syncd::Syncd(
 
         abort();
     }
+
+    m_breakConfig = BreakConfigParser::parseBreakConfig(m_commandLineOptions->m_breakConfig);
 
     SWSS_LOG_NOTICE("syncd started");
 }
@@ -535,7 +538,13 @@ sai_status_t Syncd::processClearStatsEvent(
     sai_object_meta_key_t metaKey;
     sai_deserialize_object_meta_key(key, metaKey);
 
-    m_translator->translateVidToRid(metaKey);
+    if (!m_translator->tryTranslateVidToRid(metaKey))
+    {
+        SWSS_LOG_WARN("VID to RID translation failure: %s", key.c_str());
+        sai_status_t status = SAI_STATUS_INVALID_OBJECT_ID;
+        m_getResponse->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+        return status;
+    }
 
     auto info = sai_metadata_get_object_type_info(metaKey.objecttype);
 
@@ -1244,16 +1253,7 @@ void Syncd::sendApiResponse(
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        /*
-         * TODO: If api fill fail in sync mode, we need to take some actions to
-         * handle that, and those are not trivial tasks:
-         *
-         * - in case create fail, remove object from redis database
-         * - in case remove fail, bring back removed object to database
-         * - in case set fail, bring back previous value if it was set
-         */
-
-        SWSS_LOG_THROW("api %s failed in syncd mode: %s, FIXME",
+        SWSS_LOG_ERROR("api %s failed in syncd mode: %s",
                     sai_serialize_common_api(api).c_str(),
                     sai_serialize_status(status).c_str());
     }
@@ -2513,7 +2513,25 @@ sai_status_t Syncd::processNotifySyncd(
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
 
-        sai_status_t status = applyView();
+        sai_status_t status;
+
+        try
+        {
+            status = applyView();
+        }
+        catch(...)
+        {
+            /*
+             * If apply view will fail with exception, try to send fail
+             * response to sairedis, since later there can be switch shutdown
+             * notification sent, and it will be synchronized with mutex, and
+             * it will not be processed until get response timeout will hit.
+             */
+
+            sendNotifyResponse(SAI_STATUS_FAILURE);
+
+            throw;
+        }
 
         sendNotifyResponse(status);
 
@@ -2719,7 +2737,7 @@ sai_status_t Syncd::applyView()
             auto current = std::make_shared<AsicView>(currentMap.at(switchVid));
             auto temp = std::make_shared<AsicView>(temporaryMap.at(switchVid));
 
-            auto cl = std::make_shared<ComparisonLogic>(m_vendorSai, sw, m_handler, m_initViewRemovedVidSet, current, temp);
+            auto cl = std::make_shared<ComparisonLogic>(m_vendorSai, sw, m_handler, m_initViewRemovedVidSet, current, temp, m_breakConfig);
 
             cl->compareViews();
 
@@ -3197,16 +3215,17 @@ void Syncd::performWarmRestartSingleSwitch(
         /*
          * If we want to handle multiple switches, then during warm boot switch
          * create we need to pass hardware info so vendor sai could know which
-         * switch to initialize.
+         * switch to initialize. We also need to update pointer values since
+         * new process could be loaded at different address space.
          */
 
-        if (id != SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO)
+        if (id == SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO || meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
         {
-            SWSS_LOG_NOTICE("skiping warm boot: %s", meta->attridname);
+            attrs.push_back(attrList[idx]);
             continue;
         }
 
-        attrs.push_back(attrList[idx]);
+        SWSS_LOG_NOTICE("skiping warm boot: %s", meta->attridname);
     }
 
     // TODO support multiple notification handlers

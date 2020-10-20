@@ -4,6 +4,7 @@
 #include "LaneMapContainer.h"
 #include "EventQueue.h"
 #include "EventPayloadNotification.h"
+#include "ResourceLimiterContainer.h"
 
 #include "meta/Meta.h"
 
@@ -413,5 +414,7 @@ namespace saivs
             const char *m_warm_boot_write_file;
 
             std::shared_ptr<LaneMapContainer> m_laneMapContainer;
+
+            std::shared_ptr<ResourceLimiterContainer> m_resourceLimiterContainer;
     };
 }

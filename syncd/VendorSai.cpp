@@ -164,9 +164,9 @@ sai_status_t VendorSai::remove(
         return SAI_STATUS_FAILURE;
     }
 
-    if (!info->create)
+    if (!info->remove)
     {
-        SWSS_LOG_ERROR("object type %s has no create method",
+        SWSS_LOG_ERROR("object type %s has no remove method",
                 sai_serialize_object_type(objectType).c_str());
 
         return SAI_STATUS_FAILURE;
@@ -204,9 +204,9 @@ sai_status_t VendorSai::set(
         return SAI_STATUS_FAILURE;
     }
 
-    if (!info->create)
+    if (!info->set)
     {
-        SWSS_LOG_ERROR("object type %s has no create method",
+        SWSS_LOG_ERROR("object type %s has no set method",
                 sai_serialize_object_type(objectType).c_str());
 
         return SAI_STATUS_FAILURE;
@@ -252,9 +252,9 @@ sai_status_t VendorSai::get(
         return SAI_STATUS_FAILURE;
     }
 
-    if (!info->create)
+    if (!info->get)
     {
-        SWSS_LOG_ERROR("object type %s has no create method",
+        SWSS_LOG_ERROR("object type %s has no get method",
                 sai_serialize_object_type(objectType).c_str());
 
         return SAI_STATUS_FAILURE;

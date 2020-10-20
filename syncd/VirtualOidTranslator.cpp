@@ -288,6 +288,23 @@ bool VirtualOidTranslator::tryTranslateVidToRid(
     }
 }
 
+bool VirtualOidTranslator::tryTranslateVidToRid(
+        _Inout_ sai_object_meta_key_t &metaKey)
+{
+    SWSS_LOG_ENTER();
+
+    try
+    {
+        translateVidToRid(metaKey);
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        // message was logged already when throwing
+        return false;
+    }
+}
+
 void VirtualOidTranslator::translateVidToRid(
         _Inout_ sai_object_list_t &element)
 {

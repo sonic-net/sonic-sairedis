@@ -27,6 +27,8 @@ CommandLineOptions::CommandLineOptions()
 
     m_contextConfig = "";
 
+    m_breakConfig = "";
+
 #ifdef SAITHRIFT
 
     m_runRPCServer = false;
@@ -53,6 +55,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " ProfileMapFile=" << m_profileMapFile;
     ss << " GlobalContext=" << m_globalContext;
     ss << " ContextConfig=" << m_contextConfig;
+    ss << " BreakConfig=" << m_breakConfig;
 
 #ifdef SAITHRIFT
 

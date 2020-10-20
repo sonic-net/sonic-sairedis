@@ -14,6 +14,7 @@
 #include "RedisVidIndexGenerator.h"
 #include "RequestShutdown.h"
 #include "ContextConfig.h"
+#include "BreakConfig.h"
 
 #include "meta/SaiAttributeList.h"
 
@@ -454,5 +455,7 @@ namespace syncd
             std::shared_ptr<sairedis::VirtualObjectIdManager> m_virtualObjectIdManager;
 
             std::shared_ptr<sairedis::ContextConfig> m_contextConfig;
+
+            std::shared_ptr<BreakConfig> m_breakConfig;
     };
 }

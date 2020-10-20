@@ -299,6 +299,9 @@ namespace syncd
 
             void helperInternalOids();
 
+            void redisSaveInternalOids(
+                     _In_ sai_object_id_t rid) const;
+
             void helperLoadColdVids();
 
             void helperPopulateWarmBootVids();

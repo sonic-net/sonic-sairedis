@@ -517,7 +517,7 @@ sai_object_id_t SaiSwitch::helperGetSwitchAttrOid(
          * Redis value of this attribute is not present yet, save it!
          */
 
-        redisSetDummyAsicStateForRealObjectId(rid);
+        redisSaveInternalOids(rid);
 
         SWSS_LOG_INFO("redis %s id is not defined yet in redis", meta->attridname);
 
@@ -611,6 +611,20 @@ bool SaiSwitch::isNonRemovableRid(
         SWSS_LOG_THROW("NULL rid passed");
     }
 
+    /*
+     * Check for SAI_SWITCH_ATTR_DEFAULT_* oids like cpu, default virtual
+     * router.  Those objects can't be removed if user ask for it.
+     */
+
+    /* Here we are checking for isSwitchObjectDefaultRid first then ColdBootDiscoveredRid
+     * as it is possible we can discover switch Internal OID as part of warm-booot also especially
+     * when we are doing SAI upgrade as part of warm-boot.*/
+
+    if (isSwitchObjectDefaultRid(rid))
+    {
+        return true;
+    }
+
     if (!isColdBootDiscoveredRid(rid))
     {
         /*
@@ -618,16 +632,6 @@ bool SaiSwitch::isNonRemovableRid(
          */
 
         return false;
-    }
-
-    /*
-     * Check for SAI_SWITCH_ATTR_DEFAULT_* oids like cpu, default virtual
-     * router.  Those objects can't be removed if user ask for it.
-     */
-
-    if (isSwitchObjectDefaultRid(rid))
-    {
-        return true;
     }
 
     sai_object_type_t ot = m_vendorSai->objectTypeQuery(rid);
@@ -742,6 +746,35 @@ std::set<sai_object_id_t> SaiSwitch::getWarmBootDiscoveredVids() const
     SWSS_LOG_ENTER();
 
     return m_warmBootDiscoveredVids;
+}
+
+void SaiSwitch::redisSaveInternalOids(
+                                      _In_ sai_object_id_t rid) const
+{
+    SWSS_LOG_ENTER();
+
+    std::set<sai_object_id_t> coldVids;
+
+    sai_object_id_t vid = m_translator->translateRidToVid(rid, m_switch_vid);
+
+    coldVids.insert(vid);
+
+    /* Save Switch Internal OID put in current view asic state and also
+     * in ColdVid Table discovered as cold or warm boot.
+     * Please note it is possible to discover new Switch internal OID in warm-boot also
+     * if SAI gets upgraded as part of warm-boot so we are adding to ColdVid also
+     * so that comparison logic do not remove this OID in warm-boot case. One example
+     * is SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID which is discovered in warm-boot 
+     * when upgrading to new SAI Version*/
+
+
+    m_client->setDummyAsicStateObject(vid);
+
+    m_client->saveColdBootDiscoveredVids(m_switch_vid, coldVids);
+
+    SWSS_LOG_NOTICE("put switch internal discovered rid %s to Asic View and COLDVIDS", 
+                    sai_serialize_object_id(rid).c_str());
+
 }
 
 void SaiSwitch::redisSaveColdBootDiscoveredVids() const

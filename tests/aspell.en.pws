@@ -2,6 +2,7 @@ personal_ws-1.1 en 0
 acl
 ACL
 ACLs
+apache
 api
 API
 apis
@@ -94,8 +95,10 @@ hardcoded
 hasEqualAttribute
 hostif
 HSV
+http
 https
 hw
+hwinfo
 ifdef
 IFF
 ifindex
@@ -280,5 +283,6 @@ vxlan
 VXLAN
 workaroung
 WRED
+www
 xoff
 xon

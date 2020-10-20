@@ -17,9 +17,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:uSUCsrm:h";
+    const char* const optstring = "dp:t:g:x:b:uSUCsrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:uSUCsh";
+    const char* const optstring = "dp:t:g:x:b:uSUCsh";
 #endif // SAITHRIFT
 
     while(true)
@@ -36,6 +36,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "syncMode",                no_argument,       0, 's' },
             { "globalContext",           required_argument, 0, 'g' },
             { "contextContig",           required_argument, 0, 'x' },
+            { "breakConfig",             required_argument, 0, 'b' },
 #ifdef SAITHRIFT
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
@@ -101,6 +102,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 options->m_contextConfig = std::string(optarg);
                 break;
 
+            case 'b':
+                options->m_breakConfig = std::string(optarg);
+                break;
+
 #ifdef SAITHRIFT
             case 'r':
                 options->m_runRPCServer = true;
@@ -133,9 +138,9 @@ void CommandLineOptionsParser::printUsage()
     SWSS_LOG_ENTER();
 
 #ifdef SAITHRIFT
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-g idx] [-x contextConfig] [-r] [-m portmap] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-g idx] [-x contextConfig] [-b breakConfig] [-r] [-m portmap] [-h]" << std::endl;
 #else
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-g idx] [-x contextConfig] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-g idx] [-x contextConfig] [-b breakConfig] [-h]" << std::endl;
 #endif // SAITHRIFT
 
     std::cout << "    -d --diag" << std::endl;
@@ -158,6 +163,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Global context index to load from context config file" << std::endl;
     std::cout << "    -x --contextConfig" << std::endl;
     std::cout << "        Context configuration file" << std::endl;
+    std::cout << "    -b --breakConfig" << std::endl;
+    std::cout << "        Comparison logic 'break before make' configuration file" << std::endl;
 
 #ifdef SAITHRIFT
 
