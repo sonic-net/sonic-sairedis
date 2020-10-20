@@ -566,7 +566,7 @@ bool MACsecManager::get_macsec_sa_pn(const MACsecAttr &attr, sai_uint64_t &pn)
         << "ip macsec show "
         << shellquote(attr.m_macsec_name);
     std::string output;
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
+
     if (!exec(ostream.str(), output))
     {
         return false;
