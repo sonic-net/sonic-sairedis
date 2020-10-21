@@ -439,7 +439,6 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     macsec_attr.m_direction = attr->value.s32;
 
     // Find veth name
-    // TODO, right now the port is same as port
     sai_object_id_t port_id = SAI_NULL_OBJECT_ID;
     CHECK_STATUS(findPortByMACsecFlow(flow_id, port_id));
     CHECK_STATUS(findHostInterfaceInfoByPort(port_id, macsec_attr.m_info));

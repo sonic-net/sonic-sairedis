@@ -129,7 +129,11 @@ class MACsecManager
         const std::string &macsec_interface,
         std::shared_ptr<HostInterfaceInfo> info);
 
-    bool delete_macsec_manager(const std::string &macsec_interface);
+    bool delete_macsec_traffic_manager(const std::string &macsec_interface);
+    bool get_macsec_device_info(
+        const std::string &macsec_device,
+        std::string &info);
+    bool is_macsec_device_existing(const std::string &macsec_device);
 
     struct MACsecTrafficManager
     {
@@ -143,7 +147,7 @@ class MACsecManager
         ~MACsecTrafficManager()
         {};
     };
-    std::map<std::string, MACsecTrafficManager> m_managers;
+    std::map<std::string, MACsecTrafficManager> m_macsec_traffic_managers;
 
     std::string shellquote(const std::string &str);
     bool exec(const std::string &command, std::string &output);
