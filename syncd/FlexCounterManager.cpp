@@ -91,10 +91,11 @@ void FlexCounterManager::addCounter(
 
     fc->addCounter(vid, rid, values);
 
-    if (fc->isEmpty())
-    {
-        removeInstance(instanceId);
-    }
+    // TODO: Temporary remove this to avoid flex counter cannot be active
+    // if (fc->isEmpty())
+    // {
+    //     removeInstance(instanceId);
+    // }
 }
 
 void FlexCounterManager::removeCounter(
@@ -107,9 +108,10 @@ void FlexCounterManager::removeCounter(
 
     fc->removeCounter(vid);
 
-    if (fc->isEmpty())
-    {
-        removeInstance(instanceId);
-    }
+    // TODO: Temporary remove this to avoid flex counter cannot be active
+    // if (fc->isEmpty())
+    // {
+    //     removeInstance(instanceId);
+    // }
 }
 
