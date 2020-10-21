@@ -17,6 +17,7 @@ You may obtain a copy of the License at
   limitations under the License.
   '''
 import os
+import sys
 import json
 import subprocess
 
