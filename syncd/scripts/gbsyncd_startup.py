@@ -19,6 +19,8 @@ You may obtain a copy of the License at
 import os
 import sys
 import json
+import time
+import syslog
 import subprocess
 
 
@@ -39,7 +41,9 @@ def main():
         with open('/usr/share/sonic/hwsku/gearbox_config.json') as file_object:
             gearbox_config=json.load(file_object)
     except:
-        sys.exit("No external PHY / gearbox supported on this platform, existing physycd application")
+        syslog.syslog(syslog.LOG_NOTICE, "No external PHY / gearbox supported on this platform, existing gbsyncd application")
+        time.sleep(2)
+        sys.exit(0)
 
     physyncd_enable(gearbox_config)
 
