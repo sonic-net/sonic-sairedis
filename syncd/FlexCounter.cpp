@@ -1435,7 +1435,7 @@ void FlexCounter::collectMACsecSAAttrs(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Failed to get attr of MACsec SA 0x%" PRIx64 ": %d", macsecSAVid, status);
+            SWSS_LOG_WARN("Failed to get attr of MACsec SA 0x%" PRIx64 ": %d", macsecSAVid, status);
             continue;
         }
 
