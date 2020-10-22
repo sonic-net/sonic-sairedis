@@ -6,6 +6,7 @@ extern "C" {
 
 #include "swss/logger.h"
 #include "swss/table.h"
+#include "swss/tokenize.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
@@ -96,6 +97,63 @@ void test_serialize_remove_route_entry(int n)
     for (int i = 0; i < n; i++)
     {
         auto s = serialize_route_entry();
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto time = end - start;
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(time);
+    std::cout << "ms: " << (double)us.count()/1000 << " / " << n << std::endl;
+}
+
+void test_deserialize_route_entry_meta(int n)
+{
+    SWSS_LOG_ENTER();
+
+    // meta key 123ms/10k
+    auto s = serialize_route_entry();
+    // auto s = sai_serialize_route_entry(get_route_entry());
+
+    std::cout << s << std::endl;
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (int i = 0; i < n; i++)
+    {
+        sai_object_meta_key_t mk;
+        sai_deserialize_object_meta_key(s, mk);
+
+        //sai_route_entry_t route_entry;
+        //sai_deserialize_route_entry(s, route_entry);
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto time = end - start;
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(time);
+    std::cout << "ms: " << (double)us.count()/1000 << " / " << n << std::endl;
+}
+
+void test_deserialize_route_entry(int n)
+{
+    SWSS_LOG_ENTER();
+
+    // 7.2 ms
+    // 8.9 ms with try/catch
+    // 13ms for entire object meta key
+
+    char buffer[1000];
+
+    sai_route_entry_t route_entry = get_route_entry();
+    sai_serialize_route_entry(buffer, &route_entry);
+
+    auto s = std::string(buffer);
+
+    std::cout << s << std::endl;
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (int i = 0; i < n; i++)
+    {
+        sai_deserialize_route_entry(s.c_str(), &route_entry);
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -664,13 +722,141 @@ void test_ContextConfigContainer()
     auto ccc = ContextConfigContainer::loadFromFile("context_config.json");
 }
 
+static std::vector<std::string> tokenize(
+        _In_ std::string input,
+        _In_ const std::string &delim)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * input is modified so it can't be passed as reference
+     */
+
+    std::vector<std::string> tokens;
+
+    size_t pos = 0;
+
+    while ((pos = input.find(delim)) != std::string::npos)
+    {
+        std::string token = input.substr(0, pos);
+
+        input.erase(0, pos + delim.length());
+        tokens.push_back(token);
+    }
+
+    tokens.push_back(input);
+
+    return tokens;
+}
+
+static sai_object_type_t deserialize_object_type(
+        _In_ const std::string& s)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_type_t object_type;
+
+    sai_deserialize_object_type(s, object_type);
+
+    return object_type;
+}
+
+void test_tokenize_bulk_route_entry()
+{
+    SWSS_LOG_ENTER();
+
+    auto header = "2020-09-24.21:06:54.045505|C|SAI_OBJECT_TYPE_ROUTE_ENTRY";
+    auto route = "||{\"dest\":\"20c1:bb0:0:80::/64\",\"switch_id\":\"oid:0x21000000000000\",\"vr\":\"oid:0x3000000000022\"}|SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID=oid:0x500000000066c";
+
+    std::string line = header;
+
+    int per = 100;
+
+    for (int i = 0; i < per; i++)
+    {
+        line += route;
+    }
+
+    auto tstart = std::chrono::high_resolution_clock::now();
+
+    int n = 1000;
+
+    for (int c = 0; c < n; c++)
+    {
+        auto fields = tokenize(line, "||");
+
+        auto first = fields.at(0); // timestamp|action|objecttype
+
+        std::string str_object_type = swss::tokenize(first, '|').at(2);
+
+        sai_object_type_t object_type = deserialize_object_type(str_object_type);
+
+        std::vector<std::string> object_ids;
+
+        std::vector<std::shared_ptr<SaiAttributeList>> attributes;
+
+        for (size_t idx = 1; idx < fields.size(); ++idx)
+        {
+            // object_id|attr=value|...
+            const std::string &joined = fields[idx];
+
+            auto split = swss::tokenize(joined, '|');
+
+            std::string str_object_id = split.front();
+
+            object_ids.push_back(str_object_id);
+
+            std::vector<swss::FieldValueTuple> entries; // attributes per object id
+
+            SWSS_LOG_DEBUG("processing: %s", joined.c_str());
+
+            for (size_t i = 1; i < split.size(); ++i)
+            {
+                const auto &item = split[i];
+
+                auto start = item.find_first_of("=");
+
+                auto field = item.substr(0, start);
+                auto value = item.substr(start + 1);
+
+                swss::FieldValueTuple entry(field, value);
+
+                entries.push_back(entry);
+            }
+
+            // since now we converted this to proper list, we can extract attributes
+
+            std::shared_ptr<SaiAttributeList> list =
+                std::make_shared<SaiAttributeList>(object_type, entries, false);
+
+            attributes.push_back(list);
+        }
+    }
+
+    auto tend = std::chrono::high_resolution_clock::now();
+    auto time = tend - tstart;
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(time);
+
+    std::cout << "ms: " << (double)us.count()/1000.0 / n << " n " << n << " / per " << per << std::endl;
+    std::cout << "s: " << (double)us.count()/1000000.0 << " for total routes: " <<( n * per) << std::endl;
+}
+
 int main()
 {
     SWSS_LOG_ENTER();
 
+    std::cout << " * test tokenize bulk route entry" << std::endl;
+
+    test_tokenize_bulk_route_entry();
+
     std::cout << " * test ContextConfigContainer" << std::endl;
 
     test_ContextConfigContainer();
+
+    std::cout << " * test deserialize route_entry" << std::endl;
+
+    test_deserialize_route_entry_meta(10000);
+    test_deserialize_route_entry(10000);
 
     std::cout << " * test remove" << std::endl;
 

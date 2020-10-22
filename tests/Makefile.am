@@ -13,7 +13,7 @@ SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 vssyncd_SOURCES = ../syncd/main.cpp
 
 vssyncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
-vssyncd_LDADD = ../syncd/libSyncd.a ../lib/src/libSaiRedis.a -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl
+vssyncd_LDADD = ../syncd/libSyncd.a ../lib/src/libSaiRedis.a -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lzmq
 
 if SAITHRIFT
 vssyncd_LDADD += -lrpcserver -lthrift

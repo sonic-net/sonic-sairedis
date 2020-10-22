@@ -13,6 +13,7 @@ libSaiVS_a_SOURCES = \
 					  ../../lib/src/NotificationFdbEvent.cpp \
 					  ../../lib/src/Notification.cpp \
 					  ../../lib/src/NotificationPortStateChange.cpp \
+					  ../../lib/src/PerformanceIntervalTimer.cpp \
 					  ResourceLimiter.cpp \
 					  ResourceLimiterContainer.cpp \
 					  ResourceLimiterParser.cpp \

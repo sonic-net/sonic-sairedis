@@ -15,6 +15,8 @@
 #include "RequestShutdown.h"
 #include "ContextConfig.h"
 #include "BreakConfig.h"
+#include "NotificationProducerBase.h"
+#include "SelectableChannel.h"
 
 #include "meta/SaiAttributeList.h"
 
@@ -61,7 +63,7 @@ namespace syncd
         public: // TODO private
 
             void processEvent(
-                    _In_ swss::ConsumerTable &consumer);
+                    _In_ SelectableChannel& consumer);
 
             sai_status_t processQuadEventInInitViewMode(
                     _In_ sai_object_type_t objectType,
@@ -356,8 +358,6 @@ namespace syncd
 
             std::shared_ptr<FlexCounterManager> m_manager;
 
-            std::shared_ptr<swss::ProducerTable> m_getResponse;
-
             /**
              * @brief set of objects removed by user when we are in init view
              * mode. Those could be vlan members, bridge ports etc.
@@ -408,6 +408,8 @@ namespace syncd
 
             std::shared_ptr<syncd::NotificationProcessor> m_processor;
 
+            std::shared_ptr<SelectableChannel> m_selectableChannel;
+
         private:
 
             /**
@@ -438,17 +440,13 @@ namespace syncd
 
             std::shared_ptr<swss::DBConnector> m_dbAsic;
 
-            std::shared_ptr<swss::DBConnector> m_dbNtf;
-
-            std::shared_ptr<swss::ConsumerTable> m_asicState;
-
             std::shared_ptr<swss::NotificationConsumer> m_restartQuery;
 
             std::shared_ptr<swss::DBConnector> m_dbFlexCounter;
             std::shared_ptr<swss::ConsumerTable> m_flexCounter;
             std::shared_ptr<swss::ConsumerTable> m_flexCounterGroup;
 
-            std::shared_ptr<swss::NotificationProducer> m_notifications;
+            std::shared_ptr<NotificationProducerBase> m_notifications;
 
             std::shared_ptr<sairedis::SwitchConfigContainer> m_switchConfigContainer;
             std::shared_ptr<sairedis::RedisVidIndexGenerator> m_redisVidIndexGenerator;

@@ -10,6 +10,9 @@ lib_LTLIBRARIES = libsairedis.la
 
 noinst_LIBRARIES = libSaiRedis.a
 libSaiRedis_a_SOURCES = \
+						 PerformanceIntervalTimer.cpp \
+						 ZeroMQChannel.cpp \
+						 Channel.cpp \
 						 Context.cpp \
 						 ContextConfigContainer.cpp \
 						 ContextConfig.cpp \
@@ -92,7 +95,7 @@ bin_PROGRAMS = tests
 
 tests_SOURCES = tests.cpp
 tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread $(top_srcdir)/meta/libsaimetadata.la $(top_srcdir)/meta/libsaimeta.la libsairedis.la
+tests_LDADD = -lhiredis -lswsscommon -lpthread $(top_srcdir)/meta/libsaimetadata.la $(top_srcdir)/meta/libsaimeta.la libsairedis.la -lzmq
 
 TESTS = tests
 

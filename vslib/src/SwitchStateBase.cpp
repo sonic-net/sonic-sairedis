@@ -765,21 +765,6 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     sai_attribute_t attr;
 
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY;
-    attr.value.u32 = 100;
-
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY;
-    attr.value.u32 = 100;
-
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY;
-    attr.value.u32 = 50; /* Half of single NAT entry */
-
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
     attr.id = SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY;
     attr.value.ptr = NULL;
 
@@ -806,6 +791,76 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
     attr.value.booldata = false;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+}
+
+sai_status_t SwitchStateBase::set_static_crm_values()
+{
+    SWSS_LOG_ENTER();
+
+    std::map<sai_switch_attr_t, int> crm_resource_lookup = {
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV4_ROUTE_ENTRY, m_maxIPv4RouteEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV6_ROUTE_ENTRY, m_maxIPv6RouteEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEXTHOP_ENTRY, m_maxIPv4NextHopEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEXTHOP_ENTRY, m_maxIPv6NextHopEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEIGHBOR_ENTRY, m_maxIPv4NeighborEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEIGHBOR_ENTRY, m_maxIPv6NeighborEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_MEMBER_ENTRY, m_maxNextHopGroupMemberEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_ENTRY, m_maxNextHopGroupEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY, m_maxFdbEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY, m_maxSNATEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY, m_maxDNATEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY, m_maxDoubleNATEntries }
+    };
+
+    for (auto const &resource: crm_resource_lookup)
+    {
+        sai_attribute_t attr;
+        attr.id = resource.first;
+        attr.value.u32 = resource.second;
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+    }
+
+    CHECK_STATUS(set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE, m_maxAclTables));
+
+    return set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP, m_maxAclTableGroups);
+}
+
+sai_status_t SwitchStateBase::set_static_acl_resource_list(
+        _In_ sai_switch_attr_t acl_resource,
+        _In_ int max_count)
+{
+    auto acl_stages = {SAI_ACL_STAGE_INGRESS, SAI_ACL_STAGE_EGRESS};
+    auto acl_bind_points = {
+        SAI_ACL_BIND_POINT_TYPE_PORT,
+        SAI_ACL_BIND_POINT_TYPE_LAG,
+        SAI_ACL_BIND_POINT_TYPE_VLAN,
+        SAI_ACL_BIND_POINT_TYPE_ROUTER_INTERFACE,
+        SAI_ACL_BIND_POINT_TYPE_SWITCH
+    };
+
+    std::vector<sai_acl_resource_t> acl_resource_list;
+    for (auto stage: acl_stages)
+    {
+        for (auto bp: acl_bind_points)
+        {
+            sai_acl_resource_t acl_resource_count;
+            acl_resource_count.stage = stage;
+            acl_resource_count.bind_point = bp;
+            acl_resource_count.avail_num = max_count;
+
+            acl_resource_list.push_back(acl_resource_count);
+        }
+    }
+
+    sai_acl_resource_list_t available_acl_resources;
+    available_acl_resources.count = static_cast<uint32_t>(acl_resource_list.size());
+    available_acl_resources.list = acl_resource_list.data();
+
+    sai_attribute_t attr;
+    attr.id = acl_resource;
+    attr.value.aclresource = available_acl_resources;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
@@ -1325,6 +1380,7 @@ sai_status_t SwitchStateBase::initialize_default_objects()
     CHECK_STATUS(set_number_of_ecmp_groups());
     CHECK_STATUS(set_switch_default_attributes());
     CHECK_STATUS(create_scheduler_groups());
+    CHECK_STATUS(set_static_crm_values());
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1656,6 +1712,17 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP:
                 return SAI_STATUS_SUCCESS;
 
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV4_ROUTE_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV6_ROUTE_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEXTHOP_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEXTHOP_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEIGHBOR_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEIGHBOR_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_MEMBER_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE:
+            case SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP:
             case SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY:
             case SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY:
             case SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY:

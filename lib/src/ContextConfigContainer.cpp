@@ -35,9 +35,9 @@ std::shared_ptr<ContextConfigContainer> ContextConfigContainer::getDefault()
     auto sc = std::make_shared<SwitchConfig>(0, "");
 
     cc->insert(sc);
-    
+
     ccc->m_map[0] = cc;
-    
+
     return ccc;
 }
 
@@ -112,6 +112,15 @@ std::shared_ptr<ContextConfigContainer> ContextConfigContainer::loadFromFile(
                     dbState.c_str());
 
             auto cc = std::make_shared<ContextConfig>(guid, name, dbAsic, dbCounters, dbFlex, dbState);
+
+            cc->m_zmqEnable = item["zmq_enable"];
+            cc->m_zmqEndpoint = item["zmq_endpoint"];
+            cc->m_zmqNtfEndpoint = item["zmq_ntf_endpoint"];
+
+            SWSS_LOG_NOTICE("contextConfig zmq enable %s, endpoint: %s, ntf endpoint: %s",
+                    (cc->m_zmqEnable) ? "true" : "false",
+                    cc->m_zmqEndpoint.c_str(),
+                    cc->m_zmqNtfEndpoint.c_str());
 
             for (size_t k = 0; k < item["switches"].size(); k++)
             {

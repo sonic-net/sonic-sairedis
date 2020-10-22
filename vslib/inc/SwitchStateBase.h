@@ -83,6 +83,12 @@ namespace saivs
 
             virtual sai_status_t set_number_of_ecmp_groups();
 
+            virtual sai_status_t set_static_crm_values();
+
+            virtual sai_status_t set_static_acl_resource_list(
+                    _In_ sai_switch_attr_t acl_resource,
+                    _In_ int max_count);
+
         public:
 
             virtual sai_status_t initialize_default_objects();
@@ -503,6 +509,29 @@ namespace saivs
             sai_object_id_t m_default_1q_bridge;
             sai_object_id_t m_default_bridge_port_1q_router;
             sai_object_id_t m_default_vlan_id;
+
+        protected:
+
+            constexpr static const int m_maxIPv4RouteEntries = 100000;
+            constexpr static const int m_maxIPv6RouteEntries = 10000;
+
+            constexpr static const int m_maxIPv4NextHopEntries = 32000;
+            constexpr static const int m_maxIPv6NextHopEntries = 32000;
+
+            constexpr static const int m_maxIPv4NeighborEntries = 4000;
+            constexpr static const int m_maxIPv6NeighborEntries = 2000;
+
+            constexpr static const int m_maxNextHopGroupMemberEntries = 16000;
+            constexpr static const int m_maxNextHopGroupEntries = 400;
+
+            constexpr static const int m_maxFdbEntries = 800;
+
+            constexpr static const int m_maxSNATEntries = 100;
+            constexpr static const int m_maxDNATEntries = 100;
+            constexpr static const int m_maxDoubleNATEntries = 50; /* Half of single NAT entry */
+
+            constexpr static const int m_maxAclTables = 3;
+            constexpr static const int m_maxAclTableGroups = 200;
 
         public: // TODO private
 

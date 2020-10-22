@@ -7,6 +7,9 @@
             "dbCounters" : "COUNTERS_DB",
             "dbFlex": "FLEX_COUNTER_DB",
             "dbState" : "STATE_DB",
+            "zmq_enable": false,
+            "zmq_endpoint": "tcp://127.0.0.1:5555",
+            "zmq_ntf_endpoint": "tcp://127.0.0.1:5556",
             "switches": [
                 {
                     "index" : 0,
@@ -25,6 +28,9 @@
             "dbCounters" : "GB_COUNTERS_DB",
             "dbFlex": "GB_FLEX_COUNTER_DB",
             "dbState" : "STATE_DB",
+            "zmq_enable":false,
+            "zmq_endpoint": "tcp://127.0.0.1:5565",
+            "zmq_ntf_endpoint": "tcp://127.0.0.1:5566",
             "switches": [
                 {
                     "index" : 0,

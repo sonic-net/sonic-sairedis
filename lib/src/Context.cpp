@@ -17,9 +17,7 @@ Context::Context(
 
     // will create notification thread
     m_redisSai = std::make_shared<RedisRemoteSaiInterface>(
-            m_contextConfig->m_guid,
-            m_contextConfig->m_scc,
-            m_contextConfig->m_dbAsic,
+            m_contextConfig,
             std::bind(&Context::handle_notification, this, _1),
             m_recorder);
 

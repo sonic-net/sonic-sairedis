@@ -617,7 +617,7 @@ bool SaiSwitch::isNonRemovableRid(
      */
 
     /* Here we are checking for isSwitchObjectDefaultRid first then ColdBootDiscoveredRid
-     * as it is possible we can discover switch Internal OID as part of warm-booot also especially
+     * as it is possible we can discover switch Internal OID as part of warm-boot also especially
      * when we are doing SAI upgrade as part of warm-boot.*/
 
     if (isSwitchObjectDefaultRid(rid))

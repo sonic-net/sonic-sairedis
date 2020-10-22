@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Channel.h"
 #include "RemoteSaiInterface.h"
 #include "SwitchContainer.h"
 #include "VirtualObjectIdManager.h"
@@ -17,17 +18,14 @@
 
 namespace sairedis
 {
-    class RedisChannel
+    class RedisChannel:
+        public Channel
     {
-        public:
-
-            typedef std::function<void(const std::string&,const std::string&, const std::vector<swss::FieldValueTuple>&)> Callback;
-
         public:
 
             RedisChannel(
                     _In_ const std::string& dbAsic,
-                    _In_ Callback callback);
+                    _In_ Channel::Callback callback);
 
             virtual ~RedisChannel();
 
@@ -35,31 +33,27 @@ namespace sairedis
 
             std::shared_ptr<swss::DBConnector> getDbConnector() const;
 
-            void setBuffered(
-                    _In_ bool buffered);
+            virtual void setBuffered(
+                    _In_ bool buffered) override;
 
-            void flush();
+            virtual void flush() override;
 
-            void set(
+            virtual void set(
                     _In_ const std::string& key, 
                     _In_ const std::vector<swss::FieldValueTuple>& values,
-                    _In_ const std::string& command);
+                    _In_ const std::string& command) override;
 
-            void del(
+            virtual void del(
                     _In_ const std::string& key,
-                    _In_ const std::string& command);
+                    _In_ const std::string& command) override;
 
-            sai_status_t wait(
+            virtual sai_status_t wait(
                     _In_ const std::string& command,
-                    _Out_ swss::KeyOpFieldsValuesTuple& kco);
+                    _Out_ swss::KeyOpFieldsValuesTuple& kco) override;
 
-        private:
+        protected:
 
-            void notificationThreadFunction();
-
-        private:
-
-            Callback m_callback;
+            virtual void notificationThreadFunction() override;
 
         private:
 
@@ -86,11 +80,6 @@ namespace sairedis
         private: // notification
 
             /**
-             * @brief Indicates whether notification thread should be running.
-             */
-            volatile bool m_runNotificationThread;
-
-            /**
              * @brief Database connector used for notifications.
              */
             std::shared_ptr<swss::DBConnector> m_dbNtf;
@@ -99,15 +88,5 @@ namespace sairedis
              * @brief Notification consumer.
              */
             std::shared_ptr<swss::NotificationConsumer> m_notificationConsumer;
-
-            /**
-             * @brief Event used to nice end notifications thread.
-             */
-            swss::SelectableEvent m_notificationThreadShouldEndEvent;
-
-            /**
-             * @brief Notification thread
-             */
-            std::shared_ptr<std::thread> m_notificationThread;
     };
 }

@@ -553,7 +553,19 @@ sub test_brcm_acl_limit
     play "acl_limit.rec";
 }
 
+sub test_brcm_buffer_pool_zmq
+{
+    fresh_start("-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "-s", "-g", "0", "-x", "$utils::DIR/ctx_zmq.json");
+
+    # we expect no operations on asic, and all buffer pools will be matched correctly
+
+    play("-m", "-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer.rec");
+    play("-m", "-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer_second.rec",0);
+}
+
+
 # RUN TESTS
+test_brcm_buffer_pool_zmq;
 
 test_brcm_acl_limit;
 test_sync_brcm_warm_boot_port_remove;
