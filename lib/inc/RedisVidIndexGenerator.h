@@ -2,7 +2,6 @@
 
 #include "OidIndexGenerator.h"
 
-#include "swss/redisclient.h"
 #include "swss/dbconnector.h"
 #include "swss/sal.h"
 
