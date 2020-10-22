@@ -57,9 +57,16 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
                 SAI_OBJECT_TYPE_MACSEC_SA,
                 macsec_attrs) == SAI_STATUS_SUCCESS)
         {
-            for (auto &sa_attr : macsec_attrs)
+            for (auto &macsec_attr : macsec_attrs)
             {
-                m_macsec_manager.enable_macsec(sa_attr);
+                if (m_macsec_manager.enable_macsec(macsec_attr))
+                {
+                    SWSS_LOG_NOTICE(
+                        "Enable MACsec SA %s %s %u",
+                        macsec_attr.m_macsec_name.c_str(),
+                        macsec_attr.m_sci.c_str(),
+                        macsec_attr.m_an);
+                }
             }
         }
         else
@@ -122,7 +129,14 @@ sai_status_t SwitchStateBase::createMACsecSA(
             attr_list,
             macsec_attr) == SAI_STATUS_SUCCESS)
     {
-        m_macsec_manager.enable_macsec(macsec_attr);
+        if (m_macsec_manager.enable_macsec(macsec_attr))
+        {
+            SWSS_LOG_NOTICE(
+                "Enable MACsec SA %s %s %u",
+                macsec_attr.m_macsec_name.c_str(),
+                macsec_attr.m_sci.c_str(),
+                macsec_attr.m_an);
+        }
     }
 
     auto sid = sai_serialize_object_id(macsec_sa_id);
@@ -386,6 +400,9 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
     sci_convert << std::hex << bswap_64(sci);
     macsec_attr.m_sci = sci_convert.str();
 
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_EXPLICIT_SCI_ENABLE, attr_count, attr_list);
+    macsec_attr.m_send_sci = attr->value.booldata;
+
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_FLOW_ID, attr_count, attr_list);
     auto flow_id = attr->value.oid;
 
@@ -461,6 +478,9 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
             macsec_attr.m_sak.length() / 2,
             macsec_attr.m_sak.length() / 2);
     }
+
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_AUTH_KEY, attr_count, attr_list);
+    macsec_attr.m_auth_key = sai_serialize_hex_binary(attr->value.macsecauthkey);
 
     if (macsec_attr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
     {

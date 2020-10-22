@@ -2626,33 +2626,42 @@ void sai_deserialize_acl_capability(
 void sai_deserialize_hex_binary(const std::string &s, void *buffer, size_t length)
 {
     SWSS_LOG_ENTER();
-
+    if (s.length() % 2 != 0)
+    {
+        SWSS_LOG_THROW("Invalid hex string %s", s.c_str());
+    }
+    if (s.length() > (length * 2))
+    {
+        SWSS_LOG_THROW("Buffer length isn't sufficient.");
+    }
     size_t buffer_cur = 0;
     size_t hex_cur = 0;
-    char *output = static_cast<char *>(buffer);
-    while (buffer_cur < length)
+    unsigned char *output = static_cast<unsigned char *>(buffer);
+    while (hex_cur < s.length())
     {
-        if ((hex_cur + 1) >= s.length())
+        if (!std::isxdigit(static_cast<std::uint8_t>(s[hex_cur])))
         {
-            break;
+            SWSS_LOG_THROW(
+                "Invalid hex string %s at %lu(%c)",
+                s.c_str(),
+                hex_cur,
+                s[hex_cur]);
+        }
+        if (!std::isxdigit(static_cast<std::uint8_t>(s[hex_cur + 1])))
+        {
+            SWSS_LOG_THROW(
+                "Invalid hex string %s at %lu(%c)",
+                s.c_str(),
+                hex_cur + 1,
+                s[hex_cur + 1]);
         }
         std::stringstream stream;
-        if (
-            !!!std::isxdigit(static_cast<std::uint8_t>(s[hex_cur]))
-            || !!!std::isxdigit(static_cast<std::uint8_t>(s[hex_cur + 1])))
-        {
-            break;
-        }
         stream << std::hex;
         stream << s[hex_cur++];
         stream << s[hex_cur++];
         std::uint32_t value;
         stream >> value;
         output[buffer_cur++] = static_cast<std::uint8_t>(value);
-    }
-    if (hex_cur != s.length())
-    {
-        SWSS_LOG_THROW("Invalid binary hex %s", s.c_str());
     }
 }
 

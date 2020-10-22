@@ -386,18 +386,14 @@ bool MACsecManager::create_macsec_port(const MACsecAttr &attr)
         << shellquote(attr.m_veth_name)
         << " name "
         << shellquote(attr.m_macsec_name)
-        << " type macsec sci "
-        << attr.m_sci;
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    if (!exec(ostream.str()))
-    {
-        return false;
-    }
-    ostream.str("");
-    ostream
-        << "ip link set dev "
+        << " type macsec "
+        << " sci " << attr.m_sci
+        << " encrypt " << (attr.m_encryption_enable ? " on " : " off ")
+        << " && ip link set dev "
         << shellquote(attr.m_macsec_name)
         << " up";
+        ;
+    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
     if (!exec(ostream.str()))
     {
         return false;
@@ -408,7 +404,8 @@ bool MACsecManager::create_macsec_port(const MACsecAttr &attr)
 bool MACsecManager::create_macsec_egress_sa(const MACsecAttr &attr)
 {
     // Create MACsec Egress SA
-    // $ ip macsec add macsec0 tx sa 0 pn 1 on key 00 <SAK>
+    // $ ip macsec add <MACSEC_NAME> tx sa <AN> pn <PN> on key <AUTH_KEY> <SAK> &&
+    // ip link set link <VETH_NAME> name <MACSEC_NAME> type macsec encodingsa <AN>
     SWSS_LOG_ENTER();
     std::ostringstream ostream;
     ostream
@@ -418,8 +415,16 @@ bool MACsecManager::create_macsec_egress_sa(const MACsecAttr &attr)
         << attr.m_an
         << " pn "
         << attr.m_pn
-        << " on key 00 "
-        << attr.m_sak;
+        << " on key "
+        << attr.m_auth_key
+        << " "
+        << attr.m_sak
+        << " && ip link set link "
+        << attr.m_veth_name
+        << " name "
+        << attr.m_macsec_name
+        << " type macsec encodingsa "
+        << attr.m_an;
     SWSS_LOG_NOTICE("%s", ostream.str().c_str());
     return exec(ostream.str());
 }
@@ -427,7 +432,7 @@ bool MACsecManager::create_macsec_egress_sa(const MACsecAttr &attr)
 bool MACsecManager::create_macsec_ingress_sc(const MACsecAttr &attr)
 {
     // Create MACsec Ingress SC
-    // $ ip macsec add macsec0 rx sci <SCI>
+    // $ ip macsec add <MACSEC_NAME> rx sci <SCI>
     SWSS_LOG_ENTER();
     std::ostringstream ostream;
     ostream
@@ -443,7 +448,7 @@ bool MACsecManager::create_macsec_ingress_sc(const MACsecAttr &attr)
 bool MACsecManager::create_macsec_ingress_sa(const MACsecAttr &attr)
 {
     // Create MACsec Ingress SA
-    // $ ip macsec add macsec0 rx sci <SCI> sa <SA> pn <PN> on key 00 <SAK>
+    // $ ip macsec add <MACSEC_NAME> rx sci <SCI> sa <SA> pn <PN> on key <AUTH_KEY> <SAK>
     SWSS_LOG_ENTER();
     std::ostringstream ostream;
     ostream
@@ -455,7 +460,9 @@ bool MACsecManager::create_macsec_ingress_sa(const MACsecAttr &attr)
         << attr.m_an
         << " pn "
         << attr.m_pn
-        << " on key 00 "
+        << " on key "
+        << attr.m_auth_key
+        << " "
         << attr.m_sak;
     SWSS_LOG_NOTICE("%s", ostream.str().c_str());
     return exec(ostream.str());
@@ -475,8 +482,7 @@ bool MACsecManager::enable_macsec(const MACsecAttr &attr)
         create_macsec_ingress_sc(attr);
         create_macsec_ingress_sa(attr);
     }
-
-    return SAI_STATUS_SUCCESS;
+    return true;
 }
 
 bool MACsecManager::delete_macsec_port(const MACsecAttr &attr)
@@ -516,15 +522,12 @@ bool MACsecManager::delete_macsec_egress_sa(const MACsecAttr &attr)
         << shellquote(attr.m_macsec_name)
         << " tx sa "
         << attr.m_an
-        << " off";
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    exec(ostream.str());
-    ostream.str("");
-    ostream
-        << "ip macsec del "
+        << " off"
+        << " && ip macsec del "
         << shellquote(attr.m_macsec_name)
         << " tx sa "
-        << attr.m_an;
+        << attr.m_an
+        ;
     SWSS_LOG_NOTICE("%s", ostream.str().c_str());
     return exec(ostream.str());
 }
@@ -541,12 +544,8 @@ bool MACsecManager::delete_macsec_ingress_sc(const MACsecAttr &attr)
         << shellquote(attr.m_macsec_name)
         << " rx sci "
         << attr.m_sci
-        << " off";
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    exec(ostream.str());
-    ostream.str("");
-    ostream
-        << "ip macsec del "
+        << " off"
+        << " && ip macsec del "
         << shellquote(attr.m_macsec_name)
         << " rx sci "
         << attr.m_sci;
@@ -568,12 +567,8 @@ bool MACsecManager::delete_macsec_ingress_sa(const MACsecAttr &attr)
         << attr.m_sci
         << " sa "
         << attr.m_an
-        << " off";
-    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
-    exec(ostream.str());
-    ostream.str("");
-    ostream
-        << "ip macsec del "
+        << " off"
+        << " && ip macsec del "
         << shellquote(attr.m_macsec_name)
         << " rx sci "
         << attr.m_sci
@@ -610,14 +605,15 @@ bool MACsecManager::get_macsec_sa_pn(const MACsecAttr &attr, sai_uint64_t &pn)
     // RXSC: 5254001234560001, state on
     //     0: PN 28, state on, key ebe9123ecbbfd96bee92c8ab01000000
     // Use pattern "%s:\\s*%s,?[\\s\\w]+\\d:\\s+PN\\s+(\\d+)" to extract PN
+    // User pattern <DIRECTION>:\s*<SCI>[\s\w,]+\n(?:\s*\d:\s*PN\s*\d+[,\w ]+\n?)*(?:\s*<AN>:\s*PN\s*(\d+)[,\w ]+\n?)
     std::ostringstream ostream;
     ostream
         << direction
         << ":\\s*"
         << attr.m_sci
-        << ",?[\\s\\w]+"
+        << "[\\s\\w,]+\\n(?:\\s*\\d:\\s*PN\\s*\\d+[,\\w ]+\\n?)*(?:\\s*"
         << attr.m_an
-        << ":\\s+PN\\s+(\\d+)";
+        << ":\\s*PN\\s*(\\d+)[,\\w ]+\\n?)";
     const std::regex pattern(ostream.str());
     std::smatch matches;
     if (std::regex_search(macsec_info, matches, pattern))

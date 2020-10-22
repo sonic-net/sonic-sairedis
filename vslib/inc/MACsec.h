@@ -21,10 +21,12 @@ struct MACsecAttr
 {
     std::string m_veth_name;
     std::string m_macsec_name;
+    std::string m_auth_key;
     std::string m_sak;
     std::string m_sci;
     macsec_an_t m_an;
     macsec_pn_t m_pn;
+    bool m_send_sci;
     bool m_encryption_enable;
     sai_int32_t m_direction;
     std::shared_ptr<HostInterfaceInfo> m_info;
