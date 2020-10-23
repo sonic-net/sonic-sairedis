@@ -166,7 +166,7 @@ namespace syncd
 
         private:
 
-            std::shared_ptr<swss::DBConnector> m_redisClient;
+            std::shared_ptr<swss::DBConnector> m_dbConnector;
 
             std::shared_ptr<swss::DBConnector> m_dbAsic;
 

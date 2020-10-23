@@ -22,7 +22,7 @@ DBConnector::DBConnector(
 {
     SWSS_LOG_ENTER();
 
-    m_redisClient = std::make_shared<swss::DBConnector>(dbAsic.get());
+    m_dbConnector = std::make_shared<swss::DBConnector>(dbAsic.get());
 
     std::string fdbFlushLuaScript = swss::loadLuaScript("fdb_flush.lua"); // TODO script must be updated to version 2
 
@@ -73,7 +73,7 @@ void DBConnector::clearLaneMap(
 
     auto key = getRedisLanesKey(switchVid);
 
-    m_redisClient->del(key);
+    m_dbConnector->del(key);
 }
 
 std::unordered_map<sai_uint32_t, sai_object_id_t> DBConnector::getLaneMap(
@@ -83,7 +83,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> DBConnector::getLaneMap(
 
     auto key = getRedisLanesKey(switchVid);
 
-    auto hash = m_redisClient->hgetall(key);
+    auto hash = m_dbConnector->hgetall(key);
 
     SWSS_LOG_DEBUG("previous lanes: %lu", hash.size());
 
@@ -125,7 +125,7 @@ void DBConnector::saveLaneMap(
 
         auto key = getRedisLanesKey(switchVid);
 
-        m_redisClient->hset(key, strLane, strPortId);
+        m_dbConnector->hset(key, strLane, strPortId);
     }
 }
 
@@ -134,7 +134,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> DBConnector::getObjectMap(
 {
     SWSS_LOG_ENTER();
 
-    auto hash = m_redisClient->hgetall(key);
+    auto hash = m_dbConnector->hgetall(key);
 
     std::unordered_map<sai_object_id_t, sai_object_id_t> map;
 
@@ -227,7 +227,7 @@ void DBConnector::setDummyAsicStateObject(
 
     std::string strKey = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strVid);
 
-    m_redisClient->hset(strKey, "NULL", "NULL");
+    m_dbConnector->hset(strKey, "NULL", "NULL");
 }
 
 std::string DBConnector::getRedisColdVidsKey(
@@ -275,7 +275,7 @@ void DBConnector::saveColdBootDiscoveredVids(
 
         std::string strVid = sai_serialize_object_id(vid);
 
-        m_redisClient->hset(key, strVid, strObjectType);
+        m_dbConnector->hset(key, strVid, strObjectType);
     }
 }
 
@@ -316,7 +316,7 @@ std::shared_ptr<std::string> DBConnector::getSwitchHiddenAttribute(
 
     auto key = getRedisHiddenKey(switchVid);
 
-    return m_redisClient->hget(key, attrIdName);
+    return m_dbConnector->hget(key, attrIdName);
 }
 
 void DBConnector::saveSwitchHiddenAttribute(
@@ -330,7 +330,7 @@ void DBConnector::saveSwitchHiddenAttribute(
 
     std::string strRid = sai_serialize_object_id(objectRid);
 
-    m_redisClient->hset(key, attrIdName, strRid);
+    m_dbConnector->hset(key, attrIdName, strRid);
 }
 
 std::set<sai_object_id_t> DBConnector::getColdVids(
@@ -340,7 +340,7 @@ std::set<sai_object_id_t> DBConnector::getColdVids(
 
     auto key = getRedisColdVidsKey(switchVid);
 
-    auto hash = m_redisClient->hgetall(key);
+    auto hash = m_dbConnector->hgetall(key);
 
     /*
      * NOTE: some objects may not exists after 2nd restart, like VLAN_MEMBER or
@@ -360,7 +360,7 @@ std::set<sai_object_id_t> DBConnector::getColdVids(
          * Just make sure that vid in COLDVIDS is present in current vid2rid map
          */
 
-        auto rid = m_redisClient->hget(VIDTORID, strVid);
+        auto rid = m_dbConnector->hget(VIDTORID, strVid);
 
         if (rid == nullptr)
         {
@@ -387,7 +387,7 @@ void DBConnector::setPortLanes(
         std::string strLane = sai_serialize_number(lane);
         std::string strPortRid = sai_serialize_object_id(portRid);
 
-        m_redisClient->hset(key, strLane, strPortRid);
+        m_dbConnector->hset(key, strLane, strPortRid);
     }
 }
 
@@ -400,7 +400,7 @@ size_t DBConnector::getAsicObjectsSize(
     // go N times on every switch and it can be slow, we need to find better
     // way to do this
 
-    auto keys = m_redisClient->keys(ASIC_STATE_TABLE ":*");
+    auto keys = m_dbConnector->keys(ASIC_STATE_TABLE ":*");
 
     size_t count = 0;
 
@@ -444,7 +444,7 @@ int DBConnector::removePortFromLanesMap(
         {
             std::string strLane = sai_serialize_number(kv.first);
 
-            m_redisClient->hdel(key, strLane);
+            m_dbConnector->hdel(key, strLane);
 
             removed++;
         }
@@ -466,7 +466,7 @@ void DBConnector::removeAsicObject(
 
     SWSS_LOG_INFO("removing ASIC DB key: %s", key.c_str());
 
-    m_redisClient->del(key);
+    m_dbConnector->del(key);
 }
 
 void DBConnector::removeAsicObject(
@@ -476,7 +476,7 @@ void DBConnector::removeAsicObject(
 
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_redisClient->del(key);
+    m_dbConnector->del(key);
 }
 
 void DBConnector::removeTempAsicObject(
@@ -486,7 +486,7 @@ void DBConnector::removeTempAsicObject(
 
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_redisClient->del(key);
+    m_dbConnector->del(key);
 }
 
 void DBConnector::setAsicObject(
@@ -498,7 +498,7 @@ void DBConnector::setAsicObject(
 
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_redisClient->hset(key, attr, value);
+    m_dbConnector->hset(key, attr, value);
 }
 
 void DBConnector::setTempAsicObject(
@@ -510,7 +510,7 @@ void DBConnector::setTempAsicObject(
 
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_redisClient->hset(key, attr, value);
+    m_dbConnector->hset(key, attr, value);
 }
 
 void DBConnector::createAsicObject(
@@ -523,13 +523,13 @@ void DBConnector::createAsicObject(
 
     if (attrs.size() == 0)
     {
-        m_redisClient->hset(key, "NULL", "NULL");
+        m_dbConnector->hset(key, "NULL", "NULL");
         return;
     }
 
     for (const auto& e: attrs)
     {
-        m_redisClient->hset(key, fvField(e), fvValue(e));
+        m_dbConnector->hset(key, fvField(e), fvValue(e));
     }
 }
 
@@ -543,13 +543,13 @@ void DBConnector::createTempAsicObject(
 
     if (attrs.size() == 0)
     {
-        m_redisClient->hset(key, "NULL", "NULL");
+        m_dbConnector->hset(key, "NULL", "NULL");
         return;
     }
 
     for (const auto& e: attrs)
     {
-        m_redisClient->hset(key, fvField(e), fvValue(e));
+        m_dbConnector->hset(key, fvField(e), fvValue(e));
     }
 }
 
@@ -558,16 +558,16 @@ void DBConnector::setVidAndRidMap(
 {
     SWSS_LOG_ENTER();
 
-    m_redisClient->del(VIDTORID);
-    m_redisClient->del(RIDTOVID);
+    m_dbConnector->del(VIDTORID);
+    m_dbConnector->del(RIDTOVID);
 
     for (auto &kv: map)
     {
         std::string strVid = sai_serialize_object_id(kv.first);
         std::string strRid = sai_serialize_object_id(kv.second);
 
-        m_redisClient->hset(VIDTORID, strVid, strRid);
-        m_redisClient->hset(RIDTOVID, strRid, strVid);
+        m_dbConnector->hset(VIDTORID, strVid, strRid);
+        m_dbConnector->hset(RIDTOVID, strRid, strVid);
     }
 }
 
@@ -575,14 +575,14 @@ std::vector<std::string> DBConnector::getAsicStateKeys() const
 {
     SWSS_LOG_ENTER();
 
-    return m_redisClient->keys(ASIC_STATE_TABLE ":*");
+    return m_dbConnector->keys(ASIC_STATE_TABLE ":*");
 }
 
 std::vector<std::string> DBConnector::getAsicStateSwitchesKeys() const
 {
     SWSS_LOG_ENTER();
 
-    return m_redisClient->keys(ASIC_STATE_TABLE ":SAI_OBJECT_TYPE_SWITCH:*");
+    return m_dbConnector->keys(ASIC_STATE_TABLE ":SAI_OBJECT_TYPE_SWITCH:*");
 }
 
 void DBConnector::removeColdVid(
@@ -592,7 +592,7 @@ void DBConnector::removeColdVid(
 
     auto strVid = sai_serialize_object_id(vid);
 
-    m_redisClient->hdel(COLDVIDS, strVid);
+    m_dbConnector->hdel(COLDVIDS, strVid);
 }
 
 std::unordered_map<std::string, std::string> DBConnector::getAttributesFromAsicKey(
@@ -600,14 +600,14 @@ std::unordered_map<std::string, std::string> DBConnector::getAttributesFromAsicK
 {
     SWSS_LOG_ENTER();
 
-    return m_redisClient->hgetall(key);
+    return m_dbConnector->hgetall(key);
 }
 
 bool DBConnector::hasNoHiddenKeysDefined() const
 {
     SWSS_LOG_ENTER();
 
-    auto keys = m_redisClient->keys(HIDDEN "*");
+    auto keys = m_dbConnector->keys(HIDDEN "*");
 
     return keys.size() == 0;
 }
@@ -621,8 +621,8 @@ void DBConnector::removeVidAndRid(
     auto strVid = sai_serialize_object_id(vid);
     auto strRid = sai_serialize_object_id(rid);
 
-    m_redisClient->hdel(VIDTORID, strVid);
-    m_redisClient->hdel(RIDTOVID, strRid);
+    m_dbConnector->hdel(VIDTORID, strVid);
+    m_dbConnector->hdel(RIDTOVID, strRid);
 }
 
 void DBConnector::insertVidAndRid(
@@ -634,8 +634,8 @@ void DBConnector::insertVidAndRid(
     auto strVid = sai_serialize_object_id(vid);
     auto strRid = sai_serialize_object_id(rid);
 
-    m_redisClient->hset(VIDTORID, strVid, strRid);
-    m_redisClient->hset(RIDTOVID, strRid, strVid);
+    m_dbConnector->hset(VIDTORID, strVid, strRid);
+    m_dbConnector->hset(RIDTOVID, strRid, strVid);
 }
 
 sai_object_id_t DBConnector::getVidForRid(
@@ -645,7 +645,7 @@ sai_object_id_t DBConnector::getVidForRid(
 
     auto strRid = sai_serialize_object_id(rid);
 
-    auto pvid = m_redisClient->hget(RIDTOVID, strRid);
+    auto pvid = m_dbConnector->hget(RIDTOVID, strRid);
 
     if (pvid == nullptr)
     {
@@ -669,7 +669,7 @@ sai_object_id_t DBConnector::getRidForVid(
 
     auto strVid = sai_serialize_object_id(vid);
 
-    auto prid = m_redisClient->hget(VIDTORID, strVid);
+    auto prid = m_dbConnector->hget(VIDTORID, strVid);
 
     if (prid == nullptr)
     {
@@ -690,11 +690,11 @@ void DBConnector::removeAsicStateTable()
 {
     SWSS_LOG_ENTER();
 
-    const auto &asicStateKeys = m_redisClient->keys(ASIC_STATE_TABLE ":*");
+    const auto &asicStateKeys = m_dbConnector->keys(ASIC_STATE_TABLE ":*");
 
     for (const auto &key: asicStateKeys)
     {
-        m_redisClient->del(key);
+        m_dbConnector->del(key);
     }
 }
 
@@ -702,11 +702,11 @@ void DBConnector::removeTempAsicStateTable()
 {
     SWSS_LOG_ENTER();
 
-    const auto &tempAsicStateKeys = m_redisClient->keys(TEMP_PREFIX ASIC_STATE_TABLE ":*");
+    const auto &tempAsicStateKeys = m_dbConnector->keys(TEMP_PREFIX ASIC_STATE_TABLE ":*");
 
     for (const auto &key: tempAsicStateKeys)
     {
-        m_redisClient->del(key);
+        m_dbConnector->del(key);
     }
 }
 
