@@ -22,8 +22,6 @@ RedisClient::RedisClient(
 {
     SWSS_LOG_ENTER();
 
-    m_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());
-
     std::string fdbFlushLuaScript = swss::loadLuaScript("fdb_flush.lua"); // TODO script must be updated to version 2
 
     m_fdbFlushSha = swss::loadRedisScript(dbAsic.get(), fdbFlushLuaScript);
@@ -73,7 +71,7 @@ void RedisClient::clearLaneMap(
 
     auto key = getRedisLanesKey(switchVid);
 
-    m_redisClient->del(key);
+    m_dbAsic->del(key);
 }
 
 std::unordered_map<sai_uint32_t, sai_object_id_t> RedisClient::getLaneMap(
@@ -83,7 +81,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> RedisClient::getLaneMap(
 
     auto key = getRedisLanesKey(switchVid);
 
-    auto hash = m_redisClient->hgetall(key);
+    auto hash = m_dbAsic->hgetall(key);
 
     SWSS_LOG_DEBUG("previous lanes: %lu", hash.size());
 
@@ -125,7 +123,7 @@ void RedisClient::saveLaneMap(
 
         auto key = getRedisLanesKey(switchVid);
 
-        m_redisClient->hset(key, strLane, strPortId);
+        m_dbAsic->hset(key, strLane, strPortId);
     }
 }
 
@@ -134,7 +132,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getObjectMap(
 {
     SWSS_LOG_ENTER();
 
-    auto hash = m_redisClient->hgetall(key);
+    auto hash = m_dbAsic->hgetall(key);
 
     std::unordered_map<sai_object_id_t, sai_object_id_t> map;
 
@@ -227,7 +225,7 @@ void RedisClient::setDummyAsicStateObject(
 
     std::string strKey = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strVid);
 
-    m_redisClient->hset(strKey, "NULL", "NULL");
+    m_dbAsic->hset(strKey, "NULL", "NULL");
 }
 
 std::string RedisClient::getRedisColdVidsKey(
@@ -275,7 +273,7 @@ void RedisClient::saveColdBootDiscoveredVids(
 
         std::string strVid = sai_serialize_object_id(vid);
 
-        m_redisClient->hset(key, strVid, strObjectType);
+        m_dbAsic->hset(key, strVid, strObjectType);
     }
 }
 
@@ -316,7 +314,7 @@ std::shared_ptr<std::string> RedisClient::getSwitchHiddenAttribute(
 
     auto key = getRedisHiddenKey(switchVid);
 
-    return m_redisClient->hget(key, attrIdName);
+    return m_dbAsic->hget(key, attrIdName);
 }
 
 void RedisClient::saveSwitchHiddenAttribute(
@@ -330,7 +328,7 @@ void RedisClient::saveSwitchHiddenAttribute(
 
     std::string strRid = sai_serialize_object_id(objectRid);
 
-    m_redisClient->hset(key, attrIdName, strRid);
+    m_dbAsic->hset(key, attrIdName, strRid);
 }
 
 std::set<sai_object_id_t> RedisClient::getColdVids(
@@ -340,7 +338,7 @@ std::set<sai_object_id_t> RedisClient::getColdVids(
 
     auto key = getRedisColdVidsKey(switchVid);
 
-    auto hash = m_redisClient->hgetall(key);
+    auto hash = m_dbAsic->hgetall(key);
 
     /*
      * NOTE: some objects may not exists after 2nd restart, like VLAN_MEMBER or
@@ -360,7 +358,7 @@ std::set<sai_object_id_t> RedisClient::getColdVids(
          * Just make sure that vid in COLDVIDS is present in current vid2rid map
          */
 
-        auto rid = m_redisClient->hget(VIDTORID, strVid);
+        auto rid = m_dbAsic->hget(VIDTORID, strVid);
 
         if (rid == nullptr)
         {
@@ -387,7 +385,7 @@ void RedisClient::setPortLanes(
         std::string strLane = sai_serialize_number(lane);
         std::string strPortRid = sai_serialize_object_id(portRid);
 
-        m_redisClient->hset(key, strLane, strPortRid);
+        m_dbAsic->hset(key, strLane, strPortRid);
     }
 }
 
@@ -400,7 +398,7 @@ size_t RedisClient::getAsicObjectsSize(
     // go N times on every switch and it can be slow, we need to find better
     // way to do this
 
-    auto keys = m_redisClient->keys(ASIC_STATE_TABLE ":*");
+    auto keys = m_dbAsic->keys(ASIC_STATE_TABLE ":*");
 
     size_t count = 0;
 
@@ -444,7 +442,7 @@ int RedisClient::removePortFromLanesMap(
         {
             std::string strLane = sai_serialize_number(kv.first);
 
-            m_redisClient->hdel(key, strLane);
+            m_dbAsic->hdel(key, strLane);
 
             removed++;
         }
@@ -466,7 +464,7 @@ void RedisClient::removeAsicObject(
 
     SWSS_LOG_INFO("removing ASIC DB key: %s", key.c_str());
 
-    m_redisClient->del(key);
+    m_dbAsic->del(key);
 }
 
 void RedisClient::removeAsicObject(
@@ -476,7 +474,7 @@ void RedisClient::removeAsicObject(
 
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_redisClient->del(key);
+    m_dbAsic->del(key);
 }
 
 void RedisClient::removeTempAsicObject(
@@ -486,7 +484,7 @@ void RedisClient::removeTempAsicObject(
 
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_redisClient->del(key);
+    m_dbAsic->del(key);
 }
 
 void RedisClient::setAsicObject(
@@ -498,7 +496,7 @@ void RedisClient::setAsicObject(
 
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_redisClient->hset(key, attr, value);
+    m_dbAsic->hset(key, attr, value);
 }
 
 void RedisClient::setTempAsicObject(
@@ -510,7 +508,7 @@ void RedisClient::setTempAsicObject(
 
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
-    m_redisClient->hset(key, attr, value);
+    m_dbAsic->hset(key, attr, value);
 }
 
 void RedisClient::createAsicObject(
@@ -523,13 +521,13 @@ void RedisClient::createAsicObject(
 
     if (attrs.size() == 0)
     {
-        m_redisClient->hset(key, "NULL", "NULL");
+        m_dbAsic->hset(key, "NULL", "NULL");
         return;
     }
 
     for (const auto& e: attrs)
     {
-        m_redisClient->hset(key, fvField(e), fvValue(e));
+        m_dbAsic->hset(key, fvField(e), fvValue(e));
     }
 }
 
@@ -543,13 +541,13 @@ void RedisClient::createTempAsicObject(
 
     if (attrs.size() == 0)
     {
-        m_redisClient->hset(key, "NULL", "NULL");
+        m_dbAsic->hset(key, "NULL", "NULL");
         return;
     }
 
     for (const auto& e: attrs)
     {
-        m_redisClient->hset(key, fvField(e), fvValue(e));
+        m_dbAsic->hset(key, fvField(e), fvValue(e));
     }
 }
 
@@ -558,16 +556,16 @@ void RedisClient::setVidAndRidMap(
 {
     SWSS_LOG_ENTER();
 
-    m_redisClient->del(VIDTORID);
-    m_redisClient->del(RIDTOVID);
+    m_dbAsic->del(VIDTORID);
+    m_dbAsic->del(RIDTOVID);
 
     for (auto &kv: map)
     {
         std::string strVid = sai_serialize_object_id(kv.first);
         std::string strRid = sai_serialize_object_id(kv.second);
 
-        m_redisClient->hset(VIDTORID, strVid, strRid);
-        m_redisClient->hset(RIDTOVID, strRid, strVid);
+        m_dbAsic->hset(VIDTORID, strVid, strRid);
+        m_dbAsic->hset(RIDTOVID, strRid, strVid);
     }
 }
 
@@ -575,14 +573,14 @@ std::vector<std::string> RedisClient::getAsicStateKeys() const
 {
     SWSS_LOG_ENTER();
 
-    return m_redisClient->keys(ASIC_STATE_TABLE ":*");
+    return m_dbAsic->keys(ASIC_STATE_TABLE ":*");
 }
 
 std::vector<std::string> RedisClient::getAsicStateSwitchesKeys() const
 {
     SWSS_LOG_ENTER();
 
-    return m_redisClient->keys(ASIC_STATE_TABLE ":SAI_OBJECT_TYPE_SWITCH:*");
+    return m_dbAsic->keys(ASIC_STATE_TABLE ":SAI_OBJECT_TYPE_SWITCH:*");
 }
 
 void RedisClient::removeColdVid(
@@ -592,7 +590,7 @@ void RedisClient::removeColdVid(
 
     auto strVid = sai_serialize_object_id(vid);
 
-    m_redisClient->hdel(COLDVIDS, strVid);
+    m_dbAsic->hdel(COLDVIDS, strVid);
 }
 
 std::unordered_map<std::string, std::string> RedisClient::getAttributesFromAsicKey(
@@ -600,14 +598,14 @@ std::unordered_map<std::string, std::string> RedisClient::getAttributesFromAsicK
 {
     SWSS_LOG_ENTER();
 
-    return m_redisClient->hgetall(key);
+    return m_dbAsic->hgetall(key);
 }
 
 bool RedisClient::hasNoHiddenKeysDefined() const
 {
     SWSS_LOG_ENTER();
 
-    auto keys = m_redisClient->keys(HIDDEN "*");
+    auto keys = m_dbAsic->keys(HIDDEN "*");
 
     return keys.size() == 0;
 }
@@ -621,8 +619,8 @@ void RedisClient::removeVidAndRid(
     auto strVid = sai_serialize_object_id(vid);
     auto strRid = sai_serialize_object_id(rid);
 
-    m_redisClient->hdel(VIDTORID, strVid);
-    m_redisClient->hdel(RIDTOVID, strRid);
+    m_dbAsic->hdel(VIDTORID, strVid);
+    m_dbAsic->hdel(RIDTOVID, strRid);
 }
 
 void RedisClient::insertVidAndRid(
@@ -634,8 +632,8 @@ void RedisClient::insertVidAndRid(
     auto strVid = sai_serialize_object_id(vid);
     auto strRid = sai_serialize_object_id(rid);
 
-    m_redisClient->hset(VIDTORID, strVid, strRid);
-    m_redisClient->hset(RIDTOVID, strRid, strVid);
+    m_dbAsic->hset(VIDTORID, strVid, strRid);
+    m_dbAsic->hset(RIDTOVID, strRid, strVid);
 }
 
 sai_object_id_t RedisClient::getVidForRid(
@@ -645,7 +643,7 @@ sai_object_id_t RedisClient::getVidForRid(
 
     auto strRid = sai_serialize_object_id(rid);
 
-    auto pvid = m_redisClient->hget(RIDTOVID, strRid);
+    auto pvid = m_dbAsic->hget(RIDTOVID, strRid);
 
     if (pvid == nullptr)
     {
@@ -669,7 +667,7 @@ sai_object_id_t RedisClient::getRidForVid(
 
     auto strVid = sai_serialize_object_id(vid);
 
-    auto prid = m_redisClient->hget(VIDTORID, strVid);
+    auto prid = m_dbAsic->hget(VIDTORID, strVid);
 
     if (prid == nullptr)
     {
@@ -690,11 +688,11 @@ void RedisClient::removeAsicStateTable()
 {
     SWSS_LOG_ENTER();
 
-    const auto &asicStateKeys = m_redisClient->keys(ASIC_STATE_TABLE ":*");
+    const auto &asicStateKeys = m_dbAsic->keys(ASIC_STATE_TABLE ":*");
 
     for (const auto &key: asicStateKeys)
     {
-        m_redisClient->del(key);
+        m_dbAsic->del(key);
     }
 }
 
@@ -702,11 +700,11 @@ void RedisClient::removeTempAsicStateTable()
 {
     SWSS_LOG_ENTER();
 
-    const auto &tempAsicStateKeys = m_redisClient->keys(TEMP_PREFIX ASIC_STATE_TABLE ":*");
+    const auto &tempAsicStateKeys = m_dbAsic->keys(TEMP_PREFIX ASIC_STATE_TABLE ":*");
 
     for (const auto &key: tempAsicStateKeys)
     {
-        m_redisClient->del(key);
+        m_dbAsic->del(key);
     }
 }
 
