@@ -26,6 +26,7 @@ FlexCounter::FlexCounter(
     SWSS_LOG_ENTER();
 
     m_enable = false;
+    m_is_discard = false;
 
     startFlexCounterThread();
 }
@@ -819,6 +820,11 @@ void FlexCounter::removeCounterPlugins()
     m_rifPlugins.clear();
     m_priorityGroupPlugins.clear();
     m_bufferPoolPlugins.clear();
+
+    if (isEmpty())
+    {
+        m_is_discard = true;
+    }
 }
 
 void FlexCounter::addCounterPlugin(
@@ -827,6 +833,8 @@ void FlexCounter::addCounterPlugin(
     MUTEX;
 
     SWSS_LOG_ENTER();
+
+    m_is_discard = false;
 
     for (auto& fvt: values)
     {
@@ -899,6 +907,11 @@ bool FlexCounter::isEmpty()
     SWSS_LOG_ENTER();
 
     return allIdsEmpty() && allPluginsEmpty();
+}
+
+bool FlexCounter::isDiscard()
+{
+    return isEmpty() && m_is_discard;
 }
 
 bool FlexCounter::allIdsEmpty() const
