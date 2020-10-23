@@ -821,10 +821,7 @@ void FlexCounter::removeCounterPlugins()
     m_priorityGroupPlugins.clear();
     m_bufferPoolPlugins.clear();
 
-    if (isEmpty())
-    {
-        m_is_discard = true;
-    }
+    m_is_discard = true;
 }
 
 void FlexCounter::addCounterPlugin(
