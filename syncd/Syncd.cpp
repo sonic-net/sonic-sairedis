@@ -4,7 +4,7 @@
 #include "Workaround.h"
 #include "ComparisonLogic.h"
 #include "HardReiniter.h"
-#include "RedisClient.h"
+#include "DBConnector.h"
 #include "RequestShutdown.h"
 #include "WarmRestartTable.h"
 #include "ContextConfigContainer.h"
@@ -97,7 +97,7 @@ Syncd::Syncd(
                 modifyRedis);
     }
 
-    m_client = std::make_shared<RedisClient>(m_dbAsic);
+    m_client = std::make_shared<DBConnector>(m_dbAsic);
 
     m_processor = std::make_shared<NotificationProcessor>(m_notifications, m_client, std::bind(&Syncd::syncProcessNotification, this, _1));
     m_handler = std::make_shared<NotificationHandler>(m_processor);

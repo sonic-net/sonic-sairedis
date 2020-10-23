@@ -2,7 +2,7 @@
 
 #include "SaiSwitch.h"
 #include "VirtualOidTranslator.h"
-#include "RedisClient.h"
+#include "DBConnector.h"
 #include "NotificationHandler.h"
 
 #include "lib/inc/SaiInterface.h"
@@ -27,7 +27,7 @@ namespace syncd
         public:
 
             SingleReiniter(
-                    _In_ std::shared_ptr<RedisClient> client,
+                    _In_ std::shared_ptr<DBConnector> client,
                     _In_ std::shared_ptr<VirtualOidTranslator> translator,
                     _In_ std::shared_ptr<sairedis::SaiInterface> sai,
                     _In_ std::shared_ptr<NotificationHandler> handler,
@@ -131,7 +131,7 @@ namespace syncd
 
             std::shared_ptr<VirtualOidTranslator> m_translator;
 
-            std::shared_ptr<RedisClient> m_client;
+            std::shared_ptr<DBConnector> m_client;
 
             std::shared_ptr<NotificationHandler> m_handler;
     };

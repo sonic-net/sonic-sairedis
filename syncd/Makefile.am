@@ -24,7 +24,7 @@ libSyncd_a_SOURCES = \
 				Syncd.cpp \
 				BreakConfig.cpp \
 				BreakConfigParser.cpp \
-				RedisClient.cpp \
+				DBConnector.cpp \
 				WarmRestartTable.cpp \
 				RequestShutdownCommandLineOptions.cpp \
 				GlobalSwitchId.cpp \

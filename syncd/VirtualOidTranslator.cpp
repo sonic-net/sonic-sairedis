@@ -1,6 +1,6 @@
 #include "VirtualOidTranslator.h"
 #include "VirtualObjectIdManager.h"
-#include "RedisClient.h"
+#include "DBConnector.h"
 
 #include "swss/logger.h"
 #include "meta/sai_serialize.h"
@@ -10,7 +10,7 @@
 using namespace syncd;
 
 VirtualOidTranslator::VirtualOidTranslator(
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<DBConnector> client,
         _In_ std::shared_ptr<sairedis::VirtualObjectIdManager> virtualObjectIdManager,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai):
     m_virtualObjectIdManager(virtualObjectIdManager),

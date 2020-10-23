@@ -1,4 +1,4 @@
-#include "RedisClient.h"
+#include "DBConnector.h"
 #include "VidManager.h"
 
 #include "sairediscommon.h"
@@ -16,27 +16,27 @@ using namespace syncd;
 #define HIDDEN                      "HIDDEN"
 #define COLDVIDS                    "COLDVIDS"
 
-RedisClient::RedisClient(
+DBConnector::DBConnector(
         _In_ std::shared_ptr<swss::DBConnector> dbAsic):
     m_dbAsic(dbAsic)
 {
     SWSS_LOG_ENTER();
 
-    m_redisClient = std::make_shared<swss::RedisClient>(dbAsic.get());
+    m_redisClient = std::make_shared<swss::DBConnector>(dbAsic.get());
 
     std::string fdbFlushLuaScript = swss::loadLuaScript("fdb_flush.lua"); // TODO script must be updated to version 2
 
     m_fdbFlushSha = swss::loadRedisScript(dbAsic.get(), fdbFlushLuaScript);
 }
 
-RedisClient::~RedisClient()
+DBConnector::~DBConnector()
 {
     SWSS_LOG_ENTER();
 
     // empty
 }
 
-std::string RedisClient::getRedisLanesKey(
+std::string DBConnector::getRedisLanesKey(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
@@ -66,7 +66,7 @@ std::string RedisClient::getRedisLanesKey(
 }
 
 
-void RedisClient::clearLaneMap(
+void DBConnector::clearLaneMap(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
@@ -76,7 +76,7 @@ void RedisClient::clearLaneMap(
     m_redisClient->del(key);
 }
 
-std::unordered_map<sai_uint32_t, sai_object_id_t> RedisClient::getLaneMap(
+std::unordered_map<sai_uint32_t, sai_object_id_t> DBConnector::getLaneMap(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
@@ -107,7 +107,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> RedisClient::getLaneMap(
     return map;
 }
 
-void RedisClient::saveLaneMap(
+void DBConnector::saveLaneMap(
         _In_ sai_object_id_t switchVid,
         _In_ const std::unordered_map<sai_uint32_t, sai_object_id_t>& map) const
 {
@@ -129,7 +129,7 @@ void RedisClient::saveLaneMap(
     }
 }
 
-std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getObjectMap(
+std::unordered_map<sai_object_id_t, sai_object_id_t> DBConnector::getObjectMap(
         _In_ const std::string &key) const
 {
     SWSS_LOG_ENTER();
@@ -156,7 +156,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getObjectMap(
     return map;
 }
 
-std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getVidToRidMap(
+std::unordered_map<sai_object_id_t, sai_object_id_t> DBConnector::getVidToRidMap(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
@@ -178,7 +178,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getVidToRidMap
     return filtered;
 }
 
-std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getRidToVidMap(
+std::unordered_map<sai_object_id_t, sai_object_id_t> DBConnector::getRidToVidMap(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
@@ -200,21 +200,21 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getRidToVidMap
     return filtered;
 }
 
-std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getVidToRidMap() const
+std::unordered_map<sai_object_id_t, sai_object_id_t> DBConnector::getVidToRidMap() const
 {
     SWSS_LOG_ENTER();
 
     return getObjectMap(VIDTORID);
 }
 
-std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getRidToVidMap() const
+std::unordered_map<sai_object_id_t, sai_object_id_t> DBConnector::getRidToVidMap() const
 {
     SWSS_LOG_ENTER();
 
     return getObjectMap(RIDTOVID);
 }
 
-void RedisClient::setDummyAsicStateObject(
+void DBConnector::setDummyAsicStateObject(
         _In_ sai_object_id_t objectVid)
 {
     SWSS_LOG_ENTER();
@@ -230,7 +230,7 @@ void RedisClient::setDummyAsicStateObject(
     m_redisClient->hset(strKey, "NULL", "NULL");
 }
 
-std::string RedisClient::getRedisColdVidsKey(
+std::string DBConnector::getRedisColdVidsKey(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
@@ -259,7 +259,7 @@ std::string RedisClient::getRedisColdVidsKey(
     return (COLDVIDS ":") + sai_serialize_object_id(switchVid);
 }
 
-void RedisClient::saveColdBootDiscoveredVids(
+void DBConnector::saveColdBootDiscoveredVids(
         _In_ sai_object_id_t switchVid,
         _In_ const std::set<sai_object_id_t>& coldVids)
 {
@@ -279,7 +279,7 @@ void RedisClient::saveColdBootDiscoveredVids(
     }
 }
 
-std::string RedisClient::getRedisHiddenKey(
+std::string DBConnector::getRedisHiddenKey(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
@@ -308,7 +308,7 @@ std::string RedisClient::getRedisHiddenKey(
     return (HIDDEN ":") + sai_serialize_object_id(switchVid);
 }
 
-std::shared_ptr<std::string> RedisClient::getSwitchHiddenAttribute(
+std::shared_ptr<std::string> DBConnector::getSwitchHiddenAttribute(
         _In_ sai_object_id_t switchVid,
         _In_ const std::string& attrIdName)
 {
@@ -319,7 +319,7 @@ std::shared_ptr<std::string> RedisClient::getSwitchHiddenAttribute(
     return m_redisClient->hget(key, attrIdName);
 }
 
-void RedisClient::saveSwitchHiddenAttribute(
+void DBConnector::saveSwitchHiddenAttribute(
         _In_ sai_object_id_t switchVid,
         _In_ const std::string& attrIdName,
         _In_ sai_object_id_t objectRid)
@@ -333,7 +333,7 @@ void RedisClient::saveSwitchHiddenAttribute(
     m_redisClient->hset(key, attrIdName, strRid);
 }
 
-std::set<sai_object_id_t> RedisClient::getColdVids(
+std::set<sai_object_id_t> DBConnector::getColdVids(
         _In_ sai_object_id_t switchVid)
 {
     SWSS_LOG_ENTER();
@@ -373,7 +373,7 @@ std::set<sai_object_id_t> RedisClient::getColdVids(
     return coldVids;
 }
 
-void RedisClient::setPortLanes(
+void DBConnector::setPortLanes(
         _In_ sai_object_id_t switchVid,
         _In_ sai_object_id_t portRid,
         _In_ const std::vector<uint32_t>& lanes)
@@ -391,7 +391,7 @@ void RedisClient::setPortLanes(
     }
 }
 
-size_t RedisClient::getAsicObjectsSize(
+size_t DBConnector::getAsicObjectsSize(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
@@ -425,7 +425,7 @@ size_t RedisClient::getAsicObjectsSize(
     return count;
 }
 
-int RedisClient::removePortFromLanesMap(
+int DBConnector::removePortFromLanesMap(
         _In_ sai_object_id_t switchVid,
         _In_ sai_object_id_t portRid) const
 {
@@ -453,7 +453,7 @@ int RedisClient::removePortFromLanesMap(
     return removed;
 }
 
-void RedisClient::removeAsicObject(
+void DBConnector::removeAsicObject(
         _In_ sai_object_id_t objectVid) const
 {
     SWSS_LOG_ENTER();
@@ -469,7 +469,7 @@ void RedisClient::removeAsicObject(
     m_redisClient->del(key);
 }
 
-void RedisClient::removeAsicObject(
+void DBConnector::removeAsicObject(
         _In_ const sai_object_meta_key_t& metaKey)
 {
     SWSS_LOG_ENTER();
@@ -479,7 +479,7 @@ void RedisClient::removeAsicObject(
     m_redisClient->del(key);
 }
 
-void RedisClient::removeTempAsicObject(
+void DBConnector::removeTempAsicObject(
         _In_ const sai_object_meta_key_t& metaKey)
 {
     SWSS_LOG_ENTER();
@@ -489,7 +489,7 @@ void RedisClient::removeTempAsicObject(
     m_redisClient->del(key);
 }
 
-void RedisClient::setAsicObject(
+void DBConnector::setAsicObject(
         _In_ const sai_object_meta_key_t& metaKey,
         _In_ const std::string& attr,
         _In_ const std::string& value)
@@ -501,7 +501,7 @@ void RedisClient::setAsicObject(
     m_redisClient->hset(key, attr, value);
 }
 
-void RedisClient::setTempAsicObject(
+void DBConnector::setTempAsicObject(
         _In_ const sai_object_meta_key_t& metaKey,
         _In_ const std::string& attr,
         _In_ const std::string& value)
@@ -513,7 +513,7 @@ void RedisClient::setTempAsicObject(
     m_redisClient->hset(key, attr, value);
 }
 
-void RedisClient::createAsicObject(
+void DBConnector::createAsicObject(
         _In_ const sai_object_meta_key_t& metaKey,
         _In_ const std::vector<swss::FieldValueTuple>& attrs)
 {
@@ -533,7 +533,7 @@ void RedisClient::createAsicObject(
     }
 }
 
-void RedisClient::createTempAsicObject(
+void DBConnector::createTempAsicObject(
         _In_ const sai_object_meta_key_t& metaKey,
         _In_ const std::vector<swss::FieldValueTuple>& attrs)
 {
@@ -553,7 +553,7 @@ void RedisClient::createTempAsicObject(
     }
 }
 
-void RedisClient::setVidAndRidMap(
+void DBConnector::setVidAndRidMap(
         _In_ const std::unordered_map<sai_object_id_t, sai_object_id_t>& map)
 {
     SWSS_LOG_ENTER();
@@ -571,21 +571,21 @@ void RedisClient::setVidAndRidMap(
     }
 }
 
-std::vector<std::string> RedisClient::getAsicStateKeys() const
+std::vector<std::string> DBConnector::getAsicStateKeys() const
 {
     SWSS_LOG_ENTER();
 
     return m_redisClient->keys(ASIC_STATE_TABLE ":*");
 }
 
-std::vector<std::string> RedisClient::getAsicStateSwitchesKeys() const
+std::vector<std::string> DBConnector::getAsicStateSwitchesKeys() const
 {
     SWSS_LOG_ENTER();
 
     return m_redisClient->keys(ASIC_STATE_TABLE ":SAI_OBJECT_TYPE_SWITCH:*");
 }
 
-void RedisClient::removeColdVid(
+void DBConnector::removeColdVid(
         _In_ sai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
@@ -595,7 +595,7 @@ void RedisClient::removeColdVid(
     m_redisClient->hdel(COLDVIDS, strVid);
 }
 
-std::unordered_map<std::string, std::string> RedisClient::getAttributesFromAsicKey(
+std::unordered_map<std::string, std::string> DBConnector::getAttributesFromAsicKey(
         _In_ const std::string& key) const
 {
     SWSS_LOG_ENTER();
@@ -603,7 +603,7 @@ std::unordered_map<std::string, std::string> RedisClient::getAttributesFromAsicK
     return m_redisClient->hgetall(key);
 }
 
-bool RedisClient::hasNoHiddenKeysDefined() const
+bool DBConnector::hasNoHiddenKeysDefined() const
 {
     SWSS_LOG_ENTER();
 
@@ -612,7 +612,7 @@ bool RedisClient::hasNoHiddenKeysDefined() const
     return keys.size() == 0;
 }
 
-void RedisClient::removeVidAndRid(
+void DBConnector::removeVidAndRid(
         _In_ sai_object_id_t vid,
         _In_ sai_object_id_t rid)
 {
@@ -625,7 +625,7 @@ void RedisClient::removeVidAndRid(
     m_redisClient->hdel(RIDTOVID, strRid);
 }
 
-void RedisClient::insertVidAndRid(
+void DBConnector::insertVidAndRid(
         _In_ sai_object_id_t vid,
         _In_ sai_object_id_t rid)
 {
@@ -638,7 +638,7 @@ void RedisClient::insertVidAndRid(
     m_redisClient->hset(RIDTOVID, strRid, strVid);
 }
 
-sai_object_id_t RedisClient::getVidForRid(
+sai_object_id_t DBConnector::getVidForRid(
         _In_ sai_object_id_t rid)
 {
     SWSS_LOG_ENTER();
@@ -662,7 +662,7 @@ sai_object_id_t RedisClient::getVidForRid(
     return vid;
 }
 
-sai_object_id_t RedisClient::getRidForVid(
+sai_object_id_t DBConnector::getRidForVid(
         _In_ sai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
@@ -686,7 +686,7 @@ sai_object_id_t RedisClient::getRidForVid(
     return rid;
 }
 
-void RedisClient::removeAsicStateTable()
+void DBConnector::removeAsicStateTable()
 {
     SWSS_LOG_ENTER();
 
@@ -698,7 +698,7 @@ void RedisClient::removeAsicStateTable()
     }
 }
 
-void RedisClient::removeTempAsicStateTable()
+void DBConnector::removeTempAsicStateTable()
 {
     SWSS_LOG_ENTER();
 
@@ -710,21 +710,21 @@ void RedisClient::removeTempAsicStateTable()
     }
 }
 
-std::map<sai_object_id_t, swss::TableDump> RedisClient::getAsicView()
+std::map<sai_object_id_t, swss::TableDump> DBConnector::getAsicView()
 {
     SWSS_LOG_ENTER();
 
     return getAsicView(ASIC_STATE_TABLE);
 }
 
-std::map<sai_object_id_t, swss::TableDump> RedisClient::getTempAsicView()
+std::map<sai_object_id_t, swss::TableDump> DBConnector::getTempAsicView()
 {
     SWSS_LOG_ENTER();
 
     return getAsicView(TEMP_PREFIX ASIC_STATE_TABLE);
 }
 
-std::map<sai_object_id_t, swss::TableDump> RedisClient::getAsicView(
+std::map<sai_object_id_t, swss::TableDump> DBConnector::getAsicView(
         _In_ const std::string &tableName)
 {
     SWSS_LOG_ENTER();
@@ -762,7 +762,7 @@ std::map<sai_object_id_t, swss::TableDump> RedisClient::getAsicView(
 }
 
 
-void RedisClient::processFlushEvent(
+void DBConnector::processFlushEvent(
         _In_ sai_object_id_t switchVid,
         _In_ sai_object_id_t portVid,
         _In_ sai_object_id_t bvId,

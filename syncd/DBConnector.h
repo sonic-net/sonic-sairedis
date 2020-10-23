@@ -5,7 +5,7 @@ extern "C" {
 }
 
 #include "swss/table.h"
-#include "swss/redisclient.h"
+#include "swss/dbconnector.h"
 
 #include <string>
 #include <unordered_map>
@@ -15,14 +15,14 @@ extern "C" {
 
 namespace syncd
 {
-    class RedisClient
+    class DBConnector
     {
         public:
 
-            RedisClient(
+            DBConnector(
                     _In_ std::shared_ptr<swss::DBConnector> dbAsic);
 
-            virtual ~RedisClient();
+            virtual ~DBConnector();
 
         public:
 
@@ -166,7 +166,7 @@ namespace syncd
 
         private:
 
-            std::shared_ptr<swss::RedisClient> m_redisClient;
+            std::shared_ptr<swss::DBConnector> m_redisClient;
 
             std::shared_ptr<swss::DBConnector> m_dbAsic;
 

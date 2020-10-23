@@ -5,7 +5,7 @@ extern "C"{
 }
 
 #include "VirtualObjectIdManager.h"
-#include "RedisClient.h"
+#include "DBConnector.h"
 
 #include "SaiInterface.h"
 
@@ -22,7 +22,7 @@ namespace syncd
         public:
 
             VirtualOidTranslator(
-                    _In_ std::shared_ptr<RedisClient> client,
+                    _In_ std::shared_ptr<DBConnector> client,
                     _In_ std::shared_ptr<sairedis::VirtualObjectIdManager> virtualObjectIdManager,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai);
 
@@ -112,6 +112,6 @@ namespace syncd
             std::unordered_map<sai_object_id_t, sai_object_id_t> m_rid2vid;
             std::unordered_map<sai_object_id_t, sai_object_id_t> m_vid2rid;
 
-            std::shared_ptr<RedisClient> m_client;
+            std::shared_ptr<DBConnector> m_client;
     };
 }

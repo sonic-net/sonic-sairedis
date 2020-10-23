@@ -6,7 +6,7 @@
 #include "AsicView.h"
 #include "SaiSwitch.h"
 #include "VirtualOidTranslator.h"
-#include "RedisClient.h"
+#include "DBConnector.h"
 #include "NotificationHandler.h"
 #include "NotificationProcessor.h"
 #include "SwitchNotifications.h"
@@ -402,7 +402,7 @@ namespace syncd
 
             std::shared_ptr<VirtualOidTranslator> m_translator;
 
-            std::shared_ptr<RedisClient> m_client;
+            std::shared_ptr<DBConnector> m_client;
 
             std::shared_ptr<NotificationHandler> m_handler;
 

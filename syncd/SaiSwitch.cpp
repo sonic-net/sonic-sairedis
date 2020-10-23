@@ -3,7 +3,7 @@
 #include "SaiDiscovery.h"
 #include "VidManager.h"
 #include "GlobalSwitchId.h"
-#include "RedisClient.h"
+#include "DBConnector.h"
 
 #include "meta/sai_serialize.h"
 #include "swss/logger.h"
@@ -23,7 +23,7 @@ const int maxLanesPerPort = 8;
 SaiSwitch::SaiSwitch(
         _In_ sai_object_id_t switch_vid,
         _In_ sai_object_id_t switch_rid,
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<DBConnector> client,
         _In_ std::shared_ptr<VirtualOidTranslator> translator,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ bool warmBoot):

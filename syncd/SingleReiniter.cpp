@@ -3,7 +3,7 @@
 #include "CommandLineOptions.h"
 #include "NotificationHandler.h"
 #include "Workaround.h"
-#include "RedisClient.h"
+#include "DBConnector.h"
 
 #include "swss/logger.h"
 
@@ -16,7 +16,7 @@ using namespace syncd;
 using namespace saimeta;
 
 SingleReiniter::SingleReiniter(
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<DBConnector> client,
         _In_ std::shared_ptr<VirtualOidTranslator> translator,
         _In_ std::shared_ptr<sairedis::SaiInterface> sai,
         _In_ std::shared_ptr<NotificationHandler> handler,
