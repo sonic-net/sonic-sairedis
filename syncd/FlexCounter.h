@@ -48,7 +48,7 @@ namespace syncd
 
             bool isEmpty();
 
-            bool isDiscard();
+            bool isDiscarded();
 
         private:
 
@@ -408,6 +408,6 @@ namespace syncd
 
             std::string m_dbCounters;
 
-            bool m_is_discard;
+            bool m_isDiscarded;
     };
 }
