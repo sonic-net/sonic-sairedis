@@ -11,7 +11,10 @@ ENABLE_SAITHRIFT=0
 PLATFORM_DIR=/usr/share/sonic/platform
 HWSKU_DIR=/usr/share/sonic/hwsku
 
-SONIC_ASIC_TYPE=$(sonic-cfggen -y /etc/sonic/sonic_version.yml -v asic_type)
+VARS_FILE=/usr/share/sonic/templates/swss_vars.j2
+# Retrieve vars from sonic-cfggen
+SYNCD_VARS=$(sonic-cfggen -d -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
+SONIC_ASIC_TYPE=$(echo $SYNCD_VARS | jq -r '.asic_type')
 
 if [ -x $CMD_DSSERVE ]; then
     CMD=$CMD_DSSERVE
@@ -28,7 +31,7 @@ CMD_ARGS+=" -u"
 CMD_ARGS+=" -l"
 
 # Set synchronous mode if it is enabled in CONFIG_DB
-SYNC_MODE=$(sonic-cfggen -d -v DEVICE_METADATA.localhost.synchronous_mode)
+SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
 if [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
 fi
