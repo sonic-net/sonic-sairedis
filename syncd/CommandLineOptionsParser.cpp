@@ -17,9 +17,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:uSUCsrm:h";
+    const char* const optstring = "dp:t:g:x:b:uSUCslrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:uSUCsh";
+    const char* const optstring = "dp:t:g:x:b:uSUCslh";
 #endif // SAITHRIFT
 
     while(true)
@@ -34,6 +34,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "enableUnittests",         no_argument,       0, 'U' },
             { "enableConsistencyCheck",  no_argument,       0, 'C' },
             { "syncMode",                no_argument,       0, 's' },
+            { "enableSaiBulkSupport",    no_argument,       0, 'l' },
             { "globalContext",           required_argument, 0, 'g' },
             { "contextContig",           required_argument, 0, 'x' },
             { "breakConfig",             required_argument, 0, 'b' },
@@ -94,6 +95,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 options->m_enableSyncMode = true;
                 break;
 
+            case 'l':
+                options->m_enableSaiBulkSupport = true;
+                break;
+
             case 'g':
                 options->m_globalContext = (uint32_t)std::stoul(optarg);
                 break;
@@ -138,9 +143,9 @@ void CommandLineOptionsParser::printUsage()
     SWSS_LOG_ENTER();
 
 #ifdef SAITHRIFT
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-g idx] [-x contextConfig] [-b breakConfig] [-r] [-m portmap] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-r] [-m portmap] [-h]" << std::endl;
 #else
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-g idx] [-x contextConfig] [-b breakConfig] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-h]" << std::endl;
 #endif // SAITHRIFT
 
     std::cout << "    -d --diag" << std::endl;
@@ -159,6 +164,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Enable consisteny check DB vs ASIC after comparison logic" << std::endl;
     std::cout << "    -s --syncMode" << std::endl;
     std::cout << "        Enable synchronous mode" << std::endl;
+    std::cout << "    -l --enableBulk" << std::endl;
+    std::cout << "        Enable SAI Bulk support" << std::endl;
     std::cout << "    -g --globalContext" << std::endl;
     std::cout << "        Global context index to load from context config file" << std::endl;
     std::cout << "    -x --contextConfig" << std::endl;

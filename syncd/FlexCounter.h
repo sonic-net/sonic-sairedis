@@ -54,6 +54,8 @@ namespace syncd
 
             bool isEmpty();
 
+            bool isDiscarded();
+
         private:
 
             void setPollInterval(
@@ -434,5 +436,7 @@ namespace syncd
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
 
             std::string m_dbCounters;
+
+            bool m_isDiscarded;
     };
 }

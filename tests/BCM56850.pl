@@ -563,10 +563,29 @@ sub test_brcm_buffer_pool_zmq
     play("-m", "-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer_second.rec",0);
 }
 
+sub test_bulk_route
+{
+    fresh_start;
+
+    play "bulk_route.rec"
+}
+
+sub test_bulk_fdb
+{
+    fresh_start;
+
+    play "bulk_fdb.rec"
+}
+
+sub test_bulk_object
+{
+    fresh_start;
+
+    play "bulk_object.rec"
+}
 
 # RUN TESTS
 test_brcm_buffer_pool_zmq;
-
 test_brcm_acl_limit;
 test_sync_brcm_warm_boot_port_remove;
 test_brcm_warm_boot_port_remove;
@@ -580,6 +599,9 @@ test_bridge_create;
 test_ntf;
 test_acl_mask;
 test_empty_lag_buffer_acl;
+test_bulk_route;
+test_bulk_fdb;
+test_bulk_object;
 test_brcm_config_acl;
 test_brcm_warm_wred_queue;
 test_brcm_warm_boot_full_empty;

@@ -52,6 +52,20 @@ namespace saiplayer
                     _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes,
                     _In_ const std::vector<sai_status_t> &recorded_statuses);
 
+            sai_status_t handle_bulk_object(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &object_ids,
+                    _In_ sai_common_api_t api,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes,
+                    _Out_ std::vector<sai_status_t> &statuses);
+
+            sai_status_t handle_bulk_entry(
+                    _In_ const std::vector<std::string> &object_ids,
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_common_api_t api,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>> &attributes,
+                    _Out_ std::vector<sai_status_t> &statuses);
+
             std::vector<std::string> tokenize(
                     _In_ std::string input,
                     _In_ const std::string &delim);

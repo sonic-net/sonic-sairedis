@@ -797,6 +797,296 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
     }
 }
 
+sai_status_t Syncd::processBulkCreateEntry(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& objectIds,
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>>& attributes,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    uint32_t object_count = (uint32_t) objectIds.size();
+
+    if (!object_count)
+    {
+        SWSS_LOG_ERROR("container with objectIds is empty in processBulkCreateEntry");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
+
+    std::vector<uint32_t> attr_counts(object_count);
+    std::vector<const sai_attribute_t*> attr_lists(object_count);
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        attr_counts[idx] = attributes[idx]->get_attr_count();
+        attr_lists[idx] = attributes[idx]->get_attr_list();
+    }
+
+    switch (objectType)
+    {
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        {
+            std::vector<sai_route_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_route_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
+        {
+            std::vector<sai_fdb_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_fdb_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].bv_id = m_translator->translateVidToRid(entries[it].bv_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+        {
+            std::vector<sai_nat_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_nat_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        default:
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return status;
+}
+
+sai_status_t Syncd::processBulkRemoveEntry(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& objectIds,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    uint32_t object_count = (uint32_t) objectIds.size();
+
+    if (!object_count)
+    {
+        SWSS_LOG_ERROR("container with objectIds is empty in processBulkRemoveEntry");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
+
+    switch (objectType)
+    {
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        {
+            std::vector<sai_route_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_route_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
+        {
+            std::vector<sai_fdb_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_fdb_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].bv_id = m_translator->translateVidToRid(entries[it].bv_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+        {
+            std::vector<sai_nat_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_nat_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        default:
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return status;
+}
+
+sai_status_t Syncd::processBulkSetEntry(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& objectIds,
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>>& attributes,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    std::vector<sai_attribute_t> attr_lists;
+
+    uint32_t object_count = (uint32_t) objectIds.size();
+
+    if (!object_count)
+    {
+        SWSS_LOG_ERROR("container with objectIds is empty in processBulkSetEntry");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
+
+    for (uint32_t it = 0; it < object_count; it++)
+    {
+        attr_lists.push_back(attributes[it]->get_attr_list()[0]);
+    }
+
+    switch (objectType)
+    {
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        {
+            std::vector<sai_route_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_route_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
+        {
+            std::vector<sai_fdb_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_fdb_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].bv_id = m_translator->translateVidToRid(entries[it].bv_id);
+            }
+
+            status = m_vendorSai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+        {
+            std::vector<sai_nat_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_nat_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        default:
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return status;
+}
+
 sai_status_t Syncd::processBulkEntry(
         _In_ sai_object_type_t objectType,
         _In_ const std::vector<std::string>& objectIds,
@@ -813,11 +1103,41 @@ sai_status_t Syncd::processBulkEntry(
         SWSS_LOG_THROW("passing oid object to bulk non obejct id operation");
     }
 
-    // vendor SAI don't bulk API yet, so execute one by one
-
     std::vector<sai_status_t> statuses(objectIds.size());
 
     sai_status_t all = SAI_STATUS_SUCCESS;
+
+    if (m_commandLineOptions->m_enableSaiBulkSupport)
+    {
+        switch (api)
+        {
+            case SAI_COMMON_API_BULK_CREATE:
+                all = processBulkCreateEntry(objectType, objectIds, attributes, statuses);
+                break;
+
+            case SAI_COMMON_API_BULK_REMOVE:
+                all = processBulkRemoveEntry(objectType, objectIds, statuses);
+                break;
+
+            case SAI_COMMON_API_BULK_SET:
+                all = processBulkSetEntry(objectType, objectIds, attributes, statuses);
+                break;
+
+            default:
+                SWSS_LOG_ERROR("api %s is not supported in bulk", sai_serialize_common_api(api).c_str());
+                all = SAI_STATUS_NOT_SUPPORTED;
+        }
+
+        if (all != SAI_STATUS_NOT_SUPPORTED && all != SAI_STATUS_NOT_IMPLEMENTED)
+        {
+            sendApiResponse(api, all, (uint32_t)objectIds.size(), statuses.data());
+            syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+
+            return all;
+        }
+    }
+
+    // vendor SAI don't bulk API yet, so execute one by one
 
     for (size_t idx = 0; idx < objectIds.size(); ++idx)
     {
@@ -930,6 +1250,141 @@ sai_status_t Syncd::processEntry(
     }
 }
 
+sai_status_t Syncd::processBulkOidCreate(
+        _In_ sai_object_type_t objectType,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _In_ const std::vector<std::string>& objectIds,
+        _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    uint32_t object_count = (uint32_t)objectIds.size();
+
+    if (!object_count)
+    {
+        SWSS_LOG_ERROR("container with objectIds is empty in processBulkOidCreate");
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::vector<sai_object_id_t> objectVids(object_count);
+
+    std::vector<uint32_t> attr_counts(object_count);
+    std::vector<const sai_attribute_t*> attr_lists(object_count);
+
+    for (size_t idx = 0; idx < object_count; idx++)
+    {
+        sai_deserialize_object_id(objectIds[idx], objectVids[idx]);
+
+        attr_counts[idx] = attributes[idx]->get_attr_count();
+        attr_lists[idx] = attributes[idx]->get_attr_list();
+    }
+
+    sai_object_id_t switchRid = SAI_NULL_OBJECT_ID;
+
+    sai_object_id_t switchVid = VidManager::switchIdQuery(objectVids.front());
+    switchRid = m_translator->translateVidToRid(switchVid);
+
+
+    std::vector<sai_object_id_t> objectRids(object_count);
+
+    status = m_vendorSai->bulkCreate(
+                                objectType,
+                                switchRid,
+                                object_count,
+                                attr_counts.data(),
+                                attr_lists.data(),
+                                mode,
+                                objectRids.data(),
+                                statuses.data());
+
+    if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
+    {
+        SWSS_LOG_ERROR("bulkCreate api is not implemented or not supported, object_type = %u", objectType);
+        return status;
+    }
+
+    /*
+     * Object was created so new object id was generated we need to save
+     * virtual id's to redis db.
+     */
+    for (size_t idx = 0; idx < object_count; idx++)
+    {
+        if (statuses[idx] == SAI_STATUS_SUCCESS)
+        {
+            m_translator->insertRidAndVid(objectRids[idx], objectVids[idx]);
+            SWSS_LOG_INFO("saved VID %s to RID %s",
+                    sai_serialize_object_id(objectVids[idx]).c_str(),
+                    sai_serialize_object_id(objectRids[idx]).c_str());
+        }
+    }
+
+    return status;
+}
+
+sai_status_t Syncd::processBulkOidRemove(
+        _In_ sai_object_type_t objectType,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _In_ const std::vector<std::string>& objectIds,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    uint32_t object_count = (uint32_t)objectIds.size();
+
+    if (!object_count)
+    {
+        SWSS_LOG_ERROR("container with objectIds is empty in processBulkOidRemove");
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::vector<sai_object_id_t> objectVids(object_count);
+    std::vector<sai_object_id_t> objectRids(object_count);
+
+    for (size_t idx = 0; idx < object_count; idx++)
+    {
+        sai_deserialize_object_id(objectIds[idx], objectVids[idx]);
+        objectRids[idx] = m_translator->translateVidToRid(objectVids[idx]);
+    }
+
+    status = m_vendorSai->bulkRemove(
+                                objectType,
+                                (uint32_t)object_count,
+                                objectVids.data(),
+                                mode,
+                                statuses.data());
+
+    if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
+    {
+        SWSS_LOG_ERROR("bulkRemove api is not implemented or not supported, object_type = %u", objectType);
+        return status;
+    }
+
+    /*
+     * remove all related objects from REDIS DB and also from existing
+     * object references since at this point they are no longer valid
+     */
+    sai_object_id_t switchVid;
+    for (size_t idx = 0; idx < object_count; idx++)
+    {
+        if (statuses[idx] == SAI_STATUS_SUCCESS)
+        {
+            m_translator->eraseRidAndVid(objectRids[idx], objectVids[idx]);
+
+            switchVid = VidManager::switchIdQuery(objectVids[idx]);
+
+            if (m_switches.at(switchVid)->isDiscoveredRid(objectRids[idx]))
+            {
+                m_switches.at(switchVid)->removeExistingObjectReference(objectRids[idx]);
+            }
+        }
+    }
+
+    return status;
+}
+
 sai_status_t Syncd::processBulkOid(
         _In_ sai_object_type_t objectType,
         _In_ const std::vector<std::string>& objectIds,
@@ -946,11 +1401,37 @@ sai_status_t Syncd::processBulkOid(
         SWSS_LOG_THROW("passing non object id to bulk oid obejct operation");
     }
 
-    // vendor SAI don't bulk API yet, so execute one by one
-
     std::vector<sai_status_t> statuses(objectIds.size());
 
     sai_status_t all = SAI_STATUS_SUCCESS;
+
+    if (m_commandLineOptions->m_enableSaiBulkSupport)
+    {
+        sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
+
+        switch (api)
+        {
+            case SAI_COMMON_API_BULK_CREATE:
+                all = processBulkOidCreate(objectType, mode, objectIds, attributes, statuses);
+                break;
+
+            case SAI_COMMON_API_BULK_REMOVE:
+                all = processBulkOidRemove(objectType, mode, objectIds, statuses);
+                break;
+
+            default:
+                all = SAI_STATUS_NOT_SUPPORTED;
+                SWSS_LOG_ERROR("api %s is not supported in bulk mode", sai_serialize_common_api(api).c_str());
+        }
+
+        if (all != SAI_STATUS_NOT_SUPPORTED && all != SAI_STATUS_NOT_IMPLEMENTED)
+        {
+            sendApiResponse(api, all, (uint32_t)objectIds.size(), statuses.data());
+            syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+
+            return all;
+        }
+    }
 
     for (size_t idx = 0; idx < objectIds.size(); ++idx)
     {

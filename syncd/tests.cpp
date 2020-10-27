@@ -27,7 +27,6 @@ extern "C" {
 #include "swss/redisreply.h"
 #include "swss/consumertable.h"
 #include "swss/select.h"
-#include "swss/redisclient.h"
 
 #include <map>
 #include <unordered_map>

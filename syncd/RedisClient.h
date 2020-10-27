@@ -5,7 +5,6 @@ extern "C" {
 }
 
 #include "swss/table.h"
-#include "swss/redisclient.h"
 
 #include <string>
 #include <unordered_map>
@@ -165,8 +164,6 @@ namespace syncd
                     _In_ const std::string& key) const;
 
         private:
-
-            std::shared_ptr<swss::RedisClient> m_redisClient;
 
             std::shared_ptr<swss::DBConnector> m_dbAsic;
 

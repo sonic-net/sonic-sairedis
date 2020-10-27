@@ -206,7 +206,7 @@ sai_status_t Sai::set(
 
             success &= (status == SAI_STATUS_SUCCESS);
 
-            SWSS_LOG_NOTICE("setting attribute 0x%x status: %s",
+            SWSS_LOG_INFO("setting attribute 0x%x status: %s",
                     attr->id,
                     sai_serialize_status(status).c_str());
         }
