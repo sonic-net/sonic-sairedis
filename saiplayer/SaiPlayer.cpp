@@ -43,7 +43,7 @@ using namespace std::placeholders;
                 timer.inc(entries.size());
 
 #define CALL_BULK_REMOVE_API_WITH_TIMER(entry) \
-                SWSS_LOG_INFO("executing BULK remove ", entry,", count = %zu ", entries.size()); \
+                SWSS_LOG_INFO("executing BULK remove " #entry ", count = %zu ", entries.size()); \
                 static PerformanceIntervalTimer timer("SaiPlayer::handle_bulk_entry::bulkRemove("#entry")"); \
                 timer.start(); \
                 status = m_sai->bulkRemove(object_count, entries.data(), \
@@ -52,7 +52,7 @@ using namespace std::placeholders;
                 timer.inc(entries.size());
 
 #define CALL_BULK_SET_API_WITH_TIMER(entry) \
-                SWSS_LOG_INFO("executing BULK set ", entry,", count = %zu ", entries.size()); \
+                SWSS_LOG_INFO("executing BULK set " #entry ", count = %zu ", entries.size()); \
                 static PerformanceIntervalTimer timer("SaiPlayer::handle_bulk_entry::bulkSet("#entry")"); \
                 timer.start(); \
                 status = m_sai->bulkSet(object_count, entries.data(), \
@@ -1824,7 +1824,7 @@ void SaiPlayer::processBulk(
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("handle bulk executed with failure, status = %s", sai_serialize_status(status));
+        SWSS_LOG_ERROR("handle bulk executed with failure, status = %s", sai_serialize_status(status).c_str());
     }
 
     // even if API will fail, we will need to compare all statuses for each entry
