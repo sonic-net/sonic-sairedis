@@ -18,13 +18,15 @@ RedisSelectableChannel::RedisSelectableChannel(
 
     m_asicState = std::make_shared<swss::ConsumerTable>(m_dbAsic.get(), asicStateTable);
 
+    m_asicState->setModifyRedis(m_modifyRedis);
+
     /*
      * At the end we cant use producer consumer concept since if one process
      * will restart there may be something in the queue also "remove" from
      * response queue will also trigger another "response".
      */
 
-    m_getResponse  = std::make_shared<swss::ProducerTable>(m_dbAsic.get(), getResponseTable);
+    m_getResponse = std::make_shared<swss::ProducerTable>(m_dbAsic.get(), getResponseTable);
 }
 
 bool RedisSelectableChannel::empty() 
