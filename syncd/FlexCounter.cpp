@@ -107,9 +107,11 @@ FlexCounter::BufferPoolCounterIds::BufferPoolCounterIds(
 FlexCounter::MACsecSAAttrIds::MACsecSAAttrIds(
         _In_ sai_object_id_t macsecSA,
         _In_ const std::vector<sai_macsec_sa_attr_t> &macsecSAIds):
-        m_macsecSAId(macsecSA), m_macsecSAAttrIds(macsecSAIds)
+        m_macsecSAId(macsecSA),
+        m_macsecSAAttrIds(macsecSAIds)
 {
     SWSS_LOG_ENTER();
+    // empty intentionally
 }
 
 void FlexCounter::setPollInterval(
@@ -698,19 +700,23 @@ void FlexCounter::removeMACsecSA(
         _In_ sai_object_id_t macsecSAVid)
 {
     auto itr = m_macsecSAAttrIdsMap.find(macsecSAVid);
+
     if (itr != m_macsecSAAttrIdsMap.end())
     {
         m_macsecSAAttrIdsMap.erase(itr);
+
         if (m_macsecSAAttrIdsMap.empty())
         {
             removeCollectCountersHandler(MACSEC_SA_ATTR_ID_LIST);
         }
+
     }
     else
     {
         SWSS_LOG_WARN("Trying to remove nonexisting MACsec SA %s",
                 sai_serialize_object_id(macsecSAVid).c_str());
     }
+
 }
 
 void FlexCounter::removeRif(
@@ -1429,35 +1435,38 @@ void FlexCounter::collectMACsecSAAttrs(
         const auto &macsecSARid = kv.second->m_macsecSAId;
         const auto &macsecSAAttrIds = kv.second->m_macsecSAAttrIds;
 
-        std::vector<sai_attribute_t> macsecSAAttr(macsecSAAttrIds.size());
+        std::vector<sai_attribute_t> macsecSAAttrs(macsecSAAttrIds.size());
 
         for (size_t i = 0; i < macsecSAAttrIds.size(); i++)
         {
-            macsecSAAttr[i].id = macsecSAAttrIds[i];
+            macsecSAAttrs[i].id = macsecSAAttrIds[i];
         }
 
         // Get MACsec SA attr
         sai_status_t status = m_vendorSai->get(
                 SAI_OBJECT_TYPE_MACSEC_SA,
                 macsecSARid,
-                static_cast<uint32_t>(macsecSAAttr.size()),
-                macsecSAAttr.data());
+                static_cast<uint32_t>(macsecSAAttrs.size()),
+                macsecSAAttrs.data());
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_WARN("Failed to get attr of MACsec SA 0x%" PRIx64 ": %d", macsecSAVid, status);
+            SWSS_LOG_WARN(
+                "Failed to get attr of MACsec SA %s: %s",
+                sai_serialize_object_id(macsecSAVid).c_str(),
+                sai_serialize_status(status).c_str());
             continue;
         }
 
         // Push all counter values to a single vector
         std::vector<swss::FieldValueTuple> values;
 
-        for (size_t i = 0; i != macsecSAAttrIds.size(); i++)
+        for (const auto& macsecSAAttr : macsecSAAttrs)
         {
-            const std::string &attrName = sai_serialize_enum(macsecSAAttrIds[i], &sai_metadata_enum_sai_macsec_sa_attr_t);
-            auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_MACSEC_SA, macsecSAAttr[i].id);
-            values.emplace_back(attrName, sai_serialize_attr_value(*meta, macsecSAAttr[i]));
+            auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_MACSEC_SA, macsecSAAttr.id);
+            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, macsecSAAttr));
         }
+
         // Write counters to DB
         std::string macsecSAVidStr = sai_serialize_object_id(macsecSAVid);
 
@@ -2226,16 +2235,16 @@ void FlexCounter::addCounter(
         }
         else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_ATTR_ID_LIST)
         {
-            std::vector<sai_macsec_sa_attr_t> MACsecSAIds;
+            std::vector<sai_macsec_sa_attr_t> macsecSAIds;
 
             for (const auto &str : idStrings)
             {
-                int32_t attr;
-                sai_deserialize_enum(str, &sai_metadata_enum_sai_macsec_sa_attr_t, attr);
-                MACsecSAIds.push_back(static_cast<sai_macsec_sa_attr_t>(attr));
+                sai_macsec_sa_attr_t attr;
+                sai_deserialize_macsec_sa_attr(str.c_str(), attr);
+                macsecSAIds.push_back(attr);
             }
 
-            setMACsecSAAttrList(vid, rid, MACsecSAIds);
+            setMACsecSAAttrList(vid, rid, macsecSAIds);
         }
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
         {
