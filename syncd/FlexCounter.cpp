@@ -2240,7 +2240,7 @@ void FlexCounter::addCounter(
             for (const auto &str : idStrings)
             {
                 sai_macsec_sa_attr_t attr;
-                sai_deserialize_macsec_sa_attr(str.c_str(), attr);
+                sai_deserialize_macsec_sa_attr(str, attr);
                 macsecSAIds.push_back(attr);
             }
 
