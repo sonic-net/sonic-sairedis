@@ -593,13 +593,11 @@ void RedisClient::createAsicObjects(
     // we need to rewrite hash to add table prefix
     for (const auto& kvp: multiHash)
     {
+        hash[(ASIC_STATE_TABLE ":") + kvp.first] = kvp.second;
+
         if (kvp.second.size() == 0)
         {
             hash[(ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL","NULL"));
-        }
-        else
-        {
-            hash[(ASIC_STATE_TABLE ":") + kvp.first] = kvp.second;
         }
     }
 
@@ -616,13 +614,11 @@ void RedisClient::createTempAsicObjects(
     // we need to rewrite hash to add table prefix
     for (const auto& kvp: multiHash)
     {
+        hash[(TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first] = kvp.second;
+
         if (kvp.second.size() == 0)
         {
             hash[(TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL","NULL"));
-        }
-        else
-        {
-            hash[(TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first] = kvp.second;
         }
     }
 
