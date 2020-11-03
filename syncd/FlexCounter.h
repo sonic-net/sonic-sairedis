@@ -110,6 +110,9 @@ namespace syncd
             void removeSwitchDebugCounters(
                     _In_ sai_object_id_t switchVid);
 
+            void removeMACsecSA(
+                    _In_ sai_object_id_t macsecSAVid);
+
         private: // set counter list
 
             void setPortCounterList(
@@ -159,6 +162,11 @@ namespace syncd
                     _In_ sai_object_id_t priorityGroupVid,
                     _In_ sai_object_id_t priorityGroupRid,
                     _In_ const std::vector<sai_ingress_priority_group_attr_t> &attrIds);
+
+            void setMACsecSAAttrList(
+                    _In_ sai_object_id_t macsecSAVid,
+                    _In_ sai_object_id_t macsecSARid,
+                    _In_ const std::vector<sai_macsec_sa_attr_t> &attrIds);
 
         private: // is counter supported
 
@@ -290,6 +298,16 @@ namespace syncd
                 std::vector<sai_router_interface_stat_t> rifCounterIds;
             };
 
+            struct MACsecSAAttrIds
+            {
+                MACsecSAAttrIds(
+                        _In_ sai_object_id_t macsecSA,
+                        _In_ const std::vector<sai_macsec_sa_attr_t> &macsecSAIds);
+
+                sai_object_id_t m_macsecSAId;
+                std::vector<sai_macsec_sa_attr_t> m_macsecSAAttrIds;
+            };
+
         private:
 
             void collectCounters(
@@ -342,6 +360,9 @@ namespace syncd
             void collectPriorityGroupAttrs(
                     _In_ swss::Table &countersTable);
 
+            void collectMACsecSAAttrs(
+                    _In_ swss::Table &countersTable);
+
         private:
 
             void addCollectCountersHandler(
@@ -379,6 +400,8 @@ namespace syncd
 
             std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
             std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> m_priorityGroupAttrIdsMap;
+
+            std::map<sai_object_id_t, std::shared_ptr<MACsecSAAttrIds>> m_macsecSAAttrIdsMap;
 
         private:
 

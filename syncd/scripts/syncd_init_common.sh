@@ -28,7 +28,8 @@ fi
 CMD_ARGS+=" -u"
 
 # Use bulk api`s in SAI
-CMD_ARGS+=" -l"
+# currently disabled since most vendors don't support that yet
+# CMD_ARGS+=" -l"
 
 # Set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
