@@ -126,6 +126,19 @@ std::string sai_serialize_tunnel_stat(
 std::string sai_serialize_queue_attr(
         _In_ const sai_queue_attr_t attr);
 
+std::string sai_serialize_hex_binary(
+        _In_ const void *buffer,
+        _In_ size_t length);
+
+template <typename T>
+std::string sai_serialize_hex_binary(
+        _In_ const T &value)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_hex_binary(&value, sizeof(T));
+}
+
 std::string sai_serialize_switch_oper_status(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t status);
