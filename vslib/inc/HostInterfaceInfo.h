@@ -5,6 +5,7 @@ extern "C" {
 }
 
 #include "EventQueue.h"
+#include "TrafficFilterPipes.h"
 
 #include "swss/selectableevent.h"
 
@@ -38,6 +39,20 @@ namespace saivs
                     _In_ const uint8_t *buffer,
                     _In_ size_t size) const;
 
+            bool installEth2TapFilter(
+                    _In_ int priority,
+                    _In_ std::shared_ptr<TrafficFilter> filter);
+
+            bool uninstallEth2TapFilter(
+                    _In_ std::shared_ptr<TrafficFilter> filter);
+
+            bool installTap2EthFilter(
+                    _In_ int priority,
+                    _In_ std::shared_ptr<TrafficFilter> filter);
+
+            bool uninstallTap2EthFilter(
+                    _In_ std::shared_ptr<TrafficFilter> filter);
+
         private:
 
             void veth2tap_fun();
@@ -58,12 +73,15 @@ namespace saivs
 
             std::shared_ptr<EventQueue> m_eventQueue;
 
-        private:
-
             int m_tapfd;
+
+        private:
 
             std::shared_ptr<std::thread> m_e2t;
             std::shared_ptr<std::thread> m_t2e;
+
+            TrafficFilterPipes m_e2tFilters;
+            TrafficFilterPipes m_t2eFilters;
 
             swss::SelectableEvent m_e2tEvent;
             swss::SelectableEvent m_t2eEvent;
