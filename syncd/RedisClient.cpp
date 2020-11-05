@@ -500,7 +500,7 @@ void RedisClient::removeAsicObjects(
          prefixKeys.push_back((ASIC_STATE_TABLE ":") + key);
     }
 
-    m_dbAsic->hdel(prefixKeys);
+    m_dbAsic->del(prefixKeys);
 }
 
 void RedisClient::removeTempAsicObjects(
@@ -516,7 +516,7 @@ void RedisClient::removeTempAsicObjects(
          prefixKeys.push_back((TEMP_PREFIX ASIC_STATE_TABLE ":") + key);
     }
 
-    m_dbAsic->hdel(prefixKeys);
+    m_dbAsic->del(prefixKeys);
 }
 
 void RedisClient::setAsicObject(
