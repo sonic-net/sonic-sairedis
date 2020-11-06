@@ -22,10 +22,8 @@ endif
 tests_SOURCES = tests.cpp
 tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread \
-			  $(top_srcdir)/meta/libsaimetadata.la \
-			  $(top_srcdir)/meta/libsaimeta.la \
 			  $(top_srcdir)/lib/src/libsairedis.la \
 			  $(top_srcdir)/syncd/libSyncd.a \
-			  -lzmq
+			  -lsaimetadata -lsaimeta -lzmq
 
 TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh tests BCM56850.pl MLNX2700.pl
