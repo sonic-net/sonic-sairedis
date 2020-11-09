@@ -87,64 +87,78 @@ function set_start_type()
 
 config_syncd_bcm()
 {
-    PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
 
-    cp -f $HWSKU_DIR/*.config.bcm /tmp
-    cp -f /etc/sai.d/sai.profile /tmp
-    CONFIG_BCM=$(find /tmp -name '*.bcm')
-    PLT_CONFIG_BCM=$(find $HWSKU_DIR -name '*.bcm')
-    SAI_PROFILE=$(find /tmp -name 'sai.profile')
-    sed -i 's+/usr/share/sonic/hwsku+/tmp+g' $SAI_PROFILE
+    if [ -f $PLATFORM_DIR/common_config_support ];then
 
-    #Get first three characters of chip id
-    readline=$(grep '0x14e4' /proc/linux-kernel-bde)
-    chip_id=${readline#*0x14e4:0x}
-    chip_id=${chip_id::3}
-    COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -name '*.bcm')
+      PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
+
+      cp -f $HWSKU_DIR/*.config.bcm /tmp
+      cp -f /etc/sai.d/sai.profile /tmp
+      CONFIG_BCM=$(find /tmp -name '*.bcm')
+      PLT_CONFIG_BCM=$(find $HWSKU_DIR -name '*.bcm')
+      SAI_PROFILE=$(find /tmp -name 'sai.profile')
+      sed -i 's+/usr/share/sonic/hwsku+/tmp+g' $SAI_PROFILE
+
+      #Get first three characters of chip id
+      readline=$(grep '0x14e4' /proc/linux-kernel-bde)
+      chip_id=${readline#*0x14e4:0x}
+      chip_id=${chip_id::3}
+      COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -name '*.bcm')
    
-    if [ -f $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/*.bcm ]; then
-       for file in $CONFIG_BCM; do
-           echo "" >> $file
-           echo "# Start of chip common properties" >> $file
-           while read line
-           do
-             line=$( echo $line | xargs )
-             if [ ! -z "$line" ];then
-                 if [ "${line::1}" == '#' ];then
-                     echo $line >> $file
-                 else
-                     sedline=${line%=*}
-                     if grep -q $sedline $file ;then
-                        echo "Keep the config $(grep $sedline $file) in $file"
-                     else
-                        echo $line >> $file
-                     fi
-                 fi
-             fi
-           done < $COMMON_CONFIG_BCM
-           echo "# End of chip common properties" >> $file         
-       done
-       echo "Merging $PLT_CONFIG_BCM with $COMMON_CONFIG_BCM, merge files stored in $CONFIG_BCM"
-    fi
+      if [ -f $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/*.bcm ]; then
+         for file in $CONFIG_BCM; do
+             echo "" >> $file
+             echo "# Start of chip common properties" >> $file
+             while read line
+             do
+               line=$( echo $line | xargs )
+               if [ ! -z "$line" ];then
+                   if [ "${line::1}" == '#' ];then
+                       echo $line >> $file
+                   else
+                       sedline=${line%=*}
+                       if grep -q $sedline $file ;then
+                          echo "Keep the config $(grep $sedline $file) in $file"
+                       else
+                          echo $line >> $file
+                       fi
+                   fi
+               fi
+             done < $COMMON_CONFIG_BCM
+             echo "# End of chip common properties" >> $file
+         done
+         echo "Merging $PLT_CONFIG_BCM with $COMMON_CONFIG_BCM, merge files stored in $CONFIG_BCM"
+      fi
 
-    #sync the file system
-    sync
+      #sync the file system
+      sync
 
-    # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
-    cp -f /tmp/sai.profile /var/run/sswsyncd/
-    cp -f /tmp/*.bcm /var/run/sswsyncd/
+      # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
+      cp -f /tmp/sai.profile /var/run/sswsyncd/
+      cp -f /tmp/*.bcm /var/run/sswsyncd/
 
-    if [ -f "/tmp/sai.profile" ]; then
-        CMD_ARGS+=" -p /tmp/sai.profile"
-    elif [ -f "/etc/sai.d/sai.profile" ]; then
-        CMD_ARGS+=" -p /etc/sai.d/sai.profile"
+      if [ -f "/tmp/sai.profile" ]; then
+          CMD_ARGS+=" -p /tmp/sai.profile"
+      elif [ -f "/etc/sai.d/sai.profile" ]; then
+          CMD_ARGS+=" -p /etc/sai.d/sai.profile"
+      else
+          CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+      fi
+
     else
-        CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+
+      if [ -f "/etc/sai.d/sai.profile" ]; then
+          CMD_ARGS+=" -p /etc/sai.d/sai.profile"
+      else
+          CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+      fi
+
     fi
 
     [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
     [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
     [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
+
 }
 
 config_syncd_mlnx()
