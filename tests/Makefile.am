@@ -1,6 +1,6 @@
 AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
 
-bin_PROGRAMS = vssyncd
+bin_PROGRAMS = vssyncd tests
 
 if DEBUG
 DBGFLAGS = -ggdb -DDEBUG
@@ -19,4 +19,12 @@ if SAITHRIFT
 vssyncd_LDADD += -lrpcserver -lthrift
 endif
 
-TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh BCM56850.pl MLNX2700.pl
+tests_SOURCES = tests.cpp
+tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+tests_LDADD = -lhiredis -lswsscommon -lpthread \
+			  $(top_srcdir)/lib/src/libsairedis.la \
+			  $(top_srcdir)/syncd/libSyncd.a \
+			  -L$(top_srcdir)/meta/.libs \
+			  -lsaimetadata -lsaimeta -lzmq
+
+TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh tests BCM56850.pl MLNX2700.pl

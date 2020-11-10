@@ -487,6 +487,38 @@ void RedisClient::removeTempAsicObject(
     m_dbAsic->del(key);
 }
 
+void RedisClient::removeAsicObjects(
+        _In_ const std::vector<std::string>& keys)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> prefixKeys;
+
+    // we need to rewrite keys to add table prefix
+    for (const auto& key: keys)
+    {
+         prefixKeys.push_back((ASIC_STATE_TABLE ":") + key);
+    }
+
+    m_dbAsic->del(prefixKeys);
+}
+
+void RedisClient::removeTempAsicObjects(
+        _In_ const std::vector<std::string>& keys)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> prefixKeys;
+
+    // we need to rewrite keys to add table prefix
+    for (const auto& key: keys)
+    {
+         prefixKeys.push_back((TEMP_PREFIX ASIC_STATE_TABLE ":") + key);
+    }
+
+    m_dbAsic->del(prefixKeys);
+}
+
 void RedisClient::setAsicObject(
         _In_ const sai_object_meta_key_t& metaKey,
         _In_ const std::string& attr,
@@ -549,6 +581,48 @@ void RedisClient::createTempAsicObject(
     {
         m_dbAsic->hset(key, fvField(e), fvValue(e));
     }
+}
+
+void RedisClient::createAsicObjects(
+        _In_ const std::unordered_map<std::string, std::vector<swss::FieldValueTuple>>& multiHash)
+{
+    SWSS_LOG_ENTER();
+
+    std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> hash;
+
+    // we need to rewrite hash to add table prefix
+    for (const auto& kvp: multiHash)
+    {
+        hash[(ASIC_STATE_TABLE ":") + kvp.first] = kvp.second;
+
+        if (kvp.second.size() == 0)
+        {
+            hash[(ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL","NULL"));
+        }
+    }
+
+    m_dbAsic->hmset(hash);
+}
+
+void RedisClient::createTempAsicObjects(
+        _In_ const std::unordered_map<std::string, std::vector<swss::FieldValueTuple>>& multiHash)
+{
+    SWSS_LOG_ENTER();
+
+    std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> hash;
+
+    // we need to rewrite hash to add table prefix
+    for (const auto& kvp: multiHash)
+    {
+        hash[(TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first] = kvp.second;
+
+        if (kvp.second.size() == 0)
+        {
+            hash[(TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL","NULL"));
+        }
+    }
+
+    m_dbAsic->hmset(hash);
 }
 
 void RedisClient::setVidAndRidMap(
