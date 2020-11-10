@@ -3286,6 +3286,7 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT64:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
@@ -3349,6 +3350,13 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 // no special action required
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_AUTH_KEY:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SALT:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SCI:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SSCI:
                 break;
 
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
@@ -4404,6 +4412,7 @@ sai_status_t Meta::meta_generic_validation_create(
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT64:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
@@ -4569,6 +4578,13 @@ sai_status_t Meta::meta_generic_validation_create(
 
                     break;
                 }
+
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_AUTH_KEY:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SALT:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SCI:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SSCI:
+                break;
 
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
                 VALIDATION_LIST(md, value.sysportconfiglist);
@@ -6645,6 +6661,7 @@ void Meta::meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT16:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT32:
+            case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT64:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_MAC:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV4:
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_IPV6:
@@ -6711,6 +6728,13 @@ void Meta::meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
                 // no special action required
                 break;
+
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_AUTH_KEY:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SALT:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SCI:
+            case SAI_ATTR_VALUE_TYPE_MACSEC_SSCI:
+              break;
 
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
