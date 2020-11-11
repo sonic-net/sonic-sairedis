@@ -2729,7 +2729,6 @@ void sai_deserialize_hex_binary(
 
     while (hex_cur < s.length())
     {
-
         const char temp_buffer[] = {s[hex_cur], s[hex_cur + 1], 0};
         unsigned int value = -1;
 
@@ -2742,7 +2741,6 @@ void sai_deserialize_hex_binary(
         hex_cur += 2;
         buffer_cur += 1;
     }
-
 }
 
 template<typename T>
