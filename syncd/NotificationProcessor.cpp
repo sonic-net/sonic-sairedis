@@ -15,7 +15,7 @@ using namespace syncd;
 using namespace saimeta;
 
 NotificationProcessor::NotificationProcessor(
-        _In_ std::shared_ptr<swss::NotificationProducer> producer,
+        _In_ std::shared_ptr<NotificationProducerBase> producer,
         _In_ std::shared_ptr<RedisClient> client,
         _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer):
     m_synchronizer(synchronizer),
@@ -160,7 +160,7 @@ void NotificationProcessor::redisPutFdbEntryToAsicView(
         return;
     }
 
-    if (fdb->event_type == SAI_FDB_EVENT_LEARNED)
+    if (fdb->event_type == SAI_FDB_EVENT_LEARNED || fdb->event_type == SAI_FDB_EVENT_MOVE)
     {
         // currently we need to add type manually since fdb event don't contain type
         sai_attribute_t attr;

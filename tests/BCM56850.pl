@@ -546,8 +546,47 @@ sub test_brcm_query_object_type_get_availability
     play "query_object_type_get_availability.rec";
 }
 
-# RUN TESTS
+sub test_brcm_acl_limit
+{
+    fresh_start("-b", "$utils::DIR/bbm.ini", "-p", "$utils::DIR/vsprofile_acl_limit.ini");
 
+    play "acl_limit.rec";
+}
+
+sub test_brcm_buffer_pool_zmq
+{
+    fresh_start("-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "-s", "-g", "0", "-x", "$utils::DIR/ctx_zmq.json");
+
+    # we expect no operations on asic, and all buffer pools will be matched correctly
+
+    play("-m", "-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer.rec");
+    play("-m", "-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer_second.rec",0);
+}
+
+sub test_bulk_route
+{
+    fresh_start;
+
+    play "bulk_route.rec"
+}
+
+sub test_bulk_fdb
+{
+    fresh_start;
+
+    play "bulk_fdb.rec"
+}
+
+sub test_bulk_object
+{
+    fresh_start;
+
+    play "bulk_object.rec"
+}
+
+# RUN TESTS
+test_brcm_buffer_pool_zmq;
+test_brcm_acl_limit;
 test_sync_brcm_warm_boot_port_remove;
 test_brcm_warm_boot_port_remove;
 test_brcm_warm_boot_port_create;
@@ -560,6 +599,9 @@ test_bridge_create;
 test_ntf;
 test_acl_mask;
 test_empty_lag_buffer_acl;
+test_bulk_route;
+test_bulk_fdb;
+test_bulk_object;
 test_brcm_config_acl;
 test_brcm_warm_wred_queue;
 test_brcm_warm_boot_full_empty;

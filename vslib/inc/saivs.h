@@ -24,6 +24,16 @@ extern "C" {
 #define SAI_KEY_VS_INTERFACE_LANE_MAP_FILE  "SAI_VS_INTERFACE_LANE_MAP_FILE"
 
 /**
+ * @def SAI_KEY_VS_RESOURCE_LIMITER_FILE
+ *
+ * File with resource limitations for object type create.
+ *
+ * Example:
+ * SAI_OBJECT_TYPE_ACL_TABLE=3
+ */
+#define SAI_KEY_VS_RESOURCE_LIMITER_FILE    "SAI_VS_RESOURCE_LIMITER_FILE"
+
+/**
  * @def SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE
  *
  * Bool flag, (true/false). If set to true, then during create host interface

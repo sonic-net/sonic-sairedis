@@ -1856,6 +1856,37 @@ sai_status_t Meta::objectTypeGetAvailability(
     return status;
 }
 
+sai_status_t Meta::queryAttributeCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
+        _Out_ sai_attr_capability_t *capability)
+{
+    SWSS_LOG_ENTER();
+
+    PARAMETER_CHECK_OID_OBJECT_TYPE(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OID_EXISTS(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OBJECT_TYPE_VALID(objectType);
+
+    auto mdp = sai_metadata_get_attr_metadata(objectType, attrId);
+
+    if (!mdp)
+    {
+        SWSS_LOG_ERROR("unable to find attribute: %s:%d",
+                sai_serialize_object_type(objectType).c_str(),
+                attrId);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    PARAMETER_CHECK_IF_NOT_NULL(capability);
+
+    auto status = m_implementation->queryAttributeCapability(switchId, objectType, attrId, capability);
+
+    return status;
+}
+
+
 sai_status_t Meta::queryAattributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
@@ -3320,6 +3351,11 @@ void Meta::meta_generic_validation_post_remove(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                // no special action required
+                break;
+
             default:
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
@@ -4025,7 +4061,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%lx is not valid object type, "
+        SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " is not valid object type, "
                         "returned null object type", vr);
 
         return SAI_STATUS_INVALID_PARAMETER;
@@ -4035,7 +4071,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
 
     if (object_type != expected)
     {
-        SWSS_LOG_ERROR("virtual router oid 0x%lx type %d is wrong type, "
+        SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " type %d is wrong type, "
                        "expected object type %d", vr, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
@@ -4533,6 +4569,13 @@ sai_status_t Meta::meta_generic_validation_create(
 
                     break;
                 }
+
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                VALIDATION_LIST(md, value.sysportconfiglist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+                break;
 
             default:
 
@@ -5165,6 +5208,13 @@ sai_status_t Meta::meta_generic_validation_set(
             VALIDATION_LIST(md, value.aclcapability.action_list);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+            VALIDATION_LIST(md, value.sysportconfiglist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+            break;
+
         default:
 
             META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -5526,6 +5576,13 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.aclcapability.action_list);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                VALIDATION_LIST(md, value.sysportconfiglist);
+                break;
+
             default:
 
                 // acl capability will is more complex since is in/out we need to check stage
@@ -5765,6 +5822,13 @@ void Meta::meta_generic_validation_post_get(
                     META_LOG_ERROR(md, "invalid range %u .. %u", value.s32range.min, value.s32range.max);
                 }
 
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                VALIDATION_LIST_GET(md, value.sysportconfiglist);
                 break;
 
             default:
@@ -6648,6 +6712,11 @@ void Meta::meta_generic_validation_post_create(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+            case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+                // no special action required
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -6872,6 +6941,11 @@ void Meta::meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
+            // no special action required
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+        case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
             // no special action required
             break;
 

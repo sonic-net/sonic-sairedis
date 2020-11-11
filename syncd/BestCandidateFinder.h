@@ -35,6 +35,9 @@ namespace syncd
             std::shared_ptr<SaiObj> findCurrentBestMatch(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
 
+            std::shared_ptr<SaiObj> findSimilarBestMatch(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
+
         private:
 
             std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObject(

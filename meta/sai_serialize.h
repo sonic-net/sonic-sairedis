@@ -126,6 +126,9 @@ std::string sai_serialize_tunnel_stat(
 std::string sai_serialize_queue_attr(
         _In_ const sai_queue_attr_t attr);
 
+std::string sai_serialize_macsec_sa_attr(
+        _In_ const  sai_macsec_sa_attr_t &attr);
+
 std::string sai_serialize_switch_oper_status(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t status);
@@ -164,6 +167,9 @@ std::string sai_serialize_l2mc_entry_type(
 
 std::string sai_serialize_ipmc_entry_type(
         _In_ const sai_ipmc_entry_type_t type);
+
+std::string sai_serialize_nat_entry_type(
+        _In_ const sai_nat_type_t type);
 
 std::string sai_serialize_qos_map_item(
         _In_ const sai_qos_map_t& qosmap);
@@ -239,6 +245,10 @@ void sai_deserialize_neighbor_entry(
 void sai_deserialize_route_entry(
         _In_ const std::string& s,
         _In_ sai_route_entry_t &route_entry);
+
+void sai_deserialize_nat_entry_type(
+        _In_ const std::string& s,
+        _Out_ sai_nat_type_t& type);
 
 void sai_deserialize_nat_entry(
         _In_ const std::string& s,
@@ -326,6 +336,10 @@ void sai_deserialize_ingress_priority_group_attr(
 void sai_deserialize_queue_attr(
         _In_ const std::string& s,
         _Out_ sai_queue_attr_t& attr);
+
+void sai_deserialize_macsec_sa_attr(
+        _In_ const std::string& s,
+        _Out_ sai_macsec_sa_attr_t& attr);
 
 // sairedis
 

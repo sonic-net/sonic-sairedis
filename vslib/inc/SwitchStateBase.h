@@ -10,6 +10,7 @@
 
 #include <set>
 #include <unordered_set>
+#include <vector>
 
 #define SAI_VS_FDB_INFO "SAI_VS_FDB_INFO"
 
@@ -81,6 +82,12 @@ namespace saivs
             virtual sai_status_t set_maximum_number_of_childs_per_scheduler_group();
 
             virtual sai_status_t set_number_of_ecmp_groups();
+
+            virtual sai_status_t set_static_crm_values();
+
+            virtual sai_status_t set_static_acl_resource_list(
+                    _In_ sai_switch_attr_t acl_resource,
+                    _In_ int max_count);
 
         public:
 
@@ -185,6 +192,28 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ uint32_t attr_count,
                     _Out_ sai_attribute_t *attr_list);
+
+            virtual sai_status_t bulkCreate(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const uint32_t *attr_count,
+                    _In_ const sai_attribute_t **attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
+            virtual sai_status_t bulkRemove(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
+            virtual sai_status_t bulkSet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const sai_attribute_t *attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
 
         protected:
 
@@ -328,7 +357,7 @@ namespace saivs
 
             sai_status_t removeHostif(
                     _In_ sai_object_id_t objectId);
-            
+
             sai_status_t vs_remove_hostif_tap_interface(
                     _In_ sai_object_id_t hostif_id);
 
@@ -408,6 +437,29 @@ namespace saivs
             sai_object_id_t m_default_1q_bridge;
             sai_object_id_t m_default_bridge_port_1q_router;
             sai_object_id_t m_default_vlan_id;
+
+        protected:
+
+            constexpr static const int m_maxIPv4RouteEntries = 100000;
+            constexpr static const int m_maxIPv6RouteEntries = 10000;
+
+            constexpr static const int m_maxIPv4NextHopEntries = 32000;
+            constexpr static const int m_maxIPv6NextHopEntries = 32000;
+
+            constexpr static const int m_maxIPv4NeighborEntries = 4000;
+            constexpr static const int m_maxIPv6NeighborEntries = 2000;
+
+            constexpr static const int m_maxNextHopGroupMemberEntries = 16000;
+            constexpr static const int m_maxNextHopGroupEntries = 400;
+
+            constexpr static const int m_maxFdbEntries = 800;
+
+            constexpr static const int m_maxSNATEntries = 100;
+            constexpr static const int m_maxDNATEntries = 100;
+            constexpr static const int m_maxDoubleNATEntries = 50; /* Half of single NAT entry */
+
+            constexpr static const int m_maxAclTables = 3;
+            constexpr static const int m_maxAclTableGroups = 200;
 
         public: // TODO private
 

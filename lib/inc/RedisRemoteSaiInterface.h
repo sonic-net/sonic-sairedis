@@ -9,6 +9,7 @@
 #include "SkipRecordAttrContainer.h"
 #include "RedisChannel.h"
 #include "SwitchConfigContainer.h"
+#include "ContextConfig.h"
 
 #include "swss/producertable.h"
 #include "swss/consumertable.h"
@@ -72,9 +73,7 @@ namespace sairedis
         public:
 
             RedisRemoteSaiInterface(
-                    _In_ uint32_t globalContext,
-                    _In_ std::shared_ptr<SwitchConfigContainer> scc,
-                    _In_ const std::string& dbAsic,
+                    _In_ std::shared_ptr<ContextConfig> contextConfig,
                     _In_ std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> notificationCallback,
                     _In_ std::shared_ptr<Recorder> recorder);
 
@@ -240,6 +239,12 @@ namespace sairedis
                     _In_ const sai_attribute_t *attrList,
                     _Out_ uint64_t *count) override;
 
+            virtual sai_status_t queryAttributeCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Out_ sai_attr_capability_t *capability) override;
+
             virtual sai_status_t queryAattributeEnumValuesCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
@@ -386,6 +391,9 @@ namespace sairedis
 
         private: // SAI API response
 
+            sai_status_t waitForQueryAttributeCapabilityResponse(
+                    _Out_ sai_attr_capability_t* capability);
+
             sai_status_t waitForQueryAattributeEnumValuesCapabilityResponse(
                     _Inout_ sai_s32_list_t* enumValuesCapability);
 
@@ -429,9 +437,7 @@ namespace sairedis
 
         private:
 
-            uint32_t m_globalContext;
-
-            std::shared_ptr<SwitchConfigContainer> m_switchConfigContainer;
+            std::shared_ptr<ContextConfig> m_contextConfig;
 
             bool m_asicInitViewMode;
 
@@ -447,17 +453,17 @@ namespace sairedis
 
             std::shared_ptr<VirtualObjectIdManager> m_virtualObjectIdManager;
 
+            std::shared_ptr<swss::DBConnector> m_db;
+
             std::shared_ptr<RedisVidIndexGenerator> m_redisVidIndexGenerator;
 
             std::weak_ptr<saimeta::Meta> m_meta;
 
             std::shared_ptr<SkipRecordAttrContainer> m_skipRecordAttrContainer;
 
-            std::shared_ptr<RedisChannel> m_redisChannel;
+            std::shared_ptr<Channel> m_communicationChannel;
 
             std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> m_notificationCallback;
-
-            std::string m_dbAsic;
 
             std::map<sai_object_id_t, swss::TableDump> m_tableDump;
     };

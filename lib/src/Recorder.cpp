@@ -265,6 +265,25 @@ void Recorder::recordFlushFdbEntriesResponse(
     recordLine("F|" + sai_serialize_status(status));
 }
 
+void Recorder::recordQueryAttributeCapability(
+        _In_ const std::string& key,
+        _In_ const std::vector<swss::FieldValueTuple>& arguments)
+{
+    SWSS_LOG_ENTER();
+
+    recordLine("q|attribute_capability|" + key + "|" + joinFieldValues(arguments));
+}
+
+void Recorder::recordQueryAttributeCapabilityResponse(
+        _In_ sai_status_t status,
+        _In_ const std::vector<swss::FieldValueTuple>& arguments)
+{
+    SWSS_LOG_ENTER();
+
+    recordLine("Q|attribute_capability|" + sai_serialize_status(status) + "|" + joinFieldValues(arguments));
+}
+
+
 void Recorder::recordQueryAttributeEnumValuesCapability(
         _In_ const std::string& key,
         _In_ const std::vector<swss::FieldValueTuple>& arguments)
@@ -884,6 +903,76 @@ void Recorder::recordObjectTypeGetAvailabilityResponse(
     values.push_back(swss::FieldValueTuple("COUNT", std::to_string(*count)));
 
     recordObjectTypeGetAvailabilityResponse(status, values);
+}
+
+void Recorder::recordQueryAttributeCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
+        _Out_ sai_attr_capability_t *Capability)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+
+    if (meta == NULL)
+    {
+        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d",
+                sai_serialize_object_type(objectType).c_str(), attrId);
+        return;
+    }
+
+    auto key = sai_serialize_object_type(SAI_OBJECT_TYPE_SWITCH) + ":" + sai_serialize_object_id(switchId);
+
+    auto object_type_str = sai_serialize_object_type(objectType);
+    const std::string attr_id_str = meta->attridname;
+    const std::vector<swss::FieldValueTuple> values =
+    {
+        swss::FieldValueTuple("OBJECT_TYPE", object_type_str),
+        swss::FieldValueTuple("ATTR_ID", attr_id_str)
+    };
+
+    SWSS_LOG_DEBUG("Query arguments: switch %s, object_type: %s, attribute: %s",
+                key.c_str(),
+                object_type_str.c_str(),
+                meta->attridname);
+
+    recordQueryAttributeCapability(key, values);
+}
+
+
+void Recorder::recordQueryAttributeCapabilityResponse(
+        _In_ sai_status_t status,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
+        _In_ const sai_attr_capability_t* capability)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+
+    if (meta == NULL)
+    {
+        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d",
+                sai_serialize_object_type(objectType).c_str(), attrId);
+        return;
+    }
+
+    auto object_type_str = sai_serialize_object_type(objectType);
+    const std::string attr_id_str = meta->attridname;
+    const std::string create_str = (status == SAI_STATUS_SUCCESS ? (capability->create_implemented? "true":"false"): "false");
+    const std::string set_str    = (status == SAI_STATUS_SUCCESS ? (capability->set_implemented? "true":"false"): "false");
+    const std::string get_str    = (status == SAI_STATUS_SUCCESS ? (capability->get_implemented? "true":"false"): "false");
+    const std::vector<swss::FieldValueTuple> values =
+    {
+        swss::FieldValueTuple("OBJECT_TYPE", object_type_str),
+        swss::FieldValueTuple("ATTR_ID", attr_id_str),
+        swss::FieldValueTuple("CREATE_IMP", create_str),
+        swss::FieldValueTuple("SET_IMP", set_str),
+        swss::FieldValueTuple("GET_IMP", get_str)
+    };
+
+    recordQueryAttributeCapabilityResponse(status, values);
 }
 
 void Recorder::recordQueryAattributeEnumValuesCapability(

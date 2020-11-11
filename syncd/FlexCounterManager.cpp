@@ -62,7 +62,7 @@ void FlexCounterManager::removeCounterPlugins(
 
     fc->removeCounterPlugins();
 
-    if (fc->isEmpty())
+    if (fc->isDiscarded())
     {
         removeInstance(instanceId);
     }
@@ -91,7 +91,7 @@ void FlexCounterManager::addCounter(
 
     fc->addCounter(vid, rid, values);
 
-    if (fc->isEmpty())
+    if (fc->isDiscarded())
     {
         removeInstance(instanceId);
     }
@@ -107,7 +107,7 @@ void FlexCounterManager::removeCounter(
 
     fc->removeCounter(vid);
 
-    if (fc->isEmpty())
+    if (fc->isDiscarded())
     {
         removeInstance(instanceId);
     }

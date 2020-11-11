@@ -18,6 +18,7 @@ CommandLineOptions::CommandLineOptions()
     m_enableUnittests = false;
     m_enableConsistencyCheck = false;
     m_enableSyncMode = false;
+    m_enableSaiBulkSupport = false;
 
     m_startType = SAI_START_TYPE_COLD_BOOT;
 
@@ -26,6 +27,8 @@ CommandLineOptions::CommandLineOptions()
     m_globalContext = 0;
 
     m_contextConfig = "";
+
+    m_breakConfig = "";
 
 #ifdef SAITHRIFT
 
@@ -49,10 +52,12 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " EnableUnittests=" << (m_enableUnittests ? "YES" : "NO");
     ss << " EnableConsistencyCheck=" << (m_enableConsistencyCheck ? "YES" : "NO");
     ss << " EnableSyncMode=" << (m_enableSyncMode ? "YES" : "NO");
+    ss << " EnableSaiBulkSuport=" << (m_enableSaiBulkSupport ? "YES" : "NO");
     ss << " StartType=" << startTypeToString(m_startType);
     ss << " ProfileMapFile=" << m_profileMapFile;
     ss << " GlobalContext=" << m_globalContext;
     ss << " ContextConfig=" << m_contextConfig;
+    ss << " BreakConfig=" << m_breakConfig;
 
 #ifdef SAITHRIFT
 

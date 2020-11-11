@@ -105,6 +105,21 @@ sai_status_t sai_api_query(
     return SAI_STATUS_INVALID_PARAMETER;
 }
 
+sai_status_t sai_query_attribute_capability(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _In_ sai_attr_id_t attr_id,
+        _Out_ sai_attr_capability_t *capability)
+{
+    SWSS_LOG_ENTER();
+
+    return redis_sai->queryAttributeCapability(
+            switch_id,
+            object_type,
+            attr_id,
+            capability);
+}
+
 sai_status_t sai_query_attribute_enum_values_capability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,

@@ -2,6 +2,7 @@ personal_ws-1.1 en 0
 acl
 ACL
 ACLs
+apache
 api
 API
 apis
@@ -71,6 +72,9 @@ encap
 endif
 endl
 enum
+epoll
+errno
+ETERM
 eth
 ethernet
 ethX
@@ -94,8 +98,10 @@ hardcoded
 hasEqualAttribute
 hostif
 HSV
+http
 https
 hw
+hwinfo
 ifdef
 IFF
 ifindex
@@ -170,6 +176,7 @@ queueId
 QUEUEs
 queueStats
 readonly
+recv
 redis
 Redis
 refactor
@@ -178,6 +185,7 @@ refactoring
 reimplement
 reinit
 removedVidToRid
+REQ
 RID
 RIDs
 RIDTOVID
@@ -280,5 +288,10 @@ vxlan
 VXLAN
 workaroung
 WRED
+www
 xoff
 xon
+zero
+zeromq
+zmq
+ZMQ

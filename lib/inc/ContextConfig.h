@@ -38,6 +38,12 @@ namespace sairedis
             
             std::string m_dbState;
 
+            bool m_zmqEnable;
+
+            std::string m_zmqEndpoint;
+
+            std::string m_zmqNtfEndpoint;
+
             std::shared_ptr<SwitchConfigContainer> m_scc;
     };
 }

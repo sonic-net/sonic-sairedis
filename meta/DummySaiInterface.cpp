@@ -153,6 +153,17 @@ sai_status_t DummySaiInterface::objectTypeGetAvailability(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::queryAttributeCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
+        _Out_ sai_attr_capability_t *capability)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
 sai_status_t DummySaiInterface::queryAattributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,

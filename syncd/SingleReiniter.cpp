@@ -10,6 +10,7 @@
 #include "meta/sai_serialize.h"
 
 #include <unistd.h>
+#include <inttypes.h>
 
 using namespace syncd;
 using namespace saimeta;
@@ -735,7 +736,7 @@ sai_object_id_t SingleReiniter::processSingleVid(
     }
     else
     {
-        SWSS_LOG_DEBUG("setting attributes on object of type %x, processed VID 0x%lx to RID 0x%lx", objectType, vid, rid);
+        SWSS_LOG_DEBUG("setting attributes on object of type %x, processed VID 0x%" PRIx64 " to RID 0x%" PRIx64 " ", objectType, vid, rid);
 
         for (uint32_t idx = 0; idx < attrCount; idx++)
         {
@@ -965,7 +966,7 @@ void SingleReiniter::processStructNonObjectIds(
 
             m->setoid(&meta_key, rid);
 
-            SWSS_LOG_DEBUG("processed vid 0x%lx to rid 0x%lx in %s:%s", vid, rid,
+            SWSS_LOG_DEBUG("processed vid 0x%" PRIx64 " to rid 0x%" PRIx64 " in %s:%s", vid, rid,
                     info->objecttypename,
                     m->membername);
         }

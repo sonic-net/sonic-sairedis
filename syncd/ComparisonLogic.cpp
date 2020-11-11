@@ -28,13 +28,15 @@ ComparisonLogic::ComparisonLogic(
         _In_ std::shared_ptr<NotificationHandler> handler,
         _In_ std::set<sai_object_id_t> initViewRemovedVids,
         _In_ std::shared_ptr<AsicView> current,
-        _In_ std::shared_ptr<AsicView> temp):
+        _In_ std::shared_ptr<AsicView> temp,
+        _In_ std::shared_ptr<BreakConfig> breakConfig):
     m_vendorSai(vendorSai),
     m_switch(sw),
     m_initViewRemovedVids(initViewRemovedVids),
     m_current(current),
     m_temp(temp),
-    m_handler(handler)
+    m_handler(handler),
+    m_breakConfig(breakConfig)
 {
     SWSS_LOG_ENTER();
 
@@ -500,6 +502,11 @@ void ComparisonLogic::removeExistingObjectFromCurrentView(
         _In_ const std::shared_ptr<SaiObj> &currentObj)
 {
     SWSS_LOG_ENTER();
+
+    if (currentObj->getObjectStatus() != SAI_OBJECT_STATUS_NOT_PROCESSED)
+    {
+        SWSS_LOG_THROW("FATAL: removing object with status: %d, logic error", currentObj->getObjectStatus());
+    }
 
     /*
      * This decreasing VID reference will be hard when actual reference will
@@ -1781,6 +1788,14 @@ void ComparisonLogic::processObjectForViewTransition(
                 temporaryObj->m_str_object_type.c_str(),
                 temporaryObj->m_str_object_id.c_str());
 
+        /*
+         * We can hit this scenario when, we will not have current best match,
+         * and we still want to create new object, but resources are limited,
+         * so it can happen that in this place we also would need to remove
+         * some objects first, before we create new one.
+         */
+        breakBeforeMake(currentView, temporaryView, currentBestMatch, temporaryObj);
+
         createNewObjectFromTemporaryObject(currentView, temporaryView, temporaryObj);
         return;
     }
@@ -1856,10 +1871,12 @@ void ComparisonLogic::processObjectForViewTransition(
         else
         {
             /*
-             * Later on if we decide we want to remove objects before
-             * creating new one's we need to put here this action, or just
-             * remove this entire switch and call remove.
+             * Later on if we decide we want to remove objects before creating
+             * new one's we need to put here this action, or just remove this
+             * entire switch and call remove.
              */
+
+            breakBeforeMake(currentView, temporaryView, currentBestMatch, temporaryObj);
         }
 
         // No need to store VID since at this point we don't have RID yet, it will be
@@ -1913,6 +1930,192 @@ void ComparisonLogic::processObjectForViewTransition(
      */
 
     updateObjectStatus(currentView, temporaryView, currentBestMatch, temporaryObj);
+}
+
+void ComparisonLogic::removeCurrentObjectDependencyTree(
+        _In_ AsicView &currentView,
+        _In_ AsicView &temporaryView,
+        _In_ const std::shared_ptr<SaiObj>& currentObj)
+{
+    SWSS_LOG_ENTER();
+
+    if (!currentObj->isOidObject())
+    {
+        // we should be able to remove non object right away since it's leaf
+
+        removeExistingObjectFromCurrentView(currentView, temporaryView, currentObj);
+
+        return;
+    }
+
+    // check reference count and remove other objects if necessary
+
+    const int count = currentView.getVidReferenceCount(currentObj->getVid());
+
+    if (count)
+    {
+        SWSS_LOG_INFO("similar best match has reference count: %d, will need to remove other objects", count);
+
+        auto* info = sai_metadata_get_object_type_info(currentObj->getObjectType());
+
+        // use reverse dependency graph to locate objects where current object can be used
+        // need to lookout on loops on some objects
+
+        for (size_t i = 0; i < info->revgraphmemberscount; i++)
+        {
+            auto *revgraph = info->revgraphmembers[i];
+
+            if (revgraph->structmember)
+            {
+                SWSS_LOG_THROW("struct fields not supported yet, FIXME");
+            }
+
+            SWSS_LOG_INFO("used on %s:%s",
+                    sai_serialize_object_type(revgraph->depobjecttype).c_str(),
+                    revgraph->attrmetadata->attridname);
+
+            // TODO it could be not processed, or matched, since on matched we
+            // can still break the link
+
+            auto objs = currentView.getObjectsByObjectType(revgraph->depobjecttype);
+
+            for (auto& obj: objs)
+            {
+                // NOTE: current object can have multiple OID attributes that
+                // they can have the same value, but they can have different
+                // attributes (like set/create_only)
+
+                auto status = obj->getObjectStatus();
+
+                if (status != SAI_OBJECT_STATUS_NOT_PROCESSED &&
+                         status != SAI_OBJECT_STATUS_MATCHED)
+                {
+                    continue;
+                }
+
+                auto attr = obj->tryGetSaiAttr(revgraph->attrmetadata->attrid);
+
+                if (attr == nullptr)
+                {
+                    // no such attribute
+                    continue;
+                }
+
+                if (revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+                {
+                    // currently we only support reference on OID, not list
+                    SWSS_LOG_THROW("attr value type %d, not supported yet, FIXME",
+                            revgraph->attrmetadata->attrvaluetype);
+                }
+
+                if (attr->getOid() != currentObj->getVid())
+                {
+                    // VID is not matching, skip this attribute
+                    continue;
+                }
+
+                // we found object and attribute that is using current VID,
+                // it's possible this VID is used on multiple attributes on the
+                // same object
+
+                SWSS_LOG_INFO("found reference object: %s", obj->m_str_object_id.c_str());
+
+                if (revgraph->attrmetadata->iscreateonly && status == SAI_OBJECT_STATUS_NOT_PROCESSED)
+                {
+                    // attribute is create only, and object was not processed
+                    // yet this means that we need to remove object, since we
+                    // can't break the link
+
+                    removeCurrentObjectDependencyTree(currentView, temporaryView, obj); // recursion
+                }
+                else if (revgraph->attrmetadata->iscreateandset && status == SAI_OBJECT_STATUS_NOT_PROCESSED)
+                {
+                    if (revgraph->attrmetadata->allownullobjectid)
+                    {
+                        // we can also remove entire object here too
+
+                        SWSS_LOG_THROW("break the link is not implemented yet, FIXME");
+                    }
+                    else
+                    {
+                        // attribute is create and set, but not allow null object id
+                        // so probably attribute is mandatory on create, we can't break
+                        // the link, but we can remove entire object
+
+                        removeCurrentObjectDependencyTree(currentView, temporaryView, obj); // recursion
+                    }
+                }
+                else if (revgraph->attrmetadata->iscreateandset && status == SAI_OBJECT_STATUS_MATCHED)
+                {
+                    SWSS_LOG_THROW("matched break the link is not implemented yet, FIXME");
+                }
+                else
+                {
+                    SWSS_LOG_THROW("remove on %s, obj status: %d, not supported, FIXME", revgraph->attrmetadata->attridname, status);
+                }
+            }
+        }
+    }
+
+    removeExistingObjectFromCurrentView(currentView, temporaryView, currentObj);
+}
+
+void ComparisonLogic::breakBeforeMake(
+        _In_ AsicView &currentView,
+        _In_ AsicView &temporaryView,
+        _In_ const std::shared_ptr<SaiObj>& currentBestMatch, // can be nullptr
+        _In_ const std::shared_ptr<SaiObj>& temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Break Before Make rule.
+     *
+     * We can have 2 paths here:
+     *
+     * - current best match object was not found (nullptr), in case of limited
+     *   resources, this mean that we want to remove some existing object
+     *   before creating new, so number of existing objects will not exceed
+     *   initial value, for example we remove acl table, then we create acl
+     *   table.  Of course this will not hold true, if temporary number of
+     *   objects of given type is greater than current existing objects.
+     *
+     * - current best match was found, but perform Object Set Transition
+     *   operation failed, so we can't move current object attributes to
+     *   temporary object attributes, because for example some are create only.
+     */
+
+    if (!m_breakConfig->shouldBreakBeforeMake(temporaryObj->getObjectType()))
+    {
+        // skip object if not in break config
+
+        return;
+    }
+
+    if (currentBestMatch == nullptr)
+    {
+        // it can happen that current best match is not found for temporary
+        // object then we need to find best object for removal from existing
+        // ones the most suitable should be the one with most same attributes,
+        // since maybe only one read only attribute has been changed, and this
+        // will automatically result in null best match
+
+        auto bcf = std::make_shared<BestCandidateFinder>(currentView, temporaryView, m_switch);
+
+        std::shared_ptr<SaiObj> similarBestMatch = bcf->findSimilarBestMatch(temporaryObj);
+
+        if (similarBestMatch == nullptr)
+        {
+            SWSS_LOG_WARN("similar best match is null, not removing");
+            return;
+        }
+
+        removeCurrentObjectDependencyTree(currentView, temporaryView, similarBestMatch);
+
+        return;
+    }
+
+    removeCurrentObjectDependencyTree(currentView, temporaryView, currentBestMatch);
 }
 
 void ComparisonLogic::checkSwitch(

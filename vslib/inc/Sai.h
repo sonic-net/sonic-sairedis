@@ -4,6 +4,7 @@
 #include "LaneMapContainer.h"
 #include "EventQueue.h"
 #include "EventPayloadNotification.h"
+#include "ResourceLimiterContainer.h"
 
 #include "meta/Meta.h"
 
@@ -232,6 +233,12 @@ namespace saivs
                     _In_ const sai_attribute_t *attrList,
                     _Out_ uint64_t *count) override;
 
+            virtual sai_status_t queryAttributeCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_attr_id_t attr_id,
+                    _Out_ sai_attr_capability_t *capability) override;
+
             virtual sai_status_t queryAattributeEnumValuesCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
@@ -407,5 +414,7 @@ namespace saivs
             const char *m_warm_boot_write_file;
 
             std::shared_ptr<LaneMapContainer> m_laneMapContainer;
+
+            std::shared_ptr<ResourceLimiterContainer> m_resourceLimiterContainer;
     };
 }
