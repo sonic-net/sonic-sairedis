@@ -22,7 +22,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     const char* const optstring = "dp:t:g:x:b:uSUCslh";
 #endif // SAITHRIFT
 
-    while(true)
+    while (true)
     {
         static struct option long_options[] =
         {

@@ -1208,7 +1208,7 @@ sai_status_t SwitchStateBase::create_ingress_priority_groups()
 
     SWSS_LOG_INFO("create ingress priority groups");
 
-    for (auto &port_id : m_port_list)
+    for (auto &port_id: m_port_list)
     {
         create_ingress_priority_groups_per_port(port_id);
     }
@@ -1398,7 +1398,7 @@ sai_status_t SwitchStateBase::create_scheduler_groups()
 
     // XXX scheduler groups size may change when we will modify sg or ports
 
-    for (auto &port_id : m_port_list)
+    for (auto &port_id: m_port_list)
     {
         CHECK_STATUS(create_scheduler_groups_per_port(port_id));
     }
@@ -2446,8 +2446,8 @@ void SwitchStateBase::debugSetStats(
 }
 
 sai_status_t SwitchStateBase::initialize_voq_switch_objects(
-                    _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list)
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -2465,44 +2465,54 @@ sai_status_t SwitchStateBase::initialize_voq_switch_objects(
 
                 if (attr_list[i].value.u32 != SAI_SWITCH_TYPE_VOQ)
                 {
-                    //Switch is not being set as VOQ type.
+                    // Switch is not being set as VOQ type.
                     return SAI_STATUS_SUCCESS;
                 }
                 else
                 {
                     voq_switch = true;
                 }
+
                 break;
 
             case SAI_SWITCH_ATTR_SWITCH_ID:
+
                 voq_switch_id = (int32_t) attr_list[i].value.u32;
 
                 if (voq_switch_id < 0)
                 {
                     SWSS_LOG_ERROR("Invalid VOQ switch id %d", voq_switch_id);
+
                     return (int32_t)SAI_STATUS_INVALID_ATTR_VALUE_0 + (int32_t)i;
                 }
+
                 break;
 
             case SAI_SWITCH_ATTR_MAX_SYSTEM_CORES:
+
                 voq_max_cores = attr_list[i].value.u32;
 
                 if (voq_max_cores < 1)
                 {
                     SWSS_LOG_ERROR("Invalid VOQ max system cores %d", voq_max_cores);
+
                     return (int32_t)SAI_STATUS_INVALID_ATTR_VALUE_0 + (int32_t)i;
                 }
+
                 break;
 
             case SAI_SWITCH_ATTR_SYSTEM_PORT_CONFIG_LIST:
+
                 sys_port_count = attr_list[i].value.sysportconfiglist.count;
                 sys_port_cfg_list = attr_list[i].value.sysportconfiglist.list;
 
                 if (sys_port_count < 1 || !sys_port_cfg_list)
                 {
                     SWSS_LOG_ERROR("Invalid voq system port config info! sys port count %d, sys port list %p", sys_port_count, sys_port_cfg_list);
+
                     return (int32_t)SAI_STATUS_INVALID_ATTR_VALUE_0 + (int32_t)i;
                 }
+
                 break;
 
             default:
@@ -2525,15 +2535,15 @@ sai_status_t SwitchStateBase::initialize_voq_switch_objects(
 }
 
 sai_status_t SwitchStateBase::create_system_ports(
-       _In_ int32_t voq_switch_id,
-       _In_ uint32_t sys_port_count,
-       _In_ const sai_system_port_config_t *sys_port_cfg_list)
+        _In_ int32_t voq_switch_id,
+        _In_ uint32_t sys_port_count,
+        _In_ const sai_system_port_config_t *sys_port_cfg_list)
 {
     SWSS_LOG_ENTER();
 
     SWSS_LOG_INFO("create system ports");
 
-    if(!sys_port_cfg_list)
+    if (!sys_port_cfg_list)
     {
         return SAI_STATUS_FAILURE;
     }
@@ -2564,7 +2574,7 @@ sai_status_t SwitchStateBase::create_system_ports(
         {
             attr.value.s32 = SAI_SYSTEM_PORT_TYPE_LOCAL;
 
-            // Need to set local port oid attribute TODO
+            // TODO Need to set local port oid attribute
         }
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_SYSTEM_PORT, system_port_id, &attr));
@@ -2602,7 +2612,7 @@ sai_status_t SwitchStateBase::refresh_system_port_list(
 {
     SWSS_LOG_ENTER();
 
-    // Currently, system ports info are not changing. So no referesh is done
+    // Currently, system ports info are not changing. So no refresh is done
 
     // TODO In the future, when dynamic system port config (add/delete) is implemented, re-visit
 

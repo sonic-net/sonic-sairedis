@@ -25,7 +25,7 @@ RedisChannel::RedisChannel(
     // TODO this connection info must be obtained from config
 
     m_db                    = std::make_shared<swss::DBConnector>(dbAsic, 0);
-    m_redisPipeline         = std::make_shared<swss::RedisPipeline>(m_db.get()); //enable default pipeline 128
+    m_redisPipeline         = std::make_shared<swss::RedisPipeline>(m_db.get()); // enable default pipeline 128
     m_asicState             = std::make_shared<swss::ProducerTable>(m_redisPipeline.get(), ASIC_STATE_TABLE, true);
     m_getConsumer           = std::make_shared<swss::ConsumerTable>(m_db.get(), REDIS_TABLE_GETRESPONSE);
 

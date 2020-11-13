@@ -66,7 +66,7 @@ void CorePortIndexMapContainer::removeEmptyCorePortIndexMaps()
 {
     SWSS_LOG_ENTER();
 
-    for(auto it = m_map.begin(); it != m_map.end();)
+    for (auto it = m_map.begin(); it != m_map.end();)
     {
         if (it->second->isEmpty())
         {

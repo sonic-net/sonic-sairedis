@@ -153,7 +153,7 @@ std::shared_ptr<LaneMapContainer> LaneMapFileParser::parseLaneMapFile(
 
     std::string line;
 
-    while(getline(ifs, line))
+    while (getline(ifs, line))
     {
         /*
          * line can be in 2 forms:

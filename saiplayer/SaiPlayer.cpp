@@ -587,7 +587,7 @@ sai_status_t SaiPlayer::handle_neighbor(
     neighbor_entry.switch_id = translate_local_to_redis(neighbor_entry.switch_id);
     neighbor_entry.rif_id = translate_local_to_redis(neighbor_entry.rif_id);
 
-    switch(api)
+    switch (api)
     {
         case SAI_COMMON_API_CREATE:
             return m_sai->create(&neighbor_entry, attr_count, attr_list);
@@ -620,7 +620,7 @@ sai_status_t SaiPlayer::handle_route(
     route_entry.switch_id = translate_local_to_redis(route_entry.switch_id);
     route_entry.vr_id = translate_local_to_redis(route_entry.vr_id);
 
-    switch(api)
+    switch (api)
     {
         case SAI_COMMON_API_CREATE:
             return m_sai->create(&route_entry, attr_count, attr_list);

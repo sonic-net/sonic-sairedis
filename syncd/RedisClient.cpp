@@ -597,7 +597,7 @@ void RedisClient::createAsicObjects(
 
         if (kvp.second.size() == 0)
         {
-            hash[(ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL","NULL"));
+            hash[(ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL", "NULL"));
         }
     }
 
@@ -618,7 +618,7 @@ void RedisClient::createTempAsicObjects(
 
         if (kvp.second.size() == 0)
         {
-            hash[(TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL","NULL"));
+            hash[(TEMP_PREFIX ASIC_STATE_TABLE ":") + kvp.first].emplace_back(std::make_pair<std::string, std::string>("NULL", "NULL"));
         }
     }
 

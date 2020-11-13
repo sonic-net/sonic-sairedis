@@ -79,7 +79,7 @@ sai_status_t SwitchMLNX2700::create_qos_queues()
 
     copy.push_back(m_cpu_port_id);
 
-    for (auto &port_id : copy)
+    for (auto &port_id: copy)
     {
         create_qos_queues_per_port(port_id);
     }

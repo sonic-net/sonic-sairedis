@@ -216,7 +216,7 @@ std::string Recorder::getTimestamp()
 
     gettimeofday(&tv, NULL);
 
-    size_t size = strftime(buffer, 32 ,"%Y-%m-%d.%T.", localtime(&tv.tv_sec));
+    size_t size = strftime(buffer, 32, "%Y-%m-%d.%T.", localtime(&tv.tv_sec));
 
     snprintf(&buffer[size], 32, "%06ld", tv.tv_usec);
 

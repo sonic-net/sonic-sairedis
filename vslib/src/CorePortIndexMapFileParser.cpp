@@ -55,7 +55,7 @@ void CorePortIndexMapFileParser::parse(
         return;
     }
 
-    auto tokens = swss::tokenize(scpidx,',');
+    auto tokens = swss::tokenize(scpidx, ',');
 
     size_t n = tokens.size();
 
@@ -70,6 +70,7 @@ void CorePortIndexMapFileParser::parse(
     for (auto c: tokens)
     {
         uint32_t c_or_pidx;
+
         if (sscanf(c.c_str(), "%u", &c_or_pidx) != 1)
         {
             SWSS_LOG_ERROR("failed to parse core or port index: %s", c.c_str());
@@ -148,7 +149,7 @@ std::shared_ptr<CorePortIndexMapContainer> CorePortIndexMapFileParser::parseCore
 
     std::string line;
 
-    while(getline(ifs, line))
+    while (getline(ifs, line))
     {
         /*
          * line can be in 2 forms:
@@ -222,4 +223,3 @@ std::shared_ptr<CorePortIndexMapContainer> CorePortIndexMapFileParser::parseCore
 
     return parseCorePortIndexMapFile(name);
 }
-

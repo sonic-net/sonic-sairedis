@@ -1424,8 +1424,8 @@ std::string sai_serialize_acl_capability(
 }
 
 std::string sai_serialize_hex_binary(
-    _In_ const void *buffer,
-    _In_ size_t length)
+        _In_ const void *buffer,
+        _In_ size_t length)
 {
     SWSS_LOG_ENTER();
 
@@ -1437,6 +1437,7 @@ std::string sai_serialize_hex_binary(
     }
 
     s.resize(2 * length, '0');
+
     const unsigned char *input = static_cast<const unsigned char *>(buffer);
     char *output = &s[0];
 
@@ -2707,9 +2708,9 @@ void sai_deserialize_acl_capability(
 }
 
 void sai_deserialize_hex_binary(
-    _In_ const std::string &s,
-    _Out_ void *buffer,
-    _In_ size_t length)
+        _In_ const std::string &s,
+        _Out_ void *buffer,
+        _In_ size_t length)
 {
     SWSS_LOG_ENTER();
 
@@ -2720,7 +2721,7 @@ void sai_deserialize_hex_binary(
 
     if (s.length() > (length * 2))
     {
-        SWSS_LOG_THROW("Buffer length isn't sufficient.");
+        SWSS_LOG_THROW("Buffer length isn't sufficient");
     }
 
     size_t buffer_cur = 0;
@@ -2729,7 +2730,7 @@ void sai_deserialize_hex_binary(
 
     while (hex_cur < s.length())
     {
-        const char temp_buffer[] = {s[hex_cur], s[hex_cur + 1], 0};
+        const char temp_buffer[] = { s[hex_cur], s[hex_cur + 1], 0 };
         unsigned int value = -1;
 
         if (sscanf(temp_buffer, "%X", &value) <= 0 || value > 0xff)
@@ -2745,8 +2746,8 @@ void sai_deserialize_hex_binary(
 
 template<typename T>
 void sai_deserialize_hex_binary(
-    _In_ const std::string &s,
-    _Out_ T &value)
+        _In_ const std::string &s,
+        _Out_ T &value)
 {
     SWSS_LOG_ENTER();
 
@@ -3126,7 +3127,7 @@ static int sai_deserialize_object_id_buf(
 {
     SWSS_LOG_ENTER();
 
-    if (strncmp(buf,"oid:0x",6) != 0)
+    if (strncmp(buf, "oid:0x", 6) != 0)
     {
         SWSS_LOG_THROW("invalid oid %s", buf);
     }
@@ -3681,7 +3682,7 @@ sai_redis_notify_syncd_t sai_deserialize_redis_notify_syncd(
 
     sai_redis_notify_syncd_t value;
 
-    sai_deserialize(s,value);
+    sai_deserialize(s, value);
 
     return value;
 }

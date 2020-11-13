@@ -18,7 +18,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     const char* const optstring = "uiCdsmp:x:h";
 
-    while(true)
+    while (true)
     {
         static struct option long_options[] =
         {

@@ -49,7 +49,7 @@ CmdOptions handleCmdLine(int argc, char **argv)
 
     const char* const optstring = "gth";
 
-    while(true)
+    while (true)
     {
         static struct option long_options[] =
         {

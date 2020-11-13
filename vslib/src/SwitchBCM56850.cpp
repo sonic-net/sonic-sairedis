@@ -86,7 +86,7 @@ sai_status_t SwitchBCM56850::create_qos_queues()
 
     SWSS_LOG_INFO("create qos queues");
 
-    for (auto &port_id : m_port_list)
+    for (auto &port_id: m_port_list)
     {
         CHECK_STATUS(create_qos_queues_per_port(port_id));
     }
