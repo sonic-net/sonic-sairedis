@@ -111,7 +111,8 @@ int main(int argc, char **argv)
     {
         std::ostringstream strStream;
         time_t t = time(NULL);
-        struct tm *now = localtime(&t);
+        struct tm local_tm;
+        struct tm *now = localtime_r(&t, &local_tm);
         strStream << "/tmp/saisdkdump_" << now->tm_mday << "_" << now->tm_mon + 1 << "_" << now->tm_year + 1900 << "_" << now->tm_hour << "_" << now->tm_min << "_" << now->tm_sec;
         fileName = strStream.str();
         SWSS_LOG_INFO("The dump file is not specified, generated \"%s\" file name", fileName.c_str());

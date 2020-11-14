@@ -1,7 +1,3 @@
-#include "swss/table.h"
-#include <vector>
-#include <fstream>
-
 #include "Recorder.h"
 
 #include "meta/sai_serialize.h"
@@ -11,6 +7,8 @@
 #include <inttypes.h>
 
 #include <cstring>
+#include <vector>
+#include <fstream>
 
 using namespace sairedis;
 using namespace saimeta;
@@ -216,7 +214,10 @@ std::string Recorder::getTimestamp()
 
     gettimeofday(&tv, NULL);
 
-    size_t size = strftime(buffer, 32, "%Y-%m-%d.%T.", localtime(&tv.tv_sec));
+    struct tm now;
+    localtime_r(&tv.tv_sec, &now);
+
+    size_t size = strftime(buffer, 32, "%Y-%m-%d.%T.", &now);
 
     snprintf(&buffer[size], 32, "%06ld", tv.tv_usec);
 
@@ -282,7 +283,6 @@ void Recorder::recordQueryAttributeCapabilityResponse(
 
     recordLine("Q|attribute_capability|" + sai_serialize_status(status) + "|" + joinFieldValues(arguments));
 }
-
 
 void Recorder::recordQueryAttributeEnumValuesCapability(
         _In_ const std::string& key,
@@ -513,7 +513,6 @@ void Recorder::recordBulkGenericSet(
 
     recordLine("S|" + key + joined);
 }
-
 
 void Recorder::recordBulkGenericSetResponse(
         _In_ sai_status_t status,
@@ -833,7 +832,6 @@ void Recorder::recordRemove(                                            \
     _X(ROUTE_ENTRY,route_entry);            \
     _X(NAT_ENTRY,nat_entry);                \
 
-
 REDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_REMOVE_ENTRY)
 
 #define DECLARE_RECORD_CREATE_ENTRY(OT,ot)                                                      \
@@ -939,7 +937,6 @@ void Recorder::recordQueryAttributeCapability(
 
     recordQueryAttributeCapability(key, values);
 }
-
 
 void Recorder::recordQueryAttributeCapabilityResponse(
         _In_ sai_status_t status,
