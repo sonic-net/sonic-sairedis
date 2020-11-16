@@ -1,5 +1,4 @@
 #include "SaiObjectCollection.h"
-#include "Globals.h"
 
 #include "sai_serialize.h"
 
@@ -13,25 +12,13 @@ void SaiObjectCollection::clear()
 }
 
 bool SaiObjectCollection::objectExists(
-        _In_ const std::string& key) const
-{
-    SWSS_LOG_ENTER();
-
-    bool exists = m_objects.find(key) != m_objects.end();
-
-    SWSS_LOG_DEBUG("%s %s", key.c_str(), exists ? "exists" : "missing");
-
-    return exists;
-}
-
-bool SaiObjectCollection::objectExists(
         _In_ const sai_object_meta_key_t& metaKey) const
 {
     SWSS_LOG_ENTER();
 
-    std::string key = sai_serialize_object_meta_key(metaKey);
+    bool exists = m_objects.find(metaKey) != m_objects.end();
 
-    return objectExists(key);
+    return exists;
 }
 
 void SaiObjectCollection::createObject(
@@ -41,16 +28,13 @@ void SaiObjectCollection::createObject(
 
     auto obj = std::make_shared<SaiObject>(metaKey);
 
-    auto& key = obj->getStrMetaKey();
-
-    if (objectExists(key))
+    if (objectExists(metaKey))
     {
-        SWSS_LOG_THROW("FATAL: object %s already exists", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s already exists",
+                sai_serialize_object_meta_key(metaKey).c_str());
     }
 
-    SWSS_LOG_DEBUG("creating object %s", key.c_str());
-
-    m_objects[key] = obj;
+    m_objects[metaKey] = obj;
 }
 
 void SaiObjectCollection::removeObject(
@@ -58,16 +42,13 @@ void SaiObjectCollection::removeObject(
 {
     SWSS_LOG_ENTER();
 
-    std::string key = sai_serialize_object_meta_key(metaKey);
-
-    if (!objectExists(key))
+    if (!objectExists(metaKey))
     {
-        SWSS_LOG_THROW("FATAL: object %s doesn't exist", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s doesn't exist",
+                sai_serialize_object_meta_key(metaKey).c_str());
     }
 
-    SWSS_LOG_DEBUG("removing object %s", key.c_str());
-
-    m_objects.erase(key);
+    m_objects.erase(metaKey);
 }
 
 void SaiObjectCollection::setObjectAttr(
@@ -77,25 +58,20 @@ void SaiObjectCollection::setObjectAttr(
 {
     SWSS_LOG_ENTER();
 
-    std::string key = sai_serialize_object_meta_key(metaKey);
-
-    if (!objectExists(key))
+    if (!objectExists(metaKey))
     {
-        SWSS_LOG_THROW("FATAL: object %s doesn't exist", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s doesn't exist",
+               sai_serialize_object_meta_key(metaKey).c_str());
     }
 
-    META_LOG_DEBUG(md, "set attribute %d on %s", attr->id, key.c_str());
-
-    m_objects[key]->setAttr(&md, attr);
+    m_objects[metaKey]->setAttr(&md, attr);
 }
 
 std::shared_ptr<SaiAttrWrapper> SaiObjectCollection::getObjectAttr(
-        _In_ const sai_object_meta_key_t& meta_key,
+        _In_ const sai_object_meta_key_t& metaKey,
         _In_ sai_attr_id_t id)
 {
     SWSS_LOG_ENTER();
-
-    std::string key = sai_serialize_object_meta_key(meta_key);
 
     /*
      * We can't throw if object don't exists, since we can call this function
@@ -103,11 +79,12 @@ std::shared_ptr<SaiAttrWrapper> SaiObjectCollection::getObjectAttr(
      * should make exists check before.
      */
 
-    auto it = m_objects.find(key);
+    auto it = m_objects.find(metaKey);
 
     if (it == m_objects.end())
     {
-        SWSS_LOG_ERROR("object key %s not found", key.c_str());
+        SWSS_LOG_ERROR("object key %s not found",
+                sai_serialize_object_meta_key(metaKey).c_str());
 
         return nullptr;
     }
@@ -136,21 +113,20 @@ std::shared_ptr<SaiObject> SaiObjectCollection::getObject(
 {
     SWSS_LOG_ENTER();
 
-    std::string key = sai_serialize_object_meta_key(metaKey);
-
-    if (!objectExists(key))
+    if (!objectExists(metaKey))
     {
-        SWSS_LOG_THROW("FATAL: object %s doesn't exist", key.c_str());
+        SWSS_LOG_THROW("FATAL: object %s doesn't exist",
+                sai_serialize_object_meta_key(metaKey).c_str());
     }
 
-    return m_objects.at(key);
+    return m_objects.at(metaKey);
 }
 
-std::vector<std::string> SaiObjectCollection::getAllKeys() const
+std::vector<sai_object_meta_key_t> SaiObjectCollection::getAllKeys() const
 {
     SWSS_LOG_ENTER();
 
-    std::vector<std::string> vec;
+    std::vector<sai_object_meta_key_t> vec;
 
     for (auto& it: m_objects)
     {
