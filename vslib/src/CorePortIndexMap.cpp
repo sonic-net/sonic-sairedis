@@ -34,7 +34,7 @@ bool CorePortIndexMap::add(
 
     if (n != 2)
     {
-        SWSS_LOG_ERROR("Invalid corePortIndex. Core port index must have core and core port index %d, %s", n, ifname.c_str());
+        SWSS_LOG_ERROR("Invalid corePortIndex. Core port index must have core and core port index %ld, %s", n, ifname.c_str());
         return false;
     }
 
