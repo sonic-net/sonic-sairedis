@@ -8,8 +8,8 @@
 using namespace saimeta;
 
 static bool operator==(
-        const sai_fdb_entry_t& a,
-        const sai_fdb_entry_t& b)
+        _In_ const sai_fdb_entry_t& a,
+        _In_ const sai_fdb_entry_t& b)
 {
     SWSS_LOG_ENTER();
 
@@ -19,8 +19,8 @@ static bool operator==(
 }
 
 static bool operator==(
-        const sai_route_entry_t& a,
-        const sai_route_entry_t& b)
+        _In_ const sai_route_entry_t& a,
+        _In_ const sai_route_entry_t& b)
 {
     // SWSS_LOG_ENTER(); // disabled for performance reasons
 
@@ -46,8 +46,8 @@ static bool operator==(
 }
 
 static bool operator==(
-        const sai_neighbor_entry_t& a,
-        const sai_neighbor_entry_t& b)
+        _In_ const sai_neighbor_entry_t& a,
+        _In_ const sai_neighbor_entry_t& b)
 {
     SWSS_LOG_ENTER();
 
@@ -64,9 +64,33 @@ static bool operator==(
     return part;
 }
 
+static bool operator==(
+        _In_ const sai_nat_entry_t& a,
+        _In_ const sai_nat_entry_t& b)
+{
+    SWSS_LOG_ENTER();
+
+    // we can't use mem compare, since some fields will be padded and they
+    // could contain garbage
+
+    return a.switch_id == b.switch_id &&
+        a.vr_id == b.vr_id &&
+        a.nat_type == b.nat_type &&
+        a.data.key.src_ip == b.data.key.src_ip &&
+        a.data.key.dst_ip == b.data.key.dst_ip &&
+        a.data.key.proto == b.data.key.proto &&
+        a.data.key.l4_src_port == b.data.key.l4_src_port &&
+        a.data.key.l4_dst_port == b.data.key.l4_dst_port &&
+        a.data.mask.src_ip == b.data.mask.src_ip &&
+        a.data.mask.dst_ip == b.data.mask.dst_ip &&
+        a.data.mask.proto == b.data.mask.proto &&
+        a.data.mask.l4_src_port == b.data.mask.l4_src_port &&
+        a.data.mask.l4_dst_port == b.data.mask.l4_dst_port;
+}
+
 bool MetaKeyHasher::operator()(
-        const sai_object_meta_key_t& a,
-        const sai_object_meta_key_t& b) const
+        _In_ const sai_object_meta_key_t& a,
+        _In_ const sai_object_meta_key_t& b) const
 {
     // SWSS_LOG_ENTER(); // disabled for performance reasons
 
@@ -86,6 +110,9 @@ bool MetaKeyHasher::operator()(
 
     if (a.objecttype == SAI_OBJECT_TYPE_FDB_ENTRY)
         return a.objectkey.key.fdb_entry == b.objectkey.key.fdb_entry;
+
+    if (a.objecttype == SAI_OBJECT_TYPE_NAT_ENTRY)
+        return a.objectkey.key.nat_entry == b.objectkey.key.nat_entry;
 
     SWSS_LOG_THROW("not implemented: %s",
             sai_serialize_object_meta_key(a).c_str());

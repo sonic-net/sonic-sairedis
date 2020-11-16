@@ -14,7 +14,7 @@ namespace saimeta
                 _In_ const sai_object_meta_key_t& k) const;
 
         bool operator()(
-                const sai_object_meta_key_t& a,
-                const sai_object_meta_key_t& b) const;
+                _In_ const sai_object_meta_key_t& a,
+                _In_ const sai_object_meta_key_t& b) const;
     };
 }
