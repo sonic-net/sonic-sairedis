@@ -541,9 +541,7 @@ void test_fdb_entry_remove()
 
     fdb_entry.mac_address[0] = 0x11;
 
-    sai_object_meta_key_t meta = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = fdb_entry } } };
-
-    std::string key = sai_serialize_object_meta_key(meta);
+    sai_object_meta_key_t key = { .objecttype = SAI_OBJECT_TYPE_FDB_ENTRY, .objectkey = { .key = { .fdb_entry = fdb_entry } } };
 
     META_ASSERT_TRUE(g_meta->objectExists(key));
 
@@ -1044,9 +1042,7 @@ void test_neighbor_entry_remove()
 
     neighbor_entry.rif_id = rif;
 
-    sai_object_meta_key_t meta = { .objecttype = SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, .objectkey = { .key = { .neighbor_entry = neighbor_entry } } };
-
-    std::string key = sai_serialize_object_meta_key(meta);
+    sai_object_meta_key_t key = { .objecttype = SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, .objectkey = { .key = { .neighbor_entry = neighbor_entry } } };
 
     META_ASSERT_TRUE(g_meta->objectExists(key));
 
@@ -2007,9 +2003,7 @@ void test_route_entry_remove()
 
     route_entry.vr_id = vr;
 
-    sai_object_meta_key_t meta = { .objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY, .objectkey = { .key = { .route_entry = route_entry } } };
-
-    std::string key = sai_serialize_object_meta_key(meta);
+    sai_object_meta_key_t key = { .objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY, .objectkey = { .key = { .route_entry = route_entry } } };
 
     META_ASSERT_TRUE(g_meta->objectExists(key));
 
@@ -3910,11 +3904,80 @@ void test_numbers()
     ASSERT_TRUE(u,   0x12345678);
 }
 
+void test_bulk_route_entry_create()
+{
+    SWSS_LOG_ENTER();
+
+    clear_local();
+
+    int object_count = 1000;
+
+    std::vector<sai_route_entry_t> routes;
+    std::vector<uint32_t> attr_counts;
+    std::vector<const sai_attribute_t*> attr_lists;
+    std::vector<sai_status_t> statuses(object_count);
+
+    sai_object_id_t switch_id = create_switch();
+
+    sai_object_id_t vr = create_virtual_router(switch_id);
+    sai_object_id_t hop = create_next_hop(switch_id);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+    attr.value.oid = hop;
+
+    int n = 100;
+
+    for (int i = 0; i < object_count * n; i++)
+    {
+        sai_route_entry_t re;
+
+        memset(re.destination.mask.ip6, 0xff, sizeof(re.destination.mask.ip6));
+        re.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+        re.destination.addr.ip4 = htonl(0x0a00000f + i);
+        re.destination.mask.ip4 = htonl(0xffffff00);
+        re.vr_id = vr;
+        re.switch_id = switch_id;
+
+        routes.push_back(re);
+
+        attr_counts.push_back(1);
+
+        // since we use the same attribute every where we can get away with this
+
+        attr_lists.push_back(&attr);
+    }
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (int i = 0; i < n; i++)
+    {
+        auto status = g_meta->bulkCreate(
+                object_count,
+                routes.data() + i * object_count,
+                attr_counts.data(),
+                attr_lists.data(),
+                SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+                statuses.data());
+
+        ASSERT_TRUE(status, SAI_STATUS_SUCCESS);
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto time = end - start;
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(time);
+
+    std::cout << "ms: " << (double)us.count()/1000 << " / " << n << "/" << object_count << std::endl;
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
     SWSS_LOG_ENTER();
+
+    test_bulk_route_entry_create();
 
     // serialize tests
 
