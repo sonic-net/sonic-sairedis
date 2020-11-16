@@ -12,7 +12,7 @@ SaiObject::SaiObject(
 {
     SWSS_LOG_ENTER();
 
-    m_strMetaKey = sai_serialize_object_meta_key(metaKey);
+    // empty
 }
 
 sai_object_type_t SaiObject::getObjectType() const
@@ -28,13 +28,6 @@ bool SaiObject::hasAttr(
     SWSS_LOG_ENTER();
 
     return m_attrs.find(id) != m_attrs.end();
-}
-
-const std::string SaiObject::getStrMetaKey() const
-{
-    SWSS_LOG_ENTER();
-
-    return m_strMetaKey;
 }
 
 const sai_object_meta_key_t& SaiObject::getMetaKey() const
