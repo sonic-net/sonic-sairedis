@@ -36,22 +36,6 @@ extern "C" {
 
 using namespace syncd;
 
-
-// TODO remove when SAI will introduce bulk APIs to those objects
-sai_status_t sai_bulk_create_fdb_entry(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses);
-
-sai_status_t sai_bulk_remove_fdb_entry(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses);
-
 //static bool g_syncMode;
 
 #define ASSERT_SUCCESS(format,...) \
@@ -352,10 +336,12 @@ void test_bulk_fdb_create()
 
     sai_switch_api_t *sai_switch_api = NULL;
     sai_lag_api_t *sai_lag_api = NULL;
+    sai_fdb_api_t *sai_fdb_api = NULL;
     sai_bridge_api_t *sai_bridge_api = NULL;
     sai_virtual_router_api_t * sai_virtual_router_api = NULL;
 
     sai_api_query(SAI_API_BRIDGE, (void**)&sai_bridge_api);
+    sai_api_query(SAI_API_FDB, (void**)&sai_fdb_api);
     sai_api_query(SAI_API_LAG, (void**)&sai_lag_api);
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
     sai_api_query(SAI_API_VIRTUAL_ROUTER, (void**)&sai_virtual_router_api);
@@ -453,7 +439,7 @@ void test_bulk_fdb_create()
     }
 
     std::vector<sai_status_t> statuses(count);
-    status = sai_bulk_create_fdb_entry(count, fdbs.data(), fdb_attrs_count.data(), (const sai_attribute_t**)fdb_attrs_array.data()
+    status = sai_fdb_api->create_fdb_entries(count, fdbs.data(), fdb_attrs_count.data(), (const sai_attribute_t**)fdb_attrs_array.data()
         , SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to create fdb");
     for (size_t j = 0; j < statuses.size(); j++)
@@ -463,7 +449,7 @@ void test_bulk_fdb_create()
     }
 
     // Remove fdb entry
-    status = sai_bulk_remove_fdb_entry(count, fdbs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
+    status = sai_fdb_api->remove_fdb_entries(count, fdbs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
     ASSERT_SUCCESS("Failed to bulk remove fdb entry");
 }
 
