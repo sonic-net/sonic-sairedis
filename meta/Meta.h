@@ -411,7 +411,7 @@ namespace saimeta
                     _In_ sai_object_id_t oid) const;
 
             bool objectExists(
-                    _In_ const std::string& mk) const;
+                    _In_ const sai_object_meta_key_t& mk) const;
 
         private: // port helpers
 
