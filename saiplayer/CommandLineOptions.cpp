@@ -18,6 +18,7 @@ CommandLineOptions::CommandLineOptions()
     m_enableDebug = false;
     m_sleep = false;
     m_syncMode = false;
+    m_enableRecording = false;
 
     m_profileMapFile = "";
     m_contextConfig = "";
@@ -35,6 +36,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " EnableDebug=" << (m_enableDebug ? "YES" : "NO");
     ss << " Sleep=" << (m_sleep ? "YES" : "NO");
     ss << " SyncMode=" << (m_syncMode ? "YES" : "NO");
+    ss << " EnableRecording=" << (m_enableRecording ? "YES" : "NO");
     ss << " ProfileMapFile=" << m_profileMapFile;
     ss << " ContextConfig=" << m_contextConfig;
 

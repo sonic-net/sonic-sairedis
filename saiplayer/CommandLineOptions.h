@@ -33,6 +33,8 @@ namespace saiplayer
 
             bool m_syncMode;
 
+            bool m_enableRecording;
+
             std::string m_profileMapFile;
 
             std::string m_contextConfig;
