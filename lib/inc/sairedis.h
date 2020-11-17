@@ -120,6 +120,27 @@ typedef enum _sai_redis_switch_attr_t
     SAI_REDIS_SWITCH_ATTR_SYNC_MODE,
 
     /**
+     * @brief Synchronous mode using ZMQ library.
+     *
+     * Enable or disable zmq synchronous mode. When enabled syncd also needs to
+     * be running in zmq synchronous mode. Command pipeline will be disabled
+     * when this flag will be set to true.
+     *
+     * This attribute is only introduced to help kick start using synchronous
+     * mode with zmq library. This mode requires some additional configuration
+     * like main channel string and notification channel string. When using
+     * this attribute those channels are set to default values:
+     * "ipc:///tmp/zmq_ep" and "ipc:///tmp/zmq_ntf_ep". To take control of
+     * those values a context config json file must be provided via
+     * SAI_REDIS_KEY_CONTEXT_CONFIG profile argument.
+     *
+     * @type bool
+     * @flags CREATE_AND_SET
+     * @default false
+     */
+    SAI_REDIS_SWITCH_ATTR_ZMQ_SYNC_MODE,
+
+    /**
      * @brief Record statistics counters API calls.
      *
      * Get statistic counters can be queried periodically and can produce a lot

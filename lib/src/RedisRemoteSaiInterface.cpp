@@ -71,6 +71,7 @@ sai_status_t RedisRemoteSaiInterface::initialize(
     m_asicInitViewMode = false; // default mode is apply mode
     m_useTempView = false;
     m_syncMode = false;
+    m_zmqSyncMode = false;
 
     if (m_contextConfig->m_zmqEnable)
     {
@@ -373,9 +374,46 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
             return SAI_STATUS_SUCCESS;
 
+        case SAI_REDIS_SWITCH_ATTR_ZMQ_SYNC_MODE:
+
+            m_zmqSyncMode = attr->value.booldata;
+
+            if (m_zmqSyncMode)
+            {
+                m_contextConfig->m_zmqEnable = m_zmqSyncMode;
+
+                // main communication channel was created at initialize method
+                // so this command will replace it with zmq channel
+
+                m_communicationChannel = std::make_shared<ZeroMQChannel>(
+                        m_contextConfig->m_zmqEndpoint,
+                        m_contextConfig->m_zmqNtfEndpoint,
+                        std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+                SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
+
+                m_syncMode = true;
+
+                SWSS_LOG_NOTICE("disabling buffered pipeline in sync mode");
+
+                m_communicationChannel->setBuffered(false);
+            }
+            else
+            {
+                // when zmq was previously enabled, we currently don't support
+                // sync mode channel change during runtime, since the same
+                // would need to happen inside syncd at the same time
+
+                SWSS_LOG_WARN("zmqSyncMode explicitly set to false, NOP operation");
+
+                return SAI_STATUS_NOT_SUPPORTED;
+            }
+
+            return SAI_STATUS_SUCCESS;
+
         case SAI_REDIS_SWITCH_ATTR_USE_PIPELINE:
 
-            if (m_syncMode)
+            if (m_syncMode || m_zmqSyncMode)
             {
                 SWSS_LOG_WARN("use pipeline is not supported in sync mode");
 

@@ -17,7 +17,9 @@ ContextConfig::ContextConfig(
     m_dbCounters(dbCounters),
     m_dbFlex(dbFlex),
     m_dbState(dbState),
-    m_zmqEnable(false)
+    m_zmqEnable(false),
+    m_zmqEndpoint("ipc:///tmp/zmq_ep"),
+    m_zmqNtfEndpoint("ipc:///tmp/zmq_ntf_ep")
 {
     SWSS_LOG_ENTER();
 
@@ -38,4 +40,3 @@ void ContextConfig::insert(
 
     m_scc->insert(config);
 }
-

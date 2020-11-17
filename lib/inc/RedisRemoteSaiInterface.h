@@ -445,6 +445,8 @@ namespace sairedis
 
             bool m_syncMode;
 
+            bool m_zmqSyncMode;
+
             bool m_initialized;
 
             std::shared_ptr<Recorder> m_recorder;
