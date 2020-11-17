@@ -6328,7 +6328,7 @@ void Meta::meta_generic_validation_post_get_objlist(
      * whether default value is present and it's const NULL.
      */
 
-    if (!SAI_HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
+    if (!SAI_HAS_FLAG_READ_ONLY(md.flags) && md.isoidattribute)
     {
         if (get_object_previous_attr(meta_key, md) == NULL)
         {
@@ -6760,7 +6760,7 @@ void Meta::meta_generic_validation_post_set(
      * if there is default value and if it's const.
      */
 
-    if (!SAI_HAS_FLAG_READ_ONLY(md.flags) && md.allowedobjecttypeslength) // md.isoidattribute)
+    if (!SAI_HAS_FLAG_READ_ONLY(md.flags) && md.isoidattribute)
     {
         if ((get_object_previous_attr(meta_key, md) == NULL) &&
                 (md.defaultvaluetype != SAI_DEFAULT_VALUE_TYPE_CONST &&
