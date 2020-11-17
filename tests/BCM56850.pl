@@ -563,6 +563,16 @@ sub test_brcm_buffer_pool_zmq
     play("-m", "-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer_second.rec",0);
 }
 
+sub test_brcm_buffer_pool_zmq_sync_flag
+{
+    fresh_start("-p", "$utils::DIR/vsprofile.ini", "-s", "-g", "0", "-z");
+
+    # we expect no operations on asic, and all buffer pools will be matched correctly
+
+    play("-m", "-p", "$utils::DIR/vsprofile.ini", "-z", "full_buffer.rec");
+    play("-m", "-p", "$utils::DIR/vsprofile.ini", "-z", "full_buffer_second.rec",0);
+}
+
 sub test_bulk_route
 {
     fresh_start;
@@ -585,6 +595,7 @@ sub test_bulk_object
 }
 
 # RUN TESTS
+test_brcm_buffer_pool_zmq_sync_flag;
 test_brcm_buffer_pool_zmq;
 test_brcm_acl_limit;
 test_sync_brcm_warm_boot_port_remove;
