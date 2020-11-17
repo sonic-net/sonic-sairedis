@@ -18,6 +18,7 @@ CommandLineOptions::CommandLineOptions()
     m_enableUnittests = false;
     m_enableConsistencyCheck = false;
     m_enableSyncMode = false;
+    m_enableZmqSyncMode = false;
     m_enableSaiBulkSupport = false;
 
     m_startType = SAI_START_TYPE_COLD_BOOT;
@@ -52,6 +53,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " EnableUnittests=" << (m_enableUnittests ? "YES" : "NO");
     ss << " EnableConsistencyCheck=" << (m_enableConsistencyCheck ? "YES" : "NO");
     ss << " EnableSyncMode=" << (m_enableSyncMode ? "YES" : "NO");
+    ss << " EnableZmqSyncMode=" << (m_enableZmqSyncMode ? "YES" : "NO");
     ss << " EnableSaiBulkSuport=" << (m_enableSaiBulkSupport ? "YES" : "NO");
     ss << " StartType=" << startTypeToString(m_startType);
     ss << " ProfileMapFile=" << m_profileMapFile;
@@ -123,4 +125,3 @@ std::string CommandLineOptions::startTypeToString(
             return STRING_SAI_START_TYPE_UNKNOWN;
     }
 }
-

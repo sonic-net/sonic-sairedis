@@ -63,6 +63,13 @@ Syncd::Syncd(
         SWSS_LOG_THROW("no context config defined at global context %u", m_commandLineOptions->m_globalContext);
     }
 
+    if (m_commandLineOptions->m_enableZmqSyncMode)
+    {
+        SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line");
+
+        m_contextConfig->m_zmqEnable = true;
+    }
+
     m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters);
 
     m_profileIter = m_profileMap.begin();
@@ -4386,4 +4393,3 @@ syncd_restart_type_t Syncd::handleRestartQuery(
 
     return RequestShutdownCommandLineOptions::stringToRestartType(op);
 }
-
