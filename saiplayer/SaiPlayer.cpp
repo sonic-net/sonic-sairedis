@@ -2191,6 +2191,14 @@ int SaiPlayer::run()
         EXIT_ON_ERROR(m_sai->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
     }
 
+    if (m_commandLineOptions->m_zmqSyncMode)
+    {
+        attr.id = SAI_REDIS_SWITCH_ATTR_ZMQ_SYNC_MODE;
+        attr.value.booldata = true;
+
+        EXIT_ON_ERROR(m_sai->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
+    }
+
     attr.id = SAI_REDIS_SWITCH_ATTR_RECORD;
     attr.value.booldata = m_commandLineOptions->m_enableRecording;
 

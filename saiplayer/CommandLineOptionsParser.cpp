@@ -16,7 +16,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     auto options = std::make_shared<CommandLineOptions>();
 
-    const char* const optstring = "uiCdsmrp:x:h";
+    const char* const optstring = "uiCdsmzrp:x:h";
 
     while (true)
     {
@@ -28,6 +28,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "enableDebug",      no_argument,       0, 'd' },
             { "sleep",            no_argument,       0, 's' },
             { "syncMode",         no_argument,       0, 'm' },
+            { "zmqSyncMode",      no_argument,       0, 'z' },
             { "enableRecording",  no_argument,       0, 'r' },
             { "profile",          required_argument, 0, 'p' },
             { "contextContig",    required_argument, 0, 'x' },
@@ -67,6 +68,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
             case 'm':
                 options->m_syncMode = true;
+                break;
+
+            case 'z':
+                options->m_zmqSyncMode = true;
                 break;
 
             case 'r':
@@ -115,7 +120,7 @@ void CommandLineOptionsParser::printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: saiplayer [-u] [-i] [-C] [-d] [-s] [-m] [-r] [-p profile] [-x contextConfig] [-h] recordfile" << std::endl << std::endl;
+    std::cout << "Usage: saiplayer [-u] [-i] [-C] [-d] [-s] [-m] [-z] [-r] [-p profile] [-x contextConfig] [-h] recordfile" << std::endl << std::endl;
 
     std::cout << "    -u --useTempView:" << std::endl;
     std::cout << "        Enable temporary view between init and apply" << std::endl << std::endl;
@@ -129,6 +134,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Sleep after success reply, to notice any switch notifications" << std::endl << std::endl;
     std::cout << "    -m --syncMode:" << std::endl;
     std::cout << "        Enable synchronous mode" << std::endl << std::endl;
+    std::cout << "    -z --zmqSyncMode:" << std::endl;
+    std::cout << "        Enable zmq synchronous mode" << std::endl << std::endl;
     std::cout << "    -r --enableRecording:" << std::endl;
     std::cout << "        Enable sairedis recording" << std::endl << std::endl;
     std::cout << "    -p --profile profile" << std::endl;
