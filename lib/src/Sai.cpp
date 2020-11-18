@@ -198,6 +198,9 @@ sai_status_t Sai::set(
     {
         // skip metadata if attribute is redis extension attribute
 
+        // TODO this is setting on all contextes, but maybe we want one specific?
+        // and do set on all if obejctId == NULL
+
         bool success = true;
 
         for (auto& kvp: m_contextMap)

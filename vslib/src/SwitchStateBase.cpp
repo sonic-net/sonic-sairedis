@@ -765,7 +765,7 @@ sai_status_t SwitchStateBase::bulkSet(
     return status;
 }
 
-static int get_default_gw_mac_address(
+int SwitchStateBase::get_default_gw_mac_address(
         _Out_ sai_mac_t& mac)
 {
     SWSS_LOG_ENTER();

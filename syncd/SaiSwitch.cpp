@@ -12,7 +12,7 @@ using namespace syncd;
 
 #define MAX_OBJLIST_LEN 128
 
-const int maxLanesPerPort = 8;
+#define MAX_LANES_PER_PORT 8
 
 /*
  * NOTE: If real ID will change during hard restarts, then we need to remap all
@@ -244,14 +244,14 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> SaiSwitch::saiGetHardwareLaneM
 
     for (const auto &port_rid: portList)
     {
-        sai_uint32_t lanes[maxLanesPerPort];
+        sai_uint32_t lanes[MAX_LANES_PER_PORT];
 
         memset(lanes, 0, sizeof(lanes));
 
         sai_attribute_t attr;
 
         attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
-        attr.value.u32list.count = maxLanesPerPort;
+        attr.value.u32list.count = MAX_LANES_PER_PORT;
         attr.value.u32list.list = lanes;
 
         sai_status_t status = m_vendorSai->get(SAI_OBJECT_TYPE_PORT, port_rid, 1, &attr);
@@ -956,12 +956,12 @@ std::vector<uint32_t> SaiSwitch::saiGetPortLanes(
 
     std::vector<uint32_t> lanes;
 
-    lanes.resize(maxLanesPerPort);
+    lanes.resize(MAX_LANES_PER_PORT);
 
     sai_attribute_t attr;
 
     attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
-    attr.value.u32list.count = maxLanesPerPort;
+    attr.value.u32list.count = MAX_LANES_PER_PORT;
     attr.value.u32list.list = lanes.data();
 
     sai_status_t status = m_vendorSai->get(SAI_OBJECT_TYPE_PORT, port_rid, 1, &attr);

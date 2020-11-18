@@ -397,6 +397,9 @@ namespace saivs
             static int promisc(
                     _In_ const char *dev);
 
+            static int get_default_gw_mac_address(
+                    _Out_ sai_mac_t& mac);
+
             int vs_set_dev_mtu(
                     _In_ const char*name,
                     _In_ int mtu);
