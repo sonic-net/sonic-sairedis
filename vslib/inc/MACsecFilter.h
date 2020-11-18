@@ -1,0 +1,36 @@
+#pragma once
+
+#include "TrafficFilter.h"
+
+#include <string>
+
+namespace saivs
+{
+    class MACsecFilter : public TrafficFilter
+    {
+    public:
+        MACsecFilter(
+            _In_ const std::string &macsec_interface_name);
+
+        virtual ~MACsecFilter() = default;
+
+        virtual FilterStatus execute(
+            _Inout_ void *buffer,
+            _Inout_ ssize_t &length) override;
+
+        void enable_macsec_device(bool enable);
+
+        void set_macsec_fd(int macsecfd);
+
+    protected:
+        virtual FilterStatus forward(
+            _In_ const void *buffer,
+            _In_ ssize_t length) = 0;
+
+        bool m_macsec_device_enable;
+
+        int m_macsecfd;
+
+        const std::string m_macsec_interface_name;
+    };
+}
