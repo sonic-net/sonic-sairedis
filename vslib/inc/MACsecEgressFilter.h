@@ -7,7 +7,8 @@ namespace saivs
     class MACsecEgressFilter : public MACsecFilter
     {
     public:
-        MACsecEgressFilter(_In_ const std::string &macsecInterfaceName);
+        MACsecEgressFilter(
+            _In_ const std::string &macsecInterfaceName);
 
         virtual ~MACsecEgressFilter() = default;
 

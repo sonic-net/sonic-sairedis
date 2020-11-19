@@ -14,23 +14,29 @@ using namespace saivs;
 #define EAPOL_ETHER_TYPE (0x888e)
 
 MACsecFilter::MACsecFilter(
-    _In_ const std::string &macsec_interface_name):
+    _In_ const std::string &macsecInterfaceName):
     m_macsec_device_enable(false),
     m_macsecfd(0),
-    m_macsec_interface_name(macsec_interface_name)
+    m_macsec_interface_name(macsecInterfaceName)
 {
     SWSS_LOG_ENTER();
 
     // empty intentionally
 }
 
-void MACsecFilter::enable_macsec_device(bool enable)
+void MACsecFilter::enable_macsec_device(
+    _In_ bool enable)
 {
+    SWSS_LOG_ENTER();
+
     m_macsec_device_enable = enable;
 }
 
-void MACsecFilter::set_macsec_fd(int macsecfd)
+void MACsecFilter::set_macsec_fd(
+    _In_ int macsecfd)
 {
+    SWSS_LOG_ENTER();
+
     m_macsecfd = macsecfd;
 }
 

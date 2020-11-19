@@ -8,8 +8,8 @@
 using namespace saivs;
 
 MACsecIngressFilter::MACsecIngressFilter(
-    _In_ const std::string &macsec_interface_name) :
-    MACsecFilter(macsec_interface_name)
+    _In_ const std::string &macsecInterfaceName) :
+    MACsecFilter(macsecInterfaceName)
 {
     SWSS_LOG_ENTER();
 

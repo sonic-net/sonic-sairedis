@@ -6,11 +6,12 @@
 
 namespace saivs
 {
-    class MACsecFilter : public TrafficFilter
+    class MACsecFilter :
+        public TrafficFilter
     {
     public:
         MACsecFilter(
-            _In_ const std::string &macsec_interface_name);
+            _In_ const std::string &macsecInterfaceName);
 
         virtual ~MACsecFilter() = default;
 
@@ -18,9 +19,11 @@ namespace saivs
             _Inout_ void *buffer,
             _Inout_ ssize_t &length) override;
 
-        void enable_macsec_device(bool enable);
+        void enable_macsec_device(
+            _In_ bool enable);
 
-        void set_macsec_fd(int macsecfd);
+        void set_macsec_fd(
+            _In_ int macsecfd);
 
     protected:
         virtual FilterStatus forward(

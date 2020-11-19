@@ -52,9 +52,7 @@ TrafficFilter::FilterStatus TrafficFilterPipes::execute(
 
         if (filter)
         {
-            ret = filter->execute(
-                buffer,
-                length);
+            ret = filter->execute(buffer, length);
 
             if (ret == TrafficFilter::CONTINUE)
             {
@@ -69,7 +67,6 @@ TrafficFilter::FilterStatus TrafficFilterPipes::execute(
         {
             itr = m_filters.erase(itr);
         }
-
     }
 
     return ret;
