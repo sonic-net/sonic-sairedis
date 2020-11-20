@@ -15,9 +15,9 @@ using namespace saivs;
 
 MACsecFilter::MACsecFilter(
     _In_ const std::string &macsecInterfaceName):
-    m_macsec_device_enable(false),
+    m_macsecDeviceEnable(false),
     m_macsecfd(0),
-    m_macsec_interface_name(macsecInterfaceName)
+    m_macsecInterfaceName(macsecInterfaceName)
 {
     SWSS_LOG_ENTER();
 
@@ -29,7 +29,7 @@ void MACsecFilter::enable_macsec_device(
 {
     SWSS_LOG_ENTER();
 
-    m_macsec_device_enable = enable;
+    m_macsecDeviceEnable = enable;
 }
 
 void MACsecFilter::set_macsec_fd(
@@ -54,7 +54,7 @@ TrafficFilter::FilterStatus MACsecFilter::execute(
         return TrafficFilter::CONTINUE;
     }
 
-    if (m_macsec_device_enable)
+    if (m_macsecDeviceEnable)
     {
         return forward(buffer, length);
     }

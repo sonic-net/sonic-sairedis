@@ -28,7 +28,7 @@ TrafficFilter::FilterStatus MACsecEgressFilter::forward(
         {
             SWSS_LOG_ERROR(
                 "failed to write to macsec device %s fd %d, errno(%d): %s",
-                m_macsec_interface_name.c_str(),
+                m_macsecInterfaceName.c_str(),
                 m_macsecfd,
                 errno,
                 strerror(errno));
@@ -38,7 +38,7 @@ TrafficFilter::FilterStatus MACsecEgressFilter::forward(
         {
             SWSS_LOG_ERROR(
                 "ending thread for macsec device %s fd %d",
-                m_macsec_interface_name.c_str(),
+                m_macsecInterfaceName.c_str(),
                 m_macsecfd);
 
             return TrafficFilter::ERROR;
