@@ -421,6 +421,17 @@ namespace saivs
 
         protected:
 
+            void findObjects(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const sai_attribute_t &expect,
+                    _Out_ std::vector<sai_object_id_t> &objects);
+
+            bool dumpObject(
+                    _In_ const sai_object_id_t object_id,
+                    _Out_ std::vector<sai_attribute_t> &attrs);
+
+        protected:
+
             constexpr static const int maxDebugCounters = 32;
 
             std::unordered_set<uint32_t> m_indices;
