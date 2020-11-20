@@ -19,17 +19,17 @@ namespace saivs
 
         ~MACsecAttr();
 
-        std::string m_veth_name;
-        std::string m_macsec_name;
-        std::string m_auth_key;
+        std::string m_vethName;
+        std::string m_macsecName;
+        std::string m_authKey;
         std::string m_sak;
         std::string m_sci;
 
         macsec_an_t m_an;
         macsec_pn_t m_pn;
 
-        bool m_send_sci;
-        bool m_encryption_enable;
+        bool m_sendSci;
+        bool m_encryptionEnable;
 
         sai_int32_t m_direction;
 

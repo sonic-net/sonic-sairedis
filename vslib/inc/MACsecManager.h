@@ -136,11 +136,11 @@ namespace saivs
             ~MACsecTrafficManager() = default;
 
             std::shared_ptr<HostInterfaceInfo> m_info;
-            std::shared_ptr<MACsecFilter> m_ingress_filter;
-            std::shared_ptr<MACsecFilter> m_egress_filter;
+            std::shared_ptr<MACsecFilter> m_ingressFilter;
+            std::shared_ptr<MACsecFilter> m_egressFilter;
             std::shared_ptr<MACsecForwarder> m_forwarder;
         };
 
-        std::map<std::string, MACsecTrafficManager> m_macsec_traffic_managers;
+        std::map<std::string, MACsecTrafficManager> m_macsecTrafficManagers;
     };
 }
