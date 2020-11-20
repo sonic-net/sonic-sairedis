@@ -26,12 +26,12 @@ namespace saivs
         int m_tapfd;
         int m_macsecfd;
 
-        const std::string m_macsec_interface_name;
+        const std::string m_macsecInterfaceName;
 
-        bool m_run_thread;
+        bool m_runThread;
 
-        swss::SelectableEvent m_exit_event;
+        swss::SelectableEvent m_exitEvent;
 
-        std::shared_ptr<std::thread> m_forward_thread;
+        std::shared_ptr<std::thread> m_forwardThread;
     };
 }
