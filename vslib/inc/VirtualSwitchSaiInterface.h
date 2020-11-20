@@ -339,7 +339,10 @@ namespace saivs
                     _In_ sai_object_id_t switch_id,
                     _In_ std::shared_ptr<SwitchConfig> config,
                     _In_ std::shared_ptr<WarmBootState> warmBootState,
-                    _In_ std::weak_ptr<saimeta::Meta> meta);
+                    _In_ std::weak_ptr<saimeta::Meta> meta,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
         private:
 
             static bool doesFdbEntryNotMatchFlushAttr(

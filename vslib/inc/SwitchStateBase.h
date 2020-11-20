@@ -89,12 +89,25 @@ namespace saivs
                     _In_ sai_switch_attr_t acl_resource,
                     _In_ int max_count);
 
+            sai_status_t create_system_ports(
+                    _In_ int32_t voq_switch_id,
+                    _In_ uint32_t sys_port_count,
+                    _In_ const sai_system_port_config_t *sys_port_cfg_list);
+
+            sai_status_t set_system_port_list();
+
         public:
 
-            virtual sai_status_t initialize_default_objects();
+            virtual sai_status_t initialize_default_objects(
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
 
             virtual sai_status_t create_port_dependencies(
                     _In_ sai_object_id_t port_id);
+
+            sai_status_t initialize_voq_switch_objects(
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
 
         protected : // refresh
 
@@ -119,6 +132,9 @@ namespace saivs
                     _In_ sai_object_id_t vlan_id);
 
             virtual sai_status_t refresh_port_list(
+                    _In_ const sai_attr_metadata_t *meta);
+
+            virtual sai_status_t refresh_system_port_list(
                     _In_ const sai_attr_metadata_t *meta);
 
         public:
@@ -381,6 +397,9 @@ namespace saivs
             static int promisc(
                     _In_ const char *dev);
 
+            static int get_default_gw_mac_address(
+                    _Out_ sai_mac_t& mac);
+
             int vs_set_dev_mtu(
                     _In_ const char*name,
                     _In_ int mtu);
@@ -448,6 +467,8 @@ namespace saivs
             sai_object_id_t m_default_1q_bridge;
             sai_object_id_t m_default_bridge_port_1q_router;
             sai_object_id_t m_default_vlan_id;
+
+            std::vector<sai_object_id_t> m_system_port_list;
 
         protected:
 

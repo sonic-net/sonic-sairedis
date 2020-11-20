@@ -5,6 +5,7 @@
 #include "EventQueue.h"
 #include "EventPayloadNotification.h"
 #include "ResourceLimiterContainer.h"
+#include "CorePortIndexMapContainer.h"
 
 #include "meta/Meta.h"
 
@@ -416,5 +417,7 @@ namespace saivs
             std::shared_ptr<LaneMapContainer> m_laneMapContainer;
 
             std::shared_ptr<ResourceLimiterContainer> m_resourceLimiterContainer;
+
+            std::shared_ptr<CorePortIndexMapContainer> m_corePortIndexMapContainer;
     };
 }

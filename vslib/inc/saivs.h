@@ -44,6 +44,19 @@ extern "C" {
  */
 #define SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE      "SAI_VS_HOSTIF_USE_TAP_DEVICE"
 
+/**
+ * @def SAI_KEY_VS_CORE_PORT_INDEX_MAP_FILE
+ *
+ * For VOQ systems if specified in profile.ini it should point to eth interface to
+ * core and core port index map as port name:core_index,core_port_index
+ *
+ * Example:
+ * eth1:0,1
+ * eth17:1,1
+ *
+ */
+#define SAI_KEY_VS_CORE_PORT_INDEX_MAP_FILE  "SAI_VS_CORE_PORT_INDEX_MAP_FILE"
+
 #define SAI_VALUE_VS_SWITCH_TYPE_BCM56850     "SAI_VS_SWITCH_TYPE_BCM56850"
 #define SAI_VALUE_VS_SWITCH_TYPE_BCM81724     "SAI_VS_SWITCH_TYPE_BCM81724"
 #define SAI_VALUE_VS_SWITCH_TYPE_MLNX2700     "SAI_VS_SWITCH_TYPE_MLNX2700"

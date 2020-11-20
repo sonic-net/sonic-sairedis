@@ -85,6 +85,12 @@ namespace syncd
             void removeTempAsicObject(
                     _In_ const sai_object_meta_key_t& metaKey);
 
+            void removeAsicObjects(
+                    _In_ const std::vector<std::string>& keys);
+
+            void removeTempAsicObjects(
+                    _In_ const std::vector<std::string>& keys);
+
             void createAsicObject(
                     _In_ const sai_object_meta_key_t& metaKey,
                     _In_ const std::vector<swss::FieldValueTuple>& attrs);
@@ -92,6 +98,12 @@ namespace syncd
             void createTempAsicObject(
                     _In_ const sai_object_meta_key_t& metaKey,
                     _In_ const std::vector<swss::FieldValueTuple>& attrs);
+
+            void createAsicObjects(
+                    _In_ const std::unordered_map<std::string, std::vector<swss::FieldValueTuple>>& multiHash);
+
+            void createTempAsicObjects(
+                    _In_ const std::unordered_map<std::string, std::vector<swss::FieldValueTuple>>& multiHash);
 
             void setVidAndRidMap(
                     _In_ const std::unordered_map<sai_object_id_t, sai_object_id_t>& map);

@@ -13,7 +13,7 @@ ZeroMQNotificationProducer::ZeroMQNotificationProducer(
 
     m_ntfContext = zmq_ctx_new();
 
-    m_ntfSocket = zmq_socket(m_ntfContext, ZMQ_PUB);
+    m_ntfSocket = zmq_socket(m_ntfContext, ZMQ_PUSH);
 
     SWSS_LOG_NOTICE("opening zmq ntf endpoint: %s", ntfEndpoint.c_str());
 

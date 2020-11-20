@@ -1982,6 +1982,10 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
 
     const std::string strObjectType = sai_serialize_object_type(objectType);
 
+    std::unordered_map<std::string, std::vector<swss::FieldValueTuple>> multiHash;
+
+    std::vector<std::string> keys;
+
     for (size_t idx = 0; idx < statuses.size(); idx++)
     {
         sai_status_t status = statuses[idx];
@@ -1992,64 +1996,57 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
             continue;
         }
 
-        auto& objectId = objectIds.at(idx);
+        auto key = strObjectType + ":" + objectIds.at(idx);
 
-        auto& values = strAttributes.at(idx);
+        keys.push_back(key);
 
-        auto key = strObjectType + ":" + objectId;
+        multiHash[key] = strAttributes.at(idx);
+    }
 
-        sai_object_meta_key_t metaKey;
-        sai_deserialize_object_meta_key(key, metaKey);
+    const bool initView = isInitViewMode();
 
-        const bool initView = isInitViewMode();
+    switch (api)
+    {
+        case SAI_COMMON_API_BULK_CREATE:
 
-        switch (api)
-        {
-            case SAI_COMMON_API_BULK_CREATE:
+            {
+                if (initView)
+                    m_client->createTempAsicObjects(multiHash);
+                else
+                    m_client->createAsicObjects(multiHash);
 
-                {
-                    if (initView)
-                        m_client->createTempAsicObject(metaKey, values);
-                    else
-                        m_client->createAsicObject(metaKey, values);
+                break;
+            }
 
-                    break;
-                }
+        case SAI_COMMON_API_BULK_REMOVE:
 
-            case SAI_COMMON_API_BULK_REMOVE:
+            {
+                if (initView)
+                    m_client->removeTempAsicObjects(keys);
+                else
+                    m_client->removeAsicObjects(keys);
 
-                {
-                    if (initView)
-                        m_client->removeTempAsicObject(metaKey);
-                    else
-                        m_client->removeAsicObject(metaKey);
+                break;
+            }
 
-                    break;
-                }
+        case SAI_COMMON_API_BULK_SET:
 
-            case SAI_COMMON_API_BULK_SET:
+            {
+                // SET is the same as create
+                if (initView)
+                    m_client->createTempAsicObjects(multiHash);
+                else
+                    m_client->createAsicObjects(multiHash);
 
-                {
-                    auto& first = values.at(0);
+                break;
+            }
 
-                    auto& attr = fvField(first);
-                    auto& value = fvValue(first);
+        case SAI_COMMON_API_GET:
+            break; // ignore get since get is not modifying db
 
-                    if (initView)
-                        m_client->setTempAsicObject(metaKey, attr, value);
-                    else
-                        m_client->setAsicObject(metaKey, attr, value);
+        default:
 
-                    break;
-                }
-
-            case SAI_COMMON_API_GET:
-                break; // ignore get since get is not modifying db
-
-            default:
-
-                SWSS_LOG_THROW("api %d is not supported", api);
-        }
+            SWSS_LOG_THROW("api %d is not supported", api);
     }
 
     timer.stop();

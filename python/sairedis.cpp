@@ -651,7 +651,7 @@ static PyObject * generic_get(
 
                     auto *list = PyList_New(0);
                     
-                    for(auto&tok: tokens)
+                    for (auto&tok: tokens)
                     {
                         PyList_Append(list, PyString_FromString(tok.c_str()));
                     }

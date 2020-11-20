@@ -68,14 +68,14 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
 
         if (samplepacket_oid == SAI_NULL_OBJECT_ID)
         {
-            //Delete the sampling session
+            // Delete the sampling session
             cmd.assign("tc qdisc delete dev " + if_name + " handle ffff: ingress");
 
             if (system(cmd.c_str()) == -1)
             {
-                SWSS_LOG_ERROR("unable to delete the sampling session for the interface %s",if_name.c_str());
+                SWSS_LOG_ERROR("unable to delete the sampling session for the interface %s", if_name.c_str());
 
-                SWSS_LOG_ERROR("failed to apply the command: %s",cmd.c_str());
+                SWSS_LOG_ERROR("failed to apply the command: %s", cmd.c_str());
 
                 return SAI_STATUS_FAILURE;
             }
@@ -85,7 +85,7 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
         }
         else
         {
-            //Get the sample rate from the sample object
+            // Get the sample rate from the sample object
             sai_attribute_t samplepacket_attr;
 
             samplepacket_attr.id = SAI_SAMPLEPACKET_ATTR_SAMPLE_RATE;
@@ -94,10 +94,10 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
             {
                 int rate = samplepacket_attr.value.u32;
 
-                //Set the default sample group ID
+                // Set the default sample group ID
                 std::string group("1");
 
-                //Check if sampling is already enabled on the port
+                // Check if sampling is already enabled on the port
                 sai_attribute_t port_attr;
 
                 port_attr.id = SAI_PORT_ATTR_INGRESS_SAMPLEPACKET_ENABLE;
@@ -108,18 +108,18 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
                 if ((get(SAI_OBJECT_TYPE_PORT, port_id, 1, &port_attr) == SAI_STATUS_SUCCESS) &&
                         (port_attr.value.oid != SAI_NULL_OBJECT_ID))
                 {
-                    //Sampling session is already created
+                    // Sampling session is already created
                     SWSS_LOG_INFO("sampling is already enabled on the port: %s .. Deleting it",
                             sai_serialize_object_id(port_id).c_str());
 
-                    //Delete the sampling session
+                    // Delete the sampling session
                     cmd.assign("tc qdisc delete dev " + if_name + " handle ffff: ingress");
 
                     if (system(cmd.c_str()) == -1)
                     {
-                        SWSS_LOG_ERROR("unable to delete the sampling session for the interface %s",if_name.c_str());
+                        SWSS_LOG_ERROR("unable to delete the sampling session for the interface %s", if_name.c_str());
 
-                        SWSS_LOG_ERROR("failed to apply the command: %s",cmd.c_str());
+                        SWSS_LOG_ERROR("failed to apply the command: %s", cmd.c_str());
 
                         return SAI_STATUS_FAILURE;
                     }
@@ -127,30 +127,30 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
                     SWSS_LOG_INFO("successfully applied the command: %s", cmd.c_str());
                 }
 
-                //Create a new sampling session
+                // Create a new sampling session
                 cmd.assign("tc qdisc add dev " + if_name + " handle ffff: ingress");
 
                 if (system(cmd.c_str()) == -1)
                 {
                     SWSS_LOG_ERROR("unable to create a sampling session for the interface %s", if_name.c_str());
 
-                    SWSS_LOG_ERROR("failed to apply the command: %s",cmd.c_str());
+                    SWSS_LOG_ERROR("failed to apply the command: %s", cmd.c_str());
 
                     return SAI_STATUS_FAILURE;
                 }
 
                 SWSS_LOG_INFO("successfully applied the command: %s", cmd.c_str());
 
-                //Set the sampling rate of the port
+                // Set the sampling rate of the port
                 cmd.assign("tc filter add dev " + if_name + 
                         " parent ffff: matchall action sample rate " + std::to_string(rate) +
                         " group " + group);
 
                 if (system(cmd.c_str()) == -1)
                 {
-                    SWSS_LOG_ERROR("unable to update the sampling rate of the interface %s",if_name.c_str());
+                    SWSS_LOG_ERROR("unable to update the sampling rate of the interface %s", if_name.c_str());
 
-                    SWSS_LOG_ERROR("failed to apply the command: %s",cmd.c_str());
+                    SWSS_LOG_ERROR("failed to apply the command: %s", cmd.c_str());
 
                     return SAI_STATUS_FAILURE;
                 }

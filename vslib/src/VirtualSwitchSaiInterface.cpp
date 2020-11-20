@@ -540,7 +540,9 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
         _In_ sai_object_id_t switch_id,
         _In_ std::shared_ptr<SwitchConfig> config,
         _In_ std::shared_ptr<WarmBootState> warmBootState,
-        _In_ std::weak_ptr<saimeta::Meta> meta)
+        _In_ std::weak_ptr<saimeta::Meta> meta,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -595,7 +597,7 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
     }
     else
     {
-        sai_status_t status = ss->initialize_default_objects(); // TODO move to constructor
+        sai_status_t status = ss->initialize_default_objects(attr_count, attr_list); // TODO move to constructor
 
         if (status != SAI_STATUS_SUCCESS)
         {
@@ -652,7 +654,7 @@ sai_status_t VirtualSwitchSaiInterface::create(
             }
         }
 
-        auto ss = init_switch(switchId, config, warmBootState, m_meta);
+        auto ss = init_switch(switchId, config, warmBootState, m_meta, attr_count, attr_list);
 
         if (!ss)
         {

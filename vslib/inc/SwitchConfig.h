@@ -3,6 +3,7 @@
 #include "LaneMap.h"
 #include "EventQueue.h"
 #include "ResourceLimiter.h"
+#include "CorePortIndexMap.h"
 
 #include <string>
 #include <memory>
@@ -79,5 +80,7 @@ namespace saivs
             std::shared_ptr<EventQueue> m_eventQueue;
 
             std::shared_ptr<ResourceLimiter> m_resourceLimiter;
+
+            std::shared_ptr<CorePortIndexMap> m_corePortIndexMap;
     };
 }

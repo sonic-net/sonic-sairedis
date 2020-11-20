@@ -68,7 +68,7 @@ typedef std::chrono::duration<double, std::ratio<1>> second_t;
  */
 int discover(
         _In_ sai_object_id_t id,
-        _Inout_ std::map<sai_object_id_t,std::map<std::string,std::string>> &discovered)
+        _Inout_ std::map<sai_object_id_t, std::map<std::string, std::string>> &discovered)
 {
     SWSS_LOG_ENTER();
 
@@ -511,7 +511,7 @@ void handleCmdLine(int argc, char **argv)
 
     const char* const optstring = "DdwIp:hf";
 
-    while(true)
+    while (true)
     {
         int option_index = 0;
 
@@ -627,7 +627,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    std::map<sai_object_id_t, std::map<std::string,std::string>> discovered;
+    std::map<sai_object_id_t, std::map<std::string, std::string>> discovered;
 
     auto m_start = std::chrono::high_resolution_clock::now();
 
@@ -640,7 +640,7 @@ int main(int argc, char **argv)
     SWSS_LOG_NOTICE("discovered objects: %zu took %.3lf sec, call count: %d",
             discovered.size(), duration, callCount);
 
-    std::map<sai_object_type_t,int> map;
+    std::map<sai_object_type_t, int> map;
 
     for (const auto &p: discovered)
     {

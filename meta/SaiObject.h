@@ -29,8 +29,6 @@ namespace saimeta
             bool hasAttr(
                     _In_ sai_attr_id_t id) const;
 
-            const std::string getStrMetaKey() const;
-
             const sai_object_meta_key_t& getMetaKey() const;
 
             void setAttr(
@@ -48,8 +46,6 @@ namespace saimeta
         private:
 
             sai_object_meta_key_t m_metaKey;
-
-            std::string m_strMetaKey;
 
             std::unordered_map<sai_attr_id_t, std::shared_ptr<SaiAttrWrapper>> m_attrs;
     };

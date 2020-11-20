@@ -43,7 +43,7 @@ using namespace std::placeholders;
                 timer.inc(entries.size());
 
 #define CALL_BULK_REMOVE_API_WITH_TIMER(entry) \
-                SWSS_LOG_INFO("executing BULK remove ", entry,", count = %zu ", entries.size()); \
+                SWSS_LOG_INFO("executing BULK remove " #entry ", count = %zu ", entries.size()); \
                 static PerformanceIntervalTimer timer("SaiPlayer::handle_bulk_entry::bulkRemove("#entry")"); \
                 timer.start(); \
                 status = m_sai->bulkRemove(object_count, entries.data(), \
@@ -52,7 +52,7 @@ using namespace std::placeholders;
                 timer.inc(entries.size());
 
 #define CALL_BULK_SET_API_WITH_TIMER(entry) \
-                SWSS_LOG_INFO("executing BULK set ", entry,", count = %zu ", entries.size()); \
+                SWSS_LOG_INFO("executing BULK set " #entry ", count = %zu ", entries.size()); \
                 static PerformanceIntervalTimer timer("SaiPlayer::handle_bulk_entry::bulkSet("#entry")"); \
                 timer.start(); \
                 status = m_sai->bulkSet(object_count, entries.data(), \
@@ -587,7 +587,7 @@ sai_status_t SaiPlayer::handle_neighbor(
     neighbor_entry.switch_id = translate_local_to_redis(neighbor_entry.switch_id);
     neighbor_entry.rif_id = translate_local_to_redis(neighbor_entry.rif_id);
 
-    switch(api)
+    switch (api)
     {
         case SAI_COMMON_API_CREATE:
             return m_sai->create(&neighbor_entry, attr_count, attr_list);
@@ -620,7 +620,7 @@ sai_status_t SaiPlayer::handle_route(
     route_entry.switch_id = translate_local_to_redis(route_entry.switch_id);
     route_entry.vr_id = translate_local_to_redis(route_entry.vr_id);
 
-    switch(api)
+    switch (api)
     {
         case SAI_COMMON_API_CREATE:
             return m_sai->create(&route_entry, attr_count, attr_list);
@@ -1824,7 +1824,7 @@ void SaiPlayer::processBulk(
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("handle bulk executed with failure, status = %s", sai_serialize_status(status));
+        SWSS_LOG_ERROR("handle bulk executed with failure, status = %s", sai_serialize_status(status).c_str());
     }
 
     // even if API will fail, we will need to compare all statuses for each entry

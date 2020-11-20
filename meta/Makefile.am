@@ -84,6 +84,7 @@ libsaimetadata_la_SOURCES = \
 							SaiObject.cpp \
 							SaiObjectCollection.cpp \
 							PortRelatedSet.cpp \
+							MetaKeyHasher.cpp \
 							Meta.cpp
 
 

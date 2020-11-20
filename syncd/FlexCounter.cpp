@@ -104,6 +104,16 @@ FlexCounter::BufferPoolCounterIds::BufferPoolCounterIds(
     SWSS_LOG_ENTER();
 }
 
+FlexCounter::MACsecSAAttrIds::MACsecSAAttrIds(
+        _In_ sai_object_id_t macsecSA,
+        _In_ const std::vector<sai_macsec_sa_attr_t> &macsecSAIds):
+        m_macsecSAId(macsecSA),
+        m_macsecSAAttrIds(macsecSAIds)
+{
+    SWSS_LOG_ENTER();
+    // empty intentionally
+}
+
 void FlexCounter::setPollInterval(
         _In_ uint32_t pollInterval)
 {
@@ -437,6 +447,28 @@ void FlexCounter::setPriorityGroupAttrList(
     addCollectCountersHandler(PG_ATTR_ID_LIST, &FlexCounter::collectPriorityGroupAttrs);
 }
 
+void FlexCounter::setMACsecSAAttrList(
+        _In_ sai_object_id_t macsecSAVid,
+        _In_ sai_object_id_t macsecSARid,
+        _In_ const std::vector<sai_macsec_sa_attr_t> &attrIds)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_macsecSAAttrIdsMap.find(macsecSAVid);
+
+    if (it != m_macsecSAAttrIdsMap.end())
+    {
+        it->second->m_macsecSAAttrIds = attrIds;
+        return;
+    }
+
+    auto macsecSAAttrIds = std::make_shared<MACsecSAAttrIds>(macsecSARid, attrIds);
+
+    m_macsecSAAttrIdsMap.emplace(macsecSAVid, macsecSAAttrIds);
+
+    addCollectCountersHandler(MACSEC_SA_ATTR_ID_LIST, &FlexCounter::collectMACsecSAAttrs);
+}
+
 void FlexCounter::setRifCounterList(
         _In_ sai_object_id_t rifVid,
         _In_ sai_object_id_t rifRid,
@@ -662,6 +694,29 @@ void FlexCounter::removePriorityGroup(
                 sai_serialize_object_id(priorityGroupVid).c_str());
         return;
     }
+}
+
+void FlexCounter::removeMACsecSA(
+        _In_ sai_object_id_t macsecSAVid)
+{
+    auto itr = m_macsecSAAttrIdsMap.find(macsecSAVid);
+
+    if (itr != m_macsecSAAttrIdsMap.end())
+    {
+        m_macsecSAAttrIdsMap.erase(itr);
+
+        if (m_macsecSAAttrIdsMap.empty())
+        {
+            removeCollectCountersHandler(MACSEC_SA_ATTR_ID_LIST);
+        }
+
+    }
+    else
+    {
+        SWSS_LOG_WARN("Trying to remove nonexisting MACsec SA %s",
+                sai_serialize_object_id(macsecSAVid).c_str());
+    }
+
 }
 
 void FlexCounter::removeRif(
@@ -923,7 +978,8 @@ bool FlexCounter::allIdsEmpty() const
         m_portDebugCounterIdsMap.empty() &&
         m_rifCounterIdsMap.empty() &&
         m_bufferPoolCounterIdsMap.empty() &&
-        m_switchDebugCounterIdsMap.empty();
+        m_switchDebugCounterIdsMap.empty() &&
+        m_macsecSAAttrIdsMap.empty();
 }
 
 bool FlexCounter::allPluginsEmpty() const
@@ -1364,6 +1420,57 @@ void FlexCounter::collectPriorityGroupAttrs(
         std::string priorityGroupVidStr = sai_serialize_object_id(priorityGroupVid);
 
         countersTable.set(priorityGroupVidStr, values, "");
+    }
+}
+
+void FlexCounter::collectMACsecSAAttrs(
+        _In_ swss::Table &countersTable)
+{
+    SWSS_LOG_ENTER();
+
+    // Collect attrs for every registered MACsec SA
+    for (const auto &kv: m_macsecSAAttrIdsMap)
+    {
+        const auto &macsecSAVid = kv.first;
+        const auto &macsecSARid = kv.second->m_macsecSAId;
+        const auto &macsecSAAttrIds = kv.second->m_macsecSAAttrIds;
+
+        std::vector<sai_attribute_t> macsecSAAttrs(macsecSAAttrIds.size());
+
+        for (size_t i = 0; i < macsecSAAttrIds.size(); i++)
+        {
+            macsecSAAttrs[i].id = macsecSAAttrIds[i];
+        }
+
+        // Get MACsec SA attr
+        sai_status_t status = m_vendorSai->get(
+                SAI_OBJECT_TYPE_MACSEC_SA,
+                macsecSARid,
+                static_cast<uint32_t>(macsecSAAttrs.size()),
+                macsecSAAttrs.data());
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_WARN(
+                "Failed to get attr of MACsec SA %s: %s",
+                sai_serialize_object_id(macsecSAVid).c_str(),
+                sai_serialize_status(status).c_str());
+            continue;
+        }
+
+        // Push all counter values to a single vector
+        std::vector<swss::FieldValueTuple> values;
+
+        for (const auto& macsecSAAttr : macsecSAAttrs)
+        {
+            auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_MACSEC_SA, macsecSAAttr.id);
+            values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, macsecSAAttr));
+        }
+
+        // Write counters to DB
+        std::string macsecSAVidStr = sai_serialize_object_id(macsecSAVid);
+
+        countersTable.set(macsecSAVidStr, values, "");
     }
 }
 
@@ -1988,6 +2095,10 @@ void FlexCounter::removeCounter(
     {
         removeSwitchDebugCounters(vid);
     }
+    else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
+    {
+        removeMACsecSA(vid);
+    }
     else
     {
         SWSS_LOG_ERROR("Object type for removal not supported, %s",
@@ -2121,6 +2232,19 @@ void FlexCounter::addCounter(
             }
 
             setSwitchDebugCounterList(vid, rid, switchCounterIds);
+        }
+        else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_ATTR_ID_LIST)
+        {
+            std::vector<sai_macsec_sa_attr_t> macsecSAIds;
+
+            for (const auto &str : idStrings)
+            {
+                sai_macsec_sa_attr_t attr;
+                sai_deserialize_macsec_sa_attr(str, attr);
+                macsecSAIds.push_back(attr);
+            }
+
+            setMACsecSAAttrList(vid, rid, macsecSAIds);
         }
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
         {

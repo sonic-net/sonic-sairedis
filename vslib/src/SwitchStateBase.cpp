@@ -765,7 +765,7 @@ sai_status_t SwitchStateBase::bulkSet(
     return status;
 }
 
-static int get_default_gw_mac_address(
+int SwitchStateBase::get_default_gw_mac_address(
         _Out_ sai_mac_t& mac)
 {
     SWSS_LOG_ENTER();
@@ -1208,7 +1208,7 @@ sai_status_t SwitchStateBase::create_ingress_priority_groups()
 
     SWSS_LOG_INFO("create ingress priority groups");
 
-    for (auto &port_id : m_port_list)
+    for (auto &port_id: m_port_list)
     {
         create_ingress_priority_groups_per_port(port_id);
     }
@@ -1398,7 +1398,7 @@ sai_status_t SwitchStateBase::create_scheduler_groups()
 
     // XXX scheduler groups size may change when we will modify sg or ports
 
-    for (auto &port_id : m_port_list)
+    for (auto &port_id: m_port_list)
     {
         CHECK_STATUS(create_scheduler_groups_per_port(port_id));
     }
@@ -1429,7 +1429,9 @@ sai_status_t SwitchStateBase::set_number_of_ecmp_groups()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
-sai_status_t SwitchStateBase::initialize_default_objects()
+sai_status_t SwitchStateBase::initialize_default_objects(
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -1453,6 +1455,10 @@ sai_status_t SwitchStateBase::initialize_default_objects()
     CHECK_STATUS(set_switch_default_attributes());
     CHECK_STATUS(create_scheduler_groups());
     CHECK_STATUS(set_static_crm_values());
+
+    // Initialize switch for VOQ attributes
+
+    CHECK_STATUS(initialize_voq_switch_objects(attr_count, attr_list));
 
     return SAI_STATUS_SUCCESS;
 }
@@ -1783,6 +1789,10 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY:
             case SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY:
                 return SAI_STATUS_SUCCESS;
+
+            case SAI_SWITCH_ATTR_NUMBER_OF_SYSTEM_PORTS:
+            case SAI_SWITCH_ATTR_SYSTEM_PORT_LIST:
+                return refresh_system_port_list(meta);
         }
     }
 
@@ -1807,6 +1817,16 @@ sai_status_t SwitchStateBase::refresh_read_only(
                  */
 
             case SAI_PORT_ATTR_OPER_STATUS:
+                return SAI_STATUS_SUCCESS;
+        }
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_SYSTEM_PORT)
+    {
+        switch (meta->attrid)
+        {
+            case SAI_SYSTEM_PORT_ATTR_TYPE:
+            case SAI_SYSTEM_PORT_ATTR_PORT:
                 return SAI_STATUS_SUCCESS;
         }
     }
@@ -2425,6 +2445,223 @@ void SwitchStateBase::debugSetStats(
     }
 }
 
+sai_status_t SwitchStateBase::initialize_voq_switch_objects(
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    bool voq_switch = false;
+    int32_t voq_switch_id = -1;
+    uint32_t voq_max_cores = 0;
+    uint32_t sys_port_count = 0;
+    sai_system_port_config_t *sys_port_cfg_list = NULL;
+
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        switch (attr_list[i].id)
+        {
+            case SAI_SWITCH_ATTR_TYPE:
+
+                if (attr_list[i].value.u32 != SAI_SWITCH_TYPE_VOQ)
+                {
+                    // Switch is not being set as VOQ type.
+                    return SAI_STATUS_SUCCESS;
+                }
+                else
+                {
+                    voq_switch = true;
+                }
+
+                break;
+
+            case SAI_SWITCH_ATTR_SWITCH_ID:
+
+                voq_switch_id = (int32_t) attr_list[i].value.u32;
+
+                if (voq_switch_id < 0)
+                {
+                    SWSS_LOG_ERROR("Invalid VOQ switch id %d", voq_switch_id);
+
+                    return (int32_t)SAI_STATUS_INVALID_ATTR_VALUE_0 + (int32_t)i;
+                }
+
+                break;
+
+            case SAI_SWITCH_ATTR_MAX_SYSTEM_CORES:
+
+                voq_max_cores = attr_list[i].value.u32;
+
+                if (voq_max_cores < 1)
+                {
+                    SWSS_LOG_ERROR("Invalid VOQ max system cores %d", voq_max_cores);
+
+                    return (int32_t)SAI_STATUS_INVALID_ATTR_VALUE_0 + (int32_t)i;
+                }
+
+                break;
+
+            case SAI_SWITCH_ATTR_SYSTEM_PORT_CONFIG_LIST:
+
+                sys_port_count = attr_list[i].value.sysportconfiglist.count;
+                sys_port_cfg_list = attr_list[i].value.sysportconfiglist.list;
+
+                if (sys_port_count < 1 || !sys_port_cfg_list)
+                {
+                    SWSS_LOG_ERROR("Invalid voq system port config info! sys port count %d, sys port list %p", sys_port_count, sys_port_cfg_list);
+
+                    return (int32_t)SAI_STATUS_INVALID_ATTR_VALUE_0 + (int32_t)i;
+                }
+
+                break;
+
+            default:
+                // Ignore other attributes. They are processed elsewhere.
+                break;
+        }
+    }
+
+    if (!voq_switch)
+    {
+        // No switch type attribute in the attribute list.
+        return SAI_STATUS_SUCCESS;
+    }
+
+    CHECK_STATUS(create_system_ports(voq_switch_id, sys_port_count, sys_port_cfg_list));
+
+    CHECK_STATUS(set_system_port_list());
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::create_system_ports(
+        _In_ int32_t voq_switch_id,
+        _In_ uint32_t sys_port_count,
+        _In_ const sai_system_port_config_t *sys_port_cfg_list)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create system ports");
+
+    if (!sys_port_cfg_list)
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
+    m_system_port_list.clear();
+
+    for (uint32_t i = 0; i < sys_port_count; i++)
+    {
+        SWSS_LOG_DEBUG("create system port index %u", i);
+
+        sai_object_id_t system_port_id;
+
+        CHECK_STATUS(create(SAI_OBJECT_TYPE_SYSTEM_PORT, &system_port_id, m_switch_id, 0, NULL));
+
+        m_system_port_list.push_back(system_port_id);
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_SYSTEM_PORT_ATTR_CONFIG_INFO;
+        attr.value.sysportconfig = sys_port_cfg_list[i];
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_SYSTEM_PORT, system_port_id, &attr));
+
+        attr.id = SAI_SYSTEM_PORT_ATTR_TYPE;
+        attr.value.s32 = SAI_SYSTEM_PORT_TYPE_REMOTE;
+
+        if ((int32_t)sys_port_cfg_list[i].attached_switch_id == voq_switch_id)
+        {
+            attr.value.s32 = SAI_SYSTEM_PORT_TYPE_LOCAL;
+
+            // This is system port of local port. Set the oid of the local port corresponding to this system port
+
+            auto map = m_switchConfig->m_corePortIndexMap;
+
+            if (map)
+            {
+                auto& corePortIndexVector = map->getCorePortIndexVector();
+                size_t n_map = corePortIndexVector.size();
+                size_t idx;
+
+                for (idx = 0; idx < n_map; idx++)
+                {
+                    if (corePortIndexVector[idx][0] == sys_port_cfg_list[i].attached_core_index &&
+                            corePortIndexVector[idx][1] == sys_port_cfg_list[i].attached_core_port_index &&
+                            idx < m_port_list.size())
+                    {
+                        // m_port_list entries are in the same order as lane maps. The core port index maps are in the
+                        // same order as the lane maps. So m_port_list at the index corresponding to the core port index map
+                        // will be the port corresponding to the system port with core port index matching core port index map
+
+                        sai_attribute_t lp_attr;
+
+                        lp_attr.id = SAI_SYSTEM_PORT_ATTR_PORT;
+                        lp_attr.value.oid = m_port_list.at(idx);
+
+                        CHECK_STATUS(set(SAI_OBJECT_TYPE_SYSTEM_PORT, system_port_id, &lp_attr));
+
+                        break;
+                    }
+                }
+
+                if (idx >= n_map)
+                {
+                    SWSS_LOG_ERROR("Core port index not found for system port %d for switch %s. Local port oid is not set!",
+                            sys_port_cfg_list[i].port_id,
+                            sai_serialize_object_id(m_switch_id).c_str());
+                }
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Core port index map for switch %s is NULL. Local port oid is not set for system port %d!",
+                        sai_serialize_object_id(m_switch_id).c_str(),
+                        sys_port_cfg_list[i].port_id);
+            }
+        }
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_SYSTEM_PORT, system_port_id, &attr));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::set_system_port_list()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("set system port list");
+
+    // NOTE: this is static, but will be refreshed on read only get
+
+    sai_attribute_t attr;
+
+    uint32_t sys_port_count = (uint32_t)m_system_port_list.size();
+
+    attr.id = SAI_SWITCH_ATTR_SYSTEM_PORT_LIST;
+    attr.value.objlist.count = sys_port_count;
+    attr.value.objlist.list = m_system_port_list.data();
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_SYSTEM_PORTS;
+    attr.value.u32 = sys_port_count;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+}
+
+sai_status_t SwitchStateBase::refresh_system_port_list(
+        _In_ const sai_attr_metadata_t *meta)
+{
+    SWSS_LOG_ENTER();
+
+    // Currently, system ports info are not changing. So no refresh is done
+
+    // TODO In the future, when dynamic system port config (add/delete) is implemented, re-visit
+
+    return SAI_STATUS_SUCCESS;
+}
+
 void SwitchStateBase::findObjects(
         _In_ sai_object_type_t object_type,
         _In_ const sai_attribute_t &expect,
@@ -2473,4 +2710,3 @@ bool SwitchStateBase::dumpObject(
 
     return true;
 }
-

@@ -3434,7 +3434,7 @@ void ComparisonLogic::executeOperationsOnAsic()
 
         SWSS_LOG_NOTICE("optimized operations!");
 
-        std::map<std::string,int> opByObjectType;
+        std::map<std::string, int> opByObjectType;
 
         for (const auto &op: currentView.asicGetWithOptimizedRemoveOperations())
         {

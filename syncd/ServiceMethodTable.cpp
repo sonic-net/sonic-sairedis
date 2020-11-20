@@ -68,14 +68,14 @@ const sai_service_method_table_t& ServiceMethodTable::SlotBase::getServiceMethod
 #pragma GCC diagnostic ignored "-Winline"
 
 template<class B, template<size_t> class D, size_t... i>
-constexpr auto declare_static(std::index_sequence<i...>)
+static constexpr auto declare_static(std::index_sequence<i...>)
 {
     SWSS_LOG_ENTER();
     return std::array<B*, sizeof...(i)>{{new D<i>()...}};
 }
 
 template<class B, template<size_t> class D, size_t size>
-constexpr auto declare_static()
+static constexpr auto declare_static()
 {
     SWSS_LOG_ENTER();
     auto arr = declare_static<B,D>(std::make_index_sequence<size>{});

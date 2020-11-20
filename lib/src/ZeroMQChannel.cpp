@@ -8,6 +8,7 @@
 #include "swss/select.h"
 
 #include <zmq.h>
+#include <unistd.h>
 
 using namespace sairedis;
 
@@ -55,24 +56,15 @@ ZeroMQChannel::ZeroMQChannel(
 
     m_ntfContext = zmq_ctx_new();
 
-    m_ntfSocket = zmq_socket(m_ntfContext, ZMQ_SUB);
+    m_ntfSocket = zmq_socket(m_ntfContext, ZMQ_PULL);
 
     SWSS_LOG_NOTICE("opening zmq ntf endpoint: %s", ntfEndpoint.c_str());
 
-    rc = zmq_connect(m_ntfSocket, ntfEndpoint.c_str());
+    rc = zmq_bind(m_ntfSocket, ntfEndpoint.c_str());
 
     if (rc != 0)
     {
         SWSS_LOG_THROW("failed to open zmq ntf endpoint %s, zmqerrno: %d",
-                ntfEndpoint.c_str(),
-                zmq_errno());
-    }
-
-    rc = zmq_setsockopt(m_ntfSocket, ZMQ_SUBSCRIBE, "", 0);
-
-    if (rc != 0)
-    {
-        SWSS_LOG_THROW("failed to set sock opt ZMQ_SUBSCRIBE on ntf endpoint %s, zmqerrno: %d",
                 ntfEndpoint.c_str(),
                 zmq_errno());
     }
@@ -95,18 +87,42 @@ ZeroMQChannel::~ZeroMQChannel()
     zmq_close(m_socket);
     zmq_ctx_destroy(m_context);
 
+    // create new context, and perform send to break notification recv
+
+    void* ctx = zmq_ctx_new();
+    void* socket = zmq_socket(ctx, ZMQ_PUSH);
+
+    int rc = zmq_connect(socket, m_ntfEndpoint.c_str());
+
+    if (rc != 0)
+    {
+        SWSS_LOG_THROW("failed to open zmq ntf endpoint %s, zmqerrno: %d",
+                m_ntfEndpoint.c_str(),
+                zmq_errno());
+    }
+
+    rc = zmq_send(socket, "1", 1, 0);
+
+    if (rc < 0)
+    {
+        SWSS_LOG_THROW("send error: %d, errno: %d, %s", rc, zmq_errno(), strerror(zmq_errno()));
+    }
+
+    zmq_close(socket);
+    zmq_ctx_destroy(ctx);
+
     // when zmq context is destroyed, zmq_recv will be interrupted and errno
     // will be set to ETERM, so we don't need actual FD to be used in
     // selectable event
-
-    zmq_close(m_ntfSocket);
-    zmq_ctx_destroy(m_ntfContext);
 
     SWSS_LOG_NOTICE("join ntf thread begin");
 
     m_notificationThread->join();
 
     SWSS_LOG_NOTICE("join ntf thread end");
+
+    zmq_close(m_ntfSocket);
+    zmq_ctx_destroy(m_ntfContext);
 }
 
 void ZeroMQChannel::notificationThreadFunction()
@@ -125,6 +141,9 @@ void ZeroMQChannel::notificationThreadFunction()
         // which will inherit from Selectable class, and name this as ntf receiver
 
         int rc = zmq_recv(m_ntfSocket, buffer.data(), ZMQ_RESPONSE_BUFFER_SIZE, 0);
+
+        if (!m_runNotificationThread)
+            break;
 
         if (rc <= 0 && zmq_errno() == ETERM)
         {

@@ -1,18 +1,18 @@
-#include "LaneMapContainer.h"
+#include "CorePortIndexMapContainer.h"
 
 #include "swss/logger.h"
 
 using namespace saivs;
 
-void LaneMapContainer::insert(
-        _In_ std::shared_ptr<LaneMap> laneMap)
+void CorePortIndexMapContainer::insert(
+        _In_ std::shared_ptr<CorePortIndexMap> corePortIndexMap)
 {
     SWSS_LOG_ENTER();
 
-    m_map[laneMap->getSwitchIndex()] = laneMap;
+    m_map[corePortIndexMap->getSwitchIndex()] = corePortIndexMap;
 }
 
-void LaneMapContainer::remove(
+void CorePortIndexMapContainer::remove(
         _In_ uint32_t switchIndex)
 {
     SWSS_LOG_ENTER();
@@ -25,7 +25,7 @@ void LaneMapContainer::remove(
     }
 }
 
-std::shared_ptr<LaneMap> LaneMapContainer::getLaneMap(
+std::shared_ptr<CorePortIndexMap> CorePortIndexMapContainer::getCorePortIndexMap(
         _In_ uint32_t switchIndex) const
 {
     SWSS_LOG_ENTER();
@@ -40,14 +40,14 @@ std::shared_ptr<LaneMap> LaneMapContainer::getLaneMap(
     return it->second;
 }
 
-void LaneMapContainer::clear()
+void CorePortIndexMapContainer::clear()
 {
     SWSS_LOG_ENTER();
 
     m_map.clear();
 }
 
-bool LaneMapContainer::hasLaneMap(
+bool CorePortIndexMapContainer::hasCorePortIndexMap(
         _In_ uint32_t switchIndex) const
 {
     SWSS_LOG_ENTER();
@@ -55,14 +55,14 @@ bool LaneMapContainer::hasLaneMap(
     return m_map.find(switchIndex) != m_map.end();
 }
 
-size_t LaneMapContainer::size() const
+size_t CorePortIndexMapContainer::size() const
 {
     SWSS_LOG_ENTER();
 
     return m_map.size();
 }
 
-void LaneMapContainer::removeEmptyLaneMaps()
+void CorePortIndexMapContainer::removeEmptyCorePortIndexMaps()
 {
     SWSS_LOG_ENTER();
 

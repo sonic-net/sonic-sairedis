@@ -1,4 +1,4 @@
-#include "LaneMapFileParser.h"
+#include "CorePortIndexMapFileParser.h"
 
 #include "swss/logger.h"
 #include "swss/tokenize.h"
@@ -6,13 +6,14 @@
 #include <net/if.h>
 
 #include <fstream>
+#include <cctype>
 
 using namespace saivs;
 
 // must be the same or less as SAI_VS_SWITCH_INDEX_MAX
 #define MAX_SWITCH_INDEX (255)
 
-bool LaneMapFileParser::isInterfaceNameValid(
+bool CorePortIndexMapFileParser::isInterfaceNameValid(
         _In_ const std::string& name)
 {
     SWSS_LOG_ENTER();
@@ -29,13 +30,7 @@ bool LaneMapFileParser::isInterfaceNameValid(
     {
         char c = name[i];
 
-        if (c >= '0' && c <= '9')
-            continue;
-
-        if (c >= 'a' && c <= 'z')
-            continue;
-
-        if (c >= 'A' && c <= 'Z')
+        if (std::isalnum(c))
             continue;
 
         SWSS_LOG_ERROR("invalid character '%c' in interface name %s", c, name.c_str());
@@ -46,11 +41,11 @@ bool LaneMapFileParser::isInterfaceNameValid(
     return true;
 }
 
-void LaneMapFileParser::parse(
-        _In_ std::shared_ptr<LaneMapContainer> container,
+void CorePortIndexMapFileParser::parse(
+        _In_ std::shared_ptr<CorePortIndexMapContainer> container,
         _In_ uint32_t switchIndex,
         _In_ const std::string& ifname,
-        _In_ const std::string& slanes)
+        _In_ const std::string& scpidx)
 {
     SWSS_LOG_ENTER();
 
@@ -60,63 +55,64 @@ void LaneMapFileParser::parse(
         return;
     }
 
-    auto tokens = swss::tokenize(slanes,',');
+    auto tokens = swss::tokenize(scpidx, ',');
 
     size_t n = tokens.size();
 
-    if (n != 1 && n != 2 && n != 4)
+    if (n != 2)
     {
-        SWSS_LOG_ERROR("invalid number of lanes (%zu) assigned to interface %s", n, ifname.c_str());
+        SWSS_LOG_ERROR("Invalid core port index map %s assigned to interface %s", scpidx.c_str(), ifname.c_str());
         return;
     }
 
-    std::vector<uint32_t> lanes;
+    std::vector<uint32_t> cpidx;
 
-    for (auto l: tokens)
+    for (auto c: tokens)
     {
-        uint32_t lanenumber;
-        if (sscanf(l.c_str(), "%u", &lanenumber) != 1)
+        uint32_t c_or_pidx;
+
+        if (sscanf(c.c_str(), "%u", &c_or_pidx) != 1)
         {
-            SWSS_LOG_ERROR("failed to parse lane number: %s", l.c_str());
+            SWSS_LOG_ERROR("failed to parse core or port index: %s", c.c_str());
             continue;
         }
 
-        lanes.push_back(lanenumber);
+        cpidx.push_back(c_or_pidx);
     }
 
-    auto lm = container->getLaneMap(switchIndex);
+    auto corePortIndexMap = container->getCorePortIndexMap(switchIndex);
 
-    if (!lm)
+    if (!corePortIndexMap)
     {
-        lm = std::make_shared<LaneMap>(switchIndex);
+        corePortIndexMap = std::make_shared<CorePortIndexMap>(switchIndex);
 
-        container->insert(lm);
+        container->insert(corePortIndexMap);
     }
 
-    lm->add(ifname, lanes);
+    corePortIndexMap->add(ifname, cpidx);
 }
 
-void LaneMapFileParser::parseLineWithNoIndex(
-        _In_ std::shared_ptr<LaneMapContainer> container,
+void CorePortIndexMapFileParser::parseLineWithNoIndex(
+        _In_ std::shared_ptr<CorePortIndexMapContainer> container,
         _In_ const std::vector<std::string>& tokens)
 {
     SWSS_LOG_ENTER();
 
     auto ifname = tokens.at(0);
-    auto slanes = tokens.at(1);
+    auto scpidx = tokens.at(1);
 
-    parse(container, LaneMap::DEFAULT_SWITCH_INDEX, ifname, slanes);
+    parse(container, CorePortIndexMap::DEFAULT_SWITCH_INDEX, ifname, scpidx);
 }
 
-void LaneMapFileParser::parseLineWithIndex(
-        _In_ std::shared_ptr<LaneMapContainer> container,
+void CorePortIndexMapFileParser::parseLineWithIndex(
+        _In_ std::shared_ptr<CorePortIndexMapContainer> container,
         _In_ const std::vector<std::string>& tokens)
 {
     SWSS_LOG_ENTER();
 
     auto swidx  = tokens.at(0);
     auto ifname = tokens.at(1);
-    auto slanes = tokens.at(2);
+    auto scpidx = tokens.at(2);
 
     uint32_t switchIndex;
 
@@ -126,30 +122,30 @@ void LaneMapFileParser::parseLineWithIndex(
         return;
     }
 
-    parse(container, switchIndex, ifname, slanes);
+    parse(container, switchIndex, ifname, scpidx);
 }
 
-std::shared_ptr<LaneMapContainer> LaneMapFileParser::parseLaneMapFile(
+std::shared_ptr<CorePortIndexMapContainer> CorePortIndexMapFileParser::parseCorePortIndexMapFile(
         _In_ const std::string& file)
 {
     SWSS_LOG_ENTER();
 
-    auto container = std::make_shared<LaneMapContainer>();
+    auto container = std::make_shared<CorePortIndexMapContainer>();
 
     std::ifstream ifs(file);
 
     if (!ifs.is_open())
     {
-        SWSS_LOG_WARN("failed to open lane map file: %s, using default", file.c_str());
+        SWSS_LOG_WARN("failed to open core port index map file: %s, using default", file.c_str());
 
-        auto def = LaneMap::getDefaultLaneMap();
+        auto def = CorePortIndexMap::getDefaultCorePortIndexMap();
 
         container->insert(def);
 
         return container;
     }
 
-    SWSS_LOG_NOTICE("loading lane map from: %s", file.c_str());
+    SWSS_LOG_NOTICE("loading core port index map from: %s", file.c_str());
 
     std::string line;
 
@@ -157,8 +153,8 @@ std::shared_ptr<LaneMapContainer> LaneMapFileParser::parseLaneMapFile(
     {
         /*
          * line can be in 2 forms:
-         * ethX:lane,...
-         * N:ethX:lane,...
+         * ethX:core, core port index
+         * N:ethX:core, core port index
          *
          * where N is switchIndex (0..255) - SAI_VS_SWITCH_INDEX_MAX
          * if N is not specified then zero (0) is assumed
@@ -169,7 +165,7 @@ std::shared_ptr<LaneMapContainer> LaneMapFileParser::parseLaneMapFile(
             continue;
         }
 
-        SWSS_LOG_INFO("lane line: %s", line.c_str());
+        SWSS_LOG_INFO("core port index line: %s", line.c_str());
 
         auto tokens = swss::tokenize(line, ':');
 
@@ -187,36 +183,36 @@ std::shared_ptr<LaneMapContainer> LaneMapFileParser::parseLaneMapFile(
         }
     }
 
-    container->removeEmptyLaneMaps();
+    container->removeEmptyCorePortIndexMaps();
 
     if (container->size() == 0)
     {
-        SWSS_LOG_WARN("no lane map loaded, returning default lane map");
+        SWSS_LOG_WARN("no core port index map loaded, returning default core port index map");
 
-        auto def = LaneMap::getDefaultLaneMap();
+        auto def = CorePortIndexMap::getDefaultCorePortIndexMap();
 
         container->insert(def);
 
         return container;
     }
 
-    SWSS_LOG_NOTICE("loaded %zu lane maps to container", container->size());
+    SWSS_LOG_NOTICE("loaded %zu core port index maps to container", container->size());
 
     return container;
 }
 
-std::shared_ptr<LaneMapContainer> LaneMapFileParser::parseLaneMapFile(
+std::shared_ptr<CorePortIndexMapContainer> CorePortIndexMapFileParser::parseCorePortIndexMapFile(
         _In_ const char* file)
 {
     SWSS_LOG_ENTER();
 
     if (file == nullptr)
     {
-        auto container = std::make_shared<LaneMapContainer>();
+        auto container = std::make_shared<CorePortIndexMapContainer>();
 
         SWSS_LOG_NOTICE("no file map file specified, loading default");
 
-        auto def = LaneMap::getDefaultLaneMap();
+        auto def = CorePortIndexMap::getDefaultCorePortIndexMap();
 
         container->insert(def);
 
@@ -225,6 +221,5 @@ std::shared_ptr<LaneMapContainer> LaneMapFileParser::parseLaneMapFile(
 
     std::string name(file);
 
-    return parseLaneMapFile(name);
+    return parseCorePortIndexMapFile(name);
 }
-

@@ -7,6 +7,7 @@
 #include "HostInterfaceInfo.h"
 #include "SwitchConfigContainer.h"
 #include "ResourceLimiterParser.h"
+#include "CorePortIndexMapFileParser.h"
 
 #include "swss/logger.h"
 
@@ -112,6 +113,10 @@ sai_status_t Sai::initialize(
 
     m_laneMapContainer = LaneMapFileParser::parseLaneMapFile(laneMapFile);
 
+    auto *corePortIndexMapFile = service_method_table->profile_get_value(0, SAI_KEY_VS_CORE_PORT_INDEX_MAP_FILE);
+
+    m_corePortIndexMapContainer = CorePortIndexMapFileParser::parseCorePortIndexMapFile(corePortIndexMapFile);
+
     auto *resourceLimiterFile = service_method_table->profile_get_value(0, SAI_KEY_VS_RESOURCE_LIMITER_FILE);
 
     m_resourceLimiterContainer = ResourceLimiterParser::parseFromFile(resourceLimiterFile);
@@ -154,6 +159,7 @@ sai_status_t Sai::initialize(
     sc->m_laneMap = m_laneMapContainer->getLaneMap(sc->m_switchIndex);
     sc->m_eventQueue = m_eventQueue;
     sc->m_resourceLimiter = m_resourceLimiterContainer->getResourceLimiter(sc->m_switchIndex);
+    sc->m_corePortIndexMap = m_corePortIndexMapContainer->getCorePortIndexMap(sc->m_switchIndex);
 
     auto scc = std::make_shared<SwitchConfigContainer>();
 
