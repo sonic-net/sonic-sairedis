@@ -16,6 +16,6 @@ namespace saivs
     protected:
         virtual FilterStatus forward(
             _In_ const void *buffer,
-            _In_ ssize_t length) override;
+            _In_ size_t length) override;
     };
 }

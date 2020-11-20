@@ -27,6 +27,6 @@ namespace saivs
 
         virtual FilterStatus execute(
             _Inout_ void *buffer,
-            _Inout_ ssize_t &length) = 0;
+            _Inout_ size_t &length) = 0;
     };
 }

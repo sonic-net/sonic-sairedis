@@ -17,7 +17,7 @@ namespace saivs
 
         virtual FilterStatus execute(
             _Inout_ void *buffer,
-            _Inout_ ssize_t &length) override;
+            _Inout_ size_t &length) override;
 
         void enable_macsec_device(
             _In_ bool enable);
@@ -28,7 +28,7 @@ namespace saivs
     protected:
         virtual FilterStatus forward(
             _In_ const void *buffer,
-            _In_ ssize_t length) = 0;
+            _In_ size_t length) = 0;
 
         bool m_macsec_device_enable;
 

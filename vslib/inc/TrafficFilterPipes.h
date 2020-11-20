@@ -24,7 +24,7 @@ namespace saivs
 
         TrafficFilter::FilterStatus execute(
             _Inout_ void *buffer,
-            _Inout_ ssize_t &length);
+            _Inout_ size_t &length);
 
     private:
         typedef std::map<int, std::shared_ptr<TrafficFilter> > FilterPriorityQueue;

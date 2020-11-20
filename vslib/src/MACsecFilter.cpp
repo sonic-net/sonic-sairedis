@@ -42,7 +42,7 @@ void MACsecFilter::set_macsec_fd(
 
 TrafficFilter::FilterStatus MACsecFilter::execute(
     _Inout_ void *buffer,
-    _Inout_ ssize_t &length)
+    _Inout_ size_t &length)
 {
     SWSS_LOG_ENTER();
 

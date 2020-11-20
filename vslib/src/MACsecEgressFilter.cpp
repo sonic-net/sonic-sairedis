@@ -18,7 +18,7 @@ MACsecEgressFilter::MACsecEgressFilter(
 
 TrafficFilter::FilterStatus MACsecEgressFilter::forward(
     _In_ const void *buffer,
-    _In_ ssize_t length)
+    _In_ size_t length)
 {
     SWSS_LOG_ENTER();
 

@@ -39,7 +39,7 @@ bool TrafficFilterPipes::uninstallFilter(
 
 TrafficFilter::FilterStatus TrafficFilterPipes::execute(
     _Inout_ void *buffer,
-    _Inout_ ssize_t &length)
+    _Inout_ size_t &length)
 {
     SWSS_LOG_ENTER();
 
