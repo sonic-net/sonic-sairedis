@@ -559,18 +559,18 @@ sub test_brcm_buffer_pool_zmq
 
     # we expect no operations on asic, and all buffer pools will be matched correctly
 
-    play("-m", "-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer.rec");
-    play("-m", "-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer_second.rec",0);
+    play("-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer.rec");
+    play("-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer_second.rec",0);
 }
 
 sub test_brcm_buffer_pool_zmq_sync_flag
 {
-    fresh_start("-p", "$utils::DIR/vsprofile.ini", "-s", "-g", "0", "-z");
+    fresh_start("-p", "$utils::DIR/vsprofile.ini", "-g", "0", "-z", "zmq_sync");
 
     # we expect no operations on asic, and all buffer pools will be matched correctly
 
-    play("-m", "-p", "$utils::DIR/vsprofile.ini", "-z", "full_buffer.rec");
-    play("-m", "-p", "$utils::DIR/vsprofile.ini", "-z", "full_buffer_second.rec",0);
+    play("-p", "$utils::DIR/vsprofile.ini", "-z", "zmq_sync", "full_buffer.rec");
+    play("-p", "$utils::DIR/vsprofile.ini", "-z", "zmq_sync", "full_buffer_second.rec",0);
 }
 
 sub test_bulk_route
