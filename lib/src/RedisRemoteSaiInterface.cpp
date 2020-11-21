@@ -33,6 +33,7 @@ RedisRemoteSaiInterface::RedisRemoteSaiInterface(
         _In_ std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> notificationCallback,
         _In_ std::shared_ptr<Recorder> recorder):
     m_contextConfig(contextConfig),
+    m_redisCommunicationMode(SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC),
     m_recorder(recorder),
     m_notificationCallback(notificationCallback)
 {
@@ -71,7 +72,7 @@ sai_status_t RedisRemoteSaiInterface::initialize(
     m_asicInitViewMode = false; // default mode is apply mode
     m_useTempView = false;
     m_syncMode = false;
-    m_zmqSyncMode = false;
+    m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC;
 
     if (m_contextConfig->m_zmqEnable)
     {
@@ -356,6 +357,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
         case SAI_REDIS_SWITCH_ATTR_SYNC_MODE:
 
+            SWSS_LOG_WARN("sync mode is depreacated, use communication mode");
+
             m_syncMode = attr->value.booldata;
 
             if (m_contextConfig->m_zmqEnable)
@@ -374,46 +377,81 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
             return SAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_ZMQ_SYNC_MODE:
+        case SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE:
 
-            m_zmqSyncMode = attr->value.booldata;
+            m_redisCommunicationMode = (sai_redis_communication_mode_t)attr->value.s32;
 
-            if (m_zmqSyncMode)
+            if (m_contextConfig->m_zmqEnable)
             {
-                m_contextConfig->m_zmqEnable = m_zmqSyncMode;
+                SWSS_LOG_NOTICE("zmq enabled via context config");
 
-                // main communication channel was created at initialize method
-                // so this command will replace it with zmq channel
-
-                m_communicationChannel = std::make_shared<ZeroMQChannel>(
-                        m_contextConfig->m_zmqEndpoint,
-                        m_contextConfig->m_zmqNtfEndpoint,
-                        std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
-
-                SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
-
-                m_syncMode = true;
-
-                SWSS_LOG_NOTICE("disabling buffered pipeline in sync mode");
-
-                m_communicationChannel->setBuffered(false);
-            }
-            else
-            {
-                // when zmq was previously enabled, we currently don't support
-                // sync mode channel change during runtime, since the same
-                // would need to happen inside syncd at the same time
-
-                SWSS_LOG_WARN("zmqSyncMode explicitly set to false, NOP operation");
-
-                return SAI_STATUS_NOT_SUPPORTED;
+                m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
             }
 
-            return SAI_STATUS_SUCCESS;
+            m_communicationChannel = nullptr;
+
+            switch (m_redisCommunicationMode)
+            {
+                case SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC:
+
+                    SWSS_LOG_NOTICE("enabling redis async mode");
+
+                    m_syncMode = false;
+
+                    m_communicationChannel = std::make_shared<RedisChannel>(
+                            m_contextConfig->m_dbAsic,
+                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+                    m_communicationChannel->setBuffered(true);
+
+                    return SAI_STATUS_SUCCESS;
+
+                case SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC:
+
+                    SWSS_LOG_NOTICE("enabling redis sync mode");
+
+                    m_syncMode = true;
+
+                    m_communicationChannel = std::make_shared<RedisChannel>(
+                            m_contextConfig->m_dbAsic,
+                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+                    m_communicationChannel->setBuffered(false);
+
+                    return SAI_STATUS_SUCCESS;
+
+                case SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC:
+
+                    m_contextConfig->m_zmqEnable = true;
+
+                    // main communication channel was created at initialize method
+                    // so this command will replace it with zmq channel
+
+                    m_communicationChannel = std::make_shared<ZeroMQChannel>(
+                            m_contextConfig->m_zmqEndpoint,
+                            m_contextConfig->m_zmqNtfEndpoint,
+                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+                    SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
+
+                    m_syncMode = true;
+
+                    SWSS_LOG_NOTICE("disabling buffered pipeline in sync mode");
+
+                    m_communicationChannel->setBuffered(false);
+
+                    return SAI_STATUS_SUCCESS;
+
+                default:
+
+                    SWSS_LOG_ERROR("invalid communication mode value: %d", m_redisCommunicationMode);
+
+                    return SAI_STATUS_NOT_SUPPORTED;
+            }
 
         case SAI_REDIS_SWITCH_ATTR_USE_PIPELINE:
 
-            if (m_syncMode || m_zmqSyncMode)
+            if (m_syncMode)
             {
                 SWSS_LOG_WARN("use pipeline is not supported in sync mode");
 
@@ -695,12 +733,22 @@ sai_status_t RedisRemoteSaiInterface::waitForGetResponse(
 
     if (status == SAI_STATUS_SUCCESS)
     {
+        if (values.size() == 0)
+        {
+            SWSS_LOG_THROW("logic error, get response returned 0 values!, send api response or sync/async issue?");
+        }
+
         SaiAttributeList list(objectType, values, false);
 
         transfer_attributes(objectType, attr_count, list.get_attr_list(), attr_list, false);
     }
     else if (status == SAI_STATUS_BUFFER_OVERFLOW)
     {
+        if (values.size() == 0)
+        {
+            SWSS_LOG_THROW("logic error, get response returned 0 values!, send api response or sync/async issue?");
+        }
+
         SaiAttributeList list(objectType, values, true);
 
         // no need for id fix since this is overflow

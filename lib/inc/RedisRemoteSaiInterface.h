@@ -445,7 +445,7 @@ namespace sairedis
 
             bool m_syncMode;
 
-            bool m_zmqSyncMode;
+            sai_redis_communication_mode_t m_redisCommunicationMode;
 
             bool m_initialized;
 

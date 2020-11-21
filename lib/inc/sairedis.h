@@ -23,6 +23,36 @@ typedef enum _sai_redis_notify_syncd_t
 
 } sai_redis_notify_syncd_t;
 
+typedef enum _sai_redis_communication_mode_t
+{
+    /**
+     * @brief Asynchronous mode using Redis DB.
+     */
+    SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC,
+
+    /**
+     * @brief Synchronous mode using Redis DB.
+     */
+    SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC,
+
+    /**
+     * @brief Synchronous mode using ZMQ library.
+     *
+     * When enabled syncd also needs to be running in zmq synchronous mode.
+     * Command pipeline will be disabled when this flag will be set to true.
+     *
+     * This attribute is only introduced to help kick start using synchronous
+     * mode with zmq library. This mode requires some additional configuration
+     * like main channel string and notification channel string. When using
+     * this attribute those channels are set to default values:
+     * "ipc:///tmp/zmq_ep" and "ipc:///tmp/zmq_ntf_ep". To take control of
+     * those values a context config json file must be provided via
+     * SAI_REDIS_KEY_CONTEXT_CONFIG profile argument.
+     */
+    SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC,
+
+} sai_redis_communication_mode_t;
+
 typedef enum _sai_redis_switch_attr_t
 {
     /**
@@ -113,6 +143,13 @@ typedef enum _sai_redis_switch_attr_t
      * running in synchronous mode. Command pipeline will be disabled when this
      * flag will be set to true.
      *
+     * NOTE: This attribute is depreacated by
+     * SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE.  When set to true it
+     * will set SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE to
+     * SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC.
+     *
+     * TODO: remove this attribute.
+     *
      * @type bool
      * @flags CREATE_AND_SET
      * @default false
@@ -120,25 +157,13 @@ typedef enum _sai_redis_switch_attr_t
     SAI_REDIS_SWITCH_ATTR_SYNC_MODE,
 
     /**
-     * @brief Synchronous mode using ZMQ library.
+     * @brief Redis communication mode.
      *
-     * Enable or disable zmq synchronous mode. When enabled syncd also needs to
-     * be running in zmq synchronous mode. Command pipeline will be disabled
-     * when this flag will be set to true.
-     *
-     * This attribute is only introduced to help kick start using synchronous
-     * mode with zmq library. This mode requires some additional configuration
-     * like main channel string and notification channel string. When using
-     * this attribute those channels are set to default values:
-     * "ipc:///tmp/zmq_ep" and "ipc:///tmp/zmq_ntf_ep". To take control of
-     * those values a context config json file must be provided via
-     * SAI_REDIS_KEY_CONTEXT_CONFIG profile argument.
-     *
-     * @type bool
+     * @type sai_redis_communication_mode_t
      * @flags CREATE_AND_SET
-     * @default false
+     * @default SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC
      */
-    SAI_REDIS_SWITCH_ATTR_ZMQ_SYNC_MODE,
+    SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE,
 
     /**
      * @brief Record statistics counters API calls.
