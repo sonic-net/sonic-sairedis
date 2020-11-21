@@ -1981,6 +1981,34 @@ std::string sai_serialize(
     }
 }
 
+#define REDIS_COMMUNICATION_MODE_REDIS_ASYNC_STRING "redis_async"
+#define REDIS_COMMUNICATION_MODE_REDIS_SYNC_STRING  "redis_sync"
+#define REDIS_COMMUNICATION_MODE_ZMQ_SYNC_STRING    "zmq_sync"
+
+std::string sai_serialize_redis_communication_mode(
+        _In_ sai_redis_communication_mode_t value)
+{
+    SWSS_LOG_ENTER();
+
+    switch (value)
+    {
+        case SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC:
+            return REDIS_COMMUNICATION_MODE_REDIS_ASYNC_STRING;
+
+        case SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC:
+            return REDIS_COMMUNICATION_MODE_REDIS_SYNC_STRING;
+
+        case SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC:
+            return REDIS_COMMUNICATION_MODE_ZMQ_SYNC_STRING;
+
+        default:
+
+            SWSS_LOG_WARN("unknown value on sai_redis_communication_mode_t: %d", value);
+
+            return std::to_string(value);
+    }
+}
+
 // deserialize
 
 void sai_deserialize_bool(
@@ -3685,4 +3713,28 @@ sai_redis_notify_syncd_t sai_deserialize_redis_notify_syncd(
     sai_deserialize(s, value);
 
     return value;
+}
+
+void sai_deserialize_redis_communication_mode(
+        _In_ const std::string& s,
+        _Out_ sai_redis_communication_mode_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    if (s == REDIS_COMMUNICATION_MODE_REDIS_ASYNC_STRING)
+    {
+        value = SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC;
+    }
+    else if (s == REDIS_COMMUNICATION_MODE_REDIS_SYNC_STRING)
+    {
+        value = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+    }
+    else if (s == REDIS_COMMUNICATION_MODE_ZMQ_SYNC_STRING)
+    {
+        value = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    }
+    else
+    {
+        SWSS_LOG_THROW("enum '%s' not found in sai_redis_communication_mode_t", s.c_str());
+    }
 }
