@@ -46,7 +46,8 @@ Syncd::Syncd(
     m_firstInitWasPerformed(false),
     m_asicInitViewMode(false), // by default we are in APPLY view mode
     m_vendorSai(vendorSai),
-    m_veryFirstRun(false)
+    m_veryFirstRun(false),
+    m_enableSyncMode(false)
 {
     SWSS_LOG_ENTER();
 
@@ -63,11 +64,33 @@ Syncd::Syncd(
         SWSS_LOG_THROW("no context config defined at global context %u", m_commandLineOptions->m_globalContext);
     }
 
-    if (m_commandLineOptions->m_enableZmqSyncMode)
+    if (m_contextConfig->m_zmqEnable && m_commandLineOptions->m_enableSyncMode)
+    {
+        SWSS_LOG_NOTICE("disabling command line sync mode, since context zmq enabled");
+
+        m_commandLineOptions->m_enableSyncMode = false;
+
+        m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    }
+
+    if (m_commandLineOptions->m_enableSyncMode)
+    {
+        SWSS_LOG_WARN("enable sync mode is depreacated, please use communication mode, FORCING redis sync mode");
+
+        m_enableSyncMode = true;
+
+        m_contextConfig->m_zmqEnable = false;
+
+        m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+    }
+
+    if (m_commandLineOptions->m_redisCommunicationMode == SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC)
     {
         SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line");
 
         m_contextConfig->m_zmqEnable = true;
+
+        m_enableSyncMode = true;
     }
 
     m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters);
@@ -86,7 +109,7 @@ Syncd::Syncd(
 
         SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
 
-        m_commandLineOptions->m_enableSyncMode = true;
+        m_enableSyncMode = true;
 
         m_selectableChannel = std::make_shared<ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint);
     }
@@ -94,7 +117,9 @@ Syncd::Syncd(
     {
         m_notifications = std::make_shared<RedisNotificationProducer>(m_contextConfig->m_dbAsic);
 
-        bool modifyRedis = m_commandLineOptions->m_enableSyncMode ? false : true;
+        m_enableSyncMode = m_commandLineOptions->m_redisCommunicationMode == SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+
+        bool modifyRedis = m_enableSyncMode ? false : true;
 
         m_selectableChannel = std::make_shared<RedisSelectableChannel>(
                 m_dbAsic,
@@ -1207,7 +1232,7 @@ sai_status_t Syncd::processBulkEntry(
 
         if (api != SAI_COMMON_API_BULK_GET && status != SAI_STATUS_SUCCESS)
         {
-            if (!m_commandLineOptions->m_enableSyncMode)
+            if (!m_enableSyncMode)
             {
                 SWSS_LOG_THROW("operation %s for %s failed in async mode!",
                         sai_serialize_common_api(api).c_str(),
@@ -1469,7 +1494,7 @@ sai_status_t Syncd::processBulkOid(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            if (!m_commandLineOptions->m_enableSyncMode)
+            if (!m_enableSyncMode)
             {
                 SWSS_LOG_THROW("operation %s for %s failed in async mode!",
                         sai_serialize_common_api(api).c_str(),
@@ -1742,7 +1767,7 @@ void Syncd::sendApiResponse(
      * response for sairedis quad API.
      */
 
-    if (!m_commandLineOptions->m_enableSyncMode)
+    if (!m_enableSyncMode)
     {
         return;
     }
@@ -1881,7 +1906,7 @@ void Syncd::syncUpdateRedisQuadEvent(
 {
     SWSS_LOG_ENTER();
 
-    if (!m_commandLineOptions->m_enableSyncMode)
+    if (!m_enableSyncMode)
     {
         return;
     }
@@ -1973,7 +1998,7 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
 {
     SWSS_LOG_ENTER();
 
-    if (!m_commandLineOptions->m_enableSyncMode)
+    if (!m_enableSyncMode)
     {
         return;
     }
@@ -2202,7 +2227,7 @@ sai_status_t Syncd::processQuadEvent(
             SWSS_LOG_ERROR("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
         }
 
-        if (!m_commandLineOptions->m_enableSyncMode)
+        if (!m_enableSyncMode)
         {
             // throw only when sync mode is not enabled
 

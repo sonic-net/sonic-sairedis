@@ -442,6 +442,8 @@ namespace syncd
 
             std::shared_ptr<SelectableChannel> m_selectableChannel;
 
+            bool m_enableSyncMode;
+
         private:
 
             /**

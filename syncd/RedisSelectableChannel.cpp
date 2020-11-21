@@ -27,6 +27,8 @@ RedisSelectableChannel::RedisSelectableChannel(
      */
 
     m_getResponse = std::make_shared<swss::ProducerTable>(m_dbAsic.get(), getResponseTable);
+
+    SWSS_LOG_NOTICE("opened redis channel");
 }
 
 bool RedisSelectableChannel::empty() 
