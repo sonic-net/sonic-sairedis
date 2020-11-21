@@ -1,5 +1,7 @@
 #include "CommandLineOptionsParser.h"
 
+#include "meta/sai_serialize.h"
+
 #include "swss/logger.h"
 
 #include <getopt.h>
@@ -16,23 +18,23 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     auto options = std::make_shared<CommandLineOptions>();
 
-    const char* const optstring = "uiCdsmzrp:x:h";
+    const char* const optstring = "uiCdsmz:rp:x:h";
 
     while (true)
     {
         static struct option long_options[] =
         {
-            { "useTempView",      no_argument,       0, 'u' },
-            { "inspectAsic",      no_argument,       0, 'i' },
-            { "skipNotifySyncd",  no_argument,       0, 'C' },
-            { "enableDebug",      no_argument,       0, 'd' },
-            { "sleep",            no_argument,       0, 's' },
-            { "syncMode",         no_argument,       0, 'm' },
-            { "zmqSyncMode",      no_argument,       0, 'z' },
-            { "enableRecording",  no_argument,       0, 'r' },
-            { "profile",          required_argument, 0, 'p' },
-            { "contextContig",    required_argument, 0, 'x' },
-            { "help",             no_argument,       0, 'h' },
+            { "useTempView",            no_argument,       0, 'u' },
+            { "inspectAsic",            no_argument,       0, 'i' },
+            { "skipNotifySyncd",        no_argument,       0, 'C' },
+            { "enableDebug",            no_argument,       0, 'd' },
+            { "sleep",                  no_argument,       0, 's' },
+            { "syncMode",               no_argument,       0, 'm' },
+            { "redisCommunicationMode", required_argument, 0, 'z' },
+            { "enableRecording",        no_argument,       0, 'r' },
+            { "profile",                required_argument, 0, 'p' },
+            { "contextContig",          required_argument, 0, 'x' },
+            { "help",                   no_argument,       0, 'h' },
         };
 
         int option_index = 0;
@@ -67,11 +69,12 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 break;
 
             case 'm':
+                SWSS_LOG_WARN("param -m is depreacated, use -z");
                 options->m_syncMode = true;
                 break;
 
             case 'z':
-                options->m_zmqSyncMode = true;
+                sai_deserialize_redis_communication_mode(optarg, options->m_redisCommunicationMode);
                 break;
 
             case 'r':
@@ -120,7 +123,7 @@ void CommandLineOptionsParser::printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: saiplayer [-u] [-i] [-C] [-d] [-s] [-m] [-z] [-r] [-p profile] [-x contextConfig] [-h] recordfile" << std::endl << std::endl;
+    std::cout << "Usage: saiplayer [-u] [-i] [-C] [-d] [-s] [-m] [-z mode] [-r] [-p profile] [-x contextConfig] [-h] recordfile" << std::endl << std::endl;
 
     std::cout << "    -u --useTempView:" << std::endl;
     std::cout << "        Enable temporary view between init and apply" << std::endl << std::endl;
@@ -134,8 +137,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Sleep after success reply, to notice any switch notifications" << std::endl << std::endl;
     std::cout << "    -m --syncMode:" << std::endl;
     std::cout << "        Enable synchronous mode" << std::endl << std::endl;
-    std::cout << "    -z --zmqSyncMode:" << std::endl;
-    std::cout << "        Enable zmq synchronous mode" << std::endl << std::endl;
+    std::cout << "    -z --redisCommunicationMode" << std::endl;
+    std::cout << "        Redis communication mode (redis_async|redis_sync|zmq_sync), default: redis_async" << std::endl << std::endl;
     std::cout << "    -r --enableRecording:" << std::endl;
     std::cout << "        Enable sairedis recording" << std::endl << std::endl;
     std::cout << "    -p --profile profile" << std::endl;
