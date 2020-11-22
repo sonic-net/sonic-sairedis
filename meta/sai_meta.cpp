@@ -6797,7 +6797,8 @@ sai_status_t meta_sai_flush_fdb_entries(
 
         for (auto type: types)
         {
-            sai_fdb_event_notification_data_t data = {};
+            sai_fdb_event_notification_data_t data;
+            memset(&data, 0, sizeof(sai_fdb_event_notification_data_t));
 
             auto *bv_id = sai_metadata_get_attr_by_id(SAI_FDB_FLUSH_ATTR_BV_ID, attr_count, attr_list);
             auto *bp_id = sai_metadata_get_attr_by_id(SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID, attr_count, attr_list);
