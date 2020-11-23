@@ -2,8 +2,8 @@
 #include "SwitchStateBase.h"
 #include "meta/sai_serialize.h"
 
-#include <swss/exec.h>
-#include <swss/logger.h>
+#include "swss/exec.h"
+#include "swss/logger.h"
 
 #include <cinttypes>
 #include <string>
