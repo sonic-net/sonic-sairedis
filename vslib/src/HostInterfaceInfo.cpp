@@ -90,6 +90,40 @@ void HostInterfaceInfo::async_process_packet_for_fdb_event(
     m_eventQueue->enqueue(std::make_shared<Event>(EventType::EVENT_TYPE_PACKET, payload));
 }
 
+bool HostInterfaceInfo::installEth2TapFilter(
+        _In_ int priority,
+        _In_ std::shared_ptr<TrafficFilter> filter)
+{
+    SWSS_LOG_ENTER();
+
+    return m_e2tFilters.installFilter(priority, filter);
+}
+
+bool HostInterfaceInfo::uninstallEth2TapFilter(
+        _In_ std::shared_ptr<TrafficFilter> filter)
+{
+    SWSS_LOG_ENTER();
+
+    return m_e2tFilters.uninstallFilter(filter);
+}
+
+bool HostInterfaceInfo::installTap2EthFilter(
+        _In_ int priority,
+        _In_ std::shared_ptr<TrafficFilter> filter)
+{
+    SWSS_LOG_ENTER();
+
+    return m_t2eFilters.installFilter(priority, filter);
+}
+
+bool HostInterfaceInfo::uninstallTap2EthFilter(
+        _In_ std::shared_ptr<TrafficFilter> filter)
+{
+    SWSS_LOG_ENTER();
+
+    return m_t2eFilters.uninstallFilter(filter);
+}
+
 #define ETH_FRAME_BUFFER_SIZE (0x4000)
 #define CONTROL_MESSAGE_BUFFER_SIZE (0x1000)
 #define IEEE_8021Q_ETHER_TYPE (0x8100)
@@ -159,6 +193,20 @@ void HostInterfaceInfo::veth2tap_fun()
         {
             SWSS_LOG_ERROR("invalid ethernet frame length: %zu", msg.msg_controllen);
             continue;
+        }
+
+        size_t length = static_cast<size_t>(size);
+        auto ret = m_e2tFilters.execute(buffer, length);
+        size = static_cast<ssize_t>(length);
+
+        if (ret == TrafficFilter::TERMINATE)
+        {
+            continue;
+        }
+        else if (ret == TrafficFilter::ERROR)
+        {
+            // Error log should be recorded in filter
+            return;
         }
 
         struct cmsghdr *cmsg;
@@ -266,6 +314,20 @@ void HostInterfaceInfo::tap2veth_fun()
             }
 
             continue;
+        }
+
+        size_t length = static_cast<size_t>(size);
+        auto ret = m_t2eFilters.execute(buffer, length);
+        size = static_cast<ssize_t>(length);
+
+        if (ret == TrafficFilter::TERMINATE)
+        {
+            continue;
+        }
+        else if (ret == TrafficFilter::ERROR)
+        {
+            // Error log should be recorded in filter
+            return;
         }
 
         if (write(m_packet_socket, buffer, (int)size) < 0)

@@ -15,13 +15,19 @@
 using namespace saivs;
 
 #define ETH_FRAME_BUFFER_SIZE (0x4000)
+#define CONTROL_MESSAGE_BUFFER_SIZE (0x1000)
+#define IEEE_8021Q_ETHER_TYPE (0x8100)
+#define MAC_ADDRESS_SIZE (6)
+#define VLAN_TAG_SIZE (4)
 
 MACsecForwarder::MACsecForwarder(
     _In_ const std::string &macsecInterfaceName,
-    _In_ int tapfd):
+    _In_ int tapfd,
+    _In_ std::shared_ptr<HostInterfaceInfo> info):
     m_tapfd(tapfd),
     m_macsecInterfaceName(macsecInterfaceName),
-    m_runThread(true)
+    m_runThread(true),
+    m_info(info)
 {
     SWSS_LOG_ENTER();
 
@@ -112,6 +118,25 @@ void MACsecForwarder::forward()
 
     while (m_runThread)
     {
+        struct msghdr  msg;
+        memset(&msg, 0, sizeof(struct msghdr));
+
+        struct sockaddr_storage srcAddr;
+
+        struct iovec iov[1];
+
+        iov[0].iov_base = buffer;       // buffer for message
+        iov[0].iov_len = sizeof(buffer);
+
+        char control[CONTROL_MESSAGE_BUFFER_SIZE];   // buffer for control messages
+
+        msg.msg_name = &srcAddr;
+        msg.msg_namelen = sizeof(srcAddr);
+        msg.msg_iov = iov;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control;
+        msg.msg_controllen = sizeof(control);
+
         swss::Selectable *sel = NULL;
         int result = s.select(&sel);
 
@@ -128,7 +153,7 @@ void MACsecForwarder::forward()
         if (sel == &m_exitEvent) // thread end event
             break;
 
-        ssize_t size = read(m_macsecfd, buffer, sizeof(buffer));
+        ssize_t size = recvmsg(m_macsecfd, &msg, 0);
 
         if (size < 0)
         {
@@ -151,6 +176,55 @@ void MACsecForwarder::forward()
 
             continue;
         }
+        else if (size < (ssize_t)sizeof(ethhdr))
+        {
+            SWSS_LOG_ERROR("invalid ethernet frame length: %zu", msg.msg_controllen);
+
+            continue;
+        }
+
+        struct cmsghdr *cmsg;
+
+        for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))
+        {
+            if (cmsg->cmsg_level != SOL_PACKET || cmsg->cmsg_type != PACKET_AUXDATA)
+                continue;
+
+            struct tpacket_auxdata* aux = (struct tpacket_auxdata*)CMSG_DATA(cmsg);
+
+            if ((aux->tp_status & TP_STATUS_VLAN_VALID) &&
+                    (aux->tp_status & TP_STATUS_VLAN_TPID_VALID))
+            {
+                SWSS_LOG_DEBUG("got vlan tci: 0x%x, vlanid: %d", aux->tp_vlan_tci, aux->tp_vlan_tci & 0xFFF);
+
+                // inject vlan tag into frame
+
+                // for overlapping buffers
+                memmove(buffer + 2 * MAC_ADDRESS_SIZE + VLAN_TAG_SIZE,
+                        buffer + 2 * MAC_ADDRESS_SIZE,
+                        size - (2 * MAC_ADDRESS_SIZE));
+
+                uint16_t tci = htons(aux->tp_vlan_tci);
+                uint16_t tpid = htons(IEEE_8021Q_ETHER_TYPE);
+
+                uint8_t* pvlan =  (uint8_t *)(buffer + 2 * MAC_ADDRESS_SIZE);
+                memcpy(pvlan, &tpid, sizeof(uint16_t));
+                memcpy(pvlan + sizeof(uint16_t), &tci, sizeof(uint16_t));
+
+                size += VLAN_TAG_SIZE;
+
+                break;
+            }
+        }
+
+        if (m_info == nullptr)
+        {
+            SWSS_LOG_ERROR("The HostInterfaceInfo on the MACsec port %s is empty", m_macsecInterfaceName.c_str());
+
+            break;
+        }
+
+        m_info->async_process_packet_for_fdb_event(buffer, size);
 
         if (write(m_tapfd, buffer, static_cast<int>(size)) < 0)
         {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "HostInterfaceInfo.h"
+
 #include "swss/sal.h"
 #include "swss/selectableevent.h"
 
@@ -14,7 +16,8 @@ namespace saivs
     public:
         MACsecForwarder(
             _In_ const std::string &macsecInterfaceName,
-            _In_ int tapfd);
+            _In_ int tapfd,
+            _In_ std::shared_ptr<HostInterfaceInfo> info);
 
         virtual ~MACsecForwarder();
 
@@ -33,5 +36,7 @@ namespace saivs
         swss::SelectableEvent m_exitEvent;
 
         std::shared_ptr<std::thread> m_forwardThread;
+
+        std::shared_ptr<HostInterfaceInfo> m_info;
     };
 }
