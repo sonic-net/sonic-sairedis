@@ -83,10 +83,10 @@ namespace syncd
             /**
              * @brief Sets object status
              *
-             * @param[in] object_status New object status
+             * @param[in] objectStatus New object status
              */
             void setObjectStatus(
-                    _In_ sai_object_status_t object_status);
+                    _In_ sai_object_status_t objectStatus);
 
             /**
              * @brief Gets current object status
@@ -135,7 +135,7 @@ namespace syncd
 
         private:
 
-            sai_object_status_t m_object_status;
+            sai_object_status_t m_objectStatus;
 
             std::unordered_map<sai_attr_id_t, std::shared_ptr<SaiAttr>> m_attrs;
     };

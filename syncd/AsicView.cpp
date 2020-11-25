@@ -610,8 +610,7 @@ void AsicView::asicSetAttribute(
 
     std::string key = currentObj->m_str_object_type + ":" + currentObj->m_str_object_id;
 
-    std::shared_ptr<swss::KeyOpFieldsValuesTuple> kco =
-        std::make_shared<swss::KeyOpFieldsValuesTuple>(key, "set", entry);
+    auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, "set", entry);
 
     sai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
 
@@ -732,8 +731,7 @@ void AsicView::asicCreateObject(
 
     std::string key = currentObj->m_str_object_type + ":" + currentObj->m_str_object_id;
 
-    std::shared_ptr<swss::KeyOpFieldsValuesTuple> kco =
-        std::make_shared<swss::KeyOpFieldsValuesTuple>(key, "create", entry);
+    auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, "create", entry);
 
     sai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
 
@@ -856,8 +854,7 @@ void AsicView::asicRemoveObject(
 
     std::string key = currentObj->m_str_object_type + ":" + currentObj->m_str_object_id;
 
-    std::shared_ptr<swss::KeyOpFieldsValuesTuple> kco =
-        std::make_shared<swss::KeyOpFieldsValuesTuple>(key, "remove", entry);
+    auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, "remove", entry);
 
     sai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
 
@@ -968,8 +965,8 @@ std::vector<AsicOperation> AsicView::asicGetWithOptimizedRemoveOperations() cons
 
             auto ot = VidManager::objectTypeQuery(op.m_vid);
 
-            SWSS_LOG_INFO("move 0x%" PRIx64 " all way up (not in map): %s to index: %zu",
-                    op.m_vid,
+            SWSS_LOG_INFO("move %s all way up (not in map): %s to index: %zu",
+                    sai_serialize_object_id(op.m_vid).c_str(),
                     sai_serialize_object_type(ot).c_str(),
                     index);
 

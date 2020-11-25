@@ -6,13 +6,12 @@ using namespace syncd;
 
 SaiObj::SaiObj():
     m_createdObject(false),
-    m_object_status(SAI_OBJECT_STATUS_NOT_PROCESSED)
+    m_objectStatus(SAI_OBJECT_STATUS_NOT_PROCESSED)
 {
     SWSS_LOG_ENTER();
 
     // empty
 }
-
 
 bool SaiObj::isOidObject() const
 {
@@ -64,18 +63,18 @@ std::shared_ptr<const SaiAttr> SaiObj::tryGetSaiAttr(
 }
 
 void SaiObj::setObjectStatus(
-        _In_ sai_object_status_t object_status)
+        _In_ sai_object_status_t objectStatus)
 {
     SWSS_LOG_ENTER();
 
-    m_object_status = object_status;
+    m_objectStatus = objectStatus;
 }
 
 sai_object_status_t SaiObj::getObjectStatus() const
 {
     SWSS_LOG_ENTER();
 
-    return m_object_status;
+    return m_objectStatus;
 }
 
 sai_object_type_t SaiObj::getObjectType() const
