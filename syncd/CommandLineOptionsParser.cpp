@@ -171,7 +171,7 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "    -C --enableConsistencyCheck" << std::endl;
     std::cout << "        Enable consisteny check DB vs ASIC after comparison logic" << std::endl;
     std::cout << "    -s --syncMode" << std::endl;
-    std::cout << "        Enable synchronous mode" << std::endl;
+    std::cout << "        Enable synchronous mode (depreacated, use -z)" << std::endl;
     std::cout << "    -z --redisCommunicationMode" << std::endl;
     std::cout << "        Redis communication mode (redis_async|redis_sync|zmq_sync), default: redis_async" << std::endl;
     std::cout << "    -l --enableBulk" << std::endl;

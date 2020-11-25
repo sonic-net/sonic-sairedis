@@ -136,7 +136,7 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "    -s --sleep:" << std::endl;
     std::cout << "        Sleep after success reply, to notice any switch notifications" << std::endl << std::endl;
     std::cout << "    -m --syncMode:" << std::endl;
-    std::cout << "        Enable synchronous mode" << std::endl << std::endl;
+    std::cout << "        Enable synchronous mode (depreacated, use -z)" << std::endl << std::endl;
     std::cout << "    -z --redisCommunicationMode" << std::endl;
     std::cout << "        Redis communication mode (redis_async|redis_sync|zmq_sync), default: redis_async" << std::endl << std::endl;
     std::cout << "    -r --enableRecording:" << std::endl;
