@@ -16,6 +16,9 @@
 using namespace saivs;
 
 #define SAI_VS_MACSEC_PREFIX "macsec_"
+#define MACSEC_SYSTEM_IDENTIFIER (12)
+#define MACSEC_PORT_IDENTIFIER (4)
+#define MACSEC_SCI_LENGTH (MACSEC_SYSTEM_IDENTIFIER + MACSEC_PORT_IDENTIFIER)
 
 #define SAI_METADATA_GET_ATTR_BY_ID(attr, attrId, attrCount, attrList) \
     { \
@@ -453,6 +456,12 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
 
     macsecAttr.m_sci = sciHexStr.str();
 
+    if (macsecAttr.m_sci.length() < MACSEC_SCI_LENGTH)
+    {
+        // Fill leading zero to meet the MACsec SCI length
+        macsecAttr.m_sci = std::string(MACSEC_SCI_LENGTH - macsecAttr.m_sci.length(), '0') + macsecAttr.m_sci;
+    }
+
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_EXPLICIT_SCI_ENABLE, attrCount, attrList);
 
     macsecAttr.m_sendSci = attr->value.booldata;
@@ -496,8 +505,20 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     auto flow_id = attrs[0].value.oid;
     auto sci = attrs[1].value.u64;
     std::stringstream sciHexStr;
+
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     sciHexStr << std::hex << bswap_64(sci);
+#else
+    sciHexStr << std::hex << sci;
+#endif
+
     macsecAttr.m_sci = sciHexStr.str();
+
+    if (macsecAttr.m_sci.length() < MACSEC_SCI_LENGTH)
+    {
+        // Fill leading zero to meet the MACsec SCI length
+        macsecAttr.m_sci = std::string(MACSEC_SCI_LENGTH - macsecAttr.m_sci.length(), '0') + macsecAttr.m_sci;
+    }
 
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_DIRECTION, attrCount, attrList);
 
