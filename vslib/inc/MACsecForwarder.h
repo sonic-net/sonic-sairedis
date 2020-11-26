@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HostInterfaceInfo.h"
+#include "TrafficForwarder.h"
 
 #include "swss/sal.h"
 #include "swss/selectableevent.h"
@@ -11,12 +12,12 @@
 
 namespace saivs
 {
-    class MACsecForwarder
+    class MACsecForwarder :
+        public TrafficForwarder
     {
     public:
         MACsecForwarder(
             _In_ const std::string &macsecInterfaceName,
-            _In_ int tapfd,
             _In_ std::shared_ptr<HostInterfaceInfo> info);
 
         virtual ~MACsecForwarder();
@@ -26,7 +27,6 @@ namespace saivs
         void forward();
 
     private:
-        int m_tapfd;
         int m_macsecfd;
 
         const std::string m_macsecInterfaceName;

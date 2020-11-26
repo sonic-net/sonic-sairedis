@@ -6,6 +6,7 @@ extern "C" {
 
 #include "EventQueue.h"
 #include "TrafficFilterPipes.h"
+#include "TrafficForwarder.h"
 
 #include "swss/selectableevent.h"
 
@@ -15,7 +16,8 @@ extern "C" {
 
 namespace saivs
 {
-    class HostInterfaceInfo
+    class HostInterfaceInfo :
+        public TrafficForwarder
     {
         private:
 

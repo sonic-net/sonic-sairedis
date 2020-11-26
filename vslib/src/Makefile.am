@@ -57,6 +57,8 @@ libSaiVS_a_SOURCES = \
 					  MACsecFilter.cpp \
 					  MACsecEgressFilter.cpp \
 					  MACsecIngressFilter.cpp \
+					  TrafficForwarder.cpp \
+					  MACsecForwarder.cpp \
 					  TrafficFilterPipes.cpp
 
 libsaivs_la_SOURCES = \

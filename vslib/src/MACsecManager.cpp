@@ -579,7 +579,7 @@ bool MACsecManager::add_macsec_forwarder(
 
     auto &manager = itr->second;
 
-    manager.m_forwarder = std::make_shared<MACsecForwarder>(macsecInterface, manager.m_info->m_tapfd, manager.m_info);
+    manager.m_forwarder = std::make_shared<MACsecForwarder>(macsecInterface, manager.m_info);
     return true;
 }
 
