@@ -14,12 +14,6 @@
 
 using namespace saivs;
 
-#define ETH_FRAME_BUFFER_SIZE (0x4000)
-#define CONTROL_MESSAGE_BUFFER_SIZE (0x1000)
-#define IEEE_8021Q_ETHER_TYPE (0x8100)
-#define MAC_ADDRESS_SIZE (6)
-#define VLAN_TAG_SIZE (4)
-
 MACsecForwarder::MACsecForwarder(
     _In_ const std::string &macsecInterfaceName,
     _In_ std::shared_ptr<HostInterfaceInfo> info):
@@ -188,11 +182,11 @@ void MACsecForwarder::forward()
 
         size_t length = static_cast<size_t>(size);
 
-        add_vlan_tag(buffer, length, msg);
+        addVlanTag(buffer, length, msg);
 
         m_info->async_process_packet_for_fdb_event(buffer, length);
 
-        if (!send_to(m_info->m_tapfd, buffer, length))
+        if (!sendTo(m_info->m_tapfd, buffer, length))
         {
             break;
         }

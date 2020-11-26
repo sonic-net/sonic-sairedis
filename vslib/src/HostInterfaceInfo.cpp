@@ -124,12 +124,6 @@ bool HostInterfaceInfo::uninstallTap2EthFilter(
     return m_t2eFilters.uninstallFilter(filter);
 }
 
-#define ETH_FRAME_BUFFER_SIZE (0x4000)
-#define CONTROL_MESSAGE_BUFFER_SIZE (0x1000)
-#define IEEE_8021Q_ETHER_TYPE (0x8100)
-#define MAC_ADDRESS_SIZE (6)
-#define VLAN_TAG_SIZE (4)
-
 void HostInterfaceInfo::veth2tap_fun()
 {
     SWSS_LOG_ENTER();
@@ -210,11 +204,11 @@ void HostInterfaceInfo::veth2tap_fun()
             return;
         }
 
-        add_vlan_tag(buffer, length, msg);
+        addVlanTag(buffer, length, msg);
 
         async_process_packet_for_fdb_event(buffer, length);
 
-        if (!send_to(m_tapfd, buffer, length))
+        if (!sendTo(m_tapfd, buffer, length))
         {
             break;
         }

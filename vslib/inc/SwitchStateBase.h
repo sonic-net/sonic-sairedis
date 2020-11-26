@@ -363,6 +363,11 @@ namespace saivs
             sai_status_t removeDebugCounter(
                     _In_ sai_object_id_t objectId);
 
+        public:
+
+            static int promisc(
+                    _In_ const char *dev);
+
         protected: // custom hostif
 
             sai_status_t createHostif(
@@ -393,9 +398,6 @@ namespace saivs
             static int vs_set_dev_mac_address(
                     _In_ const char *dev,
                     _In_ const sai_mac_t& mac);
-
-            static int promisc(
-                    _In_ const char *dev);
 
             static int get_default_gw_mac_address(
                     _Out_ sai_mac_t& mac);

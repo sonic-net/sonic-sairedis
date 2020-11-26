@@ -19,16 +19,14 @@
 
 using namespace saivs;
 
-#define ETH_FRAME_BUFFER_SIZE (0x4000)
-#define CONTROL_MESSAGE_BUFFER_SIZE (0x1000)
 #define IEEE_8021Q_ETHER_TYPE (0x8100)
 #define MAC_ADDRESS_SIZE (6)
 #define VLAN_TAG_SIZE (4)
 
-void TrafficForwarder::add_vlan_tag(
+void TrafficForwarder::addVlanTag(
     _Inout_ unsigned char *buffer,
     _Inout_ size_t &length,
-    _Inout_ struct msghdr &msg) const
+    _Inout_ struct msghdr &msg)
 {
     SWSS_LOG_ENTER();
 
@@ -45,6 +43,11 @@ void TrafficForwarder::add_vlan_tag(
                 (aux->tp_status & TP_STATUS_VLAN_TPID_VALID))
         {
             SWSS_LOG_DEBUG("got vlan tci: 0x%x, vlanid: %d", aux->tp_vlan_tci, aux->tp_vlan_tci & 0xFFF);
+
+            if ((length + VLAN_TAG_SIZE) > ETH_FRAME_BUFFER_SIZE)
+            {
+                SWSS_LOG_THROW("The VLAN packet size %lu exceeds the ETH_FRAME_BUFFER_SIZE", length + VLAN_TAG_SIZE);
+            }
 
             // inject vlan tag into frame
 
@@ -67,10 +70,10 @@ void TrafficForwarder::add_vlan_tag(
     }
 }
 
-bool TrafficForwarder::send_to(
+bool TrafficForwarder::sendTo(
     _In_ int fd,
     _In_ const unsigned char *buffer,
-    _In_ size_t &length) const
+    _In_ size_t length) const
 {
     SWSS_LOG_ENTER();
 
@@ -84,7 +87,9 @@ bool TrafficForwarder::send_to(
         if (errno != ENETDOWN && errno != EIO)
         {
             SWSS_LOG_ERROR("failed to write to device fd %d, errno(%d): %s",
-                    fd, errno, strerror(errno));
+                    fd,
+                    errno,
+                    strerror(errno));
         }
 
         if (errno == EBADF)
