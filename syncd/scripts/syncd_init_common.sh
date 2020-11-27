@@ -29,7 +29,7 @@ fi
 # Use temporary view between init and apply
 CMD_ARGS+=" -u"
 
-# Use bulk api`s in SAI
+# Use bulk APIs in SAI
 # currently disabled since most vendors don't support that yet
 # CMD_ARGS+=" -l"
 
@@ -261,6 +261,12 @@ config_syncd_vs()
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
+config_syncd_soda()
+{
+    # Add support for SAI bulk operations
+    CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
+}
+
 config_syncd_innovium()
 {
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
@@ -295,6 +301,8 @@ config_syncd()
         config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
         config_syncd_innovium
+    elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
+        config_syncd_soda
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
