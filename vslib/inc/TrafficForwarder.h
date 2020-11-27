@@ -23,7 +23,7 @@ namespace saivs
             _Inout_ size_t &length,
             _Inout_ struct msghdr &msg);
 
-        bool sendTo(
+        virtual bool sendTo(
             _In_ int fd,
             _In_ const unsigned char *buffer,
             _In_ size_t length) const;
