@@ -15,7 +15,7 @@
 
 using json = nlohmann::json;
 
-int char_to_int(
+static int char_to_int(
         _In_ const char c)
 {
     SWSS_LOG_ENTER();
@@ -62,7 +62,7 @@ void sai_free_list(
 }
 
 template<typename T>
-void transfer_primitive(
+static void transfer_primitive(
         _In_ const T &src_element,
         _In_ T &dst_element)
 {
@@ -75,7 +75,7 @@ void transfer_primitive(
 }
 
 template<typename T>
-sai_status_t transfer_list(
+static sai_status_t transfer_list(
         _In_ const T &src_element,
         _In_ T &dst_element,
         _In_ bool countOnly)
@@ -457,7 +457,7 @@ sai_status_t transfer_attributes(
 
 // util
 
-uint8_t get_ip_mask(
+static uint8_t get_ip_mask(
         _In_ const uint8_t* mask,
         _In_ bool ipv6)
 {
@@ -488,7 +488,7 @@ uint8_t get_ip_mask(
     return ones;
 }
 
-uint8_t get_ipv4_mask(
+static uint8_t get_ipv4_mask(
         _In_ const sai_ip4_t mask)
 {
     SWSS_LOG_ENTER();
@@ -496,7 +496,7 @@ uint8_t get_ipv4_mask(
     return get_ip_mask((const uint8_t*)&mask, false);
 }
 
-int get_ipv6_mask(
+static int get_ipv6_mask(
         _In_ const sai_ip6_t &mask)
 {
     SWSS_LOG_ENTER();
@@ -504,7 +504,7 @@ int get_ipv6_mask(
     return get_ip_mask(mask, true);
 }
 
-void sai_populate_ip_mask(
+static void sai_populate_ip_mask(
         _In_ uint8_t bits,
         _Out_ uint8_t *mask,
         _In_ bool ipv6)

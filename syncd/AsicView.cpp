@@ -829,7 +829,7 @@ void AsicView::asicRemoveObject(
                 break;
 
             case SAI_OBJECT_TYPE_NAT_ENTRY:
-                m_soNatEntries[currentObj->m_str_object_id] = currentObj;
+                m_soNatEntries.erase(currentObj->m_str_object_id);
                 break;
 
             default:
@@ -1105,7 +1105,7 @@ void AsicView::dumpRef(const std::string & asicName)
 
     SWSS_LOG_NOTICE("dump references in ASIC VIEW: %s", asicName.c_str());
 
-    for (auto kvp: m_vidReference)
+    for (auto& kvp: m_vidReference)
     {
         sai_object_id_t oid = kvp.first;
 
@@ -1137,7 +1137,7 @@ void AsicView::dumpVidToAsicOperatioId() const
 {
     SWSS_LOG_ENTER();
 
-    for (auto a:  m_vidToAsicOperationId)
+    for (auto& a: m_vidToAsicOperationId)
     {
         auto ot = VidManager::objectTypeQuery(a.first);
 
@@ -1153,7 +1153,7 @@ void AsicView::populateAttributes(
 {
     SWSS_LOG_ENTER();
 
-    for (const auto &field: map)
+    for (const auto& field: map)
     {
         std::shared_ptr<SaiAttr> attr = std::make_shared<SaiAttr>(field.first, field.second);
 
@@ -1163,7 +1163,6 @@ void AsicView::populateAttributes(
 
             switch (meta->attrid)
             {
-
                 case SAI_ACL_COUNTER_ATTR_PACKETS:
                 case SAI_ACL_COUNTER_ATTR_BYTES:
 
@@ -1178,13 +1177,13 @@ void AsicView::populateAttributes(
                     break;
             }
         }
+
         if (obj->getObjectType() == SAI_OBJECT_TYPE_NAT_ENTRY)
         {
             auto* meta = attr->getAttrMetadata();
 
             switch (meta->attrid)
             {
-
                 case SAI_NAT_ENTRY_ATTR_HIT_BIT_COR:
                 case SAI_NAT_ENTRY_ATTR_HIT_BIT:
 

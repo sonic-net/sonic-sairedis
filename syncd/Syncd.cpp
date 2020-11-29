@@ -1925,8 +1925,6 @@ void Syncd::syncUpdateRedisQuadEvent(
 
     auto& values = kfvFieldsValues(kco);
 
-    const std::string& strObjectId = key.substr(key.find(":") + 1);
-
     sai_object_meta_key_t metaKey;
     sai_deserialize_object_meta_key(key, metaKey);
 

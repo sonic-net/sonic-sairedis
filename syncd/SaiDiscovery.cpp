@@ -18,7 +18,6 @@ using namespace syncd;
  */
 #define SAI_DISCOVERY_LIST_MAX_ELEMENTS 1024
 
-
 SaiDiscovery::SaiDiscovery(
         _In_ std::shared_ptr<sairedis::SaiInterface> sai):
     m_sai(sai)
@@ -88,7 +87,7 @@ void SaiDiscovery::discover(
         discovered.insert(rid);
     }
 
-    const sai_object_type_info_t *info =  sai_metadata_get_object_type_info(ot);
+    const sai_object_type_info_t *info = sai_metadata_get_object_type_info(ot);
 
     /*
      * We will query only oid object types

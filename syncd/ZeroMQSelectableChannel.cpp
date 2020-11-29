@@ -156,8 +156,7 @@ void ZeroMQSelectableChannel::pop(
 
     if (m_queue.empty())
     {
-        SWSS_LOG_ERROR("queue is empty, can't pop");
-        throw std::runtime_error("queue is empty, can't pop");
+        SWSS_LOG_THROW("queue is empty, can't pop");
     }
 
     std::string msg = m_queue.front();

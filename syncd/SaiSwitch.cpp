@@ -79,7 +79,6 @@ SaiSwitch::SaiSwitch(
     }
 }
 
-
 /*
  * NOTE: all those methods could be implemented inside SaiSwitch class so then
  * we could skip using switch_id in params and even they could be public then.
@@ -749,7 +748,7 @@ std::set<sai_object_id_t> SaiSwitch::getWarmBootDiscoveredVids() const
 }
 
 void SaiSwitch::redisSaveInternalOids(
-                                      _In_ sai_object_id_t rid) const
+        _In_ sai_object_id_t rid) const
 {
     SWSS_LOG_ENTER();
 
@@ -767,13 +766,12 @@ void SaiSwitch::redisSaveInternalOids(
      * is SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID which is discovered in warm-boot 
      * when upgrading to new SAI Version*/
 
-
     m_client->setDummyAsicStateObject(vid);
 
     m_client->saveColdBootDiscoveredVids(m_switch_vid, coldVids);
 
     SWSS_LOG_NOTICE("put switch internal discovered rid %s to Asic View and COLDVIDS", 
-                    sai_serialize_object_id(rid).c_str());
+            sai_serialize_object_id(rid).c_str());
 
 }
 
@@ -1144,7 +1142,7 @@ void SaiSwitch::postPortRemove(
         if (vid == SAI_NULL_OBJECT_ID)
         {
             SWSS_LOG_THROW("expected rid %s to be present in RIDTOVID",
-                   sai_serialize_object_id(rid).c_str());
+                    sai_serialize_object_id(rid).c_str());
         }
 
         // TODO should this remove rid,vid and object be as db op?
@@ -1165,7 +1163,7 @@ void SaiSwitch::postPortRemove(
     if (removed == 0)
     {
         SWSS_LOG_THROW("NO LANES found in redis lane map for given port RID %s",
-            sai_serialize_object_id(portRid).c_str());
+                sai_serialize_object_id(portRid).c_str());
     }
 
     SWSS_LOG_NOTICE("post port remove actions succeeded");
