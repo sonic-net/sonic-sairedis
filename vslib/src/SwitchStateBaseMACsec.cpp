@@ -378,11 +378,6 @@ std::shared_ptr<HostInterfaceInfo> SwitchStateBase::findHostInterfaceInfoByPort(
         }
     }
 
-    if (info == nullptr)
-    {
-        SWSS_LOG_ERROR("Cannot find corresponding port %s", sai_serialize_object_id(portId).c_str());
-    }
-
     return info;
 }
 
@@ -408,7 +403,8 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecPort(
 
     if (macsecAttr.m_info == nullptr)
     {
-        // The fail log has been recordedin findHostInterfaceInfoByPort
+        SWSS_LOG_ERROR("Cannot find corresponding port %s", sai_serialize_object_id(portId).c_str());
+
         return SAI_STATUS_FAILURE;
     }
 
@@ -469,7 +465,8 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
 
     if (macsecAttr.m_info == nullptr)
     {
-        // The fail log has been recordedin findHostInterfaceInfoByPort
+        SWSS_LOG_ERROR("Cannot find corresponding port %s", sai_serialize_object_id(portId).c_str());
+
         return SAI_STATUS_FAILURE;
     }
 
@@ -532,7 +529,8 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     if (macsecAttr.m_info == nullptr)
     {
-        // The fail log has been recordedin findHostInterfaceInfoByPort
+        SWSS_LOG_ERROR("Cannot find corresponding port %s", sai_serialize_object_id(portId).c_str());
+
         return SAI_STATUS_FAILURE;
     }
 
@@ -669,7 +667,8 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
 
         if (macsecAttrs.back().m_info == nullptr)
         {
-            // The fail log has been recordedin findHostInterfaceInfoByPort
+            SWSS_LOG_ERROR("Cannot find corresponding port %s", sai_serialize_object_id(portId).c_str());
+
             macsecAttrs.clear();
             return SAI_STATUS_FAILURE;
         }
@@ -706,7 +705,6 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
                 // The fail log has been recorded at loadMACsecAttr
                 macsecAttrs.pop_back();
             }
-
         }
 
         return SAI_STATUS_SUCCESS;
@@ -783,14 +781,11 @@ sai_status_t SwitchStateBase::getMACsecSAAttr(
 {
     SWSS_LOG_ENTER();
 
-    auto ret = get_internal(SAI_OBJECT_TYPE_MACSEC_SA, serializedObjectId, attrCount, attrList);
+    CHECK_STATUS(get_internal(SAI_OBJECT_TYPE_MACSEC_SA, serializedObjectId, attrCount, attrList));
 
-    if (ret != SAI_STATUS_SUCCESS)
-    {
-        return ret;
-    }
-
+    sai_status_t ret = SAI_STATUS_SUCCESS;
     sai_object_id_t macsec_id = SAI_NULL_OBJECT_ID;
+
     sai_deserialize_object_id(serializedObjectId, macsec_id);
 
     for (uint32_t i = 0; i < attrCount; i++)
