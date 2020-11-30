@@ -47,9 +47,7 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
     {
         auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ACL_ENTRY, attr->id);
 
-        SWSS_LOG_ERROR(
-            "Attribute type (%s) isn't correct, expect SAI_ACL_ENTRY_ATTR_ACTION_MACSEC_FLOW",
-            sai_serialize_attr_id(*meta).c_str());
+        SWSS_LOG_ERROR("Attribute type (%s) isn't correct, expect SAI_ACL_ENTRY_ATTR_ACTION_MACSEC_FLOW", meta->attridname);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -267,9 +265,8 @@ sai_status_t SwitchStateBase::getACLTable(
     sai_attribute_t attr;
     // Find ACL Table
     attr.id = SAI_ACL_ENTRY_ATTR_TABLE_ID;
-    attr.value.oid = SAI_NULL_OBJECT_ID;
 
-    CHECK_STATUS(get(SAI_OBJECT_TYPE_ACL_ENTRY,entryId,1,&attr));
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_ACL_ENTRY, entryId, 1, &attr));
 
     tableId = attr.value.oid;
 
@@ -282,7 +279,6 @@ sai_status_t SwitchStateBase::findPortByMACsecFlow(
 {
     SWSS_LOG_ENTER();
 
-    std::vector<sai_attribute_t> attrs;
     sai_attribute_t attr;
 
     // MACsec flow => ACL entry => ACL table
@@ -338,35 +334,25 @@ sai_status_t SwitchStateBase::findPortByMACsecFlow(
         return SAI_STATUS_FAILURE;
     }
 
-    attrs.resize(1);
-    attrs[0].id = SAI_MACSEC_SC_ATTR_MACSEC_DIRECTION;
+    attr.id = SAI_MACSEC_SC_ATTR_MACSEC_DIRECTION;
 
-    CHECK_STATUS(get(SAI_OBJECT_TYPE_MACSEC_SC, macsecScIds.front(), static_cast<uint32_t>(attrs.size()), attrs.data()));
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_MACSEC_SC, macsecScIds.front(), 1, &attr));
 
-    auto direction = attrs[0].value.s32;
+    auto direction = attr.value.s32;
 
     // Find port
-    attrs.resize(1);
-    attrs[0].id = (direction == SAI_MACSEC_DIRECTION_EGRESS) ? SAI_PORT_ATTR_EGRESS_MACSEC_ACL : SAI_PORT_ATTR_INGRESS_MACSEC_ACL;
-    attrs[0].value.oid = aclTableId;
+    attr.id = (direction == SAI_MACSEC_DIRECTION_EGRESS) ? SAI_PORT_ATTR_EGRESS_MACSEC_ACL : SAI_PORT_ATTR_INGRESS_MACSEC_ACL;
+    attr.value.oid = aclTableId;
 
     std::vector<sai_object_id_t> port_ids;
 
-    findObjects(SAI_OBJECT_TYPE_PORT, attrs.back(), port_ids);
+    findObjects(SAI_OBJECT_TYPE_PORT, attr, port_ids);
 
-    if (port_ids.empty())
+    if (port_ids.size() != 1)
     {
         SWSS_LOG_ERROR(
-            "Cannot find corresponding port for the ACL table %s",
-            sai_serialize_object_id(aclTableId).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-    else if (port_ids.size() > 1)
-    {
-        SWSS_LOG_ERROR(
-            "Duplicated ports for the ACL table %s",
-            sai_serialize_object_id(aclTableId).c_str());
+            "Expect one port to one ACL table %s, but got %zu",
+            sai_serialize_object_id(aclTableId).c_str(), port_ids.size());
 
         return SAI_STATUS_FAILURE;
     }
@@ -376,13 +362,12 @@ sai_status_t SwitchStateBase::findPortByMACsecFlow(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchStateBase::findHostInterfaceInfoByPort(
-        _In_ sai_object_id_t &portId,
-        _Out_ std::shared_ptr<HostInterfaceInfo> &info)
+std::shared_ptr<HostInterfaceInfo> SwitchStateBase::findHostInterfaceInfoByPort(
+        _In_ sai_object_id_t portId)
 {
     SWSS_LOG_ENTER();
 
-    info.reset();
+    std::shared_ptr<HostInterfaceInfo> info;
 
     for (auto &kvp : m_hostif_info_map)
     {
@@ -396,11 +381,9 @@ sai_status_t SwitchStateBase::findHostInterfaceInfoByPort(
     if (info == nullptr)
     {
         SWSS_LOG_ERROR("Cannot find corresponding port %s", sai_serialize_object_id(portId).c_str());
-
-        return SAI_STATUS_FAILURE;
     }
 
-    return SAI_STATUS_SUCCESS;
+    return info;
 }
 
 sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecPort(
@@ -421,7 +404,13 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecPort(
 
     auto portId = attr->value.oid;
 
-    CHECK_STATUS(findHostInterfaceInfoByPort(portId, macsecAttr.m_info));
+    macsecAttr.m_info = findHostInterfaceInfoByPort(portId);
+
+    if (macsecAttr.m_info == nullptr)
+    {
+        // The fail log has been recordedin findHostInterfaceInfoByPort
+        return SAI_STATUS_FAILURE;
+    }
 
     macsecAttr.m_vethName = vs_get_veth_name(macsecAttr.m_info->m_name, portId);
     macsecAttr.m_macsecName = SAI_VS_MACSEC_PREFIX + macsecAttr.m_vethName;
@@ -447,6 +436,8 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
 
     auto sci = attr->value.u64;
     std::stringstream sciHexStr;
+
+    sciHexStr << std::setw(MACSEC_SCI_LENGTH) << std::setfill('0');
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     sciHexStr << std::hex << bswap_64(sci);
@@ -474,7 +465,13 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
 
     CHECK_STATUS(findPortByMACsecFlow(flow_id, portId));
 
-    CHECK_STATUS(findHostInterfaceInfoByPort(portId, macsecAttr.m_info));
+    macsecAttr.m_info = findHostInterfaceInfoByPort(portId);
+
+    if (macsecAttr.m_info == nullptr)
+    {
+        // The fail log has been recordedin findHostInterfaceInfoByPort
+        return SAI_STATUS_FAILURE;
+    }
 
     macsecAttr.m_vethName = vs_get_veth_name(macsecAttr.m_info->m_name, portId);
     macsecAttr.m_macsecName = SAI_VS_MACSEC_PREFIX + macsecAttr.m_vethName;
@@ -491,12 +488,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     SWSS_LOG_ENTER();
 
     const sai_attribute_t *attr = nullptr;
-    std::vector<sai_attribute_t> attrs;
 
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SC_ID, attrCount, attrList);
 
     // Find SCI and MACsec flow
-    attrs.resize(2);
+    std::vector<sai_attribute_t> attrs(2);
     attrs[0].id = SAI_MACSEC_SC_ATTR_FLOW_ID;
     attrs[1].id = SAI_MACSEC_SC_ATTR_MACSEC_SCI;
 
@@ -506,6 +502,8 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     auto sci = attrs[1].value.u64;
     std::stringstream sciHexStr;
 
+    sciHexStr << std::setw(MACSEC_SCI_LENGTH) << std::setfill('0');
+
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     sciHexStr << std::hex << bswap_64(sci);
 #else
@@ -514,10 +512,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     macsecAttr.m_sci = sciHexStr.str();
 
-    if (macsecAttr.m_sci.length() < MACSEC_SCI_LENGTH)
+    if (macsecAttr.m_sci.length() != MACSEC_SCI_LENGTH)
     {
-        // Fill leading zero to meet the MACsec SCI length
-        macsecAttr.m_sci = std::string(MACSEC_SCI_LENGTH - macsecAttr.m_sci.length(), '0') + macsecAttr.m_sci;
+        SWSS_LOG_ERROR("Invalid SCI %s", macsecAttr.m_sci.c_str());
+
+        return SAI_STATUS_FAILURE;
     }
 
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_DIRECTION, attrCount, attrList);
@@ -526,8 +525,17 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     // Find veth name
     sai_object_id_t portId = SAI_NULL_OBJECT_ID;
+
     CHECK_STATUS(findPortByMACsecFlow(flow_id, portId));
-    CHECK_STATUS(findHostInterfaceInfoByPort(portId, macsecAttr.m_info));
+
+    macsecAttr.m_info = findHostInterfaceInfoByPort(portId);
+
+    if (macsecAttr.m_info == nullptr)
+    {
+        // The fail log has been recordedin findHostInterfaceInfoByPort
+        return SAI_STATUS_FAILURE;
+    }
+
     macsecAttr.m_vethName = vs_get_veth_name(macsecAttr.m_info->m_name, portId);
     macsecAttr.m_macsecName = SAI_VS_MACSEC_PREFIX + macsecAttr.m_vethName;
 
@@ -547,7 +555,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     if (!attr->value.booldata)
     {
-        macsecAttr.m_sak = macsecAttr.m_sak.substr(macsecAttr.m_sak.length() / 2,macsecAttr.m_sak.length() / 2);
+        macsecAttr.m_sak = macsecAttr.m_sak.substr(macsecAttr.m_sak.length() / 2, macsecAttr.m_sak.length() / 2);
     }
 
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_AUTH_KEY, attrCount, attrList);
@@ -648,7 +656,6 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
     auto flow_id = entryAttr->value.aclaction.parameter.oid;
 
     macsecAttrs.clear();
-    sai_attribute_t attr;
 
     if (objectType == SAI_OBJECT_TYPE_MACSEC_PORT)
     {
@@ -658,9 +665,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
 
         macsecAttrs.emplace_back();
 
-        if (findHostInterfaceInfoByPort(portId,macsecAttrs.back().m_info) != SAI_STATUS_SUCCESS)
+        macsecAttrs.back().m_info = findHostInterfaceInfoByPort(portId);
+
+        if (macsecAttrs.back().m_info == nullptr)
         {
-            // The fail log has been record in findHostInterfaceInfoByPort
+            // The fail log has been recordedin findHostInterfaceInfoByPort
             macsecAttrs.clear();
             return SAI_STATUS_FAILURE;
         }
@@ -672,6 +681,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
 
     // Find all MACsec SCs that use this flow
     std::vector<sai_object_id_t> macsecScs;
+    sai_attribute_t attr;
     attr.id = SAI_MACSEC_SC_ATTR_FLOW_ID;
     attr.value.oid = flow_id;
     findObjects(SAI_OBJECT_TYPE_MACSEC_SC, attr, macsecScs);
@@ -755,11 +765,9 @@ sai_status_t SwitchStateBase::getMACsecAttr(
         }
         else
         {
-            auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_MACSEC,attrList[i].id);
+            auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_MACSEC, attrList[i].id);
 
-            SWSS_LOG_WARN(
-                "Cannot get attribute %s",
-                meta->attridname);
+            SWSS_LOG_WARN("Cannot get attribute %s", meta->attridname);
 
             return SAI_STATUS_NOT_IMPLEMENTED;
         }
@@ -813,7 +821,7 @@ sai_status_t SwitchStateBase::getMACsecSAPacketNumber(
 
     MACsecAttr macsecAttr;
 
-    if (loadMACsecAttr(SAI_OBJECT_TYPE_MACSEC_SA,macsecSaId,macsecAttr) == SAI_STATUS_SUCCESS)
+    if (loadMACsecAttr(SAI_OBJECT_TYPE_MACSEC_SA, macsecSaId, macsecAttr) == SAI_STATUS_SUCCESS)
     {
         if (m_macsecManager.get_macsec_sa_pn(macsecAttr, attr.value.u64))
         {
