@@ -59,7 +59,10 @@ libSaiVS_a_SOURCES = \
 					  MACsecIngressFilter.cpp \
 					  TrafficForwarder.cpp \
 					  MACsecForwarder.cpp \
-					  TrafficFilterPipes.cpp
+					  TrafficFilterPipes.cpp \
+					  SwitchStateBaseMACsec.cpp \
+					  MACsecAttr.cpp \
+					  MACsecManager.cpp
 
 libsaivs_la_SOURCES = \
 					  sai_vs_fdb.cpp \
