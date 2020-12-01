@@ -138,6 +138,9 @@ namespace saivs
             virtual sai_status_t refresh_system_port_list(
                     _In_ const sai_attr_metadata_t *meta);
 
+            virtual sai_status_t refresh_macsec_sci_in_ingress_macsec_acl(
+                    _In_ sai_object_id_t object_id);
+
         public:
 
             virtual sai_status_t warm_boot_initialize_objects();
@@ -541,11 +544,6 @@ namespace saivs
                     _In_ const sai_attribute_t* entry_attr,
                     _In_ sai_object_type_t object_type,
                     _Out_ std::vector<MACsecAttr> &macsec_attrs);
-
-            sai_status_t getMACsecAttr(
-                    _In_ const std::string &serializedObjectId,
-                    _In_ uint32_t attr_count,
-                    _Out_ sai_attribute_t *attr_list);
 
             sai_status_t getMACsecSAAttr(
                     _In_ const std::string &serializedObjectId,

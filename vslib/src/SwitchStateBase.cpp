@@ -701,14 +701,6 @@ sai_status_t SwitchStateBase::get(
             attr_list);
     }
 
-    if (objectType == SAI_OBJECT_TYPE_MACSEC)
-    {
-        return getMACsecAttr(
-            serializedObjectId,
-            attr_count,
-            attr_list);
-    }
-
     return get_internal(objectType, serializedObjectId, attr_count, attr_list);
 }
 
@@ -1806,6 +1798,20 @@ sai_status_t SwitchStateBase::refresh_port_list(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::refresh_macsec_sci_in_ingress_macsec_acl(
+        _In_ sai_object_id_t object_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    attr.id = SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL;
+    attr.value.booldata = true;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_MACSEC, object_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 // XXX extra work may be needed on GET api if N on list will be > then actual
 
 /*
@@ -1937,6 +1943,11 @@ sai_status_t SwitchStateBase::refresh_read_only(
     if (meta->objecttype == SAI_OBJECT_TYPE_DEBUG_COUNTER && meta->attrid == SAI_DEBUG_COUNTER_ATTR_INDEX)
     {
         return SAI_STATUS_SUCCESS;
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_MACSEC && meta->attrid == SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL)
+    {
+        return refresh_macsec_sci_in_ingress_macsec_acl(object_id);
     }
 
     auto mmeta = m_meta.lock();

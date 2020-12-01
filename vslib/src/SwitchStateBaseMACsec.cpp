@@ -748,32 +748,6 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchStateBase::getMACsecAttr(
-        _In_ const std::string &serializedObjectId,
-        _In_ uint32_t attrCount,
-        _Out_ sai_attribute_t *attrList)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t i = 0; i < attrCount; i++)
-    {
-        if (attrList[i].id == SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL)
-        {
-            attrList[i].value.booldata = true;
-        }
-        else
-        {
-            auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_MACSEC, attrList[i].id);
-
-            SWSS_LOG_WARN("Cannot get attribute %s", meta->attridname);
-
-            return SAI_STATUS_NOT_IMPLEMENTED;
-        }
-    }
-
-    return SAI_STATUS_SUCCESS;
-}
-
 sai_status_t SwitchStateBase::getMACsecSAAttr(
         _In_ const std::string &serializedObjectId,
         _In_ uint32_t attrCount,
