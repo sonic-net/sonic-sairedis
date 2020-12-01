@@ -1803,6 +1803,12 @@ sai_status_t SwitchStateBase::refresh_macsec_sci_in_ingress_macsec_acl(
 {
     SWSS_LOG_ENTER();
 
+    /*
+     * SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL indicates the MACsec ASIC capability 
+     * of whether SCI can only be used as ACL field.
+     * To set SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL is always true,
+     * which indicates that here is emulating a kind of MACsec ASIC that use SCI as ACL field.
+     */
     sai_attribute_t attr;
     attr.id = SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL;
     attr.value.booldata = true;
