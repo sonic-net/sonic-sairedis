@@ -160,12 +160,20 @@ static inline std::size_t sai_get_hash(
     return ne.ip_address.addr_family;
 }
 
+static_assert(sizeof(uint32_t) == 4, "uint32_t expected to be 4 bytes");
+
 static inline std::size_t sai_get_hash(
         _In_ const sai_fdb_entry_t& fe)
 {
     SWSS_LOG_ENTER();
 
-    return *(const uint32_t*)(&fe.mac_address[2]);
+    uint32_t data;
+
+    // use low 4 bytes of mac address as hash value
+    // use memcpy instead of cast because of strict-aliasing rules
+    memcpy(&data, fe.mac_address + 2, sizeof(uint32_t));
+
+    return data;
 }
 
 static inline std::size_t sai_get_hash(
