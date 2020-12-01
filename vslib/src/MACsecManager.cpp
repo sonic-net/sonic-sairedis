@@ -12,7 +12,7 @@
 
 using namespace saivs;
 
-#define MAX_MACSEC_SA_NUMBER 3
+static constexpr macsec_an_t MAX_MACSEC_SA_NUMBER = 3;
 
 MACsecManager::MACsecManager()
 {
