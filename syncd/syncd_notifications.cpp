@@ -176,7 +176,7 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush port fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
+            SWSS_LOG_WARN("received a flush port fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
         }
         else if (!port_oid && bv_id)
         {
@@ -197,12 +197,12 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush vlan fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
+            SWSS_LOG_WARN("received a flush vlan fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
             
         }
         else
         {
-            SWSS_LOG_ERROR("received a flush fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
+            SWSS_LOG_WARN("received a flush fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
         }
 
         return;
