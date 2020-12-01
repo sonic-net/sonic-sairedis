@@ -468,6 +468,12 @@ namespace saivs
                     _In_ sai_object_id_t entry_id,
                     _In_ const sai_attribute_t* attr);
 
+            sai_status_t createMACsecPort(
+                    _In_ sai_object_id_t macsec_sa_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
             sai_status_t createMACsecSA(
                     _In_ sai_object_id_t macsec_sa_id,
                     _In_ sai_object_id_t switch_id,
@@ -497,9 +503,8 @@ namespace saivs
                     _In_ sai_object_id_t macsec_flow_id,
                     _Out_ sai_object_id_t &line_port_id);
 
-            sai_status_t findHostInterfaceInfoByPort(
-                    _In_ sai_object_id_t &line_port_id,
-                    _Out_ std::shared_ptr<HostInterfaceInfo> &info);
+            std::shared_ptr<HostInterfaceInfo> findHostInterfaceInfoByPort(
+                    _In_ sai_object_id_t line_port_id);
 
             sai_status_t loadMACsecAttrFromMACsecPort(
                     _In_ sai_object_id_t object_id,
