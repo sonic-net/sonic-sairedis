@@ -83,6 +83,16 @@ sai_object_id_t VirtualOidTranslator::translateRidToVid(
         SWSS_LOG_THROW("RID 0x%" PRIx64 " is switch object, but not in local or redis db, bug!", rid);
     }
 
+    if((object_type == SAI_OBJECT_TYPE_PORT) && (switchVid == SAI_NULL_OBJECT_ID))
+    {
+        /* Port might have been removed. Dont create new object from 
+           notification handler. switchVid == NULL is right check? TODO
+         */
+        SWSS_LOG_NOTICE("Port RID %s VID %s ignore allocation (from notify)!", 
+                sai_serialize_object_id(rid).c_str(), sai_serialize_object_id(vid).c_str());
+        return SAI_NULL_OBJECT_ID;
+    }
+
     vid = m_virtualObjectIdManager->allocateNewObjectId(object_type, switchVid); // TODO to std::function or separate object
 
     SWSS_LOG_DEBUG("translated RID %s to VID %s",
