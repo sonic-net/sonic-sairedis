@@ -22,6 +22,28 @@ VirtualOidTranslator::VirtualOidTranslator(
     // empty
 }
 
+sai_object_id_t VirtualOidTranslator::tryTranslateRidToVid(
+        _In_ sai_object_id_t rid,
+        _In_ sai_object_id_t switchVid)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * NOTE: switch_vid here is Virtual ID of switch for which we need
+     *  get VID for given RID. No check now! 
+     */
+
+    if(false == checkRidExists(rid))
+    {
+        SWSS_LOG_NOTICE("translated RID %s to VID null", sai_serialize_object_id(rid).c_str());
+        return SAI_NULL_OBJECT_ID;
+    }
+
+    auto vid = m_client->getVidForRid(rid);
+
+    return vid;
+}
+
 sai_object_id_t VirtualOidTranslator::translateRidToVid(
         _In_ sai_object_id_t rid,
         _In_ sai_object_id_t switchVid)

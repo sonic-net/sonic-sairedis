@@ -42,6 +42,15 @@ namespace syncd
                     _In_ sai_object_id_t rid,
                     _In_ sai_object_id_t switchVid);
 
+            /*
+             * This method will try get VID for given RID.
+             * switch instance check not yet ready
+             * returns SAI_NULL_OBJECT_ID if not exists.
+             */
+            sai_object_id_t tryTranslateRidToVid(
+                    _In_ sai_object_id_t rid,
+                    _In_ sai_object_id_t switchVid);
+
             void translateRidToVid(
                     _Inout_ sai_object_list_t& objectList,
                     _In_ sai_object_id_t switchVid);
