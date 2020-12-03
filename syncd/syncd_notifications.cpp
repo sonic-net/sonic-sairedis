@@ -159,9 +159,6 @@ void redisPutFdbEntryToAsicView(
         }
         else if (port_oid && !bv_id)
         {
-            /* we got a flush port fdb event here        */
-            /* not supported yet, this is a place holder */
-            /* example of a flush port fdb event         */
             /*
             [{
             "fdb_entry":"{
@@ -176,13 +173,34 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush port fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
+            SWSS_LOG_NOTICE("received a flush fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64, port_oid, bv_id);
+
+            auto strBridgePortId = sai_serialize_object_id(port_oid);
+
+            std::string pattern = ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_FDB_ENTRY:*");
+            for (const auto &fdbkey: g_redisClient->keys(pattern))
+            {
+                /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
+                auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
+
+                if (pEntryType && *pEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
+                {
+                    auto bp = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
+
+                    if (bp && *bp == strBridgePortId)
+                    {
+                        SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
+                        g_redisClient->del(fdbkey);
+                    }
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
+                }
+            }
         }
         else if (!port_oid && bv_id)
         {
-            /* we got a flush vlan fdb event here        */
-            /* not supported yet, this is a place holder */
-            /* example of a flush vlan event             */
             /*
             [{
             "fdb_entry":"{
@@ -197,12 +215,55 @@ void redisPutFdbEntryToAsicView(
                 ]
             }]
             */
-            SWSS_LOG_ERROR("received a flush vlan fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
-            
+            SWSS_LOG_NOTICE("received a flush fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64, port_oid, bv_id);
+
+            auto strBridgeVlanId = sai_serialize_object_id(bv_id);
+
+            std::string pattern = ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_FDB_ENTRY:*") + strBridgeVlanId + "*";
+            for (const auto &fdbkey: g_redisClient->keys(pattern))
+            {
+                /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
+                auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
+
+                if (pEntryType && *pEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
+                {
+                    SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
+                    g_redisClient->del(fdbkey);
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
+                }
+            }
         }
         else
         {
-            SWSS_LOG_ERROR("received a flush fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64 ", unsupported", port_oid, bv_id);
+            SWSS_LOG_NOTICE("received a flush fdb event, port_oid = 0x%" PRIx64 ", bv_id = 0x%" PRIx64, port_oid, bv_id);
+
+            auto strBridgeVlanId = sai_serialize_object_id(bv_id);
+            auto strBridgePortId = sai_serialize_object_id(port_oid);
+
+            std::string pattern = ASIC_STATE_TABLE + std::string(":SAI_OBJECT_TYPE_FDB_ENTRY:*") + strBridgeVlanId + "*";
+            for (const auto &fdbkey: g_redisClient->keys(pattern))
+            {
+                /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
+                auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
+
+                if (pEntryType && *pEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
+                {
+                    auto bp = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
+
+                    if (bp && *bp == strBridgePortId)
+                    {
+                        SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
+                        g_redisClient->del(fdbkey);
+                    }
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
+                }
+            }
         }
 
         return;
