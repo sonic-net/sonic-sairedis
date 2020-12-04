@@ -160,10 +160,6 @@ void redisPutFdbEntryToAsicView(
                     SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
                     g_redisClient->del(fdbkey);
                 }
-                else
-                {
-                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
-                }
             }
         }
         else if (port_oid && !bv_id)
@@ -202,10 +198,6 @@ void redisPutFdbEntryToAsicView(
                         g_redisClient->del(fdbkey);
                     }
                 }
-                else
-                {
-                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
-                }
             }
         }
         else if (!port_oid && bv_id)
@@ -239,10 +231,6 @@ void redisPutFdbEntryToAsicView(
                     SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
                     g_redisClient->del(fdbkey);
                 }
-                else
-                {
-                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
-                }
             }
         }
         else
@@ -267,10 +255,6 @@ void redisPutFdbEntryToAsicView(
                         SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
                         g_redisClient->del(fdbkey);
                     }
-                }
-                else
-                {
-                    SWSS_LOG_ERROR("found unknown type fdb entry, key %s", fdbkey.c_str());
                 }
             }
         }
