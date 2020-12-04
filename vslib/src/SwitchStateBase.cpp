@@ -559,7 +559,7 @@ sai_status_t SwitchStateBase::get(
     return get(object_type, sid, attr_count, attr_list);
 }
 
-sai_status_t SwitchStateBase::get_internal(
+sai_status_t SwitchStateBase::get(
         _In_ sai_object_type_t objectType,
         _In_ const std::string &serializedObjectId,
         _In_ uint32_t attr_count,
@@ -683,25 +683,6 @@ sai_status_t SwitchStateBase::get_internal(
     }
 
     return final_status;
-}
-
-sai_status_t SwitchStateBase::get(
-        _In_ sai_object_type_t objectType,
-        _In_ const std::string &serializedObjectId,
-        _In_ uint32_t attr_count,
-        _Out_ sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
-    {
-        return getMACsecSAAttr(
-            serializedObjectId,
-            attr_count,
-            attr_list);
-    }
-
-    return get_internal(objectType, serializedObjectId, attr_count, attr_list);
 }
 
 sai_status_t SwitchStateBase::bulkCreate(

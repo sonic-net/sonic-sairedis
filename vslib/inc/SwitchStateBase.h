@@ -253,12 +253,6 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t* attr);
 
-            virtual sai_status_t get_internal(
-                    _In_ sai_object_type_t objectType,
-                    _In_ const std::string &serializedObjectId,
-                    _In_ uint32_t attr_count,
-                    _Out_ sai_attribute_t* attr_list);
-
         private:
 
             sai_object_type_t objectTypeQuery(

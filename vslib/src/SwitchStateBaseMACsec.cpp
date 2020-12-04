@@ -601,7 +601,7 @@ sai_status_t SwitchStateBase::loadMACsecAttr(
         return loadMACsecAttrFromMACsecSA(objectId, attrCount, attrList, macsecAttr);
 
     default:
-        SWSS_LOG_ERROR("Wrong type %s", sai_serialize_object_type(objectType));
+        SWSS_LOG_ERROR("Wrong type %s", sai_serialize_object_type(objectType).c_str());
 
         break;
     }
@@ -755,7 +755,7 @@ sai_status_t SwitchStateBase::getMACsecSAAttr(
 {
     SWSS_LOG_ENTER();
 
-    CHECK_STATUS(get_internal(SAI_OBJECT_TYPE_MACSEC_SA, serializedObjectId, attrCount, attrList));
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_MACSEC_SA, serializedObjectId, attrCount, attrList));
 
     sai_status_t ret = SAI_STATUS_SUCCESS;
     sai_object_id_t macsec_id = SAI_NULL_OBJECT_ID;
