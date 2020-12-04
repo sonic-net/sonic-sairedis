@@ -818,7 +818,7 @@ size_t MACsecManager::get_macsec_sa_count(
 
     size_t sa_count = 0;
 
-    for (macsec_an_t an = 0; an <= MAX_MACSEC_SA_NUMBER; an++)
+    for (macsec_an_t an = 0; an <= MAX_MACSEC_SA_NUMBER; an++) // lgtm [cpp/constant-comparison]
     {
         if (is_macsec_sa_existing(macsecDevice, direction, sci, an))
         {
