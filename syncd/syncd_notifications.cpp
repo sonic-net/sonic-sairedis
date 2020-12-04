@@ -90,7 +90,7 @@ void redisPutFdbEntryToAsicView(
     std::string key = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strFdbEntry);
 
     if ((fdb->fdb_entry.switch_id == SAI_NULL_OBJECT_ID ||
-         fdb->fdb_entry.bv_id == SAI_NULL_OBJECT_ID) && 
+         fdb->fdb_entry.bv_id == SAI_NULL_OBJECT_ID) &&
         (fdb->event_type != SAI_FDB_EVENT_FLUSHED))
     {
         SWSS_LOG_WARN("skipped to put int db: %s", strFdbEntry.c_str());
@@ -108,16 +108,28 @@ void redisPutFdbEntryToAsicView(
     {
         sai_object_id_t bv_id = fdb->fdb_entry.bv_id;
         sai_object_id_t port_oid = 0;
-        
+
+        sai_fdb_entry_type_t entryType = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+
         for (uint32_t i = 0; i < fdb->attr_count; i++)
         {
             if(fdb->attr[i].id == SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID)
             {
                 port_oid = fdb->attr[i].value.oid;
             }
+
+            if (fdb->attr[i].id == SAI_FDB_ENTRY_ATTR_TYPE)
+            {
+                entryType = (sai_fdb_entry_type_t)fdb->attr[i].value.s32;
+            }
         }
-        
-                
+
+        std::string strEntryType =
+            (entryType == SAI_FDB_ENTRY_TYPE_DYNAMIC)
+            ? "SAI_FDB_ENTRY_TYPE_DYNAMIC"
+            : "SAI_FDB_ENTRY_TYPE_STATIC";
+
+
         if (!port_oid && !bv_id)
         {
             /* we got a flush all fdb event here */
@@ -142,14 +154,11 @@ void redisPutFdbEntryToAsicView(
             {
                 /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
                 auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
-                if (pEntryType != NULL)
+
+                if (pEntryType != NULL && *pEntryType == strEntryType)
                 {
-                    std::string strEntryType = *pEntryType;
-                    if (strEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
-                    {
-                        SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
-                        g_redisClient->del(fdbkey);
-                    }
+                    SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
+                    g_redisClient->del(fdbkey);
                 }
                 else
                 {
@@ -183,7 +192,7 @@ void redisPutFdbEntryToAsicView(
                 /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
                 auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
 
-                if (pEntryType && *pEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
+                if (pEntryType && *pEntryType == strEntryType)
                 {
                     auto bp = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
 
@@ -225,7 +234,7 @@ void redisPutFdbEntryToAsicView(
                 /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
                 auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
 
-                if (pEntryType && *pEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
+                if (pEntryType && *pEntryType == strEntryType)
                 {
                     SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_FLUSHED",fdbkey.c_str());
                     g_redisClient->del(fdbkey);
@@ -249,7 +258,7 @@ void redisPutFdbEntryToAsicView(
                 /* we only remove dynamic fdb entries here, static fdb entries need to be deleted manually by user instead of flush */
                 auto pEntryType = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_TYPE");
 
-                if (pEntryType && *pEntryType == "SAI_FDB_ENTRY_TYPE_DYNAMIC")
+                if (pEntryType && *pEntryType == strEntryType)
                 {
                     auto bp = g_redisClient->hget(fdbkey, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
 
