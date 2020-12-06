@@ -864,6 +864,24 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
     attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
     attr.value.booldata = false;
 
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // Fill this with supported SAI_OBJECT_TYPEs
+    sai_object_type_t supported_obj_list[] = {
+                                SAI_OBJECT_TYPE_PORT,
+                                SAI_OBJECT_TYPE_LAG,
+                                SAI_OBJECT_TYPE_TAM,
+                                SAI_OBJECT_TYPE_TAM_COLLECTOR,
+                                SAI_OBJECT_TYPE_TAM_REPORT,
+                                SAI_OBJECT_TYPE_TAM_TRANSPORT,
+                                SAI_OBJECT_TYPE_TAM_TELEMETRY,
+                                SAI_OBJECT_TYPE_TAM_EVENT_THRESHOLD
+                              };
+
+    attr.id = SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST;
+    attr.value.s32list.count = sizeof(supported_obj_list)/sizeof(sai_object_type_t);
+    attr.value.s32list.list = (int32_t *) supported_obj_list;
+
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
@@ -1793,6 +1811,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_NUMBER_OF_SYSTEM_PORTS:
             case SAI_SWITCH_ATTR_SYSTEM_PORT_LIST:
                 return refresh_system_port_list(meta);
+
+            case SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST:
+                return SAI_STATUS_SUCCESS;
         }
     }
 
