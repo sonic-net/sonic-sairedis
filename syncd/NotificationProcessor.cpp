@@ -403,9 +403,13 @@ void NotificationProcessor::process_on_port_state_change(
         if (false == m_translator->tryTranslateRidToVid(oper_stat->port_id, oper_stat->port_id))
         {
             oper_stat->port_id = SAI_NULL_OBJECT_ID;
+
+            SWSS_LOG_WARN("Port RID transalted to null VID!!!");
+
         }
+
         /*
-         * port may be in process of removal. OA may recieve notification for VID either
+         * Port may be in process of removal. OA may recieve notification for VID either
          * SAI_NULL_OBJECT_ID or non exist at time of processing 
          */
 

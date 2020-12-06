@@ -31,15 +31,28 @@ bool VirtualOidTranslator::tryTranslateRidToVid(
     std::lock_guard<std::mutex> lock(m_mutex);
 
     if (rid == SAI_NULL_OBJECT_ID)
-        return false;
+    {
+        SWSS_LOG_DEBUG("translated RID null to VID null");
 
-    if (m_rid2vid.find(rid) == m_rid2vid.end())
-        return false;
+        vid = SAI_NULL_OBJECT_ID;
+        return true;
+    }
+
+    auto it = m_rid2vid.find(vid);
+
+    if (it != m_rid2vid.end())
+    {
+        vid = it->second;
+        return true;
+    }
 
     vid = m_client->getVidForRid(rid);
 
-    SWSS_LOG_DEBUG("translated RID %s to VID %s",
-            sai_serialize_object_id(rid).c_str(), sai_serialize_object_id(vid).c_str());
+    if(vid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_DEBUG("translated RID %s to VID null", sai_serialize_object_id(rid).c_str());
+        return false;
+    }
 
     return true;
 }
