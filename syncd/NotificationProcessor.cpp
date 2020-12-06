@@ -400,14 +400,16 @@ void NotificationProcessor::process_on_port_state_change(
         SWSS_LOG_DEBUG("Port RID %s state change notification", 
                 sai_serialize_object_id(oper_stat->port_id).c_str());
 
-        oper_stat->port_id = m_translator->tryTranslateRidToVid(oper_stat->port_id, SAI_NULL_OBJECT_ID);
-
+        if (false == m_translator->tryTranslateRidToVid(oper_stat->port_id, oper_stat->port_id))
+        {
+            oper_stat->port_id = SAI_NULL_OBJECT_ID;
+        }
         /*
          * port may be in process of removal. OA may recieve notification for VID either
          * SAI_NULL_OBJECT_ID or non exist at time of processing 
          */
 
-        SWSS_LOG_DEBUG("Port VID %s state change notification", 
+        SWSS_LOG_INFO("Port VID %s state change notification", 
                 sai_serialize_object_id(oper_stat->port_id).c_str());
     }
 

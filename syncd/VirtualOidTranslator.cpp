@@ -22,26 +22,26 @@ VirtualOidTranslator::VirtualOidTranslator(
     // empty
 }
 
-sai_object_id_t VirtualOidTranslator::tryTranslateRidToVid(
+bool VirtualOidTranslator::tryTranslateRidToVid(
         _In_ sai_object_id_t rid,
-        _In_ sai_object_id_t switchVid)
+        _Out_ sai_object_id_t &vid)
 {
     SWSS_LOG_ENTER();
 
-    /*
-     * NOTE: switch_vid here is Virtual ID of switch for which we need
-     *  get VID for given RID. No check now! 
-     */
+    std::lock_guard<std::mutex> lock(m_mutex);
 
-    if(false == checkRidExists(rid))
-    {
-        SWSS_LOG_NOTICE("translated RID %s to VID null", sai_serialize_object_id(rid).c_str());
-        return SAI_NULL_OBJECT_ID;
-    }
+    if (rid == SAI_NULL_OBJECT_ID)
+        return false;
 
-    auto vid = m_client->getVidForRid(rid);
+    if (m_rid2vid.find(rid) == m_rid2vid.end())
+        return false;
 
-    return vid;
+    vid = m_client->getVidForRid(rid);
+
+    SWSS_LOG_DEBUG("translated RID %s to VID %s",
+            sai_serialize_object_id(rid).c_str(), sai_serialize_object_id(vid).c_str());
+
+    return true;
 }
 
 sai_object_id_t VirtualOidTranslator::translateRidToVid(
