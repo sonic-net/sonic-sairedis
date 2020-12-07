@@ -398,7 +398,7 @@ void NotificationProcessor::process_on_port_state_change(
          * switch vid.
          */
 
-        SWSS_LOG_DEBUG("Port RID %s state change notification", 
+        SWSS_LOG_INFO("Port RID %s state change notification", 
                 sai_serialize_object_id(rid).c_str());
 
         if (false == m_translator->tryTranslateRidToVid(rid, oper_stat->port_id))
