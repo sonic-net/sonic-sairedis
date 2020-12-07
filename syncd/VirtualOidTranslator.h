@@ -44,9 +44,9 @@ namespace syncd
 
             /*
              * This method will try get VID for given RID.
-             * returns true if input RID is null object and out VID is null object
-             * returns true if able to find VID and out VID object.
-             * returns false if not able to find VID and out VID is null object.
+             * Returns true if input RID is null object and out VID is null object.
+             * Returns true if able to find RID and out VID object.
+             * Returns false if not able to find RID and out VID is null object.
              */
             bool tryTranslateRidToVid(
                     _In_ sai_object_id_t rid,

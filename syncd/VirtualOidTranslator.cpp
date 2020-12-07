@@ -48,7 +48,7 @@ bool VirtualOidTranslator::tryTranslateRidToVid(
 
     vid = m_client->getVidForRid(rid);
 
-    if(vid == SAI_NULL_OBJECT_ID)
+    if (vid == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_DEBUG("translated RID %s to VID null", sai_serialize_object_id(rid).c_str());
         return false;
