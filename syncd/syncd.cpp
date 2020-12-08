@@ -2845,6 +2845,9 @@ sai_status_t processBulkEvent(
     return status;
 }
 
+void redisFlushFdbEntries(
+        _In_ const sai_fdb_event_notification_data_t *fdb);
+
 sai_status_t processFdbFlush(
         _In_ const swss::KeyOpFieldsValuesTuple &kco)
 {
@@ -2867,6 +2870,7 @@ sai_status_t processFdbFlush(
     }
 
     SaiAttributeList list(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
+    SaiAttributeList vidlist(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
 
     /*
      * Attribute list can't be const since we will use it to translate VID to
@@ -2883,6 +2887,83 @@ sai_status_t processFdbFlush(
     std::vector<swss::FieldValueTuple> en;
 
     getResponse->set(sai_serialize_status(status), en, "flushresponse");
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_NOTICE("fdb flush succeeded, updating redis database");
+
+        // update database right after fdb flush success (not in notification)
+        // build artificial notification here to reuse code
+
+        sai_fdb_event_notification_data_t data;
+        memset(&data, 0, sizeof(data));
+
+        sai_attribute_t attrs[2];
+
+        attrs[0].id = SAI_FDB_ENTRY_ATTR_TYPE;
+        attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+
+        attrs[1].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+        attrs[1].value.oid = SAI_NULL_OBJECT_ID;
+
+        data.event_type = SAI_FDB_EVENT_FLUSHED;
+
+        data.fdb_entry.switch_id = switch_vid;
+
+        data.attr_count = 2;
+        data.attr = attrs;
+
+        sai_fdb_flush_entry_type_t type = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+
+        attr_list = vidlist.get_attr_list();
+        attr_count = vidlist.get_attr_count();
+
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            switch (attr_list[i].id)
+            {
+                case SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID:
+                    attrs[1].value.oid = attr_list[i].value.oid;
+                    break;
+
+                case SAI_FDB_FLUSH_ATTR_BV_ID:
+                    data.fdb_entry.bv_id = attr_list[i].value.oid;
+                    break;
+
+                case SAI_FDB_FLUSH_ATTR_ENTRY_TYPE:
+                    type = (sai_fdb_flush_entry_type_t)attr_list[i].value.s32;
+                    break;
+
+                default:
+                    SWSS_LOG_ERROR("unsupported attribute: %d, skipping", attr_list[i].id);
+                    break;
+            }
+        }
+
+        switch (type)
+        {
+            case SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC:
+
+                attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+                redisFlushFdbEntries(&data);
+                break;
+
+            case SAI_FDB_FLUSH_ENTRY_TYPE_STATIC:
+
+                attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+                redisFlushFdbEntries(&data);
+                break;
+
+            case SAI_FDB_FLUSH_ENTRY_TYPE_ALL:
+
+                attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;
+                redisFlushFdbEntries(&data);
+
+                attrs[0].value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+                redisFlushFdbEntries(&data);
+                break;
+        }
+    }
 
     return status;
 }
