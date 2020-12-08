@@ -328,6 +328,8 @@ sai_object_id_t redis_create_virtual_object_id(
 std::unordered_map<sai_object_id_t, sai_object_id_t> local_rid_to_vid;
 std::unordered_map<sai_object_id_t, sai_object_id_t> local_vid_to_rid;
 
+std::unordered_map<sai_object_id_t, sai_object_id_t> g_removed_rid_to_vid;
+
 void save_rid_and_vid_to_local(
         _In_ sai_object_id_t rid,
         _In_ sai_object_id_t vid)
@@ -346,6 +348,8 @@ void remove_rid_and_vid_from_local(
 
     local_rid_to_vid.erase(rid);
     local_vid_to_rid.erase(vid);
+
+    g_removed_rid_to_vid[rid] = vid;
 }
 
 /*
@@ -356,7 +360,8 @@ void remove_rid_and_vid_from_local(
  */
 sai_object_id_t translate_rid_to_vid(
         _In_ sai_object_id_t rid,
-        _In_ sai_object_id_t switch_vid)
+        _In_ sai_object_id_t switch_vid,
+        _In_ bool translateRemoved)
 {
     SWSS_LOG_ENTER();
 
@@ -398,6 +403,20 @@ sai_object_id_t translate_rid_to_vid(
         SWSS_LOG_DEBUG("translated RID 0x%" PRIx64 " to VID 0x%" PRIx64, rid, vid);
 
         return vid;
+    }
+
+    if (translateRemoved)
+    {
+        auto itr = g_removed_rid_to_vid.find(rid);
+
+        if (itr != g_removed_rid_to_vid.end())
+        {
+            SWSS_LOG_WARN("translating removed RID %s, to VID %s",
+                    sai_serialize_object_id(rid).c_str(),
+                    sai_serialize_object_id(itr->second).c_str());
+
+            return itr->second;
+        }
     }
 
     SWSS_LOG_DEBUG("spotted new RID 0x%" PRIx64, rid);
@@ -447,7 +466,8 @@ sai_object_id_t translate_rid_to_vid(
  * @return True if exists or SAI_NULL_OBJECT_ID, otherwise false.
  */
 bool check_rid_exists(
-        _In_ sai_object_id_t rid)
+        _In_ sai_object_id_t rid,
+        _In_ bool checkRemoved)
 {
     SWSS_LOG_ENTER();
 
@@ -464,18 +484,25 @@ bool check_rid_exists(
     if (pvid != NULL)
         return true;
 
+    if (checkRemoved && (g_removed_rid_to_vid.find(rid) != g_removed_rid_to_vid.end()))
+    {
+        SWSS_LOG_WARN("removed RID %s exists", sai_serialize_object_id(rid).c_str());
+        return true;
+    }
+
     return false;
 }
 
 void translate_list_rid_to_vid(
         _In_ sai_object_list_t &element,
-        _In_ sai_object_id_t switch_id)
+        _In_ sai_object_id_t switch_id,
+        _In_ bool translateRemoved)
 {
     SWSS_LOG_ENTER();
 
     for (uint32_t i = 0; i < element.count; i++)
     {
-        element.list[i] = translate_rid_to_vid(element.list[i], switch_id);
+        element.list[i] = translate_rid_to_vid(element.list[i], switch_id, translateRemoved);
     }
 }
 
@@ -489,7 +516,8 @@ void translate_rid_to_vid_list(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t switch_id,
         _In_ uint32_t attr_count,
-        _In_ sai_attribute_t *attr_list)
+        _In_ sai_attribute_t *attr_list,
+        _In_ bool translateRemoved)
 {
     SWSS_LOG_ENTER();
 
@@ -520,31 +548,31 @@ void translate_rid_to_vid_list(
         switch (meta->attrvaluetype)
         {
             case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
-                attr.value.oid = translate_rid_to_vid(attr.value.oid, switch_id);
+                attr.value.oid = translate_rid_to_vid(attr.value.oid, switch_id, translateRemoved);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
-                translate_list_rid_to_vid(attr.value.objlist, switch_id);
+                translate_list_rid_to_vid(attr.value.objlist, switch_id, translateRemoved);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
                 if (attr.value.aclfield.enable)
-                    attr.value.aclfield.data.oid = translate_rid_to_vid(attr.value.aclfield.data.oid, switch_id);
+                    attr.value.aclfield.data.oid = translate_rid_to_vid(attr.value.aclfield.data.oid, switch_id, translateRemoved);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
                 if (attr.value.aclfield.enable)
-                    translate_list_rid_to_vid(attr.value.aclfield.data.objlist, switch_id);
+                    translate_list_rid_to_vid(attr.value.aclfield.data.objlist, switch_id, translateRemoved);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
                 if (attr.value.aclaction.enable)
-                    attr.value.aclaction.parameter.oid = translate_rid_to_vid(attr.value.aclaction.parameter.oid, switch_id);
+                    attr.value.aclaction.parameter.oid = translate_rid_to_vid(attr.value.aclaction.parameter.oid, switch_id, translateRemoved);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
                 if (attr.value.aclaction.enable)
-                    translate_list_rid_to_vid(attr.value.aclaction.parameter.objlist, switch_id);
+                    translate_list_rid_to_vid(attr.value.aclaction.parameter.objlist, switch_id, translateRemoved);
                 break;
 
             default:
@@ -2025,6 +2053,7 @@ sai_status_t notifySyncd(
 
             local_rid_to_vid.clear();
             local_vid_to_rid.clear();
+            g_removed_rid_to_vid.clear();
         }
         else
         {

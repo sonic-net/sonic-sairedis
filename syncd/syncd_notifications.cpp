@@ -348,7 +348,7 @@ bool check_fdb_event_notification_data(
 
     bool result = true;
 
-    if (!check_rid_exists(data.fdb_entry.bv_id))
+    if (!check_rid_exists(data.fdb_entry.bv_id, true))
     {
         SWSS_LOG_ERROR("bv_id RID 0x%" PRIx64 " is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
                 sai_serialize_fdb_entry(data.fdb_entry).c_str());
@@ -380,7 +380,7 @@ bool check_fdb_event_notification_data(
         if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
             continue;
 
-        if (!check_rid_exists(attr.value.oid))
+        if (!check_rid_exists(attr.value.oid, true))
         {
             SWSS_LOG_WARN("RID 0x%" PRIx64 " on %s is not present on local ASIC DB", attr.value.oid, meta->attridname);
 
@@ -434,9 +434,9 @@ void process_on_fdb_event(
 
         fdb->fdb_entry.switch_id = translate_rid_to_vid(fdb->fdb_entry.switch_id, SAI_NULL_OBJECT_ID);
 
-        fdb->fdb_entry.bv_id = translate_rid_to_vid(fdb->fdb_entry.bv_id, fdb->fdb_entry.switch_id);
+        fdb->fdb_entry.bv_id = translate_rid_to_vid(fdb->fdb_entry.bv_id, fdb->fdb_entry.switch_id, true);
 
-        translate_rid_to_vid_list(SAI_OBJECT_TYPE_FDB_ENTRY, fdb->fdb_entry.switch_id, fdb->attr_count, fdb->attr);
+        translate_rid_to_vid_list(SAI_OBJECT_TYPE_FDB_ENTRY, fdb->fdb_entry.switch_id, fdb->attr_count, fdb->attr, true);
 
         /*
          * Currently because of brcm bug, we need to install fdb entries in
