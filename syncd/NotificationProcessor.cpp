@@ -140,7 +140,7 @@ void NotificationProcessor::redisPutFdbEntryToAsicView(
         sai_object_id_t bv_id = fdb->fdb_entry.bv_id;
         sai_object_id_t port_oid = 0;
 
-        sai_fdb_flush_entry_type_t type = SAI_FDB_FLUSH_ENTRY_TYPE_ALL;
+        sai_fdb_flush_entry_type_t type = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
 
         for (uint32_t i = 0; i < fdb->attr_count; i++)
         {
