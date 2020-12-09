@@ -24,6 +24,9 @@ namespace saivs
 
         protected:
 
+            virtual sai_status_t create_cpu_qos_queues(
+                    _In_ sai_object_id_t port_id) override;
+
             virtual sai_status_t create_qos_queues_per_port(
                     _In_ sai_object_id_t port_id) override;
 

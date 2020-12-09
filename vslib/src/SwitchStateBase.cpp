@@ -1350,6 +1350,16 @@ sai_status_t SwitchStateBase::set_acl_capabilities()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+sai_status_t SwitchStateBase::create_cpu_qos_queues(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("implement in child class");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t SwitchStateBase::create_qos_queues_per_port(
         _In_ sai_object_id_t port_id)
 {
@@ -1486,6 +1496,7 @@ sai_status_t SwitchStateBase::create_port_dependencies(
     // attributes are not required since they will be set outside this function
 
     CHECK_STATUS(create_ingress_priority_groups_per_port(port_id));
+    CHECK_STATUS(create_cpu_qos_queues(port_id));
     CHECK_STATUS(create_qos_queues_per_port(port_id));
     CHECK_STATUS(create_scheduler_groups_per_port(port_id));
 
