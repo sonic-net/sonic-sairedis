@@ -573,9 +573,6 @@ sai_status_t Syncd::processFdbFlush(
         // update database right after fdb flush success (not in notification)
         // build artificial notification here to reuse code
 
-        sai_fdb_event_notification_data_t data;
-        memset(&data, 0, sizeof(data));
-
         sai_fdb_flush_entry_type_t type = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
 
         sai_object_id_t bvId = SAI_NULL_OBJECT_ID;
