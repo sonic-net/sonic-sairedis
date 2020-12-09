@@ -40,11 +40,13 @@ namespace syncd
              */
             sai_object_id_t translateRidToVid(
                     _In_ sai_object_id_t rid,
-                    _In_ sai_object_id_t switchVid);
+                    _In_ sai_object_id_t switchVid,
+                    _In_ bool translateRemoved = false);
 
             void translateRidToVid(
                     _Inout_ sai_object_list_t& objectList,
-                    _In_ sai_object_id_t switchVid);
+                    _In_ sai_object_id_t switchVid,
+                    _In_ bool translateRemoved = false);
 
             /*
              * This method is required to translate RID to VIDs when we are doing
@@ -56,7 +58,8 @@ namespace syncd
                     _In_ sai_object_type_t objectType,
                     _In_ sai_object_id_t switchVid,
                     _In_ uint32_t attrCount,
-                    _Inout_ sai_attribute_t *attrList);
+                    _Inout_ sai_attribute_t *attrList,
+                    _In_ bool translateRemoved = false);
 
             /**
              * @brief Check if RID exists on the ASIC DB.
@@ -66,7 +69,8 @@ namespace syncd
              * @return True if exists or SAI_NULL_OBJECT_ID, otherwise false.
              */
             bool checkRidExists(
-                    _In_ sai_object_id_t rid);
+                    _In_ sai_object_id_t rid,
+                    _In_ bool checkRemoved = false);
 
             sai_object_id_t translateVidToRid(
                     _In_ sai_object_id_t vid);
@@ -111,6 +115,7 @@ namespace syncd
 
             std::unordered_map<sai_object_id_t, sai_object_id_t> m_rid2vid;
             std::unordered_map<sai_object_id_t, sai_object_id_t> m_vid2rid;
+            std::unordered_map<sai_object_id_t, sai_object_id_t> m_removedRid2vid;
 
             std::shared_ptr<RedisClient> m_client;
     };
