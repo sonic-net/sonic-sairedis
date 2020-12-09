@@ -865,16 +865,38 @@ void RedisClient::processFlushEvent(
 
     SWSS_LOG_NOTICE("pattern %s, portStr %s", pattern.c_str(), portStr.c_str());
 
-    swss::RedisCommand command;
+    std::vector<int> vals; // 0 - flush dynamic, 1 - flush static
 
-    int flush_static = (type == SAI_FDB_FLUSH_ENTRY_TYPE_STATIC) ? 1 : 0;
+    switch (type)
+    {
+        case SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC:
+            vals.push_back(0);
+            break;
 
-    command.format(
-            "EVALSHA %s 3 %s %s %s",
-            m_fdbFlushSha.c_str(),
-            pattern.c_str(),
-            portStr.c_str(),
-            std::to_string(flush_static).c_str());
+        case SAI_FDB_FLUSH_ENTRY_TYPE_STATIC:
+            vals.push_back(1);
+            break;
 
-    swss::RedisReply r(m_dbAsic.get(), command);
+        case SAI_FDB_FLUSH_ENTRY_TYPE_ALL:
+            vals.push_back(0);
+            vals.push_back(1);
+            break;
+
+        default:
+            SWSS_LOG_THROW("unknow fdb flush entry type: %d", type);
+    }
+
+    for (int flush_static: vals)
+    {
+        swss::RedisCommand command;
+
+        command.format(
+                "EVALSHA %s 3 %s %s %s",
+                m_fdbFlushSha.c_str(),
+                pattern.c_str(),
+                portStr.c_str(),
+                std::to_string(flush_static).c_str());
+
+        swss::RedisReply r(m_dbAsic.get(), command);
+    }
 }
