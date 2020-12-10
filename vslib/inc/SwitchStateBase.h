@@ -60,6 +60,10 @@ namespace saivs
 
             virtual sai_status_t set_port_list();
 
+            virtual sai_status_t create_fabric_ports();
+
+            virtual sai_status_t set_fabric_port_list();
+
             virtual sai_status_t create_default_virtual_router();
 
             virtual sai_status_t create_default_stp_instance();
@@ -461,6 +465,8 @@ namespace saivs
 
             std::vector<sai_object_id_t> m_port_list;
             std::vector<sai_object_id_t> m_bridge_port_list_port_based;
+
+            std::vector<sai_object_id_t> m_fabric_port_list;
 
             std::vector<sai_acl_action_type_t> m_ingress_acl_action_list;
             std::vector<sai_acl_action_type_t> m_egress_acl_action_list;

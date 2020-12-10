@@ -416,6 +416,8 @@ namespace saivs
 
             std::shared_ptr<LaneMapContainer> m_laneMapContainer;
 
+            std::shared_ptr<LaneMapContainer> m_fabricLaneMapContainer;
+
             std::shared_ptr<ResourceLimiterContainer> m_resourceLimiterContainer;
 
             std::shared_ptr<CorePortIndexMapContainer> m_corePortIndexMapContainer;
