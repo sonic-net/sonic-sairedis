@@ -202,6 +202,9 @@ void Syncd::performStartupLogic()
 
     if (m_isWarmStart && (m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT))
     {
+        SWSS_LOG_WARN("override command line startType=%s via SAI_START_TYPE_WARM_BOOT",
+                CommandLineOptions::startTypeToString(m_commandLineOptions->m_startType).c_str());
+
         m_commandLineOptions->m_startType = SAI_START_TYPE_WARM_BOOT;
     }
 
