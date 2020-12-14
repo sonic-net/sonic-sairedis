@@ -4,15 +4,18 @@
 
 #include <memory>
 
-class PortMapParser
+namespace syncd
 {
-    private:
+    class PortMapParser
+    {
+        private:
 
-        PortMapParser() = delete;
-        ~PortMapParser() = delete;
+            PortMapParser() = delete;
+            ~PortMapParser() = delete;
 
-    public:
+        public:
 
-        static std::shared_ptr<PortMap> parsePortMap(
-                _In_ const std::string& portMapFile);
-};
+            static std::shared_ptr<PortMap> parsePortMap(
+                    _In_ const std::string& portMapFile);
+    };
+}
