@@ -356,7 +356,7 @@ bool MACsecManager::create_macsec_egress_sc(
 
     std::ostringstream ostream;
     ostream
-        << "ip link add link "
+        << "/sbin/ip link add link "
         << shellquote(attr.m_vethName)
         << " name "
         << shellquote(attr.m_macsecName)
@@ -388,7 +388,7 @@ bool MACsecManager::create_macsec_ingress_sc(
 
     std::ostringstream ostream;
     ostream
-        << "ip macsec add "
+        << "/sbin/ip macsec add "
         << shellquote(attr.m_macsecName)
         << " rx sci "
         << attr.m_sci
@@ -409,7 +409,7 @@ bool MACsecManager::create_macsec_egress_sa(
 
     std::ostringstream ostream;
     ostream
-        << "ip macsec add "
+        << "/sbin/ip macsec add "
         << shellquote(attr.m_macsecName)
         << " tx sa "
         << attr.m_an
@@ -440,7 +440,7 @@ bool MACsecManager::create_macsec_ingress_sa(
 
     std::ostringstream ostream;
     ostream
-        << "ip macsec add "
+        << "/sbin/ip macsec add "
         << shellquote(attr.m_macsecName)
         << " rx sci "
         << attr.m_sci
@@ -468,7 +468,7 @@ bool MACsecManager::delete_macsec_egress_sc(
     bool result = true;
     std::ostringstream ostream;
     ostream
-        << "ip link del link "
+        << "/sbin/ip link del link "
         << shellquote(attr.m_vethName)
         << " name "
         << shellquote(attr.m_macsecName)
@@ -493,7 +493,7 @@ bool MACsecManager::delete_macsec_ingress_sc(
 
     std::ostringstream ostream;
     ostream
-        << "ip macsec set "
+        << "/sbin/ip macsec set "
         << shellquote(attr.m_macsecName)
         << " rx sci "
         << attr.m_sci
@@ -518,7 +518,7 @@ bool MACsecManager::delete_macsec_egress_sa(
 
     std::ostringstream ostream;
     ostream
-        << "ip macsec set "
+        << "/sbin/ip macsec set "
         << shellquote(attr.m_macsecName)
         << " tx sa "
         << attr.m_an
@@ -544,7 +544,7 @@ bool MACsecManager::delete_macsec_ingress_sa(
 
     std::ostringstream ostream;
     ostream
-        << "ip macsec set "
+        << "/sbin/ip macsec set "
         << shellquote(attr.m_macsecName)
         << " rx sci "
         << attr.m_sci
@@ -676,7 +676,7 @@ bool MACsecManager::get_macsec_device_info(
 
     std::ostringstream ostream;
     ostream
-        << "ip macsec show "
+        << "/sbin/ip macsec show "
         << shellquote(macsecDevice);
 
     return exec(ostream.str(), info);
@@ -835,7 +835,7 @@ void MACsecManager::cleanup_macsec_device() const
 
     std::string macsecInfos;
 
-    if (!exec("ip macsec show", macsecInfos))
+    if (!exec("/sbin/ip macsec show", macsecInfos))
     {
         SWSS_LOG_THROW("Cannot show MACsec ports");
     }
@@ -858,7 +858,7 @@ void MACsecManager::cleanup_macsec_device() const
     while(std::regex_search(searchPos, macsecInfos.cend(), matches, pattern))
     {
         std::ostringstream ostream;
-        ostream << "ip link del " << matches[1].str();
+        ostream << "/sbin/ip link del " << matches[1].str();
 
         if (!exec(ostream.str()))
         {
