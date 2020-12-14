@@ -477,6 +477,15 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
             return SAI_STATUS_SUCCESS;
 
+        case SAI_REDIS_SWITCH_ATTR_RECORDING_FILENAME:
+
+            if (m_recorder)
+            {
+                m_recorder->setRecordingFilename(*attr);
+            }
+
+            return SAI_STATUS_SUCCESS;
+            
         default:
             break;
     }
