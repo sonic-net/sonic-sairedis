@@ -70,6 +70,8 @@ namespace saimeta
     {
         public:
 
+            using sairedis::SaiInterface::set; // name hidding
+
             Meta(
                     _In_ std::shared_ptr<SaiInterface> impl);
 

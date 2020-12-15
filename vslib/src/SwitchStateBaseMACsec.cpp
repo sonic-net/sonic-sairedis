@@ -601,7 +601,7 @@ sai_status_t SwitchStateBase::loadMACsecAttr(
         return loadMACsecAttrFromMACsecSA(objectId, attrCount, attrList, macsecAttr);
 
     default:
-        SWSS_LOG_ERROR("Wrong type %s", sai_serialize_object_type(objectType));
+        SWSS_LOG_ERROR("Wrong type %s", sai_serialize_object_type(objectType).c_str());
 
         break;
     }
@@ -746,66 +746,6 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
     }
 
     return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchStateBase::getMACsecAttr(
-        _In_ const std::string &serializedObjectId,
-        _In_ uint32_t attrCount,
-        _Out_ sai_attribute_t *attrList)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t i = 0; i < attrCount; i++)
-    {
-        if (attrList[i].id == SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL)
-        {
-            attrList[i].value.booldata = true;
-        }
-        else
-        {
-            auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_MACSEC, attrList[i].id);
-
-            SWSS_LOG_WARN("Cannot get attribute %s", meta->attridname);
-
-            return SAI_STATUS_NOT_IMPLEMENTED;
-        }
-    }
-
-    return SAI_STATUS_SUCCESS;
-}
-
-sai_status_t SwitchStateBase::getMACsecSAAttr(
-        _In_ const std::string &serializedObjectId,
-        _In_ uint32_t attrCount,
-        _Out_ sai_attribute_t *attrList)
-{
-    SWSS_LOG_ENTER();
-
-    CHECK_STATUS(get_internal(SAI_OBJECT_TYPE_MACSEC_SA, serializedObjectId, attrCount, attrList));
-
-    sai_status_t ret = SAI_STATUS_SUCCESS;
-    sai_object_id_t macsec_id = SAI_NULL_OBJECT_ID;
-
-    sai_deserialize_object_id(serializedObjectId, macsec_id);
-
-    for (uint32_t i = 0; i < attrCount; i++)
-    {
-        if (attrList[i].id == SAI_MACSEC_SA_ATTR_XPN)
-        {
-            ret = getMACsecSAPacketNumber(macsec_id, attrList[i]);
-        }
-        else if (attrList[i].id == SAI_MACSEC_SA_ATTR_MINIMUM_XPN)
-        {
-            ret = getMACsecSAPacketNumber(macsec_id, attrList[i]);
-        }
-
-        if (ret != SAI_STATUS_SUCCESS)
-        {
-            return ret;
-        }
-    }
-
-    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchStateBase::getMACsecSAPacketNumber(

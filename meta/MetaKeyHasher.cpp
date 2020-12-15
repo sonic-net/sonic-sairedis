@@ -132,7 +132,9 @@ static inline std::size_t sai_get_hash(
 
     if (re.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
     {
-        const uint32_t* ip6 = (const uint32_t*)re.destination.addr.ip6;
+        // cast is not good enough for arm (cast align)
+        uint32_t ip6[4];
+        memcpy(ip6, re.destination.addr.ip6, sizeof(ip6));
 
         return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
     }
@@ -152,7 +154,9 @@ static inline std::size_t sai_get_hash(
 
     if (ne.ip_address.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
     {
-        const uint32_t* ip6 = (const uint32_t*)ne.ip_address.addr.ip6;
+        // cast is not good enough for arm (cast align)
+        uint32_t ip6[4];
+        memcpy(ip6, ne.ip_address.addr.ip6, sizeof(ip6));
 
         return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
     }
@@ -195,7 +199,8 @@ std::size_t MetaKeyHasher::operator()(
 
     if (meta && meta->isobjectid)
     {
-        return k.objectkey.key.object_id;
+        // cast is required in case size_t is 4 bytes (arm)
+        return (std::size_t)k.objectkey.key.object_id;
     }
 
     switch (k.objecttype)

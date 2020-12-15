@@ -649,8 +649,10 @@ sai_status_t VirtualSwitchSaiInterface::create(
 
             if (warmBootState == nullptr)
             {
-                SWSS_LOG_WARN("warm boot was requested on switch %s, but warm boot state is NULL, will perform COLD boot",
+                SWSS_LOG_ERROR("warm boot was requested on switch %s, but warm boot state is NULL",
                         sai_serialize_object_id(switchId).c_str());
+
+                return SAI_STATUS_FAILURE;
             }
         }
 
@@ -1362,6 +1364,11 @@ bool VirtualSwitchSaiInterface::readWarmBootFile(
         return false;
     }
 
+    {
+        std::ifstream in(warmBootFile, std::ifstream::ate | std::ifstream::binary);
+        SWSS_LOG_NOTICE("%s file size: %zu", warmBootFile, (size_t)in.tellg());
+    }
+
     std::ifstream ifs;
 
     ifs.open(warmBootFile);
@@ -1467,7 +1474,7 @@ bool VirtualSwitchSaiInterface::readWarmBootFile(
 
     ifs.close();
 
-    SWSS_LOG_NOTICE("warm boot file %s stats:", warmBootFile);
+    SWSS_LOG_NOTICE("warm boot file %s stats, loaded switches: %zu", warmBootFile, m_warmBootState.size());
 
     for (auto& kvp: m_warmBootState)
     {

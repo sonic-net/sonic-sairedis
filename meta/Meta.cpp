@@ -55,14 +55,14 @@ sai_status_t Meta::initialize(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_SUCCESS;
+    return m_implementation->initialize(flags, service_method_table);
 }
 
 sai_status_t Meta::uninitialize(void)
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_SUCCESS;
+    return m_implementation->uninitialize();
 }
 
 void Meta::meta_warm_boot_notify()

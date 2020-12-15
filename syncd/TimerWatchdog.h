@@ -1,57 +1,55 @@
 #pragma once
 
+#include "swss/sal.h"
+
 #include <thread>
 #include <atomic>
+#include <functional>
 
-#ifndef _In_
-#define _In_ 
-#endif
-
-class TimerWatchdog
+namespace syncd
 {
-    typedef void (*Callback)(
-            _In_ int64_t span);
+    class TimerWatchdog
+    {
+        public:
 
-    public:
+            TimerWatchdog(
+                    _In_ int64_t warnTimespan);
 
-    TimerWatchdog(
-            _In_ int64_t warnTimespan);
+            virtual ~TimerWatchdog();
 
-    virtual ~TimerWatchdog();
+        public:
 
-    public:
+            void setStartTime();
 
-    void setStartTime();
+            void setEndTime();
 
-    void setEndTime();
+            void setCallback(
+                    _In_ std::function<void(uint64_t)> callback);
 
-    void setCallback(
-            _In_ Callback callback);
+            /**
+             * @brief Gets timestamp since epoch.
+             *
+             * @return Time since epoch in microseconds.
+             */
+            static int64_t getTimeSinceEpoch();
 
-    /**
-     * @brief Gets timestamp since epoch.
-     *
-     * @return Time since epoch in microseconds.
-     */
-    static int64_t getTimeSinceEpoch();
+        private:
 
-    private:
+            void threadFunction();
 
-    void threadFunction();
+        private:
 
-    private: 
+            volatile bool m_run;
 
-    volatile bool m_run;
+            // all values are in microseconds
 
-    // all values are in microseconds
+            std::atomic_int_fast64_t m_warnTimespan;
+            std::atomic_int_fast64_t m_startTimestamp;
+            std::atomic_int_fast64_t m_endTimestamp;
+            std::atomic_int_fast64_t m_lastCheckTimestamp;
 
-    std::atomic_int_fast64_t m_warnTimespan;
-    std::atomic_int_fast64_t m_startTimestamp;
-    std::atomic_int_fast64_t m_endTimestamp;
-    std::atomic_int_fast64_t m_lastCheckTimestamp;
+            std::shared_ptr<std::thread> m_thread;
 
-    std::shared_ptr<std::thread> m_thread;
-
-    Callback m_callback;
-
-};
+            std::function<void(uint64_t)> m_callback;
+    };
+}

@@ -153,7 +153,7 @@ void Sai::channelOpSetReadOnlyAttribute(
 
     sai_object_meta_key_t meta_key = { .objecttype = ot, .objectkey = { .key = { .object_id = object_id } } };
 
-    status = info->set(&meta_key, &attr);
+    status = m_meta->set(meta_key, &attr); // name hidden in base class (but same name overloaded in derived class)
 
     if (status != SAI_STATUS_SUCCESS)
     {

@@ -12,6 +12,9 @@ extern "C" {
 #include "swss/logger.h"
 #include "meta/sai_serialize.h"
 
+#include "meta/Meta.h"
+#include "syncd/VendorSai.h"
+
 #include <iostream>
 #include <map>
 #include <vector>
@@ -47,7 +50,7 @@ struct cmdOptions
     sai_log_level_t saiApiLogLevel;
 };
 
-cmdOptions gOptions;
+static cmdOptions gOptions;
 
 typedef std::chrono::duration<double, std::ratio<1>> second_t;
 
@@ -66,7 +69,8 @@ typedef std::chrono::duration<double, std::ratio<1>> second_t;
  *
  * @return Number of calls performed to SAI.
  */
-int discover(
+static int discover(
+        _In_ std::shared_ptr<sairedis::SaiInterface> sai,
         _In_ sai_object_id_t id,
         _Inout_ std::map<sai_object_id_t, std::map<std::string, std::string>> &discovered)
 {
@@ -84,7 +88,7 @@ int discover(
         return callCount;
     }
 
-    sai_object_type_t ot = sai_object_type_query(id);
+    sai_object_type_t ot = sai->objectTypeQuery(id);
 
     if (ot == SAI_OBJECT_TYPE_NULL)
     {
@@ -101,8 +105,6 @@ int discover(
     discovered[id] = {};
 
     const sai_object_type_info_t *info = sai_metadata_all_object_type_infos[ot];
-
-    sai_object_meta_key_t mk = { .objecttype = ot, .objectkey = { .key = { .object_id = id } } };
 
     for (int idx = 0; info->attrmetadata[idx] != NULL; ++idx)
     {
@@ -138,7 +140,7 @@ int discover(
 
             callCount++;
 
-            sai_status_t status = info->get(&mk, 1, &attr);
+            sai_status_t status = sai->get(ot, id, 1, &attr);
 
             if (status != SAI_STATUS_SUCCESS)
             {
@@ -178,7 +180,7 @@ int discover(
                     md->attridname,
                     discovered[id][md->attridname].c_str());
 
-            callCount += discover(attr.value.oid, discovered); // recursion
+            callCount += discover(sai, attr.value.oid, discovered); // recursion
         }
         else if (md->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_LIST)
         {
@@ -192,7 +194,7 @@ int discover(
 
             callCount++;
 
-            sai_status_t status = info->get(&mk, 1, &attr);
+            sai_status_t status = sai->get(ot, id, 1, &attr);
 
             if (status != SAI_STATUS_SUCCESS)
             {
@@ -228,7 +230,7 @@ int discover(
 
             for (uint32_t i = 0; i < attr.value.objlist.count; ++i)
             {
-                callCount += discover(attr.value.objlist.list[i], discovered); // recursion
+                callCount += discover(sai, attr.value.objlist.list[i], discovered); // recursion
             }
         }
         else
@@ -298,7 +300,7 @@ int discover(
 
             callCount++;
 
-            sai_status_t status = info->get(&mk, 1, &attr);
+            sai_status_t status = sai->get(ot, id, 1, &attr);
 
             if (status == SAI_STATUS_SUCCESS)
             {
@@ -322,11 +324,11 @@ int discover(
     return callCount;
 }
 
-std::map<std::string, std::string> gProfileMap;
+static std::map<std::string, std::string> gProfileMap;
 
-std::map<std::string, std::string>::iterator gProfileIter = gProfileMap.begin();
+static std::map<std::string, std::string>::iterator gProfileIter = gProfileMap.begin();
 
-const char* profile_get_value(
+static const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
 {
@@ -351,7 +353,7 @@ const char* profile_get_value(
     return it->second.c_str();
 }
 
-int profile_get_next_value(
+static int profile_get_next_value(
         _In_ sai_switch_profile_id_t profile_id,
         _Out_ const char** variable,
         _Out_ const char** value)
@@ -388,44 +390,12 @@ int profile_get_next_value(
     return 0;
 }
 
-sai_service_method_table_t test_services = {
+static sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
 
-void check_mandatory_attributes(
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    auto info = sai_metadata_all_object_type_infos[SAI_OBJECT_TYPE_SWITCH];
-
-    for (int idx = 0; info->attrmetadata[idx] != NULL; ++idx)
-    {
-        auto md = info->attrmetadata[idx];
-
-        if (!SAI_HAS_FLAG_MANDATORY_ON_CREATE(md->flags))
-        {
-            continue;
-        }
-
-        /*
-         * This attribute is mandatory on create, let's see if it passed.
-         */
-
-        auto attr = sai_metadata_get_attr_by_id(md->attrid, attr_count, attr_list);
-
-        if (attr == NULL)
-        {
-            SWSS_LOG_ERROR("missing mandatory attribute: %s", md->attridname);
-
-            exit(EXIT_FAILURE);
-        }
-    }
-}
-
-void handleProfileMap(
+static void handleProfileMap(
         _In_ const std::string& profileMapFile)
 {
     SWSS_LOG_ENTER();
@@ -471,7 +441,7 @@ void handleProfileMap(
     }
 }
 
-void printUsage()
+static void printUsage()
 {
     SWSS_LOG_ENTER();
 
@@ -493,7 +463,7 @@ void printUsage()
     std::cout << "        Print out this message" << std::endl << std::endl;
 }
 
-void handleCmdLine(int argc, char **argv)
+static void handleCmdLine(int argc, char **argv)
 {
     SWSS_LOG_ENTER();
 
@@ -578,7 +548,11 @@ int main(int argc, char **argv)
 
     handleProfileMap(gOptions.profileMapFile);
 
-    sai_status_t status = sai_api_initialize(0, (sai_service_method_table_t*)&test_services);
+    auto vendorSai = std::make_shared<syncd::VendorSai>();
+
+    auto sai = std::make_shared<saimeta::Meta>(vendorSai);
+
+    sai_status_t status = sai->initialize(0, (sai_service_method_table_t*)&test_services);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -590,11 +564,8 @@ int main(int argc, char **argv)
 
     for (int api = 1; api < SAI_API_MAX; api++)
     {
-        sai_log_set((sai_api_t)api, gOptions.saiApiLogLevel);
+        sai->logSet((sai_api_t)api, gOptions.saiApiLogLevel);
     }
-
-    sai_apis_t apis;
-    sai_metadata_apis_query(sai_api_query, &apis);
 
     sai_object_id_t switch_id;
 
@@ -605,11 +576,9 @@ int main(int argc, char **argv)
     attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attrs[0].value.booldata = gOptions.initSwitch;
 
-    check_mandatory_attributes(AttributesCount, attrs);
-
     SWSS_LOG_NOTICE("creating switch");
 
-    status = sai_metadata_sai_switch_api->create_switch(&switch_id, AttributesCount, attrs);
+    status = sai->create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, AttributesCount, attrs);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -619,7 +588,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    if (sai_object_type_query(switch_id) != SAI_OBJECT_TYPE_SWITCH)
+    if (sai->objectTypeQuery(switch_id) != SAI_OBJECT_TYPE_SWITCH)
     {
         SWSS_LOG_ERROR("create switch returned invalid oid: %s",
                 sai_serialize_object_id(switch_id).c_str());
@@ -631,7 +600,7 @@ int main(int argc, char **argv)
 
     auto m_start = std::chrono::high_resolution_clock::now();
 
-    int callCount = discover(switch_id, discovered);
+    int callCount = discover(sai, switch_id, discovered);
 
     auto end = std::chrono::high_resolution_clock::now();
 
@@ -644,7 +613,7 @@ int main(int argc, char **argv)
 
     for (const auto &p: discovered)
     {
-        map[sai_object_type_query(p.first)]++;
+        map[sai->objectTypeQuery(p.first)]++;
     }
 
     for (const auto &p: map)
@@ -662,7 +631,7 @@ int main(int argc, char **argv)
         {
             for (const auto &p: discovered)
             {
-                sai_object_type_t ot = sai_object_type_query(p.first);
+                sai_object_type_t ot = sai->objectTypeQuery(p.first);
 
                 if (ot != o.first)
                 {
@@ -685,7 +654,7 @@ int main(int argc, char **argv)
 
     SWSS_LOG_NOTICE("remove switch");
 
-    status = sai_metadata_sai_switch_api->remove_switch(switch_id);
+    status = sai->remove(SAI_OBJECT_TYPE_SWITCH, switch_id);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -694,7 +663,7 @@ int main(int argc, char **argv)
                 sai_serialize_status(status).c_str());
     }
 
-    status = sai_api_uninitialize();
+    status = sai->uninitialize();
 
     if (status != SAI_STATUS_SUCCESS)
     {

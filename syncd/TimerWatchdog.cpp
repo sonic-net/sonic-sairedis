@@ -4,6 +4,8 @@
 
 #include <chrono>
 
+using namespace syncd;
+
 TimerWatchdog::TimerWatchdog(
         _In_ int64_t warnTimespan):
     m_run(true),
@@ -55,7 +57,7 @@ void TimerWatchdog::setEndTime()
 }
 
 void TimerWatchdog::setCallback(
-        _In_ Callback callback)
+        _In_ std::function<void(uint64_t)> callback)
 {
     SWSS_LOG_ENTER();
 

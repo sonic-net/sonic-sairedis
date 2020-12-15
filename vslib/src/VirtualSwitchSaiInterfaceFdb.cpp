@@ -54,12 +54,29 @@ bool VirtualSwitchSaiInterface::doesFdbEntryNotMatchFlushAttr(
 
             case SAI_FDB_FLUSH_ATTR_ENTRY_TYPE:
 
-                // TODO static/dynamic/all
-
-                // remove from list all entries not matching type
-                if (fdb_attrs.at("SAI_FDB_ENTRY_ATTR_TYPE")->getAttr()->value.s32 != attr.value.s32)
+                switch (attr.value.s32)
                 {
-                    return true;
+                    case SAI_FDB_FLUSH_ENTRY_TYPE_ALL:
+                        // if flush type is all, we accept both dynamic and static entries
+                        break;
+
+                    case SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC:
+
+                        if (fdb_attrs.at("SAI_FDB_ENTRY_ATTR_TYPE")->getAttr()->value.s32 != SAI_FDB_ENTRY_TYPE_DYNAMIC)
+                            return true;
+
+                        break;
+
+                    case SAI_FDB_FLUSH_ENTRY_TYPE_STATIC:
+
+                        if (fdb_attrs.at("SAI_FDB_ENTRY_ATTR_TYPE")->getAttr()->value.s32 != SAI_FDB_ENTRY_TYPE_STATIC)
+                            return true;
+
+                        break;
+
+                    default:
+
+                        SWSS_LOG_THROW("unknown SAI_FDB_FLUSH_ATTR_ENTRY_TYPE: %d", attr.value.s32);
                 }
 
                 break;
