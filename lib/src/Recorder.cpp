@@ -106,7 +106,7 @@ bool Recorder::setRecordingFilename(
     {
         m_recordingFileName = "sairedis.rec";
 
-        SWSS_LOG_NOTICE("setting recording filename to: %s", m_recordingFileName.c_str());
+        SWSS_LOG_NOTICE("setting recording filename to default filename: %s", m_recordingFileName.c_str());
 
         requestLogRotate();
 
@@ -137,7 +137,9 @@ bool Recorder::setRecordingFilename(
         stopRecording();
     }
 
-    m_recordingOutputDirectory = filename;
+    m_recordingFileName = filename;
+
+    SWSS_LOG_NOTICE("setting recording filename : %s", m_recordingFileName.c_str());
 
     /// Start recording with new file
     if (m_enabled)
