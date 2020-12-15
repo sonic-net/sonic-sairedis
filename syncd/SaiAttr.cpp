@@ -25,6 +25,22 @@ SaiAttr::SaiAttr(
     m_attr.id = m_meta->attrid;
 
     sai_deserialize_attr_value(str_attr_value, *m_meta, m_attr, false);
+
+    if (m_meta->isenum && m_meta->enummetadata->ignorevalues)
+    {
+        // if attribute is enum, and we are loading some older SAI values it
+        // may happen that we get depreacated/ignored value string and we need
+        // to update it to current one to not cause attribute compare confusion
+        // since they are compared by string value
+
+        auto val = sai_serialize_enum(m_attr.value.s32, m_meta->enummetadata);
+
+        SWSS_LOG_NOTICE("translating depreacated/ignore enum %s to %s",
+                m_str_attr_value.c_str(),
+                val.c_str());
+
+        m_str_attr_value = val;
+    }
 }
 
 SaiAttr::~SaiAttr()
