@@ -2143,11 +2143,21 @@ void sai_deserialize_enum(
         }
     }
 
-    // for backward compatibility from SAI v1.6
-    if (s == "SAI_NEXT_HOP_GROUP_TYPE_ECMP")
+    // check depreacated values if present
+    if (meta->ignorevaluesnames)
     {
-        value = SAI_NEXT_HOP_GROUP_TYPE_ECMP;
-        return;
+        // this can happen when we deserialize older SAI values
+
+        for (size_t i = 0; meta->ignorevaluesnames[i] != NULL; i++)
+        {
+            if (strcmp(s.c_str(), meta->ignorevaluesnames[i]) == 0)
+            {
+                SWSS_LOG_NOTICE("translating depreacated/ignored enum value: %s", s.c_str());
+
+                value = meta->ignorevalues[i];
+                return;
+            }
+        }
     }
 
     SWSS_LOG_WARN("enum %s not found in enum %s", s.c_str(), meta->name);
