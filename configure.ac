@@ -81,7 +81,7 @@ CFLAGS_COMMON+=" -ansi"
 CFLAGS_COMMON+=" -fPIC"
 CFLAGS_COMMON+=" -std=c++11"
 CFLAGS_COMMON+=" -Wall"
-CFLAGS_COMMON+=" -Wcast-align=strict"
+CFLAGS_COMMON+=" -Wcast-align"
 CFLAGS_COMMON+=" -Wcast-qual"
 CFLAGS_COMMON+=" -Wconversion"
 CFLAGS_COMMON+=" -Wdisabled-optimization"
@@ -118,6 +118,15 @@ CFLAGS_COMMON+=" -Wvariadic-macros"
 CFLAGS_COMMON+=" -Wwrite-strings"
 CFLAGS_COMMON+=" -Wno-switch-default"
 CFLAGS_COMMON+=" -Wconversion"
+
+SAVED_FLAGS="$CXXFLAGS"
+CXXFLAGS="-Wcast-align=strict"
+AC_MSG_CHECKING([whether CXX supports -Wcast-align=strict])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])],
+    [AC_MSG_RESULT([yes])]
+    [AC_SUBST([CFLAGS_COMMON], ["${CFLAGS_COMMON} -Wcast-align=strict"])],
+    [AC_MSG_RESULT([no])])
+CXXFLAGS="$SAVED_FLAGS"
 
 AC_SUBST(CFLAGS_COMMON)
 
