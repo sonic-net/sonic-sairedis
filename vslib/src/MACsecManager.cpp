@@ -5,6 +5,8 @@
 #include <swss/logger.h>
 #include <swss/exec.h>
 
+#include <unistd.h>
+
 #include <regex>
 #include <cstring>
 #include <system_error>
@@ -832,6 +834,12 @@ size_t MACsecManager::get_macsec_sa_count(
 void MACsecManager::cleanup_macsec_device() const
 {
     SWSS_LOG_ENTER();
+
+    if (access("/sbin/ip", F_OK) == -1)
+    {
+        SWSS_LOG_WARN("file /sbin/ip not accessible, skipping");
+        return;
+    }
 
     std::string macsecInfos;
 
