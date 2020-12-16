@@ -35,11 +35,14 @@ SaiAttr::SaiAttr(
 
         auto val = sai_serialize_enum(m_attr.value.s32, m_meta->enummetadata);
 
-        SWSS_LOG_NOTICE("translating depreacated/ignore enum %s to %s",
-                m_str_attr_value.c_str(),
-                val.c_str());
+        if (val != m_str_attr_value)
+        {
+            SWSS_LOG_NOTICE("translating depreacated/ignore enum %s to %s",
+                    m_str_attr_value.c_str(),
+                    val.c_str());
 
-        m_str_attr_value = val;
+            m_str_attr_value = val;
+        }
     }
 }
 
