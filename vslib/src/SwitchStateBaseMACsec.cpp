@@ -541,7 +541,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     macsecAttr.m_an = attr->value.u8;
 
-    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_ENCRYPTION_ENABLE, attrCount, attrList);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_ENCRYPTION_ENABLE, attrCount, attrList);
 
     macsecAttr.m_encryptionEnable = attr->value.booldata;
 
@@ -549,7 +549,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     macsecAttr.m_sak = sai_serialize_hex_binary(attr->value.macsecsak);
 
-    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SAK_256_BITS, attrCount, attrList);
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SALT, attrCount, attrList);
 
     if (!attr->value.booldata)
     {
