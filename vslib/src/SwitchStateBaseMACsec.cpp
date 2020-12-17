@@ -550,7 +550,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     macsecAttr.m_sak = sai_serialize_hex_binary(attr->value.macsecsak);
 
     //SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SAK_256_BITS, attrCount, attrList);
-    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SALT, attrCount, attrList);
+    SWSS_LOG_THROW("SAI_MACSEC_SA_ATTR_256_BITS is not available in SAI 1.7.1, please help fix this");
 
     if (!attr->value.booldata)
     {
