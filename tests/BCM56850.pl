@@ -613,8 +613,6 @@ sub test_depreacated_enums
     start_syncd_warm;
 
     play "non_depreacated.rec", 0;
-
-    exit;
 }
 
 # RUN TESTS
