@@ -847,7 +847,7 @@ void MACsecManager::cleanup_macsec_device() const
     {
         // this is workaround, there was exception thrown here, and it probably
         // suggest that, ip command is in place, but don't support "macsec"
-        SWSS_LOG_ERROR("Cannot show MACsec ports");
+        SWSS_LOG_WARN("Cannot show MACsec ports");
         return;
     }
 
