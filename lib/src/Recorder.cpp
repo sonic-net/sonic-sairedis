@@ -22,12 +22,12 @@ std::vector<swss::FieldValueTuple> serialize_counter_id_list(
         _In_ const sai_stat_id_t *counter_id_list);
 
 #define MUTEX() std::lock_guard<std::mutex> _lock(m_mutex)
-
+#define DEFAULT_RECORDING_FILE_NAME "sairedis.rec"
 Recorder::Recorder()
 {
     SWSS_LOG_ENTER();
 
-    m_recordingFileName = "sairedis.rec";
+    m_recordingFileName = DEFAULT_RECORDING_FILE_NAME;
 
     m_recordingOutputDirectory = ".";
 
@@ -104,7 +104,7 @@ bool Recorder::setRecordingFilename(
 
     if (attr.value.s8list.count == 0)
     {
-        m_recordingFileName = "sairedis.rec";
+        m_recordingFileName = DEFAULT_RECORDING_FILE_NAME;
 
         SWSS_LOG_NOTICE("setting recording filename to default filename: %s", m_recordingFileName.c_str());
 

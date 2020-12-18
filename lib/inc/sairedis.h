@@ -201,7 +201,7 @@ typedef enum _sai_redis_switch_attr_t
      *
      * @type sai_s8_list_t
      * @flags CREATE_AND_SET
-     * @default empty
+     * @default sairedis.rec
      */
     SAI_REDIS_SWITCH_ATTR_RECORDING_FILENAME,
 
