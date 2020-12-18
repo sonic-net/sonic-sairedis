@@ -2000,7 +2000,7 @@ sai_status_t Meta::meta_validate_stats(
     {
         if (sai_metadata_get_enum_value_name(info->statenum, counter_ids[idx]) == nullptr)
         {
-            SWSS_LOG_ERROR("vlaue %d is not in range on %s", counter_ids[idx], info->statenum->name);
+            SWSS_LOG_ERROR("value %d is not in range on %s", counter_ids[idx], info->statenum->name);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -2010,7 +2010,7 @@ sai_status_t Meta::meta_validate_stats(
 
     if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2105,9 +2105,9 @@ sai_status_t Meta::bulkRemove(
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(object_id);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2164,9 +2164,9 @@ sai_status_t Meta::bulkRemove(
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(route_entry);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2223,9 +2223,9 @@ sai_status_t Meta::bulkRemove(
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(nat_entry);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2282,9 +2282,9 @@ sai_status_t Meta::bulkRemove(
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(fdb_entry);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2344,9 +2344,9 @@ sai_status_t Meta::bulkSet(
     PARAMETER_CHECK_IF_NOT_NULL(object_id);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2402,9 +2402,9 @@ sai_status_t Meta::bulkSet(
     PARAMETER_CHECK_IF_NOT_NULL(route_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2460,9 +2460,9 @@ sai_status_t Meta::bulkSet(
     PARAMETER_CHECK_IF_NOT_NULL(nat_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2518,9 +2518,9 @@ sai_status_t Meta::bulkSet(
     PARAMETER_CHECK_IF_NOT_NULL(fdb_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2595,9 +2595,9 @@ sai_status_t Meta::bulkCreate(
 
     PARAMETER_CHECK_IF_NOT_NULL(object_id);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2664,9 +2664,9 @@ sai_status_t Meta::bulkCreate(
     PARAMETER_CHECK_IF_NOT_NULL(attr_count);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2724,9 +2724,9 @@ sai_status_t Meta::bulkCreate(
     PARAMETER_CHECK_IF_NOT_NULL(attr_count);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -2783,9 +2783,9 @@ sai_status_t Meta::bulkCreate(
     PARAMETER_CHECK_IF_NOT_NULL(attr_count);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
 
-    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_stats_mode_t, mode) == nullptr)
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_bulk_op_error_mode_t, mode) == nullptr)
     {
-        SWSS_LOG_ERROR("mode vlaue %d is not in range on %s", mode, sai_metadata_enum_sai_stats_mode_t.name);
+        SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
