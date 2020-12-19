@@ -63,9 +63,11 @@ steps:
 - script: |
     ./autogen.sh
     fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs
-    make check
     cp ../*.deb .
   displayName: "Compile sonic sairedis"
+- script: |
+    make check
+  displayName: "Run sonic sairedis unit tests"
 - publish: $(System.DefaultWorkingDirectory)/
   artifact: sonic-sairedis
   displayName: "Archive sonic sairedis debian packages"
