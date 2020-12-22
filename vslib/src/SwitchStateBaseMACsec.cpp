@@ -453,6 +453,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
 
     macsecAttr.m_sendSci = attr->value.booldata;
 
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_ENCRYPTION_ENABLE, attrCount, attrList);
+
+    macsecAttr.m_encryptionEnable = attr->value.booldata;
+
+
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_FLOW_ID, attrCount, attrList);
 
     auto flow_id = attr->value.oid;
@@ -488,16 +493,20 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SC_ID, attrCount, attrList);
 
-    // Find SCI and MACsec flow
-    std::vector<sai_attribute_t> attrs(2);
+    // Find MACsec SC attributes
+    std::vector<sai_attribute_t> attrs(4);
     attrs[0].id = SAI_MACSEC_SC_ATTR_FLOW_ID;
     attrs[1].id = SAI_MACSEC_SC_ATTR_MACSEC_SCI;
+    attrs[2].id = SAI_MACSEC_SC_ATTR_ENCRYPTION_ENABLE;
+    attrs[3].id = SAI_MACSEC_SC_ATTR_MACSEC_CIPHER_SUITE;
 
     CHECK_STATUS(get(SAI_OBJECT_TYPE_MACSEC_SC, attr->value.oid, static_cast<uint32_t>(attrs.size()), attrs.data()));
 
     auto flow_id = attrs[0].value.oid;
     auto sci = attrs[1].value.u64;
     std::stringstream sciHexStr;
+    macsecAttr.m_encryptionEnable = attrs[2].value.booldata;
+    bool is_sak_128_bit = (attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_128 || attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_128) ? true : false;
 
     sciHexStr << std::setw(MACSEC_SCI_LENGTH) << std::setfill('0');
 
@@ -541,18 +550,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     macsecAttr.m_an = attr->value.u8;
 
-    //SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_ENCRYPTION_ENABLE, attrCount, attrList);
-    //macsecAttr.m_encryptionEnable = attr->value.booldata;
-    SWSS_LOG_THROW("SAI_MACSEC_SA_ATTR_ENCRYPTION_ENABLE is not available in SAI 1.7.1, please help fix this");
-
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SAK, attrCount, attrList);
 
     macsecAttr.m_sak = sai_serialize_hex_binary(attr->value.macsecsak);
 
-    //SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SAK_256_BITS, attrCount, attrList);
-    SWSS_LOG_THROW("SAI_MACSEC_SA_ATTR_256_BITS is not available in SAI 1.7.1, please help fix this");
-
-    if (!attr->value.booldata)
+    if (is_sak_128_bit)
     {
         macsecAttr.m_sak = macsecAttr.m_sak.substr(macsecAttr.m_sak.length() / 2, macsecAttr.m_sak.length() / 2);
     }
