@@ -11,7 +11,7 @@ jobs:
 - job:
   displayName: "amd64"
   pool:
-    vmImage: 'ubuntu-latest'
+    vmImage: 'ubuntu-20.04'
 
   container:
     image: sonicdev-microsoft.azurecr.io:443/sonic-slave-buster:latest
