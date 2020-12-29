@@ -80,7 +80,7 @@ jobs:
   pool: sonic
 
   container:
-    image: sonicdev-microsoft.azurecr.io:443/sonic-slave-buster-arm64-test:latest
+    image: sonicdev-microsoft.azurecr.io:443/sonic-slave-buster-arm64:latest
 
   steps:
   - script: |
@@ -146,7 +146,7 @@ jobs:
   pool: sonic
 
   container:
-    image: sonicdev-microsoft.azurecr.io:443/sonic-slave-buster-armhf-test:latest
+    image: sonicdev-microsoft.azurecr.io:443/sonic-slave-buster-armhf:latest
 
   steps:
   - script: |
