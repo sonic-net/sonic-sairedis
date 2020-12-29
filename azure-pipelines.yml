@@ -73,7 +73,9 @@ jobs:
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis
     displayName: "Archive sonic sairedis debian packages"
+
 - job:
+  timeoutInMinutes: 120
   displayName: "arm64"
   pool: sonic
 
@@ -128,7 +130,7 @@ jobs:
     submodules: true
   - script: |
       ./autogen.sh
-      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs
+      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc)
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
@@ -136,4 +138,70 @@ jobs:
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis.arm64
+    displayName: "Archive sonic sairedis debian packages"
+
+- job:
+  timeoutInMinutes: 120
+  displayName: "armhf"
+  pool: sonic
+
+  container:
+    image: sonicdev-microsoft.azurecr.io:443/sonic-slave-buster-armhf-test:latest
+
+  steps:
+  - script: |
+      sudo apt-get install -qq -y \
+        qtbase5-dev \
+        libdbus-glib-1-2 \
+        libdbus-glib-1-dev \
+        libpcsclite-dev \
+        docbook-to-man \
+        docbook-utils \
+        aspell-en \
+        libhiredis0.14 \
+        libhiredis-dev \
+        libnl-3-dev \
+        libnl-genl-3-dev \
+        libnl-route-3-dev \
+        libnl-nf-3-dev \
+        libnl-cli-3-dev \
+        swig3.0 \
+        libpython2.7-dev \
+        libzmq5 libzmq3-dev \
+        libboost-all-dev
+
+      sudo apt-get install -y redis-server
+      sudo sed -ri 's/^# unixsocket/unixsocket/' /etc/redis/redis.conf
+      sudo sed -ri 's/^unixsocketperm .../unixsocketperm 777/' /etc/redis/redis.conf
+      sudo sed -ri 's/redis-server.sock/redis.sock/' /etc/redis/redis.conf
+      sudo service redis-server start
+
+      sudo apt-get install -y rsyslog
+      sudo service rsyslog start
+
+    displayName: "Install dependencies"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: 9
+      artifacts: sonic-swss-common.armhf
+    displayName: "Download sonic swss common deb packages"
+  - script: |
+      sudo dpkg -i sonic-swss-common.armhf/libswsscommon_1.0.0_armhf.deb
+      sudo dpkg -i sonic-swss-common.armhf/libswsscommon-dev_1.0.0_armhf.deb
+    workingDirectory: $(Pipeline.Workspace)
+    displayName: "Install sonic swss Common"
+  - checkout: self
+    submodules: true
+  - script: |
+      ./autogen.sh
+      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc)
+      cp ../*.deb .
+    displayName: "Compile sonic sairedis"
+  - script: |
+      make check || true
+    displayName: "Run sonic sairedis unit tests"
+  - publish: $(System.DefaultWorkingDirectory)/
+    artifact: sonic-sairedis.armhf
     displayName: "Archive sonic sairedis debian packages"
