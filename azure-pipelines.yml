@@ -75,7 +75,7 @@ jobs:
     displayName: "Archive sonic sairedis debian packages"
 
 - job:
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   displayName: "arm64"
   pool: sonic
 
@@ -141,7 +141,7 @@ jobs:
     displayName: "Archive sonic sairedis debian packages"
 
 - job:
-  timeoutInMinutes: 120
+  timeoutInMinutes: 180
   displayName: "armhf"
   pool: sonic
 
