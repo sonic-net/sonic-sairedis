@@ -50,6 +50,8 @@ extern void clear_local_state();
 extern void setRecording(bool record);
 extern sai_status_t setRecordingOutputDir(
         _In_ const sai_attribute_t &attr);
+extern sai_status_t setRecordingOutputFile(
+        _In_ const sai_attribute_t &attr);
 extern void recordLine(std::string s);
 extern std::string joinFieldValues(
         _In_ const std::vector<swss::FieldValueTuple> &values);

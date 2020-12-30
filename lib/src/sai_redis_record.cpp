@@ -3,6 +3,7 @@
 #include <unistd.h>
 
 std::string logOutputDir = ".";
+std::string logOutputFile = "sairedis.rec";
 
 std::string getTimestamp()
 {
@@ -80,7 +81,7 @@ void startRecording()
 {
     SWSS_LOG_ENTER();
 
-    recfile = logOutputDir + "/sairedis.rec";
+    recfile = logOutputDir + "/" + logOutputFile ;
 
     recording.open(recfile, std::ofstream::out | std::ofstream::app);
 
@@ -186,4 +187,47 @@ sai_status_t setRecordingOutputDir(
     g_logrotate = true;
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t setRecordingOutputFile(
+    _In_ const sai_attribute_t &attr)
+{
+     SWSS_LOG_ENTER();
+
+    if (attr.value.s8list.count == 0)
+    {
+        SWSS_LOG_NOTICE("setting recording filename to default filename: %s", logOutputFile.c_str());
+
+        return true;
+    }
+
+    if (attr.value.s8list.list == NULL)
+    {
+        SWSS_LOG_ERROR("list pointer is NULL");
+
+        return false;
+    }
+
+    size_t len = strnlen((const char *)attr.value.s8list.list, attr.value.s8list.count);
+
+    if (len != (size_t)attr.value.s8list.count)
+    {
+        SWSS_LOG_ERROR("count (%u) is different than strnlen (%zu)", attr.value.s8list.count, len);
+
+        return false;
+    }
+
+    std::string filename((const char*)attr.value.s8list.list, len);
+
+    /// Stop the recording with old file before updating the filename
+    stopRecording();
+
+    logOutputFile = filename;
+
+    SWSS_LOG_NOTICE("setting recording filename : %s", logOutputFile.c_str());
+
+    /// Start recording with new file
+    startRecording();
+    return SAI_STATUS_SUCCESS;
+
 }

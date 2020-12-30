@@ -123,6 +123,18 @@ typedef enum _sai_redis_switch_attr_t
      */
     SAI_REDIS_SWITCH_ATTR_SYNC_MODE,
 
+    /**
+     * @brief Recording log filename.
+     *
+     * Default valus is sairedis.rec
+     *
+     * @type sai_s8_list_t
+     * @flags CREATE_AND_SET
+     * @default sairedis.rec
+     */
+    SAI_REDIS_SWITCH_ATTR_RECORDING_FILENAME,
+
+
 } sai_redis_switch_attr_t;
 
 /*
