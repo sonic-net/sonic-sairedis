@@ -23,12 +23,10 @@ Install dependencies:
 
     sudo apt-get install redis-server -t trusty
     sudo apt-get install libhiredis0.13 -t trusty
-    
+
 Install building dependencies:
 
-    sudo apt-get install libtool
-    sudo apt-get install autoconf automake
-    sudo apt-get install dh-exec
+    sudo apt-get install libtool autoconf dh-exec
 
 There are a few different ways you can install sairedis.
 
@@ -42,6 +40,8 @@ For your convenience, you can install prepared packages on Debian Jessie:
 
 Checkout the source: `git clone https://github.com/Azure/sonic-sairedis.git` and install it yourself.
 
+You will also need SAI submodule: `git submodule update --init --recursive`
+
 Get SAI header files into /usr/include/sai. Put the SAI header files that you use to compile
 libsairedis into /usr/include/sai
 
@@ -49,7 +49,13 @@ Get ASIC SDK and SAI packages from your ASIC vendor and install them.
 
 Install prerequisite packages:
 
-    sudo apt-get install libswsscommon libswsscommon-dev
+    sudo apt-get install libswsscommon libswsscommon-dev libhiredis-dev libzmq3-dev libpython-dev
+
+Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest sonic-buildimage Jenkins build: https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/buildimage-vs-all/lastSuccessfulBuild/artifact/target/debs/buster/.
+
+Install SAI dependencies:
+
+    sudo apt-get install doxygen graphviz aspell
 
 You can compile and install from source using:
 
@@ -61,6 +67,11 @@ You can also build a debian package using:
 
     ./autogen.sh
     fakeroot debian/rules binary
+
+If you do not have libsai, you can build a debian package using:
+
+    ./autogen.sh
+    fakeroot debian/rules binary-syncd-vs
 
 ## Need Help?
 

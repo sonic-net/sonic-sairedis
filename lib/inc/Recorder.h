@@ -366,6 +366,9 @@ namespace sairedis
             bool setRecordingOutputDirectory(
                     _In_ const sai_attribute_t &attr);
 
+            bool setRecordingFilename(
+                    _In_ const sai_attribute_t &attr);
+
             void requestLogRotate();
 
         public: // static helper functions

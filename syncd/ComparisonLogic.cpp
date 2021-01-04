@@ -1882,6 +1882,11 @@ void ComparisonLogic::processObjectForViewTransition(
         // No need to store VID since at this point we don't have RID yet, it will be
         // created on execute asic and RID will be saved to maps in both views.
 
+        SWSS_LOG_INFO("found best match, but set failed: %s: current: %s temporary: %s",
+                currentBestMatch->m_str_object_type.c_str(),
+                currentBestMatch->m_str_object_id.c_str(),
+                temporaryObj->m_str_object_id.c_str());
+
         createNewObjectFromTemporaryObject(currentView, temporaryView, temporaryObj);
 
         return;

@@ -202,6 +202,9 @@ void Syncd::performStartupLogic()
 
     if (m_isWarmStart && (m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT))
     {
+        SWSS_LOG_WARN("override command line startType=%s via SAI_START_TYPE_WARM_BOOT",
+                CommandLineOptions::startTypeToString(m_commandLineOptions->m_startType).c_str());
+
         m_commandLineOptions->m_startType = SAI_START_TYPE_WARM_BOOT;
     }
 
@@ -550,6 +553,7 @@ sai_status_t Syncd::processFdbFlush(
     }
 
     SaiAttributeList list(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
+    SaiAttributeList vidlist(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
 
     /*
      * Attribute list can't be const since we will use it to translate VID to
@@ -564,6 +568,46 @@ sai_status_t Syncd::processFdbFlush(
     sai_status_t status = m_vendorSai->flushFdbEntries(switchRid, attr_count, attr_list);
 
     m_selectableChannel->set(sai_serialize_status(status), {} , REDIS_ASIC_STATE_COMMAND_FLUSHRESPONSE);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_NOTICE("fdb flush succeeded, updating redis database");
+
+        // update database right after fdb flush success (not in notification)
+        // build artificial notification here to reuse code
+
+        sai_fdb_flush_entry_type_t type = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+
+        sai_object_id_t bvId = SAI_NULL_OBJECT_ID;
+        sai_object_id_t bridgePortId = SAI_NULL_OBJECT_ID;
+
+        attr_list = vidlist.get_attr_list();
+        attr_count = vidlist.get_attr_count();
+
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            switch (attr_list[i].id)
+            {
+                case SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID:
+                    bridgePortId = attr_list[i].value.oid;
+                    break;
+
+                case SAI_FDB_FLUSH_ATTR_BV_ID:
+                    bvId = attr_list[i].value.oid;
+                    break;
+
+                case SAI_FDB_FLUSH_ATTR_ENTRY_TYPE:
+                    type = (sai_fdb_flush_entry_type_t)attr_list[i].value.s32;
+                    break;
+
+                default:
+                    SWSS_LOG_ERROR("unsupported attribute: %d, skipping", attr_list[i].id);
+                    break;
+            }
+        }
+
+        m_client->processFlushEvent(switchVid, bridgePortId, bvId, type);
+    }
 
     return status;
 }

@@ -594,7 +594,29 @@ sub test_bulk_object
     play "bulk_object.rec"
 }
 
+sub test_depreacated_enums
+{
+    fresh_start;
+
+    play "depreacated.rec";
+
+    request_warm_shutdown;
+
+    `perl -i.bak -pe 's/SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP/SAI_NEXT_HOP_GROUP_TYPE_ECMP/' sai_warmboot.bin`;
+
+    my $key = `redis-cli -n 1 "keys" "*"|grep SAI_OBJECT_TYPE_NEXT_HOP_GROUP`;
+
+    chomp $key;
+
+    `redis-cli -n 1 hset "$key" "SAI_NEXT_HOP_GROUP_ATTR_TYPE" "SAI_NEXT_HOP_GROUP_TYPE_ECMP"`;
+
+    start_syncd_warm;
+
+    play "non_depreacated.rec", 0;
+}
+
 # RUN TESTS
+test_depreacated_enums;
 test_brcm_buffer_pool_zmq_sync_flag;
 test_brcm_buffer_pool_zmq;
 test_brcm_acl_limit;

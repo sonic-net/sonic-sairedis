@@ -94,7 +94,7 @@ CFLAGS_COMMON+=" -Wformat-security"
 CFLAGS_COMMON+=" -Wformat-y2k"
 CFLAGS_COMMON+=" -Wimport"
 CFLAGS_COMMON+=" -Winit-self"
-CFLAGS_COMMON+=" -Winline"
+CFLAGS_COMMON+=" -Wno-inline"
 CFLAGS_COMMON+=" -Winvalid-pch"
 CFLAGS_COMMON+=" -Wmissing-field-initializers"
 CFLAGS_COMMON+=" -Wmissing-format-attribute"
@@ -118,6 +118,15 @@ CFLAGS_COMMON+=" -Wvariadic-macros"
 CFLAGS_COMMON+=" -Wwrite-strings"
 CFLAGS_COMMON+=" -Wno-switch-default"
 CFLAGS_COMMON+=" -Wconversion"
+
+SAVED_FLAGS="$CXXFLAGS"
+CXXFLAGS="-Wcast-align=strict"
+AC_MSG_CHECKING([whether CXX supports -Wcast-align=strict])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])],
+    [AC_MSG_RESULT([yes])]
+    [AC_SUBST([CFLAGS_COMMON], ["${CFLAGS_COMMON} -Wcast-align=strict"])],
+    [AC_MSG_RESULT([no])])
+CXXFLAGS="$SAVED_FLAGS"
 
 AC_SUBST(CFLAGS_COMMON)
 

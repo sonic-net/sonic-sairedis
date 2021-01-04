@@ -7,6 +7,8 @@
 #include <sstream>
 #include <cstring>
 
+using namespace syncd;
+
 // TODO: introduce common config format for SONiC
 std::shared_ptr<PortMap> PortMapParser::parsePortMap(
         _In_ const std::string& portMapFile)

@@ -154,6 +154,26 @@ sai_status_t SwitchStateBase::create(
         return createHostif(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_MACSEC_SC)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createMACsecSC(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_MACSEC_SA)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createMACsecSA(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY && m_system_port_list.size())
+    {
+        // Neighbor entry programming for VOQ systems
+        return createVoqSystemNeighborEntry(serializedObjectId, switch_id, attr_count, attr_list);
+    }
+
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 
@@ -348,6 +368,25 @@ sai_status_t SwitchStateBase::remove(
         return removeHostif(objectId);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return removeMACsecPort(objectId);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_MACSEC_SC)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return removeMACsecSC(objectId);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_MACSEC_SA)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return removeMACsecSA(objectId);
+    }
+
     return remove_internal(object_type, serializedObjectId);
 }
 
@@ -433,6 +472,22 @@ sai_status_t SwitchStateBase::setPort(
     return set_internal(SAI_OBJECT_TYPE_PORT, sid, attr);
 }
 
+sai_status_t SwitchStateBase::setAclEntry(
+        _In_ sai_object_id_t entry_id,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr && attr->id == SAI_ACL_ENTRY_ATTR_ACTION_MACSEC_FLOW)
+    {
+        return setAclEntryMACsecFlowActive(entry_id, attr);
+    }
+
+    auto sid = sai_serialize_object_id(entry_id);
+
+    return set_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid, attr);
+}
+
 sai_status_t SwitchStateBase::set(
         _In_ sai_object_type_t objectType,
         _In_ const std::string &serializedObjectId,
@@ -445,6 +500,13 @@ sai_status_t SwitchStateBase::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setPort(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_ACL_ENTRY)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setAclEntry(objectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);
@@ -863,6 +925,24 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
     attr.value.booldata = false;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // Fill this with supported SAI_OBJECT_TYPEs
+    sai_object_type_t supported_obj_list[] = {
+                                SAI_OBJECT_TYPE_PORT,
+                                SAI_OBJECT_TYPE_LAG,
+                                SAI_OBJECT_TYPE_TAM,
+                                SAI_OBJECT_TYPE_TAM_COLLECTOR,
+                                SAI_OBJECT_TYPE_TAM_REPORT,
+                                SAI_OBJECT_TYPE_TAM_TRANSPORT,
+                                SAI_OBJECT_TYPE_TAM_TELEMETRY,
+                                SAI_OBJECT_TYPE_TAM_EVENT_THRESHOLD
+                              };
+
+    attr.id = SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST;
+    attr.value.s32list.count = sizeof(supported_obj_list)/sizeof(sai_object_type_t);
+    attr.value.s32list.list = (int32_t *) supported_obj_list;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
@@ -1350,6 +1430,16 @@ sai_status_t SwitchStateBase::set_acl_capabilities()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+sai_status_t SwitchStateBase::create_cpu_qos_queues(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("implement in child class");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t SwitchStateBase::create_qos_queues_per_port(
         _In_ sai_object_id_t port_id)
 {
@@ -1486,6 +1576,7 @@ sai_status_t SwitchStateBase::create_port_dependencies(
     // attributes are not required since they will be set outside this function
 
     CHECK_STATUS(create_ingress_priority_groups_per_port(port_id));
+    CHECK_STATUS(create_cpu_qos_queues(port_id));
     CHECK_STATUS(create_qos_queues_per_port(port_id));
     CHECK_STATUS(create_scheduler_groups_per_port(port_id));
 
@@ -1730,6 +1821,26 @@ sai_status_t SwitchStateBase::refresh_port_list(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::refresh_macsec_sci_in_ingress_macsec_acl(
+        _In_ sai_object_id_t object_id)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL indicates the MACsec ASIC capability 
+     * of whether SCI can only be used as ACL field.
+     * To set SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL is always true,
+     * which indicates that here is emulating a kind of MACsec ASIC that use SCI as ACL field.
+     */
+    sai_attribute_t attr;
+    attr.id = SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL;
+    attr.value.booldata = true;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_MACSEC, object_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 // XXX extra work may be needed on GET api if N on list will be > then actual
 
 /*
@@ -1804,6 +1915,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_NUMBER_OF_FABRIC_PORTS:
             case SAI_SWITCH_ATTR_FABRIC_PORT_LIST:
                 return SAI_STATUS_SUCCESS;
+
+            case SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST:
+                return SAI_STATUS_SUCCESS;
         }
     }
 
@@ -1868,6 +1982,11 @@ sai_status_t SwitchStateBase::refresh_read_only(
     if (meta->objecttype == SAI_OBJECT_TYPE_DEBUG_COUNTER && meta->attrid == SAI_DEBUG_COUNTER_ATTR_INDEX)
     {
         return SAI_STATUS_SUCCESS;
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_MACSEC && meta->attrid == SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL)
+    {
+        return refresh_macsec_sci_in_ingress_macsec_acl(object_id);
     }
 
     auto mmeta = m_meta.lock();
@@ -2755,6 +2874,110 @@ sai_status_t SwitchStateBase::set_fabric_port_list()
     attr.value.u32 = fabric_port_count;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+}
+
+sai_status_t SwitchStateBase::createVoqSystemNeighborEntry(
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    // For VOQ switch, encap index attribute should be set for local neighbors. For
+    // remote neighbors check for presence of encap index supplied from upper layer.
+    // And also validate isLocal and impose encap index flags in the attribute list
+
+    // Determine whether this neighbor is local neighbor or remote neighbor by checking the
+    // RIF id provided. If the port of the RIF is system port, the neighbor is remote neighbor
+
+    bool is_system_neigh = false;
+    sai_attribute_t attr;
+    sai_neighbor_entry_t nbr_entry;
+
+    sai_deserialize_neighbor_entry(serializedObjectId, nbr_entry);
+
+    attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
+
+    if (objectTypeQuery(attr.value.oid) == SAI_OBJECT_TYPE_SYSTEM_PORT)
+    {
+        is_system_neigh = true;
+    }
+
+    uint32_t encap_index = 0;
+    bool impose_encap_index = false;
+    bool is_local = true;
+
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        switch (attr_list[i].id)
+        {
+            case SAI_NEIGHBOR_ENTRY_ATTR_ENCAP_INDEX:
+
+                encap_index = attr_list[i].value.u32;
+
+                break;
+
+            case SAI_NEIGHBOR_ENTRY_ATTR_ENCAP_IMPOSE_INDEX:
+
+                impose_encap_index = attr_list[i].value.booldata;
+
+                break;
+
+            case SAI_NEIGHBOR_ENTRY_ATTR_IS_LOCAL:
+
+                is_local = attr_list[i].value.booldata;
+
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    if (impose_encap_index && encap_index == 0)
+    {
+        SWSS_LOG_ERROR("Impose invalid encap index %d for %s neigh %s",
+                encap_index,
+                (is_system_neigh ? "VOQ" : "local"),
+                serializedObjectId.c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (is_system_neigh && is_local)
+    {
+        SWSS_LOG_ERROR("VOQ neigh info mismatch for %s. RIF is remote. attr is_local is true", serializedObjectId.c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (!is_local && encap_index == 0)
+    {
+        SWSS_LOG_ERROR("VOQ neigh info mismatch for %s. attr is_local is false. encap_index is 0", serializedObjectId.c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, switch_id, attr_count, attr_list));
+
+    if (impose_encap_index == false)
+    {
+        // Encap index is not imposed. Assign encap index.
+        // The only requirement for the encap index is it must be locally
+        // unique in asic. Lower 32 bits of the ip address is used as encap index
+
+        encap_index = nbr_entry.ip_address.addr.ip4;
+
+        attr.id = SAI_NEIGHBOR_ENTRY_ATTR_ENCAP_INDEX;
+        attr.value.u32 = encap_index;
+
+        CHECK_STATUS(set_internal(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectId, &attr));
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 void SwitchStateBase::findObjects(

@@ -140,7 +140,7 @@ void NotificationProcessor::redisPutFdbEntryToAsicView(
         sai_object_id_t bv_id = fdb->fdb_entry.bv_id;
         sai_object_id_t port_oid = 0;
 
-        sai_fdb_flush_entry_type_t type = SAI_FDB_FLUSH_ENTRY_TYPE_ALL;
+        sai_fdb_flush_entry_type_t type = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
 
         for (uint32_t i = 0; i < fdb->attr_count; i++)
         {
@@ -236,7 +236,7 @@ bool NotificationProcessor::check_fdb_event_notification_data(
 
     bool result = true;
 
-    if (!m_translator->checkRidExists(data.fdb_entry.bv_id))
+    if (!m_translator->checkRidExists(data.fdb_entry.bv_id, true))
     {
         SWSS_LOG_ERROR("bv_id RID 0x%" PRIx64 " is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
                 sai_serialize_fdb_entry(data.fdb_entry).c_str());
@@ -268,7 +268,7 @@ bool NotificationProcessor::check_fdb_event_notification_data(
         if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
             continue;
 
-        if (!m_translator->checkRidExists(attr.value.oid))
+        if (!m_translator->checkRidExists(attr.value.oid, true))
         {
             SWSS_LOG_WARN("RID 0x%" PRIx64 " on %s is not present on local ASIC DB", attr.value.oid, meta->attridname);
 
@@ -322,9 +322,9 @@ void NotificationProcessor::process_on_fdb_event(
 
         fdb->fdb_entry.switch_id = m_translator->translateRidToVid(fdb->fdb_entry.switch_id, SAI_NULL_OBJECT_ID);
 
-        fdb->fdb_entry.bv_id = m_translator->translateRidToVid(fdb->fdb_entry.bv_id, fdb->fdb_entry.switch_id);
+        fdb->fdb_entry.bv_id = m_translator->translateRidToVid(fdb->fdb_entry.bv_id, fdb->fdb_entry.switch_id, true);
 
-        m_translator->translateRidToVid(SAI_OBJECT_TYPE_FDB_ENTRY, fdb->fdb_entry.switch_id, fdb->attr_count, fdb->attr);
+        m_translator->translateRidToVid(SAI_OBJECT_TYPE_FDB_ENTRY, fdb->fdb_entry.switch_id, fdb->attr_count, fdb->attr, true);
 
         /*
          * Currently because of brcm bug, we need to install fdb entries in
@@ -387,6 +387,7 @@ void NotificationProcessor::process_on_port_state_change(
     for (uint32_t i = 0; i < count; i++)
     {
         sai_port_oper_status_notification_t *oper_stat = &data[i];
+        sai_object_id_t rid = oper_stat->port_id;
 
         /*
          * We are using switch_rid as null, since port should be already
@@ -397,7 +398,21 @@ void NotificationProcessor::process_on_port_state_change(
          * switch vid.
          */
 
-        oper_stat->port_id = m_translator->translateRidToVid(oper_stat->port_id, SAI_NULL_OBJECT_ID);
+        SWSS_LOG_INFO("Port RID %s state change notification", 
+                sai_serialize_object_id(rid).c_str());
+
+        if (false == m_translator->tryTranslateRidToVid(rid, oper_stat->port_id))
+        {
+            SWSS_LOG_WARN("Port RID %s transalted to null VID!!!", sai_serialize_object_id(rid).c_str());
+        }
+
+        /*
+         * Port may be in process of removal. OA may recieve notification for VID either
+         * SAI_NULL_OBJECT_ID or non exist at time of processing 
+         */
+
+        SWSS_LOG_INFO("Port VID %s state change notification", 
+                sai_serialize_object_id(oper_stat->port_id).c_str());
     }
 
     std::string s = sai_serialize_port_oper_status_ntf(count, data);

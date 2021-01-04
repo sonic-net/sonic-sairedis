@@ -779,6 +779,36 @@ void test_get_stats()
     ASSERT_TRUE(values[1] == 77);
 }
 
+void test_supported_obj_types()
+{
+    SWSS_LOG_ENTER();
+
+    sai_reinit();
+
+    uint32_t expected_num_attrs = 8;
+
+    sai_attribute_t attr;
+
+    sai_object_id_t switch_id;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    SUCCESS(sai_metadata_sai_switch_api->create_switch(&switch_id, 1, &attr));
+
+    std::vector<sai_object_type_t> supported_obj_list;
+    supported_obj_list.resize(expected_num_attrs);
+
+    attr.id = SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST;
+    attr.value.s32list.count = expected_num_attrs;
+    attr.value.s32list.list = (int32_t *) supported_obj_list.data();
+
+    SUCCESS(sai_metadata_sai_switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    ASSERT_TRUE(attr.value.objlist.count == expected_num_attrs);
+
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -802,6 +832,8 @@ int main()
     test_fdb_flush();
 
     test_get_stats();
+
+    test_supported_obj_types();
 
     test_set_stats_via_redis();
 

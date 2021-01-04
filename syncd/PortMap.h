@@ -7,33 +7,36 @@
 #include <string>
 #include <memory>
 
-class PortMap
+namespace syncd
 {
-    public:
+    class PortMap
+    {
+        public:
 
-        PortMap() = default;
+            PortMap() = default;
 
-        virtual ~PortMap() = default;
+            virtual ~PortMap() = default;
 
-    public:
+        public:
 
-        void insert(
-                _In_ const std::set<int>& laneSet,
-                _In_ const std::string& name);
+            void insert(
+                    _In_ const std::set<int>& laneSet,
+                    _In_ const std::string& name);
 
-        void clear();
+            void clear();
 
-        size_t size() const;
+            size_t size() const;
 
-        const std::map<std::set<int>, std::string>& getRawPortMap() const;
+            const std::map<std::set<int>, std::string>& getRawPortMap() const;
 
-        /**
-         * @brief Set global object for RPC server binding.
-         */
-        static void setGlobalPortMap(
-                _In_ std::shared_ptr<PortMap> portMap);
+            /**
+             * @brief Set global object for RPC server binding.
+             */
+            static void setGlobalPortMap(
+                    _In_ std::shared_ptr<PortMap> portMap);
 
-    private:
+        private:
 
-        std::map<std::set<int>, std::string> m_portMap;
-};
+            std::map<std::set<int>, std::string> m_portMap;
+    };
+}

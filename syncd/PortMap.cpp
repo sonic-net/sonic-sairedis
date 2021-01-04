@@ -1,5 +1,8 @@
-#include "swss/logger.h"
 #include "PortMap.h"
+
+#include "swss/logger.h"
+
+using namespace syncd;
 
 /**
  * @brief Port map global map.
@@ -48,4 +51,3 @@ void PortMap::setGlobalPortMap(
 
     gPortMap = portMap->getRawPortMap();
 }
-

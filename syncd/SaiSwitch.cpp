@@ -147,7 +147,9 @@ sai_switch_type_t SaiSwitch::getSwitchType() const
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("failed to get switch type with status:0x%x. Assume default SAI_SWITCH_TYPE_NPU", status);
+        SWSS_LOG_WARN("failed to get switch type with status: %s, assume default SAI_SWITCH_TYPE_NPU",
+                sai_serialize_status(status).c_str());
+
         // Set to SAI_SWITCH_TYPE_NPU and move on
         attr.value.s32 = SAI_SWITCH_TYPE_NPU;
     }
