@@ -143,7 +143,7 @@ typedef enum _sai_redis_switch_attr_t
      * running in synchronous mode. Command pipeline will be disabled when this
      * flag will be set to true.
      *
-     * NOTE: This attribute is depreacated by
+     * NOTE: This attribute is deprecated by
      * SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE.  When set to true it
      * will set SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE to
      * SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC.
@@ -197,7 +197,7 @@ typedef enum _sai_redis_switch_attr_t
     /**
      * @brief Recording log filename.
      *
-     * Default valus is sairedis.rec
+     * Default value is sairedis.rec
      *
      * @type sai_s8_list_t
      * @flags CREATE_AND_SET

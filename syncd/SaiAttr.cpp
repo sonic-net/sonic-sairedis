@@ -29,7 +29,7 @@ SaiAttr::SaiAttr(
     if (m_meta->isenum && m_meta->enummetadata->ignorevalues)
     {
         // if attribute is enum, and we are loading some older SAI values it
-        // may happen that we get depreacated/ignored value string and we need
+        // may happen that we get deprecated/ignored value string and we need
         // to update it to current one to not cause attribute compare confusion
         // since they are compared by string value
 
@@ -37,7 +37,7 @@ SaiAttr::SaiAttr(
 
         if (val != m_str_attr_value)
         {
-            SWSS_LOG_NOTICE("translating depreacated/ignore enum %s to %s",
+            SWSS_LOG_NOTICE("translating deprecated/ignore enum %s to %s",
                     m_str_attr_value.c_str(),
                     val.c_str());
 

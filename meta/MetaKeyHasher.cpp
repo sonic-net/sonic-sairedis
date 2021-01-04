@@ -70,7 +70,7 @@ static bool operator==(
 {
     SWSS_LOG_ENTER();
 
-    // we can't use mem compare, since some fields will be padded and they
+    // we can't use memory compare, since some fields will be padded and they
     // could contain garbage
 
     return a.switch_id == b.switch_id &&

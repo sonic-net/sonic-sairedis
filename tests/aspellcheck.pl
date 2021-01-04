@@ -168,6 +168,9 @@ for my $file (@files)
     {
         next if $w =~ /_/;
         next if $w =~ /xYYY+/;
+        next if $w =~ /fe\d+/;
+        next if $w =~ /ebe\d+/;
+        next if $w =~ /Werror/;
         next if $w =~ /^[A-Za-z][a-z]+([A-Z][a-z]+)+$/; # fooBar FooBar
 
         $wordsToCheck{$w} = $file;
