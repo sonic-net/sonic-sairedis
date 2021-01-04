@@ -68,7 +68,7 @@ jobs:
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
-      sudo make check
+      make check
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis
@@ -134,7 +134,7 @@ jobs:
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
-      sudo make check
+      make check
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis.arm64
@@ -200,7 +200,7 @@ jobs:
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
-      sudo make check
+      make check
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis.armhf
