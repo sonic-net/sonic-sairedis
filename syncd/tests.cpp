@@ -769,7 +769,7 @@ void test_watchdog_timer_clock_rollback()
 
     if (getuid() != 0)
     {
-        // this test requires root for set time
+        SWSS_LOG_WARN("this test requires root for set time");
         return;
     }
 
