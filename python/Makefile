@@ -5,6 +5,9 @@ all: sairedis.cpp setup.py
 install: all
 	python setup.py install --user
 
+check:
+	true
+
 .PHONY: clean
 
 clean:
