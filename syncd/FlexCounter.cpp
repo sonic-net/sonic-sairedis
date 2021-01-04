@@ -699,6 +699,8 @@ void FlexCounter::removePriorityGroup(
 void FlexCounter::removeMACsecSA(
         _In_ sai_object_id_t macsecSAVid)
 {
+    SWSS_LOG_ENTER();
+
     auto itr = m_macsecSAAttrIdsMap.find(macsecSAVid);
 
     if (itr != m_macsecSAAttrIdsMap.end())
@@ -709,14 +711,12 @@ void FlexCounter::removeMACsecSA(
         {
             removeCollectCountersHandler(MACSEC_SA_ATTR_ID_LIST);
         }
-
     }
     else
     {
         SWSS_LOG_WARN("Trying to remove nonexisting MACsec SA %s",
                 sai_serialize_object_id(macsecSAVid).c_str());
     }
-
 }
 
 void FlexCounter::removeRif(
@@ -963,6 +963,8 @@ bool FlexCounter::isEmpty()
 
 bool FlexCounter::isDiscarded()
 {
+    SWSS_LOG_ENTER();
+
     return isEmpty() && m_isDiscarded;
 }
 

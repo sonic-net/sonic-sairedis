@@ -123,7 +123,7 @@ static_assert(sizeof(std::size_t) >= sizeof(uint32_t), "size_t must be at least 
 static inline std::size_t sai_get_hash(
         _In_ const sai_route_entry_t& re)
 {
-    // SWSS_LOG_ENTER(); // disabled for performance reasons
+    // SWSS_LOG_ENTER(); // disabled for performance reason
 
     if (re.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
     {
