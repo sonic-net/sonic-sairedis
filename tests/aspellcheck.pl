@@ -147,6 +147,7 @@ for my $file (@files)
 {
     chomp $file;
     next if $file =~ m!/SAI/!;
+    next if $file =~ m!/debian/!;
     next if $file =~ m!/config.h!;
 
     my $data = ReadFile $file;

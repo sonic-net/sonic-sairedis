@@ -2,6 +2,7 @@ personal_ws-1.1 en 0
 acl
 ACL
 ACLs
+AES
 apache
 api
 API
@@ -64,6 +65,7 @@ Destructor
 didn
 doesn
 dscp
+EAPOL
 ecn
 ECN
 eg
@@ -86,6 +88,7 @@ FDBs
 filename
 FIXME
 FlexCounter
+GCM
 genetlink
 getInstance
 getQueueSize
@@ -102,6 +105,7 @@ http
 https
 hw
 hwinfo
+ICV
 ifdef
 IFF
 ifindex
@@ -132,6 +136,7 @@ logrotate
 lookup
 LOOPBACK
 lua
+MACsec
 MCAST
 md
 Mellanox
@@ -167,6 +172,7 @@ param
 params
 performTransition
 pfc
+PN
 policer
 PORTs
 pre
@@ -198,6 +204,7 @@ rifStats
 RO
 RPC
 runtime
+RXSC
 sai
 SaiAttr
 saibuffer
@@ -208,7 +215,10 @@ saiswitch
 SaiSwitch
 SAITHRIFT
 saivs
+SAK
 sanitycheck
+SAs
+SCs
 sdk
 SDK
 selectable
@@ -256,6 +266,7 @@ tmp
 TODO
 torvalds
 ttl
+TXSC
 uint
 uncomment
 uninitialize
@@ -283,6 +294,7 @@ VIDTORID
 vlan
 vlans
 VLANS
+VOQ
 vr
 vslib
 vxlan
