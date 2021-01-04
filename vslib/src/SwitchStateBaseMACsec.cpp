@@ -506,7 +506,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     auto sci = attrs[1].value.u64;
     std::stringstream sciHexStr;
     macsecAttr.m_encryptionEnable = attrs[2].value.booldata;
-    bool is_sak_128_bit = (attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_128 || attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_128) ? true : false;
+    bool is_sak_128_bit = (attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_128 || attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_128);
 
     sciHexStr << std::setw(MACSEC_SCI_LENGTH) << std::setfill('0');
 
