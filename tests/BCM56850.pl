@@ -615,7 +615,18 @@ sub test_depreacated_enums
     play "non_depreacated.rec", 0;
 }
 
+sub test_bulk_set_multiple
+{
+    fresh_start;
+
+    play "test_bulk_set_multiple_A.rec";
+    play "test_bulk_set_multiple_B.rec", 0;
+    exit;
+}
+
 # RUN TESTS
+
+test_bulk_set_multiple;
 test_depreacated_enums;
 test_brcm_buffer_pool_zmq_sync_flag;
 test_brcm_buffer_pool_zmq;
