@@ -2077,7 +2077,7 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
         if (api == SAI_COMMON_API_BULK_SET)
         {
             // in case of bulk set operation, it can happen that multiple
-            // attributes will be set for the same key, then wehen we want to
+            // attributes will be set for the same key, then when we want to
             // push them to redis database, we need to combine all attributes
             // to a single vector of attributes
 
