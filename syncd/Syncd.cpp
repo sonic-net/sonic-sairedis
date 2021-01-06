@@ -1892,6 +1892,7 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
         _In_ swss::ConsumerTable& consumer)
 {
     SWSS_LOG_ENTER();
+    SWSS_LOG_INFO("SHLOMI inside processFlexCounterEvent");
 
     std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -1901,6 +1902,8 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
 
     auto& key = kfvKey(kco);
     auto& op = kfvOp(kco);
+    SWSS_LOG_INFO("SHLOMI key = %s", key.c_str());
+    SWSS_LOG_INFO("SHLOMI op = %s", op.c_str());
 
     auto delimiter = key.find_first_of(":");
 
@@ -4348,6 +4351,7 @@ void Syncd::run()
             }
             else if (sel == m_flexCounter.get())
             {
+                SWSS_LOG_INFO("SHLOMI geting an event of flex counters");
                 processFlexCounterEvent(*(swss::ConsumerTable*)sel);
             }
             else if (sel == m_flexCounterGroup.get())

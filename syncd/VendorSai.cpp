@@ -1052,6 +1052,21 @@ sai_status_t VendorSai::queryAattributeEnumValuesCapability(
             enum_values_capability);
 }
 
+sai_status_t VendorSai::queryStatsCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    return sai_query_stats_capability(
+            switchId,
+            objectType,
+            stats_capability);
+}
+
 sai_object_type_t VendorSai::objectTypeQuery(
         _In_ sai_object_id_t objectId)
 {

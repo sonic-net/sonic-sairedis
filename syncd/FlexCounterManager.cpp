@@ -86,7 +86,7 @@ void FlexCounterManager::addCounter(
         _In_ const std::vector<swss::FieldValueTuple>& values)
 {
     SWSS_LOG_ENTER();
-
+    SWSS_LOG_INFO("SHLOMI FlexCounterManager instanceId: %s", instanceId);
     auto fc = getInstance(instanceId);
 
     fc->addCounter(vid, rid, values);

@@ -239,6 +239,11 @@ namespace syncd
                     _In_ sai_attr_id_t attr_id,
                     _Inout_ sai_s32_list_t *enum_values_capability) override;
 
+            virtual sai_status_t queryStatsCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_capability_list_t *stats_capability) override;
+
             virtual sai_object_type_t objectTypeQuery(
                     _In_ sai_object_id_t objectId) override;
 
