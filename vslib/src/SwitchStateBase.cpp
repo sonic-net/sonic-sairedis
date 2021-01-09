@@ -963,6 +963,7 @@ sai_status_t SwitchStateBase::set_static_crm_values()
         { SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY, m_maxFdbEntries },
         { SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY, m_maxSNATEntries },
         { SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY, m_maxDNATEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPMC_ENTRY, m_maxIPMCEntries },
         { SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY, m_maxDoubleNATEntries }
     };
 
@@ -1898,6 +1899,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP:
             case SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY:
             case SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY:
+            case SAI_SWITCH_ATTR_AVAILABLE_IPMC_ENTRY:
             case SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY:
                 return SAI_STATUS_SUCCESS;
 

@@ -593,6 +593,7 @@ namespace saivs
 
             constexpr static const int m_maxSNATEntries = 100;
             constexpr static const int m_maxDNATEntries = 100;
+            constexpr static const int m_maxIPMCEntries = 100;
             constexpr static const int m_maxDoubleNATEntries = 50; /* Half of single NAT entry */
 
             constexpr static const int m_maxAclTables = 3;

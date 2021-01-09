@@ -672,7 +672,9 @@ std::unordered_map<std::string, std::string> RedisClient::getAttributesFromAsicK
 {
     SWSS_LOG_ENTER();
 
-    return m_dbAsic->hgetall(key);
+    std::unordered_map<std::string, std::string> map;
+    m_dbAsic->hgetall(key, std::inserter(map, map.end()));
+    return map;
 }
 
 bool RedisClient::hasNoHiddenKeysDefined() const

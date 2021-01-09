@@ -2074,7 +2074,19 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
 
         keys.push_back(key);
 
-        multiHash[key] = strAttributes.at(idx);
+        if (api == SAI_COMMON_API_BULK_SET)
+        {
+            // in case of bulk set operation, it can happen that multiple
+            // attributes will be set for the same key, then when we want to
+            // push them to redis database, we need to combine all attributes
+            // to a single vector of attributes
+
+            multiHash[key].push_back(strAttributes.at(idx).at(0));
+        }
+        else
+        {
+            multiHash[key] = strAttributes.at(idx);
+        }
     }
 
     const bool initView = isInitViewMode();
