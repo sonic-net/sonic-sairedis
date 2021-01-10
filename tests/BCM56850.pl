@@ -621,7 +621,6 @@ sub test_bulk_set_multiple
 
     play "test_bulk_set_multiple_A.rec";
     play "test_bulk_set_multiple_B.rec", 0;
-    exit;
 }
 
 # RUN TESTS
