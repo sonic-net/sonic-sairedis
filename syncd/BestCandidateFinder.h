@@ -95,6 +95,15 @@ namespace syncd
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
                     _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
 
+            std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingLabel(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+                    _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
+                
+            std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingLabel(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+                    _In_ const std::vector<sai_object_compare_info_t> &candidateObjects,
+                    _In_ sai_attr_id_t attrId);
+
             std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
                     _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);

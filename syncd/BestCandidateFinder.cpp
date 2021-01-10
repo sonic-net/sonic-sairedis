@@ -1392,6 +1392,78 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjectUsingLabel(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    switch (temporaryObj->getObjectType())
+    {
+        case SAI_OBJECT_TYPE_LAG:
+            return findCurrentBestMatchForGenericObjectUsingLabel(temporaryObj, candidateObjects, SAI_LAG_ATTR_LABEL);
+
+        case SAI_OBJECT_TYPE_VIRTUAL_ROUTER:
+            return findCurrentBestMatchForGenericObjectUsingLabel(temporaryObj, candidateObjects, SAI_VIRTUAL_ROUTER_ATTR_LABEL);
+
+        default:
+            return nullptr;
+    }
+}
+
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjectUsingLabel(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects,
+        _In_ sai_attr_id_t attrId)
+{
+    SWSS_LOG_ENTER();
+
+    auto labelAttr = temporaryObj->tryGetSaiAttr(attrId);
+
+    if (!labelAttr)
+    {
+        // no label attribute on that object
+        return nullptr;
+    }
+
+    auto label = labelAttr->getStrAttrValue();
+
+    std::vector<sai_object_compare_info_t> sameLabel;
+
+    for (auto& co: candidateObjects)
+    {
+        if (co.obj->hasAttr(attrId) && co.obj->getSaiAttr(attrId)->getStrAttrValue() == label)
+        {
+            sameLabel.push_back(co);
+        }
+    }
+
+    if (sameLabel.size() == 0)
+    {
+        // no objects with that label, fallback to attr count
+        return nullptr;
+    }
+
+    if (sameLabel.size() == 1)
+    {
+        SWSS_LOG_NOTICE("matched object by label '%s' for %s:%s",
+            label.c_str(),
+            temporaryObj->m_str_object_type.c_str(),
+            temporaryObj->m_str_object_id.c_str());
+
+        return sameLabel.at(0).obj;
+    }
+
+    SWSS_LOG_WARN("same label '%s' found on multiple objects for %s:%s, selecting one with most common atributes",
+            label.c_str(),
+            temporaryObj->m_str_object_type.c_str(),
+            temporaryObj->m_str_object_id.c_str());
+
+    std::sort(sameLabel.begin(), sameLabel.end(), compareByEqualAttributes);
+
+    return sameLabel.at(0).obj;
+}
+
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjectUsingGraph(
         _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
         _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
@@ -1403,7 +1475,7 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
     candidate = findCurrentBestMatchForGenericObjectUsingPreMatchMap(temporaryObj, candidateObjects);
 
     if (candidate != nullptr)
-            return candidate;
+        return candidate;
 
     switch (temporaryObj->getObjectType())
     {
@@ -1814,6 +1886,13 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
         return candidateObjects.begin()->obj;
     }
+
+    auto labelCandidate = findCurrentBestMatchForGenericObjectUsingLabel(
+            temporaryObj,
+            candidateObjects);
+
+    if (labelCandidate != nullptr)
+        return labelCandidate;
 
     /*
      * If we have more than 1 object matched actually more preferred
