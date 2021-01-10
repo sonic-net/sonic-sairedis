@@ -7,6 +7,7 @@ extern "C"{
 #include "swss/table.h"
 
 #include <memory>
+#include <string>
 
 namespace syncd
 {
@@ -31,5 +32,7 @@ namespace syncd
             bool m_isRemove;
 
             std::shared_ptr<swss::KeyOpFieldsValuesTuple> m_op;
+
+            std::string m_currentValue;
     };
 }

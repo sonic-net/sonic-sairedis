@@ -568,6 +568,8 @@ void AsicView::asicSetAttribute(
 
     auto meta = attr->getAttrMetadata();
 
+    auto currentAttr = currentObj->tryGetSaiAttr(meta->attrid);
+
     if (attr->isObjectIdAttr())
     {
         if (currentObj->hasAttr(meta->attrid))
@@ -615,6 +617,12 @@ void AsicView::asicSetAttribute(
     sai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
 
     m_asicOperations.push_back(AsicOperation(m_asicOperationId, vid, false, kco));
+
+    if (currentAttr)
+    {
+        // if current attribute exists, save it value for log purpose
+        m_asicOperations.rbegin()->m_currentValue = currentAttr->getStrAttrValue();
+    }
 
     dumpRef("set");
 }

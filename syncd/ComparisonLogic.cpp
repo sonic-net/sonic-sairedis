@@ -3431,9 +3431,19 @@ void ComparisonLogic::executeOperationsOnAsic()
 
             const auto &values = kfvFieldsValues(*op.m_op);
 
-            for (auto v: values)
+            if (op.m_currentValue.size() && opp == "set")
             {
-                SWSS_LOG_NOTICE("- %s %s", fvField(v).c_str(), fvValue(v).c_str());
+                SWSS_LOG_NOTICE("- %s %s (current: %s)",
+                        fvField(values.at(0)).c_str(),
+                        fvValue(values.at(0)).c_str(),
+                        op.m_currentValue.c_str());
+            }
+            else
+            {
+                for (auto v: values)
+                {
+                    SWSS_LOG_NOTICE("- %s %s", fvField(v).c_str(), fvValue(v).c_str());
+                }
             }
         }
 
