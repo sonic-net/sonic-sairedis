@@ -76,13 +76,14 @@ jobs:
 
   - script: |
       ls -al /var/log/
+      cat /var/log/syslog
     displayName: "List /var/log"
     condition: always()
   - task: CopyFiles@2
     displayName: "Copy syslog to staging directory"
     condition: always()
     inputs:
-        contents: /var/log/*
+        contents: '/var/log/**'
         targetFolder: $(Build.ArtifactStagingDirectory)
   - task: PublishBuildArtifacts@1
     displayName: "Publish syslog artifacts"
