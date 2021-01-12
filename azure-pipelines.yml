@@ -82,7 +82,7 @@ jobs:
     displayName: "Copy syslog to staging directory"
     condition: always()
     inputs:
-        contents: /var/log/syslog*
+        contents: /var/log/*
         targetFolder: $(Build.ArtifactStagingDirectory)
   - task: PublishBuildArtifacts@1
     displayName: "Publish syslog artifacts"
