@@ -45,6 +45,8 @@ jobs:
       sudo service redis-server start
 
       sudo apt-get install -y rsyslog
+      sudo echo "$template SONiCFileFormat,\"%TIMESTAMP%.%timestamp:::date-subseconds% %HOSTNAME% %syslogseverity-text:::uppercase% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-last-lf%\n\"" >> /etc/rsyslog.conf
+      sudo echo "$ActionFileDefaultTemplate SONiCFileFormat" >> /etc/rsyslog.conf
       sudo service rsyslog start
 
     displayName: "Install dependencies"
@@ -76,11 +78,12 @@ jobs:
 
   - script: |
       pwd
-      ls -al .
-      ls -al /var/log/
       sudo chmod a+r /var/log/syslog*
       tar -cf syslog-all.tar /var/log/syslog*
-    displayName: "List /var/log"
+      ls -al .
+      ls -al /var/log/
+      find /etc -name "*syslog*"
+    displayName: "Env info"
     condition: always()
   - task: CopyFiles@2
     displayName: "Copy syslog to staging directory"
