@@ -77,6 +77,8 @@ namespace saivs
 
             std::shared_ptr<LaneMap> m_laneMap;
 
+            std::shared_ptr<LaneMap> m_fabricLaneMap;
+
             std::shared_ptr<EventQueue> m_eventQueue;
 
             std::shared_ptr<ResourceLimiter> m_resourceLimiter;

@@ -34,6 +34,18 @@ extern "C" {
 #define SAI_KEY_VS_RESOURCE_LIMITER_FILE    "SAI_VS_RESOURCE_LIMITER_FILE"
 
 /**
+ * @def SAI_KEY_VS_INTERFACE_FABRIC_LANE_MAP_FILE
+ *
+ * If specified in profile.ini it should point to fabric port to lane map.
+ *
+ * Example:
+ * fabric0:1
+ * fabric1:2
+ *
+ */
+#define SAI_KEY_VS_INTERFACE_FABRIC_LANE_MAP_FILE  "SAI_VS_INTERFACE_FABRIC_LANE_MAP_FILE"
+
+/**
  * @def SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE
  *
  * Bool flag, (true/false). If set to true, then during create host interface

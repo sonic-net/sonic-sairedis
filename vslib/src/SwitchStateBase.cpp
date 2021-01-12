@@ -1768,6 +1768,9 @@ sai_status_t SwitchStateBase::refresh_port_list(
 
     const sai_object_id_t cpu_port_id = attr.value.oid;
 
+    std::unordered_set<sai_object_id_t> fabric_port_set(m_fabric_port_list.begin(),
+                                                        m_fabric_port_list.end());
+
     m_port_list.clear();
 
     // iterate via ASIC state to find all the ports
@@ -1780,6 +1783,10 @@ sai_status_t SwitchStateBase::refresh_port_list(
         // don't put CPU port id on the list
 
         if (port_id == cpu_port_id)
+            continue;
+
+        // don't put fabric ports on the list
+        if (fabric_port_set.find(port_id) != fabric_port_set.end())
             continue;
 
         m_port_list.push_back(port_id);
@@ -1907,6 +1914,10 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_SYSTEM_PORT_LIST:
                 return refresh_system_port_list(meta);
 
+            case SAI_SWITCH_ATTR_NUMBER_OF_FABRIC_PORTS:
+            case SAI_SWITCH_ATTR_FABRIC_PORT_LIST:
+                return SAI_STATUS_SUCCESS;
+
             case SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST:
                 return SAI_STATUS_SUCCESS;
         }
@@ -1933,6 +1944,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
                  */
 
             case SAI_PORT_ATTR_OPER_STATUS:
+                return SAI_STATUS_SUCCESS;
+
+            case SAI_PORT_ATTR_FABRIC_ATTACHED:
                 return SAI_STATUS_SUCCESS;
         }
     }
@@ -2652,6 +2666,10 @@ sai_status_t SwitchStateBase::initialize_voq_switch_objects(
 
     CHECK_STATUS(set_system_port_list());
 
+    CHECK_STATUS(create_fabric_ports());
+
+    CHECK_STATUS(set_fabric_port_list());
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -2781,6 +2799,83 @@ sai_status_t SwitchStateBase::refresh_system_port_list(
     // TODO In the future, when dynamic system port config (add/delete) is implemented, re-visit
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::create_fabric_ports()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create fabric ports");
+
+    auto map = m_switchConfig->m_fabricLaneMap;
+
+    if (!map)
+    {
+        SWSS_LOG_ERROR("fabric lane map for switch %s is NULL",
+                sai_serialize_object_id(m_switch_id).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto& lanesVector = map->getLaneVector();
+
+    uint32_t fabric_port_count = (uint32_t)lanesVector.size();
+
+    m_fabric_port_list.clear();
+
+    for (uint32_t i = 0; i < fabric_port_count; i++)
+    {
+        SWSS_LOG_DEBUG("create fabric port index %u", i);
+
+        sai_object_id_t fabric_port_id;
+
+        CHECK_STATUS(create(SAI_OBJECT_TYPE_PORT, &fabric_port_id, m_switch_id, 0, NULL));
+        m_fabric_port_list.push_back(fabric_port_id);
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_PORT_ATTR_FABRIC_ATTACHED;
+        attr.value.booldata = false;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
+
+        std::vector<uint32_t> lanes = lanesVector.at(i);
+
+        attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+        attr.value.u32list.count = (uint32_t)lanes.size();
+        attr.value.u32list.list = lanes.data();
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_TYPE;
+        attr.value.s32 = SAI_PORT_TYPE_FABRIC;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::set_fabric_port_list()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("set fabric port list");
+
+    sai_attribute_t attr;
+
+    uint32_t fabric_port_count = (uint32_t)m_fabric_port_list.size();
+
+    attr.id = SAI_SWITCH_ATTR_FABRIC_PORT_LIST;
+    attr.value.objlist.count = fabric_port_count;
+    attr.value.objlist.list = m_fabric_port_list.data();
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_FABRIC_PORTS;
+    attr.value.u32 = fabric_port_count;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchStateBase::createVoqSystemNeighborEntry(
