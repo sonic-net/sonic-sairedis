@@ -76,7 +76,7 @@ jobs:
   - script: |
       pwd
       sudo chmod a+r /var/log/syslog*
-      tar -cf syslog-all.tar /var/log/syslog*
+      tar -czf syslog-all.tgz /var/log/syslog*
       ls -al .
       ls -al /var/log/
     displayName: "Env info"
@@ -85,7 +85,7 @@ jobs:
     displayName: "Copy syslog to staging directory"
     condition: always()
     inputs:
-        contents: 'syslog-all.tar'
+        contents: 'syslog-all.tgz'
         targetFolder: $(Build.ArtifactStagingDirectory)
   - task: PublishBuildArtifacts@1
     displayName: "Publish syslog artifacts"
@@ -162,7 +162,7 @@ jobs:
   - script: |
       pwd
       sudo chmod a+r /var/log/syslog*
-      tar -cf syslog-all.tar /var/log/syslog*
+      tar -czf syslog-all.tgz /var/log/syslog*
       ls -al .
       ls -al /var/log/
     displayName: "Env info"
@@ -171,7 +171,7 @@ jobs:
     displayName: "Copy syslog to staging directory"
     condition: always()
     inputs:
-        contents: 'syslog-all.tar'
+        contents: 'syslog-all.tgz'
         targetFolder: $(Build.ArtifactStagingDirectory)
   - task: PublishBuildArtifacts@1
     displayName: "Publish syslog artifacts"
@@ -248,7 +248,7 @@ jobs:
   - script: |
       pwd
       sudo chmod a+r /var/log/syslog*
-      tar -cf syslog-all.tar /var/log/syslog*
+      tar -czf syslog-all.tgz /var/log/syslog*
       ls -al .
       ls -al /var/log/
     displayName: "Env info"
@@ -257,7 +257,7 @@ jobs:
     displayName: "Copy syslog to staging directory"
     condition: always()
     inputs:
-        contents: 'syslog-all.tar'
+        contents: 'syslog-all.tgz'
         targetFolder: $(Build.ArtifactStagingDirectory)
   - task: PublishBuildArtifacts@1
     displayName: "Publish syslog artifacts"
