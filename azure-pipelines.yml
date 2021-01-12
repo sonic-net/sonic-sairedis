@@ -65,8 +65,7 @@ jobs:
     submodules: true
   - script: |
       ./autogen.sh
-      DEB_BUILD_OPTIONS=nocheck fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs
-      cp ../*.deb .
+      DEB_BUILD_OPTIONS=nocheck fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc) && cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
       sudo cat /etc/rsyslog.conf
