@@ -76,7 +76,7 @@ jobs:
     displayName: "Compile sonic sairedis"
   - script: |
       sudo bash -c 'cat azsyslog.conf >>/etc/rsyslog.conf'
-      sudo service rsyslog start
+      sudo service rsyslog restart
       make check
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
