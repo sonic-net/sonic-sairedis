@@ -81,6 +81,7 @@ jobs:
     displayName: "Update rsyslog.conf"
   - script: |
       make check
+      false
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis
