@@ -52,8 +52,11 @@ jobs:
       sudo service redis-server start
 
       sudo apt-get install -y rsyslog
-      echo ${{ variables.syslog1 }} | sudo tee -a /etc/rsyslog.conf
-      echo ${{ variables.syslog2 }} | sudo tee -a /etc/rsyslog.conf
+      sudo bash -c "echo '${{ variables.syslog1 }}' >> /etc/rsyslog.conf"
+      sudo bash -c "echo '${{ variables.syslog2 }}' >> /etc/rsyslog.conf"
+      echo '${{ variables.syslog1 }}' | sudo tee -a /etc/rsyslog.conf
+      echo '${{ variables.syslog2 }}' | sudo tee -a /etc/rsyslog.conf
+      sudo tail -f /etc/rsyslog.conf
       sudo service rsyslog start
 
     displayName: "Install dependencies"
