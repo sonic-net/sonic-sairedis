@@ -84,7 +84,7 @@ jobs:
     condition: always()
     inputs:
         SourceFolder: '/var/log'
-        contents: '**'
+        contents: '*'
         targetFolder: $(Build.ArtifactStagingDirectory)
   - task: PublishBuildArtifacts@1
     displayName: "Publish syslog artifacts"
