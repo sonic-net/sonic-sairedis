@@ -64,8 +64,7 @@ jobs:
     submodules: true
   - script: |
       ./autogen.sh
-      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs
-      cp ../*.deb .
+      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc) && cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
       make check || true
@@ -77,7 +76,7 @@ jobs:
 - job:
   timeoutInMinutes: 180
   displayName: "arm64"
-  pool: sonic
+  pool: sonicbld
 
   container:
     image: sonicdev-microsoft.azurecr.io:443/sonic-slave-buster-arm64:latest
@@ -130,8 +129,7 @@ jobs:
     submodules: true
   - script: |
       ./autogen.sh
-      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc)
-      cp ../*.deb .
+      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc) && cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
       make check || true
@@ -143,7 +141,7 @@ jobs:
 - job:
   timeoutInMinutes: 180
   displayName: "armhf"
-  pool: sonic
+  pool: sonicbld
 
   container:
     image: sonicdev-microsoft.azurecr.io:443/sonic-slave-buster-armhf:latest
@@ -196,8 +194,7 @@ jobs:
     submodules: true
   - script: |
       ./autogen.sh
-      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc)
-      cp ../*.deb .
+      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc) && cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
       make check || true
