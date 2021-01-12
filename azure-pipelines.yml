@@ -52,9 +52,6 @@ jobs:
       sudo service redis-server start
 
       sudo apt-get install -y rsyslog
-      sudo bash -c $'echo \'${{ variables.syslog1 }}\' >> /etc/rsyslog.conf'
-      sudo bash -c $'echo \'${{ variables.syslog2 }}\' >> /etc/rsyslog.conf'
-      sudo tail /etc/rsyslog.conf
       sudo service rsyslog start
 
     displayName: "Install dependencies"
@@ -78,7 +75,9 @@ jobs:
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
-      make check || true
+      sudo bash -c 'cat azsyslog.conf >>/etc/rsyslog.conf'
+      sudo service rsyslog start
+      make check
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis
