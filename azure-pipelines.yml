@@ -54,6 +54,8 @@ jobs:
       sudo apt-get install -y rsyslog
       sudo bash -c "echo '${{ variables.syslog1 }}' >> /etc/rsyslog.conf"
       sudo bash -c "echo '${{ variables.syslog2 }}' >> /etc/rsyslog.conf"
+      echo 'Line: ${{ variables.syslog1 }}'
+      echo 'Line: ${{ variables.syslog2 }}'
       sudo tail /etc/rsyslog.conf
       sudo service rsyslog start
 
