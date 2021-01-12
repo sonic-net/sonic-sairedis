@@ -75,15 +75,17 @@ jobs:
     displayName: "Archive sonic sairedis debian packages"
 
   - script: |
-      echo Hello!
       ls -al /var/log/
+    displayName: "List /var/log"
     condition: always()
   - task: CopyFiles@2
+    displayName: "Copy syslog to staging directory"
     condition: always()
     inputs:
-        contents: '/var/log/syslog*'
+        contents: /var/log/syslog*
         targetFolder: $(Build.ArtifactStagingDirectory)
   - task: PublishBuildArtifacts@1
+    displayName: "Publish syslog artifacts"
     condition: always()
     inputs:
         pathToPublish: $(Build.ArtifactStagingDirectory)
