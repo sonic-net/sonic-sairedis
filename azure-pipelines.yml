@@ -69,6 +69,7 @@ jobs:
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
+      sudo cat /etc/rsyslog.conf
       sudo cp azsyslog.conf /etc/rsyslog.conf
       sudo service rsyslog restart
     displayName: "Update rsyslog.conf"
