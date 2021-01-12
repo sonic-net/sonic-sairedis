@@ -68,6 +68,10 @@ jobs:
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
+      sudo cp azsyslog.conf /etc/rsyslog.conf
+      sudo service rsyslog restart
+    displayName: "Update rsyslog.conf"
+  - script: |
       make check
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
@@ -154,6 +158,10 @@ jobs:
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
+      sudo cp azsyslog.conf /etc/rsyslog.conf
+      sudo service rsyslog restart
+    displayName: "Update rsyslog.conf"
+  - script: |
       make check
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
@@ -239,6 +247,10 @@ jobs:
       fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc)
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
+  - script: |
+      sudo cp azsyslog.conf /etc/rsyslog.conf
+      sudo service rsyslog restart
+    displayName: "Update rsyslog.conf"
   - script: |
       make check
     displayName: "Run sonic sairedis unit tests"
