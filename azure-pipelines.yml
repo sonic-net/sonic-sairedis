@@ -65,7 +65,7 @@ jobs:
     submodules: true
   - script: |
       ./autogen.sh
-      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs
+      DEB_BUILD_OPTIONS=nocheck fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs
       cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
