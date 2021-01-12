@@ -131,15 +131,4 @@ CXXFLAGS="$SAVED_FLAGS"
 AC_SUBST(CFLAGS_COMMON)
 
 AC_OUTPUT(Makefile
-          meta/Makefile
-          lib/Makefile
-          lib/src/Makefile
-          vslib/Makefile
-          vslib/src/Makefile
-          syncd/Makefile
-          saiplayer/Makefile
-          saidump/Makefile
-          saisdkdump/Makefile
-          saidiscovery/Makefile
-          tests/Makefile
-          python/setup.py)
+          tests2/Makefile)
