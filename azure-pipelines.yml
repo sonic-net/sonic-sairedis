@@ -78,16 +78,14 @@ jobs:
       pwd
       ls -al .
       ls -al /var/log/
-      sudo cat /var/log/syslog
       sudo chmod a+r /var/log/syslog*
-      tar -cf /var/log/syslog-all.tar /var/log/syslog*
+      tar -cf syslog-all.tar /var/log/syslog*
     displayName: "List /var/log"
     condition: always()
   - task: CopyFiles@2
     displayName: "Copy syslog to staging directory"
     condition: always()
     inputs:
-        SourceFolder: '/var/log'
         contents: 'syslog-all.tar'
         targetFolder: $(Build.ArtifactStagingDirectory)
   - task: PublishBuildArtifacts@1
