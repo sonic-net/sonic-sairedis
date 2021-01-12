@@ -8,12 +8,6 @@ trigger:
     include:
       - "*"
 
-variables:
-    - name: syslog1
-      value: '$template SONiCFileFormat,"%TIMESTAMP%.%timestamp:::date-subseconds% %HOSTNAME% %syslogseverity-text:::uppercase% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-last-lf%\n"'
-    - name: syslog2
-      value: '$ActionFileDefaultTemplate SONiCFileFormat'
-
 jobs:
 - job:
   displayName: "amd64"
