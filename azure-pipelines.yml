@@ -7,6 +7,13 @@ trigger:
   branches:
     include:
       - "*"
+
+variables:
+    - name: syslog1
+      value: '$template SONiCFileFormat,%TIMESTAMP%.%timestamp:::date-subseconds% %HOSTNAME% %syslogseverity-text:::uppercase% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-last-lf%\n'
+    - name: syslog2
+      value: '$ActionFileDefaultTemplate SONiCFileFormat'
+
 jobs:
 - job:
   displayName: "amd64"
@@ -45,8 +52,8 @@ jobs:
       sudo service redis-server start
 
       sudo apt-get install -y rsyslog
-      sudo echo "$template SONiCFileFormat,\"%TIMESTAMP%.%timestamp:::date-subseconds% %HOSTNAME% %syslogseverity-text:::uppercase% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-last-lf%\n\"" >> /etc/rsyslog.conf
-      sudo echo "$ActionFileDefaultTemplate SONiCFileFormat" >> /etc/rsyslog.conf
+      echo ${{ variables.syslog1 }} | sudo tee -a /etc/rsyslog.conf
+      echo ${{ variables.syslog2 }} | sudo tee -a /etc/rsyslog.conf
       sudo service rsyslog start
 
     displayName: "Install dependencies"
@@ -82,7 +89,6 @@ jobs:
       tar -cf syslog-all.tar /var/log/syslog*
       ls -al .
       ls -al /var/log/
-      find /etc -name "*syslog*"
     displayName: "Env info"
     condition: always()
   - task: CopyFiles@2
