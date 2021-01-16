@@ -2666,9 +2666,12 @@ sai_status_t SwitchStateBase::initialize_voq_switch_objects(
 
     CHECK_STATUS(set_system_port_list());
 
-    CHECK_STATUS(create_fabric_ports());
+    if (m_switchConfig->m_fabricLaneMap)
+    {
+        CHECK_STATUS(create_fabric_ports());
 
-    CHECK_STATUS(set_fabric_port_list());
+        CHECK_STATUS(set_fabric_port_list());
+    }
 
     return SAI_STATUS_SUCCESS;
 }
