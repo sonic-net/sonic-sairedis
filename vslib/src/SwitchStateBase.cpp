@@ -154,6 +154,13 @@ sai_status_t SwitchStateBase::create(
         return createHostif(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_MACSEC_PORT)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createMACsecPort(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_MACSEC_SC)
     {
         sai_object_id_t object_id;
