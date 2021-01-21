@@ -623,6 +623,13 @@ sub test_bulk_set_multiple
     play "test_bulk_set_multiple_B.rec", 0;
 }
 
+sub test_macsec_p2p_establishment
+{
+    fresh_start;
+
+    play "test_macsec_p2p_establishment.rec"
+}
+
 # RUN TESTS
 
 test_bulk_set_multiple;
