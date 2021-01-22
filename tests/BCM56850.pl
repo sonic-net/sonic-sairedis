@@ -646,8 +646,17 @@ sub test_lag_label
     }
 }
 
+sub test_no_lag_label
+{
+    fresh_start;
+
+    play "no_lag_label_A.rec";
+    play "no_lag_label_B.rec", 2;
+}
+
 # RUN TESTS
 
+test_no_lag_label;
 test_lag_label;
 test_bulk_set_multiple;
 test_depreacated_enums;
