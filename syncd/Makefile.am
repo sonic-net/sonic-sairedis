@@ -50,7 +50,7 @@ libSyncd_a_SOURCES = \
 				SaiObj.cpp \
 				SaiAttr.cpp \
 				VendorSai.cpp \
-				syncd.cpp \
+				_syncd.cpp \
 				TimerWatchdog.cpp \
 				NotificationQueue.cpp \
 				CommandLineOptions.cpp \
