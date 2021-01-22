@@ -9,11 +9,6 @@
 
 using namespace sairedis;
 
-/**
- * @brief Get response timeout in milliseconds.
- */
-#define REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS (60*1000)
-
 RedisChannel::RedisChannel(
         _In_ const std::string& dbAsic,
         _In_ Channel::Callback callback):
@@ -179,7 +174,7 @@ sai_status_t RedisChannel::wait(
 
         swss::Selectable *sel;
 
-        int result = s.select(&sel, REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS);
+        int result = s.select(&sel, (int)m_responseTimeoutMs);
 
         if (result == swss::Select::OBJECT)
         {

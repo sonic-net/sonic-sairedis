@@ -12,11 +12,6 @@
 
 using namespace sairedis;
 
-/**
- * @brief Get response timeout in milliseconds.
- */
-#define ZMQ_GETRESPONSE_TIMEOUT_MS (60*1000)
-
 #define ZMQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
 
 ZeroMQChannel::ZeroMQChannel(
@@ -273,7 +268,7 @@ sai_status_t ZeroMQChannel::wait(
     items[0].socket = m_socket;
     items[0].events = ZMQ_POLLIN;
 
-    int rc = zmq_poll(items, 1, ZMQ_GETRESPONSE_TIMEOUT_MS);
+    int rc = zmq_poll(items, 1, m_responseTimeoutMs);
 
     if (rc == 0)
     {

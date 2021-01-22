@@ -30,6 +30,13 @@ namespace sairedis
 
         public:
 
+            void setResponseTimeout(
+                    _In_ uint64_t responseTimeout);
+
+            uint64_t getResponseTimeout() const;
+
+        public:
+
             virtual void setBuffered(
                     _In_ bool buffered) = 0;
 
@@ -55,6 +62,8 @@ namespace sairedis
         protected:
 
             Callback m_callback;
+
+            uint64_t m_responseTimeoutMs;
 
         protected: // notification
 

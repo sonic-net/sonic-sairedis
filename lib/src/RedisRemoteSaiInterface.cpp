@@ -92,6 +92,8 @@ sai_status_t RedisRemoteSaiInterface::initialize(
                 std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
     }
 
+    m_responseTimeoutMs = m_communicationChannel->getResponseTimeout();
+
     m_db = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
 
     m_redisVidIndexGenerator = std::make_shared<RedisVidIndexGenerator>(m_db, REDIS_KEY_VIDCOUNTER);
@@ -355,6 +357,16 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
             return SAI_STATUS_SUCCESS;
 
+        case SAI_REDIS_SWITCH_ATTR_GET_RESPONSE_TIMEOUT_MS:
+
+            m_responseTimeoutMs = attr->value.u64;
+
+            m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
+
+            SWSS_LOG_NOTICE("set response timeout to %lu ms", m_responseTimeoutMs);
+
+            return SAI_STATUS_SUCCESS;
+
         case SAI_REDIS_SWITCH_ATTR_SYNC_MODE:
 
             SWSS_LOG_WARN("sync mode is depreacated, use communication mode");
@@ -402,6 +414,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                             m_contextConfig->m_dbAsic,
                             std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
 
+                    m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
+
                     m_communicationChannel->setBuffered(true);
 
                     return SAI_STATUS_SUCCESS;
@@ -415,6 +429,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                     m_communicationChannel = std::make_shared<RedisChannel>(
                             m_contextConfig->m_dbAsic,
                             std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+                    m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
                     m_communicationChannel->setBuffered(false);
 
@@ -431,6 +447,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                             m_contextConfig->m_zmqEndpoint,
                             m_contextConfig->m_zmqNtfEndpoint,
                             std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+                    m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
                     SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
 

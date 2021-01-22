@@ -465,6 +465,8 @@ namespace sairedis
 
             std::shared_ptr<Channel> m_communicationChannel;
 
+            uint64_t m_responseTimeoutMs;
+
             std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> m_notificationCallback;
 
             std::map<sai_object_id_t, swss::TableDump> m_tableDump;

@@ -205,4 +205,15 @@ typedef enum _sai_redis_switch_attr_t
      */
     SAI_REDIS_SWITCH_ATTR_RECORDING_FILENAME,
 
+    /**
+     * @brief Get operation response timeout in milliseconds.
+     *
+     * Also used for every synchronous API call.
+     *
+     * @type sai_uint64_t
+     * @flgs CREATE_AND_SET
+     * @default 60000
+     */
+    SAI_REDIS_SWITCH_ATTR_GET_RESPONSE_TIMEOUT_MS,
+
 } sai_redis_switch_attr_t;
