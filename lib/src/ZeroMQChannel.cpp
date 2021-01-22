@@ -268,7 +268,7 @@ sai_status_t ZeroMQChannel::wait(
     items[0].socket = m_socket;
     items[0].events = ZMQ_POLLIN;
 
-    int rc = zmq_poll(items, 1, m_responseTimeoutMs);
+    int rc = zmq_poll(items, 1, (int)m_responseTimeoutMs);
 
     if (rc == 0)
     {
