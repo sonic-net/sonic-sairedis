@@ -30,7 +30,7 @@ sai_status_t internal_api_wait_for_response(
         swss::Selectable *sel;
 
         // get timeout and selector is used for all quad api's
-        int result = s.select(&sel, GET_RESPONSE_TIMEOUT);
+        int result = s.select(&sel, (int)g_responseTimeoutMs);
 
         if (result == swss::Select::OBJECT)
         {

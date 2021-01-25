@@ -41,10 +41,6 @@ void check_notifications_pointers(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list);
 
-// if we don't receive response from syncd in 60 seconds
-// there is something wrong and we should fail
-#define GET_RESPONSE_TIMEOUT (60*1000)
-
 extern std::string getSelectResultAsString(int result);
 extern void clear_local_state();
 extern void setRecording(bool record);
@@ -66,6 +62,7 @@ extern volatile bool g_useTempView;
 extern volatile bool g_asicInitViewMode;
 extern volatile bool g_logrotate;
 extern volatile bool g_syncMode;
+extern volatile uint64_t g_responseTimeoutMs;
 
 extern sai_service_method_table_t                   g_services;
 extern std::shared_ptr<swss::ProducerTable>         g_asicState;

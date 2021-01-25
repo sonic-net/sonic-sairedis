@@ -5,9 +5,12 @@
 
 #include <thread>
 
+#define REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS (60*1000)
+
 volatile bool g_asicInitViewMode = false; // default mode is apply mode
 volatile bool g_useTempView = false;
 volatile bool g_syncMode = false;
+volatile uint64_t g_responseTimeoutMs = REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS;
 
 sai_status_t sai_redis_internal_notify_syncd(
         _In_ const std::string& key)
@@ -36,7 +39,7 @@ sai_status_t sai_redis_internal_notify_syncd(
 
         swss::Selectable *sel;
 
-        int result = s.select(&sel, GET_RESPONSE_TIMEOUT);
+        int result = s.select(&sel, (int)g_responseTimeoutMs);
 
         if (result == swss::Select::OBJECT)
         {
@@ -299,6 +302,13 @@ sai_status_t redis_set_switch_attribute(
 
             case SAI_REDIS_SWITCH_ATTR_RECORDING_FILENAME:
                 return setRecordingOutputFile(*attr);
+
+            case SAI_REDIS_SWITCH_ATTR_GET_RESPONSE_TIMEOUT_MS:
+
+                g_responseTimeoutMs = attr->value.u64;
+
+                return SAI_STATUS_SUCCESS;
+
             default:
                 break;
         }

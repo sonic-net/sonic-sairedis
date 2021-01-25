@@ -289,7 +289,7 @@ sai_status_t internal_redis_generic_get_stats(
 
         swss::Selectable *sel;
 
-        int result = s.select(&sel, GET_RESPONSE_TIMEOUT);
+        int result = s.select(&sel, (int)g_responseTimeoutMs);
 
         if (result == swss::Select::OBJECT)
         {
@@ -419,7 +419,7 @@ sai_status_t internal_redis_generic_clear_stats(
         SWSS_LOG_DEBUG("wait for clear_stats response");
 
         swss::Selectable *sel;
-        int result = s.select(&sel, GET_RESPONSE_TIMEOUT);
+        int result = s.select(&sel, (int)g_responseTimeoutMs);
         if (result == swss::Select::OBJECT)
         {
             swss::KeyOpFieldsValuesTuple kco;

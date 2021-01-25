@@ -319,7 +319,7 @@ sai_status_t sai_query_attribute_enum_values_capability(
 
         swss::Selectable *sel;
 
-        auto result = callback.select(&sel, GET_RESPONSE_TIMEOUT);
+        auto result = callback.select(&sel, (int)g_responseTimeoutMs);
 
         if (result == swss::Select::OBJECT)
         {
@@ -460,7 +460,7 @@ sai_status_t sai_object_type_get_availability(
 
         swss::Selectable *sel;
 
-        auto result = callback.select(&sel, GET_RESPONSE_TIMEOUT);
+        auto result = callback.select(&sel, (int)g_responseTimeoutMs);
 
         if (result == swss::Select::OBJECT)
         {
