@@ -161,9 +161,6 @@ jobs:
       sudo cp azsyslog.conf /etc/rsyslog.conf
       sudo service rsyslog restart
     displayName: "Update rsyslog.conf"
-  - script: |
-      make check
-    displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis.arm64
     displayName: "Archive sonic sairedis debian packages"
@@ -251,9 +248,6 @@ jobs:
       sudo cp azsyslog.conf /etc/rsyslog.conf
       sudo service rsyslog restart
     displayName: "Update rsyslog.conf"
-  - script: |
-      make check
-    displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis.armhf
     displayName: "Archive sonic sairedis debian packages"
