@@ -2,6 +2,7 @@
 
 #include "meta/sai_serialize.h"
 #include "swss/logger.h"
+#include <inttypes.h>
 
 extern "C" {
 #include "saimetadata.h"
@@ -242,7 +243,7 @@ sai_object_id_t VirtualObjectIdManager::allocateNewObjectId(
 
     if (objectIndex > SAI_REDIS_OBJECT_INDEX_MAX)
     {
-        SWSS_LOG_THROW("no more object indexes available, given: 0x%lx but limit is 0x%llx",
+        SWSS_LOG_THROW("no more object indexes available, given: 0x%" PRIu64 " but limit is 0x%" PRIu64 " ",
                 objectIndex,
                 SAI_REDIS_OBJECT_INDEX_MAX);
     }

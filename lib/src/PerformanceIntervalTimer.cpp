@@ -1,6 +1,7 @@
 #include "PerformanceIntervalTimer.h"
 
 #include "swss/logger.h"
+#include <inttypes.h>
 
 using namespace sairediscommon;
 
@@ -46,7 +47,7 @@ void PerformanceIntervalTimer::inc(
     {
         if (m_enable)
         {
-            SWSS_LOG_NOTICE("%zu (calls %zu) %s op took: %zu ms", m_count, m_calls, m_msg.c_str(), m_total/1000000);
+            SWSS_LOG_NOTICE("%" PRIu64 " (calls %" PRIu64 ") %s op took: %" PRIu64 " ms", m_count, m_calls, m_msg.c_str(), m_total/1000000);
         }
 
         reset();
