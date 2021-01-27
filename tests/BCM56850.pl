@@ -723,5 +723,6 @@ test_brcm_full_to_empty_hostif_remove_segfault;
 test_brcm_full_to_empty_no_queue_no_ipg_no_buffer_profile;
 test_brcm_query_attr_enum_values_capability;
 test_brcm_query_object_type_get_availability;
+test_macsec_p2p_establishment
 
 kill_syncd;
