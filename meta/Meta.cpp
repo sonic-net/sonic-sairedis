@@ -4963,7 +4963,6 @@ sai_status_t Meta::meta_generic_validation_set(
     switch (md.attrvaluetype)
     {
         case SAI_ATTR_VALUE_TYPE_BOOL:
-            // case SAI_ATTR_VALUE_TYPE_CHARDATA:
         case SAI_ATTR_VALUE_TYPE_UINT8:
         case SAI_ATTR_VALUE_TYPE_INT8:
         case SAI_ATTR_VALUE_TYPE_UINT16:
@@ -4978,6 +4977,28 @@ sai_status_t Meta::meta_generic_validation_set(
         case SAI_ATTR_VALUE_TYPE_POINTER:
             // primitives
             break;
+
+        case SAI_ATTR_VALUE_TYPE_CHARDATA:
+
+            {
+                size_t len = strnlen(value.chardata, sizeof(sai_attribute_value_t::chardata)/sizeof(char));
+
+                // for some attributes, length can be zero
+
+                for (size_t i = 0; i < len; ++i)
+                {
+                    char c = value.chardata[i];
+
+                    if (c < 0x20 || c > 0x7e)
+                    {
+                        META_LOG_ERROR(md, "invalid character 0x%02x in chardata", c);
+
+                        return SAI_STATUS_INVALID_PARAMETER;
+                    }
+                }
+
+                break;
+            }
 
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
 

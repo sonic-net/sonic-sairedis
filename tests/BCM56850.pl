@@ -623,6 +623,36 @@ sub test_bulk_set_multiple
     play "test_bulk_set_multiple_B.rec", 0;
 }
 
+sub test_lag_label
+{
+    fresh_start;
+
+    play "lag_label_A.rec";
+    play "lag_label_B.rec";
+
+    open (my $H, "<", "applyview.log") or die "failed to open applyview.log $!";
+
+    my $line = <$H>;
+
+    close ($H);
+
+    chomp$line;
+
+    if (not $line =~ /ASIC_OPERATIONS: (\d+)/ or $1 != 8)
+    {
+        print color('red') . "expected 8 ASIC_OPERATIONS count on first line, but got: '$line'" . color('reset') . "\n";
+        exit 1;
+    }
+}
+
+sub test_no_lag_label
+{
+    fresh_start;
+
+    play "no_lag_label_A.rec";
+    play "no_lag_label_B.rec", 2;
+}
+
 sub test_macsec_p2p_establishment
 {
     fresh_start;
@@ -632,6 +662,8 @@ sub test_macsec_p2p_establishment
 
 # RUN TESTS
 
+test_no_lag_label;
+test_lag_label;
 test_bulk_set_multiple;
 test_depreacated_enums;
 test_brcm_buffer_pool_zmq_sync_flag;

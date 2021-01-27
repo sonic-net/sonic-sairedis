@@ -180,7 +180,7 @@ sub sync_fresh_start
 BEGIN
 {
     our @ISA    = qw(Exporter);
-    our @EXPORT = qw/
+    our @EXPORT = qw/ color
     kill_syncd flush_redis start_syncd play fresh_start start_syncd_warm request_warm_shutdown
     sync_start_syncd sync_fresh_start sync_start_syncd_warm sync_start_syncd sync_play
     /;
