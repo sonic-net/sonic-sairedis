@@ -13,7 +13,7 @@ namespace saivs
 
     struct MACsecAttr
     {
-        // Explicitely declare constructor and destructor as non-inline functions
+        // Explicitly declare constructor and destructor as non-inline functions
         // to avoid 'call is unlikely and code size would grow [-Werror=inline]'
         MACsecAttr();
 

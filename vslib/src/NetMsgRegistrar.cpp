@@ -134,9 +134,6 @@ void NetMsgRegistrar::run()
         }
     }
 
-    swss::NetDispatcher::getInstance().unregisterMessageHandler(RTM_NEWLINK);
-    swss::NetDispatcher::getInstance().unregisterMessageHandler(RTM_DELLINK);
-
     SWSS_LOG_NOTICE("netlink msg listener ended");
 }
 

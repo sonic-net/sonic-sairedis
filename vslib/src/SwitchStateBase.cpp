@@ -991,6 +991,8 @@ sai_status_t SwitchStateBase::set_static_acl_resource_list(
         _In_ sai_switch_attr_t acl_resource,
         _In_ int max_count)
 {
+    SWSS_LOG_ENTER();
+
     auto acl_stages = {SAI_ACL_STAGE_INGRESS, SAI_ACL_STAGE_EGRESS};
     auto acl_bind_points = {
         SAI_ACL_BIND_POINT_TYPE_PORT,

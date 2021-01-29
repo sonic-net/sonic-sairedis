@@ -35,7 +35,7 @@ bool MACsecManager::create_macsec_port(
 {
     SWSS_LOG_ENTER();
 
-    // Linux MACsec driver wouldn't differentiate the Ingress and Egress port,
+    // Linux MACsec driver would not differentiate the Ingress and Egress port,
     // We just need to create the Linux MACsec device when the egress port was created
     // And we assume that creating the ingress port is always success.
     if (attr.m_direction == SAI_MACSEC_DIRECTION_INGRESS)
@@ -156,7 +156,7 @@ bool MACsecManager::delete_macsec_port(
 {
     SWSS_LOG_ENTER();
 
-    // Linux MACsec driver wouldn't differentiate the Ingress and Egress port,
+    // Linux MACsec driver would not differentiate the Ingress and Egress port,
     // We just need to delete the Linux MACsec device when the egress port was deleted
     // And we assume that deleting the ingress port is always success.
     if (attr.m_direction == SAI_MACSEC_DIRECTION_INGRESS)
@@ -851,7 +851,7 @@ void MACsecManager::cleanup_macsec_device() const
         return;
     }
 
-    // Here is an example of MACsec device informations
+    // Here is an example of MACsec device information
     // 2774: macsec0: protect on validate strict sc off sa off encrypt on send_sci on end_station off scb off replay on window 0
     //     cipher suite: GCM-AES-128, using ICV length 16
     //     TXSC: fe5400409b920001 on SA 0

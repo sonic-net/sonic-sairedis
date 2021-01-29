@@ -69,11 +69,35 @@ jobs:
       fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc) && cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
-      make check || true
+      sudo cp azsyslog.conf /etc/rsyslog.conf
+      sudo service rsyslog restart
+    displayName: "Update rsyslog.conf"
+  - script: |
+      make check
     displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis
     displayName: "Archive sonic sairedis debian packages"
+  - script: |
+      pwd
+      sudo chmod a+r /var/log/syslog*
+      tar -czf syslog-all.tgz /var/log/syslog*
+      ls -al .
+      ls -al /var/log/
+    displayName: "Env info"
+    condition: always()
+  - task: CopyFiles@2
+    displayName: "Copy syslog to staging directory"
+    condition: always()
+    inputs:
+        contents: 'syslog-all.tgz'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+  - task: PublishBuildArtifacts@1
+    displayName: "Publish syslog artifacts"
+    condition: always()
+    inputs:
+        pathToPublish: $(Build.ArtifactStagingDirectory)
+        artifactName: sonic-sairedis.syslog.amd64
 
 - job:
   timeoutInMinutes: 180
@@ -136,11 +160,32 @@ jobs:
       fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc) && cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
-      make check || true
-    displayName: "Run sonic sairedis unit tests"
+      sudo cp azsyslog.conf /etc/rsyslog.conf
+      sudo service rsyslog restart
+    displayName: "Update rsyslog.conf"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis.arm64
     displayName: "Archive sonic sairedis debian packages"
+  - script: |
+      pwd
+      sudo chmod a+r /var/log/syslog*
+      tar -czf syslog-all.tgz /var/log/syslog*
+      ls -al .
+      ls -al /var/log/
+    displayName: "Env info"
+    condition: always()
+  - task: CopyFiles@2
+    displayName: "Copy syslog to staging directory"
+    condition: always()
+    inputs:
+        contents: 'syslog-all.tgz'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+  - task: PublishBuildArtifacts@1
+    displayName: "Publish syslog artifacts"
+    condition: always()
+    inputs:
+        pathToPublish: $(Build.ArtifactStagingDirectory)
+        artifactName: sonic-sairedis.syslog.arm64
 
 - job:
   timeoutInMinutes: 180
@@ -203,8 +248,29 @@ jobs:
       fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc) && cp ../*.deb .
     displayName: "Compile sonic sairedis"
   - script: |
-      make check || true
-    displayName: "Run sonic sairedis unit tests"
+      sudo cp azsyslog.conf /etc/rsyslog.conf
+      sudo service rsyslog restart
+    displayName: "Update rsyslog.conf"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: sonic-sairedis.armhf
     displayName: "Archive sonic sairedis debian packages"
+  - script: |
+      pwd
+      sudo chmod a+r /var/log/syslog*
+      tar -czf syslog-all.tgz /var/log/syslog*
+      ls -al .
+      ls -al /var/log/
+    displayName: "Env info"
+    condition: always()
+  - task: CopyFiles@2
+    displayName: "Copy syslog to staging directory"
+    condition: always()
+    inputs:
+        contents: 'syslog-all.tgz'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+  - task: PublishBuildArtifacts@1
+    displayName: "Publish syslog artifacts"
+    condition: always()
+    inputs:
+        pathToPublish: $(Build.ArtifactStagingDirectory)
+        artifactName: sonic-sairedis.syslog.armhf

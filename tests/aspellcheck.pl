@@ -147,6 +147,7 @@ for my $file (@files)
 {
     chomp $file;
     next if $file =~ m!/SAI/!;
+    next if $file =~ m!/debian/!;
     next if $file =~ m!/config.h!;
 
     my $data = ReadFile $file;
@@ -167,6 +168,9 @@ for my $file (@files)
     {
         next if $w =~ /_/;
         next if $w =~ /xYYY+/;
+        next if $w =~ /fe\d+/;
+        next if $w =~ /ebe\d+/;
+        next if $w =~ /Werror/;
         next if $w =~ /^[A-Za-z][a-z]+([A-Z][a-z]+)+$/; # fooBar FooBar
 
         $wordsToCheck{$w} = $file;

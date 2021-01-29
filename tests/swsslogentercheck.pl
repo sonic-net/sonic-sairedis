@@ -26,13 +26,14 @@ for my $arg (@ARGV)
     my $s = ReadFile($arg);
 
     next if $arg =~ m!/SAI/!;
+    next if $arg =~ m!/debian/!;
 
     my $returnType = '([:_a-z0-9<>]+)(?:\s*[*&]\s*|\s+)';
     my $methodName = '(~?\w+|\w+::\w+)';
     my $methodParams = '\(([ ,:<>&a-z0-9_*\r\n]*?)\)';
     my $const = '(?:\s*const\s*)?';
 
-    while ($s =~ m/($returnType$methodName\s*$methodParams\s*$const\{\n+)([^\n;]+).*?\n+([^\n;]+)/gis)
+    while ($s =~ m/($returnType$methodName\s*$methodParams\s*$const\{\n+)([^\n]+).*?\n+([^\n;]+)/gis)
     {
         my $method = $1;
         my $rt = $2;
