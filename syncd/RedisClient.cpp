@@ -885,7 +885,7 @@ void RedisClient::processFlushEvent(
             break;
 
         default:
-            SWSS_LOG_THROW("unknow fdb flush entry type: %d", type);
+            SWSS_LOG_THROW("unknown fdb flush entry type: %d", type);
     }
 
     for (int flush_static: vals)

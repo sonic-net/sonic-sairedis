@@ -92,7 +92,7 @@ void RequestShutdownCommandLineOptionsParser::printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: syncd_request_shutdown [-w] [--wram] [-p] [--pre] [-c] [--cold] [-f] [--fast] [-g idx] [-x contextConfig]" << std::endl;
+    std::cout << "Usage: syncd_request_shutdown [-w] [--warm] [-p] [--pre] [-c] [--cold] [-f] [--fast] [-g idx] [-x contextConfig]" << std::endl;
 
     std::cerr << std::endl;
 

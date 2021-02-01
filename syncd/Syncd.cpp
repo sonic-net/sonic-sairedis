@@ -75,7 +75,7 @@ Syncd::Syncd(
 
     if (m_commandLineOptions->m_enableSyncMode)
     {
-        SWSS_LOG_WARN("enable sync mode is depreacated, please use communication mode, FORCING redis sync mode");
+        SWSS_LOG_WARN("enable sync mode is deprecated, please use communication mode, FORCING redis sync mode");
 
         m_enableSyncMode = true;
 
@@ -216,7 +216,7 @@ void Syncd::performStartupLogic()
 
         if (warmBootReadFile == NULL || access(warmBootReadFile, F_OK) == -1)
         {
-            SWSS_LOG_WARN("user requested warmStart but warmBootReadFile is not specified or not accesible, forcing cold start");
+            SWSS_LOG_WARN("user requested warmStart but warmBootReadFile is not specified or not accessible, forcing cold start");
 
             m_commandLineOptions->m_startType = SAI_START_TYPE_COLD_BOOT;
         }
@@ -1176,7 +1176,7 @@ sai_status_t Syncd::processBulkEntry(
 
     if (info->isobjectid)
     {
-        SWSS_LOG_THROW("passing oid object to bulk non obejct id operation");
+        SWSS_LOG_THROW("passing oid object to bulk non object id operation");
     }
 
     std::vector<sai_status_t> statuses(objectIds.size());
@@ -1474,7 +1474,7 @@ sai_status_t Syncd::processBulkOid(
 
     if (info->isnonobjectid)
     {
-        SWSS_LOG_THROW("passing non object id to bulk oid obejct operation");
+        SWSS_LOG_THROW("passing non object id to bulk oid object operation");
     }
 
     std::vector<sai_status_t> statuses(objectIds.size());
@@ -3401,7 +3401,7 @@ sai_status_t Syncd::applyView()
 
             if (!consistent && m_commandLineOptions->m_enableUnittests)
             {
-                SWSS_LOG_THROW("ASIC content is differnt than DB content!");
+                SWSS_LOG_THROW("ASIC content is different than DB content!");
             }
         }
     }
@@ -3728,7 +3728,7 @@ void Syncd::onSwitchCreateInInitViewMode(
 
         if (currentHw != newHw)
         {
-            SWSS_LOG_THROW("hardware info missmatch: current '%s' vs new '%s'", currentHw.c_str(), newHw.c_str());
+            SWSS_LOG_THROW("hardware info mismatch: current '%s' vs new '%s'", currentHw.c_str(), newHw.c_str());
         }
 
         SWSS_LOG_NOTICE("current %s switch hardware info: '%s'",
@@ -3843,7 +3843,7 @@ void Syncd::performWarmRestartSingleSwitch(
             continue;
         }
 
-        SWSS_LOG_NOTICE("skiping warm boot: %s", meta->attridname);
+        SWSS_LOG_NOTICE("skipping warm boot: %s", meta->attridname);
     }
 
     // TODO support multiple notification handlers
@@ -3897,7 +3897,7 @@ void Syncd::performWarmRestart()
         SWSS_LOG_THROW("on warm restart there is no switches defined in DB, not supported yet, FIXME");
     }
 
-    SWSS_LOG_NOTICE("switches defined in warm restat: %zu", entries.size());
+    SWSS_LOG_NOTICE("switches defined in warm restart: %zu", entries.size());
 
     // here we could have multiple switches defined, let's process them one by one
 
@@ -3998,7 +3998,7 @@ void Syncd::sendShutdownRequestAfterException()
             sendShutdownRequest(SAI_NULL_OBJECT_ID);
         }
 
-        SWSS_LOG_NOTICE("notification send successfull");
+        SWSS_LOG_NOTICE("notification send successfully");
     }
     catch(const std::exception &e)
     {
@@ -4344,7 +4344,7 @@ void Syncd::run()
 
                     s->addSelectable(m_restartQuery.get());
 
-                    SWSS_LOG_NOTICE("switched to PRE_SHUTDOWN, from now on accepting only shurdown requests");
+                    SWSS_LOG_NOTICE("switched to PRE_SHUTDOWN, from now on accepting only shutdown requests");
                 }
                 else
                 {

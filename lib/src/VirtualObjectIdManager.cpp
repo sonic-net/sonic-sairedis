@@ -41,7 +41,7 @@ static_assert(SAI_REDIS_OBJECT_ID_BITS_SIZE == SAI_OBJECT_ID_BITS_SIZE, "redis o
  * This condition must be met, since we need to be able to encode SAI object
  * type in object id on defined number of bits.
  */
-static_assert(SAI_OBJECT_TYPE_EXTENSIONS_MAX < SAI_REDIS_OBJECT_TYPE_MAX, "redis max object type value must be greater than supported SAI max objeect type value");
+static_assert(SAI_OBJECT_TYPE_EXTENSIONS_MAX < SAI_REDIS_OBJECT_TYPE_MAX, "redis max object type value must be greater than supported SAI max object type value");
 
 /*
  * Current OBJECT ID format:
@@ -220,7 +220,7 @@ sai_object_id_t VirtualObjectIdManager::allocateNewObjectId(
 
     if ((objectType <= SAI_OBJECT_TYPE_NULL) || (objectType >= SAI_OBJECT_TYPE_EXTENSIONS_MAX))
     {
-        SWSS_LOG_THROW("invalid objct type: %d", objectType);
+        SWSS_LOG_THROW("invalid object type: %d", objectType);
     }
 
     if (objectType == SAI_OBJECT_TYPE_SWITCH)

@@ -223,7 +223,7 @@ sai_status_t SwitchState::getStatsExt(
     }
     else
     {
-        SWSS_LOG_WARN("meta poiner expired");
+        SWSS_LOG_WARN("meta pointer expired");
     }
 
     if (enabled && (number_of_counters & VS_COUNTERS_COUNT_MSB ))

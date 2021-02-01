@@ -1876,7 +1876,7 @@ void test_route_entry_create()
     status = g_meta->create(&route_entry, 3, list2);
     META_ASSERT_FAIL(status);
 
-    SWSS_LOG_NOTICE("wrong obejct type");
+    SWSS_LOG_NOTICE("wrong object type");
     attr1.value.oid = create_dummy_object_id(SAI_OBJECT_TYPE_HASH,switch_id);
     status = g_meta->create(&route_entry, 2, list);
     META_ASSERT_FAIL(status);

@@ -232,7 +232,7 @@ uint64_t ZeroMQSelectableChannel::readData()
 
     if (rc >= ZMQ_RESPONSE_BUFFER_SIZE)
     {
-        SWSS_LOG_THROW("zmq_recv message was turncated (over %d bytes, recived %d), increase buffer size, message DROPPED",
+        SWSS_LOG_THROW("zmq_recv message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
                 ZMQ_RESPONSE_BUFFER_SIZE,
                 rc);
     }

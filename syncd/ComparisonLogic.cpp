@@ -2923,7 +2923,7 @@ void ComparisonLogic::logViewObjectCount(
 
         asic_changes = true;
 
-        SWSS_LOG_WARN("object count for %s on current view %zu is differnt than on temporary view: %zu",
+        SWSS_LOG_WARN("object count for %s on current view %zu is different than on temporary view: %zu",
                 sai_serialize_object_type(ot).c_str(),
                 c,
                 t);
@@ -2931,7 +2931,7 @@ void ComparisonLogic::logViewObjectCount(
 
     if (asic_changes)
     {
-        SWSS_LOG_WARN("object count is differnt on both view, there will be ASIC OPERATIONS!");
+        SWSS_LOG_WARN("object count is different on both view, there will be ASIC OPERATIONS!");
     }
 }
 
@@ -3498,7 +3498,7 @@ void ComparisonLogic::executeOperationsOnAsic()
         throw;
     }
 
-    SWSS_LOG_NOTICE("performed all operations on asic succesfully");
+    SWSS_LOG_NOTICE("performed all operations on asic successfully");
 }
 
 void ComparisonLogic::checkMap(

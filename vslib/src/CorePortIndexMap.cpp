@@ -62,7 +62,7 @@ bool CorePortIndexMap::remove(
 
     if (it == m_ifNameToCorePortIndex.end())
     {
-        SWSS_LOG_ERROR("interfce %s does not have core port index in switch %d", ifname.c_str(), m_switchIndex);
+        SWSS_LOG_ERROR("interface %s does not have core port index in switch %d", ifname.c_str(), m_switchIndex);
         return false;
     }
 

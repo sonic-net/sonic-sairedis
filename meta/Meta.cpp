@@ -2587,7 +2587,7 @@ sai_status_t Meta::bulkCreate(
     {
         if (attr_list[idx] == nullptr)
         {
-            SWSS_LOG_ERROR("pointer to attr list at ondex %u is NULL", idx);
+            SWSS_LOG_ERROR("pointer to attribute list at index %u is NULL", idx);
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
@@ -3059,7 +3059,7 @@ bool Meta::meta_is_object_in_default_state(
 
     if (!m_oids.objectReferenceExists(oid))
     {
-        SWSS_LOG_WARN("object %s refrence not exists, bug!",
+        SWSS_LOG_WARN("object %s reference not exists, bug!",
                 sai_serialize_object_id(oid).c_str());
         return false;
     }
@@ -4917,7 +4917,7 @@ sai_status_t Meta::meta_generic_validation_set(
     {
         if (meta_unittests_get_and_erase_set_readonly_flag(md))
         {
-            META_LOG_NOTICE(md, "readonly attribute is allowd to be set (unittests enabled)");
+            META_LOG_NOTICE(md, "readonly attribute is allowed to be set (unittests enabled)");
         }
         else
         {
@@ -7222,7 +7222,7 @@ void Meta::meta_sai_on_fdb_event_single(
 
             if (m_saiObjectCollection.objectExists(meta_key_fdb))
             {
-                SWSS_LOG_WARN("object key %s alearedy exists, but received LEARNED event",
+                SWSS_LOG_WARN("object key %s already exists, but received LEARNED event",
                         sai_serialize_object_meta_key(meta_key_fdb).c_str());
                 break;
             }
@@ -7312,7 +7312,7 @@ void Meta::meta_sai_on_fdb_event_single(
 
                 if (status != SAI_STATUS_SUCCESS)
                 {
-                    SWSS_LOG_ERROR("object key %s FDB MOVE event, SET validateion failed on attr.id = %d",
+                    SWSS_LOG_ERROR("object key %s FDB MOVE event, SET validation failed on attr.id = %d",
                             sai_serialize_object_meta_key(meta_key_fdb).c_str(),
                             attr.id);
                     continue;

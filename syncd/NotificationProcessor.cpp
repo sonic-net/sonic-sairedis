@@ -47,7 +47,7 @@ void NotificationProcessor::sendNotification(
 
     m_notifications->send(op, data, entry);
 
-    SWSS_LOG_DEBUG("notification send successfull");
+    SWSS_LOG_DEBUG("notification send successfully");
 }
 
 void NotificationProcessor::sendNotification(
@@ -545,7 +545,7 @@ void NotificationProcessor::syncProcessNotification(
     }
     else
     {
-        SWSS_LOG_ERROR("unknow notification: %s", notification.c_str());
+        SWSS_LOG_ERROR("unknown notification: %s", notification.c_str());
     }
 }
 

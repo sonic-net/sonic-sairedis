@@ -196,7 +196,7 @@ std::vector<sai_object_id_t> SaiAttr::getOidListFromAttribute() const
 
             if (m_meta->isoidattribute)
             {
-                SWSS_LOG_THROW("attribute %s is oid attrubute but not handled", m_meta->attridname);
+                SWSS_LOG_THROW("attribute %s is oid attribute but not handled", m_meta->attridname);
             }
 
             // Attribute not contain any object ids.

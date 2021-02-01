@@ -590,7 +590,7 @@ void SingleReiniter::listFailedAttributes(
 
         if (meta == NULL)
         {
-            SWSS_LOG_ERROR("failed to get atribute metadata %s %d",
+            SWSS_LOG_ERROR("failed to get attribute metadata %s %d",
                     sai_serialize_object_type(objectType).c_str(),
                     attr->id);
 
@@ -751,7 +751,7 @@ sai_object_id_t SingleReiniter::processSingleVid(
 
             if (meta == NULL)
             {
-                SWSS_LOG_THROW("failed to get atribute metadata %s: %d",
+                SWSS_LOG_THROW("failed to get attribute metadata %s: %d",
                         sai_serialize_object_type(objectType).c_str(),
                         attr->id);
             }
@@ -760,7 +760,7 @@ sai_object_id_t SingleReiniter::processSingleVid(
             if (meta->objecttype == SAI_OBJECT_TYPE_SWITCH &&
                     attr->id == SAI_SWITCH_ATTR_SRC_MAC_ADDRESS)
             {
-                SWSS_LOG_WARN("skipping to set MAC addres since not supported on mlnx 2700");
+                SWSS_LOG_WARN("skipping to set MAC address since not supported on Mellanox platforms");
                 continue;
             }
 

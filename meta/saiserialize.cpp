@@ -815,7 +815,7 @@ std::string sai_serialize_l2mc_entry(
     j["bv_id"] = sai_serialize_object_id(l2mc_entry.bv_id);
     j["type"] = sai_serialize_l2mc_entry_type(l2mc_entry.type);
     j["destination"] = sai_serialize_ip_address(l2mc_entry.destination);
-    j["sourte"] = sai_serialize_ip_address(l2mc_entry.source);
+    j["source"] = sai_serialize_ip_address(l2mc_entry.source);
 
     return j.dump();
 }
@@ -3018,7 +3018,7 @@ void sai_deserialize_attr_value(
             return sai_deserialize_system_port_config_list(s, attr.value.sysportconfiglist, countOnly);
 
         default:
-            SWSS_LOG_THROW("deserialize type %d is not supportd yet FIXME", meta.attrvaluetype);
+            SWSS_LOG_THROW("deserialize type %d is not supported yet FIXME", meta.attrvaluetype);
     }
 }
 

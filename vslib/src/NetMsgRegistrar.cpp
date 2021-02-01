@@ -149,7 +149,7 @@ void NetMsgRegistrar::onMsg(
 
     if (!m_run)
     {
-        SWSS_LOG_WARN("received message after sropping thread");
+        SWSS_LOG_WARN("received message after stopping thread");
         return;
     }
 

@@ -126,7 +126,7 @@ std::string AttrKeyMap::constructKey(
             default:
 
                 // NOTE: only primitive types should be considered as keys
-                SWSS_LOG_THROW("FATAL: atribute %s marked as key, but have invalid serialization type, FIXME",
+                SWSS_LOG_THROW("FATAL: attribute %s marked as key, but have invalid serialization type, FIXME",
                         md->attridname);
         }
 

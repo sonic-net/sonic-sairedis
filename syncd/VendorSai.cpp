@@ -112,7 +112,7 @@ sai_status_t VendorSai::create(
 
     if (!info)
     {
-        SWSS_LOG_ERROR("unable to get info for obejct type: %s",
+        SWSS_LOG_ERROR("unable to get info for object type: %s",
                 sai_serialize_object_type(objectType).c_str());
 
         return SAI_STATUS_FAILURE;
@@ -158,7 +158,7 @@ sai_status_t VendorSai::remove(
 
     if (!info)
     {
-        SWSS_LOG_ERROR("unable to get info for obejct type: %s",
+        SWSS_LOG_ERROR("unable to get info for object type: %s",
                 sai_serialize_object_type(objectType).c_str());
 
         return SAI_STATUS_FAILURE;
@@ -198,7 +198,7 @@ sai_status_t VendorSai::set(
 
     if (!info)
     {
-        SWSS_LOG_ERROR("unable to get info for obejct type: %s",
+        SWSS_LOG_ERROR("unable to get info for object type: %s",
                 sai_serialize_object_type(objectType).c_str());
 
         return SAI_STATUS_FAILURE;
@@ -246,7 +246,7 @@ sai_status_t VendorSai::get(
 
     if (!info)
     {
-        SWSS_LOG_ERROR("unable to get info for obejct type: %s",
+        SWSS_LOG_ERROR("unable to get info for object type: %s",
                 sai_serialize_object_type(objectType).c_str());
 
         return SAI_STATUS_FAILURE;

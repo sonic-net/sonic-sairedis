@@ -3028,7 +3028,7 @@ bool BestCandidateFinder::exchangeTemporaryVidToCurrentVid(
              * This is just sanity check, should never happen.
              */
 
-            SWSS_LOG_THROW("found tempoary RID %s but current VID doesn't exist, FATAL",
+            SWSS_LOG_THROW("found temporary RID %s but current VID doesn't exist, FATAL",
                     sai_serialize_object_id(temporaryRid).c_str());
         }
 

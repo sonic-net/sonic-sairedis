@@ -100,7 +100,7 @@ void Sai::channelOpSetReadOnlyAttribute(
 
     if (ot != object_type)
     {
-        SWSS_LOG_ERROR("object type is differnt than provided %s, but oid is %s",
+        SWSS_LOG_ERROR("object type is different than provided %s, but oid is %s",
                 str_object_type.c_str(), sai_serialize_object_type(ot).c_str());
         return;
     }
@@ -128,7 +128,7 @@ void Sai::channelOpSetReadOnlyAttribute(
 
     if (meta->objecttype != ot)
     {
-        SWSS_LOG_ERROR("attr %s belongs to differnt object type than oid: %s",
+        SWSS_LOG_ERROR("attr %s belongs to different object type than oid: %s",
                 str_attr_id.c_str(), sai_serialize_object_type(ot).c_str());
         return;
     }
@@ -224,7 +224,7 @@ void Sai::channelOpSetStats(
 
         if (sscanf(val.c_str(), "%" PRIu64, &value) != 1)
         {
-            SWSS_LOG_ERROR("failed to deserialize %s as couner value uint64_t", val.c_str());
+            SWSS_LOG_ERROR("failed to deserialize %s as counter value uint64_t", val.c_str());
             continue;
         }
 
@@ -247,7 +247,7 @@ void Sai::channelOpSetStats(
             continue;
         }
 
-        SWSS_LOG_INFO("writting %s = %lu on %s", name.c_str(), value, key.c_str());
+        SWSS_LOG_INFO("writing %s = %lu on %s", name.c_str(), value, key.c_str());
 
         stats[enumvalue] = value;
     }

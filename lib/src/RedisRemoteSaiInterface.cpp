@@ -1102,7 +1102,7 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAattributeEnumValuesCapability
         const std::string &capability_str = fvValue(values[0]);
         const uint32_t num_capabilities = std::stoi(fvValue(values[1]));
 
-        SWSS_LOG_DEBUG("Received payload: capabilites = '%s', count = %d", capability_str.c_str(), num_capabilities);
+        SWSS_LOG_DEBUG("Received payload: capabilities = '%s', count = %d", capability_str.c_str(), num_capabilities);
 
         enumValuesCapability->count = num_capabilities;
 
@@ -1119,7 +1119,7 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAattributeEnumValuesCapability
             {
                 if (num_capabilities != i + 1)
                 {
-                    SWSS_LOG_WARN("Query returned less attributes than expected: expected %d, recieved %d", num_capabilities, i+1);
+                    SWSS_LOG_WARN("Query returned less attributes than expected: expected %d, received %d", num_capabilities, i+1);
                 }
 
                 break;
@@ -1897,7 +1897,7 @@ sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
 
             case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
 
-                SWSS_LOG_NOTICE("inspec ASIC SUCCEEDED");
+                SWSS_LOG_NOTICE("inspect ASIC SUCCEEDED");
 
                 break;
 

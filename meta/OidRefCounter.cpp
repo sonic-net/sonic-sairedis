@@ -20,7 +20,7 @@ bool OidRefCounter::objectReferenceExists(
 
     bool exists = m_hash.find(oid) != m_hash.end();
 
-    SWSS_LOG_DEBUG("object 0x%" PRIx64 " refrence: %s", oid, exists ? "exists" : "missing");
+    SWSS_LOG_DEBUG("object 0x%" PRIx64 " reference: %s", oid, exists ? "exists" : "missing");
 
     return exists;
 }

@@ -339,7 +339,7 @@ void AsicView::bindNewVidReference(
 
     int referenceCount = ++(it->second);
 
-    SWSS_LOG_INFO("increased vid %s refrence to %d",
+    SWSS_LOG_INFO("increased vid %s reference to %d",
             sai_serialize_object_id(vid).c_str(),
             referenceCount);
 }
@@ -954,7 +954,7 @@ std::vector<AsicOperation> AsicView::asicGetWithOptimizedRemoveOperations() cons
 
         if (op.m_vid == SAI_NULL_OBJECT_ID)
         {
-            SWSS_LOG_THROW("non object id remove not exected here");
+            SWSS_LOG_THROW("non object id remove not expected here");
         }
 
         auto mit = m_vidToAsicOperationId.find(op.m_vid);
@@ -1251,7 +1251,7 @@ void AsicView::updateNonObjectIdVidReferenceCountByValue(
 
             if (m_enableRefernceCountLogs)
             {
-                SWSS_LOG_WARN("updated vid %s refrence to %d",
+                SWSS_LOG_WARN("updated vid %s reference to %d",
                         sai_serialize_object_id(vid).c_str(),
                         m_vidReference[vid]);
             }
