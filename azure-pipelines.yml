@@ -35,8 +35,7 @@ jobs:
         libnl-cli-3-dev \
         swig3.0 \
         libpython2.7-dev \
-        libzmq5 libzmq3-dev \
-        libboost1.71-dev
+        libzmq5 libzmq3-dev
 
       sudo apt-get install -y redis-server
       sudo sed -ri 's/^# unixsocket/unixsocket/' /etc/redis/redis.conf
@@ -126,8 +125,7 @@ jobs:
         libnl-cli-3-dev \
         swig3.0 \
         libpython2.7-dev \
-        libzmq5 libzmq3-dev \
-        libboost1.71-dev
+        libzmq5 libzmq3-dev
 
       sudo apt-get install -y redis-server
       sudo sed -ri 's/^# unixsocket/unixsocket/' /etc/redis/redis.conf
@@ -214,8 +212,7 @@ jobs:
         libnl-cli-3-dev \
         swig3.0 \
         libpython2.7-dev \
-        libzmq5 libzmq3-dev \
-        libboost1.71-dev
+        libzmq5 libzmq3-dev
 
       sudo apt-get install -y redis-server
       sudo sed -ri 's/^# unixsocket/unixsocket/' /etc/redis/redis.conf
