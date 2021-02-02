@@ -1779,7 +1779,7 @@ void FlexCounter::saiUpdateSupportedPortCounters(sai_object_id_t portId)
     SWSS_LOG_ENTER();
 
     uint64_t value;
-    for (int cntr_id = SAI_PORT_STAT_IF_IN_OCTETS; cntr_id <= SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS; ++cntr_id)
+    for (int cntr_id = SAI_PORT_STAT_IF_IN_OCTETS; cntr_id <= SAI_PORT_STAT_PFC_7_TX_PAUSE_DURATION_US; ++cntr_id)
     {
         sai_port_stat_t counter = static_cast<sai_port_stat_t>(cntr_id);
 
