@@ -357,7 +357,7 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
             return SAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_GET_RESPONSE_TIMEOUT_MS:
+        case SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT:
 
             m_responseTimeoutMs = attr->value.u64;
 
