@@ -5,12 +5,10 @@
 
 #include <thread>
 
-#define REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS (60*1000)
-
 volatile bool g_asicInitViewMode = false; // default mode is apply mode
 volatile bool g_useTempView = false;
 volatile bool g_syncMode = false;
-volatile uint64_t g_responseTimeoutMs = REDIS_ASIC_STATE_COMMAND_GETRESPONSE_TIMEOUT_MS;
+volatile uint64_t g_responseTimeoutMs = SAI_REDIS_DEFAULT_SYNC_OPERATION_RESPONSE_TIMEOUT;
 
 sai_status_t sai_redis_internal_notify_syncd(
         _In_ const std::string& key)
@@ -303,7 +301,7 @@ sai_status_t redis_set_switch_attribute(
             case SAI_REDIS_SWITCH_ATTR_RECORDING_FILENAME:
                 return setRecordingOutputFile(*attr);
 
-            case SAI_REDIS_SWITCH_ATTR_GET_RESPONSE_TIMEOUT_MS:
+            case SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT:
 
                 g_responseTimeoutMs = attr->value.u64;
 
