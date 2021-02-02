@@ -217,7 +217,7 @@ typedef enum _sai_redis_switch_attr_t
      * operation.
      *
      * @type sai_uint64_t
-     * @flgs CREATE_AND_SET
+     * @flags CREATE_AND_SET
      * @default 60000
      */
     SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT,
