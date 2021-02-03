@@ -91,12 +91,10 @@ jobs:
     inputs:
         contents: 'syslog-all.tgz'
         targetFolder: $(Build.ArtifactStagingDirectory)
-  - task: PublishBuildArtifacts@1
+  - publish: $(Build.ArtifactStagingDirectory)/
+    artifact: sonic-sairedis.syslog.amd64
     displayName: "Publish syslog artifacts"
     condition: always()
-    inputs:
-        pathToPublish: $(Build.ArtifactStagingDirectory)
-        artifactName: sonic-sairedis.syslog.amd64
 
 - job:
   timeoutInMinutes: 180
@@ -178,12 +176,10 @@ jobs:
     inputs:
         contents: 'syslog-all.tgz'
         targetFolder: $(Build.ArtifactStagingDirectory)
-  - task: PublishBuildArtifacts@1
+  - publish: $(Build.ArtifactStagingDirectory)/
+    artifact: sonic-sairedis.syslog.arm64
     displayName: "Publish syslog artifacts"
     condition: always()
-    inputs:
-        pathToPublish: $(Build.ArtifactStagingDirectory)
-        artifactName: sonic-sairedis.syslog.arm64
 
 - job:
   timeoutInMinutes: 180
@@ -265,9 +261,7 @@ jobs:
     inputs:
         contents: 'syslog-all.tgz'
         targetFolder: $(Build.ArtifactStagingDirectory)
-  - task: PublishBuildArtifacts@1
+  - publish: $(Build.ArtifactStagingDirectory)/
+    artifact: sonic-sairedis.syslog.armhf
     displayName: "Publish syslog artifacts"
     condition: always()
-    inputs:
-        pathToPublish: $(Build.ArtifactStagingDirectory)
-        artifactName: sonic-sairedis.syslog.armhf
