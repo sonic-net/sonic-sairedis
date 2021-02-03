@@ -112,7 +112,7 @@ sai_object_id_t VirtualObjectIdManager::saiSwitchIdQuery(
         // TODO don't throw, those 2 functions should never throw
         // it doesn't matter whether oid is correct, that will be validated
         // in metadata
-        SWSS_LOG_THROW("invalid object type of oid %s", 
+        SWSS_LOG_THROW("invalid object type of oid %s",
                 sai_serialize_object_id(objectId).c_str());
     }
 
@@ -309,9 +309,9 @@ sai_object_id_t VirtualObjectIdManager::constructObjectId(
     SWSS_LOG_ENTER();
 
     return (sai_object_id_t)(
-            ((uint64_t)switchIndex << (SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) | 
-            ((uint64_t)objectType << (SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) | 
-            ((uint64_t)globalContext << (SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) | 
+            ((uint64_t)switchIndex << (SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+            ((uint64_t)objectType << (SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+            ((uint64_t)globalContext << (SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
             objectIndex);
 }
 
@@ -387,4 +387,42 @@ uint32_t VirtualObjectIdManager::getGlobalContext(
     auto switchId = switchIdQuery(objectId);
 
     return (uint32_t)SAI_REDIS_GET_GLOBAL_CONTEXT(switchId);
+}
+
+uint64_t VirtualObjectIdManager::getObjectIndex(
+        _In_ sai_object_id_t objectId)
+{
+    SWSS_LOG_ENTER();
+
+    return (uint32_t)SAI_REDIS_GET_OBJECT_INDEX(objectId);
+}
+
+sai_object_id_t VirtualObjectIdManager::updateObjectIndex(
+        _In_ sai_object_id_t objectId,
+        _In_ uint64_t objectIndex)
+{
+    SWSS_LOG_ENTER();
+
+    if (objectId == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_THROW("can't update object index on NULL_OBJECT_ID");
+    }
+
+    if (objectIndex > SAI_REDIS_OBJECT_INDEX_MAX)
+    {
+        SWSS_LOG_THROW("object index %lu over maximum %llu", objectIndex, SAI_REDIS_OBJECT_INDEX_MAX);
+    }
+
+    sai_object_type_t objectType = objectTypeQuery(objectId);
+
+    if (objectType == SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_THROW("invalid object type of oid %s",
+                sai_serialize_object_id(objectId).c_str());
+    }
+
+    uint32_t switchIndex = (uint32_t)SAI_REDIS_GET_SWITCH_INDEX(objectId);
+    uint32_t globalContext = (uint32_t)SAI_REDIS_GET_GLOBAL_CONTEXT(objectId);
+
+    return constructObjectId(objectType, switchIndex, objectIndex, globalContext);
 }

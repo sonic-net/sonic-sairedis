@@ -120,7 +120,7 @@ namespace saivs
              * Returns switch index for given oid. If oid is invalid, returns 0.
              */
             static uint32_t getSwitchIndex(
-                    _In_ sai_object_id_t obejctId);
+                    _In_ sai_object_id_t objectId);
 
         private:
 
