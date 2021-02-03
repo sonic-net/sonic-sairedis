@@ -7,6 +7,7 @@ extern "C" {
 #include "SaiInterface.h"
 #include "VirtualOidTranslator.h"
 #include "RedisClient.h"
+#include "SaiSwitchInterface.h"
 
 #include <set>
 #include <string>
@@ -17,7 +18,8 @@ extern "C" {
 
 namespace syncd
 {
-    class SaiSwitch
+    class SaiSwitch:
+        public SaiSwitchInterface
     {
         private:
 
@@ -38,15 +40,11 @@ namespace syncd
 
         public:
 
-            sai_object_id_t getVid() const;
-            sai_object_id_t getRid() const;
-
-            sai_switch_type_t getSwitchType() const;
             std::string getHardwareInfo() const;
 
-            std::unordered_map<sai_object_id_t, sai_object_id_t> getVidToRidMap() const;
+            virtual std::unordered_map<sai_object_id_t, sai_object_id_t> getVidToRidMap() const override;
 
-            std::unordered_map<sai_object_id_t, sai_object_id_t> getRidToVidMap() const;
+            virtual std::unordered_map<sai_object_id_t, sai_object_id_t> getRidToVidMap() const override;
 
             /**
              * @brief Indicates whether RID was discovered on switch init.
@@ -62,8 +60,8 @@ namespace syncd
              *
              * @return True if RID was discovered during init.
              */
-            bool isDiscoveredRid(
-                    _In_ sai_object_id_t rid) const;
+            virtual bool isDiscoveredRid(
+                    _In_ sai_object_id_t rid) const override;
 
             /**
              * @brief Indicates whether RID was discovered on switch init at cold boot.
@@ -76,8 +74,8 @@ namespace syncd
              *
              * @return True if RID was discovered during cold boot init.
              */
-            bool isColdBootDiscoveredRid(
-                    _In_ sai_object_id_t rid) const;
+            virtual bool isColdBootDiscoveredRid(
+                    _In_ sai_object_id_t rid) const override;
 
             /**
              * @brief Indicates whether RID is one of default switch objects
@@ -87,8 +85,8 @@ namespace syncd
              *
              * @return True if object is default switch object.
              */
-            bool isSwitchObjectDefaultRid(
-                    _In_ sai_object_id_t rid) const;
+            virtual bool isSwitchObjectDefaultRid(
+                    _In_ sai_object_id_t rid) const override;
 
             /**
              * @brief Indicates whether object can't be removed.
@@ -104,8 +102,8 @@ namespace syncd
              *
              * @return True if object can't be removed from switch.
              */
-            bool isNonRemovableRid(
-                    _In_ sai_object_id_t rid) const;
+            virtual bool isNonRemovableRid(
+                    _In_ sai_object_id_t rid) const override;
 
             /*
              * Redis Static Methods.
@@ -123,23 +121,7 @@ namespace syncd
              *
              * @returns Discovered objects during switch init.
              */
-            std::set<sai_object_id_t> getDiscoveredRids() const;
-
-            /**
-             * @brief Gets default object based on switch attribute.
-             *
-             * NOTE: This method will throw exception if invalid attribute is
-             * specified, since attribute queried by this method are explicitly
-             * declared in SaiSwitch constructor.
-             *
-             * @param attr_id Switch attribute to query.
-             *
-             * @return Valid RID or specified switch attribute received from
-             * switch.  This value can be also SAI_NULL_OBJECT_ID if switch don't
-             * support this attribute.
-             */
-            sai_object_id_t getSwitchDefaultAttrOid(
-                    _In_ sai_attr_id_t attr_id) const;
+            virtual std::set<sai_object_id_t> getDiscoveredRids() const override;
 
             /**
              * @brief Remove existing object from the switch.
@@ -149,8 +131,8 @@ namespace syncd
              *
              * @param rid Real object ID.
              */
-            void removeExistingObject(
-                    _In_ sai_object_id_t rid);
+            virtual void removeExistingObject(
+                    _In_ sai_object_id_t rid) override;
 
             /**
              * @brief Remove existing object reference only from discovery map.
@@ -160,16 +142,16 @@ namespace syncd
              *
              * @param rid Real object ID.
              */
-            void removeExistingObjectReference(
-                    _In_ sai_object_id_t rid);
+            virtual void removeExistingObjectReference(
+                    _In_ sai_object_id_t rid) override;
 
             /**
              * @brief Gets switch default MAC address.
              *
              * @param[out] mac MAC address to be obtained.
              */
-            void getDefaultMacAddress(
-                    _Out_ sai_mac_t& mac) const;
+            virtual void getDefaultMacAddress(
+                    _Out_ sai_mac_t& mac) const override;
 
             /**
              * @brief Gets default value of attribute for given object.
@@ -179,23 +161,23 @@ namespace syncd
              *
              * If object or attribute is not found, SAI_NULL_OBJECT_ID is returned.
              */
-            sai_object_id_t getDefaultValueForOidAttr(
+            virtual sai_object_id_t getDefaultValueForOidAttr(
                     _In_ sai_object_id_t rid,
-                    _In_ sai_attr_id_t attr_id);
+                    _In_ sai_attr_id_t attr_id) override;
 
             /**
              * @brief Get cold boot discovered VIDs.
              *
              * @return Set of cold boot discovered VIDs after cold boot.
              */
-            std::set<sai_object_id_t> getColdBootDiscoveredVids() const;
+            virtual std::set<sai_object_id_t> getColdBootDiscoveredVids() const override;
 
             /**
              * @brief Get warm boot discovered VIDs.
              *
              * @return Set of warm boot discovered VIDs after warm boot.
              */
-            std::set<sai_object_id_t> getWarmBootDiscoveredVids() const;
+            virtual std::set<sai_object_id_t> getWarmBootDiscoveredVids() const override;
 
             /**
              * @brief On post port create.
@@ -204,9 +186,9 @@ namespace syncd
              * queues, ipgs and scheduler groups that belong to new created port,
              * and updated ASIC DB accordingly.
              */
-            void onPostPortCreate(
+            virtual void onPostPortCreate(
                     _In_ sai_object_id_t port_rid,
-                    _In_ sai_object_id_t port_vid);
+                    _In_ sai_object_id_t port_vid) override;
 
             /**
              * @brief Post port remove.
@@ -214,11 +196,11 @@ namespace syncd
              * Performs actions after port remove. Will remove lanes associated
              * with port from redis lane map.
              */
-            void postPortRemove(
-                    _In_ sai_object_id_t portRid);
+            virtual void postPortRemove(
+                    _In_ sai_object_id_t portRid) override;
 
-            void collectPortRelatedObjects(
-                    _In_ sai_object_id_t portRid);
+            virtual void collectPortRelatedObjects(
+                    _In_ sai_object_id_t portRid) override;
 
         private:
 
@@ -314,17 +296,9 @@ namespace syncd
 
             void checkWarmBootDiscoveredRids();
 
+            sai_switch_type_t getSwitchType() const;
+
         private:
-
-            /**
-             * @brief Switch virtual ID assigned by syncd.
-             */
-            sai_object_id_t m_switch_vid;
-
-            /**
-             * @brief Switch real ID assigned by SAI SDK.
-             */
-            sai_object_id_t m_switch_rid;
 
             std::string m_hardware_info;
 
@@ -339,15 +313,6 @@ namespace syncd
              * For that case we need special handling. We will implement that
              * later, when this scenario will happen.
              */
-
-            /**
-             * @brief Map of default RIDs retrieved from Switch object.
-             *
-             * It will contain RIDs like CPU port, default virtual router, default
-             * trap group. etc. Those objects here should be considered non
-             * removable.
-             */
-            std::map<sai_attr_id_t,sai_object_id_t> m_default_rid_map;
 
             /**
              * @brief Discovered objects.
@@ -380,10 +345,6 @@ namespace syncd
              * m_defaultOidMap[0x17][SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID] == 0x16
              */
             std::unordered_map<sai_object_id_t, std::unordered_map<sai_attr_id_t, sai_object_id_t>> m_defaultOidMap;
-
-            std::set<sai_object_id_t> m_coldBootDiscoveredVids;
-
-            std::set<sai_object_id_t> m_warmBootDiscoveredVids;
 
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
 

@@ -24,7 +24,7 @@ using namespace saimeta;
 
 ComparisonLogic::ComparisonLogic(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
-        _In_ std::shared_ptr<SaiSwitch> sw,
+        _In_ std::shared_ptr<SaiSwitchInterface> sw,
         _In_ std::shared_ptr<NotificationHandler> handler,
         _In_ std::set<sai_object_id_t> initViewRemovedVids,
         _In_ std::shared_ptr<AsicView> current,

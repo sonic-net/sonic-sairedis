@@ -16,11 +16,13 @@ endif
 
 noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
 libSyncd_a_SOURCES = \
+				SaiSwitchInterface.cpp \
 				ZeroMQSelectableChannel.cpp \
 				RedisSelectableChannel.cpp \
 				SelectableChannel.cpp \
 				ZeroMQNotificationProducer.cpp \
 				RedisNotificationProducer.cpp \
+				ComparisonLogic.cpp \
 				Syncd.cpp \
 				BreakConfig.cpp \
 				BreakConfigParser.cpp \
@@ -32,7 +34,6 @@ libSyncd_a_SOURCES = \
 				Workaround.cpp \
 				ServiceMethodTable.cpp \
 				SwitchNotifications.cpp \
-				ComparisonLogic.cpp \
 				VirtualOidTranslator.cpp \
 				NotificationProcessor.cpp \
 				NotificationHandler.cpp \

@@ -27,6 +27,7 @@ SaiSwitch::SaiSwitch(
         _In_ std::shared_ptr<VirtualOidTranslator> translator,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ bool warmBoot):
+    SaiSwitchInterface(switch_vid, switch_rid),
     m_vendorSai(vendorSai),
     m_warmBoot(warmBoot),
     m_translator(translator),
@@ -35,9 +36,6 @@ SaiSwitch::SaiSwitch(
     SWSS_LOG_ENTER();
 
     SWSS_LOG_TIMER("constructor");
-
-    m_switch_rid = switch_rid;
-    m_switch_vid = switch_vid;
 
     GlobalSwitchId::setSwitchId(m_switch_rid);
 
@@ -341,20 +339,6 @@ void SaiSwitch::redisSetDummyAsicStateForRealObjectId(
     m_client->setDummyAsicStateObject(vid);
 }
 
-sai_object_id_t SaiSwitch::getVid() const
-{
-    SWSS_LOG_ENTER();
-
-    return m_switch_vid;
-}
-
-sai_object_id_t SaiSwitch::getRid() const
-{
-    SWSS_LOG_ENTER();
-
-    return m_switch_rid;
-}
-
 std::string SaiSwitch::getHardwareInfo() const
 {
     SWSS_LOG_ENTER();
@@ -548,25 +532,6 @@ sai_object_id_t SaiSwitch::helperGetSwitchAttrOid(
     m_default_rid_map[attr_id] = rid;
 
     return rid;
-}
-
-sai_object_id_t SaiSwitch::getSwitchDefaultAttrOid(
-        _In_ sai_attr_id_t attr_id) const
-{
-    SWSS_LOG_ENTER();
-
-    auto it = m_default_rid_map.find(attr_id);
-
-    if (it == m_default_rid_map.end())
-    {
-        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr_id);
-
-        const char* name = (meta) ? meta->attridname : "UNKNOWN";
-
-        SWSS_LOG_THROW("attribute %s (%d) not found in default RID map", name, attr_id);
-    }
-
-    return it->second;
 }
 
 bool SaiSwitch::isColdBootDiscoveredRid(

@@ -6,7 +6,7 @@ extern "C"{
 
 #include "AsicView.h"
 #include "VendorSai.h"
-#include "SaiSwitch.h"
+#include "SaiSwitchInterface.h"
 #include "VirtualOidTranslator.h"
 #include "NotificationHandler.h"
 #include "BreakConfig.h"
@@ -21,7 +21,7 @@ namespace syncd
 
             ComparisonLogic(
                 _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
-                _In_ std::shared_ptr<SaiSwitch> sw,
+                _In_ std::shared_ptr<SaiSwitchInterface> sw,
                 _In_ std::shared_ptr<NotificationHandler> handler,
                 _In_ std::set<sai_object_id_t> initViewRemovedVids,
                 _In_ std::shared_ptr<AsicView> current,
@@ -230,7 +230,7 @@ namespace syncd
 
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
 
-            std::shared_ptr<SaiSwitch> m_switch;
+            std::shared_ptr<SaiSwitchInterface> m_switch;
 
             std::set<sai_object_id_t> m_initViewRemovedVids;
 

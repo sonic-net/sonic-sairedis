@@ -14,7 +14,7 @@ using namespace syncd;
 BestCandidateFinder::BestCandidateFinder(
         _In_ const AsicView& currentView,
         _In_ const AsicView& temporaryView,
-        _In_ std::shared_ptr<const SaiSwitch> sw):
+        _In_ std::shared_ptr<const SaiSwitchInterface> sw):
     m_currentView(currentView),
     m_temporaryView(temporaryView),
     m_switch(sw)
@@ -2792,7 +2792,7 @@ bool BestCandidateFinder::hasEqualAttribute(
 
 std::shared_ptr<SaiAttr> BestCandidateFinder::getSaiAttrFromDefaultValue(
         _In_ const AsicView &currentView,
-        _In_ std::shared_ptr<const SaiSwitch> sw,
+        _In_ std::shared_ptr<const SaiSwitchInterface> sw,
         _In_ const sai_attr_metadata_t &meta)
 {
     SWSS_LOG_ENTER();
