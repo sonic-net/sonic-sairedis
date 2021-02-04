@@ -95,9 +95,9 @@ Syncd::Syncd(
 
     m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters);
 
-    m_profileIter = m_profileMap.begin();
-
     loadProfileMap();
+
+    m_profileIter = m_profileMap.begin();
 
     // we need STATE_DB ASIC_DB and COUNTERS_DB
 
