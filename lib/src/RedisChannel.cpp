@@ -175,7 +175,7 @@ sai_status_t RedisChannel::wait(
 
     while (true)
     {
-        SWSS_LOG_INFO("wait for %s response", command.c_str());
+        SWSS_LOG_DEBUG("wait for %s response", command.c_str());
 
         swss::Selectable *sel;
 
@@ -188,7 +188,7 @@ sai_status_t RedisChannel::wait(
             const std::string &op = kfvOp(kco);
             const std::string &opkey = kfvKey(kco);
 
-            SWSS_LOG_INFO("response: op = %s, key = %s", opkey.c_str(), op.c_str());
+            SWSS_LOG_DEBUG("response: op = %s, key = %s", opkey.c_str(), op.c_str());
 
             if (op != command)
             {
