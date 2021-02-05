@@ -657,7 +657,7 @@ sub test_macsec_p2p_establishment
 {
     fresh_start;
 
-    play "test_macsec_p2p_establishment.rec"
+    play "test_macsec_p2p_establishment.rec";
 }
 
 # RUN TESTS
