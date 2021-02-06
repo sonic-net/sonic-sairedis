@@ -38,18 +38,18 @@ namespace syncd
             virtual std::unordered_map<sai_object_id_t, sai_object_id_t> getRidToVidMap() const = 0;
 
             virtual bool isDiscoveredRid(
-                    _In_ sai_object_id_t rid) const  = 0;
+                    _In_ sai_object_id_t rid) const = 0;
 
             virtual bool isColdBootDiscoveredRid(
-                    _In_ sai_object_id_t rid) const  = 0;
+                    _In_ sai_object_id_t rid) const = 0;
 
             virtual bool isSwitchObjectDefaultRid(
-                    _In_ sai_object_id_t rid) const  = 0;
+                    _In_ sai_object_id_t rid) const = 0;
 
             virtual bool isNonRemovableRid(
-                    _In_ sai_object_id_t rid) const  = 0;
+                    _In_ sai_object_id_t rid) const = 0;
 
-            virtual std::set<sai_object_id_t> getDiscoveredRids() const  = 0;
+            virtual std::set<sai_object_id_t> getDiscoveredRids() const = 0;
 
             /**
              * @brief Gets default object based on switch attribute.
@@ -69,31 +69,31 @@ namespace syncd
 
 
             virtual void removeExistingObject(
-                    _In_ sai_object_id_t rid)  = 0;
+                    _In_ sai_object_id_t rid) = 0;
 
             virtual void removeExistingObjectReference(
-                    _In_ sai_object_id_t rid)  = 0;
+                    _In_ sai_object_id_t rid) = 0;
 
             virtual void getDefaultMacAddress(
-                    _Out_ sai_mac_t& mac) const  = 0;
+                    _Out_ sai_mac_t& mac) const = 0;
 
             virtual sai_object_id_t getDefaultValueForOidAttr(
                     _In_ sai_object_id_t rid,
-                    _In_ sai_attr_id_t attr_id)  = 0;
+                    _In_ sai_attr_id_t attr_id) = 0;
 
-            virtual std::set<sai_object_id_t> getColdBootDiscoveredVids() const  = 0;
+            virtual std::set<sai_object_id_t> getColdBootDiscoveredVids() const = 0;
 
-            virtual std::set<sai_object_id_t> getWarmBootDiscoveredVids() const  = 0;
+            virtual std::set<sai_object_id_t> getWarmBootDiscoveredVids() const = 0;
 
             virtual void onPostPortCreate(
                     _In_ sai_object_id_t port_rid,
-                    _In_ sai_object_id_t port_vid)  = 0;
+                    _In_ sai_object_id_t port_vid) = 0;
 
             virtual void postPortRemove(
-                    _In_ sai_object_id_t portRid)  = 0;
+                    _In_ sai_object_id_t portRid) = 0;
 
             virtual void collectPortRelatedObjects(
-                    _In_ sai_object_id_t portRid)  = 0;
+                    _In_ sai_object_id_t portRid) = 0;
 
         protected:
 
