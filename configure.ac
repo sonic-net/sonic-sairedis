@@ -141,5 +141,6 @@ AC_OUTPUT(Makefile
           saidump/Makefile
           saisdkdump/Makefile
           saidiscovery/Makefile
+          saiasiccmp/Makefile
           tests/Makefile
           python/setup.py)
