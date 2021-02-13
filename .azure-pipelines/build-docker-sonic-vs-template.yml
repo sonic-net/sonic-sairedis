@@ -37,7 +37,7 @@ jobs:
       source: specific
       project: build
       pipeline: 9
-      artifacts: ${{ parameters.swss_common_artifact_name }}
+      artifact: ${{ parameters.swss_common_artifact_name }}
       runVersion: 'latestFromBranch'
       runBranch: 'refs/heads/master'
     displayName: "Download sonic swss common deb packages"
@@ -74,6 +74,7 @@ jobs:
       popd
 
       docker save docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber) | gzip -c > $(Build.ArtifactStagingDirectory)/docker-sonic-vs.gz
+    displayName: "Build sonic-docker-vs"
 
   - publish: $(Build.ArtifactStagingDirectory)/
     artifact: ${{ parameters.artifact_name }}

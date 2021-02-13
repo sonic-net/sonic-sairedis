@@ -22,7 +22,12 @@ jobs:
 
   - task: DownloadPipelineArtifact@2
     inputs:
+      source: specific
+      project: build
+      pipeline: 9
       artifact: sonic-swss-common.amd64.ubuntu20_04
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/master'
     displayName: "Download sonic swss common deb packages"
 
   - checkout: self
