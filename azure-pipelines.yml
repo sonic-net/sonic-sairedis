@@ -8,6 +8,13 @@ trigger:
     include:
       - "*"
 
+resources:
+  repositories:
+  - repository: sonic-swss
+    type: github
+    name: Azure/sonic-swss
+    endpoint: build
+
 stages:
 - stage: Build
 
@@ -21,6 +28,10 @@ stages:
       syslog_artifact_name: sonic-sairedis.syslog
       run_unit_test: true
 
+- stage: BuildArm
+  dependsOn: Build
+  condition: succeeded('Build')
+  jobs:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: armhf
@@ -40,3 +51,34 @@ stages:
       swss_common_artifact_name: sonic-swss-common.arm64
       artifact_name: sonic-sairedis.arm64
       syslog_artifact_name: sonic-sairedis.syslog.arm64
+
+- stage: BuildSwss
+  dependsOn: Build
+  condition: succeeded('Build')
+  jobs:
+  - template: .azure-pipelines/build-swss-template.yml
+    parameters:
+      arch: amd64
+      sonic_slave: sonic-slave-buster
+      swss_common_artifact_name: sonic-swss-common
+      sairedis_artifact_name: sonic-sairedis
+      artifact_name: sonic-swss
+
+- stage: BuildDocker
+  dependsOn: BuildSwss
+  condition: succeeded('BuildSwss')
+  jobs:
+  - template: .azure-pipelines/build-docker-sonic-vs-template.yml
+    parameters:
+      swss_common_artifact_name: sonic-swss-common
+      sairedis_artifact_name: sonic-sairedis
+      swss_artifact_name: sonic-swss
+      artifact_name: docker-sonic-vs
+
+- stage: Test
+  dependsOn: BuildDocker
+  condition: succeeded('BuildDocker')
+  jobs:
+  - template: .azure-pipelines/test-docker-sonic-vs-template.yml
+    parameters:
+      log_artifact_name: log
