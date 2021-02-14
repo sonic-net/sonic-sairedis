@@ -17,6 +17,8 @@
 
 #define DEFAULT_VLAN_NUMBER 1
 
+#define MAX_OBJLIST_LEN 128
+
 #define CHECK_STATUS(status) {                                  \
     sai_status_t _status = (status);                            \
     if (_status != SAI_STATUS_SUCCESS) { return _status; } }
@@ -48,6 +50,8 @@ namespace saivs
         protected:
 
             virtual sai_status_t set_switch_mac_address();
+
+            virtual sai_status_t set_switch_supported_object_types();
 
             virtual sai_status_t set_switch_default_attributes();
 
@@ -152,6 +156,18 @@ namespace saivs
             virtual sai_status_t refresh_read_only(
                     _In_ const sai_attr_metadata_t *meta,
                     _In_ sai_object_id_t object_id);
+
+        protected:
+
+            virtual sai_status_t warm_update_queues();
+
+            virtual sai_status_t warm_update_scheduler_groups();
+
+            virtual sai_status_t warm_update_ingress_priority_groups();
+
+            virtual sai_status_t warm_update_switch();
+
+            virtual sai_status_t warm_update_cpu_queues();
 
         protected: // TODO should be pure
 

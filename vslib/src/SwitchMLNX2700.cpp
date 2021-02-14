@@ -48,6 +48,8 @@ sai_status_t SwitchMLNX2700::create_qos_queues_per_port(
         attr[1].id = SAI_QUEUE_ATTR_PORT;
         attr[1].value.oid = port_id;
 
+        // TODO add type
+
         CHECK_STATUS(create(SAI_OBJECT_TYPE_QUEUE, &queue_id, m_switch_id, 2, attr));
 
         queues.push_back(queue_id);
@@ -371,3 +373,54 @@ sai_status_t SwitchMLNX2700::refresh_bridge_port_list(
     return set(SAI_OBJECT_TYPE_BRIDGE, bridge_id, &attr);
 }
 
+sai_status_t SwitchMLNX2700::warm_update_queues()
+{
+    SWSS_LOG_ENTER();
+
+    for (auto port: m_port_list)
+    {
+        sai_attribute_t attr;
+
+        std::vector<sai_object_id_t> list(MAX_OBJLIST_LEN);
+
+        // get all queues list on current port
+
+        attr.id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+
+        attr.value.objlist.count = MAX_OBJLIST_LEN;
+        attr.value.objlist.list = list.data();
+
+        CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port , 1, &attr));
+
+        list.resize(attr.value.objlist.count);
+
+        uint8_t index = 0;
+
+        for (auto queue: list)
+        {
+            attr.id = SAI_QUEUE_ATTR_PORT;
+
+            if (get(SAI_OBJECT_TYPE_QUEUE, queue, 1, &attr) != SAI_STATUS_SUCCESS)
+            {
+                attr.value.oid = port;
+
+                CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue, &attr));
+            }
+
+            attr.id = SAI_QUEUE_ATTR_INDEX;
+
+            if (get(SAI_OBJECT_TYPE_QUEUE, queue, 1, &attr) != SAI_STATUS_SUCCESS)
+            {
+                attr.value.u8 = index; // warn, we are guessing index here if it was not defined
+
+                CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, queue, &attr));
+            }
+
+            // TODO add type
+
+            index++;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}

@@ -1334,6 +1334,11 @@ bool VirtualSwitchSaiInterface::writeWarmBootFile(
             return false;
         }
 
+        if (m_warmBootData.size() == 0)
+        {
+            SWSS_LOG_WARN("warm boot data is empty, is that what you want?");
+        }
+
         for (auto& kvp: m_warmBootData)
         {
             ofs << kvp.second;
