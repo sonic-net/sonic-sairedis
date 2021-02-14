@@ -906,11 +906,36 @@ void SaiSwitch::helperPopulateWarmBootVids()
     if (!m_warmBoot)
         return;
 
+    SWSS_LOG_NOTICE("populate warm boot VIDs");
+
+    // It may happen, that after warm boot some new oids were discovered that
+    // were not present on warm shutdown, this may happen during vendor SAI
+    // update and for example introducing some new default objects on switch or
+    // queues on cpu. In this case, translator will create new VID/RID pair on
+    // database and local memory.
+
+    auto rid2vid = getRidToVidMap();
+
     for (sai_object_id_t rid: m_discovered_rids)
     {
         sai_object_id_t vid = m_translator->translateRidToVid(rid, m_switch_vid);
 
         m_warmBootDiscoveredVids.insert(vid);
+
+        if (rid2vid.find(rid) == rid2vid.end())
+        {
+            SWSS_LOG_NOTICE("spotted new RID %s (VID %s) on WARM BOOT",
+                    sai_serialize_object_id(rid).c_str(),
+                    sai_serialize_object_id(vid).c_str());
+
+            m_warmBootNewDiscoveredVids.insert(vid);
+
+            // this means that some new objects were discovered but they are
+            // not present in current ASIC_VIEW, and we need to create dummy
+            // entries for them
+
+            redisSetDummyAsicStateForRealObjectId(rid);
+        }
     }
 }
 

@@ -47,3 +47,11 @@ sai_object_id_t SaiSwitchInterface::getSwitchDefaultAttrOid(
 
     return it->second;
 }
+
+std::set<sai_object_id_t> SaiSwitchInterface::getWarmBootNewDiscoveredVids()
+{
+    SWSS_LOG_ENTER();
+
+    return m_warmBootNewDiscoveredVids;
+}
+

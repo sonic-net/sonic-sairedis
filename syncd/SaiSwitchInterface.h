@@ -85,6 +85,8 @@ namespace syncd
 
             virtual std::set<sai_object_id_t> getWarmBootDiscoveredVids() const = 0;
 
+            virtual std::set<sai_object_id_t> getWarmBootNewDiscoveredVids();
+
             virtual void onPostPortCreate(
                     _In_ sai_object_id_t port_rid,
                     _In_ sai_object_id_t port_vid) = 0;
@@ -119,5 +121,7 @@ namespace syncd
             std::set<sai_object_id_t> m_coldBootDiscoveredVids;
 
             std::set<sai_object_id_t> m_warmBootDiscoveredVids;
+
+            std::set<sai_object_id_t> m_warmBootNewDiscoveredVids;
     };
 }

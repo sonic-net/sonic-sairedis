@@ -241,6 +241,8 @@ void ComparisonLogic::checkInternalObjects(
 {
     SWSS_LOG_ENTER();
 
+    SWSS_LOG_NOTICE("check internal objects");
+
     std::vector<sai_object_type_t> ots =
     {
         SAI_OBJECT_TYPE_QUEUE,
@@ -2220,6 +2222,8 @@ void ComparisonLogic::populateExistingObjects(
         _In_ AsicView &temporaryView)
 {
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("populate existing objects");
 
     auto rids = m_switch->getDiscoveredRids();
 
