@@ -33,3 +33,5 @@ saiasiccmp_LDADD = libAsicCmp.a \
 				   -L$(top_srcdir)/syncd/.libs \
 				   $(top_srcdir)/lib/src/libSaiRedis.a \
 				   -L$(top_srcdir)/meta/.libs
+
+TESTS = test.sh
