@@ -76,7 +76,10 @@ void CommandLineOptionsParser::printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: saiasiccmp [-i] [-d] [-h]" << std::endl << std::endl;
+    std::cout << "Usage: saiasiccmp [-i] [-d] [-h] file1 file2" << std::endl << std::endl;
+
+    std::cout << "    file1 and file2 must be in json fromat produced by redis-dump-load" << std::endl;
+    std::cout << "    for example: redisdl.py -d 1 -y" << std::endl << std::endl;
 
     std::cout << "    -i --enableLogLevelInfo" << std::endl;
     std::cout << "        Enable LogLevel INFO" << std::endl;
