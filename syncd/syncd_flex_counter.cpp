@@ -1720,12 +1720,12 @@ void FlexCounter::flexCounterThread(void)
         uint32_t delay = static_cast<uint32_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
         uint32_t correction = delay % m_pollInterval;
-
+        correction = m_pollInterval - correction;
         lkMgr.unlock();
 
         SWSS_LOG_DEBUG("End of flex counter thread FC %s, took %d ms", m_instanceId.c_str(), delay);
         std::unique_lock<std::mutex> lk(m_mtxSleep);
-        m_cvSleep.wait_for(lk, std::chrono::milliseconds(m_pollInterval - correction));
+        m_cvSleep.wait_for(lk, std::chrono::milliseconds(correction));
     }
 }
 
