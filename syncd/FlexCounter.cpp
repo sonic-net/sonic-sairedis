@@ -1694,7 +1694,7 @@ void FlexCounter::flexCounterThreadRunFunction()
                     std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
 
             uint32_t correction = delay % m_pollInterval;
-            correction = m_pollInterval - correction；
+            correction = m_pollInterval - correction;
             MUTEX_UNLOCK; // explicit unlock
 
             SWSS_LOG_DEBUG("End of flex counter thread FC %s, took %d ms", m_instanceId.c_str(), delay);
