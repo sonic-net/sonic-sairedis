@@ -87,6 +87,26 @@ function set_start_type()
 
 config_syncd_bcm()
 {
+    # Check if the libsaibcm package is installed.
+    if [ $(dpkg-query -W -f='${Status}' libsaibcm 2>/dev/null | grep -c "ok installed") -eq 0 ]; then
+        if [ -d /usr/local/debs ]; then
+            env_file="/usr/share/sonic/platform/platform_env.conf"
+            [ -f $env_file ] && . $env_file
+
+            if [ $asic_type == bcm_dnx ]; then
+                gpl_dpkg="/usr/local/debs/libsaibcm-dnx_*.deb"
+            else
+                gpl_dpkg="/usr/local/debs/libsaibcm_*.deb"
+            fi
+
+            # Install the ASIC specific saibcm package.
+            dpkg -i $gpl_dpkg
+
+            # Delete the debian packages after installation.
+            rm -rf /usr/local/debs
+        fi
+    fi
+
     if [ -f "/etc/sai.d/sai.profile" ]; then
         CMD_ARGS+=" -p /etc/sai.d/sai.profile"
     else
