@@ -1268,7 +1268,8 @@ std::string sai_serialize_acl_resource_list(
         return j.dump();
     }
 
-    json arr = json::array();
+    json::array_t a;
+    json arr(a);
 
     for (uint32_t i = 0; i < aclresource.count; ++i)
     {
