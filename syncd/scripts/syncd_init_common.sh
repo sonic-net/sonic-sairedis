@@ -111,6 +111,12 @@ config_syncd_mlnx()
     cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
     echo "DEVICE_MAC_ADDRESS=$MAC_ADDRESS" >> /tmp/sai.profile
     echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
+
+    # Use SAI template config if present
+    if [[ -f "${HWSKU_DIR}/sai.xml.j2" ]]; then
+        sonic-cfggen -d -t /usr/share/sonic/hwsku/sai.xml.j2 > /tmp/sai.xml
+        sed -i "/SAI_INIT_CONFIG_FILE=/c\SAI_INIT_CONFIG_FILE=/tmp/sai.xml" /tmp/sai.profile
+    fi
 }
 
 config_syncd_centec()
