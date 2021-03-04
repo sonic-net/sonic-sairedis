@@ -560,9 +560,9 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
 
     sai_object_type_t ot = objectTypeQuery(obj_id);
 
-    if (ot != SAI_OBJECT_TYPE_PORT)
+    if ((ot != SAI_OBJECT_TYPE_PORT) && (ot != SAI_OBJECT_TYPE_VLAN))
     {
-        SWSS_LOG_ERROR("SAI_HOSTIF_ATTR_OBJ_ID=%s expected to be PORT but is: %s",
+        SWSS_LOG_ERROR("SAI_HOSTIF_ATTR_OBJ_ID=%s expected to be PORT or VLAN but is: %s",
                 sai_serialize_object_id(obj_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
 
