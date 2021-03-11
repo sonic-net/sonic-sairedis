@@ -74,67 +74,6 @@ static std::shared_ptr<sairedis::Sai> g_sai;
 
 static PyObject* SaiRedisError;
 
-// global api
-
-static PyObject* api_initialize(PyObject *self, PyObject *args);
-static PyObject* api_uninitialize(PyObject *self, PyObject *args);
-
-// create
-static PyObject* create_switch(PyObject *self, PyObject *args);
-static PyObject* create_vlan(PyObject *self, PyObject *args);
-
-// remove
-static PyObject* remove_switch(PyObject *self, PyObject *args);
-static PyObject* remove_vlan(PyObject *self, PyObject *args);
-
-// set
-static PyObject* set_switch(PyObject *self, PyObject *args);
-static PyObject* set_vlan(PyObject *self, PyObject *args);
-
-// get
-static PyObject* get_switch(PyObject *self, PyObject *args);
-static PyObject* get_vlan(PyObject *self, PyObject *args);
-
-static PyMethodDef SaiRedisMethods[] = {
-
-    {"api_initialize",      api_initialize,     METH_VARARGS, "SAI initialize"},
-    {"api_uninitialize",    api_uninitialize,   METH_VARARGS, "SAI uninitialize"},
-
-    {"create_switch",   create_switch,  METH_VARARGS, "Create switch."},
-    {"create_vlan",     create_vlan,    METH_VARARGS, "Create vlan."},
-
-    {"remove_switch",   remove_switch,  METH_VARARGS, "Remove switch."},
-    {"remove_vlan",     remove_vlan,    METH_VARARGS, "Remove vlan."},
-
-    {"set_switch_attribute",      set_switch,     METH_VARARGS, "Set switch atribute."},
-    {"set_vlan_attribute",        set_vlan,       METH_VARARGS, "Set vlan attribute."},
-
-    {"get_switch_attribute",      get_switch,     METH_VARARGS, "Get switch atribute."},
-    {"get_vlan_attribute",        get_vlan,       METH_VARARGS, "Get vlan attribute."},
-
-
-    {NULL, NULL, 0, NULL}        // sentinel
-};
-
-extern "C" PyMODINIT_FUNC initsairedis(void);
-
-PyMODINIT_FUNC initsairedis(void)
-{
-    SWSS_LOG_ENTER();
-
-    PyObject *m;
-
-    m = Py_InitModule("sairedis", SaiRedisMethods);
-    if (m == NULL)
-        return;
-
-    g_sai = std::make_shared<sairedis::Sai>();
-
-    SaiRedisError = PyErr_NewException(const_cast<char*>("sairedis.error"), NULL, NULL);
-    Py_INCREF(SaiRedisError);
-    PyModule_AddObject(m, "error", SaiRedisError);
-}
-
 static PyObject * generic_create(
         _In_ sai_object_type_t objectType,
         _In_ PyObject *self,
@@ -830,66 +769,67 @@ static PyObject* api_uninitialize(PyObject *self, PyObject *args)
     return pdict;
 }
 
-// CREATE
+// QUAD API
 
-static PyObject* create_switch(PyObject *self, PyObject *args)
+#define PYTHON_CREATE(OT,ot) \
+static PyObject* create_ ## ot(PyObject *self, PyObject *args) \
+{ return generic_create(SAI_OBJECT_TYPE_ ## OT , self, args); }
+
+#define PYTHON_REMOVE(OT, ot) \
+static PyObject* remove_ ## ot(PyObject *self, PyObject *args) \
+{ return generic_remove(SAI_OBJECT_TYPE_ ## OT, self, args); }
+
+#define PYTHON_SET(OT,ot) \
+static PyObject* set_ ## ot ## _attribute(PyObject *self, PyObject *args) \
+{ return generic_set(SAI_OBJECT_TYPE_ ## OT, self, args); }
+
+#define PYTHON_GET(OT,ot) \
+static PyObject* get_ ## ot ## _attribute(PyObject *self, PyObject *args) \
+{ return generic_get(SAI_OBJECT_TYPE_ ## OT, self, args); }
+
+#define PYTHON_GENERIC_QUAD(OT,ot) \
+    PYTHON_CREATE(OT,ot) \
+    PYTHON_REMOVE(OT,ot) \
+    PYTHON_SET(OT,ot) \
+    PYTHON_GET(OT,ot)
+
+PYTHON_GENERIC_QUAD(SWITCH,switch);
+PYTHON_GENERIC_QUAD(VLAN,vlan);
+
+#define PYTHON_METHODS_GENERIC_QUAD(ot) \
+{"create_" # ot,   create_ ## ot,  METH_VARARGS, "Create " # ot }, \
+{"remove_" # ot,   remove_ ## ot,  METH_VARARGS, "Remove " # ot }, \
+{"set_" # ot "_attribute",      set_ ## ot ## _attribute,     METH_VARARGS, "Set " # ot " atribute."}, \
+{"get_" # ot "_attribute",      get_ ## ot ## _attribute,     METH_VARARGS, "Get " # ot " atribute."},
+
+static PyMethodDef SaiRedisMethods[] = {
+
+    {"api_initialize",      api_initialize,     METH_VARARGS, "SAI initialize"},
+    {"api_uninitialize",    api_uninitialize,   METH_VARARGS, "SAI uninitialize"},
+
+    PYTHON_METHODS_GENERIC_QUAD(switch)
+    PYTHON_METHODS_GENERIC_QUAD(vlan)
+
+
+    {NULL, NULL, 0, NULL}        // sentinel
+};
+
+extern "C" PyMODINIT_FUNC initsairedis(void);
+
+PyMODINIT_FUNC initsairedis(void)
 {
     SWSS_LOG_ENTER();
 
-    return generic_create(SAI_OBJECT_TYPE_SWITCH, self, args);
-}
+    PyObject *m;
 
-static PyObject* create_vlan(PyObject *self, PyObject *args)
-{
-    SWSS_LOG_ENTER();
+    m = Py_InitModule("sairedis", SaiRedisMethods);
 
-    return generic_create(SAI_OBJECT_TYPE_VLAN, self, args);
-}
+    if (m == NULL)
+        return;
 
-// REMOVE
+    g_sai = std::make_shared<sairedis::Sai>();
 
-static PyObject* remove_switch(PyObject *self, PyObject *args)
-{
-    SWSS_LOG_ENTER();
-
-    return generic_remove(SAI_OBJECT_TYPE_SWITCH, self, args);
-}
-
-static PyObject* remove_vlan(PyObject *self, PyObject *args)
-{
-    SWSS_LOG_ENTER();
-
-    return generic_remove(SAI_OBJECT_TYPE_VLAN, self, args);
-}
-
-// SET
-
-static PyObject* set_switch(PyObject *self, PyObject *args)
-{
-    SWSS_LOG_ENTER();
-
-    return generic_set(SAI_OBJECT_TYPE_SWITCH, self, args);
-}
-
-static PyObject* set_vlan(PyObject *self, PyObject *args)
-{
-    SWSS_LOG_ENTER();
-
-    return generic_set(SAI_OBJECT_TYPE_VLAN, self, args);
-}
-
-// GET
-
-static PyObject* get_switch(PyObject *self, PyObject *args)
-{
-    SWSS_LOG_ENTER();
-
-    return generic_get(SAI_OBJECT_TYPE_SWITCH, self, args);
-}
-
-static PyObject* get_vlan(PyObject *self, PyObject *args)
-{
-    SWSS_LOG_ENTER();
-
-    return generic_get(SAI_OBJECT_TYPE_VLAN, self, args);
+    SaiRedisError = PyErr_NewException(const_cast<char*>("sairedis.error"), NULL, NULL);
+    Py_INCREF(SaiRedisError);
+    PyModule_AddObject(m, "error", SaiRedisError);
 }
