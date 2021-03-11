@@ -447,6 +447,34 @@ static PyObject * generic_set(
 
             return pdict;
         }
+        else if (strAttr == "SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD")
+        {
+            sai_attribute_t attr;
+
+            attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+
+            sai_redis_notify_syncd_t value;
+
+            try
+            {
+                sai_deserialize(strVal, value);
+            }
+            catch (const std::exception&e)
+            {
+                PyErr_Format(SaiRedisError, "Failed to deserialize %s '%s': %s", strAttr.c_str(), strVal.c_str(), e.what());
+                return nullptr;
+            }
+
+            attr.value.s32 = value;
+
+            sai_status_t status = g_sai->set(objectType, objectId, &attr);
+
+            PyObject *pdict = PyDict_New();
+            PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
+
+            return pdict;
+
+        }
     }
 
     auto*md = sai_metadata_get_attr_metadata_by_attr_id_name(strAttr.c_str());
