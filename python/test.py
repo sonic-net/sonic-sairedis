@@ -9,8 +9,11 @@ profileMap["SAI_WARM_BOOT_WRITE_FILE"] = "./sai_warmboot.bin"
 
 api_initialize(profileMap)
 
+r = set_switch_attribute("oid:0x0", "SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT", "3000")
+print r
+
 args = dict()
-args["SAI_SWITCH_ATTR_INIT_SWITCH"] = "false"
+args["SAI_SWITCH_ATTR_INIT_SWITCH"] = "true"
 
 r = create_switch(args)
 print r

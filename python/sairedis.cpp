@@ -137,7 +137,7 @@ PyMODINIT_FUNC initsairedis(void)
 
 static PyObject * generic_create(
         _In_ sai_object_type_t objectType,
-        _In_ PyObject *self, 
+        _In_ PyObject *self,
         _In_ PyObject *args)
 {
     SWSS_LOG_ENTER();
@@ -295,7 +295,7 @@ static PyObject * generic_create(
 
 static PyObject * generic_remove(
         _In_ sai_object_type_t objectType,
-        _In_ PyObject *self, 
+        _In_ PyObject *self,
         _In_ PyObject *args)
 {
     SWSS_LOG_ENTER();
@@ -360,7 +360,7 @@ static PyObject * generic_remove(
 
 static PyObject * generic_set(
         _In_ sai_object_type_t objectType,
-        _In_ PyObject *self, 
+        _In_ PyObject *self,
         _In_ PyObject *args)
 {
     SWSS_LOG_ENTER();
@@ -418,6 +418,37 @@ static PyObject * generic_set(
     std::string strAttr = PyString_AsString(pyattr);
     std::string strVal = PyString_AsString(pyval);
 
+    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    {
+        if (strAttr == "SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT")
+        {
+            sai_attribute_t attr;
+
+            attr.id = SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT;
+
+            uint32_t value;
+
+            try
+            {
+                sai_deserialize_number(strVal, value);
+            }
+            catch (const std::exception&e)
+            {
+                PyErr_Format(SaiRedisError, "Failed to deserialize %s '%s': %s", strAttr.c_str(), strVal.c_str(), e.what());
+                return nullptr;
+            }
+
+            attr.value.u64 = value;
+
+            sai_status_t status = g_sai->set(objectType, objectId, &attr);
+
+            PyObject *pdict = PyDict_New();
+            PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
+
+            return pdict;
+        }
+    }
+
     auto*md = sai_metadata_get_attr_metadata_by_attr_id_name(strAttr.c_str());
 
     if (!md)
@@ -459,7 +490,7 @@ static PyObject * generic_set(
 
 static PyObject * generic_get(
         _In_ sai_object_type_t objectType,
-        _In_ PyObject *self, 
+        _In_ PyObject *self,
         _In_ PyObject *args)
 {
     SWSS_LOG_ENTER();
@@ -656,7 +687,7 @@ static PyObject * generic_get(
                     auto tokens = swss::tokenize(val, ',');
 
                     auto *list = PyList_New(0);
-                    
+
                     for (auto&tok: tokens)
                     {
                         PyList_Append(list, PyString_FromString(tok.c_str()));
