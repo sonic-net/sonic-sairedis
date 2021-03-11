@@ -333,17 +333,16 @@ static PyObject * generic_remove(
 {
     SWSS_LOG_ENTER();
 
+    sai_object_meta_key_t metaKey;
+
+    metaKey.objecttype = objectType;
+    metaKey.objectkey.key.object_id = SAI_NULL_OBJECT_ID;
+
     auto* info = sai_metadata_get_object_type_info(objectType);
 
     if (!info)
     {
         PyErr_Format(SaiRedisError, "Invalid object type specified");
-        return nullptr;
-    }
-
-    if (info->isnonobjectid)
-    {
-        PyErr_Format(SaiRedisError, "Non object id specified to oid function");
         return nullptr;
     }
 
@@ -361,29 +360,45 @@ static PyObject * generic_remove(
         return nullptr;
     }
 
-    auto*oid = PyTuple_GetItem(args, 0);
-
-    if (!PyString_Check(oid))
+    if (info->isobjectid)
     {
-        PyErr_Format(SaiRedisError, "Passed argument must be of type string");
-        return nullptr;
+        auto*oid = PyTuple_GetItem(args, 0);
+
+        if (!PyString_Check(oid))
+        {
+            PyErr_Format(SaiRedisError, "Passed argument must be of type string");
+            return nullptr;
+        }
+
+        try
+        {
+            sai_deserialize_object_id(PyString_AsString(oid), &metaKey.objectkey.key.object_id);
+        }
+        catch (const std::exception&e)
+        {
+            PyErr_Format(SaiRedisError, "Failed to deserialize switchId: %s", e.what());
+            return nullptr;
+        }
+    }
+    else
+    {
+        auto entry_dict = PyTuple_GetItem(args, 0);
+
+        if (!PyDict_CheckExact(entry_dict))
+        {
+            PyErr_Format(SaiRedisError, "Passed argument must be of type dict");
+            return nullptr;
+        }
+
+        if (!parse_entry_dict(metaKey, entry_dict))
+        {
+            return nullptr;
+        }
     }
 
-    sai_object_id_t objectId;
+    std::shared_ptr<sairedis::SaiInterface> sai = g_sai;
 
-    try
-    {
-        sai_deserialize_object_id(PyString_AsString(oid), &objectId);
-    }
-    catch (const std::exception&e)
-    {
-        PyErr_Format(SaiRedisError, "Failed to deserialize switchId: %s", e.what());
-        return nullptr;
-    }
-
-    sai_status_t status = g_sai->remove(
-            objectType,
-            objectId);
+    sai_status_t status = sai->remove(metaKey);
 
     PyObject *pdict = PyDict_New();
     PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
@@ -398,17 +413,16 @@ static PyObject * generic_set(
 {
     SWSS_LOG_ENTER();
 
+    sai_object_meta_key_t metaKey;
+
+    metaKey.objecttype = objectType;
+    metaKey.objectkey.key.object_id = SAI_NULL_OBJECT_ID;
+
     auto* info = sai_metadata_get_object_type_info(objectType);
 
     if (!info)
     {
         PyErr_Format(SaiRedisError, "Invalid object type specified");
-        return nullptr;
-    }
-
-    if (info->isnonobjectid)
-    {
-        PyErr_Format(SaiRedisError, "Non object id specified to oid function");
         return nullptr;
     }
 
@@ -430,22 +444,46 @@ static PyObject * generic_set(
     auto* pyattr = PyTuple_GetItem(args, 1);
     auto* pyval = PyTuple_GetItem(args, 2);
 
-    if (!PyString_Check(pyoid) || !PyString_Check(pyattr) || !PyString_Check(pyval))
+    if (!PyString_Check(pyattr) || !PyString_Check(pyval))
     {
         PyErr_Format(SaiRedisError, "All parameters must be of type string");
         return nullptr;
     }
 
-    sai_object_id_t objectId;
+    if (info->isobjectid)
+    {
+        auto*oid = pyoid;
 
-    try
-    {
-        sai_deserialize_object_id(PyString_AsString(pyoid), &objectId);
+        if (!PyString_Check(oid))
+        {
+            PyErr_Format(SaiRedisError, "Passed argument must be of type string");
+            return nullptr;
+        }
+
+        try
+        {
+            sai_deserialize_object_id(PyString_AsString(oid), &metaKey.objectkey.key.object_id);
+        }
+        catch (const std::exception&e)
+        {
+            PyErr_Format(SaiRedisError, "Failed to deserialize switchId: %s", e.what());
+            return nullptr;
+        }
     }
-    catch (const std::exception&e)
+    else
     {
-        PyErr_Format(SaiRedisError, "Failed to deserialize switchId: %s", e.what());
-        return nullptr;
+        auto entry_dict = pyoid;
+
+        if (!PyDict_CheckExact(entry_dict))
+        {
+            PyErr_Format(SaiRedisError, "Passed argument must be of type dict");
+            return nullptr;
+        }
+
+        if (!parse_entry_dict(metaKey, entry_dict))
+        {
+            return nullptr;
+        }
     }
 
     std::string strAttr = PyString_AsString(pyattr);
@@ -473,7 +511,7 @@ static PyObject * generic_set(
 
             attr.value.u64 = value;
 
-            sai_status_t status = g_sai->set(objectType, objectId, &attr);
+            sai_status_t status = g_sai->set(objectType, metaKey.objectkey.key.object_id, &attr);
 
             PyObject *pdict = PyDict_New();
             PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
@@ -500,7 +538,7 @@ static PyObject * generic_set(
 
             attr.value.s32 = value;
 
-            sai_status_t status = g_sai->set(objectType, objectId, &attr);
+            sai_status_t status = g_sai->set(objectType, metaKey.objectkey.key.object_id, &attr);
 
             PyObject *pdict = PyDict_New();
             PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
@@ -527,7 +565,7 @@ static PyObject * generic_set(
 
             attr.value.s32 = value;
 
-            sai_status_t status = g_sai->set(objectType, objectId, &attr);
+            sai_status_t status = g_sai->set(objectType, metaKey.objectkey.key.object_id, &attr);
 
             PyObject *pdict = PyDict_New();
             PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
@@ -564,7 +602,9 @@ static PyObject * generic_set(
         return nullptr;
     }
 
-    sai_status_t status = g_sai->set(objectType, objectId, &attr);
+    std::shared_ptr<sairedis::SaiInterface> sai = g_sai;
+
+    sai_status_t status = sai->set(metaKey, &attr);
 
     // free potentially allocated memory
     sai_deserialize_free_attribute_value(md->attrvaluetype, attr);
@@ -582,17 +622,16 @@ static PyObject * generic_get(
 {
     SWSS_LOG_ENTER();
 
+    sai_object_meta_key_t metaKey;
+
+    metaKey.objecttype = objectType;
+    metaKey.objectkey.key.object_id = SAI_NULL_OBJECT_ID;
+
     auto* info = sai_metadata_get_object_type_info(objectType);
 
     if (!info)
     {
         PyErr_Format(SaiRedisError, "Invalid object type specified");
-        return nullptr;
-    }
-
-    if (info->isnonobjectid)
-    {
-        PyErr_Format(SaiRedisError, "Non object id specified to oid function");
         return nullptr;
     }
 
@@ -613,21 +652,46 @@ static PyObject * generic_get(
     auto*pyoid = PyTuple_GetItem(args, 0);
     auto*pyattr = PyTuple_GetItem(args, 1);
 
-    if (!PyString_Check(pyoid) || !PyString_Check(pyattr))
+    if (!PyString_Check(pyattr))
     {
         PyErr_Format(SaiRedisError, "All atttributes must be of type string");
         return nullptr;
     }
 
-    sai_object_id_t objectId;
-    try
+    if (info->isobjectid)
     {
-        sai_deserialize_object_id(PyString_AsString(pyoid), &objectId);
+        auto*oid = pyoid;
+
+        if (!PyString_Check(oid))
+        {
+            PyErr_Format(SaiRedisError, "Passed argument must be of type string");
+            return nullptr;
+        }
+
+        try
+        {
+            sai_deserialize_object_id(PyString_AsString(oid), &metaKey.objectkey.key.object_id);
+        }
+        catch (const std::exception&e)
+        {
+            PyErr_Format(SaiRedisError, "Failed to deserialize switchId: %s", e.what());
+            return nullptr;
+        }
     }
-    catch (const std::exception&e)
+    else
     {
-        PyErr_Format(SaiRedisError, "Failed to deserialize objectId: %s", e.what());
-        return nullptr;
+        auto entry_dict = pyoid;
+
+        if (!PyDict_CheckExact(entry_dict))
+        {
+            PyErr_Format(SaiRedisError, "Passed argument must be of type dict");
+            return nullptr;
+        }
+
+        if (!parse_entry_dict(metaKey, entry_dict))
+        {
+            return nullptr;
+        }
     }
 
     std::string strAttr = PyString_AsString(pyattr);
@@ -742,9 +806,10 @@ static PyObject * generic_get(
 
     attr.id = md->attrid;
 
-    sai_status_t status = g_sai->get(
-            objectType,
-            objectId,
+    std::shared_ptr<sairedis::SaiInterface> sai = g_sai;
+
+    sai_status_t status = sai->get(
+            metaKey,
             1,
             &attr);
 

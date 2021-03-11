@@ -101,6 +101,15 @@ print "set vlan attribute: " + str(r)
 r = remove_vlan(vlan)
 print "remove vlan: " + str(r)
 
+r = set_route_entry_attribute(re, "SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION", "SAI_PACKET_ACTION_DROP")
+print "set route entry: " + str(r)
+
+r = get_route_entry_attribute(re, "SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION")
+print "get route entry packet action: " + str(r)
+
+r = remove_route_entry(re)
+print "remove route entry: " + str(r)
+
 r = api_uninitialize()
 print "uninitialize: " + str(r)
 
