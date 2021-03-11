@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+# redis-cli FLUSHALL
+# run syncd: syncd -SUu -z redis_sync -p vsprofile.ini
+
 from sairedis import *
 
 profileMap = dict()
@@ -7,16 +10,21 @@ profileMap = dict()
 profileMap["SAI_WARM_BOOT_READ_FILE"] = "./sai_warmboot.bin"
 profileMap["SAI_WARM_BOOT_WRITE_FILE"] = "./sai_warmboot.bin"
 
-api_initialize(profileMap)
+r = api_initialize(profileMap)
+print "initialize: " + str(r)
 
 r = set_switch_attribute("oid:0x0", "SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT", "3000")
 print "set timeout: " + str(r)
+
+r = set_switch_attribute("oid:0x0", "SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE", "redis_sync")
+print "set communication mode: " + str(r)
 
 r = set_switch_attribute("oid:0x0", "SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD", "INIT_VIEW")
 print "init view: " + str(r)
 
 args = dict()
 args["SAI_SWITCH_ATTR_INIT_SWITCH"] = "true"
+args["SAI_SWITCH_ATTR_SRC_MAC_ADDRESS"] = "90:B1:1C:F4:A8:53"
 
 r = create_switch(args)
 print "create switch: " + str(r)
@@ -42,4 +50,5 @@ print "set vlan attribute: " + str(r)
 r = remove_vlan(vlan)
 print "remove vlan: " + str(r)
 
-api_uninitialize()
+r = api_uninitialize()
+print "uninitialize: " + str(r)

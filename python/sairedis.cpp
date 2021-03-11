@@ -473,7 +473,33 @@ static PyObject * generic_set(
             PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
 
             return pdict;
+        }
+        else if (strAttr == "SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE")
+        {
+            sai_attribute_t attr;
 
+            attr.id = SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE;
+
+            sai_redis_communication_mode_t value;
+
+            try
+            {
+                sai_deserialize_redis_communication_mode(strVal, value);
+            }
+            catch (const std::exception&e)
+            {
+                PyErr_Format(SaiRedisError, "Failed to deserialize %s '%s': %s", strAttr.c_str(), strVal.c_str(), e.what());
+                return nullptr;
+            }
+
+            attr.value.s32 = value;
+
+            sai_status_t status = g_sai->set(objectType, objectId, &attr);
+
+            PyObject *pdict = PyDict_New();
+            PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
+
+            return pdict;
         }
     }
 
