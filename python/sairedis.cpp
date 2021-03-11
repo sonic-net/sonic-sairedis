@@ -74,6 +74,11 @@ static std::shared_ptr<sairedis::Sai> g_sai;
 
 static PyObject* SaiRedisError;
 
+// global api
+
+static PyObject* api_initialize(PyObject *self, PyObject *args);
+static PyObject* api_uninitialize(PyObject *self, PyObject *args);
+
 // create
 static PyObject* create_switch(PyObject *self, PyObject *args);
 static PyObject* create_vlan(PyObject *self, PyObject *args);
@@ -91,6 +96,9 @@ static PyObject* get_switch(PyObject *self, PyObject *args);
 static PyObject* get_vlan(PyObject *self, PyObject *args);
 
 static PyMethodDef SaiRedisMethods[] = {
+
+    {"api_initialize",      api_initialize,     METH_VARARGS, "SAI initialize"},
+    {"api_uninitialize",    api_uninitialize,   METH_VARARGS, "SAI uninitialize"},
 
     {"create_switch",   create_switch,  METH_VARARGS, "Create switch."},
     {"create_vlan",     create_vlan,    METH_VARARGS, "Create vlan."},
@@ -121,8 +129,6 @@ PyMODINIT_FUNC initsairedis(void)
         return;
 
     g_sai = std::make_shared<sairedis::Sai>();
-
-    g_sai->initialize(0, &service_method_table);
 
     SaiRedisError = PyErr_NewException(const_cast<char*>("sairedis.error"), NULL, NULL);
     Py_INCREF(SaiRedisError);
@@ -667,6 +673,74 @@ static PyObject * generic_get(
                 break;
         }
     }
+
+    return pdict;
+}
+
+// GLOBAL SAI APIS
+
+static PyObject* api_initialize(PyObject *self, PyObject *args)
+{
+    SWSS_LOG_ENTER();
+
+    if (!PyTuple_Check(args))
+    {
+        PyErr_Format(SaiRedisError, "Python error, expected args type is tuple");
+        return nullptr;
+    }
+
+    int size = (int)PyTuple_Size(args);
+
+    PyObject* dict = nullptr;
+
+    if (size != 1)
+    {
+        PyErr_Format(SaiRedisError, "Expected number of arguments is 1, but %d given", size);
+        return nullptr;
+    }
+
+    dict = PyTuple_GetItem(args, 0);
+
+    if (!PyDict_CheckExact(dict))
+    {
+        PyErr_Format(SaiRedisError, "Passed argument must be of type dict");
+        return nullptr;
+    }
+
+    g_profileMap.clear();
+
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+
+    while (PyDict_Next(dict, &pos, &key, &value))
+    {
+        if (!PyString_Check(key) || !PyString_Check(value))
+        {
+            PyErr_Format(SaiRedisError, "Keys and values in dict must be strings");
+            return nullptr;
+        }
+
+        g_profileMap[PyString_AsString(key)] = PyString_AsString(value);
+    }
+
+    auto status = g_sai->initialize(0, &service_method_table);
+
+    PyObject *pdict = PyDict_New();
+
+    PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
+
+    return pdict;
+}
+
+static PyObject* api_uninitialize(PyObject *self, PyObject *args)
+{
+    SWSS_LOG_ENTER();
+
+    auto status = g_sai->uninitialize();
+
+    PyObject *pdict = PyDict_New();
+
+    PyDict_SetItemString(pdict, "status", PyString_FromFormat("%s", sai_serialize_status(status).c_str()));
 
     return pdict;
 }

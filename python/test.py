@@ -2,10 +2,17 @@
 
 from sairedis import *
 
+profileMap = dict()
+
+profileMap["SAI_WARM_BOOT_READ_FILE"] = "./sai_warmboot.bin"
+profileMap["SAI_WARM_BOOT_WRITE_FILE"] = "./sai_warmboot.bin"
+
+api_initialize(profileMap)
+
 args = dict()
 args["SAI_SWITCH_ATTR_INIT_SWITCH"] = "false"
 
-r = create_switch(args);
+r = create_switch(args)
 print r
 
 swid = r["oid"]
@@ -25,3 +32,5 @@ print r
 
 r = remove_vlan(vlan)
 print r
+
+api_uninitialize()
