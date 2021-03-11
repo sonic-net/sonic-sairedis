@@ -316,6 +316,10 @@ void sai_deserialize_mac(
         _In_ const std::string& s,
         _Out_ sai_mac_t& mac);
 
+void sai_deserialize_ip_address(
+        _In_ const std::string& s,
+        _Out_ sai_ip_address_t& ipaddr);
+
 // deserialize notifications
 
 void sai_deserialize_fdb_event_ntf(
