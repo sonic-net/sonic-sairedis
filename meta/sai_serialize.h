@@ -312,6 +312,10 @@ void sai_deserialize_ip_prefix(
         _In_ const std::string &s,
         _Out_ sai_ip_prefix_t &ip_prefix);
 
+void sai_deserialize_mac(
+        _In_ const std::string& s,
+        _Out_ sai_mac_t& mac);
+
 // deserialize notifications
 
 void sai_deserialize_fdb_event_ntf(
