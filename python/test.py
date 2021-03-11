@@ -95,6 +95,20 @@ print "create vlan: " + str(r)
 
 vlan = r["oid"]
 
+fe = dict()
+fe["mac_address"] = "FE:54:00:B3:06:8C"
+fe["switch_id"] = swid
+fe["bv_id"] = vlan
+
+args = dict()
+args["SAI_FDB_ENTRY_ATTR_TYPE"] = "SAI_FDB_ENTRY_TYPE_DYNAMIC"
+args["SAI_FDB_ENTRY_ATTR_PACKET_ACTION"] = "SAI_PACKET_ACTION_FORWARD"
+r = create_fdb_entry(fe, args)
+print "create fdb entry: " + str(r)
+
+r = remove_fdb_entry(fe)
+print "remove fdb entry: " + str(r)
+
 r = set_vlan_attribute(vlan, "SAI_VLAN_ATTR_MAX_LEARNED_ADDRESSES", "32")
 print "set vlan attribute: " + str(r)
 

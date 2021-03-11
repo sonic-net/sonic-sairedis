@@ -141,6 +141,91 @@ static bool parse_entry_dict(
 
             return true;
 
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
+
+            try
+            {
+                auto it = map.find("switch_id");
+
+                if (it == map.end())
+                {
+                    PyErr_Format(SaiRedisError, "switch_id missing in fdb_entry");
+                    return false;
+                }
+
+                sai_deserialize_object_id(it->second, metaKey.objectkey.key.fdb_entry.switch_id);
+
+                it = map.find("bv_id");
+
+                if (it == map.end())
+                {
+                    PyErr_Format(SaiRedisError, "bv_id missing in fdb_entry");
+                    return false;
+                }
+
+                sai_deserialize_object_id(it->second, metaKey.objectkey.key.fdb_entry.bv_id);
+
+                it = map.find("mac_address");
+
+                if (it == map.end())
+                {
+                    PyErr_Format(SaiRedisError, "destination missing in fdb_entry");
+                    return false;
+                }
+
+                sai_deserialize_mac(it->second, metaKey.objectkey.key.fdb_entry.mac_address);
+            }
+            catch (const std::exception& e)
+            {
+                PyErr_Format(SaiRedisError, "Failed to deserialize fdb_entry: %s", e.what());
+                return false;
+            }
+
+            return true;
+
+
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+
+            try
+            {
+                auto it = map.find("switch_id");
+
+                if (it == map.end())
+                {
+                    PyErr_Format(SaiRedisError, "switch_id missing in neighbor_entry");
+                    return false;
+                }
+
+                sai_deserialize_object_id(it->second, metaKey.objectkey.key.neighbor_entry.switch_id);
+
+                it = map.find("rif_id");
+
+                if (it == map.end())
+                {
+                    PyErr_Format(SaiRedisError, "rif_id missing in neighbor_entry");
+                    return false;
+                }
+
+                sai_deserialize_object_id(it->second, metaKey.objectkey.key.neighbor_entry.rif_id);
+
+                it = map.find("ip_address");
+
+                if (it == map.end())
+                {
+                    PyErr_Format(SaiRedisError, "destination missing in neighbor_entry");
+                    return false;
+                }
+
+                sai_deserialize_ip_address(it->second, metaKey.objectkey.key.neighbor_entry.ip_address);
+            }
+            catch (const std::exception& e)
+            {
+                PyErr_Format(SaiRedisError, "Failed to deserialize neighbor_entry: %s", e.what());
+                return false;
+            }
+
+            return true;
+
         default:
 
             PyErr_Format(SaiRedisError, "Object type %s is not implemented yet, FIXME",
