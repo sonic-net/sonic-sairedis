@@ -37,6 +37,57 @@ print "apply view: " + str(r)
 r = get_switch_attribute(swid, "SAI_SWITCH_ATTR_PORT_LIST")
 print "get port list: " + str(r)
 
+portlist = r["SAI_SWITCH_ATTR_PORT_LIST"]
+
+r = get_switch_attribute(swid, "SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID")
+print "get default virtual router: " + str(r)
+
+vrid = r["SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID"]
+
+args = dict()
+r = create_lag(swid, args)
+print "create lag: " + str(r)
+
+lagid = r["oid"]
+
+args = dict()
+args["SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID"] = vrid
+args["SAI_ROUTER_INTERFACE_ATTR_TYPE"] = "SAI_ROUTER_INTERFACE_TYPE_PORT"
+args["SAI_ROUTER_INTERFACE_ATTR_PORT_ID"] = portlist[0]
+r = create_router_interface(swid, args)
+print "create router interface: " + str(r)
+
+rifid = r["oid"]
+
+args = dict()
+args["SAI_NEXT_HOP_ATTR_TYPE"] = "SAI_NEXT_HOP_TYPE_IP"
+args["SAI_NEXT_HOP_ATTR_IP"] = "10.0.0.1"
+args["SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID"] = rifid
+r = create_next_hop(swid, args)
+print "create next hop: " + str(r)
+
+nexthopid = r["oid"]
+
+re = dict()
+re["destination"] = "0.0.0.0/0"
+re["switch_id"] = swid
+re["vr_id"] = vrid
+
+args = dict()
+args["SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION"] = "SAI_PACKET_ACTION_DROP"
+r = create_route_entry(re, args)
+print "create default route entry: " + str(r)
+
+re = dict()
+re["destination"] = "100.1.0.1/32"
+re["switch_id"] = swid
+re["vr_id"] = vrid
+
+args = dict()
+args["SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID"] = nexthopid
+r = create_route_entry(re, args)
+print "create route entry: " + str(r)
+
 args = dict()
 args["SAI_VLAN_ATTR_VLAN_ID"] = "11"
 r = create_vlan(swid, args)
@@ -52,3 +103,4 @@ print "remove vlan: " + str(r)
 
 r = api_uninitialize()
 print "uninitialize: " + str(r)
+
