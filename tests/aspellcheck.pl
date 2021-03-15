@@ -149,6 +149,8 @@ for my $file (@files)
     next if $file =~ m!/SAI/!;
     next if $file =~ m!/debian/!;
     next if $file =~ m!/config.h!;
+    next if $file =~ m!/python/.+wrap.cpp!;
+    next if $file =~ m!/pyext/.+wrap.cpp!;
 
     my $data = ReadFile $file;
 

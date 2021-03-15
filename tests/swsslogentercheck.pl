@@ -27,6 +27,8 @@ for my $arg (@ARGV)
 
     next if $arg =~ m!/SAI/!;
     next if $arg =~ m!/debian/!;
+    next if $arg =~ m!/pyext/!;
+    next if $arg =~ m!/python/!;
 
     my $returnType = '([:_a-z0-9<>]+)(?:\s*[*&]\s*|\s+)';
     my $methodName = '(~?\w+|\w+::\w+)';
