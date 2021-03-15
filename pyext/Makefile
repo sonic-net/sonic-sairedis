@@ -17,6 +17,9 @@ _pysairedis.so: pysairedis_wrap.cpp pysairedis.cpp
 		-lzmq \
 		pysairedis.o pysairedis_wrap.o -o _pysairedis.so
 
+check:
+	true
+
 .PHONY: clean
 
 clean:
