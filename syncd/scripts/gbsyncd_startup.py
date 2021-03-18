@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 
 '''
+NOTE: This script is deprecated in favor of gbsyncdmgrd
+      Once there are no more references to this file in
+      sonic-buildimage, it should be removed
+'''
+
+'''
 Copyright 2019 Broadcom. The term "Broadcom" refers to Broadcom Inc.
 and/or its subsidiaries.
 

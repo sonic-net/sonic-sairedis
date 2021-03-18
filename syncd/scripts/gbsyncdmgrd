@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import signal
+import subprocess
+import sys
+import syslog
+import time
+
+
+SYSLOG_IDENTIFIER = os.path.basename(__file__)
+
+EXIT_SUCCESS = 0
+EXIT_INSUFFICIENT_PERMISSIONS = 1
+EXIT_UNKNOWN = 2
+
+running = True
+exit_code = EXIT_UNKNOWN
+
+
+def fatal_signal_handler(sig, frame):
+    global running
+
+    signal_name = signal.Signals(sig).name
+
+    syslog.syslog(syslog.LOG_NOTICE, 'Caught signal {} - exiting...'.format(signal_name))
+    exit_code = sig + 128
+    running = False
+
+
+def physyncd_spawn(gearbox_config):
+    proc_list = []
+
+    for i, phy in enumerate(gearbox_config['phys'], 1):
+        cmd = '/usr/bin/syncd -p /etc/sai.d/pai.profile -x /usr/share/sonic/hwsku/context_config.json -g {}"'.format(i)
+        proc = subprocess.Popen(cmd, close_fds=True)
+        proc_list.append(proc)
+        syslog.syslog(syslog.LOG_INFO, 'Spawned PID {}'.format(proc.pid))
+
+    return proc_list
+
+
+def main():
+    # Only privileged users can run this daemon
+    if os.geteuid() != 0:
+        print('Root privileges required for this operation')
+        return EXIT_INSUFFICIENT_PERMISSIONS
+
+    syslog.openlog(SYSLOG_IDENTIFIER)
+
+    # Register our signal handlers
+    signal.signal(signal.SIGTERM, fatal_signal_handler)
+
+    # Load gearbox configuration JSON file
+    try:
+        with open('/usr/share/sonic/hwsku/gearbox_config.json') as file_object:
+            gearbox_config = json.load(file_object)
+    except:
+        syslog.syslog(syslog.LOG_NOTICE, 'No external PHY/gearbox supported on this platform. Exiting ...')
+        syslog.closelog()
+        time.sleep(2)
+        return EXIT_SUCCESS
+
+    # Spawn our gearbox syncd processes
+    proc_list = physyncd_spawn(gearbox_config)
+
+    global running
+
+    # Check all of our subprocesses. If any exit, we should too.
+    while running:
+        for proc in proc_list:
+            proc.poll()
+            if proc.returncode is not None:
+                syslog.syslog(syslog.LOG_NOTICE, 'Subprocess PID {} exited. Shutting down ...'.format(proc.pid))
+                running = False
+                break
+        time.sleep(1)
+
+    # If we get here, either a subprocess exited or we recieved a signal to exit
+    # so we send SIGTERM to all running subprocesses before exiting
+    for proc in proc_list:
+        if proc.returncode is None:
+            syslog.syslog(syslog.LOG_INFO, 'Terminating PID {} ...'.format(proc.pid))
+            proc.terminate()
+
+    syslog.closelog()
+
+    return exit_code
+
+
+if __name__ == '__main__':
+    sys.exit(main())
