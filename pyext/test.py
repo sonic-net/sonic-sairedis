@@ -104,7 +104,7 @@ attr.id = pysairedis.SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY
 attr.value.ptr = pysairedis.sai_get_notification_pointer(pysairedis.SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY, port_state_change_notification)
 pysairedis.sai_attribute_t_arr_setitem(attrs, 5, attr)
 
-status = switch_api.create_switch(poid, 1, attrs)
+status = switch_api.create_switch(poid, 6, attrs)
 print "create_switch: " + str(status) 
 
 swid = pysairedis.sai_object_id_t_p_value(poid)

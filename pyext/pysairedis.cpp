@@ -335,15 +335,3 @@ sai_pointer_t sai_get_notification_pointer(
 
     SWSS_LOG_THROW("notification attr id %d not supported", id);
 }
-
-void trigger()
-{
-    sai_fdb_event_notification_data_t data = {};
-    sai_fdb_event_notification(1,&data);
-
-    sai_port_oper_status_notification_t data2 = {};
-    sai_port_state_change_notification(1, &data2);
-
-    sai_switch_shutdown_request_notification(1);
-    sai_switch_state_change_notification(1, (sai_switch_oper_status_t)2);
-}

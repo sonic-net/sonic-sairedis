@@ -20,5 +20,3 @@ sai_status_t sai_api_initialize(
 sai_pointer_t sai_get_notification_pointer(
         sai_attr_id_t id,
         PyObject*callback);
-
-void trigger();
