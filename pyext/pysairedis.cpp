@@ -190,3 +190,160 @@ sai_ip_prefix_t* sai_ip_prefix_t_from_string(const std::string& s)
 
     return ip;
 }
+
+// sai notification handling
+
+PyObject *py_convert_sai_fdb_event_notification_data_t_to_PyObject(const sai_fdb_event_notification_data_t*ntf);
+PyObject *py_convert_sai_bfd_session_state_notification_t_to_PyObject(const sai_bfd_session_state_notification_t*ntf);
+PyObject *py_convert_sai_port_oper_status_notification_t_to_PyObject(const sai_port_oper_status_notification_t*ntf);
+PyObject *py_convert_sai_queue_deadlock_notification_data_t_to_PyObject(const sai_queue_deadlock_notification_data_t*ntf);
+
+static PyObject * py_fdb_event_notification = NULL;
+static PyObject * py_port_state_change_notification = NULL;
+static PyObject * py_queue_pfc_deadlock_notification = NULL;
+static PyObject * py_switch_shutdown_request_notification = NULL;
+static PyObject * py_switch_state_change_notification = NULL;
+
+void call_python(PyObject* callObject, PyObject* arglist)
+{
+    PyObject* result = PyObject_CallObject(callObject, arglist);
+
+    if (result == NULL)
+    {
+        PyObject* pPyErr = NULL;
+
+        if (pPyErr = PyErr_Occurred())
+        {
+            PyErr_Print();
+            return;
+        }
+
+        SWSS_LOG_THROW("callback call failed");
+    }
+
+    Py_DECREF(result);
+}
+
+static void sai_fdb_event_notification(
+        _In_ uint32_t count,
+        _In_ const sai_fdb_event_notification_data_t *data)
+{
+    PyObject* obj = py_convert_sai_fdb_event_notification_data_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(iO)", count, obj);
+
+    call_python(py_fdb_event_notification, arglist);
+
+    Py_DECREF(obj);
+
+    Py_DECREF(arglist);
+}
+
+static void sai_port_state_change_notification(
+        _In_ uint32_t count,
+        _In_ const sai_port_oper_status_notification_t *data)
+{
+    PyObject* obj = py_convert_sai_port_oper_status_notification_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(iO)", count, obj);
+
+    call_python(py_port_state_change_notification, arglist);
+
+    Py_DECREF(obj);
+
+    Py_DECREF(arglist);
+}
+
+static void sai_queue_pfc_deadlock_notification(
+        _In_ uint32_t count,
+        _In_ const sai_queue_deadlock_notification_data_t *data)
+{
+    PyObject* obj = py_convert_sai_queue_deadlock_notification_data_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(iO)", count, obj);
+
+    call_python(py_queue_pfc_deadlock_notification, arglist);
+
+    Py_DECREF(obj);
+
+    Py_DECREF(arglist);
+}
+
+static void sai_switch_shutdown_request_notification(
+        _In_ sai_object_id_t switch_id)
+{
+    PyObject* arglist = Py_BuildValue("(l)", switch_id);
+
+    call_python(py_switch_shutdown_request_notification, arglist);
+
+    Py_DECREF(arglist);
+}
+
+static void sai_switch_state_change_notification(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_oper_status_t switch_oper_status)
+{
+    PyObject* arglist = Py_BuildValue("(li)", switch_id, switch_oper_status);
+
+    call_python(py_switch_state_change_notification, arglist);
+
+    Py_DECREF(arglist);
+}
+
+sai_pointer_t sai_get_notification_pointer(
+        sai_attr_id_t id,
+        PyObject*callback)
+{
+    if (!PyCallable_Check(callback))
+    {
+        SWSS_LOG_THROW("second parameter must be python callable object");
+    }
+
+    Py_XINCREF(callback); // inc ref on current callback
+
+    switch(id)
+    {
+        case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
+            Py_XDECREF(py_switch_state_change_notification);
+            py_switch_state_change_notification = callback;
+            return (void*)&sai_switch_state_change_notification;
+
+        case SAI_SWITCH_ATTR_SWITCH_SHUTDOWN_REQUEST_NOTIFY:
+            Py_XDECREF(py_switch_shutdown_request_notification);
+            py_switch_shutdown_request_notification = callback;
+            return (void*)&sai_switch_shutdown_request_notification;
+
+        case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
+            Py_XDECREF(py_fdb_event_notification);
+            py_fdb_event_notification = callback;
+            return (void*)&sai_fdb_event_notification;
+
+        case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
+            Py_XDECREF(py_port_state_change_notification);
+            py_port_state_change_notification = callback;
+            return (void*)&sai_port_state_change_notification;
+
+        case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
+            Py_XDECREF(py_queue_pfc_deadlock_notification);
+            py_queue_pfc_deadlock_notification = callback;
+            return (void*)&sai_queue_pfc_deadlock_notification;
+
+        default:
+            Py_XDECREF(callback);
+            break;
+    }
+
+    SWSS_LOG_THROW("notification attr id %d not supported", id);
+}
+
+void trigger()
+{
+    sai_fdb_event_notification_data_t data = {};
+    sai_fdb_event_notification(1,&data);
+
+    sai_port_oper_status_notification_t data2 = {};
+    sai_port_state_change_notification(1, &data2);
+
+    sai_switch_shutdown_request_notification(1);
+    sai_switch_state_change_notification(1, (sai_switch_oper_status_t)2);
+}

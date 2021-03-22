@@ -52,6 +52,9 @@ namespace std {
 %include "sairoute.h"
 %include "saivlan.h"
 %include "saifdb.h"
+%include "saiport.h"
+%include "saibfd.h"
+%include "saiqueue.h"
 
 
 %include "sairedis.h"
@@ -85,5 +88,24 @@ sai_ip_prefix_t* sai_ip_prefix_t_from_string(const std::string& s);
 %array_functions(sai_attribute_t, sai_attribute_t_arr);
 %pointer_functions(sai_attribute_t, sai_attribute_t_p);
 
-//%array_class(sai_attribute_t, sai_attribute_tArray);
+%array_functions(sai_bfd_session_state_notification_t, sai_bfd_session_state_notification_t_arr);
+%pointer_functions(sai_bfd_session_state_notification_t, sai_bfd_session_state_notification_t_p);
+%array_functions(sai_fdb_event_notification_data_t, sai_fdb_event_notification_data_t_arr);
+%pointer_functions(sai_fdb_event_notification_data_t, sai_fdb_event_notification_data_t_p);
+%array_functions(sai_port_oper_status_notification_t, sai_port_oper_status_notification_t_arr);
+%pointer_functions(sai_port_oper_status_notification_t, sai_port_oper_status_notification_t_p);
+%array_functions(sai_queue_deadlock_notification_data_t, sai_queue_deadlock_notification_data_t_arr);
+%pointer_functions(sai_queue_deadlock_notification_data_t, sai_queue_deadlock_notification_data_t_p);
+
+%{
+PyObject *py_convert_sai_fdb_event_notification_data_t_to_PyObject(const sai_fdb_event_notification_data_t*ntf)
+{ return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_fdb_event_notification_data_t, 0 | 0); }
+PyObject *py_convert_sai_bfd_session_state_notification_t_to_PyObject(const sai_bfd_session_state_notification_t*ntf)
+{ return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_bfd_session_state_notification_t, 0 | 0); }
+PyObject *py_convert_sai_port_oper_status_notification_t_to_PyObject(const sai_port_oper_status_notification_t*ntf)
+{ return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_port_oper_status_notification_t, 0 | 0); }
+PyObject *py_convert_sai_queue_deadlock_notification_data_t_to_PyObject(const sai_queue_deadlock_notification_data_t*ntf)
+{ return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_queue_deadlock_notification_data_t, 0 | 0); }
+%}
+
 

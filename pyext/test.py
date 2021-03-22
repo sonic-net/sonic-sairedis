@@ -6,6 +6,34 @@
 #from pysairedis import *
 import pysairedis
 
+def switch_shutdown_request_notification(switch_id):
+    print " - switch shutdown request"
+    print " * swid: " + hex(switch_id)
+
+def switch_state_change_notification(switch_id, switch_oper_status):
+    print " - switch state change"
+    print " * swid: " + hex(switch_id)
+    print " * oper_status: " + str(switch_oper_status)
+
+def port_state_change_notification(count, port_oper_status):
+    print " - port state change"
+    print " * count: " + str(count)
+
+    for n in range(0,count):
+        item = pysairedis.sai_port_oper_status_notification_t_arr_getitem(port_oper_status, n)
+        print " * port_id: " + hex(item.port_id)
+        print " * port_state: " + str(item.port_state)
+
+def fdb_event_notification(count, data):
+    print " - fdb event"
+    print " * count: " + str(count)
+
+    for n in range(0,count):
+        item = pysairedis.sai_fdb_event_notification_data_t_arr_getitem(data, n)
+        print " * event_type: " + str(item.event_type)
+        print " * fdb_entry" + str(item.fdb_entry)
+        print " * attr_count: " + str(item.attr_count)
+
 profileMap = dict()
 
 profileMap["SAI_WARM_BOOT_READ_FILE"] = "./sai_warmboot.bin"
@@ -47,7 +75,7 @@ print "init view: " + str(status)
 
 poid = pysairedis.new_sai_object_id_t_p()
 
-attrs = pysairedis.new_sai_attribute_t_arr(2)
+attrs = pysairedis.new_sai_attribute_t_arr(6)
 
 attr.id = pysairedis.SAI_SWITCH_ATTR_INIT_SWITCH
 attr.value.booldata = True
@@ -57,6 +85,24 @@ attr.id = pysairedis.SAI_SWITCH_ATTR_SRC_MAC_ADDRESS
 # TODO
 #attr.value.mac = "90:B1:1C:F4:A8:53"
 pysairedis.sai_attribute_t_arr_setitem(attrs, 1, attr)
+
+# set notification callbacks
+
+attr.id = pysairedis.SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY
+attr.value.ptr = pysairedis.sai_get_notification_pointer(pysairedis.SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY, switch_state_change_notification)
+pysairedis.sai_attribute_t_arr_setitem(attrs, 2, attr)
+
+attr.id = pysairedis.SAI_SWITCH_ATTR_SWITCH_SHUTDOWN_REQUEST_NOTIFY
+attr.value.ptr = pysairedis.sai_get_notification_pointer(pysairedis.SAI_SWITCH_ATTR_SWITCH_SHUTDOWN_REQUEST_NOTIFY, switch_shutdown_request_notification)
+pysairedis.sai_attribute_t_arr_setitem(attrs, 3, attr)
+
+attr.id = pysairedis.SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY
+attr.value.ptr = pysairedis.sai_get_notification_pointer(pysairedis.SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY, fdb_event_notification)
+pysairedis.sai_attribute_t_arr_setitem(attrs, 4, attr)
+
+attr.id = pysairedis.SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY
+attr.value.ptr = pysairedis.sai_get_notification_pointer(pysairedis.SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY, port_state_change_notification)
+pysairedis.sai_attribute_t_arr_setitem(attrs, 5, attr)
 
 status = switch_api.create_switch(poid, 1, attrs)
 print "create_switch: " + str(status) 
