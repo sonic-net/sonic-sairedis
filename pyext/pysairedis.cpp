@@ -1,7 +1,5 @@
 #include "pysairedis.h"
 
-#include <cstddef>
-
 #include "lib/inc/sairedis.h"
 #include "swss/logger.h"
 
