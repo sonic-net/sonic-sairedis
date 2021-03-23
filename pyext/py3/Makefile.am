@@ -8,7 +8,7 @@ INCLUDE=-I../../SAI/inc -I../../SAI/meta -I../../SAI/experimental -I../../lib/in
 
 _pysairedis_la_SOURCES = pysairedis_wrap.cpp $(SOURCES)
 _pysairedis_la_CPPFLAGS = $(INCLUDE) -I/usr/include/python$(PYTHON3_VERSION) $(AM_CPPFLAGS) $(CFLAGS_COMMON) \
-						  -Wno-cast-qual -Wno-shadow -Wno-redundant-decls
+						  -Wno-cast-qual -Wno-shadow -Wno-redundant-decls -Wno-cast-function-type
 _pysairedis_la_LDFLAGS = -module \
 		-lhiredis -lswsscommon -lpthread \
 		-L$(top_srcdir)/lib/src/.libs -lsairedis \
