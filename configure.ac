@@ -80,7 +80,7 @@ AM_CONDITIONAL(RTEST, test x$rtest = xtrue)
 
 AM_CONDITIONAL(ARCH64, test `getconf LONG_BIT` = "64")
 
-AC_PATH_PROG(SWIG, [swig3.0])
+AC_PATH_PROGS(SWIG, [swig3.0 swig])
 
 CFLAGS_COMMON=""
 CFLAGS_COMMON+=" -ansi"

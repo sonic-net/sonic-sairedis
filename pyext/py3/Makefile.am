@@ -1,13 +1,13 @@
 SWIG_SRC=../pysairedis.i
 SOURCES=../pysairedis.h ../pysairedis.cpp
 
-pkgpython_PYTHON = pysairedis.py __init__.py
-pkgpyexec_LTLIBRARIES = _pysairedis.la
+pkgpython3_PYTHON = pysairedis.py __init__.py
+pkgpy3exec_LTLIBRARIES = _pysairedis.la
 
 INCLUDE=-I../../SAI/inc -I../../SAI/meta -I../../SAI/experimental -I../../lib/inc -I..
 
 _pysairedis_la_SOURCES = pysairedis_wrap.cpp $(SOURCES)
-_pysairedis_la_CPPFLAGS = $(INCLUDE) -I/usr/include/python$(PYTHON_VERSION) $(AM_CPPFLAGS) $(CFLAGS_COMMON) \
+_pysairedis_la_CPPFLAGS = $(INCLUDE) -I/usr/include/python$(PYTHON3_VERSION) $(AM_CPPFLAGS) $(CFLAGS_COMMON) \
 						  -Wno-cast-qual -Wno-shadow -Wno-redundant-decls
 _pysairedis_la_LDFLAGS = -module \
 		-lhiredis -lswsscommon -lpthread \
@@ -15,7 +15,7 @@ _pysairedis_la_LDFLAGS = -module \
 		-L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
 		-lzmq
 
-_pysairedis_la_LIBADD = -lpython$(PYTHON_VERSION)
+_pysairedis_la_LIBADD = -lpython$(PYTHON3_VERSION)
 
 SWIG_FLAG = -Wall -c++ -python -keyword
 if ARCH64
