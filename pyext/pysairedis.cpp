@@ -208,9 +208,9 @@ void call_python(PyObject* callObject, PyObject* arglist)
 
     if (result == NULL)
     {
-        PyObject* pPyErr = NULL;
+        PyObject* pPyErr = PyErr_Occurred();
 
-        if (pPyErr = PyErr_Occurred())
+        if (pPyErr)
         {
             PyErr_Print();
             return;
