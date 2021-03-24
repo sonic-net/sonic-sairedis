@@ -84,6 +84,7 @@ ETERM
 eth
 ethernet
 ethX
+extern
 fastfast
 fdb
 FDB
@@ -287,6 +288,7 @@ torvalds
 ttl
 tx
 TXSC
+typedef
 uint
 uncomment
 uninitialize

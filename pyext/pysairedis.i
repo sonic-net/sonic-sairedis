@@ -1,0 +1,111 @@
+%module pysairedis
+
+%include "cpointer.i"
+%include "carrays.i"
+
+%{
+#include "pysairedis.h"
+
+extern "C"{
+#include "sai.h"
+#include "getapi.h"
+}
+
+#include "sairedis.h"
+
+%}
+
+%include "std_string.i"
+%include "std_map.i"
+
+namespace std {
+    %template(map_string_string) map<string, string>;
+}
+
+%include "pysairedis.h"
+
+%include "saitypes.h"
+%include "sai.h"
+
+%include "getapi.h"
+
+%include "switch.h"
+%include "lag.h"
+%include "routerinterface.h"
+%include "nexthop.h"
+%include "route.h"
+%include "vlan.h"
+%include "fdb.h"
+
+%ignore sai_switch_api_t;
+%ignore sai_lag_api_t;
+%ignore sai_router_interface_api_t;
+%ignore sai_next_hop_api_t;
+%ignore sai_route_api_t;
+%ignore sai_vlan_api_t;
+%ignore sai_fdb_api_t;
+
+%include "saiswitch.h"
+%include "sailag.h"
+%include "sairouterinterface.h"
+%include "sainexthop.h"
+%include "sairoute.h"
+%include "saivlan.h"
+%include "saifdb.h"
+%include "saiport.h"
+%include "saibfd.h"
+%include "saiqueue.h"
+
+
+%include "sairedis.h"
+
+// helper functions
+
+%{
+sai_mac_t* sai_mac_t_from_string(const std::string& s);
+sai_ip_address_t* sai_ip_address_t_from_string(const std::string& s);
+sai_ip_prefix_t* sai_ip_prefix_t_from_string(const std::string& s);
+%}
+
+sai_mac_t* sai_mac_t_from_string(const std::string& s);
+sai_ip_address_t* sai_ip_address_t_from_string(const std::string& s);
+sai_ip_prefix_t* sai_ip_prefix_t_from_string(const std::string& s);
+
+%newobject sai_mac_t_from_string;
+%newobject sai_ip_address_t_from_string;
+%newobject sai_ip_prefix_t_from_string;
+
+// array functions
+
+%include <stdint.i>
+
+%array_functions(uint32_t, uint32_t_arr);
+%pointer_functions(uint32_t, uint32_t_p);
+
+%array_functions(sai_object_id_t, sai_object_id_t_arr);
+%pointer_functions(sai_object_id_t, sai_object_id_t_p);
+
+%array_functions(sai_attribute_t, sai_attribute_t_arr);
+%pointer_functions(sai_attribute_t, sai_attribute_t_p);
+
+%array_functions(sai_bfd_session_state_notification_t, sai_bfd_session_state_notification_t_arr);
+%pointer_functions(sai_bfd_session_state_notification_t, sai_bfd_session_state_notification_t_p);
+%array_functions(sai_fdb_event_notification_data_t, sai_fdb_event_notification_data_t_arr);
+%pointer_functions(sai_fdb_event_notification_data_t, sai_fdb_event_notification_data_t_p);
+%array_functions(sai_port_oper_status_notification_t, sai_port_oper_status_notification_t_arr);
+%pointer_functions(sai_port_oper_status_notification_t, sai_port_oper_status_notification_t_p);
+%array_functions(sai_queue_deadlock_notification_data_t, sai_queue_deadlock_notification_data_t_arr);
+%pointer_functions(sai_queue_deadlock_notification_data_t, sai_queue_deadlock_notification_data_t_p);
+
+%{
+PyObject *py_convert_sai_fdb_event_notification_data_t_to_PyObject(const sai_fdb_event_notification_data_t*ntf)
+{ return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_fdb_event_notification_data_t, 0 | 0); }
+PyObject *py_convert_sai_bfd_session_state_notification_t_to_PyObject(const sai_bfd_session_state_notification_t*ntf)
+{ return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_bfd_session_state_notification_t, 0 | 0); }
+PyObject *py_convert_sai_port_oper_status_notification_t_to_PyObject(const sai_port_oper_status_notification_t*ntf)
+{ return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_port_oper_status_notification_t, 0 | 0); }
+PyObject *py_convert_sai_queue_deadlock_notification_data_t_to_PyObject(const sai_queue_deadlock_notification_data_t*ntf)
+{ return SWIG_NewPointerObj((void*)ntf, SWIGTYPE_p__sai_queue_deadlock_notification_data_t, 0 | 0); }
+%}
+
+

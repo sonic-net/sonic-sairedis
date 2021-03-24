@@ -1,0 +1,3 @@
+SUBDIRS = py2 py3
+
+ACLOCAL_AMFLAGS = -I m4

@@ -10,6 +10,8 @@ AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_LIBTOOL
 AC_HEADER_STDC
+AM_PATH_PYTHON
+AM_PATH_PYTHON3
 
 AM_CONDITIONAL(sonic_asic_platform_barefoot,   test x$CONFIGURED_PLATFORM = xbarefoot)
 AM_CONDITIONAL(sonic_asic_platform_mellanox,   test x$CONFIGURED_PLATFORM = xmellanox)
@@ -75,6 +77,10 @@ AC_ARG_ENABLE(redis-test,
 	*) AC_MSG_ERROR(bad value ${enableval} for --enable-redis-test) ;;
 esac],[rtest=false])
 AM_CONDITIONAL(RTEST, test x$rtest = xtrue)
+
+AM_CONDITIONAL(ARCH64, test `getconf LONG_BIT` = "64")
+
+AC_PATH_PROGS(SWIG, [swig3.0 swig])
 
 CFLAGS_COMMON=""
 CFLAGS_COMMON+=" -ansi"
@@ -144,4 +150,7 @@ AC_OUTPUT(Makefile
           saidiscovery/Makefile
           saiasiccmp/Makefile
           tests/Makefile
+          pyext/Makefile
+          pyext/py2/Makefile
+          pyext/py3/Makefile
           python/setup.py)
