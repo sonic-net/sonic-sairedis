@@ -8,10 +8,12 @@ CMD_DSSERVE_ARGS="$CMD_SYNCD --diag"
 
 ENABLE_SAITHRIFT=0
 
+TEMPLATES_DIR=/usr/share/sonic/templates
 PLATFORM_DIR=/usr/share/sonic/platform
 HWSKU_DIR=/usr/share/sonic/hwsku
 
-VARS_FILE=/usr/share/sonic/templates/swss_vars.j2
+VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
+
 # Retrieve vars from sonic-cfggen
 SYNCD_VARS=$(sonic-cfggen -d -y /etc/sonic/sonic_version.yml -t $VARS_FILE) || exit 1
 SONIC_ASIC_TYPE=$(echo $SYNCD_VARS | jq -r '.asic_type')
@@ -105,18 +107,19 @@ config_syncd_mlnx()
     [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
 
     # Read MAC address
-    MAC_ADDRESS="$(sonic-cfggen -d -v DEVICE_METADATA.localhost.mac)"
+    MAC_ADDRESS="$(echo $SYNCD_VARS | jq -r '.mac')"
 
-    # Write MAC address into /tmp/profile file.
-    cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
+    # Make default sai.profile
+    if [[ -f $HWSKU_DIR/sai.profile.j2 ]]; then
+        export RESOURCE_TYPE="$(echo $SYNCD_VARS | jq -r '.resource_type')"
+        j2 -e RESOURCE_TYPE $HWSKU_DIR/sai.profile.j2 -o /tmp/sai.profile
+    else
+        cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
+    fi
+
+    # Update sai.profile with MAC_ADDRESS and WARM_BOOT settings
     echo "DEVICE_MAC_ADDRESS=$MAC_ADDRESS" >> /tmp/sai.profile
     echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
-
-    # Use SAI template config if present
-    if [[ -f "${HWSKU_DIR}/sai.xml.j2" ]]; then
-        sonic-cfggen -d -t /usr/share/sonic/hwsku/sai.xml.j2 > /tmp/sai.xml
-        sed -i "/SAI_INIT_CONFIG_FILE=/c\SAI_INIT_CONFIG_FILE=/tmp/sai.xml" /tmp/sai.profile
-    fi
 }
 
 config_syncd_centec()
