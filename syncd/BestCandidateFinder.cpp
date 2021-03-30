@@ -2173,6 +2173,85 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForRouteEntry(
 }
 
 /**
+ * @brief Find current best match for inseg.
+ *
+ * For Inseg we don't need to iterate via all current insegs, we can do
+ * dictionary lookup, but we need to do smart trick, since temporary object was
+ * processed we just need to check whether VID in inseg_entry struct is
+ * matched/final and it has RID assigned from current view. If, RID exists, we
+ * can use that RID to get VID of current view, exchange in inseg_entry struct
+ * and do dictionary lookup on serialized inseg_entry.
+ *
+ * With this approach for many entries this is the quickest possible way. In
+ * case when RID doesn't exist, that means we have invalid inseg entry, so we
+ * must return null.
+ *
+ * @param currentView Current view.
+ * @param temporaryView Temporary view.
+ * @param temporaryObj Temporary object.
+ *
+ * @return Best match object if found or nullptr.
+ */
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForInsegEntry(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Make a copy here to not destroy object data, later
+     * on this data should be read only.
+     */
+
+    sai_object_meta_key_t mk = temporaryObj->m_meta_key;
+
+    if (!exchangeTemporaryVidToCurrentVid(mk))
+    {
+        /*
+         * Not all oids inside struct object were translated, so there is no
+         * matching object in current view, we need to return null.
+         */
+
+        return nullptr;
+    }
+
+    std::string str_inseg_entry = sai_serialize_inseg_entry(mk.objectkey.key.inseg_entry);
+
+    /*
+     * Now when we have serialized inseg entry with temporary vr_id VID
+     * replaced to current vr_id VID we can do dictionary lookup for inseg.
+     */
+    auto currentInsegIt = m_currentView.m_soInsegs.find(str_inseg_entry);
+
+    if (currentInsegIt == m_currentView.m_soInsegs.end())
+    {
+        SWSS_LOG_DEBUG("unable to find inseg entry %s in current asic view", str_inseg_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same inseg entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentInsegObj = currentInsegIt->second;
+
+    if (currentInsegObj->getObjectStatus() == SAI_OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentInsegObj;
+    }
+
+    /*
+     * If we are here, that means this inseg was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_THROW("found inseg entry %s in current view, but it status is %d, FATAL",
+            str_inseg_entry.c_str(),
+            currentInsegObj->getObjectStatus());
+}
+
+/**
  * @brief Find current best match for FDB.
  *
  * For FDB we don't need to iterate via all current FDBs, we can do dictionary
@@ -2411,6 +2490,9 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatch(
 
         case SAI_OBJECT_TYPE_NAT_ENTRY:
             return findCurrentBestMatchForNatEntry(temporaryObj);
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            return findCurrentBestMatchForInsegEntry(temporaryObj);
 
             /*
              * We can have special case for switch since we know there should

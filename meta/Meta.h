@@ -183,18 +183,21 @@ namespace saimeta
         public: // bulk create ENTRY
 
             SAIREDIS_META_DECLARE_BULK_CREATE_ENTRY(fdb_entry);
+            SAIREDIS_META_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
             SAIREDIS_META_DECLARE_BULK_CREATE_ENTRY(nat_entry);
             SAIREDIS_META_DECLARE_BULK_CREATE_ENTRY(route_entry);
 
         public: // bulk remove ENTRY
 
             SAIREDIS_META_DECLARE_BULK_REMOVE_ENTRY(fdb_entry);
+            SAIREDIS_META_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
             SAIREDIS_META_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
             SAIREDIS_META_DECLARE_BULK_REMOVE_ENTRY(route_entry);
 
         public: // bulk set ENTRY
 
             SAIREDIS_META_DECLARE_BULK_SET_ENTRY(fdb_entry);
+            SAIREDIS_META_DECLARE_BULK_SET_ENTRY(inseg_entry);
             SAIREDIS_META_DECLARE_BULK_SET_ENTRY(nat_entry);
             SAIREDIS_META_DECLARE_BULK_SET_ENTRY(route_entry);
 

@@ -1934,6 +1934,10 @@ std::string sai_serialize_object_meta_key(
             key = sai_serialize_nat_entry(meta_key.objectkey.key.nat_entry);
             break;
 
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            key = sai_serialize_inseg_entry(meta_key.objectkey.key.inseg_entry);
+            break;
+
         default:
 
             if (meta->isnonobjectid)
@@ -3217,6 +3221,18 @@ void sai_deserialize_route_entry(
     EXPECT("}");
 }
 
+void sai_deserialize_inseg_entry(
+        _In_ const std::string &s,
+        _Out_ sai_inseg_entry_t& inseg_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], inseg_entry.switch_id);
+    sai_deserialize_number(j["label"], inseg_entry.label);
+}
+
 void sai_deserialize_nat_entry_key(
         _In_ const json& j,
         _Out_ sai_nat_entry_key_t& nat_entry_key)
@@ -3346,6 +3362,10 @@ void sai_deserialize_object_meta_key(
 
         case SAI_OBJECT_TYPE_NAT_ENTRY:
             sai_deserialize_nat_entry(str_object_id, meta_key.objectkey.key.nat_entry);
+            break;
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            sai_deserialize_inseg_entry(str_object_id, meta_key.objectkey.key.inseg_entry);
             break;
 
         default:

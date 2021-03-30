@@ -639,6 +639,38 @@ sai_status_t SaiPlayer::handle_route(
     }
 }
 
+sai_status_t SaiPlayer::handle_inseg(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_inseg_entry_t inseg_entry;
+    sai_deserialize_inseg_entry(str_object_id, inseg_entry);
+
+    inseg_entry.switch_id = translate_local_to_redis(inseg_entry.switch_id);
+
+    switch(api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return sai_metadata_sai_mpls_api->create_inseg_entry(&inseg_entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return sai_metadata_sai_mpls_api->remove_inseg_entry(&inseg_entry);
+
+        case SAI_COMMON_API_SET:
+            return sai_metadata_sai_mpls_api->set_inseg_entry_attribute(&inseg_entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return sai_metadata_sai_mpls_api->get_inseg_entry_attribute(&inseg_entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("inseg other apis not implemented");
+    }
+}
+
 void SaiPlayer::update_notifications_pointers(
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list)
@@ -2000,6 +2032,10 @@ int SaiPlayer::replay()
 
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
                 status = handle_route(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_INSEG_ENTRY:
+                status = handle_inseg(str_object_id, api, attr_count, attr_list);
                 break;
 
             default:
