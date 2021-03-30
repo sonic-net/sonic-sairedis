@@ -129,6 +129,9 @@ namespace syncd
             std::shared_ptr<SaiObj> findCurrentBestMatchForNatEntry(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
 
+            std::shared_ptr<SaiObj> findCurrentBestMatchForInsegEntry(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
+
         private:
 
             bool exchangeTemporaryVidToCurrentVid(

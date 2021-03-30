@@ -643,6 +643,7 @@ sai_status_t Sai::bulkCreate(                               \
 
 DECLARE_BULK_CREATE_ENTRY(ROUTE_ENTRY,route_entry)
 DECLARE_BULK_CREATE_ENTRY(FDB_ENTRY,fdb_entry);
+DECLARE_BULK_CREATE_ENTRY(INSEG_ENTRY,inseg_entry);
 DECLARE_BULK_CREATE_ENTRY(NAT_ENTRY,nat_entry)
 
 
@@ -667,6 +668,7 @@ sai_status_t Sai::bulkRemove(                               \
 
 DECLARE_BULK_REMOVE_ENTRY(ROUTE_ENTRY,route_entry)
 DECLARE_BULK_REMOVE_ENTRY(FDB_ENTRY,fdb_entry);
+DECLARE_BULK_REMOVE_ENTRY(INSEG_ENTRY,inseg_entry);
 DECLARE_BULK_REMOVE_ENTRY(NAT_ENTRY,nat_entry)
 
 // BULK SET
@@ -692,6 +694,7 @@ sai_status_t Sai::bulkSet(                                  \
 
 DECLARE_BULK_SET_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_BULK_SET_ENTRY(FDB_ENTRY,fdb_entry);
+DECLARE_BULK_SET_ENTRY(INSEG_ENTRY,inseg_entry);
 DECLARE_BULK_SET_ENTRY(NAT_ENTRY,nat_entry);
 
 // NON QUAD API

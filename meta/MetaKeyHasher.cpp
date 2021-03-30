@@ -88,6 +88,16 @@ static bool operator==(
         a.data.mask.l4_dst_port == b.data.mask.l4_dst_port;
 }
 
+static bool operator==(
+        _In_ const sai_inseg_entry_t& a,
+        _In_ const sai_inseg_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return a.switch_id == b.switch_id &&
+        a.label == b.label;
+}
+
 bool MetaKeyHasher::operator()(
         _In_ const sai_object_meta_key_t& a,
         _In_ const sai_object_meta_key_t& b) const
@@ -113,6 +123,9 @@ bool MetaKeyHasher::operator()(
 
     if (a.objecttype == SAI_OBJECT_TYPE_NAT_ENTRY)
         return a.objectkey.key.nat_entry == b.objectkey.key.nat_entry;
+
+    if (a.objecttype == SAI_OBJECT_TYPE_INSEG_ENTRY)
+        return a.objectkey.key.inseg_entry == b.objectkey.key.inseg_entry;
 
     SWSS_LOG_THROW("not implemented: %s",
             sai_serialize_object_meta_key(a).c_str());
@@ -190,6 +203,14 @@ static inline std::size_t sai_get_hash(
     return ne.data.key.src_ip ^ ne.data.key.dst_ip;
 }
 
+static inline std::size_t sai_get_hash(
+        _In_ const sai_inseg_entry_t& ie)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return ie.label;
+}
+
 std::size_t MetaKeyHasher::operator()(
         _In_ const sai_object_meta_key_t& k) const
 {
@@ -216,6 +237,9 @@ std::size_t MetaKeyHasher::operator()(
 
         case SAI_OBJECT_TYPE_NAT_ENTRY:
             return sai_get_hash(k.objectkey.key.nat_entry);
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            return sai_get_hash(k.objectkey.key.inseg_entry);
 
         default:
             SWSS_LOG_THROW("not handled: %s", sai_serialize_object_type(k.objecttype).c_str());

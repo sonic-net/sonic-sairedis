@@ -173,18 +173,21 @@ namespace syncd
         public: // bulk create ENTRY
 
             SYNCD_VENDORSAI_DECLARE_BULK_CREATE_ENTRY(fdb_entry);
+            SYNCD_VENDORSAI_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_CREATE_ENTRY(nat_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_CREATE_ENTRY(route_entry);
 
         public: // bulk remove ENTRY
 
             SYNCD_VENDORSAI_DECLARE_BULK_REMOVE_ENTRY(fdb_entry);
+            SYNCD_VENDORSAI_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_REMOVE_ENTRY(route_entry);
 
         public: // bulk set ENTRY
 
             SYNCD_VENDORSAI_DECLARE_BULK_SET_ENTRY(fdb_entry);
+            SYNCD_VENDORSAI_DECLARE_BULK_SET_ENTRY(inseg_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_SET_ENTRY(nat_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_SET_ENTRY(route_entry);
 

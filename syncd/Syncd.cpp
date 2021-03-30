@@ -969,6 +969,27 @@ sai_status_t Syncd::processBulkCreateEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+        {
+            std::vector<sai_inseg_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inseg_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
         default:
             return SAI_STATUS_NOT_SUPPORTED;
     }
@@ -1046,6 +1067,25 @@ sai_status_t Syncd::processBulkRemoveEntry(
 
                 entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
                 entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+        {
+            std::vector<sai_inseg_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inseg_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
             }
 
             status = m_vendorSai->bulkRemove(
@@ -1156,6 +1196,26 @@ sai_status_t Syncd::processBulkSetEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+        {
+            std::vector<sai_inseg_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inseg_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
         default:
             return SAI_STATUS_NOT_SUPPORTED;
     }
@@ -1229,6 +1289,10 @@ sai_status_t Syncd::processBulkEntry(
 
             case SAI_OBJECT_TYPE_FDB_ENTRY:
                 sai_deserialize_fdb_entry(objectIds[idx], metaKey.objectkey.key.fdb_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_INSEG_ENTRY:
+                sai_deserialize_inseg_entry(objectIds[idx], metaKey.objectkey.key.inseg_entry);
                 break;
 
             default:

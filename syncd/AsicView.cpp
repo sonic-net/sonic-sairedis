@@ -109,6 +109,11 @@ void AsicView::fromDump(
                 m_soNatEntries[o->m_str_object_id] = o;
                 break;
 
+            case SAI_OBJECT_TYPE_INSEG_ENTRY:
+                sai_deserialize_inseg_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.inseg_entry);
+                m_soInsegs[o->m_str_object_id] = o;
+                break;
+
             default:
 
                 if (o->m_info->isnonobjectid)
@@ -696,6 +701,10 @@ void AsicView::asicCreateObject(
                 m_soNatEntries[currentObj->m_str_object_id] = currentObj;
                 break;
 
+            case SAI_OBJECT_TYPE_INSEG_ENTRY:
+                m_soInsegs[currentObj->m_str_object_id] = currentObj;
+                break;
+
             default:
 
                 SWSS_LOG_THROW("unsupported object type: %s",
@@ -838,6 +847,10 @@ void AsicView::asicRemoveObject(
 
             case SAI_OBJECT_TYPE_NAT_ENTRY:
                 m_soNatEntries.erase(currentObj->m_str_object_id);
+                break;
+
+            case SAI_OBJECT_TYPE_INSEG_ENTRY:
+                m_soInsegs.erase(currentObj->m_str_object_id);
                 break;
 
             default:
