@@ -568,7 +568,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     }
     else
     {
-        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MINIMUM_XPN, attrCount, attrList);
+        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MINIMUM_INGRESS_XPN, attrCount, attrList);
     }
 
     macsecAttr.m_pn = attr->value.u64;

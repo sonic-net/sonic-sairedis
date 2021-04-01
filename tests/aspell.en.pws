@@ -121,6 +121,9 @@ init
 INIT
 inout
 INSEG
+Inseg
+insegs
+inseg
 ip
 IP
 ipc
