@@ -2,6 +2,7 @@
 
 VS_GENERIC_QUAD(SWITCH,switch);
 VS_GENERIC_STATS(SWITCH,switch);
+VS_GENERIC_QUAD(SWITCH_TUNNEL,switch_tunnel);
 
 static sai_status_t vs_create_switch_uniq(
         _Out_ sai_object_id_t *switch_id,
@@ -51,5 +52,8 @@ const sai_switch_api_t vs_switch_api = {
     VS_GENERIC_STATS_API(switch)
 
     vs_mdio_read,
-    vs_mdio_write
+    vs_mdio_write,
+
+    VS_GENERIC_QUAD_API(switch_tunnel)
+
 };

@@ -26,6 +26,7 @@ static sai_status_t redis_switch_mdio_write(
 
 REDIS_GENERIC_QUAD(SWITCH,switch);
 REDIS_GENERIC_STATS(SWITCH,switch);
+REDIS_GENERIC_QUAD(SWITCH_TUNNEL,switch_tunnel);
 
 static sai_status_t redis_create_switch_uniq(
         _Out_ sai_object_id_t *switch_id,
@@ -52,4 +53,6 @@ const sai_switch_api_t redis_switch_api = {
 
     redis_switch_mdio_read,
     redis_switch_mdio_write,
+
+    REDIS_GENERIC_QUAD_API(switch_tunnel)
 };
