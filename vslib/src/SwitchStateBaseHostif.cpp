@@ -560,9 +560,15 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
 
     sai_object_type_t ot = objectTypeQuery(obj_id);
 
-    if ((ot != SAI_OBJECT_TYPE_PORT) && (ot != SAI_OBJECT_TYPE_VLAN))
+    if (ot == SAI_OBJECT_TYPE_VLAN)
     {
-        SWSS_LOG_ERROR("SAI_HOSTIF_ATTR_OBJ_ID=%s expected to be PORT or VLAN but is: %s",
+        SWSS_LOG_DEBUG("Skipping tap creation for hostif with object type VLAN");
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (ot != SAI_OBJECT_TYPE_PORT)
+    {
+        SWSS_LOG_ERROR("SAI_HOSTIF_ATTR_OBJ_ID=%s expected to be PORT but is: %s",
                 sai_serialize_object_id(obj_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
 
@@ -740,6 +746,19 @@ sai_status_t SwitchStateBase::vs_remove_hostif_tap_interface(
     if (attr.value.s32 == SAI_HOSTIF_TYPE_GENETLINK)
     {
         SWSS_LOG_DEBUG("Skipping tap delete for hostif type genetlink");
+        return SAI_STATUS_SUCCESS;
+    }
+
+    attr.id = SAI_HOSTIF_ATTR_OBJ_ID;
+    status = get(SAI_OBJECT_TYPE_HOSTIF, hostif_id, 1, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get object ID for hostif %s", sai_serialize_object_id(hostif_id).c_str());
+        return status;
+    }
+    if (objectTypeQuery(attr.value.oid) == SAI_OBJECT_TYPE_VLAN)
+    {
+        SWSS_LOG_DEBUG("Skipping tap deletion for hostif with object type VLAN");
         return SAI_STATUS_SUCCESS;
     }
 
