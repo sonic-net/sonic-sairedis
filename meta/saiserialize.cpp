@@ -1161,7 +1161,7 @@ std::string sai_serialize_number_list(
     return sai_serialize_list(list, countOnly, [&](decltype(*list.list)& item) { return sai_serialize_number(item, hex);} );
 }
 
-json sai_serialize_qos_map_params(
+static json sai_serialize_qos_map_params(
         _In_ const sai_qos_map_params_t& params)
 {
     SWSS_LOG_ENTER();
@@ -1719,7 +1719,7 @@ std::string sai_serialize_fdb_event(
     return sai_serialize_enum(event, &sai_metadata_enum_sai_fdb_event_t);
 }
 
-json sai_serialize_json_fdb_event_notification_data(
+static json sai_serialize_json_fdb_event_notification_data(
         _In_ const sai_fdb_event_notification_data_t& fdb_event)
 {
     SWSS_LOG_ENTER();
@@ -2304,7 +2304,7 @@ void sai_deserialize_packet_color(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_packet_color_t, (int32_t&)color);
 }
 
-void sai_deserialize_qos_map_params(
+static void sai_deserialize_qos_map_params(
         _In_ const json& j,
         _Out_ sai_qos_map_params_t& params)
 {
@@ -2330,7 +2330,7 @@ void sai_deserialize_qos_map_params(
     sai_deserialize_packet_color(j["color"], params.color);
 }
 
-void sai_deserialize_qos_map(
+static void sai_deserialize_qos_map(
         _In_ const json& j,
         _Out_ sai_qos_map_t& qosmap)
 {
@@ -2397,7 +2397,7 @@ void sai_deserialize_acl_bind_point(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_acl_bind_point_type_t, (int32_t&)bind_point);
 }
 
-void sai_deserialize_acl_resource(
+static void sai_deserialize_acl_resource(
         _In_ const json& j,
         _Out_ sai_acl_resource_t& aclresource)
 {
@@ -2809,7 +2809,7 @@ void sai_deserialize_system_port_config(
 
 }
 
-void sai_deserialize_system_port_cfg_list_item(
+static void sai_deserialize_system_port_cfg_list_item(
         _In_ const json& j,
         _Out_ sai_system_port_config_t& sysportconfig)
 {
@@ -3217,7 +3217,7 @@ void sai_deserialize_route_entry(
     EXPECT("}");
 }
 
-void sai_deserialize_nat_entry_key(
+static void sai_deserialize_nat_entry_key(
         _In_ const json& j,
         _Out_ sai_nat_entry_key_t& nat_entry_key)
 {
@@ -3230,7 +3230,7 @@ void sai_deserialize_nat_entry_key(
     sai_deserialize_number(j["l4_dst_port"], nat_entry_key.l4_dst_port);
 }
 
-void sai_deserialize_nat_entry_mask(
+static void sai_deserialize_nat_entry_mask(
         _In_ const json& j,
         _Out_ sai_nat_entry_mask_t& nat_entry_mask)
 {
@@ -3243,7 +3243,7 @@ void sai_deserialize_nat_entry_mask(
     sai_deserialize_number(j["l4_dst_port"], nat_entry_mask.l4_dst_port);
 }
 
-void sai_deserialize_nat_entry_data(
+static void sai_deserialize_nat_entry_data(
         _In_ const json& j,
         _Out_ sai_nat_entry_data_t& nat_entry_data)
 {
@@ -3364,7 +3364,7 @@ void sai_deserialize_object_meta_key(
 
 // deserialize notifications
 
-void sai_deserialize_json_fdb_event_notification_data(
+static void sai_deserialize_json_fdb_event_notification_data(
         _In_ const json& j,
         _Out_ sai_fdb_event_notification_data_t& fdb)
 {
