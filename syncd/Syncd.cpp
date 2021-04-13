@@ -4301,7 +4301,7 @@ static void timerWatchdogCallback(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_ERROR("main loop execution exceeded %ld ms", span);
+    SWSS_LOG_ERROR("main loop execution exceeded %ld us", span);
 }
 
 void Syncd::run()
