@@ -4,6 +4,9 @@
 *.la
 *.lo
 *.o
+*.so
+*.pyc
+*_wrap.cpp
 
 # Packaging Files #
 ###################
@@ -101,3 +104,4 @@ tests/vssyncd
 
 tests/applyview.log
 tests/sai_warmboot.bin
+tests/[0-9]*
