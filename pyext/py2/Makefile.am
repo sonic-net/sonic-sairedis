@@ -16,7 +16,7 @@ _pysairedis_la_LDFLAGS = -module \
 		-L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
 		-lzmq
 
-_pysairedis_la_LIBADD = $(PYTHON3_BLDLIBRARY)
+_pysairedis_la_LIBADD = -lpython$(PYTHON_VERSION)
 
 SWIG_FLAG = -Wall -c++ -python -keyword
 if ARCH64
