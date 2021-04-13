@@ -564,11 +564,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     if (macsecAttr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
     {
-        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_XPN, attrCount, attrList);
+        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_CONFIGURED_EGRESS_XPN, attrCount, attrList);
     }
     else
     {
-        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MINIMUM_XPN, attrCount, attrList);
+        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MINIMUM_INGRESS_XPN, attrCount, attrList);
     }
 
     macsecAttr.m_pn = attr->value.u64;

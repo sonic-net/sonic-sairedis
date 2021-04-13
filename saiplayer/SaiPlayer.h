@@ -117,6 +117,12 @@ namespace saiplayer
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
 
+            sai_status_t handle_inseg(
+                    _In_ const std::string &str_object_id,
+                    _In_ sai_common_api_t api,
+                    _In_ uint32_t attr_count,
+                    _In_ sai_attribute_t *attr_list);
+
             void match_redis_with_rec(
                     _In_ sai_object_type_t object_type,
                     _In_ uint32_t get_attr_count,

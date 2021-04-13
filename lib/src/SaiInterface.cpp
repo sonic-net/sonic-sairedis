@@ -40,6 +40,9 @@ sai_status_t SaiInterface::create(
         case SAI_OBJECT_TYPE_NAT_ENTRY:
             return create(&metaKey.objectkey.key.nat_entry, attr_count, attr_list);
 
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            return create(&metaKey.objectkey.key.inseg_entry, attr_count, attr_list);
+
         default:
 
             SWSS_LOG_ERROR("object type %s not implemented, FIXME", info->objecttypename);
@@ -80,6 +83,9 @@ sai_status_t SaiInterface::remove(
 
         case SAI_OBJECT_TYPE_NAT_ENTRY:
             return remove(&metaKey.objectkey.key.nat_entry);
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            return remove(&metaKey.objectkey.key.inseg_entry);
 
         default:
 
@@ -123,6 +129,9 @@ sai_status_t SaiInterface::set(
         case SAI_OBJECT_TYPE_NAT_ENTRY:
             return set(&metaKey.objectkey.key.nat_entry, attr);
 
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            return set(&metaKey.objectkey.key.inseg_entry, attr);
+
         default:
 
             SWSS_LOG_ERROR("object type %s not implemented, FIXME", info->objecttypename);
@@ -165,6 +174,9 @@ sai_status_t SaiInterface::get(
 
         case SAI_OBJECT_TYPE_NAT_ENTRY:
             return get(&metaKey.objectkey.key.nat_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            return get(&metaKey.objectkey.key.inseg_entry, attr_count, attr_list);
 
         default:
 

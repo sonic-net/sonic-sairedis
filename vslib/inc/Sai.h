@@ -180,18 +180,21 @@ namespace saivs
         public: // bulk create ENTRY
 
             SAIVS_SAI_DECLARE_BULK_CREATE_ENTRY(fdb_entry);
+            SAIVS_SAI_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
             SAIVS_SAI_DECLARE_BULK_CREATE_ENTRY(nat_entry);
             SAIVS_SAI_DECLARE_BULK_CREATE_ENTRY(route_entry);
 
         public: // bulk remove ENTRY
 
             SAIVS_SAI_DECLARE_BULK_REMOVE_ENTRY(fdb_entry);
+            SAIVS_SAI_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
             SAIVS_SAI_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
             SAIVS_SAI_DECLARE_BULK_REMOVE_ENTRY(route_entry);
 
         public: // bulk set ENTRY
 
             SAIVS_SAI_DECLARE_BULK_SET_ENTRY(fdb_entry);
+            SAIVS_SAI_DECLARE_BULK_SET_ENTRY(inseg_entry);
             SAIVS_SAI_DECLARE_BULK_SET_ENTRY(nat_entry);
             SAIVS_SAI_DECLARE_BULK_SET_ENTRY(route_entry);
 
