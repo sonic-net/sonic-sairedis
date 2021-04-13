@@ -14,6 +14,7 @@
 #include "RedisSelectableChannel.h"
 #include "ZeroMQSelectableChannel.h"
 #include "PerformanceIntervalTimer.h"
+#include "TimerWatchdog.h"
 
 #include "sairediscommon.h"
 
@@ -4295,6 +4296,14 @@ bool Syncd::isVeryFirstRun()
     return firstRun;
 }
 
+static void timerWatchdogCallback(
+        _In_ int64_t span)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("main loop execution exceeded %ld ms", span);
+}
+
 void Syncd::run()
 {
     SWSS_LOG_ENTER();
@@ -4342,6 +4351,10 @@ void Syncd::run()
             runMainLoop = false;
     }
 
+    TimerWatchdog twd(30 * 1000000); // watch for executions over 30 seconds
+
+    twd.setCallback(timerWatchdogCallback);
+
     while(runMainLoop)
     {
         try
@@ -4349,6 +4362,8 @@ void Syncd::run()
             swss::Selectable *sel = NULL;
 
             int result = s->select(&sel);
+
+            twd.setStartTime();
 
             if (sel == m_restartQuery.get())
             {
@@ -4438,6 +4453,8 @@ void Syncd::run()
             {
                 SWSS_LOG_ERROR("select failed: %d", result);
             }
+
+            twd.setEndTime();
         }
         catch(const std::exception &e)
         {
@@ -4454,6 +4471,8 @@ void Syncd::run()
 
             // make sure that if second exception will arise, then we break the loop
             m_commandLineOptions->m_disableExitSleep = true;
+
+            twd.setEndTime();
         }
     }
 
