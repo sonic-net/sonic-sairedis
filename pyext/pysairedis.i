@@ -1,5 +1,4 @@
 %module pysairedis
-
 %include "cpointer.i"
 %include "carrays.i"
 
@@ -8,7 +7,7 @@
 
 extern "C"{
 #include "sai.h"
-#include "getapi.h"
+#include "saiextensions.h"
 }
 
 #include "sairedis.h"
@@ -26,36 +25,9 @@ namespace std {
 
 %include "saitypes.h"
 %include "sai.h"
+%include "saiextensions.h"
 
-%include "getapi.h"
-
-%include "switch.h"
-%include "lag.h"
-%include "routerinterface.h"
-%include "nexthop.h"
-%include "route.h"
-%include "vlan.h"
-%include "fdb.h"
-
-%ignore sai_switch_api_t;
-%ignore sai_lag_api_t;
-%ignore sai_router_interface_api_t;
-%ignore sai_next_hop_api_t;
-%ignore sai_route_api_t;
-%ignore sai_vlan_api_t;
-%ignore sai_fdb_api_t;
-
-%include "saiswitch.h"
-%include "sailag.h"
-%include "sairouterinterface.h"
-%include "sainexthop.h"
-%include "sairoute.h"
-%include "saivlan.h"
-%include "saifdb.h"
-%include "saiport.h"
-%include "saibfd.h"
-%include "saiqueue.h"
-
+%include "../SAI/meta/saiswig.i"
 
 %include "sairedis.h"
 
