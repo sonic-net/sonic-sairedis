@@ -8,9 +8,12 @@ install: all
 check:
 	true
 
-.PHONY: clean
+.PHONY: clean distclean
 
 clean:
 	rm -f *.o *~
 	rm -rf build
 
+distclean:
+	rm -f *.o *~
+	rm -rf build
