@@ -52,6 +52,7 @@ AC_ARG_ENABLE(syncd,
    no)  syncd=false ;;
    *) AC_MSG_ERROR(bad value ${enableval} for --enable-syncd) ;;
 esac],[syncd=true])
+AS_IF([test "x${ENABLESYNCD}" = "xno" ],[syncd=false],[])
 AM_CONDITIONAL(SYNCD, test x$syncd = xtrue)
 AM_COND_IF([SYNCD], [
         AM_COND_IF([SAIVS], [], [AC_CHECK_LIB([sai], [main], [AC_MSG_NOTICE(libsai found)], [AC_MSG_ERROR(libsai is required for syncd)])
