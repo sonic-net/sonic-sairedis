@@ -20,7 +20,7 @@ const std::string objectTypeGetAvailabilityResponse("object_type_get_availabilit
 /**
  * @brief Default synchronous operation response timeout in milliseconds.
  */
-#define SAI_REDIS_DEFAULT_SYNC_OPERATION_RESPONSE_TIMEOUT (60*1000)
+#define SAI_REDIS_DEFAULT_SYNC_OPERATION_RESPONSE_TIMEOUT (6*60*1000)
 
 typedef enum _sai_redis_notify_syncd_t
 {
