@@ -24,7 +24,7 @@ void SwitchConfigContainer::insert(
                 config->m_hardwareInfo.c_str());
     }
 
-    SWSS_LOG_NOTICE("added switch: %u:%s",
+    SWSS_LOG_NOTICE("added switch: idx %u, hwinfo '%s'",
             config->m_switchIndex,
             config->m_hardwareInfo.c_str());
 

@@ -132,9 +132,13 @@ std::shared_ptr<ContextConfigContainer> ContextConfigContainer::loadFromFile(
                 auto sc = std::make_shared<SwitchConfig>(switchIndex, hwinfo);
 
                 cc->insert(sc);
+
+                SWSS_LOG_NOTICE("insert into context '%s' config for hwinfo '%s'", cc->m_name.c_str(), hwinfo.c_str());
             }
 
             ccc->insert(cc);
+
+            SWSS_LOG_NOTICE("insert context '%s' into container list", cc->m_name.c_str());
         }
     }
     catch (const std::exception& e)
@@ -143,6 +147,8 @@ std::shared_ptr<ContextConfigContainer> ContextConfigContainer::loadFromFile(
 
         return getDefault();
     }
+
+    SWSS_LOG_NOTICE("loaded %zu context configs", ccc->m_map.size());
 
     return ccc;
 }
