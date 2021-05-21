@@ -25,6 +25,8 @@
 
 #include "meta/sai_serialize.h"
 
+#include "vslib/inc/saivs.h"
+
 #include <unistd.h>
 #include <inttypes.h>
 
@@ -2670,6 +2672,10 @@ int Syncd::profileGetNextValue(
 void Syncd::loadProfileMap()
 {
     SWSS_LOG_ENTER();
+
+    // in case of virtual switch, populate context config
+    m_profileMap[SAI_KEY_VS_GLOBAL_CONTEXT] = std::to_string(m_commandLineOptions->m_globalContext);
+    m_profileMap[SAI_KEY_VS_CONTEXT_CONFIG] = m_commandLineOptions->m_contextConfig;
 
     if (m_commandLineOptions->m_profileMapFile.size() == 0)
     {
