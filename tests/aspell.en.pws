@@ -102,6 +102,7 @@ getVid
 github
 GRE
 gSwitchId
+GUID
 hardcoded
 hasEqualAttribute
 hostif
@@ -120,10 +121,10 @@ ini
 init
 INIT
 inout
-INSEG
-Inseg
-insegs
 inseg
+Inseg
+INSEG
+insegs
 ip
 IP
 ipc
