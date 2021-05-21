@@ -14,6 +14,9 @@ libSaiVS_a_SOURCES = \
 					  ../../lib/src/Notification.cpp \
 					  ../../lib/src/NotificationPortStateChange.cpp \
 					  ../../lib/src/PerformanceIntervalTimer.cpp \
+					  Context.cpp \
+					  ContextConfig.cpp \
+					  ContextConfigContainer.cpp \
 					  ResourceLimiter.cpp \
 					  ResourceLimiterContainer.cpp \
 					  ResourceLimiterParser.cpp \

@@ -3,6 +3,7 @@
 #include "SwitchConfig.h"
 
 #include <map>
+#include <set>
 #include <memory>
 
 namespace saivs
@@ -25,6 +26,8 @@ namespace saivs
 
             std::shared_ptr<SwitchConfig> getConfig(
                     _In_ const std::string& hardwareInfo) const;
+
+            std::set<std::shared_ptr<SwitchConfig>> getSwitchConfigs() const;
 
         private:
 

@@ -69,6 +69,23 @@ extern "C" {
  */
 #define SAI_KEY_VS_CORE_PORT_INDEX_MAP_FILE  "SAI_VS_CORE_PORT_INDEX_MAP_FILE"
 
+/**
+ * @brief Context config.
+ *
+ * Optional. Should point to a context_config.json which will contain how many
+ * contexts (syncd) we have in the system globally and each context how many
+ * switches it manages. Only one of this contexts will be used in VS.
+ */
+#define SAI_KEY_VS_CONTEXT_CONFIG             "SAI_VS_CONTEXT_CONFIG"
+
+/**
+ * @brief Global context.
+ *
+ * Optional. Should point to GUID value which is provided in context_config.json
+ * by SAI_KEY_VS_CONTEXT_CONFIG. Default is 0.
+ */
+#define SAI_KEY_VS_GLOBAL_CONTEXT             "SAI_VS_GLOBAL_CONTEXT"
+
 #define SAI_VALUE_VS_SWITCH_TYPE_BCM56850     "SAI_VS_SWITCH_TYPE_BCM56850"
 #define SAI_VALUE_VS_SWITCH_TYPE_BCM81724     "SAI_VS_SWITCH_TYPE_BCM81724"
 #define SAI_VALUE_VS_SWITCH_TYPE_MLNX2700     "SAI_VS_SWITCH_TYPE_MLNX2700"

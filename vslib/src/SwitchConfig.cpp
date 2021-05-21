@@ -5,19 +5,20 @@
 
 using namespace saivs;
 
-SwitchConfig::SwitchConfig():
+SwitchConfig::SwitchConfig(
+        _In_ uint32_t switchIndex,
+        _In_ const std::string& hwinfo):
     m_saiSwitchType(SAI_SWITCH_TYPE_NPU),
     m_switchType(SAI_VS_SWITCH_TYPE_NONE),
     m_bootType(SAI_VS_BOOT_TYPE_COLD),
-    m_switchIndex(0),
-    m_hardwareInfo(""),
+    m_switchIndex(switchIndex),
+    m_hardwareInfo(hwinfo),
     m_useTapDevice(false)
 {
     SWSS_LOG_ENTER();
 
     // empty
 }
-
 
 bool SwitchConfig::parseSaiSwitchType(
         _In_ const char* saiSwitchTypeStr,

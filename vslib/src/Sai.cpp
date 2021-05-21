@@ -8,6 +8,7 @@
 #include "SwitchConfigContainer.h"
 #include "ResourceLimiterParser.h"
 #include "CorePortIndexMapFileParser.h"
+#include "ContextConfigContainer.h"
 
 #include "swss/logger.h"
 
@@ -103,7 +104,7 @@ sai_status_t Sai::initialize(
     {
         SWSS_LOG_NOTICE("failed to obtain service method table value: %s", SAI_KEY_VS_SAI_SWITCH_TYPE);
         saiSwitchType = SAI_SWITCH_TYPE_NPU;
-    } 
+    }
     else if (!SwitchConfig::parseSaiSwitchType(sai_switch_type, saiSwitchType))
     {
         return SAI_STATUS_FAILURE;
@@ -151,35 +152,85 @@ sai_status_t Sai::initialize(
 
     SWSS_LOG_NOTICE("hostif use TAP device: %s", (useTapDevice ? "true" : "false"));
 
+    auto cstrGlobalContext = service_method_table->profile_get_value(0, SAI_KEY_VS_GLOBAL_CONTEXT);
+
+    uint32_t globalContext = 0;
+
+    if (cstrGlobalContext != nullptr)
+    {
+        if (sscanf(cstrGlobalContext, "%u", &globalContext) != 1)
+        {
+            SWSS_LOG_WARN("failed to parse '%s' as uint32 using default globalContext", cstrGlobalContext);
+
+            globalContext = 0;
+        }
+    }
+
+    SWSS_LOG_NOTICE("using globalContext = %u", globalContext);
+
+    auto cstrContextConfig = service_method_table->profile_get_value(0, SAI_KEY_VS_CONTEXT_CONFIG);
+
+    auto ccc = ContextConfigContainer::loadFromFile(cstrContextConfig);
+
+    for (auto& cc: ccc->getAllContextConfigs())
+    {
+        auto context = std::make_shared<Context>(cc);
+
+        m_contextMap[cc->m_guid] = context;
+    }
+
+    auto context = getContext(globalContext);
+
+    if (context == nullptr)
+    {
+        SWSS_LOG_ERROR("no context defined for global context %u", globalContext);
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto contextConfig = context->getContextConfig();
+
+    auto scc = contextConfig->m_scc;
+
+    if (scc->getSwitchConfigs().size() == 0)
+    {
+        SWSS_LOG_WARN("no switch configs defined, using default switch config");
+
+        auto sc = std::make_shared<SwitchConfig>(0, "");
+
+        scc->insert(sc);
+    }
+
+    // TODO currently switch configuration will share signal and event queue
+    // but it should be moved to Context class
+
     m_signal = std::make_shared<Signal>();
 
     m_eventQueue = std::make_shared<EventQueue>(m_signal);
 
-    auto sc = std::make_shared<SwitchConfig>();
-
-    sc->m_saiSwitchType = saiSwitchType;
-    sc->m_switchType = switchType;
-    sc->m_bootType = bootType;
-    sc->m_switchIndex = 0;
-    sc->m_useTapDevice = useTapDevice;
-    sc->m_laneMap = m_laneMapContainer->getLaneMap(sc->m_switchIndex);
-    if (m_fabricLaneMapContainer)
+    for (auto& sc: scc->getSwitchConfigs())
     {
-        sc->m_fabricLaneMap = m_fabricLaneMapContainer->getLaneMap(sc->m_switchIndex);
+        // NOTE: switch index and hardware info is already populated
+
+        sc->m_saiSwitchType = saiSwitchType;
+        sc->m_switchType = switchType;
+        sc->m_bootType = bootType;
+        sc->m_useTapDevice = useTapDevice;
+        sc->m_laneMap = m_laneMapContainer->getLaneMap(sc->m_switchIndex);
+
+        if (m_fabricLaneMapContainer)
+        {
+            sc->m_fabricLaneMap = m_fabricLaneMapContainer->getLaneMap(sc->m_switchIndex);
+        }
+
+        sc->m_eventQueue = m_eventQueue;
+        sc->m_resourceLimiter = m_resourceLimiterContainer->getResourceLimiter(sc->m_switchIndex);
+        sc->m_corePortIndexMap = m_corePortIndexMapContainer->getCorePortIndexMap(sc->m_switchIndex);
     }
-    sc->m_eventQueue = m_eventQueue;
-    sc->m_resourceLimiter = m_resourceLimiterContainer->getResourceLimiter(sc->m_switchIndex);
-    sc->m_corePortIndexMap = m_corePortIndexMapContainer->getCorePortIndexMap(sc->m_switchIndex);
-
-    auto scc = std::make_shared<SwitchConfigContainer>();
-
-    // TODO add support for multiple switches, (global context?) and config context will need
-    // to be passed over SAI_KEY_ service method table, and here we need to load them
-    // we also need global context value for those switches (VirtualSwitchSaiInterface/RealObjectIdManager)
-
-    scc->insert(sc);
 
     // most important
+
+    // TODO move to Context class
 
     m_vsSai = std::make_shared<VirtualSwitchSaiInterface>(scc);
 
@@ -193,7 +244,10 @@ sai_status_t Sai::initialize(
         {
             SWSS_LOG_WARN("failed to read warm boot read file, switching to COLD BOOT");
 
-            sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+            for (auto& sc: scc->getSwitchConfigs())
+            {
+                sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+            }
         }
     }
 
@@ -201,7 +255,7 @@ sai_status_t Sai::initialize(
 
     startUnittestThread();
 
-    if (saiSwitchType == SAI_SWITCH_TYPE_NPU) 
+    if (saiSwitchType == SAI_SWITCH_TYPE_NPU)
     {
         startFdbAgingThread();
     }
@@ -812,4 +866,17 @@ sai_status_t Sai::logSet(
     VS_CHECK_API_INITIALIZED();
 
     return m_meta->logSet(api, log_level);
+}
+
+std::shared_ptr<Context> Sai::getContext(
+        _In_ uint32_t globalContext) const
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_contextMap.find(globalContext);
+
+    if (it == m_contextMap.end())
+        return nullptr;
+
+    return it->second;
 }

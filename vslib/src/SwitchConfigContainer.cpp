@@ -24,7 +24,7 @@ void SwitchConfigContainer::insert(
                 config->m_hardwareInfo.c_str());
     }
 
-    SWSS_LOG_NOTICE("added switch: %u:%s",
+    SWSS_LOG_NOTICE("added switch: idx %u, hwinfo '%s'",
             config->m_switchIndex,
             config->m_hardwareInfo.c_str());
 
@@ -61,4 +61,18 @@ std::shared_ptr<SwitchConfig> SwitchConfigContainer::getConfig(
     }
 
     return nullptr;
+}
+
+std::set<std::shared_ptr<SwitchConfig>> SwitchConfigContainer::getSwitchConfigs() const
+{
+    SWSS_LOG_ENTER();
+
+    std::set<std::shared_ptr<SwitchConfig>> set;
+
+    for (auto& kvp: m_hwinfoToConfig)
+    {
+        set.insert(kvp.second);
+    }
+
+    return set;
 }

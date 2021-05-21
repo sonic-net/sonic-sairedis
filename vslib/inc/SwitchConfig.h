@@ -40,7 +40,9 @@ namespace saivs
     {
         public:
 
-            SwitchConfig();
+            SwitchConfig(
+                    _In_ uint32_t switchIndex,
+                    _In_ const std::string& hwinfo);
 
             virtual ~SwitchConfig() = default;
 

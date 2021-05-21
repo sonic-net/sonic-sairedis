@@ -45,6 +45,9 @@ SwitchStateBase::SwitchStateBase(
         if (m_switchConfig->m_useTapDevice)
         {
             m_fdb_info_set = warmBootState->m_fdbInfoSet;
+
+            // TODO populate m_hostif_info_map - need to be able to remove port after warm boot
+            // should be auto populated vs_recreate_hostif_tap_interfaces on create_switch
         }
     }
 }

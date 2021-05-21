@@ -6,6 +6,7 @@
 #include "EventPayloadNotification.h"
 #include "ResourceLimiterContainer.h"
 #include "CorePortIndexMapContainer.h"
+#include "Context.h"
 
 #include "meta/Meta.h"
 
@@ -403,6 +404,11 @@ namespace saivs
 
         private:
 
+            std::shared_ptr<Context> getContext(
+                    _In_ uint32_t globalContext) const;
+
+        private:
+
             bool m_apiInitialized;
 
             std::recursive_mutex m_apimutex;
@@ -424,5 +430,7 @@ namespace saivs
             std::shared_ptr<ResourceLimiterContainer> m_resourceLimiterContainer;
 
             std::shared_ptr<CorePortIndexMapContainer> m_corePortIndexMapContainer;
+
+            std::map<uint32_t, std::shared_ptr<Context>> m_contextMap;
     };
 }
