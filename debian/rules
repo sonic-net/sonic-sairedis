@@ -46,8 +46,8 @@ binary-sairedis:
 binary-syncd:
 	echo > /tmp/syncd-build
 	dh clean  --with autotools-dev
-	dh build  -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
-	dh binary -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+	dh build  -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev --filename $(PKG_NAME)
+	dh binary -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev --filename $(PKG_NAME)
 
 binary-syncd-rpc: | binary-syncd
 	echo '--enable-rpcserver=yes' > /tmp/syncd-build
