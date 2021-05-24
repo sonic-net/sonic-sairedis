@@ -181,7 +181,7 @@ config_syncd_nephos()
 
 config_syncd_vs()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile -x /usr/share/sonic/hwsku/context_config.json -g 0"
 }
 
 config_syncd_innovium()
