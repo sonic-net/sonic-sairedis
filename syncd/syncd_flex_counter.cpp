@@ -853,7 +853,7 @@ void FlexCounter::removeRif(
         if (fc.isEmpty())
         {
             lkMgr.unlock();
-            removeInstance(instanceId);
+            fc.removeCollectCountersHandler(RIF_COUNTER_ID_LIST);
         }
         return;
     }
@@ -868,7 +868,7 @@ void FlexCounter::removeRif(
     if (fc.isEmpty())
     {
         lkMgr.unlock();
-        removeInstance(instanceId);
+        fc.removeCollectCountersHandler(RIF_COUNTER_ID_LIST);
     }
 }
 
