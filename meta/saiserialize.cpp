@@ -3307,6 +3307,12 @@ void sai_deserialize_attr_id(
 
     if (m == NULL)
     {
+        // check ignored attributes names for backward compatibility
+        m = sai_metadata_get_ignored_attr_metadata_by_attr_id_name(s.c_str());
+    }
+
+    if (m == NULL)
+    {
         SWSS_LOG_THROW("invalid attr id: %s", s.c_str());
     }
 

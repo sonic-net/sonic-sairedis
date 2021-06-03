@@ -660,8 +660,16 @@ sub test_macsec_p2p_establishment
     play "test_macsec_p2p_establishment.rec";
 }
 
+sub test_ignore_attributes
+{
+    fresh_start;
+
+    play "ignore_attributes.rec";
+}
+
 # RUN TESTS
 
+test_ignore_attributes;
 test_macsec_p2p_establishment;
 test_no_lag_label;
 test_lag_label;
