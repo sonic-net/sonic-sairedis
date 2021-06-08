@@ -223,9 +223,10 @@ void ZeroMQChannel::set(
 
     if (rc <= 0)
     {
-        SWSS_LOG_THROW("zmq_send failed, on endpoint %s, zmqerrno: %d",
+        SWSS_LOG_THROW("zmq_send failed, on endpoint %s, zmqerrno: %d: %s",
                 m_endpoint.c_str(),
-                zmq_errno());
+                zmq_errno(),
+                zmq_strerror(zmq_errno()));
     }
 }
 
@@ -249,9 +250,10 @@ void ZeroMQChannel::del(
 
     if (rc <= 0)
     {
-        SWSS_LOG_THROW("zmq_send failed, on endpoint %s, zmqerrno: %d",
+        SWSS_LOG_THROW("zmq_send failed, on endpoint %s, zmqerrno: %d: %s",
                 m_endpoint.c_str(),
-                zmq_errno());
+                zmq_errno(),
+                zmq_strerror(zmq_errno()));
     }
 }
 
