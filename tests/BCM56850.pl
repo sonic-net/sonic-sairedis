@@ -660,8 +660,30 @@ sub test_macsec_p2p_establishment
     play "test_macsec_p2p_establishment.rec";
 }
 
+sub test_sairedis_client
+{
+    fresh_start;
+
+    # saiplayer here is acting as OA
+
+    system("../saiplayer/saiplayer -u $utils::DIR/client_switch.rec &");
+
+    sleep 1;
+
+    `./testclient`;
+
+    `kill -9 saiplayer`;
+
+    if ($? != 0)
+    {
+        print color('red') . "test client failed" . color('reset') . "\n";
+        exit 1;
+    }
+}
+
 # RUN TESTS
 
+test_sairedis_client;
 test_macsec_p2p_establishment;
 test_no_lag_label;
 test_lag_label;
