@@ -672,7 +672,7 @@ sub test_sairedis_client
 
     `./testclient`;
 
-    `kill -9 saiplayer`;
+    `killall -9 saiplayer`;
 
     if ($? != 0)
     {
