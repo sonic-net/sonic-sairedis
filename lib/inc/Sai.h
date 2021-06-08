@@ -1,6 +1,5 @@
 #pragma once
 
-#include "RedisRemoteSaiInterface.h"
 #include "Notification.h"
 #include "Recorder.h"
 #include "Context.h"

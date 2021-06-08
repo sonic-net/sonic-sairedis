@@ -166,6 +166,8 @@ sai_status_t Sai::create(
         {
             // request to connect to existing switch
 
+            SWSS_LOG_NOTICE("Sai::create call context populateMetadata");
+
             context->populateMetadata(*objectId);
         }
     }

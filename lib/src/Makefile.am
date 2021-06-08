@@ -10,6 +10,11 @@ lib_LTLIBRARIES = libsairedis.la
 
 noinst_LIBRARIES = libSaiRedis.a
 libSaiRedis_a_SOURCES = \
+						 ../../syncd/ZeroMQSelectableChannel.cpp \
+						 ../../syncd/SelectableChannel.cpp \
+						 ClientServerSai.cpp \
+						 ClientSai.cpp \
+						 ServerSai.cpp \
 						 PerformanceIntervalTimer.cpp \
 						 ZeroMQChannel.cpp \
 						 Channel.cpp \

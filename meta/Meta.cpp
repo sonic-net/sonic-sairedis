@@ -6648,11 +6648,30 @@ void Meta::meta_generic_validation_post_create(
 {
     SWSS_LOG_ENTER();
 
+    bool connectToSwitch = false;
+
+    if (meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
+    {
+        auto attr = sai_metadata_get_attr_by_id(SAI_SWITCH_ATTR_INIT_SWITCH, attr_count, attr_list);
+
+        if (attr && attr->value.booldata == false)
+        {
+            SWSS_LOG_NOTICE("connecting to existing switch %s",
+                    sai_serialize_object_id(switch_id).c_str());
+
+            connectToSwitch = true;
+        }
+    }
+
     if (m_saiObjectCollection.objectExists(meta_key))
     {
         if (m_warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
         {
             SWSS_LOG_NOTICE("post switch create after WARM BOOT");
+        }
+        else if (connectToSwitch)
+        {
+            // ok, object already exists since we are connecting to existing switch
         }
         else
         {
@@ -6666,6 +6685,10 @@ void Meta::meta_generic_validation_post_create(
     if (m_warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
     {
         SWSS_LOG_NOTICE("skipping create switch on WARM BOOT since it was already created");
+    }
+    else if (connectToSwitch)
+    {
+        // don't create object, since it already exists and we are connecting to existing switch
     }
     else
     {
@@ -6752,6 +6775,10 @@ void Meta::meta_generic_validation_post_create(
             if (m_warmBoot && meta_key.objecttype == SAI_OBJECT_TYPE_SWITCH)
             {
                 SWSS_LOG_NOTICE("skip insert switch reference insert in WARM_BOOT");
+            }
+            else if (connectToSwitch)
+            {
+                // don't create object reference, since we are connecting to existing switch
             }
             else
             {

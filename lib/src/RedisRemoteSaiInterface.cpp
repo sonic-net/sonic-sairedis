@@ -133,9 +133,10 @@ sai_status_t RedisRemoteSaiInterface::uninitialize(void)
     return SAI_STATUS_SUCCESS;
 }
 
+// TODO move to common namespace utils class
 std::string RedisRemoteSaiInterface::getHardwareInfo(
         _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList) const
+        _In_ const sai_attribute_t *attrList)
 {
     SWSS_LOG_ENTER();
 
@@ -175,7 +176,6 @@ std::string RedisRemoteSaiInterface::getHardwareInfo(
      return std::string((const char*)s8list.list, actualLength);
 }
 
-
 sai_status_t RedisRemoteSaiInterface::create(
         _In_ sai_object_type_t objectType,
         _Out_ sai_object_id_t* objectId,
@@ -212,6 +212,14 @@ sai_status_t RedisRemoteSaiInterface::create(
 
         if (attr && attr->value.booldata == false)
         {
+            if (m_switchContainer->contains(*objectId))
+            {
+                SWSS_LOG_NOTICE("switch container already contains switch %s",
+                        sai_serialize_object_id(*objectId).c_str());
+
+                return SAI_STATUS_SUCCESS;
+            }
+
             refreshTableDump();
 
             if (m_tableDump.find(switchId) == m_tableDump.end())

@@ -2,6 +2,8 @@
 
 #include "swss/logger.h"
 
+#include "meta/sai_serialize.h"
+
 using namespace sairedis;
 using namespace std::placeholders;
 
@@ -51,6 +53,15 @@ void Context::populateMetadata(
     SWSS_LOG_ENTER();
 
     auto& dump = m_redisSai->getTableDump();
+
+    SWSS_LOG_NOTICE("dump size: %zu", dump.size());
+
+    if (dump.size() == 0)
+    {
+        SWSS_LOG_NOTICE("skipping populate metadata for switch %s, (probably connecting to already existing switch)",
+                sai_serialize_object_id(switchId).c_str());
+        return;
+    }
 
     m_meta->populate(dump.at(switchId));
 }
