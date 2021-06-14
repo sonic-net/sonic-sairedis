@@ -86,6 +86,11 @@ function set_start_type()
     fi
 }
 
+config_syncd_cisco_8000()
+{
+    export BASE_OUTPUT_DIR=/opt/cisco/silicon-one
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
 
 config_syncd_bcm()
 {
@@ -268,7 +273,10 @@ config_syncd()
 {
     check_warm_boot
 
-    if [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
+
+    if [ "$SONIC_ASIC_TYPE" == "cisco-8000" ]; then
+        config_syncd_cisco_8000
+    elif [ "$SONIC_ASIC_TYPE" == "broadcom" ]; then
         config_syncd_bcm
     elif [ "$SONIC_ASIC_TYPE" == "mellanox" ]; then
         config_syncd_mlnx
