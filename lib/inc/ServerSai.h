@@ -1,41 +1,37 @@
 #pragma once
 
-#include "Notification.h"
-#include "Recorder.h"
-#include "Context.h"
+#include "SaiInterface.h"
 
-#include "meta/Meta.h"
+#include "syncd/SelectableChannel.h"
 
-#include "swss/logger.h"
+#include "swss/selectableevent.h"
 
-#include <string>
-#include <vector>
 #include <memory>
 #include <mutex>
-#include <map>
+#include <thread>
 
-#define SAIREDIS_SAI_DECLARE_REMOVE_ENTRY(ot)                       \
+#define SAIREDIS_SERVERSAI_DECLARE_REMOVE_ENTRY(ot)                 \
     virtual sai_status_t remove(                                    \
             _In_ const sai_ ## ot ## _t* ot) override;
 
-#define SAIREDIS_SAI_DECLARE_CREATE_ENTRY(ot)                       \
+#define SAIREDIS_SERVERSAI_DECLARE_CREATE_ENTRY(ot)                 \
     virtual sai_status_t create(                                    \
             _In_ const sai_ ## ot ## _t* ot,                        \
             _In_ uint32_t attr_count,                               \
             _In_ const sai_attribute_t *attr_list) override;
 
-#define SAIREDIS_SAI_DECLARE_SET_ENTRY(ot)                          \
+#define SAIREDIS_SERVERSAI_DECLARE_SET_ENTRY(ot)                    \
     virtual sai_status_t set(                                       \
             _In_ const sai_ ## ot ## _t* ot,                        \
             _In_ const sai_attribute_t *attr) override;
 
-#define SAIREDIS_SAI_DECLARE_GET_ENTRY(ot)                          \
+#define SAIREDIS_SERVERSAI_DECLARE_GET_ENTRY(ot)                    \
     virtual sai_status_t get(                                       \
             _In_ const sai_ ## ot ## _t* ot,                        \
             _In_ uint32_t attr_count,                               \
             _Out_ sai_attribute_t *attr_list) override;
 
-#define SAIREDIS_SAI_DECLARE_BULK_CREATE_ENTRY(ot)                  \
+#define SAIREDIS_SERVERSAI_DECLARE_BULK_CREATE_ENTRY(ot)            \
     virtual sai_status_t bulkCreate(                                \
             _In_ uint32_t object_count,                             \
             _In_ const sai_ ## ot ## _t *ot,                        \
@@ -44,14 +40,14 @@
             _In_ sai_bulk_op_error_mode_t mode,                     \
             _Out_ sai_status_t *object_statuses) override;
 
-#define SAIREDIS_SAI_DECLARE_BULK_REMOVE_ENTRY(ot)                  \
+#define SAIREDIS_SERVERSAI_DECLARE_BULK_REMOVE_ENTRY(ot)            \
     virtual sai_status_t bulkRemove(                                \
             _In_ uint32_t object_count,                             \
             _In_ const sai_ ## ot ## _t *ot,                        \
             _In_ sai_bulk_op_error_mode_t mode,                     \
             _Out_ sai_status_t *object_statuses) override;
 
-#define SAIREDIS_SAI_DECLARE_BULK_SET_ENTRY(ot)                     \
+#define SAIREDIS_SERVERSAI_DECLARE_BULK_SET_ENTRY(ot)               \
     virtual sai_status_t bulkSet(                                   \
             _In_ uint32_t object_count,                             \
             _In_ const sai_ ## ot ## _t *ot,                        \
@@ -61,14 +57,14 @@
 
 namespace sairedis
 {
-    class Sai:
+    class ServerSai:
         public sairedis::SaiInterface
     {
         public:
 
-            Sai();
+            ServerSai();
 
-            virtual ~Sai();
+            virtual ~ServerSai();
 
         public:
 
@@ -104,47 +100,47 @@ namespace sairedis
 
         public: // create ENTRY
 
-            SAIREDIS_SAI_DECLARE_CREATE_ENTRY(fdb_entry);
-            SAIREDIS_SAI_DECLARE_CREATE_ENTRY(inseg_entry);
-            SAIREDIS_SAI_DECLARE_CREATE_ENTRY(ipmc_entry);
-            SAIREDIS_SAI_DECLARE_CREATE_ENTRY(l2mc_entry);
-            SAIREDIS_SAI_DECLARE_CREATE_ENTRY(mcast_fdb_entry);
-            SAIREDIS_SAI_DECLARE_CREATE_ENTRY(neighbor_entry);
-            SAIREDIS_SAI_DECLARE_CREATE_ENTRY(route_entry);
-            SAIREDIS_SAI_DECLARE_CREATE_ENTRY(nat_entry);
+            SAIREDIS_SERVERSAI_DECLARE_CREATE_ENTRY(fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_CREATE_ENTRY(inseg_entry);
+            SAIREDIS_SERVERSAI_DECLARE_CREATE_ENTRY(ipmc_entry);
+            SAIREDIS_SERVERSAI_DECLARE_CREATE_ENTRY(l2mc_entry);
+            SAIREDIS_SERVERSAI_DECLARE_CREATE_ENTRY(mcast_fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_CREATE_ENTRY(neighbor_entry);
+            SAIREDIS_SERVERSAI_DECLARE_CREATE_ENTRY(route_entry);
+            SAIREDIS_SERVERSAI_DECLARE_CREATE_ENTRY(nat_entry);
 
         public: // remove ENTRY
 
-            SAIREDIS_SAI_DECLARE_REMOVE_ENTRY(fdb_entry);
-            SAIREDIS_SAI_DECLARE_REMOVE_ENTRY(inseg_entry);
-            SAIREDIS_SAI_DECLARE_REMOVE_ENTRY(ipmc_entry);
-            SAIREDIS_SAI_DECLARE_REMOVE_ENTRY(l2mc_entry);
-            SAIREDIS_SAI_DECLARE_REMOVE_ENTRY(mcast_fdb_entry);
-            SAIREDIS_SAI_DECLARE_REMOVE_ENTRY(neighbor_entry);
-            SAIREDIS_SAI_DECLARE_REMOVE_ENTRY(route_entry);
-            SAIREDIS_SAI_DECLARE_REMOVE_ENTRY(nat_entry);
+            SAIREDIS_SERVERSAI_DECLARE_REMOVE_ENTRY(fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_REMOVE_ENTRY(inseg_entry);
+            SAIREDIS_SERVERSAI_DECLARE_REMOVE_ENTRY(ipmc_entry);
+            SAIREDIS_SERVERSAI_DECLARE_REMOVE_ENTRY(l2mc_entry);
+            SAIREDIS_SERVERSAI_DECLARE_REMOVE_ENTRY(mcast_fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_REMOVE_ENTRY(neighbor_entry);
+            SAIREDIS_SERVERSAI_DECLARE_REMOVE_ENTRY(route_entry);
+            SAIREDIS_SERVERSAI_DECLARE_REMOVE_ENTRY(nat_entry);
 
         public: // set ENTRY
 
-            SAIREDIS_SAI_DECLARE_SET_ENTRY(fdb_entry);
-            SAIREDIS_SAI_DECLARE_SET_ENTRY(inseg_entry);
-            SAIREDIS_SAI_DECLARE_SET_ENTRY(ipmc_entry);
-            SAIREDIS_SAI_DECLARE_SET_ENTRY(l2mc_entry);
-            SAIREDIS_SAI_DECLARE_SET_ENTRY(mcast_fdb_entry);
-            SAIREDIS_SAI_DECLARE_SET_ENTRY(neighbor_entry);
-            SAIREDIS_SAI_DECLARE_SET_ENTRY(route_entry);
-            SAIREDIS_SAI_DECLARE_SET_ENTRY(nat_entry);
+            SAIREDIS_SERVERSAI_DECLARE_SET_ENTRY(fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_SET_ENTRY(inseg_entry);
+            SAIREDIS_SERVERSAI_DECLARE_SET_ENTRY(ipmc_entry);
+            SAIREDIS_SERVERSAI_DECLARE_SET_ENTRY(l2mc_entry);
+            SAIREDIS_SERVERSAI_DECLARE_SET_ENTRY(mcast_fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_SET_ENTRY(neighbor_entry);
+            SAIREDIS_SERVERSAI_DECLARE_SET_ENTRY(route_entry);
+            SAIREDIS_SERVERSAI_DECLARE_SET_ENTRY(nat_entry);
 
         public: // get ENTRY
 
-            SAIREDIS_SAI_DECLARE_GET_ENTRY(fdb_entry);
-            SAIREDIS_SAI_DECLARE_GET_ENTRY(inseg_entry);
-            SAIREDIS_SAI_DECLARE_GET_ENTRY(ipmc_entry);
-            SAIREDIS_SAI_DECLARE_GET_ENTRY(l2mc_entry);
-            SAIREDIS_SAI_DECLARE_GET_ENTRY(mcast_fdb_entry);
-            SAIREDIS_SAI_DECLARE_GET_ENTRY(neighbor_entry);
-            SAIREDIS_SAI_DECLARE_GET_ENTRY(route_entry);
-            SAIREDIS_SAI_DECLARE_GET_ENTRY(nat_entry);
+            SAIREDIS_SERVERSAI_DECLARE_GET_ENTRY(fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_GET_ENTRY(inseg_entry);
+            SAIREDIS_SERVERSAI_DECLARE_GET_ENTRY(ipmc_entry);
+            SAIREDIS_SERVERSAI_DECLARE_GET_ENTRY(l2mc_entry);
+            SAIREDIS_SERVERSAI_DECLARE_GET_ENTRY(mcast_fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_GET_ENTRY(neighbor_entry);
+            SAIREDIS_SERVERSAI_DECLARE_GET_ENTRY(route_entry);
+            SAIREDIS_SERVERSAI_DECLARE_GET_ENTRY(nat_entry);
 
         public: // bulk QUAD oid
 
@@ -175,24 +171,24 @@ namespace sairedis
 
         public: // bulk create ENTRY
 
-            SAIREDIS_SAI_DECLARE_BULK_CREATE_ENTRY(fdb_entry);
-            SAIREDIS_SAI_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
-            SAIREDIS_SAI_DECLARE_BULK_CREATE_ENTRY(nat_entry);
-            SAIREDIS_SAI_DECLARE_BULK_CREATE_ENTRY(route_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_CREATE_ENTRY(fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_CREATE_ENTRY(nat_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_CREATE_ENTRY(route_entry);
 
         public: // bulk remove ENTRY
 
-            SAIREDIS_SAI_DECLARE_BULK_REMOVE_ENTRY(fdb_entry);
-            SAIREDIS_SAI_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
-            SAIREDIS_SAI_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
-            SAIREDIS_SAI_DECLARE_BULK_REMOVE_ENTRY(route_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_REMOVE_ENTRY(fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_REMOVE_ENTRY(route_entry);
 
         public: // bulk set ENTRY
 
-            SAIREDIS_SAI_DECLARE_BULK_SET_ENTRY(fdb_entry);
-            SAIREDIS_SAI_DECLARE_BULK_SET_ENTRY(inseg_entry);
-            SAIREDIS_SAI_DECLARE_BULK_SET_ENTRY(nat_entry);
-            SAIREDIS_SAI_DECLARE_BULK_SET_ENTRY(route_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_SET_ENTRY(fdb_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_SET_ENTRY(inseg_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_SET_ENTRY(nat_entry);
+            SAIREDIS_SERVERSAI_DECLARE_BULK_SET_ENTRY(route_entry);
 
         public: // stats API
 
@@ -257,23 +253,60 @@ namespace sairedis
 
         private:
 
-            sai_switch_notifications_t handle_notification(
-                    _In_ std::shared_ptr<Notification> notification,
-                    _In_ Context* context);
+            void serverThreadFunction();
 
-            std::shared_ptr<Context> getContext(
-                    _In_ uint32_t globalContext);
+            void processEvent(
+                    _In_ syncd::SelectableChannel& consumer);
+
+            sai_status_t processSingleEvent(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
+            sai_status_t processQuadEvent(
+                    _In_ sai_common_api_t api,
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
+            sai_status_t processEntry(
+                    _In_ sai_object_meta_key_t metaKey,
+                    _In_ sai_common_api_t api,
+                    _In_ uint32_t attr_count,
+                    _In_ sai_attribute_t *attr_list);
+
+            sai_status_t processOid(
+                    _In_ sai_object_type_t objectType,
+                    _Inout_ sai_object_id_t& oid,
+                    _In_ sai_object_id_t switchId,
+                    _In_ sai_common_api_t api,
+                    _In_ uint32_t attr_count,
+                    _In_ sai_attribute_t *attr_list);
+
+            void sendApiResponse(
+                    _In_ sai_common_api_t api,
+                    _In_ sai_status_t status,
+                    _In_ sai_object_id_t oid);
+
+            void sendGetResponse(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::string& strObjectId,
+                    _In_ sai_status_t status,
+                    _In_ uint32_t attr_count,
+                    _In_ sai_attribute_t *attr_list);
 
         private:
 
             bool m_apiInitialized;
 
-            std::recursive_mutex m_apimutex;
+            bool m_runServerThread;
 
-            std::map<uint32_t, std::shared_ptr<Context>> m_contextMap;
+            std::recursive_mutex m_apimutex;
 
             sai_service_method_table_t m_service_method_table;
 
-            std::shared_ptr<Recorder> m_recorder;
+            std::shared_ptr<SaiInterface> m_sai;
+
+            std::shared_ptr<std::thread> m_serverThread;
+
+            std::shared_ptr<syncd::SelectableChannel> m_selectableChannel;
+
+            swss::SelectableEvent m_serverThreadThreadShouldEndEvent;
     };
 }

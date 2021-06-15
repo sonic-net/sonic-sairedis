@@ -14,6 +14,17 @@ extern "C" {
 #define SAI_REDIS_KEY_CONTEXT_CONFIG              "SAI_REDIS_CONTEXT_CONFIG"
 
 /**
+ * @brief Redis enable client.
+ *
+ * Optional. By default sairedis act as sairedis server, which means it
+ * directly talks to syncd. If this key is set to "true", then this instance of
+ * sairedis will act as a client, and it will connect and talk to sairedis
+ * server instance only.  There can be multiple clients active. Default value
+ * is "false".
+ */
+#define SAI_REDIS_KEY_ENABLE_CLIENT               "SAI_REDIS_ENABLE_CLIENT"
+
+/**
  * @brief Default synchronous operation response timeout in milliseconds.
  */
 #define SAI_REDIS_DEFAULT_SYNC_OPERATION_RESPONSE_TIMEOUT (60*1000)

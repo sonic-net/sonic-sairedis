@@ -1,91 +1,80 @@
 #pragma once
 
-#include "RemoteSaiInterface.h"
+#include "SaiInterface.h"
+#include "Channel.h"
 #include "SwitchContainer.h"
-#include "VirtualObjectIdManager.h"
 #include "Notification.h"
-#include "Recorder.h"
-#include "RedisVidIndexGenerator.h"
-#include "SkipRecordAttrContainer.h"
-#include "RedisChannel.h"
-#include "SwitchConfigContainer.h"
-#include "ContextConfig.h"
 
-#include "swss/producertable.h"
-#include "swss/consumertable.h"
-#include "swss/notificationconsumer.h"
-#include "swss/selectableevent.h"
+#include "swss/table.h"
 
 #include <memory>
-#include <functional>
-#include <map>
+#include <mutex>
+#include <vector>
+#include <string>
 
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(ot)   \
+#define SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(ot)                 \
     virtual sai_status_t remove(                                    \
             _In_ const sai_ ## ot ## _t* ot) override;
 
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(ot)   \
+#define SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(ot)                 \
     virtual sai_status_t create(                                    \
             _In_ const sai_ ## ot ## _t* ot,                        \
             _In_ uint32_t attr_count,                               \
             _In_ const sai_attribute_t *attr_list) override;
 
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(ot)      \
+#define SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(ot)                    \
     virtual sai_status_t set(                                       \
             _In_ const sai_ ## ot ## _t* ot,                        \
             _In_ const sai_attribute_t *attr) override;
 
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(ot)      \
+#define SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(ot)                    \
     virtual sai_status_t get(                                       \
             _In_ const sai_ ## ot ## _t* ot,                        \
             _In_ uint32_t attr_count,                               \
             _Out_ sai_attribute_t *attr_list) override;
 
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(ot)  \
-    virtual sai_status_t bulkCreate(                                    \
-            _In_ uint32_t object_count,                                 \
-            _In_ const sai_ ## ot ## _t *ot,                            \
-            _In_ const uint32_t *attr_count,                            \
-            _In_ const sai_attribute_t **attr_list,                     \
-            _In_ sai_bulk_op_error_mode_t mode,                         \
+#define SAIREDIS_CLIENTSAI_DECLARE_BULK_CREATE_ENTRY(ot)            \
+    virtual sai_status_t bulkCreate(                                \
+            _In_ uint32_t object_count,                             \
+            _In_ const sai_ ## ot ## _t *ot,                        \
+            _In_ const uint32_t *attr_count,                        \
+            _In_ const sai_attribute_t **attr_list,                 \
+            _In_ sai_bulk_op_error_mode_t mode,                     \
             _Out_ sai_status_t *object_statuses) override;
 
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(ot)  \
-    virtual sai_status_t bulkRemove(                                    \
-            _In_ uint32_t object_count,                                 \
-            _In_ const sai_ ## ot ## _t *ot,                            \
-            _In_ sai_bulk_op_error_mode_t mode,                         \
+#define SAIREDIS_CLIENTSAI_DECLARE_BULK_REMOVE_ENTRY(ot)            \
+    virtual sai_status_t bulkRemove(                                \
+            _In_ uint32_t object_count,                             \
+            _In_ const sai_ ## ot ## _t *ot,                        \
+            _In_ sai_bulk_op_error_mode_t mode,                     \
             _Out_ sai_status_t *object_statuses) override;
 
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(ot)     \
-    virtual sai_status_t bulkSet(                                       \
-            _In_ uint32_t object_count,                                 \
-            _In_ const sai_ ## ot ## _t *ot,                            \
-            _In_ const sai_attribute_t *attr_list,                      \
-            _In_ sai_bulk_op_error_mode_t mode,                         \
+#define SAIREDIS_CLIENTSAI_DECLARE_BULK_SET_ENTRY(ot)               \
+    virtual sai_status_t bulkSet(                                   \
+            _In_ uint32_t object_count,                             \
+            _In_ const sai_ ## ot ## _t *ot,                        \
+            _In_ const sai_attribute_t *attr_list,                  \
+            _In_ sai_bulk_op_error_mode_t mode,                     \
             _Out_ sai_status_t *object_statuses) override;
 
 namespace sairedis
 {
-    class RedisRemoteSaiInterface:
-        public RemoteSaiInterface
+    class ClientSai:
+        public sairedis::SaiInterface
     {
         public:
 
-            RedisRemoteSaiInterface(
-                    _In_ std::shared_ptr<ContextConfig> contextConfig,
-                    _In_ std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> notificationCallback,
-                    _In_ std::shared_ptr<Recorder> recorder);
+            ClientSai();
 
-            virtual ~RedisRemoteSaiInterface();
+            virtual ~ClientSai();
 
         public:
 
-            virtual sai_status_t initialize(
+            sai_status_t initialize(
                     _In_ uint64_t flags,
                     _In_ const sai_service_method_table_t *service_method_table) override;
 
-            virtual sai_status_t uninitialize(void) override;
+            sai_status_t uninitialize(void) override;
 
         public: // SAI interface overrides
 
@@ -113,47 +102,47 @@ namespace sairedis
 
         public: // create ENTRY
 
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(ipmc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(l2mc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(mcast_fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(neighbor_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(route_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(inseg_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(ipmc_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(l2mc_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(mcast_fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(neighbor_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(nat_entry);
 
         public: // remove ENTRY
 
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(ipmc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(l2mc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(mcast_fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(neighbor_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(route_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(inseg_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(ipmc_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(l2mc_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(mcast_fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(neighbor_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(nat_entry);
 
         public: // set ENTRY
 
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(ipmc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(l2mc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(mcast_fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(neighbor_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(route_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(inseg_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(ipmc_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(l2mc_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(mcast_fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(neighbor_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(nat_entry);
 
         public: // get ENTRY
 
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(ipmc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(l2mc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(mcast_fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(neighbor_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(route_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(inseg_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(ipmc_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(l2mc_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(mcast_fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(neighbor_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(nat_entry);
 
         public: // bulk QUAD oid
 
@@ -184,24 +173,24 @@ namespace sairedis
 
         public: // bulk create ENTRY
 
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(nat_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_CREATE_ENTRY(fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_CREATE_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_CREATE_ENTRY(route_entry);
 
         public: // bulk remove ENTRY
 
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_REMOVE_ENTRY(fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_REMOVE_ENTRY(route_entry);
 
         public: // bulk set ENTRY
 
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(nat_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_SET_ENTRY(fdb_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_SET_ENTRY(inseg_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_SET_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_SET_ENTRY(route_entry);
 
         public: // stats API
 
@@ -263,35 +252,6 @@ namespace sairedis
             virtual sai_status_t logSet(
                     _In_ sai_api_t api,
                     _In_ sai_log_level_t log_level) override;
-
-        public: // notify syncd
-
-            virtual sai_status_t notifySyncd(
-                    _In_ sai_object_id_t switchId,
-                    _In_ sai_redis_notify_syncd_t redisNotifySyncd) override;
-
-        public:
-
-            /**
-             * @brief Checks whether attribute is custom SAI_REDIS_SWITCH attribute.
-             *
-             * This function should only be used on switch_api set function.
-             */
-            static bool isRedisAttribute(
-                    _In_ sai_object_id_t obejctType,
-                    _In_ const sai_attribute_t* attr);
-
-            sai_status_t setRedisAttribute(
-                    _In_ sai_object_id_t switchId,
-                    _In_ const sai_attribute_t* attr);
-
-            void setMeta(
-                    _In_ std::weak_ptr<saimeta::Meta> meta);
-
-            sai_switch_notifications_t syncProcessNotification(
-                    _In_ std::shared_ptr<Notification> notification);
-
-            const std::map<sai_object_id_t, swss::TableDump>& getTableDump() const;
 
         private: // QUAD API helpers
 
@@ -403,77 +363,32 @@ namespace sairedis
             sai_status_t waitForObjectTypeGetAvailabilityResponse(
                     _In_ uint64_t *count);
 
-        private: // notify syncd response
-
-            sai_status_t waitForNotifySyncdResponse();
-
-        private: // notification
-
-            void notificationThreadFunction();
+        private:
 
             void handleNotification(
                     _In_ const std::string &name,
                     _In_ const std::string &serializedNotification,
                     _In_ const std::vector<swss::FieldValueTuple> &values);
 
-            sai_status_t setRedisExtensionAttribute(
-                    _In_ sai_object_type_t objectType,
-                    _In_ sai_object_id_t objectId,
-                    _In_ const sai_attribute_t *attr);
-
-        private:
-
-            sai_status_t sai_redis_notify_syncd(
-                    _In_ sai_object_id_t switchId,
-                    _In_ const sai_attribute_t *attr);
-
-            void clear_local_state();
-
-            sai_switch_notifications_t processNotification(
+            sai_switch_notifications_t syncProcessNotification(
                     _In_ std::shared_ptr<Notification> notification);
 
-            void refreshTableDump();
-
-        public:
-
-            static std::string getHardwareInfo(
-                    _In_ uint32_t attrCount,
-                    _In_ const sai_attribute_t *attrList);
-
         private:
 
-            std::shared_ptr<ContextConfig> m_contextConfig;
+            bool m_apiInitialized;
 
-            bool m_asicInitViewMode;
+            std::recursive_mutex m_apimutex;
 
-            bool m_useTempView;
-
-            bool m_syncMode;
-
-            sai_redis_communication_mode_t m_redisCommunicationMode;
-
-            bool m_initialized;
-
-            std::shared_ptr<Recorder> m_recorder;
-
-            std::shared_ptr<SwitchContainer> m_switchContainer;
-
-            std::shared_ptr<VirtualObjectIdManager> m_virtualObjectIdManager;
-
-            std::shared_ptr<swss::DBConnector> m_db;
-
-            std::shared_ptr<RedisVidIndexGenerator> m_redisVidIndexGenerator;
-
-            std::weak_ptr<saimeta::Meta> m_meta;
-
-            std::shared_ptr<SkipRecordAttrContainer> m_skipRecordAttrContainer;
+            sai_service_method_table_t m_service_method_table;
 
             std::shared_ptr<Channel> m_communicationChannel;
 
-            uint64_t m_responseTimeoutMs;
+            std::shared_ptr<SwitchContainer> m_switchContainer;
+
+            std::shared_ptr<SaiInterface> m_sai;
 
             std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> m_notificationCallback;
 
-            std::map<sai_object_id_t, swss::TableDump> m_tableDump;
+            std::vector<sai_object_id_t> m_lastCreateOids;
     };
 }

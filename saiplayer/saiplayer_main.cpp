@@ -1,7 +1,7 @@
 #include "SaiPlayer.h"
 #include "CommandLineOptionsParser.h"
 
-#include "../lib/inc/Sai.h"
+#include "../lib/inc/ClientServerSai.h"
 #include "../syncd/MetadataLogger.h"
 
 #include "swss/logger.h"
@@ -20,7 +20,7 @@ int main(int argc, char **argv)
 
     auto commandLineOptions = CommandLineOptionsParser::parseCommandLine(argc, argv);
 
-    auto sai = std::make_shared<sairedis::Sai>();
+    auto sai = std::make_shared<sairedis::ClientServerSai>();
 
     auto player = std::make_shared<SaiPlayer>(sai, commandLineOptions);
 

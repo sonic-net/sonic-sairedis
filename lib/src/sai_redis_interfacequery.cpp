@@ -1,8 +1,9 @@
 #include "sai_redis.h"
+#include "ClientServerSai.h"
 
 using namespace sairedis;
 
-std::shared_ptr<Sai> redis_sai = std::make_shared<Sai>();
+std::shared_ptr<SaiInterface> redis_sai = std::make_shared<ClientServerSai>();
 
 sai_status_t sai_api_initialize(
         _In_ uint64_t flags,

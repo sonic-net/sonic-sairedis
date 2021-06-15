@@ -8,7 +8,8 @@
 
 #define ZMQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
 
-#define ZMQ_POLL_TIMEOUT (2*60*1000)
+//#define ZMQ_POLL_TIMEOUT (2*60*1000)
+#define ZMQ_POLL_TIMEOUT (1000)
 
 using namespace syncd;
 
@@ -22,6 +23,8 @@ ZeroMQSelectableChannel::ZeroMQSelectableChannel(
     m_runThread(true)
 {
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("binding on %s", endpoint.c_str());
 
     m_buffer.resize(ZMQ_RESPONSE_BUFFER_SIZE);
 
@@ -62,11 +65,11 @@ ZeroMQSelectableChannel::~ZeroMQSelectableChannel()
     zmq_close(m_socket);
     zmq_ctx_destroy(m_context);
 
-    SWSS_LOG_NOTICE("ending zmq poll thread");
+    SWSS_LOG_NOTICE("ending zmq poll thread for channel %s", m_endpoint.c_str());
 
     m_zmlPollThread->join();
 
-    SWSS_LOG_NOTICE("ended zmq poll thread");
+    SWSS_LOG_NOTICE("ended zmq poll thread for channel %s", m_endpoint.c_str());
 }
 
 void ZeroMQSelectableChannel::zmqPollThread()
@@ -87,7 +90,10 @@ void ZeroMQSelectableChannel::zmqPollThread()
         int rc = zmq_poll(items, 1, ZMQ_POLL_TIMEOUT);
 
         if (m_runThread == false)
+        {
+            SWSS_LOG_NOTICE("ending pool thread, since run is false");
             break;
+        }
 
         if (rc <= 0 && zmq_errno() == ETERM)
         {
@@ -97,7 +103,7 @@ void ZeroMQSelectableChannel::zmqPollThread()
 
         if (rc == 0)
         {
-            SWSS_LOG_INFO("zmq_poll: no events, continue");
+            SWSS_LOG_DEBUG("zmq_poll: no events, continue");
             continue;
         }
 
@@ -201,9 +207,10 @@ void ZeroMQSelectableChannel::set(
 
     if (rc <= 0)
     {
-        SWSS_LOG_THROW("zmq_send failed, on endpoint %s, zmqerrno: %d",
+        SWSS_LOG_THROW("zmq_send failed, on endpoint %s, zmqerrno: %d: %s",
                 m_endpoint.c_str(),
-                zmq_errno());
+                zmq_errno(),
+                zmq_strerror(zmq_errno()));
     }
 }
 

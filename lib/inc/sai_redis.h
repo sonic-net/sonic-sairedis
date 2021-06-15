@@ -5,7 +5,9 @@ extern "C" {
 #include "saiextensions.h"
 }
 
-#include "Sai.h"
+#include "SaiInterface.h"
+
+#include "swss/logger.h"
 
 #include <memory>
 
@@ -57,7 +59,7 @@ PRIVATE extern const sai_virtual_router_api_t   redis_virtual_router_api;
 PRIVATE extern const sai_vlan_api_t             redis_vlan_api;
 PRIVATE extern const sai_wred_api_t             redis_wred_api;
 
-PRIVATE extern std::shared_ptr<sairedis::Sai>   redis_sai;
+PRIVATE extern std::shared_ptr<sairedis::SaiInterface>   redis_sai;
 
 // QUAD OID
 

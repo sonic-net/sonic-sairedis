@@ -1,6 +1,6 @@
 AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
 
-bin_PROGRAMS = vssyncd tests
+bin_PROGRAMS = vssyncd tests testclient
 
 if DEBUG
 DBGFLAGS = -ggdb -DDEBUG
@@ -22,6 +22,14 @@ endif
 tests_SOURCES = tests.cpp
 tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread \
+			  $(top_srcdir)/lib/src/libsairedis.la \
+			  $(top_srcdir)/syncd/libSyncd.a \
+			  -L$(top_srcdir)/meta/.libs \
+			  -lsaimetadata -lsaimeta -lzmq
+
+testclient_SOURCES = testclient.cpp
+testclient_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+testclient_LDADD = -lhiredis -lswsscommon -lpthread \
 			  $(top_srcdir)/lib/src/libsairedis.la \
 			  $(top_srcdir)/syncd/libSyncd.a \
 			  -L$(top_srcdir)/meta/.libs \
