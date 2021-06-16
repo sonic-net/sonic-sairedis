@@ -1786,8 +1786,11 @@ sai_status_t Meta::objectTypeGetAvailability(
     PARAMETER_CHECK_OID_OBJECT_TYPE(switchId, SAI_OBJECT_TYPE_SWITCH);
     PARAMETER_CHECK_OID_EXISTS(switchId, SAI_OBJECT_TYPE_SWITCH);
     PARAMETER_CHECK_OBJECT_TYPE_VALID(objectType);
-    PARAMETER_CHECK_POSITIVE(attrCount);
-    PARAMETER_CHECK_IF_NOT_NULL(attrList);
+    // When checking availability of a resource solely based on OBJECT_TYPE, attrCount is 0
+    if (attrCount)
+    {
+        PARAMETER_CHECK_IF_NOT_NULL(attrList);
+    }
     PARAMETER_CHECK_IF_NOT_NULL(count);
 
     auto info = sai_metadata_get_object_type_info(objectType);
