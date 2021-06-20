@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SaiInterface.h"
-
+#include "meta/SaiAttributeList.h"
 #include "syncd/SelectableChannel.h"
 
 #include "swss/selectableevent.h"
@@ -290,6 +290,50 @@ namespace sairedis
                     _In_ sai_status_t status,
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
+
+            // BULK
+
+            sai_status_t processBulkQuadEvent(
+                    _In_ sai_common_api_t api,
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
+            sai_status_t processBulkOid(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::vector<std::string>& strObjectIds,
+                    _In_ sai_common_api_t api,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+                    _In_ const std::vector<std::vector<swss::FieldValueTuple>>& strAttributes);
+
+            sai_status_t processBulkEntry(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::vector<std::string>& objectIds,
+                    _In_ sai_common_api_t api,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+                    _In_ const std::vector<std::vector<swss::FieldValueTuple>>& strAttributes);
+
+            sai_status_t processBulkCreateEntry(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::vector<std::string>& objectIds,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+                    _Out_ std::vector<sai_status_t>& statuses);
+
+            sai_status_t processBulkRemoveEntry(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::vector<std::string>& objectIds,
+                    _Out_ std::vector<sai_status_t>& statuses);
+
+            sai_status_t processBulkSetEntry(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::vector<std::string>& objectIds,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+                    _Out_ std::vector<sai_status_t>& statuses);
+
+            void sendBulkApiResponse(
+                    _In_ sai_common_api_t api,
+                    _In_ sai_status_t status,
+                    _In_ uint32_t object_count,
+                    _In_ const sai_object_id_t* object_ids,
+                    _In_ const sai_status_t* statuses);
 
         private:
 
