@@ -10,6 +10,7 @@
 
 #include "swss/logger.h"
 #include "swss/select.h"
+#include "swss/tokenize.h"
 
 using namespace sairedis;
 using namespace saimeta;
@@ -139,10 +140,10 @@ sai_status_t ServerSai::create(
     REDIS_CHECK_API_INITIALIZED();
 
     return m_sai->create(
-            objectType, 
+            objectType,
             objectId,
-            switchId, 
-            attr_count, 
+            switchId,
+            attr_count,
             attr_list);
 }
 
@@ -674,19 +675,16 @@ sai_status_t ServerSai::processSingleEvent(
     if (op == REDIS_ASIC_STATE_COMMAND_GET)
         return processQuadEvent(SAI_COMMON_API_GET, kco);
 
+    if (op == REDIS_ASIC_STATE_COMMAND_BULK_CREATE)
+        return processBulkQuadEvent(SAI_COMMON_API_BULK_CREATE, kco);
+
+    if (op == REDIS_ASIC_STATE_COMMAND_BULK_REMOVE)
+        return processBulkQuadEvent(SAI_COMMON_API_BULK_REMOVE, kco);
+
+    if (op == REDIS_ASIC_STATE_COMMAND_BULK_SET)
+        return processBulkQuadEvent(SAI_COMMON_API_BULK_SET, kco);
+
 // TODO implement
-//    if (op == REDIS_ASIC_STATE_COMMAND_BULK_CREATE)
-//        return processBulkQuadEvent(SAI_COMMON_API_BULK_CREATE, kco);
-//
-//    if (op == REDIS_ASIC_STATE_COMMAND_BULK_REMOVE)
-//        return processBulkQuadEvent(SAI_COMMON_API_BULK_REMOVE, kco);
-//
-//    if (op == REDIS_ASIC_STATE_COMMAND_BULK_SET)
-//        return processBulkQuadEvent(SAI_COMMON_API_BULK_SET, kco);
-//
-//    if (op == REDIS_ASIC_STATE_COMMAND_NOTIFY)
-//        return processNotifySyncd(kco);
-//
 //    if (op == REDIS_ASIC_STATE_COMMAND_GET_STATS)
 //        return processGetStatsEvent(kco);
 //
@@ -985,4 +983,555 @@ sai_status_t ServerSai::processOid(
 
             SWSS_LOG_THROW("common api (%s) is not implemented", sai_serialize_common_api(api).c_str());
     }
+}
+
+sai_status_t ServerSai::processBulkQuadEvent(
+        _In_ sai_common_api_t api,
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string& key = kfvKey(kco); // objectType:count
+
+    std::string strObjectType = key.substr(0, key.find(":"));
+
+    sai_object_type_t objectType;
+    sai_deserialize_object_type(strObjectType, objectType);
+
+    const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+    std::vector<std::vector<swss::FieldValueTuple>> strAttributes;
+
+    // field = objectId
+    // value = attrid=attrvalue|...
+
+    std::vector<std::string> objectIds;
+
+    std::vector<std::shared_ptr<SaiAttributeList>> attributes;
+
+    for (const auto &fvt: values)
+    {
+        std::string strObjectId = fvField(fvt);
+        std::string joined = fvValue(fvt);
+
+        // decode values
+
+        auto v = swss::tokenize(joined, '|');
+
+        objectIds.push_back(strObjectId);
+
+        std::vector<swss::FieldValueTuple> entries; // attributes per object id
+
+        for (size_t i = 0; i < v.size(); ++i)
+        {
+            const std::string item = v.at(i);
+
+            auto start = item.find_first_of("=");
+
+            auto field = item.substr(0, start);
+            auto value = item.substr(start + 1);
+
+            entries.emplace_back(field, value);
+        }
+
+        strAttributes.push_back(entries);
+
+        // since now we converted this to proper list, we can extract attributes
+
+        auto list = std::make_shared<SaiAttributeList>(objectType, entries, false);
+
+        attributes.push_back(list);
+    }
+
+    SWSS_LOG_INFO("bulk %s executing with %zu items",
+            strObjectType.c_str(),
+            objectIds.size());
+
+    auto info = sai_metadata_get_object_type_info(objectType);
+
+    if (info->isobjectid)
+    {
+        return processBulkOid(objectType, objectIds, api, attributes, strAttributes);
+    }
+    else
+    {
+        return processBulkEntry(objectType, objectIds, api, attributes, strAttributes);
+    }
+}
+
+sai_status_t ServerSai::processBulkOid(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& strObjectIds,
+        _In_ sai_common_api_t api,
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>>& attributes,
+        _In_ const std::vector<std::vector<swss::FieldValueTuple>>& strAttributes)
+{
+    SWSS_LOG_ENTER();
+
+    auto info = sai_metadata_get_object_type_info(objectType);
+
+    if (info->isnonobjectid)
+    {
+        SWSS_LOG_THROW("passing non object id to bulk oid object operation");
+    }
+
+    std::vector<sai_status_t> statuses(strObjectIds.size(), SAI_STATUS_FAILURE);
+
+    sai_status_t status = SAI_STATUS_FAILURE;
+
+    sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
+
+    std::vector<sai_object_id_t> objectIds(strObjectIds.size());
+
+    for (size_t idx = 0; idx < objectIds.size(); idx++)
+    {
+        sai_deserialize_object_id(strObjectIds[idx], objectIds[idx]);
+    }
+
+    size_t object_count = objectIds.size();
+
+    switch (api)
+    {
+        case SAI_COMMON_API_BULK_CREATE:
+
+            {
+                std::vector<uint32_t> attr_counts(object_count);
+                std::vector<const sai_attribute_t*> attr_lists(object_count);
+
+                for (size_t idx = 0; idx < object_count; idx++)
+                {
+                    attr_counts[idx] = attributes[idx]->get_attr_count();
+                    attr_lists[idx] = attributes[idx]->get_attr_list();
+                }
+
+                // in case of client/server, all passed oids are switch OID since
+                // client don't know what oid will be assigned to created object
+                sai_object_id_t switchId = objectIds.at(0);
+
+                status = m_sai->bulkCreate(
+                        objectType,
+                        switchId,
+                        (uint32_t)object_count,
+                        attr_counts.data(),
+                        attr_lists.data(),
+                        mode,
+                        objectIds.data(),
+                        statuses.data());
+            }
+
+            break;
+
+        case SAI_COMMON_API_BULK_REMOVE:
+
+            status = m_sai->bulkRemove(
+                    objectType,
+                    (uint32_t)objectIds.size(),
+                    objectIds.data(),
+                    mode,
+                    statuses.data());
+            break;
+
+        default:
+            status = SAI_STATUS_NOT_SUPPORTED;
+            SWSS_LOG_ERROR("api %s is not supported in bulk mode", sai_serialize_common_api(api).c_str());
+            break;
+    }
+
+    sendBulkApiResponse(api, status, (uint32_t)objectIds.size(), objectIds.data(), statuses.data());
+
+    return status;
+}
+
+sai_status_t ServerSai::processBulkEntry(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& objectIds,
+        _In_ sai_common_api_t api,
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>>& attributes,
+        _In_ const std::vector<std::vector<swss::FieldValueTuple>>& strAttributes)
+{
+    SWSS_LOG_ENTER();
+
+    auto info = sai_metadata_get_object_type_info(objectType);
+
+    if (info->isobjectid)
+    {
+        SWSS_LOG_THROW("passing oid object to bulk non object id operation");
+    }
+
+    std::vector<sai_status_t> statuses(objectIds.size());
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    switch (api)
+    {
+        case SAI_COMMON_API_BULK_CREATE:
+            status = processBulkCreateEntry(objectType, objectIds, attributes, statuses);
+            break;
+
+        case SAI_COMMON_API_BULK_REMOVE:
+            status = processBulkRemoveEntry(objectType, objectIds, statuses);
+            break;
+
+        case SAI_COMMON_API_BULK_SET:
+            status = processBulkSetEntry(objectType, objectIds, attributes, statuses);
+            break;
+
+        default:
+            SWSS_LOG_ERROR("api %s is not supported in bulk", sai_serialize_common_api(api).c_str());
+            status = SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    std::vector<sai_object_id_t> oids(objectIds.size());
+
+    sendBulkApiResponse(api, status, (uint32_t)objectIds.size(), oids.data(), statuses.data());
+
+    return status;
+}
+
+sai_status_t ServerSai::processBulkCreateEntry(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& objectIds,
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>>& attributes,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    uint32_t object_count = (uint32_t) objectIds.size();
+
+    sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
+
+    std::vector<uint32_t> attr_counts(object_count);
+    std::vector<const sai_attribute_t*> attr_lists(object_count);
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        attr_counts[idx] = attributes[idx]->get_attr_count();
+        attr_lists[idx] = attributes[idx]->get_attr_list();
+    }
+
+    switch (objectType)
+    {
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        {
+            std::vector<sai_route_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_route_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
+        {
+            std::vector<sai_fdb_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_fdb_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+        {
+            std::vector<sai_nat_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_nat_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+        {
+            std::vector<sai_inseg_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inseg_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        default:
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return status;
+}
+
+sai_status_t ServerSai::processBulkRemoveEntry(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& objectIds,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    uint32_t object_count = (uint32_t) objectIds.size();
+
+    sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
+
+    switch (objectType)
+    {
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        {
+            std::vector<sai_route_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_route_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
+        {
+            std::vector<sai_fdb_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_fdb_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+        {
+            std::vector<sai_nat_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_nat_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+        {
+            std::vector<sai_inseg_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inseg_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        default:
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return status;
+}
+
+sai_status_t ServerSai::processBulkSetEntry(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& objectIds,
+        _In_ const std::vector<std::shared_ptr<SaiAttributeList>>& attributes,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    std::vector<sai_attribute_t> attr_lists;
+
+    uint32_t object_count = (uint32_t) objectIds.size();
+
+    sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
+
+    for (uint32_t it = 0; it < object_count; it++)
+    {
+        attr_lists.push_back(attributes[it]->get_attr_list()[0]);
+    }
+
+    switch (objectType)
+    {
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        {
+            std::vector<sai_route_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_route_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
+        {
+            std::vector<sai_fdb_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_fdb_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+        {
+            std::vector<sai_nat_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_nat_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+        {
+            std::vector<sai_inseg_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inseg_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        default:
+            return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return status;
+}
+
+void ServerSai::sendBulkApiResponse(
+        _In_ sai_common_api_t api,
+        _In_ sai_status_t status,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t* object_ids,
+        _In_ const sai_status_t* statuses)
+{
+    SWSS_LOG_ENTER();
+
+    switch (api)
+    {
+        case SAI_COMMON_API_BULK_CREATE:
+        case SAI_COMMON_API_BULK_REMOVE:
+        case SAI_COMMON_API_BULK_SET:
+            break;
+
+        default:
+            SWSS_LOG_THROW("api %s not supported by this function",
+                    sai_serialize_common_api(api).c_str());
+    }
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        entry.emplace_back(sai_serialize_status(statuses[idx]), "");
+    }
+
+    if (api == SAI_COMMON_API_BULK_CREATE)
+    {
+        // in case of bulk create api, we need to return oids values that was
+        // created to the client
+
+        for (uint32_t idx = 0; idx < object_count; idx++)
+        {
+            entry.emplace_back("oid", sai_serialize_object_id(object_ids[idx]));
+        }
+    }
+
+    std::string strStatus = sai_serialize_status(status);
+
+    SWSS_LOG_INFO("sending response for %s api with status: %s",
+            sai_serialize_common_api(api).c_str(),
+            strStatus.c_str());
+
+    m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
 }

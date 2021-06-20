@@ -746,8 +746,8 @@ sai_status_t ClientSai::waitForQueryAttributeCapabilityResponse(
         capability->get_implemented    = (fvValue(values[2]) == "true" ? true : false);
 
         SWSS_LOG_DEBUG("Received payload: create_implemented:%s, set_implemented:%s, get_implemented:%s",
-            (capability->create_implemented ? "true" : "false"), 
-            (capability->set_implemented ? "true" : "false"), 
+            (capability->create_implemented ? "true" : "false"),
+            (capability->set_implemented ? "true" : "false"),
             (capability->get_implemented ? "true" : "false"));
     }
 
@@ -1012,40 +1012,40 @@ sai_status_t ClientSai::bulkCreate(
 
     // TODO support mode
 
-    SWSS_LOG_THROW("TODO, not implemented, FIXME");
+    std::vector<std::string> serialized_object_ids;
 
-    //for (uint32_t idx = 0; idx < object_count; idx++)
-    //{
-    //    object_id[idx] = m_virtualObjectIdManager->allocateNewObjectId(object_type, switch_id);
+    // server is responsible for generate new OID but for that we need switch ID
+    // to be sent to server as well, so instead of sending empty oids we will
+    // send switch IDs
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        serialized_object_ids.emplace_back(sai_serialize_object_id(switch_id));
+    }
 
-    //    if (object_id[idx] == SAI_NULL_OBJECT_ID)
-    //    {
-    //        SWSS_LOG_ERROR("failed to create %s, with switch id: %s",
-    //                sai_serialize_object_type(object_type).c_str(),
-    //                sai_serialize_object_id(switch_id).c_str());
+    auto status = bulkCreate(
+            object_type,
+            serialized_object_ids,
+            attr_count,
+            attr_list,
+            mode,
+            object_statuses);
 
-    //        return SAI_STATUS_INSUFFICIENT_RESOURCES;
-    //    }
-    //}
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        // since user requested create, OID value was created remotely and it
+        // was returned in m_lastCreateOids
 
-    //std::vector<std::string> serialized_object_ids;
+        if (object_statuses[idx] == SAI_STATUS_SUCCESS)
+        {
+            object_id[idx] = m_lastCreateOids.at(idx);
+        }
+        else
+        {
+            object_id[idx] = SAI_NULL_OBJECT_ID;
+        }
+    }
 
-    //// on create vid is put in db by syncd
-    //for (uint32_t idx = 0; idx < object_count; idx++)
-    //{
-    //    std::string str_object_id = sai_serialize_object_id(object_id[idx]);
-    //    serialized_object_ids.push_back(str_object_id);
-    //}
-
-    //auto status = bulkCreate(
-    //        object_type,
-    //        serialized_object_ids,
-    //        attr_count,
-    //        attr_list,
-    //        mode,
-    //        object_statuses);
-    
-    // TODO m_lastCreateOids
+    return status;
 }
 
 sai_status_t ClientSai::bulkCreate(

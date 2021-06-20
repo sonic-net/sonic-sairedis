@@ -21,6 +21,8 @@ class TestClient
 
         void test_create_vlan();
 
+        void test_bulk_create_vlan();
+
     private:
 
         int profileGetNextValue(
@@ -190,6 +192,150 @@ void TestClient::test_create_vlan()
     ASSERT_SUCCESS(sai_api_uninitialize());
 }
 
+void TestClient::test_bulk_create_vlan()
+{
+    SWSS_LOG_ENTER();
+
+    m_profileMap.clear();
+
+    m_profileMap[SAI_REDIS_KEY_ENABLE_CLIENT] = "true"; // act as a client
+
+    m_profileIter = m_profileMap.begin();
+
+    m_smt.profileGetValue = std::bind(&TestClient::profileGetValue, this, _1, _2);
+    m_smt.profileGetNextValue = std::bind(&TestClient::profileGetNextValue, this, _1, _2, _3);
+
+    m_test_services = m_smt.getServiceMethodTable();
+
+    ASSERT_SUCCESS(sai_api_initialize(0, &m_test_services));
+
+    sai_switch_api_t* switch_api;
+
+    ASSERT_SUCCESS(sai_api_query(SAI_API_SWITCH, (void**)&switch_api));
+
+    sai_attribute_t attr;
+
+    // connect to existing switch
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = false;
+
+    sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
+
+    ASSERT_SUCCESS(switch_api->create_switch(&switch_id, 1, &attr));
+
+    ASSERT_TRUE(switch_id != SAI_NULL_OBJECT_ID);
+
+    SWSS_LOG_NOTICE("switchId: %s", sai_serialize_object_id(switch_id).c_str());
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+
+    ASSERT_SUCCESS(switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    SWSS_LOG_NOTICE("got VRID: %s", sai_serialize_object_id(attr.value.oid).c_str());
+
+    attr.id = SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID;
+
+    ASSERT_SUCCESS(switch_api->get_switch_attribute(switch_id, 1, &attr));
+
+    sai_object_id_t bridge_id = attr.value.oid;
+
+    sai_bridge_api_t* bridge_api;
+
+    ASSERT_SUCCESS(sai_api_query(SAI_API_BRIDGE, (void**)&bridge_api));
+
+    sai_object_id_t ports[128];
+
+    attr.id = SAI_BRIDGE_ATTR_PORT_LIST;
+    attr.value.objlist.count = 128;
+    attr.value.objlist.list = ports;
+
+    ASSERT_SUCCESS(bridge_api->get_bridge_attribute(bridge_id, 1, &attr));
+
+    sai_vlan_api_t* vlan_api;
+
+    ASSERT_SUCCESS(sai_api_query(SAI_API_VLAN, (void**)&vlan_api));
+
+    // create vlan
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 200;
+
+    sai_object_id_t vlan_id;
+
+    ASSERT_SUCCESS(vlan_api->create_vlan(&vlan_id, switch_id, 1, &attr));
+
+    ASSERT_TRUE(vlan_id != SAI_NULL_OBJECT_ID);
+
+    // bulk create vlan members
+
+    uint32_t attr_count[2] = { 2, 2 };
+
+    const sai_attribute_t* attr_list[2];
+
+    sai_attribute_t attr0[2];
+
+    attr0[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+    attr0[0].value.oid = vlan_id;
+
+    attr0[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+    attr0[1].value.oid = ports[0];
+
+    attr_list[0] = attr0;
+
+    sai_attribute_t attr1[2];
+
+    attr1[0].id = SAI_VLAN_MEMBER_ATTR_VLAN_ID;
+    attr1[0].value.oid = vlan_id;
+
+    attr1[1].id = SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID;
+    attr1[1].value.oid = ports[1];
+
+    attr_list[1] = attr1;
+
+    sai_object_id_t members[2] = { SAI_NULL_OBJECT_ID, SAI_NULL_OBJECT_ID };
+    sai_status_t statuses[2];
+
+    auto status = vlan_api->create_vlan_members(
+            switch_id,
+            2,
+            attr_count,
+            attr_list,
+            SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+            members,
+            statuses);
+
+    ASSERT_SUCCESS(status);
+
+    ASSERT_SUCCESS(statuses[0]);
+    ASSERT_SUCCESS(statuses[1]);
+
+    ASSERT_TRUE(members[0] != SAI_NULL_OBJECT_ID);
+    ASSERT_TRUE(members[1] != SAI_NULL_OBJECT_ID);
+
+    SWSS_LOG_NOTICE("members: %s, %s",
+            sai_serialize_object_id(members[0]).c_str(),
+            sai_serialize_object_id(members[1]).c_str());
+
+    // bulk remove vlan members
+
+    status = vlan_api->remove_vlan_members(
+            2,
+            members,
+            SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+            statuses);
+
+    ASSERT_SUCCESS(status);
+
+    ASSERT_SUCCESS(statuses[0]);
+    ASSERT_SUCCESS(statuses[1]);
+
+    // remove vlan
+
+    ASSERT_SUCCESS(vlan_api->remove_vlan(vlan_id));
+
+    ASSERT_SUCCESS(sai_api_uninitialize());
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -201,6 +347,8 @@ int main()
     TestClient tc;
 
     tc.test_create_vlan();
+
+    tc.test_bulk_create_vlan();
 
     return EXIT_SUCCESS;
 }
