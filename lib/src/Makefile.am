@@ -12,6 +12,8 @@ noinst_LIBRARIES = libSaiRedis.a
 libSaiRedis_a_SOURCES = \
 						 ../../syncd/ZeroMQSelectableChannel.cpp \
 						 ../../syncd/SelectableChannel.cpp \
+						 ClientConfig.cpp \
+						 ServerConfig.cpp \
 						 ClientServerSai.cpp \
 						 ClientSai.cpp \
 						 ServerSai.cpp \

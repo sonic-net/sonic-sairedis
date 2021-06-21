@@ -1,6 +1,7 @@
 #include "ServerSai.h"
 #include "SaiInternal.h"
 #include "Sai.h"
+#include "ServerConfig.h"
 #include "sairediscommon.h"
 
 #include "syncd/ZeroMQSelectableChannel.h"
@@ -81,8 +82,11 @@ sai_status_t ServerSai::initialize(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        // TODO from config
-        m_selectableChannel = std::make_shared<syncd::ZeroMQSelectableChannel>("ipc:///tmp/saiServer");
+        auto serverConfig = service_method_table->profile_get_value(0, SAI_REDIS_KEY_SERVER_CONFIG);
+
+        auto cc = ServerConfig::loadFromFile(serverConfig);
+
+        m_selectableChannel = std::make_shared<syncd::ZeroMQSelectableChannel>(cc->m_zmqEndpoint);
 
         SWSS_LOG_NOTICE("starting server thread");
 

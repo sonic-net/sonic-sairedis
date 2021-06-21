@@ -25,6 +25,22 @@ extern "C" {
 #define SAI_REDIS_KEY_ENABLE_CLIENT               "SAI_REDIS_ENABLE_CLIENT"
 
 /**
+ * @brief Redis client config.
+ *
+ * Optional. Should point to client_config.json file which contains
+ * client/server channel configuration for client side.
+ */
+#define SAI_REDIS_KEY_CLIENT_CONFIG               "SAI_REDIS_CLIENT_CONFIG"
+
+/**
+ * @brief Redis server config.
+ *
+ * Optional. Should point to server_config.json file which contains
+ * client/server channel configuration for server side.
+ */
+#define SAI_REDIS_KEY_SERVER_CONFIG               "SAI_REDIS_SERVER_CONFIG"
+
+/**
  * @brief Default synchronous operation response timeout in milliseconds.
  */
 #define SAI_REDIS_DEFAULT_SYNC_OPERATION_RESPONSE_TIMEOUT (60*1000)

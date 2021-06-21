@@ -6,6 +6,7 @@
 #include "sairediscommon.h"
 #include "PerformanceIntervalTimer.h"
 #include "NotificationFactory.h"
+#include "ClientConfig.h"
 
 #include "swss/logger.h"
 
@@ -65,14 +66,26 @@ sai_status_t ClientSai::initialize(
         return SAI_STATUS_FAILURE;
     }
 
+    if ((service_method_table == NULL) ||
+            (service_method_table->profile_get_next_value == NULL) ||
+            (service_method_table->profile_get_value == NULL))
+    {
+        SWSS_LOG_ERROR("invalid service_method_table handle passed to SAI API initialize");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
     // TODO support context config
 
     m_switchContainer = std::make_shared<SwitchContainer>();
 
-    // TODO from config/method table
+    auto clientConfig = service_method_table->profile_get_value(0, SAI_REDIS_KEY_CLIENT_CONFIG);
+
+    auto cc = ClientConfig::loadFromFile(clientConfig);
+
     m_communicationChannel = std::make_shared<ZeroMQChannel>(
-            "ipc:///tmp/saiServer",
-            "ipc:///tmp/saiServerNtf",
+            cc->m_zmqEndpoint,
+            cc->m_zmqNtfEndpoint,
             std::bind(&ClientSai::handleNotification, this, _1, _2, _3));
 
     m_apiInitialized = true;
