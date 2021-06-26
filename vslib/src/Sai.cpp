@@ -232,7 +232,7 @@ sai_status_t Sai::initialize(
 
     // TODO move to Context class
 
-    m_vsSai = std::make_shared<VirtualSwitchSaiInterface>(scc);
+    m_vsSai = std::make_shared<VirtualSwitchSaiInterface>(contextConfig);
 
     m_meta = std::make_shared<saimeta::Meta>(m_vsSai);
 
