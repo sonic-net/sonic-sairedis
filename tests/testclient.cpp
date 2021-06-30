@@ -25,6 +25,8 @@ class TestClient
 
         void test_query_api();
 
+        void test_fdb_flush();
+
     private:
 
         int profileGetNextValue(
@@ -411,6 +413,50 @@ void TestClient::test_query_api()
     ASSERT_SUCCESS(sai_api_uninitialize());
 }
 
+void TestClient::test_fdb_flush()
+{
+    SWSS_LOG_ENTER();
+
+    m_profileMap.clear();
+
+    m_profileMap[SAI_REDIS_KEY_ENABLE_CLIENT] = "true"; // act as a client
+
+    m_profileIter = m_profileMap.begin();
+
+    m_smt.profileGetValue = std::bind(&TestClient::profileGetValue, this, _1, _2);
+    m_smt.profileGetNextValue = std::bind(&TestClient::profileGetNextValue, this, _1, _2, _3);
+
+    m_test_services = m_smt.getServiceMethodTable();
+
+    ASSERT_SUCCESS(sai_api_initialize(0, &m_test_services));
+
+    sai_switch_api_t* switch_api;
+
+    ASSERT_SUCCESS(sai_api_query(SAI_API_SWITCH, (void**)&switch_api));
+
+    sai_attribute_t attr;
+
+    // connect to existing switch
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = false;
+
+    sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
+
+    ASSERT_SUCCESS(switch_api->create_switch(&switch_id, 1, &attr));
+
+    ASSERT_TRUE(switch_id != SAI_NULL_OBJECT_ID);
+
+    SWSS_LOG_NOTICE("switchId: %s", sai_serialize_object_id(switch_id).c_str());
+
+    sai_fdb_api_t* fdb_api;
+
+    ASSERT_SUCCESS(sai_api_query(SAI_API_FDB, (void**)&fdb_api));
+
+    ASSERT_SUCCESS(fdb_api->flush_fdb_entries(switch_id, 0, NULL));
+
+    ASSERT_SUCCESS(sai_api_uninitialize());
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -426,6 +472,8 @@ int main()
     tc.test_bulk_create_vlan();
 
     tc.test_query_api();
+
+    tc.test_fdb_flush();
 
     return EXIT_SUCCESS;
 }

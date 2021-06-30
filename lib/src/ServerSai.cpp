@@ -697,10 +697,10 @@ sai_status_t ServerSai::processSingleEvent(
 //
 //    if (op == REDIS_ASIC_STATE_COMMAND_CLEAR_STATS)
 //        return processClearStatsEvent(kco);
-//
-//    if (op == REDIS_ASIC_STATE_COMMAND_FLUSH)
-//        return processFdbFlush(kco);
-//
+
+    if (op == REDIS_ASIC_STATE_COMMAND_FLUSH)
+        return processFdbFlush(kco);
+
     if (op == REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY)
         return processAttrCapabilityQuery(kco);
 
@@ -1704,6 +1704,42 @@ sai_status_t ServerSai::processObjectTypeGetAvailabilityQuery(
     }
 
     m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE);
+
+    return status;
+}
+
+sai_status_t ServerSai::processFdbFlush(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto& key = kfvKey(kco);
+    auto strSwitchOid = key.substr(key.find(":") + 1);
+
+    sai_object_id_t switchOid;
+    sai_deserialize_object_id(strSwitchOid, switchOid);
+
+    auto& values = kfvFieldsValues(kco);
+
+    for (const auto &v: values)
+    {
+        SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+    }
+
+    SaiAttributeList list(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
+    SaiAttributeList vidlist(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
+
+    /*
+     * Attribute list can't be const since we will use it to translate VID to
+     * RID in place.
+     */
+
+    sai_attribute_t *attr_list = list.get_attr_list();
+    uint32_t attr_count = list.get_attr_count();
+
+    sai_status_t status = m_sai->flushFdbEntries(switchOid, attr_count, attr_list);
+
+    m_selectableChannel->set(sai_serialize_status(status), {} , REDIS_ASIC_STATE_COMMAND_FLUSHRESPONSE);
 
     return status;
 }

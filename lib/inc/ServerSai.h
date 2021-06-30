@@ -337,6 +337,11 @@ namespace sairedis
                     _In_ const sai_object_id_t* object_ids,
                     _In_ const sai_status_t* statuses);
 
+            // NON QUAD API
+
+            sai_status_t processFdbFlush(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
             // QUERY API
 
             sai_status_t processAttrCapabilityQuery(
