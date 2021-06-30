@@ -261,6 +261,8 @@ namespace sairedis
             sai_status_t processSingleEvent(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
+            // QUAD API
+
             sai_status_t processQuadEvent(
                     _In_ sai_common_api_t api,
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
@@ -291,7 +293,7 @@ namespace sairedis
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
 
-            // BULK
+            // BULK API
 
             sai_status_t processBulkQuadEvent(
                     _In_ sai_common_api_t api,
@@ -334,6 +336,17 @@ namespace sairedis
                     _In_ uint32_t object_count,
                     _In_ const sai_object_id_t* object_ids,
                     _In_ const sai_status_t* statuses);
+
+            // QUERY API
+
+            sai_status_t processAttrCapabilityQuery(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
+            sai_status_t processAttrEnumValuesCapabilityQuery(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
+            sai_status_t processObjectTypeGetAvailabilityQuery(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
         private:
 

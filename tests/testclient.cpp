@@ -23,6 +23,8 @@ class TestClient
 
         void test_bulk_create_vlan();
 
+        void test_query_api();
+
     private:
 
         int profileGetNextValue(
@@ -336,6 +338,79 @@ void TestClient::test_bulk_create_vlan()
     ASSERT_SUCCESS(sai_api_uninitialize());
 }
 
+void TestClient::test_query_api()
+{
+    SWSS_LOG_ENTER();
+
+    m_profileMap.clear();
+
+    m_profileMap[SAI_REDIS_KEY_ENABLE_CLIENT] = "true"; // act as a client
+
+    m_profileIter = m_profileMap.begin();
+
+    m_smt.profileGetValue = std::bind(&TestClient::profileGetValue, this, _1, _2);
+    m_smt.profileGetNextValue = std::bind(&TestClient::profileGetNextValue, this, _1, _2, _3);
+
+    m_test_services = m_smt.getServiceMethodTable();
+
+    ASSERT_SUCCESS(sai_api_initialize(0, &m_test_services));
+
+    sai_switch_api_t* switch_api;
+
+    ASSERT_SUCCESS(sai_api_query(SAI_API_SWITCH, (void**)&switch_api));
+
+    sai_attribute_t attr;
+
+    // connect to existing switch
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = false;
+
+    sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
+
+    ASSERT_SUCCESS(switch_api->create_switch(&switch_id, 1, &attr));
+
+    ASSERT_TRUE(switch_id != SAI_NULL_OBJECT_ID);
+
+    SWSS_LOG_NOTICE("switchId: %s", sai_serialize_object_id(switch_id).c_str());
+
+    sai_attr_capability_t cap;
+
+    SWSS_LOG_NOTICE(" * sai_query_attribute_capability");
+
+    ASSERT_SUCCESS(sai_query_attribute_capability(
+                switch_id,
+                SAI_OBJECT_TYPE_SWITCH,
+                SAI_SWITCH_ATTR_INIT_SWITCH,
+                &cap));
+
+    int32_t vec[3];
+    sai_s32_list_t list;
+
+    list.count = 3;
+    list.list = vec;
+
+    SWSS_LOG_NOTICE(" * sai_query_attribute_enum_values_capability");
+
+    ASSERT_SUCCESS(sai_query_attribute_enum_values_capability(
+                switch_id,
+                SAI_OBJECT_TYPE_DEBUG_COUNTER,
+                SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST,
+                &list));
+
+    uint64_t count;
+
+    SWSS_LOG_NOTICE(" * sai_object_type_get_availability");
+
+    ASSERT_SUCCESS(sai_object_type_get_availability(
+                switch_id,
+                SAI_OBJECT_TYPE_DEBUG_COUNTER,
+                0,
+                NULL,
+                &count));
+
+    ASSERT_SUCCESS(sai_api_uninitialize());
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -349,6 +424,8 @@ int main()
     tc.test_create_vlan();
 
     tc.test_bulk_create_vlan();
+
+    tc.test_query_api();
 
     return EXIT_SUCCESS;
 }

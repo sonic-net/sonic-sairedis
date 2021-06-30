@@ -13,6 +13,9 @@
 #include "swss/select.h"
 #include "swss/tokenize.h"
 
+#include <iterator>
+#include <algorithm>
+
 using namespace sairedis;
 using namespace saimeta;
 using namespace std::placeholders;
@@ -698,14 +701,14 @@ sai_status_t ServerSai::processSingleEvent(
 //    if (op == REDIS_ASIC_STATE_COMMAND_FLUSH)
 //        return processFdbFlush(kco);
 //
-//    if (op == REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY)
-//        return processAttrCapabilityQuery(kco);
-//
-//    if (op == REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_QUERY)
-//        return processAttrEnumValuesCapabilityQuery(kco);
-//
-//    if (op == REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_QUERY)
-//        return processObjectTypeGetAvailabilityQuery(kco);
+    if (op == REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY)
+        return processAttrCapabilityQuery(kco);
+
+    if (op == REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_QUERY)
+        return processAttrEnumValuesCapabilityQuery(kco);
+
+    if (op == REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_QUERY)
+        return processObjectTypeGetAvailabilityQuery(kco);
 
     SWSS_LOG_THROW("event op '%s' is not implemented, FIXME", op.c_str());
 }
@@ -1538,4 +1541,169 @@ void ServerSai::sendBulkApiResponse(
             strStatus.c_str());
 
     m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+}
+
+sai_status_t ServerSai::processAttrCapabilityQuery(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto& strSwitchOid = kfvKey(kco);
+
+    sai_object_id_t switchOid;
+    sai_deserialize_object_id(strSwitchOid, switchOid);
+
+    auto& values = kfvFieldsValues(kco);
+
+    if (values.size() != 2)
+    {
+        SWSS_LOG_ERROR("Invalid input: expected 2 arguments, received %zu", values.size());
+
+        m_selectableChannel->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t objectType;
+    sai_deserialize_object_type(fvValue(values[0]), objectType);
+
+    sai_attr_id_t attrId;
+    sai_deserialize_attr_id(fvValue(values[1]), attrId);
+
+    sai_attr_capability_t capability;
+
+    sai_status_t status = m_sai->queryAttributeCapability(switchOid, objectType, attrId, &capability);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        entry =
+        {
+            swss::FieldValueTuple("CREATE_IMPLEMENTED", (capability.create_implemented ? "true" : "false")),
+            swss::FieldValueTuple("SET_IMPLEMENTED",    (capability.set_implemented    ? "true" : "false")),
+            swss::FieldValueTuple("GET_IMPLEMENTED",    (capability.get_implemented    ? "true" : "false"))
+        };
+
+        SWSS_LOG_INFO("Sending response: create_implemented:%d, set_implemented:%d, get_implemented:%d",
+            capability.create_implemented, capability.set_implemented, capability.get_implemented);
+    }
+
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE);
+
+    return status;
+}
+
+sai_status_t ServerSai::processAttrEnumValuesCapabilityQuery(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto& strSwitchOid = kfvKey(kco);
+
+    sai_object_id_t switchOid;
+    sai_deserialize_object_id(strSwitchOid, switchOid);
+
+    auto& values = kfvFieldsValues(kco);
+
+    if (values.size() != 3)
+    {
+        SWSS_LOG_ERROR("Invalid input: expected 3 arguments, received %zu", values.size());
+
+        m_selectableChannel->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t objectType;
+    sai_deserialize_object_type(fvValue(values[0]), objectType);
+
+    sai_attr_id_t attrId;
+    sai_deserialize_attr_id(fvValue(values[1]), attrId);
+
+    uint32_t list_size = std::stoi(fvValue(values[2]));
+
+    std::vector<int32_t> enum_capabilities_list(list_size);
+
+    sai_s32_list_t enumCapList;
+
+    enumCapList.count = list_size;
+    enumCapList.list = enum_capabilities_list.data();
+
+    sai_status_t status = m_sai->queryAattributeEnumValuesCapability(switchOid, objectType, attrId, &enumCapList);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        std::vector<std::string> vec;
+        std::transform(enumCapList.list, enumCapList.list + enumCapList.count,
+                std::back_inserter(vec), [](auto&e) { return std::to_string(e); });
+
+        std::ostringstream join;
+        std::copy(vec.begin(), vec.end(), std::ostream_iterator<std::string>(join, ","));
+
+        auto strCap = join.str();
+
+        entry =
+        {
+            swss::FieldValueTuple("ENUM_CAPABILITIES", strCap),
+            swss::FieldValueTuple("ENUM_COUNT", std::to_string(enumCapList.count))
+        };
+
+        SWSS_LOG_DEBUG("Sending response: capabilities = '%s', count = %d", strCap.c_str(), enumCapList.count);
+    }
+
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
+
+    return status;
+}
+
+sai_status_t ServerSai::processObjectTypeGetAvailabilityQuery(
+    _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto& strSwitchOid = kfvKey(kco);
+
+    sai_object_id_t switchOid;
+    sai_deserialize_object_id(strSwitchOid, switchOid);
+
+    std::vector<swss::FieldValueTuple> values = kfvFieldsValues(kco);
+
+    // needs to pop the object type off the end of the list in order to
+    // retrieve the attribute list
+
+    sai_object_type_t objectType;
+    sai_deserialize_object_type(fvValue(values.back()), objectType);
+
+    values.pop_back();
+
+    SaiAttributeList list(objectType, values, false);
+
+    sai_attribute_t *attr_list = list.get_attr_list();
+
+    uint32_t attr_count = list.get_attr_count();
+
+    uint64_t count;
+
+    sai_status_t status = m_sai->objectTypeGetAvailability(
+            switchOid,
+            objectType,
+            attr_count,
+            attr_list,
+            &count);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        entry.push_back(swss::FieldValueTuple("OBJECT_COUNT", std::to_string(count)));
+
+        SWSS_LOG_DEBUG("Sending response: count = %lu", count);
+    }
+
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE);
+
+    return status;
 }
