@@ -691,12 +691,11 @@ sai_status_t ServerSai::processSingleEvent(
     if (op == REDIS_ASIC_STATE_COMMAND_BULK_SET)
         return processBulkQuadEvent(SAI_COMMON_API_BULK_SET, kco);
 
-// TODO implement
-//    if (op == REDIS_ASIC_STATE_COMMAND_GET_STATS)
-//        return processGetStatsEvent(kco);
-//
-//    if (op == REDIS_ASIC_STATE_COMMAND_CLEAR_STATS)
-//        return processClearStatsEvent(kco);
+    if (op == REDIS_ASIC_STATE_COMMAND_GET_STATS)
+        return processGetStatsEvent(kco);
+
+    if (op == REDIS_ASIC_STATE_COMMAND_CLEAR_STATS)
+        return processClearStatsEvent(kco);
 
     if (op == REDIS_ASIC_STATE_COMMAND_FLUSH)
         return processFdbFlush(kco);
@@ -1734,6 +1733,103 @@ sai_status_t ServerSai::processFdbFlush(
     sai_status_t status = m_sai->flushFdbEntries(switchOid, attr_count, attr_list);
 
     m_selectableChannel->set(sai_serialize_status(status), {} , REDIS_ASIC_STATE_COMMAND_FLUSHRESPONSE);
+
+    return status;
+}
+
+sai_status_t ServerSai::processClearStatsEvent(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &key = kfvKey(kco);
+
+    sai_object_meta_key_t metaKey;
+    sai_deserialize_object_meta_key(key, metaKey);
+
+    auto info = sai_metadata_get_object_type_info(metaKey.objecttype);
+
+    if (info->isnonobjectid)
+    {
+        SWSS_LOG_THROW("non object id not supported on clear stats: %s, FIXME", key.c_str());
+    }
+
+    std::vector<sai_stat_id_t> counter_ids;
+
+    for (auto&v: kfvFieldsValues(kco))
+    {
+        int32_t val;
+        sai_deserialize_enum(fvField(v), info->statenum, val);
+
+        counter_ids.push_back(val);
+    }
+
+    auto status = m_sai->clearStats(
+            metaKey.objecttype,
+            metaKey.objectkey.key.object_id,
+            (uint32_t)counter_ids.size(),
+            counter_ids.data());
+
+    m_selectableChannel->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+
+    return status;
+}
+
+sai_status_t ServerSai::processGetStatsEvent(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const std::string &key = kfvKey(kco);
+
+    sai_object_meta_key_t metaKey;
+    sai_deserialize_object_meta_key(key, metaKey);
+
+    // TODO get stats on created object in init view mode could fail
+
+    auto info = sai_metadata_get_object_type_info(metaKey.objecttype);
+
+    if (info->isnonobjectid)
+    {
+        SWSS_LOG_THROW("non object id not supported on clear stats: %s, FIXME", key.c_str());
+    }
+
+    std::vector<sai_stat_id_t> counter_ids;
+
+    for (auto&v: kfvFieldsValues(kco))
+    {
+        int32_t val;
+        sai_deserialize_enum(fvField(v), info->statenum, val);
+
+        counter_ids.push_back(val);
+    }
+
+    std::vector<uint64_t> result(counter_ids.size());
+
+    auto status = m_sai->getStats(
+            metaKey.objecttype,
+            metaKey.objectkey.key.object_id,
+            (uint32_t)counter_ids.size(),
+            counter_ids.data(),
+            result.data());
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to get stats");
+    }
+    else
+    {
+        const auto& values = kfvFieldsValues(kco);
+
+        for (size_t i = 0; i < values.size(); i++)
+        {
+            entry.emplace_back(fvField(values[i]), std::to_string(result[i]));
+        }
+    }
+
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
 
     return status;
 }
