@@ -871,6 +871,9 @@ sai_status_t VirtualSwitchSaiInterface::queryAattributeEnumValuesCapability(
 {
     SWSS_LOG_ENTER();
 
+    char *env_platform = std::getenv("fake_platform");
+    std::string platform = (env_platform != NULL) ? std::string(env_platform): "";
+
     // TODO: We should generate this metadata for the virtual switch rather
     // than hard-coding it here.
 
@@ -914,6 +917,40 @@ sai_status_t VirtualSwitchSaiInterface::queryAattributeEnumValuesCapability(
         enum_values_capability->list[2] = SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS;
         enum_values_capability->list[3] = SAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS;
 
+        return SAI_STATUS_SUCCESS;
+    }
+    else if (object_type == SAI_OBJECT_TYPE_VLAN && (attr_id == SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE ||
+                                                     attr_id == SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE ||
+                                                     attr_id == SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE))
+    {
+
+        if (enum_values_capability->count < 4)
+        {
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        enum_values_capability->count = 4;
+        enum_values_capability->list[0] = SAI_VLAN_FLOOD_CONTROL_TYPE_ALL;
+        enum_values_capability->list[1] = SAI_VLAN_FLOOD_CONTROL_TYPE_NONE;
+        enum_values_capability->list[2] = SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP;
+        enum_values_capability->list[3] = SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED;
+
+        return SAI_STATUS_SUCCESS;
+    }
+    else if (object_type == SAI_OBJECT_TYPE_TUNNEL && attr_id == SAI_TUNNEL_ATTR_PEER_MODE)
+    {
+        if (enum_values_capability->count < 2)
+        {
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        enum_values_capability->count = 1;
+        enum_values_capability->list[0] = SAI_TUNNEL_PEER_MODE_P2MP;
+        if (platform != "mellanox")
+        {
+            enum_values_capability->count++;
+            enum_values_capability->list[1] = SAI_TUNNEL_PEER_MODE_P2P;
+        }
         return SAI_STATUS_SUCCESS;
     }
 
