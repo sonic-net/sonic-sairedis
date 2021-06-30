@@ -1076,7 +1076,9 @@ void Recorder::recordQueryAattributeEnumValuesCapabilityResponse(
     if (meta == NULL)
     {
         SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d",
-                sai_serialize_object_type(objectType).c_str(), attrId);
+                sai_serialize_object_type(objectType).c_str(),
+                attrId);
+
         return;
     }
 
@@ -1092,6 +1094,7 @@ void Recorder::recordQueryAattributeEnumValuesCapabilityResponse(
     {
         auto str_attr_id = sai_serialize_attr_id(*meta);
         auto str_enum_list = sai_serialize_enum_list(*enumValuesCapability, meta->enummetadata, countOnly);
+
         values.emplace_back(str_attr_id, str_enum_list);
     }
 

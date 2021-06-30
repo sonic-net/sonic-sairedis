@@ -771,9 +771,9 @@ static std::vector<std::string> parseFirstRecordedAPI()
 {
     SWSS_LOG_ENTER();
 
-    const auto delimiter = '|';
     std::ifstream infile(SairedisRecFilename);
     std::string line;
+
     // skip first line
     std::getline(infile, line);
     std::getline(infile, line);
@@ -781,28 +781,35 @@ static std::vector<std::string> parseFirstRecordedAPI()
     std::vector<std::string> tokens;
     std::stringstream sstream(line);
     std::string token;
+
+    const auto delimiter = '|';
+
     // skip first, it is a timestamp
     std::getline(sstream, token, delimiter);
-    while(std::getline(sstream, token, delimiter)) {
+
+    while(std::getline(sstream, token, delimiter))
+    {
        tokens.push_back(token);
     }
+
     return tokens;
 }
 
 static void test_recorder_enum_value_capability_query_request(
-    sai_object_id_t switch_id,
-    sai_object_type_t object_type,
-    sai_attr_id_t attr_id,
-    const std::vector<std::string>& expectedOutput)
+    _In_ sai_object_id_t switch_id,
+    _In_ sai_object_type_t object_type,
+    _In_ sai_attr_id_t attr_id,
+    _In_ const std::vector<std::string>& expectedOutput)
 {
     SWSS_LOG_ENTER();
 
     remove(SairedisRecFilename.c_str());
 
     Recorder recorder;
+
     recorder.enableRecording(true);
 
-    sai_s32_list_t enum_values_capability {.count = 0, .list = nullptr};
+    sai_s32_list_t enum_values_capability { .count = 0, .list = nullptr };
 
     recorder.recordQueryAattributeEnumValuesCapability(
         switch_id,
@@ -812,24 +819,27 @@ static void test_recorder_enum_value_capability_query_request(
     );
 
     auto tokens = parseFirstRecordedAPI();
+
     ASSERT_EQ(tokens, expectedOutput);
 }
 
 static void test_recorder_enum_value_capability_query_response(
-    sai_status_t status,
-    sai_object_type_t object_type,
-    sai_attr_id_t attr_id,
-    std::vector<int32_t> enumList,
-    const std::vector<std::string>& expectedOutput)
+    _In_ sai_status_t status,
+    _In_ sai_object_type_t object_type,
+    _In_ sai_attr_id_t attr_id,
+    _In_ std::vector<int32_t> enumList,
+    _In_ const std::vector<std::string>& expectedOutput)
 {
     SWSS_LOG_ENTER();
 
     remove(SairedisRecFilename.c_str());
 
     Recorder recorder;
+
     recorder.enableRecording(true);
 
     sai_s32_list_t enum_values_capability;
+
     enum_values_capability.count = static_cast<int32_t>(enumList.size());
     enum_values_capability.list = enumList.data();
 
@@ -841,6 +851,7 @@ static void test_recorder_enum_value_capability_query_response(
     );
 
     auto tokens = parseFirstRecordedAPI();
+
     ASSERT_EQ(tokens, expectedOutput);
 }
 
@@ -859,6 +870,7 @@ static void test_recorder_enum_value_capability_query()
             "SAI_DEBUG_COUNTER_ATTR_TYPE=0",
         }
     );
+
     test_recorder_enum_value_capability_query_response(
         SAI_STATUS_SUCCESS,
         SAI_OBJECT_TYPE_DEBUG_COUNTER,
@@ -877,6 +889,7 @@ static void test_recorder_enum_value_capability_query()
             "SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS,SAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS",
         }
     );
+
     test_recorder_enum_value_capability_query_request(
         1,
         SAI_OBJECT_TYPE_DEBUG_COUNTER,
@@ -888,6 +901,7 @@ static void test_recorder_enum_value_capability_query()
             "SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST=0",
         }
     );
+
     test_recorder_enum_value_capability_query_response(
         SAI_STATUS_SUCCESS,
         SAI_OBJECT_TYPE_DEBUG_COUNTER,
