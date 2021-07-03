@@ -1727,12 +1727,6 @@ sai_status_t ServerSai::processFdbFlush(
     }
 
     SaiAttributeList list(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
-    SaiAttributeList vidlist(SAI_OBJECT_TYPE_FDB_FLUSH, values, false);
-
-    /*
-     * Attribute list can't be const since we will use it to translate VID to
-     * RID in place.
-     */
 
     sai_attribute_t *attr_list = list.get_attr_list();
     uint32_t attr_count = list.get_attr_count();
