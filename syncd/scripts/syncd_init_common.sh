@@ -269,12 +269,6 @@ config_syncd_innovium()
     mkdir -p $II_ROOT
 }
 
-config_syncd_cisco_8000()
-{
-    export BASE_OUTPUT_DIR=/opt/cisco/silicon-one
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
-}
-
 config_syncd()
 {
     check_warm_boot
@@ -300,8 +294,6 @@ config_syncd()
         config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
         config_syncd_innovium
-    elif [ "$SONIC_ASIC_TYPE" == "cisco-8000" ]; then
-        config_syncd_cisco_8000
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
