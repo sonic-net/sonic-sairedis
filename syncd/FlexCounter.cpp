@@ -114,6 +114,14 @@ FlexCounter::MACsecSAAttrIds::MACsecSAAttrIds(
     // empty intentionally
 }
 
+FlexCounter::TunnelCounterIds::TunnelCounterIds(
+        _In_ sai_object_id_t tunnel,
+        _In_ const std::vector<sai_tunnel_stat_t> &tunnelIds):
+    tunnelId(tunnel), tunnelCounterIds(tunnelIds)
+{
+    SWSS_LOG_ENTER();
+}
+
 void FlexCounter::setPollInterval(
         _In_ uint32_t pollInterval)
 {
@@ -567,6 +575,47 @@ void FlexCounter::setBufferPoolCounterList(
     addCollectCountersHandler(BUFFER_POOL_COUNTER_ID_LIST, &FlexCounter::collectBufferPoolCounters);
 }
 
+void FlexCounter::setTunnelCounterList(
+        _In_ sai_object_id_t tunnelVid,
+        _In_ sai_object_id_t tunnelRid,
+        _In_ const std::vector<sai_tunnel_stat_t> &counterIds)
+{
+    SWSS_LOG_ENTER();
+
+    updateSupportedTunnelCounters(rifRid);
+
+    // Remove unsupported counters
+    std::vector<sai_tunnel_stat_t> supportedIds;
+
+    for (auto &counter : counterIds)
+    {
+        if (isTunnelCounterSupported(counter))
+        {
+            supportedIds.push_back(counter);
+        }
+    }
+
+    if (supportedIds.empty())
+    {
+        SWSS_LOG_NOTICE("Tunnel %s does not have supported counters", sai_serialize_object_id(tunnelRid).c_str());
+        return;
+    }
+
+    auto it = m_tunnelCounterIdsMap.find(tunnelVid);
+
+    if (it != m_tunnelCounterIdsMap.end())
+    {
+        it->second->tunnelCounterIds = supportedIds;
+        return;
+    }
+
+    auto tunnelCounterIds = std::make_shared<TunnelCounterIds>(tunnelRid, supportedIds);
+
+    m_tunnelCounterIdsMap.emplace(tunnelVid, tunnelCounterIds);
+
+    addCollectCountersHandler(TUNNEL_COUNTER_ID_LIST, &FlexCounter::collectTunnelCounters);
+}
+
 void FlexCounter::removePort(
         _In_ sai_object_id_t portVid)
 {
@@ -787,6 +836,27 @@ void FlexCounter::removeSwitchDebugCounters(
     }
 }
 
+void FlexCounter::removeTunnel(
+        _In_ sai_object_id_t tunnelVid)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_tunnelCounterIdsMap.find(rifVid);
+
+    if (it == m_tunnelCounterIdsMap.end())
+    {
+        SWSS_LOG_NOTICE("Trying to remove nonexisting tunnel counter from Id 0x%" PRIx64, tunnelVid);
+        return;
+    }
+
+    m_tunnelCounterIdsMap.erase(it);
+
+    if (m_tunnelCounterIdsMap.empty())
+    {
+        removeCollectCountersHandler(TUNNEL_COUNTER_ID_LIST);
+    }
+}
+
 void FlexCounter::checkPluginRegistered(
         _In_ const std::string& sha) const
 {
@@ -981,7 +1051,8 @@ bool FlexCounter::allIdsEmpty() const
         m_rifCounterIdsMap.empty() &&
         m_bufferPoolCounterIdsMap.empty() &&
         m_switchDebugCounterIdsMap.empty() &&
-        m_macsecSAAttrIdsMap.empty();
+        m_macsecSAAttrIdsMap.empty() &&
+        m_tunnelCounterIdsMap.empty();
 }
 
 bool FlexCounter::allPluginsEmpty() const
@@ -1032,6 +1103,14 @@ bool FlexCounter::isBufferPoolCounterSupported(
     SWSS_LOG_ENTER();
 
     return m_supportedBufferPoolCounters.count(counter) != 0;
+}
+
+bool FlexCounter::isTunnelCounterSupported(
+        _In_ sai_tunnel_stat_t counter) const
+{
+    SWSS_LOG_ENTER();
+
+    return m_supportedTunnelCounters.count(counter) != 0;
 }
 
 void FlexCounter::collectCounters(
@@ -1588,6 +1667,51 @@ void FlexCounter::collectBufferPoolCounters(
     }
 }
 
+void FlexCounter::collectTunnelCounters(
+        _In_ swss::Table &countersTable)
+{
+    SWSS_LOG_ENTER();
+
+    // Collect stats for every registered tunnel
+    for (const auto &kv: m_tunnelCounterIdsMap)
+    {
+        const auto &tunnelVid = kv.first;
+        const auto &tunnelId = kv.second->tunnelId;
+        const auto &tunnelCounterIds = kv.second->tunnelCounterIds;
+
+        std::vector<uint64_t> tunnelStats(tunnelCounterIds.size());
+
+        // Get rif stats
+        sai_status_t status = m_vendorSai->getStats(
+                SAI_OBJECT_TYPE_TUNNEL,
+                tunnelId,
+                static_cast<uint32_t>(tunnelCounterIds.size()),
+                (const sai_stat_id_t *)tunnelCounterIds.data(),
+                tunnelStats.data());
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get stats of tunnel 0x%" PRIx64 ": %d", tunnelId, status);
+            continue;
+        }
+
+        // Push all counter values to a single vector
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != tunnelCounterIds.size(); i++)
+        {
+            const std::string &counterName = sai_serialize_tunnel_stat(tunnelCounterIds[i]);
+
+            values.emplace_back(counterName, std::to_string(tunnelStats[i]));
+        }
+
+        // Write counters to DB
+        std::string tunnelVidStr = sai_serialize_object_id(tunnelVid);
+
+        countersTable.set(tunnelVidStr, values, "");
+    }
+}
+
 void FlexCounter::runPlugins(
         _In_ swss::DBConnector& counters_db)
 {
@@ -2024,6 +2148,42 @@ void FlexCounter::updateSupportedBufferPoolCounters(
     }
 }
 
+void FlexCounter::updateSupportedTunnelCounters(
+        _In_ sai_object_id_t tunnelRid)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_supportedTunnelCounters.size())
+    {
+        return;
+    }
+
+    uint64_t value;
+    for (int cntr_id = SAI_TUNNEL_STAT_IN_OCTETS; cntr_id <= SAI_TUNNEL_STAT_OUT_PACKETS; ++cntr_id)
+    {
+        sai_tunnel_stat_t counter = static_cast<sai_tunnel_stat_t>(cntr_id);
+
+        sai_status_t status = m_vendorSai->getStats(
+                SAI_OBJECT_TYPE_TUNNEL,
+                tunnelRid,
+                1,
+                (const sai_stat_id_t *)&counter,
+                &value);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_INFO("Counter %s is not supported on tunnel RID %s: %s",
+                    sai_serialize_router_interface_stat(counter).c_str(),
+                    sai_serialize_object_id(tunnelRid).c_str(),
+                    sai_serialize_status(status).c_str());
+
+            continue;
+        }
+
+        m_supportedTunnelCounters.insert(counter);
+    }
+}
+
 std::vector<sai_switch_stat_t> FlexCounter::saiCheckSupportedSwitchDebugCounters(
         _In_ sai_object_id_t switchId,
         _In_ const std::vector<sai_switch_stat_t> &counterIds)
@@ -2100,6 +2260,10 @@ void FlexCounter::removeCounter(
     else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
     {
         removeMACsecSA(vid);
+    }
+    else if (objectType == SAI_OBJECT_TYPE_TUNNEL)
+    {
+        removeTunnel(vid);
     }
     else
     {
@@ -2255,6 +2419,19 @@ void FlexCounter::addCounter(
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == STATS_MODE_FIELD)
         {
             statsMode = value;
+        }
+        else if (objectType == SAI_OBJECT_TYPE_TUNNEL && field == TUNNEL_COUNTER_ID_LIST)
+        {
+            std::vector<sai_router_interface_stat_t> tunnelCounterIds;
+
+            for (const auto &str : idStrings)
+            {
+                sai_tunnel_stat_t stat;
+                sai_deserialize_tunnel_stat(str.c_str(), &stat);
+                tunnelCounterIds.push_back(stat);
+            }
+
+            setTunnelCounterList(vid, rid, rifCounterIds);
         }
         else
         {
