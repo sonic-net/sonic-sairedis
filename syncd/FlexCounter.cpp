@@ -867,7 +867,8 @@ void FlexCounter::checkPluginRegistered(
             m_rifPlugins.find(sha) != m_rifPlugins.end() ||
             m_queuePlugins.find(sha) != m_queuePlugins.end() ||
             m_priorityGroupPlugins.find(sha) != m_priorityGroupPlugins.end() ||
-            m_bufferPoolPlugins.find(sha) != m_bufferPoolPlugins.end()
+            m_bufferPoolPlugins.find(sha) != m_bufferPoolPlugins.end() ||
+            m_tunnelPlugins.find(sha) != m_tunnelPlugins.end()
        )
     {
         SWSS_LOG_ERROR("Plugin %s already registered", sha.c_str());
@@ -934,6 +935,18 @@ void FlexCounter::addBufferPoolCounterPlugin(
     SWSS_LOG_NOTICE("Buffer pool counters plugin %s registered", sha.c_str());
 }
 
+void FlexCounter::addTunnelCounterPlugin(
+        _In_ const std::string& sha)
+{
+    SWSS_LOG_ENTER();
+
+    checkPluginRegistered(sha);
+
+    m_tunnelPlugins.insert(sha);
+
+    SWSS_LOG_NOTICE("Tunnel counters plugin %s registered", sha.c_str());
+}
+
 void FlexCounter::removeCounterPlugins()
 {
     MUTEX;
@@ -945,6 +958,7 @@ void FlexCounter::removeCounterPlugins()
     m_rifPlugins.clear();
     m_priorityGroupPlugins.clear();
     m_bufferPoolPlugins.clear();
+    m_tunnelPlugins.clear();
 
     m_isDiscarded = true;
 }
@@ -1012,6 +1026,13 @@ void FlexCounter::addCounterPlugin(
                 addBufferPoolCounterPlugin(sha);
             }
         }
+        else if (field == TUNNEL_PLUGIN_FIELD)
+        {
+            for (auto& sha: shaStrings)
+            {
+                addTunnelCounterPlugin(sha);
+            } 
+        }
         else
         {
             SWSS_LOG_ERROR("Field is not supported %s", field.c_str());
@@ -1063,7 +1084,8 @@ bool FlexCounter::allPluginsEmpty() const
            m_queuePlugins.empty() &&
            m_portPlugins.empty() &&
            m_rifPlugins.empty() &&
-           m_bufferPoolPlugins.empty();
+           m_bufferPoolPlugins.empty() &&
+           m_tunnelPlugins.empty() &&;
 }
 
 bool FlexCounter::isPortCounterSupported(sai_port_stat_t counter) const
@@ -1721,7 +1743,7 @@ void FlexCounter::runPlugins(
     {
         std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval * 1000)
+        std::to_string(m_pollInterval / 1000)
     };
 
     std::vector<std::string> portList;
@@ -1789,6 +1811,17 @@ void FlexCounter::runPlugins(
     for (const auto& sha : m_bufferPoolPlugins)
     {
         runRedisScript(counters_db, sha, bufferPoolVids, argv);
+    }
+
+    std::vector<std::string> tunnelList;
+    tunnelList.reserve(m_tunnelCounterIdsMap.size());
+    for (const auto& kv : m_tunnelCounterIdsMap)
+    {
+        tunnelList.push_back(sai_serialize_object_id(kv.first));
+    }
+    for (const auto& sha : m_tunnelPlugins)
+    {
+        runRedisScript(counters_db, sha, tunnelList, argv);
     }
 }
 
