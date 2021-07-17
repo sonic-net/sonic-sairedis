@@ -582,7 +582,7 @@ void FlexCounter::setTunnelCounterList(
 {
     SWSS_LOG_ENTER();
 
-    updateSupportedTunnelCounters(rifRid);
+    updateSupportedTunnelCounters(tunnelRid);
 
     // Remove unsupported counters
     std::vector<sai_tunnel_stat_t> supportedIds;
@@ -841,7 +841,7 @@ void FlexCounter::removeTunnel(
 {
     SWSS_LOG_ENTER();
 
-    auto it = m_tunnelCounterIdsMap.find(rifVid);
+    auto it = m_tunnelCounterIdsMap.find(tunnelVid);
 
     if (it == m_tunnelCounterIdsMap.end())
     {
@@ -1085,7 +1085,7 @@ bool FlexCounter::allPluginsEmpty() const
            m_portPlugins.empty() &&
            m_rifPlugins.empty() &&
            m_bufferPoolPlugins.empty() &&
-           m_tunnelPlugins.empty() &&;
+           m_tunnelPlugins.empty();
 }
 
 bool FlexCounter::isPortCounterSupported(sai_port_stat_t counter) const
@@ -2206,7 +2206,7 @@ void FlexCounter::updateSupportedTunnelCounters(
         if (status != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_INFO("Counter %s is not supported on tunnel RID %s: %s",
-                    sai_serialize_router_interface_stat(counter).c_str(),
+                    sai_serialize_tunnel_stat(counter).c_str(),
                     sai_serialize_object_id(tunnelRid).c_str(),
                     sai_serialize_status(status).c_str());
 
@@ -2455,7 +2455,7 @@ void FlexCounter::addCounter(
         }
         else if (objectType == SAI_OBJECT_TYPE_TUNNEL && field == TUNNEL_COUNTER_ID_LIST)
         {
-            std::vector<sai_router_interface_stat_t> tunnelCounterIds;
+            std::vector<sai_tunnel_stat_t> tunnelCounterIds;
 
             for (const auto &str : idStrings)
             {
@@ -2464,7 +2464,7 @@ void FlexCounter::addCounter(
                 tunnelCounterIds.push_back(stat);
             }
 
-            setTunnelCounterList(vid, rid, rifCounterIds);
+            setTunnelCounterList(vid, rid, tunnelCounterIds);
         }
         else
         {

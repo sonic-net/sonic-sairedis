@@ -78,6 +78,8 @@ namespace syncd
             void addQueueCounterPlugin(
                     _In_ const std::string& sha);
 
+            void addTunnelCounterPlugin(
+                    _In_ const std::string& sha);
         private:
 
             void checkPluginRegistered(
@@ -193,6 +195,8 @@ namespace syncd
             bool isBufferPoolCounterSupported(
                     _In_ sai_buffer_pool_stat_t counter) const;
 
+            bool isTunnelCounterSupported(
+                    _In_ sai_tunnel_stat_t counter) const;
         private: // update supported counters
 
             void updateSupportedPortCounters(
@@ -222,6 +226,8 @@ namespace syncd
                     _In_ sai_object_id_t switchRid,
                     _In_ const std::vector<sai_switch_stat_t> &counterIds);
 
+            void updateSupportedTunnelCounters(
+                    _In_ sai_object_id_t tunnelRid);
         private:
 
             struct QueueCounterIds
@@ -399,6 +405,7 @@ namespace syncd
             std::set<std::string> m_rifPlugins;
             std::set<std::string> m_priorityGroupPlugins;
             std::set<std::string> m_bufferPoolPlugins;
+            std::set<std::string> m_tunnelPlugins;
 
         private: // supported counters
 
