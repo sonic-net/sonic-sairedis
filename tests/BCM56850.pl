@@ -688,8 +688,16 @@ sub test_ignore_attributes
     play "ignore_attributes.rec";
 }
 
+sub test_multi_switch_key
+{
+    fresh_start("-p", "$utils::DIR/vsprofile_ctx_multi.ini", "-g", "0", "-x", "$utils::DIR/ctx_multi.json");
+
+    play("-p", "$utils::DIR/vsprofile_ctx_multi.ini", "multi_switch_key.rec");
+}
+
 # RUN TESTS
 
+test_multi_switch_key;
 test_ignore_attributes;
 test_sairedis_client;
 test_macsec_p2p_establishment;

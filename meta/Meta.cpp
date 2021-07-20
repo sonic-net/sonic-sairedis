@@ -5052,7 +5052,7 @@ sai_status_t Meta::meta_generic_validation_create(
 
     if (haskeys)
     {
-        std::string key = AttrKeyMap::constructKey(meta_key, attr_count, attr_list);
+        std::string key = AttrKeyMap::constructKey(switch_id, meta_key, attr_count, attr_list);
 
         // since we didn't created oid yet, we don't know if attribute key exists, check all
         if (m_attrKeys.attrKeyExists(key))
@@ -6951,7 +6951,7 @@ void Meta::meta_generic_validation_post_create(
     {
         auto mKey = sai_serialize_object_meta_key(meta_key);
 
-        auto attrKey = AttrKeyMap::constructKey(meta_key, attr_count, attr_list);
+        auto attrKey = AttrKeyMap::constructKey(switch_id, meta_key, attr_count, attr_list);
 
         m_attrKeys.insert(mKey, attrKey);
     }
@@ -7914,7 +7914,9 @@ void Meta::populate(
         {
             auto mKey = sai_serialize_object_meta_key(mk);
 
-            auto attrKey = AttrKeyMap::constructKey(mk, attr_count, attr_list);
+            auto switchId = switchIdQuery(mk.objectkey.key.object_id);
+
+            auto attrKey = AttrKeyMap::constructKey(switchId, mk, attr_count, attr_list);
 
             m_attrKeys.insert(mKey, attrKey);
         }

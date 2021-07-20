@@ -2956,11 +2956,13 @@ void test_construct_key()
 
     meta_key.objecttype = SAI_OBJECT_TYPE_PORT;
 
-    std::string key = AttrKeyMap::constructKey(meta_key, 1, &attr);
+    sai_object_id_t switchId = 0x21000000000000;
+
+    std::string key = AttrKeyMap::constructKey(switchId, meta_key, 1, &attr);
 
     SWSS_LOG_NOTICE("constructed key: %s", key.c_str());
 
-    META_ASSERT_TRUE(key == "SAI_PORT_ATTR_HW_LANE_LIST:1,2,3,4;");
+    META_ASSERT_TRUE(key == "oid:0x21000000000000;SAI_PORT_ATTR_HW_LANE_LIST:1,2,3,4;");
 }
 
 static sai_object_id_t create_scheduler_group(
