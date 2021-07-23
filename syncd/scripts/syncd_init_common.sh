@@ -163,7 +163,7 @@ config_syncd_bcm()
     fi
     
     if [ -f "$HWSKU_DIR/context_config.json" ]; then 
-        CMD_ARGS+=" -x $HWSKU_DIR/context_config.json"
+        CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
     fi
     
     [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
