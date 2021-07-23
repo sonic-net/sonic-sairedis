@@ -1285,6 +1285,8 @@ sai_status_t Syncd::processBulkEntry(
 
     // vendor SAI don't bulk API yet, so execute one by one
 
+    all = SAI_STATUS_SUCCESS;
+
     for (size_t idx = 0; idx < objectIds.size(); ++idx)
     {
         sai_object_meta_key_t metaKey;
@@ -1584,6 +1586,10 @@ sai_status_t Syncd::processBulkOid(
             return all;
         }
     }
+
+    // vendor SAI don't bulk API yet, so execute one by one
+
+    all = SAI_STATUS_SUCCESS;
 
     for (size_t idx = 0; idx < objectIds.size(); ++idx)
     {

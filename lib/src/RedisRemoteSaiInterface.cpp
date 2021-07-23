@@ -1337,7 +1337,7 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
 
         if (values.size () != object_count)
         {
-            SWSS_LOG_THROW("wrong number of counters, got %zu, expected %u", values.size(), object_count);
+            SWSS_LOG_THROW("wrong number of statuses, got %zu, expected %u", values.size(), object_count);
         }
 
         // deserialize statuses for all objects
