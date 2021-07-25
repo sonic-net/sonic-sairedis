@@ -7,7 +7,7 @@ WatchdogScope::WatchdogScope(
         _In_ const std::string eventName):
     m_tw(tw)
 {
-    // SWSS_LOG_ENTER();
+    // SWSS_LOG_ENTER(); // disabled
 
     m_tw.setStartTime();
 
@@ -16,7 +16,7 @@ WatchdogScope::WatchdogScope(
 
 WatchdogScope::~WatchdogScope()
 {
-    // SWSS_LOG_ENTER();
+    // SWSS_LOG_ENTER(); // disabled
 
     m_tw.setEndTime();
 }
