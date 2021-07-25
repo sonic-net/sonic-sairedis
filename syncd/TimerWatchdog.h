@@ -5,6 +5,7 @@
 #include <thread>
 #include <atomic>
 #include <functional>
+#include <mutex>
 
 namespace syncd
 {
@@ -22,6 +23,9 @@ namespace syncd
             void setStartTime();
 
             void setEndTime();
+
+            void setEventName(
+                    _In_ const std::string& eventName);
 
             void setCallback(
                     _In_ std::function<void(uint64_t)> callback);
@@ -51,5 +55,9 @@ namespace syncd
             std::shared_ptr<std::thread> m_thread;
 
             std::function<void(uint64_t)> m_callback;
+
+            std::string m_eventName;
+
+            std::mutex m_mutex;
     };
 }

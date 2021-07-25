@@ -14,7 +14,7 @@
 #include "RedisSelectableChannel.h"
 #include "ZeroMQSelectableChannel.h"
 #include "PerformanceIntervalTimer.h"
-#include "TimerWatchdog.h"
+#include "WatchdogScope.h"
 
 #include "sairediscommon.h"
 
@@ -50,7 +50,8 @@ Syncd::Syncd(
     m_asicInitViewMode(false), // by default we are in APPLY view mode
     m_vendorSai(vendorSai),
     m_veryFirstRun(false),
-    m_enableSyncMode(false)
+    m_enableSyncMode(false),
+    m_timerWatchdog(10 * 1000000) // watch for executions over 30 seconds
 {
     SWSS_LOG_ENTER();
 
@@ -316,6 +317,8 @@ sai_status_t Syncd::processSingleEvent(
 
         return SAI_STATUS_SUCCESS;
     }
+
+    WatchdogScope ws(m_timerWatchdog, op + ":" + key);
 
     if (op == REDIS_ASIC_STATE_COMMAND_CREATE)
         return processQuadEvent(SAI_COMMON_API_CREATE, kco);
@@ -1950,6 +1953,8 @@ void Syncd::processFlexCounterGroupEvent( // TODO must be moved to go via ASIC c
     auto& op = kfvOp(kco);
     auto& values = kfvFieldsValues(kco);
 
+    WatchdogScope ws(m_timerWatchdog, op + ":" + groupName);
+
     if (op == SET_COMMAND)
     {
         m_manager->addCounterPlugin(groupName, values);
@@ -1977,6 +1982,8 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
 
     auto& key = kfvKey(kco);
     auto& op = kfvOp(kco);
+
+    WatchdogScope ws(m_timerWatchdog, op + ":" + key);
 
     auto delimiter = key.find_first_of(":");
 
@@ -4366,19 +4373,15 @@ void Syncd::run()
             runMainLoop = false;
     }
 
-    TimerWatchdog twd(30 * 1000000); // watch for executions over 30 seconds
+    m_timerWatchdog.setCallback(timerWatchdogCallback);
 
-    twd.setCallback(timerWatchdogCallback);
-
-    while(runMainLoop)
+    while (runMainLoop)
     {
         try
         {
             swss::Selectable *sel = NULL;
 
             int result = s->select(&sel);
-
-            twd.setStartTime();
 
             if (sel == m_restartQuery.get())
             {
@@ -4398,6 +4401,8 @@ void Syncd::run()
                 }
 
                 SWSS_LOG_NOTICE("drained queue");
+
+                WatchdogScope ws(m_timerWatchdog, "restart query");
 
                 shutdownType = handleRestartQuery(*m_restartQuery);
 
@@ -4468,8 +4473,6 @@ void Syncd::run()
             {
                 SWSS_LOG_ERROR("select failed: %d", result);
             }
-
-            twd.setEndTime();
         }
         catch(const std::exception &e)
         {
@@ -4486,10 +4489,10 @@ void Syncd::run()
 
             // make sure that if second exception will arise, then we break the loop
             m_commandLineOptions->m_disableExitSleep = true;
-
-            twd.setEndTime();
         }
     }
+
+    WatchdogScope ws(m_timerWatchdog, "shutting down syncd");
 
     if (shutdownType == SYNCD_RESTART_TYPE_WARM)
     {
@@ -4565,6 +4568,8 @@ syncd_restart_type_t Syncd::handleRestartQuery(
     std::vector<swss::FieldValueTuple> values;
 
     restartQuery.pop(op, data, values);
+
+    m_timerWatchdog.setEventName(op + ":" + data);
 
     SWSS_LOG_NOTICE("received %s switch shutdown event", op.c_str());
 
