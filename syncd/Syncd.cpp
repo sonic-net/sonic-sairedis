@@ -51,7 +51,7 @@ Syncd::Syncd(
     m_vendorSai(vendorSai),
     m_veryFirstRun(false),
     m_enableSyncMode(false),
-    m_timerWatchdog(10 * 1000000) // watch for executions over 30 seconds
+    m_timerWatchdog(30 * 1000000) // watch for executions over 30 seconds
 {
     SWSS_LOG_ENTER();
 
