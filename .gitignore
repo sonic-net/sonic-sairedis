@@ -95,13 +95,24 @@ syncd/syncd
 syncd/syncd_request_shutdown
 tests/syncd
 tests/vssyncd
+saiasiccmp/saiasiccmp
+tests/tests
+tests/testclient
 
 # Temporary files #
 ###################
 **/*~
 **/*.rec
 **/*.swp
+**/*.swo
+**/*.gcda
+**/*.gcno
 
 tests/applyview.log
+tests/sai_warmboot.bin.bak
 tests/sai_warmboot.bin
 tests/[0-9]*
+
+pyext/py2/pysairedis.py
+pyext/py3/pysairedis.py
+pyext/pysairedis.py
