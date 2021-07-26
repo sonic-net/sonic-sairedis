@@ -672,9 +672,11 @@ sub test_sairedis_client
 
     `./testclient`;
 
+    my $exit = $?;
+
     `killall -9 saiplayer`;
 
-    if ($? != 0)
+    if ($exit != 0)
     {
         print color('red') . "test client failed" . color('reset') . "\n";
         exit 1;
