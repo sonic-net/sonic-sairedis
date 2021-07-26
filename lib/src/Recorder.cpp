@@ -1117,3 +1117,39 @@ void Recorder::recordStats(
 
     m_recordStats = enable;
 }
+
+
+void Recorder::recordGenericResponse(
+        _In_ sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        // record only when response is not success
+
+        recordLine("E|" + sai_serialize_status(status));
+    }
+}
+
+void Recorder::recordBulkGenericResponse(
+        _In_ sai_status_t status,
+        _In_ uint32_t objectCount,
+        _In_ const sai_status_t *objectStatuses)
+{
+    SWSS_LOG_ENTER();
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        // record only when response is not success
+
+        std::string statuses = "";
+
+        for (uint32_t i = 0; i < objectCount; i++)
+        {
+            statuses += "|" + sai_serialize_status(objectStatuses[i]);
+        }
+
+        recordLine("E|" + sai_serialize_status(status) + "|" + statuses);
+    }
+}

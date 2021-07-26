@@ -742,6 +742,8 @@ sai_status_t RedisRemoteSaiInterface::waitForResponse(
 
         auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
 
+        m_recorder->recordGenericResponse(status);
+
         return status;
     }
 
@@ -1346,6 +1348,8 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
         {
             sai_deserialize_status(fvField(values[idx]), object_statuses[idx]);
         }
+
+        m_recorder->recordBulkGenericResponse(status, object_count, object_statuses);
 
         return status;
     }
