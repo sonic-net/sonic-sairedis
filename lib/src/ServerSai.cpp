@@ -117,7 +117,7 @@ sai_status_t ServerSai::uninitialize(void)
     {
         SWSS_LOG_NOTICE("end server thread begin");
 
-        m_runServerThread = true;
+        m_runServerThread = false;
 
         m_serverThreadThreadShouldEndEvent.notify();
 
