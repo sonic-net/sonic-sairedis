@@ -46,6 +46,16 @@ void ContextConfigContainer::insert(
 {
     SWSS_LOG_ENTER();
 
+    for (auto& c: m_map)
+    {
+        if (c.second->hasConflict(contextConfig))
+        {
+            SWSS_LOG_THROW("context config with guid %u have conflicts with guid %u",
+                    contextConfig->m_guid,
+                    c.second->m_guid);
+        }
+    }
+
     m_map[contextConfig->m_guid] = contextConfig;
 }
 
@@ -159,7 +169,7 @@ std::set<std::shared_ptr<ContextConfig>> ContextConfigContainer::getAllContextCo
 
     std::set<std::shared_ptr<ContextConfig>> set;
 
-    for (auto&item: m_map)
+    for (auto& item: m_map)
     {
         set.insert(item.second);
     }
