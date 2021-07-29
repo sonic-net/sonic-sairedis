@@ -10,6 +10,12 @@ namespace saivs
         public TrafficFilter
     {
     public:
+        enum MACsecFilterState
+        {
+            IDLE,
+            BUSY,
+        };
+
         MACsecFilter(
             _In_ const std::string &macsecInterfaceName);
 
@@ -25,6 +31,8 @@ namespace saivs
         void set_macsec_fd(
             _In_ int macsecfd);
 
+        MACsecFilterState get_state() const;
+
     protected:
         virtual FilterStatus forward(
             _In_ const void *buffer,
@@ -35,5 +43,7 @@ namespace saivs
         int m_macsecfd;
 
         const std::string m_macsecInterfaceName;
+
+        MACsecFilterState m_state;
     };
 }

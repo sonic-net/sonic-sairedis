@@ -58,6 +58,7 @@ libSaiVS_a_SOURCES = \
 					  CorePortIndexMapContainer.cpp \
 					  CorePortIndexMapFileParser.cpp \
 					  MACsecFilter.cpp \
+					  MACsecFilterStateGuard.cpp \
 					  MACsecEgressFilter.cpp \
 					  MACsecIngressFilter.cpp \
 					  TrafficForwarder.cpp \
