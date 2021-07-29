@@ -582,7 +582,7 @@ void FlexCounter::setTunnelCounterList(
 {
     SWSS_LOG_ENTER();
 
-    updateSupportedTunnelCounters(tunnelRid);
+    updateSupportedTunnelCounters(tunnelRid, counterIds);
 
     // Remove unsupported counters
     std::vector<sai_tunnel_stat_t> supportedIds;
@@ -1703,7 +1703,7 @@ void FlexCounter::collectTunnelCounters(
 
         std::vector<uint64_t> tunnelStats(tunnelCounterIds.size());
 
-        // Get rif stats
+        // Get tunnel stats
         sai_status_t status = m_vendorSai->getStats(
                 SAI_OBJECT_TYPE_TUNNEL,
                 tunnelId,
@@ -2182,7 +2182,8 @@ void FlexCounter::updateSupportedBufferPoolCounters(
 }
 
 void FlexCounter::updateSupportedTunnelCounters(
-        _In_ sai_object_id_t tunnelRid)
+        _In_ sai_object_id_t tunnelRid,
+        _In_ const std::vector<sai_tunnel_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 
@@ -2192,10 +2193,8 @@ void FlexCounter::updateSupportedTunnelCounters(
     }
 
     uint64_t value;
-    for (int cntr_id = SAI_TUNNEL_STAT_IN_OCTETS; cntr_id <= SAI_TUNNEL_STAT_OUT_PACKETS; ++cntr_id)
+    for (auto &counter: counterIds)
     {
-        sai_tunnel_stat_t counter = static_cast<sai_tunnel_stat_t>(cntr_id);
-
         sai_status_t status = m_vendorSai->getStats(
                 SAI_OBJECT_TYPE_TUNNEL,
                 tunnelRid,

@@ -227,7 +227,8 @@ namespace syncd
                     _In_ const std::vector<sai_switch_stat_t> &counterIds);
 
             void updateSupportedTunnelCounters(
-                    _In_ sai_object_id_t tunnelRid);
+                    _In_ sai_object_id_t tunnelRid,
+                    _In_ const std::vector<sai_tunnel_stat_t> &counterIds);
         private:
 
             struct QueueCounterIds
