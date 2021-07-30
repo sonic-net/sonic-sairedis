@@ -5,7 +5,7 @@
 using namespace saivs;
 
 MACsecFilterStateGuard::MACsecFilterStateGuard(
-    _Inout_ MACsecFilter::MACsecFilterState &guarded_state,
+    _Inout_ volatile MACsecFilter::MACsecFilterState &guarded_state,
     _In_ MACsecFilter::MACsecFilterState target_state):
     m_guarded_state(guarded_state)
 {

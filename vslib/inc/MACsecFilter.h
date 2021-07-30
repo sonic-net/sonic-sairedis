@@ -38,12 +38,12 @@ namespace saivs
             _In_ const void *buffer,
             _In_ size_t length) = 0;
 
-        bool m_macsecDeviceEnable;
+        volatile bool m_macsecDeviceEnable;
 
         int m_macsecfd;
 
         const std::string m_macsecInterfaceName;
 
-        MACsecFilterState m_state;
+        volatile MACsecFilterState m_state;
     };
 }
