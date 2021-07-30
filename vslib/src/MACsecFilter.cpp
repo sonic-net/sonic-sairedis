@@ -19,7 +19,7 @@ MACsecFilter::MACsecFilter(
     m_macsecDeviceEnable(false),
     m_macsecfd(0),
     m_macsecInterfaceName(macsecInterfaceName),
-    m_state(MACsecFilter::MACsecFilterState::IDLE)
+    m_state(MACsecFilter::MACsecFilterState::MACSEC_FILTER_STATE_IDLE)
 {
     SWSS_LOG_ENTER();
 
@@ -32,13 +32,17 @@ void MACsecFilter::enable_macsec_device(
     SWSS_LOG_ENTER();
 
     m_macsecDeviceEnable = enable;
+
     // The function, MACsecFilter::execute(), may be running in another thread,
     // the macsec device enable state cannot be changed in the busy state.
     // Because if the macsec device was deleted in the busy state,
     // the error value of function, MACsecFilter::forward, will be returned
     // to the caller of MACsecFilter::execute()
     // and the caller thread will exit due to the error return value.
-    while(get_state() != MACsecFilter::MACsecFilterState::IDLE);
+    while(get_state() == MACsecFilter::MACsecFilterState::MACSEC_FILTER_STATE_BUSY)
+    {
+        // Waiting the MACsec filter exit from the BUSY state
+    }
 }
 
 void MACsecFilter::set_macsec_fd(

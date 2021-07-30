@@ -10,11 +10,14 @@ namespace saivs
         public TrafficFilter
     {
     public:
-        enum MACsecFilterState
+
+        typedef enum _MACsecFilterState
         {
-            IDLE,
-            BUSY,
-        };
+            MACSEC_FILTER_STATE_IDLE,
+
+            MACSEC_FILTER_STATE_BUSY,
+
+        } _MACsecFilterState;
 
         MACsecFilter(
             _In_ const std::string &macsecInterfaceName);
