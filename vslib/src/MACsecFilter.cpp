@@ -66,7 +66,7 @@ TrafficFilter::FilterStatus MACsecFilter::execute(
 {
     SWSS_LOG_ENTER();
 
-    MACsecFilterStateGuard state_guard(m_state, MACsecFilter::MACsecFilterState::BUSY);
+    MACsecFilterStateGuard state_guard(m_state, MACsecFilter::MACsecFilterState::MACSEC_FILTER_STATE_BUSY);
     auto mac_hdr = static_cast<const ethhdr *>(buffer);
 
     if (ntohs(mac_hdr->h_proto) == EAPOL_ETHER_TYPE)
