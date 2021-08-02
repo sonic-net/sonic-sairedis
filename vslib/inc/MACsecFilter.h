@@ -47,6 +47,6 @@ namespace saivs
 
         const std::string m_macsecInterfaceName;
 
-        volatile MACsecFilterState m_state;
+        MACsecFilterState m_state;
     };
 }
