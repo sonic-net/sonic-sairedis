@@ -33,11 +33,11 @@ void MACsecFilter::enable_macsec_device(
 
     m_macsecDeviceEnable = enable;
 
-    // The function, MACsecFilter::execute(), may be running in another thread,
+    // The function, execute(), may be running in another thread,
     // the macsec device enable state cannot be changed in the busy state.
     // Because if the macsec device was deleted in the busy state,
-    // the error value of function, MACsecFilter::forward, will be returned
-    // to the caller of MACsecFilter::execute()
+    // the error value of function, forward, will be returned
+    // to the caller of execute()
     // and the caller thread will exit due to the error return value.
     while(get_state() == MACsecFilter::MACsecFilterState::MACSEC_FILTER_STATE_BUSY)
     {

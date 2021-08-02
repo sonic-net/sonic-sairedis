@@ -37,7 +37,7 @@ TrafficFilter::FilterStatus MACsecEgressFilter::forward(
         if (errno == EBADF)
         {
             // If the MACsec device was deleted by outside,
-            // this action shouldn't terminate the Main tap thread.
+            // this action should not terminate the Main tap thread.
             // So just report a warning.
             SWSS_LOG_WARN(
                 "ending thread for macsec device %s fd %d",
