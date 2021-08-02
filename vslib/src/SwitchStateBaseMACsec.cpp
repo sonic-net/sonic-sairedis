@@ -65,15 +65,34 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
 
         if (loadMACsecAttrsFromACLEntry(entryId, attr, SAI_OBJECT_TYPE_MACSEC_SA, macsecAttrs) == SAI_STATUS_SUCCESS)
         {
+            // In Linux MACsec model, Egress SA need to be created before ingress SA
             for (auto &macsecAttr : macsecAttrs)
             {
-                if (m_macsecManager.create_macsec_sa(macsecAttr))
+                if (macsecAttr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
                 {
-                    SWSS_LOG_NOTICE(
-                        "Enable MACsec SA %s:%u at the device %s",
-                        macsecAttr.m_sci.c_str(),
-                        static_cast<std::uint32_t>(macsecAttr.m_an),
-                        macsecAttr.m_macsecName.c_str());
+                    if (m_macsecManager.create_macsec_sa(macsecAttr))
+                    {
+                        SWSS_LOG_NOTICE(
+                            "Enable MACsec SA %s:%u at the device %s",
+                            macsecAttr.m_sci.c_str(),
+                            static_cast<std::uint32_t>(macsecAttr.m_an),
+                            macsecAttr.m_macsecName.c_str());
+                    }
+                }
+            }
+
+            for (auto &macsecAttr : macsecAttrs)
+            {
+                if (macsecAttr.m_direction == SAI_MACSEC_DIRECTION_INGRESS)
+                {
+                    if (m_macsecManager.create_macsec_sa(macsecAttr))
+                    {
+                        SWSS_LOG_NOTICE(
+                            "Enable MACsec SA %s:%u at the device %s",
+                            macsecAttr.m_sci.c_str(),
+                            static_cast<std::uint32_t>(macsecAttr.m_an),
+                            macsecAttr.m_macsecName.c_str());
+                    }
                 }
             }
         }
