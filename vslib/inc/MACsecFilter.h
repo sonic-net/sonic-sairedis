@@ -17,7 +17,7 @@ namespace saivs
 
             MACSEC_FILTER_STATE_BUSY,
 
-        } _MACsecFilterState;
+        } MACsecFilterState;
 
         MACsecFilter(
             _In_ const std::string &macsecInterfaceName);
