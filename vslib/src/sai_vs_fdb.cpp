@@ -1,7 +1,5 @@
 #include "sai_vs.h"
 
-using namespace saivs;
-
 static sai_status_t vs_flush_fdb_entries(
         _In_ sai_object_id_t switch_id,
         _In_ uint32_t attr_count,
