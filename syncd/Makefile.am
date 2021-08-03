@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/lib/inc -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
+AM_CXXFLAGS = -I$(top_srcdir)/lib/inc -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
 
 bin_PROGRAMS = syncd syncd_request_shutdown tests
 
@@ -59,21 +59,23 @@ libSyncd_a_SOURCES = \
 				PortMap.cpp \
 				PortMapParser.cpp
 
-libSyncd_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS) -std=c++14
+libSyncd_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libSyncd_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(SAIFLAGS) -std=c++14 $(CODE_COVERAGE_CXXFLAGS)
 
 syncd_SOURCES = main.cpp
-syncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
-syncd_LDADD = libSyncd.a ../lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq
+syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(SAIFLAGS) $(CODE_COVERAGE_CXXFLAGS)
+syncd_LDADD = libSyncd.a ../lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS)
 
 if SAITHRIFT
-libSyncd_a_CPPFLAGS += -DSAITHRIFT=yes
-syncd_CPPFLAGS += -DSAITHRIFT=yes
+libSyncd_a_CXXFLAGS += -DSAITHRIFT=yes
+syncd_CXXFLAGS += -DSAITHRIFT=yes
 syncd_LDADD += -lrpcserver -lthrift
 endif
 
 if sonic_asic_platform_mellanox
-syncd_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
-libSyncd_a_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
+syncd_CXXFLAGS += -DSAI_SUXXORT_UNINIT_DATA_PLANE_ON_REMOVAL
+libSyncd_a_CXXFLAGS += -DSAI_SUXXORT_UNINIT_DATA_PLANE_ON_REMOVAL
 endif
 
 libSyncdRequestShutdown_a_SOURCES = \
@@ -81,14 +83,17 @@ libSyncdRequestShutdown_a_SOURCES = \
 								 RequestShutdownCommandLineOptions.cpp \
 								 RequestShutdownCommandLineOptionsParser.cpp
 
-libSyncdRequestShutdown_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+libSyncdRequestShutdown_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libSyncdRequestShutdown_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
-syncd_request_shutdown_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a ../lib/src/libSaiRedis.a -lhiredis -lswsscommon -lpthread
+syncd_request_shutdown_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+syncd_request_shutdown_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a ../lib/src/libSaiRedis.a -lhiredis -lswsscommon -lpthread $(CODE_COVERAGE_LIBS)
 
 tests_SOURCES = tests.cpp
 
-tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq
+tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
+tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
+
 TESTS = tests

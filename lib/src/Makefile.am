@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
+AM_CXXFLAGS = -I$(top_srcdir) -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
 
 if DEBUG
 DBGFLAGS = -ggdb -D_DEBUG_
@@ -92,16 +92,18 @@ libsairedis_la_SOURCES = \
 						 sai_redis_vlan.cpp \
 						 sai_redis_wred.cpp
 
-libSaiRedis_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) -std=c++14
+libSaiRedis_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libSaiRedis_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -std=c++14 $(CODE_COVERAGE_CXXFLAGS)
 
-libsairedis_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) -std=c++14
-libsairedis_la_LIBADD = -lhiredis -lswsscommon libSaiRedis.a
+libsairedis_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libsairedis_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -std=c++14 $(CODE_COVERAGE_CXXFLAGS)
+libsairedis_la_LIBADD = -lhiredis -lswsscommon libSaiRedis.a $(CODE_COVERAGE_LIBS)
 
 
 bin_PROGRAMS = tests
 
 tests_SOURCES = tests.cpp
-tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread $(top_srcdir)/meta/libsaimetadata.la $(top_srcdir)/meta/libsaimeta.la libsairedis.la -lzmq
 
 TESTS = tests

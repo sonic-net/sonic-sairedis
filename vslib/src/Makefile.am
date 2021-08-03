@@ -1,4 +1,4 @@
-AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I/usr/include/libnl3 -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/lib/inc
+AM_CXXFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I/usr/include/libnl3 -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/lib/inc
 
 if DEBUG
 DBGFLAGS = -ggdb -D_DEBUG_
@@ -116,15 +116,17 @@ libsaivs_la_SOURCES = \
 					  sai_vs_vlan.cpp \
 					  sai_vs_wred.cpp
 
-libSaiVS_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+libSaiVS_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libSaiVS_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 
-libsaivs_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
-libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a
+libsaivs_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libsaivs_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a $(CODE_COVERAGE_LIBS)
 
 bin_PROGRAMS = tests
 
 tests_SOURCES = tests.cpp
-tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la $(top_srcdir)/meta/libsaimetadata.la $(top_srcdir)/meta/libsaimeta.la
 
 TESTS = tests
