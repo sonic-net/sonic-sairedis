@@ -379,6 +379,9 @@ namespace sairedis
 
             void requestLogRotate();
 
+            void recordComment(
+                    _In_ const std::string& comment);
+
         public: // static helper functions
 
             static std::string getTimestamp();

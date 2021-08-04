@@ -194,6 +194,11 @@ sai_status_t RedisRemoteSaiInterface::create(
 
         auto hwinfo = getHardwareInfo(attr_count, attr_list);
 
+        if (hwinfo.size())
+        {
+            m_recorder->recordComment("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO=" + hwinfo);
+        }
+
         switchId = m_virtualObjectIdManager->allocateNewSwitchObjectId(hwinfo);
 
         *objectId = switchId;

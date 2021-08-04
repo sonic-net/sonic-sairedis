@@ -1153,3 +1153,11 @@ void Recorder::recordBulkGenericResponse(
         recordLine("E|" + sai_serialize_status(status) + "|" + statuses);
     }
 }
+
+void Recorder::recordComment(
+        _In_ const std::string& comment)
+{
+    SWSS_LOG_ENTER();
+
+    recordLine("#|" + comment);
+}
