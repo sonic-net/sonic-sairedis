@@ -12,7 +12,8 @@ TimerWatchdog::TimerWatchdog(
         _In_ int64_t warnTimespan):
     m_run(true),
     m_warnTimespan(warnTimespan),
-    m_callback(nullptr)
+    m_callback(nullptr),
+    m_kco(nullptr)
 {
     SWSS_LOG_ENTER();
 
@@ -40,10 +41,12 @@ void TimerWatchdog::setStartTime()
     MUTEX;
     SWSS_LOG_ENTER();
 
-    do 
+    m_kco = nullptr;
+
+    do
     {
         m_startTimestamp = getTimeSinceEpoch();
-    } 
+    }
     while (m_startTimestamp <= m_endTimestamp); // make sure new start time is always past last end time
 }
 
@@ -63,22 +66,46 @@ void TimerWatchdog::setEndTime()
     if (span > m_warnTimespan)
     {
         SWSS_LOG_ERROR("event '%s' took %ld ms to execute", m_eventName.c_str(), span/1000);
-    }
-    else if (span > 50*1000)
-    {
-        SWSS_LOG_WARN("event '%s' took %ld ms to execute", m_eventName.c_str(), span/1000);
+
+        logEventData();
     }
 
     m_eventName = "";
+
+    m_kco = nullptr;
 }
 
-void TimerWatchdog::setEventName(
-        _In_ const std::string& eventName)
+void TimerWatchdog::logEventData()
+{
+    SWSS_LOG_ENTER();
+
+    // this api must be executed under mutex
+
+    if (m_kco)
+    {
+        const auto& key = kfvKey(*m_kco);
+        const auto& op = kfvOp(*m_kco);
+        const auto& values = kfvFieldsValues(*m_kco);
+
+        SWSS_LOG_ERROR("op: %s, key: %s", op.c_str(), key.c_str());
+
+        for (const auto &v: values)
+        {
+            SWSS_LOG_ERROR("fv: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+        }
+    }
+}
+
+void TimerWatchdog::setEventData(
+        _In_ const std::string& eventName,
+        _In_ const swss::KeyOpFieldsValuesTuple* kco)
 {
     MUTEX;
     SWSS_LOG_ENTER();
 
     m_eventName = eventName;
+
+    m_kco = kco;
 }
 
 void TimerWatchdog::setCallback(
@@ -105,7 +132,7 @@ void TimerWatchdog::threadFunction()
         // we make local copies, since executing functions can be so fast that
         // when we will read second time start timestamp it can be different
         // than previous one
- 
+
         int64_t start = m_startTimestamp;
         int64_t end = m_endTimestamp;
         int64_t now = getTimeSinceEpoch(); // now needs to be obtained after obtaining start
@@ -134,6 +161,8 @@ void TimerWatchdog::threadFunction()
                 // function probably hanged
 
                 SWSS_LOG_ERROR("time span WD exceeded %ld ms for %s", span/1000, m_eventName.c_str());
+
+                logEventData();
             }
 
             continue;

@@ -318,7 +318,7 @@ sai_status_t Syncd::processSingleEvent(
         return SAI_STATUS_SUCCESS;
     }
 
-    WatchdogScope ws(m_timerWatchdog, op + ":" + key);
+    WatchdogScope ws(m_timerWatchdog, op + ":" + key, &kco);
 
     if (op == REDIS_ASIC_STATE_COMMAND_CREATE)
         return processQuadEvent(SAI_COMMON_API_CREATE, kco);
@@ -1959,7 +1959,7 @@ void Syncd::processFlexCounterGroupEvent( // TODO must be moved to go via ASIC c
     auto& op = kfvOp(kco);
     auto& values = kfvFieldsValues(kco);
 
-    WatchdogScope ws(m_timerWatchdog, op + ":" + groupName);
+    WatchdogScope ws(m_timerWatchdog, op + ":" + groupName, &kco);
 
     if (op == SET_COMMAND)
     {
@@ -1989,7 +1989,7 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
     auto& key = kfvKey(kco);
     auto& op = kfvOp(kco);
 
-    WatchdogScope ws(m_timerWatchdog, op + ":" + key);
+    WatchdogScope ws(m_timerWatchdog, op + ":" + key, &kco);
 
     auto delimiter = key.find_first_of(":");
 
@@ -4575,7 +4575,7 @@ syncd_restart_type_t Syncd::handleRestartQuery(
 
     restartQuery.pop(op, data, values);
 
-    m_timerWatchdog.setEventName(op + ":" + data);
+    m_timerWatchdog.setEventData(op + ":" + data);
 
     SWSS_LOG_NOTICE("received %s switch shutdown event", op.c_str());
 
