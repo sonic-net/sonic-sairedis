@@ -218,6 +218,13 @@ sai_status_t Sai::initialize(
         sc->m_useTapDevice = useTapDevice;
         sc->m_laneMap = m_laneMapContainer->getLaneMap(sc->m_switchIndex);
 
+        if (sc->m_laneMap == nullptr)
+        {
+            SWSS_LOG_WARN("lane map for switch index %u is empty, loading default map (may have ifname conflict)", sc->m_switchIndex);
+
+            sc->m_laneMap = LaneMap::getDefaultLaneMap(sc->m_switchIndex);
+        }
+
         if (m_fabricLaneMapContainer)
         {
             sc->m_fabricLaneMap = m_fabricLaneMapContainer->getLaneMap(sc->m_switchIndex);
@@ -232,7 +239,7 @@ sai_status_t Sai::initialize(
 
     // TODO move to Context class
 
-    m_vsSai = std::make_shared<VirtualSwitchSaiInterface>(scc);
+    m_vsSai = std::make_shared<VirtualSwitchSaiInterface>(contextConfig);
 
     m_meta = std::make_shared<saimeta::Meta>(m_vsSai);
 

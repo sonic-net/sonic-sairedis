@@ -2,12 +2,12 @@
 
 #include "SwitchStateBase.h"
 #include "WarmBootState.h"
-#include "SwitchConfigContainer.h"
 #include "RealObjectIdManager.h"
 #include "SwitchStateBase.h"
 #include "EventQueue.h"
 #include "EventPayloadPacket.h"
 #include "EventPayloadNetLinkMsg.h"
+#include "ContextConfig.h"
 
 #include "lib/inc/SaiInterface.h"
 
@@ -70,7 +70,7 @@ namespace saivs
         public:
 
             VirtualSwitchSaiInterface(
-                    _In_ const std::shared_ptr<SwitchConfigContainer> scc);
+                    _In_ std::shared_ptr<ContextConfig> contextConfig);
 
             virtual ~VirtualSwitchSaiInterface();
 
@@ -394,7 +394,7 @@ namespace saivs
 
             std::map<sai_object_id_t, WarmBootState> m_warmBootState;
 
-            std::shared_ptr<SwitchConfigContainer> m_switchConfigContainer;
+            std::shared_ptr<ContextConfig> m_contextConfig;
 
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
 

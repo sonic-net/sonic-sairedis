@@ -36,6 +36,7 @@ namespace saimeta
              * @brief Construct key based on attributes marked as keys.
              */
             static std::string constructKey(
+                    _In_ sai_object_id_t switchId,
                     _In_ const sai_object_meta_key_t& metaKey,
                     _In_ uint32_t attrCount,
                     _In_ const sai_attribute_t* attrList);

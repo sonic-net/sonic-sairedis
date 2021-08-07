@@ -92,9 +92,9 @@ libsairedis_la_SOURCES = \
 						 sai_redis_vlan.cpp \
 						 sai_redis_wred.cpp
 
-libSaiRedis_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+libSaiRedis_a_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) -std=c++14
 
-libsairedis_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+libsairedis_la_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) -std=c++14
 libsairedis_la_LIBADD = -lhiredis -lswsscommon libSaiRedis.a
 
 

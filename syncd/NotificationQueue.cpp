@@ -39,7 +39,7 @@ bool NotificationQueue::enqueue(
      */
     auto queueSize = m_queue.size();
 
-    if (queueSize < m_queueSizeLimit || kfvOp(item) != SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT) // TODO use enum instead of strings
+    if (queueSize < m_queueSizeLimit || kfvKey(item) != SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT) // TODO use enum instead of strings
     {
         m_queue.push(item);
 

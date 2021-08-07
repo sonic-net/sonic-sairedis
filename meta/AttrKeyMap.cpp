@@ -53,11 +53,18 @@ bool AttrKeyMap::attrKeyExists(
 }
 
 std::string AttrKeyMap::constructKey(
+        _In_ sai_object_id_t switchId,
         _In_ const sai_object_meta_key_t& metaKey,
         _In_ uint32_t attrCount,
         _In_ const sai_attribute_t* attrList)
 {
     SWSS_LOG_ENTER();
+
+    if (switchId == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_THROW("switchId is NULL for %s",
+                sai_serialize_object_meta_key(metaKey).c_str());
+    }
 
     // Use map to make sure that keys will be always sorted by attr id.
 
@@ -133,7 +140,9 @@ std::string AttrKeyMap::constructKey(
         keys[md->attrid] = name;
     }
 
-    std::string key;
+    // switch ID is added, since same key pattern is allowed on different switch objects
+
+    std::string key = sai_serialize_object_id(switchId) + ";";
 
     for (auto& k: keys)
     {

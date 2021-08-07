@@ -30,13 +30,14 @@ using namespace saimeta;
 using namespace sairediscommon;
 
 VirtualSwitchSaiInterface::VirtualSwitchSaiInterface(
-        _In_ const std::shared_ptr<SwitchConfigContainer> scc)
+        _In_ std::shared_ptr<ContextConfig> contextConfig):
+    m_contextConfig(contextConfig)
 {
     SWSS_LOG_ENTER();
 
-    m_realObjectIdManager = std::make_shared<RealObjectIdManager>(0, scc); // TODO fix global context
-
-    m_switchConfigContainer = scc;
+    m_realObjectIdManager = std::make_shared<RealObjectIdManager>(
+            m_contextConfig->m_guid,
+            m_contextConfig->m_scc);
 }
 
 VirtualSwitchSaiInterface::~VirtualSwitchSaiInterface()
@@ -625,7 +626,7 @@ sai_status_t VirtualSwitchSaiInterface::create(
     {
         auto switchIndex = RealObjectIdManager::getSwitchIndex(switchId);
 
-        auto config = m_switchConfigContainer->getConfig(switchIndex);
+        auto config = m_contextConfig->m_scc->getConfig(switchIndex);
 
         if (config == nullptr)
         {

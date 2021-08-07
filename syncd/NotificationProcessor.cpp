@@ -246,7 +246,7 @@ bool NotificationProcessor::check_fdb_event_notification_data(
 
     if (!m_translator->checkRidExists(data.fdb_entry.switch_id) || data.fdb_entry.switch_id == SAI_NULL_OBJECT_ID)
     {
-        SWSS_LOG_ERROR("switch_id RID 0x%" PRIx64 " is not present on local ASIC DB: %s", data.fdb_entry.bv_id,
+        SWSS_LOG_ERROR("switch_id RID 0x%" PRIx64 " is not present on local ASIC DB: %s", data.fdb_entry.switch_id,
                 sai_serialize_fdb_entry(data.fdb_entry).c_str());
 
         result = false;

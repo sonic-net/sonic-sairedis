@@ -157,6 +157,9 @@ namespace sairedis
                     _In_ sai_status_t status,
                     _In_ const std::vector<swss::FieldValueTuple>& arguments);
 
+            void recordGenericResponse(
+                    _In_ sai_status_t status);
+
         public: // create ENTRY
 
             SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(fdb_entry);
@@ -259,6 +262,11 @@ namespace sairedis
                     _In_ const std::vector<swss::FieldValueTuple>& arguments);
 
             void recordBulkGenericSetResponse(
+                    _In_ sai_status_t status,
+                    _In_ uint32_t objectCount,
+                    _In_ const sai_status_t *objectStatuses);
+
+            void recordBulkGenericResponse(
                     _In_ sai_status_t status,
                     _In_ uint32_t objectCount,
                     _In_ const sai_status_t *objectStatuses);
@@ -370,6 +378,9 @@ namespace sairedis
                     _In_ const sai_attribute_t &attr);
 
             void requestLogRotate();
+
+            void recordComment(
+                    _In_ const std::string& comment);
 
         public: // static helper functions
 

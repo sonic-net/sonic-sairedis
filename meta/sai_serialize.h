@@ -1,5 +1,4 @@
-#ifndef __SAI_SERIALIZE__
-#define __SAI_SERIALIZE__
+#pragma once
 
 extern "C" {
 #include "sai.h"
@@ -152,6 +151,11 @@ std::string sai_serialize_switch_shutdown_request(
 std::string sai_serialize_enum(
         _In_ const int32_t value,
         _In_ const sai_enum_metadata_t* meta);
+
+std::string sai_serialize_enum_list(
+        _In_ const sai_s32_list_t& list,
+        _In_ const sai_enum_metadata_t* meta,
+        _In_ bool countOnly);
 
 std::string sai_serialize_number(
         _In_ uint32_t number,
@@ -381,5 +385,3 @@ sai_redis_notify_syncd_t sai_deserialize_redis_notify_syncd(
 void sai_deserialize_redis_communication_mode(
         _In_ const std::string& s,
         _Out_ sai_redis_communication_mode_t& value);
-
-#endif // __SAI_SERIALIZE__

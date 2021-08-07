@@ -1032,36 +1032,7 @@ void Recorder::recordQueryAattributeEnumValuesCapability(
 {
     SWSS_LOG_ENTER();
 
-    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
-
-    if (meta == NULL)
-    {
-        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d",
-                sai_serialize_object_type(objectType).c_str(), attrId);
-        return;
-    }
-
-    auto key = sai_serialize_object_type(SAI_OBJECT_TYPE_SWITCH) + ":" + sai_serialize_object_id(switchId);
-
-    sai_attribute_t attr;
-
-    attr.id = attrId;
-    attr.value.s32list = *enumValuesCapability;
-
-    auto values = SaiAttributeList::serialize_attr_list(objectType, 1, &attr, true); // we only need to serialize count
-
-    SWSS_LOG_DEBUG("Query arguments: switch %s, attribute: %s, count: %u", key.c_str(), meta->attridname, enumValuesCapability->count);
-
-    recordQueryAttributeEnumValuesCapability(key, values);
-}
-
-void Recorder::recordQueryAattributeEnumValuesCapabilityResponse(
-        _In_ sai_status_t status,
-        _In_ sai_object_type_t objectType,
-        _In_ sai_attr_id_t attrId,
-        _In_ const sai_s32_list_t* enumValuesCapability)
-{
-    SWSS_LOG_ENTER();
+    std::vector<swss::FieldValueTuple> values;
 
     auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
 
@@ -1078,20 +1049,53 @@ void Recorder::recordQueryAattributeEnumValuesCapabilityResponse(
         return;
     }
 
+    auto key = sai_serialize_object_type(SAI_OBJECT_TYPE_SWITCH) + ":" + sai_serialize_object_id(switchId);
+
+    auto str_attr_id = sai_serialize_attr_id(*meta);
+    auto str_enum_list = sai_serialize_enum_list(*enumValuesCapability, meta->enummetadata, true); // we only need to serialize count
+
+    values.emplace_back(str_attr_id, str_enum_list);
+
+    SWSS_LOG_DEBUG("Query arguments: switch %s, attribute: %s, count: %u", key.c_str(), meta->attridname, enumValuesCapability->count);
+
+    recordQueryAttributeEnumValuesCapability(key, values);
+}
+
+void Recorder::recordQueryAattributeEnumValuesCapabilityResponse(
+        _In_ sai_status_t status,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
+        _In_ const sai_s32_list_t* enumValuesCapability)
+{
+    SWSS_LOG_ENTER();
+
     std::vector<swss::FieldValueTuple> values;
 
-    sai_attribute_t attr;
+    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
 
-    attr.id = attrId;
-    attr.value.s32list = *enumValuesCapability;
-
-    if (status == SAI_STATUS_SUCCESS)
+    if (meta == NULL)
     {
-        values = SaiAttributeList::serialize_attr_list(objectType, 1, &attr, false);
+        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d",
+                sai_serialize_object_type(objectType).c_str(),
+                attrId);
+
+        return;
     }
-    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+
+    if (!meta->enummetadata)
     {
-        values = SaiAttributeList::serialize_attr_list(objectType, 1, &attr, true);
+        SWSS_LOG_ERROR("Attribute %s is not enum/enumlist!", meta->attridname);
+        return;
+    }
+
+    bool countOnly = (status == SAI_STATUS_BUFFER_OVERFLOW);
+
+    if (status == SAI_STATUS_SUCCESS || status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        auto str_attr_id = sai_serialize_attr_id(*meta);
+        auto str_enum_list = sai_serialize_enum_list(*enumValuesCapability, meta->enummetadata, countOnly);
+
+        values.emplace_back(str_attr_id, str_enum_list);
     }
 
     recordQueryAttributeEnumValuesCapabilityResponse(status, values);
@@ -1112,4 +1116,48 @@ void Recorder::recordStats(
     SWSS_LOG_ENTER();
 
     m_recordStats = enable;
+}
+
+
+void Recorder::recordGenericResponse(
+        _In_ sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        // record only when response is not success
+
+        recordLine("E|" + sai_serialize_status(status));
+    }
+}
+
+void Recorder::recordBulkGenericResponse(
+        _In_ sai_status_t status,
+        _In_ uint32_t objectCount,
+        _In_ const sai_status_t *objectStatuses)
+{
+    SWSS_LOG_ENTER();
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        // record only when response is not success
+
+        std::string statuses = "";
+
+        for (uint32_t i = 0; i < objectCount; i++)
+        {
+            statuses += "|" + sai_serialize_status(objectStatuses[i]);
+        }
+
+        recordLine("E|" + sai_serialize_status(status) + "|" + statuses);
+    }
+}
+
+void Recorder::recordComment(
+        _In_ const std::string& comment)
+{
+    SWSS_LOG_ENTER();
+
+    recordLine("#|" + comment);
 }

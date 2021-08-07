@@ -34,7 +34,7 @@ def physyncd_spawn(gearbox_config):
 
     for i, phy in enumerate(gearbox_config['phys'], 1):
         cmd = '/usr/bin/syncd -p /etc/sai.d/pai.profile -x /usr/share/sonic/hwsku/context_config.json -g {}"'.format(i)
-        proc = subprocess.Popen(cmd, close_fds=True)
+        proc = subprocess.Popen(cmd.split(), close_fds=True)
         proc_list.append(proc)
         syslog.syslog(syslog.LOG_INFO, 'Spawned PID {}'.format(proc.pid))
 

@@ -8,6 +8,8 @@ extern "C" {
 #include "swss/table.h"
 #include "swss/tokenize.h"
 
+#include "lib/inc/Recorder.h"
+
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
 
@@ -17,8 +19,12 @@ extern "C" {
 #include <chrono>
 #include <vector>
 
+#define ASSERT_EQ(a,b) if ((a) != (b)) { SWSS_LOG_THROW("ASSERT EQ FAILED: " #a " != " #b); }
+
 using namespace saimeta;
 using namespace sairedis;
+
+const std::string SairedisRecFilename = "sairedis.rec";
 
 sai_object_type_t sai_object_type_query(
         _In_ sai_object_id_t objectId)
@@ -761,6 +767,158 @@ static sai_object_type_t deserialize_object_type(
     return object_type;
 }
 
+static std::vector<std::string> parseFirstRecordedAPI()
+{
+    SWSS_LOG_ENTER();
+
+    std::ifstream infile(SairedisRecFilename);
+    std::string line;
+
+    // skip first line
+    std::getline(infile, line);
+    std::getline(infile, line);
+
+    std::vector<std::string> tokens;
+    std::stringstream sstream(line);
+    std::string token;
+
+    const auto delimiter = '|';
+
+    // skip first, it is a timestamp
+    std::getline(sstream, token, delimiter);
+
+    while(std::getline(sstream, token, delimiter))
+    {
+       tokens.push_back(token);
+    }
+
+    return tokens;
+}
+
+static void test_recorder_enum_value_capability_query_request(
+    _In_ sai_object_id_t switch_id,
+    _In_ sai_object_type_t object_type,
+    _In_ sai_attr_id_t attr_id,
+    _In_ const std::vector<std::string>& expectedOutput)
+{
+    SWSS_LOG_ENTER();
+
+    remove(SairedisRecFilename.c_str());
+
+    Recorder recorder;
+
+    recorder.enableRecording(true);
+
+    sai_s32_list_t enum_values_capability { .count = 0, .list = nullptr };
+
+    recorder.recordQueryAattributeEnumValuesCapability(
+        switch_id,
+        object_type,
+        attr_id,
+        &enum_values_capability
+    );
+
+    auto tokens = parseFirstRecordedAPI();
+
+    ASSERT_EQ(tokens, expectedOutput);
+}
+
+static void test_recorder_enum_value_capability_query_response(
+    _In_ sai_status_t status,
+    _In_ sai_object_type_t object_type,
+    _In_ sai_attr_id_t attr_id,
+    _In_ std::vector<int32_t> enumList,
+    _In_ const std::vector<std::string>& expectedOutput)
+{
+    SWSS_LOG_ENTER();
+
+    remove(SairedisRecFilename.c_str());
+
+    Recorder recorder;
+
+    recorder.enableRecording(true);
+
+    sai_s32_list_t enum_values_capability;
+
+    enum_values_capability.count = static_cast<int32_t>(enumList.size());
+    enum_values_capability.list = enumList.data();
+
+    recorder.recordQueryAattributeEnumValuesCapabilityResponse(
+        status,
+        object_type,
+        attr_id,
+        &enum_values_capability
+    );
+
+    auto tokens = parseFirstRecordedAPI();
+
+    ASSERT_EQ(tokens, expectedOutput);
+}
+
+static void test_recorder_enum_value_capability_query()
+{
+    SWSS_LOG_ENTER();
+
+    test_recorder_enum_value_capability_query_request(
+        1,
+        SAI_OBJECT_TYPE_DEBUG_COUNTER,
+        SAI_DEBUG_COUNTER_ATTR_TYPE,
+        {
+            "q",
+            "attribute_enum_values_capability",
+            "SAI_OBJECT_TYPE_SWITCH:oid:0x1",
+            "SAI_DEBUG_COUNTER_ATTR_TYPE=0",
+        }
+    );
+
+    test_recorder_enum_value_capability_query_response(
+        SAI_STATUS_SUCCESS,
+        SAI_OBJECT_TYPE_DEBUG_COUNTER,
+        SAI_DEBUG_COUNTER_ATTR_TYPE,
+        {
+            SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,
+            SAI_DEBUG_COUNTER_TYPE_PORT_OUT_DROP_REASONS,
+            SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS,
+            SAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS,
+        },
+        {
+            "Q",
+            "attribute_enum_values_capability",
+            "SAI_STATUS_SUCCESS",
+            "SAI_DEBUG_COUNTER_ATTR_TYPE=4:SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,SAI_DEBUG_COUNTER_TYPE_PORT_OUT_DROP_REASONS,"
+            "SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS,SAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS",
+        }
+    );
+
+    test_recorder_enum_value_capability_query_request(
+        1,
+        SAI_OBJECT_TYPE_DEBUG_COUNTER,
+        SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST,
+        {
+            "q",
+            "attribute_enum_values_capability",
+            "SAI_OBJECT_TYPE_SWITCH:oid:0x1",
+            "SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST=0",
+        }
+    );
+
+    test_recorder_enum_value_capability_query_response(
+        SAI_STATUS_SUCCESS,
+        SAI_OBJECT_TYPE_DEBUG_COUNTER,
+        SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST,
+        {
+            SAI_IN_DROP_REASON_L2_ANY,
+            SAI_IN_DROP_REASON_L3_ANY
+        },
+        {
+            "Q",
+            "attribute_enum_values_capability",
+            "SAI_STATUS_SUCCESS",
+            "SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST=2:SAI_IN_DROP_REASON_L2_ANY,SAI_IN_DROP_REASON_L3_ANY"
+        }
+    );
+}
+
 void test_tokenize_bulk_route_entry()
 {
     SWSS_LOG_ENTER();
@@ -880,6 +1038,10 @@ int main()
 
     test_serialize_bulk_create_route_entry(10,10000);
     test_serialize_bulk_create_oid(10,10000);
+
+    std::cout << " * test recorder" << std::endl;
+
+    test_recorder_enum_value_capability_query();
 
     return 0;
 }

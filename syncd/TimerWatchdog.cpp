@@ -4,6 +4,8 @@
 
 #include <chrono>
 
+#define MUTEX std::lock_guard<std::mutex> _lock(m_mutex);
+
 using namespace syncd;
 
 TimerWatchdog::TimerWatchdog(
@@ -35,6 +37,7 @@ TimerWatchdog::~TimerWatchdog()
 
 void TimerWatchdog::setStartTime()
 {
+    MUTEX;
     SWSS_LOG_ENTER();
 
     do 
@@ -42,11 +45,11 @@ void TimerWatchdog::setStartTime()
         m_startTimestamp = getTimeSinceEpoch();
     } 
     while (m_startTimestamp <= m_endTimestamp); // make sure new start time is always past last end time
-
 }
 
 void TimerWatchdog::setEndTime()
 {
+    MUTEX;
     SWSS_LOG_ENTER();
 
     do
@@ -54,11 +57,34 @@ void TimerWatchdog::setEndTime()
         m_endTimestamp = getTimeSinceEpoch();
     }
     while (m_endTimestamp <= m_startTimestamp); // make sure new end time is always past last start time
+
+    auto span = m_endTimestamp - m_startTimestamp;
+
+    if (span > m_warnTimespan)
+    {
+        SWSS_LOG_ERROR("event '%s' took %ld ms to execute", m_eventName.c_str(), span/1000);
+    }
+    else if (span > 50*1000)
+    {
+        SWSS_LOG_WARN("event '%s' took %ld ms to execute", m_eventName.c_str(), span/1000);
+    }
+
+    m_eventName = "";
+}
+
+void TimerWatchdog::setEventName(
+        _In_ const std::string& eventName)
+{
+    MUTEX;
+    SWSS_LOG_ENTER();
+
+    m_eventName = eventName;
 }
 
 void TimerWatchdog::setCallback(
         _In_ std::function<void(uint64_t)> callback)
 {
+    MUTEX;
     SWSS_LOG_ENTER();
 
     m_callback = callback;
@@ -74,6 +100,8 @@ void TimerWatchdog::threadFunction()
     {
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
+        MUTEX; // to protect event name
+
         // we make local copies, since executing functions can be so fast that
         // when we will read second time start timestamp it can be different
         // than previous one
@@ -86,8 +114,6 @@ void TimerWatchdog::threadFunction()
 
         if (span < 0 && start > m_lastCheckTimestamp)
         {
-            SWSS_LOG_NOTICE(" span < 0 = %ld at %ld", span, now);
-
             // this means start > end, so new function is currently executing,
             // or that function hanged, so see how long that function is
             // executing, this negative span can be arbitrary long even hours,
@@ -96,7 +122,7 @@ void TimerWatchdog::threadFunction()
 
             span = now - start; // this must be always non negative
 
-            SWSS_LOG_NOTICE(" new span  = %ld", span);
+            SWSS_LOG_NOTICE("time span %ld ms for '%s'", span/1000, m_eventName.c_str()); // TODO remove this
 
             if (span < 0)
                 SWSS_LOG_THROW("negative span 'now - start': %ld - %ld", now, start);
@@ -107,12 +133,7 @@ void TimerWatchdog::threadFunction()
 
                 // function probably hanged
 
-                SWSS_LOG_WARN("time (span < 0) watchdog exceeded %ld microseconds", span);
-
-                auto callback = m_callback;
-
-                if (callback)
-                    callback(span);
+                SWSS_LOG_ERROR("time span WD exceeded %ld ms for %s", span/1000, m_eventName.c_str());
             }
 
             continue;
