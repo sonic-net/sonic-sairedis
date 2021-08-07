@@ -1743,7 +1743,7 @@ void FlexCounter::runPlugins(
     {
         std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval / 1000)
+        std::to_string(m_pollInterval * 1000)
     };
 
     std::vector<std::string> portList;
