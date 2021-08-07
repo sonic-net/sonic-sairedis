@@ -17,6 +17,7 @@
 #include "BreakConfig.h"
 #include "NotificationProducerBase.h"
 #include "SelectableChannel.h"
+#include "TimerWatchdog.h"
 
 #include "meta/SaiAttributeList.h"
 
@@ -489,5 +490,7 @@ namespace syncd
             std::shared_ptr<sairedis::ContextConfig> m_contextConfig;
 
             std::shared_ptr<BreakConfig> m_breakConfig;
+
+            TimerWatchdog m_timerWatchdog;
     };
 }

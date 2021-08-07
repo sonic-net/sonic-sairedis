@@ -255,9 +255,6 @@ config_syncd_nephos()
 config_syncd_vs()
 {
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
-    if [ -f $HWSKU_DIR/context_config.json ]; then
-        CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
-    fi
 }
 
 config_syncd_innovium()
@@ -267,12 +264,6 @@ config_syncd_innovium()
     export II_ROOT="/var/log/invm"
     export II_APPEND_LOG=1
     mkdir -p $II_ROOT
-}
-
-config_syncd_cisco_8000()
-{
-    export BASE_OUTPUT_DIR=/opt/cisco/silicon-one
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
 config_syncd()
@@ -300,8 +291,6 @@ config_syncd()
         config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
         config_syncd_innovium
-    elif [ "$SONIC_ASIC_TYPE" == "cisco-8000" ]; then
-        config_syncd_cisco_8000
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1

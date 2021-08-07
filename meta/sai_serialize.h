@@ -1,5 +1,4 @@
-#ifndef __SAI_SERIALIZE__
-#define __SAI_SERIALIZE__
+#pragma once
 
 extern "C" {
 #include "sai.h"
@@ -386,5 +385,3 @@ sai_redis_notify_syncd_t sai_deserialize_redis_notify_syncd(
 void sai_deserialize_redis_communication_mode(
         _In_ const std::string& s,
         _Out_ sai_redis_communication_mode_t& value);
-
-#endif // __SAI_SERIALIZE__

@@ -616,8 +616,6 @@ void SwitchStateBase::send_fdb_event_notification(
 
     sn.on_fdb_event = (sai_fdb_event_notification_fn)attr.value.ptr;
 
-    attr.id = SAI_PORT_ATTR_OPER_STATUS;
-
     SWSS_LOG_INFO("send event SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY %s", str.c_str());
 
     auto ntf = std::make_shared<sairedis::NotificationFdbEvent>(str);

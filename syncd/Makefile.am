@@ -16,6 +16,7 @@ endif
 
 noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
 libSyncd_a_SOURCES = \
+				WatchdogScope.cpp \
 				SaiSwitchInterface.cpp \
 				ZeroMQSelectableChannel.cpp \
 				RedisSelectableChannel.cpp \

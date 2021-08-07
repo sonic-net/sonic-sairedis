@@ -194,6 +194,11 @@ sai_status_t RedisRemoteSaiInterface::create(
 
         auto hwinfo = getHardwareInfo(attr_count, attr_list);
 
+        if (hwinfo.size())
+        {
+            m_recorder->recordComment("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO=" + hwinfo);
+        }
+
         switchId = m_virtualObjectIdManager->allocateNewSwitchObjectId(hwinfo);
 
         *objectId = switchId;
@@ -741,6 +746,8 @@ sai_status_t RedisRemoteSaiInterface::waitForResponse(
         swss::KeyOpFieldsValuesTuple kco;
 
         auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
+
+        m_recorder->recordGenericResponse(status);
 
         return status;
     }
@@ -1337,7 +1344,7 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
 
         if (values.size () != object_count)
         {
-            SWSS_LOG_THROW("wrong number of counters, got %zu, expected %u", values.size(), object_count);
+            SWSS_LOG_THROW("wrong number of statuses, got %zu, expected %u", values.size(), object_count);
         }
 
         // deserialize statuses for all objects
@@ -1346,6 +1353,8 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
         {
             sai_deserialize_status(fvField(values[idx]), object_statuses[idx]);
         }
+
+        m_recorder->recordBulkGenericResponse(status, object_count, object_statuses);
 
         return status;
     }

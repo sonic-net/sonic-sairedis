@@ -23,6 +23,8 @@ namespace sairedis
             void insert(
                     _In_ std::shared_ptr<SwitchConfig> config);
 
+            bool hasConflict(
+                    _In_ std::shared_ptr<const ContextConfig> ctx) const;
 
         public: // TODO to private
 

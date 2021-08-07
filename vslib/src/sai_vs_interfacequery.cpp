@@ -1,8 +1,7 @@
 #include "sai_vs.h"
+#include "Sai.h"
 
-using namespace saivs;
-
-std::shared_ptr<Sai> vs_sai = std::make_shared<Sai>();
+std::shared_ptr<sairedis::SaiInterface> vs_sai = std::make_shared<saivs::Sai>();
 
 sai_status_t sai_api_initialize(
         _In_ uint64_t flags,
