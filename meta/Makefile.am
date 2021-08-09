@@ -10,46 +10,6 @@ endif
 
 lib_LTLIBRARIES = libsaimeta.la libsaimetadata.la
 
-WARN = \
-	-ansi \
-	-Wall \
-	-Wcast-align \
-	-Wcast-qual \
-	-Wconversion \
-	-Wdisabled-optimization \
-	-Werror \
-	-Wextra \
-	-Wextra \
-	-Wfloat-equal \
-	-Wformat=2 \
-	-Wformat-nonliteral \
-	-Wformat-security \
-	-Wformat-y2k \
-	-Wimport \
-	-Winit-self \
-	-Winline \
-	-Winvalid-pch \
-	-Wmissing-field-initializers \
-	-Wmissing-format-attribute \
-	-Wmissing-include-dirs \
-	-Wmissing-noreturn \
-	-Wno-aggregate-return \
-	-Wno-padded \
-	-Wno-switch-enum \
-	-Wno-unused-parameter \
-	-Wpacked \
-	-Wpointer-arith \
-	-Wredundant-decls \
-	-Wshadow \
-	-Wstack-protector \
-	-Wstrict-aliasing=3 \
-	-Wswitch \
-	-Wswitch-default \
-	-Wunreachable-code \
-	-Wunused \
-	-Wvariadic-macros \
-	-Wwrite-strings
-
 # we are not adding CPPFLAGS since they are added
 # automatic to each C preprocessor, and currently
 # we add -std=c++11 flag to CXXFLAGS_COMMON which
@@ -65,12 +25,12 @@ libsaimeta_la_SOURCES =  \
 					  $(top_srcdir)/SAI/meta/saiserialize.c
 
 libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-libsaimeta_la_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) $(WARN) $(CODE_COVERAGE_CFLAGS)
+libsaimeta_la_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) -ansi $(CODE_COVERAGE_CFLAGS)
 
 $(top_srcdir)/SAI/meta/saimetadata.h $(top_srcdir)/SAI/meta/saimetadata.c: saimeta-gen
 
 saimeta-gen:
-	make -C $(top_srcdir)/SAI/meta
+	make -C $(top_srcdir)/SAI/meta saimetadata.c saimetadata.h
 
 clean-local:
 	make -C $(top_srcdir)/SAI/meta clean
