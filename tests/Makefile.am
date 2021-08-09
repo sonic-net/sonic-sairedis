@@ -10,7 +10,7 @@ endif
 
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 
-vssyncd_SOURCES = ../syncd/main.cpp
+vssyncd_SOURCES = main.cpp
 
 vssyncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 vssyncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(SAIFLAGS) $(CODE_COVERAGE_CXXFLAGS)
