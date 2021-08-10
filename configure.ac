@@ -29,6 +29,10 @@ AM_CONDITIONAL(DEBUG, test x$debug = xtrue)
 
 AM_COND_IF([DEBUG], AC_SUBST(DBGFLAGS, "-ggdb -DDEBUG"), AC_SUBST(DBGFLAGS, "-g"))
 
+AM_COND_IF([DEBUG],
+        [AM_COND_IF([CODE_COVERAGE_ENABLED],
+            AC_MSG_ERROR("Flag conflict --enable-debug 'DEBUG' and --enable-code-coverage 'NDEBUG'"))])
+
 AC_ARG_WITH(sai,
 [  --with-sai=vs           compiling against specific SAI],
 [case "${withval}" in
