@@ -1,6 +1,6 @@
 #include "VirtualSwitchSaiInterface.h"
 
-#include "../../lib/inc/PerformanceIntervalTimer.h"
+#include "lib/inc/PerformanceIntervalTimer.h"
 
 #include "swss/logger.h"
 #include "swss/exec.h"

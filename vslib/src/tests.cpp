@@ -9,7 +9,7 @@
 #include "swss/schema.h"
 #include "swss/notificationproducer.h"
 
-#include "../../meta/sai_serialize.h"
+#include "meta/sai_serialize.h"
 
 extern "C" {
 #include <sai.h>

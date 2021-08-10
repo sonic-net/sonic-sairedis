@@ -9,7 +9,7 @@ extern "C" {
 #include <sai.h>
 }
 
-#include "../lib/inc/Sai.h"
+#include "lib/inc/Sai.h"
 #include "Syncd.h"
 #include "MetadataLogger.h"
 #include "sairedis.h"
