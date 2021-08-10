@@ -1,6 +1,7 @@
 #include "PerformanceIntervalTimer.h"
 
 #include "swss/logger.h"
+
 #include <inttypes.h>
 
 using namespace sairediscommon;

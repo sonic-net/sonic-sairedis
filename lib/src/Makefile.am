@@ -17,7 +17,6 @@ libSaiRedis_a_SOURCES = \
 						 ClientServerSai.cpp \
 						 ClientSai.cpp \
 						 ServerSai.cpp \
-						 PerformanceIntervalTimer.cpp \
 						 ZeroMQChannel.cpp \
 						 Channel.cpp \
 						 Context.cpp \

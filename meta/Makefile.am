@@ -41,6 +41,7 @@ libsaimeta_la_SOURCES = \
 				SaiObjectCollection.cpp \
 				PortRelatedSet.cpp \
 				MetaKeyHasher.cpp \
+				PerformanceIntervalTimer.cpp \
 				Meta.cpp
 
 libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
