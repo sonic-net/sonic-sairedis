@@ -71,7 +71,6 @@ libsaivs_la_SOURCES = \
 					  sai_vs_bridge.cpp \
 					  sai_vs_buffer.cpp \
 					  sai_vs_counter.cpp \
-					  sai_vs.cpp \
 					  sai_vs_dtel.cpp \
 					  sai_vs_hash.cpp \
 					  sai_vs_ipmc.cpp \
