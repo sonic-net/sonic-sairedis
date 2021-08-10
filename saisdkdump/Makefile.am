@@ -2,12 +2,6 @@ AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_s
 
 bin_PROGRAMS = saisdkdump
 
-if DEBUG
-DBGFLAGS = -ggdb -DDEBUG
-else
-DBGFLAGS = -g
-endif
-
 if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 else

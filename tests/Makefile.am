@@ -2,12 +2,6 @@ AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_s
 
 bin_PROGRAMS = vssyncd tests testclient
 
-if DEBUG
-DBGFLAGS = -ggdb -DDEBUG
-else
-DBGFLAGS = -g
-endif
-
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
 
 vssyncd_SOURCES = main.cpp

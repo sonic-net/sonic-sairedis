@@ -1,12 +1,6 @@
 AM_CFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta
 AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/lib/inc
 
-if DEBUG
-DBGFLAGS = -ggdb -DDEBUG
-else
-DBGFLAGS = -g
-endif
-
 lib_LTLIBRARIES = libsaimetadata.la libsaimeta.la
 
 BUILT_SOURCES = $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h

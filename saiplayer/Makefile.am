@@ -2,12 +2,6 @@ AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_s
 
 bin_PROGRAMS = saiplayer
 
-if DEBUG
-DBGFLAGS = -ggdb -DDEBUG
-else
-DBGFLAGS = -g
-endif
-
 noinst_LIBRARIES = libSaiPlayer.a
 
 libSaiPlayer_a_SOURCES = \

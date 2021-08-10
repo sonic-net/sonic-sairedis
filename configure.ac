@@ -27,6 +27,8 @@ AC_ARG_ENABLE(debug,
 esac],[debug=false])
 AM_CONDITIONAL(DEBUG, test x$debug = xtrue)
 
+AM_COND_IF([DEBUG], AC_SUBST(DBGFLAGS, "-ggdb -DDEBUG"), AC_SUBST(DBGFLAGS, "-g"))
+
 AC_ARG_WITH(sai,
 [  --with-sai=vs           compiling against specific SAI],
 [case "${withval}" in

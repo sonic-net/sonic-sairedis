@@ -2,12 +2,6 @@ AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_s
 
 bin_PROGRAMS = saidump
 
-if DEBUG
-DBGFLAGS = -ggdb -DDEBUG
-else
-DBGFLAGS = -g
-endif
-
 saidump_SOURCES = saidump.cpp
 saidump_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 saidump_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)

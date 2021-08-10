@@ -1,11 +1,5 @@
 AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I/usr/include/libnl3
 
-if DEBUG
-DBGFLAGS = -ggdb -DDEBUG
-else
-DBGFLAGS = -g
-endif
-
 lib_LTLIBRARIES = libsaivs.la
 
 noinst_LIBRARIES = libSaiVS.a
