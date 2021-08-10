@@ -2,6 +2,7 @@
 
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
+#include "meta/Globals.h"
 
 #include <unistd.h>
 #include <inttypes.h>
@@ -12,9 +13,6 @@
 
 using namespace sairedis;
 using namespace saimeta;
-
-std::string joinFieldValues(
-        _In_ const std::vector<swss::FieldValueTuple> &values);
 
 std::vector<swss::FieldValueTuple> serialize_counter_id_list(
         _In_ const sai_enum_metadata_t *stats_enum,
@@ -307,7 +305,7 @@ void Recorder::recordFlushFdbEntries(
 {
     SWSS_LOG_ENTER();
 
-    recordLine("f|" + key + "|" + joinFieldValues(arguments));
+    recordLine("f|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordFlushFdbEntriesResponse(
@@ -324,7 +322,7 @@ void Recorder::recordQueryAttributeCapability(
 {
     SWSS_LOG_ENTER();
 
-    recordLine("q|attribute_capability|" + key + "|" + joinFieldValues(arguments));
+    recordLine("q|attribute_capability|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordQueryAttributeCapabilityResponse(
@@ -333,7 +331,7 @@ void Recorder::recordQueryAttributeCapabilityResponse(
 {
     SWSS_LOG_ENTER();
 
-    recordLine("Q|attribute_capability|" + sai_serialize_status(status) + "|" + joinFieldValues(arguments));
+    recordLine("Q|attribute_capability|" + sai_serialize_status(status) + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordQueryAttributeEnumValuesCapability(
@@ -342,7 +340,7 @@ void Recorder::recordQueryAttributeEnumValuesCapability(
 {
     SWSS_LOG_ENTER();
 
-    recordLine("q|attribute_enum_values_capability|" + key + "|" + joinFieldValues(arguments));
+    recordLine("q|attribute_enum_values_capability|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordQueryAttributeEnumValuesCapabilityResponse(
@@ -351,7 +349,7 @@ void Recorder::recordQueryAttributeEnumValuesCapabilityResponse(
 {
     SWSS_LOG_ENTER();
 
-    recordLine("Q|attribute_enum_values_capability|" + sai_serialize_status(status) + "|" + joinFieldValues(arguments));
+    recordLine("Q|attribute_enum_values_capability|" + sai_serialize_status(status) + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordObjectTypeGetAvailability(
@@ -360,7 +358,7 @@ void Recorder::recordObjectTypeGetAvailability(
 {
     SWSS_LOG_ENTER();
 
-    recordLine("q|object_type_get_availability|" + key + "|" + joinFieldValues(arguments));
+    recordLine("q|object_type_get_availability|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordObjectTypeGetAvailabilityResponse(
@@ -369,7 +367,7 @@ void Recorder::recordObjectTypeGetAvailabilityResponse(
 {
     SWSS_LOG_ENTER();
 
-    recordLine("Q|object_type_get_availability|" + sai_serialize_status(status) + "|" + joinFieldValues(arguments));
+    recordLine("Q|object_type_get_availability|" + sai_serialize_status(status) + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordNotifySyncd(
@@ -400,7 +398,7 @@ void Recorder::recordGenericCreate(
 
     // lower case 'c' stands for create api
 
-    recordLine("c|" + key + "|" + joinFieldValues(arguments));
+    recordLine("c|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordGenericCreateResponse(
@@ -534,7 +532,7 @@ void Recorder::recordGenericSet(
 
     // lower case 's' stands for SET api
 
-    recordLine("s|" + key + "|" + joinFieldValues(arguments));
+    recordLine("s|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordGenericSetResponse(
@@ -600,7 +598,7 @@ void Recorder::recordGenericGet(
 
     // lower case 'g' stands for GET api
 
-    recordLine("g|" + key + "|" + joinFieldValues(arguments));
+    recordLine("g|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordGenericGetResponse(
@@ -611,7 +609,7 @@ void Recorder::recordGenericGetResponse(
 
     // capital 'G' stands for GET api response
 
-    recordLine("G|" + sai_serialize_status(status) + "|" + joinFieldValues(arguments));
+    recordLine("G|" + sai_serialize_status(status) + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordGenericGetStats(
@@ -647,7 +645,7 @@ void Recorder::recordGenericGetStats(
     if (!m_recordStats)
         return;
 
-    recordLine("q|get_stats|" + key + "|" + joinFieldValues(arguments));
+    recordLine("q|get_stats|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordGenericGetStatsResponse(
@@ -702,7 +700,7 @@ void Recorder::recordGenericClearStats(
     if (!m_recordStats)
         return;
 
-    recordLine("q|clear_stats|" + key + "|" + joinFieldValues(arguments));
+    recordLine("q|clear_stats|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
 void Recorder::recordGenericClearStatsResponse(
@@ -723,7 +721,7 @@ void Recorder::recordNotification(
 {
     SWSS_LOG_ENTER();
 
-    recordLine("n|" + name + "|" + serializedNotification + "|" + joinFieldValues(values));
+    recordLine("n|" + name + "|" + serializedNotification + "|" + Globals::joinFieldValues(values));
 }
 
 void Recorder::recordRemove(
@@ -937,7 +935,7 @@ void Recorder::recordObjectTypeGetAvailability(
         attrList,
         false);
 
-    SWSS_LOG_DEBUG("Query arguments: switch: %s, attributes: %s", key.c_str(), joinFieldValues(values).c_str());
+    SWSS_LOG_DEBUG("Query arguments: switch: %s, attributes: %s", key.c_str(), Globals::joinFieldValues(values).c_str());
 
     recordObjectTypeGetAvailability(key, values);
 }

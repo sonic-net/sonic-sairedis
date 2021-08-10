@@ -21,9 +21,6 @@ using namespace saimeta;
 using namespace sairediscommon;
 using namespace std::placeholders;
 
-std::string joinFieldValues(
-        _In_ const std::vector<swss::FieldValueTuple> &values);
-
 std::vector<swss::FieldValueTuple> serialize_counter_id_list(
         _In_ const sai_enum_metadata_t *stats_enum,
         _In_ uint32_t count,
@@ -887,7 +884,7 @@ sai_status_t RedisRemoteSaiInterface::objectTypeGetAvailability(
     SWSS_LOG_DEBUG(
             "Query arguments: switch: %s, attributes: %s",
             strSwitchId.c_str(),
-            joinFieldValues(entry).c_str());
+            Globals::joinFieldValues(entry).c_str());
 
     // Syncd will pop this argument off before trying to deserialize the attribute list
 
@@ -1534,7 +1531,7 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
     {
         auto entry = SaiAttributeList::serialize_attr_list(object_type, 1, &attr_list[idx], false);
 
-        std::string str_attr = joinFieldValues(entry);
+        std::string str_attr = Globals::joinFieldValues(entry);
 
         swss::FieldValueTuple value(serialized_object_ids[idx], str_attr);
 
@@ -1632,7 +1629,7 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
             entry.push_back(null);
         }
 
-        std::string str_attr = joinFieldValues(entry);
+        std::string str_attr = Globals::joinFieldValues(entry);
 
         swss::FieldValueTuple fvtNoStatus(serialized_object_ids[idx] , str_attr);
 

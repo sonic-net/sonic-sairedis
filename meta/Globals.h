@@ -5,6 +5,7 @@ extern "C" {
 }
 
 #include "swss/logger.h"
+#include "swss/table.h"
 
 #include <string>
 
@@ -34,6 +35,9 @@ namespace saimeta
             static std::string getHardwareInfo(
                     _In_ uint32_t attrCount,
                     _In_ const sai_attribute_t *attrList);
+
+            static std::string joinFieldValues(
+                    _In_ const std::vector<swss::FieldValueTuple>& values);
     };
 }
 

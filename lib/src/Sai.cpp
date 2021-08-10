@@ -730,29 +730,6 @@ std::shared_ptr<Context> Sai::getContext(
     return it->second;
 }
 
-std::string joinFieldValues(
-        _In_ const std::vector<swss::FieldValueTuple> &values)
-{
-    SWSS_LOG_ENTER();
-
-    std::stringstream ss;
-
-    for (size_t i = 0; i < values.size(); ++i)
-    {
-        const std::string &str_attr_id = fvField(values[i]);
-        const std::string &str_attr_value = fvValue(values[i]);
-
-        if (i != 0)
-        {
-            ss << "|";
-        }
-
-        ss << str_attr_id << "=" << str_attr_value;
-    }
-
-    return ss.str();
-}
-
 std::vector<swss::FieldValueTuple> serialize_counter_id_list(
         _In_ const sai_enum_metadata_t *stats_enum,
         _In_ uint32_t count,

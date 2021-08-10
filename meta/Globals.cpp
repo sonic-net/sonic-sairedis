@@ -68,3 +68,23 @@ std::string Globals::getHardwareInfo(
 
      return std::string((const char*)s8list.list, actualLength);
 }
+
+std::string Globals::joinFieldValues(
+        _In_ const std::vector<swss::FieldValueTuple>& values)
+{
+    SWSS_LOG_ENTER();
+
+    std::stringstream ss;
+
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        if (i != 0)
+        {
+            ss << "|";
+        }
+
+        ss << fvField(values[i]) << "=" << fvValue(values[i]);
+    }
+
+    return ss.str();
+}
