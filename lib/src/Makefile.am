@@ -27,13 +27,6 @@ libSaiRedis_a_SOURCES = \
 						 Switch.cpp \
 						 SwitchContainer.cpp \
 						 VirtualObjectIdManager.cpp \
-						 Notification.cpp \
-						 NotificationSwitchShutdownRequest.cpp \
-						 NotificationPortStateChange.cpp \
-						 NotificationSwitchStateChange.cpp \
-						 NotificationFdbEvent.cpp \
-						 NotificationQueuePfcDeadlock.cpp \
-						 NotificationFactory.cpp \
 						 RedisVidIndexGenerator.cpp \
 						 Recorder.cpp \
 						 RedisRemoteSaiInterface.cpp \

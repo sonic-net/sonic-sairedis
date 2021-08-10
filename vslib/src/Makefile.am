@@ -1,4 +1,4 @@
-AM_CXXFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I/usr/include/libnl3 -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/lib/inc
+AM_CXXFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I/usr/include/libnl3 -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental 
 
 if DEBUG
 DBGFLAGS = -ggdb -D_DEBUG_
@@ -9,10 +9,8 @@ endif
 lib_LTLIBRARIES = libsaivs.la
 
 noinst_LIBRARIES = libSaiVS.a
+
 libSaiVS_a_SOURCES = \
-					  ../../lib/src/NotificationFdbEvent.cpp \
-					  ../../lib/src/Notification.cpp \
-					  ../../lib/src/NotificationPortStateChange.cpp \
 					  Context.cpp \
 					  ContextConfig.cpp \
 					  ContextConfigContainer.cpp \

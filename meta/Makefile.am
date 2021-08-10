@@ -30,6 +30,13 @@ libsaimetadata_la_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) -ansi $(CODE_COVERAGE_CFLAGS
 
 
 libsaimeta_la_SOURCES = \
+				Notification.cpp \
+				NotificationFactory.cpp \
+				NotificationFdbEvent.cpp \
+				NotificationPortStateChange.cpp \
+				NotificationQueuePfcDeadlock.cpp \
+				NotificationSwitchShutdownRequest.cpp \
+				NotificationSwitchStateChange.cpp \
 				SaiInterface.cpp \
 				SaiAttributeList.cpp \
 				saiserialize.cpp \

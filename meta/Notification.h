@@ -4,7 +4,7 @@ extern "C" {
 #include "saimetadata.h"
 }
 
-#include "meta/Meta.h"
+#include "Meta.h"
 
 #include <string>
 #include <memory>

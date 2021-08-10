@@ -2,7 +2,7 @@
 
 #include "swss/logger.h"
 
-#include "meta/sai_serialize.h"
+#include "sai_serialize.h"
 
 using namespace sairedis;
 
@@ -49,4 +49,3 @@ void NotificationSwitchShutdownRequest::executeCallback(
         switchNotifications.on_switch_shutdown_request(m_switchId);
     }
 }
-

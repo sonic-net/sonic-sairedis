@@ -2,9 +2,10 @@
 #include "HostInterfaceInfo.h"
 #include "EventPayloadNotification.h"
 
-#include "swss/logger.h"
 #include "meta/sai_serialize.h"
-#include "lib/inc/NotificationPortStateChange.h"
+#include "meta/NotificationPortStateChange.h"
+
+#include "swss/logger.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
