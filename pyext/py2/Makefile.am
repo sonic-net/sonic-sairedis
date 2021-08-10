@@ -4,12 +4,12 @@ SOURCES=../pysairedis.h ../pysairedis.cpp
 pkgpython_PYTHON = pysairedis.py __init__.py
 pkgpyexec_LTLIBRARIES = _pysairedis.la
 
-INCLUDE=-I../../SAI/inc -I../../SAI/meta -I../../SAI/experimental -I../../lib/inc -I..
+AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/lib/inc -I..
 
 BUILT_SOURCES = pysairedis_wrap.cpp
 
 _pysairedis_la_SOURCES = pysairedis_wrap.cpp $(SOURCES)
-_pysairedis_la_CXXFLAGS = $(INCLUDE) -I/usr/include/python$(PYTHON_VERSION) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) \
+_pysairedis_la_CXXFLAGS = -I/usr/include/python$(PYTHON_VERSION) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) \
 						  -Wno-cast-qual -Wno-shadow -Wno-redundant-decls -Wno-conversion $(NO_CAST_FUNCTION_TYPE)
 
 _pysairedis_la_LDFLAGS = -module \
@@ -26,6 +26,6 @@ SWIG_FLAG += -DSWIGWORDSIZE64
 endif
 
 pysairedis_wrap.cpp: $(SWIG_SRC) $(SOURCES)
-	$(SWIG) $(SWIG_FLAG) $(INCLUDE) -o $@ $<
+	$(SWIG) $(SWIG_FLAG) $(AM_CXXFLAGS) -o $@ $<
 
 CLEANFILES = pysairedis_wrap.cpp
