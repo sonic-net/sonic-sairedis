@@ -19,10 +19,7 @@ saiasiccmp_SOURCES = main.cpp
 saiasiccmp_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 saiasiccmp_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 saiasiccmp_LDADD = libAsicCmp.a \
-				   -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon -lpthread -lzmq \
-				   -L$(top_srcdir)/meta/.libs \
-				   $(top_srcdir)/syncd/libSyncd.a \
-				   $(top_srcdir)/lib/src/libSaiRedis.a \
-				   $(CODE_COVERAGE_LIBS)
+				   -ldl -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq \
+				   $(top_srcdir)/syncd/libSyncd.a $(top_srcdir)/lib/src/libSaiRedis.a $(CODE_COVERAGE_LIBS)
 
 TESTS = test.sh

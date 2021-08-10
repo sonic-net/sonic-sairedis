@@ -58,7 +58,8 @@ libSyncd_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 syncd_SOURCES = main.cpp
 syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-syncd_LDADD = libSyncd.a $(top_srcdir)/lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS)
+syncd_LDADD = libSyncd.a $(top_srcdir)/lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
+			  -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS)
 
 if SAITHRIFT
 libSyncd_a_CXXFLAGS += -DSAITHRIFT=yes
@@ -86,6 +87,7 @@ syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a $(top_srcdir)/lib/src/l
 
 tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
+tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis \
+			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
 TESTS = tests
