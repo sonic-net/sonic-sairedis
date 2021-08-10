@@ -31,4 +31,4 @@ namespace saivs
 
             size_t m_size;
     };
-}   
+}

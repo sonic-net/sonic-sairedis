@@ -85,7 +85,7 @@ void HostInterfaceInfo::async_process_packet_for_fdb_event(
 
     auto buffer = Buffer(data, size);
 
-    auto payload = std::make_shared<EventPayloadPacket>(m_portId, m_ifindex, m_name, buffer); 
+    auto payload = std::make_shared<EventPayloadPacket>(m_portId, m_ifindex, m_name, buffer);
 
     m_eventQueue->enqueue(std::make_shared<Event>(EventType::EVENT_TYPE_PACKET, payload));
 }

@@ -317,7 +317,7 @@ namespace saivs
             bool isLagOrPortRifBased(
                     _In_ sai_object_id_t lag_or_port_id);
 
-        public: 
+        public:
 
             void process_packet_for_fdb_event(
                     _In_ sai_object_id_t portId,

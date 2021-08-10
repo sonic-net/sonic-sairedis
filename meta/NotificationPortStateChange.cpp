@@ -17,7 +17,7 @@ NotificationPortStateChange::NotificationPortStateChange(
 
     sai_deserialize_port_oper_status_ntf(
             serializedNotification,
-            m_count, 
+            m_count,
             &m_portOperaStatusNotificationData);
 }
 

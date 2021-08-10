@@ -9,7 +9,7 @@ extern "C" {
 namespace saivs
 {
     /**
-     * @brief FDB info class. 
+     * @brief FDB info class.
      *
      * Holds information about FDB arrived to switch.
      *
@@ -53,7 +53,7 @@ namespace saivs
 
             void setTimestamp(
                     _In_ uint32_t timestamp);
-            
+
         public: // serialize
 
             std::string serialize() const;
@@ -67,7 +67,7 @@ namespace saivs
                     _In_ const FdbInfo& other) const;
 
             bool operator()(
-                    _In_ const FdbInfo& lhs, 
+                    _In_ const FdbInfo& lhs,
                     _In_ const FdbInfo& rhs) const;
 
         public: // TODO make private

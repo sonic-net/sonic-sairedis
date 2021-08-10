@@ -23,7 +23,7 @@ static sai_status_t vs_mdio_read(
         _In_ uint32_t device_addr,
         _In_ uint32_t start_reg_addr,
         _In_ uint32_t number_of_registers,
-        _Out_ uint32_t *reg_val) 
+        _Out_ uint32_t *reg_val)
 {
     SWSS_LOG_ENTER();
 

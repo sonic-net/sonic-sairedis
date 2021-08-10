@@ -57,7 +57,7 @@ namespace saivs
 
             virtual sai_status_t set_maximum_number_of_childs_per_scheduler_group() override;
 
-            virtual sai_status_t set_number_of_ecmp_groups() override; 
+            virtual sai_status_t set_number_of_ecmp_groups() override;
 
             virtual sai_status_t create_cpu_port();
 

@@ -140,7 +140,7 @@ void RedisChannel::flush()
 }
 
 void RedisChannel::set(
-        _In_ const std::string& key, 
+        _In_ const std::string& key,
         _In_ const std::vector<swss::FieldValueTuple>& values,
         _In_ const std::string& command)
 {

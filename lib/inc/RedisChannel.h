@@ -40,7 +40,7 @@ namespace sairedis
             virtual void flush() override;
 
             virtual void set(
-                    _In_ const std::string& key, 
+                    _In_ const std::string& key,
                     _In_ const std::vector<swss::FieldValueTuple>& values,
                     _In_ const std::string& command) override;
 

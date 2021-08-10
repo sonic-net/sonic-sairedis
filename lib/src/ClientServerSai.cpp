@@ -124,10 +124,10 @@ sai_status_t ClientServerSai::create(
     REDIS_CHECK_API_INITIALIZED();
 
     return m_sai->create(
-            objectType, 
+            objectType,
             objectId,
-            switchId, 
-            attr_count, 
+            switchId,
+            attr_count,
             attr_list);
 }
 

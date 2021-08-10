@@ -127,7 +127,7 @@ sai_status_t SwitchBCM81724::set_switch_default_attributes()
     int32_t supported_obj_list[] = {
                                 SAI_OBJECT_TYPE_NULL,
                                 SAI_OBJECT_TYPE_PORT
-                              }; 
+                              };
     SWSS_LOG_INFO("create switch default attributes");
 
     sai_attribute_t attr;
@@ -294,50 +294,50 @@ sai_status_t SwitchBCM81724::refresh_read_only(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::create_default_vlan() 
-{   
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED; 
-}
-
-sai_status_t SwitchBCM81724::create_cpu_port() 
-{ 
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED; 
-}
-
-sai_status_t SwitchBCM81724::create_default_1q_bridge() 
-{ 
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED; 
-}
-
-sai_status_t SwitchBCM81724::create_ports() 
+sai_status_t SwitchBCM81724::create_default_vlan()
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
-} 
-
-sai_status_t SwitchBCM81724::create_default_virtual_router() 
-{ 
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::create_default_stp_instance() 
-{ 
+sai_status_t SwitchBCM81724::create_cpu_port()
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::create_default_trap_group() 
-{ 
+sai_status_t SwitchBCM81724::create_default_1q_bridge()
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t SwitchBCM81724::create_ports()
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t SwitchBCM81724::create_default_virtual_router()
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t SwitchBCM81724::create_default_stp_instance()
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t SwitchBCM81724::create_default_trap_group()
+{
     SWSS_LOG_ENTER();
 
     SWSS_LOG_INFO("create default trap group");
@@ -351,77 +351,77 @@ sai_status_t SwitchBCM81724::create_default_trap_group()
 }
 
 sai_status_t SwitchBCM81724::create_ingress_priority_groups_per_port(
-                    _In_ sai_object_id_t port_id) 
-{ 
+                    _In_ sai_object_id_t port_id)
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::create_ingress_priority_groups() 
-{ 
+sai_status_t SwitchBCM81724::create_ingress_priority_groups()
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::create_vlan_members() 
-{ 
+sai_status_t SwitchBCM81724::create_vlan_members()
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::create_bridge_ports() 
-{ 
+sai_status_t SwitchBCM81724::create_bridge_ports()
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::set_acl_entry_min_prio() 
-{ 
+sai_status_t SwitchBCM81724::set_acl_entry_min_prio()
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::set_acl_capabilities() 
-{ 
+sai_status_t SwitchBCM81724::set_acl_capabilities()
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::set_maximum_number_of_childs_per_scheduler_group() 
-{ 
+sai_status_t SwitchBCM81724::set_maximum_number_of_childs_per_scheduler_group()
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::set_number_of_ecmp_groups() 
-{ 
+sai_status_t SwitchBCM81724::set_number_of_ecmp_groups()
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
-} 
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
 
 sai_status_t SwitchBCM81724::refresh_bridge_port_list(
                     _In_ const sai_attr_metadata_t *meta,
-                    _In_ sai_object_id_t bridge_id) 
-{ 
+                    _In_ sai_object_id_t bridge_id)
+{
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 sai_status_t SwitchBCM81724::refresh_vlan_member_list(
                     _In_ const sai_attr_metadata_t *meta,
-                    _In_ sai_object_id_t vlan_id) 
-{ 
+                    _In_ sai_object_id_t vlan_id)
+{
     SWSS_LOG_ENTER();
-    
-    return SAI_STATUS_NOT_IMPLEMENTED; 
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 

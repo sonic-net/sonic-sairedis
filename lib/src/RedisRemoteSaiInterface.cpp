@@ -471,7 +471,7 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
             }
 
             return SAI_STATUS_SUCCESS;
-            
+
         default:
             break;
     }
@@ -1986,7 +1986,7 @@ void RedisRemoteSaiInterface::clear_local_state()
     // will clear switch container
     m_switchContainer = std::make_shared<SwitchContainer>();
 
-    m_virtualObjectIdManager = 
+    m_virtualObjectIdManager =
         std::make_shared<VirtualObjectIdManager>(
                 m_contextConfig->m_guid,
                 m_contextConfig->m_scc,

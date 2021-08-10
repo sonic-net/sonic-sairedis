@@ -75,7 +75,7 @@ namespace saiplayer
                     _In_ const std::string response);
 
             void performNotifySyncd(
-                    _In_ const std::string& request, 
+                    _In_ const std::string& request,
                     _In_ const std::string& response);
 
             void performSleep(

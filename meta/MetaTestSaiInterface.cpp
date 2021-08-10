@@ -22,7 +22,7 @@ MetaTestSaiInterface::MetaTestSaiInterface()
 
     scc->insert(sc);
 
-    m_virtualObjectIdManager = 
+    m_virtualObjectIdManager =
         std::make_shared<sairedis::VirtualObjectIdManager>(0, scc,
                 std::make_shared<NumberOidIndexGenerator>());
 }

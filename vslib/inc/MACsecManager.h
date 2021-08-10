@@ -70,7 +70,7 @@ namespace saivs
 
         bool add_macsec_forwarder(
             _In_ const std::string &macsecInterface);
-        
+
         bool delete_macsec_forwarder(
             _In_ const std::string &macsecInterface);
 

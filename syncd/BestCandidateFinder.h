@@ -98,7 +98,7 @@ namespace syncd
             std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingLabel(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
                     _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
-                
+
             std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingLabel(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
                     _In_ const std::vector<sai_object_compare_info_t> &candidateObjects,
@@ -194,7 +194,7 @@ namespace syncd
             std::shared_ptr<const SaiSwitchInterface> m_switch;
 
             std::shared_ptr<const SaiObj> m_temporaryObj;
-            
+
             std::vector<sai_object_compare_info_t> m_candidateObjects;
     };
 }

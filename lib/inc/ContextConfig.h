@@ -37,7 +37,7 @@ namespace sairedis
             std::string m_dbCounters;
 
             std::string m_dbFlex;   // TODO to be removed since only used to subscribe
-            
+
             std::string m_dbState;
 
             bool m_zmqEnable;

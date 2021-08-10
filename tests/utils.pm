@@ -55,7 +55,7 @@ sub start_syncd_warm
 {
     print color('bright_blue') . "Starting syncd warm" . color('reset') . "\n";
     `./vssyncd -SUu -t warm -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
-    
+
     sleep 1;
 }
 
@@ -69,7 +69,7 @@ sub sync_start_syncd_warm
 {
     print color('bright_blue') . "Starting syncd warm" . color('reset') . "\n";
     `./vssyncd -s -SUu -t warm -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
-    
+
     sleep 1;
 }
 
@@ -77,7 +77,7 @@ sub request_warm_shutdown
 {
     print color('bright_blue') . "Requesting syncd warm shutdown" . color('reset') . "\n";
     `../syncd/syncd_request_shutdown -w`;
-    
+
     sleep 2;
 }
 

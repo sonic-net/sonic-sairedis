@@ -33,7 +33,7 @@ sai_object_id_t NotificationQueuePfcDeadlock::getSwitchId() const
     SWSS_LOG_ENTER();
 
     // notification don't have switch id
-    
+
     return SAI_NULL_OBJECT_ID;
 }
 

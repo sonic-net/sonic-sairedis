@@ -31,7 +31,7 @@ RedisSelectableChannel::RedisSelectableChannel(
     SWSS_LOG_NOTICE("opened redis channel");
 }
 
-bool RedisSelectableChannel::empty() 
+bool RedisSelectableChannel::empty()
 {
     SWSS_LOG_ENTER();
 

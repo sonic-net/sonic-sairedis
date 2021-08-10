@@ -49,7 +49,7 @@ namespace sairedis
                     _In_ sai_object_id_t objectId) const;
 
             /**
-             * @brief Clear switch index set. 
+             * @brief Clear switch index set.
              *
              * New switch index allocation will start from the beginning.
              */

@@ -71,32 +71,32 @@ void Switch::updateNotifications(
         switch (attr.id)
         {
             case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                m_switchNotifications.on_switch_state_change = 
+                m_switchNotifications.on_switch_state_change =
                     (sai_switch_state_change_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                m_switchNotifications.on_switch_shutdown_request = 
+                m_switchNotifications.on_switch_shutdown_request =
                     (sai_switch_shutdown_request_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                m_switchNotifications.on_fdb_event = 
+                m_switchNotifications.on_fdb_event =
                     (sai_fdb_event_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                m_switchNotifications.on_port_state_change = 
+                m_switchNotifications.on_port_state_change =
                     (sai_port_state_change_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
-                m_switchNotifications.on_packet_event = 
+                m_switchNotifications.on_packet_event =
                     (sai_packet_event_notification_fn)attr.value.ptr;
                 break;
 
             case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                m_switchNotifications.on_queue_pfc_deadlock = 
+                m_switchNotifications.on_queue_pfc_deadlock =
                     (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
                 break;
 

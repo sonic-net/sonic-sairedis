@@ -932,7 +932,7 @@ void FlexCounter::addCounterPlugin(
             for (auto& sha: shaStrings)
             {
                 addRifCounterPlugin(sha);
-            } 
+            }
         }
         else if (field == BUFFER_POOL_PLUGIN_FIELD)
         {

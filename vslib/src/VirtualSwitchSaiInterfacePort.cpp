@@ -142,7 +142,7 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
                 SWSS_LOG_INFO("successfully applied the command: %s", cmd.c_str());
 
                 // Set the sampling rate of the port
-                cmd.assign("tc filter add dev " + if_name + 
+                cmd.assign("tc filter add dev " + if_name +
                         " parent ffff: matchall action sample rate " + std::to_string(rate) +
                         " group " + group);
 
@@ -158,7 +158,7 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
                 SWSS_LOG_INFO("successfully applied the command: %s", cmd.c_str());
 
             }
-            else 
+            else
             {
                 SWSS_LOG_ERROR("failed to update the port %s, unable to read the sample attr", if_name.c_str());
 

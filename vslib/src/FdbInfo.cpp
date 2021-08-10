@@ -18,7 +18,7 @@ FdbInfo::FdbInfo()
     SWSS_LOG_ENTER();
 
     m_portId = SAI_NULL_OBJECT_ID;
-    
+
     m_vlanId = 0; // essential
 
     m_bridgePortId = SAI_NULL_OBJECT_ID;
@@ -119,7 +119,7 @@ bool FdbInfo::operator<(
 }
 
 bool FdbInfo::operator()(
-        _In_ const FdbInfo& lhs, 
+        _In_ const FdbInfo& lhs,
         _In_ const FdbInfo& rhs) const
 {
     SWSS_LOG_ENTER();

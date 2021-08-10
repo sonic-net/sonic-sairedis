@@ -91,7 +91,7 @@ void NetMsgRegistrar::resetIndex()
     SWSS_LOG_ENTER();
 
     MUTEX;
-    
+
     m_index = 0;
 }
 
@@ -138,7 +138,7 @@ void NetMsgRegistrar::run()
 }
 
 void NetMsgRegistrar::onMsg(
-        _In_ int nlmsg_type, 
+        _In_ int nlmsg_type,
         _In_ struct nl_object *obj)
 {
     SWSS_LOG_ENTER();

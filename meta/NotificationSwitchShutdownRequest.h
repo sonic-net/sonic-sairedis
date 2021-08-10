@@ -28,6 +28,6 @@ namespace sairedis
 
         private:
 
-            sai_object_id_t m_switchId; 
+            sai_object_id_t m_switchId;
     };
 }

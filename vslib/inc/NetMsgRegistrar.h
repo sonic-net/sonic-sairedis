@@ -12,13 +12,13 @@
 
 namespace saivs
 {
-    class LinkMsg: 
+    class LinkMsg:
         public swss::NetMsg
     {
         public:
 
             virtual void onMsg(
-                    _In_ int nlmsg_type, 
+                    _In_ int nlmsg_type,
                     _In_ struct nl_object *obj) override;
         private:
     };
@@ -55,7 +55,7 @@ namespace saivs
         public:
 
             virtual void onMsg(
-                    _In_ int nlmsg_type, 
+                    _In_ int nlmsg_type,
                     _In_ struct nl_object *obj) override;
         private:
 
