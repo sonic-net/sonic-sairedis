@@ -3,13 +3,14 @@
 #include "RemoteSaiInterface.h"
 #include "SwitchContainer.h"
 #include "VirtualObjectIdManager.h"
-#include "Notification.h"
 #include "Recorder.h"
 #include "RedisVidIndexGenerator.h"
 #include "SkipRecordAttrContainer.h"
 #include "RedisChannel.h"
 #include "SwitchConfigContainer.h"
 #include "ContextConfig.h"
+
+#include "meta/Notification.h"
 
 #include "swss/producertable.h"
 #include "swss/consumertable.h"

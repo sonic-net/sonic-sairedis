@@ -1,6 +1,5 @@
 #include "RedisRemoteSaiInterface.h"
 #include "Utils.h"
-#include "NotificationFactory.h"
 #include "Recorder.h"
 #include "VirtualObjectIdManager.h"
 #include "SkipRecordAttrContainer.h"
@@ -9,6 +8,7 @@
 
 #include "sairediscommon.h"
 
+#include "meta/NotificationFactory.h"
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
 #include "meta/PerformanceIntervalTimer.h"

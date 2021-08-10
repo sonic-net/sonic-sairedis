@@ -4,9 +4,10 @@
 #include "RemoteSaiInterface.h"
 #include "SwitchContainer.h"
 #include "VirtualObjectIdManager.h"
-#include "Notification.h"
 #include "Recorder.h"
 #include "SkipRecordAttrContainer.h"
+
+#include "meta/Notification.h"
 
 #include "swss/producertable.h"
 #include "swss/consumertable.h"

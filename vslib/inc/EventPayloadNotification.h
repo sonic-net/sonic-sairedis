@@ -6,7 +6,7 @@ extern "C"{
 
 #include "EventPayload.h"
 
-#include "lib/inc/Notification.h"
+#include "meta/Notification.h"
 
 namespace saivs
 {

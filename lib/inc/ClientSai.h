@@ -3,7 +3,8 @@
 #include "meta/SaiInterface.h"
 #include "Channel.h"
 #include "SwitchContainer.h"
-#include "Notification.h"
+
+#include "meta/Notification.h"
 
 #include "swss/table.h"
 
