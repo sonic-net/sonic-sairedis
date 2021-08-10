@@ -2,10 +2,10 @@
 
 #include "CommandLineOptions.h"
 
-#include "../lib/inc/SaiInterface.h"
-#include "../meta/SaiAttributeList.h"
-#include "../syncd/ServiceMethodTable.h"
-#include "../syncd/SwitchNotifications.h"
+#include "meta/SaiInterface.h"
+#include "meta/SaiAttributeList.h"
+#include "syncd/ServiceMethodTable.h"
+#include "syncd/SwitchNotifications.h"
 
 #include <memory>
 #include <map>

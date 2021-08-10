@@ -37,6 +37,5 @@ namespace saimeta
         private:
 
             std::shared_ptr<sairedis::VirtualObjectIdManager> m_virtualObjectIdManager;
-
     };
 }

@@ -4,7 +4,7 @@ extern "C" {
 #include "sai.h"
 }
 
-#include "lib/inc/SaiInterface.h"
+#include "meta/SaiInterface.h"
 
 #include <string>
 #include <vector>

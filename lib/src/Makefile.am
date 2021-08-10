@@ -23,7 +23,6 @@ libSaiRedis_a_SOURCES = \
 						 Context.cpp \
 						 ContextConfigContainer.cpp \
 						 ContextConfig.cpp \
-						 SaiInterface.cpp \
 						 SwitchConfig.cpp \
 						 SwitchConfigContainer.cpp \
 						 RedisChannel.cpp \

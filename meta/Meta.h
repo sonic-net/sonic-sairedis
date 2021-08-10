@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lib/inc/SaiInterface.h"
+#include "SaiInterface.h"
 
 #include "SaiAttrWrapper.h"
 #include "SaiObjectCollection.h"

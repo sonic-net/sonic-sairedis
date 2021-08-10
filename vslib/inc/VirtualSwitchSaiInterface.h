@@ -9,7 +9,7 @@
 #include "EventPayloadNetLinkMsg.h"
 #include "ContextConfig.h"
 
-#include "lib/inc/SaiInterface.h"
+#include "meta/SaiInterface.h"
 
 #include "meta/Meta.h"
 

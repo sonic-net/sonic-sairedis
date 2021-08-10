@@ -5,8 +5,7 @@
 #include "RedisClient.h"
 #include "NotificationHandler.h"
 
-#include "lib/inc/SaiInterface.h"
-
+#include "meta/SaiInterface.h"
 #include "meta/SaiAttributeList.h"
 
 #include <string>

@@ -5,7 +5,7 @@ extern "C" {
 #include "saiextensions.h"
 }
 
-#include "SaiInterface.h"
+#include "meta/SaiInterface.h"
 
 #include "swss/logger.h"
 

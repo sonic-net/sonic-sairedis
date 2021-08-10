@@ -126,4 +126,3 @@ sai_object_id_t MetaTestSaiInterface::switchIdQuery(
 
     return m_virtualObjectIdManager->saiSwitchIdQuery(objectId);
 }
-

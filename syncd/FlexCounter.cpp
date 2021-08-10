@@ -2,7 +2,6 @@
 #include "VidManager.h"
 
 #include "meta/sai_serialize.h"
-#include "lib/inc/SaiInterface.h"
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"

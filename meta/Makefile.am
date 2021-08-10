@@ -30,7 +30,7 @@ libsaimetadata_la_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) -ansi $(CODE_COVERAGE_CFLAGS
 
 
 libsaimeta_la_SOURCES = \
-				../lib/src/SaiInterface.cpp \
+				SaiInterface.cpp \
 				SaiAttributeList.cpp \
 				saiserialize.cpp \
 				SaiAttrWrapper.cpp \

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SaiInterface.h"
+#include "meta/SaiInterface.h"
 #include "Channel.h"
 #include "SwitchContainer.h"
 #include "Notification.h"
