@@ -1,4 +1,4 @@
-AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/lib/inc -I$(top_srcdir)/vslib/inc
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib/inc -I$(top_srcdir)/vslib/inc
 
 bin_PROGRAMS = vssyncd tests testclient
 

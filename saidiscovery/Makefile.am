@@ -1,4 +1,4 @@
-AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/meta -I$(top_srcdir)/lib/inc
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/meta -I$(top_srcdir)/lib/inc
 
 bin_PROGRAMS = saidiscovery
 

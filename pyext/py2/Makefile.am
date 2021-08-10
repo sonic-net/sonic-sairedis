@@ -4,7 +4,7 @@ SOURCES=../pysairedis.h ../pysairedis.cpp
 pkgpython_PYTHON = pysairedis.py __init__.py
 pkgpyexec_LTLIBRARIES = _pysairedis.la
 
-AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/lib/inc -I..
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib/inc -I..
 
 BUILT_SOURCES = pysairedis_wrap.cpp
 
