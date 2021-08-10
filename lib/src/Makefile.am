@@ -10,8 +10,6 @@ lib_LTLIBRARIES = libsairedis.la
 
 noinst_LIBRARIES = libSaiRedis.a
 libSaiRedis_a_SOURCES = \
-						 ../../syncd/ZeroMQSelectableChannel.cpp \
-						 ../../syncd/SelectableChannel.cpp \
 						 ClientConfig.cpp \
 						 ServerConfig.cpp \
 						 ClientServerSai.cpp \
@@ -105,4 +103,3 @@ tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread $(top_srcdir)/meta/libsaimetadata.la $(top_srcdir)/meta/libsaimeta.la libsairedis.la -lzmq
 
 TESTS = tests
-

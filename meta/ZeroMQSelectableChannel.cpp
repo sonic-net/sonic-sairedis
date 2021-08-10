@@ -11,7 +11,7 @@
 //#define ZMQ_POLL_TIMEOUT (2*60*1000)
 #define ZMQ_POLL_TIMEOUT (1000)
 
-using namespace syncd;
+using namespace sairedis;
 
 ZeroMQSelectableChannel::ZeroMQSelectableChannel(
         _In_ const std::string& endpoint):

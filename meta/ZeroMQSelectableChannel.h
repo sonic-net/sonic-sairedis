@@ -9,7 +9,7 @@
 #include <thread>
 #include <memory>
 
-namespace syncd
+namespace sairedis
 {
     class ZeroMQSelectableChannel:
         public SelectableChannel

@@ -42,6 +42,9 @@ libsaimeta_la_SOURCES = \
 				PortRelatedSet.cpp \
 				MetaKeyHasher.cpp \
 				PerformanceIntervalTimer.cpp \
+				SelectableChannel.cpp \
+				RedisSelectableChannel.cpp \
+				ZeroMQSelectableChannel.cpp \
 				Meta.cpp
 
 libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
@@ -60,6 +63,6 @@ tests_SOURCES = \
 				../lib/src/SwitchConfigContainer.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread libsaimetadata.la libsaimeta.la
+tests_LDADD = -lhiredis -lswsscommon -lpthread libsaimetadata.la libsaimeta.la -lzmq
 
 TESTS = tests

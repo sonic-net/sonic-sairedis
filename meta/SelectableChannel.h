@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace syncd
+namespace sairedis
 {
     class SelectableChannel:
         public swss::Selectable

@@ -5,16 +5,17 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#include "lib/inc/ZeroMQChannel.h"
 #include "syncd/ZeroMQNotificationProducer.h"
+
+#include "lib/inc/ZeroMQChannel.h"
 
 #include "meta/sai_serialize.h"
 
 #include <thread>
 #include <memory>
 
-using namespace sairedis;
 using namespace syncd;
+using namespace sairedis;
 
 #define ASSERT_EQ(a,b) if ((a) != (b)) { SWSS_LOG_THROW("ASSERT EQ FAILED: " #a " != " #b); }
 

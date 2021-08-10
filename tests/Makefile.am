@@ -14,7 +14,7 @@ vssyncd_SOURCES = main.cpp
 
 vssyncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 vssyncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-vssyncd_LDADD = ../syncd/libSyncd.a ../lib/src/libSaiRedis.a -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lzmq $(CODE_COVERAGE_LIBS)
+vssyncd_LDADD = $(top_srcdir)/syncd/libSyncd.a $(top_srcdir)/lib/src/libSaiRedis.a -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lzmq $(CODE_COVERAGE_LIBS)
 
 if SAITHRIFT
 vssyncd_LDADD += -lrpcserver -lthrift

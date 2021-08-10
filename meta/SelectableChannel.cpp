@@ -2,7 +2,7 @@
 
 #include "swss/logger.h"
 
-using namespace syncd;
+using namespace sairedis;
 
 SelectableChannel::SelectableChannel(
         _In_ int pri):

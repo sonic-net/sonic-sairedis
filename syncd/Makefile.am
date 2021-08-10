@@ -18,9 +18,6 @@ noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
 libSyncd_a_SOURCES = \
 				WatchdogScope.cpp \
 				SaiSwitchInterface.cpp \
-				ZeroMQSelectableChannel.cpp \
-				RedisSelectableChannel.cpp \
-				SelectableChannel.cpp \
 				ZeroMQNotificationProducer.cpp \
 				RedisNotificationProducer.cpp \
 				ComparisonLogic.cpp \
@@ -66,7 +63,7 @@ libSyncd_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 syncd_SOURCES = main.cpp
 syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-syncd_LDADD = libSyncd.a ../lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS)
+syncd_LDADD = libSyncd.a $(top_srcdir)/lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS)
 
 if SAITHRIFT
 libSyncd_a_CXXFLAGS += -DSAITHRIFT=yes
@@ -90,7 +87,7 @@ libSyncdRequestShutdown_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMO
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
 syncd_request_shutdown_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_request_shutdown_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a ../lib/src/libSaiRedis.a -lhiredis -lswsscommon -lpthread $(CODE_COVERAGE_LIBS)
+syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a $(top_srcdir)/lib/src/libSaiRedis.a -lhiredis -lswsscommon -lpthread $(CODE_COVERAGE_LIBS)
 
 tests_SOURCES = tests.cpp
 

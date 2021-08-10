@@ -11,8 +11,6 @@
 #include "BreakConfigParser.h"
 #include "RedisNotificationProducer.h"
 #include "ZeroMQNotificationProducer.h"
-#include "RedisSelectableChannel.h"
-#include "ZeroMQSelectableChannel.h"
 #include "WatchdogScope.h"
 
 #include "sairediscommon.h"
@@ -23,6 +21,8 @@
 #include "swss/notificationproducer.h"
 
 #include "meta/sai_serialize.h"
+#include "meta/ZeroMQSelectableChannel.h"
+#include "meta/RedisSelectableChannel.h"
 #include "meta/PerformanceIntervalTimer.h"
 
 #include "vslib/inc/saivs.h"
@@ -115,7 +115,7 @@ Syncd::Syncd(
 
         m_enableSyncMode = true;
 
-        m_selectableChannel = std::make_shared<ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint);
+        m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint);
     }
     else
     {
@@ -125,7 +125,7 @@ Syncd::Syncd(
 
         bool modifyRedis = m_enableSyncMode ? false : true;
 
-        m_selectableChannel = std::make_shared<RedisSelectableChannel>(
+        m_selectableChannel = std::make_shared<sairedis::RedisSelectableChannel>(
                 m_dbAsic,
                 ASIC_STATE_TABLE,
                 REDIS_TABLE_GETRESPONSE,
@@ -278,7 +278,7 @@ bool Syncd::isInitViewMode() const
 }
 
 void Syncd::processEvent(
-        _In_ SelectableChannel& consumer)
+        _In_ sairedis::SelectableChannel& consumer)
 {
     SWSS_LOG_ENTER();
 

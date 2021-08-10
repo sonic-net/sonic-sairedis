@@ -2,7 +2,7 @@
 
 #include "meta/SaiInterface.h"
 #include "meta/SaiAttributeList.h"
-#include "syncd/SelectableChannel.h"
+#include "meta/SelectableChannel.h"
 
 #include "swss/selectableevent.h"
 
@@ -256,7 +256,7 @@ namespace sairedis
             void serverThreadFunction();
 
             void processEvent(
-                    _In_ syncd::SelectableChannel& consumer);
+                    _In_ SelectableChannel& consumer);
 
             sai_status_t processSingleEvent(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
@@ -375,7 +375,7 @@ namespace sairedis
 
             std::shared_ptr<std::thread> m_serverThread;
 
-            std::shared_ptr<syncd::SelectableChannel> m_selectableChannel;
+            std::shared_ptr<SelectableChannel> m_selectableChannel;
 
             swss::SelectableEvent m_serverThreadThreadShouldEndEvent;
     };
