@@ -434,12 +434,6 @@ namespace sairedis
 
             void refreshTableDump();
 
-        public:
-
-            static std::string getHardwareInfo(
-                    _In_ uint32_t attrCount,
-                    _In_ const sai_attribute_t *attrList);
-
         private:
 
             std::shared_ptr<ContextConfig> m_contextConfig;

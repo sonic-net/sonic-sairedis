@@ -380,12 +380,6 @@ namespace saivs
             void syncProcessEventNetLinkMsg(
                     _In_ std::shared_ptr<EventPayloadNetLinkMsg> payload);
 
-        public:
-
-            std::string getHardwareInfo(
-                    _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list) const;
-
         private:
 
             std::weak_ptr<saimeta::Meta> m_meta;

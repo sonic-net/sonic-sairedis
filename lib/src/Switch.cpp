@@ -1,5 +1,7 @@
 #include "Switch.h"
 
+#include "meta/Globals.h"
+
 #include "swss/logger.h"
 
 #include <cstring>
@@ -32,7 +34,7 @@ Switch::Switch(
 
     // SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO is create only attribute
 
-    m_hardwareInfo = getHardwareInfo(attrCount, attrList);
+    m_hardwareInfo = saimeta::Globals::getHardwareInfo(attrCount, attrList);
 
     SWSS_LOG_NOTICE("created switch with hwinfo = '%s'", m_hardwareInfo.c_str());
 }
@@ -126,46 +128,3 @@ const std::string& Switch::getHardwareInfo() const
 
     return m_hardwareInfo;
 }
-
-std::string Switch::getHardwareInfo(
-        _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList)
-{
-    SWSS_LOG_ENTER();
-
-    auto *attr = sai_metadata_get_attr_by_id(
-            SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO,
-            attrCount,
-            attrList);
-
-    if (attr == NULL)
-        return "";
-
-    auto& s8list = attr->value.s8list;
-
-    if (s8list.count == 0)
-        return "";
-
-    if (s8list.list == NULL)
-    {
-        SWSS_LOG_WARN("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.list is NULL! but count is %u", s8list.count);
-        return "";
-    }
-
-    uint32_t count = s8list.count;
-
-    if (count > SAI_MAX_HARDWARE_ID_LEN)
-    {
-        SWSS_LOG_WARN("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.count (%u) > SAI_MAX_HARDWARE_ID_LEN (%d), LIMITING !!",
-                count,
-                SAI_MAX_HARDWARE_ID_LEN);
-
-        count = SAI_MAX_HARDWARE_ID_LEN;
-    }
-
-    // check actual length, since buffer may contain nulls
-    auto actualLength = strnlen((const char*)s8list.list, count);
-
-    return std::string((const char*)s8list.list, actualLength);
-}
-

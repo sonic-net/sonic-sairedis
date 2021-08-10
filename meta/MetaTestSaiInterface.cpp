@@ -3,6 +3,8 @@
 #include "SwitchConfigContainer.h"
 
 #include "swss/logger.h"
+
+#include "Globals.h"
 #include "sai_serialize.h"
 
 using namespace saimeta;
@@ -25,48 +27,6 @@ MetaTestSaiInterface::MetaTestSaiInterface()
                 std::make_shared<NumberOidIndexGenerator>());
 }
 
-static std::string getHardwareInfo(
-        _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList)
-{
-    SWSS_LOG_ENTER();
-
-     auto *attr = sai_metadata_get_attr_by_id(
-             SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO,
-             attrCount,
-             attrList);
-
-     if (attr == NULL)
-         return "";
-
-     auto& s8list = attr->value.s8list;
-
-     if (s8list.count == 0)
-         return "";
-
-     if (s8list.list == NULL)
-     {
-         SWSS_LOG_WARN("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.list is NULL! but count is %u", s8list.count);
-         return "";
-     }
-
-     uint32_t count = s8list.count;
-
-     if (count > SAI_MAX_HARDWARE_ID_LEN)
-     {
-         SWSS_LOG_WARN("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.count (%u) > SAI_MAX_HARDWARE_ID_LEN (%d), LIMITING !!",
-                 count,
-                 SAI_MAX_HARDWARE_ID_LEN);
-
-         count = SAI_MAX_HARDWARE_ID_LEN;
-     }
-
-     // check actual length, since buffer may contain nulls
-     auto actualLength = strnlen((const char*)s8list.list, count);
-
-     return std::string((const char*)s8list.list, actualLength);
-}
-
 sai_status_t MetaTestSaiInterface::create(
         _In_ sai_object_type_t objectType,
         _Out_ sai_object_id_t* objectId,
@@ -81,7 +41,7 @@ sai_status_t MetaTestSaiInterface::create(
         // for given hardware info we always return same switch id,
         // this is required since we could be performing warm boot here
 
-        auto hwinfo = getHardwareInfo(attr_count, attr_list);
+        auto hwinfo = Globals::getHardwareInfo(attr_count, attr_list);
 
         switchId = m_virtualObjectIdManager->allocateNewSwitchObjectId(hwinfo);
 

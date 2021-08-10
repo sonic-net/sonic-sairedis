@@ -12,6 +12,7 @@
 
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
+#include "meta/Globals.h"
 
 #include <inttypes.h>
 
@@ -138,7 +139,7 @@ sai_status_t ClientSai::create(
             // have hwinfo and context and context container information, we
             // could allocate switch object ID locally
 
-            auto hwinfo = RedisRemoteSaiInterface::getHardwareInfo(attr_count, attr_list);
+            auto hwinfo = Globals::getHardwareInfo(attr_count, attr_list);
 
             // TODO support context
             SWSS_LOG_NOTICE("request to connect switch (context: 0) and hwinfo='%s'", hwinfo.c_str());

@@ -41,10 +41,6 @@ namespace sairedis
 
             const std::string& getHardwareInfo() const;
 
-            static std::string getHardwareInfo(
-                    _In_ uint32_t attrCount,
-                    _In_ const sai_attribute_t *attrList);
-
         private:
 
             sai_object_id_t m_switchId;
