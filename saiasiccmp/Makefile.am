@@ -19,11 +19,11 @@ libAsicCmp_a_SOURCES = \
 				CommandLineOptionsParser.cpp
 
 libAsicCmp_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-libAsicCmp_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(SAIFLAGS) $(CODE_COVERAGE_CXXFLAGS)
+libAsicCmp_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 
 saiasiccmp_SOURCES = main.cpp
 saiasiccmp_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-saiasiccmp_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(SAIFLAGS) $(CODE_COVERAGE_CXXFLAGS)
+saiasiccmp_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 saiasiccmp_LDADD = libAsicCmp.a \
 				   -lsaimetadata -lsaimeta -ldl -lhiredis -lswsscommon -lpthread -lzmq \
 				   $(top_srcdir)/syncd/libSyncd.a \
