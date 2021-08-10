@@ -8,53 +8,44 @@ else
 DBGFLAGS = -g
 endif
 
-lib_LTLIBRARIES = libsaimeta.la libsaimetadata.la
+lib_LTLIBRARIES = libsaimetadata.la libsaimeta.la
 
-# we are not adding CPPFLAGS since they are added
-# automatic to each C preprocessor, and currently
-# we add -std=c++11 flag to CXXFLAGS_COMMON which
-# will cause compilaton error on C files
-# and we already confirmed that SAI/meta files
-# can be compiled with success
-#
-# NOTE: this compilation could be moved to configure.ac
+BUILT_SOURCES = $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h
 
-libsaimeta_la_SOURCES =  \
-					  $(top_srcdir)/SAI/meta/saimetadata.c \
-					  $(top_srcdir)/SAI/meta/saimetadatautils.c \
-					  $(top_srcdir)/SAI/meta/saiserialize.c
-
-libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-libsaimeta_la_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) -ansi $(CODE_COVERAGE_CFLAGS)
-
-$(top_srcdir)/SAI/meta/saimetadata.h $(top_srcdir)/SAI/meta/saimetadata.c: saimeta-gen
+$(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h: saimeta-gen
 
 saimeta-gen:
-	make -C $(top_srcdir)/SAI/meta saimetadata.c saimetadata.h
+	make -C $(top_srcdir)/SAI/meta saimetadata.c
 
 clean-local:
 	make -C $(top_srcdir)/SAI/meta clean
 
-libsaimetadata_la_SOURCES = \
-							../lib/src/SaiInterface.cpp \
-							SaiAttributeList.cpp \
-							saiserialize.cpp \
-							SaiAttrWrapper.cpp \
-							OidRefCounter.cpp \
-							AttrKeyMap.cpp \
-							Globals.cpp \
-							SaiObject.cpp \
-							SaiObjectCollection.cpp \
-							PortRelatedSet.cpp \
-							MetaKeyHasher.cpp \
-							Meta.cpp
-
-
-BUILT_SOURCES = $(top_srcdir)/SAI/meta/saimetadata.h $(top_srcdir)/SAI/meta/saimetadata.c
+libsaimetadata_la_SOURCES =  \
+				$(top_srcdir)/SAI/meta/saimetadata.c \
+				$(top_srcdir)/SAI/meta/saimetadatautils.c \
+				$(top_srcdir)/SAI/meta/saiserialize.c
 
 libsaimetadata_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-libsaimetadata_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsaimetadata_la_LIBADD = -lhiredis -lswsscommon libsaimeta.la $(CODE_COVERAGE_LIBS)
+libsaimetadata_la_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) -ansi $(CODE_COVERAGE_CFLAGS)
+
+
+libsaimeta_la_SOURCES = \
+				../lib/src/SaiInterface.cpp \
+				SaiAttributeList.cpp \
+				saiserialize.cpp \
+				SaiAttrWrapper.cpp \
+				OidRefCounter.cpp \
+				AttrKeyMap.cpp \
+				Globals.cpp \
+				SaiObject.cpp \
+				SaiObjectCollection.cpp \
+				PortRelatedSet.cpp \
+				MetaKeyHasher.cpp \
+				Meta.cpp
+
+libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libsaimeta_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+libsaimeta_la_LIBADD = -lhiredis -lswsscommon libsaimetadata.la $(CODE_COVERAGE_LIBS)
 
 bin_PROGRAMS = tests
 
