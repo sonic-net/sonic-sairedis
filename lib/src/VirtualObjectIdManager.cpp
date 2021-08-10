@@ -241,11 +241,13 @@ sai_object_id_t VirtualObjectIdManager::allocateNewObjectId(
 
     uint64_t objectIndex = m_oidIndexGenerator->increment(); // get new object index
 
+    const uint64_t indexMax = SAI_REDIS_OBJECT_INDEX_MAX;
+
     if (objectIndex > SAI_REDIS_OBJECT_INDEX_MAX)
     {
-        SWSS_LOG_THROW("no more object indexes available, given: 0x%" PRIu64 " but limit is 0x%" PRIu64 " ",
+        SWSS_LOG_THROW("no more object indexes available, given: 0x%" PRIx64 " but limit is 0x%" PRIx64 " ",
                 objectIndex,
-                SAI_REDIS_OBJECT_INDEX_MAX);
+                indexMax);
     }
 
     sai_object_id_t objectId = constructObjectId(objectType, switchIndex, objectIndex, m_globalContext);
