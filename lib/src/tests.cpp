@@ -8,7 +8,7 @@ extern "C" {
 #include "swss/table.h"
 #include "swss/tokenize.h"
 
-#include "lib/inc/Recorder.h"
+#include "Recorder.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
