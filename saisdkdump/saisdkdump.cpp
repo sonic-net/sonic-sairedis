@@ -12,6 +12,8 @@ extern "C" {
 #include <sai.h>
 }
 
+// TODO split to multiple cpp
+
 std::string sai_profile = "/tmp/sai.profile";
 
 void print_usage()
