@@ -1,2 +1,2 @@
-meta/*.h usr/include/sai
-SAI/meta/*.h usr/include/sai
+meta/sai*.h usr/include/sai
+SAI/meta/sai*.h usr/include/sai
