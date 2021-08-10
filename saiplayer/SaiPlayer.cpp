@@ -3,9 +3,9 @@
 #include "sairedis.h"
 #include "sairediscommon.h"
 #include "VirtualObjectIdManager.h"
-#include "PerformanceIntervalTimer.h"
 
 #include "meta/sai_serialize.h"
+#include "meta/PerformanceIntervalTimer.h"
 #include "meta/SaiAttributeList.h"
 
 #include "swss/logger.h"

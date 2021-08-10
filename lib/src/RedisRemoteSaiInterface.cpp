@@ -6,12 +6,12 @@
 #include "SkipRecordAttrContainer.h"
 #include "SwitchContainer.h"
 #include "ZeroMQChannel.h"
-#include "PerformanceIntervalTimer.h"
 
 #include "sairediscommon.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
+#include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
 
 #include <inttypes.h>

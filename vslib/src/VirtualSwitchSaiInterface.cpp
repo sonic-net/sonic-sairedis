@@ -1,13 +1,12 @@
 #include "VirtualSwitchSaiInterface.h"
 
-#include "lib/inc/PerformanceIntervalTimer.h"
-
 #include "swss/logger.h"
 #include "swss/exec.h"
 #include "swss/converter.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
+#include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
 
 #include "SwitchStateBase.h"

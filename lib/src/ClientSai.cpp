@@ -4,7 +4,6 @@
 #include "ZeroMQChannel.h"
 #include "Utils.h"
 #include "sairediscommon.h"
-#include "PerformanceIntervalTimer.h"
 #include "NotificationFactory.h"
 #include "ClientConfig.h"
 
@@ -12,6 +11,7 @@
 
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
+#include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
 
 #include <inttypes.h>

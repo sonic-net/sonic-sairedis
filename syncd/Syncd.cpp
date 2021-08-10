@@ -13,7 +13,6 @@
 #include "ZeroMQNotificationProducer.h"
 #include "RedisSelectableChannel.h"
 #include "ZeroMQSelectableChannel.h"
-#include "PerformanceIntervalTimer.h"
 #include "WatchdogScope.h"
 
 #include "sairediscommon.h"
@@ -24,6 +23,7 @@
 #include "swss/notificationproducer.h"
 
 #include "meta/sai_serialize.h"
+#include "meta/PerformanceIntervalTimer.h"
 
 #include "vslib/inc/saivs.h"
 
