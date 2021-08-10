@@ -1,4 +1,4 @@
-AM_CXXFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
+AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta
 
 bin_PROGRAMS = saisdkdump
 
@@ -7,7 +7,6 @@ DBGFLAGS = -ggdb -DDEBUG
 else
 DBGFLAGS = -g
 endif
-
 
 if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs

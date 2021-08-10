@@ -15,8 +15,8 @@ AM_PATH_PYTHON3
 AX_CODE_COVERAGE
 AX_ADD_AM_MACRO_STATIC([])
 
-AM_CONDITIONAL(sonic_asic_platform_barefoot,   test x$CONFIGURED_PLATFORM = xbarefoot)
-AM_CONDITIONAL(sonic_asic_platform_mellanox,   test x$CONFIGURED_PLATFORM = xmellanox)
+AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BAREFOOT,   test x$CONFIGURED_PLATFORM = xbarefoot)
+AM_CONDITIONAL(SONIC_ASIC_PLATFORM_MELLANOX,   test x$CONFIGURED_PLATFORM = xmellanox)
 
 AC_ARG_ENABLE(debug,
 [  --enable-debug          turn on debugging],

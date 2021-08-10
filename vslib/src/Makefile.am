@@ -1,7 +1,7 @@
-AM_CXXFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I/usr/include/libnl3 -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental 
+AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I/usr/include/libnl3
 
 if DEBUG
-DBGFLAGS = -ggdb -D_DEBUG_
+DBGFLAGS = -ggdb -DDEBUG
 else
 DBGFLAGS = -g
 endif
@@ -11,58 +11,58 @@ lib_LTLIBRARIES = libsaivs.la
 noinst_LIBRARIES = libSaiVS.a
 
 libSaiVS_a_SOURCES = \
-					  Context.cpp \
-					  ContextConfig.cpp \
-					  ContextConfigContainer.cpp \
-					  ResourceLimiter.cpp \
-					  ResourceLimiterContainer.cpp \
-					  ResourceLimiterParser.cpp \
-					  EventPayloadNotification.cpp \
-					  EventPayloadNetLinkMsg.cpp \
-					  SaiEventQueue.cpp \
-					  Event.cpp \
-					  EventQueue.cpp \
-					  Signal.cpp \
 					  Buffer.cpp \
+					  ContextConfigContainer.cpp \
+					  ContextConfig.cpp \
+					  Context.cpp \
+					  CorePortIndexMapContainer.cpp \
+					  CorePortIndexMap.cpp \
+					  CorePortIndexMapFileParser.cpp \
+					  Event.cpp \
+					  EventPayloadNetLinkMsg.cpp \
+					  EventPayloadNotification.cpp \
 					  EventPayloadPacket.cpp \
-					  VirtualSwitchSaiInterface.cpp \
-					  SaiFdbAging.cpp \
-					  SwitchConfigContainer.cpp \
-					  SwitchConfig.cpp \
-					  SaiUnittests.cpp \
-					  Sai.cpp \
-					  SwitchStateBaseFdb.cpp \
-					  SwitchStateBaseHostif.cpp \
-					  HostInterfaceInfo.cpp \
-					  SwitchStateBase.cpp \
-					  NetMsgRegistrar.cpp \
-					  LaneMap.cpp \
-					  LaneMapContainer.cpp \
-					  LaneMapFileParser.cpp \
-					  VirtualSwitchSaiInterfacePort.cpp \
-					  VirtualSwitchSaiInterfaceFdb.cpp \
-					  Switch.cpp \
+					  EventQueue.cpp \
 					  FdbInfo.cpp \
-					  SwitchContainer.cpp \
+					  HostInterfaceInfo.cpp \
+					  LaneMapContainer.cpp \
+					  LaneMap.cpp \
+					  LaneMapFileParser.cpp \
+					  MACsecAttr.cpp \
+					  MACsecEgressFilter.cpp \
+					  MACsecFilter.cpp \
+					  MACsecForwarder.cpp \
+					  MACsecIngressFilter.cpp \
+					  MACsecManager.cpp \
+					  NetMsgRegistrar.cpp \
 					  RealObjectIdManager.cpp \
+					  ResourceLimiterContainer.cpp \
+					  ResourceLimiter.cpp \
+					  ResourceLimiterParser.cpp \
 					  SaiAttrWrap.cpp \
+					  Sai.cpp \
+					  SaiEventQueue.cpp \
+					  SaiFdbAging.cpp \
+					  SaiUnittests.cpp \
 					  SelectableFd.cpp \
-					  SwitchState.cpp \
+					  Signal.cpp \
 					  SwitchBCM56850.cpp \
 					  SwitchBCM81724.cpp \
+					  SwitchConfigContainer.cpp \
+					  SwitchConfig.cpp \
+					  SwitchContainer.cpp \
+					  Switch.cpp \
 					  SwitchMLNX2700.cpp \
-					  CorePortIndexMap.cpp \
-					  CorePortIndexMapContainer.cpp \
-					  CorePortIndexMapFileParser.cpp \
-					  MACsecFilter.cpp \
-					  MACsecEgressFilter.cpp \
-					  MACsecIngressFilter.cpp \
-					  TrafficForwarder.cpp \
-					  MACsecForwarder.cpp \
-					  TrafficFilterPipes.cpp \
+					  SwitchStateBase.cpp \
+					  SwitchStateBaseFdb.cpp \
+					  SwitchStateBaseHostif.cpp \
 					  SwitchStateBaseMACsec.cpp \
-					  MACsecAttr.cpp \
-					  MACsecManager.cpp
+					  SwitchState.cpp \
+					  TrafficFilterPipes.cpp \
+					  TrafficForwarder.cpp \
+					  VirtualSwitchSaiInterface.cpp \
+					  VirtualSwitchSaiInterfaceFdb.cpp \
+					  VirtualSwitchSaiInterfacePort.cpp
 
 libsaivs_la_SOURCES = \
 					  sai_vs_fdb.cpp \
@@ -124,6 +124,6 @@ bin_PROGRAMS = tests
 
 tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la $(top_srcdir)/meta/libsaimetadata.la $(top_srcdir)/meta/libsaimeta.la -lzmq
+tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq
 
 TESTS = tests

@@ -1,9 +1,8 @@
-# since we have SAI sumbodule we will use submodule headers
-AM_CFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
-AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/lib/inc
+AM_CFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta
+AM_CXXFLAGS = -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/experimental -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/lib/inc
 
 if DEBUG
-DBGFLAGS = -ggdb -D_DEBUG_
+DBGFLAGS = -ggdb -DDEBUG
 else
 DBGFLAGS = -g
 endif
@@ -28,8 +27,11 @@ libsaimetadata_la_SOURCES =  \
 libsaimetadata_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaimetadata_la_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) -ansi $(CODE_COVERAGE_CFLAGS)
 
-
 libsaimeta_la_SOURCES = \
+				AttrKeyMap.cpp \
+				Globals.cpp \
+				Meta.cpp \
+				MetaKeyHasher.cpp \
 				Notification.cpp \
 				NotificationFactory.cpp \
 				NotificationFdbEvent.cpp \
@@ -37,22 +39,18 @@ libsaimeta_la_SOURCES = \
 				NotificationQueuePfcDeadlock.cpp \
 				NotificationSwitchShutdownRequest.cpp \
 				NotificationSwitchStateChange.cpp \
-				SaiInterface.cpp \
-				SaiAttributeList.cpp \
-				saiserialize.cpp \
-				SaiAttrWrapper.cpp \
 				OidRefCounter.cpp \
-				AttrKeyMap.cpp \
-				Globals.cpp \
+				PerformanceIntervalTimer.cpp \
+				PortRelatedSet.cpp \
+				RedisSelectableChannel.cpp \
+				SaiAttrWrapper.cpp \
+				SaiAttributeList.cpp \
+				SaiInterface.cpp \
 				SaiObject.cpp \
 				SaiObjectCollection.cpp \
-				PortRelatedSet.cpp \
-				MetaKeyHasher.cpp \
-				PerformanceIntervalTimer.cpp \
 				SelectableChannel.cpp \
-				RedisSelectableChannel.cpp \
 				ZeroMQSelectableChannel.cpp \
-				Meta.cpp
+				saiserialize.cpp
 
 libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaimeta_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
