@@ -37,14 +37,14 @@ libsaimeta_la_SOURCES = \
 				PerformanceIntervalTimer.cpp \
 				PortRelatedSet.cpp \
 				RedisSelectableChannel.cpp \
-				SaiAttrWrapper.cpp \
 				SaiAttributeList.cpp \
+				SaiAttrWrapper.cpp \
 				SaiInterface.cpp \
-				SaiObject.cpp \
 				SaiObjectCollection.cpp \
+				SaiObject.cpp \
+				SaiSerialize.cpp \
 				SelectableChannel.cpp \
-				ZeroMQSelectableChannel.cpp \
-				saiserialize.cpp
+				ZeroMQSelectableChannel.cpp
 
 libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaimeta_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
