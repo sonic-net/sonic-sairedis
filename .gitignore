@@ -42,6 +42,7 @@ debian/tmp/
 Makefile.in
 aclocal.m4
 autom4te.cache/
+aminclude_static.am
 config.h
 config.h.in
 config.log
@@ -107,6 +108,7 @@ tests/testclient
 **/*.swo
 **/*.gcda
 **/*.gcno
+**/*.gcov
 
 tests/applyview.log
 tests/sai_warmboot.bin.bak
