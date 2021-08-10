@@ -115,11 +115,13 @@ FlexCounter::MACsecSAAttrIds::MACsecSAAttrIds(
 }
 
 FlexCounter::TunnelCounterIds::TunnelCounterIds(
-        _In_ sai_object_id_t tunnel,
+        _In_ sai_object_id_t tunnelRid,
         _In_ const std::vector<sai_tunnel_stat_t> &tunnelIds):
-    tunnelId(tunnel), tunnelCounterIds(tunnelIds)
+        m_tunnelId(tunnelRid),
+        m_tunnelCounterIds(tunnelIds)
 {
     SWSS_LOG_ENTER();
+    // empty intentionally
 }
 
 void FlexCounter::setPollInterval(
@@ -605,7 +607,7 @@ void FlexCounter::setTunnelCounterList(
 
     if (it != m_tunnelCounterIdsMap.end())
     {
-        it->second->tunnelCounterIds = supportedIds;
+        it->second->m_tunnelCounterIds = supportedIds;
         return;
     }
 
@@ -1698,8 +1700,8 @@ void FlexCounter::collectTunnelCounters(
     for (const auto &kv: m_tunnelCounterIdsMap)
     {
         const auto &tunnelVid = kv.first;
-        const auto &tunnelId = kv.second->tunnelId;
-        const auto &tunnelCounterIds = kv.second->tunnelCounterIds;
+        const auto &tunnelId = kv.second->m_tunnelId;
+        const auto &tunnelCounterIds = kv.second->m_tunnelCounterIds;
 
         std::vector<uint64_t> tunnelStats(tunnelCounterIds.size());
 

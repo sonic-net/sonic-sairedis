@@ -329,8 +329,8 @@ namespace syncd
                         _In_ sai_object_id_t tunnel,
                         _In_ const std::vector<sai_tunnel_stat_t> &tunnelIds);
 
-                sai_object_id_t tunnelId;
-                std::vector<sai_tunnel_stat_t> tunnelCounterIds;
+                sai_object_id_t m_tunnelId;
+                std::vector<sai_tunnel_stat_t> m_tunnelCounterIds;
             };
         private:
 
