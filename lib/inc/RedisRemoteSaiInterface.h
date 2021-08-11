@@ -21,51 +21,6 @@
 #include <functional>
 #include <map>
 
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(ot)   \
-    virtual sai_status_t remove(                                    \
-            _In_ const sai_ ## ot ## _t* ot) override;
-
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(ot)   \
-    virtual sai_status_t create(                                    \
-            _In_ const sai_ ## ot ## _t* ot,                        \
-            _In_ uint32_t attr_count,                               \
-            _In_ const sai_attribute_t *attr_list) override;
-
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(ot)      \
-    virtual sai_status_t set(                                       \
-            _In_ const sai_ ## ot ## _t* ot,                        \
-            _In_ const sai_attribute_t *attr) override;
-
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(ot)      \
-    virtual sai_status_t get(                                       \
-            _In_ const sai_ ## ot ## _t* ot,                        \
-            _In_ uint32_t attr_count,                               \
-            _Out_ sai_attribute_t *attr_list) override;
-
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(ot)  \
-    virtual sai_status_t bulkCreate(                                    \
-            _In_ uint32_t object_count,                                 \
-            _In_ const sai_ ## ot ## _t *ot,                            \
-            _In_ const uint32_t *attr_count,                            \
-            _In_ const sai_attribute_t **attr_list,                     \
-            _In_ sai_bulk_op_error_mode_t mode,                         \
-            _Out_ sai_status_t *object_statuses) override;
-
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(ot)  \
-    virtual sai_status_t bulkRemove(                                    \
-            _In_ uint32_t object_count,                                 \
-            _In_ const sai_ ## ot ## _t *ot,                            \
-            _In_ sai_bulk_op_error_mode_t mode,                         \
-            _Out_ sai_status_t *object_statuses) override;
-
-#define SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(ot)     \
-    virtual sai_status_t bulkSet(                                       \
-            _In_ uint32_t object_count,                                 \
-            _In_ const sai_ ## ot ## _t *ot,                            \
-            _In_ const sai_attribute_t *attr_list,                      \
-            _In_ sai_bulk_op_error_mode_t mode,                         \
-            _Out_ sai_status_t *object_statuses) override;
-
 namespace sairedis
 {
     class RedisRemoteSaiInterface:
@@ -112,49 +67,10 @@ namespace sairedis
                     _In_ uint32_t attr_count,
                     _Inout_ sai_attribute_t *attr_list) override;
 
-        public: // create ENTRY
+        public: // QUAD ENTRY and BULK QUAD ENTRY
 
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(ipmc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(l2mc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(mcast_fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(neighbor_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(route_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_CREATE_ENTRY(nat_entry);
-
-        public: // remove ENTRY
-
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(ipmc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(l2mc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(mcast_fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(neighbor_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(route_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_REMOVE_ENTRY(nat_entry);
-
-        public: // set ENTRY
-
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(ipmc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(l2mc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(mcast_fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(neighbor_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(route_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_SET_ENTRY(nat_entry);
-
-        public: // get ENTRY
-
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(ipmc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(l2mc_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(mcast_fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(neighbor_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(route_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_GET_ENTRY(nat_entry);
+            SAIREDIS_DECLARE_EVERY_ENTRY(SAIREDIS_SAIINTERFACE_DECLARE_QUAD_ENTRY_OVERRIDE);
+            SAIREDIS_DECLARE_EVERY_BULK_ENTRY(SAIREDIS_SAIINTERFACE_DECLARE_BULK_ENTRY_OVERRIDE);
 
         public: // bulk QUAD oid
 
@@ -182,27 +98,6 @@ namespace sairedis
                     _In_ const sai_attribute_t *attr_list,
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
-
-        public: // bulk create ENTRY
-
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(nat_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_CREATE_ENTRY(route_entry);
-
-        public: // bulk remove ENTRY
-
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_REMOVE_ENTRY(route_entry);
-
-        public: // bulk set ENTRY
-
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(fdb_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(inseg_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(nat_entry);
-            SAIREDIS_REDISREMOTESAIINTERFACE_DECLARE_BULK_SET_ENTRY(route_entry);
 
         public: // stats API
 
