@@ -5,7 +5,7 @@ extern "C" {
 #include "saimetadata.h"
 }
 
-#include "sairedis.h"
+//#include "sairedis.h"
 
 #define SAIREDIS_SAIINTERFACE_DECLARE_REMOVE_ENTRY(ot)  \
     virtual sai_status_t remove(                        \

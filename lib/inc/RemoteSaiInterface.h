@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sairedis.h"
+
 #include "meta/SaiInterface.h"
 
 namespace sairedis
