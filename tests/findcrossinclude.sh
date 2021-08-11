@@ -22,24 +22,24 @@ echo -- find cross include in meta/Makefile.am
 
 grep -P "FLAGS.+(lib|vslib|syncd)" ../meta/Makefile.am
 
-echo -- find cross include in lib/src/Makefile.am
+echo -- find cross include in lib/Makefile.am
 
-grep -P "FLAGS.+(vslib|syncd)" ../lib/src/Makefile.am
+grep -P "FLAGS.+(vslib|syncd)" ../lib/Makefile.am
 
-echo -- find cross include in vslib/src/Makefile.am
+echo -- find cross include in vslib/Makefile.am
 
-grep -P "FLAGS.+(lib|syncd)" ../vslib/src/Makefile.am
+grep -P "FLAGS.+(lib|syncd)" ../vslib/Makefile.am
 
 echo -- find cross include in meta directory
 
 find ../meta/.deps -name "*.Plo" -o -name "*.Po"|xargs grep -P "[^r]/lib/|vslib/|syncd/"| \
-         perl -npe 's!lib/inc/sairedis(common)?.h!!g' | grep -P "[^r]/lib/|vslib/|syncd/" | grep -v deps/test
+         perl -npe 's!lib/sairedis(common)?.h!!g' | grep -P "[^r]/lib/|vslib/|syncd/" | grep -v deps/test
 
-echo -- find cross include in lib/src directory
+echo -- find cross include in lib directory
 
-find ../lib/src/.deps -name "*.Plo" -o -name "*.Po"|xargs grep -P "vslib/|syncd/"
+find ../lib/.deps -name "*.Plo" -o -name "*.Po"|xargs grep -P "vslib/|syncd/"
        
-echo -- find cross include in vslib/src directory
+echo -- find cross include in vslib directory
 
-find ../vslib/src/.deps -name "*.Plo" -o -name "*.Po"|xargs grep -P "[^r]/lib/|syncd/"| \
-         perl -npe 's!lib/inc/sairedis.h!!g' | grep -P "[^r]/lib/|syncd/"
+find ../vslib/.deps -name "*.Plo" -o -name "*.Po"|xargs grep -P "[^r]/lib/|syncd/"| \
+         perl -npe 's!lib/sairedis.h!!g' | grep -P "[^r]/lib/|syncd/"

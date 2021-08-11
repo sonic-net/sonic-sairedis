@@ -1,7 +1,7 @@
 #include "SaiPlayer.h"
 #include "CommandLineOptionsParser.h"
 
-#include "lib/inc/ClientServerSai.h"
+#include "lib/ClientServerSai.h"
 #include "syncd/MetadataLogger.h"
 
 #include "swss/logger.h"

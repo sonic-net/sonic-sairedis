@@ -166,9 +166,7 @@ AC_SUBST(SAIINC, "-I\$(top_srcdir)/SAI/inc -I\$(top_srcdir)/SAI/experimental -I\
 AC_OUTPUT(Makefile
           meta/Makefile
           lib/Makefile
-          lib/src/Makefile
           vslib/Makefile
-          vslib/src/Makefile
           syncd/Makefile
           saiplayer/Makefile
           saidump/Makefile

@@ -1,5 +1,5 @@
 AM_CFLAGS = $(SAIINC)
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib/inc
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib
 
 lib_LTLIBRARIES = libsaimetadata.la libsaimeta.la
 
@@ -57,9 +57,9 @@ tests_SOURCES = \
 				DummySaiInterface.cpp \
 				MetaTestSaiInterface.cpp \
 				NumberOidIndexGenerator.cpp \
-				../lib/src/VirtualObjectIdManager.cpp \
-				../lib/src/SwitchConfig.cpp \
-				../lib/src/SwitchConfigContainer.cpp
+				../lib/VirtualObjectIdManager.cpp \
+				../lib/SwitchConfig.cpp \
+				../lib/SwitchConfigContainer.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread libsaimetadata.la libsaimeta.la -lzmq

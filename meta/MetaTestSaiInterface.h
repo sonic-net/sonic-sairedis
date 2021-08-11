@@ -2,7 +2,7 @@
 
 #include "DummySaiInterface.h"
 
-#include "lib/inc/VirtualObjectIdManager.h"
+#include "lib/VirtualObjectIdManager.h"
 
 #include <memory>
 

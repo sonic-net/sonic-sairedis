@@ -25,7 +25,7 @@
 #include "meta/RedisSelectableChannel.h"
 #include "meta/PerformanceIntervalTimer.h"
 
-#include "vslib/inc/saivs.h"
+#include "vslib/saivs.h"
 
 #include <unistd.h>
 #include <inttypes.h>

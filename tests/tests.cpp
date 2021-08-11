@@ -7,7 +7,7 @@
 
 #include "syncd/ZeroMQNotificationProducer.h"
 
-#include "lib/inc/ZeroMQChannel.h"
+#include "lib/ZeroMQChannel.h"
 
 #include "meta/sai_serialize.h"
 

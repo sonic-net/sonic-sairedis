@@ -76,7 +76,6 @@ tests/swsslogentercheck.sh.trs
 tests/test-suite.log
 
 vslib/src/test-suite.log
-vslib/src/tests
 vslib/src/tests.log
 vslib/src/tests.trs
 
@@ -86,7 +85,8 @@ deps/
 
 # Executables #
 ###############
-lib/src/tests
+lib/tests
+vslib/tests
 meta/tests
 saidiscovery/saidiscovery
 saidump/saidump

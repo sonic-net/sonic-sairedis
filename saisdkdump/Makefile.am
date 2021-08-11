@@ -3,7 +3,7 @@ AM_CXXFLAGS = $(SAIINC)
 bin_PROGRAMS = saisdkdump
 
 if SAIVS
-SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
+SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs
 else
 SAILIB=-lsai
 endif

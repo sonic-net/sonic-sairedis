@@ -4,7 +4,7 @@ SOURCES=../pysairedis.h ../pysairedis.cpp
 pkgpython_PYTHON = pysairedis.py __init__.py
 pkgpyexec_LTLIBRARIES = _pysairedis.la
 
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib/inc -I..
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I..
 
 BUILT_SOURCES = pysairedis_wrap.cpp
 
@@ -14,7 +14,7 @@ _pysairedis_la_CXXFLAGS = -I/usr/include/python$(PYTHON_VERSION) $(AM_CXXFLAGS) 
 
 _pysairedis_la_LDFLAGS = -module \
 		-lhiredis -lswsscommon -lpthread \
-		-L$(top_srcdir)/lib/src/.libs -lsairedis \
+		-L$(top_srcdir)/lib/.libs -lsairedis \
 		-L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
 		-lzmq
 

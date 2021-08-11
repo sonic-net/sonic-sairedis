@@ -1,7 +1,7 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib/inc -I$(top_srcdir)/vslib/inc
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/vslib
 
 if SAIVS
-SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
+SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs
 else
 SAILIB=-lsai
 endif
@@ -58,7 +58,7 @@ libSyncd_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 syncd_SOURCES = main.cpp
 syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-syncd_LDADD = libSyncd.a $(top_srcdir)/lib/src/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
+syncd_LDADD = libSyncd.a $(top_srcdir)/lib/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
 			  -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS)
 
 if SAITHRIFT
@@ -83,11 +83,11 @@ libSyncdRequestShutdown_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMO
 syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
 syncd_request_shutdown_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_request_shutdown_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a $(top_srcdir)/lib/src/libSaiRedis.a -lhiredis -lswsscommon -lpthread $(CODE_COVERAGE_LIBS)
+syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a $(top_srcdir)/lib/libSaiRedis.a -lhiredis -lswsscommon -lpthread $(CODE_COVERAGE_LIBS)
 
 tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/src/.libs -lsairedis \
+tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/.libs -lsairedis \
 			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
 TESTS = tests
