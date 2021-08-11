@@ -9,7 +9,7 @@
 #include <memory>
 
 extern "C" {
-#include "sai.h"     // for sai_switch_type_t
+#include "sai.h"
 }
 
 namespace saivs

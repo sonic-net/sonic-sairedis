@@ -6,7 +6,7 @@ extern "C" {
 
 #include "swss/table.h"
 
-#include "sairedis.h" // for notify enum
+#include "sairedis.h"
 
 #include <string>
 #include <fstream>
