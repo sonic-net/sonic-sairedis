@@ -63,6 +63,5 @@ namespace sairedis
             void* m_ntfContext;
 
             void* m_ntfSocket;
-
     };
 }

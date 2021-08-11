@@ -28,4 +28,3 @@ const std::string& Notification::getSerializedNotification() const
 
     return m_serializedNotification;
 }
-

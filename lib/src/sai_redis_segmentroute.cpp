@@ -2,7 +2,6 @@
 
 REDIS_BULK_CREATE(SEGMENTROUTE_SIDLIST,segmentroute_sidlists);
 REDIS_BULK_REMOVE(SEGMENTROUTE_SIDLIST,segmentroute_sidlists);
-
 REDIS_GENERIC_QUAD(SEGMENTROUTE_SIDLIST,segmentroute_sidlist);
 
 const sai_segmentroute_api_t redis_segmentroute_api = {

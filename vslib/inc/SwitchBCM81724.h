@@ -63,7 +63,7 @@ namespace saivs
 
             virtual sai_status_t create_ports();
 
-       protected : // refresh
+        protected : // refresh
 
             virtual sai_status_t refresh_port_list(
                     _In_ const sai_attr_metadata_t *meta) override;

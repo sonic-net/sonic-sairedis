@@ -5,8 +5,8 @@
 using namespace saivs;
 
 bool TrafficFilterPipes::installFilter(
-    _In_ int priority,
-    _In_ std::shared_ptr<TrafficFilter> filter)
+        _In_ int priority,
+        _In_ std::shared_ptr<TrafficFilter> filter)
 {
     SWSS_LOG_ENTER();
 
@@ -16,15 +16,15 @@ bool TrafficFilterPipes::installFilter(
 }
 
 bool TrafficFilterPipes::uninstallFilter(
-    _In_ std::shared_ptr<TrafficFilter> filter)
+        _In_ std::shared_ptr<TrafficFilter> filter)
 {
     SWSS_LOG_ENTER();
 
     std::unique_lock<std::mutex> guard(m_mutex);
 
     for (auto itr = m_filters.begin();
-        itr != m_filters.end();
-        itr ++)
+            itr != m_filters.end();
+            itr ++)
     {
         if (itr->second == filter)
         {
@@ -38,8 +38,8 @@ bool TrafficFilterPipes::uninstallFilter(
 }
 
 TrafficFilter::FilterStatus TrafficFilterPipes::execute(
-    _Inout_ void *buffer,
-    _Inout_ size_t &length)
+        _Inout_ void *buffer,
+        _Inout_ size_t &length)
 {
     SWSS_LOG_ENTER();
 

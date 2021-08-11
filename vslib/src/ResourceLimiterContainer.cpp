@@ -47,4 +47,3 @@ void ResourceLimiterContainer::clear()
 
     m_container.clear();
 }
-

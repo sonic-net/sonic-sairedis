@@ -15,28 +15,30 @@ namespace saivs
     class MACsecForwarder :
         public TrafficForwarder
     {
-    public:
-        MACsecForwarder(
-            _In_ const std::string &macsecInterfaceName,
-            _In_ std::shared_ptr<HostInterfaceInfo> info);
+        public:
 
-        virtual ~MACsecForwarder();
+            MACsecForwarder(
+                    _In_ const std::string &macsecInterfaceName,
+                    _In_ std::shared_ptr<HostInterfaceInfo> info);
 
-        int get_macsecfd() const;
+            virtual ~MACsecForwarder();
 
-        void forward();
+            int get_macsecfd() const;
 
-    private:
-        int m_macsecfd;
+            void forward();
 
-        const std::string m_macsecInterfaceName;
+        private:
 
-        bool m_runThread;
+            int m_macsecfd;
 
-        swss::SelectableEvent m_exitEvent;
+            const std::string m_macsecInterfaceName;
 
-        std::shared_ptr<std::thread> m_forwardThread;
+            bool m_runThread;
 
-        std::shared_ptr<HostInterfaceInfo> m_info;
+            swss::SelectableEvent m_exitEvent;
+
+            std::shared_ptr<std::thread> m_forwardThread;
+
+            std::shared_ptr<HostInterfaceInfo> m_info;
     };
 }

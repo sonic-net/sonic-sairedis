@@ -11,6 +11,8 @@ RedisVidIndexGenerator::RedisVidIndexGenerator(
     m_vidCounterName(vidCounterName)
 {
     SWSS_LOG_ENTER();
+
+    // empty
 }
 
 uint64_t RedisVidIndexGenerator::increment()

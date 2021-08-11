@@ -469,7 +469,7 @@ sai_status_t SwitchStateBase::setPort(
             if (vs_set_dev_mtu(vname.c_str(), mtu) < 0)
             {
                 SWSS_LOG_ERROR("failed to set MTU on portId %s",
-                    sai_serialize_object_id(portId).c_str());
+                        sai_serialize_object_id(portId).c_str());
                 return SAI_STATUS_FAILURE;
             }
         }
@@ -907,15 +907,15 @@ sai_status_t SwitchStateBase::set_switch_supported_object_types()
 
     // Fill this with supported SAI_OBJECT_TYPEs
     sai_object_type_t supported_obj_list[] = {
-                                SAI_OBJECT_TYPE_PORT,
-                                SAI_OBJECT_TYPE_LAG,
-                                SAI_OBJECT_TYPE_TAM,
-                                SAI_OBJECT_TYPE_TAM_COLLECTOR,
-                                SAI_OBJECT_TYPE_TAM_REPORT,
-                                SAI_OBJECT_TYPE_TAM_TRANSPORT,
-                                SAI_OBJECT_TYPE_TAM_TELEMETRY,
-                                SAI_OBJECT_TYPE_TAM_EVENT_THRESHOLD
-                              };
+        SAI_OBJECT_TYPE_PORT,
+        SAI_OBJECT_TYPE_LAG,
+        SAI_OBJECT_TYPE_TAM,
+        SAI_OBJECT_TYPE_TAM_COLLECTOR,
+        SAI_OBJECT_TYPE_TAM_REPORT,
+        SAI_OBJECT_TYPE_TAM_TRANSPORT,
+        SAI_OBJECT_TYPE_TAM_TELEMETRY,
+        SAI_OBJECT_TYPE_TAM_EVENT_THRESHOLD
+    };
 
     attr.id = SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST;
     attr.value.s32list.count = sizeof(supported_obj_list)/sizeof(sai_object_type_t);
@@ -1986,7 +1986,7 @@ sai_status_t SwitchStateBase::refresh_port_list(
     const sai_object_id_t cpu_port_id = attr.value.oid;
 
     std::unordered_set<sai_object_id_t> fabric_port_set(m_fabric_port_list.begin(),
-                                                        m_fabric_port_list.end());
+            m_fabric_port_list.end());
 
     m_port_list.clear();
 
@@ -2430,7 +2430,7 @@ sai_status_t SwitchStateBase::check_port_dependencies(
 
     // port was found
     SWSS_LOG_NOTICE("port %s found, for removal",
-                sai_serialize_object_id(port_id).c_str());
+            sai_serialize_object_id(port_id).c_str());
 
     // check port reference count on bridge port
 
@@ -2479,7 +2479,7 @@ sai_status_t SwitchStateBase::check_port_dependencies(
     }
 
     SWSS_LOG_NOTICE("all depending objects on port %s are in default state",
-                sai_serialize_object_id(port_id).c_str());
+            sai_serialize_object_id(port_id).c_str());
 
     dep.insert(dep.end(), queues.begin(), queues.end());
     dep.insert(dep.end(), ipgs.begin(), ipgs.end());

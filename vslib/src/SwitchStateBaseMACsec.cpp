@@ -21,18 +21,18 @@ using namespace saivs;
 #define MACSEC_SCI_LENGTH (MACSEC_SYSTEM_IDENTIFIER + MACSEC_PORT_IDENTIFIER)
 
 #define SAI_METADATA_GET_ATTR_BY_ID(attr, attrId, attrCount, attrList) \
+{ \
+    attr = sai_metadata_get_attr_by_id(attrId, attrCount, attrList); \
+    if (attr == NULL) \
     { \
-        attr = sai_metadata_get_attr_by_id(attrId, attrCount, attrList); \
-        if (attr == NULL) \
-        { \
-            SWSS_LOG_ERROR("attr " #attrId " was not passed"); \
-            return SAI_STATUS_FAILURE; \
-        } \
-    }
+        SWSS_LOG_ERROR("attr " #attrId " was not passed"); \
+        return SAI_STATUS_FAILURE; \
+    } \
+}
 
 sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
-    _In_ sai_object_id_t entryId,
-    _In_ const sai_attribute_t *attr)
+        _In_ sai_object_id_t entryId,
+        _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
@@ -70,10 +70,10 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
                 if (m_macsecManager.create_macsec_sa(macsecAttr))
                 {
                     SWSS_LOG_NOTICE(
-                        "Enable MACsec SA %s:%u at the device %s",
-                        macsecAttr.m_sci.c_str(),
-                        static_cast<std::uint32_t>(macsecAttr.m_an),
-                        macsecAttr.m_macsecName.c_str());
+                            "Enable MACsec SA %s:%u at the device %s",
+                            macsecAttr.m_sci.c_str(),
+                            static_cast<std::uint32_t>(macsecAttr.m_an),
+                            macsecAttr.m_macsecName.c_str());
                 }
             }
         }
@@ -120,10 +120,10 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
 }
 
 sai_status_t SwitchStateBase::createMACsecPort(
-    _In_ sai_object_id_t macsecSaId,
-    _In_ sai_object_id_t switchId,
-    _In_ uint32_t attrCount,
-    _In_ const sai_attribute_t *attrList)
+        _In_ sai_object_id_t macsecSaId,
+        _In_ sai_object_id_t switchId,
+        _In_ uint32_t attrCount,
+        _In_ const sai_attribute_t *attrList)
 {
     SWSS_LOG_ENTER();
 
@@ -142,10 +142,10 @@ sai_status_t SwitchStateBase::createMACsecPort(
 }
 
 sai_status_t SwitchStateBase::createMACsecSC(
-    _In_ sai_object_id_t macsecScId,
-    _In_ sai_object_id_t switchId,
-    _In_ uint32_t attrCount,
-    _In_ const sai_attribute_t *attrList)
+        _In_ sai_object_id_t macsecScId,
+        _In_ sai_object_id_t switchId,
+        _In_ uint32_t attrCount,
+        _In_ const sai_attribute_t *attrList)
 {
     SWSS_LOG_ENTER();
 
@@ -156,9 +156,9 @@ sai_status_t SwitchStateBase::createMACsecSC(
         if (m_macsecManager.create_macsec_sc(macsecAttr))
         {
             SWSS_LOG_NOTICE(
-                "Create MACsec SC %s at the device %s",
-                macsecAttr.m_sci.c_str(),
-                macsecAttr.m_macsecName.c_str());
+                    "Create MACsec SC %s at the device %s",
+                    macsecAttr.m_sci.c_str(),
+                    macsecAttr.m_macsecName.c_str());
         }
     }
 
@@ -167,10 +167,10 @@ sai_status_t SwitchStateBase::createMACsecSC(
 }
 
 sai_status_t SwitchStateBase::createMACsecSA(
-    _In_ sai_object_id_t macsecSaId,
-    _In_ sai_object_id_t switchId,
-    _In_ uint32_t attrCount,
-    _In_ const sai_attribute_t *attrList)
+        _In_ sai_object_id_t macsecSaId,
+        _In_ sai_object_id_t switchId,
+        _In_ uint32_t attrCount,
+        _In_ const sai_attribute_t *attrList)
 {
     SWSS_LOG_ENTER();
 
@@ -181,10 +181,10 @@ sai_status_t SwitchStateBase::createMACsecSA(
         if (m_macsecManager.create_macsec_sa(macsecAttr))
         {
             SWSS_LOG_NOTICE(
-                "Enable MACsec SA %s:%u at the device %s",
-                macsecAttr.m_sci.c_str(),
-                static_cast<std::uint32_t>(macsecAttr.m_an),
-                macsecAttr.m_macsecName.c_str());
+                    "Enable MACsec SA %s:%u at the device %s",
+                    macsecAttr.m_sci.c_str(),
+                    static_cast<std::uint32_t>(macsecAttr.m_an),
+                    macsecAttr.m_macsecName.c_str());
         }
     }
 
@@ -193,7 +193,7 @@ sai_status_t SwitchStateBase::createMACsecSA(
 }
 
 sai_status_t SwitchStateBase::removeMACsecPort(
-    _In_ sai_object_id_t macsecPortId)
+        _In_ sai_object_id_t macsecPortId)
 {
     SWSS_LOG_ENTER();
 
@@ -212,7 +212,7 @@ sai_status_t SwitchStateBase::removeMACsecPort(
 }
 
 sai_status_t SwitchStateBase::removeMACsecSC(
-    _In_ sai_object_id_t macsecScId)
+        _In_ sai_object_id_t macsecScId)
 {
     SWSS_LOG_ENTER();
 
@@ -223,9 +223,9 @@ sai_status_t SwitchStateBase::removeMACsecSC(
         if (m_macsecManager.delete_macsec_sc(macsecAttr))
         {
             SWSS_LOG_NOTICE(
-                "The MACsec sc %s in device %s is deleted",
-                macsecAttr.m_sci.c_str(),
-                macsecAttr.m_macsecName.c_str());
+                    "The MACsec sc %s in device %s is deleted",
+                    macsecAttr.m_sci.c_str(),
+                    macsecAttr.m_macsecName.c_str());
         }
     }
 
@@ -234,7 +234,7 @@ sai_status_t SwitchStateBase::removeMACsecSC(
 }
 
 sai_status_t SwitchStateBase::removeMACsecSA(
-    _In_ sai_object_id_t macsecSaId)
+        _In_ sai_object_id_t macsecSaId)
 {
     SWSS_LOG_ENTER();
 
@@ -245,10 +245,10 @@ sai_status_t SwitchStateBase::removeMACsecSA(
         if (m_macsecManager.delete_macsec_sa(macsecAttr))
         {
             SWSS_LOG_NOTICE(
-                "The MACsec SA %s:%u at the device %s is deleted.",
-                macsecAttr.m_sci.c_str(),
-                static_cast<std::uint32_t>(macsecAttr.m_an),
-                macsecAttr.m_macsecName.c_str());
+                    "The MACsec SA %s:%u at the device %s is deleted.",
+                    macsecAttr.m_sci.c_str(),
+                    static_cast<std::uint32_t>(macsecAttr.m_an),
+                    macsecAttr.m_macsecName.c_str());
         }
     }
 
@@ -257,8 +257,8 @@ sai_status_t SwitchStateBase::removeMACsecSA(
 }
 
 sai_status_t SwitchStateBase::getACLTable(
-    _In_ sai_object_id_t entryId,
-    _Out_ sai_object_id_t &tableId)
+        _In_ sai_object_id_t entryId,
+        _Out_ sai_object_id_t &tableId)
 {
     SWSS_LOG_ENTER();
 
@@ -296,8 +296,8 @@ sai_status_t SwitchStateBase::findPortByMACsecFlow(
     {
         // No ACL Entry is bound to the flow
         SWSS_LOG_DEBUG(
-            "Cannot find corresponding ACL entry for the flow %s",
-            sai_serialize_object_id(macsecFlowId).c_str());
+                "Cannot find corresponding ACL entry for the flow %s",
+                sai_serialize_object_id(macsecFlowId).c_str());
 
         return SAI_STATUS_FAILURE;
     }
@@ -311,8 +311,8 @@ sai_status_t SwitchStateBase::findPortByMACsecFlow(
     if (getACLTable(aclEntryIds.front(), aclTableId) != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR(
-            "Cannot find corresponding ACL table for the entry %s",
-            sai_serialize_object_id(aclEntryIds.front()).c_str());
+                "Cannot find corresponding ACL table for the entry %s",
+                sai_serialize_object_id(aclEntryIds.front()).c_str());
 
         return SAI_STATUS_FAILURE;
     }
@@ -328,8 +328,8 @@ sai_status_t SwitchStateBase::findPortByMACsecFlow(
     if (macsecScIds.empty())
     {
         SWSS_LOG_ERROR(
-            "Cannot find corresponding MACsec SC for the flow %s",
-            sai_serialize_object_id(macsecFlowId).c_str());
+                "Cannot find corresponding MACsec SC for the flow %s",
+                sai_serialize_object_id(macsecFlowId).c_str());
 
         return SAI_STATUS_FAILURE;
     }
@@ -351,8 +351,8 @@ sai_status_t SwitchStateBase::findPortByMACsecFlow(
     if (port_ids.size() != 1)
     {
         SWSS_LOG_ERROR(
-            "Expect one port to one ACL table %s, but got %zu",
-            sai_serialize_object_id(aclTableId).c_str(), port_ids.size());
+                "Expect one port to one ACL table %s, but got %zu",
+                sai_serialize_object_id(aclTableId).c_str(), port_ids.size());
 
         return SAI_STATUS_FAILURE;
     }
@@ -382,10 +382,10 @@ std::shared_ptr<HostInterfaceInfo> SwitchStateBase::findHostInterfaceInfoByPort(
 }
 
 sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecPort(
-    _In_ sai_object_id_t objectId,
-    _In_ uint32_t attrCount,
-    _In_ const sai_attribute_t *attrList,
-    _Out_ MACsecAttr &macsecAttr)
+        _In_ sai_object_id_t objectId,
+        _In_ uint32_t attrCount,
+        _In_ const sai_attribute_t *attrList,
+        _Out_ MACsecAttr &macsecAttr)
 {
     SWSS_LOG_ENTER();
 
@@ -415,10 +415,10 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecPort(
 }
 
 sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
-    _In_ sai_object_id_t objectId,
-    _In_ uint32_t attrCount,
-    _In_ const sai_attribute_t *attrList,
-    _Out_ MACsecAttr &macsecAttr)
+        _In_ sai_object_id_t objectId,
+        _In_ uint32_t attrCount,
+        _In_ const sai_attribute_t *attrList,
+        _Out_ MACsecAttr &macsecAttr)
 {
     SWSS_LOG_ENTER();
 
@@ -482,10 +482,10 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
 }
 
 sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
-    _In_ sai_object_id_t objectId,
-    _In_ uint32_t attrCount,
-    _In_ const sai_attribute_t *attrList,
-    _Out_ MACsecAttr &macsecAttr)
+        _In_ sai_object_id_t objectId,
+        _In_ uint32_t attrCount,
+        _In_ const sai_attribute_t *attrList,
+        _Out_ MACsecAttr &macsecAttr)
 {
     SWSS_LOG_ENTER();
 
@@ -577,11 +577,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 }
 
 sai_status_t SwitchStateBase::loadMACsecAttr(
-    _In_ sai_object_type_t objectType,
-    _In_ sai_object_id_t objectId,
-    _In_ uint32_t attrCount,
-    _In_ const sai_attribute_t *attrList,
-    _Out_ MACsecAttr &macsecAttr)
+        _In_ sai_object_type_t objectType,
+        _In_ sai_object_id_t objectId,
+        _In_ uint32_t attrCount,
+        _In_ const sai_attribute_t *attrList,
+        _Out_ MACsecAttr &macsecAttr)
 {
     SWSS_LOG_ENTER();
 
@@ -594,28 +594,28 @@ sai_status_t SwitchStateBase::loadMACsecAttr(
 
     switch (objectType)
     {
-    case SAI_OBJECT_TYPE_MACSEC_PORT:
-        return loadMACsecAttrFromMACsecPort(objectId, attrCount, attrList, macsecAttr);
+        case SAI_OBJECT_TYPE_MACSEC_PORT:
+            return loadMACsecAttrFromMACsecPort(objectId, attrCount, attrList, macsecAttr);
 
-    case SAI_OBJECT_TYPE_MACSEC_SC:
-        return loadMACsecAttrFromMACsecSC(objectId, attrCount, attrList, macsecAttr);
+        case SAI_OBJECT_TYPE_MACSEC_SC:
+            return loadMACsecAttrFromMACsecSC(objectId, attrCount, attrList, macsecAttr);
 
-    case SAI_OBJECT_TYPE_MACSEC_SA:
-        return loadMACsecAttrFromMACsecSA(objectId, attrCount, attrList, macsecAttr);
+        case SAI_OBJECT_TYPE_MACSEC_SA:
+            return loadMACsecAttrFromMACsecSA(objectId, attrCount, attrList, macsecAttr);
 
-    default:
-        SWSS_LOG_ERROR("Wrong type %s", sai_serialize_object_type(objectType).c_str());
+        default:
+            SWSS_LOG_ERROR("Wrong type %s", sai_serialize_object_type(objectType).c_str());
 
-        break;
+            break;
     }
 
     return SAI_STATUS_FAILURE;
 }
 
 sai_status_t SwitchStateBase::loadMACsecAttr(
-    _In_ sai_object_type_t objectType,
-    _In_ sai_object_id_t objectId,
-    _Out_ MACsecAttr &macsecAttr)
+        _In_ sai_object_type_t objectType,
+        _In_ sai_object_id_t objectId,
+        _Out_ MACsecAttr &macsecAttr)
 {
     SWSS_LOG_ENTER();
 
@@ -626,9 +626,9 @@ sai_status_t SwitchStateBase::loadMACsecAttr(
         if (loadMACsecAttr(objectType, objectId, static_cast<uint32_t>(attrs.size()), attrs.data(), macsecAttr) != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_DEBUG(
-                "Cannot load attributions of %s %s",
-                sai_serialize_object_type(objectType).c_str(),
-                sai_serialize_object_id(objectId).c_str());
+                    "Cannot load attributions of %s %s",
+                    sai_serialize_object_type(objectType).c_str(),
+                    sai_serialize_object_id(objectId).c_str());
 
             return SAI_STATUS_FAILURE;
         }
@@ -636,9 +636,9 @@ sai_status_t SwitchStateBase::loadMACsecAttr(
     else
     {
         SWSS_LOG_WARN(
-            "The %s %s is not existed",
-            sai_serialize_object_type(objectType).c_str(),
-            sai_serialize_object_id(objectId).c_str());
+                "The %s %s is not existed",
+                sai_serialize_object_type(objectType).c_str(),
+                sai_serialize_object_id(objectId).c_str());
 
         return SAI_STATUS_FAILURE;
     }
@@ -647,10 +647,10 @@ sai_status_t SwitchStateBase::loadMACsecAttr(
 }
 
 sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
-    _In_ sai_object_id_t entryId,
-    _In_ const sai_attribute_t *entryAttr,
-    _In_ sai_object_type_t objectType,
-    _Out_ std::vector<MACsecAttr> &macsecAttrs)
+        _In_ sai_object_id_t entryId,
+        _In_ const sai_attribute_t *entryAttr,
+        _In_ sai_object_type_t objectType,
+        _Out_ std::vector<MACsecAttr> &macsecAttrs)
 {
     SWSS_LOG_ENTER();
 
@@ -693,8 +693,8 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
         if (macsecScs.empty())
         {
             SWSS_LOG_DEBUG(
-                "No one MACsec SC is using the ACL entry %s",
-                sai_serialize_object_id(entryId).c_str());
+                    "No one MACsec SC is using the ACL entry %s",
+                    sai_serialize_object_id(entryId).c_str());
         }
 
         macsecAttrs.reserve(macsecScs.size());
@@ -728,8 +728,8 @@ sai_status_t SwitchStateBase::loadMACsecAttrsFromACLEntry(
         if (macsecSas.empty())
         {
             SWSS_LOG_DEBUG(
-                "No one MACsec SA is using the ACL entry %s",
-                sai_serialize_object_id(entryId).c_str());
+                    "No one MACsec SA is using the ACL entry %s",
+                    sai_serialize_object_id(entryId).c_str());
         }
 
         macsecAttrs.reserve(macsecSas.size());
@@ -769,8 +769,8 @@ sai_status_t SwitchStateBase::getMACsecSAPacketNumber(
     else
     {
         SWSS_LOG_WARN(
-            "The MACsec SA %s isn't existing",
-            sai_serialize_object_id(macsecSaId).c_str());
+                "The MACsec SA %s isn't existing",
+                sai_serialize_object_id(macsecSaId).c_str());
     }
 
     return SAI_STATUS_FAILURE;

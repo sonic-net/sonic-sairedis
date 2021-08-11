@@ -12,21 +12,24 @@ namespace saivs
 
     class TrafficForwarder
     {
-    public:
-        virtual ~TrafficForwarder() = default;
+        public:
 
-    protected:
-        TrafficForwarder() = default;
+            virtual ~TrafficForwarder() = default;
 
-        static void addVlanTag(
-            _Inout_ unsigned char *buffer,
-            _Inout_ size_t &length,
-            _Inout_ struct msghdr &msg);
+        protected:
 
-        virtual bool sendTo(
-            _In_ int fd,
-            _In_ const unsigned char *buffer,
-            _In_ size_t length) const;
+            TrafficForwarder() = default;
 
+        public:
+
+            static void addVlanTag(
+                    _Inout_ unsigned char *buffer,
+                    _Inout_ size_t &length,
+                    _Inout_ struct msghdr &msg);
+
+            virtual bool sendTo(
+                    _In_ int fd,
+                    _In_ const unsigned char *buffer,
+                    _In_ size_t length) const;
     };
 }

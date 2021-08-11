@@ -452,7 +452,7 @@ void SwitchStateBase::process_packet_for_fdb_event(
 
             attr.id = SAI_LAG_ATTR_PORT_VLAN_ID
 
-            sai_status_t status = get(SAI_OBJECT_TYPE_LAG, lag_id, 1, &attr);
+                sai_status_t status = get(SAI_OBJECT_TYPE_LAG, lag_id, 1, &attr);
 
             if (status != SAI_STATUS_SUCCESS)
             {

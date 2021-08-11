@@ -6,27 +6,36 @@
 
 namespace saivs
 {
-    enum FilterPriority
+    typedef enum _FilterPriority
     {
         MACSEC_FILTER,
-    };
+
+    } FilterPriority;
 
     class TrafficFilter
     {
-    public:
-        enum FilterStatus
-        {
-            CONTINUE,
-            TERMINATE,
-            ERROR,
-        };
+        public:
 
-        TrafficFilter() = default;
+            typedef enum _FilterStatus
+            {
+                CONTINUE,
 
-        virtual ~TrafficFilter() = default;
+                TERMINATE,
 
-        virtual FilterStatus execute(
-            _Inout_ void *buffer,
-            _Inout_ size_t &length) = 0;
+                ERROR,
+
+            } FilterStatus;
+
+        public:
+
+            TrafficFilter() = default;
+
+            virtual ~TrafficFilter() = default;
+
+        public:
+
+            virtual FilterStatus execute(
+                    _Inout_ void *buffer,
+                    _Inout_ size_t &length) = 0;
     };
 }

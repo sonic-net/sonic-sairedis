@@ -113,4 +113,3 @@ const sai_switch_notifications_t& Switch::getSwitchNotifications() const
 
     return m_switchNotifications;
 }
-

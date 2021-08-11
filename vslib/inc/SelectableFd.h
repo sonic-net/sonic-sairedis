@@ -5,7 +5,7 @@
 
 namespace saivs
 {
-    class SelectableFd :
+    class SelectableFd:
         public swss::Selectable
     {
         private:

@@ -178,8 +178,8 @@ void SwitchState::asyncOnLinkMsg(
 
         default:
 
-        SWSS_LOG_WARN("unsupported nlmsg_type: %d", nlmsg_type);
-        return;
+            SWSS_LOG_WARN("unsupported nlmsg_type: %d", nlmsg_type);
+            return;
     }
 
     struct rtnl_link *link = (struct rtnl_link *)obj;

@@ -636,4 +636,3 @@ namespace saivs
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
     };
 }
-

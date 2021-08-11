@@ -18,31 +18,30 @@ namespace saivs
 
         public:
 
-                SaiAttrWrap(
-                        _In_ sai_object_type_t object_type,
-                        _In_ const sai_attribute_t *attr);
+            SaiAttrWrap(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const sai_attribute_t *attr);
 
-                SaiAttrWrap(
-                        _In_ const std::string& attrId,
-                        _In_ const std::string& attrValue);
+            SaiAttrWrap(
+                    _In_ const std::string& attrId,
+                    _In_ const std::string& attrValue);
 
-                virtual ~SaiAttrWrap();
+            virtual ~SaiAttrWrap();
 
         public:
 
-                const sai_attribute_t* getAttr() const;
+            const sai_attribute_t* getAttr() const;
 
-                const sai_attr_metadata_t* getAttrMetadata() const;
+            const sai_attr_metadata_t* getAttrMetadata() const;
 
-                const std::string& getAttrStrValue() const;
+            const std::string& getAttrStrValue() const;
 
         private:
 
-                const sai_attr_metadata_t *m_meta;
+            const sai_attr_metadata_t *m_meta;
 
-                sai_attribute_t m_attr;
+            sai_attribute_t m_attr;
 
-                std::string m_value;
+            std::string m_value;
     };
-
 }

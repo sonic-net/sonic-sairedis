@@ -45,4 +45,3 @@ namespace saivs
             virtual sai_status_t warm_update_queues() override;
     };
 }
-

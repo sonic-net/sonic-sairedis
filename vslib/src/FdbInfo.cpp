@@ -166,5 +166,3 @@ void FdbInfo::setTimestamp(
 
     m_timestamp = timestamp;
 }
-
-

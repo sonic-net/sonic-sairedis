@@ -71,4 +71,3 @@ std::vector<sai_object_id_t> PortRelatedSet::getAllPorts() const
 
     return vec;
 }
-

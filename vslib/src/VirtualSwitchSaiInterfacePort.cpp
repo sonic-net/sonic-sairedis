@@ -172,5 +172,3 @@ sai_status_t VirtualSwitchSaiInterface::preSetPort(
 
     return SAI_STATUS_SUCCESS;
 }
-
-

@@ -486,5 +486,3 @@ namespace saimeta
             bool m_warmBoot;
     };
 }
-
-

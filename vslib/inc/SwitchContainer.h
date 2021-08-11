@@ -65,4 +65,4 @@ namespace saivs
             std::map<sai_object_id_t, std::shared_ptr<Switch>> m_switchMap;
 
     };
-};
+}

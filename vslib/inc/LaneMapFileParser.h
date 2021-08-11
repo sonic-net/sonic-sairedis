@@ -40,6 +40,5 @@ namespace saivs
                     _In_ uint32_t switchIndex,
                     _In_ const std::string& ifname,
                     _In_ const std::string& slanes);
-
     };
 }

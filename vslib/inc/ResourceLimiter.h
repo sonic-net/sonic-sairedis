@@ -12,7 +12,7 @@ namespace saivs
     {
         public:
 
-             constexpr static uint32_t DEFAULT_SWITCH_INDEX = 0;
+            constexpr static uint32_t DEFAULT_SWITCH_INDEX = 0;
 
         public:
 

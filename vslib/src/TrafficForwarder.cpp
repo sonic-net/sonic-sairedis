@@ -24,9 +24,9 @@ using namespace saivs;
 #define VLAN_TAG_SIZE (4)
 
 void TrafficForwarder::addVlanTag(
-    _Inout_ unsigned char *buffer,
-    _Inout_ size_t &length,
-    _Inout_ struct msghdr &msg)
+        _Inout_ unsigned char *buffer,
+        _Inout_ size_t &length,
+        _Inout_ struct msghdr &msg)
 {
     SWSS_LOG_ENTER();
 
@@ -71,18 +71,18 @@ void TrafficForwarder::addVlanTag(
 }
 
 bool TrafficForwarder::sendTo(
-    _In_ int fd,
-    _In_ const unsigned char *buffer,
-    _In_ size_t length) const
+        _In_ int fd,
+        _In_ const unsigned char *buffer,
+        _In_ size_t length) const
 {
     SWSS_LOG_ENTER();
 
     if (write(fd, buffer, static_cast<int>(length)) < 0)
     {
         /*
-        * We filter out EIO because of this patch:
-        * https://github.com/torvalds/linux/commit/1bd4978a88ac2589f3105f599b1d404a312fb7f6
-        */
+         * We filter out EIO because of this patch:
+         * https://github.com/torvalds/linux/commit/1bd4978a88ac2589f3105f599b1d404a312fb7f6
+         */
 
         if (errno != ENETDOWN && errno != EIO)
         {

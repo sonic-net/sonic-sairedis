@@ -81,4 +81,3 @@ const std::string& SaiAttrWrap::getAttrStrValue() const
 
     return m_value;
 }
-

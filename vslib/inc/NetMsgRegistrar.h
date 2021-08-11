@@ -76,4 +76,3 @@ namespace saivs
             std::map<uint64_t, Callback> m_map;
     };
 }
-

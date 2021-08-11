@@ -2,7 +2,6 @@
 
 REDIS_BULK_CREATE(NEXT_HOP_GROUP_MEMBER,next_hop_group_members);
 REDIS_BULK_REMOVE(NEXT_HOP_GROUP_MEMBER,next_hop_group_members);
-
 REDIS_GENERIC_QUAD(NEXT_HOP_GROUP,next_hop_group);
 REDIS_GENERIC_QUAD(NEXT_HOP_GROUP_MEMBER,next_hop_group_member);
 

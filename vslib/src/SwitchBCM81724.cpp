@@ -125,9 +125,9 @@ sai_status_t SwitchBCM81724::set_switch_default_attributes()
 
     // Fill this with supported SAI_OBJECT_TYPEs
     int32_t supported_obj_list[] = {
-                                SAI_OBJECT_TYPE_NULL,
-                                SAI_OBJECT_TYPE_PORT
-                              };
+        SAI_OBJECT_TYPE_NULL,
+        SAI_OBJECT_TYPE_PORT
+    };
     SWSS_LOG_INFO("create switch default attributes");
 
     sai_attribute_t attr;
@@ -351,7 +351,7 @@ sai_status_t SwitchBCM81724::create_default_trap_group()
 }
 
 sai_status_t SwitchBCM81724::create_ingress_priority_groups_per_port(
-                    _In_ sai_object_id_t port_id)
+        _In_ sai_object_id_t port_id)
 {
     SWSS_LOG_ENTER();
 
@@ -408,8 +408,8 @@ sai_status_t SwitchBCM81724::set_number_of_ecmp_groups()
 }
 
 sai_status_t SwitchBCM81724::refresh_bridge_port_list(
-                    _In_ const sai_attr_metadata_t *meta,
-                    _In_ sai_object_id_t bridge_id)
+        _In_ const sai_attr_metadata_t *meta,
+        _In_ sai_object_id_t bridge_id)
 {
     SWSS_LOG_ENTER();
 
@@ -417,8 +417,8 @@ sai_status_t SwitchBCM81724::refresh_bridge_port_list(
 }
 
 sai_status_t SwitchBCM81724::refresh_vlan_member_list(
-                    _In_ const sai_attr_metadata_t *meta,
-                    _In_ sai_object_id_t vlan_id)
+        _In_ const sai_attr_metadata_t *meta,
+        _In_ sai_object_id_t vlan_id)
 {
     SWSS_LOG_ENTER();
 

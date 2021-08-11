@@ -15,8 +15,8 @@
 using namespace saivs;
 
 MACsecForwarder::MACsecForwarder(
-    _In_ const std::string &macsecInterfaceName,
-    _In_ std::shared_ptr<HostInterfaceInfo> info):
+        _In_ const std::string &macsecInterfaceName,
+        _In_ std::shared_ptr<HostInterfaceInfo> info):
     m_macsecInterfaceName(macsecInterfaceName),
     m_runThread(true),
     m_info(info)
@@ -33,9 +33,9 @@ MACsecForwarder::MACsecForwarder(
     if (m_macsecfd < 0)
     {
         SWSS_LOG_THROW(
-            "failed to open macsec socket %s, errno: %d",
-            m_macsecInterfaceName.c_str(),
-            errno);
+                "failed to open macsec socket %s, errno: %d",
+                m_macsecInterfaceName.c_str(),
+                errno);
     }
 
     struct sockaddr_ll sockAddress;
@@ -49,31 +49,31 @@ MACsecForwarder::MACsecForwarder(
     {
         close(m_macsecfd);
         SWSS_LOG_THROW(
-            "failed to get interface index for %s",
-            m_macsecInterfaceName.c_str());
+                "failed to get interface index for %s",
+                m_macsecInterfaceName.c_str());
     }
 
     if (SwitchStateBase::promisc(m_macsecInterfaceName.c_str()))
     {
         close(m_macsecfd);
         SWSS_LOG_THROW(
-            "promisc failed on %s",
-            m_macsecInterfaceName.c_str());
+                "promisc failed on %s",
+                m_macsecInterfaceName.c_str());
     }
 
     if (bind(m_macsecfd, (struct sockaddr *)&sockAddress, sizeof(sockAddress)) < 0)
     {
         close(m_macsecfd);
         SWSS_LOG_THROW(
-            "bind failed on %s",
-            m_macsecInterfaceName.c_str());
+                "bind failed on %s",
+                m_macsecInterfaceName.c_str());
     }
 
     m_forwardThread = std::make_shared<std::thread>(&MACsecForwarder::forward, this);
 
     SWSS_LOG_NOTICE(
-        "setup MACsec forward rule for %s succeeded",
-        m_macsecInterfaceName.c_str());
+            "setup MACsec forward rule for %s succeeded",
+            m_macsecInterfaceName.c_str());
 }
 
 MACsecForwarder::~MACsecForwarder()
@@ -89,9 +89,9 @@ MACsecForwarder::~MACsecForwarder()
     if (err != 0)
     {
         SWSS_LOG_ERROR(
-            "failed to close macsec device: %s, err: %d",
-            m_macsecInterfaceName.c_str(),
-            err);
+                "failed to close macsec device: %s, err: %d",
+                m_macsecInterfaceName.c_str(),
+                err);
     }
 }
 
@@ -140,9 +140,9 @@ void MACsecForwarder::forward()
         if (result != swss::Select::OBJECT)
         {
             SWSS_LOG_ERROR(
-                "selectable failed: %d, ending thread for %s",
-                result,
-                m_macsecInterfaceName.c_str());
+                    "selectable failed: %d, ending thread for %s",
+                    result,
+                    m_macsecInterfaceName.c_str());
 
             break;
         }
@@ -155,18 +155,18 @@ void MACsecForwarder::forward()
         if (size < 0)
         {
             SWSS_LOG_WARN(
-                "failed to read from macsec device %s fd %d, errno(%d): %s",
-                m_macsecInterfaceName.c_str(),
-                m_macsecfd,
-                errno,
-                strerror(errno));
+                    "failed to read from macsec device %s fd %d, errno(%d): %s",
+                    m_macsecInterfaceName.c_str(),
+                    m_macsecfd,
+                    errno,
+                    strerror(errno));
 
             if (errno == EBADF)
             {
                 // bad file descriptor, just close the thread
                 SWSS_LOG_NOTICE(
-                    "ending thread for macsec device %s",
-                    m_macsecInterfaceName.c_str());
+                        "ending thread for macsec device %s",
+                        m_macsecInterfaceName.c_str());
 
                 break;
             }
@@ -193,6 +193,6 @@ void MACsecForwarder::forward()
     }
 
     SWSS_LOG_NOTICE(
-        "ending thread proc for %s",
-        m_macsecInterfaceName.c_str());
+            "ending thread proc for %s",
+            m_macsecInterfaceName.c_str());
 }

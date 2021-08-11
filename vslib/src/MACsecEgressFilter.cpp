@@ -8,7 +8,7 @@
 using namespace saivs;
 
 MACsecEgressFilter::MACsecEgressFilter(
-    _In_ const std::string &macsecInterfaceName):
+        _In_ const std::string &macsecInterfaceName):
     MACsecFilter(macsecInterfaceName)
 {
     SWSS_LOG_ENTER();
@@ -17,8 +17,8 @@ MACsecEgressFilter::MACsecEgressFilter(
 }
 
 TrafficFilter::FilterStatus MACsecEgressFilter::forward(
-    _In_ const void *buffer,
-    _In_ size_t length)
+        _In_ const void *buffer,
+        _In_ size_t length)
 {
     SWSS_LOG_ENTER();
 
@@ -27,19 +27,19 @@ TrafficFilter::FilterStatus MACsecEgressFilter::forward(
         if (errno != ENETDOWN && errno != EIO)
         {
             SWSS_LOG_ERROR(
-                "failed to write to macsec device %s fd %d, errno(%d): %s",
-                m_macsecInterfaceName.c_str(),
-                m_macsecfd,
-                errno,
-                strerror(errno));
+                    "failed to write to macsec device %s fd %d, errno(%d): %s",
+                    m_macsecInterfaceName.c_str(),
+                    m_macsecfd,
+                    errno,
+                    strerror(errno));
         }
 
         if (errno == EBADF)
         {
             SWSS_LOG_ERROR(
-                "ending thread for macsec device %s fd %d",
-                m_macsecInterfaceName.c_str(),
-                m_macsecfd);
+                    "ending thread for macsec device %s fd %d",
+                    m_macsecInterfaceName.c_str(),
+                    m_macsecfd);
 
             return TrafficFilter::ERROR;
         }

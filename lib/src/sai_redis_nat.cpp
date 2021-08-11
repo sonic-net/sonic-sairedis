@@ -1,7 +1,6 @@
 #include "sai_redis.h"
 
 REDIS_BULK_QUAD_ENTRY(NAT_ENTRY,nat_entry);
-
 REDIS_GENERIC_QUAD_ENTRY(NAT_ENTRY,nat_entry);
 REDIS_GENERIC_QUAD(NAT_ZONE_COUNTER,nat_zone_counter);
 

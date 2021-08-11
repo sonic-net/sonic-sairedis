@@ -40,4 +40,3 @@ namespace saivs
             std::map<uint32_t, std::shared_ptr<LaneMap>> m_map;
     };
 }
-

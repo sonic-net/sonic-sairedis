@@ -33,4 +33,3 @@ namespace sairedis
             sai_queue_deadlock_notification_data_t *m_queueDeadlockNotificationData;
     };
 }
-

@@ -16,21 +16,21 @@
 
 #define CHECK_STATUS_SUCCESS(s) { if ((s) != SAI_STATUS_SUCCESS) return (s); }
 
-#define VALIDATION_LIST(md,vlist) \
-{\
-    auto status1 = meta_genetic_validation_list(md,vlist.count,vlist.list);\
-    if (status1 != SAI_STATUS_SUCCESS)\
-    {\
-        return status1;\
-    }\
+#define VALIDATION_LIST(md,vlist)                                               \
+{                                                                               \
+    auto _status = meta_genetic_validation_list(md,vlist.count,vlist.list);     \
+    if (_status != SAI_STATUS_SUCCESS)                                          \
+    {                                                                           \
+        return _status;                                                         \
+    }                                                                           \
 }
 
-#define VALIDATION_LIST_GET(md, list) \
-{\
-    if (list.count > MAX_LIST_COUNT)\
-    {\
+#define VALIDATION_LIST_GET(md, list)                                                       \
+{                                                                                           \
+    if (list.count > MAX_LIST_COUNT)                                                        \
+    {                                                                                       \
         META_LOG_ERROR(md, "list count %u > max list count %u", list.count, MAX_LIST_COUNT);\
-    }\
+    }                                                                                       \
 }
 
 using namespace saimeta;
@@ -426,7 +426,7 @@ sai_status_t Meta::remove(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-      meta_generic_validation_post_remove(meta_key);
+        meta_generic_validation_post_remove(meta_key);
     }
 
     return status;
@@ -3225,7 +3225,7 @@ sai_status_t Meta::meta_port_remove_validation(
     }
 
     SWSS_LOG_NOTICE("all objects related to port %s are in default state, can be remove",
-                sai_serialize_object_id(port_id).c_str());
+            sai_serialize_object_id(port_id).c_str());
 
     return SAI_STATUS_SUCCESS;
 }
@@ -3671,7 +3671,7 @@ sai_status_t Meta::meta_sai_validate_fdb_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_fdb) && !get)
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_fdb).c_str());
+                sai_serialize_object_meta_key(meta_key_fdb).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3754,7 +3754,7 @@ sai_status_t Meta::meta_sai_validate_mcast_fdb_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_fdb) && !get)
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_fdb).c_str());
+                sai_serialize_object_meta_key(meta_key_fdb).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3850,7 +3850,7 @@ sai_status_t Meta::meta_sai_validate_neighbor_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_neighbor))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_neighbor).c_str());
+                sai_serialize_object_meta_key(meta_key_neighbor).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3959,7 +3959,7 @@ sai_status_t Meta::meta_sai_validate_route_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_route))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_route).c_str());
+                sai_serialize_object_meta_key(meta_key_route).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4082,7 +4082,7 @@ sai_status_t Meta::meta_sai_validate_l2mc_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_route))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_route).c_str());
+                sai_serialize_object_meta_key(meta_key_route).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4205,7 +4205,7 @@ sai_status_t Meta::meta_sai_validate_ipmc_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_route))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_route).c_str());
+                sai_serialize_object_meta_key(meta_key_route).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4240,7 +4240,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
         SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " is not valid object type, "
-                        "returned null object type", vr);
+                "returned null object type", vr);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4250,7 +4250,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
     if (object_type != expected)
     {
         SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " type %d is wrong type, "
-                       "expected object type %d", vr, object_type, expected);
+                "expected object type %d", vr, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4286,7 +4286,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_nat))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_nat).c_str());
+                sai_serialize_object_meta_key(meta_key_nat).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4882,7 +4882,7 @@ sai_status_t Meta::meta_generic_validation_create(
 
             if (md.objecttype == SAI_OBJECT_TYPE_BUFFER_PROFILE &&
                     (md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH ||
-                    (md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH)))
+                     (md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH)))
             {
                 auto pool_id_attr = sai_metadata_get_attr_by_id(SAI_BUFFER_PROFILE_ATTR_POOL_ID, attr_count, attr_list);
 
@@ -4924,7 +4924,7 @@ sai_status_t Meta::meta_generic_validation_create(
                 }
 
                 if ((mode == SAI_BUFFER_POOL_THRESHOLD_MODE_DYNAMIC && md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH) ||
-                    (mode == SAI_BUFFER_POOL_THRESHOLD_MODE_STATIC && md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH))
+                        (mode == SAI_BUFFER_POOL_THRESHOLD_MODE_STATIC && md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH))
                 {
                     /* attribute is mandatory */
                 }
@@ -5393,22 +5393,22 @@ sai_status_t Meta::meta_generic_validation_set(
 
         case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
 
+            {
+                switch (value.ipprefix.addr_family)
                 {
-                    switch (value.ipprefix.addr_family)
-                    {
-                        case SAI_IP_ADDR_FAMILY_IPV4:
-                        case SAI_IP_ADDR_FAMILY_IPV6:
-                            break;
+                    case SAI_IP_ADDR_FAMILY_IPV4:
+                    case SAI_IP_ADDR_FAMILY_IPV6:
+                        break;
 
-                        default:
+                    default:
 
-                            SWSS_LOG_ERROR("invalid address family: %d", value.ipprefix.addr_family);
+                        SWSS_LOG_ERROR("invalid address family: %d", value.ipprefix.addr_family);
 
-                            return SAI_STATUS_INVALID_PARAMETER;
-                    }
-
-                    break;
+                        return SAI_STATUS_INVALID_PARAMETER;
                 }
+
+                break;
+            }
 
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
             VALIDATION_LIST(md, value.aclcapability.action_list);
@@ -5941,12 +5941,12 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
                 if (value.aclfield.enable)
-                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclfield.data.oid);
+                    meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclfield.data.oid);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
                 if (value.aclfield.enable)
-                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
+                    meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
                 break;
 
                 // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST: (2 lists)
@@ -5968,12 +5968,12 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
                 if (value.aclaction.enable)
-                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclaction.parameter.oid);
+                    meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclaction.parameter.oid);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
                 if (value.aclaction.enable)
-                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
+                    meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
@@ -6932,7 +6932,7 @@ void Meta::meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_MACSEC_SALT:
             case SAI_ATTR_VALUE_TYPE_MACSEC_SCI:
             case SAI_ATTR_VALUE_TYPE_MACSEC_SSCI:
-              break;
+                break;
 
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:

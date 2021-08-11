@@ -51,4 +51,3 @@ namespace saivs
             std::string m_ifName;
     };
 }
-

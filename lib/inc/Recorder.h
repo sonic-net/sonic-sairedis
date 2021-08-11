@@ -387,7 +387,7 @@ namespace sairedis
             static std::string getTimestamp();
 
             void recordStats(
-                _In_ bool enable);
+                    _In_ bool enable);
 
         private: // recording helpers
 
@@ -422,7 +422,6 @@ namespace sairedis
 
             void recordLine(
                     _In_ const std::string& line);
-
 
         private:
 

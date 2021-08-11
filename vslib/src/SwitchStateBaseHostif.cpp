@@ -174,8 +174,8 @@ void SwitchStateBase::send_port_oper_status_notification(
         if (force)
         {
             SWSS_LOG_NOTICE("explicitly send SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY for port %s: %s (port was UP)",
-                        sai_serialize_object_id(data.port_id).c_str(),
-                        sai_serialize_port_oper_status(data.port_state).c_str());
+                    sai_serialize_object_id(data.port_id).c_str(),
+                    sai_serialize_port_oper_status(data.port_state).c_str());
 
         }
         else if ((sai_port_oper_status_t)attr.value.s32 == data.port_state)

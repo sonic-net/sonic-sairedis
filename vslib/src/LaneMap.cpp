@@ -205,4 +205,3 @@ std::string LaneMap::getInterfaceFromLaneNumber(
 
     return it->second;
 }
-

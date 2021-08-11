@@ -227,4 +227,3 @@ std::shared_ptr<LaneMapContainer> LaneMapFileParser::parseLaneMapFile(
 
     return parseLaneMapFile(name);
 }
-
