@@ -419,6 +419,14 @@ sai_status_t VendorSai::getStats(
             ptr = m_apis.bmtor_api->get_table_meta_tunnel_entry_stats;
             break;
 
+        case SAI_OBJECT_TYPE_MACSEC_FLOW:
+            ptr = m_apis.macsec_api->get_macsec_flow_stats;
+            break;
+
+        case SAI_OBJECT_TYPE_MACSEC_SA:
+            ptr = m_apis.macsec_api->get_macsec_sa_stats;
+            break;
+
         default:
             SWSS_LOG_ERROR("not implemented, FIXME");
             return SAI_STATUS_FAILURE;
@@ -515,6 +523,14 @@ sai_status_t VendorSai::getStatsExt(
             ptr = m_apis.bmtor_api->get_table_meta_tunnel_entry_stats_ext;
             break;
 
+        case SAI_OBJECT_TYPE_MACSEC_FLOW:
+            ptr = m_apis.macsec_api->get_macsec_flow_stats_ext;
+            break;
+
+        case SAI_OBJECT_TYPE_MACSEC_SA:
+            ptr = m_apis.macsec_api->get_macsec_sa_stats_ext;
+            break;
+
         default:
             SWSS_LOG_ERROR("not implemented, FIXME");
             return SAI_STATUS_FAILURE;
@@ -590,6 +606,14 @@ sai_status_t VendorSai::clearStats(
             break;
         case SAI_OBJECT_TYPE_TABLE_META_TUNNEL_ENTRY:
             ptr = m_apis.bmtor_api->clear_table_meta_tunnel_entry_stats;
+            break;
+
+        case SAI_OBJECT_TYPE_MACSEC_FLOW:
+            ptr = m_apis.macsec_api->clear_macsec_flow_stats;
+            break;
+
+        case SAI_OBJECT_TYPE_MACSEC_SA:
+            ptr = m_apis.macsec_api->clear_macsec_sa_stats;
             break;
 
         default:

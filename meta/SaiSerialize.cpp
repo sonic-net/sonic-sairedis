@@ -1023,6 +1023,22 @@ std::string sai_serialize_queue_attr(
     return sai_serialize_enum(attr, &sai_metadata_enum_sai_queue_attr_t);
 }
 
+std::string sai_serialize_macsec_flow_stat(
+        _In_ const sai_macsec_flow_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_macsec_flow_stat_t);
+}
+
+std::string sai_serialize_macsec_sa_stat(
+        _In_ const sai_macsec_sa_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_macsec_sa_stat_t);
+}
+
 std::string sai_serialize_macsec_sa_attr(
         _In_ const  sai_macsec_sa_attr_t &attr)
 {
