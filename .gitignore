@@ -18,6 +18,8 @@ debian/autoreconf.before
 debian/debhelper-build-stamp
 debian/files
 
+debian/python-pysairedis/
+debian/python3-pysairedis/
 debian/libsaimetadata-dbg/
 debian/libsaimetadata-dev/
 debian/libsaimetadata/
