@@ -1,4 +1,4 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/vslib -I$(top_srcdir)/lib -I/usr/include/libnl3
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/libnl3
 
 lib_LTLIBRARIES = libsaivs.la
 

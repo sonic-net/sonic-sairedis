@@ -1,4 +1,4 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib
+AM_CXXFLAGS = $(SAIINC)
 
 lib_LTLIBRARIES = libsairedis.la
 
