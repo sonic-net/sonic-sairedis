@@ -4,16 +4,16 @@ bin_PROGRAMS = tests testslibsaivs
 
 LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 
-tests_SOURCES = \
-				main.cpp \
+tests_SOURCES = main.cpp \
 				TestBuffer.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
-testslibsaivs_SOURCES = \
-				main_libsaivs.cpp \
+testslibsaivs_SOURCES =	main_libsaivs.cpp \
+				test_sai_vs_hash.cpp \
 				test_sai_vs_vlan.cpp \
+				test_sai_vs_hostif.cpp \
 				test_sai_vs_wred.cpp
 
 testslibsaivs_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
