@@ -1,19 +1,14 @@
 #include <gtest/gtest.h>
 
-#include <iostream>
+#include "swss/logger.h"
 
-class SwsscommonEnvironment: 
-    public ::testing::Environment
-{
-    public:
-        void SetUp() override { }
-};
+#include <iostream>
 
 int main(int argc, char* argv[])
 {
     testing::InitGoogleTest(&argc, argv);
 
-    const auto env = new SwsscommonEnvironment;
+    const auto env = new ::testing::Environment();
 
     testing::AddGlobalTestEnvironment(env);
 
