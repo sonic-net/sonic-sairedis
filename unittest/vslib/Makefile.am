@@ -11,6 +11,7 @@ tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
 testslibsaivs_SOURCES =	main_libsaivs.cpp \
+				test_sai_vs_acl.cpp \
 				test_sai_vs_hash.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
