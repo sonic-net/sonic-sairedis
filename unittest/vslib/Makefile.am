@@ -46,6 +46,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_schedulergroup.cpp \
 				test_sai_vs_scheduler.cpp \
 				test_sai_vs_segmentroute.cpp \
+				test_sai_vs_stp.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
 				test_sai_vs_wred.cpp
