@@ -34,6 +34,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_hash.cpp \
 				test_sai_vs_neighbor.cpp \
 				test_sai_vs_nexthop.cpp \
+				test_sai_vs_nexthopgroup.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
 				test_sai_vs_wred.cpp
