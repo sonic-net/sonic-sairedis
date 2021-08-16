@@ -29,6 +29,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_isolation_group.cpp \
 				test_sai_vs_mcastfdb.cpp \
 				test_sai_vs_mirror.cpp \
+				test_sai_vs_mpls.cpp \
 				test_sai_vs_hash.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
