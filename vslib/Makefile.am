@@ -59,20 +59,18 @@ libSaiVS_a_SOURCES = \
 					  VirtualSwitchSaiInterfacePort.cpp
 
 libsaivs_la_SOURCES = \
-					  sai_vs_fdb.cpp \
-					  sai_vs_hostintf.cpp \
-					  sai_vs_interfacequery.cpp \
-					  sai_vs_port.cpp \
-					  sai_vs_switch.cpp \
-					  sai_vs_debug_counter.cpp\
 					  sai_vs_acl.cpp \
 					  sai_vs_bfd.cpp \
 					  sai_vs_bmtor.cpp \
 					  sai_vs_bridge.cpp \
 					  sai_vs_buffer.cpp \
 					  sai_vs_counter.cpp \
+					  sai_vs_debug_counter.cpp\
 					  sai_vs_dtel.cpp \
+					  sai_vs_fdb.cpp \
 					  sai_vs_hash.cpp \
+					  sai_vs_hostif.cpp \
+					  sai_vs_interfacequery.cpp \
 					  sai_vs_ipmc.cpp \
 					  sai_vs_ipmc_group.cpp \
 					  sai_vs_isolation_group.cpp \
@@ -88,6 +86,7 @@ libsaivs_la_SOURCES = \
 					  sai_vs_nexthop.cpp \
 					  sai_vs_nexthopgroup.cpp \
 					  sai_vs_policer.cpp \
+					  sai_vs_port.cpp \
 					  sai_vs_qosmaps.cpp \
 					  sai_vs_queue.cpp \
 					  sai_vs_route.cpp \
@@ -98,6 +97,7 @@ libsaivs_la_SOURCES = \
 					  sai_vs_schedulergroup.cpp \
 					  sai_vs_segmentroute.cpp \
 					  sai_vs_stp.cpp \
+					  sai_vs_switch.cpp \
 					  sai_vs_system_port.cpp \
 					  sai_vs_tam.cpp \
 					  sai_vs_tunnel.cpp \
