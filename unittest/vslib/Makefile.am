@@ -43,6 +43,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_router_interface.cpp \
 				test_sai_vs_router_rpfgroup.cpp \
 				test_sai_vs_router_samplepacket.cpp \
+				test_sai_vs_schedulergroup.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
 				test_sai_vs_wred.cpp
