@@ -39,6 +39,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_qosmaps.cpp \
 				test_sai_vs_policer.cpp \
 				test_sai_vs_queue.cpp \
+				test_sai_vs_route.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
 				test_sai_vs_wred.cpp
