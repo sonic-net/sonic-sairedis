@@ -1,4 +1,4 @@
-#include "AttrKeyMap.cpp"
+#include "AttrKeyMap.h"
 
 #include <gtest/gtest.h>
 

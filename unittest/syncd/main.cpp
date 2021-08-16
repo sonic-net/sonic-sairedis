@@ -1,11 +1,14 @@
+#include <gtest/gtest.h>
 
-// TODO to gtest?
+#include <iostream>
 
-void testCtr();
-
-int main()
+int main(int argc, char* argv[])
 {
-    testCtr();
+    testing::InitGoogleTest(&argc, argv);
 
-    return 0;
+    const auto env = new ::testing::Environment();
+
+    testing::AddGlobalTestEnvironment(env);
+
+    return RUN_ALL_TESTS();
 }
