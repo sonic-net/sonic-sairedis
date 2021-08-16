@@ -13,6 +13,7 @@ tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscomm
 
 testslibsaivs_SOURCES = \
 				main_libsaivs.cpp \
+				test_sai_vs_vlan.cpp \
 				test_sai_vs_wred.cpp
 
 testslibsaivs_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
