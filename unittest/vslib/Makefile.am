@@ -13,6 +13,7 @@ tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscomm
 testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_acl.cpp \
 				test_sai_vs_bfd.cpp \
+				test_sai_vs_bmtor.cpp \
 				test_sai_vs_hash.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
