@@ -10,7 +10,7 @@ TEST(libsaivs, isolation_group)
 {
     sai_isolation_group_api_t *api = nullptr;
 
-    sai_api_query(SAI_API_VLAN, (void**)&api);
+    sai_api_query(SAI_API_ISOLATION_GROUP, (void**)&api);
 
     EXPECT_NE(api, nullptr);
 
