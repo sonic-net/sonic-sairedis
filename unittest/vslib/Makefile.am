@@ -22,6 +22,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_fdb.cpp \
 				test_sai_vs_ipmc.cpp \
 				test_sai_vs_l2mc.cpp \
+				test_sai_vs_l2mcgroup.cpp \
 				test_sai_vs_ipmc_group.cpp \
 				test_sai_vs_isolation_group.cpp \
 				test_sai_vs_hash.cpp \
