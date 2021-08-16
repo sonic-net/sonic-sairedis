@@ -19,6 +19,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_counter.cpp \
 				test_sai_vs_debug_counter.cpp \
 				test_sai_vs_dtel.cpp \
+				test_sai_vs_fdb.cpp \
 				test_sai_vs_hash.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
