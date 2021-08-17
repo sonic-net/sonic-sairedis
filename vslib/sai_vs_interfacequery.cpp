@@ -162,7 +162,7 @@ sai_status_t sai_dbg_generate_dump(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_SUCCESS;
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 sai_object_type_t sai_object_type_query(

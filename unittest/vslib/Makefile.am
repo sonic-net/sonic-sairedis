@@ -27,6 +27,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_ipmc_group.cpp \
 				test_sai_vs_macsec.cpp \
 				test_sai_vs_isolation_group.cpp \
+				test_sai_vs_interfacequery.cpp \
 				test_sai_vs_mcastfdb.cpp \
 				test_sai_vs_mirror.cpp \
 				test_sai_vs_mpls.cpp \
