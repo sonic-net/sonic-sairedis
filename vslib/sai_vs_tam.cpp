@@ -1,5 +1,17 @@
 #include "sai_vs.h"
 
+sai_status_t sai_tam_telemetry_get_data(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_list_t obj_list,
+        _In_ bool clear_on_read,
+        _Inout_ sai_size_t *buffer_size,
+        _Out_ void *buffer)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 VS_GENERIC_QUAD(TAM,tam);
 VS_GENERIC_QUAD(TAM_MATH_FUNC,tam_math_func);
 VS_GENERIC_QUAD(TAM_REPORT,tam_report);
