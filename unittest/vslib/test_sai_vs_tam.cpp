@@ -74,5 +74,7 @@ TEST(libsaivs, tam)
 
 TEST(libsairedis, sai_tam_telemetry_get_data)
 {
+    sai_object_list_t list;
+
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_tam_telemetry_get_data(0,list,0,0,0));
 }
