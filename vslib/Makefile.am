@@ -87,7 +87,7 @@ libsaivs_la_SOURCES = \
 					  sai_vs_nexthopgroup.cpp \
 					  sai_vs_policer.cpp \
 					  sai_vs_port.cpp \
-					  sai_vs_qosmaps.cpp \
+					  sai_vs_qosmap.cpp \
 					  sai_vs_queue.cpp \
 					  sai_vs_route.cpp \
 					  sai_vs_router_interface.cpp \

@@ -57,7 +57,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_nexthopgroup.cpp \
 						 sai_redis_policer.cpp \
 						 sai_redis_port.cpp \
-						 sai_redis_qosmaps.cpp \
+						 sai_redis_qosmap.cpp \
 						 sai_redis_queue.cpp \
 						 sai_redis_route.cpp \
 						 sai_redis_router_interface.cpp \
