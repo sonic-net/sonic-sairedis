@@ -95,6 +95,13 @@ sai_status_t sai_api_query(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    if (sai_api_id == SAI_API_UNSPECIFIED)
+    {
+        SWSS_LOG_ERROR("api ID is unspecified api");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
     if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_api_t, sai_api_id))
     {
         *api_method_table = ((void**)&redis_apis)[sai_api_id - 1];
