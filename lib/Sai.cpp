@@ -25,6 +25,11 @@ using namespace std::placeholders;
                 sai_serialize_object_id(oid).c_str());                      \
         return SAI_STATUS_FAILURE; }
 
+#define REDIS_CHECK_POINTER(pointer)                                        \
+    if ((pointer) == nullptr) {                                             \
+        SWSS_LOG_ERROR("entry pointer " # pointer " is null");          \
+        return SAI_STATUS_INVALID_PARAMETER; }
+
 Sai::Sai()
 {
     SWSS_LOG_ENTER();
@@ -272,6 +277,7 @@ sai_status_t Sai::create(                                           \
     MUTEX();                                                        \
     SWSS_LOG_ENTER();                                               \
     REDIS_CHECK_API_INITIALIZED();                                  \
+    REDIS_CHECK_POINTER(entry)                                      \
     REDIS_CHECK_CONTEXT(entry->switch_id);                          \
     return context->m_meta->create(entry, attr_count, attr_list);   \
 }
@@ -293,6 +299,7 @@ sai_status_t Sai::remove(                                   \
     MUTEX();                                                \
     SWSS_LOG_ENTER();                                       \
     REDIS_CHECK_API_INITIALIZED();                          \
+    REDIS_CHECK_POINTER(entry)                              \
     REDIS_CHECK_CONTEXT(entry->switch_id);                  \
     return context->m_meta->remove(entry);                  \
 }
@@ -314,6 +321,7 @@ sai_status_t Sai::set(                                      \
     MUTEX();                                                \
     SWSS_LOG_ENTER();                                       \
     REDIS_CHECK_API_INITIALIZED();                          \
+    REDIS_CHECK_POINTER(entry)                             \
     REDIS_CHECK_CONTEXT(entry->switch_id);                  \
     return context->m_meta->set(entry, attr);               \
 }
@@ -336,6 +344,7 @@ sai_status_t Sai::get(                                          \
     MUTEX();                                                    \
     SWSS_LOG_ENTER();                                           \
     REDIS_CHECK_API_INITIALIZED();                              \
+    REDIS_CHECK_POINTER(entry)                                  \
     REDIS_CHECK_CONTEXT(entry->switch_id);                      \
     return context->m_meta->get(entry, attr_count, attr_list);  \
 }
@@ -449,6 +458,7 @@ sai_status_t Sai::bulkRemove(
     MUTEX();
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
+    REDIS_CHECK_POINTER(object_id);
     REDIS_CHECK_CONTEXT(*object_id);
 
     return context->m_meta->bulkRemove(
@@ -495,6 +505,7 @@ sai_status_t Sai::bulkCreate(                               \
     MUTEX();                                                \
     SWSS_LOG_ENTER();                                       \
     REDIS_CHECK_API_INITIALIZED();                          \
+    REDIS_CHECK_POINTER(entries)                            \
     REDIS_CHECK_CONTEXT(entries->switch_id);                \
     return context->m_meta->bulkCreate(                     \
             object_count,                                   \
@@ -523,6 +534,7 @@ sai_status_t Sai::bulkRemove(                               \
     MUTEX();                                                \
     SWSS_LOG_ENTER();                                       \
     REDIS_CHECK_API_INITIALIZED();                          \
+    REDIS_CHECK_POINTER(entries)                            \
     REDIS_CHECK_CONTEXT(entries->switch_id);                \
     return context->m_meta->bulkRemove(                     \
             object_count,                                   \
@@ -549,6 +561,7 @@ sai_status_t Sai::bulkSet(                                  \
     MUTEX();                                                \
     SWSS_LOG_ENTER();                                       \
     REDIS_CHECK_API_INITIALIZED();                          \
+    REDIS_CHECK_POINTER(entries)                            \
     REDIS_CHECK_CONTEXT(entries->switch_id);                \
     return context->m_meta->bulkSet(                        \
             object_count,                                   \
