@@ -55,3 +55,29 @@ TEST(libsairedis, sai_switch_id_query)
 {
     EXPECT_EQ(SAI_NULL_OBJECT_ID, sai_switch_id_query(SAI_NULL_OBJECT_ID));
 }
+
+
+TEST(libsairedis, sai_bulk_get_attribute)
+{
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_bulk_get_attribute(0,SAI_OBJECT_TYPE_NULL,0,0,0,0,0));
+}
+
+TEST(libsairedis, sai_get_maximum_attribute_count)
+{
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_get_maximum_attribute_count(0, SAI_OBJECT_TYPE_NULL,0));
+}
+
+TEST(libsairedis, sai_get_object_count)
+{
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_get_object_count(0,SAI_OBJECT_TYPE_NULL,0));
+}
+
+TEST(libsairedis, sai_get_object_key)
+{
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_get_object_key(0,SAI_OBJECT_TYPE_NULL,0,0));
+}
+
+TEST(libsairedis, sai_query_stats_capability)
+{
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_query_stats_capability(0,SAI_OBJECT_TYPE_NULL,0));
+}
