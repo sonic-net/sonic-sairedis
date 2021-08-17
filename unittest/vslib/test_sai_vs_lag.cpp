@@ -10,7 +10,7 @@ TEST(libsaivs, lag)
 {
     sai_lag_api_t *api = nullptr;
 
-    sai_api_query(SAI_API_VLAN, (void**)&api);
+    sai_api_query(SAI_API_LAG, (void**)&api);
 
     EXPECT_NE(api, nullptr);
 
