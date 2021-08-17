@@ -16,10 +16,6 @@ TEST(libsairedis, tam)
 
     sai_object_id_t id;
 
-    sai_object_list_t list;
-
-    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_tam_telemetry_get_data(0,list,0,0,0));
-
     EXPECT_NE(SAI_STATUS_SUCCESS, api->create_tam(&id,0,0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_tam(0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tam_attribute(0,0));
@@ -74,4 +70,11 @@ TEST(libsairedis, tam)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_tam_event(0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tam_event_attribute(0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tam_event_attribute(0,0,0));
+}
+
+TEST(libsairedis, sai_tam_telemetry_get_data)
+{
+    sai_object_list_t list;
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_tam_telemetry_get_data(0,list,0,0,0));
 }
