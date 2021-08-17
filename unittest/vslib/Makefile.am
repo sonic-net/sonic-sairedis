@@ -49,6 +49,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_switch.cpp \
 				test_sai_vs_system_port.cpp \
 				test_sai_vs_tam.cpp \
+				test_sai_vs_tunnel.cpp \
 				test_sai_vs_stp.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
