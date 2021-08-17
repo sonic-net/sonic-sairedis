@@ -36,7 +36,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_nexthop.cpp \
 				test_sai_vs_nexthopgroup.cpp \
 				test_sai_vs_port.cpp \
-				test_sai_vs_qosmaps.cpp \
+				test_sai_vs_qosmap.cpp \
 				test_sai_vs_policer.cpp \
 				test_sai_vs_queue.cpp \
 				test_sai_vs_route.cpp \
