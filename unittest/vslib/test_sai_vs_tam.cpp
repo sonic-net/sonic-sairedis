@@ -41,6 +41,11 @@ TEST(libsaivs, tam)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tam_int_attribute(0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tam_int_attribute(0,0,0));
 
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->create_tam_tel_type(&id,0,0,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_tam_tel_type(0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tam_tel_type_attribute(0,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tam_tel_type_attribute(0,0,0));
+
     EXPECT_NE(SAI_STATUS_SUCCESS, api->create_tam_transport(&id,0,0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_tam_transport(0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tam_transport_attribute(0,0));
