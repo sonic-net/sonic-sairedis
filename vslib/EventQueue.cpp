@@ -12,7 +12,10 @@ EventQueue::EventQueue(
 {
     SWSS_LOG_ENTER();
 
-    // empty
+    if (signal == nullptr)
+    {
+        SWSS_LOG_THROW("signal can't be nullptr");
+    }
 }
 
 void EventQueue::enqueue(
