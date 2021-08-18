@@ -7,7 +7,8 @@ LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 tests_SOURCES = main.cpp \
 				TestBuffer.cpp \
 				TestContextConfigContainer.cpp \
-				TestCorePortIndexMap.cpp
+				TestCorePortIndexMap.cpp \
+				TestCorePortIndexMapContainer.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
@@ -63,4 +64,4 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 testslibsaivs_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 testslibsaivs_LDADD = $(LDADD_GTEST) -L$(top_srcdir)/vslib/.libs -lsaivs -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
-TESTS = tests testslibsaivs
+TESTS = testslibsaivs tests
