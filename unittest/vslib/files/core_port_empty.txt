@@ -1,0 +1,8 @@
+; comment
+# comment
+error line
+0:0
+0:0:0
+d:d:d
+d:x_x:d
+1:xx:d,d
