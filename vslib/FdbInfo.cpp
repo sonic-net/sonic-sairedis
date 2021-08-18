@@ -23,6 +23,8 @@ FdbInfo::FdbInfo()
 
     m_bridgePortId = SAI_NULL_OBJECT_ID;
 
+    m_timestamp = 0;
+
     memset(&m_fdbEntry, 0, sizeof(m_fdbEntry));
 }
 
@@ -60,7 +62,6 @@ uint32_t FdbInfo::getTimestamp() const
 
     return m_timestamp;
 }
-
 
 // TODO move to meta serialize
 // requires to move FdbInfo to common
