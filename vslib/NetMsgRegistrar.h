@@ -48,7 +48,7 @@ namespace saivs
             void unregisterCallback(
                     _In_ uint64_t index);
 
-            void unregisteraAll();
+            void unregisterAll();
 
             void resetIndex();
 

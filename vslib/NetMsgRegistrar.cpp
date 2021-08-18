@@ -77,7 +77,7 @@ void NetMsgRegistrar::unregisterCallback(
     }
 }
 
-void NetMsgRegistrar::unregisteraAll()
+void NetMsgRegistrar::unregisterAll()
 {
     SWSS_LOG_ENTER();
 
@@ -129,7 +129,7 @@ void NetMsgRegistrar::run()
         }
         catch (const std::exception& e)
         {
-            SWSS_LOG_ERROR("exception: %s", e.what());
+            SWSS_LOG_ERROR("NetMsgRegistrar::run: exception: %s", e.what());
             break;
         }
     }
