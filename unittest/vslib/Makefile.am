@@ -1,4 +1,4 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/meta -I$(top_srcdir)/vslib
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/meta -I$(top_srcdir)/vslib -I/usr/include/libnl3
 
 bin_PROGRAMS = tests testslibsaivs
 
@@ -19,10 +19,13 @@ tests_SOURCES = main.cpp \
 				TestLaneMapContainer.cpp \
 				TestLaneMapFileParser.cpp \
 				TestMACsecAttr.cpp \
-				TestMACsecEgressFilter.cpp
+				TestMACsecEgressFilter.cpp \
+				TestMACsecForwarder.cpp \
+				TestMACsecIngressFilter.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
+tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lnl-genl-3 -lnl-nf-3 -lnl-route-3 -lnl-3 \
+			  -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
 testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_acl.cpp \
