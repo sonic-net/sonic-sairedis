@@ -17,10 +17,10 @@ namespace saivs
 
         public:
 
-            void insert(
+            bool insert(
                     _In_ std::shared_ptr<LaneMap> laneMap);
 
-            void remove(
+            bool remove(
                     _In_ uint32_t switchIndex);
 
             std::shared_ptr<LaneMap> getLaneMap(

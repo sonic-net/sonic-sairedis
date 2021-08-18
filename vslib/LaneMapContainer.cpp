@@ -4,15 +4,26 @@
 
 using namespace saivs;
 
-void LaneMapContainer::insert(
+bool LaneMapContainer::insert(
         _In_ std::shared_ptr<LaneMap> laneMap)
 {
     SWSS_LOG_ENTER();
 
-    m_map[laneMap->getSwitchIndex()] = laneMap;
+    auto idx = laneMap->getSwitchIndex();
+
+    if (m_map.find(idx) != m_map.end())
+    {
+        SWSS_LOG_ERROR("map for switch index %u already exists", idx);
+
+        return false;
+    }
+
+    m_map[idx] = laneMap;
+
+    return true;
 }
 
-void LaneMapContainer::remove(
+bool LaneMapContainer::remove(
         _In_ uint32_t switchIndex)
 {
     SWSS_LOG_ENTER();
@@ -22,7 +33,11 @@ void LaneMapContainer::remove(
     if (it != m_map.end())
     {
         m_map.erase(it);
+
+        return true;
     }
+
+    return false;
 }
 
 std::shared_ptr<LaneMap> LaneMapContainer::getLaneMap(
