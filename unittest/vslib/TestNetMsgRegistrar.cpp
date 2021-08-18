@@ -1,11 +1,15 @@
 #include "NetMsgRegistrar.h"
 
+#include "swss/logger.h"
+
 #include <gtest/gtest.h>
 
 using namespace saivs;
 
 static void callback(int, struct nl_object*)
 {
+    SWSS_LOG_ENTER();
+
     // empty
 }
 

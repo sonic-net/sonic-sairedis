@@ -94,6 +94,11 @@ RealObjectIdManager::RealObjectIdManager(
                 globalContext,
                 SAI_VS_GLOBAL_CONTEXT_MAX);
     }
+
+    if (container == nullptr)
+    {
+        SWSS_LOG_THROW("switch config container cannot be nullptr");
+    }
 }
 
 sai_object_id_t RealObjectIdManager::saiSwitchIdQuery(
@@ -170,25 +175,6 @@ void RealObjectIdManager::clear()
 
     m_switchIndexes.clear();
     m_indexer.clear();
-}
-
-uint32_t RealObjectIdManager::allocateNewSwitchIndex()
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t index = 0; index < SAI_VS_SWITCH_INDEX_MAX; ++index)
-    {
-        if (m_switchIndexes.find(index) != m_switchIndexes.end())
-            continue;
-
-        m_switchIndexes.insert(index);
-
-        SWSS_LOG_NOTICE("allocated new switch index 0x%x", index);
-
-        return index;
-    }
-
-    SWSS_LOG_THROW("no more available switch indexes (used count is: %zu)", m_switchIndexes.size());
 }
 
 void RealObjectIdManager::releaseSwitchIndex(
