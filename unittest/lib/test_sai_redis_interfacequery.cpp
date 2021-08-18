@@ -56,7 +56,6 @@ TEST(libsairedis, sai_switch_id_query)
     EXPECT_EQ(SAI_NULL_OBJECT_ID, sai_switch_id_query(SAI_NULL_OBJECT_ID));
 }
 
-
 TEST(libsairedis, sai_bulk_get_attribute)
 {
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_bulk_get_attribute(0,SAI_OBJECT_TYPE_NULL,0,0,0,0,0));
