@@ -14,7 +14,8 @@ tests_SOURCES = main.cpp \
 				TestEventPayloadPacket.cpp \
 				TestEventQueue.cpp \
 				TestFdbInfo.cpp \
-				TestSaiAttrWrap.cpp
+				TestSaiAttrWrap.cpp \
+				TestLaneMap.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
