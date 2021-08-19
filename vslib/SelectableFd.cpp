@@ -9,6 +9,11 @@ SelectableFd::SelectableFd(
 {
     SWSS_LOG_ENTER();
 
+    if (fd < 0)
+    {
+        SWSS_LOG_THROW("invalid file descriptor: %d", fd);
+    }
+
     m_fd = fd;
 }
 
