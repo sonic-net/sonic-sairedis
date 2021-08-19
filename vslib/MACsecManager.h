@@ -132,9 +132,6 @@ namespace saivs
 
             struct MACsecTrafficManager
             {
-                MACsecTrafficManager() = default;
-                ~MACsecTrafficManager() = default;
-
                 std::shared_ptr<HostInterfaceInfo> m_info;
                 std::shared_ptr<MACsecFilter> m_ingressFilter;
                 std::shared_ptr<MACsecFilter> m_egressFilter;
