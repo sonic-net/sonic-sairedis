@@ -87,6 +87,7 @@ ethernet
 ethX
 extern
 fastfast
+fd
 fdb
 FDB
 fdbs
@@ -114,6 +115,7 @@ https
 hw
 hwinfo
 ICV
+idx
 ifdef
 IFF
 ifindex
@@ -137,6 +139,7 @@ IPv
 isobjectid
 isoidattribute
 json
+kco
 KEYs
 lck
 lgtm
@@ -264,6 +267,7 @@ ss
 stateful
 stdint
 stdlib
+stdout
 stp
 STP
 str
@@ -336,5 +340,3 @@ zero
 zeromq
 zmq
 ZMQ
-idx
-kco

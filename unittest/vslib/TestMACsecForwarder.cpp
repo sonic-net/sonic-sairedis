@@ -11,6 +11,4 @@ TEST(MACsecForwarder, ctr)
     auto s = std::make_shared<Signal>();
 
     auto q = std::make_shared<EventQueue>(s);
-
-    //auto hii = std::make_shared<HostInterfaceInfo>(0,0,70,"tap",0,q);
 }
