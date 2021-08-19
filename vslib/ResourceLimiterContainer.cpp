@@ -10,6 +10,11 @@ void ResourceLimiterContainer::insert(
 {
     SWSS_LOG_ENTER();
 
+    if (rl == nullptr)
+    {
+        SWSS_LOG_THROW("resouorce limitter pointer can't be nullptr");
+    }
+
     m_container[switchIndex] = rl;
 }
 
