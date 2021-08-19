@@ -9,58 +9,6 @@
 
 using namespace saivs;
 
-class TestSai:
-    public saivs::Sai
-{
-    public:
-        //
-        //        void call_startUnittestThread()
-        //        {
-        //            SWSS_LOG_ENTER();
-        //            startUnittestThread();
-        //        }
-        //
-        //        void call_stopUnittestThread()
-        //        {
-        //            SWSS_LOG_ENTER();
-        //            stopUnittestThread();
-        //        }
-        //
-        //        void call_channelOpEnableUnittest(
-        //                _In_ const std::string &key,
-        //                _In_ const std::vector<swss::FieldValueTuple> &values)
-        //        {
-        //            SWSS_LOG_ENTER();
-        //            channelOpEnableUnittest(key, values);
-        //        }
-        //
-        //        void call_channelOpSetReadOnlyAttribute(
-        //                _In_ const std::string &key,
-        //                _In_ const std::vector<swss::FieldValueTuple> &values)
-        //        {
-        //            SWSS_LOG_ENTER();
-        //            channelOpSetReadOnlyAttribute(key, values);
-        //        }
-        //
-        //        void call_channelOpSetStats(
-        //                _In_ const std::string &key,
-        //                _In_ const std::vector<swss::FieldValueTuple> &values)
-        //        {
-        //            SWSS_LOG_ENTER();
-        //            channelOpSetStats(key,values);
-        //        }
-
-        void call_handleUnittestChannelOp(
-                _In_ const std::string &op,
-                _In_ const std::string &key,
-                _In_ const std::vector<swss::FieldValueTuple> &values)
-        {
-            SWSS_LOG_ENTER();
-
-            handleUnittestChannelOp(op, key, values);
-        }
-};
-
 static const char* profile_get_value(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
@@ -93,7 +41,7 @@ sai_service_method_table_t test_services = {
 
 TEST(SaiUnittests, ctr)
 {
-    TestSai sai;
+    Sai sai;
 
     sai.initialize(0, &test_services);
 
@@ -141,7 +89,7 @@ TEST(SaiUnittests, ctr)
 
 TEST(SaiUnittests, handleUnittestChannelOp)
 {
-    TestSai sai;
+    Sai sai;
 
     std::vector<swss::FieldValueTuple> values;
 
@@ -162,7 +110,7 @@ TEST(SaiUnittests, handleUnittestChannelOp)
 
 TEST(SaiUnittests, channelOpSetReadOnlyAttribute)
 {
-    TestSai sai;
+    Sai sai;
 
     sai.initialize(0, &test_services);
 
@@ -204,7 +152,7 @@ TEST(SaiUnittests, channelOpSetReadOnlyAttribute)
 
 TEST(SaiUnittests, channelOpSetStats)
 {
-    TestSai sai;
+    Sai sai;
 
     sai.initialize(0, &test_services);
 
