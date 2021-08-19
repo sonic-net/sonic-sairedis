@@ -24,7 +24,10 @@ tests_SOURCES = main.cpp \
 				TestMACsecIngressFilter.cpp \
 				TestNetMsgRegistrar.cpp \
 				TestRealObjectIdManager.cpp \
-				TestResourceLimiter.cpp
+				TestResourceLimiter.cpp \
+				TestResourceLimiterContainer.cpp \
+				TestResourceLimiterParser.cpp \
+				TestSaiUnittests.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lnl-genl-3 -lnl-nf-3 -lnl-route-3 -lnl-3 \
