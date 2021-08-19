@@ -6,9 +6,11 @@ using namespace saivs;
 
 ContextConfig::ContextConfig(
         _In_ uint32_t guid,
-        _In_ const std::string& name):
+        _In_ const std::string& name,
+        _In_ const std::string& dbAsic):
     m_guid(guid),
-    m_name(name)
+    m_name(name),
+    m_dbAsic(dbAsic)
 {
     SWSS_LOG_ENTER();
 

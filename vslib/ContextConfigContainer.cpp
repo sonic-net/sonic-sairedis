@@ -30,7 +30,7 @@ std::shared_ptr<ContextConfigContainer> ContextConfigContainer::getDefault()
 
     auto ccc = std::make_shared<ContextConfigContainer>();
 
-    auto cc = std::make_shared<ContextConfig>(0, "VirtualSwitch");
+    auto cc = std::make_shared<ContextConfig>(0, "VirtualSwitch", "ASIC_DB");
 
     auto sc = std::make_shared<SwitchConfig>(0, "");
 
@@ -98,9 +98,11 @@ std::shared_ptr<ContextConfigContainer> ContextConfigContainer::loadFromFile(
 
             const std::string& name = item["name"];
 
-            SWSS_LOG_NOTICE("contextConfig: guid: %u, name: %s", guid, name.c_str());
+            const std::string& dbAsic = item["dbAsic"];
 
-            auto cc = std::make_shared<ContextConfig>(guid, name);
+            SWSS_LOG_NOTICE("contextConfig: guid: %u, name: %s, dbAsic: %s", guid, name.c_str(), dbAsic.c_str());
+
+            auto cc = std::make_shared<ContextConfig>(guid, name, dbAsic);
 
             for (size_t k = 0; k < item["switches"].size(); k++)
             {

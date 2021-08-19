@@ -212,7 +212,7 @@ namespace saivs
                     _In_ sai_object_id_t objectId,
                     _In_ const sai_attribute_t *attr);
 
-        private: // unittests
+        protected: // unittests
 
             void startUnittestThread();
 
@@ -325,6 +325,8 @@ namespace saivs
             std::shared_ptr<ResourceLimiterContainer> m_resourceLimiterContainer;
 
             std::shared_ptr<CorePortIndexMapContainer> m_corePortIndexMapContainer;
+
+            uint32_t m_globalContext;
 
             std::map<uint32_t, std::shared_ptr<Context>> m_contextMap;
     };

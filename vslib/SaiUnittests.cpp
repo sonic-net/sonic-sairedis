@@ -15,8 +15,9 @@ void Sai::startUnittestThread()
 
     m_unittestChannelThreadEvent = std::make_shared<swss::SelectableEvent>();
 
-    // TODO may require to pass correct DB information
-    m_dbNtf = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    auto ctx = getContext(m_globalContext);
+
+    m_dbNtf = std::make_shared<swss::DBConnector>(ctx->getContextConfig()->m_dbAsic, 0);
 
     m_unittestChannelNotificationConsumer = std::make_shared<swss::NotificationConsumer>(m_dbNtf.get(), SAI_VS_UNITTEST_CHANNEL);
 
@@ -277,7 +278,13 @@ void Sai::handleUnittestChannelOp(
 
     for (const auto &v: values)
     {
-        SWSS_LOG_DEBUG("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+        SWSS_LOG_NOTICE("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
+    }
+
+    if (!m_apiInitialized)
+    {
+        SWSS_LOG_ERROR("api not initialized but received unittests requsts: op: %s, key: %s", op.c_str(), key.c_str());
+        return;
     }
 
     if (op == SAI_VS_UNITTEST_ENABLE_UNITTESTS)

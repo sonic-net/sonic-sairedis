@@ -41,6 +41,8 @@ Sai::Sai()
     m_eventQueueThreadRun = false;
 
     m_apiInitialized = false;
+
+    m_globalContext = 0;
 }
 
 Sai::~Sai()
@@ -154,19 +156,19 @@ sai_status_t Sai::initialize(
 
     auto cstrGlobalContext = service_method_table->profile_get_value(0, SAI_KEY_VS_GLOBAL_CONTEXT);
 
-    uint32_t globalContext = 0;
+    m_globalContext = 0;
 
     if (cstrGlobalContext != nullptr)
     {
-        if (sscanf(cstrGlobalContext, "%u", &globalContext) != 1)
+        if (sscanf(cstrGlobalContext, "%u", &m_globalContext) != 1)
         {
             SWSS_LOG_WARN("failed to parse '%s' as uint32 using default globalContext", cstrGlobalContext);
 
-            globalContext = 0;
+            m_globalContext = 0;
         }
     }
 
-    SWSS_LOG_NOTICE("using globalContext = %u", globalContext);
+    SWSS_LOG_NOTICE("using globalContext = %u", m_globalContext);
 
     auto cstrContextConfig = service_method_table->profile_get_value(0, SAI_KEY_VS_CONTEXT_CONFIG);
 
@@ -179,11 +181,11 @@ sai_status_t Sai::initialize(
         m_contextMap[cc->m_guid] = context;
     }
 
-    auto context = getContext(globalContext);
+    auto context = getContext(m_globalContext);
 
     if (context == nullptr)
     {
-        SWSS_LOG_ERROR("no context defined for global context %u", globalContext);
+        SWSS_LOG_ERROR("no context defined for global context %u", m_globalContext);
 
         return SAI_STATUS_FAILURE;
     }

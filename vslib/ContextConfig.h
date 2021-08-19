@@ -10,7 +10,8 @@ namespace saivs
 
             ContextConfig(
                     _In_ uint32_t guid,
-                    _In_ const std::string& name);
+                    _In_ const std::string& name,
+                    _In_ const std::string& dbAsic);
 
             virtual ~ContextConfig();
 
@@ -25,6 +26,8 @@ namespace saivs
             uint32_t m_guid;
 
             std::string m_name;
+
+            std::string m_dbAsic; // unit tests channel
 
             std::shared_ptr<SwitchConfigContainer> m_scc;
     };
