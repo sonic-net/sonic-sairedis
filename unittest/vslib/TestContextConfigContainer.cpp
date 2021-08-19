@@ -6,7 +6,7 @@ using namespace saivs;
 
 TEST(ContextConfigContainer, insert)
 {
-    auto cc = std::make_shared<ContextConfig>(1, "foo");
+    auto cc = std::make_shared<ContextConfig>(1, "foo", "ASIC_DB");
 
     ContextConfigContainer ccc;
 
