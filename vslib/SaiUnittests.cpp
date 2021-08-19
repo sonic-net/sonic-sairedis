@@ -263,6 +263,9 @@ void Sai::handleUnittestChannelOp(
 {
     MUTEX();
 
+    // at this point api are initialized since unit test thread
+    // is started if initialization will be successful
+
     SWSS_LOG_ENTER();
 
     /*
@@ -281,12 +284,6 @@ void Sai::handleUnittestChannelOp(
         SWSS_LOG_NOTICE("attr: %s: %s", fvField(v).c_str(), fvValue(v).c_str());
     }
 
-    if (!m_apiInitialized)
-    {
-        SWSS_LOG_ERROR("api not initialized but received unittests requsts: op: %s, key: %s", op.c_str(), key.c_str());
-        return;
-    }
-
     if (op == SAI_VS_UNITTEST_ENABLE_UNITTESTS)
     {
         channelOpEnableUnittest(key, values);
@@ -301,7 +298,7 @@ void Sai::handleUnittestChannelOp(
     }
     else
     {
-        SWSS_LOG_ERROR("unknown unittest operation: %s", op.c_str());
+        SWSS_LOG_THROW("unknown unittest operation: %s", op.c_str());
     }
 }
 
