@@ -109,6 +109,7 @@ namespace syncd
             SYNCD_VENDORSAI_DECLARE_CREATE_ENTRY(neighbor_entry);
             SYNCD_VENDORSAI_DECLARE_CREATE_ENTRY(route_entry);
             SYNCD_VENDORSAI_DECLARE_CREATE_ENTRY(nat_entry);
+            SYNCD_VENDORSAI_DECLARE_CREATE_ENTRY(my_sid_entry);
 
         public: // remove ENTRY
 
@@ -120,6 +121,7 @@ namespace syncd
             SYNCD_VENDORSAI_DECLARE_REMOVE_ENTRY(neighbor_entry);
             SYNCD_VENDORSAI_DECLARE_REMOVE_ENTRY(route_entry);
             SYNCD_VENDORSAI_DECLARE_REMOVE_ENTRY(nat_entry);
+            SYNCD_VENDORSAI_DECLARE_REMOVE_ENTRY(my_sid_entry);
 
         public: // set ENTRY
 
@@ -131,6 +133,7 @@ namespace syncd
             SYNCD_VENDORSAI_DECLARE_SET_ENTRY(neighbor_entry);
             SYNCD_VENDORSAI_DECLARE_SET_ENTRY(route_entry);
             SYNCD_VENDORSAI_DECLARE_SET_ENTRY(nat_entry);
+            SYNCD_VENDORSAI_DECLARE_SET_ENTRY(my_sid_entry);
 
         public: // get ENTRY
 
@@ -142,6 +145,7 @@ namespace syncd
             SYNCD_VENDORSAI_DECLARE_GET_ENTRY(neighbor_entry);
             SYNCD_VENDORSAI_DECLARE_GET_ENTRY(route_entry);
             SYNCD_VENDORSAI_DECLARE_GET_ENTRY(nat_entry);
+            SYNCD_VENDORSAI_DECLARE_GET_ENTRY(my_sid_entry);
 
         public: // bulk QUAD oid
 
@@ -176,6 +180,7 @@ namespace syncd
             SYNCD_VENDORSAI_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_CREATE_ENTRY(nat_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_CREATE_ENTRY(route_entry);
+            SYNCD_VENDORSAI_DECLARE_BULK_CREATE_ENTRY(my_sid_entry);
 
         public: // bulk remove ENTRY
 
@@ -183,6 +188,7 @@ namespace syncd
             SYNCD_VENDORSAI_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_REMOVE_ENTRY(route_entry);
+            SYNCD_VENDORSAI_DECLARE_BULK_REMOVE_ENTRY(my_sid_entry);
 
         public: // bulk set ENTRY
 
@@ -190,6 +196,7 @@ namespace syncd
             SYNCD_VENDORSAI_DECLARE_BULK_SET_ENTRY(inseg_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_SET_ENTRY(nat_entry);
             SYNCD_VENDORSAI_DECLARE_BULK_SET_ENTRY(route_entry);
+            SYNCD_VENDORSAI_DECLARE_BULK_SET_ENTRY(my_sid_entry);
 
         public: // stats API
 

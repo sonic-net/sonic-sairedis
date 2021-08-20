@@ -298,6 +298,7 @@ DECLARE_CREATE_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
 DECLARE_CREATE_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 DECLARE_CREATE_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_CREATE_ENTRY(NAT_ENTRY,nat_entry);
+DECLARE_CREATE_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 
 #define DECLARE_REMOVE_ENTRY(OT,ot)                                         \
@@ -321,6 +322,7 @@ DECLARE_REMOVE_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
 DECLARE_REMOVE_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 DECLARE_REMOVE_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_REMOVE_ENTRY(NAT_ENTRY,nat_entry);
+DECLARE_REMOVE_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 #define DECLARE_SET_ENTRY(OT,ot)                                            \
 sai_status_t VendorSai::set(                                                \
@@ -344,6 +346,7 @@ DECLARE_SET_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
 DECLARE_SET_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 DECLARE_SET_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_SET_ENTRY(NAT_ENTRY,nat_entry);
+DECLARE_SET_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 #define DECLARE_GET_ENTRY(OT,ot)                                            \
 sai_status_t VendorSai::get(                                                \
@@ -368,6 +371,7 @@ DECLARE_GET_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
 DECLARE_GET_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 DECLARE_GET_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_GET_ENTRY(NAT_ENTRY,nat_entry);
+DECLARE_GET_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 // STATS
 
@@ -649,8 +653,8 @@ sai_status_t VendorSai::bulkCreate(
             ptr = m_apis.next_hop_group_api->create_next_hop_group_members;
             break;
 
-        case SAI_OBJECT_TYPE_SEGMENTROUTE_SIDLIST:
-            ptr = m_apis.segmentroute_api->create_segmentroute_sidlists;
+        case SAI_OBJECT_TYPE_SRV6_SIDLIST:
+            ptr = m_apis.srv6_api->create_srv6_sidlists;
             break;
 
         case SAI_OBJECT_TYPE_STP_PORT:
@@ -708,8 +712,8 @@ sai_status_t VendorSai::bulkRemove(
             ptr = m_apis.next_hop_group_api->remove_next_hop_group_members;
             break;
 
-        case SAI_OBJECT_TYPE_SEGMENTROUTE_SIDLIST:
-            ptr = m_apis.segmentroute_api->remove_segmentroute_sidlists;
+        case SAI_OBJECT_TYPE_SRV6_SIDLIST:
+            ptr = m_apis.srv6_api->remove_srv6_sidlists;
             break;
 
         case SAI_OBJECT_TYPE_STP_PORT:
@@ -861,6 +865,32 @@ sai_status_t VendorSai::bulkCreate(
             object_statuses);
 }
 
+sai_status_t VendorSai::bulkCreate(
+        _In_ uint32_t object_count,
+        _In_ const sai_my_sid_entry_t* entries,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    if (!m_apis.srv6_api->create_my_sid_entries)
+    {
+        SWSS_LOG_INFO("create_my_sid_entries is not supported");
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return m_apis.srv6_api->create_my_sid_entries(
+            object_count,
+            entries,
+            attr_count,
+            attr_list,
+            mode,
+            object_statuses);
+}
 // BULK REMOVE
 
 sai_status_t VendorSai::bulkRemove(
@@ -950,6 +980,29 @@ sai_status_t VendorSai::bulkRemove(
     }
 
     return m_apis.nat_api->remove_nat_entries(
+            object_count,
+            entries,
+            mode,
+            object_statuses);
+}
+
+sai_status_t VendorSai::bulkRemove(
+        _In_ uint32_t object_count,
+        _In_ const sai_my_sid_entry_t *entries,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    if (!m_apis.srv6_api->remove_my_sid_entries)
+    {
+        SWSS_LOG_INFO("remove_my_sid_entries is not supported");
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return m_apis.srv6_api->remove_my_sid_entries(
             object_count,
             entries,
             mode,
@@ -1058,6 +1111,30 @@ sai_status_t VendorSai::bulkSet(
             object_statuses);
 }
 
+sai_status_t VendorSai::bulkSet(
+        _In_ uint32_t object_count,
+        _In_ const sai_my_sid_entry_t *entries,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    if (!m_apis.srv6_api->set_my_sid_entries_attribute)
+    {
+        SWSS_LOG_INFO("set_my_sid_entries_attribute is not supported");
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return m_apis.srv6_api->set_my_sid_entries_attribute(
+            object_count,
+            entries,
+            attr_list,
+            mode,
+            object_statuses);
+}
 // NON QUAD API
 
 sai_status_t VendorSai::flushFdbEntries(

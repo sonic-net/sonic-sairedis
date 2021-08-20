@@ -48,7 +48,7 @@ PRIVATE extern const sai_rpf_group_api_t        redis_rpf_group_api;
 PRIVATE extern const sai_samplepacket_api_t     redis_samplepacket_api;
 PRIVATE extern const sai_scheduler_api_t        redis_scheduler_api;
 PRIVATE extern const sai_scheduler_group_api_t  redis_scheduler_group_api;
-PRIVATE extern const sai_segmentroute_api_t     redis_segmentroute_api;
+PRIVATE extern const sai_srv6_api_t             redis_srv6_api;
 PRIVATE extern const sai_stp_api_t              redis_stp_api;
 PRIVATE extern const sai_switch_api_t           redis_switch_api;
 PRIVATE extern const sai_system_port_api_t      redis_system_port_api;
@@ -425,4 +425,5 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>   redis_sai;
     _X(NEIGHBOR_ENTRY,neighbor_entry);      \
     _X(ROUTE_ENTRY,route_entry);            \
     _X(NAT_ENTRY,nat_entry);                \
+    _X(MY_SID_ENTRY,my_sid_entry);                \
 

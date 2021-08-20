@@ -66,6 +66,9 @@ std::string sai_serialize_mcast_fdb_entry(
 std::string sai_serialize_fdb_entry(
         _In_ const sai_fdb_entry_t &fdb_entry);
 
+std::string sai_serialize_my_sid_entry(
+        _In_ const sai_my_sid_entry_t &my_sid_entry);
+
 std::string sai_serialize_vlan_id(
         _In_ const sai_vlan_id_t vlan_id);
 
@@ -289,6 +292,10 @@ void sai_deserialize_ipmc_entry(
 void sai_deserialize_mcast_fdb_entry(
         _In_ const std::string& s,
         _In_ sai_mcast_fdb_entry_t &mcast_fdb_entry);
+
+void sai_deserialize_my_sid_entry(
+        _In_ const std::string& s,
+        _In_ sai_my_sid_entry_t &my_sid_entry);
 
 void sai_deserialize_vlan_id(
         _In_ const std::string& s,

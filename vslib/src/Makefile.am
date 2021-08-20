@@ -106,7 +106,7 @@ libsaivs_la_SOURCES = \
 					  sai_vs_samplepacket.cpp \
 					  sai_vs_scheduler.cpp \
 					  sai_vs_schedulergroup.cpp \
-					  sai_vs_segmentroute.cpp \
+					  sai_vs_srv6.cpp \
 					  sai_vs_stp.cpp \
 					  sai_vs_system_port.cpp \
 					  sai_vs_tam.cpp \

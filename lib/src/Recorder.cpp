@@ -883,6 +883,7 @@ void Recorder::recordRemove(                                            \
     _X(NEIGHBOR_ENTRY,neighbor_entry);      \
     _X(ROUTE_ENTRY,route_entry);            \
     _X(NAT_ENTRY,nat_entry);                \
+    _X(MY_SID_ENTRY,my_sid_entry);                \
 
 REDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_REMOVE_ENTRY)
 

@@ -216,6 +216,7 @@ DECLARE_CREATE_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
 DECLARE_CREATE_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 DECLARE_CREATE_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_CREATE_ENTRY(NAT_ENTRY,nat_entry);
+DECLARE_CREATE_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 
 #define DECLARE_REMOVE_ENTRY(OT,ot)                         \
@@ -236,6 +237,7 @@ DECLARE_REMOVE_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
 DECLARE_REMOVE_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 DECLARE_REMOVE_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_REMOVE_ENTRY(NAT_ENTRY,nat_entry);
+DECLARE_REMOVE_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 #define DECLARE_SET_ENTRY(OT,ot)                            \
 sai_status_t ServerSai::set(                                \
@@ -256,6 +258,7 @@ DECLARE_SET_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
 DECLARE_SET_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 DECLARE_SET_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_SET_ENTRY(NAT_ENTRY,nat_entry);
+DECLARE_SET_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 #define DECLARE_GET_ENTRY(OT,ot)                                \
 sai_status_t ServerSai::get(                                    \
@@ -277,6 +280,7 @@ DECLARE_GET_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
 DECLARE_GET_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 DECLARE_GET_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_GET_ENTRY(NAT_ENTRY,nat_entry);
+DECLARE_GET_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 // STATS
 
@@ -431,6 +435,7 @@ DECLARE_BULK_CREATE_ENTRY(ROUTE_ENTRY,route_entry)
 DECLARE_BULK_CREATE_ENTRY(FDB_ENTRY,fdb_entry);
 DECLARE_BULK_CREATE_ENTRY(INSEG_ENTRY,inseg_entry);
 DECLARE_BULK_CREATE_ENTRY(NAT_ENTRY,nat_entry)
+DECLARE_BULK_CREATE_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 
 // BULK REMOVE
@@ -456,6 +461,7 @@ DECLARE_BULK_REMOVE_ENTRY(ROUTE_ENTRY,route_entry)
 DECLARE_BULK_REMOVE_ENTRY(FDB_ENTRY,fdb_entry);
 DECLARE_BULK_REMOVE_ENTRY(INSEG_ENTRY,inseg_entry);
 DECLARE_BULK_REMOVE_ENTRY(NAT_ENTRY,nat_entry)
+DECLARE_BULK_REMOVE_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 // BULK SET
 
@@ -482,6 +488,7 @@ DECLARE_BULK_SET_ENTRY(ROUTE_ENTRY,route_entry);
 DECLARE_BULK_SET_ENTRY(FDB_ENTRY,fdb_entry);
 DECLARE_BULK_SET_ENTRY(INSEG_ENTRY,inseg_entry);
 DECLARE_BULK_SET_ENTRY(NAT_ENTRY,nat_entry);
+DECLARE_BULK_SET_ENTRY(MY_SID_ENTRY,my_sid_entry);
 
 // NON QUAD API
 
@@ -1295,6 +1302,25 @@ sai_status_t ServerSai::processBulkCreateEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+        {
+            std::vector<sai_my_sid_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
         default:
             return SAI_STATUS_NOT_SUPPORTED;
     }
@@ -1374,6 +1400,23 @@ sai_status_t ServerSai::processBulkRemoveEntry(
             for (uint32_t it = 0; it < object_count; it++)
             {
                 sai_deserialize_inseg_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+        {
+            std::vector<sai_my_sid_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
             }
 
             status = m_sai->bulkRemove(
@@ -1475,6 +1518,24 @@ sai_status_t ServerSai::processBulkSetEntry(
             for (uint32_t it = 0; it < object_count; it++)
             {
                 sai_deserialize_inseg_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+        {
+            std::vector<sai_my_sid_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
             }
 
             status = m_sai->bulkSet(

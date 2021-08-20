@@ -110,6 +110,7 @@ namespace sairedis
             SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(neighbor_entry);
             SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(route_entry);
             SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_CREATE_ENTRY(my_sid_entry);
 
         public: // remove ENTRY
 
@@ -121,6 +122,7 @@ namespace sairedis
             SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(neighbor_entry);
             SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(route_entry);
             SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_REMOVE_ENTRY(my_sid_entry);
 
         public: // set ENTRY
 
@@ -132,6 +134,7 @@ namespace sairedis
             SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(neighbor_entry);
             SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(route_entry);
             SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_SET_ENTRY(my_sid_entry);
 
         public: // get ENTRY
 
@@ -143,6 +146,7 @@ namespace sairedis
             SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(neighbor_entry);
             SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(route_entry);
             SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(nat_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_GET_ENTRY(my_sid_entry);
 
         public: // bulk QUAD oid
 
@@ -177,6 +181,7 @@ namespace sairedis
             SAIREDIS_CLIENTSAI_DECLARE_BULK_CREATE_ENTRY(inseg_entry);
             SAIREDIS_CLIENTSAI_DECLARE_BULK_CREATE_ENTRY(nat_entry);
             SAIREDIS_CLIENTSAI_DECLARE_BULK_CREATE_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_CREATE_ENTRY(my_sid_entry);
 
         public: // bulk remove ENTRY
 
@@ -184,6 +189,7 @@ namespace sairedis
             SAIREDIS_CLIENTSAI_DECLARE_BULK_REMOVE_ENTRY(inseg_entry);
             SAIREDIS_CLIENTSAI_DECLARE_BULK_REMOVE_ENTRY(nat_entry);
             SAIREDIS_CLIENTSAI_DECLARE_BULK_REMOVE_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_REMOVE_ENTRY(my_sid_entry);
 
         public: // bulk set ENTRY
 
@@ -191,6 +197,7 @@ namespace sairedis
             SAIREDIS_CLIENTSAI_DECLARE_BULK_SET_ENTRY(inseg_entry);
             SAIREDIS_CLIENTSAI_DECLARE_BULK_SET_ENTRY(nat_entry);
             SAIREDIS_CLIENTSAI_DECLARE_BULK_SET_ENTRY(route_entry);
+            SAIREDIS_CLIENTSAI_DECLARE_BULK_SET_ENTRY(my_sid_entry);
 
         public: // stats API
 
