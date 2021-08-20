@@ -263,10 +263,10 @@ void Sai::handleUnittestChannelOp(
 {
     MUTEX();
 
-    // at this point api are initialized since unit test thread
-    // is started if initialization will be successful
-
     SWSS_LOG_ENTER();
+
+    // at this point api are initialized since unit test thread is started if
+    // initialization will be successful
 
     /*
      * Since we will access and modify DB we need to be under mutex.
