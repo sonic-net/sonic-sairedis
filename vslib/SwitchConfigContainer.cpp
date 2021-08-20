@@ -9,6 +9,11 @@ void SwitchConfigContainer::insert(
 {
     SWSS_LOG_ENTER();
 
+    if (config == nullptr)
+    {
+        SWSS_LOG_THROW("switch config pointer can't be nullptr");
+    }
+
     auto it = m_indexToConfig.find(config->m_switchIndex);
 
     if (it != m_indexToConfig.end())
