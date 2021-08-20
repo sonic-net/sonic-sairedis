@@ -68,29 +68,6 @@ sai_status_t SwitchBCM81724::initialize_default_objects(
     return SAI_STATUS_SUCCESS;
 }
 
-
-sai_status_t SwitchBCM81724::create_qos_queues_per_port(
-        _In_ sai_object_id_t port_id)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::create_qos_queues()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::set_switch_mac_address()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
 sai_status_t SwitchBCM81724::refresh_port_list(
         _In_ const sai_attr_metadata_t *meta)
 {
@@ -162,7 +139,10 @@ sai_status_t SwitchBCM81724::set_switch_default_attributes()
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     attr.id = SAI_SWITCH_ATTR_FIRMWARE_MAJOR_VERSION;
-    strncpy((char *)&attr.value.chardata, "v0.1", sizeof(attr.value.chardata));
+
+    memset(attr.value.chardata, 0, sizeof(attr.value.chardata));
+
+    strcpy((char *)&attr.value.chardata, "v0.1"); // REMEMBER DO NOT EXCEED sizeof(chardata)
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
@@ -187,36 +167,9 @@ sai_status_t SwitchBCM81724::refresh_read_only(
     {
         switch (meta->attrid)
         {
-            case SAI_SWITCH_ATTR_CPU_PORT:
-            case SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID:
-            case SAI_SWITCH_ATTR_DEFAULT_VLAN_ID:
-            case SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID:
-            case SAI_SWITCH_ATTR_DEFAULT_1Q_BRIDGE_ID:
-                return SAI_STATUS_NOT_IMPLEMENTED;
-
-            case SAI_SWITCH_ATTR_ACL_ENTRY_MINIMUM_PRIORITY:
-            case SAI_SWITCH_ATTR_ACL_ENTRY_MAXIMUM_PRIORITY:
-                return SAI_STATUS_NOT_IMPLEMENTED;
-
-            case SAI_SWITCH_ATTR_MAX_ACL_ACTION_COUNT:
-            case SAI_SWITCH_ATTR_ACL_STAGE_INGRESS:
-            case SAI_SWITCH_ATTR_ACL_STAGE_EGRESS:
-                return SAI_STATUS_NOT_IMPLEMENTED;
-
-            case SAI_SWITCH_ATTR_NUMBER_OF_ECMP_GROUPS:
-                return SAI_STATUS_NOT_IMPLEMENTED;
-
             case SAI_SWITCH_ATTR_NUMBER_OF_ACTIVE_PORTS:
             case SAI_SWITCH_ATTR_PORT_LIST:
-                return refresh_port_list(meta);
-
-            case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP:
-                return SAI_STATUS_NOT_IMPLEMENTED;
-
-            case SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY:
-            case SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY:
-            case SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY:
-                return SAI_STATUS_NOT_IMPLEMENTED;
+                return refresh_port_list(meta); // TODO should implement, override and call on init create_ports
 
             case SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP:
             case SAI_SWITCH_ATTR_FIRMWARE_MAJOR_VERSION:
@@ -228,22 +181,11 @@ sai_status_t SwitchBCM81724::refresh_read_only(
     {
         switch (meta->attrid)
         {
-            case SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES:
-            case SAI_PORT_ATTR_QOS_QUEUE_LIST:
-                return SAI_STATUS_NOT_IMPLEMENTED;
-
-            case SAI_PORT_ATTR_NUMBER_OF_INGRESS_PRIORITY_GROUPS:
-            case SAI_PORT_ATTR_INGRESS_PRIORITY_GROUP_LIST:
-                return SAI_STATUS_NOT_IMPLEMENTED;
-
-            case SAI_PORT_ATTR_QOS_NUMBER_OF_SCHEDULER_GROUPS:
-            case SAI_PORT_ATTR_QOS_SCHEDULER_GROUP_LIST:
-                return SAI_STATUS_NOT_IMPLEMENTED;
-
             case SAI_PORT_ATTR_SUPPORTED_FEC_MODE:
             case SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE:
             case SAI_PORT_ATTR_REMOTE_ADVERTISED_FEC_MODE:
             case SAI_PORT_ATTR_ADVERTISED_FEC_MODE:
+                // TODO where is code that is doing refresh for those?
                 return SAI_STATUS_SUCCESS;
 
                 /*
@@ -253,21 +195,6 @@ sai_status_t SwitchBCM81724::refresh_read_only(
             case SAI_PORT_ATTR_OPER_STATUS:
                 return SAI_STATUS_SUCCESS;
         }
-    }
-
-    if (meta->objecttype == SAI_OBJECT_TYPE_SCHEDULER_GROUP)
-    {
-        return SAI_STATUS_NOT_IMPLEMENTED;
-    }
-
-    if (meta->objecttype == SAI_OBJECT_TYPE_BRIDGE && meta->attrid == SAI_BRIDGE_ATTR_PORT_LIST)
-    {
-        return SAI_STATUS_NOT_IMPLEMENTED;
-    }
-
-    if (meta->objecttype == SAI_OBJECT_TYPE_VLAN && meta->attrid == SAI_VLAN_ATTR_MEMBER_LIST)
-    {
-        return SAI_STATUS_NOT_IMPLEMENTED;
     }
 
     if (meta->objecttype == SAI_OBJECT_TYPE_DEBUG_COUNTER && meta->attrid == SAI_DEBUG_COUNTER_ATTR_INDEX)
@@ -296,48 +223,6 @@ sai_status_t SwitchBCM81724::refresh_read_only(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t SwitchBCM81724::create_default_vlan()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::create_cpu_port()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::create_default_1q_bridge()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::create_ports()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::create_default_virtual_router()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::create_default_stp_instance()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
 sai_status_t SwitchBCM81724::create_default_trap_group()
 {
     SWSS_LOG_ENTER();
@@ -350,81 +235,6 @@ sai_status_t SwitchBCM81724::create_default_trap_group()
     attr.value.oid = SAI_NULL_OBJECT_ID;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-}
-
-sai_status_t SwitchBCM81724::create_ingress_priority_groups_per_port(
-        _In_ sai_object_id_t port_id)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::create_ingress_priority_groups()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::create_vlan_members()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::create_bridge_ports()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::set_acl_entry_min_prio()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::set_acl_capabilities()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::set_maximum_number_of_childs_per_scheduler_group()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::set_number_of_ecmp_groups()
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::refresh_bridge_port_list(
-        _In_ const sai_attr_metadata_t *meta,
-        _In_ sai_object_id_t bridge_id)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t SwitchBCM81724::refresh_vlan_member_list(
-        _In_ const sai_attr_metadata_t *meta,
-        _In_ sai_object_id_t vlan_id)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 sai_status_t SwitchBCM81724::warm_boot_initialize_objects()
