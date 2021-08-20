@@ -10,6 +10,11 @@ void SwitchContainer::insert(
 {
     SWSS_LOG_ENTER();
 
+    if (sw == nullptr)
+    {
+        SWSS_LOG_THROW("switch pointer can't be nullptr");
+    }
+
     auto switchId = sw->getSwitchId();
 
     if (m_switchMap.find(switchId) != m_switchMap.end())
@@ -41,6 +46,11 @@ void SwitchContainer::removeSwitch(
         _In_ std::shared_ptr<Switch> sw)
 {
     SWSS_LOG_ENTER();
+
+    if (sw == nullptr)
+    {
+        SWSS_LOG_THROW("switch pointer can't be nullptr");
+    }
 
     removeSwitch(sw->getSwitchId());
 }
