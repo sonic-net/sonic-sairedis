@@ -16,7 +16,7 @@ extern "C" {
 
 namespace saivs
 {
-    class HostInterfaceInfo :
+    class HostInterfaceInfo:
         public TrafficForwarder
     {
         private:

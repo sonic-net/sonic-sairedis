@@ -18,7 +18,7 @@ static_assert(sizeof(control) >= (sizeof(cmsghdr) + sizeof(tpacket_auxdata)), "c
 
 TEST(TrafficForwarder, addVlanTag)
 {
-    uint8_t buffer[0x1000];
+    uint8_t buffer[ETH_FRAME_BUFFER_SIZE];
 
     size_t length = 1;
 
