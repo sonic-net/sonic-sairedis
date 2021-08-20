@@ -111,6 +111,8 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+        protected:
+
             virtual sai_status_t create_port_dependencies(
                     _In_ sai_object_id_t port_id);
 
