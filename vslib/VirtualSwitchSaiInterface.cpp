@@ -548,7 +548,12 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
 
     if (warmBootState != nullptr)
     {
-        ss->warm_boot_initialize_objects(); // TODO move to constructor
+        auto status = ss->warm_boot_initialize_objects(); // TODO move to constructor
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_THROW("unable to warm boot init switch %s", sai_serialize_status(status).c_str());
+        }
 
         SWSS_LOG_NOTICE("initialized switch %s in WARM boot mode", sai_serialize_object_id(switch_id).c_str());
 

@@ -1,4 +1,4 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/meta -I$(top_srcdir)/vslib -I/usr/include/libnl3
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/meta -I$(top_srcdir)/vslib -I$(top_srcdir)/lib -I/usr/include/libnl3
 
 bin_PROGRAMS = tests testslibsaivs
 
@@ -36,7 +36,8 @@ tests_SOURCES = main.cpp \
 				TestTrafficFilterPipes.cpp \
 				TestSwitchConfig.cpp \
 				TestSwitchContainer.cpp \
-				TestSwitch.cpp
+				TestSwitch.cpp \
+				TestSwitchMLNX2700.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lnl-genl-3 -lnl-nf-3 -lnl-route-3 -lnl-3 \
