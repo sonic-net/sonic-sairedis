@@ -53,6 +53,11 @@ sai_status_t SwitchBCM81724::create_port_dependencies(
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+    attr.value.s32 = SAI_PORT_OPER_STATUS_DOWN;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -138,11 +143,15 @@ sai_status_t SwitchBCM81724::set_switch_default_attributes()
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
+    // v0.1
+
     attr.id = SAI_SWITCH_ATTR_FIRMWARE_MAJOR_VERSION;
+    attr.value.u32 = 0;
 
-    memset(attr.value.chardata, 0, sizeof(attr.value.chardata));
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
-    strcpy((char *)&attr.value.chardata, "v0.1"); // REMEMBER DO NOT EXCEED sizeof(chardata)
+    attr.id = SAI_SWITCH_ATTR_FIRMWARE_MINOR_VERSION;
+    attr.value.u32 = 1;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
@@ -181,12 +190,12 @@ sai_status_t SwitchBCM81724::refresh_read_only(
     {
         switch (meta->attrid)
         {
-            case SAI_PORT_ATTR_SUPPORTED_FEC_MODE:
-            case SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE:
-            case SAI_PORT_ATTR_REMOTE_ADVERTISED_FEC_MODE:
-            case SAI_PORT_ATTR_ADVERTISED_FEC_MODE:
-                // TODO where is code that is doing refresh for those?
-                return SAI_STATUS_SUCCESS;
+            //case SAI_PORT_ATTR_SUPPORTED_FEC_MODE:
+            //case SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE:
+            //case SAI_PORT_ATTR_REMOTE_ADVERTISED_FEC_MODE:
+            //case SAI_PORT_ATTR_ADVERTISED_FEC_MODE:
+            //    // TODO where is code that is doing refresh for those?
+            //    return SAI_STATUS_SUCCESS;
 
                 /*
                  * This status is based on hostif vEthernetX status.

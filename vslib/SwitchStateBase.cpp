@@ -652,7 +652,7 @@ sai_status_t SwitchStateBase::get(
 
         if (ait == attrHash.end())
         {
-            SWSS_LOG_INFO("%s not implemented on %s",
+            SWSS_LOG_WARN("%s not implemented on %s",
                     meta->attridname,
                     serializedObjectId.c_str());
 
