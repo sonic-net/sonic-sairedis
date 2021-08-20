@@ -4,13 +4,14 @@
 
 using namespace saivs;
 
+#define MUTEX std::unique_lock<std::mutex> guard(m_mutex)
+
 bool TrafficFilterPipes::installFilter(
         _In_ int priority,
         _In_ std::shared_ptr<TrafficFilter> filter)
 {
+    MUTEX;
     SWSS_LOG_ENTER();
-
-    std::unique_lock<std::mutex> guard(m_mutex);
 
     return m_filters.emplace(priority, filter).second;
 }
@@ -18,9 +19,8 @@ bool TrafficFilterPipes::installFilter(
 bool TrafficFilterPipes::uninstallFilter(
         _In_ std::shared_ptr<TrafficFilter> filter)
 {
+    MUTEX;
     SWSS_LOG_ENTER();
-
-    std::unique_lock<std::mutex> guard(m_mutex);
 
     for (auto itr = m_filters.begin();
             itr != m_filters.end();
@@ -41,9 +41,9 @@ TrafficFilter::FilterStatus TrafficFilterPipes::execute(
         _Inout_ void *buffer,
         _Inout_ size_t &length)
 {
+    MUTEX;
     SWSS_LOG_ENTER();
 
-    std::unique_lock<std::mutex> guard(m_mutex);
     TrafficFilter::FilterStatus ret = TrafficFilter::CONTINUE;
 
     for (auto itr = m_filters.begin(); itr != m_filters.end();)
