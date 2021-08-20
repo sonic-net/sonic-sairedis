@@ -23,7 +23,7 @@ using namespace saivs;
 #define MAC_ADDRESS_SIZE (6)
 #define VLAN_TAG_SIZE (4)
 
-void TrafficForwarder::addVlanTag(
+bool TrafficForwarder::addVlanTag(
         _Inout_ unsigned char *buffer,
         _Inout_ size_t &length,
         _Inout_ struct msghdr &msg)
@@ -65,9 +65,11 @@ void TrafficForwarder::addVlanTag(
 
             length += VLAN_TAG_SIZE;
 
-            break;
+            return true;
         }
     }
+
+    return false;
 }
 
 bool TrafficForwarder::sendTo(

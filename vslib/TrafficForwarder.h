@@ -22,7 +22,7 @@ namespace saivs
 
         public:
 
-            static void addVlanTag(
+            static bool addVlanTag(
                     _Inout_ unsigned char *buffer,
                     _Inout_ size_t &length,
                     _Inout_ struct msghdr &msg);
