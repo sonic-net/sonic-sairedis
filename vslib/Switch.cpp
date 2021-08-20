@@ -56,6 +56,11 @@ void Switch::updateNotifications(
      * api when object is SWITCH.
      */
 
+    if (attrCount && attrList == nullptr)
+    {
+        SWSS_LOG_THROW("attrCount is %u, but attrList is nullptr", attrCount);
+    }
+
     for (uint32_t index = 0; index < attrCount; ++index)
     {
         auto &attr = attrList[index];
@@ -101,8 +106,7 @@ void Switch::updateNotifications(
                 break;
 
             default:
-                SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
-                break;
+                SWSS_LOG_THROW("pointer for %s is not handled, FIXME!", meta->attridname);
         }
     }
 }

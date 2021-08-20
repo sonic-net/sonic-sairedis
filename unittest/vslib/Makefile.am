@@ -34,7 +34,9 @@ tests_SOURCES = main.cpp \
 				TestTrafficForwarder.cpp \
 				TestHostInterfaceInfo.cpp \
 				TestTrafficFilterPipes.cpp \
-				TestSwitchConfig.cpp
+				TestSwitchConfig.cpp \
+				TestSwitchContainer.cpp \
+				TestSwitch.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lnl-genl-3 -lnl-nf-3 -lnl-route-3 -lnl-3 \
