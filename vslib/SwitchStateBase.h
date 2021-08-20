@@ -161,6 +161,8 @@ namespace saivs
 
             virtual sai_status_t warm_boot_initialize_objects();
 
+        protected:
+
             virtual sai_status_t refresh_read_only(
                     _In_ const sai_attr_metadata_t *meta,
                     _In_ sai_object_id_t object_id);

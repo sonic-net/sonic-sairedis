@@ -86,8 +86,12 @@ namespace saivs
 
             virtual sai_status_t set_switch_default_attributes();
 
+        public:
+
             virtual sai_status_t initialize_default_objects(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) override;
+
+            virtual sai_status_t warm_boot_initialize_objects() override;
     };
 }

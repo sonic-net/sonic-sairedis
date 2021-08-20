@@ -16,9 +16,23 @@ SwitchBCM81724::SwitchBCM81724(
     // empty
 }
 
+SwitchBCM81724::SwitchBCM81724(
+        _In_ sai_object_id_t switch_id,
+        _In_ std::shared_ptr<RealObjectIdManager> manager,
+        _In_ std::shared_ptr<SwitchConfig> config,
+        _In_ std::shared_ptr<WarmBootState> warmBootState):
+    SwitchStateBase(switch_id, manager, config, warmBootState)
+{
+    SWSS_LOG_ENTER();
+
+    // empty
+}
+
 SwitchBCM81724::~SwitchBCM81724()
 {
     SWSS_LOG_ENTER();
+
+    // empty
 }
 
 sai_status_t SwitchBCM81724::create_port_dependencies(
@@ -153,24 +167,12 @@ sai_status_t SwitchBCM81724::set_switch_default_attributes()
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     attr.id = SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST;
-    attr.value.s32list.count = sizeof(supported_obj_list);
+    attr.value.s32list.count = sizeof(supported_obj_list) / sizeof(int32_t);
     attr.value.s32list.list = supported_obj_list;
 
     ret = set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 
     return ret;
-}
-
-SwitchBCM81724::SwitchBCM81724(
-        _In_ sai_object_id_t switch_id,
-        _In_ std::shared_ptr<RealObjectIdManager> manager,
-        _In_ std::shared_ptr<SwitchConfig> config,
-        _In_ std::shared_ptr<WarmBootState> warmBootState):
-    SwitchStateBase(switch_id, manager, config, warmBootState)
-{
-    SWSS_LOG_ENTER();
-
-    // empty
 }
 
 // override of base class but returning failure in most cases. GB phys implement very little
@@ -425,3 +427,11 @@ sai_status_t SwitchBCM81724::refresh_vlan_member_list(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+sai_status_t SwitchBCM81724::warm_boot_initialize_objects()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("warm boot is not implemented for SwitchBCM81724");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
