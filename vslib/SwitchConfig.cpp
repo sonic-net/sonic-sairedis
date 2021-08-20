@@ -3,6 +3,8 @@
 
 #include "swss/logger.h"
 
+#include <cstring>
+
 using namespace saivs;
 
 SwitchConfig::SwitchConfig(
@@ -120,9 +122,7 @@ bool SwitchConfig::parseUseTapDevice(
 
     if (useTapDeviceStr)
     {
-        std::string utd = useTapDeviceStr;
-
-        return utd == "true";
+        return strcmp(useTapDeviceStr, "true") == 0;
     }
 
     return false;
