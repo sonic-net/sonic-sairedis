@@ -13,7 +13,7 @@ typedef union _control
 
 } control;
 
-static_assert(sizeof(cmsghdr) == 16, "header must be 8 bytes");
+static_assert(sizeof(cmsghdr) >= 8, "header must be at leasts 8 bytes");
 static_assert(sizeof(control) >= (sizeof(cmsghdr) + sizeof(tpacket_auxdata)), "control must at least include both");
 
 TEST(TrafficForwarder, addVlanTag)
