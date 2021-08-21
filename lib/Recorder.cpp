@@ -3,6 +3,7 @@
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
 #include "meta/Globals.h"
+#include "meta/SaiInterface.h"
 
 #include <unistd.h>
 #include <inttypes.h>
@@ -872,17 +873,7 @@ void Recorder::recordRemove(                                            \
     recordRemove(SAI_OBJECT_TYPE_ ## OT, sai_serialize_ ## ot(*ot));    \
 }
 
-#define REDIS_DECLARE_EVERY_ENTRY(_X)       \
-    _X(FDB_ENTRY,fdb_entry);                \
-    _X(INSEG_ENTRY,inseg_entry);            \
-    _X(IPMC_ENTRY,ipmc_entry);              \
-    _X(L2MC_ENTRY,l2mc_entry);              \
-    _X(MCAST_FDB_ENTRY,mcast_fdb_entry);    \
-    _X(NEIGHBOR_ENTRY,neighbor_entry);      \
-    _X(ROUTE_ENTRY,route_entry);            \
-    _X(NAT_ENTRY,nat_entry);                \
-
-REDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_REMOVE_ENTRY)
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_REMOVE_ENTRY);
 
 #define DECLARE_RECORD_CREATE_ENTRY(OT,ot)                                                      \
 void Recorder::recordCreate(                                                                    \
@@ -894,7 +885,7 @@ void Recorder::recordCreate(                                                    
     recordCreate(SAI_OBJECT_TYPE_ ## OT, sai_serialize_ ## ot(*ot), attr_count, attr_list);     \
 }
 
-REDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_CREATE_ENTRY)
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_CREATE_ENTRY);
 
 #define DECLARE_RECORD_SET_ENTRY(OT,ot)                                                         \
 void Recorder::recordSet(                                                                       \
@@ -905,7 +896,7 @@ void Recorder::recordSet(                                                       
     recordSet(SAI_OBJECT_TYPE_ ## OT, sai_serialize_ ## ot(*ot), attr);                         \
 }
 
-REDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_SET_ENTRY)
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_SET_ENTRY);
 
 #define DECLARE_RECORD_GET_ENTRY(OT,ot)                                                         \
 void Recorder::recordGet(                                                                       \
@@ -917,7 +908,7 @@ void Recorder::recordGet(                                                       
     recordGet(SAI_OBJECT_TYPE_ ## OT, sai_serialize_ ## ot(*ot), attr_count, attr_list);        \
 }
 
-REDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_GET_ENTRY)
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_GET_ENTRY);
 
 void Recorder::recordObjectTypeGetAvailability(
         _In_ sai_object_id_t switchId,

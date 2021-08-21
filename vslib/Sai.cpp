@@ -404,15 +404,7 @@ sai_status_t Sai::create(                                   \
     return m_meta->create(entry, attr_count, attr_list);    \
 }
 
-DECLARE_CREATE_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_CREATE_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_CREATE_ENTRY(IPMC_ENTRY,ipmc_entry);
-DECLARE_CREATE_ENTRY(L2MC_ENTRY,l2mc_entry);
-DECLARE_CREATE_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
-DECLARE_CREATE_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
-DECLARE_CREATE_ENTRY(ROUTE_ENTRY,route_entry);
-DECLARE_CREATE_ENTRY(NAT_ENTRY,nat_entry);
-
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
 
 #define DECLARE_REMOVE_ENTRY(OT,ot)                         \
 sai_status_t Sai::remove(                                   \
@@ -424,14 +416,7 @@ sai_status_t Sai::remove(                                   \
     return m_meta->remove(entry);                           \
 }
 
-DECLARE_REMOVE_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_REMOVE_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_REMOVE_ENTRY(IPMC_ENTRY,ipmc_entry);
-DECLARE_REMOVE_ENTRY(L2MC_ENTRY,l2mc_entry);
-DECLARE_REMOVE_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
-DECLARE_REMOVE_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
-DECLARE_REMOVE_ENTRY(ROUTE_ENTRY,route_entry);
-DECLARE_REMOVE_ENTRY(NAT_ENTRY,nat_entry);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
 
 #define DECLARE_SET_ENTRY(OT,ot)                            \
 sai_status_t Sai::set(                                      \
@@ -444,14 +429,7 @@ sai_status_t Sai::set(                                      \
     return m_meta->set(entry, attr);                        \
 }
 
-DECLARE_SET_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_SET_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_SET_ENTRY(IPMC_ENTRY,ipmc_entry);
-DECLARE_SET_ENTRY(L2MC_ENTRY,l2mc_entry);
-DECLARE_SET_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
-DECLARE_SET_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
-DECLARE_SET_ENTRY(ROUTE_ENTRY,route_entry);
-DECLARE_SET_ENTRY(NAT_ENTRY,nat_entry);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
 
 #define DECLARE_GET_ENTRY(OT,ot)                            \
 sai_status_t Sai::get(                                      \
@@ -465,14 +443,7 @@ sai_status_t Sai::get(                                      \
     return m_meta->get(entry, attr_count, attr_list);       \
 }
 
-DECLARE_GET_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_GET_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_GET_ENTRY(IPMC_ENTRY,ipmc_entry);
-DECLARE_GET_ENTRY(L2MC_ENTRY,l2mc_entry);
-DECLARE_GET_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
-DECLARE_GET_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
-DECLARE_GET_ENTRY(ROUTE_ENTRY,route_entry);
-DECLARE_GET_ENTRY(NAT_ENTRY,nat_entry);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
 
 // QUAD SERIALIZED
 
@@ -704,11 +675,7 @@ sai_status_t Sai::bulkCreate(                               \
             object_statuses);                               \
 }
 
-DECLARE_BULK_CREATE_ENTRY(ROUTE_ENTRY,route_entry)
-DECLARE_BULK_CREATE_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_BULK_CREATE_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_BULK_CREATE_ENTRY(NAT_ENTRY,nat_entry)
-
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY);
 
 // BULK REMOVE
 
@@ -729,10 +696,7 @@ sai_status_t Sai::bulkRemove(                               \
             object_statuses);                               \
 }
 
-DECLARE_BULK_REMOVE_ENTRY(ROUTE_ENTRY,route_entry)
-DECLARE_BULK_REMOVE_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_BULK_REMOVE_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_BULK_REMOVE_ENTRY(NAT_ENTRY,nat_entry)
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY);
 
 // BULK SET
 
@@ -755,10 +719,7 @@ sai_status_t Sai::bulkSet(                                  \
             object_statuses);                               \
 }
 
-DECLARE_BULK_SET_ENTRY(ROUTE_ENTRY,route_entry);
-DECLARE_BULK_SET_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_BULK_SET_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_BULK_SET_ENTRY(NAT_ENTRY,nat_entry);
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
 
 // NON QUAD API
 

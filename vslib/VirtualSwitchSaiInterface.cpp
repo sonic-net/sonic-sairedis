@@ -415,14 +415,7 @@ sai_status_t VirtualSwitchSaiInterface::remove(                 \
             sai_serialize_ ## ot(*entry));                      \
 }
 
-DECLARE_REMOVE_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_REMOVE_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_REMOVE_ENTRY(IPMC_ENTRY,ipmc_entry);
-DECLARE_REMOVE_ENTRY(L2MC_ENTRY,l2mc_entry);
-DECLARE_REMOVE_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
-DECLARE_REMOVE_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
-DECLARE_REMOVE_ENTRY(ROUTE_ENTRY,route_entry);
-DECLARE_REMOVE_ENTRY(NAT_ENTRY,nat_entry);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
 
 #define DECLARE_CREATE_ENTRY(OT,ot)                             \
 sai_status_t VirtualSwitchSaiInterface::create(                 \
@@ -486,14 +479,7 @@ sai_status_t VirtualSwitchSaiInterface::set(                    \
             attr);                                              \
 }
 
-DECLARE_SET_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_SET_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_SET_ENTRY(IPMC_ENTRY,ipmc_entry);
-DECLARE_SET_ENTRY(L2MC_ENTRY,l2mc_entry);
-DECLARE_SET_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
-DECLARE_SET_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
-DECLARE_SET_ENTRY(ROUTE_ENTRY,route_entry);
-DECLARE_SET_ENTRY(NAT_ENTRY,nat_entry);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
 
 std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
         _In_ sai_object_id_t switch_id,
@@ -755,14 +741,7 @@ sai_status_t VirtualSwitchSaiInterface::get(                    \
             attr_list);                                         \
 }
 
-DECLARE_GET_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_GET_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_GET_ENTRY(IPMC_ENTRY,ipmc_entry);
-DECLARE_GET_ENTRY(L2MC_ENTRY,l2mc_entry);
-DECLARE_GET_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
-DECLARE_GET_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
-DECLARE_GET_ENTRY(ROUTE_ENTRY,route_entry);
-DECLARE_GET_ENTRY(NAT_ENTRY,nat_entry);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
 
 sai_status_t VirtualSwitchSaiInterface::objectTypeGetAvailability(
         _In_ sai_object_id_t switchId,

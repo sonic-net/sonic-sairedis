@@ -101,8 +101,6 @@ TEST(SwitchBCM81724, refresh_read_only)
     
     auto strPortId = sai_serialize_object_id(portId);
 
-    printf("obj %s\n", strPortId.c_str());
-
     EXPECT_EQ(sw.create(SAI_OBJECT_TYPE_PORT, strPortId, switchId, 2, attrs), SAI_STATUS_SUCCESS);
 
     attr.id = SAI_SWITCH_ATTR_NUMBER_OF_ACTIVE_PORTS;

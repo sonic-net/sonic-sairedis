@@ -413,16 +413,3 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>   redis_sai;
     redis_bulk_remove_ ## ot,       \
     redis_bulk_set_ ## ot,          \
     redis_bulk_get_ ## ot,
-
-// DECLARE EVERY ENTRY
-
-#define REDIS_DECLARE_EVERY_ENTRY(_X)       \
-    _X(FDB_ENTRY,fdb_entry);                \
-    _X(INSEG_ENTRY,inseg_entry);            \
-    _X(IPMC_ENTRY,ipmc_entry);              \
-    _X(L2MC_ENTRY,l2mc_entry);              \
-    _X(MCAST_FDB_ENTRY,mcast_fdb_entry);    \
-    _X(NEIGHBOR_ENTRY,neighbor_entry);      \
-    _X(ROUTE_ENTRY,route_entry);            \
-    _X(NAT_ENTRY,nat_entry);                \
-
