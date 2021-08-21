@@ -424,47 +424,21 @@ sai_status_t VirtualSwitchSaiInterface::create(                 \
         _In_ const sai_attribute_t *attr_list)                  \
 {                                                               \
     SWSS_LOG_ENTER();                                           \
-    return create(                                              \
+    static PerformanceIntervalTimer                             \
+    timer("VirtualSwitchSaiInterface::create(" #ot ")");        \
+    timer.start();                                              \
+    auto status =  create(                                      \
             entry->switch_id,                                   \
             SAI_OBJECT_TYPE_ ## OT,                             \
             sai_serialize_ ## ot(*entry),                       \
             attr_count,                                         \
             attr_list);                                         \
+    timer.stop();                                               \
+    timer.inc();                                                \
+    return status;                                              \
 }
 
-sai_status_t VirtualSwitchSaiInterface::create(
-        _In_ const sai_route_entry_t* entry,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    static PerformanceIntervalTimer timer("VirtualSwitchSaiInterface::create(route_entry)");
-
-    timer.start();
-
-    auto status = create(
-            entry->switch_id,
-            SAI_OBJECT_TYPE_ROUTE_ENTRY,
-            sai_serialize_route_entry(*entry),
-            attr_count,
-            attr_list);
-
-    timer.stop();
-
-    timer.inc();
-
-    return status;
-}
-
-DECLARE_CREATE_ENTRY(FDB_ENTRY,fdb_entry);
-DECLARE_CREATE_ENTRY(INSEG_ENTRY,inseg_entry);
-DECLARE_CREATE_ENTRY(IPMC_ENTRY,ipmc_entry);
-DECLARE_CREATE_ENTRY(L2MC_ENTRY,l2mc_entry);
-DECLARE_CREATE_ENTRY(MCAST_FDB_ENTRY,mcast_fdb_entry);
-DECLARE_CREATE_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
-//DECLARE_CREATE_ENTRY(ROUTE_ENTRY,route_entry);
-DECLARE_CREATE_ENTRY(NAT_ENTRY,nat_entry);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
 
 #define DECLARE_SET_ENTRY(OT,ot)                                \
 sai_status_t VirtualSwitchSaiInterface::set(                    \
