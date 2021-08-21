@@ -445,49 +445,6 @@ sai_status_t Sai::get(                                      \
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
 
-// QUAD SERIALIZED
-
-sai_status_t Sai::create(
-        _In_ sai_object_type_t object_type,
-        _In_ const std::string& serializedObjectId,
-        _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t Sai::remove(
-        _In_ sai_object_type_t objectType,
-        _In_ const std::string& serializedObjectId)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t Sai::set(
-        _In_ sai_object_type_t objectType,
-        _In_ const std::string &serializedObjectId,
-        _In_ const sai_attribute_t *attr)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t Sai::get(
-        _In_ sai_object_type_t objectType,
-        _In_ const std::string& serializedObjectId,
-        _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
 // STATS
 
 sai_status_t Sai::getStats(
@@ -612,44 +569,6 @@ sai_status_t Sai::bulkSet(
             attr_list,
             mode,
             object_statuses);
-}
-
-// BULK QUAD SERIALIZED
-
-sai_status_t Sai::bulkCreate(
-        _In_ sai_object_type_t object_type,
-        _In_ const std::vector<std::string> &serialized_object_ids,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Inout_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t Sai::bulkRemove(
-        _In_ sai_object_type_t object_type,
-        _In_ const std::vector<std::string> &serialized_object_ids,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t Sai::bulkSet(
-        _In_ sai_object_type_t object_type,
-        _In_ const std::vector<std::string> &serialized_object_ids,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 // BULK QUAD ENTRY
