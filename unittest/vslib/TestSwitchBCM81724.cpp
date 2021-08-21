@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 using namespace saivs;
 
 TEST(SwitchBCM81724, ctr)

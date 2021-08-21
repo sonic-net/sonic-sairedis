@@ -1,8 +1,9 @@
 #include "TrafficFilterPipes.h"
 #include "MACsecIngressFilter.h"
 
-
 #include <gtest/gtest.h>
+
+#include <memory>
 
 using namespace saivs;
 

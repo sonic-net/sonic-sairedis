@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 using namespace saimeta;
 
 TEST(AttrKeyMap, constructKey)

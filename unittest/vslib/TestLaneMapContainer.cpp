@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 using namespace saivs;
 
 TEST(LaneMapContainer, insert)
