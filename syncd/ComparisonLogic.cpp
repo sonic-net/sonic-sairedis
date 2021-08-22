@@ -183,6 +183,8 @@ void ComparisonLogic::matchOids(
 {
     SWSS_LOG_ENTER();
 
+    auto coldBootDiscoveredVids = m_switch->getColdBootDiscoveredVids();
+
     for (const auto &temporaryIt: temporaryView.m_oOids)
     {
         sai_object_id_t temporaryVid = temporaryIt.first;
@@ -211,6 +213,37 @@ void ComparisonLogic::matchOids(
                 currentIt->second->m_str_object_type.c_str(),
                 sai_serialize_object_id(rid).c_str(),
                 sai_serialize_object_id(vid).c_str());
+
+        if (coldBootDiscoveredVids.find(vid) == coldBootDiscoveredVids.end())
+        {
+            auto ot = currentIt->second->getObjectType();
+
+            switch (ot)
+            {
+                case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
+                case SAI_OBJECT_TYPE_SCHEDULER_GROUP:
+                case SAI_OBJECT_TYPE_QUEUE:
+                case SAI_OBJECT_TYPE_PORT:
+                    break;
+
+                default:
+
+                    // Should we also add check if also not in removed?
+                    // This is for case of only GET:
+                    // 1. cold boot:
+                    //   - OA assigns buffer profile to Queue
+                    // 2. warm boot:
+                    //   - OA do GET on Queue and got previous buffer profile
+                    //   - OA assigns new buffer profile on Queue
+                    //
+                    // Question: what should happen to old buffer profile? should it be removed?
+                    // No, since OA still hold's the reference to that VID and may use it later.
+                    SWSS_LOG_INFO("matched %s VID %s was not in cold boot, possible only GET?",
+                            sai_serialize_object_id(vid).c_str(),
+                            currentIt->second->m_str_object_type.c_str());
+                    break;
+            }
+        }
     }
 
     SWSS_LOG_NOTICE("matched oids");
@@ -1125,8 +1158,8 @@ void ComparisonLogic::updateObjectStatus(
 bool ComparisonLogic::performObjectSetTransition(
         _In_ AsicView &currentView,
         _In_ AsicView &temporaryView,
-        _In_ const std::shared_ptr<SaiObj> &currentBestMatch,
-        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::shared_ptr<SaiObj> currentBestMatch,
+        _In_ std::shared_ptr<SaiObj> temporaryObj,
         _In_ bool performTransition)
 {
     SWSS_LOG_ENTER();
@@ -1386,6 +1419,8 @@ bool ComparisonLogic::performObjectSetTransition(
         return false;
     }
 
+    const bool beginTempSizeZero = temporaryObj->getAllAttributes().size() == 0;
+
     /*
      * Current best match can have more attributes than temporary object.
      * let see if we can bring them to default value if possible.
@@ -1530,14 +1565,38 @@ bool ComparisonLogic::performObjectSetTransition(
                     continue;
                 }
 
-               // SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE
-               // SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID*
-               // SAI_SCHEDULER_GROUP_ATTR_PARENT_NODE
-               // SAI_BRIDGE_PORT_ATTR_BRIDGE_ID
-               //
-               // TODO matched by ID (MATCHED state) should always be updatable
-               // except those 4 above (at least for those above since they can have
-               // default value present after switch creation
+                // current best match is MATCHED
+
+                //auto vid = currentBestMatch->getVid();
+
+                // TODO don't transfer oid attributes, we don't know how to handle this yet
+                // If OA did GET on any attributes, snoop in syncd should catch that and write
+                // to database so we would have some attributes here.
+
+                if (beginTempSizeZero && !meta->isoidattribute)
+                {
+                    SWSS_LOG_WARN("current attr is MoC|CaS and object is MATCHED: %s transferring %s:%s to temp object (was empty)",
+                            currentBestMatch->m_str_object_id.c_str(),
+                            meta->attridname,
+                            currentAttr->getStrAttrValue().c_str());
+
+                    std::shared_ptr<SaiAttr> transferedAttr = std::make_shared<SaiAttr>(
+                            currentAttr->getStrAttrId(),
+                            currentAttr->getStrAttrValue());
+
+                    temporaryObj->setAttr(transferedAttr);
+
+                    continue;
+                }
+
+                // SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE
+                // SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID*
+                // SAI_SCHEDULER_GROUP_ATTR_PARENT_NODE
+                // SAI_BRIDGE_PORT_ATTR_BRIDGE_ID
+                //
+                // TODO matched by ID (MATCHED state) should always be updatable
+                // except those 4 above (at least for those above since they can have
+                // default value present after switch creation
 
                 // TODO SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID is mandatory on create but also SET
                 // if attribute is set we and object is in MATCHED state then that means we are able to
@@ -1709,7 +1768,7 @@ bool ComparisonLogic::performObjectSetTransition(
 void ComparisonLogic::processObjectForViewTransition(
         _In_ AsicView &currentView,
         _In_ AsicView &temporaryView,
-        _In_ const std::shared_ptr<SaiObj> &temporaryObj)
+        _Inout_ std::shared_ptr<SaiObj> temporaryObj)
 {
     SWSS_LOG_ENTER();
 
@@ -2273,6 +2332,10 @@ void ComparisonLogic::populateExistingObjects(
 
         if (temporaryView.hasRid(rid))
         {
+            SWSS_LOG_INFO("temporary view has existing %s RID %s",
+                    sai_serialize_object_type(m_vendorSai->objectTypeQuery(rid)).c_str(),
+                    sai_serialize_object_id(rid).c_str());
+
             continue;
         }
 
@@ -2294,6 +2357,11 @@ void ComparisonLogic::populateExistingObjects(
              * comparison logic will take care of that and, it will remove it
              * from current view as well.
              */
+
+            SWSS_LOG_INFO("object was removed in init view: %s RID %s VID %s",
+                    sai_serialize_object_type(m_vendorSai->objectTypeQuery(rid)).c_str(),
+                    sai_serialize_object_id(rid).c_str(),
+                    sai_serialize_object_id(vid).c_str());
 
             continue;
         }
