@@ -122,6 +122,11 @@ void ComparisonLogic::compareViews()
 
     applyViewTransition(current, temp);
 
+    // TODO have a method to check for not processed objects
+    // and maybe add them to list on processing attributes
+    // and move note processed objects to temporay view as well
+    // we need to check oid attributes as well
+
     SWSS_LOG_NOTICE("ASIC operations to execute: %zu", current.asicGetOperationsCount());
 
     temp.checkObjectsStatus();

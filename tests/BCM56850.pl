@@ -697,8 +697,17 @@ sub test_multi_switch_key
     play("-p", "$utils::DIR/vsprofile_ctx_multi.ini", "multi_switch_key.rec");
 }
 
+sub test_buffer_profile_get
+{
+    fresh_start;
+
+    play "buffer_profile_get_A.rec";
+    play "buffer_profile_get_B.rec";
+}
+
 # RUN TESTS
 
+test_buffer_profile_get;
 test_multi_switch_key;
 test_ignore_attributes;
 test_sairedis_client;
