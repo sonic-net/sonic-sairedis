@@ -279,6 +279,15 @@ sai_object_id_t VirtualObjectIdManager::allocateNewSwitchObjectId(
         SWSS_LOG_THROW("switch index %u > %llu (max)", switchIndex, SAI_REDIS_SWITCH_INDEX_MAX);
     }
 
+    if (m_switchIndexes.find(switchIndex) != m_switchIndexes.end())
+    {
+        // this could happen, if we first create switch with INIT=true, and
+        // then with INIT=false but we should have other way to not double call
+        // allocate to obtain existing switch ID, like from switch container
+
+        SWSS_LOG_WARN("switch index %u already allocated, double call to allocate!", switchIndex);
+    }
+
     m_switchIndexes.insert(switchIndex);
 
     sai_object_id_t objectId = constructObjectId(SAI_OBJECT_TYPE_SWITCH, switchIndex, switchIndex, m_globalContext);
