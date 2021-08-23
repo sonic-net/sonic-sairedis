@@ -38,11 +38,7 @@ TEST(NotificationFactory, deserialize_port_state_change)
 
 TEST(NotificationFactory, deserialize_queue_pfc_deadlock)
 {
-    sai_queue_deadlock_notification_data_t data;
-
-    memset(&data, 0, sizeof(data));
-
-    auto str = sai_serialize_queue_deadlock_ntf(1, &data);
+    auto str = "[{\"event\":\"SAI_QUEUE_PFC_DEADLOCK_EVENT_TYPE_DETECTED\",\"queue_id\":\"oid:0x1500000000020a\"}]";
 
     auto ntf = NotificationFactory::deserialize(
             SAI_SWITCH_NOTIFICATION_NAME_QUEUE_PFC_DEADLOCK,
