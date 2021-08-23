@@ -44,7 +44,4 @@ TEST(Globals, getHardwareInfo)
     hwinfo[3] = 0;
 
     EXPECT_EQ("000", Globals::getHardwareInfo(1, &attr));
-
-
 }
-

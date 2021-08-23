@@ -42,7 +42,7 @@ static bool operator==(
             memcmp(a.destination.mask.ip6, b.destination.mask.ip6, sizeof(b.destination.mask.ip6)) == 0;
     }
 
-    return part;
+    SWSS_LOG_THROW("unknown route entry IP addr family: %d", a.destination.addr_family);
 }
 
 static bool operator==(
@@ -61,7 +61,7 @@ static bool operator==(
     if (a.ip_address.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
         return part && memcmp(a.ip_address.addr.ip6, b.ip_address.addr.ip6, sizeof(b.ip_address.addr.ip6)) == 0;
 
-    return part;
+    SWSS_LOG_THROW("unknown neighbor entry IP addr family= %d", a.ip_address.addr_family);
 }
 
 static bool operator==(
@@ -152,7 +152,7 @@ static inline std::size_t sai_get_hash(
         return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
     }
 
-    return re.destination.addr_family;
+    SWSS_LOG_THROW("unknown route entry IP addr family: %d", re.destination.addr_family);
 }
 
 static inline std::size_t sai_get_hash(
@@ -174,7 +174,7 @@ static inline std::size_t sai_get_hash(
         return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
     }
 
-    return ne.ip_address.addr_family;
+    SWSS_LOG_THROW("unknown neighbor entry IP addr family= %d", ne.ip_address.addr_family);
 }
 
 static_assert(sizeof(uint32_t) == 4, "uint32_t expected to be 4 bytes");
