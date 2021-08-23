@@ -12,6 +12,8 @@ TEST(AttrKeyMap, constructKey)
 
     sai_object_meta_key_t mk;
 
+    memset(&mk, 0, sizeof(mk));
+
     EXPECT_THROW(
             akm->constructKey(SAI_NULL_OBJECT_ID, mk, 0, nullptr),
             std::runtime_error);
