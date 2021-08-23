@@ -26,7 +26,8 @@ tests_SOURCES = \
 				TestPortRelatedSet.cpp \
 				TestSaiAttrWrapper.cpp \
 				TestSaiAttributeList.cpp \
-				TestSaiObject.cpp
+				TestSaiObject.cpp \
+				TestSaiObjectCollection.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
