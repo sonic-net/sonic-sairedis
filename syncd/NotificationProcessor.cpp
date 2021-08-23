@@ -433,10 +433,10 @@ void NotificationProcessor::process_on_bfd_session_state_change(
         sai_bfd_session_state_notification_t *bfd_session_state = &data[i];
 
         /*
-         * We are using switch_rid as null, since bfd should be already
+         * We are using switch_rid as null, since BFD should be already
          * defined inside local db after creation.
          *
-         * If this will be faster than return from create bfd then we can use
+         * If this will be faster than return from create BFD then we can use
          * query switch id and extract rid of switch id and then convert it to
          * switch vid.
          */
