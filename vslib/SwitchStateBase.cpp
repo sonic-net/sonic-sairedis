@@ -941,6 +941,10 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
+    attr.id = SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
     attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
     attr.value.u32 = 0;
 

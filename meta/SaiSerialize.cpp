@@ -1756,6 +1756,14 @@ static json sai_serialize_json_fdb_event_notification_data(
     return j;
 }
 
+std::string sai_serialize_bfd_session_state(
+        _In_ sai_bfd_session_state_t status)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(status, &sai_metadata_enum_sai_bfd_session_state_t);
+}
+
 std::string sai_serialize_fdb_event_ntf(
         _In_ uint32_t count,
         _In_ const sai_fdb_event_notification_data_t* fdb_event)
@@ -1826,6 +1834,33 @@ std::string sai_serialize_queue_deadlock_ntf(
 
         item["queue_id"] = sai_serialize_object_id(deadlock_data[i].queue_id);
         item["event"] = sai_serialize_queue_deadlock_event(deadlock_data[i].event);
+
+        j.push_back(item);
+    }
+
+    // we don't need count since it can be deduced
+    return j.dump();
+}
+
+std::string sai_serialize_bfd_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_bfd_session_state_notification_t* bfd_session_state)
+{
+    SWSS_LOG_ENTER();
+
+    if (bfd_session_state == NULL)
+    {
+        SWSS_LOG_THROW("bfd_session_state pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        json item;
+
+        item["bfd_session_id"] = sai_serialize_object_id(bfd_session_state[i].bfd_session_id);
+        item["session_state"] = sai_serialize_bfd_session_state(bfd_session_state[i].session_state);
 
         j.push_back(item);
     }
@@ -3062,6 +3097,15 @@ void sai_deserialize_fdb_event(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_fdb_event_t, (int32_t&)event);
 }
 
+void sai_deserialize_bfd_session_state(
+        _In_ const std::string& s,
+        _Out_ sai_bfd_session_state_t& state)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_bfd_session_state_t, (int32_t&)state);
+}
+
 void sai_deserialize_switch_oper_status(
         _In_ const std::string& s,
         _Out_ sai_object_id_t &switch_id,
@@ -3483,6 +3527,28 @@ void sai_deserialize_queue_deadlock_ntf(
     *deadlock_data = data;
 }
 
+void sai_deserialize_bfd_session_state_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_bfd_session_state_notification_t** bfd_session_state)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_bfd_session_state_notification_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_object_id(j[i]["bfd_session_id"], data[i].bfd_session_id);
+        sai_deserialize_bfd_session_state(j[i]["session_state"], data[i].session_state);
+    }
+
+    *bfd_session_state = data;
+}
+
 // deserialize free
 
 void sai_deserialize_free_attribute_value(
@@ -3682,6 +3748,15 @@ void sai_deserialize_free_queue_deadlock_ntf(
     SWSS_LOG_ENTER();
 
     delete[] queue_deadlock;
+}
+
+void sai_deserialize_free_bfd_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ sai_bfd_session_state_notification_t* bfd_session_state)
+{
+    SWSS_LOG_ENTER();
+
+    delete[] bfd_session_state;
 }
 
 void sai_deserialize_ingress_priority_group_attr(

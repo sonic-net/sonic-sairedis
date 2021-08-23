@@ -184,6 +184,10 @@ namespace saimeta
                     _In_ uint32_t count,
                     _In_ const sai_queue_deadlock_notification_data_t *data);
 
+            void meta_sai_on_bfd_session_state_change(
+                    _In_ uint32_t count,
+                    _In_ const sai_bfd_session_state_notification_t *data);        
+
         private: // notifications helpers
 
             void meta_sai_on_fdb_flush_event_consolidated(
@@ -200,6 +204,9 @@ namespace saimeta
 
             void meta_sai_on_queue_pfc_deadlock_notification_single(
                     _In_ const sai_queue_deadlock_notification_data_t& data);
+
+            void meta_sai_on_bfd_session_state_change_single(
+                    _In_ const sai_bfd_session_state_notification_t& data);
 
         private: // validation helpers
 
