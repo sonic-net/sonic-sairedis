@@ -31,7 +31,5 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
     if (name == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_STATE_CHANGE)
         return std::make_shared<NotificationSwitchStateChange>(serializedNotification);
 
-    SWSS_LOG_ERROR("unknown notification: '%s', FIXME", name.c_str());
-
-    return nullptr;
+    SWSS_LOG_THROW("unknown notification: '%s', FIXME", name.c_str());
 }
