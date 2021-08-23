@@ -7602,6 +7602,8 @@ void Meta::meta_sai_on_switch_shutdown_request(
         SWSS_LOG_WARN("switch_id %s is of type %s, but expected SAI_OBJECT_TYPE_SWITCH",
                 sai_serialize_object_id(switch_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
+
+        return;
     }
 
     sai_object_meta_key_t switch_meta_key = { .objecttype = ot , .objectkey = { .key = { .object_id = switch_id } } };
