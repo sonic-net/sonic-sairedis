@@ -6,10 +6,17 @@ LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 
 tests_SOURCES = \
 				main.cpp \
+				../../meta/DummySaiInterface.cpp \
+				../../meta/MetaTestSaiInterface.cpp \
+				../../meta/NumberOidIndexGenerator.cpp \
+				../../lib/VirtualObjectIdManager.cpp \
+				../../lib/SwitchConfig.cpp \
+				../../lib/SwitchConfigContainer.cpp \
 				TestAttrKeyMap.cpp \
 				TestGlobals.cpp \
 				TestMetaKeyHasher.cpp \
-				TestNotificationFactory.cpp
+				TestNotificationFactory.cpp \
+				TestNotificationFdbEvent.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
