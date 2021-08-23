@@ -7562,6 +7562,14 @@ void Meta::meta_sai_on_switch_state_change(
 {
     SWSS_LOG_ENTER();
 
+    if (!sai_metadata_get_enum_value_name(
+                &sai_metadata_enum_sai_switch_oper_status_t,
+                switch_oper_status))
+    {
+        SWSS_LOG_WARN("switch oper status value (%d) not found in sai_switch_oper_status_t",
+                switch_oper_status);
+    }
+
     auto ot = objectTypeQuery(switch_id);
 
     if (ot != SAI_OBJECT_TYPE_SWITCH)
@@ -7569,6 +7577,8 @@ void Meta::meta_sai_on_switch_state_change(
         SWSS_LOG_WARN("switch_id %s is of type %s, but expected SAI_OBJECT_TYPE_SWITCH",
                 sai_serialize_object_id(switch_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
+
+        return;
     }
 
     sai_object_meta_key_t switch_meta_key = { .objecttype = ot , .objectkey = { .key = { .object_id = switch_id } } };
@@ -7580,14 +7590,6 @@ void Meta::meta_sai_on_switch_state_change(
     }
 
     // we should not snoop switch_id, since switch id should be created directly by user
-
-    if (!sai_metadata_get_enum_value_name(
-                &sai_metadata_enum_sai_switch_oper_status_t,
-                switch_oper_status))
-    {
-        SWSS_LOG_WARN("switch oper status value (%d) not found in sai_switch_oper_status_t",
-                switch_oper_status);
-    }
 }
 
 void Meta::meta_sai_on_switch_shutdown_request(
