@@ -34,4 +34,10 @@ namespace TestLegacy
 
     sai_object_id_t create_rif(
             _In_ sai_object_id_t switch_id);
+
+    sai_object_id_t create_stp(
+            _In_ sai_object_id_t switch_id);
+
+    sai_object_id_t create_next_hop(
+            _In_ sai_object_id_t switch_id);
 }

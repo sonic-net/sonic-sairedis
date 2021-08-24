@@ -28,19 +28,6 @@ using namespace TestLegacy;
 //    return vlan;
 //}
 
-static sai_object_id_t create_stp(
-        _In_ sai_object_id_t switch_id)
-{
-    SWSS_LOG_ENTER();
-
-    sai_object_id_t stp;
-
-    auto status = g_meta->create(SAI_OBJECT_TYPE_STP, &stp, switch_id, 0, NULL);
-    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
-
-    return stp;
-}
-
 // ACTUAL TESTS
 
 TEST(LegacyVlan, vlan_create)
