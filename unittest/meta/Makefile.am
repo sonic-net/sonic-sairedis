@@ -8,7 +8,6 @@ tests_SOURCES = \
 				main.cpp \
 				../../meta/DummySaiInterface.cpp \
 				../../meta/MetaTestSaiInterface.cpp \
-				../../meta/NumberOidIndexGenerator.cpp \
 				../../lib/VirtualObjectIdManager.cpp \
 				../../lib/SwitchConfig.cpp \
 				../../lib/SwitchConfigContainer.cpp \
