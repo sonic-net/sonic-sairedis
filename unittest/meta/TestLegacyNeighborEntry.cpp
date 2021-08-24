@@ -10,34 +10,6 @@ using namespace TestLegacy;
 
 // STATIC HELPERS
 
-static sai_object_id_t create_rif(
-        _In_ sai_object_id_t switch_id)
-{
-    SWSS_LOG_ENTER();
-
-    sai_object_id_t rif;
-
-    sai_attribute_t attrs[9] = { };
-
-    auto port = create_port(switch_id);
-
-    auto vr = create_virtual_router(switch_id);
-
-    attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
-    attrs[0].value.oid = vr;
-
-    attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
-    attrs[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
-
-    attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-    attrs[2].value.oid = port;
-
-    auto status = g_meta->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, &rif, switch_id, 3, attrs);
-    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
-
-    return rif;
-}
-
 //static sai_neighbor_entry_t create_neighbor_entry()
 //{
 //    SWSS_LOG_ENTER();

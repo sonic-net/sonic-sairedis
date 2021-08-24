@@ -31,4 +31,7 @@ namespace TestLegacy
 
     sai_object_id_t create_virtual_router(
             _In_ sai_object_id_t switch_id);
+
+    sai_object_id_t create_rif(
+            _In_ sai_object_id_t switch_id);
 }
