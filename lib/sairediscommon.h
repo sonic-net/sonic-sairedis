@@ -8,8 +8,13 @@
 #define SYNCD_INIT_VIEW     "INIT_VIEW"
 #define SYNCD_APPLY_VIEW    "APPLY_VIEW"
 #define SYNCD_INSPECT_ASIC  "SYNCD_INSPECT_ASIC"
+
 #define ASIC_STATE_TABLE    "ASIC_STATE"
 #define TEMP_PREFIX         "TEMP_"
+
+#define REDIS_COMMUNICATION_MODE_REDIS_ASYNC_STRING "redis_async"
+#define REDIS_COMMUNICATION_MODE_REDIS_SYNC_STRING  "redis_sync"
+#define REDIS_COMMUNICATION_MODE_ZMQ_SYNC_STRING    "zmq_sync"
 
 /*
  * Asic state table commands. Those names are special and they will be used
