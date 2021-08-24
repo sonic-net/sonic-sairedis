@@ -67,7 +67,7 @@ static sai_apis_t redis_apis = {
     API(mcast_fdb),
     API(bridge),
     API(tam),
-    API(segmentroute),
+    API(srv6),
     API(mpls),
     API(dtel),
     API(bfd),

@@ -255,6 +255,10 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.ipaddrlist, dst_attr.value.ipaddrlist, countOnly));
             break;
 
+        case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.segmentlist, dst_attr.value.segmentlist, countOnly));
+            break;
+
             /* ACL FIELD DATA */
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
@@ -1516,6 +1520,39 @@ std::string sai_serialize_system_port_config_list(
     return j.dump();
 }
 
+std::string sai_serialize_segment_list(
+        _In_ const sai_segment_list_t& segmentlist,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_number(segmentlist.count);
+
+    if (countOnly)
+    {
+        return s;
+    }
+
+    if (segmentlist.list == NULL || segmentlist.count == 0)
+    {
+        return s + ":null";
+    }
+
+    std::string l;
+
+    for (uint32_t i = 0; i < segmentlist.count; ++i)
+    {
+        l += sai_serialize_ipv6(segmentlist.list[i]);
+
+        if (i != segmentlist.count -1)
+        {
+            l += ",";
+        }
+    }
+
+    return s + ":" + l;
+}
+
 std::string sai_serialize_attr_value(
         _In_ const sai_attr_metadata_t& meta,
         _In_ const sai_attribute_t &attr,
@@ -1614,6 +1651,9 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
             return sai_serialize_ip_address_list(attr.value.ipaddrlist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
+            return sai_serialize_segment_list(attr.value.segmentlist, countOnly);
 
             // ACL FIELD DATA
 
@@ -1902,6 +1942,24 @@ std::string sai_serialize_nat_entry(
     return j.dump();
 }
 
+std::string sai_serialize_my_sid_entry(
+        _In_ const sai_my_sid_entry_t& my_sid_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"]          = sai_serialize_object_id(my_sid_entry.switch_id);
+    j["vr_id"]              = sai_serialize_object_id(my_sid_entry.vr_id);
+    j["locator_block_len"]  = sai_serialize_number(my_sid_entry.locator_block_len);
+    j["locator_node_len"]   = sai_serialize_number(my_sid_entry.locator_node_len);
+    j["function_len"]       = sai_serialize_number(my_sid_entry.function_len);
+    j["args_len"]           = sai_serialize_number(my_sid_entry.args_len);
+    j["sid"]                = sai_serialize_ipv6(my_sid_entry.sid);
+
+    return j.dump();
+}
+
 std::string sai_serialize_object_meta_key(
         _In_ const sai_object_meta_key_t& meta_key)
 {
@@ -1936,6 +1994,10 @@ std::string sai_serialize_object_meta_key(
 
         case SAI_OBJECT_TYPE_INSEG_ENTRY:
             key = sai_serialize_inseg_entry(meta_key.objectkey.key.inseg_entry);
+            break;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+            key = sai_serialize_my_sid_entry(meta_key.objectkey.key.my_sid_entry);
             break;
 
         default:
@@ -2552,6 +2614,53 @@ void sai_deserialize_ip_address_list(
     sai_deserialize_list(s, list, countOnly, [&](const std::string sitem, sai_ip_address_t& item) { sai_deserialize_ip_address(sitem, item);} );
 }
 
+void sai_deserialize_segment_list(
+        _In_ const std::string& s,
+        _Out_ sai_segment_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    if (countOnly)
+    {
+        sai_deserialize_number(s, list.count);
+        return;
+    }
+
+    auto pos = s.find(":");
+
+    if (pos == std::string::npos)
+    {
+        SWSS_LOG_THROW("invalid list %s", s.c_str());
+    }
+
+    std::string scount = s.substr(0, pos);
+
+    sai_deserialize_number(scount, list.count);
+
+    std::string slist = s.substr(pos + 1);
+
+    if (slist == "null")
+    {
+        list.list = NULL;
+        return;
+    }
+
+    auto tokens = swss::tokenize(slist, ',');
+
+    if (tokens.size() != list.count)
+    {
+        SWSS_LOG_THROW("invalid list count %lu != %u", tokens.size(), list.count);
+    }
+
+    list.list = sai_alloc_n_of_ptr_type(list.count, list.list);
+
+    for (uint32_t i = 0; i < list.count; ++i)
+    {
+        sai_deserialize_ipv6(tokens[i], list.list[i]);
+    }
+}
+
 template <typename T>
 void sai_deserialize_range(
         _In_ const std::string& s,
@@ -2969,6 +3078,9 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
             return sai_deserialize_ip_address_list(s, attr.value.ipaddrlist, countOnly);
 
+        case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
+            return sai_deserialize_segment_list(s, attr.value.segmentlist, countOnly);
+
             // ACL FIELD DATA
 
         case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_BOOL:
@@ -3233,6 +3345,23 @@ void sai_deserialize_inseg_entry(
     sai_deserialize_number(j["label"], inseg_entry.label);
 }
 
+void sai_deserialize_my_sid_entry(
+        _In_ const std::string& s,
+        _Out_ sai_my_sid_entry_t &ne)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], ne.switch_id);
+    sai_deserialize_object_id(j["vr_id"], ne.vr_id);
+    sai_deserialize_number(j["locator_block_len"], ne.locator_block_len);
+    sai_deserialize_number(j["locator_node_len"], ne.locator_node_len);
+    sai_deserialize_number(j["function_len"], ne.function_len);
+    sai_deserialize_number(j["args_len"], ne.args_len);
+    sai_deserialize_ipv6(j["sid"], ne.sid);
+}
+
 static void sai_deserialize_nat_entry_key(
         _In_ const json& j,
         _Out_ sai_nat_entry_key_t& nat_entry_key)
@@ -3372,6 +3501,10 @@ void sai_deserialize_object_meta_key(
 
         case SAI_OBJECT_TYPE_INSEG_ENTRY:
             sai_deserialize_inseg_entry(str_object_id, meta_key.objectkey.key.inseg_entry);
+            break;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+            sai_deserialize_my_sid_entry(str_object_id, meta_key.objectkey.key.my_sid_entry);
             break;
 
         default:
@@ -3560,6 +3693,10 @@ void sai_deserialize_free_attribute_value(
 
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
             sai_free_list(attr.value.ipaddrlist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
+            sai_free_list(attr.value.segmentlist);
             break;
 
             /* ACL FIELD DATA */

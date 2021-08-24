@@ -98,6 +98,22 @@ static bool operator==(
         a.label == b.label;
 }
 
+static bool operator==(
+        _In_ const sai_my_sid_entry_t& a,
+        _In_ const sai_my_sid_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    bool part = a.switch_id == b.switch_id &&
+        a.vr_id == b.vr_id &&
+        a.locator_block_len == b.locator_block_len &&
+        a.locator_node_len == b.locator_node_len &&
+        a.function_len == b.function_len &&
+        a.args_len == b.args_len;
+
+    return part && memcmp(a.sid, b.sid, sizeof(a.sid)) == 0;
+}
+
 bool MetaKeyHasher::operator()(
         _In_ const sai_object_meta_key_t& a,
         _In_ const sai_object_meta_key_t& b) const
@@ -126,6 +142,9 @@ bool MetaKeyHasher::operator()(
 
     if (a.objecttype == SAI_OBJECT_TYPE_INSEG_ENTRY)
         return a.objectkey.key.inseg_entry == b.objectkey.key.inseg_entry;
+
+    if (a.objecttype == SAI_OBJECT_TYPE_MY_SID_ENTRY)
+        return a.objectkey.key.my_sid_entry == b.objectkey.key.my_sid_entry;
 
     SWSS_LOG_THROW("not implemented: %s",
             sai_serialize_object_meta_key(a).c_str());
@@ -211,6 +230,17 @@ static inline std::size_t sai_get_hash(
     return ie.label;
 }
 
+static inline std::size_t sai_get_hash(
+        _In_ const sai_my_sid_entry_t& se)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    uint32_t ip6[4];
+    memcpy(ip6, se.sid, sizeof(ip6));
+
+    return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
+}
+
 std::size_t MetaKeyHasher::operator()(
         _In_ const sai_object_meta_key_t& k) const
 {
@@ -240,6 +270,9 @@ std::size_t MetaKeyHasher::operator()(
 
         case SAI_OBJECT_TYPE_INSEG_ENTRY:
             return sai_get_hash(k.objectkey.key.inseg_entry);
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+            return sai_get_hash(k.objectkey.key.my_sid_entry);
 
         default:
             SWSS_LOG_THROW("not handled: %s", sai_serialize_object_type(k.objecttype).c_str());

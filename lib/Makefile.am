@@ -65,7 +65,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_samplepacket.cpp \
 						 sai_redis_scheduler.cpp \
 						 sai_redis_schedulergroup.cpp \
-						 sai_redis_segmentroute.cpp \
+						 sai_redis_srv6.cpp \
 						 sai_redis_stp.cpp \
 						 sai_redis_switch.cpp \
 						 sai_redis_system_port.cpp \
