@@ -69,6 +69,8 @@ static sai_object_id_t create_hash(
 
 TEST(LegacyNeighborEntry, neighbor_entry_create)
 {
+    SWSS_LOG_ENTER();
+
     clear_local();
 
     sai_object_id_t switch_id = create_switch();

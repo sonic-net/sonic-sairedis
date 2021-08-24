@@ -99,6 +99,7 @@ ZMQ
 acl
 aclaction
 aclfield
+addr
 apache
 api
 apis
@@ -176,6 +177,7 @@ hardcoded
 hasEqualAttribute
 hostif
 hpp
+htonl
 http
 https
 hw
