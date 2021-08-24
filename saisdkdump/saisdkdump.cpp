@@ -12,6 +12,8 @@ extern "C" {
 #include <sai.h>
 }
 
+// TODO split to multiple cpp
+
 std::string sai_profile = "/tmp/sai.profile";
 
 void print_usage()
@@ -138,7 +140,7 @@ int main(int argc, char **argv)
     attrs[0].value.booldata = false;
     attrs[1].id = SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL;
     attrs[1].value.booldata = false;
-    
+
     status = switch_api->create_switch(&switch_id, AttributesCount, attrs);
     if (status != SAI_STATUS_SUCCESS)
     {

@@ -61,7 +61,7 @@ void SaiObjectCollection::setObjectAttr(
     if (!objectExists(metaKey))
     {
         SWSS_LOG_THROW("FATAL: object %s doesn't exist",
-               sai_serialize_object_meta_key(metaKey).c_str());
+                sai_serialize_object_meta_key(metaKey).c_str());
     }
 
     m_objects[metaKey]->setAttr(&md, attr);

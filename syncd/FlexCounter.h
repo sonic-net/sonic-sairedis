@@ -4,7 +4,7 @@ extern "C" {
 #include "sai.h"
 }
 
-#include "SaiInterface.h"
+#include "meta/SaiInterface.h"
 
 #include "swss/table.h"
 

@@ -16,6 +16,7 @@ extraction:
       - dh-exec
       - libzmq3-dev
       - libzmq5
+      - autoconf-archive
     after_prepare:
       - ls -l
       - git clone https://github.com/Azure/sonic-swss-common; pushd sonic-swss-common; ./autogen.sh; fakeroot dpkg-buildpackage -us -uc -b; popd

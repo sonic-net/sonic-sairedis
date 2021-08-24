@@ -2,7 +2,6 @@
 #include "VidManager.h"
 
 #include "meta/sai_serialize.h"
-#include "lib/inc/SaiInterface.h"
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"
@@ -933,7 +932,7 @@ void FlexCounter::addCounterPlugin(
             for (auto& sha: shaStrings)
             {
                 addRifCounterPlugin(sha);
-            } 
+            }
         }
         else if (field == BUFFER_POOL_PLUGIN_FIELD)
         {

@@ -18,6 +18,8 @@ debian/autoreconf.before
 debian/debhelper-build-stamp
 debian/files
 
+debian/python-pysairedis/
+debian/python3-pysairedis/
 debian/libsaimetadata-dbg/
 debian/libsaimetadata-dev/
 debian/libsaimetadata/
@@ -42,6 +44,7 @@ debian/tmp/
 Makefile.in
 aclocal.m4
 autom4te.cache/
+aminclude_static.am
 config.h
 config.h.in
 config.log
@@ -75,7 +78,6 @@ tests/swsslogentercheck.sh.trs
 tests/test-suite.log
 
 vslib/src/test-suite.log
-vslib/src/tests
 vslib/src/tests.log
 vslib/src/tests.trs
 
@@ -85,7 +87,8 @@ deps/
 
 # Executables #
 ###############
-lib/src/tests
+lib/tests
+vslib/tests
 meta/tests
 saidiscovery/saidiscovery
 saidump/saidump
@@ -95,13 +98,25 @@ syncd/syncd
 syncd/syncd_request_shutdown
 tests/syncd
 tests/vssyncd
+saiasiccmp/saiasiccmp
+tests/tests
+tests/testclient
 
 # Temporary files #
 ###################
 **/*~
 **/*.rec
 **/*.swp
+**/*.swo
+**/*.gcda
+**/*.gcno
+**/*.gcov
 
 tests/applyview.log
+tests/sai_warmboot.bin.bak
 tests/sai_warmboot.bin
 tests/[0-9]*
+
+pyext/py2/pysairedis.py
+pyext/py3/pysairedis.py
+pyext/pysairedis.py

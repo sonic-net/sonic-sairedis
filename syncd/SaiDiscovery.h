@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lib/inc/SaiInterface.h"
+#include "meta/SaiInterface.h"
 
 #include <memory>
 #include <set>

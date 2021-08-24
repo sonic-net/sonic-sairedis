@@ -1470,7 +1470,7 @@ void test_vlan_set()
     META_ASSERT_FAIL(status);
 
     SWSS_LOG_NOTICE("set is null");
-    status = g_meta->set(SAI_OBJECT_TYPE_VLAN, vlan_id, &attr);
+    status = g_meta->set(SAI_OBJECT_TYPE_VLAN, vlan_id, &vlan);
     META_ASSERT_FAIL(status);
 
     SWSS_LOG_NOTICE("attr is null");

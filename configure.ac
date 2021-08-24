@@ -12,9 +12,11 @@ AC_PROG_LIBTOOL
 AC_HEADER_STDC
 AM_PATH_PYTHON
 AM_PATH_PYTHON3
+AX_CODE_COVERAGE
+AX_ADD_AM_MACRO_STATIC([])
 
-AM_CONDITIONAL(sonic_asic_platform_barefoot,   test x$CONFIGURED_PLATFORM = xbarefoot)
-AM_CONDITIONAL(sonic_asic_platform_mellanox,   test x$CONFIGURED_PLATFORM = xmellanox)
+AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BAREFOOT,   test x$CONFIGURED_PLATFORM = xbarefoot)
+AM_CONDITIONAL(SONIC_ASIC_PLATFORM_MELLANOX,   test x$CONFIGURED_PLATFORM = xmellanox)
 
 AC_ARG_ENABLE(debug,
 [  --enable-debug          turn on debugging],
@@ -24,6 +26,12 @@ AC_ARG_ENABLE(debug,
 	*) AC_MSG_ERROR(bad value ${enableval} for --enable-debug) ;;
 esac],[debug=false])
 AM_CONDITIONAL(DEBUG, test x$debug = xtrue)
+
+AM_COND_IF([DEBUG], AC_SUBST(DBGFLAGS, "-ggdb -DDEBUG"), AC_SUBST(DBGFLAGS, "-g"))
+
+AM_COND_IF([DEBUG],
+        [AM_COND_IF([CODE_COVERAGE_ENABLED],
+            AC_MSG_ERROR("Flag conflict --enable-debug 'DEBUG' and --enable-code-coverage 'NDEBUG'"))])
 
 AC_ARG_WITH(sai,
 [  --with-sai=vs           compiling against specific SAI],
@@ -87,56 +95,56 @@ fi
 
 AC_PATH_PROGS(SWIG, [swig3.0 swig])
 
-CFLAGS_COMMON=""
-CFLAGS_COMMON+=" -ansi"
-CFLAGS_COMMON+=" -fPIC"
-CFLAGS_COMMON+=" -std=c++11"
-CFLAGS_COMMON+=" -Wall"
-CFLAGS_COMMON+=" -Wcast-align"
-CFLAGS_COMMON+=" -Wcast-qual"
-CFLAGS_COMMON+=" -Wconversion"
-CFLAGS_COMMON+=" -Wdisabled-optimization"
-CFLAGS_COMMON+=" -Werror"
-CFLAGS_COMMON+=" -Wextra"
-CFLAGS_COMMON+=" -Wfloat-equal"
-CFLAGS_COMMON+=" -Wformat=2"
-CFLAGS_COMMON+=" -Wformat-nonliteral"
-CFLAGS_COMMON+=" -Wformat-security"
-CFLAGS_COMMON+=" -Wformat-y2k"
-CFLAGS_COMMON+=" -Wimport"
-CFLAGS_COMMON+=" -Winit-self"
-CFLAGS_COMMON+=" -Wno-inline"
-CFLAGS_COMMON+=" -Winvalid-pch"
-CFLAGS_COMMON+=" -Wmissing-field-initializers"
-CFLAGS_COMMON+=" -Wmissing-format-attribute"
-CFLAGS_COMMON+=" -Wmissing-include-dirs"
-CFLAGS_COMMON+=" -Wmissing-noreturn"
-CFLAGS_COMMON+=" -Wno-aggregate-return"
-CFLAGS_COMMON+=" -Wno-padded"
-CFLAGS_COMMON+=" -Wno-switch-enum"
-CFLAGS_COMMON+=" -Wno-unused-parameter"
-CFLAGS_COMMON+=" -Wpacked"
-CFLAGS_COMMON+=" -Wpointer-arith"
-CFLAGS_COMMON+=" -Wredundant-decls"
-CFLAGS_COMMON+=" -Wshadow"
-CFLAGS_COMMON+=" -Wstack-protector"
-CFLAGS_COMMON+=" -Wstrict-aliasing=3"
-CFLAGS_COMMON+=" -Wswitch"
-CFLAGS_COMMON+=" -Wswitch-default"
-CFLAGS_COMMON+=" -Wunreachable-code"
-CFLAGS_COMMON+=" -Wunused"
-CFLAGS_COMMON+=" -Wvariadic-macros"
-CFLAGS_COMMON+=" -Wwrite-strings"
-CFLAGS_COMMON+=" -Wno-switch-default"
-CFLAGS_COMMON+=" -Wconversion"
-CFLAGS_COMMON+=" -Wno-psabi"
+CXXFLAGS_COMMON=""
+CXXFLAGS_COMMON+=" -ansi"
+CXXFLAGS_COMMON+=" -fPIC"
+CXXFLAGS_COMMON+=" -std=c++14"
+CXXFLAGS_COMMON+=" -Wall"
+CXXFLAGS_COMMON+=" -Wcast-align"
+CXXFLAGS_COMMON+=" -Wcast-qual"
+CXXFLAGS_COMMON+=" -Wconversion"
+CXXFLAGS_COMMON+=" -Wdisabled-optimization"
+CXXFLAGS_COMMON+=" -Werror"
+CXXFLAGS_COMMON+=" -Wextra"
+CXXFLAGS_COMMON+=" -Wfloat-equal"
+CXXFLAGS_COMMON+=" -Wformat=2"
+CXXFLAGS_COMMON+=" -Wformat-nonliteral"
+CXXFLAGS_COMMON+=" -Wformat-security"
+CXXFLAGS_COMMON+=" -Wformat-y2k"
+CXXFLAGS_COMMON+=" -Wimport"
+CXXFLAGS_COMMON+=" -Winit-self"
+CXXFLAGS_COMMON+=" -Wno-inline"
+CXXFLAGS_COMMON+=" -Winvalid-pch"
+CXXFLAGS_COMMON+=" -Wmissing-field-initializers"
+CXXFLAGS_COMMON+=" -Wmissing-format-attribute"
+CXXFLAGS_COMMON+=" -Wmissing-include-dirs"
+CXXFLAGS_COMMON+=" -Wmissing-noreturn"
+CXXFLAGS_COMMON+=" -Wno-aggregate-return"
+CXXFLAGS_COMMON+=" -Wno-padded"
+CXXFLAGS_COMMON+=" -Wno-switch-enum"
+CXXFLAGS_COMMON+=" -Wno-unused-parameter"
+CXXFLAGS_COMMON+=" -Wpacked"
+CXXFLAGS_COMMON+=" -Wpointer-arith"
+CXXFLAGS_COMMON+=" -Wredundant-decls"
+CXXFLAGS_COMMON+=" -Wshadow"
+CXXFLAGS_COMMON+=" -Wstack-protector"
+CXXFLAGS_COMMON+=" -Wstrict-aliasing=3"
+CXXFLAGS_COMMON+=" -Wswitch"
+CXXFLAGS_COMMON+=" -Wswitch-default"
+CXXFLAGS_COMMON+=" -Wunreachable-code"
+CXXFLAGS_COMMON+=" -Wunused"
+CXXFLAGS_COMMON+=" -Wvariadic-macros"
+CXXFLAGS_COMMON+=" -Wwrite-strings"
+CXXFLAGS_COMMON+=" -Wno-switch-default"
+CXXFLAGS_COMMON+=" -Wconversion"
+CXXFLAGS_COMMON+=" -Wno-psabi"
 
 SAVED_FLAGS="$CXXFLAGS"
 CXXFLAGS="-Wcast-align=strict"
 AC_MSG_CHECKING([whether CXX supports -Wcast-align=strict])
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])],
     [AC_MSG_RESULT([yes])]
-    [AC_SUBST([CFLAGS_COMMON], ["${CFLAGS_COMMON} -Wcast-align=strict"])],
+    [AC_SUBST([CXXFLAGS_COMMON], ["${CXXFLAGS_COMMON} -Wcast-align=strict"])],
     [AC_MSG_RESULT([no])])
 CXXFLAGS="$SAVED_FLAGS"
 
@@ -151,14 +159,14 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])],
     [AC_MSG_RESULT([no])])
 CXXFLAGS="$SAVED_FLAGS"
 
-AC_SUBST(CFLAGS_COMMON)
+AC_SUBST(CXXFLAGS_COMMON)
+
+AC_SUBST(SAIINC, "-I\$(top_srcdir)/SAI/inc -I\$(top_srcdir)/SAI/experimental -I\$(top_srcdir)/SAI/meta")
 
 AC_OUTPUT(Makefile
           meta/Makefile
           lib/Makefile
-          lib/src/Makefile
           vslib/Makefile
-          vslib/src/Makefile
           syncd/Makefile
           saiplayer/Makefile
           saidump/Makefile
@@ -166,7 +174,11 @@ AC_OUTPUT(Makefile
           saidiscovery/Makefile
           saiasiccmp/Makefile
           tests/Makefile
+          unittest/Makefile
+          unittest/meta/Makefile
+          unittest/lib/Makefile
+          unittest/vslib/Makefile
+          unittest/syncd/Makefile
           pyext/Makefile
           pyext/py2/Makefile
-          pyext/py3/Makefile
-          python/setup.py)
+          pyext/py3/Makefile)
