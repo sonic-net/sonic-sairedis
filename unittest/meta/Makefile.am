@@ -28,7 +28,10 @@ tests_SOURCES = \
 				TestSaiObject.cpp \
 				TestSaiObjectCollection.cpp \
 				TestSaiInterface.cpp \
-				TestSaiSerialize.cpp
+				TestSaiSerialize.cpp \
+				TestLegacy.cpp \
+				TestLegacyFdbEntry.cpp \
+				TestLegacyNeighborEntry.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
