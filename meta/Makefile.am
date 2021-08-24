@@ -33,15 +33,16 @@ libsaimeta_la_SOURCES = \
 				NotificationQueuePfcDeadlock.cpp \
 				NotificationSwitchShutdownRequest.cpp \
 				NotificationSwitchStateChange.cpp \
+				NumberOidIndexGenerator.cpp \
 				OidRefCounter.cpp \
 				PerformanceIntervalTimer.cpp \
 				PortRelatedSet.cpp \
 				RedisSelectableChannel.cpp \
-				SaiAttributeList.cpp \
 				SaiAttrWrapper.cpp \
+				SaiAttributeList.cpp \
 				SaiInterface.cpp \
-				SaiObjectCollection.cpp \
 				SaiObject.cpp \
+				SaiObjectCollection.cpp \
 				SaiSerialize.cpp \
 				SelectableChannel.cpp \
 				ZeroMQSelectableChannel.cpp
@@ -56,7 +57,6 @@ tests_SOURCES = \
 				tests.cpp \
 				DummySaiInterface.cpp \
 				MetaTestSaiInterface.cpp \
-				NumberOidIndexGenerator.cpp \
 				../lib/VirtualObjectIdManager.cpp \
 				../lib/SwitchConfig.cpp \
 				../lib/SwitchConfigContainer.cpp
