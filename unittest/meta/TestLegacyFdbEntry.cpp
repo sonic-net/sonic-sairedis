@@ -56,6 +56,8 @@ static sai_fdb_entry_t create_fdb_entry()
 
 TEST(LegacyFdbEntry, fdb_entry_create)
 {
+    SWSS_LOG_ENTER();
+
     clear_local();
 
     sai_status_t    status;

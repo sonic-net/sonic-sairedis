@@ -500,7 +500,7 @@ TEST(SaiSerialize, sai_deserialize)
 
 TEST(SaiSerialize, serialize_bool)
 {
-    //clear_local();
+    SWSS_LOG_ENTER();
 
     sai_attribute_t attr;
     const sai_attr_metadata_t* meta;
