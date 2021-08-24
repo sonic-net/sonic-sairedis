@@ -15,8 +15,8 @@ AM_PATH_PYTHON3
 AX_CODE_COVERAGE
 AX_ADD_AM_MACRO_STATIC([])
 
-AM_CONDITIONAL(sonic_asic_platform_barefoot,   test x$CONFIGURED_PLATFORM = xbarefoot)
-AM_CONDITIONAL(sonic_asic_platform_mellanox,   test x$CONFIGURED_PLATFORM = xmellanox)
+AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BAREFOOT,   test x$CONFIGURED_PLATFORM = xbarefoot)
+AM_CONDITIONAL(SONIC_ASIC_PLATFORM_MELLANOX,   test x$CONFIGURED_PLATFORM = xmellanox)
 
 AC_ARG_ENABLE(debug,
 [  --enable-debug          turn on debugging],
@@ -26,6 +26,12 @@ AC_ARG_ENABLE(debug,
 	*) AC_MSG_ERROR(bad value ${enableval} for --enable-debug) ;;
 esac],[debug=false])
 AM_CONDITIONAL(DEBUG, test x$debug = xtrue)
+
+AM_COND_IF([DEBUG], AC_SUBST(DBGFLAGS, "-ggdb -DDEBUG"), AC_SUBST(DBGFLAGS, "-g"))
+
+AM_COND_IF([DEBUG],
+        [AM_COND_IF([CODE_COVERAGE_ENABLED],
+            AC_MSG_ERROR("Flag conflict --enable-debug 'DEBUG' and --enable-code-coverage 'NDEBUG'"))])
 
 AC_ARG_WITH(sai,
 [  --with-sai=vs           compiling against specific SAI],
@@ -155,12 +161,12 @@ CXXFLAGS="$SAVED_FLAGS"
 
 AC_SUBST(CXXFLAGS_COMMON)
 
+AC_SUBST(SAIINC, "-I\$(top_srcdir)/SAI/inc -I\$(top_srcdir)/SAI/experimental -I\$(top_srcdir)/SAI/meta")
+
 AC_OUTPUT(Makefile
           meta/Makefile
           lib/Makefile
-          lib/src/Makefile
           vslib/Makefile
-          vslib/src/Makefile
           syncd/Makefile
           saiplayer/Makefile
           saidump/Makefile
@@ -168,6 +174,11 @@ AC_OUTPUT(Makefile
           saidiscovery/Makefile
           saiasiccmp/Makefile
           tests/Makefile
+          unittest/Makefile
+          unittest/meta/Makefile
+          unittest/lib/Makefile
+          unittest/vslib/Makefile
+          unittest/syncd/Makefile
           pyext/Makefile
           pyext/py2/Makefile
           pyext/py3/Makefile)

@@ -78,4 +78,3 @@ std::vector<std::shared_ptr<SaiAttrWrapper>> SaiObject::getAttributes() const
 
     return values;
 }
-

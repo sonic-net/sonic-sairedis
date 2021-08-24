@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lib/inc/OidIndexGenerator.h"
+#include "lib/OidIndexGenerator.h"
 
 namespace saimeta
 {

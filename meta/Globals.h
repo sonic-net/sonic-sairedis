@@ -5,8 +5,8 @@ extern "C" {
 }
 
 #include "swss/logger.h"
+#include "swss/table.h"
 
-#include <memory>
 #include <string>
 
 namespace saimeta
@@ -22,6 +22,22 @@ namespace saimeta
 
             static std::string getAttrInfo(
                     _In_ const sai_attr_metadata_t& md);
+
+            /**
+             * @brief Get hardware info.
+             *
+             * Get hardware info from attribute list, typically passed to
+             * create_switch api and convert it from s8list to std::string.
+             * Object type is assumed to be SAI_OBJECT_TYPE_SWITCH.
+             *
+             * @return Hardware info converted to string.
+             */
+            static std::string getHardwareInfo(
+                    _In_ uint32_t attrCount,
+                    _In_ const sai_attribute_t *attrList);
+
+            static std::string joinFieldValues(
+                    _In_ const std::vector<swss::FieldValueTuple>& values);
     };
 }
 
@@ -31,4 +47,3 @@ namespace saimeta
 #define META_LOG_NOTICE( md, format, ...)   SWSS_LOG_NOTICE ("%s " format, saimeta::Globals::getAttrInfo(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_INFO(   md, format, ...)   SWSS_LOG_INFO   ("%s " format, saimeta::Globals::getAttrInfo(md).c_str(), ##__VA_ARGS__)
 #define META_LOG_THROW(  md, format, ...)   SWSS_LOG_THROW  ("%s " format, saimeta::Globals::getAttrInfo(md).c_str(), ##__VA_ARGS__)
-

@@ -1,6 +1,6 @@
 #include "VidManager.h"
 
-#include "lib/inc/VirtualObjectIdManager.h"
+#include "lib/VirtualObjectIdManager.h"
 
 #include "meta/sai_serialize.h"
 

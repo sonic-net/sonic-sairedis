@@ -1,6 +1,6 @@
 #include "pysairedis.h"
 
-#include "lib/inc/sairedis.h"
+#include "lib/sairedis.h"
 #include "swss/logger.h"
 
 #include "meta/sai_serialize.h"

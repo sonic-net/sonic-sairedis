@@ -1,15 +1,9 @@
-AM_CXXFLAGS = -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental -I${top_srcdir}/meta
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/meta -I$(top_srcdir)/lib
 
 bin_PROGRAMS = saidiscovery
 
-if DEBUG
-DBGFLAGS = -ggdb -DDEBUG
-else
-DBGFLAGS = -g
-endif
-
 if SAIVS
-SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
+SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs
 else
 SAILIB=-lsai
 endif
@@ -17,5 +11,6 @@ endif
 saidiscovery_SOURCES = saidiscovery.cpp
 
 saidiscovery_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-saidiscovery_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(SAIFLAGS) $(CODE_COVERAGE_CXXFLAGS)
-saidiscovery_LDADD = -lhiredis -lswsscommon $(top_srcdir)/syncd/libSyncd.a $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta $(CODE_COVERAGE_LIBS)
+saidiscovery_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+saidiscovery_LDADD = -lhiredis -lswsscommon $(top_srcdir)/syncd/libSyncd.a $(SAILIB) -lpthread \
+					 -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
