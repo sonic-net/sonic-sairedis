@@ -14,17 +14,6 @@
 
 using namespace saimeta;
 
-//static std::shared_ptr<MetaTestSaiInterface> g_sai = std::make_shared<MetaTestSaiInterface>();
-//static std::shared_ptr<Meta> g_meta = std::make_shared<Meta>(g_sai);
-//
-//static void clear_local()
-//{
-//    SWSS_LOG_ENTER();
-//
-//    g_sai = std::make_shared<MetaTestSaiInterface>();
-//    g_meta = std::make_shared<Meta>(g_sai);
-//}
-
 TEST(SaiSerialize, transfer_attributes)
 {
     SWSS_LOG_ENTER();
@@ -506,6 +495,8 @@ TEST(SaiSerialize, sai_deserialize)
 
     EXPECT_EQ(value, SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC);
 }
+
+// LEGACY TESTS
 
 TEST(SaiSerialize, serialize_bool)
 {
@@ -1121,7 +1112,6 @@ static std::string serialize_number(
 
     return std::to_string(number);
 }
-
 
 TEST(SaiSerialize, serialize_number)
 {
