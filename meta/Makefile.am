@@ -51,18 +51,3 @@ libsaimeta_la_SOURCES = \
 libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaimeta_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 libsaimeta_la_LIBADD = -lhiredis -lswsscommon libsaimetadata.la $(CODE_COVERAGE_LIBS)
-
-bin_PROGRAMS = tests
-
-tests_SOURCES = \
-				tests.cpp \
-				DummySaiInterface.cpp \
-				MetaTestSaiInterface.cpp \
-				../lib/VirtualObjectIdManager.cpp \
-				../lib/SwitchConfig.cpp \
-				../lib/SwitchConfigContainer.cpp
-
-tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread libsaimetadata.la libsaimeta.la -lzmq
-
-TESTS = tests

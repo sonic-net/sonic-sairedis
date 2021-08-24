@@ -10,31 +10,6 @@ using namespace TestLegacy;
 
 // STATIC HELPERS
 
-static sai_object_id_t create_next_hop(
-        _In_ sai_object_id_t switch_id)
-{
-    SWSS_LOG_ENTER();
-
-    sai_object_id_t nh;
-
-    sai_attribute_t attrs[9] = { };
-
-    attrs[0].id = SAI_NEXT_HOP_ATTR_TYPE;
-    attrs[0].value.s32 = SAI_NEXT_HOP_TYPE_IP;
-
-    attrs[1].id = SAI_NEXT_HOP_ATTR_IP;
-
-    auto rif = create_rif(switch_id);
-
-    attrs[2].id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
-    attrs[2].value.oid = rif;
-
-    auto status = g_meta->create(SAI_OBJECT_TYPE_NEXT_HOP, &nh, switch_id, 3, attrs);
-    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
-
-    return nh;
-}
-
 // ACTUAL TESTS
 
 TEST(LegacyRouteEntry, route_entry_create)

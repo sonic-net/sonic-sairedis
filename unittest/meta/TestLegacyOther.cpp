@@ -1,582 +1,19 @@
+#include "TestLegacy.h"
+#include "AttrKeyMap.h"
+
 #include "sai_serialize.h"
 
-#include "OidRefCounter.h"
-#include "SaiAttrWrapper.h"
-#include "AttrKeyMap.h"
-#include "SaiObjectCollection.h"
-#include "MetaTestSaiInterface.h"
-#include "Meta.h"
-
-#include <inttypes.h>
-#include <string.h>
 #include <arpa/inet.h>
+#include <inttypes.h>
 
-#include <map>
-#include <iterator>
-#include <unordered_map>
+#include <gtest/gtest.h>
+
 #include <memory>
-#include <vector>
 
+using namespace TestLegacy;
 using namespace saimeta;
 
-static std::shared_ptr<MetaTestSaiInterface> g_sai = std::make_shared<MetaTestSaiInterface>();
-static std::shared_ptr<Meta> g_meta = std::make_shared<Meta>(g_sai);
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmissing-noreturn"
-
-sai_object_type_t sai_object_type_query(
-        _In_ sai_object_id_t oid)
-{
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_THROW("should not be used");
-}
-
-void clear_local()
-{
-    SWSS_LOG_ENTER();
-
-    g_sai = std::make_shared<MetaTestSaiInterface>();
-    g_meta = std::make_shared<Meta>(g_sai);
-}
-
-sai_object_id_t sai_switch_id_query(
-        _In_ sai_object_id_t oid)
-{
-    SWSS_LOG_ENTER();
-
-    SWSS_LOG_THROW("should not be used");
-}
-
-#pragma GCC diagnostic pop
-
-// META ASSERTS
-
-#define META_ASSERT_SUCCESS(x) \
-    if (x != SAI_STATUS_SUCCESS) \
-{\
-    SWSS_LOG_ERROR("expected success, line: %d", __LINE__);\
-    throw;\
-}
-
-#define META_ASSERT_FAIL(x) \
-    if (x == SAI_STATUS_SUCCESS) \
-{\
-    SWSS_LOG_ERROR("expected failure, line: %d", __LINE__);\
-    throw;\
-}
-
-#define META_ASSERT_TRUE(x) \
-    if (!(x)) \
-{\
-    SWSS_LOG_ERROR("assert true failed '%s', line: %d", # x, __LINE__);\
-    throw;\
-}
-
-// SWITCH TESTS
-
-sai_object_id_t create_switch()
-{
-    SWSS_LOG_ENTER();
-
-    sai_attribute_t attr;
-
-    sai_object_id_t switch_id;
-
-    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
-    attr.value.booldata = true;
-
-    auto status = g_meta->create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    return switch_id;
-}
-
-void remove_switch(
-        _In_ sai_object_id_t switchId)
-{
-    SWSS_LOG_ENTER();
-
-    META_ASSERT_TRUE(g_meta->isEmpty() == false);
-
-    SWSS_LOG_NOTICE("removing: %lX", switchId);
-
-    auto status = g_meta->remove(SAI_OBJECT_TYPE_SWITCH, switchId);
-
-    META_ASSERT_SUCCESS(status);
-
-    META_ASSERT_TRUE(g_meta->isEmpty());
-}
-
-void test_switch_set()
-{
-    SWSS_LOG_ENTER();
-
-    clear_local();
-
-    sai_status_t    status;
-    sai_attribute_t attr;
-
-    sai_object_id_t switch_id = create_switch();
-
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, NULL);
-    META_ASSERT_FAIL(status);
-
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_FAIL(status);
-
-    // id outside range
-    attr.id = -1;
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_FAIL(status);
-
-    g_sai->setStatus(SAI_STATUS_FAILURE);
-    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_FAIL(status);
-    g_sai->setStatus(SAI_STATUS_SUCCESS);
-
-    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_FAIL(status);
-
-    attr.id = SAI_SWITCH_ATTR_SWITCHING_MODE;
-    attr.value.s32 = 0x1000;
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_FAIL(status);
-
-    // enum
-    attr.id = SAI_SWITCH_ATTR_SWITCHING_MODE;
-    attr.value.s32 = SAI_SWITCH_SWITCHING_MODE_STORE_AND_FORWARD;
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    // bool
-    attr.id = SAI_SWITCH_ATTR_BCAST_CPU_FLOOD_ENABLE;
-    attr.value.booldata = SAI_SWITCH_SWITCHING_MODE_STORE_AND_FORWARD;
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    // mac
-    sai_mac_t mac = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
-
-    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
-    memcpy(attr.value.mac, mac, sizeof(mac));
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    // uint8
-    attr.id = SAI_SWITCH_ATTR_QOS_DEFAULT_TC;
-    attr.value.u8 = 0x11;
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    // object id with not allowed null
-
-// currently hash is read only
-//
-//    // null oid
-//    attr.id = SAI_SWITCH_ATTR_LAG_HASH_IPV6;
-//    attr.value.oid = SAI_NULL_OBJECT_ID;
-//    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-//    META_ASSERT_FAIL(status);
-//
-//    // wrong object type
-//    attr.id = SAI_SWITCH_ATTR_LAG_HASH_IPV6;
-//    attr.value.oid = create_dummy_object_id(SAI_OBJECT_TYPE_LAG);
-//    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-//    META_ASSERT_FAIL(status);
-//
-//    // valid object (object must exist)
-//    attr.id = SAI_SWITCH_ATTR_LAG_HASH_IPV6;
-//    attr.value.oid = create_hash(switch_id);
-//
-//    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-//    META_ASSERT_SUCCESS(status);
-//
-//    META_ASSERT_TRUE(g_meta->getObjectReferenceCount(attr.value.oid) == 1);
-
-    // object id with allowed null
-
-    // null oid
-    attr.id = SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP;
-    attr.value.oid = SAI_NULL_OBJECT_ID;
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    // wrong object
-    attr.id = SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP;
-    status = g_meta->create(SAI_OBJECT_TYPE_LAG, &attr.value.oid, switch_id, 0, NULL);
-    META_ASSERT_SUCCESS(status);
-
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_FAIL(status);
-
-    // good object
-    attr.id = SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP;
-
-    sai_attribute_t a[2] = { };
-    a[0].id = SAI_QOS_MAP_ATTR_TYPE;
-    a[0].value.s32 = 1;
-    a[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
-    status = g_meta->create(SAI_OBJECT_TYPE_QOS_MAP, &attr.value.oid, switch_id, 2, a);
-    META_ASSERT_SUCCESS(status);
-
-    sai_object_id_t oid = attr.value.oid;
-
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    META_ASSERT_TRUE(g_meta->getObjectReferenceCount(attr.value.oid) == 1);
-
-    attr.id = SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP;
-    attr.value.oid = SAI_NULL_OBJECT_ID;
-    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    // check if it was decreased
-    META_ASSERT_TRUE(g_meta->getObjectReferenceCount(oid) == 0);
-
-    remove_switch(switch_id);
-}
-
-void test_switch_get()
-{
-    SWSS_LOG_ENTER();
-
-    clear_local();
-
-    sai_status_t    status;
-    sai_attribute_t attr;
-
-    sai_object_id_t switch_id = create_switch();
-
-    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
-    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 0, &attr);
-    META_ASSERT_FAIL(status);
-
-    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1000, &attr);
-    META_ASSERT_FAIL(status);
-
-    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, NULL);
-    META_ASSERT_FAIL(status);
-
-    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, NULL);
-    META_ASSERT_FAIL(status);
-
-    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    attr.id = -1;
-    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr);
-    META_ASSERT_FAIL(status);
-
-    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
-    attr.value.u32 = 0;
-    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    sai_attribute_t attr1;
-    attr1.id = SAI_SWITCH_ATTR_PORT_NUMBER;
-
-    sai_attribute_t attr2;
-    attr2.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
-    sai_attribute_t list[2] = { attr1, attr2 };
-
-    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 2, list);
-    META_ASSERT_SUCCESS(status);
-
-    remove_switch(switch_id);
-}
-
-// FDB TESTS
-
-// NEIGHBOR TESTS
-
-// VLAN TESTS
-
-// ROUTE TESTS
-
-
-// SERIALIZATION TYPES TESTS
-
-void test_serialization_type_vlan_list()
-{
-    SWSS_LOG_ENTER();
-
-    clear_local();
-
-    sai_status_t    status;
-
-    SWSS_LOG_NOTICE("create stp");
-    sai_object_id_t switch_id = create_switch();
-
-    sai_object_id_t stp = create_stp(switch_id);
-
-    sai_vlan_id_t list[2] = { 1, 2 };
-
-    sai_attribute_t attr;
-
-    attr.id = SAI_STP_ATTR_VLAN_LIST;
-    attr.value.vlanlist.count = 2;
-    attr.value.vlanlist.list = list;
-
-    SWSS_LOG_NOTICE("set vlan list");
-
-    status = g_meta->set(SAI_OBJECT_TYPE_STP, stp, &attr);
-    META_ASSERT_FAIL(status);
-
-    SWSS_LOG_NOTICE("get vlan list");
-
-    status = g_meta->get(SAI_OBJECT_TYPE_STP, stp, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("remove stp");
-
-    status = g_meta->remove(SAI_OBJECT_TYPE_STP, stp);
-    META_ASSERT_SUCCESS(status);
-
-    remove_switch(switch_id);
-}
-
-void test_serialization_type_bool()
-{
-    SWSS_LOG_ENTER();
-
-    clear_local();
-
-    sai_status_t    status;
-
-    sai_object_id_t vr;
-
-    SWSS_LOG_NOTICE("create stp");
-    sai_object_id_t switch_id = create_switch();
-
-    sai_attribute_t attr;
-
-    attr.id = SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V4_STATE;
-    attr.value.booldata = true;
-
-    status = g_meta->create(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, &vr, switch_id, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("set bool");
-
-    status = g_meta->set(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, vr, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("get bool");
-
-    status = g_meta->get(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, vr, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("remove vr");
-
-    status = g_meta->remove(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, vr);
-    META_ASSERT_SUCCESS(status);
-
-    remove_switch(switch_id);
-}
-
-void test_serialization_type_char()
-{
-    SWSS_LOG_ENTER();
-
-    clear_local();
-
-    sai_status_t    status;
-
-    sai_object_id_t hostif;
-
-    SWSS_LOG_NOTICE("create port");
-    sai_object_id_t switch_id = create_switch();
-
-    sai_object_id_t port = create_port(switch_id);
-
-    sai_attribute_t attr, attr2, attr3;
-
-    attr.id = SAI_HOSTIF_ATTR_TYPE;
-    attr.value.s32 = SAI_HOSTIF_TYPE_NETDEV;
-
-    attr2.id = SAI_HOSTIF_ATTR_OBJ_ID;
-    attr2.value.oid = port;
-
-    attr3.id = SAI_HOSTIF_ATTR_NAME;
-
-    memcpy(attr3.value.chardata, "foo", sizeof("foo"));
-
-    sai_attribute_t list[3] = { attr, attr2, attr3 };
-
-    // TODO we need to support conditions here
-
-    SWSS_LOG_NOTICE("create hostif");
-
-    status = g_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif, switch_id, 3, list);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("set char");
-
-    status = g_meta->set(SAI_OBJECT_TYPE_HOSTIF, hostif, &attr3);
-    META_ASSERT_FAIL(status);
-
-    SWSS_LOG_NOTICE("get char");
-
-    status = g_meta->get(SAI_OBJECT_TYPE_HOSTIF, hostif, 1, &attr3);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("remove hostif");
-
-    status = g_meta->remove(SAI_OBJECT_TYPE_HOSTIF, hostif);
-    META_ASSERT_SUCCESS(status);
-
-    attr.id = SAI_HOSTIF_ATTR_TYPE;
-    attr.value.s32 = SAI_HOSTIF_TYPE_FD;
-
-    sai_attribute_t list2[1] = { attr };
-
-    SWSS_LOG_NOTICE("create hostif with non mandatory");
-    status = g_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif, switch_id, 1, list2);
-    META_ASSERT_SUCCESS(status);
-
-// TODO this test should pass, we are doing query here for conditional
-// attribute, where condition is not met so this attribute will not be used, so
-// metadata should figure out that we can't query this attribute, but there is
-// a problem with internal existing objects, since we don't have their values
-// then we we can't tell whether attribute was passed or not, we need to get
-// switch discovered objects and attributes and populate local db then we need
-// to update metadata condition in meta_generic_validation_get method where we
-// check if attribute is conditional
-//
-//    SWSS_LOG_NOTICE("get char");
-//
-//    status = g_meta->get(SAI_OBJECT_TYPE_HOSTIF, hostif, 1, &attr2);
-//    META_ASSERT_FAIL(status);
-
-    attr.id = SAI_HOSTIF_ATTR_TYPE;
-    attr.value.s32 = SAI_HOSTIF_TYPE_NETDEV;
-
-    sai_attribute_t list3[1] = { attr };
-
-    SWSS_LOG_NOTICE("create hostif with mandatory missing");
-    status = g_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif, switch_id, 1, list3);
-    META_ASSERT_FAIL(status);
-
-    remove_switch(switch_id);
-}
-
-void test_serialization_type_int32_list()
-{
-    SWSS_LOG_ENTER();
-
-    clear_local();
-
-    sai_status_t    status;
-
-    sai_object_id_t hash;
-
-    sai_attribute_t attr;
-
-    SWSS_LOG_NOTICE("create hash");
-    sai_object_id_t switch_id = create_switch();
-
-    int32_t list[2] =  { SAI_NATIVE_HASH_FIELD_SRC_IP, SAI_NATIVE_HASH_FIELD_VLAN_ID };
-
-    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
-    attr.value.s32list.count = 2;
-    attr.value.s32list.list = list;
-
-    status = g_meta->create(SAI_OBJECT_TYPE_HASH, &hash, switch_id, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("set hash");
-
-    status = g_meta->set(SAI_OBJECT_TYPE_HASH, hash, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("get hash");
-
-    status = g_meta->get(SAI_OBJECT_TYPE_HASH, hash, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("remove hash");
-
-    status = g_meta->remove(SAI_OBJECT_TYPE_HASH, hash);
-    META_ASSERT_SUCCESS(status);
-
-    remove_switch(switch_id);
-}
-
-void test_serialization_type_uint32_list()
-{
-    SWSS_LOG_ENTER();
-
-    clear_local();
-
-    sai_status_t    status;
-
-    sai_object_id_t hash;
-
-    sai_attribute_t attr;
-
-    SWSS_LOG_NOTICE("create hash");
-    sai_object_id_t switch_id = create_switch();
-
-    int32_t list[2] =  { SAI_NATIVE_HASH_FIELD_SRC_IP, SAI_NATIVE_HASH_FIELD_VLAN_ID };
-
-    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
-    attr.value.s32list.count = 2;
-    attr.value.s32list.list = list;
-
-    status = g_meta->create(SAI_OBJECT_TYPE_HASH, &hash, switch_id, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("set hash");
-
-    status = g_meta->set(SAI_OBJECT_TYPE_HASH, hash, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("get hash");
-
-    status = g_meta->get(SAI_OBJECT_TYPE_HASH, hash, 1, &attr);
-    META_ASSERT_SUCCESS(status);
-
-    SWSS_LOG_NOTICE("remove hash");
-
-    status = g_meta->remove(SAI_OBJECT_TYPE_HASH, hash);
-    META_ASSERT_SUCCESS(status);
-
-    remove_switch(switch_id);
-}
-
-// OTHER
-
-void test_mask()
-{
-    SWSS_LOG_ENTER();
-
-    sai_ip6_t ip6mask1 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0x00};
-    sai_ip6_t ip6mask2 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0xff};
-    sai_ip6_t ip6mask3 = {0x00, 0x00, 0x00, 0x00,0x00, 0x00, 0x00,0x00, 0x00, 0x00, 0x00, 0x00,0x00,0x00,0x00,0x00};
-    sai_ip6_t ip6mask4 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0xfe};
-    sai_ip6_t ip6mask5 = {0x80, 0x00, 0x00, 0x00,0x00, 0x00, 0x00,0x00, 0x00, 0x00, 0x00, 0x00,0x00,0x00,0x00,0x00};
-
-    sai_ip6_t ip6mask6 = {0x01, 0x00, 0x00, 0x00,0x00, 0x00, 0x00,0x00, 0x00, 0x00, 0x00, 0x00,0x00,0x00,0x00,0x00};
-    sai_ip6_t ip6mask7 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0x8f};
-    sai_ip6_t ip6mask8 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0x8f};
-    sai_ip6_t ip6mask9 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xf1, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0xff};
-
-    META_ASSERT_TRUE(Meta::is_ipv6_mask_valid(ip6mask1));
-    META_ASSERT_TRUE(Meta::is_ipv6_mask_valid(ip6mask2));
-    META_ASSERT_TRUE(Meta::is_ipv6_mask_valid(ip6mask3));
-    META_ASSERT_TRUE(Meta::is_ipv6_mask_valid(ip6mask4));
-    META_ASSERT_TRUE(Meta::is_ipv6_mask_valid(ip6mask5));
-
-    META_ASSERT_TRUE(!Meta::is_ipv6_mask_valid(ip6mask6));
-    META_ASSERT_TRUE(!Meta::is_ipv6_mask_valid(ip6mask7));
-    META_ASSERT_TRUE(!Meta::is_ipv6_mask_valid(ip6mask8));
-    META_ASSERT_TRUE(!Meta::is_ipv6_mask_valid(ip6mask9));
-}
+// STATIC HELPERS
 
 static sai_object_id_t create_acl_table(
         _In_ sai_object_id_t switch_id)
@@ -591,7 +28,7 @@ static sai_object_id_t create_acl_table(
     attrs[0].value.s32 = SAI_ACL_STAGE_INGRESS;
 
     auto status = g_meta->create(SAI_OBJECT_TYPE_ACL_TABLE, &at, switch_id, 1, attrs);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     return at;
 }
@@ -609,7 +46,7 @@ static sai_object_id_t create_acl_counter(
     attrs[0].value.oid = create_acl_table(switch_id);
 
     auto status = g_meta->create(SAI_OBJECT_TYPE_ACL_COUNTER, &ac, switch_id, 1, attrs);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     return ac;
 }
@@ -629,7 +66,7 @@ static sai_object_id_t create_policer(
     attrs[1].value.s32 = SAI_POLICER_MODE_SR_TCM;
 
     auto status = g_meta->create(SAI_OBJECT_TYPE_POLICER, &policer, switch_id, 2, attrs);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     return policer;
 }
@@ -647,7 +84,7 @@ static sai_object_id_t create_samplepacket(
     attrs[0].value.u32 = 1;
 
     auto status = g_meta->create(SAI_OBJECT_TYPE_SAMPLEPACKET, &sp, switch_id, 1, attrs);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     return sp;
 }
@@ -665,7 +102,7 @@ static sai_object_id_t create_hostif_udt(
     attrs[0].value.s32 = SAI_HOSTIF_USER_DEFINED_TRAP_TYPE_ROUTER;
 
     auto status = g_meta->create(SAI_OBJECT_TYPE_HOSTIF_USER_DEFINED_TRAP, &udt, switch_id, 1, attrs);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     return udt;
 }
@@ -685,12 +122,12 @@ static sai_object_id_t create_ipg(
     attrs[1].value.u8 = 0;
 
     auto status = g_meta->create(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, &ipg, switch_id, 2, attrs);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     return ipg;
 }
 
-sai_object_id_t insert_dummy_object(
+static sai_object_id_t insert_dummy_object(
         _In_ sai_object_type_t ot,
         _In_ sai_object_id_t switch_id)
 {
@@ -725,7 +162,492 @@ sai_object_id_t insert_dummy_object(
     }
 }
 
-void test_acl_entry_field_and_action()
+static sai_object_id_t create_scheduler_group(
+        _In_ sai_object_id_t switch_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t sg;
+
+    sai_attribute_t attrs[9] = { };
+
+    attrs[0].id = SAI_SCHEDULER_GROUP_ATTR_PORT_ID;
+    attrs[0].value.oid = create_port(switch_id);
+    attrs[1].id = SAI_SCHEDULER_GROUP_ATTR_LEVEL;
+    attrs[1].value.u8 = 0;
+    attrs[2].id = SAI_SCHEDULER_GROUP_ATTR_MAX_CHILDS;
+    attrs[2].value.u8 = 1;
+    attrs[3].id = SAI_SCHEDULER_GROUP_ATTR_PARENT_NODE;
+    attrs[3].value.oid = attrs[0].value.oid;
+
+    auto status = g_meta->create(SAI_OBJECT_TYPE_SCHEDULER_GROUP, &sg, switch_id, 4, attrs);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    return sg;
+}
+
+
+
+// ACTUAL TESTS
+
+TEST(Legacy, switch_set)
+{
+    SWSS_LOG_ENTER();
+
+    clear_local();
+
+    sai_status_t    status;
+    sai_attribute_t attr;
+
+    sai_object_id_t switch_id = create_switch();
+
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, NULL);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    // id outside range
+    attr.id = -1;
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    g_sai->setStatus(SAI_STATUS_FAILURE);
+    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+    g_sai->setStatus(SAI_STATUS_SUCCESS);
+
+    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    attr.id = SAI_SWITCH_ATTR_SWITCHING_MODE;
+    attr.value.s32 = 0x1000;
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    // enum
+    attr.id = SAI_SWITCH_ATTR_SWITCHING_MODE;
+    attr.value.s32 = SAI_SWITCH_SWITCHING_MODE_STORE_AND_FORWARD;
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // bool
+    attr.id = SAI_SWITCH_ATTR_BCAST_CPU_FLOOD_ENABLE;
+    attr.value.booldata = SAI_SWITCH_SWITCHING_MODE_STORE_AND_FORWARD;
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // mac
+    sai_mac_t mac = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+
+    attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
+    memcpy(attr.value.mac, mac, sizeof(mac));
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // uint8
+    attr.id = SAI_SWITCH_ATTR_QOS_DEFAULT_TC;
+    attr.value.u8 = 0x11;
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // object id with not allowed null
+
+    // currently hash is read only
+    //
+    //    // null oid
+
+    //    attr.id = SAI_SWITCH_ATTR_LAG_HASH_IPV6;
+    //    attr.value.oid = SAI_NULL_OBJECT_ID;
+    //    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    //    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+    //
+    //    // wrong object type
+    //    attr.id = SAI_SWITCH_ATTR_LAG_HASH_IPV6;
+    //    attr.value.oid = create_dummy_object_id(SAI_OBJECT_TYPE_LAG);
+    //    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    //    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+    //
+    //    // valid object (object must exist)
+    //    attr.id = SAI_SWITCH_ATTR_LAG_HASH_IPV6;
+    //    attr.value.oid = create_hash(switch_id);
+    //
+    //    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    //    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+    //
+    //    EXPECT_TRUE(g_meta->getObjectReferenceCount(attr.value.oid) == 1);
+
+    // object id with allowed null
+
+    // null oid
+    attr.id = SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // wrong object
+    attr.id = SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP;
+    status = g_meta->create(SAI_OBJECT_TYPE_LAG, &attr.value.oid, switch_id, 0, NULL);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    // good object
+    attr.id = SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP;
+
+    sai_attribute_t a[2] = { };
+    a[0].id = SAI_QOS_MAP_ATTR_TYPE;
+    a[0].value.s32 = 1;
+    a[1].id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
+    status = g_meta->create(SAI_OBJECT_TYPE_QOS_MAP, &attr.value.oid, switch_id, 2, a);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_object_id_t oid = attr.value.oid;
+
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    EXPECT_TRUE(g_meta->getObjectReferenceCount(attr.value.oid) == 1);
+
+    attr.id = SAI_SWITCH_ATTR_QOS_DOT1P_TO_TC_MAP;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+    status = g_meta->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // check if it was decreased
+    EXPECT_TRUE(g_meta->getObjectReferenceCount(oid) == 0);
+
+    remove_switch(switch_id);
+}
+
+TEST(Legacy, switch_get)
+{
+    SWSS_LOG_ENTER();
+
+    clear_local();
+
+    sai_status_t    status;
+    sai_attribute_t attr;
+
+    sai_object_id_t switch_id = create_switch();
+
+    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 0, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1000, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, NULL);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, NULL);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    attr.id = -1;
+    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    attr.value.u32 = 0;
+    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_attribute_t attr1;
+    attr1.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+
+    sai_attribute_t attr2;
+    attr2.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+    sai_attribute_t list[2] = { attr1, attr2 };
+
+    status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 2, list);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    remove_switch(switch_id);
+}
+
+TEST(Legacy, serialization_type_vlan_list)
+{
+    SWSS_LOG_ENTER();
+
+    clear_local();
+
+    sai_status_t    status;
+
+    SWSS_LOG_NOTICE("create stp");
+    sai_object_id_t switch_id = create_switch();
+
+    sai_object_id_t stp = create_stp(switch_id);
+
+    sai_vlan_id_t list[2] = { 1, 2 };
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_STP_ATTR_VLAN_LIST;
+    attr.value.vlanlist.count = 2;
+    attr.value.vlanlist.list = list;
+
+    SWSS_LOG_NOTICE("set vlan list");
+
+    status = g_meta->set(SAI_OBJECT_TYPE_STP, stp, &attr);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("get vlan list");
+
+    status = g_meta->get(SAI_OBJECT_TYPE_STP, stp, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("remove stp");
+
+    status = g_meta->remove(SAI_OBJECT_TYPE_STP, stp);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    remove_switch(switch_id);
+}
+
+TEST(Legacy, serialization_type_bool)
+{
+    SWSS_LOG_ENTER();
+
+    clear_local();
+
+    sai_status_t    status;
+
+    sai_object_id_t vr;
+
+    SWSS_LOG_NOTICE("create stp");
+    sai_object_id_t switch_id = create_switch();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_VIRTUAL_ROUTER_ATTR_ADMIN_V4_STATE;
+    attr.value.booldata = true;
+
+    status = g_meta->create(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, &vr, switch_id, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("set bool");
+
+    status = g_meta->set(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, vr, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("get bool");
+
+    status = g_meta->get(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, vr, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("remove vr");
+
+    status = g_meta->remove(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, vr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    remove_switch(switch_id);
+}
+
+TEST(Legacy, serialization_type_char)
+{
+    SWSS_LOG_ENTER();
+
+    clear_local();
+
+    sai_status_t    status;
+
+    sai_object_id_t hostif;
+
+    SWSS_LOG_NOTICE("create port");
+    sai_object_id_t switch_id = create_switch();
+
+    sai_object_id_t port = create_port(switch_id);
+
+    sai_attribute_t attr, attr2, attr3;
+
+    attr.id = SAI_HOSTIF_ATTR_TYPE;
+    attr.value.s32 = SAI_HOSTIF_TYPE_NETDEV;
+
+    attr2.id = SAI_HOSTIF_ATTR_OBJ_ID;
+    attr2.value.oid = port;
+
+    attr3.id = SAI_HOSTIF_ATTR_NAME;
+
+    memcpy(attr3.value.chardata, "foo", sizeof("foo"));
+
+    sai_attribute_t list[3] = { attr, attr2, attr3 };
+
+    // TODO we need to support conditions here
+
+    SWSS_LOG_NOTICE("create hostif");
+
+    status = g_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif, switch_id, 3, list);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("set char");
+
+    status = g_meta->set(SAI_OBJECT_TYPE_HOSTIF, hostif, &attr3);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("get char");
+
+    status = g_meta->get(SAI_OBJECT_TYPE_HOSTIF, hostif, 1, &attr3);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("remove hostif");
+
+    status = g_meta->remove(SAI_OBJECT_TYPE_HOSTIF, hostif);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    attr.id = SAI_HOSTIF_ATTR_TYPE;
+    attr.value.s32 = SAI_HOSTIF_TYPE_FD;
+
+    sai_attribute_t list2[1] = { attr };
+
+    SWSS_LOG_NOTICE("create hostif with non mandatory");
+    status = g_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif, switch_id, 1, list2);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // TODO this test should pass, we are doing query here for conditional
+    // attribute, where condition is not met so this attribute will not be used, so
+    // metadata should figure out that we can't query this attribute, but there is
+    // a problem with internal existing objects, since we don't have their values
+    // then we we can't tell whether attribute was passed or not, we need to get
+    // switch discovered objects and attributes and populate local db then we need
+    // to update metadata condition in meta_generic_validation_get method where we
+    // check if attribute is conditional
+    //
+    //    SWSS_LOG_NOTICE("get char");
+    //
+    //    status = g_meta->get(SAI_OBJECT_TYPE_HOSTIF, hostif, 1, &attr2);
+    //    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    attr.id = SAI_HOSTIF_ATTR_TYPE;
+    attr.value.s32 = SAI_HOSTIF_TYPE_NETDEV;
+
+    sai_attribute_t list3[1] = { attr };
+
+    SWSS_LOG_NOTICE("create hostif with mandatory missing");
+    status = g_meta->create(SAI_OBJECT_TYPE_HOSTIF, &hostif, switch_id, 1, list3);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
+
+    remove_switch(switch_id);
+}
+
+TEST(Legacy, serialization_type_int32_list)
+{
+    SWSS_LOG_ENTER();
+
+    clear_local();
+
+    sai_status_t    status;
+
+    sai_object_id_t hash;
+
+    sai_attribute_t attr;
+
+    SWSS_LOG_NOTICE("create hash");
+    sai_object_id_t switch_id = create_switch();
+
+    int32_t list[2] =  { SAI_NATIVE_HASH_FIELD_SRC_IP, SAI_NATIVE_HASH_FIELD_VLAN_ID };
+
+    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    attr.value.s32list.count = 2;
+    attr.value.s32list.list = list;
+
+    status = g_meta->create(SAI_OBJECT_TYPE_HASH, &hash, switch_id, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("set hash");
+
+    status = g_meta->set(SAI_OBJECT_TYPE_HASH, hash, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("get hash");
+
+    status = g_meta->get(SAI_OBJECT_TYPE_HASH, hash, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("remove hash");
+
+    status = g_meta->remove(SAI_OBJECT_TYPE_HASH, hash);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    remove_switch(switch_id);
+}
+
+TEST(Legacy, test_serialization_type_uint32_list)
+{
+    SWSS_LOG_ENTER();
+
+    clear_local();
+
+    sai_status_t    status;
+
+    sai_object_id_t hash;
+
+    sai_attribute_t attr;
+
+    SWSS_LOG_NOTICE("create hash");
+    sai_object_id_t switch_id = create_switch();
+
+    int32_t list[2] =  { SAI_NATIVE_HASH_FIELD_SRC_IP, SAI_NATIVE_HASH_FIELD_VLAN_ID };
+
+    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    attr.value.s32list.count = 2;
+    attr.value.s32list.list = list;
+
+    status = g_meta->create(SAI_OBJECT_TYPE_HASH, &hash, switch_id, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("set hash");
+
+    status = g_meta->set(SAI_OBJECT_TYPE_HASH, hash, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("get hash");
+
+    status = g_meta->get(SAI_OBJECT_TYPE_HASH, hash, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    SWSS_LOG_NOTICE("remove hash");
+
+    status = g_meta->remove(SAI_OBJECT_TYPE_HASH, hash);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    remove_switch(switch_id);
+}
+
+TEST(Legacy, mask)
+{
+    SWSS_LOG_ENTER();
+
+    sai_ip6_t ip6mask1 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0x00};
+    sai_ip6_t ip6mask2 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0xff};
+    sai_ip6_t ip6mask3 = {0x00, 0x00, 0x00, 0x00,0x00, 0x00, 0x00,0x00, 0x00, 0x00, 0x00, 0x00,0x00,0x00,0x00,0x00};
+    sai_ip6_t ip6mask4 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0xfe};
+    sai_ip6_t ip6mask5 = {0x80, 0x00, 0x00, 0x00,0x00, 0x00, 0x00,0x00, 0x00, 0x00, 0x00, 0x00,0x00,0x00,0x00,0x00};
+
+    sai_ip6_t ip6mask6 = {0x01, 0x00, 0x00, 0x00,0x00, 0x00, 0x00,0x00, 0x00, 0x00, 0x00, 0x00,0x00,0x00,0x00,0x00};
+    sai_ip6_t ip6mask7 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0x8f};
+    sai_ip6_t ip6mask8 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xff, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0x8f};
+    sai_ip6_t ip6mask9 = {0xff, 0xff, 0xff, 0xff,0xff, 0xff, 0xff,0xf1, 0xff, 0xff, 0xff, 0xff,0xff,0xff,0xff,0xff};
+
+    EXPECT_TRUE(Meta::is_ipv6_mask_valid(ip6mask1));
+    EXPECT_TRUE(Meta::is_ipv6_mask_valid(ip6mask2));
+    EXPECT_TRUE(Meta::is_ipv6_mask_valid(ip6mask3));
+    EXPECT_TRUE(Meta::is_ipv6_mask_valid(ip6mask4));
+    EXPECT_TRUE(Meta::is_ipv6_mask_valid(ip6mask5));
+
+    EXPECT_TRUE(!Meta::is_ipv6_mask_valid(ip6mask6));
+    EXPECT_TRUE(!Meta::is_ipv6_mask_valid(ip6mask7));
+    EXPECT_TRUE(!Meta::is_ipv6_mask_valid(ip6mask8));
+    EXPECT_TRUE(!Meta::is_ipv6_mask_valid(ip6mask9));
+}
+
+TEST(Legacy, acl_entry_field_and_action)
 {
     SWSS_LOG_ENTER();
 
@@ -875,7 +797,7 @@ void test_acl_entry_field_and_action()
     SWSS_LOG_NOTICE("create acl entry");
 
     status = g_meta->create(SAI_OBJECT_TYPE_ACL_ENTRY, &aclentry, switch_id, (uint32_t)vattrs.size(), vattrs.data());
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     for (uint32_t i = 0; i < sizeof(ids)/sizeof(int32_t); ++i)
     {
@@ -887,23 +809,23 @@ void test_acl_entry_field_and_action()
         SWSS_LOG_NOTICE("set aclentry %u %s", i, m->attridname);
 
         status = g_meta->set(SAI_OBJECT_TYPE_ACL_ENTRY, aclentry, &vattrs[i]);
-        META_ASSERT_SUCCESS(status);
+        EXPECT_EQ(SAI_STATUS_SUCCESS, status);
     }
 
     SWSS_LOG_NOTICE("get aclentry");
 
     status = g_meta->get(SAI_OBJECT_TYPE_ACL_ENTRY, aclentry, (uint32_t)vattrs.size(), vattrs.data());
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     SWSS_LOG_NOTICE("remove aclentry");
 
     status = g_meta->remove(SAI_OBJECT_TYPE_ACL_ENTRY, aclentry);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     remove_switch(switch_id);
 }
 
-void test_construct_key()
+TEST(Legacy, construct_key)
 {
     SWSS_LOG_ENTER();
 
@@ -927,34 +849,10 @@ void test_construct_key()
 
     SWSS_LOG_NOTICE("constructed key: %s", key.c_str());
 
-    META_ASSERT_TRUE(key == "oid:0x21000000000000;SAI_PORT_ATTR_HW_LANE_LIST:1,2,3,4;");
+    EXPECT_TRUE(key == "oid:0x21000000000000;SAI_PORT_ATTR_HW_LANE_LIST:1,2,3,4;");
 }
 
-static sai_object_id_t create_scheduler_group(
-    _In_ sai_object_id_t switch_id)
-{
-    SWSS_LOG_ENTER();
-
-    sai_object_id_t sg;
-
-    sai_attribute_t attrs[9] = { };
-
-    attrs[0].id = SAI_SCHEDULER_GROUP_ATTR_PORT_ID;
-    attrs[0].value.oid = create_port(switch_id);
-    attrs[1].id = SAI_SCHEDULER_GROUP_ATTR_LEVEL;
-    attrs[1].value.u8 = 0;
-    attrs[2].id = SAI_SCHEDULER_GROUP_ATTR_MAX_CHILDS;
-    attrs[2].value.u8 = 1;
-    attrs[3].id = SAI_SCHEDULER_GROUP_ATTR_PARENT_NODE;
-    attrs[3].value.oid = attrs[0].value.oid;
-
-    auto status = g_meta->create(SAI_OBJECT_TYPE_SCHEDULER_GROUP, &sg, switch_id, 4, attrs);
-    META_ASSERT_SUCCESS(status);
-
-    return sg;
-}
-
-void test_queue_create()
+TEST(Legacy, queue_create)
 {
     SWSS_LOG_ENTER();
 
@@ -988,24 +886,24 @@ void test_queue_create()
 
     SWSS_LOG_NOTICE("create queue");
     status = g_meta->create(SAI_OBJECT_TYPE_QUEUE, &queue, switch_id, 4, list);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     SWSS_LOG_NOTICE("create queue but key exists");
     status = g_meta->create(SAI_OBJECT_TYPE_QUEUE, &queue, switch_id, 4, list);
-    META_ASSERT_FAIL(status);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
 
     SWSS_LOG_NOTICE("remove queue");
     status = g_meta->remove(SAI_OBJECT_TYPE_QUEUE, queue);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     SWSS_LOG_NOTICE("create queue");
     status = g_meta->create(SAI_OBJECT_TYPE_QUEUE, &queue, switch_id, 4, list);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     remove_switch(switch_id);
 }
 
-void test_null_list()
+TEST(Legacy, null_list)
 {
     SWSS_LOG_ENTER();
 
@@ -1026,18 +924,18 @@ void test_null_list()
 
     SWSS_LOG_NOTICE("0 count, not null list");
     status = g_meta->create(SAI_OBJECT_TYPE_HASH, &hash, switch_id, 1, &attr);
-    META_ASSERT_FAIL(status);
+    EXPECT_NE(SAI_STATUS_SUCCESS, status);
 
     attr.value.s32list.list = NULL;
 
     SWSS_LOG_NOTICE("0 count, null list");
     status = g_meta->create(SAI_OBJECT_TYPE_HASH, &hash, switch_id, 1, &attr);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     remove_switch(switch_id);
 }
 
-void test_priority_group()
+TEST(Legacy, priority_group)
 {
     SWSS_LOG_ENTER();
 
@@ -1056,20 +954,12 @@ void test_priority_group()
     attr.id = SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE;
     attr.value.oid = SAI_NULL_OBJECT_ID;
     status = g_meta->set(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, pg, &attr);
-    META_ASSERT_SUCCESS(status);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     remove_switch(switch_id);
 }
 
-#define ASSERT_TRUE(x,y)\
-    if ((x) != y) { std::cout << "assert true failed: '" << x << "' != '" << y << "'" << std::endl; throw; }
-
-#define ASSERT_FAIL(msg) \
-    { std::cout << "assert failed: " << msg << std::endl; throw; }
-
-
-
-void test_bulk_route_entry_create()
+TEST(Legacy, bulk_route_entry_create)
 {
     SWSS_LOG_ENTER();
 
@@ -1126,7 +1016,7 @@ void test_bulk_route_entry_create()
                 SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
                 statuses.data());
 
-        ASSERT_TRUE(status, SAI_STATUS_SUCCESS);
+        EXPECT_EQ(status, SAI_STATUS_SUCCESS);
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -1136,36 +1026,3 @@ void test_bulk_route_entry_create()
     std::cout << "ms: " << (double)us.count()/1000 << " / " << n << "/" << object_count << std::endl;
 }
 
-int main()
-{
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
-
-    SWSS_LOG_ENTER();
-
-    test_bulk_route_entry_create();
-
-    // serialize tests
-
-    // attributes tests
-
-    test_switch_set();
-    test_switch_get();
-
-
-
-    test_serialization_type_vlan_list();
-    test_serialization_type_bool();
-    test_serialization_type_char();
-    test_serialization_type_int32_list();
-    test_serialization_type_uint32_list();
-
-    test_mask();
-    test_acl_entry_field_and_action();
-    test_construct_key();
-    test_queue_create();
-    test_null_list();
-
-    test_priority_group();
-
-    std::cout << "SUCCESS" << std::endl;
-}
