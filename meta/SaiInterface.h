@@ -14,7 +14,7 @@ extern "C" {
     _X(NEIGHBOR_ENTRY,neighbor_entry);      \
     _X(ROUTE_ENTRY,route_entry);            \
     _X(NAT_ENTRY,nat_entry);                \
-    _X(MY_SID_ENTRY,my_sid_entry);                \
+    _X(MY_SID_ENTRY,my_sid_entry);          \
 
 #define SAIREDIS_DECLARE_EVERY_BULK_ENTRY(_X)   \
     _X(FDB_ENTRY,fdb_entry);                    \
