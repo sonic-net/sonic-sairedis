@@ -31,6 +31,5 @@ namespace sairedis
             uint32_t m_count;
 
             sai_bfd_session_state_notification_t *m_bfdSessionStateNotificationData;
-
     };
 }
