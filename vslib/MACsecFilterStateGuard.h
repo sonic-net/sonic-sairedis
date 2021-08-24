@@ -6,17 +6,17 @@ namespace saivs
 {
     class MACsecFilterStateGuard
     {
-    public:
+        public:
 
-        MACsecFilterStateGuard(
-            _Inout_ MACsecFilter::MACsecFilterState &guarded_state,
-            _In_ MACsecFilter::MACsecFilterState target_state);
+            MACsecFilterStateGuard(
+                    _Inout_ MACsecFilter::MACsecFilterState &guarded_state,
+                    _In_ MACsecFilter::MACsecFilterState target_state);
 
-        ~MACsecFilterStateGuard();
+            ~MACsecFilterStateGuard();
 
-    private:
+        private:
 
-        MACsecFilter::MACsecFilterState m_old_state;
-        MACsecFilter::MACsecFilterState &m_guarded_state;
+            MACsecFilter::MACsecFilterState m_old_state;
+            MACsecFilter::MACsecFilterState &m_guarded_state;
     };
 }

@@ -27,11 +27,11 @@ TrafficFilter::FilterStatus MACsecEgressFilter::forward(
         if (errno != ENETDOWN && errno != EIO)
         {
             SWSS_LOG_WARN(
-                "failed to write to macsec device %s fd %d, errno(%d): %s",
-                m_macsecInterfaceName.c_str(),
-                m_macsecfd,
-                errno,
-                strerror(errno));
+                    "failed to write to macsec device %s fd %d, errno(%d): %s",
+                    m_macsecInterfaceName.c_str(),
+                    m_macsecfd,
+                    errno,
+                    strerror(errno));
         }
 
         if (errno == EBADF)
@@ -40,9 +40,9 @@ TrafficFilter::FilterStatus MACsecEgressFilter::forward(
             // this action should not terminate the Main tap thread.
             // So just report a warning.
             SWSS_LOG_WARN(
-                "ending thread for macsec device %s fd %d",
-                m_macsecInterfaceName.c_str(),
-                m_macsecfd);
+                    "ending thread for macsec device %s fd %d",
+                    m_macsecInterfaceName.c_str(),
+                    m_macsecfd);
         }
     }
 
