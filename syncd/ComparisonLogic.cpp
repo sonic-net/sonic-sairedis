@@ -122,9 +122,11 @@ void ComparisonLogic::compareViews()
 
     applyViewTransition(current, temp);
 
+    transferNotProcessed(current, temp);
+
     // TODO have a method to check for not processed objects
     // and maybe add them to list on processing attributes
-    // and move note processed objects to temporay view as well
+    // and move note processed objects to temporary view as well
     // we need to check oid attributes as well
 
     SWSS_LOG_NOTICE("ASIC operations to execute: %zu", current.asicGetOperationsCount());
@@ -1635,6 +1637,21 @@ bool ComparisonLogic::performObjectSetTransition(
                             meta->attridname,
                             currentAttr->getStrAttrValue().c_str());
 
+                    // don't produce too much noise for queues
+                    if (currentAttr->getStrAttrId() != "SAI_QUEUE_ATTR_TYPE")
+                    {
+                        SWSS_LOG_WARN("current attr is CREATE_ONLY and object is MATCHED: %s transferring %s:%s to temp object",
+                                currentBestMatch->m_str_object_id.c_str(),
+                                meta->attridname,
+                                currentAttr->getStrAttrValue().c_str());
+                    }
+
+                    std::shared_ptr<SaiAttr> transferedAttr = std::make_shared<SaiAttr>(
+                            currentAttr->getStrAttrId(),
+                            currentAttr->getStrAttrValue());
+
+                    temporaryObj->setAttr(transferedAttr);
+
                     continue;
                 }
             }
@@ -2803,6 +2820,79 @@ void ComparisonLogic::createPreMatchMap(
             count);
 }
 
+void ComparisonLogic::transferNotProcessed(
+        _In_ AsicView& current,
+        _In_ AsicView& temp)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("calling transferNotProcessed");
+
+    /*
+     * It may happen that after performing view transition, some objects will
+     * not be processed. This may happen is scenario where buffer pool is
+     * assigned to buffer profile, and then buffer profile is assigned to
+     * queue.  If OA will query only for oid for that buffer profile, then
+     * buffer pool will not be processed. Normally if it would be removed by
+     * comparison logic. More on this issue can be found on github:
+     * https://github.com/Azure/sonic-sairedis/issues/899
+     *
+     * So what we will do, we will transfer all not processed objects to
+     * temporary view with the same RID and VID. If nothing will happen to them,
+     * they will stay there until next warm boot where they will be removed.
+     */
+
+    /*
+     * We need a loop (or recursion) since not processed objects may have oid
+     * attributes as well.
+     */
+
+    while (current.getAllNotProcessedObjects().size())
+    {
+        SWSS_LOG_WARN("we have %zu not processed objects on current view, moving to temp view", current.getAllNotProcessedObjects().size());
+
+        for (const auto& obj: current.getAllNotProcessedObjects())
+        {
+            auto vid = obj->getVid();
+
+            auto rid =  current.m_vidToRid.at(vid);
+
+            /*
+             * We should have only oid objects here, since all non oid objects
+             * are leafs in graph and has been removed.
+             */
+
+            auto tmp = temp.createDummyExistingObject(rid, vid);
+
+            /*
+             * Move both objects to matched state since match oids was already
+             * called, and here we created some new objects that should be matched.
+             */
+
+            current.m_oOids.at(vid)->setObjectStatus(SAI_OBJECT_STATUS_FINAL);
+            temp.m_oOids.at(vid)->setObjectStatus(SAI_OBJECT_STATUS_FINAL);
+
+            SWSS_LOG_WARN("moved %s VID %s RID %s to temporary view, and marked FINAL",
+                    obj->m_str_object_type.c_str(),
+                    obj->m_str_object_id.c_str(),
+                    sai_serialize_object_id(rid).c_str());
+
+            for (auto& kvp: obj->getAllAttributes())
+            {
+                auto& sh = kvp.second;
+
+                auto attr = std::make_shared<SaiAttr>(sh->getStrAttrId(), sh->getStrAttrValue());
+
+                tmp->setAttr(attr);
+
+                SWSS_LOG_WARN(" * with attr: %s: %s",
+                        sh->getStrAttrId().c_str(),
+                        sh->getStrAttrValue().c_str());
+            }
+
+        }
+    }
+}
 
 void ComparisonLogic::applyViewTransition(
         _In_ AsicView &current,

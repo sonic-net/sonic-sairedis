@@ -58,6 +58,10 @@ namespace syncd
                     _In_ AsicView& current,
                     _In_ AsicView& temp);
 
+            void transferNotProcessed(
+                    _In_ AsicView& current,
+                    _In_ AsicView& temp);
+
             void checkInternalObjects(
                     _In_ const AsicView& cv,
                     _In_ const AsicView& tv);
