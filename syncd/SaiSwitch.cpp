@@ -53,6 +53,11 @@ SaiSwitch::SaiSwitch(
 
     helperDiscover();
 
+    if (warmBoot)
+    {
+        checkWarmBootDiscoveredRids();
+    }
+
     helperSaveDiscoveredObjectsToRedis();
 
     helperInternalOids();
@@ -69,11 +74,6 @@ SaiSwitch::SaiSwitch(
     if (getSwitchType() == SAI_SWITCH_TYPE_NPU)
     {
         saiGetMacAddress(m_default_mac_address);
-    }
-
-    if (warmBoot)
-    {
-        checkWarmBootDiscoveredRids();
     }
 }
 
@@ -1198,4 +1198,3 @@ void SaiSwitch::checkWarmBootDiscoveredRids()
     SWSS_LOG_NOTICE("all discovered RIDs are present in current RID2VID map for switch VID %s",
             sai_serialize_object_id(m_switch_vid).c_str());
 }
-
