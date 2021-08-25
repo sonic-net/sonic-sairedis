@@ -253,11 +253,6 @@ bool MACsecManager::delete_macsec_sa(
         }
     }
 
-    // The SA is the last one in this MACsec SC, delete the MACsec SC
-    if (get_macsec_sa_count(attr.m_macsecName, attr.m_direction, attr.m_sci) == 0)
-    {
-        return delete_macsec_sc(attr);
-    }
 
     return true;
 }

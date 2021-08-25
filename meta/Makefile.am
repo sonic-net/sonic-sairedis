@@ -33,6 +33,7 @@ libsaimeta_la_SOURCES = \
 				NotificationQueuePfcDeadlock.cpp \
 				NotificationSwitchShutdownRequest.cpp \
 				NotificationSwitchStateChange.cpp \
+				NotificationBfdSessionStateChange.cpp \
 				NumberOidIndexGenerator.cpp \
 				OidRefCounter.cpp \
 				PerformanceIntervalTimer.cpp \

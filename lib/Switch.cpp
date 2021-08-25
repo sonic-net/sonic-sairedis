@@ -108,6 +108,11 @@ void Switch::updateNotifications(
                     (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
                 break;
 
+            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
+                m_switchNotifications.on_bfd_session_state_change = 
+                    (sai_bfd_session_state_change_notification_fn)attr.value.ptr;
+                break;
+
             default:
                 SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
                 break;

@@ -4,6 +4,7 @@
 #include "NotificationQueuePfcDeadlock.h"
 #include "NotificationSwitchShutdownRequest.h"
 #include "NotificationSwitchStateChange.h"
+#include "NotificationBfdSessionStateChange.h"
 #include "sairediscommon.h"
 
 #include "swss/logger.h"
@@ -31,5 +32,10 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
     if (name == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_STATE_CHANGE)
         return std::make_shared<NotificationSwitchStateChange>(serializedNotification);
 
-    SWSS_LOG_THROW("unknown notification: '%s', FIXME", name.c_str());
+    if (name == SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE)
+        return std::make_shared<NotificationBfdSessionStateChange>(serializedNotification);
+
+    SWSS_LOG_ERROR("unknown notification: '%s', FIXME", name.c_str());
+
+    return nullptr;
 }

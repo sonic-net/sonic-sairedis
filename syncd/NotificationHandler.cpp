@@ -108,6 +108,10 @@ void NotificationHandler::updateNotificationsPointers(
                 attr.value.ptr = (void*)m_switchNotifications.on_queue_pfc_deadlock;
                 break;
 
+            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
+                attr.value.ptr = (void*)m_switchNotifications.on_bfd_session_state_change;
+                break;
+
             default:
 
                 SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
@@ -175,6 +179,17 @@ void NotificationHandler::onSwitchStateChange(
     auto s = sai_serialize_switch_oper_status(switch_id, switch_oper_status);
 
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_STATE_CHANGE, s);
+}
+
+void NotificationHandler::onBfdSessionStateChange(
+        _In_ uint32_t count,
+        _In_ const sai_bfd_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_bfd_session_state_ntf(count, data);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
 void NotificationHandler::enqueueNotification(

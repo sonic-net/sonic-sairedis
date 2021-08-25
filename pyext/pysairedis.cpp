@@ -103,6 +103,7 @@ static PyObject * py_port_state_change_notification = NULL;
 static PyObject * py_queue_pfc_deadlock_notification = NULL;
 static PyObject * py_switch_shutdown_request_notification = NULL;
 static PyObject * py_switch_state_change_notification = NULL;
+static PyObject * py_bfd_session_state_change_notification = NULL;
 
 void call_python(PyObject* callObject, PyObject* arglist)
 {
@@ -190,6 +191,21 @@ static void sai_switch_state_change_notification(
     Py_DECREF(arglist);
 }
 
+static void sai_bfd_session_state_change_notification(
+        _In_ uint32_t count,
+        _In_ const sai_bfd_session_state_notification_t *data)
+{
+    PyObject* obj = py_convert_sai_bfd_session_state_notification_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(iO)", count, obj);
+
+    call_python(py_bfd_session_state_change_notification, arglist);
+
+    Py_DECREF(obj);
+
+    Py_DECREF(arglist);
+}
+
 sai_pointer_t sai_get_notification_pointer(
         sai_attr_id_t id,
         PyObject*callback)
@@ -227,6 +243,11 @@ sai_pointer_t sai_get_notification_pointer(
             Py_XDECREF(py_queue_pfc_deadlock_notification);
             py_queue_pfc_deadlock_notification = callback;
             return (void*)&sai_queue_pfc_deadlock_notification;
+
+        case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
+            Py_XDECREF(py_bfd_session_state_change_notification);
+            py_bfd_session_state_change_notification = callback;
+            return (void*)&sai_bfd_session_state_change_notification;
 
         default:
             Py_XDECREF(callback);
