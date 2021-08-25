@@ -1184,8 +1184,11 @@ void SaiSwitch::checkWarmBootDiscoveredRids()
         if (rid2vid.find(rid) != rid2vid.end())
             continue;
 
-        SWSS_LOG_ERROR("RID %s is missing from current RID2VID map after WARM boot!",
-                sai_serialize_object_id(rid).c_str());
+        auto ot = m_vendorSai->objectTypeQuery(rid);
+
+        SWSS_LOG_ERROR("RID %s (%s) is missing from current RID2VID map after WARM boot!",
+                sai_serialize_object_id(rid).c_str(),
+                sai_serialize_object_type(ot).c_str());
 
         success = false;
     }
