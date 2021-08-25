@@ -205,6 +205,10 @@ std::string sai_serialize_queue_deadlock_ntf(
         _In_ uint32_t count,
         _In_ const sai_queue_deadlock_notification_data_t* deadlock_data);
 
+std::string sai_serialize_bfd_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_bfd_session_state_notification_t* bfd_session_state);
+
 // sairedis
 
 std::string sai_serialize(
@@ -341,6 +345,11 @@ void sai_deserialize_queue_deadlock_ntf(
         _Out_ uint32_t &count,
         _Out_ sai_queue_deadlock_notification_data_t** deadlock_data);
 
+void sai_deserialize_bfd_session_state_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_bfd_session_state_notification_t** bfdsession);
+
 // free methods
 
 void sai_deserialize_free_attribute_value(
@@ -360,6 +369,10 @@ void sai_deserialize_free_port_oper_status_ntf(
 void sai_deserialize_free_queue_deadlock_ntf(
         _In_ uint32_t count,
         _In_ sai_queue_deadlock_notification_data_t* deadlock_data);
+
+void sai_deserialize_free_bfd_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ sai_bfd_session_state_notification_t* bfdsessionstate);    
 
 void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,

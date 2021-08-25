@@ -81,6 +81,10 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ sai_port_oper_status_notification_t *data);
 
+            void process_on_bfd_session_state_change(
+                    _In_ uint32_t count,
+                    _In_ sai_bfd_session_state_notification_t *data);
+
             void process_on_switch_shutdown_request(
                     _In_ sai_object_id_t switch_rid);
 
@@ -96,6 +100,9 @@ namespace syncd
                     _In_ const std::string &data);
 
             void handle_port_state_change(
+                    _In_ const std::string &data);
+
+            void handle_bfd_session_state_change(
                     _In_ const std::string &data);
 
             void handle_switch_shutdown_request(
