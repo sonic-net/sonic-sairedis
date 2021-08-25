@@ -506,7 +506,7 @@ std::vector<std::shared_ptr<SaiObj>> AsicView::getAllNotProcessedObjects() const
  * @param[in] rid Real ID
  * @param[in] vid Virtual ID
  */
-void AsicView::createDummyExistingObject(
+std::shared_ptr<SaiObj> AsicView::createDummyExistingObject(
         _In_ sai_object_id_t rid,
         _In_ sai_object_id_t vid)
 {
@@ -540,6 +540,8 @@ void AsicView::createDummyExistingObject(
 
     m_ridToVid[rid] = vid;
     m_vidToRid[vid] = rid;
+
+    return o;
 }
 
 /**
