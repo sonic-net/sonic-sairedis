@@ -1006,6 +1006,14 @@ TEST(Legacy, bulk_route_entry_create)
 
     auto start = std::chrono::high_resolution_clock::now();
 
+    if (getenv("TEST_NO_PERF"))
+    {
+        object_count = 10;
+
+        std::cout << "disabling performance tests" << std::endl;
+    }
+
+
     for (int i = 0; i < n; i++)
     {
         auto status = g_meta->bulkCreate(
