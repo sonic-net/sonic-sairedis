@@ -706,12 +706,7 @@ sai_status_t Syncd::processGetStatsEvent(
 
     std::vector<swss::FieldValueTuple> entry;
 
-    if (SAI_STATUS_IS_ATTR_NOT_SUPPORTED(status) || SAI_STATUS_IS_ATTR_NOT_IMPLEMENTED(status)
-            || status == SAI_STATUS_NOT_SUPPORTED || status == SAI_STATUS_NOT_IMPLEMENTED)
-    {
-        SWSS_LOG_NOTICE("Getting stats on %s is not supported on the platform", key.c_str());
-    }
-    else if (status != SAI_STATUS_SUCCESS)
+    if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_NOTICE("Getting stats error");
     }
