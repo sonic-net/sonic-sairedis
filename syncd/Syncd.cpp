@@ -713,7 +713,7 @@ sai_status_t Syncd::processGetStatsEvent(
     }
     else if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Error occurred when getting stats on %s", key.c_str());
+        SWSS_LOG_NOTICE("Getting stats error");
     }
     else
     {
