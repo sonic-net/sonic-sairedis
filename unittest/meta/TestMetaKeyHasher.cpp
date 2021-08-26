@@ -73,16 +73,80 @@ TEST(MetaKeyHasher, operator_eq)
 TEST(MetaKeyHasher, operator_hash)
 {
     sai_object_meta_key_t ma;
+
+    memset(&ma, 0, sizeof(ma));
+
+    MetaKeyHasher mh;
+
+    ma.objecttype = SAI_OBJECT_TYPE_NAT_ENTRY;
+
+    EXPECT_EQ(mh.operator()(ma), 0);
+
+    ma.objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY;
+
+    EXPECT_EQ(mh.operator()(ma), 0);
+
+    ma.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;
+
+    EXPECT_EQ(mh.operator()(ma), 0);
+
+    ma.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
+
+    EXPECT_EQ(mh.operator()(ma), 0);
+
+    ma.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;
+    ma.objectkey.key.ipmc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+    ma.objectkey.key.ipmc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+
+    EXPECT_EQ(mh.operator()(ma), 0);
+
+    ma.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
+    ma.objectkey.key.l2mc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+    ma.objectkey.key.l2mc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+
+    EXPECT_EQ(mh.operator()(ma), 0);
+}
+
+TEST(MetaKeyHasher, operator_eq_l2mc)
+{
+    sai_object_meta_key_t ma;
     sai_object_meta_key_t mb;
 
     memset(&ma, 0, sizeof(ma));
     memset(&mb, 0, sizeof(mb));
 
-    ma.objecttype = SAI_OBJECT_TYPE_NAT_ENTRY;
-    mb.objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY;
+    ma.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
+    mb.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
+
+    ma.objectkey.key.l2mc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+    ma.objectkey.key.l2mc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+
+    mb.objectkey.key.l2mc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+    mb.objectkey.key.l2mc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
 
     MetaKeyHasher mh;
 
-    mh.operator()(ma);
-    mh.operator()(mb);
+    EXPECT_TRUE(mh.operator()(ma, mb));
+}
+
+TEST(MetaKeyHasher, operator_eq_ipck)
+{
+    sai_object_meta_key_t ma;
+    sai_object_meta_key_t mb;
+
+    memset(&ma, 0, sizeof(ma));
+    memset(&mb, 0, sizeof(mb));
+
+    ma.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;
+    mb.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;
+
+    ma.objectkey.key.ipmc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+    ma.objectkey.key.ipmc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+
+    mb.objectkey.key.ipmc_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+    mb.objectkey.key.ipmc_entry.source.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
+
+    MetaKeyHasher mh;
+
+    EXPECT_TRUE(mh.operator()(ma, mb));
 }
