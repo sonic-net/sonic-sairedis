@@ -1076,6 +1076,46 @@ TEST(SaiSerialize, serialize_qos_map)
     EXPECT_EQ(l.value.fc, 2);
 }
 
+TEST(SaiSerialize, serialize_map)
+{
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    attr.id = SAI_NEXT_HOP_GROUP_MAP_ATTR_MAP_TO_VALUE_LIST;
+
+    sai_map_t map = { .key = 1, .value = 11 };
+
+    attr.value.maplist.count = 1;
+    attr.value.maplist.list = &map;
+
+    meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MAP, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    std::string ret = "{\"count\":1,\"list\":[{\"key\":1,\"value\":11}]}";
+
+    EXPECT_EQ(s, ret);
+
+    s = sai_serialize_attr_value(*meta, attr, true);
+
+    std::string ret2 = "{\"count\":1,\"list\":null}";
+    EXPECT_EQ(s, ret2);
+
+    // deserialize
+
+    memset(&attr, 0, sizeof(attr));
+
+    sai_deserialize_attr_value(ret, *meta, attr);
+
+    EXPECT_EQ(attr.value.maplist.count, 1);
+
+    auto &l = attr.value.maplist.list[0];
+    EXPECT_EQ(l.key, 1);
+
+    EXPECT_EQ(l.value, 11);
+}
+
 template<typename T>
 static void deserialize_number(
         _In_ const std::string& s,

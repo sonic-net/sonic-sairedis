@@ -754,6 +754,11 @@ sai_status_t VirtualSwitchSaiInterface::objectTypeGetAvailability(
         }
         return SAI_STATUS_SUCCESS;
     }
+    else if (objectType == SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MAP)
+    {
+        *count = 512;
+        return SAI_STATUS_SUCCESS;
+    }
 
     return SAI_STATUS_NOT_SUPPORTED;
 }
