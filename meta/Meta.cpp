@@ -126,6 +126,18 @@ void Meta::dump() const
         std::cout << "oids: "  << m_oids.getAllOids().size() << std::endl;
         std::cout << "attrKeys: " << m_attrKeys.getAllKeys().size() << std::endl;
         std::cout << "saiObjectCollection: " << m_saiObjectCollection.getAllKeys().size() << std::endl;
+
+        for (auto &oid: m_oids.getAllReferences())
+        {
+            printf("oid: %s: count: %u",
+                    sai_serialize_object_id(oid.first).c_str(),
+                    oid.second);
+        }
+
+        for (auto &mk: m_saiObjectCollection.getAllKeys())
+        {
+            printf("objcollection: %s", sai_serialize_object_meta_key(mk).c_str());
+        }
     }
 }
 
