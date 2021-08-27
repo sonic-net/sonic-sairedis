@@ -112,6 +112,14 @@ jobs:
   - ${{ if eq(parameters.run_unit_test, true) }}:
     - script: |
         set -ex
+        git clone https://github.com/Spacetown/gcovr.git
+        cd gcovr/
+        git checkout origin/recursive_search_file
+        pip3 install setuptools
+        python3 setup.py install
+      displayName: "Install gcovr 5.0 with recursive fix"
+    - script: |
+        set -ex
         make check
         gcovr --version
         gcovr -r ./ -e ".+/saimetadata.c" -e ".+/json.hpp" -e "swss/.+" --exclude-unreachable-branches -x -o coverage.xml
