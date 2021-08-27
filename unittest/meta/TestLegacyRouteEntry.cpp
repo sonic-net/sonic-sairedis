@@ -239,6 +239,8 @@ TEST(LegacyRouteEntry, route_entry_set)
     sai_attribute_t attr;
     sai_object_id_t switch_id = create_switch();
 
+    memset(&attr, 0, sizeof(attr));
+
     sai_route_entry_t route_entry;
 
     sai_object_id_t vr = create_virtual_router(switch_id);
@@ -330,6 +332,8 @@ TEST(LegacyRouteEntry, route_entry_get)
     sai_status_t    status;
     sai_attribute_t attr;
     sai_object_id_t switch_id = create_switch();
+
+    memset(&attr, 0, sizeof(attr));
 
     sai_route_entry_t route_entry;
 

@@ -186,8 +186,6 @@ static sai_object_id_t create_scheduler_group(
     return sg;
 }
 
-
-
 // ACTUAL TESTS
 
 TEST(Legacy, switch_set)
@@ -198,6 +196,8 @@ TEST(Legacy, switch_set)
 
     sai_status_t    status;
     sai_attribute_t attr;
+
+    memset(&attr, 0, sizeof(attr));
 
     sai_object_id_t switch_id = create_switch();
 
@@ -331,6 +331,8 @@ TEST(Legacy, switch_get)
 
     sai_status_t    status;
     sai_attribute_t attr;
+
+    memset(&attr, 0, sizeof(attr));
 
     sai_object_id_t switch_id = create_switch();
 

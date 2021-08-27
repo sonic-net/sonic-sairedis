@@ -233,6 +233,8 @@ TEST(LegacyFdbEntry, fdb_entry_set)
     sai_status_t    status;
     sai_attribute_t attr;
 
+    memset(&attr, 0, sizeof(attr));
+
     sai_fdb_entry_t fdb_entry = create_fdb_entry();
 
     //status = g_meta->create(&fdb_entry, 0, 0);
@@ -287,6 +289,8 @@ TEST(LegacyFdbEntry, fdb_entry_get)
 
     sai_status_t    status;
     sai_attribute_t attr;
+
+    memset(&attr, 0, sizeof(attr));
 
     sai_fdb_entry_t fdb_entry = create_fdb_entry();
 
