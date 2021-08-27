@@ -141,6 +141,8 @@ TEST(LegacyVlan, vlan_set)
 
     sai_attribute_t attr;
 
+    memset(&attr, 0, sizeof(attr));
+
     sai_attribute_t vlan1_att;
     vlan1_att.id = SAI_VLAN_ATTR_VLAN_ID;
     vlan1_att.value.u16 = 1;
@@ -246,6 +248,8 @@ TEST(LegacyVlan, vlan_get)
     sai_status_t status;
 
     sai_attribute_t attr;
+
+    memset(&attr, 0, sizeof(attr));
 
     sai_attribute_t vlan1_att;
     vlan1_att.id = SAI_VLAN_ATTR_VLAN_ID;

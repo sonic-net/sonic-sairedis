@@ -129,18 +129,17 @@ void Meta::dump() const
 
         for (auto &oid: m_oids.getAllReferences())
         {
-            printf("oid: %s: count: %u",
+            printf("oid: %s: count: %u\n",
                     sai_serialize_object_id(oid.first).c_str(),
                     oid.second);
         }
 
         for (auto &mk: m_saiObjectCollection.getAllKeys())
         {
-            printf("objcollection: %s", sai_serialize_object_meta_key(mk).c_str());
+            printf("objcollection: %s\n", sai_serialize_object_meta_key(mk).c_str());
         }
     }
 }
-
 
 sai_status_t Meta::remove(
         _In_ sai_object_type_t object_type,
