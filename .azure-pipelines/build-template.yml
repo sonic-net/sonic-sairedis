@@ -118,7 +118,7 @@ jobs:
         sudo pip3 install setuptools
         sudo python3 setup.py install
         cd ..
-        rm -rf gcovr
+        sudo rm -rf gcovr
       displayName: "Install gcovr 5.0 with recursive fix"
     - script: |
         set -ex
