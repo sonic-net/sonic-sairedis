@@ -368,7 +368,6 @@ static inline std::size_t sai_get_hash(
         return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
     }
 
-
     SWSS_LOG_THROW("unknown ipmc entry IP addr family: %d", ie.destination.addr_family);
 }
 

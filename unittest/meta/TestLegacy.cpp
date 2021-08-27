@@ -52,6 +52,11 @@ namespace TestLegacy
         auto status = g_meta->remove(SAI_OBJECT_TYPE_SWITCH, switchId);
 
         EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+        
+        if (g_meta->isEmpty() == false)
+        {
+            g_meta->dump();
+        }
 
         EXPECT_TRUE(g_meta->isEmpty());
     }
