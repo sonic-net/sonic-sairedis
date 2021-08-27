@@ -103,7 +103,7 @@ jobs:
   - script: |
       set -en
       ./autogen.sh
-      fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary && cp ../*.deb .
+      fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs && cp ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
       sudo cp azsyslog.conf /etc/rsyslog.conf
@@ -113,7 +113,7 @@ jobs:
     - script: |
         set -ex
         make check
-        gcovr -r ./ -x -o coverage.xml
+        gcovr -r ./ -e ".+/saimetadata.c" -e ".+/json.hpp" -e "swss/.+" --exclude-unreachable-branches  --exclude-throw-branches -x -o coverage.xml
         mkdir -p htmlcov
         gcovr -r ./ --html --html-details -e ".+/saimetadata.c" -e ".+/json.hpp" -e "swss/.+" --exclude-unreachable-branches  --exclude-throw-branches -o htmlcov/index.html
       displayName: "Run sonic sairedis unit tests"
