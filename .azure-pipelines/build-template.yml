@@ -115,8 +115,8 @@ jobs:
         git clone https://github.com/Spacetown/gcovr.git
         cd gcovr/
         git checkout origin/recursive_search_file
-        pip3 install setuptools
-        python3 setup.py install
+        sudo pip3 install setuptools
+        sudo python3 setup.py install
       displayName: "Install gcovr 5.0 with recursive fix"
     - script: |
         set -ex
