@@ -106,7 +106,7 @@ void Meta::meta_init_db()
     SWSS_LOG_NOTICE("end");
 }
 
-bool Meta::isEmpty()
+bool Meta::isEmpty() const
 {
     SWSS_LOG_ENTER();
 
@@ -115,6 +115,20 @@ bool Meta::isEmpty()
         && m_attrKeys.getAllKeys().empty()
         && m_saiObjectCollection.getAllKeys().empty();
 }
+
+void Meta::dump() const
+{
+    SWSS_LOG_ENTER();
+
+    if (isEmpty() == false)
+    {
+        std::cout << "portRelatedSet: " << m_portRelatedSet.getAllPorts().size() << std::endl;
+        std::cout << "oids: "  << m_oids.getAllOids().size() << std::endl;
+        std::cout << "attrKeys: " << m_attrKeys.getAllKeys().size() << std::endl;
+        std::cout << "saiObjectCollection: " << m_saiObjectCollection.getAllKeys().size() << std::endl;
+    }
+}
+
 
 sai_status_t Meta::remove(
         _In_ sai_object_type_t object_type,
