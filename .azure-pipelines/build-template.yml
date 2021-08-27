@@ -115,8 +115,6 @@ jobs:
         make check
         gcovr --version
         gcovr -r ./ -e ".+/saimetadata.c" -e ".+/json.hpp" -e "swss/.+" --exclude-unreachable-branches -x -o coverage.xml
-        mkdir -p htmlcov
-        gcovr -r ./ --html --html-details -e ".+/saimetadata.c" -e ".+/json.hpp" -e "swss/.+" --exclude-unreachable-branches -o htmlcov/index.html
       displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}
@@ -134,7 +132,6 @@ jobs:
         inputs:
             codeCoverageTool: Cobertura
             summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
-            reportDirectory: '$(System.DefaultWorkingDirectory)/common/htmlcov/'
         displayName: 'Publish test coverage'
   - script: |
       pwd
