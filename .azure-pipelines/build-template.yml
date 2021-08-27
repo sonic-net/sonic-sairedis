@@ -101,7 +101,7 @@ jobs:
   - checkout: self
     submodules: true
   - script: |
-      set -en
+      set -ex
       ./autogen.sh
       fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs && cp ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
