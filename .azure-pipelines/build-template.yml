@@ -113,6 +113,7 @@ jobs:
     - script: |
         set -ex
         make check
+        gcovr --version
         gcovr -r ./ -e ".+/saimetadata.c" -e ".+/json.hpp" -e "swss/.+" --exclude-unreachable-branches -x -o coverage.xml
         mkdir -p htmlcov
         gcovr -r ./ --html --html-details -e ".+/saimetadata.c" -e ".+/json.hpp" -e "swss/.+" --exclude-unreachable-branches -o htmlcov/index.html
