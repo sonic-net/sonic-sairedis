@@ -124,7 +124,7 @@ jobs:
         set -ex
         make check
         gcovr --version
-        gcovr -r ./ -e ".+/saimetadata.c" -e ".+/json.hpp" -e "swss/.+" --exclude-unreachable-branches -x -o coverage.xml
+        gcovr -r ./ -e ".+/saimetadata.c" -e ".+/json.hpp" -e "swss/.+" --exclude-unreachable-branches --exclude-throw-branches -x -o coverage.xml
       displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}
