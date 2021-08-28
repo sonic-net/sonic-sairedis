@@ -35,7 +35,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: armhf
-      timeout: 180
+      timeout: 240
       pool: sonicbld
       sonic_slave: sonic-slave-buster-armhf
       swss_common_artifact_name: sonic-swss-common.armhf
@@ -45,7 +45,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: arm64
-      timeout: 180
+      timeout: 240
       pool: sonicbld
       sonic_slave: sonic-slave-buster-arm64
       swss_common_artifact_name: sonic-swss-common.arm64
