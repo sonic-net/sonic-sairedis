@@ -370,20 +370,16 @@ TEST(LegacyVlan, vlan_flow)
 
     sai_object_id_t vlan_id;
 
-    sai_attribute_t at;
-    at.id = SAI_VLAN_ATTR_VLAN_ID;
-    at.value.u16 = 2;
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 2;
     sai_object_id_t switch_id = create_switch();
-
-    status = g_meta->create(SAI_OBJECT_TYPE_VLAN, &vlan_id, switch_id, 1, &at);
-    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     sai_object_id_t stp = create_stp(switch_id);
 
     SWSS_LOG_NOTICE("create");
 
     attr.id = SAI_VLAN_ATTR_VLAN_ID;
-    at.value.u16 = 2;
+    attr.value.u16 = 2;
 
     SWSS_LOG_NOTICE("correct");
     status = g_meta->create(SAI_OBJECT_TYPE_VLAN, &vlan_id, switch_id, 1, &attr);
