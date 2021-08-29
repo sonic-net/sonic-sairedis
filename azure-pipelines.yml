@@ -27,6 +27,7 @@ stages:
       artifact_name: sonic-sairedis
       syslog_artifact_name: sonic-sairedis.syslog
       run_unit_test: true
+      archive_gcov: true
 
 - stage: BuildArm
   dependsOn: Build
