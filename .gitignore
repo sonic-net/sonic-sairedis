@@ -88,8 +88,8 @@ deps/
 # Executables #
 ###############
 lib/tests
-vslib/tests
 meta/tests
+saiasiccmp/saiasiccmp
 saidiscovery/saidiscovery
 saidump/saidump
 saiplayer/saiplayer
@@ -97,10 +97,16 @@ saisdkdump/saisdkdump
 syncd/syncd
 syncd/syncd_request_shutdown
 tests/syncd
-tests/vssyncd
-saiasiccmp/saiasiccmp
-tests/tests
 tests/testclient
+tests/tests
+tests/vssyncd
+unittest/lib/tests
+unittest/lib/testslibsairedis
+unittest/meta/tests
+unittest/syncd/tests
+unittest/vslib/tests
+unittest/vslib/testslibsaivs
+vslib/tests
 
 # Temporary files #
 ###################

@@ -161,7 +161,9 @@ namespace saimeta
 
             void meta_init_db();
 
-            bool isEmpty();
+            bool isEmpty() const;
+
+            void dump() const;
 
         public: // notifications
 

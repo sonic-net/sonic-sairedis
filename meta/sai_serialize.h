@@ -129,6 +129,26 @@ std::string sai_serialize_hex_binary(
         _In_ const void *buffer,
         _In_ size_t length);
 
+void sai_deserialize_system_port_config_list(
+        _In_ const std::string& s,
+        _Out_ sai_system_port_config_list_t& sysportconfiglist,
+        _In_ bool countOnly);
+
+std::string sai_serialize_chardata(
+        _In_ const char data[32]);
+
+std::string sai_serialize_oid_list(
+        _In_ const sai_object_list_t &list,
+        _In_ bool countOnly);
+
+std::string sai_serialize_system_port_config_list(
+        _In_ const sai_attr_metadata_t &meta,
+        _In_ const sai_system_port_config_list_t& sysportconfiglist,
+        _In_ bool countOnly);
+
+std::string sai_serialize_queue_deadlock_event(
+        _In_ sai_queue_pfc_deadlock_event_type_t event);
+
 template <typename T>
 std::string sai_serialize_hex_binary(
         _In_ const T &value)
@@ -258,6 +278,14 @@ void sai_deserialize_api(
         _In_ const std::string& s,
         _Out_ sai_api_t& api);
 
+void sai_deserialize_ipmc_entry_type(
+        _In_ const std::string& s,
+        _Out_ sai_ipmc_entry_type_t& type);
+
+void sai_deserialize_l2mc_entry_type(
+        _In_ const std::string& s,
+        _Out_ sai_l2mc_entry_type_t& type);
+
 void sai_deserialize_fdb_entry(
         _In_ const std::string& s,
         _In_ sai_fdb_entry_t &fdb_entry);
@@ -327,6 +355,18 @@ void sai_deserialize_ip_prefix(
 void sai_deserialize_mac(
         _In_ const std::string& s,
         _Out_ sai_mac_t& mac);
+
+void sai_deserialize_ipv4(
+        _In_ const std::string& s,
+        _Out_ sai_ip4_t& ipaddr);
+
+void sai_deserialize_ipv6(
+        _In_ const std::string& s,
+        _Out_ sai_ip6_t& ipaddr);
+
+void sai_deserialize_chardata(
+        _In_ const std::string& s,
+        _Out_ char chardata[32]);
 
 // deserialize notifications
 

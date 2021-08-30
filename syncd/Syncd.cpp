@@ -709,7 +709,7 @@ sai_status_t Syncd::processGetStatsEvent(
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to get stats");
+        SWSS_LOG_NOTICE("Getting stats error: %s", sai_serialize_status(status).c_str());
     }
     else
     {

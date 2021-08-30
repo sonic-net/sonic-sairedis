@@ -98,6 +98,9 @@ WRED
 Werror
 ZMQ
 acl
+aclaction
+aclfield
+addr
 apache
 api
 API
@@ -206,6 +209,7 @@ hasEqualAttribute
 hostif
 hpp
 HSV
+htonl
 http
 https
 hw
