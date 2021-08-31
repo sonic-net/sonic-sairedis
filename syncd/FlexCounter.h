@@ -185,7 +185,16 @@ namespace syncd
             bool isBufferPoolCounterSupported(
                     _In_ sai_buffer_pool_stat_t counter) const;
 
+            bool isStatsModeSupported(
+                    uint32_t statsMode, sai_stats_mode_t statCapability);
+
         private: // update supported counters
+
+            sai_status_t querySupportedPortCounters(
+                    sai_object_id_t portRid);
+
+            void getSupportedPortCounters(
+                    sai_object_id_t portRid);
 
             void updateSupportedPortCounters(
                     _In_ sai_object_id_t portRid);
@@ -194,17 +203,45 @@ namespace syncd
                     _In_ sai_object_id_t portRid,
                     _In_ const std::vector<sai_port_stat_t> &counterIds);
 
+            sai_status_t querySupportedQueueCounters(
+                    sai_object_id_t queueId);
+
+            void getSupportedQueueCounters(
+                    sai_object_id_t queueId, const std::vector<sai_queue_stat_t> &counterIds);
+
             void updateSupportedQueueCounters(
                     _In_ sai_object_id_t queueRid,
                     _In_ const std::vector<sai_queue_stat_t> &counterIds);
 
+            sai_status_t querySupportedRifCounters(
+                    sai_object_id_t rifRid);
+
+            void getSupportedRifCounters(
+                    sai_object_id_t rifRid);
+
             void updateSupportedRifCounters(
                     _In_ sai_object_id_t rifRid);
+
+            sai_status_t querySupportedBufferPoolCounters(
+                    sai_object_id_t bufferPoolId,
+                    sai_stats_mode_t statsMode);
+
+            void getSupportedBufferPoolCounters(
+                    sai_object_id_t bufferPoolId,
+                    const std::vector<sai_buffer_pool_stat_t> &counterIds,
+                    sai_stats_mode_t statsMode);
 
             void updateSupportedBufferPoolCounters(
                     _In_ sai_object_id_t bufferPoolRid,
                     _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds,
                     _In_ sai_stats_mode_t statsMode);
+
+            sai_status_t querySupportedPriorityGroupCounters(
+                    sai_object_id_t priorityGroupRid);
+
+            void getSupportedPriorityGroupCounters(
+                    sai_object_id_t priorityGroupRid, 
+                    const std::vector<sai_ingress_priority_group_stat_t> &counterIds);
 
             void updateSupportedPriorityGroupCounters(
                     _In_ sai_object_id_t priorityGroupRid,

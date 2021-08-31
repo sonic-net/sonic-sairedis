@@ -247,6 +247,18 @@ sai_status_t ClientServerSai::getStats(
             counters);
 }
 
+sai_status_t ClientServerSai::queryStatsCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t ClientServerSai::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,

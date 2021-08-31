@@ -351,6 +351,16 @@ sai_status_t Sai::getStats(
             counters);
 }
 
+sai_status_t Sai::queryStatsCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t Sai::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,

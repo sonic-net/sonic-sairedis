@@ -886,6 +886,16 @@ sai_status_t ClientSai::getStats(
     return waitForGetStatsResponse(number_of_counters, counters);
 }
 
+sai_status_t ClientSai::queryStatsCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t ClientSai::waitForGetStatsResponse(
         _In_ uint32_t number_of_counters,
         _Out_ uint64_t *counters)
