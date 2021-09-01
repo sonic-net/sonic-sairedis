@@ -11,8 +11,11 @@ SaiObject::SaiObject(
     m_metaKey(metaKey)
 {
     SWSS_LOG_ENTER();
-
-    // empty
+ 
+    if (!sai_metadata_is_object_type_valid(metaKey.objecttype))
+    {
+        SWSS_LOG_THROW("invalid object type: %d", metaKey.objecttype);
+    }
 }
 
 sai_object_type_t SaiObject::getObjectType() const

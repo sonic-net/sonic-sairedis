@@ -23,6 +23,7 @@ libSaiVS_a_SOURCES = \
 					  LaneMap.cpp \
 					  LaneMapFileParser.cpp \
 					  MACsecAttr.cpp \
+					  MACsecFilterStateGuard.cpp \
 					  MACsecEgressFilter.cpp \
 					  MACsecFilter.cpp \
 					  MACsecForwarder.cpp \

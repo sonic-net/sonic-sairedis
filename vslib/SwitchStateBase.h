@@ -584,6 +584,8 @@ namespace saivs
 
             MACsecManager m_macsecManager;
 
+            std::unordered_map<sai_object_id_t, sai_object_id_t> m_macsecFlowPortMap;
+
         protected:
 
             constexpr static const int maxDebugCounters = 32;

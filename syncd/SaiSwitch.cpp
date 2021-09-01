@@ -53,6 +53,11 @@ SaiSwitch::SaiSwitch(
 
     helperDiscover();
 
+    if (warmBoot)
+    {
+        checkWarmBootDiscoveredRids();
+    }
+
     helperSaveDiscoveredObjectsToRedis();
 
     helperInternalOids();
@@ -69,11 +74,6 @@ SaiSwitch::SaiSwitch(
     if (getSwitchType() == SAI_SWITCH_TYPE_NPU)
     {
         saiGetMacAddress(m_default_mac_address);
-    }
-
-    if (warmBoot)
-    {
-        checkWarmBootDiscoveredRids();
     }
 }
 
@@ -1184,8 +1184,11 @@ void SaiSwitch::checkWarmBootDiscoveredRids()
         if (rid2vid.find(rid) != rid2vid.end())
             continue;
 
-        SWSS_LOG_ERROR("RID %s is missing from current RID2VID map after WARM boot!",
-                sai_serialize_object_id(rid).c_str());
+        auto ot = m_vendorSai->objectTypeQuery(rid);
+
+        SWSS_LOG_ERROR("RID %s (%s) is missing from current RID2VID map after WARM boot!",
+                sai_serialize_object_id(rid).c_str(),
+                sai_serialize_object_type(ot).c_str());
 
         success = false;
     }
@@ -1198,4 +1201,3 @@ void SaiSwitch::checkWarmBootDiscoveredRids()
     SWSS_LOG_NOTICE("all discovered RIDs are present in current RID2VID map for switch VID %s",
             sai_serialize_object_id(m_switch_vid).c_str());
 }
-

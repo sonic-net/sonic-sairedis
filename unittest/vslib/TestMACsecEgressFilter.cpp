@@ -47,5 +47,5 @@ TEST(MACsecEgressFilter, forward)
 
     filter.set_macsec_fd(70); // bad fd
 
-    EXPECT_EQ(filter.execute(packet, len), TrafficFilter::ERROR);
+    EXPECT_EQ(filter.execute(packet, len), TrafficFilter::TERMINATE);
 }

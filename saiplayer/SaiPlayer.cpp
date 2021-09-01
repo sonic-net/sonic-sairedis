@@ -89,6 +89,7 @@ SaiPlayer::SaiPlayer(
     m_sn.onQueuePfcDeadlock = std::bind(&SaiPlayer::onQueuePfcDeadlock, this, _1, _2);
     m_sn.onSwitchShutdownRequest = std::bind(&SaiPlayer::onSwitchShutdownRequest, this, _1);
     m_sn.onSwitchStateChange = std::bind(&SaiPlayer::onSwitchStateChange, this, _1, _2);
+    m_sn.onBfdSessionStateChange = std::bind(&SaiPlayer::onBfdSessionStateChange, this, _1, _2);
 
     m_switchNotifications= m_sn.getSwitchNotifications();
 }
@@ -159,6 +160,15 @@ void SaiPlayer::onFdbEvent(
 void SaiPlayer::onPortStateChange(
         _In_ uint32_t count,
         _In_ const sai_port_oper_status_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    // empty
+}
+
+void SaiPlayer::onBfdSessionStateChange(
+        _In_ uint32_t count,
+        _In_ const sai_bfd_session_state_notification_t *data)
 {
     SWSS_LOG_ENTER();
 
@@ -719,6 +729,10 @@ void SaiPlayer::update_notifications_pointers(
 
             case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
                 attr.value.ptr = (void*)m_switchNotifications.on_queue_pfc_deadlock;
+                break;
+
+            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
+                attr.value.ptr = (void*)m_switchNotifications.on_bfd_session_state_change;
                 break;
 
             default:

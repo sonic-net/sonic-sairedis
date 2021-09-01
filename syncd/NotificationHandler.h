@@ -56,6 +56,10 @@ namespace syncd
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_switch_oper_status_t switch_oper_status);
 
+            void onBfdSessionStateChange(
+                    _In_ uint32_t count,
+                    _In_ const sai_bfd_session_state_notification_t *data);
+
         private:
 
             void enqueueNotification(

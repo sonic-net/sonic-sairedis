@@ -33,15 +33,17 @@ libsaimeta_la_SOURCES = \
 				NotificationQueuePfcDeadlock.cpp \
 				NotificationSwitchShutdownRequest.cpp \
 				NotificationSwitchStateChange.cpp \
+				NotificationBfdSessionStateChange.cpp \
+				NumberOidIndexGenerator.cpp \
 				OidRefCounter.cpp \
 				PerformanceIntervalTimer.cpp \
 				PortRelatedSet.cpp \
 				RedisSelectableChannel.cpp \
-				SaiAttributeList.cpp \
 				SaiAttrWrapper.cpp \
+				SaiAttributeList.cpp \
 				SaiInterface.cpp \
-				SaiObjectCollection.cpp \
 				SaiObject.cpp \
+				SaiObjectCollection.cpp \
 				SaiSerialize.cpp \
 				SelectableChannel.cpp \
 				ZeroMQSelectableChannel.cpp
@@ -49,19 +51,3 @@ libsaimeta_la_SOURCES = \
 libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaimeta_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 libsaimeta_la_LIBADD = -lhiredis -lswsscommon libsaimetadata.la $(CODE_COVERAGE_LIBS)
-
-bin_PROGRAMS = tests
-
-tests_SOURCES = \
-				tests.cpp \
-				DummySaiInterface.cpp \
-				MetaTestSaiInterface.cpp \
-				NumberOidIndexGenerator.cpp \
-				../lib/VirtualObjectIdManager.cpp \
-				../lib/SwitchConfig.cpp \
-				../lib/SwitchConfigContainer.cpp
-
-tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread libsaimetadata.la libsaimeta.la -lzmq
-
-TESTS = tests

@@ -12,6 +12,7 @@ ApplyView
 AsicView
 AttrHash
 BCM
+BFD
 Bool
 CHARDATA
 COLDVIDS
@@ -96,6 +97,9 @@ WRED
 Werror
 ZMQ
 acl
+aclaction
+aclfield
+addr
 apache
 api
 apis
@@ -173,6 +177,7 @@ hardcoded
 hasEqualAttribute
 hostif
 hpp
+htonl
 http
 https
 hw

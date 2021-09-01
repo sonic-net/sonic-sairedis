@@ -22,6 +22,7 @@ tests_SOURCES = main.cpp \
 				TestMACsecEgressFilter.cpp \
 				TestMACsecForwarder.cpp \
 				TestMACsecIngressFilter.cpp \
+				TestMACsecFilterStateGuard.cpp \
 				TestNetMsgRegistrar.cpp \
 				TestRealObjectIdManager.cpp \
 				TestResourceLimiter.cpp \

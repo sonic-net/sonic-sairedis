@@ -37,7 +37,7 @@ bool TrafficForwarder::addVlanTag(
         if (cmsg->cmsg_level != SOL_PACKET || cmsg->cmsg_type != PACKET_AUXDATA)
             continue;
 
-        struct tpacket_auxdata* aux = (struct tpacket_auxdata*)CMSG_DATA(cmsg);
+        struct tpacket_auxdata* aux = (struct tpacket_auxdata*)(void *)CMSG_DATA(cmsg);
 
         if ((aux->tp_status & TP_STATUS_VLAN_VALID) &&
                 (aux->tp_status & TP_STATUS_VLAN_TPID_VALID))

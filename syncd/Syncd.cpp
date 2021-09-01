@@ -143,6 +143,7 @@ Syncd::Syncd(
     m_sn.onQueuePfcDeadlock = std::bind(&NotificationHandler::onQueuePfcDeadlock, m_handler.get(), _1, _2);
     m_sn.onSwitchShutdownRequest = std::bind(&NotificationHandler::onSwitchShutdownRequest, m_handler.get(), _1);
     m_sn.onSwitchStateChange = std::bind(&NotificationHandler::onSwitchStateChange, m_handler.get(), _1, _2);
+    m_sn.onBfdSessionStateChange = std::bind(&NotificationHandler::onBfdSessionStateChange, m_handler.get(), _1, _2);
 
     m_handler->setSwitchNotifications(m_sn.getSwitchNotifications());
 
@@ -708,7 +709,7 @@ sai_status_t Syncd::processGetStatsEvent(
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to get stats");
+        SWSS_LOG_NOTICE("Getting stats error: %s", sai_serialize_status(status).c_str());
     }
     else
     {
@@ -3955,7 +3956,8 @@ void Syncd::performWarmRestartSingleSwitch(
         SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY,
         SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY,
         SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY,
-        SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY
+        SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY,
+        SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY
     };
 
     std::vector<sai_attribute_t> attrs;

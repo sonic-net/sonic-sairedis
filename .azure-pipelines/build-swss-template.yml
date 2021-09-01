@@ -50,10 +50,6 @@ jobs:
       sudo apt-get install -y libzmq5 libzmq3-dev
       sudo apt-get install -qq -y \
           libhiredis-dev \
-          libnl-3-dev \
-          libnl-genl-3-dev \
-          libnl-route-3-dev \
-          libnl-nf-3-dev \
           swig3.0
       sudo apt-get install -y libdbus-1-3
       sudo apt-get install -y libteam-dev \
@@ -73,7 +69,24 @@ jobs:
     inputs:
       artifact: ${{ parameters.sairedis_artifact_name }}
     displayName: "Download sonic sairedis deb packages"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: 1
+      artifact: sonic-buildimage.vs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/master'
+    displayName: "Download sonic buildimage"
   - script: |
+      sudo dpkg -i target/debs/buster/libnl-3-200_*.deb
+      sudo dpkg -i target/debs/buster/libnl-3-dev_*.deb
+      sudo dpkg -i target/debs/buster/libnl-genl-3-200_*.deb
+      sudo dpkg -i target/debs/buster/libnl-genl-3-dev_*.deb
+      sudo dpkg -i target/debs/buster/libnl-route-3-200_*.deb
+      sudo dpkg -i target/debs/buster/libnl-route-3-dev_*.deb
+      sudo dpkg -i target/debs/buster/libnl-nf-3-200_*.deb
+      sudo dpkg -i target/debs/buster/libnl-nf-3-dev_*.deb
       sudo dpkg -i libswsscommon_1.0.0_${{ parameters.arch }}.deb
       sudo dpkg -i libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
       sudo dpkg -i libsaivs_*.deb
@@ -84,7 +97,7 @@ jobs:
       sudo dpkg -i libsaimetadata-dev_*.deb
       sudo dpkg -i syncd-vs_*.deb
     workingDirectory: $(Pipeline.Workspace)
-    displayName: "Install sonic swss common and sairedis"
+    displayName: "Install libnl3, sonic swss common, and sairedis"
   - checkout: sonic-swss
     path: s
     submodules: true
