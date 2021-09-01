@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+
 using namespace sairedis;
 
 TEST(Switch, ctr)
