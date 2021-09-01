@@ -8,7 +8,8 @@ tests_SOURCES = \
 				main.cpp \
 				TestSwitch.cpp \
 				TestClientConfig.cpp \
-				TestClientServerSai.cpp
+				TestClientServerSai.cppa \
+				TestContext.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/lib/libSaiRedis.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
