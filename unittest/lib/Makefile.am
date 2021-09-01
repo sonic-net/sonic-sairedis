@@ -47,7 +47,6 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_router_samplepacket.cpp \
 				test_sai_redis_schedulergroup.cpp \
 				test_sai_redis_scheduler.cpp \
-				test_sai_redis_segmentroute.cpp \
 				test_sai_redis_switch.cpp \
 				test_sai_redis_system_port.cpp \
 				test_sai_redis_tam.cpp \
@@ -57,7 +56,8 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_virtual_router.cpp \
 				test_sai_redis_vlan.cpp \
 				test_sai_redis_hostif.cpp \
-				test_sai_redis_wred.cpp
+				test_sai_redis_wred.cpp \
+				test_sai_redis_srv6.cpp
 
 testslibsairedis_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 testslibsairedis_LDADD = $(LDADD_GTEST) -L$(top_srcdir)/lib/.libs -lsairedis -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
