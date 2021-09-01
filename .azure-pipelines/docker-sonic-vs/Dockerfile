@@ -23,3 +23,5 @@ RUN dpkg -i /debs/libsaivs_1.0.0_amd64.deb
 RUN dpkg -i /debs/syncd-vs_1.0.0_amd64.deb
 
 RUN dpkg -i /debs/swss_1.0.0_amd64.deb
+
+RUN find / -type f | xargs strings | grep gcda

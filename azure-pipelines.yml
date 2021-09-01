@@ -29,30 +29,6 @@ stages:
       run_unit_test: true
       archive_gcov: true
 
-- stage: BuildArm
-  dependsOn: Build
-  condition: succeeded('Build')
-  jobs:
-  - template: .azure-pipelines/build-template.yml
-    parameters:
-      arch: armhf
-      timeout: 240
-      pool: sonicbld
-      sonic_slave: sonic-slave-buster-armhf
-      swss_common_artifact_name: sonic-swss-common.armhf
-      artifact_name: sonic-sairedis.armhf
-      syslog_artifact_name: sonic-sairedis.syslog.armhf
-
-  - template: .azure-pipelines/build-template.yml
-    parameters:
-      arch: arm64
-      timeout: 240
-      pool: sonicbld
-      sonic_slave: sonic-slave-buster-arm64
-      swss_common_artifact_name: sonic-swss-common.arm64
-      artifact_name: sonic-sairedis.arm64
-      syslog_artifact_name: sonic-sairedis.syslog.arm64
-
 - stage: BuildSwss
   dependsOn: Build
   condition: succeeded('Build')
