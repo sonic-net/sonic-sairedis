@@ -53,11 +53,16 @@ SaiSwitch::SaiSwitch(
 
     helperDiscover();
 
+    if (warmBoot)
+    {
+        checkWarmBootDiscoveredRids();
+    }
+
     helperSaveDiscoveredObjectsToRedis();
 
     helperInternalOids();
 
-    if (getSwitchType() == SAI_SWITCH_TYPE_NPU) 
+    if (getSwitchType() == SAI_SWITCH_TYPE_NPU)
     {
         helperCheckLaneMap();
     }
@@ -66,14 +71,9 @@ SaiSwitch::SaiSwitch(
 
     helperPopulateWarmBootVids();
 
-    if (getSwitchType() == SAI_SWITCH_TYPE_NPU) 
+    if (getSwitchType() == SAI_SWITCH_TYPE_NPU)
     {
         saiGetMacAddress(m_default_mac_address);
-    }
-
-    if (warmBoot)
-    {
-        checkWarmBootDiscoveredRids();
     }
 }
 
@@ -730,14 +730,14 @@ void SaiSwitch::redisSaveInternalOids(
      * Please note it is possible to discover new Switch internal OID in warm-boot also
      * if SAI gets upgraded as part of warm-boot so we are adding to ColdVid also
      * so that comparison logic do not remove this OID in warm-boot case. One example
-     * is SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID which is discovered in warm-boot 
+     * is SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID which is discovered in warm-boot
      * when upgrading to new SAI Version*/
 
     m_client->setDummyAsicStateObject(vid);
 
     m_client->saveColdBootDiscoveredVids(m_switch_vid, coldVids);
 
-    SWSS_LOG_NOTICE("put switch internal discovered rid %s to Asic View and COLDVIDS", 
+    SWSS_LOG_NOTICE("put switch internal discovered rid %s to Asic View and COLDVIDS",
             sai_serialize_object_id(rid).c_str());
 
 }
@@ -1184,8 +1184,11 @@ void SaiSwitch::checkWarmBootDiscoveredRids()
         if (rid2vid.find(rid) != rid2vid.end())
             continue;
 
-        SWSS_LOG_ERROR("RID %s is missing from current RID2VID map after WARM boot!",
-                sai_serialize_object_id(rid).c_str());
+        auto ot = m_vendorSai->objectTypeQuery(rid);
+
+        SWSS_LOG_ERROR("RID %s (%s) is missing from current RID2VID map after WARM boot!",
+                sai_serialize_object_id(rid).c_str(),
+                sai_serialize_object_type(ot).c_str());
 
         success = false;
     }
@@ -1198,4 +1201,3 @@ void SaiSwitch::checkWarmBootDiscoveredRids()
     SWSS_LOG_NOTICE("all discovered RIDs are present in current RID2VID map for switch VID %s",
             sai_serialize_object_id(m_switch_vid).c_str());
 }
-

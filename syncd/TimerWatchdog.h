@@ -1,6 +1,7 @@
 #pragma once
 
 #include "swss/sal.h"
+#include "swss/table.h"
 
 #include <thread>
 #include <atomic>
@@ -24,8 +25,9 @@ namespace syncd
 
             void setEndTime();
 
-            void setEventName(
-                    _In_ const std::string& eventName);
+            void setEventData(
+                    _In_ const std::string& eventName,
+                    _In_ const swss::KeyOpFieldsValuesTuple* kco = nullptr);
 
             void setCallback(
                     _In_ std::function<void(uint64_t)> callback);
@@ -40,6 +42,8 @@ namespace syncd
         private:
 
             void threadFunction();
+
+            void logEventData();
 
         private:
 
@@ -57,6 +61,8 @@ namespace syncd
             std::function<void(uint64_t)> m_callback;
 
             std::string m_eventName;
+
+            const swss::KeyOpFieldsValuesTuple* m_kco;
 
             std::mutex m_mutex;
     };

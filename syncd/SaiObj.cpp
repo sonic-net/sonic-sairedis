@@ -16,7 +16,7 @@ SaiObj::SaiObj():
 bool SaiObj::isOidObject() const
 {
     SWSS_LOG_ENTER();
-    
+
     return m_info->isobjectid;
 }
 

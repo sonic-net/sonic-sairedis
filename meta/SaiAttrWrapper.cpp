@@ -67,4 +67,3 @@ sai_attr_id_t SaiAttrWrapper::getAttrId() const
 
     return m_attr.id;
 }
-

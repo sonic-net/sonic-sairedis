@@ -1,6 +1,6 @@
 #include "sairedis.h"
 
-#include "../syncd/ServiceMethodTable.h"
+#include "syncd/ServiceMethodTable.h"
 
 #include "meta/sai_serialize.h"
 

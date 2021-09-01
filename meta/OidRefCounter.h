@@ -82,7 +82,7 @@ namespace saimeta
 
             /**
              * @brief Get reference count on given object.
-             * 
+             *
              * Throws if object don't exists.
              */
             int32_t getObjectReferenceCount(

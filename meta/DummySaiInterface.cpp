@@ -116,20 +116,10 @@ sai_status_t DummySaiInterface::get(                \
     return m_status;                                \
 }
 
-#define DECLARE_ALL(X)                  \
-    X(FDB_ENTRY,fdb_entry)              \
-    X(INSEG_ENTRY,inseg_entry);         \
-    X(IPMC_ENTRY,ipmc_entry);           \
-    X(L2MC_ENTRY,l2mc_entry);           \
-    X(MCAST_FDB_ENTRY,mcast_fdb_entry); \
-    X(NEIGHBOR_ENTRY,neighbor_entry);   \
-    X(ROUTE_ENTRY,route_entry);         \
-    X(NAT_ENTRY,nat_entry);
-
-DECLARE_ALL(DECLARE_REMOVE_ENTRY);
-DECLARE_ALL(DECLARE_CREATE_ENTRY);
-DECLARE_ALL(DECLARE_SET_ENTRY);
-DECLARE_ALL(DECLARE_GET_ENTRY);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
 
 sai_status_t DummySaiInterface::flushFdbEntries(
         _In_ sai_object_id_t switchId,

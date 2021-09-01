@@ -17,8 +17,8 @@ RedisNotificationProducer::RedisNotificationProducer(
 }
 
 void RedisNotificationProducer::send(
-        _In_ const std::string& op, 
-        _In_ const std::string& data, 
+        _In_ const std::string& op,
+        _In_ const std::string& data,
         _In_ const std::vector<swss::FieldValueTuple>& values)
 {
     SWSS_LOG_ENTER();

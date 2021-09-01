@@ -48,7 +48,7 @@ namespace syncd
              *
              * Index range is <0..255>.
              *
-             * Returns switch index for given oid. 
+             * Returns switch index for given oid.
              *
              * For SAI_NULL_OBJECT_ID returns 0.
              *
@@ -62,7 +62,7 @@ namespace syncd
              *
              * Context range is <0..255>.
              *
-             * Returns switch index for given oid. 
+             * Returns switch index for given oid.
              *
              * For SAI_NULL_OBJECT_ID returns 0.
              *

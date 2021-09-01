@@ -13,6 +13,8 @@ extern "C" {
 
 #include <getopt.h>
 
+// TODO split to multiple cpp
+
 using namespace swss;
 
 struct CmdOptions

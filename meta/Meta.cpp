@@ -16,22 +16,27 @@
 
 #define CHECK_STATUS_SUCCESS(s) { if ((s) != SAI_STATUS_SUCCESS) return (s); }
 
-#define VALIDATION_LIST(md,vlist) \
-{\
-    auto status1 = meta_genetic_validation_list(md,vlist.count,vlist.list);\
-    if (status1 != SAI_STATUS_SUCCESS)\
-    {\
-        return status1;\
-    }\
+#define VALIDATION_LIST(md,vlist)                                               \
+{                                                                               \
+    auto _status = meta_genetic_validation_list(md,vlist.count,vlist.list);     \
+    if (_status != SAI_STATUS_SUCCESS)                                          \
+    {                                                                           \
+        return _status;                                                         \
+    }                                                                           \
 }
 
-#define VALIDATION_LIST_GET(md, list) \
-{\
-    if (list.count > MAX_LIST_COUNT)\
-    {\
+#define VALIDATION_LIST_GET(md, list)                                                       \
+{                                                                                           \
+    if (list.count > MAX_LIST_COUNT)                                                        \
+    {                                                                                       \
         META_LOG_ERROR(md, "list count %u > max list count %u", list.count, MAX_LIST_COUNT);\
-    }\
+    }                                                                                       \
 }
+
+#define META_LOG_STATUS(status,msg)                                                     \
+    if ((status) == SAI_STATUS_SUCCESS)                                                 \
+    { SWSS_LOG_DEBUG(msg " status: %s", sai_serialize_status(status).c_str()); }        \
+    else { SWSS_LOG_ERROR(msg " status: %s", sai_serialize_status(status).c_str()); }
 
 using namespace saimeta;
 
@@ -101,7 +106,7 @@ void Meta::meta_init_db()
     SWSS_LOG_NOTICE("end");
 }
 
-bool Meta::isEmpty()
+bool Meta::isEmpty() const
 {
     SWSS_LOG_ENTER();
 
@@ -109,6 +114,31 @@ bool Meta::isEmpty()
         && m_oids.getAllOids().empty()
         && m_attrKeys.getAllKeys().empty()
         && m_saiObjectCollection.getAllKeys().empty();
+}
+
+void Meta::dump() const
+{
+    SWSS_LOG_ENTER();
+
+    if (isEmpty() == false)
+    {
+        std::cout << "portRelatedSet: " << m_portRelatedSet.getAllPorts().size() << std::endl;
+        std::cout << "oids: "  << m_oids.getAllOids().size() << std::endl;
+        std::cout << "attrKeys: " << m_attrKeys.getAllKeys().size() << std::endl;
+        std::cout << "saiObjectCollection: " << m_saiObjectCollection.getAllKeys().size() << std::endl;
+
+        for (auto &oid: m_oids.getAllReferences())
+        {
+            printf("oid: %s: count: %u\n",
+                    sai_serialize_object_id(oid.first).c_str(),
+                    oid.second);
+        }
+
+        for (auto &mk: m_saiObjectCollection.getAllKeys())
+        {
+            printf("objcollection: %s\n", sai_serialize_object_meta_key(mk).c_str());
+        }
+    }
 }
 
 sai_status_t Meta::remove(
@@ -135,14 +165,7 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(object_type, object_id);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -175,14 +198,7 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(fdb_entry);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -215,14 +231,7 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(mcast_fdb_entry);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -255,14 +264,7 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(neighbor_entry);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -295,14 +297,7 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(route_entry);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -335,14 +330,7 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(l2mc_entry);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -375,14 +363,7 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(ipmc_entry);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -415,18 +396,11 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(nat_entry);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
-      meta_generic_validation_post_remove(meta_key);
+        meta_generic_validation_post_remove(meta_key);
     }
 
     return status;
@@ -455,14 +429,7 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(inseg_entry);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -497,14 +464,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(fdb_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -539,14 +499,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(mcast_fdb_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -581,14 +534,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(neighbor_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -622,14 +568,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(route_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -664,14 +603,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(l2mc_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -706,14 +638,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(ipmc_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -748,14 +673,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(inseg_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -790,14 +708,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(nat_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -831,14 +742,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(fdb_entry, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -872,14 +776,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(mcast_fdb_entry, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -913,14 +810,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(neighbor_entry, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -954,14 +844,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(route_entry, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -995,14 +878,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(l2mc_entry, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1036,14 +912,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(ipmc_entry, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1077,14 +946,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(inseg_entry, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1117,14 +979,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(nat_entry, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1429,14 +1284,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(object_type, object_id, switch_id, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1484,14 +1332,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(object_type, object_id, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1636,17 +1477,6 @@ sai_status_t Meta::flushFdbEntries(
 
         switch (md.attrvaluetype)
         {
-            case SAI_ATTR_VALUE_TYPE_UINT16:
-
-                if (md.isvlan && (value.u16 >= 0xFFF || value.u16 == 0))
-                {
-                    META_LOG_ERROR(md, "is vlan id but has invalid id %u", value.u16);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                break;
-
             case SAI_ATTR_VALUE_TYPE_INT32:
 
                 if (md.isenum && !sai_metadata_is_allowed_enum_value(&md, value.s32))
@@ -1710,10 +1540,9 @@ sai_status_t Meta::flushFdbEntries(
         }
         else
         {
-            // no type specified so we need to flush static and dynamic entries
+            // no type specified so we need to flush dynamic only
 
             types.push_back(SAI_FDB_ENTRY_TYPE_DYNAMIC);
-            types.push_back(SAI_FDB_ENTRY_TYPE_STATIC);
         }
 
         for (auto type: types)
@@ -3225,7 +3054,7 @@ sai_status_t Meta::meta_port_remove_validation(
     }
 
     SWSS_LOG_NOTICE("all objects related to port %s are in default state, can be remove",
-                sai_serialize_object_id(port_id).c_str());
+            sai_serialize_object_id(port_id).c_str());
 
     return SAI_STATUS_SUCCESS;
 }
@@ -3671,7 +3500,7 @@ sai_status_t Meta::meta_sai_validate_fdb_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_fdb) && !get)
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_fdb).c_str());
+                sai_serialize_object_meta_key(meta_key_fdb).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3754,7 +3583,7 @@ sai_status_t Meta::meta_sai_validate_mcast_fdb_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_fdb) && !get)
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_fdb).c_str());
+                sai_serialize_object_meta_key(meta_key_fdb).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3850,7 +3679,7 @@ sai_status_t Meta::meta_sai_validate_neighbor_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_neighbor))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_neighbor).c_str());
+                sai_serialize_object_meta_key(meta_key_neighbor).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -3959,7 +3788,7 @@ sai_status_t Meta::meta_sai_validate_route_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_route))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_route).c_str());
+                sai_serialize_object_meta_key(meta_key_route).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4082,7 +3911,7 @@ sai_status_t Meta::meta_sai_validate_l2mc_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_route))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_route).c_str());
+                sai_serialize_object_meta_key(meta_key_route).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4205,7 +4034,7 @@ sai_status_t Meta::meta_sai_validate_ipmc_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_route))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_route).c_str());
+                sai_serialize_object_meta_key(meta_key_route).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4240,7 +4069,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
         SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " is not valid object type, "
-                        "returned null object type", vr);
+                "returned null object type", vr);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4250,7 +4079,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
     if (object_type != expected)
     {
         SWSS_LOG_ERROR("virtual router oid 0x%" PRIx64 " type %d is wrong type, "
-                       "expected object type %d", vr, object_type, expected);
+                "expected object type %d", vr, object_type, expected);
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4286,7 +4115,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
     if (!m_saiObjectCollection.objectExists(meta_key_nat))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",
-                    sai_serialize_object_meta_key(meta_key_nat).c_str());
+                sai_serialize_object_meta_key(meta_key_nat).c_str());
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
@@ -4435,7 +4264,9 @@ sai_status_t Meta::meta_generic_validation_create(
 
         if (mdp == NULL)
         {
-            SWSS_LOG_ERROR("unable to find attribute metadata %d:%d", meta_key.objecttype, attr->id);
+            SWSS_LOG_ERROR("unable to find attribute metadata %s:%d",
+                    sai_serialize_object_type(meta_key.objecttype).c_str(),
+                    attr->id);
 
             return SAI_STATUS_FAILURE;
         }
@@ -4882,7 +4713,7 @@ sai_status_t Meta::meta_generic_validation_create(
 
             if (md.objecttype == SAI_OBJECT_TYPE_BUFFER_PROFILE &&
                     (md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH ||
-                    (md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH)))
+                     (md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH)))
             {
                 auto pool_id_attr = sai_metadata_get_attr_by_id(SAI_BUFFER_PROFILE_ATTR_POOL_ID, attr_count, attr_list);
 
@@ -4924,7 +4755,7 @@ sai_status_t Meta::meta_generic_validation_create(
                 }
 
                 if ((mode == SAI_BUFFER_POOL_THRESHOLD_MODE_DYNAMIC && md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH) ||
-                    (mode == SAI_BUFFER_POOL_THRESHOLD_MODE_STATIC && md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH))
+                        (mode == SAI_BUFFER_POOL_THRESHOLD_MODE_STATIC && md.attrid == SAI_BUFFER_PROFILE_ATTR_SHARED_STATIC_TH))
                 {
                     /* attribute is mandatory */
                 }
@@ -5083,7 +4914,9 @@ sai_status_t Meta::meta_generic_validation_set(
 
     if (mdp == NULL)
     {
-        SWSS_LOG_ERROR("unable to find attribute metadata %d:%d", meta_key.objecttype, attr->id);
+        SWSS_LOG_ERROR("unable to find attribute metadata %s:%d",
+                    sai_serialize_object_type(meta_key.objecttype).c_str(),
+                    attr->id);
 
         return SAI_STATUS_FAILURE;
     }
@@ -5393,22 +5226,22 @@ sai_status_t Meta::meta_generic_validation_set(
 
         case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
 
+            {
+                switch (value.ipprefix.addr_family)
                 {
-                    switch (value.ipprefix.addr_family)
-                    {
-                        case SAI_IP_ADDR_FAMILY_IPV4:
-                        case SAI_IP_ADDR_FAMILY_IPV6:
-                            break;
+                    case SAI_IP_ADDR_FAMILY_IPV4:
+                    case SAI_IP_ADDR_FAMILY_IPV6:
+                        break;
 
-                        default:
+                    default:
 
-                            SWSS_LOG_ERROR("invalid address family: %d", value.ipprefix.addr_family);
+                        SWSS_LOG_ERROR("invalid address family: %d", value.ipprefix.addr_family);
 
-                            return SAI_STATUS_INVALID_PARAMETER;
-                    }
-
-                    break;
+                        return SAI_STATUS_INVALID_PARAMETER;
                 }
+
+                break;
+            }
 
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
             VALIDATION_LIST(md, value.aclcapability.action_list);
@@ -5578,7 +5411,9 @@ sai_status_t Meta::meta_generic_validation_get(
 
         if (mdp == NULL)
         {
-            SWSS_LOG_ERROR("unable to find attribute metadata %d:%d", meta_key.objecttype, attr->id);
+            SWSS_LOG_ERROR("unable to find attribute metadata %s:%d",
+                    sai_serialize_object_type(meta_key.objecttype).c_str(),
+                    attr->id);
 
             return SAI_STATUS_FAILURE;
         }
@@ -5941,12 +5776,12 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_ID:
                 if (value.aclfield.enable)
-                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclfield.data.oid);
+                    meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclfield.data.oid);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_OBJECT_LIST:
                 if (value.aclfield.enable)
-                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
+                    meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclfield.data.objlist.count, value.aclfield.data.objlist.list);
                 break;
 
                 // case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8_LIST: (2 lists)
@@ -5968,12 +5803,12 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID:
                 if (value.aclaction.enable)
-                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclaction.parameter.oid);
+                    meta_generic_validation_post_get_objlist(meta_key, md, switch_id, 1, &value.aclaction.parameter.oid);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_LIST:
                 if (value.aclaction.enable)
-                meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
+                    meta_generic_validation_post_get_objlist(meta_key, md, switch_id, value.aclaction.parameter.objlist.count, value.aclaction.parameter.objlist.list);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
@@ -6932,7 +6767,7 @@ void Meta::meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_MACSEC_SALT:
             case SAI_ATTR_VALUE_TYPE_MACSEC_SCI:
             case SAI_ATTR_VALUE_TYPE_MACSEC_SSCI:
-              break;
+                break;
 
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
@@ -7562,6 +7397,14 @@ void Meta::meta_sai_on_switch_state_change(
 {
     SWSS_LOG_ENTER();
 
+    if (!sai_metadata_get_enum_value_name(
+                &sai_metadata_enum_sai_switch_oper_status_t,
+                switch_oper_status))
+    {
+        SWSS_LOG_WARN("switch oper status value (%d) not found in sai_switch_oper_status_t",
+                switch_oper_status);
+    }
+
     auto ot = objectTypeQuery(switch_id);
 
     if (ot != SAI_OBJECT_TYPE_SWITCH)
@@ -7569,6 +7412,8 @@ void Meta::meta_sai_on_switch_state_change(
         SWSS_LOG_WARN("switch_id %s is of type %s, but expected SAI_OBJECT_TYPE_SWITCH",
                 sai_serialize_object_id(switch_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
+
+        return;
     }
 
     sai_object_meta_key_t switch_meta_key = { .objecttype = ot , .objectkey = { .key = { .object_id = switch_id } } };
@@ -7580,14 +7425,6 @@ void Meta::meta_sai_on_switch_state_change(
     }
 
     // we should not snoop switch_id, since switch id should be created directly by user
-
-    if (!sai_metadata_get_enum_value_name(
-                &sai_metadata_enum_sai_switch_oper_status_t,
-                switch_oper_status))
-    {
-        SWSS_LOG_WARN("switch oper status value (%d) not found in sai_switch_oper_status_t",
-                switch_oper_status);
-    }
 }
 
 void Meta::meta_sai_on_switch_shutdown_request(
@@ -7602,6 +7439,8 @@ void Meta::meta_sai_on_switch_shutdown_request(
         SWSS_LOG_WARN("switch_id %s is of type %s, but expected SAI_OBJECT_TYPE_SWITCH",
                 sai_serialize_object_id(switch_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
+
+        return;
     }
 
     sai_object_meta_key_t switch_meta_key = { .objecttype = ot , .objectkey = { .key = { .object_id = switch_id } } };
@@ -7742,6 +7581,65 @@ void Meta::meta_sai_on_queue_pfc_deadlock_notification(
     for (uint32_t i = 0; i < count; ++i)
     {
         meta_sai_on_queue_pfc_deadlock_notification_single(data[i]);
+    }
+}
+
+void Meta::meta_sai_on_bfd_session_state_change_single(
+        _In_ const sai_bfd_session_state_notification_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    auto ot = objectTypeQuery(data.bfd_session_id);
+
+    bool valid = false;
+
+    switch (ot)
+    {
+        // TODO hardcoded types, must advance SAI repository commit to get metadata for this
+        case SAI_OBJECT_TYPE_BFD_SESSION:
+
+            valid = true;
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("data.bfd_session_id %s has unexpected type: %s, expected BFD_SESSION",
+                    sai_serialize_object_id(data.bfd_session_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+            break;
+    }
+
+    if (valid && !m_oids.objectReferenceExists(data.bfd_session_id))
+    {
+        SWSS_LOG_NOTICE("data.bfd_session_id new object spotted %s not present in local DB (snoop!)",
+                sai_serialize_object_id(data.bfd_session_id).c_str());
+
+        sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = data.bfd_session_id } } };
+
+        m_oids.objectReferenceInsert(data.bfd_session_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
+    }
+}
+
+void Meta::meta_sai_on_bfd_session_state_change(
+        _In_ uint32_t count,
+        _In_ const sai_bfd_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("sai_bfd_session_state_notification_t pointer is NULL but count is %u", count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meta_sai_on_bfd_session_state_change_single(data[i]);
     }
 }
 

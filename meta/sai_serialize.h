@@ -129,6 +129,26 @@ std::string sai_serialize_hex_binary(
         _In_ const void *buffer,
         _In_ size_t length);
 
+void sai_deserialize_system_port_config_list(
+        _In_ const std::string& s,
+        _Out_ sai_system_port_config_list_t& sysportconfiglist,
+        _In_ bool countOnly);
+
+std::string sai_serialize_chardata(
+        _In_ const char data[32]);
+
+std::string sai_serialize_oid_list(
+        _In_ const sai_object_list_t &list,
+        _In_ bool countOnly);
+
+std::string sai_serialize_system_port_config_list(
+        _In_ const sai_attr_metadata_t &meta,
+        _In_ const sai_system_port_config_list_t& sysportconfiglist,
+        _In_ bool countOnly);
+
+std::string sai_serialize_queue_deadlock_event(
+        _In_ sai_queue_pfc_deadlock_event_type_t event);
+
 template <typename T>
 std::string sai_serialize_hex_binary(
         _In_ const T &value)
@@ -205,6 +225,10 @@ std::string sai_serialize_queue_deadlock_ntf(
         _In_ uint32_t count,
         _In_ const sai_queue_deadlock_notification_data_t* deadlock_data);
 
+std::string sai_serialize_bfd_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_bfd_session_state_notification_t* bfd_session_state);
+
 // sairedis
 
 std::string sai_serialize(
@@ -253,6 +277,14 @@ void sai_deserialize_log_level(
 void sai_deserialize_api(
         _In_ const std::string& s,
         _Out_ sai_api_t& api);
+
+void sai_deserialize_ipmc_entry_type(
+        _In_ const std::string& s,
+        _Out_ sai_ipmc_entry_type_t& type);
+
+void sai_deserialize_l2mc_entry_type(
+        _In_ const std::string& s,
+        _Out_ sai_l2mc_entry_type_t& type);
 
 void sai_deserialize_fdb_entry(
         _In_ const std::string& s,
@@ -324,6 +356,18 @@ void sai_deserialize_mac(
         _In_ const std::string& s,
         _Out_ sai_mac_t& mac);
 
+void sai_deserialize_ipv4(
+        _In_ const std::string& s,
+        _Out_ sai_ip4_t& ipaddr);
+
+void sai_deserialize_ipv6(
+        _In_ const std::string& s,
+        _Out_ sai_ip6_t& ipaddr);
+
+void sai_deserialize_chardata(
+        _In_ const std::string& s,
+        _Out_ char chardata[32]);
+
 // deserialize notifications
 
 void sai_deserialize_fdb_event_ntf(
@@ -340,6 +384,11 @@ void sai_deserialize_queue_deadlock_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
         _Out_ sai_queue_deadlock_notification_data_t** deadlock_data);
+
+void sai_deserialize_bfd_session_state_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_bfd_session_state_notification_t** bfdsession);
 
 // free methods
 
@@ -360,6 +409,10 @@ void sai_deserialize_free_port_oper_status_ntf(
 void sai_deserialize_free_queue_deadlock_ntf(
         _In_ uint32_t count,
         _In_ sai_queue_deadlock_notification_data_t* deadlock_data);
+
+void sai_deserialize_free_bfd_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ sai_bfd_session_state_notification_t* bfdsessionstate);    
 
 void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,

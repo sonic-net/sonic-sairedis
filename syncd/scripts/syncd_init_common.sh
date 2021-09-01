@@ -111,7 +111,7 @@ config_syncd_bcm()
       chip_id=${readline#*0x14e4:0x}
       chip_id=${chip_id::3}
       COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -name '*.bcm')
-   
+
       if [ -f $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/*.bcm ]; then
          for file in $CONFIG_BCM; do
              echo "" >> $file
@@ -161,7 +161,11 @@ config_syncd_bcm()
       fi
 
     fi
-
+    
+    if [ -f "$HWSKU_DIR/context_config.json" ]; then 
+        CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
+    fi
+    
     [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
     [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
     [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
@@ -188,7 +192,7 @@ config_syncd_mlnx()
     # Update sai.profile with MAC_ADDRESS and WARM_BOOT settings
     echo "DEVICE_MAC_ADDRESS=$MAC_ADDRESS" >> /tmp/sai.profile
     echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
-    
+
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
     if [ ! -d "$SDK_DUMP_PATH" ]; then
         mkdir -p "$SDK_DUMP_PATH"
