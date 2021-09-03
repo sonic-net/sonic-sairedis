@@ -133,6 +133,16 @@ FlexCounter::TunnelCounterIds::TunnelCounterIds(
     // empty intentionally
 }
 
+FlexCounter::FlowCounterIds::FlowCounterIds(
+        _In_ sai_object_id_t counter,
+        _In_ const std::vector<sai_counter_stat_t> &flowCounters):
+        counterId(counter),
+        flowCounterIds(flowCounters)
+{
+    SWSS_LOG_ENTER();
+    // empty intentionally
+}
+
 void FlexCounter::setPollInterval(
         _In_ uint32_t pollInterval)
 {
@@ -623,14 +633,7 @@ void FlexCounter::setTunnelCounterList(
     for (auto &counter : counterIds)
     {
         if (isTunnelCounterSupported(counter))
-        {
-            supportedIds.push_back(counter);
-        }
-    }
-
-    if (supportedIds.empty())
-    {
-        SWSS_LOG_NOTICE("Tunnel %s does not have supported counters", sai_serialize_object_id(tunnelRid).c_str());
+            SWSS_LOG_NOTICE("Tunnel %s does not have supported counters", sai_serialize_object_id(tunnelRid).c_str());
         return;
     }
 
@@ -647,6 +650,45 @@ void FlexCounter::setTunnelCounterList(
     m_tunnelCounterIdsMap.emplace(tunnelVid, tunnelCounterIds);
 
     addCollectCountersHandler(TUNNEL_COUNTER_ID_LIST, &FlexCounter::collectTunnelCounters);
+}
+
+void FlexCounter::setFlowCounterList(
+        _In_ sai_object_id_t counterVid,
+        _In_ sai_object_id_t counterRid,
+        _In_ const std::vector<sai_counter_stat_t>& counterIds)
+{
+    SWSS_LOG_ENTER();
+
+    updateSupportedFlowCounters(counterRid, counterIds);
+
+    std::vector<sai_counter_stat_t> supportedIds;
+
+    for (auto &counter : counterIds)
+    {
+        if (m_supportedFlowCounters.count(counter) != 0)
+        {
+            supportedIds.push_back(counter);
+        }
+    }
+
+    if (supportedIds.empty())
+    {
+        SWSS_LOG_NOTICE("Flow counter %s does not have supported counters", sai_serialize_object_id(counterRid).c_str());
+        return;
+    }
+
+    auto it = m_flowCounterIdsMap.find(counterVid);
+    if (it != m_flowCounterIdsMap.end())
+    {
+        it->second->flowCounterIds = supportedIds;
+        return;
+    }
+
+    auto flowCounterIds = std::make_shared<FlowCounterIds>(counterRid, supportedIds);
+
+    m_flowCounterIdsMap.emplace(counterVid, flowCounterIds);
+
+    addCollectCountersHandler(FLOW_COUNTER_ID_LIST, &FlexCounter::collectFlowCounters);
 }
 
 void FlexCounter::removePort(
@@ -824,6 +866,38 @@ void FlexCounter::removeAclCounter(
     }
 }
 
+void FlexCounter::removeFlowCounter(
+        _In_ sai_object_id_t counterVid)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_flowCounterIdsMap.find(counterVid);
+
+    if (it == m_flowCounterIdsMap.end())
+    {
+        SWSS_LOG_NOTICE("Trying to remove nonexisting flow counter from Id 0x%" PRIx64, counterVid);
+        return;
+    }
+
+    swss::DBConnector db(m_dbCounters, 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+    swss::Table ratesTable(&pipeline, RATES_TABLE, false);
+
+    // Remove counter and rate entries from COUNTER DB to avoid resource leak
+    std::string counterVidStr = sai_serialize_object_id(counterVid);
+    countersTable.del(counterVidStr);
+    ratesTable.del(counterVidStr);
+    ratesTable.del(counterVidStr + ":TRAP");
+
+    m_flowCounterIdsMap.erase(it);
+
+    if (m_flowCounterIdsMap.empty())
+    {
+        removeCollectCountersHandler(FLOW_COUNTER_ID_LIST);
+    }
+}
+
 void FlexCounter::removeRif(
         _In_ sai_object_id_t rifVid)
 {
@@ -924,7 +998,8 @@ void FlexCounter::checkPluginRegistered(
             m_queuePlugins.find(sha) != m_queuePlugins.end() ||
             m_priorityGroupPlugins.find(sha) != m_priorityGroupPlugins.end() ||
             m_bufferPoolPlugins.find(sha) != m_bufferPoolPlugins.end() ||
-            m_tunnelPlugins.find(sha) != m_tunnelPlugins.end()
+            m_tunnelPlugins.find(sha) != m_tunnelPlugins.end() ||
+            m_flowCounterPlugins.find(sha) != m_flowCounterPlugins.end()
        )
     {
         SWSS_LOG_ERROR("Plugin %s already registered", sha.c_str());
@@ -965,6 +1040,18 @@ void FlexCounter::addQueueCounterPlugin(
     m_queuePlugins.insert(sha);
 
     SWSS_LOG_NOTICE("Queue counters plugin %s registered", sha.c_str());
+}
+
+void FlexCounter::addFlowCounterPlugin(
+        _In_ const std::string& sha)
+{
+    SWSS_LOG_ENTER();
+
+    checkPluginRegistered(sha);
+
+    m_flowCounterPlugins.insert(sha);
+
+    SWSS_LOG_NOTICE("Flow counters plugin %s registered", sha.c_str());
 }
 
 void FlexCounter::addPriorityGroupCounterPlugin(
@@ -1015,6 +1102,7 @@ void FlexCounter::removeCounterPlugins()
     m_priorityGroupPlugins.clear();
     m_bufferPoolPlugins.clear();
     m_tunnelPlugins.clear();
+    m_flowCounterPlugins.clear();
 
     m_isDiscarded = true;
 }
@@ -1089,6 +1177,13 @@ void FlexCounter::addCounterPlugin(
                 addTunnelCounterPlugin(sha);
             }
         }
+        else if (field == FLOW_COUNTER_PLUGIN_FIELD)
+        {
+            for (auto& sha: shaStrings)
+            {
+                addFlowCounterPlugin(sha);
+            }
+        }
         else
         {
             SWSS_LOG_ERROR("Field is not supported %s", field.c_str());
@@ -1130,7 +1225,8 @@ bool FlexCounter::allIdsEmpty() const
         m_switchDebugCounterIdsMap.empty() &&
         m_macsecSAAttrIdsMap.empty() &&
         m_aclCounterAttrIdsMap.empty() &&
-        m_tunnelCounterIdsMap.empty();
+        m_tunnelCounterIdsMap.empty() &&
+        m_flowCounterIdsMap.empty();
 }
 
 bool FlexCounter::allPluginsEmpty() const
@@ -1142,7 +1238,8 @@ bool FlexCounter::allPluginsEmpty() const
            m_portPlugins.empty() &&
            m_rifPlugins.empty() &&
            m_bufferPoolPlugins.empty() &&
-           m_tunnelPlugins.empty();
+           m_tunnelPlugins.empty() &&
+           m_flowCounterPlugins.empty();
 }
 
 bool FlexCounter::isPortCounterSupported(sai_port_stat_t counter) const
@@ -1542,6 +1639,50 @@ void FlexCounter::collectSwitchDebugCounters(
     }
 }
 
+void FlexCounter::collectFlowCounters(
+        _In_ swss::Table &countersTable)
+{
+    SWSS_LOG_ENTER();
+
+    // Collect stats for every registered flow counter
+    for (const auto &kv: m_flowCounterIdsMap)
+    {
+        const auto &counterVid = kv.first;
+        const auto &counterRId = kv.second->counterId;
+        const auto &counterIds = kv.second->flowCounterIds;
+
+        std::vector<uint64_t> stats(counterIds.size());
+
+        // Get flow counter stats
+        sai_status_t status = m_vendorSai->getStatsExt(
+                SAI_OBJECT_TYPE_COUNTER,
+                counterRId,
+                static_cast<uint32_t>(counterIds.size()),
+                (const sai_stat_id_t *)counterIds.data(),
+                SAI_STATS_MODE_READ,
+                stats.data());
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get stats of flow counter 0x%" PRIx64 ": %d", counterRId, status);
+            continue;
+        }
+
+        // Push all counter values to a single vector
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != counterIds.size(); i++)
+        {
+            values.emplace_back(sai_serialize_counter_stat(counterIds[i]), std::to_string(stats[i]));
+        }
+
+        // Write counters to DB
+        std::string counterVidStr = sai_serialize_object_id(counterVid);
+
+        countersTable.set(counterVidStr, values, "");
+    }
+}
+
 void FlexCounter::collectPriorityGroupAttrs(
         _In_ swss::Table &countersTable)
 {
@@ -1901,6 +2042,20 @@ void FlexCounter::runPlugins(
     for (const auto& sha : m_queuePlugins)
     {
         runRedisScript(counters_db, sha, queueList, argv);
+    }
+
+    std::vector<std::string> flowCounterList;
+
+    flowCounterList.reserve(m_flowCounterIdsMap.size());
+
+    for (const auto& kv : m_flowCounterIdsMap)
+    {
+        flowCounterList.push_back(sai_serialize_object_id(kv.first));
+    }
+
+    for (const auto& sha : m_flowCounterPlugins)
+    {
+        runRedisScript(counters_db, sha, flowCounterList, argv);
     }
 
     std::vector<std::string> priorityGroupList;
@@ -2463,6 +2618,43 @@ void FlexCounter::getSupportedRifCounters(
     }
 }
 
+void FlexCounter::updateSupportedFlowCounters(
+        _In_ sai_object_id_t counterRid,
+        _In_ const std::vector<sai_counter_stat_t> &counterIds)
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_supportedFlowCounters.empty())
+    {
+        return;
+    }
+
+    uint64_t value;
+    for (auto &counter : counterIds)
+    {
+        sai_status_t status = m_vendorSai->getStatsExt(
+                SAI_OBJECT_TYPE_COUNTER,
+                counterRid,
+                1,
+                (const sai_stat_id_t *)&counter,
+                SAI_STATS_MODE_READ,
+                &value);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_NOTICE("%s: counter %s is not supported on flow counter %s, rv: %s",
+                    m_instanceId.c_str(),
+                    sai_serialize_counter_stat(counter).c_str(),
+                    sai_serialize_object_id(counterRid).c_str(),
+                    sai_serialize_status(status).c_str());
+
+            continue;
+        }
+
+        m_supportedFlowCounters.insert(counter);
+    }
+}
+
 void FlexCounter::updateSupportedRifCounters(
         _In_ sai_object_id_t rifRid)
 {
@@ -2722,6 +2914,10 @@ void FlexCounter::removeCounter(
     {
         removeTunnel(vid);
     }
+    else if (objectType == SAI_OBJECT_TYPE_COUNTER)
+    {
+        removeFlowCounter(vid);
+    }
     else
     {
         SWSS_LOG_ERROR("Object type for removal not supported, %s",
@@ -2881,6 +3077,19 @@ void FlexCounter::addCounter(
             }
 
             setAclCounterAttrList(vid, rid, aclCounterIds);
+        }
+        else if (objectType == SAI_OBJECT_TYPE_COUNTER && field == FLOW_COUNTER_ID_LIST)
+        {
+            std::vector<sai_counter_stat_t> counterStatIds;
+
+            for (const auto &str : idStrings)
+            {
+                sai_counter_stat_t stat;
+                sai_deserialize_counter_stat(str.c_str(), &stat);
+                counterStatIds.push_back(stat);
+            }
+
+            setFlowCounterList(vid, rid, counterStatIds);
         }
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
         {
