@@ -3300,6 +3300,8 @@ bool SwitchStateBase::dumpObject(
 sai_status_t SwitchStateBase::queryVxlanTunnelPeerModeCapability(
                    _Inout_ sai_s32_list_t *enum_values_capability)
 {
+    SWSS_LOG_ENTER();
+
     if (enum_values_capability->count < 2)
     {
         return SAI_STATUS_BUFFER_OVERFLOW;
@@ -3317,6 +3319,8 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_attr_id_t attr_id,
                               _Inout_ sai_s32_list_t *enum_values_capability)
 {
+    SWSS_LOG_ENTER();
+
     if (object_type == SAI_OBJECT_TYPE_TUNNEL && attr_id == SAI_TUNNEL_ATTR_PEER_MODE)
     {
         return queryVxlanTunnelPeerModeCapability(enum_values_capability);

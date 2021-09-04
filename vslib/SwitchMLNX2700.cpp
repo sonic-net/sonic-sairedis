@@ -428,6 +428,8 @@ sai_status_t SwitchMLNX2700::warm_update_queues()
 sai_status_t SwitchMLNX2700::queryVxlanTunnelPeerModeCapability(
                    _Inout_ sai_s32_list_t *enum_values_capability)
 {
+    SWSS_LOG_ENTER();
+
     if (enum_values_capability->count < 1)
     {
         return SAI_STATUS_BUFFER_OVERFLOW;
