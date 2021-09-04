@@ -43,5 +43,10 @@ namespace saivs
                     _In_ sai_object_id_t bridge_id) override;
 
             virtual sai_status_t warm_update_queues() override;
+
+        protected:
+            virtual sai_status_t queryVxlanTunnelPeerModeCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability) override;
+
     };
 }

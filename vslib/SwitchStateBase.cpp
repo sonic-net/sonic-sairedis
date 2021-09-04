@@ -3296,3 +3296,30 @@ bool SwitchStateBase::dumpObject(
 
     return true;
 }
+
+sai_status_t SwitchStateBase::queryVxlanTunnelPeerModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    if (enum_values_capability->count < 2)
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_TUNNEL_PEER_MODE_P2MP;
+    enum_values_capability->list[1] = SAI_TUNNEL_PEER_MODE_P2P;
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
+                              _In_ sai_object_id_t switch_id,
+                              _In_ sai_object_type_t object_type,
+                              _In_ sai_attr_id_t attr_id,
+                              _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL && attr_id == SAI_TUNNEL_ATTR_PEER_MODE)
+    {
+        return queryVxlanTunnelPeerModeCapability(enum_values_capability);
+    }
+    return SAI_STATUS_NOT_SUPPORTED;
+}

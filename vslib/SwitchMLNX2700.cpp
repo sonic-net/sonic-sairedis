@@ -424,3 +424,16 @@ sai_status_t SwitchMLNX2700::warm_update_queues()
 
     return SAI_STATUS_SUCCESS;
 }
+
+sai_status_t SwitchMLNX2700::queryVxlanTunnelPeerModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    if (enum_values_capability->count < 1)
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 1;
+    enum_values_capability->list[0] = SAI_TUNNEL_PEER_MODE_P2MP;
+    return SAI_STATUS_SUCCESS;
+}

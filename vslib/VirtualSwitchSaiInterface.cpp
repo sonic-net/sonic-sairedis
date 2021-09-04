@@ -831,8 +831,27 @@ sai_status_t VirtualSwitchSaiInterface::queryAattributeEnumValuesCapability(
 
         return SAI_STATUS_SUCCESS;
     }
+    else if (object_type == SAI_OBJECT_TYPE_VLAN && (attr_id == SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE ||
+                                                     attr_id == SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE ||
+                                                     attr_id == SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE))
+    {
 
-    return SAI_STATUS_NOT_SUPPORTED;
+        if (enum_values_capability->count < 4)
+        {
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        enum_values_capability->count = 4;
+        enum_values_capability->list[0] = SAI_VLAN_FLOOD_CONTROL_TYPE_ALL;
+        enum_values_capability->list[1] = SAI_VLAN_FLOOD_CONTROL_TYPE_NONE;
+        enum_values_capability->list[2] = SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP;
+        enum_values_capability->list[3] = SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED;
+
+        return SAI_STATUS_SUCCESS;
+    }
+    auto ss = m_switchStateMap.at(switch_id);
+    return ss->queryAttrEnumValuesCapability(switch_id, object_type, attr_id, enum_values_capability);
+
 }
 
 sai_status_t VirtualSwitchSaiInterface::getStats(

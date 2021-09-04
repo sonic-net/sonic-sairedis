@@ -268,6 +268,12 @@ namespace saivs
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses);
 
+           virtual sai_status_t queryAttrEnumValuesCapability(
+                              _In_ sai_object_id_t switch_id,
+                              _In_ sai_object_type_t object_type,
+                              _In_ sai_attr_id_t attr_id,
+                             _Inout_ sai_s32_list_t *enum_values_capability);
+
         protected:
 
             virtual sai_status_t remove_internal(
@@ -632,6 +638,11 @@ namespace saivs
 
             constexpr static const int m_maxAclTables = 3;
             constexpr static const int m_maxAclTableGroups = 200;
+
+        protected:
+
+            virtual sai_status_t queryVxlanTunnelPeerModeCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
 
         public: // TODO private
 
