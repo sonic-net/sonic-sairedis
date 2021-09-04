@@ -48,6 +48,7 @@ cout
 cpp
 cpu
 CreateObject
+CRM
 currentObj
 currentObject
 currentView
@@ -57,6 +58,7 @@ deallocate
 decap
 decrement
 Decrement
+DEI
 del
 deserialize
 deserialized
@@ -102,16 +104,20 @@ getVid
 github
 GRE
 gSwitchId
+GUID
 hardcoded
 hasEqualAttribute
 hostif
 hpp
 HSV
+htonl
 http
 https
 hw
 hwinfo
 ICV
+ICV
+idx
 ifdef
 IFF
 ifindex
@@ -120,10 +126,19 @@ ini
 init
 INIT
 inout
+inseg
+Inseg
 INSEG
+INSEG
+insegs
+ip
 ip
 IP
+IP
 ipc
+ipc
+ipg
+IPG
 IPG
 ipgs
 IPGs
@@ -132,6 +147,8 @@ IPv
 isobjectid
 isoidattribute
 json
+kco
+KEYs
 KEYs
 lck
 lgtm
@@ -276,6 +293,7 @@ syncd
 sys
 syslog
 tapfd
+TCI
 tcp
 temporaryObj
 temporaryVid
@@ -285,6 +303,7 @@ timestamp
 tmp
 TODO
 torvalds
+TPID
 ttl
 tx
 TXSC
@@ -322,6 +341,7 @@ vslib
 vxlan
 VXLAN
 Werror
+wikipedia
 workaroung
 WRED
 www
@@ -330,4 +350,5 @@ xon
 zero
 zeromq
 zmq
+ZMQ
 ZMQ

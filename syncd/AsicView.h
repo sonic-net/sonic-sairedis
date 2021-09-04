@@ -188,7 +188,7 @@ namespace syncd
              * @param[in] rid Real ID
              * @param[in] vid Virtual ID
              */
-            void createDummyExistingObject(
+            std::shared_ptr<SaiObj> createDummyExistingObject(
                     _In_ sai_object_id_t rid,
                     _In_ sai_object_id_t vid);
 

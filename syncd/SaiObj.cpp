@@ -4,6 +4,30 @@
 
 using namespace syncd;
 
+std::string ObjectStatus::sai_serialize_object_status(
+        _In_ sai_object_status_t os)
+{
+    SWSS_LOG_ENTER();
+
+    switch (os)
+    {
+        case SAI_OBJECT_STATUS_NOT_PROCESSED:
+            return "not-processed";
+
+        case SAI_OBJECT_STATUS_MATCHED:
+             return "matched";
+
+        case SAI_OBJECT_STATUS_REMOVED:
+             return "removed";
+
+        case SAI_OBJECT_STATUS_FINAL:
+             return "final";
+
+        default:
+             SWSS_LOG_THROW("unknown object status: %d", os);
+    }
+}
+
 SaiObj::SaiObj():
     m_createdObject(false),
     m_objectStatus(SAI_OBJECT_STATUS_NOT_PROCESSED)

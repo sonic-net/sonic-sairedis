@@ -58,6 +58,10 @@ namespace syncd
                     _In_ AsicView& current,
                     _In_ AsicView& temp);
 
+            void transferNotProcessed(
+                    _In_ AsicView& current,
+                    _In_ AsicView& temp);
+
             void checkInternalObjects(
                     _In_ const AsicView& cv,
                     _In_ const AsicView& tv);
@@ -136,8 +140,8 @@ namespace syncd
             bool performObjectSetTransition(
                     _In_ AsicView& currentView,
                     _In_ AsicView& temporaryView,
-                    _In_ const std::shared_ptr<SaiObj>& currentBestMatch,
-                    _In_ const std::shared_ptr<const SaiObj>& temporaryObj,
+                    _In_ const std::shared_ptr<SaiObj> currentBestMatch,
+                    _In_ const std::shared_ptr<SaiObj> temporaryObj,
                     _In_ bool performTransition);
 
             void breakBeforeMake(
@@ -154,7 +158,7 @@ namespace syncd
             void processObjectForViewTransition(
                     _In_ AsicView& currentView,
                     _In_ AsicView& temporaryView,
-                    _In_ const std::shared_ptr<SaiObj>& temporaryObj);
+                    _Inout_ std::shared_ptr<SaiObj> temporaryObj);
 
             void checkSwitch(
                     _In_ const AsicView& currentView,
