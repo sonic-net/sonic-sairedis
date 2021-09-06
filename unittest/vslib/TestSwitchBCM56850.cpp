@@ -37,7 +37,7 @@ TEST(SwitchBCM56850, ctr)
             nullptr);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 
@@ -67,7 +67,7 @@ TEST(SwitchBCM56850, refresh_bridge_port_list)
             sc);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 
@@ -92,7 +92,7 @@ TEST(SwitchBCM56850, refresh_bridge_port_list)
     attr.value.objlist.list = list;
 
     EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_BRIDGE, sboid, 1, &attr), SAI_STATUS_SUCCESS);
-    
+
     //std::cout << sw.dump_switch_database_for_warm_restart();
 }
 
@@ -242,7 +242,7 @@ TEST(SwitchBCM56850, warm_update_queues)
             warmBootState);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 

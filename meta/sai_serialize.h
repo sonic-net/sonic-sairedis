@@ -412,7 +412,7 @@ void sai_deserialize_free_queue_deadlock_ntf(
 
 void sai_deserialize_free_bfd_session_state_ntf(
         _In_ uint32_t count,
-        _In_ sai_bfd_session_state_notification_t* bfdsessionstate);    
+        _In_ sai_bfd_session_state_notification_t* bfdsessionstate);
 
 void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,

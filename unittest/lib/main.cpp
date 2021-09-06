@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-class SwsscommonEnvironment: 
+class SwsscommonEnvironment:
     public ::testing::Environment
 {
     public:

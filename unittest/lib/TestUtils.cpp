@@ -9,9 +9,9 @@ using namespace sairedis;
 TEST(Utils, clearOidValues)
 {
     sai_attribute_t attr;
-    
+
     sai_object_id_t oids[1];
-    
+
     attr.id = 1000;
 
     EXPECT_THROW(Utils::clearOidValues(SAI_OBJECT_TYPE_NULL, 1, &attr), std::runtime_error);
@@ -59,4 +59,3 @@ TEST(Utils, clearOidValues)
     EXPECT_EQ(oids[0], 0);
 
 }
-

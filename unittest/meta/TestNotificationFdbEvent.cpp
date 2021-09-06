@@ -12,12 +12,12 @@
 using namespace sairedis;
 using namespace saimeta;
 
-static std::string s = 
+static std::string s =
 "[{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x260000000005be\\\",\\\"mac\\\":\\\"52:54:00:86:DD:7A\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\"}\","
 "\"fdb_event\":\"SAI_FDB_EVENT_LEARNED\","
 "\"list\":[{\"id\":\"SAI_FDB_ENTRY_ATTR_TYPE\",\"value\":\"SAI_FDB_ENTRY_TYPE_DYNAMIC\"},{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x3a000000000660\"}]}]";
 
-static std::string null = 
+static std::string null =
 "[{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x260000000005be\\\",\\\"mac\\\":\\\"52:54:00:86:DD:7A\\\",\\\"switch_id\\\":\\\"oid:0x0\\\"}\","
 "\"fdb_event\":\"SAI_FDB_EVENT_LEARNED\","
 "\"list\":[{\"id\":\"SAI_FDB_ENTRY_ATTR_TYPE\",\"value\":\"SAI_FDB_ENTRY_TYPE_DYNAMIC\"},{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x3a000000000660\"}]}]";

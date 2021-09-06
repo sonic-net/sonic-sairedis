@@ -585,7 +585,7 @@ TEST(SaiSerialize, serialize_chardata)
     EXPECT_THROW(sai_deserialize_attr_value("\\x2g", *meta, attr), std::runtime_error);
 
     EXPECT_THROW(sai_deserialize_attr_value("\\x2", *meta, attr), std::runtime_error);
-        
+
     EXPECT_THROW(sai_deserialize_attr_value("\\s45", *meta, attr), std::runtime_error);
 
     EXPECT_THROW(sai_deserialize_attr_value("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", *meta, attr), std::runtime_error);
@@ -626,7 +626,7 @@ TEST(SaiSerialize, serialize_uint64)
     EXPECT_EQ(12345, attr.value.u64);
 
     EXPECT_THROW(sai_deserialize_attr_value("22345235345345345435", *meta, attr), std::runtime_error);
-        
+
     EXPECT_THROW(sai_deserialize_attr_value("2a", *meta, attr), std::runtime_error);
 }
 

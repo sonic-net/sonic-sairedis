@@ -188,7 +188,7 @@ namespace saimeta
 
             void meta_sai_on_bfd_session_state_change(
                     _In_ uint32_t count,
-                    _In_ const sai_bfd_session_state_notification_t *data);        
+                    _In_ const sai_bfd_session_state_notification_t *data);
 
         private: // notifications helpers
 

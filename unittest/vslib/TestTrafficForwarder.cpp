@@ -47,7 +47,7 @@ TEST(TrafficForwarder, addVlanTag)
     struct tpacket_auxdata* aux = (struct tpacket_auxdata*)CMSG_DATA(cmsg);
 
     // https://en.wikipedia.org/wiki/IEEE_802.1Q
-    // 
+    //
     // TPID(16) |          TCI(16)
     //          |  PCP(3)  DEI(1) VID(12)
 
@@ -62,5 +62,5 @@ TEST(TrafficForwarder, addVlanTag)
 
     EXPECT_TRUE(TrafficForwarder::addVlanTag(buffer, length, hdr));
 
-    EXPECT_EQ(length, 68); 
+    EXPECT_EQ(length, 68);
 }

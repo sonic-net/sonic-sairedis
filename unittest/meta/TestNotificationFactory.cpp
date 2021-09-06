@@ -67,7 +67,7 @@ TEST(NotificationFactory, deserialize_switch_state_change)
     auto str = sai_serialize_switch_oper_status(0x2100000000, status);
 
     // {"status":"SAI_SWITCH_OPER_STATUS_UP","switch_id":"oid:0x2100000000"}
- 
+
     auto ntf = NotificationFactory::deserialize(
             SAI_SWITCH_NOTIFICATION_NAME_SWITCH_STATE_CHANGE,
             str);
