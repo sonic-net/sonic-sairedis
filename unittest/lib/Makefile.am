@@ -6,13 +6,16 @@ LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 
 tests_SOURCES = \
 				main.cpp \
+				../../meta/NumberOidIndexGenerator.cpp \
 				TestSwitch.cpp \
 				TestClientConfig.cpp \
 				TestClientServerSai.cppa \
 				TestContext.cpp \
 				TestContextConfig.cpp \
 				TestContextConfigContainer.cpp \
-				TestUtils.cpp
+				TestUtils.cpp \
+				TestVirtualObjectIdManager.cpp \
+				TestZeroMQChannel.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/lib/libSaiRedis.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
