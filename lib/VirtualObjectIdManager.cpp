@@ -192,7 +192,6 @@ void VirtualObjectIdManager::releaseSwitchIndex(
     SWSS_LOG_DEBUG("released switch index 0x%x", index);
 }
 
-
 sai_object_id_t VirtualObjectIdManager::allocateNewObjectId(
         _In_ sai_object_type_t objectType,
         _In_ sai_object_id_t switchId)
