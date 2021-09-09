@@ -235,7 +235,7 @@ config_syncd_barefoot()
         echo "SAI_KEY_WARM_BOOT_WRITE_FILE=/var/warmboot/sai-warmboot.bin" > $PROFILE_FILE
         echo "SAI_KEY_WARM_BOOT_READ_FILE=/var/warmboot/sai-warmboot.bin" >> $PROFILE_FILE
     fi
-    CMD_ARGS+=" -p $PROFILE_FILE"
+    CMD_ARGS+=" -l -p $PROFILE_FILE"
 
     # Check and load SDE profile
     P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
