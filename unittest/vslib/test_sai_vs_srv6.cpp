@@ -10,7 +10,7 @@ TEST(libsaivs, srv6)
 {
     sai_srv6_api_t *api = nullptr;
 
-    sai_api_query(SAI_API_srv6, (void**)&api);
+    sai_api_query(SAI_API_SRV6, (void**)&api);
 
     EXPECT_NE(api, nullptr);
 
