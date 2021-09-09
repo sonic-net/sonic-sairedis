@@ -452,10 +452,6 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.rx_state, dst_attr.value.rx_state);
             break;
 
-        case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
-            RETURN_ON_ERROR(transfer_list(src_attr.value.segmentlist, dst_attr.value.segmentlist, countOnly));
-            break;
-
         case SAI_ATTR_VALUE_TYPE_MAP_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.maplist, dst_attr.value.maplist, countOnly));
             break;
