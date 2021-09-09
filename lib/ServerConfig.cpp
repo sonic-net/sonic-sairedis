@@ -55,7 +55,7 @@ std::shared_ptr<ServerConfig> ServerConfig::loadFromFile(
         auto cc = std::make_shared<ServerConfig>();
 
         cc->m_zmqEndpoint = j["zmq_endpoint"];
-        cc->m_zmqNtfEndpoint = j["zmq_endpoint_ntf"];
+        cc->m_zmqNtfEndpoint = j["zmq_ntf_endpoint"];
 
         SWSS_LOG_NOTICE("server config: %s, %s",
                 cc->m_zmqEndpoint.c_str(),

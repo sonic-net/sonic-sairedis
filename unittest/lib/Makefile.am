@@ -6,7 +6,13 @@ LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 
 tests_SOURCES = \
 				main.cpp \
-				TestSwitch.cpp
+				TestSwitch.cpp \
+				TestClientConfig.cpp \
+				TestClientServerSai.cppa \
+				TestContext.cpp \
+				TestContextConfig.cpp \
+				TestContextConfigContainer.cpp \
+				TestUtils.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/lib/libSaiRedis.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
@@ -62,4 +68,4 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 testslibsairedis_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 testslibsairedis_LDADD = $(LDADD_GTEST) -L$(top_srcdir)/lib/.libs -lsairedis -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
-TESTS = tests testslibsairedis
+TESTS = testslibsairedis tests

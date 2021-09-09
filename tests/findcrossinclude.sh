@@ -38,7 +38,7 @@ find ../meta/.deps -name "*.Plo" -o -name "*.Po"|xargs grep -P "[^r]/lib/|vslib/
 echo -- find cross include in lib directory
 
 find ../lib/.deps -name "*.Plo" -o -name "*.Po"|xargs grep -P "vslib/|syncd/"
-       
+
 echo -- find cross include in vslib directory
 
 find ../vslib/.deps -name "*.Plo" -o -name "*.Po"|xargs grep -P "[^r]/lib/|syncd/"| \

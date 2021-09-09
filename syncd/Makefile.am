@@ -60,6 +60,7 @@ syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 syncd_LDADD = libSyncd.a $(top_srcdir)/lib/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
 			  -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS)
+syncd_LDFLAGS = -rdynamic
 
 if SAITHRIFT
 libSyncd_a_CXXFLAGS += -DSAITHRIFT=yes

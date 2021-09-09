@@ -59,7 +59,7 @@ TEST(FdbInfo, serialize)
 
 TEST(FdbInfo, deserialize)
 {
-    std::string str = 
+    std::string str =
             "{\"bridge_port_id\":\"oid:0x1\","
             "\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x0\\\",\\\"mac\\\":\\\"00:00:00:00:00:00\\\",\\\"switch_id\\\":\\\"oid:0x0\\\"}\","
             "\"port_id\":\"oid:0x0\","
@@ -124,14 +124,14 @@ TEST(FdbInfo, setTimestamp)
 
 TEST(FdbInfo, operator_bracket)
 {
-    std::string strA = 
+    std::string strA =
             "{\"bridge_port_id\":\"oid:0x1\","
             "\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x0\\\",\\\"mac\\\":\\\"00:00:00:00:00:00\\\",\\\"switch_id\\\":\\\"oid:0x0\\\"}\","
             "\"port_id\":\"oid:0x0\","
             "\"timestamp\":\"0\","
             "\"vlan_id\":\"0\"}";
 
-    std::string strB = 
+    std::string strB =
             "{\"bridge_port_id\":\"oid:0x1\","
             "\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x0\\\",\\\"mac\\\":\\\"00:00:00:00:00:01\\\",\\\"switch_id\\\":\\\"oid:0x0\\\"}\","
             "\"port_id\":\"oid:0x0\","
@@ -147,14 +147,14 @@ TEST(FdbInfo, operator_bracket)
 
 TEST(FdbInfo, operator_lt)
 {
-    std::string strA = 
+    std::string strA =
             "{\"bridge_port_id\":\"oid:0x1\","
             "\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x0\\\",\\\"mac\\\":\\\"00:00:00:00:00:00\\\",\\\"switch_id\\\":\\\"oid:0x0\\\"}\","
             "\"port_id\":\"oid:0x0\","
             "\"timestamp\":\"0\","
             "\"vlan_id\":\"0\"}";
 
-    std::string strB = 
+    std::string strB =
             "{\"bridge_port_id\":\"oid:0x1\","
             "\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x0\\\",\\\"mac\\\":\\\"00:00:00:00:00:01\\\",\\\"switch_id\\\":\\\"oid:0x0\\\"}\","
             "\"port_id\":\"oid:0x0\","
@@ -169,14 +169,14 @@ TEST(FdbInfo, operator_lt)
     EXPECT_EQ(a < a, false);
     EXPECT_EQ(b < b, false);
 
-    std::string strC = 
+    std::string strC =
             "{\"bridge_port_id\":\"oid:0x1\","
             "\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x0\\\",\\\"mac\\\":\\\"00:00:00:00:00:00\\\",\\\"switch_id\\\":\\\"oid:0x0\\\"}\","
             "\"port_id\":\"oid:0x0\","
             "\"timestamp\":\"0\","
             "\"vlan_id\":\"1\"}";
 
-    std::string strD = 
+    std::string strD =
             "{\"bridge_port_id\":\"oid:0x1\","
             "\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x0\\\",\\\"mac\\\":\\\"00:00:00:00:00:00\\\",\\\"switch_id\\\":\\\"oid:0x0\\\"}\","
             "\"port_id\":\"oid:0x0\","

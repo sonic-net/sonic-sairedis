@@ -37,7 +37,7 @@ TEST(SwitchMLNX2700, ctr)
             nullptr);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 
@@ -67,7 +67,7 @@ TEST(SwitchMLNX2700, refresh_bridge_port_list)
             sc);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 
@@ -241,7 +241,7 @@ TEST(SwitchMLNX2700, warm_update_queues)
             warmBootState);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 

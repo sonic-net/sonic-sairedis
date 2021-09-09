@@ -55,6 +55,19 @@ namespace syncd
 
     } sai_object_status_t;
 
+    class ObjectStatus
+    {
+        private:
+
+            ObjectStatus() = delete;
+            ~ObjectStatus() = delete;
+
+        public:
+
+            static std::string sai_serialize_object_status(
+                    _In_ sai_object_status_t os);
+    };
+
     class SaiObj
     {
         private:

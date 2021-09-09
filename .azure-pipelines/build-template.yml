@@ -33,6 +33,10 @@ parameters:
   type: boolean
   default: false
 
+- name: archive_gcov
+  type: boolean
+  default: false
+
 jobs:
 - job:
   displayName: ${{ parameters.arch }}
@@ -97,20 +101,48 @@ jobs:
   - checkout: self
     submodules: true
   - script: |
+      set -ex
       ./autogen.sh
-      fakeroot dpkg-buildpackage -b -us -uc -Tbinary-syncd-vs -j$(nproc) && cp ../*.deb .
-    displayName: "Compile sonic sairedis"
+      fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs && cp ../*.deb .
+    displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
       sudo cp azsyslog.conf /etc/rsyslog.conf
       sudo service rsyslog restart
     displayName: "Update rsyslog.conf"
   - ${{ if eq(parameters.run_unit_test, true) }}:
     - script: |
+        set -ex
+        git clone https://github.com/Spacetown/gcovr.git
+        cd gcovr/
+        git checkout origin/recursive_search_file
+        sudo pip3 install setuptools
+        sudo python3 setup.py install
+        cd ..
+        sudo rm -rf gcovr
+      displayName: "Install gcovr 5.0 with recursive fix"
+    - script: |
+        set -ex
         make check
+        gcovr --version
+        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --exclude-throw-branches -x -o coverage.xml
       displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}
     displayName: "Archive sonic sairedis debian packages"
+  - ${{ if eq(parameters.archive_gcov, true) }}:
+      - script: |
+          set -ex
+          # Install .NET CORE
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          sudo apt-add-repository https://packages.microsoft.com/debian/10/prod
+          sudo apt-get update
+          sudo apt-get install -y dotnet-sdk-5.0
+        displayName: "Install .NET CORE"
+      - task: PublishCodeCoverageResults@1
+        inputs:
+            codeCoverageTool: Cobertura
+            summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+        displayName: 'Publish test coverage'
   - script: |
       pwd
       sudo chmod a+r /var/log/syslog*

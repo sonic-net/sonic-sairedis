@@ -30,7 +30,7 @@ TEST(libsairedis, hostif)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_hostif_trap_group(0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_hostif_trap_group_attribute(0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_hostif_trap_group_attribute(0,0,0));
-    
+
     EXPECT_NE(SAI_STATUS_SUCCESS, api->create_hostif_trap(&id,0,0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_hostif_trap(0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_hostif_trap_attribute(0,0));
