@@ -620,7 +620,7 @@ sai_status_t VendorSai::bulkCreate(
             ptr = m_apis.next_hop_group_api->create_next_hop_group_members;
             break;
 
-        case SAI_OBJECT_TYPE_SEGMENTROUTE_SIDLIST:
+        case SAI_OBJECT_TYPE_SRV6_SIDLIST:
             ptr = m_apis.srv6_api->create_srv6_sidlists;
             break;
 
@@ -679,7 +679,7 @@ sai_status_t VendorSai::bulkRemove(
             ptr = m_apis.next_hop_group_api->remove_next_hop_group_members;
             break;
 
-        case SAI_OBJECT_TYPE_SEGMENTROUTE_SIDLIST:
+        case SAI_OBJECT_TYPE_SRV6_SIDLIST:
             ptr = m_apis.srv6_api->remove_srv6_sidlists;
             break;
 
