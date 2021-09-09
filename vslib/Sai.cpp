@@ -471,9 +471,14 @@ sai_status_t Sai::queryStatsCapability(
         _In_ sai_object_type_t objectType,
         _Inout_ sai_stat_capability_list_t *stats_capability)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
+    VS_CHECK_API_INITIALIZED();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_meta->queryStatsCapability(
+            switchId,
+            objectType,
+            stats_capability);
 }
 
 sai_status_t Sai::getStatsExt(

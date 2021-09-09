@@ -864,7 +864,36 @@ sai_status_t VirtualSwitchSaiInterface::queryStatsCapability(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
+
+    if (m_switchStateMap.size() == 0)
+    {
+        SWSS_LOG_ERROR("no switch!, was removed but some function still call");
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (m_switchStateMap.size() == 1)
+    {
+        switch_id = m_switchStateMap.begin()->first;
+    }
+    else
+    {
+        SWSS_LOG_THROW("multiple switches not supported, FIXME");
+    }
+
+    if (m_switchStateMap.find(switch_id) == m_switchStateMap.end())
+    {
+        SWSS_LOG_ERROR("failed to find switch %s in switch state map", sai_serialize_object_id(switch_id).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto ss = m_switchStateMap.at(switch_id);
+
+    return ss->queryStatsCapability(
+            switchId,
+            objectType,
+            stats_capability);
 }
 
 sai_status_t VirtualSwitchSaiInterface::getStatsExt(

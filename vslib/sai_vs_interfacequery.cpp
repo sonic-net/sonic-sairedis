@@ -188,5 +188,5 @@ sai_status_t sai_query_stats_capability(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return vs_sai->queryStatsCapability(switch_id, object_type, stats_capability);
 }
