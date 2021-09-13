@@ -24,7 +24,7 @@ TEST(SkipRecordAttrContainer, remove)
     EXPECT_FALSE(srac->remove(SAI_OBJECT_TYPE_PORT, 10000));
 
     EXPECT_TRUE(srac->add(SAI_OBJECT_TYPE_PORT, SAI_PORT_ATTR_TYPE));
-    
+
     EXPECT_FALSE(srac->remove(SAI_OBJECT_TYPE_PORT, 10000));
 
     EXPECT_TRUE(srac->remove(SAI_OBJECT_TYPE_PORT, SAI_PORT_ATTR_TYPE));
@@ -37,7 +37,7 @@ TEST(SkipRecordAttrContainer, clear)
     EXPECT_TRUE(srac->remove(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP));
 
     srac->clear();
-    
+
     EXPECT_FALSE(srac->remove(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE));
 }
 
