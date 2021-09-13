@@ -57,31 +57,6 @@ std::shared_ptr<swss::DBConnector> RedisChannel::getDbConnector() const
     return m_db;
 }
 
-static std::string getSelectResultAsString(int result)
-{
-    SWSS_LOG_ENTER();
-
-    std::string res;
-
-    switch (result)
-    {
-        case swss::Select::ERROR:
-            res = "ERROR";
-            break;
-
-        case swss::Select::TIMEOUT:
-            res = "TIMEOUT";
-            break;
-
-        default:
-            SWSS_LOG_WARN("non recognized select result: %d", result);
-            res = std::to_string(result);
-            break;
-    }
-
-    return res;
-}
-
 void RedisChannel::notificationThreadFunction()
 {
     SWSS_LOG_ENTER();
@@ -119,7 +94,7 @@ void RedisChannel::notificationThreadFunction()
         }
         else
         {
-            SWSS_LOG_ERROR("select failed: %s", getSelectResultAsString(result).c_str());
+            SWSS_LOG_ERROR("select failed: %s", swss::Select::resultToString(result).c_str());
         }
     }
 }
@@ -201,7 +176,7 @@ sai_status_t RedisChannel::wait(
             return status;
         }
 
-        SWSS_LOG_ERROR("SELECT operation result: %s on %s", getSelectResultAsString(result).c_str(), command.c_str());
+        SWSS_LOG_ERROR("SELECT operation result: %s on %s", swss::Select::resultToString(result).c_str(), command.c_str());
         break;
     }
 
