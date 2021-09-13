@@ -45,7 +45,9 @@ namespace saivs
             virtual sai_status_t warm_update_queues() override;
 
         protected:
-            virtual sai_status_t queryVxlanTunnelPeerModeCapability(
+            virtual sai_status_t queryTunnelPeerModeCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability) override;
+            virtual sai_status_t queryVlanfloodTypeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability) override;
 
     };

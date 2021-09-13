@@ -3297,7 +3297,7 @@ bool SwitchStateBase::dumpObject(
     return true;
 }
 
-sai_status_t SwitchStateBase::queryVxlanTunnelPeerModeCapability(
+sai_status_t SwitchStateBase::queryTunnelPeerModeCapability(
                    _Inout_ sai_s32_list_t *enum_values_capability)
 {
     SWSS_LOG_ENTER();
@@ -3313,6 +3313,24 @@ sai_status_t SwitchStateBase::queryVxlanTunnelPeerModeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryVlanfloodTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 3)
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 3;
+    enum_values_capability->list[0] = SAI_VLAN_FLOOD_CONTROL_TYPE_ALL;
+    enum_values_capability->list[1] = SAI_VLAN_FLOOD_CONTROL_TYPE_NONE;
+    enum_values_capability->list[2] = SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -3323,7 +3341,13 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
 
     if (object_type == SAI_OBJECT_TYPE_TUNNEL && attr_id == SAI_TUNNEL_ATTR_PEER_MODE)
     {
-        return queryVxlanTunnelPeerModeCapability(enum_values_capability);
+        return queryTunnelPeerModeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_VLAN && (attr_id == SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE ||
+                                                     attr_id == SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE ||
+                                                     attr_id == SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE))
+    {
+        return queryVlanfloodTypeCapability(enum_values_capability);
     }
     return SAI_STATUS_NOT_SUPPORTED;
 }

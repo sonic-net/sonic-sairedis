@@ -267,3 +267,128 @@ TEST(SwitchMLNX2700, warm_update_queues)
 
     EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_BRIDGE, sboid, 1, &attr), SAI_STATUS_SUCCESS);
 }
+
+TEST(SwitchMLNX2700, test_tunnel_term_capability)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_MLNX2700;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchMLNX2700 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_s32_list_t enum_val_cap;
+    int32_t list[2];
+    enum_val_cap.count = 2;
+    enum_val_cap.list = list;
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000, SAI_OBJECT_TYPE_TUNNEL,
+                                               SAI_TUNNEL_ATTR_PEER_MODE, &enum_val_cap),
+                                               SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(enum_val_cap.count, 1);
+    EXPECT_EQ(enum_val_cap.list[0], SAI_TUNNEL_PEER_MODE_P2MP);
+
+}
+
+TEST(SwitchMLNX2700, test_vlan_flood_capability)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_MLNX2700;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchMLNX2700 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_s32_list_t enum_val_cap;
+    int32_t list[4];
+    enum_val_cap.count = 4;
+    enum_val_cap.list = list;
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000, SAI_OBJECT_TYPE_VLAN,
+                                               SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE, &enum_val_cap),
+                                               SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(enum_val_cap.count, 4);
+
+    int flood_types_found = 0;
+    for (uint32_t i = 0; i < enum_val_cap.count; i++)
+    {
+        if (enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_ALL ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_NONE ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED)
+        {
+            flood_types_found++;
+        }
+    }
+    EXPECT_EQ(flood_types_found, 4);
+
+    memset(list, 0, sizeof(list));
+    flood_types_found = 0;
+    enum_val_cap.count = 4;
+    enum_val_cap.list = list;
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000, SAI_OBJECT_TYPE_VLAN,
+                                               SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE, &enum_val_cap),
+                                               SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(enum_val_cap.count, 4);
+
+    for (uint32_t i = 0; i < enum_val_cap.count; i++)
+    {
+        if (enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_ALL ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_NONE ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED)
+        {
+            flood_types_found++;
+        }
+    }
+    EXPECT_EQ(flood_types_found, 4);
+
+    memset(list, 0, sizeof(list));
+    flood_types_found = 0;
+    enum_val_cap.count = 4;
+    enum_val_cap.list = list;
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000, SAI_OBJECT_TYPE_VLAN,
+                                               SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE, &enum_val_cap),
+                                               SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(enum_val_cap.count, 4);
+
+    for (uint32_t i = 0; i < enum_val_cap.count; i++)
+    {
+        if (enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_ALL ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_NONE ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED)
+        {
+            flood_types_found++;
+        }
+    }
+    EXPECT_EQ(flood_types_found, 4);
+}
