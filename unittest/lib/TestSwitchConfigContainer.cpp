@@ -18,7 +18,7 @@ TEST(SwitchConfigContainer, insert)
     EXPECT_THROW(scc->insert(sc), std::runtime_error);
     EXPECT_THROW(scc->insert(sc1), std::runtime_error);
 }
-    
+
 TEST(SwitchConfigContainer, getConfig)
 {
     auto sc0 = std::make_shared<SwitchConfig>(0, "0");
