@@ -294,8 +294,10 @@ TEST(SwitchBCM56850, test_tunnel_term_capability)
 
     sai_s32_list_t enum_val_cap;
     int32_t list[2];
+
     enum_val_cap.count = 2;
     enum_val_cap.list = list;
+
     EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
                                                SAI_OBJECT_TYPE_TUNNEL,
                                                SAI_TUNNEL_ATTR_PEER_MODE,
@@ -341,8 +343,10 @@ TEST(SwitchBCM56850, test_vlan_flood_capability)
 
     sai_s32_list_t enum_val_cap;
     int32_t list[4];
+
     enum_val_cap.count = 4;
     enum_val_cap.list = list;
+
     EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
                                                SAI_OBJECT_TYPE_VLAN,
                                                SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE,
@@ -368,6 +372,7 @@ TEST(SwitchBCM56850, test_vlan_flood_capability)
     flood_types_found = 0;
     enum_val_cap.count = 4;
     enum_val_cap.list = list;
+
     EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
                                                SAI_OBJECT_TYPE_VLAN,
                                                SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE,
@@ -392,6 +397,7 @@ TEST(SwitchBCM56850, test_vlan_flood_capability)
     flood_types_found = 0;
     enum_val_cap.count = 4;
     enum_val_cap.list = list;
+
     EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
                                                SAI_OBJECT_TYPE_VLAN,
                                                SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE,
