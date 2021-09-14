@@ -361,6 +361,7 @@ TEST(SwitchBCM56850, test_vlan_flood_capability)
             flood_types_found++;
         }
     }
+
     EXPECT_EQ(flood_types_found, 3);
 
     memset(list, 0, sizeof(list));
@@ -384,6 +385,7 @@ TEST(SwitchBCM56850, test_vlan_flood_capability)
             flood_types_found++;
         }
     }
+
     EXPECT_EQ(flood_types_found, 3);
 
     memset(list, 0, sizeof(list));
@@ -407,5 +409,6 @@ TEST(SwitchBCM56850, test_vlan_flood_capability)
             flood_types_found++;
         }
     }
+
     EXPECT_EQ(flood_types_found, 3);
 }
