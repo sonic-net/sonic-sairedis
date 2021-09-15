@@ -205,6 +205,8 @@ sai_status_t RedisRemoteSaiInterface::create(
     else
     {
         *objectId = m_virtualObjectIdManager->allocateNewObjectId(objectType, switchId);
+
+        m_createdInInitView.insert(*objectId);
     }
 
     if (*objectId == SAI_NULL_OBJECT_ID)
@@ -526,6 +528,15 @@ sai_status_t RedisRemoteSaiInterface::get(
         _Inout_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    if (m_createdInInitView.find(objectId) != m_createdInInitView.end())
+    {
+        SWSS_LOG_WARN("GET api can't be used on %s (%s) since it's created in INIT_VIEW mode",
+                sai_serialize_object_id(objectId).c_str(),
+                sai_serialize_object_type(objectType).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
 
     return get(
             objectType,
@@ -1108,6 +1119,15 @@ sai_status_t RedisRemoteSaiInterface::getStats(
 {
     SWSS_LOG_ENTER();
 
+    if (m_createdInInitView.find(object_id) != m_createdInInitView.end())
+    {
+        SWSS_LOG_WARN("GET STATS api can't be used on %s (%s) since it's created in INIT_VIEW mode",
+                sai_serialize_object_id(object_id).c_str(),
+                sai_serialize_object_type(object_type).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
     auto stats_enum = sai_metadata_get_object_type_info(object_type)->statenum;
 
     auto entry = serialize_counter_id_list(stats_enum, number_of_counters, counter_ids);
@@ -1177,6 +1197,15 @@ sai_status_t RedisRemoteSaiInterface::clearStats(
         _In_ const sai_stat_id_t *counter_ids)
 {
     SWSS_LOG_ENTER();
+
+    if (m_createdInInitView.find(object_id) != m_createdInInitView.end())
+    {
+        SWSS_LOG_WARN("CLEAR STATS api can't be used on %s (%s) since it's created in INIT_VIEW mode",
+                sai_serialize_object_id(object_id).c_str(),
+                sai_serialize_object_type(object_type).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
 
     auto stats_enum = sai_metadata_get_object_type_info(object_type)->statenum;
 
@@ -1552,6 +1581,8 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
 
             return SAI_STATUS_INSUFFICIENT_RESOURCES;
         }
+
+        m_createdInInitView.insert(object_id[idx]);
     }
 
     std::vector<std::string> serialized_object_ids;
@@ -1931,6 +1962,8 @@ sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
 
                 m_asicInitViewMode = false;
 
+                m_createdInInitView.clear();
+
                 break;
 
             case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
@@ -1970,6 +2003,8 @@ void RedisRemoteSaiInterface::clear_local_state()
     {
         meta->meta_init_db();
     }
+
+    m_createdInInitView.clear();
 }
 
 void RedisRemoteSaiInterface::setMeta(

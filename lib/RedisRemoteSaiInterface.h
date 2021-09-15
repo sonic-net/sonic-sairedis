@@ -365,5 +365,7 @@ namespace sairedis
             std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> m_notificationCallback;
 
             std::map<sai_object_id_t, swss::TableDump> m_tableDump;
+
+            std::set<sai_object_id_t> m_createdInInitView;
     };
 }
