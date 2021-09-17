@@ -455,6 +455,8 @@ namespace saivs
                     _In_ const char*name,
                     _In_ int mtu);
 
+            bool ifexists(const char *dev);
+
             int ifup(
                     _In_ const char *dev,
                     _In_ sai_object_id_t port_id,

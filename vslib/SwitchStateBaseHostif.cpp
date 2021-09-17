@@ -23,6 +23,7 @@
 #include <netlink/route/link.h>
 #include <netlink/route/addr.h>
 #include <linux/if.h>
+#include <unistd.h>
 
 #include <algorithm>
 
@@ -219,6 +220,15 @@ void SwitchStateBase::send_port_oper_status_notification(
     auto payload = std::make_shared<EventPayloadNotification>(ntf, sn);
 
     m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
+}
+
+bool SwitchStateBase::ifexists(const char *dev)
+{
+    SWSS_LOG_ENTER();
+
+    std::string path = std::string("/sys/class/net/") + dev + "/operstate";
+
+    return access(path.c_str(), F_OK) == 0;
 }
 
 int SwitchStateBase::ifup(
@@ -640,6 +650,13 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
     }
 
     std::string vname = vs_get_veth_name(name, obj_id);
+
+    if (!ifexists(vname.c_str()))
+    {
+        SWSS_LOG_WARN("interface %s isn't enabled, skip to create the tap interface",vname.c_str());
+
+        return SAI_STATUS_SUCCESS;
+    }
 
     int mtu = ETH_FRAME_BUFFER_SIZE;
 
