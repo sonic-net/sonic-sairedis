@@ -37,6 +37,10 @@ jobs:
 - job:
   displayName: ${{ parameters.arch }}
   timeoutInMinutes: ${{ parameters.timeout }}
+  variables:
+    DIFF_COVER_CHECK_THRESHOLD: 0
+    ${{ if ne(parameters.pool, 'default') }}:
+      DIFF_COVER_DISABLE: 'false'
 
   pool:
     ${{ if ne(parameters.pool, 'default') }}:

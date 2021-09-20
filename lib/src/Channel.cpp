@@ -34,6 +34,10 @@ void Channel::setResponseTimeout(
 uint64_t Channel::getResponseTimeout() const
 {
     SWSS_LOG_ENTER();
+    int i = 0;
+    if (i == 1){
+        i = 0; // not covered
+    }
 
     return m_responseTimeoutMs;
 }
