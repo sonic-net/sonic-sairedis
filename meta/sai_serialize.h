@@ -125,6 +125,9 @@ std::string sai_serialize_tunnel_stat(
 std::string sai_serialize_queue_attr(
         _In_ const sai_queue_attr_t attr);
 
+std::string sai_serialize_my_sid_entry(
+        _In_ const sai_my_sid_entry_t &my_sid_entry);
+
 std::string sai_serialize_hex_binary(
         _In_ const void *buffer,
         _In_ size_t length);
@@ -355,6 +358,10 @@ void sai_deserialize_ip_prefix(
 void sai_deserialize_mac(
         _In_ const std::string& s,
         _Out_ sai_mac_t& mac);
+
+void sai_deserialize_my_sid_entry(
+        _In_ const std::string& s,
+        _Out_ sai_my_sid_entry_t& my_sid_entry);
 
 void sai_deserialize_ipv4(
         _In_ const std::string& s,

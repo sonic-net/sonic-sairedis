@@ -62,7 +62,7 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_router_samplepacket.cpp \
 				test_sai_redis_schedulergroup.cpp \
 				test_sai_redis_scheduler.cpp \
-				test_sai_redis_segmentroute.cpp \
+				test_sai_redis_srv6.cpp \
 				test_sai_redis_switch.cpp \
 				test_sai_redis_system_port.cpp \
 				test_sai_redis_tam.cpp \

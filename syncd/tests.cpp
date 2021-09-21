@@ -229,10 +229,12 @@ void test_bulk_next_hop_group_member_create()
     sai_next_hop_api_t  *sai_next_hop_api = NULL;
     sai_next_hop_group_api_t  *sai_next_hop_group_api = NULL;
     sai_switch_api_t *sai_switch_api = NULL;
+    sai_srv6_api_t *sai_srv6_api = NULL;
 
     sai_api_query(SAI_API_NEXT_HOP, (void**)&sai_next_hop_api);
     sai_api_query(SAI_API_NEXT_HOP_GROUP, (void**)&sai_next_hop_group_api);
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+    sai_api_query(SAI_API_SRV6, (void **)&sai_srv6_api);
 
     uint32_t count = 3;
 
@@ -264,18 +266,24 @@ void test_bulk_next_hop_group_member_create()
 
     for (uint32_t i = 0; i <  count; ++i)
     {
+        // srv6 sidlist object
+        sai_object_id_t sidlist;
+        sai_attribute_t sidattr[1] = { };
+        sidattr[0].id = SAI_SRV6_SIDLIST_ATTR_TYPE;
+        sidattr[0].value.s32 = SAI_SRV6_SIDLIST_TYPE_ENCAPS_RED;
+        status = sai_srv6_api->create_srv6_sidlist(&sidlist, switch_id, 1, sidattr);
+
         sai_object_id_t hop_vid;
 
-        sai_attribute_t nhattr[3] = { };
+        sai_attribute_t nhattr[2] = { };
 
         nhattr[0].id = SAI_NEXT_HOP_ATTR_TYPE;
-        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_SEGMENTROUTE_ENDPOINT;
+        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_SRV6_SIDLIST;
 
-        nhattr[1].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_TYPE;
+        nhattr[1].id = SAI_NEXT_HOP_ATTR_SRV6_SIDLIST_ID;
+        nhattr[1].value.oid = sidlist;
 
-        nhattr[2].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_POP_TYPE;
-
-        status = sai_next_hop_api->create_next_hop(&hop_vid, switch_id, 3, nhattr);
+        status = sai_next_hop_api->create_next_hop(&hop_vid, switch_id, 2, nhattr);
 
         ASSERT_SUCCESS("failed to create next hop");
 
@@ -467,11 +475,13 @@ void test_bulk_route_set()
     sai_switch_api_t *sai_switch_api = NULL;
     sai_virtual_router_api_t * sai_virtual_router_api = NULL;
     sai_next_hop_api_t  *sai_next_hop_api = NULL;
+    sai_srv6_api_t  *sai_srv6_api = NULL;
 
     sai_api_query(SAI_API_ROUTE, (void**)&sai_route_api);
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
     sai_api_query(SAI_API_VIRTUAL_ROUTER, (void**)&sai_virtual_router_api);
     sai_api_query(SAI_API_NEXT_HOP, (void**)&sai_next_hop_api);
+    sai_api_query(SAI_API_SRV6, (void**)&sai_srv6_api);
 
     uint32_t count = 3;
 
@@ -505,17 +515,23 @@ void test_bulk_route_set()
 
         ASSERT_SUCCESS("failed to create virtual router");
 
+        // sidlist object
+        sai_object_id_t sidlist;
+        sai_attribute_t sidattr[1] = { };
+        sidattr[0].id = SAI_SRV6_SIDLIST_ATTR_TYPE;
+        sidattr[0].value.s32 = SAI_SRV6_SIDLIST_TYPE_ENCAPS_RED;
+        status = sai_srv6_api->create_srv6_sidlist(&sidlist, switch_id, 1, sidattr);
         // next hop
         sai_object_id_t hop;
 
-        sai_attribute_t nhattr[3] = { };
+        sai_attribute_t nhattr[2] = { };
 
         nhattr[0].id = SAI_NEXT_HOP_ATTR_TYPE;
-        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_SEGMENTROUTE_ENDPOINT;
-        nhattr[1].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_TYPE;
-        nhattr[2].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_POP_TYPE;
+        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_SRV6_SIDLIST;
+        nhattr[1].id = SAI_NEXT_HOP_ATTR_SRV6_SIDLIST_ID;
+        nhattr[1].value.oid = sidlist;
 
-        status = sai_next_hop_api->create_next_hop(&hop, switch_id, 3, nhattr);
+        status = sai_next_hop_api->create_next_hop(&hop, switch_id, 2, nhattr);
 
         ASSERT_SUCCESS("failed to create next hop");
 

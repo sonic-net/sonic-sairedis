@@ -438,6 +438,10 @@ namespace saimeta
                     _In_ const sai_inseg_entry_t* inseg_entry,
                     _In_ bool create);
 
+            sai_status_t meta_sai_validate_my_sid_entry(
+                    _In_ const sai_my_sid_entry_t* my_sid_entry,
+                    _In_ bool create);
+
         public:
 
             /*

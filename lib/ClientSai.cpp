@@ -1179,6 +1179,38 @@ sai_status_t ClientSai::bulkCreate(
             object_statuses);
 }
 
+sai_status_t ClientSai::bulkCreate(
+        _In_ uint32_t object_count,
+        _In_ const sai_my_sid_entry_t* my_sid_entry,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    // TODO support mode
+
+    std::vector<std::string> serialized_object_ids;
+
+    // on create vid is put in db by syncd
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        std::string str_object_id = sai_serialize_my_sid_entry(my_sid_entry[idx]);
+        serialized_object_ids.push_back(str_object_id);
+    }
+
+    return bulkCreate(
+            SAI_OBJECT_TYPE_MY_SID_ENTRY,
+            serialized_object_ids,
+            attr_count,
+            attr_list,
+            mode,
+            object_statuses);
+}
+
 // BULK CREATE HELPERS
 
 sai_status_t ClientSai::bulkCreate(
@@ -1335,6 +1367,26 @@ sai_status_t ClientSai::bulkRemove(
     return bulkRemove(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectIds, mode, object_statuses);
 }
 
+sai_status_t ClientSai::bulkRemove(
+        _In_ uint32_t object_count,
+        _In_ const sai_my_sid_entry_t *my_sid_entry,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    std::vector<std::string> serializedObjectIds;
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        serializedObjectIds.emplace_back(sai_serialize_my_sid_entry(my_sid_entry[idx]));
+    }
+
+    return bulkRemove(SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectIds, mode, object_statuses);
+}
+
 // BULK REMOVE HELPERS
 
 sai_status_t ClientSai::bulkRemove(
@@ -1483,6 +1535,27 @@ sai_status_t ClientSai::bulkSet(
     }
 
     return bulkSet(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
+}
+
+sai_status_t ClientSai::bulkSet(
+        _In_ uint32_t object_count,
+        _In_ const sai_my_sid_entry_t *my_sid_entry,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    std::vector<std::string> serializedObjectIds;
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        serializedObjectIds.emplace_back(sai_serialize_my_sid_entry(my_sid_entry[idx]));
+    }
+
+    return bulkSet(SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
 }
 
 // BULK SET HELPERS
