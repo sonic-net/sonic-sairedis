@@ -75,6 +75,8 @@ static sai_apis_t vs_apis = {
     API(debug_counter),
     API(macsec),
     API(system_port),
+    API(my_mac),
+    API(ipsec),
     API(bmtor),
 };
 
