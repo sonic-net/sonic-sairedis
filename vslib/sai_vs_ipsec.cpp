@@ -6,7 +6,7 @@ VS_GENERIC_QUAD(IPSEC_SA,ipsec_sa);
 VS_GENERIC_STATS(IPSEC_PORT,ipsec_port);
 VS_GENERIC_STATS(IPSEC_SA,ipsec_sa);
 
-const sai_ipsec_api_t vs_vlan_api = {
+const sai_ipsec_api_t vs_ipsec_api = {
 
     VS_GENERIC_QUAD_API(ipsec)
     VS_GENERIC_QUAD_API(ipsec_port)
