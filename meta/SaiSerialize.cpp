@@ -424,6 +424,10 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.sysportconfig, dst_attr.value.sysportconfig);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_AUTH_KEY:
+            transfer_primitive(src_attr.value.authkey, dst_attr.value.authkey);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_MACSEC_AUTH_KEY:
             transfer_primitive(src_attr.value.macsecauthkey, dst_attr.value.macsecauthkey);
             break;
@@ -1226,6 +1230,7 @@ static json sai_serialize_qos_map_params(
     j["qidx"]     = params.queue_index;
     j["mpls_exp"] = params.mpls_exp;
     j["color"]    = sai_serialize_packet_color(params.color);
+    j["fc"]       = params.fc;
 
     return j;
 }
@@ -1752,6 +1757,9 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_MACSEC_SALT:
             return sai_serialize_hex_binary(attr.value.macsecsalt);
+
+        case SAI_ATTR_VALUE_TYPE_AUTH_KEY:
+            return sai_serialize_hex_binary(attr.value.authkey);
 
         case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
             return sai_serialize_system_port_config(meta, attr.value.sysportconfig);
@@ -2467,6 +2475,7 @@ static void sai_deserialize_qos_map_params(
     params.prio           = j["prio"];
     params.pg             = j["pg"];
     params.queue_index    = j["qidx"];
+    params.fc             = j["fc"];
 
     if (j.find("mpls_exp") == j.end())
     {
@@ -3208,6 +3217,9 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
             return sai_deserialize_acl_capability(s, attr.value.aclcapability);
 
+        case SAI_ATTR_VALUE_TYPE_AUTH_KEY:
+            return sai_deserialize_hex_binary(s, attr.value.authkey);
+
         case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:
             return sai_deserialize_hex_binary(s, attr.value.macsecsak);
 
@@ -3939,6 +3951,9 @@ void sai_deserialize_free_attribute_value(
 
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
             sai_free_list(attr.value.aclcapability.action_list);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_AUTH_KEY:
             break;
 
         case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:

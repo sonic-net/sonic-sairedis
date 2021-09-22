@@ -1063,6 +1063,7 @@ TEST(SaiSerialize, serialize_qos_map)
     EXPECT_EQ(l.key.queue_index, 6);
     EXPECT_EQ(l.key.color, SAI_PACKET_COLOR_RED);
     EXPECT_EQ(l.key.mpls_exp, 0);
+    EXPECT_EQ(l.key.fc, 0);
 
     EXPECT_EQ(l.value.tc, 11);
     EXPECT_EQ(l.value.dscp, 22);
@@ -1072,6 +1073,7 @@ TEST(SaiSerialize, serialize_qos_map)
     EXPECT_EQ(l.value.queue_index, 66);
     EXPECT_EQ(l.value.color, SAI_PACKET_COLOR_GREEN);
     EXPECT_EQ(l.value.mpls_exp, 0);
+    EXPECT_EQ(l.value.fc, 0);
 }
 
 template<typename T>
