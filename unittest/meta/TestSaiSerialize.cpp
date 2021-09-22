@@ -1026,8 +1026,8 @@ TEST(SaiSerialize, serialize_qos_map)
     attr.id = SAI_QOS_MAP_ATTR_MAP_TO_VALUE_LIST;
 
     sai_qos_map_t qm = {
-        .key   = { .tc = 1, .dscp = 2, .dot1p = 3, .prio = 4, .pg = 5, .queue_index = 6, .color = SAI_PACKET_COLOR_RED, .mpls_exp = 0 },
-        .value = { .tc = 11, .dscp = 22, .dot1p = 33, .prio = 44, .pg = 55, .queue_index = 66, .color = SAI_PACKET_COLOR_GREEN, .mpls_exp = 0 } };
+        .key   = { .tc = 1, .dscp = 2, .dot1p = 3, .prio = 4, .pg = 5, .queue_index = 6, .color = SAI_PACKET_COLOR_RED, .mpls_exp = 0, .fc = 0 },
+        .value = { .tc = 11, .dscp = 22, .dot1p = 33, .prio = 44, .pg = 55, .queue_index = 66, .color = SAI_PACKET_COLOR_GREEN, .mpls_exp = 0, .fc = 0 } };
 
     attr.value.qosmap.count = 1;
     attr.value.qosmap.list = &qm;
@@ -1036,7 +1036,7 @@ TEST(SaiSerialize, serialize_qos_map)
 
     s = sai_serialize_attr_value(*meta, attr);
 
-    std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"color\":\"SAI_PACKET_COLOR_RED\",\"dot1p\":3,\"dscp\":2,\"mpls_exp\":0,\"pg\":5,\"prio\":4,\"qidx\":6,\"tc\":1},\"value\":{\"color\":\"SAI_PACKET_COLOR_GREEN\",\"dot1p\":33,\"dscp\":22,\"mpls_exp\":0,\"pg\":55,\"prio\":44,\"qidx\":66,\"tc\":11}}]}";
+    std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"color\":\"SAI_PACKET_COLOR_RED\",\"dot1p\":3,\"dscp\":2,\"mpls_exp\":0,\"pg\":5,\"prio\":4,\"qidx\":6,\"tc\":1,\"fc\":0},\"value\":{\"color\":\"SAI_PACKET_COLOR_GREEN\",\"dot1p\":33,\"dscp\":22,\"mpls_exp\":0,\"pg\":55,\"prio\":44,\"qidx\":66,\"tc\":11,\"fc\":0}}]}";
 
     EXPECT_EQ(s, ret);
 

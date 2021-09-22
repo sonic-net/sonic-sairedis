@@ -81,6 +81,7 @@ namespace syncd
                     SlotBase({
                             .on_bfd_session_state_change = &Slot<context>::onBfdSessionStateChange,
                             .on_fdb_event = &Slot<context>::onFdbEvent,
+                            .on_ipsec_sa_status_change = nullptr,
                             .on_packet_event = nullptr,
                             .on_port_state_change = &Slot<context>::onPortStateChange,
                             .on_queue_pfc_deadlock = &Slot<context>::onQueuePfcDeadlock,
