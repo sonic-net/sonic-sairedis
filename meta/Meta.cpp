@@ -1907,7 +1907,6 @@ sai_status_t Meta::bulkRemove(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(route_entry);
 
@@ -1966,7 +1965,6 @@ sai_status_t Meta::bulkRemove(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(nat_entry);
 
@@ -2084,7 +2082,6 @@ sai_status_t Meta::bulkRemove(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(fdb_entry);
 
@@ -2143,7 +2140,6 @@ sai_status_t Meta::bulkRemove(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(inseg_entry);
 
@@ -2262,7 +2258,6 @@ sai_status_t Meta::bulkSet(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(route_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
@@ -2320,7 +2315,6 @@ sai_status_t Meta::bulkSet(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(nat_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
@@ -2436,7 +2430,6 @@ sai_status_t Meta::bulkSet(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(fdb_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
@@ -2494,7 +2487,6 @@ sai_status_t Meta::bulkSet(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(inseg_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_list);
@@ -2572,6 +2564,11 @@ sai_status_t Meta::bulkCreate(
 
             return SAI_STATUS_INVALID_PARAMETER;
         }
+
+        if (object_type == SAI_OBJECT_TYPE_SWITCH)
+        {
+            SWSS_LOG_THROW("create bulk switch not supported");
+        }
     }
 
     PARAMETER_CHECK_IF_NOT_NULL(object_id);
@@ -2610,11 +2607,6 @@ sai_status_t Meta::bulkCreate(
         {
             vmk[idx].objectkey.key.object_id = object_id[idx]; // assign new created object id
 
-            if (vmk[idx].objecttype == SAI_OBJECT_TYPE_SWITCH)
-            {
-                SWSS_LOG_THROW("create bulk switch not supported");
-            }
-
             meta_generic_validation_post_create(vmk[idx], switchId, attr_count[idx], attr_list[idx]);
         }
     }
@@ -2639,7 +2631,6 @@ sai_status_t Meta::bulkCreate(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(route_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_count);
@@ -2699,7 +2690,6 @@ sai_status_t Meta::bulkCreate(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(fdb_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_count);
@@ -2759,7 +2749,6 @@ sai_status_t Meta::bulkCreate(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(inseg_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_count);
@@ -2819,7 +2808,6 @@ sai_status_t Meta::bulkCreate(
         object_statuses[idx] = SAI_STATUS_NOT_EXECUTED;
     }
 
-    //PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
     PARAMETER_CHECK_POSITIVE(object_count);
     PARAMETER_CHECK_IF_NOT_NULL(nat_entry);
     PARAMETER_CHECK_IF_NOT_NULL(attr_count);
@@ -2944,7 +2932,19 @@ sai_status_t Meta::logSet(
 {
     SWSS_LOG_ENTER();
 
-    // TODO check api and log level
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_api_t, api) == nullptr)
+    {
+        SWSS_LOG_ERROR("api value %d is not in range on %s", api, sai_metadata_enum_sai_api_t.name);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_log_level_t, log_level) == nullptr)
+    {
+        SWSS_LOG_ERROR("log level value %d is not in range on %s", log_level, sai_metadata_enum_sai_log_level_t.name);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
 
     return m_implementation->logSet(api, log_level);
 }
