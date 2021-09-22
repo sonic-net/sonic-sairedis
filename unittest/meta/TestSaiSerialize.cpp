@@ -1036,7 +1036,7 @@ TEST(SaiSerialize, serialize_qos_map)
 
     s = sai_serialize_attr_value(*meta, attr);
 
-    std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"color\":\"SAI_PACKET_COLOR_RED\",\"dot1p\":3,\"dscp\":2,\"mpls_exp\":0,\"pg\":5,\"prio\":4,\"qidx\":6,\"tc\":1,\"fc\":0},\"value\":{\"color\":\"SAI_PACKET_COLOR_GREEN\",\"dot1p\":33,\"dscp\":22,\"mpls_exp\":0,\"pg\":55,\"prio\":44,\"qidx\":66,\"tc\":11,\"fc\":0}}]}";
+    std::string ret = "{\"count\":1,\"list\":[{\"key\":{\"color\":\"SAI_PACKET_COLOR_RED\",\"dot1p\":3,\"dscp\":2,\"fc\":0,\"mpls_exp\":0,\"pg\":5,\"prio\":4,\"qidx\":6,\"tc\":1},\"value\":{\"color\":\"SAI_PACKET_COLOR_GREEN\",\"dot1p\":33,\"dscp\":22,\"fc\":0,\"mpls_exp\":0,\"pg\":55,\"prio\":44,\"qidx\":66,\"tc\":11}}]}";
 
     EXPECT_EQ(s, ret);
 

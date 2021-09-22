@@ -440,6 +440,10 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.macsecsak, dst_attr.value.macsecsak);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_ENCRYPT_KEY:
+            transfer_primitive(src_attr.value.encrypt_key, dst_attr.value.encrypt_key);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_PORT_ERR_STATUS_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.porterror, dst_attr.value.porterror, countOnly));
             break;
@@ -1760,6 +1764,9 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_AUTH_KEY:
             return sai_serialize_hex_binary(attr.value.authkey);
+
+        case SAI_ATTR_VALUE_TYPE_ENCRYPT_KEY:
+            return sai_serialize_hex_binary(attr.value.encrypt_key);
 
         case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
             return sai_serialize_system_port_config(meta, attr.value.sysportconfig);
@@ -3220,6 +3227,9 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_AUTH_KEY:
             return sai_deserialize_hex_binary(s, attr.value.authkey);
 
+        case SAI_ATTR_VALUE_TYPE_ENCRYPT_KEY:
+            return sai_deserialize_hex_binary(s, attr.value.encrypt_key);
+
         case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:
             return sai_deserialize_hex_binary(s, attr.value.macsecsak);
 
@@ -3954,6 +3964,9 @@ void sai_deserialize_free_attribute_value(
             break;
 
         case SAI_ATTR_VALUE_TYPE_AUTH_KEY:
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_ENCRYPT_KEY:
             break;
 
         case SAI_ATTR_VALUE_TYPE_MACSEC_SAK:
