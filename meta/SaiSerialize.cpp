@@ -2080,7 +2080,7 @@ std::string sai_serialize_object_meta_key(
         case SAI_OBJECT_TYPE_INSEG_ENTRY:
             key = sai_serialize_inseg_entry(meta_key.objectkey.key.inseg_entry);
             break;
-        
+
         case SAI_OBJECT_TYPE_MY_SID_ENTRY:
             key = sai_serialize_my_sid_entry(meta_key.objectkey.key.my_sid_entry);
             break;
@@ -3666,6 +3666,7 @@ void sai_deserialize_object_meta_key(
         case SAI_OBJECT_TYPE_MY_SID_ENTRY:
             sai_deserialize_my_sid_entry(str_object_id, meta_key.objectkey.key.my_sid_entry);
             break;
+
         case SAI_OBJECT_TYPE_L2MC_ENTRY:
             sai_deserialize_l2mc_entry(str_object_id, meta_key.objectkey.key.l2mc_entry);
             break;
