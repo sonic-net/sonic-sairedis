@@ -10,7 +10,7 @@ const sai_ipsec_api_t vs_ipsec_api = {
 
     VS_GENERIC_QUAD_API(ipsec)
     VS_GENERIC_QUAD_API(ipsec_port)
-    VS_GENERIC_QUAD_API(ipsec_sa)
     VS_GENERIC_STATS_API(ipsec_port)
+    VS_GENERIC_QUAD_API(ipsec_sa)
     VS_GENERIC_STATS_API(ipsec_sa)
 };
