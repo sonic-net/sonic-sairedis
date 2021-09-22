@@ -98,6 +98,9 @@ namespace saivs
                     _In_ sai_switch_attr_t acl_resource,
                     _In_ int max_count);
 
+            sai_status_t filter_available_lanes(
+                    _Inout_ std::vector<std::vector<uint32_t>> &lanes_vector);
+
             sai_status_t create_system_ports(
                     _In_ int32_t voq_switch_id,
                     _In_ uint32_t sys_port_count,
