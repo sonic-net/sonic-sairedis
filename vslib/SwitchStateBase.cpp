@@ -4,6 +4,7 @@
 #include "meta/sai_serialize.h"
 
 #include <net/if.h>
+#include <unistd.h>
 
 #include <algorithm>
 
@@ -1120,7 +1121,46 @@ sai_status_t SwitchStateBase::create_ports()
         return SAI_STATUS_FAILURE;
     }
 
-    auto& lanesVector = map->getLaneVector();
+    auto lanesVector = map->getLaneVector();
+
+    if (m_useTapDevice)
+    {
+        SWSS_LOG_DEBUG("Check available lane");
+
+        auto lanes = lanesVector.begin();
+        while (lanes != lanesVector.end())
+        {
+            bool available_lane = false;
+
+            for (auto lane: *lanes)
+            {
+                std::string ifname = map->getInterfaceFromLaneNumber(lane);
+                std::string path = std::string("/sys/class/net/") + ifname + "/operstate";
+
+                if (access(path.c_str(), F_OK) != 0)
+                {
+                    SWSS_LOG_WARN("Port %s isn't available", ifname.c_str());
+
+                    available_lane &= false;
+
+                    break;
+                }
+                else
+                {
+                    available_lane = true;
+                }
+            }
+
+            if (!available_lane)
+            {
+                lanes = lanesVector.erase(lanes);
+            }
+            else
+            {
+                lanes++;
+            }
+        }
+    }
 
     uint32_t port_count = (uint32_t)lanesVector.size();
 
