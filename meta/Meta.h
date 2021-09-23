@@ -384,7 +384,7 @@ namespace saimeta
                     _In_ const uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
 
-        private: // stats
+        protected: // stats
 
             sai_status_t meta_validate_stats(
                     _In_ sai_object_type_t object_type,

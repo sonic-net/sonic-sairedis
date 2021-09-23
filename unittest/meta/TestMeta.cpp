@@ -1,4 +1,5 @@
 #include "Meta.h"
+#include "MockMeta.h"
 #include "MetaTestSaiInterface.h"
 
 #include <gtest/gtest.h>
@@ -497,4 +498,57 @@ TEST(Meta, queryAattributeEnumValuesCapability)
     // invalid attribute
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, 10000, &list));
+}
+
+TEST(Meta, meta_validate_stats)
+{
+    MockMeta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_object_id_t vlanId = 0;
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 2;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_VLAN, &vlanId, switchId, 1, &attr));
+
+    sai_stat_id_t counter_ids[2];
+
+    counter_ids[0] = SAI_VLAN_STAT_IN_OCTETS;
+    counter_ids[1] = SAI_VLAN_STAT_IN_PACKETS;
+
+    uint64_t counters[2];
+
+    m.meta_unittests_enable(true);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.call_meta_validate_stats(SAI_OBJECT_TYPE_VLAN, vlanId, 2, counter_ids, counters, SAI_STATS_MODE_READ));
+
+    // invalid mode
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.call_meta_validate_stats(SAI_OBJECT_TYPE_VLAN, vlanId, 2, counter_ids, counters, (sai_stats_mode_t)7));
+#pragma GCC diagnostic pop
+
+    // invalid counter
+    
+    counter_ids[0] = 10000;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.call_meta_validate_stats(SAI_OBJECT_TYPE_VLAN, vlanId, 2, counter_ids, counters, SAI_STATS_MODE_READ));
+
+    // object with no stats
+
+    sai_object_id_t vrId = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, &vrId, switchId, 0, &attr));
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.call_meta_validate_stats(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, vrId, 2, counter_ids, counters, SAI_STATS_MODE_READ));
 }

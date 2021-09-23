@@ -13,6 +13,7 @@ tests_SOURCES = \
 				../../lib/SwitchConfigContainer.cpp \
 				../../lib/ZeroMQChannel.cpp \
 				../../lib/Channel.cpp \
+				MockMeta.cpp \
 				TestAttrKeyMap.cpp \
 				TestGlobals.cpp \
 				TestMetaKeyHasher.cpp \
