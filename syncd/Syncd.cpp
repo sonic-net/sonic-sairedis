@@ -1007,6 +1007,7 @@ sai_status_t Syncd::processBulkCreateEntry(
         case SAI_OBJECT_TYPE_MY_SID_ENTRY:
         {
             std::vector<sai_my_sid_entry_t> entries(object_count);
+
             for (uint32_t it = 0; it < object_count; it++)
             {
                 sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
@@ -1022,7 +1023,6 @@ sai_status_t Syncd::processBulkCreateEntry(
                     attr_lists.data(),
                     mode,
                     statuses.data());
-
         }
         break;
 
@@ -1117,6 +1117,7 @@ sai_status_t Syncd::processBulkRemoveEntry(
         case SAI_OBJECT_TYPE_MY_SID_ENTRY:
         {
             std::vector<sai_my_sid_entry_t> entries(object_count);
+
             for (uint32_t it = 0; it < object_count; it++)
             {
                 sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
@@ -1130,7 +1131,6 @@ sai_status_t Syncd::processBulkRemoveEntry(
                     entries.data(),
                     mode,
                     statuses.data());
-
         }
         break;
 
@@ -1255,6 +1255,7 @@ sai_status_t Syncd::processBulkSetEntry(
         case SAI_OBJECT_TYPE_MY_SID_ENTRY:
         {
             std::vector<sai_my_sid_entry_t> entries(object_count);
+
             for (uint32_t it = 0; it < object_count; it++)
             {
                 sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
@@ -1269,7 +1270,6 @@ sai_status_t Syncd::processBulkSetEntry(
                     attr_lists.data(),
                     mode,
                     statuses.data());
-
         }
         break;
 
