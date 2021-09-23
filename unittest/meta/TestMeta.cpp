@@ -333,3 +333,168 @@ TEST(Meta, flushFdbEntries)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.flushFdbEntries(switchId, 2, attrs));
 }
+
+TEST(Meta, meta_warm_boot_notify)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    m.meta_warm_boot_notify();
+}
+
+TEST(Meta, meta_init_db)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    m.meta_init_db();
+}
+
+TEST(Meta, dump)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    m.dump();
+}
+
+TEST(Meta, objectTypeGetAvailability)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    EXPECT_NE(SAI_STATUS_SUCCESS, m.objectTypeGetAvailability(0, SAI_OBJECT_TYPE_NULL, 0, nullptr, nullptr));
+
+    EXPECT_NE(SAI_STATUS_SUCCESS, m.objectTypeGetAvailability(switchId, SAI_OBJECT_TYPE_NULL, 0, nullptr, nullptr));
+
+    attr.id = SAI_DEBUG_COUNTER_ATTR_TYPE;
+    attr.value.s32 = SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS;
+
+    uint64_t count;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.objectTypeGetAvailability(switchId, SAI_OBJECT_TYPE_DEBUG_COUNTER, 1, &attr, &count));
+
+    // invalid attribute
+
+    attr.id = 100000;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.objectTypeGetAvailability(switchId, SAI_OBJECT_TYPE_DEBUG_COUNTER, 1, &attr, &count));
+
+    // defined multiple times
+    
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_DEBUG_COUNTER_ATTR_TYPE;
+    attrs[0].value.s32 = SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS;
+
+    attrs[1].id = SAI_DEBUG_COUNTER_ATTR_TYPE;
+    attrs[1].value.s32 = SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.objectTypeGetAvailability(switchId, SAI_OBJECT_TYPE_DEBUG_COUNTER, 2, attrs, &count));
+
+    // enum not on allowed list
+
+    attr.id = SAI_DEBUG_COUNTER_ATTR_TYPE;
+    attr.value.s32 = 10000;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.objectTypeGetAvailability(switchId, SAI_OBJECT_TYPE_DEBUG_COUNTER, 1, &attr, &count));
+
+    // not resource type
+
+    attr.id = SAI_DEBUG_COUNTER_ATTR_BIND_METHOD;
+    attr.value.s32 = 0;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.objectTypeGetAvailability(switchId, SAI_OBJECT_TYPE_DEBUG_COUNTER, 1, &attr, &count));
+}
+
+TEST(Meta, queryAttributeCapability)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_attr_capability_t cap;
+    
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ACL_ENTRY, SAI_ACL_ENTRY_ATTR_TABLE_ID, &cap));
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ACL_ENTRY, 100000, &cap));
+}
+
+TEST(Meta, queryAattributeEnumValuesCapability)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_s32_list_t list;
+
+    int32_t vals[2];
+
+    list.count = 2;
+    list.list = vals;
+
+    vals[0] = 0;
+    vals[1] = 100000;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_SWITCHING_MODE, &list));
+
+    // set count without list;
+
+    list.list = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_SWITCHING_MODE, &list));
+
+    // non enum attibute
+ 
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_BCAST_CPU_FLOOD_ENABLE, &list));
+
+    // invalid attribute
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, 10000, &list));
+}

@@ -1409,7 +1409,8 @@ sai_status_t Meta::flushFdbEntries(
 
             default:
 
-                META_LOG_THROW(md, "serialization type is not supported yet FIXME");
+                META_LOG_THROW(md, "value type %s is not supported yet, FIXME",
+                        sai_serialize_attr_value_type(md.attrvaluetype).c_str());
         }
     }
 
@@ -1585,7 +1586,7 @@ sai_status_t Meta::objectTypeGetAvailability(
 
             default:
 
-                SWSS_LOG_THROW("value type %s not supported yet, FIXME!",
+                META_LOG_THROW(*mdp, "value type %s not supported yet, FIXME!",
                         sai_serialize_attr_value_type(mdp->attrvaluetype).c_str());
         }
     }
