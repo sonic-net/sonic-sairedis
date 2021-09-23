@@ -1379,19 +1379,10 @@ sai_status_t Meta::flushFdbEntries(
 
         attrs[attr->id] = attr;
 
-        if (md.flags != SAI_ATTR_FLAGS_CREATE_ONLY)
-        {
-            META_LOG_ERROR(md, "attr is expected to be marked as CREATE_ONLY");
-
-            return SAI_STATUS_INVALID_PARAMETER;
-        }
-
-        if (md.isconditional || md.validonlylength > 0)
-        {
-            META_LOG_ERROR(md, "attr should not be conditional or validonly");
-
-            return SAI_STATUS_INVALID_PARAMETER;
-        }
+        // SAI metadata checks if
+        // - attribute is create only
+        // - is not conditional
+        // - is not validonly
 
         switch (md.attrvaluetype)
         {
