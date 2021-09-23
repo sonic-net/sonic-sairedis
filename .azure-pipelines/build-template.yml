@@ -43,8 +43,8 @@ jobs:
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:
     DIFF_COVER_CHECK_THRESHOLD: 0
-    ${{ if ne(parameters.run_unit_test, false) }}:
-      DIFF_COVER_DISABLE: 'false'
+    ${{ if eq(parameters.run_unit_test, true) }}:
+      DIFF_COVER_ENABLE: 'true'
 
   pool:
     ${{ if ne(parameters.pool, 'default') }}:
