@@ -629,6 +629,17 @@ sai_status_t Syncd::processClearStatsEvent(
     sai_object_meta_key_t metaKey;
     sai_deserialize_object_meta_key(key, metaKey);
 
+    if (isInitViewMode() && m_createdInInitView.find(metaKey.objectkey.key.object_id) != m_createdInInitView.end())
+    {
+        SWSS_LOG_WARN("CLEAR STATS api can't be used on %s since it's created in INIT_VIEW mode", key.c_str());
+
+        sai_status_t status = SAI_STATUS_INVALID_OBJECT_ID;
+
+        m_selectableChannel->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+
+        return status;
+    }
+
     if (!m_translator->tryTranslateVidToRid(metaKey))
     {
         SWSS_LOG_WARN("VID to RID translation failure: %s", key.c_str());
@@ -675,7 +686,16 @@ sai_status_t Syncd::processGetStatsEvent(
     sai_object_meta_key_t metaKey;
     sai_deserialize_object_meta_key(key, metaKey);
 
-    // TODO get stats on created object in init view mode could fail
+    if (isInitViewMode() && m_createdInInitView.find(metaKey.objectkey.key.object_id) != m_createdInInitView.end())
+    {
+        SWSS_LOG_WARN("GET STATS api can't be used on %s since it's created in INIT_VIEW mode", key.c_str());
+
+        sai_status_t status = SAI_STATUS_INVALID_OBJECT_ID;
+
+        m_selectableChannel->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+
+        return status;
+    }
 
     m_translator->translateVidToRid(metaKey);
 
@@ -866,6 +886,16 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
                     sendApiResponse(api, SAI_STATUS_SUCCESS, (uint32_t)statuses.size(), statuses.data());
 
                     syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+
+                    for (auto& str: objectIds)
+                    {
+                        sai_object_id_t objectVid;
+                        sai_deserialize_object_id(str, objectVid);
+
+                        // in init view mode insert every created object except switch
+
+                        m_createdInInitView.insert(objectVid);
+                    }
 
                     return SAI_STATUS_SUCCESS;
             }
@@ -1471,6 +1501,7 @@ sai_status_t Syncd::processBulkOidCreate(
         if (statuses[idx] == SAI_STATUS_SUCCESS)
         {
             m_translator->insertRidAndVid(objectRids[idx], objectVids[idx]);
+
             SWSS_LOG_INFO("saved VID %s to RID %s",
                     sai_serialize_object_id(objectVids[idx]).c_str(),
                     sai_serialize_object_id(objectRids[idx]).c_str());
@@ -1722,6 +1753,12 @@ sai_status_t Syncd::processQuadInInitViewModeCreate(
         {
             onSwitchCreateInInitViewMode(objectVid, attr_count, attr_list);
         }
+        else
+        {
+            // in init view mode insert every created object except switch
+
+            m_createdInInitView.insert(objectVid);
+        }
     }
 
     sendApiResponse(SAI_COMMON_API_CREATE, SAI_STATUS_SUCCESS);
@@ -1836,6 +1873,19 @@ sai_status_t Syncd::processQuadInInitViewModeGet(
     {
         sai_object_id_t objectVid;
         sai_deserialize_object_id(strObjectId, objectVid);
+
+        if (isInitViewMode() && m_createdInInitView.find(objectVid) != m_createdInInitView.end())
+        {
+            SWSS_LOG_WARN("GET api can't be used on %s (%s) since it's created in INIT_VIEW mode",
+                    strObjectId.c_str(),
+                    sai_serialize_object_type(objectType).c_str());
+
+            status = SAI_STATUS_INVALID_OBJECT_ID;
+
+            sendGetResponse(objectType, strObjectId, switchVid, status, attr_count, attr_list);
+
+            return status;
+        }
 
         switchVid = VidManager::switchIdQuery(objectVid);
 
@@ -3211,6 +3261,8 @@ sai_status_t Syncd::processNotifySyncd(
 
         clearTempView();
 
+        m_createdInInitView.clear();
+
         // NOTE: Currently as WARN to be easier to spot, later should be NOTICE.
 
         SWSS_LOG_WARN("syncd switched to INIT VIEW mode, all op will be saved to TEMP view");
@@ -3263,6 +3315,8 @@ sai_status_t Syncd::processNotifySyncd(
              */
 
             m_translator->clearLocalCache();
+
+            m_createdInInitView.clear();
         }
         else
         {

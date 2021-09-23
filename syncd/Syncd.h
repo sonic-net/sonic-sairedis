@@ -492,5 +492,7 @@ namespace syncd
             std::shared_ptr<BreakConfig> m_breakConfig;
 
             TimerWatchdog m_timerWatchdog;
+
+            std::set<sai_object_id_t> m_createdInInitView;
     };
 }
