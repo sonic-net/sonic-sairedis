@@ -120,24 +120,21 @@ void Meta::dump() const
 {
     SWSS_LOG_ENTER();
 
-    if (isEmpty() == false)
+    SWSS_LOG_NOTICE("portRelatedSet: %zu", m_portRelatedSet.getAllPorts().size());
+    SWSS_LOG_NOTICE("oids: %zu", m_oids.getAllOids().size());
+    SWSS_LOG_NOTICE("attrKeys: %zu", m_attrKeys.getAllKeys().size());
+    SWSS_LOG_NOTICE("saiObjectCollection: %zu", m_saiObjectCollection.getAllKeys().size());
+
+    for (auto &oid: m_oids.getAllReferences())
     {
-        std::cout << "portRelatedSet: " << m_portRelatedSet.getAllPorts().size() << std::endl;
-        std::cout << "oids: "  << m_oids.getAllOids().size() << std::endl;
-        std::cout << "attrKeys: " << m_attrKeys.getAllKeys().size() << std::endl;
-        std::cout << "saiObjectCollection: " << m_saiObjectCollection.getAllKeys().size() << std::endl;
+        SWSS_LOG_NOTICE("oid: %s: count: %u",
+                sai_serialize_object_id(oid.first).c_str(),
+                oid.second);
+    }
 
-        for (auto &oid: m_oids.getAllReferences())
-        {
-            printf("oid: %s: count: %u\n",
-                    sai_serialize_object_id(oid.first).c_str(),
-                    oid.second);
-        }
-
-        for (auto &mk: m_saiObjectCollection.getAllKeys())
-        {
-            printf("objcollection: %s\n", sai_serialize_object_meta_key(mk).c_str());
-        }
+    for (auto &mk: m_saiObjectCollection.getAllKeys())
+    {
+        SWSS_LOG_NOTICE("objcollection: %s", sai_serialize_object_meta_key(mk).c_str());
     }
 }
 
@@ -1244,6 +1241,16 @@ sai_status_t Meta::set(
 {
     SWSS_LOG_ENTER();
 
+    sai_object_id_t switch_id = switchIdQuery(object_id);
+
+    if (!m_oids.objectReferenceExists(switch_id))
+    {
+        SWSS_LOG_ERROR("switch id %s doesn't exist",
+                sai_serialize_object_id(switch_id).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
     sai_status_t status = meta_sai_validate_oid(object_type, &object_id, SAI_NULL_OBJECT_ID, false);
 
     CHECK_STATUS_SUCCESS(status)
@@ -1288,13 +1295,6 @@ sai_status_t Meta::get(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        sai_object_id_t switch_id = switchIdQuery(object_id);
-
-        if (!m_oids.objectReferenceExists(switch_id))
-        {
-            SWSS_LOG_ERROR("switch id 0x%" PRIx64 " doesn't exist", switch_id);
-        }
-
         meta_generic_validation_post_get(meta_key, switch_id, attr_count, attr_list);
     }
 
@@ -1494,7 +1494,7 @@ sai_status_t Meta::flushFdbEntries(
         return SAI_STATUS_INVALID_PARAMETER; } }
 
 #define PARAMETER_CHECK_OID_OBJECT_TYPE(param, OT) {                                        \
-    sai_object_type_t _ot = objectTypeQuery(param);                                   \
+    sai_object_type_t _ot = objectTypeQuery(param);                                         \
     if (_ot != (OT)) {                                                                      \
         SWSS_LOG_ERROR("parameter " # param " %s object type is %s, but expected %s",       \
                 sai_serialize_object_id(param).c_str(),                                     \
@@ -1530,11 +1530,14 @@ sai_status_t Meta::objectTypeGetAvailability(
     PARAMETER_CHECK_OID_OBJECT_TYPE(switchId, SAI_OBJECT_TYPE_SWITCH);
     PARAMETER_CHECK_OID_EXISTS(switchId, SAI_OBJECT_TYPE_SWITCH);
     PARAMETER_CHECK_OBJECT_TYPE_VALID(objectType);
+
     // When checking availability of a resource solely based on OBJECT_TYPE, attrCount is 0
+
     if (attrCount)
     {
         PARAMETER_CHECK_IF_NOT_NULL(attrList);
     }
+
     PARAMETER_CHECK_IF_NOT_NULL(count);
 
     auto info = sai_metadata_get_object_type_info(objectType);
@@ -1630,9 +1633,10 @@ sai_status_t Meta::queryAttributeCapability(
 
     auto status = m_implementation->queryAttributeCapability(switchId, objectType, attrId, capability);
 
+    // no post validation required
+
     return status;
 }
-
 
 sai_status_t Meta::queryAattributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
@@ -1679,6 +1683,7 @@ sai_status_t Meta::queryAattributeEnumValuesCapability(
         if (enumValuesCapability->list)
         {
             // check if all returned values are members of defined enum
+
             for (uint32_t idx = 0; idx < enumValuesCapability->count; idx++)
             {
                 int val = enumValuesCapability->list[idx];
@@ -3555,21 +3560,17 @@ sai_status_t Meta::meta_sai_validate_fdb_entry(
 {
     SWSS_LOG_ENTER();
 
+    if (create && get)
+    {
+        SWSS_LOG_THROW("can't be create and get at the same time");
+    }
+
     if (fdb_entry == NULL)
     {
         SWSS_LOG_ERROR("fdb_entry pointer is NULL");
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
-
-    //sai_vlan_id_t vlan_id = fdb_entry->vlan_id;
-
-    //if (vlan_id < MINIMUM_VLAN_NUMBER || vlan_id > MAXIMUM_VLAN_NUMBER)
-    //{
-    //    SWSS_LOG_ERROR("invalid vlan number %d expected <%d..%d>", vlan_id, MINIMUM_VLAN_NUMBER, MAXIMUM_VLAN_NUMBER);
-
-    //    return SAI_STATUS_INVALID_PARAMETER;
-    //}
 
     // check if fdb entry exists
 
@@ -6354,31 +6355,11 @@ sai_object_id_t Meta::meta_extract_switch_id(
          * struct member contains switch_id, we need to extract it here.
          *
          * NOTE: we could have this in metadata predefined for all non object ids.
+         *
+         * NOTE: first field in every entry is switch id
          */
 
-        for (size_t j = 0; j < info->structmemberscount; ++j)
-        {
-            const sai_struct_member_info_t *m = info->structmembers[j];
-
-            if (m->membervaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
-            {
-                continue;
-            }
-
-            for (size_t k = 0 ; k < m->allowedobjecttypeslength; k++)
-            {
-                sai_object_type_t ot = m->allowedobjecttypes[k];
-
-                if (ot == SAI_OBJECT_TYPE_SWITCH)
-                {
-                    return  m->getoid(&meta_key);
-                }
-            }
-        }
-
-        SWSS_LOG_ERROR("unable to find switch id inside non object id");
-
-        return SAI_NULL_OBJECT_ID;
+        return meta_key.objectkey.key.object_id;
     }
     else
     {
@@ -6576,6 +6557,8 @@ void Meta::meta_generic_validation_post_get_objlist(
             if (!m_saiObjectCollection.objectExists(key))
             {
                 m_saiObjectCollection.createObject(key);
+
+                // TODO on post get on attribute, if snoop should we increase reference if not read_only ?
             }
         }
 
