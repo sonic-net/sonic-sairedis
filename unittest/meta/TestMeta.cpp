@@ -294,4 +294,42 @@ TEST(Meta, flushFdbEntries)
     EXPECT_NE(SAI_STATUS_SUCCESS, m.flushFdbEntries(switchId, 2, attrs));
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.flushFdbEntries(switchId, 1, attrs));
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.flushFdbEntries(0x21000000000001, 1, attrs));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.flushFdbEntries(0x21000000000000, 1, attrs));
+
+    // SAI_FDB_FLUSH_ENTRY_TYPE attribute out of range
+
+    attrs[0].value.s32 = 1000;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.flushFdbEntries(switchId, 1, attrs));
+
+    // test flush with vlan
+
+    sai_object_id_t vlanId = 0;
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 2;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_VLAN, &vlanId, switchId, 1, &attr));
+
+    attrs[0].id = SAI_FDB_FLUSH_ATTR_ENTRY_TYPE;
+    attrs[0].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_ALL;
+
+    attrs[1].id = SAI_FDB_FLUSH_ATTR_BV_ID;
+    attrs[1].value.oid = vlanId;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.flushFdbEntries(switchId, 2, attrs));
+
+    // test dynamic flush
+
+    attrs[0].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.flushFdbEntries(switchId, 2, attrs));
+
+    // test static flush
+
+    attrs[0].value.s32 = SAI_FDB_FLUSH_ENTRY_TYPE_STATIC;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.flushFdbEntries(switchId, 2, attrs));
 }
