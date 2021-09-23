@@ -462,14 +462,7 @@ sai_status_t Meta::remove(
 
     status = m_implementation->remove(my_sid_entry);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("remove status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("remove status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "remove");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -783,14 +776,7 @@ sai_status_t Meta::create(
 
     status = m_implementation->create(my_sid_entry, attr_count, attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("create status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("create status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "create");
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1094,14 +1080,7 @@ sai_status_t Meta::set(
 
     status = m_implementation->set(my_sid_entry, attr);
 
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_DEBUG("set status: %s", sai_serialize_status(status).c_str());
-    }
-    else
-    {
-        SWSS_LOG_ERROR("set status: %s", sai_serialize_status(status).c_str());
-    }
+    META_LOG_STATUS(status, "set");
 
     if (status == SAI_STATUS_SUCCESS)
     {

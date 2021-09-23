@@ -2482,7 +2482,6 @@ static void sai_deserialize_qos_map_params(
     params.prio           = j["prio"];
     params.pg             = j["pg"];
     params.queue_index    = j["qidx"];
-    params.fc             = j["fc"];
 
     if (j.find("mpls_exp") == j.end())
     {
@@ -2492,6 +2491,16 @@ static void sai_deserialize_qos_map_params(
     else
     {
         params.mpls_exp       = j["mpls_exp"];
+    }
+
+    if (j.find("fc") == j.end())
+    {
+        // for backward compatibility
+        params.fc       = 0;
+    }
+    else
+    {
+        params.fc       = j["fc"];
     }
 
     sai_deserialize_packet_color(j["color"], params.color);

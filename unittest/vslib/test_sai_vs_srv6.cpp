@@ -14,7 +14,7 @@ TEST(libsaivs, srv6)
 
     EXPECT_NE(api, nullptr);
 
-    sai_my_sid_entry_t id ;
+    sai_my_sid_entry_t id;
     sai_object_id_t obj_id;
 
     EXPECT_NE(SAI_STATUS_SUCCESS, api->create_srv6_sidlist(&obj_id,0,0,0));
