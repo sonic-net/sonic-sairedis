@@ -13,7 +13,7 @@ namespace saimeta
                     _In_ std::shared_ptr<SaiInterface> impl);
 
             virtual ~MockMeta() = default;
-            
+
         public:
 
             sai_status_t call_meta_validate_stats(

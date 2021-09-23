@@ -414,7 +414,7 @@ TEST(Meta, objectTypeGetAvailability)
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.objectTypeGetAvailability(switchId, SAI_OBJECT_TYPE_DEBUG_COUNTER, 1, &attr, &count));
 
     // defined multiple times
-    
+
     sai_attribute_t attrs[2];
 
     attrs[0].id = SAI_DEBUG_COUNTER_ATTR_TYPE;
@@ -454,7 +454,7 @@ TEST(Meta, queryAttributeCapability)
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
 
     sai_attr_capability_t cap;
-    
+
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ACL_ENTRY, SAI_ACL_ENTRY_ATTR_TABLE_ID, &cap));
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ACL_ENTRY, 100000, &cap));
@@ -491,8 +491,8 @@ TEST(Meta, queryAattributeEnumValuesCapability)
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_SWITCHING_MODE, &list));
 
-    // non enum attibute
- 
+    // non enum attribute
+
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_BCAST_CPU_FLOOD_ENABLE, &list));
 
     // invalid attribute
@@ -539,7 +539,7 @@ TEST(Meta, meta_validate_stats)
 #pragma GCC diagnostic pop
 
     // invalid counter
-    
+
     counter_ids[0] = 10000;
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.call_meta_validate_stats(SAI_OBJECT_TYPE_VLAN, vlanId, 2, counter_ids, counters, SAI_STATS_MODE_READ));

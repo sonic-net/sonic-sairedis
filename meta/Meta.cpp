@@ -1382,7 +1382,7 @@ sai_status_t Meta::flushFdbEntries(
         // SAI metadata checks if
         // - attribute is create only
         // - is not conditional
-        // - is not validonly
+        // - is not valid only
 
         switch (md.attrvaluetype)
         {
