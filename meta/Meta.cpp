@@ -1281,6 +1281,8 @@ sai_status_t Meta::get(
 {
     SWSS_LOG_ENTER();
 
+    sai_object_id_t switch_id = switchIdQuery(object_id);
+
     sai_status_t status = meta_sai_validate_oid(object_type, &object_id, SAI_NULL_OBJECT_ID, false);
 
     CHECK_STATUS_SUCCESS(status)
