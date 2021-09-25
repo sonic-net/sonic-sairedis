@@ -20,7 +20,7 @@ namespace syncd
                 public:
 
                     SlotBase(
-                            _In_ sai_switch_notifications_t sn);
+                            _In_ const sai_switch_notifications_t& sn);
 
                     virtual ~SlotBase();
 
