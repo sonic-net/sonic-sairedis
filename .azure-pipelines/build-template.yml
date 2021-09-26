@@ -129,7 +129,7 @@ jobs:
         make check
         gcovr --version
         find SAI/meta -name "*.gc*" | xargs rm -vf
-        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --exclude-throw-branches -x -o coverage.xml
+        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --exclude-throw-branches -x --xml-pretty -o coverage.xml
       displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}
@@ -147,6 +147,7 @@ jobs:
         inputs:
             codeCoverageTool: Cobertura
             summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+        failIfCoverageEmpty: true
         displayName: 'Publish test coverage'
   - script: |
       pwd
