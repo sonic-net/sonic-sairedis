@@ -552,3 +552,128 @@ TEST(Meta, meta_validate_stats)
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.call_meta_validate_stats(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, vrId, 2, counter_ids, counters, SAI_STATS_MODE_READ));
 }
+
+TEST(Meta, quad_my_sid_entry)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_object_id_t vlanId = 0;
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 2;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_VLAN, &vlanId, switchId, 1, &attr));
+
+    sai_object_id_t vrId = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, &vrId, switchId, 0, &attr));
+
+    sai_attribute_t attrs[2];
+
+    attrs[0].id = SAI_MY_SID_ENTRY_ATTR_ENDPOINT_BEHAVIOR;
+    attrs[0].value.s32 = SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_E;
+
+    sai_my_sid_entry_t e;
+
+    memset(&e, 0, sizeof(e));
+
+    e.switch_id = switchId;
+    e.vr_id = vrId;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&e, 1, attrs));
+
+    attr.id = SAI_MY_SID_ENTRY_ATTR_ENDPOINT_BEHAVIOR;
+    attr.value.s32 = SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_X;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&e, &attr));
+
+    attr.id = SAI_MCAST_FDB_ENTRY_ATTR_GROUP_ID;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&e, 1, &attr));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&e));
+}
+
+TEST(Meta, quad_bulk_route_entry)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_object_id_t vlanId = 0;
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 2;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_VLAN, &vlanId, switchId, 1, &attr));
+
+    sai_object_id_t vrId = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, &vrId, switchId, 0, &attr));
+
+    // create
+
+    sai_route_entry_t e[2];
+
+    memset(e, 0, sizeof(e));
+
+    e[0].switch_id = switchId;
+    e[1].switch_id = switchId;
+
+    e[0].vr_id = vrId;
+    e[1].vr_id = vrId;
+
+    e[0].destination.addr.ip4 = 1;
+    e[1].destination.addr.ip4 = 2;
+
+    uint32_t attr_count[2];
+
+    attr_count[0] = 0;
+    attr_count[1] = 0;
+
+    sai_attribute_t list1[2];
+    sai_attribute_t list2[2];
+
+    std::vector<const sai_attribute_t*> alist;
+
+    alist.push_back(list1);
+    alist.push_back(list2);
+
+    const sai_attribute_t **attr_list = alist.data();
+
+    sai_status_t statuses[2];
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(2, e, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses));
+
+    // set
+
+    sai_attribute_t setlist[2];
+
+    setlist[0].id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
+    setlist[0].value.s32 = SAI_PACKET_ACTION_DROP;
+
+    setlist[1].id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
+    setlist[1].value.s32 = SAI_PACKET_ACTION_DROP;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkSet(2, e, setlist, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses));
+
+    // remove
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses));
+}

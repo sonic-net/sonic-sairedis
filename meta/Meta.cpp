@@ -389,19 +389,13 @@ sai_status_t Meta::remove(
 
     sai_status_t status = meta_sai_validate_my_sid_entry(my_sid_entry, false);
 
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
+    CHECK_STATUS_SUCCESS(status);
 
     sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_MY_SID_ENTRY, .objectkey = { .key = { .my_sid_entry = *my_sid_entry  } } };
 
     status = meta_generic_validation_remove(meta_key);
 
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
+    CHECK_STATUS_SUCCESS(status);
 
     status = m_implementation->remove(my_sid_entry);
 
@@ -655,19 +649,13 @@ sai_status_t Meta::create(
 
     sai_status_t status = meta_sai_validate_my_sid_entry(my_sid_entry, true);
 
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
+    CHECK_STATUS_SUCCESS(status);
 
     sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_MY_SID_ENTRY, .objectkey = { .key = { .my_sid_entry = *my_sid_entry  } } };
 
     status = meta_generic_validation_create(meta_key, my_sid_entry->switch_id, attr_count, attr_list);
 
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
+    CHECK_STATUS_SUCCESS(status);
 
     status = m_implementation->create(my_sid_entry, attr_count, attr_list);
 
@@ -911,19 +899,13 @@ sai_status_t Meta::set(
     SWSS_LOG_ENTER();
     sai_status_t status = meta_sai_validate_my_sid_entry(my_sid_entry, false);
 
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
+    CHECK_STATUS_SUCCESS(status);
 
     sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_MY_SID_ENTRY, .objectkey = { .key = { .my_sid_entry = *my_sid_entry  } } };
 
     status = meta_generic_validation_set(meta_key, attr);
 
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
+    CHECK_STATUS_SUCCESS(status);
 
     status = m_implementation->set(my_sid_entry, attr);
 
@@ -1166,19 +1148,13 @@ sai_status_t Meta::get(
 
     sai_status_t status = meta_sai_validate_my_sid_entry(my_sid_entry, false);
 
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
+    CHECK_STATUS_SUCCESS(status);
 
     sai_object_meta_key_t meta_key = { .objecttype = SAI_OBJECT_TYPE_MY_SID_ENTRY, .objectkey = { .key = { .my_sid_entry = *my_sid_entry  } } };
 
     status = meta_generic_validation_get(meta_key, attr_count, attr_list);
 
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        return status;
-    }
+    CHECK_STATUS_SUCCESS(status);
 
     status = m_implementation->get(my_sid_entry, attr_count, attr_list);
 
@@ -2643,6 +2619,8 @@ sai_status_t Meta::bulkCreate(
     }
 
     std::vector<sai_object_meta_key_t> vmk;
+
+    // TODO handle case when two 2 identical routes are created - it will throw, should return fail
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
