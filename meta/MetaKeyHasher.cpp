@@ -7,161 +7,134 @@
 
 using namespace saimeta;
 
-static bool operator==(
+#define EQ_MAC(a,b) (memcmp(a, b, sizeof(a)) == 0)
+#define EQ_IP6(a,b) (memcmp(a, b, sizeof(a)) == 0)
+
+static inline bool operator==(
         _In_ const sai_fdb_entry_t& a,
         _In_ const sai_fdb_entry_t& b)
 {
-    SWSS_LOG_ENTER();
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
 
     return a.switch_id == b.switch_id &&
         a.bv_id == b.bv_id &&
-        memcmp(a.mac_address, b.mac_address, sizeof(a.mac_address)) == 0;
+        EQ_MAC(a.mac_address, b.mac_address);
 }
 
-static bool operator==(
+static inline bool operator==(
         _In_ const sai_mcast_fdb_entry_t& a,
         _In_ const sai_mcast_fdb_entry_t& b)
 {
-    SWSS_LOG_ENTER();
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
 
     return a.switch_id == b.switch_id &&
         a.bv_id == b.bv_id &&
-        memcmp(a.mac_address, b.mac_address, sizeof(a.mac_address)) == 0;
+        EQ_MAC(a.mac_address, b.mac_address);
 }
 
-static bool operator==(
+static inline bool operator==(
+        _In_ const sai_ip_prefix_t& a,
+        _In_ const sai_ip_prefix_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    if (a.addr_family != b.addr_family)
+    {
+        return false;
+    }
+
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        return a.addr.ip4 == b.addr.ip4 &&
+            a.mask.ip4 == b.mask.ip4;
+    }
+
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
+    {
+        return EQ_IP6(a.addr.ip6, b.addr.ip6) &&
+            EQ_IP6(a.mask.ip6, b.mask.ip6);
+    }
+
+    SWSS_LOG_THROW("unknown IP addr family: %d", a.addr_family);
+}
+
+static inline bool operator==(
         _In_ const sai_route_entry_t& a,
         _In_ const sai_route_entry_t& b)
 {
     // SWSS_LOG_ENTER(); // disabled for performance reasons
 
-    bool part = a.switch_id == b.switch_id &&
+    return a.switch_id == b.switch_id &&
         a.vr_id == b.vr_id &&
-        a.destination.addr_family == b.destination.addr_family;
-
-    if (a.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
-    {
-        return part &&
-            a.destination.addr.ip4 == b.destination.addr.ip4 &&
-            a.destination.mask.ip4 == b.destination.mask.ip4;
-    }
-
-    if (a.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
-    {
-        return part &&
-            memcmp(a.destination.addr.ip6, b.destination.addr.ip6, sizeof(b.destination.addr.ip6)) == 0 &&
-            memcmp(a.destination.mask.ip6, b.destination.mask.ip6, sizeof(b.destination.mask.ip6)) == 0;
-    }
-
-    SWSS_LOG_THROW("unknown route entry IP addr family: %d", a.destination.addr_family);
+        a.destination == b.destination;
 }
 
-static bool operator==(
+static inline bool operator==(
+        _In_ const sai_ip_address_t& a,
+        _In_ const sai_ip_address_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    if (a.addr_family != b.addr_family)
+    {
+        return false;
+    }
+
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        return a.addr.ip4 == b.addr.ip4;
+    }
+
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
+    {
+        return EQ_IP6(a.addr.ip6, b.addr.ip6);
+    }
+
+    SWSS_LOG_THROW("unknown IP addr family: %d", a.addr_family);
+}
+
+static inline bool operator==(
         _In_ const sai_l2mc_entry_t& a,
         _In_ const sai_l2mc_entry_t& b)
 {
     // SWSS_LOG_ENTER(); // disabled for performance reasons
 
-    bool part = a.switch_id == b.switch_id &&
+    return a.switch_id == b.switch_id &&
         a.bv_id == b.bv_id &&
         a.type == b.type &&
-        a.destination.addr_family == b.destination.addr_family &&
-        a.source.addr_family == b.source.addr_family;
-
-    if (a.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
-    {
-        part &= a.destination.addr.ip4 == b.destination.addr.ip4;
-    }
-    else if (a.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
-    {
-        part &= memcmp(a.destination.addr.ip6, b.destination.addr.ip6, sizeof(b.destination.addr.ip6)) == 0;
-    }
-    else
-    {
-        SWSS_LOG_THROW("unknown l2mc entry destination IP addr family: %d", a.destination.addr_family);
-    }
-
-    if (a.source.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
-    {
-        part &= a.source.addr.ip4 == b.source.addr.ip4;
-    }
-    else if (a.source.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
-    {
-        part &= memcmp(a.source.addr.ip6, b.source.addr.ip6, sizeof(b.source.addr.ip6)) == 0;
-    }
-    else
-    {
-        SWSS_LOG_THROW("unknown l2mc entry source IP addr family: %d", a.source.addr_family);
-    }
-
-    return part;
+        a.destination == b.destination &&
+        a.source == b.source;
 }
 
-static bool operator==(
+static inline bool operator==(
         _In_ const sai_ipmc_entry_t& a,
         _In_ const sai_ipmc_entry_t& b)
 {
     // SWSS_LOG_ENTER(); // disabled for performance reasons
 
-    bool part = a.switch_id == b.switch_id &&
+    return a.switch_id == b.switch_id &&
         a.vr_id == b.vr_id &&
         a.type == b.type &&
-        a.destination.addr_family == b.destination.addr_family &&
-        a.source.addr_family == b.source.addr_family;
-
-    if (a.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
-    {
-        part &= a.destination.addr.ip4 == b.destination.addr.ip4;
-    }
-    else if (a.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
-    {
-        part &= memcmp(a.destination.addr.ip6, b.destination.addr.ip6, sizeof(b.destination.addr.ip6)) == 0;
-    }
-    else
-    {
-        SWSS_LOG_THROW("unknown l2mc entry destination IP addr family: %d", a.destination.addr_family);
-    }
-
-    if (a.source.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
-    {
-        part &= a.source.addr.ip4 == b.source.addr.ip4;
-    }
-    else if (a.source.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
-    {
-        part &= memcmp(a.source.addr.ip6, b.source.addr.ip6, sizeof(b.source.addr.ip6)) == 0;
-    }
-    else
-    {
-        SWSS_LOG_THROW("unknown l2mc entry source IP addr family: %d", a.source.addr_family);
-    }
-
-    return part;
+        a.destination == b.destination &&
+        a.source == b.source;
 }
 
-static bool operator==(
+static inline bool operator==(
         _In_ const sai_neighbor_entry_t& a,
         _In_ const sai_neighbor_entry_t& b)
 {
-    SWSS_LOG_ENTER();
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
 
-    bool part = a.switch_id == b.switch_id &&
+    return a.switch_id == b.switch_id &&
         a.rif_id == b.rif_id &&
-        a.ip_address.addr_family == b.ip_address.addr_family;
-
-    if (a.ip_address.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
-        return part && a.ip_address.addr.ip4 == b.ip_address.addr.ip4;
-
-    if (a.ip_address.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
-        return part && memcmp(a.ip_address.addr.ip6, b.ip_address.addr.ip6, sizeof(b.ip_address.addr.ip6)) == 0;
-
-    SWSS_LOG_THROW("unknown neighbor entry IP addr family= %d", a.ip_address.addr_family);
+        a.ip_address == b.ip_address;
 }
 
-static bool operator==(
+static inline bool operator==(
         _In_ const sai_nat_entry_t& a,
         _In_ const sai_nat_entry_t& b)
 {
-    SWSS_LOG_ENTER();
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
 
     // we can't use memory compare, since some fields will be padded and they
     // could contain garbage
@@ -181,7 +154,7 @@ static bool operator==(
         a.data.mask.l4_dst_port == b.data.mask.l4_dst_port;
 }
 
-static bool operator==(
+static inline bool operator==(
         _In_ const sai_inseg_entry_t& a,
         _In_ const sai_inseg_entry_t& b)
 {
@@ -191,20 +164,19 @@ static bool operator==(
         a.label == b.label;
 }
 
-static bool operator==(
+static inline bool operator==(
         _In_ const sai_my_sid_entry_t& a,
         _In_ const sai_my_sid_entry_t& b)
 {
     // SWSS_LOG_ENTER(); // disabled for performance reasons
 
-    bool part = a.switch_id == b.switch_id &&
+    return a.switch_id == b.switch_id &&
         a.vr_id == b.vr_id &&
         a.locator_block_len == b.locator_block_len &&
         a.locator_node_len == b.locator_node_len &&
         a.function_len == b.function_len &&
-        a.args_len == b.args_len;
-
-    return part && memcmp(a.sid, b.sid, sizeof(a.sid)) == 0;
+        a.args_len == b.args_len &&
+        EQ_IP6(a.sid, b.sid);
 }
 
 bool MetaKeyHasher::operator()(
@@ -248,17 +220,28 @@ bool MetaKeyHasher::operator()(
     if (a.objecttype == SAI_OBJECT_TYPE_IPMC_ENTRY)
         return a.objectkey.key.ipmc_entry == b.objectkey.key.ipmc_entry;
 
-
-    SWSS_LOG_THROW("not implemented: %s",
+    SWSS_LOG_THROW("not implemented: %s, FIXME",
             sai_serialize_object_meta_key(a).c_str());
 }
 
 static_assert(sizeof(std::size_t) >= sizeof(uint32_t), "size_t must be at least 32 bits");
 
 static inline std::size_t sai_get_hash(
+        _In_ const sai_ip6_t& input)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    // cast is not good enough for arm (cast align)
+    uint32_t ip6[4];
+    memcpy(ip6, input, sizeof(ip6));
+
+    return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
+}
+
+static inline std::size_t sai_get_hash(
         _In_ const sai_route_entry_t& re)
 {
-    // SWSS_LOG_ENTER(); // disabled for performance reason
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
 
     if (re.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
     {
@@ -267,11 +250,7 @@ static inline std::size_t sai_get_hash(
 
     if (re.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
     {
-        // cast is not good enough for arm (cast align)
-        uint32_t ip6[4];
-        memcpy(ip6, re.destination.addr.ip6, sizeof(ip6));
-
-        return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
+        return sai_get_hash(re.destination.addr.ip6);
     }
 
     SWSS_LOG_THROW("unknown route entry IP addr family: %d", re.destination.addr_family);
@@ -280,7 +259,7 @@ static inline std::size_t sai_get_hash(
 static inline std::size_t sai_get_hash(
         _In_ const sai_neighbor_entry_t& ne)
 {
-    SWSS_LOG_ENTER();
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
 
     if (ne.ip_address.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
     {
@@ -289,11 +268,7 @@ static inline std::size_t sai_get_hash(
 
     if (ne.ip_address.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
     {
-        // cast is not good enough for arm (cast align)
-        uint32_t ip6[4];
-        memcpy(ip6, ne.ip_address.addr.ip6, sizeof(ip6));
-
-        return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
+        return sai_get_hash(ne.ip_address.addr.ip6);
     }
 
     SWSS_LOG_THROW("unknown neighbor entry IP addr family= %d", ne.ip_address.addr_family);
@@ -304,7 +279,7 @@ static_assert(sizeof(uint32_t) == 4, "uint32_t expected to be 4 bytes");
 static inline std::size_t sai_get_hash(
         _In_ const sai_fdb_entry_t& fe)
 {
-    SWSS_LOG_ENTER();
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
 
     uint32_t data;
 
@@ -318,7 +293,7 @@ static inline std::size_t sai_get_hash(
 static inline std::size_t sai_get_hash(
         _In_ const sai_nat_entry_t& ne)
 {
-    SWSS_LOG_ENTER();
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
 
     // TODO revisit - may depend on nat_type
 
@@ -338,10 +313,7 @@ static inline std::size_t sai_get_hash(
 {
     // SWSS_LOG_ENTER(); // disabled for performance reasons
 
-    uint32_t ip6[4];
-    memcpy(ip6, se.sid, sizeof(ip6));
-
-    return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
+    return sai_get_hash(se.sid);
 }
 
 static inline std::size_t sai_get_hash(
@@ -370,11 +342,7 @@ static inline std::size_t sai_get_hash(
 
     if (le.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
     {
-        // cast is not good enough for arm (cast align)
-        uint32_t ip6[4];
-        memcpy(ip6, le.destination.addr.ip6, sizeof(ip6));
-
-        return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
+        return sai_get_hash(le.destination.addr.ip6);
     }
 
     SWSS_LOG_THROW("unknown l2mc entry IP addr family: %d", le.destination.addr_family);
@@ -392,11 +360,7 @@ static inline std::size_t sai_get_hash(
 
     if (ie.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
     {
-        // cast is not good enough for arm (cast align)
-        uint32_t ip6[4];
-        memcpy(ip6, ie.destination.addr.ip6, sizeof(ip6));
-
-        return ip6[0] ^ ip6[1] ^ ip6[2] ^ ip6[3];
+        return sai_get_hash(ie.destination.addr.ip6);
     }
 
     SWSS_LOG_THROW("unknown ipmc entry IP addr family: %d", ie.destination.addr_family);
