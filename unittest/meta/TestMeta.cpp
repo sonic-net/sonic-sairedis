@@ -1011,3 +1011,28 @@ TEST(Meta, meta_sai_on_switch_shutdown_request)
     m.meta_sai_on_switch_shutdown_request(switchId);
     m.meta_sai_on_switch_shutdown_request(0x21000000000001);
 }
+
+TEST(Meta, meta_sai_on_switch_state_change)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    m.meta_sai_on_switch_state_change(0, SAI_SWITCH_OPER_STATUS_UP);
+    m.meta_sai_on_switch_state_change(switchId, SAI_SWITCH_OPER_STATUS_UP);
+    m.meta_sai_on_switch_state_change(0x21000000000001, SAI_SWITCH_OPER_STATUS_UP);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+    m.meta_sai_on_switch_state_change(0, (sai_switch_oper_status_t)1000);
+    m.meta_sai_on_switch_state_change(switchId, (sai_switch_oper_status_t)1000);
+    m.meta_sai_on_switch_state_change(0x21000000000001, (sai_switch_oper_status_t)1000);
+#pragma GCC diagnostic pop
+}
