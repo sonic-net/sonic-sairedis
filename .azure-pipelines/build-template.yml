@@ -147,7 +147,6 @@ jobs:
         inputs:
             codeCoverageTool: Cobertura
             summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
-        failIfCoverageEmpty: true
         displayName: 'Publish test coverage'
   - script: |
       pwd
