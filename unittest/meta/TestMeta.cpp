@@ -978,3 +978,36 @@ TEST(Meta, quad_bulk_inseg_entry)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses));
 }
+
+TEST(Meta, logSet)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.logSet(SAI_API_SWITCH, SAI_LOG_LEVEL_NOTICE));
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.logSet((sai_api_t)1000, SAI_LOG_LEVEL_NOTICE));
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.logSet(SAI_API_SWITCH, (sai_log_level_t)1000));
+#pragma GCC diagnostic pop
+
+}
+
+TEST(Meta, meta_sai_on_switch_shutdown_request)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    m.meta_sai_on_switch_shutdown_request(0);
+    m.meta_sai_on_switch_shutdown_request(switchId);
+    m.meta_sai_on_switch_shutdown_request(0x21000000000001);
+}
