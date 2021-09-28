@@ -900,3 +900,81 @@ TEST(Meta, quad_bulk_my_sid_entry)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses));
 }
+
+TEST(Meta, quad_bulk_inseg_entry)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_object_id_t vlanId = 0;
+
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 2;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_VLAN, &vlanId, switchId, 1, &attr));
+
+    sai_object_id_t vrId = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, &vrId, switchId, 0, &attr));
+
+    // create
+
+    sai_inseg_entry_t e[2];
+
+    memset(e, 0, sizeof(e));
+
+    e[0].switch_id = switchId;
+    e[1].switch_id = switchId;
+
+    e[0].label = 1;
+    e[1].label = 2;
+
+    uint32_t attr_count[2];
+
+    attr_count[0] = 1;
+    attr_count[1] = 1;
+
+    sai_attribute_t list1[2];
+    sai_attribute_t list2[2];
+
+    list1[0].id = SAI_L2MC_ENTRY_ATTR_PACKET_ACTION;
+    list1[0].value.s32 = SAI_PACKET_ACTION_FORWARD; 
+
+    list2[0].id = SAI_L2MC_ENTRY_ATTR_PACKET_ACTION;
+    list2[0].value.s32 = SAI_PACKET_ACTION_FORWARD;
+
+    std::vector<const sai_attribute_t*> alist;
+
+    alist.push_back(list1);
+    alist.push_back(list2);
+
+    const sai_attribute_t **attr_list = alist.data();
+
+    sai_status_t statuses[2];
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(2, e, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses));
+
+    // set
+
+    sai_attribute_t setlist[2];
+
+    setlist[0].id = SAI_L2MC_ENTRY_ATTR_PACKET_ACTION;
+    setlist[0].value.s32 = SAI_PACKET_ACTION_DROP;
+
+    setlist[1].id = SAI_L2MC_ENTRY_ATTR_PACKET_ACTION;
+    setlist[1].value.s32 = SAI_PACKET_ACTION_DROP;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkSet(2, e, setlist, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses));
+
+    // remove
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses));
+}
