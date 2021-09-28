@@ -752,3 +752,70 @@ TEST(Meta, quad_bulk_nat_entry)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses));
 }
+
+TEST(Meta, getStats)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_stat_id_t counter_ids[2];
+
+    counter_ids[0] = SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_0_DROPPED_PKTS;
+    counter_ids[1] = SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_1_DROPPED_PKTS;
+
+    uint64_t counters[2];
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.getStats(SAI_OBJECT_TYPE_SWITCH, switchId, 2, counter_ids, counters));
+}
+
+TEST(Meta, getStatsExt)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_stat_id_t counter_ids[2];
+
+    counter_ids[0] = SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_0_DROPPED_PKTS;
+    counter_ids[1] = SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_1_DROPPED_PKTS;
+
+    uint64_t counters[2];
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.getStatsExt(SAI_OBJECT_TYPE_SWITCH, switchId, 2, counter_ids, SAI_STATS_MODE_READ, counters));
+}
+
+TEST(Meta, clearStats)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_stat_id_t counter_ids[2];
+
+    counter_ids[0] = SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_0_DROPPED_PKTS;
+    counter_ids[1] = SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_1_DROPPED_PKTS;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.clearStats(SAI_OBJECT_TYPE_SWITCH, switchId, 2, counter_ids));
+}
