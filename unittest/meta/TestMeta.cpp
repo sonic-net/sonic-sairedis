@@ -1036,3 +1036,23 @@ TEST(Meta, meta_sai_on_switch_state_change)
     m.meta_sai_on_switch_state_change(0x21000000000001, (sai_switch_oper_status_t)1000);
 #pragma GCC diagnostic pop
 }
+
+TEST(Meta, populate)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    swss::TableDump dump;
+
+    dump["SAI_OBJECT_TYPE_ACL_TABLE:oid:0x7000000000626"]["SAI_ACL_TABLE_ATTR_FIELD_ACL_IP_TYPE"] = "true";
+    dump["SAI_OBJECT_TYPE_ROUTE_ENTRY:{\"dest\":\"10.0.0.0/32\",\"switch_id\":\"oid:0x21000000000000\",\"vr\":\"oid:0x3000000000022\"}"]
+        ["SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID"] = "oid:0x60000000005cf";
+    dump["SAI_OBJECT_TYPE_VLAN:oid:0x2600000000002f"]["SAI_VLAN_ATTR_VLAN_ID"] = "2";
+    dump["SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000"]["SAI_SWITCH_ATTR_PORT_LIST"] = 
+           "2:oid:0x1000000000002,oid:0x1000000000003";
+    dump["SAI_OBJECT_TYPE_ACL_ENTRY:oid:0x8000000000635"]["SAI_ACL_ENTRY_ATTR_FIELD_SRC_PORT"] = "oid:0x1000000000003";
+    dump["SAI_OBJECT_TYPE_ACL_ENTRY:oid:0x8000000000635"]["SAI_ACL_ENTRY_ATTR_FIELD_OUT_PORTS"] = "2:oid:0x1000000000002,oid:0x1000000000003";
+    dump["SAI_OBJECT_TYPE_ACL_ENTRY:oid:0x8000000000635"]["SAI_ACL_ENTRY_ATTR_ACTION_REDIRECT"] = "oid:0x1000000000003";
+    dump["SAI_OBJECT_TYPE_ACL_ENTRY:oid:0x8000000000635"]["SAI_ACL_ENTRY_ATTR_ACTION_REDIRECT_LIST"] = "2:oid:0x1000000000002,oid:0x1000000000003";
+
+    m.populate(dump);
+}
