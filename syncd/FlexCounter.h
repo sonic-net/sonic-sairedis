@@ -240,7 +240,7 @@ namespace syncd
                     sai_object_id_t priorityGroupRid);
 
             void getSupportedPriorityGroupCounters(
-                    sai_object_id_t priorityGroupRid, 
+                    sai_object_id_t priorityGroupRid,
                     const std::vector<sai_ingress_priority_group_stat_t> &counterIds);
 
             void updateSupportedPriorityGroupCounters(
