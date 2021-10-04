@@ -253,10 +253,6 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.qosmap, dst_attr.value.qosmap, countOnly));
             break;
 
-        case SAI_ATTR_VALUE_TYPE_MAP_LIST:
-            RETURN_ON_ERROR(transfer_list(src_attr.value.maplist, dst_attr.value.maplist, countOnly));
-            break;
-
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.aclresource, dst_attr.value.aclresource, countOnly));
             break;
