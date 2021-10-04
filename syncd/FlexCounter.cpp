@@ -1034,7 +1034,9 @@ bool FlexCounter::isBufferPoolCounterSupported(
     return m_supportedBufferPoolCounters.count(counter) != 0;
 }
 
-bool FlexCounter::isStatsModeSupported(uint32_t statsMode, sai_stats_mode_t statCapability)
+bool FlexCounter::isStatsModeSupported(
+        _In_ uint32_t statsMode,
+        _In_ sai_stats_mode_t statCapability)
 {
     SWSS_LOG_ENTER();
 
@@ -1766,7 +1768,7 @@ void FlexCounter::endFlexCounterThread(void)
 }
 
 sai_status_t FlexCounter::querySupportedPortCounters(
-        sai_object_id_t portRid)
+        _In_ sai_object_id_t portRid)
 {
     SWSS_LOG_ENTER();
 
@@ -1808,7 +1810,7 @@ sai_status_t FlexCounter::querySupportedPortCounters(
 }
 
 void FlexCounter::getSupportedPortCounters(
-        sai_object_id_t portRid)
+        _In_ sai_object_id_t portRid)
 {
     SWSS_LOG_ENTER();
 
@@ -1850,10 +1852,6 @@ void FlexCounter::updateSupportedPortCounters(
     {
         /* Fallback to legacy approach */
         getSupportedPortCounters(portRid);
-    }
-    else
-    {
-	SWSS_LOG_NOTICE("SHLOMI updateSupportedPortCounters with new API");
     }
 }
 
@@ -1900,7 +1898,7 @@ std::vector<sai_port_stat_t> FlexCounter::saiCheckSupportedPortDebugCounters(
 }
 
 sai_status_t FlexCounter::querySupportedQueueCounters(
-        sai_object_id_t queueId)
+        _In_ sai_object_id_t queueId)
 {
     SWSS_LOG_ENTER();
 
@@ -1947,8 +1945,8 @@ sai_status_t FlexCounter::querySupportedQueueCounters(
 }
 
 void FlexCounter::getSupportedQueueCounters(
-        sai_object_id_t queueId,
-        const std::vector<sai_queue_stat_t> &counterIds)
+        _In_ sai_object_id_t queueId,
+        _In_ const std::vector<sai_queue_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 
@@ -2010,7 +2008,7 @@ void FlexCounter::updateSupportedQueueCounters(
 }
 
 sai_status_t FlexCounter::querySupportedPriorityGroupCounters(
-        sai_object_id_t priorityGroupRid)
+        _In_ sai_object_id_t priorityGroupRid)
 {
     SWSS_LOG_ENTER();
 
@@ -2057,8 +2055,8 @@ sai_status_t FlexCounter::querySupportedPriorityGroupCounters(
 }
 
 void FlexCounter::getSupportedPriorityGroupCounters(
-        sai_object_id_t priorityGroupRid,
-        const std::vector<sai_ingress_priority_group_stat_t> &counterIds)
+        _In_ sai_object_id_t priorityGroupRid,
+        _In_ const std::vector<sai_ingress_priority_group_stat_t> &counterIds)
 {
     SWSS_LOG_ENTER();
 
@@ -2126,7 +2124,7 @@ void FlexCounter::updateSupportedPriorityGroupCounters(
 }
 
 sai_status_t FlexCounter::querySupportedRifCounters(
-        sai_object_id_t rifRid)
+        _In_ sai_object_id_t rifRid)
 {
     SWSS_LOG_ENTER();
 
@@ -2168,7 +2166,7 @@ sai_status_t FlexCounter::querySupportedRifCounters(
 }
 
 void FlexCounter::getSupportedRifCounters(
-        sai_object_id_t rifRid)
+        _In_ sai_object_id_t rifRid)
 {
     SWSS_LOG_ENTER();
 
@@ -2219,8 +2217,8 @@ void FlexCounter::updateSupportedRifCounters(
 }
 
 sai_status_t FlexCounter::querySupportedBufferPoolCounters(
-        sai_object_id_t bufferPoolId,
-        sai_stats_mode_t statsMode)
+        _In_ sai_object_id_t bufferPoolId,
+        _In_ sai_stats_mode_t statsMode)
 {
     SWSS_LOG_ENTER();
 
@@ -2268,9 +2266,9 @@ sai_status_t FlexCounter::querySupportedBufferPoolCounters(
 }
 
 void FlexCounter::getSupportedBufferPoolCounters(
-        sai_object_id_t bufferPoolId,
-        const std::vector<sai_buffer_pool_stat_t> &counterIds,
-        sai_stats_mode_t statsMode)
+        _In_ sai_object_id_t bufferPoolId,
+        _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds,
+        _In_ sai_stats_mode_t statsMode)
 {
     SWSS_LOG_ENTER();
 
