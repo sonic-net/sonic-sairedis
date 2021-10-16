@@ -398,7 +398,7 @@ void NotificationProcessor::process_on_port_state_change(
          * switch vid.
          */
 
-        SWSS_LOG_INFO("Port RID %s state change notification", 
+        SWSS_LOG_INFO("Port RID %s state change notification",
                 sai_serialize_object_id(rid).c_str());
 
         if (false == m_translator->tryTranslateRidToVid(rid, oper_stat->port_id))
@@ -408,16 +408,45 @@ void NotificationProcessor::process_on_port_state_change(
 
         /*
          * Port may be in process of removal. OA may receive notification for VID either
-         * SAI_NULL_OBJECT_ID or non exist at time of processing 
+         * SAI_NULL_OBJECT_ID or non exist at time of processing
          */
 
-        SWSS_LOG_INFO("Port VID %s state change notification", 
+        SWSS_LOG_INFO("Port VID %s state change notification",
                 sai_serialize_object_id(oper_stat->port_id).c_str());
     }
 
     std::string s = sai_serialize_port_oper_status_ntf(count, data);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, s);
+}
+
+void NotificationProcessor::process_on_bfd_session_state_change(
+        _In_ uint32_t count,
+        _In_ sai_bfd_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("bfd sessuin state notification count: %u", count);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_bfd_session_state_notification_t *bfd_session_state = &data[i];
+
+        /*
+         * We are using switch_rid as null, since BFD should be already
+         * defined inside local db after creation.
+         *
+         * If this will be faster than return from create BFD then we can use
+         * query switch id and extract rid of switch id and then convert it to
+         * switch vid.
+         */
+
+        bfd_session_state->bfd_session_id = m_translator->translateRidToVid(bfd_session_state->bfd_session_id, SAI_NULL_OBJECT_ID);
+    }
+
+    std::string s = sai_serialize_bfd_session_state_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
 void NotificationProcessor::process_on_switch_shutdown_request(
@@ -495,6 +524,21 @@ void NotificationProcessor::handle_port_state_change(
     sai_deserialize_free_port_oper_status_ntf(count, portoperstatus);
 }
 
+void NotificationProcessor::handle_bfd_session_state_change(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_bfd_session_state_notification_t *bfdsessionstate = NULL;
+
+    sai_deserialize_bfd_session_state_ntf(data, count, &bfdsessionstate);
+
+    process_on_bfd_session_state_change(count, bfdsessionstate);
+
+    sai_deserialize_free_bfd_session_state_ntf(count, bfdsessionstate);
+}
+
 void NotificationProcessor::handle_switch_shutdown_request(
         _In_ const std::string &data)
 {
@@ -542,6 +586,10 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_QUEUE_PFC_DEADLOCK)
     {
         handle_queue_deadlock(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE)
+    {
+        handle_bfd_session_state_change(data);
     }
     else
     {

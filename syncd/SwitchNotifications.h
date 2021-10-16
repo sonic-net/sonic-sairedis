@@ -20,7 +20,7 @@ namespace syncd
                 public:
 
                     SlotBase(
-                            _In_ sai_switch_notifications_t sn);
+                            _In_ const sai_switch_notifications_t& sn);
 
                     virtual ~SlotBase();
 
@@ -59,6 +59,11 @@ namespace syncd
                             _In_ sai_object_id_t switch_id,
                             _In_ sai_switch_oper_status_t switch_oper_status);
 
+                    static void onBfdSessionStateChange(
+                            _In_ int context,
+                            _In_ uint32_t count,
+                            _In_ const sai_bfd_session_state_notification_t *data);
+
                 protected:
 
                     SwitchNotifications* m_handler;
@@ -74,8 +79,9 @@ namespace syncd
 
                 Slot():
                     SlotBase({
-                            .on_bfd_session_state_change = nullptr,
+                            .on_bfd_session_state_change = &Slot<context>::onBfdSessionStateChange,
                             .on_fdb_event = &Slot<context>::onFdbEvent,
+                            .on_ipsec_sa_status_change = nullptr,
                             .on_packet_event = nullptr,
                             .on_port_state_change = &Slot<context>::onPortStateChange,
                             .on_queue_pfc_deadlock = &Slot<context>::onQueuePfcDeadlock,
@@ -104,6 +110,15 @@ namespace syncd
                     SWSS_LOG_ENTER();
 
                     return SlotBase::onPortStateChange(context, count, data);
+                }
+
+                static void onBfdSessionStateChange(
+                        _In_ uint32_t count,
+                        _In_ const sai_bfd_session_state_notification_t *data)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onBfdSessionStateChange(context, count, data);
                 }
 
                 static void onQueuePfcDeadlock(
@@ -152,6 +167,7 @@ namespace syncd
             std::function<void(uint32_t, const sai_queue_deadlock_notification_data_t*)>    onQueuePfcDeadlock;
             std::function<void(sai_object_id_t)>                                            onSwitchShutdownRequest;
             std::function<void(sai_object_id_t switch_id, sai_switch_oper_status_t)>        onSwitchStateChange;
+            std::function<void(uint32_t, const sai_bfd_session_state_notification_t*)>      onBfdSessionStateChange;
 
         private:
 

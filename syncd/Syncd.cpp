@@ -11,9 +11,6 @@
 #include "BreakConfigParser.h"
 #include "RedisNotificationProducer.h"
 #include "ZeroMQNotificationProducer.h"
-#include "RedisSelectableChannel.h"
-#include "ZeroMQSelectableChannel.h"
-#include "PerformanceIntervalTimer.h"
 #include "WatchdogScope.h"
 
 #include "sairediscommon.h"
@@ -24,8 +21,11 @@
 #include "swss/notificationproducer.h"
 
 #include "meta/sai_serialize.h"
+#include "meta/ZeroMQSelectableChannel.h"
+#include "meta/RedisSelectableChannel.h"
+#include "meta/PerformanceIntervalTimer.h"
 
-#include "vslib/inc/saivs.h"
+#include "vslib/saivs.h"
 
 #include <unistd.h>
 #include <inttypes.h>
@@ -115,7 +115,7 @@ Syncd::Syncd(
 
         m_enableSyncMode = true;
 
-        m_selectableChannel = std::make_shared<ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint);
+        m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint);
     }
     else
     {
@@ -125,7 +125,7 @@ Syncd::Syncd(
 
         bool modifyRedis = m_enableSyncMode ? false : true;
 
-        m_selectableChannel = std::make_shared<RedisSelectableChannel>(
+        m_selectableChannel = std::make_shared<sairedis::RedisSelectableChannel>(
                 m_dbAsic,
                 ASIC_STATE_TABLE,
                 REDIS_TABLE_GETRESPONSE,
@@ -143,6 +143,7 @@ Syncd::Syncd(
     m_sn.onQueuePfcDeadlock = std::bind(&NotificationHandler::onQueuePfcDeadlock, m_handler.get(), _1, _2);
     m_sn.onSwitchShutdownRequest = std::bind(&NotificationHandler::onSwitchShutdownRequest, m_handler.get(), _1);
     m_sn.onSwitchStateChange = std::bind(&NotificationHandler::onSwitchStateChange, m_handler.get(), _1, _2);
+    m_sn.onBfdSessionStateChange = std::bind(&NotificationHandler::onBfdSessionStateChange, m_handler.get(), _1, _2);
 
     m_handler->setSwitchNotifications(m_sn.getSwitchNotifications());
 
@@ -278,7 +279,7 @@ bool Syncd::isInitViewMode() const
 }
 
 void Syncd::processEvent(
-        _In_ SelectableChannel& consumer)
+        _In_ sairedis::SelectableChannel& consumer)
 {
     SWSS_LOG_ENTER();
 
@@ -318,7 +319,7 @@ sai_status_t Syncd::processSingleEvent(
         return SAI_STATUS_SUCCESS;
     }
 
-    WatchdogScope ws(m_timerWatchdog, op + ":" + key);
+    WatchdogScope ws(m_timerWatchdog, op + ":" + key, &kco);
 
     if (op == REDIS_ASIC_STATE_COMMAND_CREATE)
         return processQuadEvent(SAI_COMMON_API_CREATE, kco);
@@ -628,6 +629,17 @@ sai_status_t Syncd::processClearStatsEvent(
     sai_object_meta_key_t metaKey;
     sai_deserialize_object_meta_key(key, metaKey);
 
+    if (isInitViewMode() && m_createdInInitView.find(metaKey.objectkey.key.object_id) != m_createdInInitView.end())
+    {
+        SWSS_LOG_WARN("CLEAR STATS api can't be used on %s since it's created in INIT_VIEW mode", key.c_str());
+
+        sai_status_t status = SAI_STATUS_INVALID_OBJECT_ID;
+
+        m_selectableChannel->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+
+        return status;
+    }
+
     if (!m_translator->tryTranslateVidToRid(metaKey))
     {
         SWSS_LOG_WARN("VID to RID translation failure: %s", key.c_str());
@@ -674,7 +686,16 @@ sai_status_t Syncd::processGetStatsEvent(
     sai_object_meta_key_t metaKey;
     sai_deserialize_object_meta_key(key, metaKey);
 
-    // TODO get stats on created object in init view mode could fail
+    if (isInitViewMode() && m_createdInInitView.find(metaKey.objectkey.key.object_id) != m_createdInInitView.end())
+    {
+        SWSS_LOG_WARN("GET STATS api can't be used on %s since it's created in INIT_VIEW mode", key.c_str());
+
+        sai_status_t status = SAI_STATUS_INVALID_OBJECT_ID;
+
+        m_selectableChannel->set(sai_serialize_status(status), {}, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+
+        return status;
+    }
 
     m_translator->translateVidToRid(metaKey);
 
@@ -708,7 +729,7 @@ sai_status_t Syncd::processGetStatsEvent(
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("Failed to get stats");
+        SWSS_LOG_NOTICE("Getting stats error: %s", sai_serialize_status(status).c_str());
     }
     else
     {
@@ -866,6 +887,16 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
 
                     syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
 
+                    for (auto& str: objectIds)
+                    {
+                        sai_object_id_t objectVid;
+                        sai_deserialize_object_id(str, objectVid);
+
+                        // in init view mode insert every created object except switch
+
+                        m_createdInInitView.insert(objectVid);
+                    }
+
                     return SAI_STATUS_SUCCESS;
             }
 
@@ -1003,6 +1034,28 @@ sai_status_t Syncd::processBulkCreateEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+        {
+            std::vector<sai_my_sid_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
         default:
             return SAI_STATUS_NOT_SUPPORTED;
     }
@@ -1088,6 +1141,26 @@ sai_status_t Syncd::processBulkRemoveEntry(
                     mode,
                     statuses.data());
 
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+        {
+            std::vector<sai_my_sid_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
         }
         break;
 
@@ -1206,6 +1279,27 @@ sai_status_t Syncd::processBulkSetEntry(
                     mode,
                     statuses.data());
 
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+        {
+            std::vector<sai_my_sid_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vr_id = m_translator->translateVidToRid(entries[it].vr_id);
+            }
+
+            status = m_vendorSai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
         }
         break;
 
@@ -1470,6 +1564,7 @@ sai_status_t Syncd::processBulkOidCreate(
         if (statuses[idx] == SAI_STATUS_SUCCESS)
         {
             m_translator->insertRidAndVid(objectRids[idx], objectVids[idx]);
+
             SWSS_LOG_INFO("saved VID %s to RID %s",
                     sai_serialize_object_id(objectVids[idx]).c_str(),
                     sai_serialize_object_id(objectRids[idx]).c_str());
@@ -1721,6 +1816,12 @@ sai_status_t Syncd::processQuadInInitViewModeCreate(
         {
             onSwitchCreateInInitViewMode(objectVid, attr_count, attr_list);
         }
+        else
+        {
+            // in init view mode insert every created object except switch
+
+            m_createdInInitView.insert(objectVid);
+        }
     }
 
     sendApiResponse(SAI_COMMON_API_CREATE, SAI_STATUS_SUCCESS);
@@ -1835,6 +1936,19 @@ sai_status_t Syncd::processQuadInInitViewModeGet(
     {
         sai_object_id_t objectVid;
         sai_deserialize_object_id(strObjectId, objectVid);
+
+        if (isInitViewMode() && m_createdInInitView.find(objectVid) != m_createdInInitView.end())
+        {
+            SWSS_LOG_WARN("GET api can't be used on %s (%s) since it's created in INIT_VIEW mode",
+                    strObjectId.c_str(),
+                    sai_serialize_object_type(objectType).c_str());
+
+            status = SAI_STATUS_INVALID_OBJECT_ID;
+
+            sendGetResponse(objectType, strObjectId, switchVid, status, attr_count, attr_list);
+
+            return status;
+        }
 
         switchVid = VidManager::switchIdQuery(objectVid);
 
@@ -1959,7 +2073,7 @@ void Syncd::processFlexCounterGroupEvent( // TODO must be moved to go via ASIC c
     auto& op = kfvOp(kco);
     auto& values = kfvFieldsValues(kco);
 
-    WatchdogScope ws(m_timerWatchdog, op + ":" + groupName);
+    WatchdogScope ws(m_timerWatchdog, op + ":" + groupName, &kco);
 
     if (op == SET_COMMAND)
     {
@@ -1989,7 +2103,7 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
     auto& key = kfvKey(kco);
     auto& op = kfvOp(kco);
 
-    WatchdogScope ws(m_timerWatchdog, op + ":" + key);
+    WatchdogScope ws(m_timerWatchdog, op + ":" + key, &kco);
 
     auto delimiter = key.find_first_of(":");
 
@@ -3210,6 +3324,8 @@ sai_status_t Syncd::processNotifySyncd(
 
         clearTempView();
 
+        m_createdInInitView.clear();
+
         // NOTE: Currently as WARN to be easier to spot, later should be NOTICE.
 
         SWSS_LOG_WARN("syncd switched to INIT VIEW mode, all op will be saved to TEMP view");
@@ -3262,6 +3378,8 @@ sai_status_t Syncd::processNotifySyncd(
              */
 
             m_translator->clearLocalCache();
+
+            m_createdInInitView.clear();
         }
         else
         {
@@ -3892,7 +4010,8 @@ void Syncd::performWarmRestartSingleSwitch(
         SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY,
         SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY,
         SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY,
-        SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY
+        SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY,
+        SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY
     };
 
     std::vector<sai_attribute_t> attrs;
@@ -4575,7 +4694,7 @@ syncd_restart_type_t Syncd::handleRestartQuery(
 
     restartQuery.pop(op, data, values);
 
-    m_timerWatchdog.setEventName(op + ":" + data);
+    m_timerWatchdog.setEventData(op + ":" + data);
 
     SWSS_LOG_NOTICE("received %s switch shutdown event", op.c_str());
 

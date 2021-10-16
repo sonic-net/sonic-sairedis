@@ -2,10 +2,10 @@
 
 #include "CommandLineOptions.h"
 
-#include "../lib/inc/SaiInterface.h"
-#include "../meta/SaiAttributeList.h"
-#include "../syncd/ServiceMethodTable.h"
-#include "../syncd/SwitchNotifications.h"
+#include "meta/SaiInterface.h"
+#include "meta/SaiAttributeList.h"
+#include "syncd/ServiceMethodTable.h"
+#include "syncd/SwitchNotifications.h"
 
 #include <memory>
 #include <map>
@@ -75,7 +75,7 @@ namespace saiplayer
                     _In_ const std::string response);
 
             void performNotifySyncd(
-                    _In_ const std::string& request, 
+                    _In_ const std::string& request,
                     _In_ const std::string& response);
 
             void performSleep(
@@ -193,6 +193,10 @@ namespace saiplayer
             void onSwitchStateChange(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_switch_oper_status_t switch_oper_status);
+
+            void onBfdSessionStateChange(
+                    _In_ uint32_t count,
+                    _In_ const sai_bfd_session_state_notification_t *data);
 
         private:
 

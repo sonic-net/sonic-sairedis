@@ -2,7 +2,6 @@
 #include "VidManager.h"
 
 #include "meta/sai_serialize.h"
-#include "lib/inc/SaiInterface.h"
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"
@@ -1019,7 +1018,7 @@ void FlexCounter::addCounterPlugin(
             for (auto& sha: shaStrings)
             {
                 addRifCounterPlugin(sha);
-            } 
+            }
         }
         else if (field == BUFFER_POOL_PLUGIN_FIELD)
         {
@@ -1745,7 +1744,7 @@ void FlexCounter::runPlugins(
     {
         std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
-        std::to_string(m_pollInterval * 1000)
+        std::to_string(m_pollInterval)
     };
 
     std::vector<std::string> portList;

@@ -105,7 +105,7 @@ attr.value.ptr = pysairedis.sai_get_notification_pointer(pysairedis.SAI_SWITCH_A
 pysairedis.sai_attribute_t_arr_setitem(attrs, 5, attr)
 
 status = switch_api.create_switch(poid, 6, attrs)
-print "create_switch: " + str(status) 
+print "create_switch: " + str(status)
 
 swid = pysairedis.sai_object_id_t_p_value(poid)
 
