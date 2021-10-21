@@ -506,7 +506,7 @@ std::vector<std::shared_ptr<SaiObj>> AsicView::getAllNotProcessedObjects() const
  * @param[in] rid Real ID
  * @param[in] vid Virtual ID
  */
-void AsicView::createDummyExistingObject(
+std::shared_ptr<SaiObj> AsicView::createDummyExistingObject(
         _In_ sai_object_id_t rid,
         _In_ sai_object_id_t vid)
 {
@@ -540,6 +540,8 @@ void AsicView::createDummyExistingObject(
 
     m_ridToVid[rid] = vid;
     m_vidToRid[vid] = rid;
+
+    return o;
 }
 
 /**
@@ -1289,10 +1291,10 @@ void AsicView::checkObjectsStatus() const
         {
             const auto &o = *p.second;
 
-            SWSS_LOG_ERROR("object was not processed: %s %s, status: %d (ref: %d)",
+            SWSS_LOG_ERROR("object was not processed: %s %s, status: %s (ref: %d)",
                     o.m_str_object_type.c_str(),
                     o.m_str_object_id.c_str(),
-                    o.getObjectStatus(),
+                    ObjectStatus::sai_serialize_object_status(o.getObjectStatus()).c_str(),
                     o.isOidObject() ? getVidReferenceCount(o.getVid()): -1);
 
             count++;

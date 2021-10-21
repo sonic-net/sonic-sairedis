@@ -29,7 +29,7 @@ fi
 # Use temporary view between init and apply
 CMD_ARGS+=" -u"
 
-# Use bulk api`s in SAI
+# Use bulk APIs in SAI
 # currently disabled since most vendors don't support that yet
 # CMD_ARGS+=" -l"
 
@@ -161,11 +161,11 @@ config_syncd_bcm()
       fi
 
     fi
-    
-    if [ -f "$HWSKU_DIR/context_config.json" ]; then 
+
+    if [ -f "$HWSKU_DIR/context_config.json" ]; then
         CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
     fi
-    
+
     [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
     [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
     [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
@@ -235,7 +235,7 @@ config_syncd_barefoot()
         echo "SAI_KEY_WARM_BOOT_WRITE_FILE=/var/warmboot/sai-warmboot.bin" > $PROFILE_FILE
         echo "SAI_KEY_WARM_BOOT_READ_FILE=/var/warmboot/sai-warmboot.bin" >> $PROFILE_FILE
     fi
-    CMD_ARGS+=" -p $PROFILE_FILE"
+    CMD_ARGS+=" -l -p $PROFILE_FILE"
 
     # Check and load SDE profile
     P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
@@ -259,6 +259,12 @@ config_syncd_nephos()
 config_syncd_vs()
 {
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
+config_syncd_soda()
+{
+    # Add support for SAI bulk operations
+    CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
 }
 
 config_syncd_innovium()
@@ -295,6 +301,8 @@ config_syncd()
         config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
         config_syncd_innovium
+    elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
+        config_syncd_soda
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1

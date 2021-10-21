@@ -8,7 +8,7 @@ using namespace saivs;
 
 TEST(Buffer, ctr)
 {
-    EXPECT_THROW(new Buffer(0,0), std::runtime_error);
+    EXPECT_THROW(std::make_shared<Buffer>(nullptr, 0), std::runtime_error);
 
     Buffer b((const uint8_t*)"foo", 3);
 }
@@ -22,7 +22,7 @@ TEST(Buffer, dtr)
 
 TEST(Buffer, getData)
 {
-    EXPECT_THROW(new Buffer(0,0), std::runtime_error);
+    EXPECT_THROW(std::make_shared<Buffer>(nullptr,0), std::runtime_error);
 
     Buffer b((const uint8_t*)"foo", 3);
 
@@ -31,7 +31,7 @@ TEST(Buffer, getData)
 
 TEST(Buffer, getSize)
 {
-    EXPECT_THROW(new Buffer(0,0), std::runtime_error);
+    EXPECT_THROW(std::make_shared<Buffer>(nullptr,0), std::runtime_error);
 
     Buffer b((const uint8_t*)"foo", 3);
 
@@ -40,7 +40,7 @@ TEST(Buffer, getSize)
 
 TEST(Buffer, flow)
 {
-    EXPECT_THROW(new Buffer(0,0), std::runtime_error);
+    EXPECT_THROW(std::make_shared<Buffer>(nullptr,0), std::runtime_error);
 
     Buffer b((const uint8_t*)"foo", 3);
 

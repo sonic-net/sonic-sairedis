@@ -175,25 +175,6 @@ void VirtualObjectIdManager::clear()
     m_switchIndexes.clear();
 }
 
-uint32_t VirtualObjectIdManager::allocateNewSwitchIndex()
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t index = 0; index < SAI_REDIS_SWITCH_INDEX_MAX; ++index)
-    {
-        if (m_switchIndexes.find(index) != m_switchIndexes.end())
-            continue;
-
-        m_switchIndexes.insert(index);
-
-        SWSS_LOG_NOTICE("allocated new switch index 0x%x", index);
-
-        return index;
-    }
-
-    SWSS_LOG_THROW("no more available switch indexes (used count is: %zu)", m_switchIndexes.size());
-}
-
 void VirtualObjectIdManager::releaseSwitchIndex(
         _In_ uint32_t index)
 {
@@ -210,7 +191,6 @@ void VirtualObjectIdManager::releaseSwitchIndex(
 
     SWSS_LOG_DEBUG("released switch index 0x%x", index);
 }
-
 
 sai_object_id_t VirtualObjectIdManager::allocateNewObjectId(
         _In_ sai_object_type_t objectType,

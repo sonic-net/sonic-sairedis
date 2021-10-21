@@ -37,7 +37,7 @@ TEST(SwitchBCM56850, ctr)
             nullptr);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 
@@ -67,7 +67,7 @@ TEST(SwitchBCM56850, refresh_bridge_port_list)
             sc);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 
@@ -92,7 +92,7 @@ TEST(SwitchBCM56850, refresh_bridge_port_list)
     attr.value.objlist.list = list;
 
     EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_BRIDGE, sboid, 1, &attr), SAI_STATUS_SUCCESS);
-    
+
     //std::cout << sw.dump_switch_database_for_warm_restart();
 }
 
@@ -242,7 +242,7 @@ TEST(SwitchBCM56850, warm_update_queues)
             warmBootState);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 
@@ -267,4 +267,154 @@ TEST(SwitchBCM56850, warm_update_queues)
     attr.value.objlist.list = list;
 
     EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_BRIDGE, sboid, 1, &attr), SAI_STATUS_SUCCESS);
+}
+
+TEST(SwitchBCM56850, test_tunnel_term_capability)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+
+    sai_s32_list_t enum_val_cap;
+    int32_t list[2];
+
+    enum_val_cap.count = 2;
+    enum_val_cap.list = list;
+
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
+                                               SAI_OBJECT_TYPE_TUNNEL,
+                                               SAI_TUNNEL_ATTR_PEER_MODE,
+                                               &enum_val_cap),
+                                               SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(enum_val_cap.count, 2);
+
+    int modes_found = 0;
+
+    for (uint32_t i = 0; i < enum_val_cap.count; i++)
+    {
+        if (enum_val_cap.list[i] == SAI_TUNNEL_PEER_MODE_P2MP || enum_val_cap.list[i] == SAI_TUNNEL_PEER_MODE_P2P)
+        {
+            modes_found++;
+        }
+    }
+
+    EXPECT_EQ(modes_found, 2);
+}
+
+TEST(SwitchBCM56850, test_vlan_flood_capability)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_s32_list_t enum_val_cap;
+    int32_t list[4];
+
+    enum_val_cap.count = 4;
+    enum_val_cap.list = list;
+
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
+                                               SAI_OBJECT_TYPE_VLAN,
+                                               SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE,
+                                               &enum_val_cap),
+                                               SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(enum_val_cap.count, 3);
+
+    int flood_types_found = 0;
+    for (uint32_t i = 0; i < enum_val_cap.count; i++)
+    {
+        if (enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_ALL ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_NONE ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP)
+        {
+            flood_types_found++;
+        }
+    }
+
+    EXPECT_EQ(flood_types_found, 3);
+
+    memset(list, 0, sizeof(list));
+    flood_types_found = 0;
+    enum_val_cap.count = 4;
+    enum_val_cap.list = list;
+
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
+                                               SAI_OBJECT_TYPE_VLAN,
+                                               SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE,
+                                               &enum_val_cap),
+                                               SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(enum_val_cap.count, 3);
+
+    for (uint32_t i = 0; i < enum_val_cap.count; i++)
+    {
+        if (enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_ALL ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_NONE ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP)
+        {
+            flood_types_found++;
+        }
+    }
+
+    EXPECT_EQ(flood_types_found, 3);
+
+    memset(list, 0, sizeof(list));
+    flood_types_found = 0;
+    enum_val_cap.count = 4;
+    enum_val_cap.list = list;
+
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
+                                               SAI_OBJECT_TYPE_VLAN,
+                                               SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE,
+                                               &enum_val_cap),
+                                               SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(enum_val_cap.count, 3);
+
+    for (uint32_t i = 0; i < enum_val_cap.count; i++)
+    {
+        if (enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_ALL ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_NONE ||
+            enum_val_cap.list[i] == SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP)
+        {
+            flood_types_found++;
+        }
+    }
+
+    EXPECT_EQ(flood_types_found, 3);
 }

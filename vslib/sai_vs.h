@@ -48,7 +48,7 @@ PRIVATE extern const sai_rpf_group_api_t        vs_rpf_group_api;
 PRIVATE extern const sai_samplepacket_api_t     vs_samplepacket_api;
 PRIVATE extern const sai_scheduler_api_t        vs_scheduler_api;
 PRIVATE extern const sai_scheduler_group_api_t  vs_scheduler_group_api;
-PRIVATE extern const sai_segmentroute_api_t     vs_segmentroute_api;
+PRIVATE extern const sai_srv6_api_t             vs_srv6_api;
 PRIVATE extern const sai_stp_api_t              vs_stp_api;
 PRIVATE extern const sai_switch_api_t           vs_switch_api;
 PRIVATE extern const sai_system_port_api_t      vs_system_port_api;
@@ -58,6 +58,8 @@ PRIVATE extern const sai_udf_api_t              vs_udf_api;
 PRIVATE extern const sai_virtual_router_api_t   vs_virtual_router_api;
 PRIVATE extern const sai_vlan_api_t             vs_vlan_api;
 PRIVATE extern const sai_wred_api_t             vs_wred_api;
+PRIVATE extern const sai_my_mac_api_t           vs_my_mac_api;
+PRIVATE extern const sai_ipsec_api_t            vs_ipsec_api;
 
 PRIVATE extern std::shared_ptr<sairedis::SaiInterface>      vs_sai;
 

@@ -82,7 +82,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_router_samplepacket.cpp \
 				test_sai_vs_schedulergroup.cpp \
 				test_sai_vs_scheduler.cpp \
-				test_sai_vs_segmentroute.cpp \
+				test_sai_vs_srv6.cpp \
 				test_sai_vs_switch.cpp \
 				test_sai_vs_system_port.cpp \
 				test_sai_vs_tam.cpp \

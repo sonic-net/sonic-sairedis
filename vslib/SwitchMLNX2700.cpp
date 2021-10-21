@@ -424,3 +424,37 @@ sai_status_t SwitchMLNX2700::warm_update_queues()
 
     return SAI_STATUS_SUCCESS;
 }
+
+sai_status_t SwitchMLNX2700::queryVlanfloodTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 4)
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 4;
+    enum_values_capability->list[0] = SAI_VLAN_FLOOD_CONTROL_TYPE_ALL;
+    enum_values_capability->list[1] = SAI_VLAN_FLOOD_CONTROL_TYPE_NONE;
+    enum_values_capability->list[2] = SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP;
+    enum_values_capability->list[3] = SAI_VLAN_FLOOD_CONTROL_TYPE_COMBINED;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchMLNX2700::queryTunnelPeerModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 1)
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 1;
+    enum_values_capability->list[0] = SAI_TUNNEL_PEER_MODE_P2MP;
+    return SAI_STATUS_SUCCESS;
+}

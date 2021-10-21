@@ -1255,6 +1255,25 @@ sai_status_t ServerSai::processBulkCreateEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+        {
+            std::vector<sai_my_sid_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
         default:
             return SAI_STATUS_NOT_SUPPORTED;
     }
@@ -1342,6 +1361,23 @@ sai_status_t ServerSai::processBulkRemoveEntry(
                     mode,
                     statuses.data());
 
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+        {
+            std::vector<sai_my_sid_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
         }
         break;
 
@@ -1444,6 +1480,24 @@ sai_status_t ServerSai::processBulkSetEntry(
                     mode,
                     statuses.data());
 
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+        {
+            std::vector<sai_my_sid_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
         }
         break;
 

@@ -55,7 +55,7 @@ std::shared_ptr<ClientConfig> ClientConfig::loadFromFile(
         auto cc = std::make_shared<ClientConfig>();
 
         cc->m_zmqEndpoint = j["zmq_endpoint"];
-        cc->m_zmqNtfEndpoint = j["zmq_endpoint_ntf"];
+        cc->m_zmqNtfEndpoint = j["zmq_ntf_endpoint"];
 
         SWSS_LOG_NOTICE("client config: %s, %s",
                 cc->m_zmqEndpoint.c_str(),

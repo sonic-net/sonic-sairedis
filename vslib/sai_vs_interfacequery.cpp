@@ -65,7 +65,7 @@ static sai_apis_t vs_apis = {
     API(mcast_fdb),
     API(bridge),
     API(tam),
-    API(segmentroute),
+    API(srv6),
     API(mpls),
     API(dtel),
     API(bfd),
@@ -75,6 +75,8 @@ static sai_apis_t vs_apis = {
     API(debug_counter),
     API(macsec),
     API(system_port),
+    API(my_mac),
+    API(ipsec),
     API(bmtor),
 };
 

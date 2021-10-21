@@ -6,7 +6,22 @@ LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 
 tests_SOURCES = \
 				main.cpp \
-				TestSwitch.cpp
+				../../meta/NumberOidIndexGenerator.cpp \
+				TestSwitch.cpp \
+				TestClientConfig.cpp \
+				TestClientServerSai.cppa \
+				TestContext.cpp \
+				TestContextConfig.cpp \
+				TestContextConfigContainer.cpp \
+				TestUtils.cpp \
+				TestVirtualObjectIdManager.cpp \
+				TestZeroMQChannel.cpp \
+				TestSwitchContainer.cpp \
+				TestSwitchConfigContainer.cpp \
+				TestSkipRecordAttrContainer.cpp \
+				TestServerConfig.cpp \
+				TestRedisVidIndexGenerator.cpp \
+				TestRedisChannel.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/lib/libSaiRedis.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
@@ -47,7 +62,7 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_router_samplepacket.cpp \
 				test_sai_redis_schedulergroup.cpp \
 				test_sai_redis_scheduler.cpp \
-				test_sai_redis_segmentroute.cpp \
+				test_sai_redis_srv6.cpp \
 				test_sai_redis_switch.cpp \
 				test_sai_redis_system_port.cpp \
 				test_sai_redis_tam.cpp \
@@ -62,4 +77,4 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 testslibsairedis_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 testslibsairedis_LDADD = $(LDADD_GTEST) -L$(top_srcdir)/lib/.libs -lsairedis -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
-TESTS = tests testslibsairedis
+TESTS = testslibsairedis tests

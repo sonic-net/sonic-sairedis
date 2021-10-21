@@ -665,14 +665,14 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
         SWSS_LOG_ERROR("failed to get admin state for port %s",
                 sai_serialize_object_id(obj_id).c_str());
 
-        return false;
+        return status;
     }
 
     if (ifup(vname.c_str(), obj_id, attr.value.booldata, false))
     {
         SWSS_LOG_ERROR("ifup failed on %s", vname.c_str());
 
-        return false;
+        return SAI_STATUS_FAILURE;
     }
 
     if (!hostif_create_tap_veth_forwarding(name, tapfd, obj_id))

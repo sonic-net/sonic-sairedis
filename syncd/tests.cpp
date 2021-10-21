@@ -229,10 +229,16 @@ void test_bulk_next_hop_group_member_create()
     sai_next_hop_api_t  *sai_next_hop_api = NULL;
     sai_next_hop_group_api_t  *sai_next_hop_group_api = NULL;
     sai_switch_api_t *sai_switch_api = NULL;
+    sai_lag_api_t *sai_lag_api = NULL;
+    sai_router_interface_api_t *sai_rif_api = NULL;
+    sai_virtual_router_api_t * sai_virtual_router_api = NULL;
 
     sai_api_query(SAI_API_NEXT_HOP, (void**)&sai_next_hop_api);
     sai_api_query(SAI_API_NEXT_HOP_GROUP, (void**)&sai_next_hop_group_api);
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+    sai_api_query(SAI_API_ROUTER_INTERFACE, (void **)&sai_rif_api);
+    sai_api_query(SAI_API_LAG, (void**)&sai_lag_api);
+    sai_api_query(SAI_API_VIRTUAL_ROUTER, (void**)&sai_virtual_router_api);
 
     uint32_t count = 3;
 
@@ -262,6 +268,29 @@ void test_bulk_next_hop_group_member_create()
 
     ASSERT_SUCCESS("failed to create next hop group");
 
+    // virtual router
+    sai_object_id_t vr;
+
+    status = sai_virtual_router_api->create_virtual_router(&vr, switch_id, 0, NULL);
+
+    ASSERT_SUCCESS("failed to create virtual router");
+
+    // create lag
+    sai_object_id_t lag;
+    status = sai_lag_api->create_lag(&lag, switch_id, 0, NULL);
+
+    // create router interface
+    sai_object_id_t rif;
+    sai_attribute_t rifattr[3];
+    rifattr[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+    rifattr[0].value.oid = vr;
+    rifattr[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    rifattr[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+    rifattr[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+    rifattr[2].value.oid = lag;
+    status = sai_rif_api->create_router_interface(&rif, switch_id, 3, rifattr);
+    ASSERT_SUCCESS("Failed to create router interface");
+
     for (uint32_t i = 0; i <  count; ++i)
     {
         sai_object_id_t hop_vid;
@@ -269,11 +298,12 @@ void test_bulk_next_hop_group_member_create()
         sai_attribute_t nhattr[3] = { };
 
         nhattr[0].id = SAI_NEXT_HOP_ATTR_TYPE;
-        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_SEGMENTROUTE_ENDPOINT;
-
-        nhattr[1].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_TYPE;
-
-        nhattr[2].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_POP_TYPE;
+        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_IP;
+        nhattr[1].id = SAI_NEXT_HOP_ATTR_IP;
+        nhattr[1].value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+        nhattr[1].value.ipaddr.addr.ip4 = 0x10000001 + count;
+        nhattr[2].id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
+        nhattr[2].value.oid = rif;
 
         status = sai_next_hop_api->create_next_hop(&hop_vid, switch_id, 3, nhattr);
 
@@ -467,11 +497,15 @@ void test_bulk_route_set()
     sai_switch_api_t *sai_switch_api = NULL;
     sai_virtual_router_api_t * sai_virtual_router_api = NULL;
     sai_next_hop_api_t  *sai_next_hop_api = NULL;
+    sai_lag_api_t *sai_lag_api = NULL;
+    sai_router_interface_api_t *sai_rif_api = NULL;
 
     sai_api_query(SAI_API_ROUTE, (void**)&sai_route_api);
     sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
     sai_api_query(SAI_API_VIRTUAL_ROUTER, (void**)&sai_virtual_router_api);
     sai_api_query(SAI_API_NEXT_HOP, (void**)&sai_next_hop_api);
+    sai_api_query(SAI_API_ROUTER_INTERFACE, (void **)&sai_rif_api);
+    sai_api_query(SAI_API_LAG, (void**)&sai_lag_api);
 
     uint32_t count = 3;
 
@@ -505,15 +539,34 @@ void test_bulk_route_set()
 
         ASSERT_SUCCESS("failed to create virtual router");
 
+        // create lag
+        sai_object_id_t lag;
+        status = sai_lag_api->create_lag(&lag, switch_id, 0, NULL);
+
+        // create router interface
+        sai_object_id_t rif;
+        sai_attribute_t rifattr[3];
+        rifattr[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+        rifattr[0].value.oid = vr;
+        rifattr[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+        rifattr[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+        rifattr[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+        rifattr[2].value.oid = lag;
+        status = sai_rif_api->create_router_interface(&rif, switch_id, 3, rifattr);
+        ASSERT_SUCCESS("Failed to create router interface");
+
         // next hop
         sai_object_id_t hop;
 
         sai_attribute_t nhattr[3] = { };
 
         nhattr[0].id = SAI_NEXT_HOP_ATTR_TYPE;
-        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_SEGMENTROUTE_ENDPOINT;
-        nhattr[1].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_TYPE;
-        nhattr[2].id = SAI_NEXT_HOP_ATTR_SEGMENTROUTE_ENDPOINT_POP_TYPE;
+        nhattr[0].value.s32 = SAI_NEXT_HOP_TYPE_IP;
+        nhattr[1].id = SAI_NEXT_HOP_ATTR_IP;
+        nhattr[1].value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+        nhattr[1].value.ipaddr.addr.ip4 = 0x10000001;
+        nhattr[2].id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
+        nhattr[2].value.oid = rif;
 
         status = sai_next_hop_api->create_next_hop(&hop, switch_id, 3, nhattr);
 

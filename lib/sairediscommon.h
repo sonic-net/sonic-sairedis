@@ -8,8 +8,13 @@
 #define SYNCD_INIT_VIEW     "INIT_VIEW"
 #define SYNCD_APPLY_VIEW    "APPLY_VIEW"
 #define SYNCD_INSPECT_ASIC  "SYNCD_INSPECT_ASIC"
+
 #define ASIC_STATE_TABLE    "ASIC_STATE"
 #define TEMP_PREFIX         "TEMP_"
+
+#define REDIS_COMMUNICATION_MODE_REDIS_ASYNC_STRING "redis_async"
+#define REDIS_COMMUNICATION_MODE_REDIS_SYNC_STRING  "redis_sync"
+#define REDIS_COMMUNICATION_MODE_ZMQ_SYNC_STRING    "zmq_sync"
 
 /*
  * Asic state table commands. Those names are special and they will be used
@@ -45,17 +50,6 @@
 
 #define REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_QUERY     "object_type_get_availability_query"
 #define REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE  "object_type_get_availability_response"
-
-// TODO move this to SAI meta repository for auto generate
-
-#define SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE   "bfd_session_state_change"
-#define SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT                  "fdb_event"
-#define SAI_SWITCH_NOTIFICATION_NAME_PACKET_EVENT               "packet_event"
-#define SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE          "port_state_change"
-#define SAI_SWITCH_NOTIFICATION_NAME_QUEUE_PFC_DEADLOCK         "queue_deadlock"
-#define SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST    "switch_shutdown_request"
-#define SAI_SWITCH_NOTIFICATION_NAME_SWITCH_STATE_CHANGE        "switch_state_change"
-#define SAI_SWITCH_NOTIFICATION_NAME_TAM_EVENT                  "tam_event"
 
 /**
  * @brief Redis virtual object id counter key name.

@@ -65,7 +65,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_samplepacket.cpp \
 						 sai_redis_scheduler.cpp \
 						 sai_redis_schedulergroup.cpp \
-						 sai_redis_segmentroute.cpp \
+						 sai_redis_srv6.cpp \
 						 sai_redis_stp.cpp \
 						 sai_redis_switch.cpp \
 						 sai_redis_system_port.cpp \
@@ -74,7 +74,9 @@ libsairedis_la_SOURCES = \
 						 sai_redis_udf.cpp \
 						 sai_redis_virtual_router.cpp \
 						 sai_redis_vlan.cpp \
-						 sai_redis_wred.cpp
+						 sai_redis_wred.cpp \
+						 sai_redis_ipsec.cpp \
+						 sai_redis_my_mac.cpp
 
 libSaiRedis_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libSaiRedis_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)

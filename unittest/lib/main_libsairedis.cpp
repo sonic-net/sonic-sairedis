@@ -76,12 +76,12 @@ static sai_service_method_table_t test_services = {
     profile_get_next_value
 };
 
-class sairedisEnvironment: 
+class sairedisEnvironment:
     public ::testing::Environment
 {
     public:
 
-        virtual void SetUp() override 
+        virtual void SetUp() override
         {
             SWSS_LOG_ENTER();
 
@@ -91,7 +91,7 @@ class sairedisEnvironment:
 
             EXPECT_EQ(status, SAI_STATUS_SUCCESS);
         }
-        
+
         virtual void TearDown() override
         {
             SWSS_LOG_ENTER();

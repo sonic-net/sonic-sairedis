@@ -37,7 +37,7 @@ TEST(SwitchBCM81724, ctr)
             nullptr);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 
@@ -71,7 +71,7 @@ TEST(SwitchBCM81724, refresh_read_only)
             sc);
 
     sai_attribute_t attr;
-    
+
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
     attr.value.booldata = true;
 
@@ -98,7 +98,7 @@ TEST(SwitchBCM81724, refresh_read_only)
     attrs[1].value.u32 = 10000;
 
     sai_object_id_t portId = mgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, switchId);
-    
+
     auto strPortId = sai_serialize_object_id(portId);
 
     EXPECT_EQ(sw.create(SAI_OBJECT_TYPE_PORT, strPortId, switchId, 2, attrs), SAI_STATUS_SUCCESS);

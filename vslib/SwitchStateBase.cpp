@@ -4,6 +4,7 @@
 #include "meta/sai_serialize.h"
 
 #include <net/if.h>
+#include <unistd.h>
 
 #include <algorithm>
 
@@ -1120,7 +1121,14 @@ sai_status_t SwitchStateBase::create_ports()
         return SAI_STATUS_FAILURE;
     }
 
-    auto& lanesVector = map->getLaneVector();
+    auto lanesVector = map->getLaneVector();
+
+    if (m_switchConfig->m_useTapDevice)
+    {
+        SWSS_LOG_DEBUG("Check available lane");
+
+        CHECK_STATUS(filter_available_lanes(lanesVector));
+    }
 
     uint32_t port_count = (uint32_t)lanesVector.size();
 
@@ -2939,6 +2947,49 @@ sai_status_t SwitchStateBase::initialize_voq_switch_objects(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::filter_available_lanes(
+                    _Inout_ std::vector<std::vector<uint32_t>> &lanes_vector)
+{
+    SWSS_LOG_ENTER();
+
+    auto lanes = lanes_vector.begin();
+
+    while (lanes != lanes_vector.end())
+    {
+        bool available_lane = false;
+
+        for (auto lane: *lanes)
+        {
+            std::string ifname = m_switchConfig->m_laneMap->getInterfaceFromLaneNumber(lane);
+            std::string path = std::string("/sys/class/net/") + ifname + "/operstate";
+
+            if (access(path.c_str(), F_OK) != 0)
+            {
+                SWSS_LOG_WARN("Port %s isn't available", ifname.c_str());
+
+                available_lane &= false;
+
+                break;
+            }
+            else
+            {
+                available_lane = true;
+            }
+        }
+
+        if (!available_lane)
+        {
+            lanes = lanes_vector.erase(lanes);
+        }
+        else
+        {
+            lanes++;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::create_system_ports(
         _In_ int32_t voq_switch_id,
         _In_ uint32_t sys_port_count,
@@ -3295,4 +3346,59 @@ bool SwitchStateBase::dumpObject(
     }
 
     return true;
+}
+
+sai_status_t SwitchStateBase::queryTunnelPeerModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 2)
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_TUNNEL_PEER_MODE_P2MP;
+    enum_values_capability->list[1] = SAI_TUNNEL_PEER_MODE_P2P;
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryVlanfloodTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 3)
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 3;
+    enum_values_capability->list[0] = SAI_VLAN_FLOOD_CONTROL_TYPE_ALL;
+    enum_values_capability->list[1] = SAI_VLAN_FLOOD_CONTROL_TYPE_NONE;
+    enum_values_capability->list[2] = SAI_VLAN_FLOOD_CONTROL_TYPE_L2MC_GROUP;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
+                              _In_ sai_object_id_t switch_id,
+                              _In_ sai_object_type_t object_type,
+                              _In_ sai_attr_id_t attr_id,
+                              _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL && attr_id == SAI_TUNNEL_ATTR_PEER_MODE)
+    {
+        return queryTunnelPeerModeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_VLAN && (attr_id == SAI_VLAN_ATTR_UNKNOWN_UNICAST_FLOOD_CONTROL_TYPE ||
+                                                     attr_id == SAI_VLAN_ATTR_UNKNOWN_MULTICAST_FLOOD_CONTROL_TYPE ||
+                                                     attr_id == SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE))
+    {
+        return queryVlanfloodTypeCapability(enum_values_capability);
+    }
+    return SAI_STATUS_NOT_SUPPORTED;
 }

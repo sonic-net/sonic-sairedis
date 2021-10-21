@@ -24,9 +24,11 @@ std::shared_ptr<RequestShutdownCommandLineOptions> RequestShutdownCommandLineOpt
         { "warm", no_argument, 0, 'w' },
         { "fast", no_argument, 0, 'f' },
         { "pre",  no_argument, 0, 'p' }, // Requesting pre shutdown
+        { "help", no_argument, 0, 'h' },
 
         { "globalContext", required_argument, 0, 'g' },
         { "contextContig", required_argument, 0, 'x' },
+        { 0,               0,                 0,  0  }
     };
 
     bool optionSpecified = false;
@@ -35,7 +37,7 @@ std::shared_ptr<RequestShutdownCommandLineOptions> RequestShutdownCommandLineOpt
     {
         int option_index = 0;
 
-        int c = getopt_long(argc, argv, "cwfpg:x:", long_options, &option_index);
+        int c = getopt_long(argc, argv, "cwfpg:x:h", long_options, &option_index);
 
         if (c == -1)
             break;
@@ -68,7 +70,11 @@ std::shared_ptr<RequestShutdownCommandLineOptions> RequestShutdownCommandLineOpt
 
             case 'x':
                 options->m_contextConfig = std::string(optarg);
-                break;
+                break
+                    ;
+            case 'h':
+                printUsage();
+                exit(EXIT_FAILURE);
 
             default:
                 SWSS_LOG_ERROR("getopt failure");
@@ -92,19 +98,24 @@ void RequestShutdownCommandLineOptionsParser::printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: syncd_request_shutdown [-w] [--warm] [-p] [--pre] [-c] [--cold] [-f] [--fast] [-g idx] [-x contextConfig]" << std::endl;
+    std::cout << "Usage: syncd_request_shutdown [-w] [--warm] [-p] [--pre] [-c] [--cold] [-f] [--fast] [-g idx] [-x contextConfig] [-h] [--help]" << std::endl;
 
     std::cerr << std::endl;
 
     std::cerr << "Shutdown option must be specified" << std::endl;
     std::cerr << "---------------------------------" << std::endl;
-    std::cerr << " --warm  -w   for warm restart" << std::endl;
-    std::cerr << " --pre   -p   for warm pre-shutdown" << std::endl;
-    std::cerr << " --cold  -c   for cold restart" << std::endl;
-    std::cerr << " --fast  -f   for fast restart" << std::endl;
-    std::cerr << std::endl;
-    std::cout << " --globalContext  -g" << std::endl;
-    std::cout << "              Global context index to load from context config file" << std::endl;
-    std::cout << " --contextConfig  -x" << std::endl;
-    std::cout << "              Context configuration file" << std::endl;
+    std::cerr << "  -w --warm" << std::endl;
+    std::cerr << "      For warm restart" << std::endl;
+    std::cerr << "  -p --pre" << std::endl;
+    std::cerr << "      For warm pre-shutdown" << std::endl;
+    std::cerr << "  -c --cold" << std::endl;
+    std::cerr << "      For cold restart" << std::endl;
+    std::cerr << "  -f --fast" << std::endl;
+    std::cerr << "      For fast restart" << std::endl;
+    std::cout << "  -g --globalContext " << std::endl;
+    std::cout << "      Global context index to load from context config file" << std::endl;
+    std::cout << "  -x --contextConfig" << std::endl;
+    std::cout << "      Context configuration file" << std::endl;
+    std::cout << "  -h --help" << std::endl;
+    std::cout << "      Print usege" << std::endl;
 }

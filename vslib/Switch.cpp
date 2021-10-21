@@ -106,7 +106,7 @@ void Switch::updateNotifications(
                 break;
 
             case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
-                m_switchNotifications.on_bfd_session_state_change = 
+                m_switchNotifications.on_bfd_session_state_change =
                     (sai_bfd_session_state_change_notification_fn)attr.value.ptr;
                 break;
 

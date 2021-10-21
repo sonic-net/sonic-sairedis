@@ -161,7 +161,9 @@ namespace saimeta
 
             void meta_init_db();
 
-            bool isEmpty();
+            bool isEmpty() const;
+
+            void dump() const;
 
         public: // notifications
 
@@ -186,7 +188,7 @@ namespace saimeta
 
             void meta_sai_on_bfd_session_state_change(
                     _In_ uint32_t count,
-                    _In_ const sai_bfd_session_state_notification_t *data);        
+                    _In_ const sai_bfd_session_state_notification_t *data);
 
         private: // notifications helpers
 
@@ -382,7 +384,7 @@ namespace saimeta
                     _In_ const uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
 
-        private: // stats
+        protected: // stats
 
             sai_status_t meta_validate_stats(
                     _In_ sai_object_type_t object_type,
@@ -434,6 +436,10 @@ namespace saimeta
 
             sai_status_t meta_sai_validate_inseg_entry(
                     _In_ const sai_inseg_entry_t* inseg_entry,
+                    _In_ bool create);
+
+            sai_status_t meta_sai_validate_my_sid_entry(
+                    _In_ const sai_my_sid_entry_t* my_sid_entry,
                     _In_ bool create);
 
         public:

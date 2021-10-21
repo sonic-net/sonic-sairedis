@@ -92,13 +92,6 @@ namespace sairedis
                     _In_ uint32_t index);
 
             /**
-             * @brief Allocate new switch index.
-             *
-             * Will throw if there are no more available switch indexes.
-             */
-            uint32_t allocateNewSwitchIndex();
-
-            /**
              * @brief Construct object id.
              *
              * Using all input parameters to construct object id.

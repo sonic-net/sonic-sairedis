@@ -5,7 +5,7 @@
 using namespace syncd;
 
 SwitchNotifications::SlotBase::SlotBase(
-        _In_ sai_switch_notifications_t sn):
+        _In_ const sai_switch_notifications_t& sn):
     m_handler(nullptr),
     m_sn(sn)
 {

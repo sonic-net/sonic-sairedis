@@ -69,7 +69,7 @@ binary-syncd-vs:
 
 override_dh_auto_configure:
 	./autogen.sh
-	dh_auto_configure -- $(shell cat /tmp/syncd-build) ${SWSS_COMMON_CONFIG}
+	dh_auto_configure -- $(DEB_CONFIGURE_EXTRA_FLAGS) $(shell cat /tmp/syncd-build) ${SWSS_COMMON_CONFIG}
 
 override_dh_install:
 	dh_install

@@ -170,6 +170,7 @@ namespace sairedis
             SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(neighbor_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(route_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(nat_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(my_sid_entry);
 
         public: // remove ENTRY
 
@@ -181,6 +182,7 @@ namespace sairedis
             SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(neighbor_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(route_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(nat_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(my_sid_entry);
 
         public: // set ENTRY
 
@@ -192,6 +194,7 @@ namespace sairedis
             SAI_REDIS_RECORDER_DECLARE_RECORD_SET(neighbor_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_SET(route_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_SET(nat_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_SET(my_sid_entry);
 
         public: // get ENTRY
 
@@ -203,7 +206,7 @@ namespace sairedis
             SAI_REDIS_RECORDER_DECLARE_RECORD_GET(neighbor_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_GET(route_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_GET(nat_entry);
-
+            SAI_REDIS_RECORDER_DECLARE_RECORD_GET(my_sid_entry);
 
         public: // SAI stats API
 

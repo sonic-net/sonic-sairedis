@@ -2,6 +2,7 @@
 
 extern "C" {
 #include <sai.h>
+#include<saimetadata.h>
 }
 
 #include "swss/table.h"
