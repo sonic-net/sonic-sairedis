@@ -28,4 +28,9 @@ TEST(libsairedis, next_hop_group)
 
     EXPECT_NE(SAI_STATUS_SUCCESS, api->create_next_hop_group_members(0,0,0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_next_hop_group_members(0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0));
+
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->create_next_hop_group_map(&id,0,0,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_next_hop_group_map(0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->set_next_hop_group_map_attribute(0,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->get_next_hop_group_map_attribute(0,0,0));
 }
