@@ -1032,7 +1032,7 @@ void FlexCounter::addCounterPlugin(
             for (auto& sha: shaStrings)
             {
                 addTunnelCounterPlugin(sha);
-            } 
+            }
         }
         else
         {
