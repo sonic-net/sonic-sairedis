@@ -427,6 +427,21 @@ sai_status_t VendorSai::getStats(
     return ptr(object_id, number_of_counters, counter_ids, counters);
 }
 
+sai_status_t VendorSai::queryStatsCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    return sai_query_stats_capability(
+            switchId,
+            objectType,
+            stats_capability);
+}
+
 sai_status_t VendorSai::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,

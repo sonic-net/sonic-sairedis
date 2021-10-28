@@ -56,6 +56,11 @@ namespace saivs
                     _In_ sai_stats_mode_t mode,
                     _Out_ uint64_t *counters);
 
+            sai_status_t queryStatsCapability(
+                    _In_ sai_object_id_t switchId,
+                    _In_ sai_object_type_t objectType,
+                    _Inout_ sai_stat_capability_list_t *stats_capability);
+
         public:
 
             sai_object_id_t getSwitchId() const;

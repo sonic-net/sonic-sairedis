@@ -105,6 +105,11 @@ namespace saimeta
                     _In_ const sai_stat_id_t *counter_ids,
                     _Out_ uint64_t *counters) override;
 
+            virtual sai_status_t queryStatsCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_capability_list_t *stats_capability) override;
+
             virtual sai_status_t getStatsExt(
                     _In_ sai_object_type_t object_type,
                     _In_ sai_object_id_t object_id,
@@ -393,6 +398,10 @@ namespace saimeta
                     _In_ const sai_stat_id_t *counter_ids,
                     _Out_ uint64_t *counters,
                     _In_ sai_stats_mode_t mode);
+
+            sai_status_t meta_validate_query_stats_capability(
+                    _In_ sai_object_type_t object_type,
+                    _In_ sai_object_id_t object_id);
 
         private: // validate OID
 
