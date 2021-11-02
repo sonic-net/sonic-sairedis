@@ -15,14 +15,14 @@ that puts SAI objects into the redis database, 2) a syncd that takes the SAI obj
 
 Before installing, add key and package sources:
 
-    sudo apt-key adv --keyserver apt-mo.trafficmanager.net --recv-keys 417A0893
+    sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 417A0893
     echo 'deb http://apt-mo.trafficmanager.net/repos/sonic/ trusty main' | sudo tee -a /etc/apt/sources.list.d/sonic.list
     sudo apt-get update
 
 Install dependencies:
 
     sudo apt-get install redis-server -t trusty
-    sudo apt-get install libhiredis0.13 -t trusty
+    sudo apt-get install libhiredis0.14 -t trusty
 
 Install building dependencies:
 
