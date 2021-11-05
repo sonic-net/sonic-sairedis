@@ -662,7 +662,6 @@ void FlexCounter::setFlowCounterList(
     updateSupportedFlowCounters(counterRid, counterIds);
 
     std::vector<sai_counter_stat_t> supportedIds;
-
     for (auto &counter : counterIds)
     {
         if (m_supportedFlowCounters.count(counter) != 0)
