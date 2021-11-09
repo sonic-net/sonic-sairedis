@@ -338,6 +338,11 @@ TEST(SaiSerialize, sai_serialize_tunnel_stat)
     EXPECT_EQ(sai_serialize_tunnel_stat(SAI_TUNNEL_STAT_IN_OCTETS), "SAI_TUNNEL_STAT_IN_OCTETS");
 }
 
+TEST(SaiSerialize, sai_serialize_counter_stat)
+{
+    EXPECT_EQ(sai_serialize_counter_stat(SAI_COUNTER_STAT_PACKETS), "SAI_COUNTER_STAT_PACKETS");
+}
+
 TEST(SaiSerialize, sai_serialize_queue_attr)
 {
     EXPECT_EQ(sai_serialize_queue_attr(SAI_QUEUE_ATTR_TYPE), "SAI_QUEUE_ATTR_TYPE");

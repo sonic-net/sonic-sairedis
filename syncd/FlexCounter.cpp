@@ -10,6 +10,7 @@
 #include <vector>
 
 using namespace syncd;
+using namespace std;
 
 #define MUTEX std::unique_lock<std::mutex> _lock(m_mtx);
 #define MUTEX_UNLOCK _lock.unlock();
@@ -18,6 +19,7 @@ FlexCounter::FlexCounter(
         _In_ const std::string& instanceId,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ const std::string& dbCounters):
+    m_readyToPoll(false),
     m_pollInterval(0),
     m_instanceId(instanceId),
     m_vendorSai(vendorSai),
@@ -633,7 +635,14 @@ void FlexCounter::setTunnelCounterList(
     for (auto &counter : counterIds)
     {
         if (isTunnelCounterSupported(counter))
-            SWSS_LOG_NOTICE("Tunnel %s does not have supported counters", sai_serialize_object_id(tunnelRid).c_str());
+        {
+            supportedIds.push_back(counter);
+        }
+    }
+
+    if (supportedIds.empty())
+    {
+        SWSS_LOG_NOTICE("Tunnel %s does not have supported counters", sai_serialize_object_id(tunnelRid).c_str());
         return;
     }
 
@@ -1190,7 +1199,7 @@ void FlexCounter::addCounterPlugin(
     }
 
     // notify thread to start polling
-    m_pollCond.notify_all();
+    notifyPoll();
 }
 
 bool FlexCounter::isEmpty()
@@ -2138,10 +2147,7 @@ void FlexCounter::flexCounterThreadRunFunction()
         MUTEX_UNLOCK; // explicit unlock
 
         // nothing to collect, wait until notified
-
-        std::unique_lock<std::mutex> lk(m_mtxSleep);
-
-        m_pollCond.wait(lk); // wait on mutex
+        waitPoll();
     }
 }
 
@@ -2169,7 +2175,7 @@ void FlexCounter::endFlexCounterThread(void)
 
     m_runFlexCounterThread = false;
 
-    m_pollCond.notify_all();
+    notifyPoll();
 
     m_cvSleep.notify_all();
 
@@ -3136,5 +3142,19 @@ void FlexCounter::addCounter(
     }
 
     // notify thread to start polling
+    notifyPoll();
+}
+
+void FlexCounter::waitPoll()
+{
+    std::unique_lock<std::mutex> lk(m_mtxSleep);
+    m_pollCond.wait(lk, [&](){return m_readyToPoll;});
+    m_readyToPoll = false;
+}
+
+void FlexCounter::notifyPoll()
+{
+    std::unique_lock<std::mutex> lk(m_mtxSleep);
+    m_readyToPoll = true;
     m_pollCond.notify_all();
 }

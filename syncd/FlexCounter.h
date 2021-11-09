@@ -489,6 +489,11 @@ namespace syncd
             void removeCollectCountersHandler(
                     _In_ const std::string& key);
 
+        private:
+            void waitPoll();
+
+            void notifyPoll();
+
         private: // plugins
 
             std::set<std::string> m_queuePlugins;
@@ -539,6 +544,8 @@ namespace syncd
             std::mutex m_mtx;
 
             std::condition_variable m_pollCond;
+
+            bool m_readyToPoll;
 
             uint32_t m_pollInterval;
 
