@@ -3147,6 +3147,7 @@ void FlexCounter::addCounter(
 
 void FlexCounter::waitPoll()
 {
+    SWSS_LOG_ENTER();
     std::unique_lock<std::mutex> lk(m_mtxSleep);
     m_pollCond.wait(lk, [&](){return m_readyToPoll;});
     m_readyToPoll = false;
@@ -3154,6 +3155,7 @@ void FlexCounter::waitPoll()
 
 void FlexCounter::notifyPoll()
 {
+    SWSS_LOG_ENTER();
     std::unique_lock<std::mutex> lk(m_mtxSleep);
     m_readyToPoll = true;
     m_pollCond.notify_all();
