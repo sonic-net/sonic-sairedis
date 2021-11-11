@@ -1450,12 +1450,14 @@ sai_status_t SwitchStateBase::set_acl_capabilities()
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     attr.id = SAI_SWITCH_ATTR_ACL_STAGE_INGRESS;
+    attr.value.aclcapability.is_action_list_mandatory = false;
     attr.value.aclcapability.action_list.list = reinterpret_cast<int32_t*>(m_ingress_acl_action_list.data());
     attr.value.aclcapability.action_list.count = static_cast<uint32_t>(m_ingress_acl_action_list.size());
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     attr.id = SAI_SWITCH_ATTR_ACL_STAGE_EGRESS;
+    attr.value.aclcapability.is_action_list_mandatory = false;
     attr.value.aclcapability.action_list.list = reinterpret_cast<int32_t*>(m_egress_acl_action_list.data());
     attr.value.aclcapability.action_list.count = static_cast<uint32_t>(m_egress_acl_action_list.size());
 

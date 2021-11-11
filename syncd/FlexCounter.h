@@ -78,6 +78,8 @@ namespace syncd
             void addQueueCounterPlugin(
                     _In_ const std::string& sha);
 
+            void addTunnelCounterPlugin(
+                    _In_ const std::string& sha);
         private:
 
             void checkPluginRegistered(
@@ -112,6 +114,12 @@ namespace syncd
 
             void removeMACsecSA(
                     _In_ sai_object_id_t macsecSAVid);
+
+            void removeAclCounter(
+                    _In_ sai_object_id_t aclCounterVid);
+
+            void removeTunnel(
+                    _In_ sai_object_id_t tunnelVid);
 
         private: // set counter list
 
@@ -151,6 +159,11 @@ namespace syncd
                     _In_ const std::vector<sai_buffer_pool_stat_t>& counterIds,
                     _In_ const std::string& statsMode);
 
+            void setTunnelCounterList(
+                    _In_ sai_object_id_t tunnelVid,
+                    _In_ sai_object_id_t tunnelRid,
+                    _In_ const std::vector<sai_tunnel_stat_t> &counterIds);
+
         private: // set attr list
 
             void setQueueAttrList(
@@ -167,6 +180,11 @@ namespace syncd
                     _In_ sai_object_id_t macsecSAVid,
                     _In_ sai_object_id_t macsecSARid,
                     _In_ const std::vector<sai_macsec_sa_attr_t> &attrIds);
+
+            void setAclCounterAttrList(
+                    _In_ sai_object_id_t aclCounterVid,
+                    _In_ sai_object_id_t aclCounterRid,
+                    _In_ const std::vector<sai_acl_counter_attr_t> &attrIds);
 
         private: // is counter supported
 
@@ -185,7 +203,20 @@ namespace syncd
             bool isBufferPoolCounterSupported(
                     _In_ sai_buffer_pool_stat_t counter) const;
 
+            bool isTunnelCounterSupported(
+                    _In_ sai_tunnel_stat_t counter) const;
+
+            bool isStatsModeSupported(
+                    _In_ uint32_t statsMode,
+                    _In_ sai_stats_mode_t statCapability);
+
         private: // update supported counters
+
+            sai_status_t querySupportedPortCounters(
+                    _In_ sai_object_id_t portRid);
+
+            void getSupportedPortCounters(
+                    _In_ sai_object_id_t portRid);
 
             void updateSupportedPortCounters(
                     _In_ sai_object_id_t portRid);
@@ -194,17 +225,45 @@ namespace syncd
                     _In_ sai_object_id_t portRid,
                     _In_ const std::vector<sai_port_stat_t> &counterIds);
 
+            sai_status_t querySupportedQueueCounters(
+                    _In_ sai_object_id_t queueId);
+
+            void getSupportedQueueCounters(
+                    _In_ sai_object_id_t queueId, const std::vector<sai_queue_stat_t> &counterIds);
+
             void updateSupportedQueueCounters(
                     _In_ sai_object_id_t queueRid,
                     _In_ const std::vector<sai_queue_stat_t> &counterIds);
 
+            sai_status_t querySupportedRifCounters(
+                    _In_ sai_object_id_t rifRid);
+
+            void getSupportedRifCounters(
+                    _In_ sai_object_id_t rifRid);
+
             void updateSupportedRifCounters(
                     _In_ sai_object_id_t rifRid);
+
+            sai_status_t querySupportedBufferPoolCounters(
+                    _In_ sai_object_id_t bufferPoolId,
+                    _In_ sai_stats_mode_t statsMode);
+
+            void getSupportedBufferPoolCounters(
+                    _In_ sai_object_id_t bufferPoolId,
+                    _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds,
+                    _In_ sai_stats_mode_t statsMode);
 
             void updateSupportedBufferPoolCounters(
                     _In_ sai_object_id_t bufferPoolRid,
                     _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds,
                     _In_ sai_stats_mode_t statsMode);
+
+            sai_status_t querySupportedPriorityGroupCounters(
+                    _In_ sai_object_id_t priorityGroupRid);
+
+            void getSupportedPriorityGroupCounters(
+                    _In_ sai_object_id_t priorityGroupRid,
+                    _In_ const std::vector<sai_ingress_priority_group_stat_t> &counterIds);
 
             void updateSupportedPriorityGroupCounters(
                     _In_ sai_object_id_t priorityGroupRid,
@@ -214,6 +273,9 @@ namespace syncd
                     _In_ sai_object_id_t switchRid,
                     _In_ const std::vector<sai_switch_stat_t> &counterIds);
 
+            void updateSupportedTunnelCounters(
+                    _In_ sai_object_id_t tunnelRid,
+                    _In_ const std::vector<sai_tunnel_stat_t> &counterIds);
         private:
 
             struct QueueCounterIds
@@ -308,6 +370,26 @@ namespace syncd
                 std::vector<sai_macsec_sa_attr_t> m_macsecSAAttrIds;
             };
 
+            struct AclCounterAttrIds
+            {
+                AclCounterAttrIds(
+                        _In_ sai_object_id_t aclCounter,
+                        _In_ const std::vector<sai_acl_counter_attr_t> &aclCounterIds);
+
+                sai_object_id_t m_aclCounterId;
+                std::vector<sai_acl_counter_attr_t> m_aclCounterAttrIds;
+            };
+
+            struct TunnelCounterIds
+            {
+                TunnelCounterIds(
+                        _In_ sai_object_id_t tunnel,
+                        _In_ const std::vector<sai_tunnel_stat_t> &tunnelIds);
+
+                sai_object_id_t m_tunnelId;
+                std::vector<sai_tunnel_stat_t> m_tunnelCounterIds;
+            };
+
         private:
 
             void collectCounters(
@@ -352,6 +434,9 @@ namespace syncd
             void collectSwitchDebugCounters(
                     _In_ swss::Table &countersTable);
 
+            void collectTunnelCounters(
+                    _In_ swss::Table &countersTable);
+
         private: // collect attributes
 
             void collectQueueAttrs(
@@ -361,6 +446,9 @@ namespace syncd
                     _In_ swss::Table &countersTable);
 
             void collectMACsecSAAttrs(
+                    _In_ swss::Table &countersTable);
+
+            void collectAclCounterAttrs(
                     _In_ swss::Table &countersTable);
 
         private:
@@ -379,6 +467,7 @@ namespace syncd
             std::set<std::string> m_rifPlugins;
             std::set<std::string> m_priorityGroupPlugins;
             std::set<std::string> m_bufferPoolPlugins;
+            std::set<std::string> m_tunnelPlugins;
 
         private: // supported counters
 
@@ -387,6 +476,7 @@ namespace syncd
             std::set<sai_queue_stat_t> m_supportedQueueCounters;
             std::set<sai_router_interface_stat_t> m_supportedRifCounters;
             std::set<sai_buffer_pool_stat_t> m_supportedBufferPoolCounters;
+            std::set<sai_tunnel_stat_t> m_supportedTunnelCounters;
 
         private: // registered VID maps
 
@@ -397,11 +487,11 @@ namespace syncd
             std::map<sai_object_id_t, std::shared_ptr<RifCounterIds>> m_rifCounterIdsMap;
             std::map<sai_object_id_t, std::shared_ptr<BufferPoolCounterIds>> m_bufferPoolCounterIdsMap;
             std::map<sai_object_id_t, std::shared_ptr<SwitchCounterIds>> m_switchDebugCounterIdsMap;
-
+            std::map<sai_object_id_t, std::shared_ptr<TunnelCounterIds>> m_tunnelCounterIdsMap;
             std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
             std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> m_priorityGroupAttrIdsMap;
-
             std::map<sai_object_id_t, std::shared_ptr<MACsecSAAttrIds>> m_macsecSAAttrIdsMap;
+            std::map<sai_object_id_t, std::shared_ptr<AclCounterAttrIds>> m_aclCounterAttrIdsMap;
 
         private:
 

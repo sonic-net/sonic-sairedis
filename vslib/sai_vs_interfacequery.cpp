@@ -182,3 +182,13 @@ sai_object_id_t sai_switch_id_query(
 
     return vs_sai->switchIdQuery(objectId);
 }
+
+sai_status_t sai_query_stats_capability(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_type_t object_type,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return vs_sai->queryStatsCapability(switch_id, object_type, stats_capability);
+}
