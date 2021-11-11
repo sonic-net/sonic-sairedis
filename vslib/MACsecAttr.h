@@ -14,11 +14,28 @@ namespace saivs
 
     struct MACsecAttr
     {
+
+        static const std::string CIPHER_NAME_INVALID;
+
+        static const std::string CIPHER_NAME_GCM_AES_128;
+
+        static const std::string CIPHER_NAME_GCM_AES_256;
+
+        static const std::string CIPHER_NAME_GCM_AES_XPN_128;
+
+        static const std::string CIPHER_NAME_GCM_AES_XPN_256;
+
+        static const std::string DEFAULT_CIPHER_NAME;
+
         // Explicitly declare constructor and destructor as non-inline functions
         // to avoid 'call is unlikely and code size would grow [-Werror=inline]'
         MACsecAttr();
 
         ~MACsecAttr();
+
+        static const std::string &get_cipher_name(std::int32_t cipher_id);
+
+        bool is_xpn() const;
 
         std::string m_cipher;
         std::string m_vethName;

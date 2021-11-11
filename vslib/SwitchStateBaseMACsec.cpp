@@ -30,12 +30,6 @@ using namespace saivs;
     } \
 }
 
-#define CIPHER_NAME_GCM_AES_128 "GCM-AES-128"
-#define CIPHER_NAME_GCM_AES_256 "GCM-AES-256"
-#define CIPHER_NAME_GCM_AES_XPN_128 "GCM-AES-XPN-128"
-#define CIPHER_NAME_GCM_AES_XPN_256 "GCM-AES-XPN-256"
-#define DEFAULT_CIPHER_NAME CIPHER_NAME_GCM_AES_128
-
 sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
         _In_ sai_object_id_t entryId,
         _In_ const sai_attribute_t *attr)
@@ -469,28 +463,13 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
 
     const sai_attribute_t *attr = nullptr;
 
-    macsecAttr.m_cipher = DEFAULT_CIPHER_NAME;
-
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_CIPHER_SUITE, attrCount, attrList);
 
-    switch(attr->value.s32)
-    {
-        case sai_macsec_cipher_suite_t::SAI_MACSEC_CIPHER_SUITE_GCM_AES_128:
-            macsecAttr.m_cipher = CIPHER_NAME_GCM_AES_128;
-            break;
-        case sai_macsec_cipher_suite_t::SAI_MACSEC_CIPHER_SUITE_GCM_AES_256:
-            macsecAttr.m_cipher = CIPHER_NAME_GCM_AES_256;
-            break;
-        case sai_macsec_cipher_suite_t::SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_128:
-            macsecAttr.m_cipher = CIPHER_NAME_GCM_AES_XPN_128;
-            break;
-        case sai_macsec_cipher_suite_t::SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_256:
-            macsecAttr.m_cipher = CIPHER_NAME_GCM_AES_XPN_256;
-            break;
-        default:
-            SWSS_LOG_ERROR("Unkown MACsec cipher %d", attr->value.s32);
+    macsecAttr.m_cipher = MACsecAttr::get_cipher_name(attr->value.s32);
 
-            return SAI_STATUS_FAILURE;
+    if (macsecAttr.m_cipher == MACsecAttr::CIPHER_NAME_INVALID)
+    {
+        return SAI_STATUS_FAILURE;
     }
 
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_DIRECTION, attrCount, attrList);
@@ -571,12 +550,18 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     CHECK_STATUS(get(SAI_OBJECT_TYPE_MACSEC_SC, attr->value.oid, static_cast<uint32_t>(attrs.size()), attrs.data()));
 
+    macsecAttr.m_cipher = MACsecAttr::get_cipher_name(attr->value.s32);
+
+    if (macsecAttr.m_cipher == MACsecAttr::CIPHER_NAME_INVALID)
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
     auto flow_id = attrs[0].value.oid;
     auto sci = attrs[1].value.u64;
     std::stringstream sciHexStr;
     macsecAttr.m_encryptionEnable = attrs[2].value.booldata;
     bool is_sak_128_bit = (attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_128 || attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_128);
-    bool is_xpn = (attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_128 || attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_256);
 
     sciHexStr << std::setw(MACSEC_SCI_LENGTH) << std::setfill('0');
 
@@ -643,7 +628,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     macsecAttr.m_pn = attr->value.u64;
 
-    if (is_xpn)
+    if (macsecAttr.is_xpn())
     {
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_SSCI, attrCount, attrList);
 

@@ -414,10 +414,10 @@ bool MACsecManager::create_macsec_egress_sa(
         << attr.m_an
         << " pn "
         << attr.m_pn
-        << ( attr.m_ssci ? " ssci " : "" )
-        << ( attr.m_ssci ? std::to_string(attr.m_ssci) : "" )
-        << ( attr.m_ssci ? " salt " : "" )
-        << ( attr.m_ssci ? attr.m_salt : "" )
+        << ( attr.is_xpn() ? " ssci " : "" )
+        << ( attr.is_xpn() ? std::to_string(attr.m_ssci) : "" )
+        << ( attr.is_xpn() ? " salt " : "" )
+        << ( attr.is_xpn() ? attr.m_salt : "" )
         << " on key "
         << attr.m_authKey
         << " "
