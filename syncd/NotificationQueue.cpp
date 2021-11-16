@@ -30,11 +30,11 @@ NotificationQueue::~NotificationQueue()
 bool NotificationQueue::enqueue(
         _In_ const swss::KeyOpFieldsValuesTuple& item)
 {
-    bool candidateToDrop = false;
-    std::string currentEvent;
     MUTEX;
 
     SWSS_LOG_ENTER();
+    bool candidateToDrop = false;
+    std::string currentEvent;
 
     /*
      * If the queue exceeds the limit, then drop all further FDB events This is
