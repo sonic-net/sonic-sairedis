@@ -1186,16 +1186,23 @@ void SaiSwitch::checkWarmBootDiscoveredRids()
 
         auto ot = m_vendorSai->objectTypeQuery(rid);
 
-        SWSS_LOG_ERROR("RID %s (%s) is missing from current RID2VID map after WARM boot!",
+        // SWSS_LOG_ERROR("RID %s (%s) is missing from current RID2VID map after WARM boot!",
+        SWSS_LOG_WARN("RID %s (%s) is missing from current RID2VID map after WARM boot!",
                 sai_serialize_object_id(rid).c_str(),
                 sai_serialize_object_type(ot).c_str());
+
+        // XXX workaround, put discovered object in database
+
+        redisSetDummyAsicStateForRealObjectId(rid);
 
         success = false;
     }
 
     if (!success)
     {
-        SWSS_LOG_THROW("FATAL, some discovered RIDs are not present in current RID2VID map, bug");
+        // XXX workaround
+        //SWSS_LOG_THROW("FATAL, some discovered RIDs are not present in current RID2VID map, bug");
+        SWSS_LOG_ERROR("FATAL, some discovered RIDs are not present in current RID2VID map, WORKAROUND, inserting them to ASIC_DB");
     }
 
     SWSS_LOG_NOTICE("all discovered RIDs are present in current RID2VID map for switch VID %s",
