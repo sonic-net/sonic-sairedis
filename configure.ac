@@ -159,6 +159,25 @@ CXXFLAGS_COMMON+=" -Wno-switch-default"
 CXXFLAGS_COMMON+=" -Wconversion"
 CXXFLAGS_COMMON+=" -Wno-psabi"
 
+# Code testing coverage with gcov
+AC_MSG_CHECKING(whether to build with gcov testing)
+AC_ARG_ENABLE(gcov, AS_HELP_STRING([--enable-gcov], [Whether to enable gcov testing]),, enable_gcov=no)
+
+if test "x$enable_gcov" = "xyes"; then
+    if test "$GCC" = "no"; then
+        AC_MSG_ERROR(not compiling with gcc, which is required for gcov testing)
+    fi
+
+    CXXFLAGS_COMMON+=" -fprofile-arcs -ftest-coverage"
+    AC_SUBST(CXXFLAGS_COMMON)
+
+    CXXFLAGS+=" -fprofile-arcs -lgcov"
+    AC_SUBST(CXXFLAGS)
+fi
+
+AM_CONDITIONAL(GCOV_ENABLED, test x$enable_gcov = xyes)
+AC_MSG_RESULT($enable_gcov)
+
 SAVED_FLAGS="$CXXFLAGS"
 CXXFLAGS="-Wcast-align=strict"
 AC_MSG_CHECKING([whether CXX supports -Wcast-align=strict])

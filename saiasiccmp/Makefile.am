@@ -22,4 +22,8 @@ saiasiccmp_LDADD = libAsicCmp.a \
 				   -ldl -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq \
 				   $(top_srcdir)/syncd/libSyncd.a $(top_srcdir)/lib/libSaiRedis.a $(CODE_COVERAGE_LIBS)
 
+if GCOV_ENABLED
+saiasiccmp_LDADD += -lgcovpreload
+endif
+
 TESTS = test.sh

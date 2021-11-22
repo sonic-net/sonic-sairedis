@@ -123,4 +123,8 @@ tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq
 
+if GCOV_ENABLED
+tests_LDADD += -lgcovpreload
+endif
+
 TESTS = tests
