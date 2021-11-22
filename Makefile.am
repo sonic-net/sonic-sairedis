@@ -1,7 +1,7 @@
-SUBDIRS = meta lib vslib pyext
+SUBDIRS = gcovpreload meta lib vslib pyext
 
 if SYNCD
-SUBDIRS += gcovpreload syncd saiplayer saidump saidiscovery saisdkdump saiasiccmp tests unittest
+SUBDIRS += syncd saiplayer saidump saidiscovery saisdkdump saiasiccmp tests unittest
 endif
 
 ACLOCAL_AMFLAGS = -I m4
