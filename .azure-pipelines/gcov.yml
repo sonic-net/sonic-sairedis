@@ -104,7 +104,7 @@ jobs:
     condition: eq('${{ parameters.archive_gcov }}', true)
 
   - task: PublishCodeCoverageResults@1
-      inputs:
+    inputs:
       codeCoverageTool: Cobertura
       summaryFileLocation: '$(Build.ArtifactStagingDirectory)/gcov_output/AllMergeReport/coverage.xml'
       reportDirectory: '$(Build.ArtifactStagingDirectory)/gcov_output/AllMergeReport/'
