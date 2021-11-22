@@ -44,7 +44,7 @@ bool NotificationQueue::enqueue(
      *
      * We have also seen other notification storms that can also cause this emqueue issue
      * So the new scheme is to keep the last notification event and its consecutive count
-     * If threashold limit reached and the consecutive count also reached then this notification
+     * If threshold limit reached and the consecutive count also reached then this notification
      * will also be dropped regardless of its event type to protect us from crashing due to
      * running out of memory
      */
@@ -63,7 +63,7 @@ bool NotificationQueue::enqueue(
     {
         /* Too many queued up already check if notification fits condition to e dropped
          * 1. All FDB events should be dropped at this point.
-         * 2. All other notification events will start to drop if it reached the consecutive threashold limit
+         * 2. All other notification events will start to drop if it reached the consecutive threshold limit
          */
         if (currentEvent == SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT)
         {
