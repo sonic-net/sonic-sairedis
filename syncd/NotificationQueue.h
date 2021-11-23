@@ -16,7 +16,7 @@ extern "C" {
  * Value based on typical L2 deployment with 256k MAC entries and
  * some extra buffer for other events like port-state, q-deadlock etc
  *
- * Note: We recently found a case where SAI continuously sending switchnotification events
+ * Note: We recently found a case where SAI continuously sending switch notification events
  *       that also caused the enqueue to eventually exhaust all system memory and crashed.
  *       So a new detection/limit scheme is being implemented by keeping track of the lastEvent
  *       and if the currentEvent matches the lastEvent, then the lastEventCount will get
