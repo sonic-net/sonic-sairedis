@@ -379,8 +379,6 @@ gcov_support_collect_gcno()
         cp gcno_$submodule_name.tar.gz ${work_dir}/debian/tmp/gcov
         cp ./gcov_support.sh ${work_dir}/debian/tmp/gcov
         cp ./gcovpreload/lcov_cobertura.py ${work_dir}/debian/tmp/gcov
-        mkdir -p ${work_dir}/debian/tmp/usr
-        mkdir -p ${work_dir}/debian/tmp/usr/lib
         cp ./gcovpreload/libgcovpreload.so ${work_dir}/debian/tmp/usr/lib
         sudo chmod 777 -R /${work_dir}/debian/tmp/usr/lib/libgcovpreload.so
         rm $GCNO_LIST_FILE

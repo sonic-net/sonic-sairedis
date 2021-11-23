@@ -6,4 +6,4 @@ usr/bin/saiasiccmp
 usr/bin/syncd*
 syncd/scripts/* usr/bin
 usr/lib/libgcovpreload.so usr/lib
-tmp/gcov tmp
+gcov
