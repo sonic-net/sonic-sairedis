@@ -17,9 +17,9 @@ extern "C" {
  * some extra buffer for other events like port-state, q-deadlock etc
  *
  * Note: We recently found a case where SAI continuously sending switch notification events
- *       that also caused the enqueue to eventually exhaust all system memory and crashed.
- *       So a new detection/limit scheme is being implemented by keeping track of the lastEvent
- *       and if the currentEvent matches the lastEvent, then the lastEventCount will get
+ *       that also caused the queue to keep growing and eventually exhaust all system memory and crashed.
+ *       So a new detection/limit scheme is being implemented by keeping track of the last Event
+ *       and if the current Event matches the last Event, then the last Event Count will get
  *       incremented and this count will also be used as part of the equation to ensure this
  *       notification should also be dropped if the queue size limit has already reached and not
  *       just dropping FDB events only.
