@@ -42,7 +42,7 @@ bool NotificationQueue::enqueue(
      * notification queue keeps growing. The permanent solution would be to
      * make this stateful so that only the *latest* event is published.
      *
-     * We have also seen other notification storms that can also cause this enqueue issue
+     * We have also seen other notification storms that can also cause this queue issue
      * So the new scheme is to keep the last notification event and its consecutive count
      * If threshold limit reached and the consecutive count also reached then this notification
      * will also be dropped regardless of its event type to protect us from crashing due to
