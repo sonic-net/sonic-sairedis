@@ -373,7 +373,9 @@ gcov_support_collect_gcno()
         mkdir -p ${work_dir}/debian/$submodule_name/usr
         mkdir -p ${work_dir}/debian/$submodule_name/usr/lib
         cp ./gcovpreload/libgcovpreload.so ${work_dir}/debian/$submodule_name/usr/lib
+        cp ./gcovpreload/libgcovpreload.so ${work_dir}/debian/tmp/usr/lib
         sudo chmod 777 -R /${work_dir}/debian/$submodule_name/usr/lib/libgcovpreload.so
+        sudo chmod 777 -R /${work_dir}/debian/tmp/usr/lib/libgcovpreload.so
         rm $GCNO_LIST_FILE
         echo " === Collect finished... === "
     fi

@@ -92,7 +92,7 @@ override_dh_install:
 	if egrep -q '(^| )--enable-rpcserver=yes( |$$)' /tmp/syncd-build && [ -f debian/syncd-rpc/usr/bin/syncd_init_common.sh ] ; then
 		sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
 	fi
-	mkdir -p debian/sairedis/tmp/gcov
+	mkdir -p debian/syncd/tmp/gcov
 	sh ./gcov_support.sh collect syncd
 
 override_dh_installinit:

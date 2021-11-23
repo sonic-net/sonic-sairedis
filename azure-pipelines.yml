@@ -88,7 +88,7 @@ stages:
 
 - stage: BuildSwss
   dependsOn: Build
-  condition: succeeded('Build')
+  condition: always()
   jobs:
   - template: .azure-pipelines/build-swss-template.yml
     parameters:
@@ -101,7 +101,7 @@ stages:
 
 - stage: BuildDocker
   dependsOn: BuildSwss
-  condition: succeeded('BuildSwss')
+  condition: always()
   jobs:
   - template: .azure-pipelines/build-docker-sonic-vs-template.yml
     parameters:
