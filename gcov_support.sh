@@ -94,7 +94,7 @@ lcov_genhtml_report()
         local fullpath=$line
         local infoname=${INFO_FILE_PREFIX}${fullpath##*/}.info
         htmldirname=${HTML_FILE_PREFIX}${fullpath##*/}
-        
+
         echo ${fullpath}
 
         pushd ${fullpath}
@@ -341,7 +341,6 @@ gcov_support_collect_gcda()
 
     echo "### Make /tmp/gcov dir completed !!"
     popd
-
 }
 
 # list and save the generated .gcno files
@@ -377,7 +376,7 @@ gcov_support_collect_gcno()
     RESULT=${find_command}
     echo "$RESULT" >&3
     exec 3>&-
-    
+
     local filesize=`ls -l $GCNO_LIST_FILE | awk '{print $5}'`
     # Empty gcno_file_list indicates the non-gcov compling mode
     if [ ${filesize} -le 1 ]; then
