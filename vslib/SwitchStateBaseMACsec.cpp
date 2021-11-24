@@ -463,6 +463,15 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
 
     const sai_attribute_t *attr = nullptr;
 
+    SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_CIPHER_SUITE, attrCount, attrList);
+
+    macsecAttr.m_cipher = MACsecAttr::get_cipher_name(attr->value.s32);
+
+    if (macsecAttr.m_cipher == MACsecAttr::CIPHER_NAME_INVALID)
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SC_ATTR_MACSEC_DIRECTION, attrCount, attrList);
 
     macsecAttr.m_direction = attr->value.s32;
@@ -541,6 +550,13 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     CHECK_STATUS(get(SAI_OBJECT_TYPE_MACSEC_SC, attr->value.oid, static_cast<uint32_t>(attrs.size()), attrs.data()));
 
+    macsecAttr.m_cipher = MACsecAttr::get_cipher_name(attr->value.s32);
+
+    if (macsecAttr.m_cipher == MACsecAttr::CIPHER_NAME_INVALID)
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
     auto flow_id = attrs[0].value.oid;
     auto sci = attrs[1].value.u64;
     std::stringstream sciHexStr;
@@ -611,6 +627,17 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     }
 
     macsecAttr.m_pn = attr->value.u64;
+
+    if (macsecAttr.is_xpn())
+    {
+        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_SSCI, attrCount, attrList);
+
+        macsecAttr.m_ssci = attr->value.u32;
+
+        SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SALT, attrCount, attrList);
+
+        macsecAttr.m_salt = sai_serialize_hex_binary(attr->value.macsecsalt);
+    }
 
     return SAI_STATUS_SUCCESS;
 }
