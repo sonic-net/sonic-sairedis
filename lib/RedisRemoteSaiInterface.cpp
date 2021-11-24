@@ -894,7 +894,7 @@ sai_status_t RedisRemoteSaiInterface::waitForObjectTypeGetAvailabilityResponse(
 
         const std::string &availability_str = fvValue(values[0]);
 
-        *count = std::stol(availability_str);
+        *count = std::stoull(availability_str);
 
         SWSS_LOG_DEBUG("Received payload: count = %lu", *count);
     }
