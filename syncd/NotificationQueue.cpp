@@ -45,7 +45,7 @@ bool NotificationQueue::enqueue(
      * We have also seen other notification storms that can also cause this queue issue
      * So the new scheme is to keep the last notification event and its consecutive count
      * If threshold limit reached and the consecutive count also reached then this notification
-     * will also be dropped regardless of its event type to protect us from crashing due to
+     * will also be dropped regardless of its event type to protect the device from crashing due to
      * running out of memory
      */
     auto queueSize = m_queue.size();
