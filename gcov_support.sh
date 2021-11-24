@@ -169,14 +169,17 @@ lcov_get_info()
     find . -name *.info > infolist
     while read line
     do
-        if [ ! -f "total.info" ]; then
-            lcov -o total.info -a ${line}
+        if [ ! -f "unittest_total.info" ]; then
+            echo "the first info file"
+            lcov -o unittest_total.info -a ${line}
         else
-            lcov -o total.info -a total.info -a ${line}
+            echo "append info file"
+            lcov -o unittest_total.info -a unittest_total.info -a ${line}
         fi
     done < infolist
 
-    lcov --extract total.info '*sonic-gcov/*' -o unittest_total.info
+    echo "ls -lh unittest_total.info"
+    ls -lh
     # cp unittest_total.info ${output_dir}
 
     # sed -i "s#common_work/#$1/common_work/#" coverage.xml
