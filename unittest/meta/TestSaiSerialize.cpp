@@ -343,6 +343,18 @@ TEST(SaiSerialize, sai_serialize_counter_stat)
     EXPECT_EQ(sai_serialize_counter_stat(SAI_COUNTER_STAT_PACKETS), "SAI_COUNTER_STAT_PACKETS");
 }
 
+TEST(SaiSerialize, sai_serialize_macsec_sa_stat)
+{
+    EXPECT_EQ(sai_serialize_macsec_sa_stat(SAI_MACSEC_SA_STAT_OCTETS_ENCRYPTED),
+            "SAI_MACSEC_SA_STAT_OCTETS_ENCRYPTED");
+}
+
+TEST(SaiSerialize, sai_serialize_macsec_flow_stat)
+{
+    EXPECT_EQ(sai_serialize_macsec_flow_stat(SAI_MACSEC_FLOW_STAT_OTHER_ERR),
+            "SAI_MACSEC_FLOW_STAT_OTHER_ERR");
+}
+
 TEST(SaiSerialize, sai_serialize_queue_attr)
 {
     EXPECT_EQ(sai_serialize_queue_attr(SAI_QUEUE_ATTR_TYPE), "SAI_QUEUE_ATTR_TYPE");
