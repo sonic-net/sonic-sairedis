@@ -127,7 +127,7 @@ lcov_genhtml_all()
 
     echo " === Start generating all gcov reports === "
     lcov_genhtml_report ${container_id}/gcov
-} 
+}
 
 lcov_merge_all()
 {
@@ -458,4 +458,3 @@ main()
 
 main $1 $2
 exit
-
