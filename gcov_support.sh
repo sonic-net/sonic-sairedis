@@ -158,6 +158,27 @@ lcov_merge_all()
     cd ../
 }
 
+lcov_get_info()
+{
+    local output_dir
+    output_dir=$1
+
+    find . -name *.info > infolist
+    while read line
+    do
+        if [ ! -f "total.info" ]; then
+            lcov -o total.info -a ${line}
+        else
+            lcov -o total.info -a total.info -a ${line}
+        fi
+    done < infolist
+
+    lcov --extract total.info '*sonic-gcov/*' -o unittest_total.info
+    cp unittest_total.info ${output_dir}
+
+    # sed -i "s#common_work/#$1/common_work/#" coverage.xml
+}
+
 gcov_set_environment()
 {
     local build_dir
@@ -386,6 +407,20 @@ gcov_support_collect_gcno()
     fi
 }
 
+gcov_get_info()
+{
+    local output_dir
+
+    output_dir=$1
+
+    GCNO_COUNT=`find -name "*.gcdo" | wc -l`
+    GCDA_COUNT=`find -name "*.gcda" | wc -l`
+    echo "gcno count: $GCNO_COUNT"
+    echo "gcda count: $GCDA_COUNT"
+    lcov_genhtml_report ./
+    lcov_get_info ${output_dir}
+}
+
 main()
 {
     case $1 in
@@ -403,6 +438,9 @@ main()
             ;;
         set_environment)
             gcov_set_environment $2
+            ;;
+        get_info)
+            gcov_get_info $2
             ;;
         *)
             echo "Usage:"

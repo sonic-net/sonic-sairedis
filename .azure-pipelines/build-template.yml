@@ -169,14 +169,22 @@ jobs:
         cd ..
         sudo rm -rf gcovr
       displayName: "Install gcovr 5.0 with recursive fix"
+    # - script: |
+    #     set -ex
+    #     make check
+    #     gcovr --version
+    #     find SAI/meta -name "*.gc*" | xargs rm -vf
+    #     gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --exclude-throw-branches -x --xml-pretty -o coverage.xml
+    #   displayName: "Run sonic sairedis unit tests"
     - script: |
         set -ex
         # Add SYS_TIME capability for settimeofday ok in syncd test
         sudo setcap "cap_sys_time=eip" syncd/.libs/tests
         make check
-        gcovr --version
         find SAI/meta -name "*.gc*" | xargs rm -vf
-        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --exclude-throw-branches -x --xml-pretty -o coverage.xml
+        sudo apt-get install -y lcov
+        sudo mkdir -p $(Build.ArtifactStagingDirectory)/gcov_unittest_tmp
+        ./gcov_support.sh get_info $(Build.ArtifactStagingDirectory)/gcov_unittest_tmp
       displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}
