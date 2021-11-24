@@ -177,7 +177,7 @@ lcov_get_info()
     done < infolist
 
     lcov --extract total.info '*sonic-gcov/*' -o unittest_total.info
-    cp unittest_total.info ${output_dir}
+    # cp unittest_total.info ${output_dir}
 
     # sed -i "s#common_work/#$1/common_work/#" coverage.xml
 }
@@ -415,7 +415,7 @@ gcov_get_info()
 
     output_dir=$1
 
-    GCNO_COUNT=`find -name "*.gcdo" | wc -l`
+    GCNO_COUNT=`find -name "*.gcno" | wc -l`
     GCDA_COUNT=`find -name "*.gcda" | wc -l`
     echo "gcno count: $GCNO_COUNT"
     echo "gcda count: $GCDA_COUNT"
