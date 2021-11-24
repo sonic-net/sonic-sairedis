@@ -57,6 +57,10 @@ jobs:
     condition: eq('${{ parameters.archive_gcov }}', true)
   - task: DownloadPipelineArtifact@2
     inputs:
+      artifact: ${{ parameters.sairedis_artifact_name }}
+    displayName: "Download sonic sairedis deb packages"
+  - task: DownloadPipelineArtifact@2
+    inputs:
       artifact: ${{ parameters.artifact_name }}
     displayName: "Download gcov artifact"
     condition: eq('${{ parameters.archive_gcov }}', true)
@@ -64,6 +68,7 @@ jobs:
       set -x
       ls -lh
       sudo tar -zxvf sonic-gcov.tar.gz
+      sudo cp unittest_total.info sonic-gcov/
       sudo cp -rf sonic-gcov $(Build.ArtifactStagingDirectory)
       sudo rm sonic-gcov.tar.gz
       ls -lh

@@ -148,6 +148,9 @@ lcov_merge_all()
 
     sed -i "s#common_work/#$1/common_work/#" coverage.xml
 
+    echo " === check  unittest_total.info === "
+    ls -l unittest_total.info
+
     cd gcov_output/
     if [ ! -d ${ALLMERGE_DIR} ]; then
         mkdir -p ${ALLMERGE_DIR}
