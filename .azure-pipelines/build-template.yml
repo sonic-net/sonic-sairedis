@@ -31,6 +31,9 @@ parameters:
 - name: syslog_artifact_name
   type: string
 
+- name: gcov_unittest_artifact_name
+  type: string
+
 - name: run_unit_test
   type: boolean
   default: false
@@ -189,6 +192,10 @@ jobs:
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}
     displayName: "Archive sonic sairedis debian packages"
+  - publish: $(Build.ArtifactStagingDirectory)/gcov_unittest_tmp
+    artifact: ${{ parameters.gcov_unittest_artifact_name }}
+    displayName: "Publish gcov unittest output"
+    condition: eq('${{ parameters.archive_gcov }}', true)
   # - ${{ if eq(parameters.archive_gcov, true) }}:
   #     - script: |
   #         set -ex

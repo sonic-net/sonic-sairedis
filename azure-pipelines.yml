@@ -56,6 +56,7 @@ stages:
       swss_common_artifact_name: sonic-swss-common
       artifact_name: sonic-sairedis
       syslog_artifact_name: sonic-sairedis.syslog
+      gcov_unittest_artifact_name: gcov_unitest.info
       run_unit_test: true
       archive_gcov: true
       debian_version: ${{ parameters.debian_version }}

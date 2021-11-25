@@ -180,6 +180,11 @@ lcov_get_info()
 
     echo "ls -lh unittest_total.info"
     ls -lh
+
+    cp unittest_total.info output_dir
+    echo "ls -lh output_dir"
+    ls -lh output_dir
+
     # cp unittest_total.info ${output_dir}
 
     # sed -i "s#common_work/#$1/common_work/#" coverage.xml
