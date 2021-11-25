@@ -132,6 +132,7 @@ stages:
       sonic_slave: sonic-slave-buster
       swss_common_artifact_name: sonic-swss-common
       sairedis_artifact_name: sonic-sairedis
+      gcov_unittest_artifact_name: gcov_unitest.info
       swss_artifact_name: sonic-swss
       artifact_name: sonic-gcov
       archive_gcov: true

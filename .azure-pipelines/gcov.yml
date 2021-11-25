@@ -22,6 +22,9 @@ parameters:
 - name: sairedis_artifact_name
   type: string
 
+- name: gcov_unittest_artifact_name
+  type: string
+
 - name: swss_common_artifact_name
   type: string
 
@@ -63,6 +66,11 @@ jobs:
     inputs:
       artifact: ${{ parameters.artifact_name }}
     displayName: "Download gcov artifact"
+    condition: eq('${{ parameters.archive_gcov }}', true)
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: ${{ parameters.gcov_unittest_artifact_name }}
+    displayName: "Download gcov unittest artifact"
     condition: eq('${{ parameters.archive_gcov }}', true)
   - script: |
       set -x
