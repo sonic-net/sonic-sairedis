@@ -143,6 +143,9 @@ lcov_merge_all()
     done < infolist
 
     lcov --extract total.info '*sonic-gcov/*' -o total.info
+    # sed -i "s#/#$1/common_work/#" unittest_total.info
+
+
     cp $1/lcov_cobertura.py $1/common_work/gcov/
     python $1/common_work/gcov/lcov_cobertura.py total.info -o coverage.xml
 
