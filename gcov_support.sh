@@ -148,15 +148,13 @@ lcov_merge_all()
 
     sed -i "s#common_work/#$1/common_work/#" coverage.xml
 
-    echo " === check  unittest_total.info === "
-    ls -l unittest_total.info
-
     cd gcov_output/
     if [ ! -d ${ALLMERGE_DIR} ]; then
         mkdir -p ${ALLMERGE_DIR}
     fi
 
     cp ../coverage.xml ${ALLMERGE_DIR}
+    cp ../total.info ${ALLMERGE_DIR}
 
     cd ../
 }
@@ -178,16 +176,16 @@ lcov_get_info()
         fi
     done < infolist
 
+    lcov --remove unittest_total.info '*/SAI/*' -o unittest_total.info
+    lcov --remove unittest_total.info '*/libs/*' -o unittest_total.info
+    lcov --remove unittest_total.info '*/debian/*' -o unittest_total.info
+
     echo "ls -lh unittest_total.info"
     ls -lh
 
-    cp unittest_total.info output_dir
+    cp unittest_total.info ${output_dir}
     echo "ls -lh output_dir"
-    ls -lh output_dir
-
-    # cp unittest_total.info ${output_dir}
-
-    # sed -i "s#common_work/#$1/common_work/#" coverage.xml
+    ls -lh ${output_dir}
 }
 
 gcov_set_environment()
