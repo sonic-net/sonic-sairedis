@@ -132,8 +132,8 @@ lcov_genhtml_all()
 lcov_merge_all()
 {
     cp -rf common_work $1/
-    # sudo rm unittest_total.info
-    sed -i "s#/__w/1/s/#/__w/1/sonic-gcov/common_work/gcov/#" unittest_total.info
+    mv unittest_total.info unittest_total
+
     find . -name *.info > infolist
     while read line
     do
@@ -143,6 +143,14 @@ lcov_merge_all()
             lcov -o total.info -a total.info -a ${line}
         fi
     done < infolist
+
+    mv unittest_total unittest_total.info
+    sed -i "s#/__w/1/s/#/__w/1/sonic-gcov/common_work/gcov/#" unittest_total.info
+    if [ ! -f "total.info" ]; then
+        lcov -o total.info -a unittest_total.info
+    else
+        lcov -o total.info -a total.info -a unittest_total.info
+    fi
 
     lcov --extract total.info '*sonic-gcov/*' -o total.info
     lcov --remove total.info '*/SAI/*' -o total.info
