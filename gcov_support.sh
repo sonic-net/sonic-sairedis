@@ -132,7 +132,8 @@ lcov_genhtml_all()
 lcov_merge_all()
 {
     cp -rf common_work $1/
-    sudo rm unittest_total.info
+    # sudo rm unittest_total.info
+    sed -i "s#/__w/1/s/#/__w/1/sonic-gcov/common_work/gcov/#" unittest_total.info
     find . -name *.info > infolist
     while read line
     do
@@ -143,7 +144,10 @@ lcov_merge_all()
         fi
     done < infolist
 
-    # lcov --extract total.info '*sonic-gcov/*' -o total.info
+    lcov --extract total.info '*sonic-gcov/*' -o total.info
+    lcov --remove total.info '*/SAI/*' -o total.info
+    lcov --remove total.info '*/libs/*' -o total.info
+    lcov --remove total.info '*/debian/*' -o total.info
     # sed -i "s#/#$1/common_work/#" unittest_total.info
 
 
@@ -299,6 +303,7 @@ gcov_support_generate_report()
         rm -rf common_work/*
 
         cp -rf ${container_id} gcov_output/
+        rm -rf ${container_id}
     done < container_dir_list
 
     # generate report with code
