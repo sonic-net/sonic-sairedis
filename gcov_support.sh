@@ -311,7 +311,7 @@ gcov_support_generate_report()
         rm -rf common_work/*
 
         cp -rf ${container_id} gcov_output/
-        # rm -rf ${container_id}
+        rm -rf ${container_id}
     done < container_dir_list
 
     # generate report with code
