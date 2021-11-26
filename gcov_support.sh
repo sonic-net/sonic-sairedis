@@ -142,7 +142,7 @@ lcov_merge_all()
         fi
     done < infolist
 
-    lcov --extract total.info '*sonic-gcov/*' -o total.info
+    # lcov --extract total.info '*sonic-gcov/*' -o total.info
     # sed -i "s#/#$1/common_work/#" unittest_total.info
 
 
