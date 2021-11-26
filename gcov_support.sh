@@ -132,6 +132,7 @@ lcov_genhtml_all()
 lcov_merge_all()
 {
     cp -rf common_work $1/
+    sudo rm unittest_total.info
     find . -name *.info > infolist
     while read line
     do
@@ -158,6 +159,7 @@ lcov_merge_all()
 
     cp ../coverage.xml ${ALLMERGE_DIR}
     cp ../total.info ${ALLMERGE_DIR}
+    cp ../infolist ${ALLMERGE_DIR}
 
     cd ../
 }
