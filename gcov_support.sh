@@ -134,7 +134,7 @@ lcov_merge_all()
     cp -rf common_work $1/
     mv unittest_total.info unittest_total
 
-    find . -name *.info > infolist
+    find . -name "*.info" > infolist
     while read line
     do
         if [ ! -f "total.info" ]; then
