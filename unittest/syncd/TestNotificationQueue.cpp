@@ -23,15 +23,15 @@ TEST(NotificationQueue, EnqueueLimitTest)
     // Set up a queue with limit at 5 and threshold at 3 where after this is reached event starts dropping
     syncd::NotificationQueue testQ(5, 3);
 
-    // Try queue up 4 fake FDB event and expect them to be added successfully
+    // Try queue up 5 fake FDB event and expect them to be added successfully
     swss::KeyOpFieldsValuesTuple fdbItem(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, fdbData, fdbEntry);
-    for (i = 0; i < 4; ++i)
+    for (i = 0; i < 5; ++i)
     {
         status = testQ.enqueue(fdbItem);
         EXPECT_EQ(status, true);
     }
 
-    // On the 5th fake FDB event expect it to be dropped right away
+    // On the 6th fake FDB event expect it to be dropped right away
     status = testQ.enqueue(fdbItem);
     EXPECT_EQ(status, false);
 
