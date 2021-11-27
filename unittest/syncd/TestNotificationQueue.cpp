@@ -21,9 +21,9 @@ TEST(NotificationQueue, EnqueueLimitTest)
     std::vector<swss::FieldValueTuple> sscEntry;
 
     // Set up a queue with limit at 5 and threshold at 3 where after this is reached event starts dropping
-    syncd::NotificationQueue testQ(5, 3); 
+    syncd::NotificationQueue testQ(5, 3);
 
-    // Try enqueue 4 fake FDB event and expect themto be added successully
+    // Try queue up 4 fake FDB event and expect them to be added successfully
     swss::KeyOpFieldsValuesTuple fdbItem(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, fdbData, fdbEntry);
     for (i = 0; i < 4; ++i)
     {
@@ -31,11 +31,11 @@ TEST(NotificationQueue, EnqueueLimitTest)
         EXPECT_EQ(status, true);
     }
 
-    // On the 5th fake FDB event enqueue expect it to be dropped right away
+    // On the 5th fake FDB event expect it to be dropped right away
     status = testQ.enqueue(fdbItem);
     EXPECT_EQ(status, false);
 
-    // Add 2 switch state change events expect both are accepted as consecutive lmit not yet reached
+    // Add 2 switch state change events expect both are accepted as consecutive limit not yet reached
     swss::KeyOpFieldsValuesTuple sscItem(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_STATE_CHANGE, sscData, sscEntry);
     for (i = 0; i < 2; ++i)
     {
@@ -51,14 +51,14 @@ TEST(NotificationQueue, EnqueueLimitTest)
     status = testQ.enqueue(fdbItem);
     EXPECT_EQ(status, false);
 
-    // Add 2 switch state change events expect both are accepted as consecutive lmit not yet reached
+    // Add 2 switch state change events expect both are accepted as consecutive limit not yet reached
     for (i = 0; i < 2; ++i)
     {
         status = testQ.enqueue(sscItem);
         EXPECT_EQ(status, true);
     }
 
-    // Add 2 switch state change events expect both are dropped as consecutive lmit has already reached
+    // Add 2 switch state change events expect both are dropped as consecutive limit has already reached
     for (i = 0; i < 2; ++i)
     {
         status = testQ.enqueue(sscItem);
