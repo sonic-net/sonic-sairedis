@@ -26,6 +26,7 @@ extern "C" {
  * TODO: move to config, also this limit only applies to fdb notifications
  */
 #define DEFAULT_NOTIFICATION_QUEUE_SIZE_LIMIT (300000)
+#define DEFAULT_NOTIFICATION_CONSECUTIVE_THRESHOLD (1000)
 
 namespace syncd
 {
@@ -34,7 +35,8 @@ namespace syncd
         public:
 
             NotificationQueue(
-                    _In_ size_t limit = DEFAULT_NOTIFICATION_QUEUE_SIZE_LIMIT);
+                    _In_ size_t limit = DEFAULT_NOTIFICATION_QUEUE_SIZE_LIMIT,
+                    _In_ size_t consecutiveThresholdLimit = DEFAULT_NOTIFICATION_CONSECUTIVE_THRESHOLD);
 
             virtual ~NotificationQueue();
 
@@ -55,6 +57,8 @@ namespace syncd
             std::queue<swss::KeyOpFieldsValuesTuple> m_queue;
 
             size_t m_queueSizeLimit;
+
+            size_t m_thresholdLimit;
 
             size_t m_dropCount;
 

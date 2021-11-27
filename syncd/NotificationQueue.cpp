@@ -2,15 +2,16 @@
 #include "sairediscommon.h"
 
 #define NOTIFICATION_QUEUE_DROP_COUNT_INDICATOR (1000)
-#define DEFAULT_NOTIFICATION_CONSECUTIVE_THRESHOLD (1000)
 
 using namespace syncd;
 
 #define MUTEX std::lock_guard<std::mutex> _lock(m_mutex);
 
 NotificationQueue::NotificationQueue(
-        _In_ size_t queueLimit):
+        _In_ size_t queueLimit,
+        _In_ size_t consecutiveThresholdLimit):
     m_queueSizeLimit(queueLimit),
+    m_thresholdLimit(consecutiveThresholdLimit),
     m_dropCount(0),
     m_lastEventCount(0),
     m_lastEvent(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT)
@@ -71,7 +72,7 @@ bool NotificationQueue::enqueue(
         }
         else
         {
-            if (m_lastEventCount >= DEFAULT_NOTIFICATION_CONSECUTIVE_THRESHOLD)
+            if (m_lastEventCount >= m_thresholdLimit)
             {
                 candidateToDrop = true;
             }
