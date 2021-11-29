@@ -11,6 +11,7 @@
 #include <cstring>
 #include <system_error>
 #include <cinttypes>
+#include <string>
 
 using namespace saivs;
 
@@ -360,6 +361,7 @@ bool MACsecManager::create_macsec_egress_sc(
         << " type macsec "
         << " sci " << attr.m_sci
         << " encrypt " << (attr.m_encryptionEnable ? " on " : " off ")
+        << " cipher " << attr.m_cipher
         << " && ip link set dev "
         << shellquote(attr.m_macsecName)
         << " up";
@@ -412,6 +414,10 @@ bool MACsecManager::create_macsec_egress_sa(
         << attr.m_an
         << " pn "
         << attr.m_pn
+        << ( attr.is_xpn() ? " ssci " : "" )
+        << ( attr.is_xpn() ? std::to_string(attr.m_ssci) : "" )
+        << ( attr.is_xpn() ? " salt " : "" )
+        << ( attr.is_xpn() ? attr.m_salt : "" )
         << " on key "
         << attr.m_authKey
         << " "

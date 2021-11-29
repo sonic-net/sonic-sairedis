@@ -166,6 +166,9 @@ config_syncd_bcm()
         CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
     fi
 
+    echo "SAI_OBJECT_TYPE_ACL_TABLE" >> /tmp/break_before_make_objects
+    CMD_ARGS+=" -b /tmp/break_before_make_objects"
+
     [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
     [ -e /dev/linux-user-bde ] || mknod /dev/linux-user-bde c 126 0
     [ -e /dev/linux-kernel-bde ] || mknod /dev/linux-kernel-bde c 127 0
