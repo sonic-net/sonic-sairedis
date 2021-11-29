@@ -68,11 +68,6 @@ syncd_CXXFLAGS += -DSAITHRIFT=yes
 syncd_LDADD += -lrpcserver -lthrift
 endif
 
-if SONIC_ASIC_PLATFORM_MELLANOX
-syncd_CXXFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
-libSyncd_a_CXXFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
-endif
-
 libSyncdRequestShutdown_a_SOURCES = \
 									RequestShutdown.cpp \
 									RequestShutdownCommandLineOptions.cpp \
