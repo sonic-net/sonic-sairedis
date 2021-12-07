@@ -2721,16 +2721,23 @@ bool SwitchStateBase::check_object_default_state(
         {
             if (objlist.size())
             {
-                SWSS_LOG_ERROR("expected empty list on %s on %s, contents:",
-                        meta->attridname,
-                        sai_serialize_object_id(object_id).c_str());
-
+                bool all_null_oid = true;
                 for (auto oid: objlist)
                 {
-                    SWSS_LOG_ERROR(" - oid: %s", sai_serialize_object_id(oid).c_str());
+                    if (oid != SAI_NULL_OBJECT_ID)
+                    {
+                        all_null_oid = false;
+                        SWSS_LOG_ERROR(" - oid: %s", sai_serialize_object_id(oid).c_str());
+                    }
                 }
 
-                return false;
+                if (!all_null_oid)
+                {
+                    SWSS_LOG_ERROR("expected empty list on %s on %s, contents:",
+                        meta->attridname,
+                        sai_serialize_object_id(object_id).c_str());
+                    return false;
+                }
             }
         }
         else
