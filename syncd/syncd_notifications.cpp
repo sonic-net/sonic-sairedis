@@ -579,6 +579,9 @@ private:
      * some extra buffer for other events like port-state, q-deadlock etc
      */
     const size_t limit = 300000;
+    const size_t m_thresholdLimit = 1000;
+    size_t m_lastEventCount = 0;
+    std::string m_lastEvent = "fdb_event";
 };
 
 
@@ -614,7 +617,7 @@ bool ntf_queue_t::enqueue(
         _In_ swss::KeyOpFieldsValuesTuple item)
 {
     SWSS_LOG_ENTER();
-
+    bool candidateToDrop = false;
     std::string notification = kfvKey(item);
 
     /*
@@ -622,9 +625,45 @@ bool ntf_queue_t::enqueue(
      * a temporary solution to handle high memory usage by syncd and the
      * notification queue keeps growing. The permanent solution would be to
      * make this stateful so that only the *latest* event is published.
+     *
+     * We have also seen other notification storms that can also cause this queue issue
+     * So the new scheme is to keep the last notification event and its consecutive count
+     * If threshold limit reached and the consecutive count also reached then this notification
+     * will also be dropped regardless of its event type to protect the device from crashing due to
+     * running out of memory
      */
 
-    if (queueStats() < limit || notification != "fdb_event")
+    auto queueSize = queueStats();
+
+    if (notification == m_lastEvent)
+    {
+        m_lastEventCount++;
+    }
+    else
+    {
+        m_lastEventCount = 1;
+        m_lastEvent = notification;
+    }
+    if (queueSize >= limit)
+    {
+        /* Too many queued up already check if notification fits condition to be dropped
+         * 1. All FDB events should be dropped at this point.
+         * 2. All other notification events will start to drop if it reached the consecutive threshold limit
+         */
+        if (notification == "fdb_event")
+        {
+            candidateToDrop = true;
+        }
+        else
+        {
+            if (m_lastEventCount >= m_thresholdLimit)
+            {
+                candidateToDrop = true;
+            }
+        }
+    }
+
+    if (!candidateToDrop)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
 
@@ -636,8 +675,10 @@ bool ntf_queue_t::enqueue(
 
     if (!(log_count % 1000))
     {
-        SWSS_LOG_NOTICE("Too many messages in queue (%zu), dropped %u FDB events!",
-                         queueStats(), (log_count+1));
+        SWSS_LOG_NOTICE(
+                "Too many messages in queue (%zu), dropped (%zu), lastEventCount (%zu) Dropping %s !",
+                queueSize,
+                (log_count+1), m_lastEventCount, m_lastEvent.c_str());
     }
 
     ++log_count;
