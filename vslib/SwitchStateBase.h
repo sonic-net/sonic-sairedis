@@ -201,6 +201,11 @@ namespace saivs
 
             virtual sai_status_t create_scheduler_groups();
 
+            virtual sai_status_t create_port_serdes();
+
+            virtual sai_status_t create_port_serdes_per_port(
+                    _In_ sai_object_id_t port_id);
+
         protected: // will generate new OID
 
             virtual sai_status_t create(

@@ -353,6 +353,8 @@ SCs
 sdk
 SDK
 selectable
+serdes
+SERDES
 setBuffered
 setMinPrio
 setPortCounterList

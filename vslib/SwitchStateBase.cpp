@@ -1553,6 +1553,25 @@ sai_status_t SwitchStateBase::set_number_of_ecmp_groups()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+sai_status_t SwitchStateBase::create_port_serdes()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("implement in child class");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t SwitchStateBase::create_port_serdes_per_port(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("implement in child class");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t SwitchStateBase::initialize_default_objects(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -1567,6 +1586,7 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     CHECK_STATUS(create_default_1q_bridge());
     CHECK_STATUS(create_default_trap_group());
     CHECK_STATUS(create_ports());
+    CHECK_STATUS(create_port_serdes());
     CHECK_STATUS(set_port_list());
     CHECK_STATUS(create_bridge_ports());
     CHECK_STATUS(create_vlan_members());
@@ -1612,6 +1632,7 @@ sai_status_t SwitchStateBase::create_port_dependencies(
     CHECK_STATUS(create_ingress_priority_groups_per_port(port_id));
     CHECK_STATUS(create_qos_queues_per_port(port_id));
     CHECK_STATUS(create_scheduler_groups_per_port(port_id));
+    CHECK_STATUS(create_port_serdes_per_port(port_id));
 
     // XXX should bridge ports should also be created when new port is created?
     // this needs to be checked on real ASIC and updated here
@@ -2211,6 +2232,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
 
             case SAI_PORT_ATTR_FABRIC_ATTACHED:
                 return SAI_STATUS_SUCCESS;
+
+            case SAI_PORT_ATTR_PORT_SERDES_ID:
+                return SAI_STATUS_SUCCESS;
         }
     }
 
@@ -2456,8 +2480,20 @@ sai_status_t SwitchStateBase::check_port_dependencies(
         return SAI_STATUS_FAILURE;
     }
 
-
     // obtain objects to examine
+
+    sai_object_id_t port_serdes_id = SAI_NULL_OBJECT_ID;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
+
+    if (get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) == SAI_STATUS_SUCCESS)
+    {
+        // port serdes may not be present on some platforms
+
+        port_serdes_id = attr.value.oid;
+    }
 
     std::vector<sai_object_id_t> queues;
     std::vector<sai_object_id_t> ipgs;
@@ -2484,6 +2520,11 @@ sai_status_t SwitchStateBase::check_port_dependencies(
     result &= check_object_list_default_state(ipgs);
     result &= check_object_list_default_state(sg);
 
+    if (port_serdes_id != SAI_NULL_OBJECT_ID)
+    {
+        result &= check_object_default_state(port_serdes_id);
+    }
+
     if (!result)
     {
         SWSS_LOG_ERROR("one of objects is not in default state, can't remove port %s",
@@ -2498,6 +2539,11 @@ sai_status_t SwitchStateBase::check_port_dependencies(
     dep.insert(dep.end(), queues.begin(), queues.end());
     dep.insert(dep.end(), ipgs.begin(), ipgs.end());
     dep.insert(dep.end(), sg.begin(), sg.end());
+
+    if (port_serdes_id != SAI_NULL_OBJECT_ID)
+    {
+        dep.push_back(port_serdes_id);
+    }
 
     // BRIDGE PORT (and also VLAN MEMBER using that bridge port) must be
     // removed before removing port itself, since bridge port holds reference
@@ -2633,6 +2679,9 @@ bool SwitchStateBase::check_object_default_state(
             continue;
 
         if (!meta->isoidattribute)
+            continue;
+
+        if (meta->ismandatoryoncreate && meta->iscreateonly)
             continue;
 
         // those attributes must be skipped since those dependencies will be automatically broken

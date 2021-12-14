@@ -2333,6 +2333,7 @@ void ComparisonLogic::populateExistingObjects(
 
     auto coldBootDiscoveredVids = m_switch->getColdBootDiscoveredVids();
     auto warmBootDiscoveredVids = m_switch->getWarmBootDiscoveredVids();
+    auto warmBootNewDiscoveredVids = m_switch->getWarmBootNewDiscoveredVids();
 
     /*
      * If some objects that are existing objects on switch are not present in
@@ -2453,6 +2454,22 @@ void ComparisonLogic::populateExistingObjects(
                 default:
                     break;
             }
+        }
+
+        if (warmBootNewDiscoveredVids.size())
+        {
+            // We have some new discovered VIDs after warm boot, we need to
+            // create temporary objects from them, so comparison logic will not
+            // get confused and will not remove them.
+            //
+            // TODO: there could be potential issue here, when user will remove
+            // one of the new discovered object in init view phase, then we
+            // can't put that object to DB, and it should be removed.
+
+            performColdCheck = false;
+
+            SWSS_LOG_NOTICE("creating and matching %zu new discovered WARM BOOT objects",
+                    warmBootNewDiscoveredVids.size());
         }
 
         if (performColdCheck && coldBootDiscoveredVids.find(vid) == coldBootDiscoveredVids.end())

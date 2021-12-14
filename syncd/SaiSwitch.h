@@ -286,8 +286,6 @@ namespace syncd
 
             void helperLoadColdVids();
 
-            void helperPopulateWarmBootVids();
-
             /*
              * Other Methods.
              */

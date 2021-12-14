@@ -46,5 +46,10 @@ namespace saivs
                     _In_ sai_object_id_t bridge_id) override;
 
             virtual sai_status_t warm_update_queues() override;
+
+            virtual sai_status_t create_port_serdes() override;
+
+            virtual sai_status_t create_port_serdes_per_port(
+                    _In_ sai_object_id_t port_id) override;
     };
 }

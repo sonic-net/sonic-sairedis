@@ -146,6 +146,45 @@ sai_status_t SwitchBCM56850::create_qos_queues()
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchBCM56850::create_port_serdes()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create port serdes for all ports");
+
+    for (auto &port_id: m_port_list)
+    {
+        CHECK_STATUS(create_port_serdes_per_port(port_id));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchBCM56850::create_port_serdes_per_port(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t port_serdes_id;
+
+    sai_attribute_t attr;
+
+    // create port serdes fir specific port
+
+    attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
+    attr.value.oid = port_id;
+
+    CHECK_STATUS(create(SAI_OBJECT_TYPE_PORT_SERDES, &port_serdes_id, m_switch_id, 1, &attr));
+
+    // set port serdes read only value
+
+    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
+    attr.value.oid = port_serdes_id;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
 
 sai_status_t SwitchBCM56850::create_scheduler_group_tree(
         _In_ const std::vector<sai_object_id_t>& sgs,
