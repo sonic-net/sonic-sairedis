@@ -164,6 +164,12 @@ std::string sai_serialize_hex_binary(
     return sai_serialize_hex_binary(&value, sizeof(T));
 }
 
+std::string sai_serialize_macsec_flow_stat(
+        _In_ const sai_macsec_flow_stat_t counter);
+
+std::string sai_serialize_macsec_sa_stat(
+        _In_ const sai_macsec_sa_stat_t counter);
+
 std::string sai_serialize_macsec_sa_attr(
         _In_ const  sai_macsec_sa_attr_t &attr);
 

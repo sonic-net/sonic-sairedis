@@ -106,6 +106,24 @@ FlexCounter::BufferPoolCounterIds::BufferPoolCounterIds(
     SWSS_LOG_ENTER();
 }
 
+FlexCounter::MACsecFlowCounterIds::MACsecFlowCounterIds(
+        _In_ sai_object_id_t macsecFlow,
+        _In_ const std::vector<sai_macsec_flow_stat_t> &macsecFlowIds):
+        m_macsecFlowId(macsecFlow),
+        m_macsecFlowCounterIds(macsecFlowIds)
+{
+    SWSS_LOG_ENTER();
+}
+
+FlexCounter::MACsecSACounterIds::MACsecSACounterIds(
+        _In_ sai_object_id_t macsecSA,
+        _In_ const std::vector<sai_macsec_sa_stat_t> &macsecSAIds):
+        m_macsecSAId(macsecSA),
+        m_macsecSACounterIds(macsecSAIds)
+{
+    SWSS_LOG_ENTER();
+}
+
 FlexCounter::MACsecSAAttrIds::MACsecSAAttrIds(
         _In_ sai_object_id_t macsecSA,
         _In_ const std::vector<sai_macsec_sa_attr_t> &macsecSAIds):
@@ -454,6 +472,50 @@ void FlexCounter::setSwitchDebugCounterList(
     m_switchDebugCounterIdsMap.emplace(switchVid, switchDebugCounterIds);
 
     addCollectCountersHandler(SWITCH_DEBUG_COUNTER_ID_LIST, &FlexCounter::collectSwitchDebugCounters);
+}
+
+void FlexCounter::setMACsecFlowCounterList(
+        _In_ sai_object_id_t macsecFlowVid,
+        _In_ sai_object_id_t macsecFlowRid,
+        _In_ const std::vector<sai_macsec_flow_stat_t> &counterIds)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_macsecFlowCounterIdsMap.find(macsecFlowVid);
+
+    if (it != m_macsecFlowCounterIdsMap.end())
+    {
+        it->second->m_macsecFlowCounterIds = counterIds;
+        return;
+    }
+
+    auto macsecFlowCounterIds = std::make_shared<MACsecFlowCounterIds>(macsecFlowRid, counterIds);
+
+    m_macsecFlowCounterIdsMap.emplace(macsecFlowVid, macsecFlowCounterIds);
+
+    addCollectCountersHandler(MACSEC_FLOW_COUNTER_ID_LIST, &FlexCounter::collectMACsecFlowCounters);
+}
+
+void FlexCounter::setMACsecSACounterList(
+        _In_ sai_object_id_t macsecSAVid,
+        _In_ sai_object_id_t macsecSARid,
+        _In_ const std::vector<sai_macsec_sa_stat_t> &counterIds)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_macsecSACounterIdsMap.find(macsecSAVid);
+
+    if (it != m_macsecSACounterIdsMap.end())
+    {
+        it->second->m_macsecSACounterIds = counterIds;
+        return;
+    }
+
+    auto macsecSACounterIds = std::make_shared<MACsecSACounterIds>(macsecSARid, counterIds);
+
+    m_macsecSACounterIdsMap.emplace(macsecSAVid, macsecSACounterIds);
+
+    addCollectCountersHandler(MACSEC_SA_COUNTER_ID_LIST, &FlexCounter::collectMACsecSACounters);
 }
 
 void FlexCounter::setPriorityGroupAttrList(
@@ -828,23 +890,70 @@ void FlexCounter::removePriorityGroup(
     }
 }
 
+void FlexCounter::removeMACsecFlow(
+        _In_ sai_object_id_t macsecFlowVid)
+{
+    SWSS_LOG_ENTER();
+
+    bool found = false;
+
+    auto counterIter = m_macsecFlowCounterIdsMap.find(macsecFlowVid);
+
+    if (counterIter != m_macsecFlowCounterIdsMap.end())
+    {
+        m_macsecFlowCounterIdsMap.erase(counterIter);
+
+        if (m_macsecFlowCounterIdsMap.empty())
+        {
+            removeCollectCountersHandler(MACSEC_FLOW_COUNTER_ID_LIST);
+        }
+
+        found = true;
+    }
+
+    if (!found)
+    {
+        SWSS_LOG_WARN("Trying to remove nonexisting MACsec Flow %s",
+                sai_serialize_object_id(macsecFlowVid).c_str());
+    }
+}
+
 void FlexCounter::removeMACsecSA(
         _In_ sai_object_id_t macsecSAVid)
 {
     SWSS_LOG_ENTER();
 
-    auto itr = m_macsecSAAttrIdsMap.find(macsecSAVid);
+    bool found = false;
 
-    if (itr != m_macsecSAAttrIdsMap.end())
+    auto counterIter = m_macsecSACounterIdsMap.find(macsecSAVid);
+
+    if (counterIter != m_macsecSACounterIdsMap.end())
     {
-        m_macsecSAAttrIdsMap.erase(itr);
+        m_macsecSACounterIdsMap.erase(counterIter);
+
+        if (m_macsecSACounterIdsMap.empty())
+        {
+            removeCollectCountersHandler(MACSEC_SA_COUNTER_ID_LIST);
+        }
+
+        found = true;
+    }
+
+    auto attrIter = m_macsecSAAttrIdsMap.find(macsecSAVid);
+
+    if (attrIter != m_macsecSAAttrIdsMap.end())
+    {
+        m_macsecSAAttrIdsMap.erase(attrIter);
 
         if (m_macsecSAAttrIdsMap.empty())
         {
             removeCollectCountersHandler(MACSEC_SA_ATTR_ID_LIST);
         }
+
+        found = true;
     }
-    else
+
+    if (!found)
     {
         SWSS_LOG_WARN("Trying to remove nonexisting MACsec SA %s",
                 sai_serialize_object_id(macsecSAVid).c_str());
@@ -1231,10 +1340,12 @@ bool FlexCounter::allIdsEmpty() const
         m_rifCounterIdsMap.empty() &&
         m_bufferPoolCounterIdsMap.empty() &&
         m_switchDebugCounterIdsMap.empty() &&
-        m_macsecSAAttrIdsMap.empty() &&
         m_aclCounterAttrIdsMap.empty() &&
         m_tunnelCounterIdsMap.empty() &&
-        m_flowCounterIdsMap.empty();
+        m_flowCounterIdsMap.empty() &&
+        m_macsecFlowCounterIdsMap.empty() &&
+        m_macsecSACounterIdsMap.empty() &&
+        m_macsecSAAttrIdsMap.empty();
 }
 
 bool FlexCounter::allPluginsEmpty() const
@@ -1738,6 +1849,138 @@ void FlexCounter::collectPriorityGroupAttrs(
         std::string priorityGroupVidStr = sai_serialize_object_id(priorityGroupVid);
 
         countersTable.set(priorityGroupVidStr, values, "");
+    }
+}
+
+void FlexCounter::collectMACsecFlowCounters(
+        _In_ swss::Table &countersTable)
+{
+    SWSS_LOG_ENTER();
+
+    // Collect stats for every registered MACsec Flow
+    for (const auto &kv: m_macsecFlowCounterIdsMap)
+    {
+        const auto &macsecFlowVid = kv.first;
+        const auto &macsecFlowRid = kv.second->m_macsecFlowId;
+        const auto &macsecFlowCounterIds = kv.second->m_macsecFlowCounterIds;
+
+        std::vector<uint64_t> macsecFlowStats(macsecFlowCounterIds.size());
+
+        // Get MACsec Flow stats
+        sai_status_t status = m_vendorSai->getStats(
+                SAI_OBJECT_TYPE_MACSEC_FLOW,
+                macsecFlowRid,
+                static_cast<uint32_t>(macsecFlowCounterIds.size()),
+                (const sai_stat_id_t *)macsecFlowCounterIds.data(),
+                macsecFlowStats.data());
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR(
+                "Failed to get stats of MACsec Flow %s: %s",
+                sai_serialize_object_id(macsecFlowVid).c_str(),
+                sai_serialize_status(status).c_str());
+            continue;
+        }
+
+        if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR)
+        {
+            status = m_vendorSai->clearStats(
+                    SAI_OBJECT_TYPE_MACSEC_FLOW,
+                    macsecFlowRid,
+                    static_cast<uint32_t>(macsecFlowCounterIds.size()),
+                    (const sai_stat_id_t *)macsecFlowCounterIds.data());
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR(
+                    "Failed to clear stats of MACsec Flow %s: %s",
+                    sai_serialize_object_id(macsecFlowVid).c_str(),
+                    sai_serialize_status(status).c_str());
+                continue;
+            }
+        }
+
+        // Push all counter values to a single vector
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != macsecFlowCounterIds.size(); i++)
+        {
+            const std::string &counterName = sai_serialize_macsec_flow_stat(macsecFlowCounterIds[i]);
+
+            values.emplace_back(counterName, std::to_string(macsecFlowStats[i]));
+        }
+
+        // Write counters to DB
+        std::string macsecFlowVidStr = sai_serialize_object_id(macsecFlowVid);
+
+        countersTable.set(macsecFlowVidStr, values, "");
+    }
+}
+
+void FlexCounter::collectMACsecSACounters(
+        _In_ swss::Table &countersTable)
+{
+    SWSS_LOG_ENTER();
+
+    // Collect stats for every registered MACsec SA
+    for (const auto &kv: m_macsecSACounterIdsMap)
+    {
+        const auto &macsecSAVid = kv.first;
+        const auto &macsecSARid = kv.second->m_macsecSAId;
+        const auto &macsecSACounterIds = kv.second->m_macsecSACounterIds;
+
+        std::vector<uint64_t> macsecSAStats(macsecSACounterIds.size());
+
+        // Get MACsec SA stats
+        sai_status_t status = m_vendorSai->getStats(
+                SAI_OBJECT_TYPE_MACSEC_SA,
+                macsecSARid,
+                static_cast<uint32_t>(macsecSACounterIds.size()),
+                (const sai_stat_id_t *)macsecSACounterIds.data(),
+                macsecSAStats.data());
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR(
+                "Failed to get stats of MACsec SA %s: %s",
+                sai_serialize_object_id(macsecSAVid).c_str(),
+                sai_serialize_status(status).c_str());
+            continue;
+        }
+
+        if (m_statsMode == SAI_STATS_MODE_READ_AND_CLEAR)
+        {
+            status = m_vendorSai->clearStats(
+                    SAI_OBJECT_TYPE_MACSEC_SA,
+                    macsecSARid,
+                    static_cast<uint32_t>(macsecSACounterIds.size()),
+                    (const sai_stat_id_t *)macsecSACounterIds.data());
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR(
+                    "Failed to clear stats of MACsec SA %s: %s",
+                    sai_serialize_object_id(macsecSAVid).c_str(),
+                    sai_serialize_status(status).c_str());
+                continue;
+            }
+        }
+
+        // Push all counter values to a single vector
+        std::vector<swss::FieldValueTuple> values;
+
+        for (size_t i = 0; i != macsecSACounterIds.size(); i++)
+        {
+            const std::string &counterName = sai_serialize_macsec_sa_stat(macsecSACounterIds[i]);
+
+            values.emplace_back(counterName, std::to_string(macsecSAStats[i]));
+        }
+
+        // Write counters to DB
+        std::string macsecSAVidStr = sai_serialize_object_id(macsecSAVid);
+
+        countersTable.set(macsecSAVidStr, values, "");
     }
 }
 
@@ -2907,6 +3150,10 @@ void FlexCounter::removeCounter(
     {
         removeSwitchDebugCounters(vid);
     }
+    else if (objectType == SAI_OBJECT_TYPE_MACSEC_FLOW)
+    {
+        removeMACsecFlow(vid);
+    }
     else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
     {
         removeMACsecSA(vid);
@@ -3057,18 +3304,44 @@ void FlexCounter::addCounter(
 
             setSwitchDebugCounterList(vid, rid, switchCounterIds);
         }
+        else if (objectType == SAI_OBJECT_TYPE_MACSEC_FLOW && field == MACSEC_FLOW_COUNTER_ID_LIST)
+        {
+            std::vector<sai_macsec_flow_stat_t> macsecFlowCounterIds;
+
+            for (const auto &str : idStrings)
+            {
+                sai_macsec_flow_stat_t stat;
+                sai_deserialize_macsec_flow_stat(str.c_str(), &stat);
+                macsecFlowCounterIds.push_back(stat);
+            }
+
+            setMACsecFlowCounterList(vid, rid, macsecFlowCounterIds);
+        }
+        else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_COUNTER_ID_LIST)
+        {
+            std::vector<sai_macsec_sa_stat_t> macsecSACounterIds;
+
+            for (const auto &str : idStrings)
+            {
+                sai_macsec_sa_stat_t stat;
+                sai_deserialize_macsec_sa_stat(str.c_str(), &stat);
+                macsecSACounterIds.push_back(stat);
+            }
+
+            setMACsecSACounterList(vid, rid, macsecSACounterIds);
+        }
         else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_ATTR_ID_LIST)
         {
-            std::vector<sai_macsec_sa_attr_t> macsecSAIds;
+            std::vector<sai_macsec_sa_attr_t> macsecSAAttrIds;
 
             for (const auto &str : idStrings)
             {
                 sai_macsec_sa_attr_t attr;
                 sai_deserialize_macsec_sa_attr(str, attr);
-                macsecSAIds.push_back(attr);
+                macsecSAAttrIds.push_back(attr);
             }
 
-            setMACsecSAAttrList(vid, rid, macsecSAIds);
+            setMACsecSAAttrList(vid, rid, macsecSAAttrIds);
         }
         else if (objectType == SAI_OBJECT_TYPE_ACL_COUNTER && field == ACL_COUNTER_ATTR_ID_LIST)
         {
