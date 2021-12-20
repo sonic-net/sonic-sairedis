@@ -347,6 +347,86 @@ void NotificationProcessor::process_on_fdb_event(
     }
 }
 
+/**
+ * @Brief Check NAT event notification data.
+ *
+ * Every OID field in notification data as well as all OID attributes are
+ * checked if given OID (returned from ASIC) is already present in the syncd
+ * local database. If vendor SAI will return unknown/invalid OID, this
+ * function will return false.
+ *
+ * @param data NAT event notification data
+ *
+ * @return False if any of OID values is not present in local DB, otherwise
+ * true.
+ */
+bool NotificationProcessor::check_nat_event_notification_data(
+        _In_ const sai_nat_event_notification_data_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    bool result = true;
+
+    if (!m_translator->checkRidExists(data.nat_entry.vr_id, true))
+    {
+        SWSS_LOG_ERROR("vr_id RID 0x%" PRIx64 " is not present on local ASIC DB: %s", data.nat_entry.vr_id,
+                sai_serialize_nat_entry(data.nat_entry).c_str());
+
+        result = false;
+    }
+
+    if (!m_translator->checkRidExists(data.nat_entry.switch_id) || data.nat_entry.switch_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("switch_id RID 0x%" PRIx64 " is not present on local ASIC DB: %s", data.nat_entry.switch_id,
+                sai_serialize_nat_entry(data.nat_entry).c_str());
+
+        result = false;
+    }
+
+    return result;
+}
+
+void NotificationProcessor::process_on_nat_event(
+        _In_ uint32_t count,
+        _In_ sai_nat_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("nat event count: %u", count);
+
+    bool sendntf = true;
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_nat_event_notification_data_t *nat = &data[i];
+
+        sendntf &= check_nat_event_notification_data(*nat);
+
+        if (!sendntf)
+        {
+            SWSS_LOG_ERROR("invalid OIDs in nat notifications, NOT translating and NOT storing in ASIC DB");
+            continue;
+        }
+
+        SWSS_LOG_DEBUG("nat %u: type: %d", i, nat->event_type);
+
+        nat->nat_entry.switch_id = m_translator->translateRidToVid(nat->nat_entry.switch_id, SAI_NULL_OBJECT_ID);
+
+        nat->nat_entry.vr_id = m_translator->translateRidToVid(nat->nat_entry.vr_id, nat->nat_entry.switch_id, true);
+    }
+
+    if (sendntf)
+    {
+        std::string s = sai_serialize_nat_event_ntf(count, data);
+
+        sendNotification(SAI_SWITCH_NOTIFICATION_NAME_NAT_EVENT, s);
+    }
+    else
+    {
+        SWSS_LOG_ERROR("NAT notification was not sent since it contain invalid OIDs, bug?");
+    }
+}
+
 void NotificationProcessor::process_on_queue_deadlock_event(
         _In_ uint32_t count,
         _In_ sai_queue_deadlock_notification_data_t *data)
@@ -494,6 +574,21 @@ void NotificationProcessor::handle_fdb_event(
     sai_deserialize_free_fdb_event_ntf(count, fdbevent);
 }
 
+void NotificationProcessor::handle_nat_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_nat_event_notification_data_t *natevent = NULL;
+
+    sai_deserialize_nat_event_ntf(data, count, &natevent);
+
+    process_on_nat_event(count, natevent);
+
+    sai_deserialize_free_nat_event_ntf(count, natevent);
+}
+
 void NotificationProcessor::handle_queue_deadlock(
         _In_ const std::string &data)
 {
@@ -574,6 +669,10 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT)
     {
         handle_fdb_event(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_NAT_EVENT)
+    {
+        handle_nat_event(data);
     }
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE)
     {

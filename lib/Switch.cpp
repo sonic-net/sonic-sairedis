@@ -93,6 +93,11 @@ void Switch::updateNotifications(
                     (sai_fdb_event_notification_fn)attr.value.ptr;
                 break;
 
+            case SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY:
+                m_switchNotifications.on_nat_event =
+                    (sai_nat_event_notification_fn)attr.value.ptr;
+                break;
+
             case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
                 m_switchNotifications.on_port_state_change =
                     (sai_port_state_change_notification_fn)attr.value.ptr;

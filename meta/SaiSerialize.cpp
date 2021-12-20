@@ -1940,6 +1940,28 @@ static json sai_serialize_json_fdb_event_notification_data(
     return j;
 }
 
+std::string sai_serialize_nat_event(
+        _In_ sai_nat_event_t event)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(event, &sai_metadata_enum_sai_nat_event_t);
+}
+
+static json sai_serialize_json_nat_event_notification_data(
+        _In_ const sai_nat_event_notification_data_t& nat_event)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["nat_event"] = sai_serialize_nat_event(nat_event.event_type);
+    j["nat_entry"] = sai_serialize_nat_entry(nat_event.nat_entry);
+
+    // we don't need count since it can be deduced
+    return j;
+}
+
 std::string sai_serialize_bfd_session_state(
         _In_ sai_bfd_session_state_t status)
 {
@@ -1964,6 +1986,30 @@ std::string sai_serialize_fdb_event_ntf(
     for (uint32_t i = 0; i < count; ++i)
     {
         json item = sai_serialize_json_fdb_event_notification_data(fdb_event[i]);
+
+        j.push_back(item);
+    }
+
+    // we don't need count since it can be deduced
+    return j.dump();
+}
+
+std::string sai_serialize_nat_event_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_nat_event_notification_data_t* nat_event)
+{
+    SWSS_LOG_ENTER();
+
+    if (nat_event == NULL)
+    {
+        SWSS_LOG_THROW("nat_event pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        json item = sai_serialize_json_nat_event_notification_data(nat_event[i]);
 
         j.push_back(item);
     }
@@ -3444,6 +3490,15 @@ void sai_deserialize_fdb_event(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_fdb_event_t, (int32_t&)event);
 }
 
+void sai_deserialize_nat_event(
+        _In_ const std::string& s,
+        _Out_ sai_nat_event_t& event)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_nat_event_t, (int32_t&)event);
+}
+
 void sai_deserialize_bfd_session_state(
         _In_ const std::string& s,
         _Out_ sai_bfd_session_state_t& state)
@@ -3906,6 +3961,37 @@ void sai_deserialize_fdb_event_ntf(
     *fdb_event = data;
 }
 
+static void sai_deserialize_json_nat_event_notification_data(
+        _In_ const json& j,
+        _Out_ sai_nat_event_notification_data_t& nat)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_nat_event(j["nat_event"], nat.event_type);
+    sai_deserialize_nat_entry(j["nat_entry"], nat.nat_entry);
+}
+
+void sai_deserialize_nat_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_nat_event_notification_data_t** nat_event)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_nat_event_notification_data_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_json_nat_event_notification_data(j[i], data[i]);
+    }
+
+    *nat_event = data;
+}
+
 void sai_deserialize_port_oper_status_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
@@ -4168,6 +4254,26 @@ void sai_deserialize_free_fdb_event_ntf(
     }
 
     delete[] fdb_event;
+}
+
+void sai_deserialize_free_nat_event(
+        _In_ sai_nat_event_notification_data_t& nat_event)
+{
+    SWSS_LOG_ENTER();
+}
+
+void sai_deserialize_free_nat_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_nat_event_notification_data_t* nat_event)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_free_nat_event(nat_event[i]);
+    }
+
+    delete[] nat_event;
 }
 
 void sai_deserialize_free_port_oper_status_ntf(
