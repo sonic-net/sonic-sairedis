@@ -550,7 +550,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
     CHECK_STATUS(get(SAI_OBJECT_TYPE_MACSEC_SC, attr->value.oid, static_cast<uint32_t>(attrs.size()), attrs.data()));
 
-    macsecAttr.m_cipher = MACsecAttr::get_cipher_name(attr->value.s32);
+    macsecAttr.m_cipher = MACsecAttr::get_cipher_name(attrs[3].value.s32);
 
     if (macsecAttr.m_cipher == MACsecAttr::CIPHER_NAME_INVALID)
     {
