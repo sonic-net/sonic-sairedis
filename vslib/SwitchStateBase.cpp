@@ -2719,6 +2719,7 @@ bool SwitchStateBase::check_object_default_state(
         }
         else if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_LIST)
         {
+            objlist.resize(attr.value.objlist.count);
             if (objlist.size())
             {
                 bool all_null_oid = true;
