@@ -93,6 +93,10 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
                             static_cast<std::uint32_t>(macsecAttr.m_an),
                             macsecAttr.m_macsecName.c_str());
                     }
+                    else
+                    {
+                        m_uncreatedIngressMACsecSAs.insert(macsecAttr);
+                    }
                 }
             }
         }
@@ -199,6 +203,21 @@ sai_status_t SwitchStateBase::createMACsecSA(
                     macsecAttr.m_sci.c_str(),
                     static_cast<std::uint32_t>(macsecAttr.m_an),
                     macsecAttr.m_macsecName.c_str());
+
+            // Maybe there are some uncreated ingress SAs that were added into m_uncreatedIngressMACsecSAs
+            // because the corresponding egress SA has not been created.
+            // So retry to create them.
+            if (macsecAttr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
+            {
+                retryCreateIngressMaCsecSAs();
+            }
+        }
+        else
+        {
+            // In Linux MACsec model, Egress SA need to be created before ingress SA.
+            // So, if try to create the ingress SA firstly, it will failed.
+            // But to create the egress SA should be always successful.
+            m_uncreatedIngressMACsecSAs.insert(macsecAttr);
         }
     }
 
@@ -221,17 +240,31 @@ sai_status_t SwitchStateBase::removeMACsecPort(
         }
     }
 
-    auto itr = m_macsecFlowPortMap.begin();
+    auto flowItr = m_macsecFlowPortMap.begin();
 
-    while (itr != m_macsecFlowPortMap.end())
+    while (flowItr != m_macsecFlowPortMap.end())
     {
-        if (itr->second == macsecPortId)
+        if (flowItr->second == macsecPortId)
         {
-            itr = m_macsecFlowPortMap.erase(itr);
+            flowItr = m_macsecFlowPortMap.erase(flowItr);
         }
         else
         {
-            itr ++;
+            flowItr ++;
+        }
+    }
+
+    auto saItr = m_uncreatedIngressMACsecSAs.begin();
+
+    while (saItr != m_uncreatedIngressMACsecSAs.end())
+    {
+        if (saItr->m_macsecName == macsecAttr.m_macsecName)
+        {
+            saItr = m_uncreatedIngressMACsecSAs.erase(saItr);
+        }
+        else
+        {
+            saItr ++;
         }
     }
 
@@ -254,6 +287,20 @@ sai_status_t SwitchStateBase::removeMACsecSC(
                     "The MACsec sc %s in device %s is deleted",
                     macsecAttr.m_sci.c_str(),
                     macsecAttr.m_macsecName.c_str());
+        }
+    }
+
+    auto saItr = m_uncreatedIngressMACsecSAs.begin();
+
+    while (saItr != m_uncreatedIngressMACsecSAs.end())
+    {
+        if (saItr->m_macsecName == macsecAttr.m_macsecName && saItr->m_sci == macsecAttr.m_sci)
+        {
+            saItr = m_uncreatedIngressMACsecSAs.erase(saItr);
+        }
+        else
+        {
+            saItr ++;
         }
     }
 
@@ -840,4 +887,29 @@ sai_status_t SwitchStateBase::getMACsecSAPacketNumber(
     }
 
     return SAI_STATUS_FAILURE;
+}
+
+void SwitchStateBase::retryCreateIngressMaCsecSAs()
+{
+    SWSS_LOG_ENTER();
+
+    auto itr = m_uncreatedIngressMACsecSAs.begin();
+
+    while (itr != m_uncreatedIngressMACsecSAs.end())
+    {
+        if (m_macsecManager.create_macsec_sa(*itr))
+        {
+            SWSS_LOG_NOTICE(
+                "Enable MACsec SA %s:%u at the device %s",
+                itr->m_sci.c_str(),
+                static_cast<std::uint32_t>(itr->m_an),
+                itr->m_macsecName.c_str());
+
+            itr = m_uncreatedIngressMACsecSAs.erase(itr);
+        }
+        else
+        {
+            itr ++;
+        }
+    }
 }

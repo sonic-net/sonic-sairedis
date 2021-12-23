@@ -3,6 +3,8 @@
 #include "saimacsec.h"
 #include "swss/logger.h"
 
+#include <functional>
+
 using namespace saivs;
 
 const std::string MACsecAttr::CIPHER_NAME_INVALID = "";
@@ -17,7 +19,17 @@ const std::string MACsecAttr::CIPHER_NAME_GCM_AES_XPN_256 = "GCM-AES-XPN-256";
 
 const std::string MACsecAttr::DEFAULT_CIPHER_NAME = MACsecAttr::CIPHER_NAME_GCM_AES_128;
 
-MACsecAttr::MACsecAttr()
+const macsec_an_t MACsecAttr::AN_INVALID = -1;
+
+size_t MACsecAttr::Hash::operator()(const MACsecAttr &attr) const
+{
+    SWSS_LOG_ENTER();
+
+    return std::hash<std::string>()(attr.m_macsecName) ^ std::hash<std::string>()(attr.m_sci) ^ attr.m_an;
+}
+
+MACsecAttr::MACsecAttr() : m_an(AN_INVALID)
+
 {
     SWSS_LOG_ENTER();
 
@@ -61,4 +73,11 @@ bool MACsecAttr::is_xpn() const
     SWSS_LOG_ENTER();
 
     return m_cipher == CIPHER_NAME_GCM_AES_XPN_128 || m_cipher == CIPHER_NAME_GCM_AES_XPN_256;
+}
+
+bool MACsecAttr::operator==(const MACsecAttr &attr) const
+{
+    SWSS_LOG_ENTER();
+
+    return m_macsecName == attr.m_macsecName && m_sci == attr.m_sci && m_an == attr.m_an;
 }
