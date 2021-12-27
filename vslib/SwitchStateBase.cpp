@@ -3384,6 +3384,27 @@ sai_status_t SwitchStateBase::queryVlanfloodTypeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryNextHopGroupTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 5)
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 5;
+    enum_values_capability->list[0] = SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP;
+    enum_values_capability->list[1] = SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_ORDERED_ECMP;
+    enum_values_capability->list[2] = SAI_NEXT_HOP_GROUP_TYPE_FINE_GRAIN_ECMP;
+    enum_values_capability->list[3] = SAI_NEXT_HOP_GROUP_TYPE_PROTECTION;
+    enum_values_capability->list[4] = SAI_NEXT_HOP_GROUP_TYPE_CLASS_BASED;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+
 sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -3401,6 +3422,10 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                                                      attr_id == SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE))
     {
         return queryVlanfloodTypeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP && attr_id == SAI_NEXT_HOP_GROUP_ATTR_TYPE)
+    {
+        return queryNextHopGroupTypeCapability(enum_values_capability);
     }
     return SAI_STATUS_NOT_SUPPORTED;
 }
