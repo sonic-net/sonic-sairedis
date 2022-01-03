@@ -470,7 +470,7 @@ TEST(SwitchBCM56850, test_nexthop_group_type_enum_values_capability)
         if (enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP ||
             enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_ORDERED_ECMP ||
             enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_FINE_GRAIN_ECMP ||
-            enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_PROTECTION || 
+            enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_PROTECTION ||
             enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_CLASS_BASED)
         {
             nexthop_group_types_found++;
