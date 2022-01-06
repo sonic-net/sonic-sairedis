@@ -31,6 +31,7 @@ libSaiRedis_a_SOURCES = \
 						 NotificationFdbEvent.cpp \
 						 NotificationQueuePfcDeadlock.cpp \
 						 NotificationFactory.cpp \
+						 NotificationBfdSessionStateChange.cpp \
 						 RedisVidIndexGenerator.cpp \
 						 Recorder.cpp \
 						 RedisRemoteSaiInterface.cpp \

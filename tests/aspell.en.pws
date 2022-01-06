@@ -28,6 +28,7 @@ attridname
 attrs
 attrvalue
 BCM
+BFD
 bool
 Bool
 booldata
