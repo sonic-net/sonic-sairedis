@@ -98,7 +98,7 @@ sai_status_t SwitchBCM81724::create(
     {
         SWSS_LOG_INFO("Bypass creating %s", sai_serialize_object_type(object_type));
 
-        return SAI_STATUS_SUCCESS;
+        return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
     }
 
     return SwitchStateBase::create(object_type, serializedObjectId, switch_id, attr_count, attr_list);
@@ -115,7 +115,7 @@ sai_status_t SwitchBCM81724::remove(
     {
         SWSS_LOG_INFO("Bypass removing %s", sai_serialize_object_type(object_type));
 
-        return SAI_STATUS_SUCCESS;
+        return remove_internal(object_type, serializedObjectId);
     }
 
     return SwitchStateBase::remove(object_type, serializedObjectId);
@@ -134,7 +134,7 @@ sai_status_t SwitchBCM81724::set(
     {
         SWSS_LOG_INFO("Bypass setting %s", sai_serialize_object_type(objectType));
 
-        return SAI_STATUS_SUCCESS;
+        return set_internal(objectType, serializedObjectId, attr);;
     }
 
     return SwitchStateBase::set(objectType, serializedObjectId, attr);
