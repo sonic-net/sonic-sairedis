@@ -98,8 +98,10 @@ jobs:
       artifact: ${{ parameters.swss_common_artifact_name }}
       runVersion: 'latestFromBranch'
       runBranch: 'refs/heads/master'
+      path: '$(Build.SourcesDirectory)/${{ parameters.swss_common_artifact_name }}'
     displayName: "Download sonic swss common deb packages"
   - script: |
+      cd $(Build.SourcesDirectory)/${{ parameters.swss_common_artifact_name }}
       sudo dpkg -i libswsscommon_1.0.0_${{ parameters.arch }}.deb
       sudo dpkg -i libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
     workingDirectory: $(Pipeline.Workspace)
