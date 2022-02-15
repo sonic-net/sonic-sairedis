@@ -30,6 +30,8 @@ TEST(SwitchStateBase, loadMACsecAttrFromMACsecSA)
     attr.id = SAI_MACSEC_SC_ATTR_MACSEC_CIPHER_SUITE;
     attr.value.s32 = sai_macsec_cipher_suite_t::SAI_MACSEC_CIPHER_SUITE_GCM_AES_128;
     attrs.push_back(attr);
+    attr.id = SAI_MACSEC_SC_ATTR_MACSEC_EXPLICIT_SCI_ENABLE;
+    attrs.push_back(attr);
     EXPECT_EQ(
         SAI_STATUS_SUCCESS,
         ss.create_internal(
