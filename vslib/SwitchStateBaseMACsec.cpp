@@ -681,7 +681,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     {
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_SSCI, attrCount, attrList);
 
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        macsecAttr.m_ssci = bswap_32(attr->value.u32);
+#else
         macsecAttr.m_ssci = attr->value.u32;
+#endif
 
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SALT, attrCount, attrList);
 
