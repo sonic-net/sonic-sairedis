@@ -53,7 +53,7 @@ jobs:
     inputs:
       source: specific
       project: build
-      pipeline: 1
+      pipeline: 142
       artifact: sonic-buildimage.vs
       runVersion: 'latestFromBranch'
       runBranch: 'refs/heads/master'
