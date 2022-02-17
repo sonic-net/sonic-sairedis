@@ -154,7 +154,8 @@ sai_status_t SwitchBCM56850::create_port_serdes()
 
     for (auto &port_id: m_port_list)
     {
-        CHECK_STATUS(create_port_serdes_per_port(port_id));
+        // TODO for testing
+        // CHECK_STATUS(create_port_serdes_per_port(port_id));
     }
 
     return SAI_STATUS_SUCCESS;
