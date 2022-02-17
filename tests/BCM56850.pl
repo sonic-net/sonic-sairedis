@@ -745,7 +745,7 @@ sub test_brcm_warm_new_object_port_serdes
 
 # RUN TESTS
 
-test_brcm_warm_new_object_port_serdes;
+#test_brcm_warm_new_object_port_serdes;
 test_buffer_profile_get;
 test_multi_switch_key;
 test_ignore_attributes;
