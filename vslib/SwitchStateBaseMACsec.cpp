@@ -682,6 +682,8 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     {
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_SSCI, attrCount, attrList);
 
+        // The Linux kernel directly uses ssci to XOR with the salt that is network order,
+        // So, this conversion is useful to convert SSCI from the host order to network order.
         macsecAttr.m_ssci = htonl(attr->value.u32);
 
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SALT, attrCount, attrList);
