@@ -174,6 +174,7 @@ sai_status_t SwitchBCM56850::create_port_serdes_per_port(
     attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
     attr.value.oid = port_id;
 
+    // TODO set to 1
     // we set 0 to not create dependency on port id
     CHECK_STATUS(create(SAI_OBJECT_TYPE_PORT_SERDES, &port_serdes_id, m_switch_id, 0, &attr));
 
@@ -182,9 +183,7 @@ sai_status_t SwitchBCM56850::create_port_serdes_per_port(
     attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
     attr.value.oid = port_serdes_id;
 
-    // TODO enable this later
-    // do not set dependency
-    // CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
     return SAI_STATUS_SUCCESS;
 }
