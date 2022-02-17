@@ -1096,7 +1096,7 @@ void SaiSwitch::collectPortRelatedObjects(
 
     auto status = m_vendorSai->get(SAI_OBJECT_TYPE_PORT, portRid, 1, &attr);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == SAI_STATUS_SUCCESS && attr.value.oid != SAI_NULL_OBJECT_ID)
     {
         related.insert(attr.value.oid);
     }
