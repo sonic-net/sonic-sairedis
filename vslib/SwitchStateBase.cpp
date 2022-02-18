@@ -405,6 +405,8 @@ sai_status_t SwitchStateBase::remove_internal(
 {
     SWSS_LOG_ENTER();
 
+    SWSS_LOG_NOTICE("removing object: %s", serializedObjectId.c_str());
+
     auto &objectHash = m_objectHash.at(object_type);
 
     auto it = objectHash.find(serializedObjectId);
