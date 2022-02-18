@@ -183,7 +183,7 @@ sai_status_t SwitchBCM56850::create_port_serdes_per_port(
     attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
     attr.value.oid = port_serdes_id;
 
-    //CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
     return SAI_STATUS_SUCCESS;
 }
