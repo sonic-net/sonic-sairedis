@@ -152,11 +152,10 @@ sai_status_t SwitchBCM56850::create_port_serdes()
 
     SWSS_LOG_INFO("create port serdes for all ports");
 
-    //for (auto &port_id: m_port_list)
-    //{
-    //    // TODO for testing
-    //    // CHECK_STATUS(create_port_serdes_per_port(port_id));
-    //}
+    for (auto &port_id: m_port_list)
+    {
+        CHECK_STATUS(create_port_serdes_per_port(port_id));
+    }
 
     return SAI_STATUS_SUCCESS;
 }
@@ -165,6 +164,9 @@ sai_status_t SwitchBCM56850::create_port_serdes_per_port(
         _In_ sai_object_id_t port_id)
 {
     SWSS_LOG_ENTER();
+
+    // TODO disable port serdes create
+    return SAI_STATUS_SUCCESS;
 
     sai_object_id_t port_serdes_id;
 
