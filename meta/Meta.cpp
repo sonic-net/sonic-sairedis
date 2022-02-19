@@ -3531,6 +3531,12 @@ void Meta::meta_generic_validation_post_remove(
     {
         post_port_remove(meta_key);
     }
+
+    // port serdes is port related, and it can be explicitly removed by user,
+    // then it also needs to be removed from port related set
+
+    // TODO
+    // m_portRelatedSet.removePortRelated(meta_key.objectkey.object_id);
 }
 
 void Meta::post_port_remove(
