@@ -405,7 +405,7 @@ sai_status_t SwitchStateBase::remove_internal(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_NOTICE("removing object: %s", serializedObjectId.c_str());
+    SWSS_LOG_INFO("removing object: %s", serializedObjectId.c_str());
 
     auto &objectHash = m_objectHash.at(object_type);
 
@@ -2128,6 +2128,51 @@ sai_status_t SwitchStateBase::refresh_macsec_sa_stat(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::refresh_port_serdes_id(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    // port serdes could be removed by user explicitly, so try to find port
+    // serdes object with this specific port
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+
+    auto* meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT_SERDES, SAI_PORT_SERDES_ATTR_PORT_ID);
+
+    // loop via all port serdes objects
+
+    auto &serdeses = m_objectHash.at(SAI_OBJECT_TYPE_PORT_SERDES);
+
+    auto strPortId = sai_serialize_object_id(port_id);
+
+    for (auto& kvp: serdeses)
+    {
+        if (kvp.second.find(meta->attridname) != kvp.second.end())
+        {
+            if (kvp.second.at(meta->attridname)->getAttrStrValue() != strPortId)
+            {
+                // this is not the port we are looking for
+                continue;
+            }
+
+            SWSS_LOG_INFO("found corresponding port serdes %s for port %s",
+                    kvp.first.c_str(),
+                    sai_serialize_object_id(port_id).c_str());
+
+            sai_deserialize_object_id(kvp.first, attr.value.oid);
+            break;
+        }
+    }
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 // XXX extra work may be needed on GET api if N on list will be > then actual
 
 /*
@@ -2236,7 +2281,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_PORT_SERDES_ID:
-                return SAI_STATUS_SUCCESS;
+                return refresh_port_serdes_id(object_id);
         }
     }
 
@@ -2389,6 +2434,8 @@ bool SwitchStateBase::check_port_reference_count(
 {
     SWSS_LOG_ENTER();
 
+    // TODO make generic
+
     // TODO currently when switch is initialized, there is no metadata yet
     // and objects are created without reference count, this needs to be
     // addressed in refactoring metadata and meta_create_oid to correct
@@ -2415,6 +2462,28 @@ bool SwitchStateBase::check_port_reference_count(
                 SWSS_LOG_ERROR("port id %s is in use on bridge port %s",
                         sai_serialize_object_id(port_id).c_str(),
                         bp.first.c_str());
+
+                return false;
+            }
+        }
+    }
+
+    auto& serdeses = m_objectHash.at(SAI_OBJECT_TYPE_PORT_SERDES);
+
+    meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT_SERDES, SAI_PORT_SERDES_ATTR_PORT_ID);
+
+    for (auto& ps: serdeses)
+    {
+        for (auto&attr: ps.second)
+        {
+            if (attr.first != meta->attridname)
+                continue; // not this attribute
+
+            if (attr.second->getAttr()->value.oid == port_id)
+            {
+                SWSS_LOG_ERROR("port id %s is in use on port serdes %s",
+                        sai_serialize_object_id(port_id).c_str(),
+                        ps.first.c_str());
 
                 return false;
             }
@@ -2484,19 +2553,6 @@ sai_status_t SwitchStateBase::check_port_dependencies(
 
     // obtain objects to examine
 
-    sai_object_id_t port_serdes_id = SAI_NULL_OBJECT_ID;
-
-    sai_attribute_t attr;
-
-    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
-
-    if (get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr) == SAI_STATUS_SUCCESS)
-    {
-        // port serdes may not be present on some platforms
-
-        port_serdes_id = attr.value.oid;
-    }
-
     std::vector<sai_object_id_t> queues;
     std::vector<sai_object_id_t> ipgs;
     std::vector<sai_object_id_t> sg;
@@ -2522,11 +2578,6 @@ sai_status_t SwitchStateBase::check_port_dependencies(
     result &= check_object_list_default_state(ipgs);
     result &= check_object_list_default_state(sg);
 
-    if (port_serdes_id != SAI_NULL_OBJECT_ID)
-    {
-        result &= check_object_default_state(port_serdes_id);
-    }
-
     if (!result)
     {
         SWSS_LOG_ERROR("one of objects is not in default state, can't remove port %s",
@@ -2541,11 +2592,6 @@ sai_status_t SwitchStateBase::check_port_dependencies(
     dep.insert(dep.end(), queues.begin(), queues.end());
     dep.insert(dep.end(), ipgs.begin(), ipgs.end());
     dep.insert(dep.end(), sg.begin(), sg.end());
-
-    if (port_serdes_id != SAI_NULL_OBJECT_ID)
-    {
-        dep.push_back(port_serdes_id);
-    }
 
     // BRIDGE PORT (and also VLAN MEMBER using that bridge port) must be
     // removed before removing port itself, since bridge port holds reference

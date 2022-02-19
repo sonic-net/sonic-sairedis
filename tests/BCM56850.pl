@@ -496,7 +496,6 @@ sub test_brcm_warm_boot_port_remove
 
     play "wb_port_remove_a.rec";
 
-
     request_warm_shutdown;
     start_syncd_warm;
 
@@ -743,8 +742,16 @@ sub test_brcm_warm_new_object_port_serdes
     print "ASIC_DB: ", `redis-cli -n 1 keys "*_SERDES*"| wc -l`;
 }
 
+sub test_remove_port_serdes
+{
+    fresh_start;
+
+    play "test_remove_port_serdes.rec";
+}
+
 # RUN TESTS
 
+test_remove_port_serdes;
 test_brcm_warm_new_object_port_serdes;
 test_buffer_profile_get;
 test_multi_switch_key;
