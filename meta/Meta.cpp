@@ -3531,12 +3531,6 @@ void Meta::meta_generic_validation_post_remove(
     {
         post_port_remove(meta_key);
     }
-
-    // port serdes is port related, and it can be explicitly removed by user,
-    // then it also needs to be removed from port related set
-
-    // TODO
-    // m_portRelatedSet.removePortRelated(meta_key.objectkey.object_id);
 }
 
 void Meta::post_port_remove(
@@ -6475,13 +6469,6 @@ void Meta::meta_post_port_get(
             case SAI_PORT_ATTR_INGRESS_PRIORITY_GROUP_LIST:
                 meta_add_port_to_related_map(port_id, attr.value.objlist);
                 break;
-
-            case SAI_PORT_ATTR_PORT_SERDES_ID:
-
-                if (attr.value.oid != SAI_NULL_OBJECT_ID)
-                {
-                    m_portRelatedSet.insert(port_id, attr.value.oid);
-                }
 
             default:
                 break;

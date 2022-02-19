@@ -1088,19 +1088,6 @@ void SaiSwitch::collectPortRelatedObjects(
         related.insert(objlist.begin(), objlist.end());
     }
 
-    // if port serdes objects exists, add it to related objects
-
-    sai_attribute_t attr;
-
-    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
-
-    auto status = m_vendorSai->get(SAI_OBJECT_TYPE_PORT, portRid, 1, &attr);
-
-    if (status == SAI_STATUS_SUCCESS && attr.value.oid != SAI_NULL_OBJECT_ID)
-    {
-        related.insert(attr.value.oid);
-    }
-
     SWSS_LOG_NOTICE("obtained %zu port %s related RIDs",
             related.size(),
             sai_serialize_object_id(portRid).c_str());
