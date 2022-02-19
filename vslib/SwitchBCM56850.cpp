@@ -174,9 +174,7 @@ sai_status_t SwitchBCM56850::create_port_serdes_per_port(
     attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
     attr.value.oid = port_id;
 
-    // TODO set to 1
-    // we set 0 to not create dependency on port id
-    CHECK_STATUS(create(SAI_OBJECT_TYPE_PORT_SERDES, &port_serdes_id, m_switch_id, 0, &attr));
+    CHECK_STATUS(create(SAI_OBJECT_TYPE_PORT_SERDES, &port_serdes_id, m_switch_id, 1, &attr));
 
     // set port serdes read only value
 

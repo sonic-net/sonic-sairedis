@@ -405,7 +405,7 @@ sai_status_t SwitchStateBase::remove_internal(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_NOTICE("removing object: %s", serializedObjectId.c_str());
+    SWSS_LOG_INFO("removing object: %s", serializedObjectId.c_str());
 
     auto &objectHash = m_objectHash.at(object_type);
 
@@ -2128,6 +2128,51 @@ sai_status_t SwitchStateBase::refresh_macsec_sa_stat(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::refresh_port_serdes_id(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    // port serdes could be removed by user explicitly, so try to find port
+    // serdes object with this specific port
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+
+    auto* meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT_SERDES, SAI_PORT_SERDES_ATTR_PORT_ID);
+
+    // loop via all port serdes objects
+
+    auto &serdeses = m_objectHash.at(SAI_OBJECT_TYPE_PORT_SERDES);
+
+    auto strPortId = sai_serialize_object_id(port_id);
+
+    for (auto& kvp: serdeses)
+    {
+        if (kvp.second.find(meta->attridname) != kvp.second.end())
+        {
+            if (kvp.second.at(meta->attridname)->getAttrStrValue() != strPortId)
+            {
+                // this is not the port we are looking for
+                continue;
+            }
+
+            SWSS_LOG_INFO("found corresponding port serdes %s for port %s",
+                    kvp.first.c_str(),
+                    sai_serialize_object_id(port_id).c_str());
+
+            sai_deserialize_object_id(kvp.first, attr.value.oid);
+            break;
+        }
+    }
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 // XXX extra work may be needed on GET api if N on list will be > then actual
 
 /*
@@ -2236,7 +2281,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_PORT_SERDES_ID:
-                return SAI_STATUS_SUCCESS;
+                return refresh_port_serdes_id(object_id);
         }
     }
 
