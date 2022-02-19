@@ -705,8 +705,16 @@ sub test_buffer_profile_get
     play "buffer_profile_get_B.rec";
 }
 
+sub test_remove_port_serdes
+{
+    fresh_start;
+
+    play "test_remove_port_serdes.rec";
+}
+
 # RUN TESTS
 
+test_remove_port_serdes;
 test_buffer_profile_get;
 test_multi_switch_key;
 test_ignore_attributes;
