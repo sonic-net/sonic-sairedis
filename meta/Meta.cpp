@@ -6470,6 +6470,13 @@ void Meta::meta_post_port_get(
                 meta_add_port_to_related_map(port_id, attr.value.objlist);
                 break;
 
+            case SAI_PORT_ATTR_PORT_SERDES_ID:
+
+                if (attr.value.oid != SAI_NULL_OBJECT_ID)
+                {
+                    m_portRelatedSet.insert(port_id, attr.value.oid);
+                }
+
             default:
                 break;
         }
