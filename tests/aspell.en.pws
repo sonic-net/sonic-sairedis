@@ -368,6 +368,8 @@ splitted
 src
 SRC
 ss
+ssci
+SSCI
 stateful
 stdint
 stdlib
