@@ -513,6 +513,10 @@ namespace saivs
                     _In_ sai_object_id_t entry_id,
                     _In_ const sai_attribute_t* attr);
 
+            sai_status_t setMACsecSA(
+                    _In_ sai_object_id_t macsec_sa_id,
+                    _In_ const sai_attribute_t* attr);
+
             sai_status_t createMACsecPort(
                     _In_ sai_object_id_t macsec_sa_id,
                     _In_ sai_object_id_t switch_id,

@@ -292,6 +292,33 @@ bool MACsecManager::enable_macsec_filter(
     return true;
 }
 
+bool MACsecManager::update_macsec_sa_pn(
+        _In_ const MACsecAttr &attr,
+        _In_ sai_uint64_t pn)
+{
+    SWSS_LOG_ENTER();
+
+    std::ostringstream ostream;
+    ostream
+        << "/sbin/ip macsec set "
+        << shellquote(attr.m_macsecName);
+
+    if (attr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
+    {
+        ostream << " tx";
+    }
+    else
+    {
+        ostream << " rx sci " << attr.m_sci;
+    }
+
+    ostream << " sa " << attr.m_an << " pn " << pn;
+
+    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
+
+    return exec(ostream.str());
+}
+
 bool MACsecManager::get_macsec_sa_pn(
         _In_ const MACsecAttr &attr,
         _Out_ sai_uint64_t &pn) const

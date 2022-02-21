@@ -518,6 +518,13 @@ sai_status_t SwitchStateBase::set(
         return setAclEntry(objectId, attr);
     }
 
+    if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setMACsecSA(objectId, attr);
+    }
+
     return set_internal(objectType, serializedObjectId, attr);
 }
 
