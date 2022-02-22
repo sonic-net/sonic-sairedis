@@ -749,8 +749,21 @@ sub test_remove_port_serdes
     play "test_remove_port_serdes.rec";
 }
 
+sub test_lag_member
+{
+    fresh_start;
+
+    play "test_lag_member.rec";
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+}
+
 # RUN TESTS
 
+test_lag_member;
 test_remove_port_serdes;
 test_brcm_warm_new_object_port_serdes;
 test_buffer_profile_get;
