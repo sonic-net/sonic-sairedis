@@ -49,12 +49,6 @@ namespace saivs
             virtual sai_status_t create_port_serdes_per_port(
                     _In_ sai_object_id_t port_id) override;
 
-        protected:
-            virtual sai_status_t queryTunnelPeerModeCapability(
-                                      _Inout_ sai_s32_list_t *enum_values_capability) override;
-            virtual sai_status_t queryVlanfloodTypeCapability(
-                                      _Inout_ sai_s32_list_t *enum_values_capability) override;
-
     };
 }
 
