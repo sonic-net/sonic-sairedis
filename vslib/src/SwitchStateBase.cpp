@@ -2101,20 +2101,6 @@ sai_status_t SwitchStateBase::refresh_queue_pause_status(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t SwitchStateBase::refresh_macsec_sa_stat(
-        _In_ sai_object_id_t object_id)
-{
-    SWSS_LOG_ENTER();
-
-    sai_attribute_t attr;
-
-    attr.id = SAI_MACSEC_SA_ATTR_CURRENT_XPN;
-    CHECK_STATUS(getMACsecSAPacketNumber(object_id, attr));
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_MACSEC_SA, object_id, &attr));
-
-    return SAI_STATUS_SUCCESS;
-}
-
 sai_status_t SwitchStateBase::refresh_port_serdes_id(
         _In_ sai_object_id_t port_id)
 {

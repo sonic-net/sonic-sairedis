@@ -152,9 +152,6 @@ namespace saivs
             virtual sai_status_t refresh_queue_pause_status(
                     _In_ sai_object_id_t object_id);
 
-            virtual sai_status_t refresh_macsec_sa_stat(
-                    _In_ sai_object_id_t object_id);
-
             virtual sai_status_t refresh_port_serdes_id(
                     _In_ sai_object_id_t bridge_id);
 
