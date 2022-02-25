@@ -61,7 +61,7 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForLag(
 
         if (lagMemberLagAttr->getSaiAttr()->value.oid == tmpLagVid)
         {
-            SWSS_LOG_NOTICE("found temp LAG member %s which uses temp LAG %s",
+            SWSS_LOG_NOTICE("found temp LAG member %s which uses temp LAG member %s",
                     temporaryObj->m_str_object_id.c_str(),
                     lagMember->m_str_object_id.c_str());
 

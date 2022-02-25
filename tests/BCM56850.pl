@@ -691,8 +691,21 @@ sub test_buffer_profile_get
     play "buffer_profile_get_B.rec";
 }
 
+sub test_lag_member
+{
+    fresh_start;
+
+    play "test_lag_member.rec";
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+}
+
 # RUN TESTS
 
+test_lag_member;
 test_buffer_profile_get;
 test_macsec_p2p_establishment;
 test_no_lag_label;
