@@ -14,7 +14,6 @@ AM_PATH_PYTHON
 AM_PATH_PYTHON3
 
 AM_CONDITIONAL(sonic_asic_platform_barefoot,   test x$CONFIGURED_PLATFORM = xbarefoot)
-AM_CONDITIONAL(sonic_asic_platform_mellanox,   test x$CONFIGURED_PLATFORM = xmellanox)
 
 AC_ARG_ENABLE(debug,
 [  --enable-debug          turn on debugging],
