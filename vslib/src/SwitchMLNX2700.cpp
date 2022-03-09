@@ -424,3 +424,22 @@ sai_status_t SwitchMLNX2700::warm_update_queues()
 
     return SAI_STATUS_SUCCESS;
 }
+
+sai_status_t SwitchMLNX2700::create_port_serdes()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("currently not used");
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchMLNX2700::create_port_serdes_per_port(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("currently not used");
+
+    return SAI_STATUS_SUCCESS;
+}
