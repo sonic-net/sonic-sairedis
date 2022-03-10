@@ -92,6 +92,26 @@ else
 	AM_CONDITIONAL(ARCH64, test `getconf LONG_BIT` = "64")
 fi
 
+AC_ARG_ENABLE(asan,
+[  --enable-asan      Compile with address sanitizer],
+[case "${enableval}" in
+	yes) asan_enabled=true ;;
+	no)  asan_enabled=false ;;
+	*) AC_MSG_ERROR(bad value ${enableval} for --enable-asan) ;;
+esac],[asan_enabled=false])
+
+if test "x$asan_enabled" = "xtrue"; then
+    CFLAGS_ASAN+=" -fsanitize=address"
+    CFLAGS_ASAN+=" -DASAN_ENABLED"
+    CFLAGS_ASAN+=" -ggdb -fno-omit-frame-pointer -U_FORTIFY_SOURCE"
+    AC_SUBST(CFLAGS_ASAN)
+
+    LDFLAGS_ASAN+=" -lasan"
+    AC_SUBST(LDFLAGS_ASAN)
+fi
+
+AM_CONDITIONAL(ASAN_ENABLED, test x$asan_enabled = xtrue)
+
 AC_PATH_PROGS(SWIG, [swig3.0 swig])
 
 CXXFLAGS_COMMON=""
