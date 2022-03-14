@@ -458,3 +458,22 @@ sai_status_t SwitchMLNX2700::queryTunnelPeerModeCapability(
     enum_values_capability->list[0] = SAI_TUNNEL_PEER_MODE_P2MP;
     return SAI_STATUS_SUCCESS;
 }
+
+sai_status_t SwitchMLNX2700::create_port_serdes()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("currently not used");
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchMLNX2700::create_port_serdes_per_port(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("currently not used");
+
+    return SAI_STATUS_SUCCESS;
+}

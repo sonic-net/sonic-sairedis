@@ -11,6 +11,7 @@
 #include <regex>
 
 #include <net/if.h>
+#include <arpa/inet.h>
 #include <byteswap.h>
 
 using namespace saivs;
@@ -589,11 +590,12 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SC_ID, attrCount, attrList);
 
     // Find MACsec SC attributes
-    std::vector<sai_attribute_t> attrs(4);
+    std::vector<sai_attribute_t> attrs(5);
     attrs[0].id = SAI_MACSEC_SC_ATTR_FLOW_ID;
     attrs[1].id = SAI_MACSEC_SC_ATTR_MACSEC_SCI;
     attrs[2].id = SAI_MACSEC_SC_ATTR_ENCRYPTION_ENABLE;
     attrs[3].id = SAI_MACSEC_SC_ATTR_MACSEC_CIPHER_SUITE;
+    attrs[4].id = SAI_MACSEC_SC_ATTR_MACSEC_EXPLICIT_SCI_ENABLE;
 
     CHECK_STATUS(get(SAI_OBJECT_TYPE_MACSEC_SC, attr->value.oid, static_cast<uint32_t>(attrs.size()), attrs.data()));
 
@@ -609,6 +611,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     std::stringstream sciHexStr;
     macsecAttr.m_encryptionEnable = attrs[2].value.booldata;
     bool is_sak_128_bit = (attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_128 || attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_128);
+    macsecAttr.m_sendSci = attrs[4].value.booldata;
 
     sciHexStr << std::setw(MACSEC_SCI_LENGTH) << std::setfill('0');
 
@@ -679,7 +682,9 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     {
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_SSCI, attrCount, attrList);
 
-        macsecAttr.m_ssci = attr->value.u32;
+        // The Linux kernel directly uses ssci to XOR with the salt that is network order,
+        // So, this conversion is useful to convert SSCI from the host order to network order.
+        macsecAttr.m_ssci = htonl(attr->value.u32);
 
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SALT, attrCount, attrList);
 

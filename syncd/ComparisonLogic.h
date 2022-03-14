@@ -175,6 +175,10 @@ namespace syncd
                     _In_ std::shared_ptr<const SaiObj> tObj,
                     _Inout_ std::set<std::string>& processed);
 
+            void cretePreMatchForLagMembers(
+                    _In_ const AsicView& cur,
+                    _Inout_ AsicView& tmp,
+                    _Inout_ std::set<std::string>& processed);
 
             sai_object_id_t asic_translate_vid_to_rid(
                     _In_ const AsicView& current,
