@@ -76,6 +76,10 @@ syncd_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
 libSyncd_a_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
 endif
 
+if sonic_asic_platform_clounix
+syncd_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
+libSyncd_a_CPPFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
+endif
 libSyncdRequestShutdown_a_SOURCES = \
 								 RequestShutdown.cpp \
 								 RequestShutdownCommandLineOptions.cpp \
