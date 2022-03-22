@@ -1477,7 +1477,7 @@ bool ComparisonLogic::performObjectSetTransition(
 
                 if (m_switch->isDiscoveredRid(rid))
                 {
-                    SWSS_LOG_INFO("performing default on existing object VID %s: %s: %s, we need default dependency TREE, FIXME",
+                    SWSS_LOG_WARN("performing default on existing object VID %s: %s: %s, we need default dependency TREE, FIXME",
                             sai_serialize_object_id(vid).c_str(),
                             meta->attridname,
                             currentAttr->getStrAttrValue().c_str());
@@ -2456,7 +2456,7 @@ void ComparisonLogic::populateExistingObjects(
             }
         }
 
-        if (warmBootNewDiscoveredVids.size())
+        if (warmBootNewDiscoveredVids.find(vid) != warmBootNewDiscoveredVids.end())
         {
             // We have some new discovered VIDs after warm boot, we need to
             // create temporary objects from them, so comparison logic will not
@@ -2468,8 +2468,11 @@ void ComparisonLogic::populateExistingObjects(
 
             performColdCheck = false;
 
-            SWSS_LOG_NOTICE("creating and matching %zu new discovered WARM BOOT objects",
-                    warmBootNewDiscoveredVids.size());
+            sai_object_type_t ot = VidManager::objectTypeQuery(vid);
+
+            SWSS_LOG_NOTICE("creating temporary object for new discovered VID %s:%s",
+                    sai_serialize_object_type(ot).c_str(),
+                    sai_serialize_object_id(vid).c_str());
         }
 
         if (performColdCheck && coldBootDiscoveredVids.find(vid) == coldBootDiscoveredVids.end())

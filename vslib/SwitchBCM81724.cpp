@@ -96,7 +96,7 @@ sai_status_t SwitchBCM81724::create(
     // Bypass MACsec creating because the existing implementation of MACsec cannot be directly used by Gearbox
     if (is_macsec_type(object_type))
     {
-        SWSS_LOG_INFO("Bypass creating %s", sai_serialize_object_type(object_type));
+        SWSS_LOG_INFO("Bypass creating %s", sai_serialize_object_type(object_type).c_str());
 
         return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
     }
@@ -113,7 +113,7 @@ sai_status_t SwitchBCM81724::remove(
     // Bypass MACsec removing because the existing implementation of MACsec cannot be directly used by Gearbox
     if (is_macsec_type(object_type))
     {
-        SWSS_LOG_INFO("Bypass removing %s", sai_serialize_object_type(object_type));
+        SWSS_LOG_INFO("Bypass removing %s", sai_serialize_object_type(object_type).c_str());
 
         return remove_internal(object_type, serializedObjectId);
     }
@@ -132,7 +132,7 @@ sai_status_t SwitchBCM81724::set(
     if (is_macsec_type(objectType) ||
         (objectType == SAI_OBJECT_TYPE_ACL_ENTRY && attr && attr->id == SAI_ACL_ENTRY_ATTR_ACTION_MACSEC_FLOW))
     {
-        SWSS_LOG_INFO("Bypass setting %s", sai_serialize_object_type(objectType));
+        SWSS_LOG_INFO("Bypass setting %s", sai_serialize_object_type(objectType).c_str());
 
         return set_internal(objectType, serializedObjectId, attr);;
     }
