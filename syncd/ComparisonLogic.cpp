@@ -1477,7 +1477,7 @@ bool ComparisonLogic::performObjectSetTransition(
 
                 if (m_switch->isDiscoveredRid(rid))
                 {
-                    SWSS_LOG_WARN("performing default on existing object VID %s: %s: %s, we need default dependency TREE, FIXME",
+                    SWSS_LOG_INFO("performing default on existing object VID %s: %s: %s, we need default dependency TREE, FIXME",
                             sai_serialize_object_id(vid).c_str(),
                             meta->attridname,
                             currentAttr->getStrAttrValue().c_str());
@@ -2093,7 +2093,8 @@ void ComparisonLogic::removeCurrentObjectDependencyTree(
                     continue;
                 }
 
-                if (revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+                if (revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID &&
+                        revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID)
                 {
                     // currently we only support reference on OID, not list
                     SWSS_LOG_THROW("attr value type %d, not supported yet, FIXME",
