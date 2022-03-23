@@ -238,7 +238,7 @@ sai_status_t SwitchBCM56971B0::create_scheduler_group_tree(
         uint32_t list_count = 10;
         std::vector<sai_object_id_t> list;
 
-        for (int i = 1; i < 0xa; i++)
+        for (int i = 1; i <= 0xa; i++)
         {
             list.push_back(sgs.at(i));
         }
