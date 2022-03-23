@@ -42,6 +42,7 @@ libSaiVS_a_SOURCES = \
 					  SelectableFd.cpp \
 					  Signal.cpp \
 					  SwitchBCM56850.cpp \
+					  SwitchBCM56971B0.cpp \
 					  SwitchBCM81724.cpp \
 					  SwitchConfigContainer.cpp \
 					  SwitchConfig.cpp \
