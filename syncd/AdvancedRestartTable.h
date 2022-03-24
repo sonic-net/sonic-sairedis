@@ -9,14 +9,14 @@
 
 namespace syncd
 {
-    class WarmRestartTable
+    class AdvancedRestartTable
     {
         public:
 
-            WarmRestartTable(
+            AdvancedRestartTable(
                     _In_ const std::string& dbName);
 
-            virtual ~WarmRestartTable();
+            virtual ~AdvancedRestartTable();
 
         public:
 
@@ -25,7 +25,7 @@ namespace syncd
             void setPreShutdown(
                     _In_ bool succeeded);
 
-            void setWarmShutdown(
+            void setAdvancedShutdown(
                     _In_ bool succeeded);
 
         private:

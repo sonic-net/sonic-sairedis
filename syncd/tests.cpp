@@ -663,7 +663,7 @@ void syncdThread()
 
     auto vendorSai = std::make_shared<VendorSai>();
 
-    bool isWarmStart = false;
+    bool isAdvancedStart = false;
 
     auto commandLineOptions = std::make_shared<CommandLineOptions>();
 
@@ -672,7 +672,7 @@ void syncdThread()
     commandLineOptions->m_disableExitSleep = true;
     commandLineOptions->m_profileMapFile = "testprofile.ini";
 
-    auto syncd = std::make_shared<Syncd>(vendorSai, commandLineOptions, isWarmStart);
+    auto syncd = std::make_shared<Syncd>(vendorSai, commandLineOptions, isAdvancedStart);
 
     SWSS_LOG_WARN("starting run");
     syncd->run();

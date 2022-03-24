@@ -5,7 +5,7 @@
 #include "MetadataLogger.h"
 #include "PortMapParser.h"
 
-#include "swss/warm_restart.h"
+#include "swss/advanced_restart.h"
 
 #ifdef SAITHRIFT
 #include <utility>
@@ -36,11 +36,11 @@ int syncd_main(int argc, char **argv)
 
     swss::Logger::linkToDbNative("syncd");
 
-    swss::WarmStart::initialize("syncd", "syncd");
+    swss::AdvancedStart::initialize("syncd", "syncd");
 
-    swss::WarmStart::checkWarmStart("syncd", "syncd");
+    swss::AdvancedStart::checkAdvancedStart("syncd", "syncd");
 
-    bool isWarmStart = swss::WarmStart::isWarmStart();
+    bool isAdvancedStart = swss::AdvancedStart::isAdvancedStart();
 
     MetadataLogger::initialize();
 
@@ -66,7 +66,7 @@ int syncd_main(int argc, char **argv)
 
     auto vendorSai = std::make_shared<VendorSai>();
 
-    auto syncd = std::make_shared<Syncd>(vendorSai, commandLineOptions, isWarmStart);
+    auto syncd = std::make_shared<Syncd>(vendorSai, commandLineOptions, isAdvancedStart);
 
     syncd->run();
 

@@ -41,7 +41,7 @@ namespace syncd
             Syncd(
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
                     _In_ std::shared_ptr<CommandLineOptions> cmd,
-                    _In_ bool isWarmStart);
+                    _In_ bool isAdvancedStart);
 
             virtual ~Syncd();
 
@@ -57,7 +57,7 @@ namespace syncd
             bool isVeryFirstRun();
 
             void onSyncdStart(
-                    _In_ bool warmStart);
+                    _In_ bool advancedStart);
 
             void run();
 
@@ -375,7 +375,7 @@ namespace syncd
 
             std::shared_ptr<CommandLineOptions> m_commandLineOptions;
 
-            bool m_isWarmStart;
+            bool m_isAdvancedStart;
 
             bool m_firstInitWasPerformed;
 

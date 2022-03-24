@@ -6,7 +6,7 @@
 #include "HardReiniter.h"
 #include "RedisClient.h"
 #include "RequestShutdown.h"
-#include "WarmRestartTable.h"
+#include "AdvancedRestartTable.h"
 #include "ContextConfigContainer.h"
 #include "BreakConfigParser.h"
 #include "RedisNotificationProducer.h"
@@ -43,9 +43,9 @@ using namespace std::placeholders;
 Syncd::Syncd(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ std::shared_ptr<CommandLineOptions> cmd,
-        _In_ bool isWarmStart):
+        _In_ bool isAdvancedStart):
     m_commandLineOptions(cmd),
-    m_isWarmStart(isWarmStart),
+    m_isAdvancedStart(isAdvancedStart),
     m_firstInitWasPerformed(false),
     m_asicInitViewMode(false), // by default we are in APPLY view mode
     m_vendorSai(vendorSai),
@@ -203,9 +203,10 @@ void Syncd::performStartupLogic()
 {
     SWSS_LOG_ENTER();
 
-    // ignore warm logic here if syncd starts in Mellanox fastfast boot mode
+    // ignore warm logic here if syncd starts in fastboot or in Mellanox fastfast boot mode
 
-    if (m_isWarmStart && (m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT))
+    if (m_isAdvancedStart && (m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT) &&
+            (m_commandLineOptions->m_startType != SAI_START_TYPE_FAST_BOOT))
     {
         SWSS_LOG_WARN("override command line startType=%s via SAI_START_TYPE_WARM_BOOT",
                 CommandLineOptions::startTypeToString(m_commandLineOptions->m_startType).c_str());
@@ -3744,7 +3745,7 @@ void Syncd::updateRedisDatabase(
 // data that corresponds to each particular switch and access correct db index.
 
 void Syncd::onSyncdStart(
-        _In_ bool warmStart)
+        _In_ bool advancedStart)
 {
     SWSS_LOG_ENTER();
 
@@ -3760,7 +3761,7 @@ void Syncd::onSyncdStart(
 
     SWSS_LOG_TIMER("on syncd start");
 
-    if (warmStart)
+    if (advancedStart)
     {
         /*
          * Switch was warm started, so switches map is empty, we need to
@@ -4476,7 +4477,7 @@ void Syncd::run()
 {
     SWSS_LOG_ENTER();
 
-    WarmRestartTable warmRestartTable("STATE_DB"); // TODO from config
+    AdvancedRestartTable advancedRestartTable("STATE_DB"); // TODO from config
 
     syncd_restart_type_t shutdownType = SYNCD_RESTART_TYPE_COLD;
 
@@ -4575,7 +4576,7 @@ void Syncd::run()
 
                     shutdownType = SYNCD_RESTART_TYPE_COLD;
 
-                    warmRestartTable.setFlagFailed();
+                    advancedRestartTable.setFlagFailed();
                     continue;
                 }
 
@@ -4583,7 +4584,7 @@ void Syncd::run()
 
                 if (status == SAI_STATUS_SUCCESS)
                 {
-                    warmRestartTable.setPreShutdown(true);
+                    advancedRestartTable.setPreShutdown(true);
 
                     s = std::make_shared<swss::Select>(); // make sure previous select is destroyed
 
@@ -4596,7 +4597,7 @@ void Syncd::run()
                     SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_PRE_SHUTDOWN=true: %s",
                             sai_serialize_status(status).c_str());
 
-                    warmRestartTable.setPreShutdown(false);
+                    advancedRestartTable.setPreShutdown(false);
 
                     // Restore cold shutdown.
 
@@ -4651,7 +4652,7 @@ void Syncd::run()
             SWSS_LOG_WARN("user requested warm shutdown but warmBootWriteFile is not specified, forcing cold shutdown");
 
             shutdownType = SYNCD_RESTART_TYPE_COLD;
-            warmRestartTable.setWarmShutdown(false);
+            advancedRestartTable.setAdvancedShutdown(false);
         }
         else
         {
@@ -4666,7 +4667,7 @@ void Syncd::run()
 
                 shutdownType = SYNCD_RESTART_TYPE_COLD;
 
-                warmRestartTable.setFlagFailed();
+                advancedRestartTable.setFlagFailed();
             }
         }
     }
@@ -4685,7 +4686,7 @@ void Syncd::run()
 
     if (shutdownType == SYNCD_RESTART_TYPE_WARM)
     {
-        warmRestartTable.setWarmShutdown(status == SAI_STATUS_SUCCESS);
+        advancedRestartTable.setAdvancedShutdown(status == SAI_STATUS_SUCCESS);
     }
 
     SWSS_LOG_NOTICE("calling api uninitialize");

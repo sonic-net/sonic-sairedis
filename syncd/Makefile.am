@@ -46,7 +46,7 @@ libSyncd_a_SOURCES = \
 				VidManager.cpp \
 				VidManager.cpp \
 				VirtualOidTranslator.cpp \
-				WarmRestartTable.cpp \
+				AdvancedRestartTable.cpp \
 				WatchdogScope.cpp \
 				Workaround.cpp \
 				ZeroMQNotificationProducer.cpp \
