@@ -5,7 +5,7 @@ VS_GENERIC_QUAD(TUNNEL,tunnel);
 VS_GENERIC_QUAD(TUNNEL_TERM_TABLE_ENTRY,tunnel_term_table_entry);
 VS_GENERIC_QUAD(TUNNEL_MAP_ENTRY,tunnel_map_entry);
 VS_GENERIC_STATS(TUNNEL,tunnel);
-VS_BULK_GET_SET(TUNNEL,tunnels)
+VS_BULK_GET_SET(TUNNEL,tunnels);
 
 const sai_tunnel_api_t vs_tunnel_api = {
 
