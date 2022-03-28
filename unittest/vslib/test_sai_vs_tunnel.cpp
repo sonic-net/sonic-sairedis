@@ -39,7 +39,4 @@ TEST(libsaivs, tunnel)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_tunnel_map_entry(0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tunnel_map_entry_attribute(0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tunnel_map_entry_attribute(0,0,0));
-
-    EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tunnels_attribute(0,0,0,0,(sai_bulk_op_error_mode_t)0,0));
-    EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tunnels_attribute(0,0,0,(sai_bulk_op_error_mode_t)0,0));
 }
