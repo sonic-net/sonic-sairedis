@@ -415,3 +415,15 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>   redis_sai;
     redis_bulk_remove_ ## ot,       \
     redis_bulk_set_ ## ot,          \
     redis_bulk_get_ ## ot,
+
+// BULK get/set DECLARE
+
+#define REDIS_BULK_GET_SET(OT,ot)   \
+    REDIS_BULK_GET(OT,ot);          \
+    REDIS_BULK_SET(OT,ot);
+
+// BULK get/set API
+
+#define REDIS_BULK_GET_SET_API(ot)     \
+    redis_bulk_get_ ## ot,             \
+    redis_bulk_set_ ## ot,
