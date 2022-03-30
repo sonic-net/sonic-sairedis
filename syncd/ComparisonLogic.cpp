@@ -2875,6 +2875,46 @@ void ComparisonLogic::createPreMatchMap(
         createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
     }
 
+    for (auto&pk: tmp.m_neighborsByIp)
+    {
+        auto& ip = pk.first;
+
+        // look only for unique neighbors
+
+        if (pk.second.size() != 1)
+            continue;
+
+        auto it = cur.m_neighborsByIp.find(ip);
+
+        if (it == cur.m_neighborsByIp.end())
+            continue;
+
+        if (it->second.size() != 1)
+            continue;
+
+        auto& tObj = tmp.m_soAll.at(pk.second.at(0));
+        auto& cObj = cur.m_soAll.at(it->second.at(0));
+
+        createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
+
+        sai_object_id_t tRifVid = tObj->m_meta_key.objectkey.key.neighbor_entry.rif_id;
+        sai_object_id_t cRifVid = cObj->m_meta_key.objectkey.key.neighbor_entry.rif_id;
+
+        if (processed.find(cObj->m_str_object_id) == processed.end())
+        {
+            SWSS_LOG_INFO("pre match Neighbor RIF: cur: %s, tmp: %s",
+                    sai_serialize_object_id(cRifVid).c_str(),
+                    sai_serialize_object_id(tRifVid).c_str());
+
+            tmp.m_preMatchMap[tRifVid] = cRifVid;
+
+            auto& cO = cur.m_oOids.at(cRifVid);
+            auto& tO = tmp.m_oOids.at(tRifVid);
+
+            createPreMatchMapForObject(cur, tmp, cO, tO, processed);
+        }
+    }
+
     cretePreMatchForLagMembers(cur, tmp, processed);
 
     size_t count = 0;

@@ -765,8 +765,22 @@ sub test_lag_member
     play "test_lag_member.rec", 1;
 }
 
+sub test_neighbor_lag
+{
+    fresh_start;
+
+    play "test_neighbor_lag.rec";
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+}
+
 # RUN TESTS
 
+test_neighbor_lag;
 test_lag_member;
 test_remove_port_serdes;
 test_brcm_warm_new_object_port_serdes;
