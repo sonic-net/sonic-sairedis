@@ -50,6 +50,8 @@ namespace syncd
 
             bool isDiscarded();
 
+            bool isPortPhyCounter(sai_port_stat_t portCounterId);
+            bool isGearboxEnabled();
         private:
 
             void setPollInterval(

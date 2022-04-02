@@ -1460,18 +1460,31 @@ void FlexCounter::collectPortCounters(
 
         // Push all counter values to a single vector
         std::vector<swss::FieldValueTuple> values;
+        std::vector<swss::FieldValueTuple> phyvalues;
 
         for (size_t i = 0; i != portCounterIds.size(); i++)
         {
             const std::string &counterName = sai_serialize_port_stat(portCounterIds[i]);
 
-            values.emplace_back(counterName, std::to_string(portStats[i]));
+            if (isGearboxEnabled() and isPortPhyCounter(portCounterIds[i]))
+            {
+                phyvalues.emplace_back(counterName, std::to_string(portStats[i]));
+            }
+            else
+            {
+                values.emplace_back(counterName, std::to_string(portStats[i]));
+            }
         }
 
         // Write counters to DB
         std::string portVidStr = sai_serialize_object_id(portVid);
 
         countersTable.set(portVidStr, values, "");
+        if (isGearboxEnabled() and phyvalues.size() > 0)
+        {
+            countersTable.set("PHY" + countersTable.getTableNameSeparator() + portVidStr,
+                    phyvalues, "");
+        }
     }
 }
 
@@ -3432,4 +3445,26 @@ void FlexCounter::notifyPoll()
     std::unique_lock<std::mutex> lk(m_mtxSleep);
     m_readyToPoll = true;
     m_pollCond.notify_all();
+}
+
+bool FlexCounter::isGearboxEnabled()
+{
+    SWSS_LOG_ENTER();
+
+    return access("/usr/share/sonic/hwsku/gearbox_config.json", F_OK) != -1;
+}
+
+bool FlexCounter::isPortPhyCounter(sai_port_stat_t portCounterId)
+{
+    return portCounterId == SAI_PORT_STAT_IF_IN_ERRORS ||
+        portCounterId == SAI_PORT_STAT_IF_OUT_ERRORS ||
+        portCounterId == SAI_PORT_STAT_IF_IN_DISCARDS ||
+        portCounterId == SAI_PORT_STAT_IF_OUT_DISCARDS ||
+        portCounterId == SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS ||
+        portCounterId == SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS ||
+        portCounterId == SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS ||
+        portCounterId == SAI_PORT_STAT_ETHER_STATS_JABBERS ||
+        portCounterId == SAI_PORT_STAT_ETHER_STATS_FRAGMENTS ||
+        portCounterId == SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES ||
+        portCounterId == SAI_PORT_STAT_IF_IN_FEC_SYMBOL_ERRORS;
 }
