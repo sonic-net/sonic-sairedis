@@ -68,6 +68,9 @@ namespace syncd
             void addPortCounterPlugin(
                     _In_ const std::string& sha);
 
+            void addMacsecSACounterPlugin(
+                    _In_ const std::string& sha);
+
             void addRifCounterPlugin(
                     _In_ const std::string& sha);
 
@@ -539,6 +542,7 @@ namespace syncd
 
             std::set<std::string> m_queuePlugins;
             std::set<std::string> m_portPlugins;
+            std::set<std::string> m_macsecSAPlugins;
             std::set<std::string> m_rifPlugins;
             std::set<std::string> m_priorityGroupPlugins;
             std::set<std::string> m_bufferPoolPlugins;

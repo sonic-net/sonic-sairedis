@@ -1111,6 +1111,7 @@ void FlexCounter::checkPluginRegistered(
 
     if (
             m_portPlugins.find(sha) != m_portPlugins.end() ||
+            m_macsecSAPlugins.find(sha) != m_macsecSAPlugins.end() ||
             m_rifPlugins.find(sha) != m_rifPlugins.end() ||
             m_queuePlugins.find(sha) != m_queuePlugins.end() ||
             m_priorityGroupPlugins.find(sha) != m_priorityGroupPlugins.end() ||
@@ -1133,6 +1134,18 @@ void FlexCounter::addPortCounterPlugin(
     m_portPlugins.insert(sha);
 
     SWSS_LOG_NOTICE("Port counters plugin %s registered", sha.c_str());
+}
+
+void FlexCounter::addMacsecSACounterPlugin(
+        _In_ const std::string& sha)
+{
+    SWSS_LOG_ENTER();
+
+    checkPluginRegistered(sha);
+
+    m_macsecSAPlugins.insert(sha);
+
+    SWSS_LOG_NOTICE("macsecSA counters plugin %s registered", sha.c_str());
 }
 
 void FlexCounter::addRifCounterPlugin(
@@ -1215,6 +1228,7 @@ void FlexCounter::removeCounterPlugins()
 
     m_queuePlugins.clear();
     m_portPlugins.clear();
+    m_macsecSAPlugins.clear();
     m_rifPlugins.clear();
     m_priorityGroupPlugins.clear();
     m_bufferPoolPlugins.clear();
@@ -1271,6 +1285,13 @@ void FlexCounter::addCounterPlugin(
             for (auto& sha: shaStrings)
             {
                 addPortCounterPlugin(sha);
+            }
+        }
+        else if (field == MACSEC_SA_PLUGIN_FIELD)
+        {
+            for (auto& sha: shaStrings)
+            {
+                addMacsecSACounterPlugin(sha);
             }
         }
         else if (field == RIF_PLUGIN_FIELD)
@@ -1355,6 +1376,7 @@ bool FlexCounter::allPluginsEmpty() const
     return m_priorityGroupPlugins.empty() &&
            m_queuePlugins.empty() &&
            m_portPlugins.empty() &&
+           m_macsecSAPlugins.empty() &&
            m_rifPlugins.empty() &&
            m_bufferPoolPlugins.empty() &&
            m_tunnelPlugins.empty() &&
@@ -2281,6 +2303,17 @@ void FlexCounter::runPlugins(
     for (const auto& sha : m_portPlugins)
     {
         runRedisScript(counters_db, sha, portList, argv);
+    }
+
+    std::vector<std::string> macsecSAList;
+    macsecSAList.reserve(m_macsecSACounterIdsMap.size());
+    for (const auto& kv : m_macsecSACounterIdsMap)
+    {
+        macsecSAList.push_back(sai_serialize_object_id(kv.first));
+    }
+    for (const auto& sha : m_macsecSAPlugins)
+    {
+        runRedisScript(counters_db, sha, macsecSAList, argv);
     }
 
     std::vector<std::string> rifList;
