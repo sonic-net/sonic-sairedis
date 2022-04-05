@@ -283,17 +283,34 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForAclCounter(
             if (tmpAclEntryActionCounterAttr->getOid() != temporaryObj->getVid())
                 continue; // not the counter we are looking for
 
+            // try use priority attribute first since it should be unique
+            // TODO we should use HASH from all non OID attribute here to have
+            // better chance for finding best candidate, this could be also
+            // used in pre match logic
+
+            std::vector<std::shared_ptr<const SaiAttr>> values;
+
+            if (tmpAclEntry->hasAttr(SAI_ACL_ENTRY_ATTR_PRIORITY))
+            {
+                values.push_back(tmpAclEntry->getSaiAttr(SAI_ACL_ENTRY_ATTR_PRIORITY));
+            }
+
             for (auto&attr: tmpAclEntry->getAllAttributes())
             {
-                auto*meta = attr.second->getAttrMetadata();
+                values.push_back(attr.second);
+            }
 
-                if (!meta->isaclfield)
+            for (auto&attr: values)
+            {
+                auto*meta = attr->getAttrMetadata();
+
+                if (!meta->isaclfield && meta->attrid != SAI_ACL_ENTRY_ATTR_PRIORITY)
                     continue; // looking only for acl fields
 
                 if (meta->isoidattribute)
                     continue; // only non oid fields
 
-                auto tmpValue = attr.second->getStrAttrValue();
+                auto tmpValue = attr->getStrAttrValue();
 
                 const auto curAclEntries = m_currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_ENTRY);
 
@@ -1694,6 +1711,8 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
     for (const auto &currentObj: notProcessedObjects)
     {
+        SWSS_LOG_INFO("* examing current obj: %s", currentObj->m_str_object_id.c_str());
+
         sai_object_compare_info_t soci = { 0, currentObj };
 
         bool has_different_create_only_attr = false;
@@ -1861,6 +1880,10 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
             continue;
         }
+
+        SWSS_LOG_INFO("* current obj: %s has equal %lu attributes",
+                currentObj->m_str_object_id.c_str(),
+                soci.equal_attributes);
 
         candidateObjects.push_back(soci);
     }
