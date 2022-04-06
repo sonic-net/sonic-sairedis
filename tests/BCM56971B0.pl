@@ -15,6 +15,19 @@ sub test_brcm_acl_limit
     play "acl_limit.rec";
 }
 
+sub test_brcm_acl_prio
+{
+    fresh_start("-b", "$utils::DIR/break.ini", "-p", "$utils::DIR/vsprofile.ini");
+
+    play "acl_prio.rec";
+    play "acl_prio.rec", 0;
+    play "acl_prio.rec", 0;
+    play "acl_prio.rec", 0;
+    play "acl_prio.rec", 0;
+    play "acl_prio.rec", 0;
+}
+
+test_brcm_acl_prio;
 test_brcm_acl_limit;
 
 kill_syncd;
