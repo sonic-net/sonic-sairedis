@@ -353,6 +353,8 @@ SCs
 sdk
 SDK
 selectable
+serdes
+SERDES
 setBuffered
 setMinPrio
 setPortCounterList
@@ -368,6 +370,8 @@ splitted
 src
 SRC
 ss
+ssci
+SSCI
 stateful
 stdint
 stdlib

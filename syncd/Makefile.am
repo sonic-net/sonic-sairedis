@@ -56,11 +56,14 @@ libSyncd_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libSyncd_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 
 syncd_SOURCES = main.cpp
+if ASAN_ENABLED
+syncd_SOURCES += Asan.cpp
+endif
 syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS) $(CFLAGS_ASAN)
 syncd_LDADD = libSyncd.a $(top_srcdir)/lib/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
 			  -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS)
-syncd_LDFLAGS = -rdynamic
+syncd_LDFLAGS = $(LDFLAGS_ASAN) -rdynamic
 
 if SAITHRIFT
 libSyncd_a_CXXFLAGS += -DSAITHRIFT=yes

@@ -3,6 +3,7 @@
 #include "syncd/SaiSwitchInterface.h"
 
 #include <map>
+#include <string>
 
 namespace saiasiccmp
 {

@@ -67,9 +67,14 @@ binary-syncd-vs:
 #	dh_auto_configure -- \
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
+configure_opts =
+ifeq ($(ENABLE_ASAN), y)
+	configure_opts += --enable-asan
+endif
+
 override_dh_auto_configure:
 	./autogen.sh
-	dh_auto_configure -- $(DEB_CONFIGURE_EXTRA_FLAGS) $(shell cat /tmp/syncd-build) ${SWSS_COMMON_CONFIG}
+	dh_auto_configure -- $(DEB_CONFIGURE_EXTRA_FLAGS) $(shell cat /tmp/syncd-build) ${SWSS_COMMON_CONFIG} $(configure_opts)
 
 override_dh_install:
 	dh_install

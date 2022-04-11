@@ -39,4 +39,11 @@ TEST(libsaivs, tunnel)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_tunnel_map_entry(0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tunnel_map_entry_attribute(0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tunnel_map_entry_attribute(0,0,0));
+
+    uint32_t attr_count = 0;
+    sai_status_t status = 0;
+    sai_attribute_t *p_attr = nullptr;
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tunnels_attribute(0,&id,&attr_count,&p_attr,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,&status));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tunnels_attribute(0,&id,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,&status));
 }
+
