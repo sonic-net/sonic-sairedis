@@ -13,9 +13,14 @@ extern "C" {
 #include <condition_variable>
 #include <unordered_map>
 #include <memory>
+#include <utility>
 
 namespace syncd
 {
+    typedef std::pair<sai_object_id_t, sai_object_id_t> gearboxPortPair;
+#define vidSystemSide std::get<0>
+#define vidLineSide   std::get<1>
+
     class FlexCounter
     {
         private:
@@ -50,8 +55,9 @@ namespace syncd
 
             bool isDiscarded();
 
-            bool isPortPhyCounter(sai_port_stat_t portCounterId);
+            bool isOnGearbox();
             bool isGearboxEnabled();
+            bool isPortPhyCounter(sai_port_stat_t portCounterId);
         private:
 
             void setPollInterval(
@@ -577,6 +583,16 @@ namespace syncd
             std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> m_priorityGroupAttrIdsMap;
             std::map<sai_object_id_t, std::shared_ptr<MACsecSAAttrIds>> m_macsecSAAttrIdsMap;
             std::map<sai_object_id_t, std::shared_ptr<AclCounterAttrIds>> m_aclCounterAttrIdsMap;
+
+        private: // map of port name -> gearbox port pair
+            std::map<std::string, std::shared_ptr<gearboxPortPair>> m_gearboxPortPairMap;
+
+            void mapGearboxPort(
+                    _In_ const std::string &name,
+                    _In_ sai_object_id_t vid);
+
+            void unmapGearboxPort(
+                    _In_ sai_object_id_t vid);
 
         private:
 

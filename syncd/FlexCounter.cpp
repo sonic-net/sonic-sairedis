@@ -781,6 +781,8 @@ void FlexCounter::removePort(
     {
         removeCollectCountersHandler(PORT_COUNTER_ID_LIST);
     }
+
+    unmapGearboxPort(portVid);
 }
 
 void FlexCounter::removePortDebugCounters(
@@ -2293,11 +2295,23 @@ void FlexCounter::runPlugins(
 
     std::vector<std::string> portList;
 
-    portList.reserve(m_portCounterIdsMap.size());
-
-    for (const auto& kv : m_portCounterIdsMap)
+    if (isOnGearbox())
     {
-        portList.push_back(sai_serialize_object_id(kv.first));
+        portList.reserve(m_gearboxPortPairMap.size() * 3);
+        for (const auto& kv : m_gearboxPortPairMap)
+        {
+            portList.push_back(kv.first); // port name
+            portList.push_back(sai_serialize_object_id(vidSystemSide(*(kv.second))));
+            portList.push_back(sai_serialize_object_id(vidLineSide(*(kv.second))));
+        }
+    }
+    else
+    {
+        portList.reserve(m_portCounterIdsMap.size());
+        for (const auto& kv : m_portCounterIdsMap)
+        {
+            portList.push_back(sai_serialize_object_id(kv.first));
+        }
     }
 
     for (const auto& sha : m_portPlugins)
@@ -3243,6 +3257,15 @@ void FlexCounter::addCounter(
         const auto field = fvField(valuePair);
         const auto value = fvValue(valuePair);
 
+        if (field == "NAME") // object name
+        {
+            if (objectType == SAI_OBJECT_TYPE_PORT)
+            {
+                mapGearboxPort(value, vid);
+            }
+            continue;
+        }
+
         auto idStrings = swss::tokenize(value, ',');
 
         if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_COUNTER_ID_LIST)
@@ -3480,6 +3503,11 @@ void FlexCounter::notifyPoll()
     m_pollCond.notify_all();
 }
 
+bool FlexCounter::isOnGearbox()
+{
+    return m_dbCounters == "GB_COUNTERS_DB";
+}
+
 bool FlexCounter::isGearboxEnabled()
 {
     SWSS_LOG_ENTER();
@@ -3500,4 +3528,86 @@ bool FlexCounter::isPortPhyCounter(sai_port_stat_t portCounterId)
         portCounterId == SAI_PORT_STAT_ETHER_STATS_FRAGMENTS ||
         portCounterId == SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES ||
         portCounterId == SAI_PORT_STAT_IF_IN_FEC_SYMBOL_ERRORS;
+}
+
+void FlexCounter::mapGearboxPort(
+        _In_ const std::string &name,
+        _In_ sai_object_id_t vid)
+{
+    if (!isOnGearbox())
+    {
+        return;
+    }
+
+    auto index = name.rfind("_system");
+    if (index != std::string::npos)
+    {
+        auto portName = name.substr(0, index);
+        auto it = m_gearboxPortPairMap.find(portName);
+        if (it != m_gearboxPortPairMap.end())
+        {
+            it->second->first = vid;
+        }
+        else {
+            auto portPair = std::make_shared<gearboxPortPair>(vid, SAI_NULL_OBJECT_ID);
+            m_gearboxPortPairMap.emplace(portName, portPair);
+        }
+
+    }
+    else if ((index = name.rfind("_line")) != std::string::npos)
+    {
+        auto portName = name.substr(0, index);
+        auto it = m_gearboxPortPairMap.find(portName);
+        if (it != m_gearboxPortPairMap.end())
+        {
+            it->second->second = vid;
+        }
+        else {
+            auto portPair = std::make_shared<gearboxPortPair>(SAI_NULL_OBJECT_ID, vid);
+            m_gearboxPortPairMap.emplace(portName, portPair);
+        }
+
+    }
+    else
+    {
+        SWSS_LOG_ERROR("Port vid %s: name %s invalid",
+                sai_serialize_object_id(vid).c_str(),
+                name.c_str());
+    }
+}
+
+void FlexCounter::unmapGearboxPort(
+        _In_ sai_object_id_t vid)
+{
+    if (!isOnGearbox())
+    {
+        return;
+    }
+
+    auto it = m_gearboxPortPairMap.begin();
+    while (it != m_gearboxPortPairMap.end())
+    {
+        if (vid == it->second->first)
+        {
+            it->second->first = SAI_NULL_OBJECT_ID;
+            break;
+        }
+        else if (vid == it->second->second)
+        {
+            it->second->second = SAI_NULL_OBJECT_ID;
+            break;
+        }
+
+        it++;
+    }
+
+    if (it != m_gearboxPortPairMap.end())
+    {
+        if (it->second->first == it->second->second)
+        {
+            SWSS_LOG_INFO("Port %s: gearboxPortPair map is removed",
+                    it->first.c_str());
+            m_gearboxPortPairMap.erase(it);
+        }
+    }
 }
