@@ -3505,6 +3505,8 @@ void FlexCounter::notifyPoll()
 
 bool FlexCounter::isOnGearbox()
 {
+    SWSS_LOG_ENTER();
+
     return m_dbCounters == "GB_COUNTERS_DB";
 }
 
@@ -3517,6 +3519,8 @@ bool FlexCounter::isGearboxEnabled()
 
 bool FlexCounter::isPortPhyCounter(sai_port_stat_t portCounterId)
 {
+    SWSS_LOG_ENTER();
+
     return portCounterId == SAI_PORT_STAT_IF_IN_ERRORS ||
         portCounterId == SAI_PORT_STAT_IF_OUT_ERRORS ||
         portCounterId == SAI_PORT_STAT_IF_IN_DISCARDS ||
@@ -3534,6 +3538,8 @@ void FlexCounter::mapGearboxPort(
         _In_ const std::string &name,
         _In_ sai_object_id_t vid)
 {
+    SWSS_LOG_ENTER();
+
     if (!isOnGearbox())
     {
         return;
@@ -3579,6 +3585,8 @@ void FlexCounter::mapGearboxPort(
 void FlexCounter::unmapGearboxPort(
         _In_ sai_object_id_t vid)
 {
+    SWSS_LOG_ENTER();
+
     if (!isOnGearbox())
     {
         return;
