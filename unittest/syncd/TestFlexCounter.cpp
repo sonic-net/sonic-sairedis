@@ -186,3 +186,96 @@ TEST(FlexCounter, addRemoveCounterForMACsecSA)
 
 }
 
+TEST(FlexCounter, addRemoveCounterPluginForMACsecSA)
+{
+    std::shared_ptr<MockableSaiInterface> sai(new MockableSaiInterface());
+    FlexCounter fc("test", sai, "COUNTERS_DB");
+
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(MACSEC_SA_PLUGIN_FIELD, "dummy_sha_strings");
+    fc.addCounterPlugin(values);
+    EXPECT_EQ(fc.isEmpty(), false);
+
+    fc.removeCounterPlugins();
+    EXPECT_EQ(fc.isEmpty(), true);
+}
+
+TEST(FlexCounter, addRemoveCounterForGearboxPort)
+{
+    // Mock gearbox config file
+    int r = system("sudo mkdir -p /usr/share/sonic/hwsku && sudo touch /usr/share/sonic/hwsku/gearbox_config.json");
+    ASSERT_TRUE(r == 0);
+
+    std::shared_ptr<MockableSaiInterface> sai(new MockableSaiInterface());
+    FlexCounter fc("test", sai, "GB_COUNTERS_DB");
+
+    sai_object_id_t counterVid{100};
+    sai_object_id_t counterRid{100};
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_ERRORS");
+    values.emplace_back("NAME", "Ethernet0_system");
+
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *capability) {
+        if (capability->count < 2)
+        {
+            capability->count = 2;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        //sai_port_stat_t counter = static_cast<sai_port_stat_t>(statCapability.stat_enum);
+        capability->list[0].stat_enum = SAI_PORT_STAT_IF_IN_OCTETS;
+        capability->list[1].stat_enum = SAI_PORT_STAT_IF_IN_ERRORS;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+        for (uint32_t i = 0; i < number_of_counters; i++)
+        {
+            counters[i] = (i + 1) * 100;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    fc.addCounter(counterVid, counterRid, values);
+    EXPECT_EQ(fc.isEmpty(), false);
+
+    counterVid = 101;
+    counterRid = 101;
+    values.pop_back();
+    values.emplace_back("NAME", "Ethernet0_line");
+    fc.addCounter(counterVid, counterRid, values);
+
+    values.clear();
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    fc.addCounterPlugin(values);
+
+    usleep(1000*1000);
+    swss::DBConnector db("GB_COUNTERS_DB", 0);
+    swss::RedisPipeline pipeline(&db);
+    swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
+
+    std::vector<std::string> keys;
+    countersTable.getKeys(keys);
+    EXPECT_EQ(keys.size(), size_t(4));
+
+    std::string value;
+    countersTable.hget("oid:0x64", "SAI_PORT_STAT_IF_IN_OCTETS", value);
+    EXPECT_EQ(value, "100");
+    countersTable.hget("PHY:oid:0x64", "SAI_PORT_STAT_IF_IN_ERRORS", value);
+    EXPECT_EQ(value, "200");
+
+    countersTable.hget("oid:0x65", "SAI_PORT_STAT_IF_IN_OCTETS", value);
+    EXPECT_EQ(value, "100");
+    countersTable.hget("PHY:oid:0x65", "SAI_PORT_STAT_IF_IN_ERRORS", value);
+    EXPECT_EQ(value, "200");
+
+    fc.removeCounter(counterVid);
+    counterVid = 100;
+    fc.removeCounter(counterVid);
+    EXPECT_EQ(fc.isEmpty(), true);
+
+    r = system("sudo rm -f /usr/share/sonic/hwsku/gearbox_config.json");
+    ASSERT_TRUE(r == 0);
+}
+

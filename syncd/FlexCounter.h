@@ -12,14 +12,14 @@ extern "C" {
 #include <set>
 #include <condition_variable>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <utility>
 
 namespace syncd
 {
+    // pair of <system_side_port_vid, line_side_port_vid>
     typedef std::pair<sai_object_id_t, sai_object_id_t> gearboxPortPair;
-#define vidSystemSide std::get<0>
-#define vidLineSide   std::get<1>
 
     class FlexCounter
     {
@@ -625,5 +625,6 @@ namespace syncd
             std::string m_dbCounters;
 
             bool m_isDiscarded;
+            static const std::unordered_set<sai_port_stat_t> port_phy_counter_set;
     };
 }

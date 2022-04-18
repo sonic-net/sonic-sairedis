@@ -15,6 +15,23 @@ using namespace std;
 #define MUTEX std::unique_lock<std::mutex> _lock(m_mtx);
 #define MUTEX_UNLOCK _lock.unlock();
 
+#define vidSystemSide std::get<0>
+#define vidLineSide   std::get<1>
+
+const unordered_set<sai_port_stat_t> FlexCounter::port_phy_counter_set = {
+    SAI_PORT_STAT_IF_IN_ERRORS,
+    SAI_PORT_STAT_IF_OUT_ERRORS,
+    SAI_PORT_STAT_IF_IN_DISCARDS,
+    SAI_PORT_STAT_IF_OUT_DISCARDS,
+    SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS,
+    SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS,
+    SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS,
+    SAI_PORT_STAT_ETHER_STATS_JABBERS,
+    SAI_PORT_STAT_ETHER_STATS_FRAGMENTS,
+    SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES,
+    SAI_PORT_STAT_IF_IN_FEC_SYMBOL_ERRORS
+};
+
 FlexCounter::FlexCounter(
         _In_ const std::string& instanceId,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
@@ -3521,17 +3538,7 @@ bool FlexCounter::isPortPhyCounter(sai_port_stat_t portCounterId)
 {
     SWSS_LOG_ENTER();
 
-    return portCounterId == SAI_PORT_STAT_IF_IN_ERRORS ||
-        portCounterId == SAI_PORT_STAT_IF_OUT_ERRORS ||
-        portCounterId == SAI_PORT_STAT_IF_IN_DISCARDS ||
-        portCounterId == SAI_PORT_STAT_IF_OUT_DISCARDS ||
-        portCounterId == SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS ||
-        portCounterId == SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS ||
-        portCounterId == SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS ||
-        portCounterId == SAI_PORT_STAT_ETHER_STATS_JABBERS ||
-        portCounterId == SAI_PORT_STAT_ETHER_STATS_FRAGMENTS ||
-        portCounterId == SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES ||
-        portCounterId == SAI_PORT_STAT_IF_IN_FEC_SYMBOL_ERRORS;
+    return port_phy_counter_set.count(portCounterId) > 0;
 }
 
 void FlexCounter::mapGearboxPort(
