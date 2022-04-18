@@ -223,7 +223,6 @@ TEST(FlexCounter, addRemoveCounterForGearboxPort)
             return SAI_STATUS_BUFFER_OVERFLOW;
         }
 
-        //sai_port_stat_t counter = static_cast<sai_port_stat_t>(statCapability.stat_enum);
         capability->list[0].stat_enum = SAI_PORT_STAT_IF_IN_OCTETS;
         capability->list[1].stat_enum = SAI_PORT_STAT_IF_IN_ERRORS;
         return SAI_STATUS_SUCCESS;
