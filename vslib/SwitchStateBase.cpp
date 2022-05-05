@@ -1220,6 +1220,29 @@ sai_status_t SwitchStateBase::set_port_list()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+sai_status_t SwitchStateBase::set_port_capabilities()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("set port capabilities");
+
+    sai_attribute_t attr;
+
+    for (auto &port_id: m_port_list)
+    {
+        attr.id = SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE;
+        attr.value.booldata = true;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_SUPPORTED_LINK_TRAINING_MODE;
+        attr.value.booldata = true;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::create_default_virtual_router()
 {
     SWSS_LOG_ENTER();
@@ -1597,6 +1620,7 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     CHECK_STATUS(create_ports());
     CHECK_STATUS(create_port_serdes());
     CHECK_STATUS(set_port_list());
+    CHECK_STATUS(set_port_capabilities());
     CHECK_STATUS(create_bridge_ports());
     CHECK_STATUS(create_vlan_members());
     CHECK_STATUS(set_acl_entry_min_prio());
@@ -2289,6 +2313,12 @@ sai_status_t SwitchStateBase::refresh_read_only(
 
             case SAI_PORT_ATTR_PORT_SERDES_ID:
                 return refresh_port_serdes_id(object_id);
+
+            case SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE:
+                return SAI_STATUS_SUCCESS;
+
+            case SAI_PORT_ATTR_SUPPORTED_LINK_TRAINING_MODE:
+                return SAI_STATUS_SUCCESS;
         }
     }
 
