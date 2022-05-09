@@ -44,7 +44,7 @@ jobs:
   displayName: ${{ parameters.arch }}
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:
-    DIFF_COVER_CHECK_THRESHOLD: 50
+    DIFF_COVER_CHECK_THRESHOLD: 80
     ${{ if eq(parameters.run_unit_test, true) }}:
       DIFF_COVER_ENABLE: 'true'
 
