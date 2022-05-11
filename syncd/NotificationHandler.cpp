@@ -127,15 +127,45 @@ void NotificationHandler::updateNotificationsPointers(
 // TODO use same Notification class from sairedis lib
 // then this will handle deserialize free
 
+bool NotificationHandler::shouldEnqueueFdbEvent(
+        _In_ const sai_fdb_event_notification_data_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    auto& entry = data.fdb_entry;
+
+    auto throttle = m_fdbThrottleHash[entry];
+
+    if (throttle == nullptr)
+    {
+        std::string name = sai_serialize_fdb_entry(data.fdb_entry);
+
+        m_fdbThrottleHash[entry] = throttle = std::make_shared<EventThrottle>(name);
+    }
+
+    return throttle->shouldEnqueue();
+}
+
 void NotificationHandler::onFdbEvent(
         _In_ uint32_t count,
         _In_ const sai_fdb_event_notification_data_t *data)
 {
     SWSS_LOG_ENTER();
 
-    std::string s = sai_serialize_fdb_event_ntf(count, data);
+    /*
+     * Split fdb event to single notifications in case that it contains
+     * multiple events and one of them need to be dropped.
+     */
 
-    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s);
+    for (uint32_t idx = 0; idx < count; idx++)
+    {
+        if (shouldEnqueueFdbEvent(data[idx]))
+        {
+            std::string s = sai_serialize_fdb_event_ntf(1, &data[idx]);
+
+            enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s);
+        }
+    }
 }
 
 void NotificationHandler::onPortStateChange(
@@ -219,4 +249,3 @@ void NotificationHandler::enqueueNotification(
 
     enqueueNotification(op, data, entry);
 }
-

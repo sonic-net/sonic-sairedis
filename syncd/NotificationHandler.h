@@ -6,12 +6,15 @@ extern "C"{
 
 #include "NotificationQueue.h"
 #include "NotificationProcessor.h"
+#include "EventThrottle.h"
+#include "FdbEntryKeyHasher.h"
 
 #include "swss/table.h"
 
 #include <string>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 namespace syncd
 {
@@ -71,6 +74,9 @@ namespace syncd
                     _In_ const std::string& op,
                     _In_ const std::string& data);
 
+            bool shouldEnqueueFdbEvent(
+                    _In_ const sai_fdb_event_notification_data_t& data);
+
         private:
 
             sai_switch_notifications_t m_switchNotifications;
@@ -78,5 +84,7 @@ namespace syncd
             std::shared_ptr<NotificationQueue> m_notificationQueue;
 
             std::shared_ptr<NotificationProcessor> m_processor;
+
+            std::unordered_map<sai_fdb_entry_t, std::shared_ptr<EventThrottle>, FdbEntryKeyHasher, FdbEntryKeyHasher> m_fdbThrottleHash;
     };
 }

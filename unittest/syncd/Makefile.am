@@ -9,7 +9,10 @@ tests_SOURCES = main.cpp \
                 MockableSaiInterface.cpp \
                 MockHelper.cpp \
 				TestCommandLineOptions.cpp \
+				TestEventThrottle.cpp \
+				TestFdbEntryKeyHasher.cpp \
 				TestFlexCounter.cpp \
+				TestNotificationHandler.cpp \
 				TestNotificationQueue.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
