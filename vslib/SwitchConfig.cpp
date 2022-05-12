@@ -63,6 +63,10 @@ bool SwitchConfig::parseSwitchType(
     {
         switchType = SAI_VS_SWITCH_TYPE_BCM56850;
     }
+    else if (st == SAI_VALUE_VS_SWITCH_TYPE_BCM56971B0)
+    {
+        switchType = SAI_VS_SWITCH_TYPE_BCM56971B0;
+    }
     else if (st == SAI_VALUE_VS_SWITCH_TYPE_BCM81724)
     {
         switchType = SAI_VS_SWITCH_TYPE_BCM81724;
@@ -73,10 +77,11 @@ bool SwitchConfig::parseSwitchType(
     }
     else
     {
-        SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s|%s|%s)",
+        SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s|%s|%s|%s)",
                 switchTypeStr,
                 SAI_VALUE_VS_SWITCH_TYPE_BCM81724,
                 SAI_VALUE_VS_SWITCH_TYPE_BCM56850,
+                SAI_VALUE_VS_SWITCH_TYPE_BCM56971B0,
                 SAI_VALUE_VS_SWITCH_TYPE_MLNX2700);
 
         return false;

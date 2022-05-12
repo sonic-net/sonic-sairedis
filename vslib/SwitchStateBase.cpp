@@ -405,6 +405,8 @@ sai_status_t SwitchStateBase::remove_internal(
 {
     SWSS_LOG_ENTER();
 
+    SWSS_LOG_INFO("removing object: %s", serializedObjectId.c_str());
+
     auto &objectHash = m_objectHash.at(object_type);
 
     auto it = objectHash.find(serializedObjectId);
@@ -516,6 +518,13 @@ sai_status_t SwitchStateBase::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setAclEntry(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setMACsecSA(objectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);
@@ -1553,6 +1562,25 @@ sai_status_t SwitchStateBase::set_number_of_ecmp_groups()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+sai_status_t SwitchStateBase::create_port_serdes()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("implement in child class");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t SwitchStateBase::create_port_serdes_per_port(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("implement in child class");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t SwitchStateBase::initialize_default_objects(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -1567,6 +1595,7 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     CHECK_STATUS(create_default_1q_bridge());
     CHECK_STATUS(create_default_trap_group());
     CHECK_STATUS(create_ports());
+    CHECK_STATUS(create_port_serdes());
     CHECK_STATUS(set_port_list());
     CHECK_STATUS(create_bridge_ports());
     CHECK_STATUS(create_vlan_members());
@@ -1612,6 +1641,7 @@ sai_status_t SwitchStateBase::create_port_dependencies(
     CHECK_STATUS(create_ingress_priority_groups_per_port(port_id));
     CHECK_STATUS(create_qos_queues_per_port(port_id));
     CHECK_STATUS(create_scheduler_groups_per_port(port_id));
+    CHECK_STATUS(create_port_serdes_per_port(port_id));
 
     // XXX should bridge ports should also be created when new port is created?
     // this needs to be checked on real ASIC and updated here
@@ -2105,6 +2135,51 @@ sai_status_t SwitchStateBase::refresh_macsec_sa_stat(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::refresh_port_serdes_id(
+        _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    // port serdes could be removed by user explicitly, so try to find port
+    // serdes object with this specific port
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+
+    auto* meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT_SERDES, SAI_PORT_SERDES_ATTR_PORT_ID);
+
+    // loop via all port serdes objects
+
+    auto &serdeses = m_objectHash.at(SAI_OBJECT_TYPE_PORT_SERDES);
+
+    auto strPortId = sai_serialize_object_id(port_id);
+
+    for (auto& kvp: serdeses)
+    {
+        if (kvp.second.find(meta->attridname) != kvp.second.end())
+        {
+            if (kvp.second.at(meta->attridname)->getAttrStrValue() != strPortId)
+            {
+                // this is not the port we are looking for
+                continue;
+            }
+
+            SWSS_LOG_INFO("found corresponding port serdes %s for port %s",
+                    kvp.first.c_str(),
+                    sai_serialize_object_id(port_id).c_str());
+
+            sai_deserialize_object_id(kvp.first, attr.value.oid);
+            break;
+        }
+    }
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 // XXX extra work may be needed on GET api if N on list will be > then actual
 
 /*
@@ -2211,6 +2286,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
 
             case SAI_PORT_ATTR_FABRIC_ATTACHED:
                 return SAI_STATUS_SUCCESS;
+
+            case SAI_PORT_ATTR_PORT_SERDES_ID:
+                return refresh_port_serdes_id(object_id);
         }
     }
 
@@ -2363,6 +2441,8 @@ bool SwitchStateBase::check_port_reference_count(
 {
     SWSS_LOG_ENTER();
 
+    // TODO make generic
+
     // TODO currently when switch is initialized, there is no metadata yet
     // and objects are created without reference count, this needs to be
     // addressed in refactoring metadata and meta_create_oid to correct
@@ -2389,6 +2469,28 @@ bool SwitchStateBase::check_port_reference_count(
                 SWSS_LOG_ERROR("port id %s is in use on bridge port %s",
                         sai_serialize_object_id(port_id).c_str(),
                         bp.first.c_str());
+
+                return false;
+            }
+        }
+    }
+
+    auto& serdeses = m_objectHash.at(SAI_OBJECT_TYPE_PORT_SERDES);
+
+    meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT_SERDES, SAI_PORT_SERDES_ATTR_PORT_ID);
+
+    for (auto& ps: serdeses)
+    {
+        for (auto&attr: ps.second)
+        {
+            if (attr.first != meta->attridname)
+                continue; // not this attribute
+
+            if (attr.second->getAttr()->value.oid == port_id)
+            {
+                SWSS_LOG_ERROR("port id %s is in use on port serdes %s",
+                        sai_serialize_object_id(port_id).c_str(),
+                        ps.first.c_str());
 
                 return false;
             }
@@ -2455,7 +2557,6 @@ sai_status_t SwitchStateBase::check_port_dependencies(
 
         return SAI_STATUS_FAILURE;
     }
-
 
     // obtain objects to examine
 
@@ -2633,6 +2734,9 @@ bool SwitchStateBase::check_object_default_state(
             continue;
 
         if (!meta->isoidattribute)
+            continue;
+
+        if (meta->ismandatoryoncreate && meta->iscreateonly)
             continue;
 
         // those attributes must be skipped since those dependencies will be automatically broken
@@ -3384,6 +3488,27 @@ sai_status_t SwitchStateBase::queryVlanfloodTypeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryNextHopGroupTypeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 5)
+    {
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 5;
+    enum_values_capability->list[0] = SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP;
+    enum_values_capability->list[1] = SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_ORDERED_ECMP;
+    enum_values_capability->list[2] = SAI_NEXT_HOP_GROUP_TYPE_FINE_GRAIN_ECMP;
+    enum_values_capability->list[3] = SAI_NEXT_HOP_GROUP_TYPE_PROTECTION;
+    enum_values_capability->list[4] = SAI_NEXT_HOP_GROUP_TYPE_CLASS_BASED;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+
 sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -3401,6 +3526,10 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                                                      attr_id == SAI_VLAN_ATTR_BROADCAST_FLOOD_CONTROL_TYPE))
     {
         return queryVlanfloodTypeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP && attr_id == SAI_NEXT_HOP_GROUP_ATTR_TYPE)
+    {
+        return queryNextHopGroupTypeCapability(enum_values_capability);
     }
     return SAI_STATUS_NOT_SUPPORTED;
 }

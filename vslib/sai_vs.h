@@ -416,3 +416,14 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>      vs_sai;
     vs_bulk_set_ ## ot,             \
     vs_bulk_get_ ## ot,
 
+// BULK get/set DECLARE for vs
+
+#define VS_BULK_GET_SET(OT,ot)   \
+    VS_BULK_GET(OT,ot);          \
+    VS_BULK_SET(OT,ot);
+
+// BULK get/set API for vs
+
+#define VS_BULK_GET_SET_API(ot)  \
+    vs_bulk_get_ ## ot,          \
+    vs_bulk_set_ ## ot,

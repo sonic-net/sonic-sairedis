@@ -36,6 +36,10 @@ namespace saivs
                     _In_ const std::string &macsecInterface,
                     _In_ bool enable);
 
+            bool update_macsec_sa_pn(
+                    _In_ const MACsecAttr &attr,
+                    _In_ sai_uint64_t pn);
+
             bool get_macsec_sa_pn(
                     _In_ const MACsecAttr &attr,
                     _Out_ sai_uint64_t &pn) const;

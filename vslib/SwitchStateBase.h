@@ -160,6 +160,9 @@ namespace saivs
             virtual sai_status_t refresh_macsec_sa_stat(
                     _In_ sai_object_id_t object_id);
 
+            virtual sai_status_t refresh_port_serdes_id(
+                    _In_ sai_object_id_t bridge_id);
+
         public:
 
             virtual sai_status_t warm_boot_initialize_objects();
@@ -200,6 +203,11 @@ namespace saivs
                     _In_ sai_object_id_t port_id);
 
             virtual sai_status_t create_scheduler_groups();
+
+            virtual sai_status_t create_port_serdes();
+
+            virtual sai_status_t create_port_serdes_per_port(
+                    _In_ sai_object_id_t port_id);
 
         protected: // will generate new OID
 
@@ -513,6 +521,10 @@ namespace saivs
                     _In_ sai_object_id_t entry_id,
                     _In_ const sai_attribute_t* attr);
 
+            sai_status_t setMACsecSA(
+                    _In_ sai_object_id_t macsec_sa_id,
+                    _In_ const sai_attribute_t* attr);
+
             sai_status_t createMACsecPort(
                     _In_ sai_object_id_t macsec_sa_id,
                     _In_ sai_object_id_t switch_id,
@@ -591,9 +603,13 @@ namespace saivs
                     _In_ sai_object_id_t macsec_sa_id,
                     _Out_ sai_attribute_t &attr);
 
+            void retryCreateIngressMaCsecSAs();
+
             MACsecManager m_macsecManager;
 
             std::unordered_map<sai_object_id_t, sai_object_id_t> m_macsecFlowPortMap;
+
+            std::unordered_set<MACsecAttr, MACsecAttr::Hash> m_uncreatedIngressMACsecSAs;
 
         protected:
 
@@ -649,6 +665,11 @@ namespace saivs
 
             virtual sai_status_t queryVlanfloodTypeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
+
+            virtual sai_status_t queryNextHopGroupTypeCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
+
 
         public: // TODO private
 

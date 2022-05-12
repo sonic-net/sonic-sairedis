@@ -27,6 +27,13 @@ namespace saivs
 
         static const std::string DEFAULT_CIPHER_NAME;
 
+        static const macsec_an_t AN_INVALID;
+
+        struct Hash
+        {
+            size_t operator()(const MACsecAttr &attr) const;
+        };
+
         // Explicitly declare constructor and destructor as non-inline functions
         // to avoid 'call is unlikely and code size would grow [-Werror=inline]'
         MACsecAttr();
@@ -36,6 +43,8 @@ namespace saivs
         static const std::string &get_cipher_name(std::int32_t cipher_id);
 
         bool is_xpn() const;
+
+        bool operator==(const MACsecAttr &attr) const;
 
         std::string m_cipher;
         std::string m_vethName;

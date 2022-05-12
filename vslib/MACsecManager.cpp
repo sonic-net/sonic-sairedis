@@ -292,6 +292,33 @@ bool MACsecManager::enable_macsec_filter(
     return true;
 }
 
+bool MACsecManager::update_macsec_sa_pn(
+        _In_ const MACsecAttr &attr,
+        _In_ sai_uint64_t pn)
+{
+    SWSS_LOG_ENTER();
+
+    std::ostringstream ostream;
+    ostream
+        << "/sbin/ip macsec set "
+        << shellquote(attr.m_macsecName);
+
+    if (attr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
+    {
+        ostream << " tx";
+    }
+    else
+    {
+        ostream << " rx sci " << attr.m_sci;
+    }
+
+    ostream << " sa " << attr.m_an << " pn " << pn;
+
+    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
+
+    return exec(ostream.str());
+}
+
 bool MACsecManager::get_macsec_sa_pn(
         _In_ const MACsecAttr &attr,
         _Out_ sai_uint64_t &pn) const
@@ -362,6 +389,7 @@ bool MACsecManager::create_macsec_egress_sc(
         << " sci " << attr.m_sci
         << " encrypt " << (attr.m_encryptionEnable ? " on " : " off ")
         << " cipher " << attr.m_cipher
+        << " send_sci " << (attr.m_sendSci ? " on " : " off ")
         << " && ip link set dev "
         << shellquote(attr.m_macsecName)
         << " up";
@@ -451,6 +479,10 @@ bool MACsecManager::create_macsec_ingress_sa(
         << attr.m_an
         << " pn "
         << attr.m_pn
+        << ( attr.is_xpn() ? " ssci " : "" )
+        << ( attr.is_xpn() ? std::to_string(attr.m_ssci) : "" )
+        << ( attr.is_xpn() ? " salt " : "" )
+        << ( attr.is_xpn() ? attr.m_salt : "" )
         << " on key "
         << attr.m_authKey
         << " "

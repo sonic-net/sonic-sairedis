@@ -69,8 +69,75 @@ sai_status_t SwitchBCM81724::initialize_default_objects(
 
     CHECK_STATUS(set_switch_default_attributes());
     CHECK_STATUS(create_default_trap_group());
+    CHECK_STATUS(set_acl_entry_min_prio());
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchBCM81724::set(
+        _In_ sai_object_type_t objectType,
+        _In_ sai_object_id_t objectId,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    return SwitchStateBase::set(objectType, objectId, attr);
+}
+
+sai_status_t SwitchBCM81724::create(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &serializedObjectId,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    // Bypass MACsec creating because the existing implementation of MACsec cannot be directly used by Gearbox
+    if (is_macsec_type(object_type))
+    {
+        SWSS_LOG_INFO("Bypass creating %s", sai_serialize_object_type(object_type).c_str());
+
+        return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
+    }
+
+    return SwitchStateBase::create(object_type, serializedObjectId, switch_id, attr_count, attr_list);
+}
+
+sai_status_t SwitchBCM81724::remove(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    // Bypass MACsec removing because the existing implementation of MACsec cannot be directly used by Gearbox
+    if (is_macsec_type(object_type))
+    {
+        SWSS_LOG_INFO("Bypass removing %s", sai_serialize_object_type(object_type).c_str());
+
+        return remove_internal(object_type, serializedObjectId);
+    }
+
+    return SwitchStateBase::remove(object_type, serializedObjectId);
+}
+
+sai_status_t SwitchBCM81724::set(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::string &serializedObjectId,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    // Bypass MACsec setting because the existing implementation of MACsec cannot be directly used by Gearbox
+    if (is_macsec_type(objectType) ||
+        (objectType == SAI_OBJECT_TYPE_ACL_ENTRY && attr && attr->id == SAI_ACL_ENTRY_ATTR_ACTION_MACSEC_FLOW))
+    {
+        SWSS_LOG_INFO("Bypass setting %s", sai_serialize_object_type(objectType).c_str());
+
+        return set_internal(objectType, serializedObjectId, attr);;
+    }
+
+    return SwitchStateBase::set(objectType, serializedObjectId, attr);
 }
 
 sai_status_t SwitchBCM81724::refresh_port_list(
@@ -183,6 +250,10 @@ sai_status_t SwitchBCM81724::refresh_read_only(
             case SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP:
             case SAI_SWITCH_ATTR_FIRMWARE_MAJOR_VERSION:
                 return SAI_STATUS_SUCCESS;
+
+            case SAI_SWITCH_ATTR_ACL_ENTRY_MINIMUM_PRIORITY:
+            case SAI_SWITCH_ATTR_ACL_ENTRY_MAXIMUM_PRIORITY:
+                return SAI_STATUS_SUCCESS;
         }
     }
 
@@ -209,6 +280,16 @@ sai_status_t SwitchBCM81724::refresh_read_only(
     if (meta->objecttype == SAI_OBJECT_TYPE_DEBUG_COUNTER && meta->attrid == SAI_DEBUG_COUNTER_ATTR_INDEX)
     {
         return SAI_STATUS_SUCCESS;  // XXX not sure for gearbox
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_MACSEC && meta->attrid == SAI_MACSEC_ATTR_SCI_IN_INGRESS_MACSEC_ACL)
+    {
+        return refresh_macsec_sci_in_ingress_macsec_acl(object_id);
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_MACSEC_SA)
+    {
+        return refresh_macsec_sa_stat(object_id);
     }
 
     auto mmeta = m_meta.lock();
@@ -253,4 +334,24 @@ sai_status_t SwitchBCM81724::warm_boot_initialize_objects()
     SWSS_LOG_ERROR("warm boot is not implemented for SwitchBCM81724");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+bool SwitchBCM81724::is_macsec_type(_In_ sai_object_type_t object_type)
+{
+    SWSS_LOG_ENTER();
+
+    switch(object_type)
+    {
+        case SAI_OBJECT_TYPE_MACSEC_PORT:
+
+        case SAI_OBJECT_TYPE_MACSEC_SC:
+
+        case SAI_OBJECT_TYPE_MACSEC_SA:
+
+            return true;
+
+        default: break;
+    }
+
+    return false;
 }

@@ -2093,7 +2093,8 @@ void ComparisonLogic::removeCurrentObjectDependencyTree(
                     continue;
                 }
 
-                if (revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+                if (revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID &&
+                        revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID)
                 {
                     // currently we only support reference on OID, not list
                     SWSS_LOG_THROW("attr value type %d, not supported yet, FIXME",
@@ -2333,6 +2334,7 @@ void ComparisonLogic::populateExistingObjects(
 
     auto coldBootDiscoveredVids = m_switch->getColdBootDiscoveredVids();
     auto warmBootDiscoveredVids = m_switch->getWarmBootDiscoveredVids();
+    auto warmBootNewDiscoveredVids = m_switch->getWarmBootNewDiscoveredVids();
 
     /*
      * If some objects that are existing objects on switch are not present in
@@ -2453,6 +2455,25 @@ void ComparisonLogic::populateExistingObjects(
                 default:
                     break;
             }
+        }
+
+        if (warmBootNewDiscoveredVids.find(vid) != warmBootNewDiscoveredVids.end())
+        {
+            // We have some new discovered VIDs after warm boot, we need to
+            // create temporary objects from them, so comparison logic will not
+            // get confused and will not remove them.
+            //
+            // TODO: there could be potential issue here, when user will remove
+            // one of the new discovered object in init view phase, then we
+            // can't put that object to DB, and it should be removed.
+
+            performColdCheck = false;
+
+            sai_object_type_t ot = VidManager::objectTypeQuery(vid);
+
+            SWSS_LOG_NOTICE("creating temporary object for new discovered VID %s:%s",
+                    sai_serialize_object_type(ot).c_str(),
+                    sai_serialize_object_id(vid).c_str());
         }
 
         if (performColdCheck && coldBootDiscoveredVids.find(vid) == coldBootDiscoveredVids.end())
@@ -2737,6 +2758,54 @@ void ComparisonLogic::createPreMatchMapForObject(
     }
 }
 
+void ComparisonLogic::cretePreMatchForLagMembers(
+        _In_ const AsicView& cur,
+        _Inout_ AsicView& tmp,
+        _Inout_ std::set<std::string>& processed)
+{
+    SWSS_LOG_ENTER();
+
+    // match lag members that have the same port and use that lag members
+    // as createPreMatchMapForObject so it will create pre match entry for LAG
+    // and then for acl table group
+
+    auto cLagMembers = cur.getObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+    auto tLagMembers = tmp.getObjectsByObjectType(SAI_OBJECT_TYPE_LAG_MEMBER);
+
+    for (auto& cLagMember: cLagMembers)
+    {
+        if (processed.find(cLagMember->m_str_object_id) != processed.end())
+            continue;
+
+        for (auto& tLagMember: tLagMembers)
+        {
+            if (processed.find(tLagMember->m_str_object_id) != processed.end())
+                continue;
+
+            auto cPort = cLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID);
+            auto tPort = tLagMember->getSaiAttr(SAI_LAG_MEMBER_ATTR_PORT_ID);
+
+            if (cPort->getOid() != tPort->getOid())
+            {
+                continue;
+            }
+
+            // at this point current and temporary lag member share the same
+            // port VID, then we can assume that those objects are the same
+
+            SWSS_LOG_INFO("pre match Lag Member: cur: %s, tmp: %s",
+                    cLagMember->m_str_object_id.c_str(),
+                    tLagMember->m_str_object_id.c_str());
+
+            tmp.m_preMatchMap[tLagMember->getVid()] = cLagMember->getVid();
+
+            createPreMatchMapForObject(cur, tmp, cLagMember, tLagMember, processed);
+
+            break;
+        }
+    }
+}
+
 void ComparisonLogic::createPreMatchMap(
         _In_ const AsicView& cur,
         _Inout_ AsicView& tmp)
@@ -2806,6 +2875,48 @@ void ComparisonLogic::createPreMatchMap(
 
         createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
     }
+
+    for (auto&pk: tmp.m_neighborsByIp)
+    {
+        auto& ip = pk.first;
+
+        // look only for unique neighbors
+
+        if (pk.second.size() != 1)
+            continue;
+
+        auto it = cur.m_neighborsByIp.find(ip);
+
+        if (it == cur.m_neighborsByIp.end())
+            continue;
+
+        if (it->second.size() != 1)
+            continue;
+
+        auto& tObj = tmp.m_soAll.at(pk.second.at(0));
+        auto& cObj = cur.m_soAll.at(it->second.at(0));
+
+        createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
+
+        sai_object_id_t tRifVid = tObj->m_meta_key.objectkey.key.neighbor_entry.rif_id;
+        sai_object_id_t cRifVid = cObj->m_meta_key.objectkey.key.neighbor_entry.rif_id;
+
+        if (processed.find(cObj->m_str_object_id) == processed.end())
+        {
+            SWSS_LOG_INFO("pre match Neighbor RIF: cur: %s, tmp: %s",
+                    sai_serialize_object_id(cRifVid).c_str(),
+                    sai_serialize_object_id(tRifVid).c_str());
+
+            tmp.m_preMatchMap[tRifVid] = cRifVid;
+
+            auto& cO = cur.m_oOids.at(cRifVid);
+            auto& tO = tmp.m_oOids.at(tRifVid);
+
+            createPreMatchMapForObject(cur, tmp, cO, tO, processed);
+        }
+    }
+
+    cretePreMatchForLagMembers(cur, tmp, processed);
 
     size_t count = 0;
 
@@ -2929,6 +3040,26 @@ void ComparisonLogic::applyViewTransition(
      *
      * XXX this is workaround. FIXME
      */
+
+    for (auto &obj: temp.m_soAll)
+    {
+        // TODO make generic list of root objects (or meta SAI for this)
+
+        if (obj.second->getObjectType() == SAI_OBJECT_TYPE_ACL_TABLE_GROUP)
+        {
+            if (temp.m_preMatchMap.find(obj.second->getVid()) == temp.m_preMatchMap.end())
+            {
+                // object not in pre match
+                continue;
+            }
+
+            SWSS_LOG_INFO("processing explicit pre match: %s:%s",
+                    obj.second->m_str_object_type.c_str(),
+                    obj.second->m_str_object_id.c_str());
+
+            processObjectForViewTransition(current, temp, obj.second);
+        }
+    }
 
     for (auto &obj: temp.m_soAll)
     {

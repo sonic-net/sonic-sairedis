@@ -705,8 +705,85 @@ sub test_buffer_profile_get
     play "buffer_profile_get_B.rec";
 }
 
+sub test_brcm_warm_new_object_port_serdes
+{
+    fresh_start;
+
+    # use buffer profile and pool objects since they
+    # are not default created on the switch
+    # so asic operations should still be zero
+
+    play "buffer_profile_get_A.rec";
+
+    print "port serdes objects in ASIC_DB: ";
+    print `redis-cli -n 1 keys "*_SERDES*" | wc -l`;
+
+    request_warm_shutdown;
+
+    # remove port serdes from asic db to simulate
+    # previous boot didn't contained serdes objects
+
+    print "port serdes entries (objects and attributes) in sai_warmboot.bin: ";
+    print `cat sai_warmboot.bin | grep _SERDES_| wc -l`;
+
+    print "removed port serdes objects from ASIC_DB: ";
+    print `redis-cli -n 1 --scan --pattern '*SERDES*' |xargs redis-cli -n 1 DEL`;
+
+    # need to handle rid2vid map
+
+    print "removed port serdes from VIDTORID map: ";
+    print `redis-cli -n 1 HKEYS VIDTORID |grep oid:0x5700 | xargs redis-cli -n 1 HDEL VIDTORID`;
+    print "removed remove serdes from RIDTOVID map: ";
+    print `redis-cli -n 1 HKEYS RIDTOVID |grep oid:0x5700 | xargs redis-cli -n 1 HDEL RIDTOVID`;
+
+    start_syncd_warm;
+
+    play "buffer_profile_get_A.rec", 0;
+
+    print "check ASIC_DB for serdes\n";
+    print "RIDTOVID: ", `redis-cli -n 1 HKEYS RIDTOVID |grep oid:0x5700 |wc -l`;
+    print "VIDTORID: ", `redis-cli -n 1 HKEYS VIDTORID |grep oid:0x5700 |wc -l`;
+    print "ASIC_DB: ", `redis-cli -n 1 keys "*_SERDES*"| wc -l`;
+}
+
+sub test_remove_port_serdes
+{
+    fresh_start;
+
+    play "test_remove_port_serdes.rec";
+}
+
+sub test_lag_member
+{
+    fresh_start;
+
+    play "test_lag_member.rec";
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+    play "test_lag_member.rec", 1;
+}
+
+sub test_neighbor_lag
+{
+    fresh_start;
+
+    play "test_neighbor_lag.rec";
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+}
+
 # RUN TESTS
 
+test_neighbor_lag;
+test_lag_member;
+test_remove_port_serdes;
+test_brcm_warm_new_object_port_serdes;
 test_buffer_profile_get;
 test_multi_switch_key;
 test_ignore_attributes;

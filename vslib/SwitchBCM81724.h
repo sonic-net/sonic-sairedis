@@ -29,6 +29,31 @@ namespace saivs
 
             virtual sai_status_t create_default_trap_group() override;
 
+        protected:
+
+            virtual sai_status_t set(
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_object_id_t objectId,
+                    _In_ const sai_attribute_t* attr);
+
+        public:
+
+            virtual sai_status_t create(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list) override;
+
+            virtual sai_status_t remove(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::string &serializedObjectId) override;
+
+            virtual sai_status_t set(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::string &serializedObjectId,
+                    _In_ const sai_attribute_t* attr) override;
+
         protected : // refresh
 
             virtual sai_status_t refresh_port_list(
@@ -49,5 +74,9 @@ namespace saivs
                     _In_ const sai_attribute_t *attr_list) override;
 
             virtual sai_status_t warm_boot_initialize_objects() override;
+
+        private:
+
+            bool is_macsec_type(_In_ sai_object_type_t object_type);
     };
 }

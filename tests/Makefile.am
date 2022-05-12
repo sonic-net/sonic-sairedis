@@ -27,4 +27,4 @@ testclient_LDADD = -lhiredis -lswsscommon -lpthread \
 				   $(top_srcdir)/lib/libsairedis.la $(top_srcdir)/syncd/libSyncd.a \
 				   -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
-TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh checkwhitespace.sh tests BCM56850.pl MLNX2700.pl
+TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh checkwhitespace.sh tests BCM56850.pl MLNX2700.pl BCM56971B0.pl

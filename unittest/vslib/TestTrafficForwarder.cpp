@@ -44,7 +44,7 @@ TEST(TrafficForwarder, addVlanTag)
 
     EXPECT_FALSE(TrafficForwarder::addVlanTag(buffer, length, hdr));
 
-    struct tpacket_auxdata* aux = (struct tpacket_auxdata*)CMSG_DATA(cmsg);
+    struct tpacket_auxdata* aux = (struct tpacket_auxdata*)(void*)CMSG_DATA(cmsg);
 
     // https://en.wikipedia.org/wiki/IEEE_802.1Q
     //

@@ -418,3 +418,64 @@ TEST(SwitchBCM56850, test_vlan_flood_capability)
 
     EXPECT_EQ(flood_types_found, 3);
 }
+
+TEST(SwitchBCM56850, test_nexthop_group_type_enum_values_capability)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_s32_list_t enum_val_cap;
+    int32_t list[5];
+    memset(list, 0, sizeof(list));
+
+    enum_val_cap.count = 4;
+    enum_val_cap.list = list;
+
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
+                                             SAI_OBJECT_TYPE_NEXT_HOP_GROUP,
+                                             SAI_NEXT_HOP_GROUP_ATTR_TYPE,
+                                             &enum_val_cap),
+                                             SAI_STATUS_BUFFER_OVERFLOW);
+    enum_val_cap.count = 5;
+    EXPECT_EQ(sw.queryAttrEnumValuesCapability(0x2100000000,
+                                             SAI_OBJECT_TYPE_NEXT_HOP_GROUP,
+                                             SAI_NEXT_HOP_GROUP_ATTR_TYPE,
+                                             &enum_val_cap),
+                                             SAI_STATUS_SUCCESS);
+
+
+    EXPECT_EQ(enum_val_cap.count, 5);
+
+    int nexthop_group_types_found = 0;
+
+    for (uint32_t i = 0; i < enum_val_cap.count; i++)
+    {
+        if (enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP ||
+            enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_ORDERED_ECMP ||
+            enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_FINE_GRAIN_ECMP ||
+            enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_PROTECTION ||
+            enum_val_cap.list[i] == SAI_NEXT_HOP_GROUP_TYPE_CLASS_BASED)
+        {
+            nexthop_group_types_found++;
+        }
+    }
+
+    EXPECT_EQ(nexthop_group_types_found, 5);
+}

@@ -11,6 +11,7 @@
 #include <regex>
 
 #include <net/if.h>
+#include <arpa/inet.h>
 #include <byteswap.h>
 
 using namespace saivs;
@@ -93,6 +94,10 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
                             static_cast<std::uint32_t>(macsecAttr.m_an),
                             macsecAttr.m_macsecName.c_str());
                     }
+                    else
+                    {
+                        m_uncreatedIngressMACsecSAs.insert(macsecAttr);
+                    }
                 }
             }
         }
@@ -131,6 +136,30 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::setMACsecSA(
+        _In_ sai_object_id_t macsec_sa_id,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    MACsecAttr macsecAttr;
+
+    CHECK_STATUS(loadMACsecAttr(SAI_OBJECT_TYPE_MACSEC_SA, macsec_sa_id, macsecAttr));
+
+    if (attr->id == SAI_MACSEC_SA_ATTR_MINIMUM_INGRESS_XPN || attr->id == SAI_MACSEC_SA_ATTR_CONFIGURED_EGRESS_XPN)
+    {
+        if (!m_macsecManager.update_macsec_sa_pn(macsecAttr, attr->value.u64))
+        {
+            SWSS_LOG_WARN("Fail to update PN (%" PRIu64 ") of MACsec SA %s", attr->value.u64, sai_serialize_object_id(macsec_sa_id).c_str());
+
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    auto sid = sai_serialize_object_id(macsec_sa_id);
+    return set_internal(SAI_OBJECT_TYPE_MACSEC_SA, sid, attr);
 }
 
 sai_status_t SwitchStateBase::createMACsecPort(
@@ -199,6 +228,21 @@ sai_status_t SwitchStateBase::createMACsecSA(
                     macsecAttr.m_sci.c_str(),
                     static_cast<std::uint32_t>(macsecAttr.m_an),
                     macsecAttr.m_macsecName.c_str());
+
+            // Maybe there are some uncreated ingress SAs that were added into m_uncreatedIngressMACsecSAs
+            // because the corresponding egress SA has not been created.
+            // So retry to create them.
+            if (macsecAttr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
+            {
+                retryCreateIngressMaCsecSAs();
+            }
+        }
+        else
+        {
+            // In Linux MACsec model, Egress SA need to be created before ingress SA.
+            // So, if try to create the ingress SA firstly, it will failed.
+            // But to create the egress SA should be always successful.
+            m_uncreatedIngressMACsecSAs.insert(macsecAttr);
         }
     }
 
@@ -221,17 +265,31 @@ sai_status_t SwitchStateBase::removeMACsecPort(
         }
     }
 
-    auto itr = m_macsecFlowPortMap.begin();
+    auto flowItr = m_macsecFlowPortMap.begin();
 
-    while (itr != m_macsecFlowPortMap.end())
+    while (flowItr != m_macsecFlowPortMap.end())
     {
-        if (itr->second == macsecPortId)
+        if (flowItr->second == macsecPortId)
         {
-            itr = m_macsecFlowPortMap.erase(itr);
+            flowItr = m_macsecFlowPortMap.erase(flowItr);
         }
         else
         {
-            itr ++;
+            flowItr ++;
+        }
+    }
+
+    auto saItr = m_uncreatedIngressMACsecSAs.begin();
+
+    while (saItr != m_uncreatedIngressMACsecSAs.end())
+    {
+        if (saItr->m_macsecName == macsecAttr.m_macsecName)
+        {
+            saItr = m_uncreatedIngressMACsecSAs.erase(saItr);
+        }
+        else
+        {
+            saItr ++;
         }
     }
 
@@ -254,6 +312,20 @@ sai_status_t SwitchStateBase::removeMACsecSC(
                     "The MACsec sc %s in device %s is deleted",
                     macsecAttr.m_sci.c_str(),
                     macsecAttr.m_macsecName.c_str());
+        }
+    }
+
+    auto saItr = m_uncreatedIngressMACsecSAs.begin();
+
+    while (saItr != m_uncreatedIngressMACsecSAs.end())
+    {
+        if (saItr->m_macsecName == macsecAttr.m_macsecName && saItr->m_sci == macsecAttr.m_sci)
+        {
+            saItr = m_uncreatedIngressMACsecSAs.erase(saItr);
+        }
+        else
+        {
+            saItr ++;
         }
     }
 
@@ -542,15 +614,16 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SC_ID, attrCount, attrList);
 
     // Find MACsec SC attributes
-    std::vector<sai_attribute_t> attrs(4);
+    std::vector<sai_attribute_t> attrs(5);
     attrs[0].id = SAI_MACSEC_SC_ATTR_FLOW_ID;
     attrs[1].id = SAI_MACSEC_SC_ATTR_MACSEC_SCI;
     attrs[2].id = SAI_MACSEC_SC_ATTR_ENCRYPTION_ENABLE;
     attrs[3].id = SAI_MACSEC_SC_ATTR_MACSEC_CIPHER_SUITE;
+    attrs[4].id = SAI_MACSEC_SC_ATTR_MACSEC_EXPLICIT_SCI_ENABLE;
 
     CHECK_STATUS(get(SAI_OBJECT_TYPE_MACSEC_SC, attr->value.oid, static_cast<uint32_t>(attrs.size()), attrs.data()));
 
-    macsecAttr.m_cipher = MACsecAttr::get_cipher_name(attr->value.s32);
+    macsecAttr.m_cipher = MACsecAttr::get_cipher_name(attrs[3].value.s32);
 
     if (macsecAttr.m_cipher == MACsecAttr::CIPHER_NAME_INVALID)
     {
@@ -562,6 +635,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     std::stringstream sciHexStr;
     macsecAttr.m_encryptionEnable = attrs[2].value.booldata;
     bool is_sak_128_bit = (attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_128 || attrs[3].value.s32 == SAI_MACSEC_CIPHER_SUITE_GCM_AES_XPN_128);
+    macsecAttr.m_sendSci = attrs[4].value.booldata;
 
     sciHexStr << std::setw(MACSEC_SCI_LENGTH) << std::setfill('0');
 
@@ -632,7 +706,9 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
     {
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_MACSEC_SSCI, attrCount, attrList);
 
-        macsecAttr.m_ssci = attr->value.u32;
+        // The Linux kernel directly uses ssci to XOR with the salt that is network order,
+        // So, this conversion is useful to convert SSCI from the host order to network order.
+        macsecAttr.m_ssci = htonl(attr->value.u32);
 
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SALT, attrCount, attrList);
 
@@ -840,4 +916,29 @@ sai_status_t SwitchStateBase::getMACsecSAPacketNumber(
     }
 
     return SAI_STATUS_FAILURE;
+}
+
+void SwitchStateBase::retryCreateIngressMaCsecSAs()
+{
+    SWSS_LOG_ENTER();
+
+    auto itr = m_uncreatedIngressMACsecSAs.begin();
+
+    while (itr != m_uncreatedIngressMACsecSAs.end())
+    {
+        if (m_macsecManager.create_macsec_sa(*itr))
+        {
+            SWSS_LOG_NOTICE(
+                "Enable MACsec SA %s:%u at the device %s",
+                itr->m_sci.c_str(),
+                static_cast<std::uint32_t>(itr->m_an),
+                itr->m_macsecName.c_str());
+
+            itr = m_uncreatedIngressMACsecSAs.erase(itr);
+        }
+        else
+        {
+            itr ++;
+        }
+    }
 }
