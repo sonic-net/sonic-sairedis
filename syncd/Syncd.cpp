@@ -4185,10 +4185,10 @@ sai_status_t Syncd::setUninitDataPlaneOnRemovalOnAllSwitches()
 
         sai_status_t queryStatus;
 
-        queryStatus = sai_query_attribute_capability(rid,
-                                                     SAI_OBJECT_TYPE_SWITCH,
-                                                     SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL,
-                                                     &attr_capability);
+        queryStatus = m_vendorSai->queryAttributeCapability(rid,
+                                                            SAI_OBJECT_TYPE_SWITCH,
+                                                            SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL,
+                                                            &attr_capability);
         if (queryStatus != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to get SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL capabilities: %s:%s",
