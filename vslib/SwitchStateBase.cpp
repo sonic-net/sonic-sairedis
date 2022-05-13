@@ -1232,12 +1232,6 @@ sai_status_t SwitchStateBase::set_port_capabilities()
     {
         attr.id = SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE;
         attr.value.booldata = true;
-
-        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
-
-        attr.id = SAI_PORT_ATTR_SUPPORTED_LINK_TRAINING_MODE;
-        attr.value.booldata = true;
-
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
     }
     return SAI_STATUS_SUCCESS;
@@ -2315,9 +2309,6 @@ sai_status_t SwitchStateBase::refresh_read_only(
                 return refresh_port_serdes_id(object_id);
 
             case SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE:
-                return SAI_STATUS_SUCCESS;
-
-            case SAI_PORT_ATTR_SUPPORTED_LINK_TRAINING_MODE:
                 return SAI_STATUS_SUCCESS;
         }
     }
