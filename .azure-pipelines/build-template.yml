@@ -107,7 +107,7 @@ jobs:
       set -ex
       sudo dpkg -i download/libswsscommon_1.0.0_${{ parameters.arch }}.deb
       sudo dpkg -i download/libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
-      rm -rf download || true
+      rm -rf download
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install sonic swss Common"
   - script: |
