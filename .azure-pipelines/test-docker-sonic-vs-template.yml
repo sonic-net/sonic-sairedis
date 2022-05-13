@@ -46,7 +46,6 @@ jobs:
 
   - script: |
       set -ex
-      ls -l
       sudo sonic-sairedis/.azure-pipelines/build_and_install_module.sh
 
       sudo apt-get install -y libhiredis0.14
