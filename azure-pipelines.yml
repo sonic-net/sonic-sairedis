@@ -3,10 +3,29 @@
 # Add steps that build, run tests, deploy, and more:
 # https://aka.ms/yaml
 
+pr:
+- master
+- 202???
+- 201???
+
 trigger:
+  batch: true
   branches:
     include:
-      - "*"
+    - master
+    - 202???
+    - 201???
+
+# this part need to be set in UI
+schedules:
+- cron: "0 0 * * 6"
+  displayName: Weekly build
+  branches:
+    include:
+    - master
+    - 202???
+    - 201???
+  always: true
 
 resources:
   repositories:
@@ -15,6 +34,17 @@ resources:
     name: Azure/sonic-swss
     endpoint: build
 
+parameters:
+  - name: debian_version
+    type: string
+    default: buster
+variables:
+  - name: BUILD_BRANCH
+    ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+      value: $(System.PullRequest.TargetBranch)
+    ${{ else }}:
+      value: $(Build.SourceBranchName)
+
 stages:
 - stage: Build
 
@@ -22,7 +52,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      sonic_slave: sonic-slave-buster
+      sonic_slave: sonic-slave-${{ parameters.debian_version }}
       swss_common_artifact_name: sonic-swss-common
       artifact_name: sonic-sairedis
       syslog_artifact_name: sonic-sairedis.syslog
@@ -36,9 +66,9 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: armhf
-      timeout: 240
+      timeout: 180
       pool: sonicbld-armhf
-      sonic_slave: sonic-slave-buster-armhf
+      sonic_slave: sonic-slave-${{ parameters.debian_version }}-armhf
       swss_common_artifact_name: sonic-swss-common.armhf
       artifact_name: sonic-sairedis.armhf
       syslog_artifact_name: sonic-sairedis.syslog.armhf
@@ -46,9 +76,9 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: arm64
-      timeout: 240
+      timeout: 180
       pool: sonicbld-arm64
-      sonic_slave: sonic-slave-buster-arm64
+      sonic_slave: sonic-slave-${{ parameters.debian_version }}-arm64
       swss_common_artifact_name: sonic-swss-common.arm64
       artifact_name: sonic-sairedis.arm64
       syslog_artifact_name: sonic-sairedis.syslog.arm64
@@ -60,10 +90,11 @@ stages:
   - template: .azure-pipelines/build-swss-template.yml
     parameters:
       arch: amd64
-      sonic_slave: sonic-slave-buster
+      sonic_slave: sonic-slave-${{ parameters.debian_version }}
       swss_common_artifact_name: sonic-swss-common
       sairedis_artifact_name: sonic-sairedis
       artifact_name: sonic-swss
+      debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildDocker
   dependsOn: BuildSwss

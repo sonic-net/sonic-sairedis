@@ -51,7 +51,7 @@ jobs:
   pool:
     ${{ if ne(parameters.pool, 'default') }}:
       name: ${{ parameters.pool }}
-    ${{ if eq(parameters.pool, 'default') }}:
+    ${{ else }}:
       vmImage: 'ubuntu-20.04'
 
   container:
@@ -97,22 +97,25 @@ jobs:
     inputs:
       source: specific
       project: build
-      pipeline: 9
+      pipeline: Azure.sonic-swss-common
       artifact: ${{ parameters.swss_common_artifact_name }}
       runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/master'
-      path: '$(Build.SourcesDirectory)/${{ parameters.swss_common_artifact_name }}'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
     displayName: "Download sonic swss common deb packages"
   - script: |
-      cd $(Build.SourcesDirectory)/${{ parameters.swss_common_artifact_name }}
-      sudo dpkg -i libswsscommon_1.0.0_${{ parameters.arch }}.deb
-      sudo dpkg -i libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
-    workingDirectory: $(Pipeline.Workspace)
+      set -ex
+      sudo dpkg -i download/libswsscommon_1.0.0_${{ parameters.arch }}.deb
+      sudo dpkg -i download/libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
+      rm -rf download
+    workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install sonic swss Common"
   - script: |
       set -ex
+      rm ../*.deb || true
       ./autogen.sh
-      fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs && cp ../*.deb .
+      fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
       sudo cp azsyslog.conf /etc/rsyslog.conf
