@@ -18,5 +18,6 @@ saiplayer_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERA
 saiplayer_LDADD =  libSaiPlayer.a $(top_srcdir)/syncd/libSyncd.a $(top_srcdir)/lib/libSaiRedis.a \
 				   -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 if GCOV_ENABLED
-saiplayer_LDADD += -lgcovpreload
+#saiplayer_LDADD += -lgcovpreload
+saiplayer_LDFLAGS = -Wl,-L$(top_srcdir)/gcovpreload/ -Wl,--no-as-needed,-Bdynamic -lgcovpreload
 endif

@@ -1,0 +1,2 @@
+lib_LTLIBRARIES=libgcovpreload.la
+libgcovpreload_la_SOURCES=gcovpreload.c

@@ -196,20 +196,6 @@ jobs:
     artifact: ${{ parameters.gcov_unittest_artifact_name }}
     displayName: "Publish gcov unittest output"
     condition: eq('${{ parameters.archive_gcov }}', true)
-  # - ${{ if eq(parameters.archive_gcov, true) }}:
-  #     - script: |
-  #         set -ex
-  #         # Install .NET CORE
-  #         curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-  #         sudo apt-add-repository https://packages.microsoft.com/debian/10/prod
-  #         sudo apt-get update
-  #         sudo apt-get install -y dotnet-sdk-5.0
-  #       displayName: "Install .NET CORE"
-  #     - task: PublishCodeCoverageResults@1
-  #       inputs:
-  #           codeCoverageTool: Cobertura
-  #           summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
-  #       displayName: 'Publish test coverage'
   - script: |
       pwd
       sudo chmod a+r /var/log/syslog*

@@ -77,12 +77,8 @@ libSyncd_a_CXXFLAGS += -DMDIO_ACCESS_USE_NPU
 endif
 
 if GCOV_ENABLED
-syncd_LDADD += -lgcovpreload
-endif
-
-if SONIC_ASIC_PLATFORM_MELLANOX
-syncd_CXXFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
-libSyncd_a_CXXFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
+#syncd_LDADD += -lgcovpreload
+syncd_LDFLAGS += -Wl,-L$(top_srcdir)/gcovpreload/ -Wl,--no-as-needed,-Bdynamic -lgcovpreload
 endif
 
 libSyncdRequestShutdown_a_SOURCES = \

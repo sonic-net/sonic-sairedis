@@ -1,4 +1,5 @@
 parameters:
+
 - name: arch
   type: string
   values:
@@ -95,7 +96,7 @@ jobs:
       pushd ./s/
       sudo tar -zcvf syncd.tar.gz ./*
       ls -lh ./*
-      sudo cp ./gcovpreload/lcov_cobertura.py $(Build.ArtifactStagingDirectory)/
+      sudo cp ./lcov_cobertura.py $(Build.ArtifactStagingDirectory)/
       sudo cp ./gcov_support.sh $(Build.ArtifactStagingDirectory)/sonic-gcov
       sudo cp -rf syncd.tar.gz $(Build.ArtifactStagingDirectory)/sonic-gcov
       popd

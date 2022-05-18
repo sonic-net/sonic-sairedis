@@ -229,6 +229,7 @@ CXXFLAGS="$SAVED_FLAGS"
 AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats)
 
 AC_OUTPUT(Makefile
+	  gcovpreload/Makefile
           meta/Makefile
           lib/Makefile
           vslib/Makefile

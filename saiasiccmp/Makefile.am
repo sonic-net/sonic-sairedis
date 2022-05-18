@@ -23,7 +23,8 @@ saiasiccmp_LDADD = libAsicCmp.a \
 				   $(top_srcdir)/syncd/libSyncd.a $(top_srcdir)/lib/libSaiRedis.a $(CODE_COVERAGE_LIBS)
 
 if GCOV_ENABLED
-saiasiccmp_LDADD += -lgcovpreload
+#saiasiccmp_LDADD += -lgcovpreload
+saiasiccmp_LDFLAGS = -Wl,-L$(top_srcdir)/gcovpreload/ -Wl,--no-as-needed,-Bdynamic -lgcovpreload
 endif
 
 TESTS = test.sh
