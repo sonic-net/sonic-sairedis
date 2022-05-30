@@ -20,6 +20,7 @@ namespace syncd
     {
         private:
 
+            typedef std::set<sai_port_stat_t> PortCountersSet;
             FlexCounter(const FlexCounter&) = delete;
 
         public:
@@ -213,9 +214,6 @@ namespace syncd
 
         private: // is counter supported
 
-            bool isPortCounterSupported(
-                    _In_ sai_port_stat_t counter) const;
-
             bool isPriorityGroupCounterSupported(
                     _In_ sai_ingress_priority_group_stat_t counter) const;
 
@@ -238,13 +236,16 @@ namespace syncd
         private: // update supported counters
 
             sai_status_t querySupportedPortCounters(
-                    _In_ sai_object_id_t portRid);
+                    _In_ sai_object_id_t portRid,
+                    PortCountersSet &supportedPortCounters);
 
             void getSupportedPortCounters(
-                    _In_ sai_object_id_t portRid);
+                    _In_ sai_object_id_t portRid,
+                    PortCountersSet &supportedPortCounters);
 
             void updateSupportedPortCounters(
-                    _In_ sai_object_id_t portRid);
+                    _In_ sai_object_id_t portRid,
+                    PortCountersSet &supportedPortCounters);
 
             std::vector<sai_port_stat_t> saiCheckSupportedPortDebugCounters(
                     _In_ sai_object_id_t portRid,
@@ -545,7 +546,6 @@ namespace syncd
 
         private: // supported counters
 
-            std::set<sai_port_stat_t> m_supportedPortCounters;
             std::set<sai_ingress_priority_group_stat_t> m_supportedPriorityGroupCounters;
             std::set<sai_queue_stat_t> m_supportedQueueCounters;
             std::set<sai_router_interface_stat_t> m_supportedRifCounters;
