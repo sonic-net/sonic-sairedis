@@ -7446,18 +7446,31 @@ void Meta::meta_sai_on_fdb_event_single(
                 sai_attribute_t *list = data.attr;
                 uint32_t count = data.attr_count;
 
-                sai_attribute_t local[2]; // 2 for port id and type
-
-                if (count == 1)
+                //Add an attr of type if possiable.
+                sai_attribute_t local[SAI_FDB_ENTRY_ATTR_END]; // 2 for port id and type
+                if (count <= SAI_FDB_ENTRY_ATTR_END)
                 {
-                    // workaround for missing "TYPE" attribute on notification
-
-                    local[0] = data.attr[0]; // copy 1st attr
-                    local[1].id = SAI_FDB_ENTRY_ATTR_TYPE;
-                    local[1].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC; // assume learned entries are always dynamic
-
-                    list = local;
-                    count = 2; // now we added type
+                    bool hasType = false;
+                    for(uint32_t i=0; i<count; i++)
+                    {
+                        if(data.attr[i].id == SAI_FDB_ENTRY_ATTR_TYPE)
+                        {
+                            hasType = true;
+                        }
+                        local[i] = data.attr[i];//copy every attr
+                    }
+                    if(!hasType && count < SAI_FDB_ENTRY_ATTR_END)
+                    {
+                        local[count].id = SAI_FDB_ENTRY_ATTR_TYPE;
+                        local[count].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC; // assume learned entries are always dynamic
+                        list = local;
+                        count++;
+                    }
+                }
+                else
+                {
+                    SWSS_LOG_ERROR("This can bot happen, make sure your sai is running correctly.");
+                    break;
                 }
 
                 sai_status_t status = meta_generic_validation_create(meta_key_fdb, data.fdb_entry.switch_id, count, list);
