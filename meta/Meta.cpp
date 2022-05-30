@@ -7446,7 +7446,7 @@ void Meta::meta_sai_on_fdb_event_single(
                 sai_attribute_t *list = data.attr;
                 uint32_t count = data.attr_count;
 
-                //Add an attr of type if possiable.
+                //Add an attr of type if possible.
                 sai_attribute_t local[SAI_FDB_ENTRY_ATTR_END]; // 2 for port id and type
                 if (count <= SAI_FDB_ENTRY_ATTR_END)
                 {
