@@ -7447,7 +7447,7 @@ void Meta::meta_sai_on_fdb_event_single(
                 uint32_t count = data.attr_count;
 
                 /* Add an attr of type if there is no SAI_FDB_ENTRY_ATTR_TYPE in data.
-                 * There are two attributes but no SAI_FDB_ENTRY_ATTR_TYPE in VXLAN enviroments.
+                 * There are two attributes but no SAI_FDB_ENTRY_ATTR_TYPE in VXLAN environment.
                  */
                 sai_attribute_t local[SAI_FDB_ENTRY_ATTR_END];
                 bool hasType = false;
