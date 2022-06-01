@@ -7449,21 +7449,25 @@ void Meta::meta_sai_on_fdb_event_single(
                 /* Add an attr of type if there is no SAI_FDB_ENTRY_ATTR_TYPE in data.
                  * There are two attributes but no SAI_FDB_ENTRY_ATTR_TYPE in VXLAN environment.
                  */
-                sai_attribute_t local[SAI_FDB_ENTRY_ATTR_END];
+                std::vector<sai_attribute_t> local_attributes;
+                sai_attribute_t local_type;
+
                 bool hasType = false;
                 for (uint32_t i = 0; i < count; i++)
                 {
                     if(data.attr[i].id == SAI_FDB_ENTRY_ATTR_TYPE)
                     {
                         hasType = true;
+                        break;
                     }
-                    local[i] = data.attr[i];//copy every attr
+                    local_attributes.push_back(data.attr[i]);//copy every attr
                 }
-                if(!hasType && count < SAI_FDB_ENTRY_ATTR_END)
+                if(!hasType)
                 {
-                    local[count].id = SAI_FDB_ENTRY_ATTR_TYPE;
-                    local[count].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC; // assume learned entries are always dynamic
-                    list = local;
+                    local_type.id = SAI_FDB_ENTRY_ATTR_TYPE;
+                    local_type.value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;// assume learned entries are always dynamic
+                    local_attributes.push_back(local_type);
+                    list = local_attributes.data();
                     count++;
                 }
 
