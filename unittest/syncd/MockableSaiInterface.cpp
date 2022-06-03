@@ -165,7 +165,7 @@ sai_status_t MockableSaiInterface::queryStatsCapability(
         return mock_queryStatsCapability(switch_id, object_type, stats_capability);
     }
 
-    return SAI_STATUS_SUCCESS;
+    return SAI_STATUS_NOT_SUPPORTED;
 }
 
 sai_status_t MockableSaiInterface::getStatsExt(
