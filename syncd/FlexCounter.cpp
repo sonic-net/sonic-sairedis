@@ -2431,7 +2431,7 @@ void FlexCounter::endFlexCounterThread(void)
 }
 
 sai_status_t FlexCounter::querySupportedPortCounters(
-        _In_ sai_object_id_t portRid, PortCountersSet &supportedPortCounters)
+        _In_ sai_object_id_t portRid, _Out_ PortCountersSet &supportedPortCounters)
 {
     SWSS_LOG_ENTER();
 
@@ -2445,10 +2445,6 @@ sai_status_t FlexCounter::querySupportedPortCounters(
         SAI_OBJECT_TYPE_PORT,
         &stats_capability);
 
-    SWSS_LOG_NOTICE("queryStatsCapability on port RID %s: %s",
-            sai_serialize_object_id(portRid).c_str(),
-            sai_serialize_status(status).c_str());
-
     /* Second call is for query statistics capability */
     if (status == SAI_STATUS_BUFFER_OVERFLOW)
     {
@@ -2461,7 +2457,7 @@ sai_status_t FlexCounter::querySupportedPortCounters(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_NOTICE("Unable to get port supported counters for %s: %s",
+            SWSS_LOG_NOTICE("Unable to query port supported counters for %s: %s",
                 sai_serialize_object_id(portRid).c_str(),
                 sai_serialize_status(status).c_str());
         }
@@ -2471,9 +2467,6 @@ sai_status_t FlexCounter::querySupportedPortCounters(
             {
                 sai_port_stat_t counter = static_cast<sai_port_stat_t>(statCapability.stat_enum);
                 supportedPortCounters.insert(counter);
-                SWSS_LOG_NOTICE("queryStatsCapability counter %s on port RID %s",
-                        sai_serialize_port_stat(counter).c_str(),
-                        sai_serialize_object_id(portRid).c_str());
             }
         }
     }
@@ -2482,7 +2475,7 @@ sai_status_t FlexCounter::querySupportedPortCounters(
 
 void FlexCounter::getSupportedPortCounters(
         _In_ sai_object_id_t portRid,
-        PortCountersSet &supportedPortCounters)
+        _Out_ PortCountersSet &supportedPortCounters)
 {
     SWSS_LOG_ENTER();
 
@@ -2504,17 +2497,13 @@ void FlexCounter::getSupportedPortCounters(
             continue;
         }
 
-        SWSS_LOG_NOTICE("Counter %s is supported on port RID %s: %s",
-                sai_serialize_port_stat(counter).c_str(),
-                sai_serialize_object_id(portRid).c_str(),
-                sai_serialize_status(status).c_str());
         supportedPortCounters.insert(counter);
     }
 }
 
 void FlexCounter::updateSupportedPortCounters(
         _In_ sai_object_id_t portRid,
-        PortCountersSet &supportedPortCounters)
+        _Out_ PortCountersSet &supportedPortCounters)
 {
     SWSS_LOG_ENTER();
 

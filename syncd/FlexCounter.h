@@ -20,7 +20,6 @@ namespace syncd
     {
         private:
 
-            typedef std::set<sai_port_stat_t> PortCountersSet;
             FlexCounter(const FlexCounter&) = delete;
 
         public:
@@ -235,17 +234,18 @@ namespace syncd
 
         private: // update supported counters
 
+            typedef std::set<sai_port_stat_t> PortCountersSet;
             sai_status_t querySupportedPortCounters(
                     _In_ sai_object_id_t portRid,
-                    PortCountersSet &supportedPortCounters);
+                    _Out_ PortCountersSet &supportedPortCounters);
 
             void getSupportedPortCounters(
                     _In_ sai_object_id_t portRid,
-                    PortCountersSet &supportedPortCounters);
+                    _Out_ PortCountersSet &supportedPortCounters);
 
             void updateSupportedPortCounters(
                     _In_ sai_object_id_t portRid,
-                    PortCountersSet &supportedPortCounters);
+                    _Out_ PortCountersSet &supportedPortCounters);
 
             std::vector<sai_port_stat_t> saiCheckSupportedPortDebugCounters(
                     _In_ sai_object_id_t portRid,
