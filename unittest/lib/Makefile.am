@@ -21,6 +21,7 @@ tests_SOURCES = \
 				TestSkipRecordAttrContainer.cpp \
 				TestServerConfig.cpp \
 				TestRedisVidIndexGenerator.cpp \
+				TestRecorder.cpp \
 				TestRedisChannel.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
