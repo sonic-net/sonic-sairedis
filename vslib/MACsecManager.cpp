@@ -895,7 +895,7 @@ void MACsecManager::cleanup_macsec_device() const
     //     cipher suite: GCM-AES-128, using ICV length 16
     //     TXSC: fe5400409b920001 on SA 0
     // Use pattern : '^\d+:\s*(\w+):' to extract all MACsec interface names
-    const std::regex pattern("^\\d+:\\s*(\\w+):");
+    const std::regex pattern("\\d+:\\s*(\\w+):");
     std::smatch matches;
     std::string::const_iterator searchPos(macsecInfos.cbegin());
 
