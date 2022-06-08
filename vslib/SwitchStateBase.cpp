@@ -3165,6 +3165,8 @@ sai_status_t SwitchStateBase::create_voq_per_sysport(
 
 sai_status_t SwitchStateBase::create_voqs()
 {
+    SWSS_LOG_ENTER();
+
     for (auto &sys_port_id: m_system_port_list)
     {
         CHECK_STATUS(create_voq_per_sysport(sys_port_id));
