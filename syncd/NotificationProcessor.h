@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NotificationQueue.h"
+#include "NotificationQueueHash.h"
 #include "VirtualOidTranslator.h"
 #include "RedisClient.h"
 #include "NotificationProducerBase.h"
@@ -28,6 +29,8 @@ namespace syncd
         public:
 
             std::shared_ptr<NotificationQueue> getQueue() const;
+
+            std::shared_ptr<NotificationQueueHash> getQueueHash() const;
 
             void signal();
 
@@ -123,6 +126,8 @@ namespace syncd
         private:
 
             std::shared_ptr<NotificationQueue> m_notificationQueue;
+
+            std::shared_ptr<NotificationQueueHash> m_notificationQueueHash;
 
             std::shared_ptr<std::thread> m_ntf_process_thread;
 

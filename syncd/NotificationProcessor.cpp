@@ -27,6 +27,8 @@ NotificationProcessor::NotificationProcessor(
     m_runThread = false;
 
     m_notificationQueue = std::make_shared<NotificationQueue>();
+
+    m_notificationQueueHash = std::make_shared<NotificationQueueHash>();
 }
 
 NotificationProcessor::~NotificationProcessor()
@@ -620,6 +622,11 @@ void NotificationProcessor::ntf_process_function()
         {
             processNotification(item);
         }
+
+        while (m_notificationQueueHash->tryDequeue(item))
+        {
+            processNotification(item);
+        }
     }
 }
 
@@ -660,4 +667,11 @@ std::shared_ptr<NotificationQueue> NotificationProcessor::getQueue() const
     SWSS_LOG_ENTER();
 
     return m_notificationQueue;
+}
+
+std::shared_ptr<NotificationQueueHash> NotificationProcessor::getQueueHash() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_notificationQueueHash;
 }

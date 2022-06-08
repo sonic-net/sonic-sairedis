@@ -5,6 +5,7 @@ extern "C"{
 }
 
 #include "NotificationQueue.h"
+#include "NotificationQueueHash.h"
 #include "NotificationProcessor.h"
 
 #include "swss/table.h"
@@ -71,11 +72,18 @@ namespace syncd
                     _In_ const std::string& op,
                     _In_ const std::string& data);
 
+            void enqueueNotificationHash(
+                    _In_ const std::string& key,
+                    _In_ const std::string& op,
+                    _In_ const std::string& data);
+
         private:
 
             sai_switch_notifications_t m_switchNotifications;
 
             std::shared_ptr<NotificationQueue> m_notificationQueue;
+
+            std::shared_ptr<NotificationQueueHash> m_notificationQueueHash;
 
             std::shared_ptr<NotificationProcessor> m_processor;
     };

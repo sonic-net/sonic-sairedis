@@ -18,6 +18,8 @@ NotificationHandler::NotificationHandler(
     memset(&m_switchNotifications, 0, sizeof(m_switchNotifications));
 
     m_notificationQueue = processor->getQueue();
+
+    m_notificationQueueHash = processor->getQueueHash();
 }
 
 NotificationHandler::~NotificationHandler()
@@ -133,9 +135,14 @@ void NotificationHandler::onFdbEvent(
 {
     SWSS_LOG_ENTER();
 
-    std::string s = sai_serialize_fdb_event_ntf(count, data);
+    for (uint32_t i = 0; i < count; i++)
+    {
+        std::string key = sai_serialize_fdb_entry(data[i].fdb_entry);
 
-    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s);
+        std::string s = sai_serialize_fdb_event_ntf(1, &data[i]);
+
+        enqueueNotificationHash(key, SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s);
+    }
 }
 
 void NotificationHandler::onPortStateChange(
@@ -218,5 +225,24 @@ void NotificationHandler::enqueueNotification(
     std::vector<swss::FieldValueTuple> entry;
 
     enqueueNotification(op, data, entry);
+}
+
+void NotificationHandler::enqueueNotificationHash(
+        _In_ const std::string& key,
+        _In_ const std::string& op,
+        _In_ const std::string& data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("%s %s", op.c_str(), data.c_str());
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    swss::KeyOpFieldsValuesTuple item(op, data, entry);
+
+    if (m_notificationQueueHash->enqueue(key, item))
+    {
+        m_processor->signal();
+    }
 }
 
