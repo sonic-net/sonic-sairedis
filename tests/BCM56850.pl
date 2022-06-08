@@ -780,9 +780,9 @@ sub test_neighbor_lag
 
 sub test_voq_switch_create
 {
-    fresh_start;
+    fresh_start("-z", "redis_sync");
 
-    play "voq_switch_create.rec";
+    play("-z", "redis_sync", "voq_switch_create.rec")
 }
 
 # RUN TESTS
