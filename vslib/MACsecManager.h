@@ -44,7 +44,7 @@ namespace saivs
                     _In_ const MACsecAttr &attr,
                     _Out_ sai_uint64_t &pn) const;
 
-        private:
+        protected:
 
             bool create_macsec_egress_sc(
                     _In_ const MACsecAttr &attr);
@@ -127,7 +127,7 @@ namespace saivs
             std::string shellquote(
                     _In_ const std::string &str) const;
 
-            bool exec(
+            virtual bool exec(
                     _In_ const std::string &command,
                     _Out_ std::string &output) const;
 
