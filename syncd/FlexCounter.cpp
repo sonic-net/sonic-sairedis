@@ -2431,7 +2431,8 @@ void FlexCounter::endFlexCounterThread(void)
 }
 
 sai_status_t FlexCounter::querySupportedPortCounters(
-        _In_ sai_object_id_t portRid, _Out_ PortCountersSet &supportedPortCounters)
+        _In_ sai_object_id_t portRid,
+        _Out_ PortCountersSet &supportedPortCounters)
 {
     SWSS_LOG_ENTER();
 

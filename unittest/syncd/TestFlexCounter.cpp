@@ -197,10 +197,21 @@ TEST(FlexCounter, addRemoveCounterForPort)
     values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_ERRORS");
 
     test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
-    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *ids, uint64_t *counters) {
         for (uint32_t i = 0; i < number_of_counters; i++)
         {
-            counters[i] = (i + 1) * 100;
+            if (ids[i] == SAI_PORT_STAT_IF_IN_OCTETS)
+            {
+                counters[i] = 100;
+            }
+            else if (ids[i] == SAI_PORT_STAT_IF_IN_ERRORS)
+            {
+                counters[i] = 200;
+            }
+            else
+            {
+                return SAI_STATUS_FAILURE;
+            }
         }
         return SAI_STATUS_SUCCESS;
     };
