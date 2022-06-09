@@ -21,14 +21,14 @@ MACsecManager::MACsecManager()
 {
     SWSS_LOG_ENTER();
 
-    cleanup_macsec_device();
+    // empty
 }
 
 MACsecManager::~MACsecManager()
 {
     SWSS_LOG_ENTER();
 
-    cleanup_macsec_device();
+    // empty
 }
 
 bool MACsecManager::create_macsec_port(

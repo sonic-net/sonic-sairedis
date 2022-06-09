@@ -21,7 +21,7 @@ SwitchStateBase::SwitchStateBase(
 {
     SWSS_LOG_ENTER();
 
-    // empty
+    m_macsecManager.cleanup_macsec_device();
 }
 
 SwitchStateBase::SwitchStateBase(
@@ -33,6 +33,8 @@ SwitchStateBase::SwitchStateBase(
     m_realObjectIdManager(manager)
 {
     SWSS_LOG_ENTER();
+
+    m_macsecManager.cleanup_macsec_device();
 
     if (warmBootState)
     {
@@ -57,7 +59,7 @@ SwitchStateBase::~SwitchStateBase()
 {
     SWSS_LOG_ENTER();
 
-    // empty
+    m_macsecManager.cleanup_macsec_device();
 }
 
 sai_status_t SwitchStateBase::create(
