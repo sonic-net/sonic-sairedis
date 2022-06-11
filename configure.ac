@@ -186,6 +186,7 @@ AM_COND_IF([SYNCD], [
 AM_COND_IF([SAIVS], [], [
 SAVED_FLAGS="$CXXFLAGS"
 CXXFLAGS="-lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
+AC_CHECK_FUNC(sai_query_api_version, [
 AC_MSG_CHECKING([SAI headers API version and library version check])
 AC_TRY_RUN([
 extern "C" {
@@ -201,7 +202,7 @@ int main() {
 }],
 [AC_MSG_RESULT(ok)],
 [AC_MSG_RESULT(failed)
-AC_MSG_ERROR("SAI headers API version and library version mismatch")])
+AC_MSG_ERROR("SAI headers API version and library version mismatch")])])
 CXXFLAGS="$SAVED_FLAGS"
 ])])
 
