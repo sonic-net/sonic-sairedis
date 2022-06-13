@@ -2089,7 +2089,8 @@ void ComparisonLogic::removeCurrentObjectDependencyTree(
                     continue;
                 }
 
-                if (revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+                if (revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID &&
+                        revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID)
                 {
                     // currently we only support reference on OID, not list
                     SWSS_LOG_THROW("attr value type %d, not supported yet, FIXME",
