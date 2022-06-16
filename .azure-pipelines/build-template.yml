@@ -56,6 +56,7 @@ jobs:
 
   container:
     image: sonicdev-microsoft.azurecr.io:443/${{ parameters.sonic_slave }}:latest
+    options:  "--privileged"
 
   steps:
   - checkout: self
