@@ -135,6 +135,8 @@ jobs:
       displayName: "Install gcovr 5.0 with recursive fix"
     - script: |
         set -ex
+        # Add SYS_TIME capability for settimeofday ok in syncd test
+        sudo setcap "cap_sys_time=eip" syncd/.libs/tests
         make check
         gcovr --version
         find SAI/meta -name "*.gc*" | xargs rm -vf
