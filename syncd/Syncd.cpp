@@ -205,8 +205,7 @@ void Syncd::performStartupLogic()
 
     // ignore warm logic here if syncd starts in fastboot or in Mellanox fastfast boot mode
 
-    if (m_isAdvancedStart && (m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT) &&
-            (m_commandLineOptions->m_startType != SAI_START_TYPE_FAST_BOOT))
+    if (m_isAdvancedStart && m_commandLineOptions->m_startType == SAI_START_TYPE_WARM_BOOT)
     {
         SWSS_LOG_WARN("override command line startType=%s via SAI_START_TYPE_WARM_BOOT",
                 CommandLineOptions::startTypeToString(m_commandLineOptions->m_startType).c_str());
