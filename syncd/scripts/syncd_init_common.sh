@@ -90,6 +90,14 @@ config_syncd_cisco_8000()
 {
     export BASE_OUTPUT_DIR=/opt/cisco/silicon-one
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+
+    # Cisco SDK debug shell support
+    version=$(python3 -V 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\.\2/')
+    if [ ! -z "$version" ]; then
+        export SAI_SHELL_ENABLE=1
+        export SAI_DEBUG_PYTHON_SO_PATH=/usr/lib/python${version}/config-${version}m-x86_64-linux-gnu/libpython${version}m.so
+        export PYTHONPATH=/usr/lib/cisco/pylib
+    fi
 }
 
 config_syncd_bcm()
