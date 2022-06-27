@@ -4472,6 +4472,11 @@ static void timerWatchdogCallback(
     SWSS_LOG_ERROR("main loop execution exceeded %ld ms", span/1000);
 }
 
+#ifdef MDIO_ACCESS_USE_NPU
+extern int startIpcMdioProcessingThread(sai_switch_api_t *sai_switch_api);
+extern void stopIpcMdioProcessingThread(void);
+#endif
+
 void Syncd::run()
 {
     SWSS_LOG_ENTER();
@@ -4493,6 +4498,13 @@ void Syncd::run()
         // processing possible quick fdb notifications, and pointer for
         // notification queue is created before we create switch
         m_processor->startNotificationsProcessingThread();
+
+#ifdef MDIO_ACCESS_USE_NPU
+        if (m_commandLineOptions->m_globalContext == 0)
+        {
+            startIpcMdioProcessingThread(sai_metadata_sai_switch_api);
+        }
+#endif
 
         SWSS_LOG_NOTICE("syncd listening for events");
 
@@ -4677,6 +4689,13 @@ void Syncd::run()
     }
 
     m_manager->removeAllCounters();
+
+#ifdef MDIO_ACCESS_USE_NPU
+    if (m_commandLineOptions->m_globalContext == 0)
+    {
+        stopIpcMdioProcessingThread();
+    }
+#endif
 
     sai_status_t status = removeAllSwitches();
 

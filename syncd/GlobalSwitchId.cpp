@@ -15,6 +15,10 @@ sai_object_id_t gSwitchId = SAI_NULL_OBJECT_ID;
 
 #endif
 
+#ifdef MDIO_ACCESS_USE_NPU
+sai_object_id_t mdioSwitchId = SAI_NULL_OBJECT_ID;
+#endif
+
 void GlobalSwitchId::setSwitchId(
         _In_ sai_object_id_t switchRid)
 {
@@ -33,4 +37,10 @@ void GlobalSwitchId::setSwitchId(
             sai_serialize_object_id(gSwitchId).c_str());
 #endif
 
+#ifdef MDIO_ACCESS_USE_NPU
+    if (mdioSwitchId == SAI_NULL_OBJECT_ID)
+    {
+        mdioSwitchId = switchRid;
+    }
+#endif
 }

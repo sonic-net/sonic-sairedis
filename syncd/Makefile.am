@@ -50,6 +50,7 @@ libSyncd_a_SOURCES = \
 				WatchdogScope.cpp \
 				Workaround.cpp \
 				ZeroMQNotificationProducer.cpp \
+				syncd_mdio_ipc.cpp \
 				syncd_main.cpp
 
 libSyncd_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
@@ -69,6 +70,10 @@ if SAITHRIFT
 libSyncd_a_CXXFLAGS += -DSAITHRIFT=yes
 syncd_CXXFLAGS += -DSAITHRIFT=yes
 syncd_LDADD += -lrpcserver -lthrift
+endif
+
+if SONIC_ASIC_PLATFORM_BROADCOM
+libSyncd_a_CXXFLAGS += -DMDIO_ACCESS_USE_NPU
 endif
 
 libSyncdRequestShutdown_a_SOURCES = \
