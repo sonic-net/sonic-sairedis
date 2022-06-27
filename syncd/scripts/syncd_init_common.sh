@@ -26,10 +26,8 @@ else
     CMD_ARGS=
 fi
 
-# Use temporary view between init and apply except of fast-reboot
-if [[ "$(cat /proc/cmdline)" != *"SONIC_BOOT_TYPE=fast-reboot"* ]]; then
-    CMD_ARGS+=" -u"
-fi
+# Use temporary view between init and apply
+CMD_ARGS+=" -u"
 
 # Use bulk APIs in SAI
 # currently disabled since most vendors don't support that yet
