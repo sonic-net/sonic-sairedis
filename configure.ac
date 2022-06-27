@@ -186,7 +186,7 @@ AC_SUBST(SAIINC, "-I\$(top_srcdir)/SAI/inc -I\$(top_srcdir)/SAI/experimental -I\
 AM_COND_IF([SYNCD], [
 AM_COND_IF([SAIVS], [], [
 SAVED_FLAGS="$CXXFLAGS"
-CXXFLAGS="-lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
+CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
 AC_CHECK_FUNCS(sai_query_api_version, [
 AC_MSG_CHECKING([SAI headers API version and library version check])
 AC_TRY_RUN([
