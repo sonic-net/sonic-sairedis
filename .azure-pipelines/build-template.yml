@@ -78,7 +78,7 @@ jobs:
         libnl-route-3-dev \
         libnl-nf-3-dev \
         libnl-cli-3-dev \
-        swig3.0 \
+        swig \
         libpython2.7-dev \
         libzmq5 \
         libzmq3-dev \
