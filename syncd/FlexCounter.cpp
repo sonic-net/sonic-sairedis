@@ -1029,8 +1029,9 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_statsMode);
     }
 
-    SWSS_LOG_ERROR("Invalid counter type %s", context_name.c_str());
-    assert(0);
+    SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
+    // gcc 8.3 requires a return value here
+    return nullptr;
 }
 
 std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
