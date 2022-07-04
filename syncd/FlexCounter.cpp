@@ -60,6 +60,13 @@ struct CounterIds
             _In_ sai_object_id_t id,
             _In_ const std::vector<StatType> &ids
     ): rid(id), counter_ids(ids) {}
+    void setStatsMode(sai_stats_mode_t statsMode) {}
+    sai_stats_mode_t getStatsMode() const 
+    {
+        SWSS_LOG_THROW("This counter type has no stats mode field");
+        // gcc 8.3 requires a return value here
+        return SAI_STATS_MODE_READ_AND_CLEAR;
+    }
     sai_object_id_t rid;
     std::vector<StatType> counter_ids;
 };
@@ -73,6 +80,8 @@ struct CounterIds<StatType, typename std::enable_if_t<std::is_same<StatType, sai
             _In_ sai_object_id_t id,
             _In_ const std::vector<StatType> &ids
     ): rid(id), counter_ids(ids) {}
+    void setStatsMode(sai_stats_mode_t statsMode) {stats_mode = statsMode;}
+    sai_stats_mode_t getStatsMode() const {return stats_mode;}
     sai_object_id_t rid;
     std::vector<StatType> counter_ids;
     sai_stats_mode_t stats_mode;
@@ -88,6 +97,171 @@ struct HasStatsMode
 
     enum { value = std::is_void<decltype(check<T>(0))>::value };
 };
+
+// TODO: use if constexpr when cpp17 is supported
+template <typename StatType>
+std::string serializeStat(const StatType stat)
+{
+    SWSS_LOG_THROW("serializeStat for default type parameter is not implemented");
+    // gcc 8.3 requires a return value here
+    return "";
+}
+
+template <>
+std::string serializeStat(const sai_port_stat_t stat)
+{
+    return sai_serialize_port_stat(stat);
+}
+
+template <>
+std::string serializeStat(const sai_queue_stat_t stat)
+{
+    return sai_serialize_queue_stat(stat);
+}
+
+template <>
+std::string serializeStat(const sai_ingress_priority_group_stat_t stat)
+{
+    return sai_serialize_ingress_priority_group_stat(stat);
+}
+
+template <>
+std::string serializeStat(const sai_router_interface_stat_t stat)
+{
+    return sai_serialize_router_interface_stat(stat);
+}
+
+template <>
+std::string serializeStat(const sai_switch_stat_t stat)
+{
+    return sai_serialize_switch_stat(stat);
+}
+
+template <>
+std::string serializeStat(const sai_macsec_flow_stat_t stat)
+{
+    return sai_serialize_macsec_flow_stat(stat);
+}
+
+template <>
+std::string serializeStat(const sai_macsec_sa_stat_t stat)
+{
+    return sai_serialize_macsec_sa_stat(stat);
+}
+
+template <>
+std::string serializeStat(const sai_counter_stat_t stat)
+{
+    return sai_serialize_counter_stat(stat);
+}
+
+template <>
+std::string serializeStat(const sai_tunnel_stat_t stat)
+{
+    return sai_serialize_tunnel_stat(stat);
+}
+
+template <>
+std::string serializeStat(const sai_buffer_pool_stat_t stat)
+{
+    return sai_serialize_buffer_pool_stat(stat);
+}
+
+template <typename StatType>
+void deserializeStat(const char* name, StatType *stat)
+{
+    SWSS_LOG_THROW("deserializeStat for default type parameter is not implemented");
+}
+
+template <>
+void deserializeStat(const char* name, sai_port_stat_t *stat)
+{
+    sai_deserialize_port_stat(name, stat);
+}
+
+template <>
+void deserializeStat(const char* name, sai_queue_stat_t *stat)
+{
+    sai_deserialize_queue_stat(name, stat);
+}
+
+template <>
+void deserializeStat(const char* name, sai_ingress_priority_group_stat_t *stat)
+{
+    sai_deserialize_ingress_priority_group_stat(name, stat);
+}
+
+template <>
+void deserializeStat(const char* name, sai_router_interface_stat_t *stat)
+{
+    sai_deserialize_router_interface_stat(name, stat);
+}
+
+template <>
+void deserializeStat(const char* name, sai_switch_stat_t *stat)
+{
+    sai_deserialize_switch_stat(name, stat);
+}
+
+template <>
+void deserializeStat(const char* name, sai_macsec_flow_stat_t *stat)
+{
+    sai_deserialize_macsec_flow_stat(name, stat);
+}
+
+template <>
+void deserializeStat(const char* name, sai_macsec_sa_stat_t *stat)
+{
+    sai_deserialize_macsec_sa_stat(name, stat);
+}
+
+template <>
+void deserializeStat(const char* name, sai_counter_stat_t *stat)
+{
+    sai_deserialize_counter_stat(name, stat);
+}
+
+template <>
+void deserializeStat(const char* name, sai_tunnel_stat_t *stat)
+{
+    sai_deserialize_tunnel_stat(name, stat);
+}
+
+template <>
+void deserializeStat(const char* name, sai_buffer_pool_stat_t *stat)
+{
+    sai_deserialize_buffer_pool_stat(name, stat);
+}
+
+template <typename AttrType>
+void deserializeAttr(const std::string& name, AttrType &attr)
+{
+    SWSS_LOG_THROW("deserializeAttr for default type parameter is not implemented");
+}
+
+template <>
+void deserializeAttr(const std::string& name, sai_queue_attr_t &attr)
+{
+    sai_deserialize_queue_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(const std::string& name, sai_ingress_priority_group_attr_t &attr)
+{
+    sai_deserialize_ingress_priority_group_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(const std::string& name, sai_macsec_sa_attr_t &attr)
+{
+    sai_deserialize_macsec_sa_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(const std::string& name, sai_acl_counter_attr_t &attr)
+{
+    sai_deserialize_acl_counter_attr(name, attr);
+}
 
 template <typename StatType>
 class CounterContext : public BaseCounterContext
@@ -114,7 +288,8 @@ public:
         SWSS_LOG_ENTER();
         sai_stats_mode_t instance_stats_mode = SAI_STATS_MODE_READ_AND_CLEAR;
         sai_stats_mode_t effective_stats_mode;
-        if constexpr (HasStatsMode<CounterIdsType>::value)
+        // TODO: use if constexpr when c++17 is supported
+        if (HasStatsMode<CounterIdsType>::value)
         {
             if (per_object_stats_mode == STATS_MODE_READ_AND_CLEAR)
             {
@@ -180,9 +355,10 @@ public:
         }
 
         auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
-        if constexpr (HasStatsMode<CounterIdsType>::value)
+        // TODO: use if constexpr when cpp17 is supported
+        if (HasStatsMode<CounterIdsType>::value)
         {
-            counter_data->stats_mode = instance_stats_mode;
+            counter_data->setStatsMode(instance_stats_mode);
         }
         m_objectIdsMap.emplace(vid, counter_data);
     }
@@ -216,10 +392,11 @@ public:
             const auto &rid = kv.second->rid;
             const auto &statIds = kv.second->counter_ids;
 
-            if constexpr (HasStatsMode<CounterIdsType>::value)
+            // TODO: use if constexpr when cpp17 is supported
+            if (HasStatsMode<CounterIdsType>::value)
             {
                 effective_stats_mode = (m_groupStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
-                                        kv.second->stats_mode == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
+                                        kv.second->getStatsMode() == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
             }
 
             std::vector<uint64_t> stats(statIds.size());
@@ -263,110 +440,6 @@ public:
     }
 
 private:
-    std::string serializeStat(const StatType stat)
-    {
-        if constexpr (std::is_same<StatType, sai_port_stat_t>::value)
-        {
-            return sai_serialize_port_stat(stat);
-        }
-        else if constexpr (std::is_same<StatType, sai_queue_stat_t>::value)
-        {
-            return sai_serialize_queue_stat(stat);
-        }
-        else if constexpr (std::is_same<StatType, sai_ingress_priority_group_stat_t>::value)
-        {
-            return sai_serialize_ingress_priority_group_stat(stat);
-        }
-        else if constexpr (std::is_same<StatType, sai_router_interface_stat_t>::value)
-        {
-            return sai_serialize_router_interface_stat(stat);
-        }
-        else if constexpr (std::is_same<StatType, sai_switch_stat_t>::value)
-        {
-            return sai_serialize_switch_stat(stat);
-        }
-        else if constexpr (std::is_same<StatType, sai_macsec_flow_stat_t>::value)
-        {
-            return sai_serialize_macsec_flow_stat(stat);
-        }
-        else if constexpr (std::is_same<StatType, sai_macsec_sa_stat_t>::value)
-        {
-            return sai_serialize_macsec_sa_stat(stat);
-        }
-        else if constexpr (std::is_same<StatType, sai_counter_stat_t>::value)
-        {
-            return sai_serialize_counter_stat(stat);
-        }
-        else if constexpr (std::is_same<StatType, sai_tunnel_stat_t>::value)
-        {
-            return sai_serialize_tunnel_stat(stat);
-        }
-        else if constexpr (std::is_same<StatType, sai_buffer_pool_stat_t>::value)
-        {
-            return sai_serialize_buffer_pool_stat(stat);
-        }
-
-        SWSS_LOG_ERROR("Invalid statistic type");
-        assert(0);
-    }
-
-    void deserializeStat(const char* name, StatType *stat)
-    {
-        if constexpr (std::is_same<StatType, sai_port_stat_t>::value)
-        {
-            sai_deserialize_port_stat(name, stat);
-            return;
-        }
-        else if constexpr (std::is_same<StatType, sai_queue_stat_t>::value)
-        {
-            sai_deserialize_queue_stat(name, stat);
-            return;
-        }
-        else if constexpr (std::is_same<StatType, sai_ingress_priority_group_stat_t>::value)
-        {
-            sai_deserialize_ingress_priority_group_stat(name, stat);
-            return;
-        }
-        else if constexpr (std::is_same<StatType, sai_router_interface_stat_t>::value)
-        {
-            sai_deserialize_router_interface_stat(name, stat);
-            return;
-        }
-        else if constexpr (std::is_same<StatType, sai_switch_stat_t>::value)
-        {
-            sai_deserialize_switch_stat(name, stat);
-            return;
-        }
-        else if constexpr (std::is_same<StatType, sai_macsec_flow_stat_t>::value)
-        {
-            sai_deserialize_macsec_flow_stat(name, stat);
-            return;
-        }
-        else if constexpr (std::is_same<StatType, sai_macsec_sa_stat_t>::value)
-        {
-            sai_deserialize_macsec_sa_stat(name, stat);
-            return;
-        }
-        else if constexpr (std::is_same<StatType, sai_counter_stat_t>::value)
-        {
-            sai_deserialize_counter_stat(name, stat);
-            return;
-        }
-        else if constexpr (std::is_same<StatType, sai_tunnel_stat_t>::value)
-        {
-            sai_deserialize_tunnel_stat(name, stat);
-            return;
-        }
-        else if constexpr (std::is_same<StatType, sai_buffer_pool_stat_t>::value)
-        {
-            sai_deserialize_buffer_pool_stat(name, stat);
-            return;
-        }
-
-        SWSS_LOG_ERROR("Invalid statistic type");
-        assert(0);
-    }
-
     bool isCounterSupported(StatType counter) const
     {
         return m_supportedCounters.count(counter) != 0;
@@ -639,34 +712,6 @@ public:
                 values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
             }
             countersTable.set(sai_serialize_object_id(vid), values, "");
-        }
-    }
-
-private:
-    void deserializeAttr(const std::string& name, AttrType &attr)
-    {
-        if constexpr (std::is_same<AttrType, sai_queue_attr_t>::value)
-        {
-            sai_deserialize_queue_attr(name, attr);
-            return;
-        }
-
-        if constexpr (std::is_same<AttrType, sai_ingress_priority_group_attr_t>::value)
-        {
-            sai_deserialize_ingress_priority_group_attr(name, attr);
-            return;
-        }
-
-        if constexpr (std::is_same<AttrType, sai_macsec_sa_attr_t>::value)
-        {
-            sai_deserialize_macsec_sa_attr(name, attr);
-            return;
-        }
-
-        if constexpr (std::is_same<AttrType, sai_acl_counter_attr_t>::value)
-        {
-            sai_deserialize_acl_counter_attr(name, attr);
-            return;
         }
     }
 };
