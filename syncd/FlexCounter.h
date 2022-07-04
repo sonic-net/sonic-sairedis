@@ -36,20 +36,20 @@ namespace syncd
 
         virtual void removeObject(
                 _In_ sai_object_id_t vid) = 0;
-        
+
         virtual void collectData(
                 _In_ swss::Table &countersTable) = 0;
-        
+
         virtual void runPlugin(
                 _In_ swss::DBConnector& counters_db,
                 _In_ const std::vector<std::string>& argv) = 0;
-        
+
         virtual bool hasObject() const = 0;
 
     protected:
         std::string m_name;
         std::set<std::string> m_plugins;
-    
+
     public:
         bool always_check_supported_counters = false;
         bool use_sai_stats_capa_query = true;
@@ -59,11 +59,9 @@ namespace syncd
     class FlexCounter
     {
         private:
-
             FlexCounter(const FlexCounter&) = delete;
 
         public:
-
             FlexCounter(
                     _In_ const std::string& instanceId,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
@@ -72,7 +70,6 @@ namespace syncd
             virtual ~FlexCounter();
 
         public:
-
             void addCounterPlugin(
                     _In_ const std::vector<swss::FieldValueTuple>& values);
 
@@ -102,7 +99,6 @@ namespace syncd
                     _In_ const std::string& mode);
 
         private:
-
             bool allIdsEmpty() const;
 
             bool allPluginsEmpty() const;
@@ -115,10 +111,10 @@ namespace syncd
         private:
             std::shared_ptr<BaseCounterContext> getCounterContext(
                     _In_ const std::string &name);
-            
+
             std::shared_ptr<BaseCounterContext> createCounterContext(
                     _In_ const std::string &name);
-            
+
             void removeCounterContext(
                     _In_ const std::string &name);
 

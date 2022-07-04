@@ -33,11 +33,15 @@ static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
 
 BaseCounterContext::BaseCounterContext(const std::string &name):
 m_name(name)
-{}
+{
+    SWSS_LOG_ENTER();
+}
 
 void BaseCounterContext::addPlugins(
     _In_ const std::vector<std::string>& shaStrings)
 {
+    SWSS_LOG_ENTER();
+
     for (const auto &sha : shaStrings)
     {
         auto ret = m_plugins.insert(sha);
@@ -52,7 +56,7 @@ void BaseCounterContext::addPlugins(
     }
 }
 
-template <typename StatType, 
+template <typename StatType,
           typename Enable = void>
 struct CounterIds
 {
@@ -61,10 +65,11 @@ struct CounterIds
             _In_ const std::vector<StatType> &ids
     ): rid(id), counter_ids(ids) {}
     void setStatsMode(sai_stats_mode_t statsMode) {}
-    sai_stats_mode_t getStatsMode() const 
+    sai_stats_mode_t getStatsMode() const
     {
+        SWSS_LOG_ENTER();
         SWSS_LOG_THROW("This counter type has no stats mode field");
-        // gcc 8.3 requires a return value here
+        // GCC 8.3 requires a return value here
         return SAI_STATS_MODE_READ_AND_CLEAR;
     }
     sai_object_id_t rid;
@@ -79,9 +84,22 @@ struct CounterIds<StatType, typename std::enable_if_t<std::is_same<StatType, sai
     CounterIds(
             _In_ sai_object_id_t id,
             _In_ const std::vector<StatType> &ids
-    ): rid(id), counter_ids(ids) {}
-    void setStatsMode(sai_stats_mode_t statsMode) {stats_mode = statsMode;}
-    sai_stats_mode_t getStatsMode() const {return stats_mode;}
+    ): rid(id), counter_ids(ids)
+    {
+        SWSS_LOG_ENTER();
+    }
+
+    void setStatsMode(sai_stats_mode_t statsMode)
+    {
+        SWSS_LOG_ENTER();
+        stats_mode = statsMode;
+    }
+
+    sai_stats_mode_t getStatsMode() const
+    {
+        SWSS_LOG_ENTER();
+        return stats_mode;
+    }
     sai_object_id_t rid;
     std::vector<StatType> counter_ids;
     sai_stats_mode_t stats_mode;
@@ -98,168 +116,195 @@ struct HasStatsMode
     enum { value = std::is_void<decltype(check<T>(0))>::value };
 };
 
-// TODO: use if constexpr when cpp17 is supported
+// TODO: use if const expression when cpp17 is supported
 template <typename StatType>
 std::string serializeStat(const StatType stat)
 {
+    SWSS_LOG_ENTER();
     SWSS_LOG_THROW("serializeStat for default type parameter is not implemented");
-    // gcc 8.3 requires a return value here
+    // GCC 8.3 requires a return value here
     return "";
 }
 
 template <>
 std::string serializeStat(const sai_port_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_port_stat(stat);
 }
 
 template <>
 std::string serializeStat(const sai_queue_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_queue_stat(stat);
 }
 
 template <>
 std::string serializeStat(const sai_ingress_priority_group_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_ingress_priority_group_stat(stat);
 }
 
 template <>
 std::string serializeStat(const sai_router_interface_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_router_interface_stat(stat);
 }
 
 template <>
 std::string serializeStat(const sai_switch_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_switch_stat(stat);
 }
 
 template <>
 std::string serializeStat(const sai_macsec_flow_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_macsec_flow_stat(stat);
 }
 
 template <>
 std::string serializeStat(const sai_macsec_sa_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_macsec_sa_stat(stat);
 }
 
 template <>
 std::string serializeStat(const sai_counter_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_counter_stat(stat);
 }
 
 template <>
 std::string serializeStat(const sai_tunnel_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_tunnel_stat(stat);
 }
 
 template <>
 std::string serializeStat(const sai_buffer_pool_stat_t stat)
 {
+    SWSS_LOG_ENTER();
     return sai_serialize_buffer_pool_stat(stat);
 }
 
 template <typename StatType>
 void deserializeStat(const char* name, StatType *stat)
 {
+    SWSS_LOG_ENTER();
     SWSS_LOG_THROW("deserializeStat for default type parameter is not implemented");
 }
 
 template <>
 void deserializeStat(const char* name, sai_port_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_port_stat(name, stat);
 }
 
 template <>
 void deserializeStat(const char* name, sai_queue_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_queue_stat(name, stat);
 }
 
 template <>
 void deserializeStat(const char* name, sai_ingress_priority_group_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_ingress_priority_group_stat(name, stat);
 }
 
 template <>
 void deserializeStat(const char* name, sai_router_interface_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_router_interface_stat(name, stat);
 }
 
 template <>
 void deserializeStat(const char* name, sai_switch_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_switch_stat(name, stat);
 }
 
 template <>
 void deserializeStat(const char* name, sai_macsec_flow_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_macsec_flow_stat(name, stat);
 }
 
 template <>
 void deserializeStat(const char* name, sai_macsec_sa_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_macsec_sa_stat(name, stat);
 }
 
 template <>
 void deserializeStat(const char* name, sai_counter_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_counter_stat(name, stat);
 }
 
 template <>
 void deserializeStat(const char* name, sai_tunnel_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_tunnel_stat(name, stat);
 }
 
 template <>
 void deserializeStat(const char* name, sai_buffer_pool_stat_t *stat)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_buffer_pool_stat(name, stat);
 }
 
 template <typename AttrType>
 void deserializeAttr(const std::string& name, AttrType &attr)
 {
+    SWSS_LOG_ENTER();
     SWSS_LOG_THROW("deserializeAttr for default type parameter is not implemented");
 }
 
 template <>
 void deserializeAttr(const std::string& name, sai_queue_attr_t &attr)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_queue_attr(name, attr);
 }
 
 template <>
 void deserializeAttr(const std::string& name, sai_ingress_priority_group_attr_t &attr)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_ingress_priority_group_attr(name, attr);
 }
 
 template <>
 void deserializeAttr(const std::string& name, sai_macsec_sa_attr_t &attr)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_macsec_sa_attr(name, attr);
 }
 
 template <>
 void deserializeAttr(const std::string& name, sai_acl_counter_attr_t &attr)
 {
+    SWSS_LOG_ENTER();
     sai_deserialize_acl_counter_attr(name, attr);
 }
 
@@ -276,6 +321,7 @@ public:
             _In_ sai_stats_mode_t &stats_mode):
     BaseCounterContext(name), m_objectType(object_type), m_vendorSai(vendor_sai), m_groupStatsMode(stats_mode)
     {
+        SWSS_LOG_ENTER();
     }
 
     // For those object type who support per object stats mode, e.g. buffer pool.
@@ -288,7 +334,7 @@ public:
         SWSS_LOG_ENTER();
         sai_stats_mode_t instance_stats_mode = SAI_STATS_MODE_READ_AND_CLEAR;
         sai_stats_mode_t effective_stats_mode;
-        // TODO: use if constexpr when c++17 is supported
+        // TODO: use if const expression when c++17 is supported
         if (HasStatsMode<CounterIdsType>::value)
         {
             if (per_object_stats_mode == STATS_MODE_READ_AND_CLEAR)
@@ -355,7 +401,7 @@ public:
         }
 
         auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
-        // TODO: use if constexpr when cpp17 is supported
+        // TODO: use if const expression when cpp17 is supported
         if (HasStatsMode<CounterIdsType>::value)
         {
             counter_data->setStatsMode(instance_stats_mode);
@@ -392,7 +438,7 @@ public:
             const auto &rid = kv.second->rid;
             const auto &statIds = kv.second->counter_ids;
 
-            // TODO: use if constexpr when cpp17 is supported
+            // TODO: use if const expression when cpp17 is supported
             if (HasStatsMode<CounterIdsType>::value)
             {
                 effective_stats_mode = (m_groupStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
@@ -404,7 +450,7 @@ public:
             {
                 continue;
             }
-            
+
             std::vector<swss::FieldValueTuple> values;
             for (size_t i = 0; i != statIds.size(); i++)
             {
@@ -418,6 +464,8 @@ public:
             _In_ swss::DBConnector& counters_db,
             _In_ const std::vector<std::string>& argv) override
     {
+        SWSS_LOG_ENTER();
+
         if (m_objectIdsMap.empty())
         {
             return;
@@ -429,19 +477,20 @@ public:
                         std::back_inserter(idStrings),
                         [] (auto &kv) { return sai_serialize_object_id(kv.first); });
         std::for_each(m_plugins.begin(),
-                      m_plugins.end(), 
+                      m_plugins.end(),
                       [&] (auto &sha) { runRedisScript(counters_db, sha, idStrings, argv); });
-        
     }
 
     bool hasObject() const override
     {
+        SWSS_LOG_ENTER();
         return !m_objectIdsMap.empty();
     }
 
 private:
     bool isCounterSupported(StatType counter) const
     {
+        SWSS_LOG_ENTER();
         return m_supportedCounters.count(counter) != 0;
     }
 
@@ -452,6 +501,7 @@ private:
             _In_ bool log_err,
             _Out_ std::vector<uint64_t> &stats)
     {
+        SWSS_LOG_ENTER();
         sai_status_t status;
         if (!use_sai_stats_ext)
         {
@@ -461,7 +511,7 @@ private:
                     static_cast<uint32_t>(counter_ids.size()),
                     (const sai_stat_id_t *)counter_ids.data(),
                     stats.data());
-            
+
             if (status != SAI_STATUS_SUCCESS)
             {
                 if (log_err)
@@ -470,7 +520,7 @@ private:
                     SWSS_LOG_INFO("Failed to get stats of %s 0x%" PRIx64 ": %d", m_name.c_str(), rid, status);
                 return false;
             }
-            
+
             if (stats_mode == SAI_STATS_MODE_READ_AND_CLEAR)
             {
                 status = m_vendorSai->clearStats(
@@ -552,6 +602,7 @@ private:
             _In_ sai_object_id_t rid,
             _In_ sai_stats_mode_t stats_mode)
     {
+        SWSS_LOG_ENTER();
         sai_stat_capability_list_t stats_capability;
         stats_capability.count = 0;
         stats_capability.list = nullptr;
@@ -601,6 +652,7 @@ private:
             _In_ const std::vector<StatType>& counter_ids,
             _In_ sai_stats_mode_t stats_mode)
     {
+        SWSS_LOG_ENTER();
         std::vector<uint64_t> values(1);
 
         for (const auto &counter : counter_ids)
@@ -615,7 +667,7 @@ private:
             {
                 continue;
             }
-            
+
             m_supportedCounters.insert(counter);
         }
     }
@@ -640,8 +692,10 @@ public:
             _In_ sairedis::SaiInterface *vendor_sai,
             _In_ sai_stats_mode_t &stats_mode):
     CounterContext<AttrType>(name, object_type, vendor_sai, stats_mode)
-    {}
-    
+    {
+        SWSS_LOG_ENTER();
+    }
+
     void addObject(
             _In_ sai_object_id_t vid,
             _In_ sai_object_id_t rid,
@@ -693,10 +747,10 @@ public:
                     rid,
                     static_cast<uint32_t>(attrIds.size()),
                     attrs.data());
-            
+
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("Failed to get attr of %s 0x%" PRIx64 ": %d", 
+                SWSS_LOG_ERROR("Failed to get attr of %s 0x%" PRIx64 ": %d",
                         sai_serialize_object_type(Base::m_objectType).c_str(), vid, status);
                 continue;
             }
@@ -795,10 +849,11 @@ void FlexCounter::removeDataFromCountersDB(
         _In_ sai_object_id_t vid,
         _In_ const std::string &ratePrefix)
 {
+    SWSS_LOG_ENTER();
     swss::DBConnector db(m_dbCounters, 0);
     swss::RedisPipeline pipeline(&db);
     swss::Table countersTable(&pipeline, COUNTERS_TABLE, false);
-    
+
     std::string vidStr = sai_serialize_object_id(vid);
     countersTable.del(vidStr);
     if (!ratePrefix.empty())
@@ -938,6 +993,7 @@ bool FlexCounter::allPluginsEmpty() const
 std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         _In_ const std::string& context_name)
 {
+    SWSS_LOG_ENTER();
     if (context_name == COUNTER_TYPE_PORT)
     {
         auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
@@ -1030,13 +1086,15 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
-    // gcc 8.3 requires a return value here
+    // GCC 8.3 requires a return value here
     return nullptr;
 }
 
 std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
         _In_ const std::string &name)
 {
+    SWSS_LOG_ENTER();
+
     auto iter = m_counterContext.find(name);
     if (iter != m_counterContext.end())
     {
@@ -1050,6 +1108,8 @@ std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
 void FlexCounter::removeCounterContext(
         _In_ const std::string &name)
 {
+    SWSS_LOG_ENTER();
+
     auto iter = m_counterContext.find(name);
     if (iter != m_counterContext.end())
     {
@@ -1064,8 +1124,8 @@ void FlexCounter::removeCounterContext(
 bool FlexCounter::hasCounterContext(
     _In_ const std::string &name) const
 {
-    auto iter = m_counterContext.find(name);
-    return iter != m_counterContext.end();
+    SWSS_LOG_ENTER();
+    return m_counterContext.find(name) != m_counterContext.end();
 }
 
 void FlexCounter::collectCounters(
@@ -1347,8 +1407,8 @@ void FlexCounter::addCounter(
         else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_ATTR_ID_LIST)
         {
             getCounterContext(ATTR_TYPE_QUEUE)->addObject(
-                    vid, 
-                    rid, 
+                    vid,
+                    rid,
                     idStrings,
                     "");
         }
@@ -1363,8 +1423,8 @@ void FlexCounter::addCounter(
         else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP && field == PG_ATTR_ID_LIST)
         {
             getCounterContext(ATTR_TYPE_PG)->addObject(
-                    vid, 
-                    rid, 
+                    vid,
+                    rid,
                     idStrings,
                     "");
         }
@@ -1403,16 +1463,16 @@ void FlexCounter::addCounter(
         else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_ATTR_ID_LIST)
         {
             getCounterContext(ATTR_TYPE_MACSEC_SA)->addObject(
-                    vid, 
-                    rid, 
+                    vid,
+                    rid,
                     idStrings,
                     "");
         }
         else if (objectType == SAI_OBJECT_TYPE_ACL_COUNTER && field == ACL_COUNTER_ATTR_ID_LIST)
         {
             getCounterContext(ATTR_TYPE_ACL_COUNTER)->addObject(
-                    vid, 
-                    rid, 
+                    vid,
+                    rid,
                     idStrings,
                     "");
         }
