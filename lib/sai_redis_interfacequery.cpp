@@ -240,3 +240,11 @@ sai_status_t sai_query_stats_capability(
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
+
+sai_status_t sai_query_api_version(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}

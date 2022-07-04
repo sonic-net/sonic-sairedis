@@ -4397,7 +4397,7 @@ sai_status_t Syncd::setUninitDataPlaneOnRemovalOnAllSwitches()
 
         sai_status_t queryStatus;
 
-        queryStatus = sai_query_attribute_capability(rid,
+        queryStatus = m_vendorSai->queryAttributeCapability(rid,
                                                      SAI_OBJECT_TYPE_SWITCH,
                                                      SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL,
                                                      &attr_capability);

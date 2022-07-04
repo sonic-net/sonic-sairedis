@@ -4,6 +4,7 @@
 
 #include "swss/logger.h"
 
+#include <cinttypes>
 #include <cstring>
 
 using namespace syncd;
@@ -56,6 +57,27 @@ sai_status_t VendorSai::initialize(
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
+
+#ifdef HAVE_SAI_QUERY_API_VERSION
+    sai_api_version_t version{};
+    auto api_status = sai_query_api_version(&version);
+    if (api_status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("failed to query SAI API version");
+
+        return api_status;
+    }
+
+    SWSS_LOG_NOTICE("SAI API version: %" PRId64, version);
+
+    if (version != SAI_API_VERSION)
+    {
+        SWSS_LOG_ERROR("SAI implementation API version %" PRId64 " does not match SAI headers API version %" PRId64,
+                       version, SAI_API_VERSION);
+
+        return SAI_STATUS_FAILURE;
+    }
+#endif
 
     memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
 

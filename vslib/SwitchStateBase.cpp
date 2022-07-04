@@ -21,7 +21,7 @@ SwitchStateBase::SwitchStateBase(
 {
     SWSS_LOG_ENTER();
 
-    // empty
+    m_macsecManager.cleanup_macsec_device();
 }
 
 SwitchStateBase::SwitchStateBase(
@@ -33,6 +33,8 @@ SwitchStateBase::SwitchStateBase(
     m_realObjectIdManager(manager)
 {
     SWSS_LOG_ENTER();
+
+    m_macsecManager.cleanup_macsec_device();
 
     if (warmBootState)
     {
@@ -57,7 +59,7 @@ SwitchStateBase::~SwitchStateBase()
 {
     SWSS_LOG_ENTER();
 
-    // empty
+    m_macsecManager.cleanup_macsec_device();
 }
 
 sai_status_t SwitchStateBase::create(
@@ -518,6 +520,13 @@ sai_status_t SwitchStateBase::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setAclEntry(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_MACSEC_SA)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setMACsecSA(objectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);
@@ -1213,6 +1222,23 @@ sai_status_t SwitchStateBase::set_port_list()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+sai_status_t SwitchStateBase::set_port_capabilities()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("set port capabilities");
+
+    sai_attribute_t attr;
+
+    for (auto &port_id: m_port_list)
+    {
+        attr.id = SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE;
+        attr.value.booldata = true;
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::create_default_virtual_router()
 {
     SWSS_LOG_ENTER();
@@ -1590,6 +1616,7 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     CHECK_STATUS(create_ports());
     CHECK_STATUS(create_port_serdes());
     CHECK_STATUS(set_port_list());
+    CHECK_STATUS(set_port_capabilities());
     CHECK_STATUS(create_bridge_ports());
     CHECK_STATUS(create_vlan_members());
     CHECK_STATUS(set_acl_entry_min_prio());
@@ -2282,6 +2309,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
 
             case SAI_PORT_ATTR_PORT_SERDES_ID:
                 return refresh_port_serdes_id(object_id);
+
+            case SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE:
+                return SAI_STATUS_SUCCESS;
         }
     }
 

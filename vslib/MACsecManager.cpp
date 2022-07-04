@@ -21,14 +21,14 @@ MACsecManager::MACsecManager()
 {
     SWSS_LOG_ENTER();
 
-    cleanup_macsec_device();
+    // empty
 }
 
 MACsecManager::~MACsecManager()
 {
     SWSS_LOG_ENTER();
 
-    cleanup_macsec_device();
+    // empty
 }
 
 bool MACsecManager::create_macsec_port(
@@ -290,6 +290,33 @@ bool MACsecManager::enable_macsec_filter(
     manager.m_ingressFilter->enable_macsec_device(enable);
     manager.m_egressFilter->enable_macsec_device(enable);
     return true;
+}
+
+bool MACsecManager::update_macsec_sa_pn(
+        _In_ const MACsecAttr &attr,
+        _In_ sai_uint64_t pn)
+{
+    SWSS_LOG_ENTER();
+
+    std::ostringstream ostream;
+    ostream
+        << "/sbin/ip macsec set "
+        << shellquote(attr.m_macsecName);
+
+    if (attr.m_direction == SAI_MACSEC_DIRECTION_EGRESS)
+    {
+        ostream << " tx";
+    }
+    else
+    {
+        ostream << " rx sci " << attr.m_sci;
+    }
+
+    ostream << " sa " << attr.m_an << " pn " << pn;
+
+    SWSS_LOG_NOTICE("%s", ostream.str().c_str());
+
+    return exec(ostream.str());
 }
 
 bool MACsecManager::get_macsec_sa_pn(
@@ -868,7 +895,7 @@ void MACsecManager::cleanup_macsec_device() const
     //     cipher suite: GCM-AES-128, using ICV length 16
     //     TXSC: fe5400409b920001 on SA 0
     // Use pattern : '^\d+:\s*(\w+):' to extract all MACsec interface names
-    const std::regex pattern("^\\d+:\\s*(\\w+):");
+    const std::regex pattern("\\d+:\\s*(\\w+):");
     std::smatch matches;
     std::string::const_iterator searchPos(macsecInfos.cbegin());
 

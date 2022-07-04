@@ -138,6 +138,30 @@ sai_status_t SwitchStateBase::setAclEntryMACsecFlowActive(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::setMACsecSA(
+        _In_ sai_object_id_t macsec_sa_id,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    MACsecAttr macsecAttr;
+
+    CHECK_STATUS(loadMACsecAttr(SAI_OBJECT_TYPE_MACSEC_SA, macsec_sa_id, macsecAttr));
+
+    if (attr->id == SAI_MACSEC_SA_ATTR_MINIMUM_INGRESS_XPN || attr->id == SAI_MACSEC_SA_ATTR_CONFIGURED_EGRESS_XPN)
+    {
+        if (!m_macsecManager.update_macsec_sa_pn(macsecAttr, attr->value.u64))
+        {
+            SWSS_LOG_WARN("Fail to update PN (%" PRIu64 ") of MACsec SA %s", attr->value.u64, sai_serialize_object_id(macsec_sa_id).c_str());
+
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    auto sid = sai_serialize_object_id(macsec_sa_id);
+    return set_internal(SAI_OBJECT_TYPE_MACSEC_SA, sid, attr);
+}
+
 sai_status_t SwitchStateBase::createMACsecPort(
         _In_ sai_object_id_t macsecSaId,
         _In_ sai_object_id_t switchId,

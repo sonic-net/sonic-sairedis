@@ -820,12 +820,6 @@ void test_watchdog_timer_clock_rollback()
 {
     SWSS_LOG_ENTER();
 
-    if (getuid() != 0)
-    {
-        SWSS_LOG_WARN("this test requires root for set time");
-        return;
-    }
-
     const int64_t WARN_TIMESPAN_USEC = 30 * 1000000;
     const uint8_t ROLLBACK_TIME_SEC = 5;
     const uint8_t LONG_RUNNING_API_TIME_SEC = 3;

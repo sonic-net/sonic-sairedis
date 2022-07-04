@@ -65,6 +65,8 @@ namespace saivs
 
             virtual sai_status_t set_port_list();
 
+            virtual sai_status_t set_port_capabilities();
+
             virtual sai_status_t create_fabric_ports();
 
             virtual sai_status_t set_fabric_port_list();
@@ -519,6 +521,10 @@ namespace saivs
 
             sai_status_t setAclEntryMACsecFlowActive(
                     _In_ sai_object_id_t entry_id,
+                    _In_ const sai_attribute_t* attr);
+
+            sai_status_t setMACsecSA(
+                    _In_ sai_object_id_t macsec_sa_id,
                     _In_ const sai_attribute_t* attr);
 
             sai_status_t createMACsecPort(

@@ -192,3 +192,12 @@ sai_status_t sai_query_stats_capability(
 
     return vs_sai->queryStatsCapability(switch_id, object_type, stats_capability);
 }
+
+sai_status_t sai_query_api_version(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    *version = SAI_API_VERSION;
+    return SAI_STATUS_SUCCESS;
+}

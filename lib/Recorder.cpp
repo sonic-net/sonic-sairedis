@@ -179,27 +179,20 @@ void Recorder::recordLine(
     {
         m_ofstream << getTimestamp() << "|" << line << std::endl;
     }
-
-    if (m_performLogRotate)
-    {
-        m_performLogRotate = false;
-
-        recordingFileReopen();
-
-        /* double check since reopen could fail */
-
-        if (m_ofstream.is_open())
-        {
-            m_ofstream << getTimestamp() << "|" << "#|logrotate on: " << m_recordingFile << std::endl;
-        }
-    }
 }
 
 void Recorder::requestLogRotate()
 {
     SWSS_LOG_ENTER();
 
-    m_performLogRotate = true;
+    recordingFileReopen();
+
+    /* double check since reopen could fail */
+
+    if (m_ofstream.is_open())
+    {
+        m_ofstream << getTimestamp() << "|" << "#|logrotate on: " << m_recordingFile << std::endl;
+    }
 }
 
 void Recorder::recordingFileReopen()
