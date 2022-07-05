@@ -175,6 +175,8 @@ config_syncd_bcm()
     fi
 
     echo "SAI_OBJECT_TYPE_ACL_TABLE" >> /tmp/break_before_make_objects
+    echo "SAI_OBJECT_TYPE_TUNNEL" >> /tmp/break_before_make_objects
+    echo "SAI_OBJECT_TYPE_TUNNEL_TERM_TABLE_ENTRY" >> /tmp/break_before_make_objects
     CMD_ARGS+=" -b /tmp/break_before_make_objects"
 
     [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
