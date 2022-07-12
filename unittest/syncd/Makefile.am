@@ -10,6 +10,8 @@ tests_SOURCES = main.cpp \
                 MockHelper.cpp \
 				TestCommandLineOptions.cpp \
 				TestFlexCounter.cpp \
+				TestNotificationHandler.cpp \
+				TestNotificationQueueHash.cpp
 				TestNotificationQueue.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)

@@ -27,6 +27,7 @@ libSyncd_a_SOURCES = \
 				NotificationHandler.cpp \
 				NotificationProcessor.cpp \
 				NotificationQueue.cpp \
+				NotificationQueueHash.cpp \
 				PortMap.cpp \
 				PortMapParser.cpp \
 				RedisClient.cpp \
