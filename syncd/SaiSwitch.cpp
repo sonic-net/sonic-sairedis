@@ -8,6 +8,10 @@
 #include "meta/sai_serialize.h"
 #include "swss/logger.h"
 
+#ifdef MDIO_ACCESS_USE_NPU
+#include "MdioIpcServer.h"
+#endif
+
 using namespace syncd;
 
 #define MAX_OBJLIST_LEN 128
@@ -38,6 +42,10 @@ SaiSwitch::SaiSwitch(
     SWSS_LOG_TIMER("constructor");
 
     GlobalSwitchId::setSwitchId(m_switch_rid);
+
+#ifdef MDIO_ACCESS_USE_NPU
+    MdioIpcServer::setSwitchId(m_switch_rid);
+#endif
 
     m_hardware_info = saiGetHardwareInfo();
 

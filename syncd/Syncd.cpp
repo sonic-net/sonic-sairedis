@@ -33,6 +33,10 @@
 #include <iterator>
 #include <algorithm>
 
+#ifdef MDIO_ACCESS_USE_NPU
+#include "MdioIpcServer.h"
+#endif
+
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 
 using namespace syncd;
@@ -4484,6 +4488,10 @@ void Syncd::run()
 
     std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
 
+#ifdef MDIO_ACCESS_USE_NPU
+    MdioIpcServer mdioServer(m_commandLineOptions->m_globalContext);
+#endif
+
     try
     {
         onSyncdStart(m_commandLineOptions->m_startType == SAI_START_TYPE_WARM_BOOT);
@@ -4493,6 +4501,10 @@ void Syncd::run()
         // processing possible quick fdb notifications, and pointer for
         // notification queue is created before we create switch
         m_processor->startNotificationsProcessingThread();
+
+#ifdef MDIO_ACCESS_USE_NPU
+        mdioServer.startMdioThread();
+#endif
 
         SWSS_LOG_NOTICE("syncd listening for events");
 
@@ -4677,6 +4689,10 @@ void Syncd::run()
     }
 
     m_manager->removeAllCounters();
+
+#ifdef MDIO_ACCESS_USE_NPU
+    mdioServer.stopMdioThread();
+#endif
 
     sai_status_t status = removeAllSwitches();
 

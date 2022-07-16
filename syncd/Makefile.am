@@ -71,6 +71,11 @@ syncd_CXXFLAGS += -DSAITHRIFT=yes
 syncd_LDADD += -lrpcserver -lthrift
 endif
 
+if SONIC_ASIC_PLATFORM_BROADCOM
+libSyncd_a_CXXFLAGS += -DMDIO_ACCESS_USE_NPU
+libSyncd_a_SOURCES += MdioIpcServer.cpp
+endif
+
 libSyncdRequestShutdown_a_SOURCES = \
 									RequestShutdown.cpp \
 									RequestShutdownCommandLineOptions.cpp \

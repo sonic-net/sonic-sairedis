@@ -4,6 +4,10 @@
 
 #include "swss/logger.h"
 
+#ifdef MDIO_ACCESS_USE_NPU
+#include "MdioIpcServer.h"
+#endif
+
 #include <cinttypes>
 #include <cstring>
 
@@ -95,6 +99,10 @@ sai_status_t VendorSai::initialize(
         }
 
         m_apiInitialized = true;
+
+#ifdef MDIO_ACCESS_USE_NPU
+        MdioIpcServer::setSwitchMdioApi(m_apis.switch_api);
+#endif
     }
 
     return status;
