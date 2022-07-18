@@ -55,7 +55,7 @@ void MdioIpcServer::setSwitchId(
 {
     SWSS_LOG_ENTER();
 
-    /* MDIO switch id is only relevent in syncd but not in gbsyncd */
+    /* MDIO switch id is only relevant in syncd but not in gbsyncd */
     if (!MdioIpcServer::syncdContext)
     {
         return;
@@ -184,6 +184,8 @@ sai_status_t MdioIpcServer::syncd_ipc_cmd_mdio_cl22(char *resp, int argc, char *
 
 void *MdioIpcServer::syncd_ipc_task_main()
 {
+    SWSS_LOG_ENTER();
+
     int i;
     int fd;
     int len;
@@ -197,8 +199,6 @@ void *MdioIpcServer::syncd_ipc_task_main()
     fd_set rfds;
     char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE], *argv[64], *save;
     int argc = 0;
-
-    SWSS_LOG_ENTER();
 
     strcpy(path, SYNCD_IPC_SOCK_SYNCD);
     fd = open(path, O_DIRECTORY);
@@ -420,15 +420,17 @@ void *MdioIpcServer::syncd_ipc_task_main()
 
 void *MdioIpcServer::syncd_ipc_task_enter(void *ctx)
 {
+    SWSS_LOG_ENTER();
+
     MdioIpcServer *mdioServer = (MdioIpcServer *)ctx;
     return mdioServer->syncd_ipc_task_main();
 }
 
 void MdioIpcServer::stopMdioThread(void)
 {
-    int *err = NULL;
-
     SWSS_LOG_ENTER();
+
+    int *err = NULL;
 
     /* MDIO IPC server thread is only relevent in syncd but not in gbsyncd */
     if (!MdioIpcServer::syncdContext)
@@ -443,9 +445,9 @@ void MdioIpcServer::stopMdioThread(void)
 
 int MdioIpcServer::startMdioThread()
 {
-    int err = 0;
-
     SWSS_LOG_ENTER();
+
+    int err = 0;
 
     /* MDIO IPC server thread is only relevent in syncd but not in gbsyncd */
     if (!MdioIpcServer::syncdContext)
