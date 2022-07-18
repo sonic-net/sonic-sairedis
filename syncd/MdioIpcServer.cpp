@@ -216,11 +216,11 @@ void *MdioIpcServer::syncd_ipc_task_main()
     }
 
     /***************************************/
-    /* Set up the UNIX sockaddr structure  */
+    /* Set up the UNIX "sockaddr" structure*/
     /* by using AF_UNIX for the family and */
-    /* giving it a filepath to bind to.    */
+    /* giving it a file path to bind to.   */
     /*                                     */
-    /* Un-link the file so the bind will    */
+    /* Unlink the file so the bind will    */
     /* succeed, then bind to that file.    */
     /***************************************/
     memset(&addr, 0, sizeof(addr));
