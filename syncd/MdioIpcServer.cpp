@@ -71,7 +71,7 @@ void MdioIpcServer::setSwitchMdioApi(sai_switch_api_t *switch_api)
 {
     SWSS_LOG_ENTER();
 
-    /* Switch mdio api is only relevent in syncd but not in gbsyncd */
+    /* Switch mdio api is only relevant in syncd but not in gbsyncd */
     if (!MdioIpcServer::syncdContext)
     {
         return;
@@ -220,7 +220,7 @@ void *MdioIpcServer::syncd_ipc_task_main()
     /* by using AF_UNIX for the family and */
     /* giving it a filepath to bind to.    */
     /*                                     */
-    /* Unlink the file so the bind will    */
+    /* Un-link the file so the bind will    */
     /* succeed, then bind to that file.    */
     /***************************************/
     memset(&addr, 0, sizeof(addr));
@@ -264,7 +264,7 @@ void *MdioIpcServer::syncd_ipc_task_main()
             }
         }
 
-        /* reset readfds */
+        /* reset read file descriptors */
         FD_ZERO(&rfds);
         FD_SET(sock_srv, &rfds);
         sock_max = sock_srv;
@@ -432,7 +432,7 @@ void MdioIpcServer::stopMdioThread(void)
 
     int *err = NULL;
 
-    /* MDIO IPC server thread is only relevent in syncd but not in gbsyncd */
+    /* MDIO IPC server thread is only relevant in syncd but not in gbsyncd */
     if (!MdioIpcServer::syncdContext)
     {
         return;
@@ -449,7 +449,7 @@ int MdioIpcServer::startMdioThread()
 
     int err = 0;
 
-    /* MDIO IPC server thread is only relevent in syncd but not in gbsyncd */
+    /* MDIO IPC server thread is only relevant in syncd but not in gbsyncd */
     if (!MdioIpcServer::syncdContext)
     {
         return 0;
