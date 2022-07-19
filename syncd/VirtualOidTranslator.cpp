@@ -338,16 +338,45 @@ bool VirtualOidTranslator::tryTranslateVidToRid(
 {
     SWSS_LOG_ENTER();
 
-    try
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    if (vid == SAI_NULL_OBJECT_ID)
     {
-        rid = translateVidToRid(vid);
+        SWSS_LOG_DEBUG("translated VID null to RID null");
+
+        rid = SAI_NULL_OBJECT_ID;
         return true;
     }
-    catch (const std::exception& e)
+
+    auto it = m_vid2rid.find(vid);
+
+    if (it != m_vid2rid.end())
     {
-        // message was logged already when throwing
+        rid = it->second;
+        return true;
+    }
+
+    rid = m_client->getRidForVid(vid);
+
+    if (rid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_INFO("unable to get RID for VID %s",
+                sai_serialize_object_id(vid).c_str());
         return false;
     }
+
+    /*
+     * We got this RID from redis db, so put it also to local db so it will be
+     * faster to retrieve it late on.
+     */
+
+    m_vid2rid[vid] = rid;
+
+    SWSS_LOG_DEBUG("translated VID %s to RID %s",
+            sai_serialize_object_id(vid).c_str(),
+            sai_serialize_object_id(rid).c_str());
+
+    return true;
 }
 
 bool VirtualOidTranslator::tryTranslateVidToRid(
@@ -355,16 +384,36 @@ bool VirtualOidTranslator::tryTranslateVidToRid(
 {
     SWSS_LOG_ENTER();
 
-    try
+    auto info = sai_metadata_get_object_type_info(metaKey.objecttype);
+
+    if (info->isobjectid)
     {
-        translateVidToRid(metaKey);
-        return true;
+        return tryTranslateVidToRid(
+                metaKey.objectkey.key.object_id,
+                metaKey.objectkey.key.object_id);
     }
-    catch (const std::exception& e)
+
+    for (size_t j = 0; j < info->structmemberscount; ++j)
     {
-        // message was logged already when throwing
-        return false;
+        const sai_struct_member_info_t *m = info->structmembers[j];
+
+        if (m->membervaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+        {
+            sai_object_id_t vid = m->getoid(&metaKey);
+
+            sai_object_id_t rid;
+
+            if (tryTranslateVidToRid(vid, rid))
+            {
+                m->setoid(&metaKey, rid);
+                continue;
+            }
+
+            return false;
+        }
     }
+
+    return true;
 }
 
 void VirtualOidTranslator::translateVidToRid(
