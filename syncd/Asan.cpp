@@ -3,6 +3,12 @@
 #include <csignal>
 #include <sanitizer/lsan_interface.h>
 
+extern "C" {
+    const char* __lsan_default_suppressions() {
+        return "leak:__static_initialization_and_destruction_0\n";
+    }
+}
+
 static void sigterm_handler(int signo)
 {
     SWSS_LOG_ENTER();
