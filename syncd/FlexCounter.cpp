@@ -118,7 +118,7 @@ struct HasStatsMode
 
 // TODO: use if const expression when cpp17 is supported
 template <typename StatType>
-std::string serializeStat(const StatType stat)
+std::string serializeStat(_In_ const StatType stat)
 {
     SWSS_LOG_ENTER();
     SWSS_LOG_THROW("serializeStat for default type parameter is not implemented");
@@ -127,182 +127,214 @@ std::string serializeStat(const StatType stat)
 }
 
 template <>
-std::string serializeStat(const sai_port_stat_t stat)
+std::string serializeStat(_In_ const sai_port_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_port_stat(stat);
 }
 
 template <>
-std::string serializeStat(const sai_queue_stat_t stat)
+std::string serializeStat(_In_ const sai_queue_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_queue_stat(stat);
 }
 
 template <>
-std::string serializeStat(const sai_ingress_priority_group_stat_t stat)
+std::string serializeStat(_In_ const sai_ingress_priority_group_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_ingress_priority_group_stat(stat);
 }
 
 template <>
-std::string serializeStat(const sai_router_interface_stat_t stat)
+std::string serializeStat(_In_ const sai_router_interface_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_router_interface_stat(stat);
 }
 
 template <>
-std::string serializeStat(const sai_switch_stat_t stat)
+std::string serializeStat(_In_ const sai_switch_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_switch_stat(stat);
 }
 
 template <>
-std::string serializeStat(const sai_macsec_flow_stat_t stat)
+std::string serializeStat(_In_ const sai_macsec_flow_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_macsec_flow_stat(stat);
 }
 
 template <>
-std::string serializeStat(const sai_macsec_sa_stat_t stat)
+std::string serializeStat(_In_ const sai_macsec_sa_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_macsec_sa_stat(stat);
 }
 
 template <>
-std::string serializeStat(const sai_counter_stat_t stat)
+std::string serializeStat(_In_ const sai_counter_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_counter_stat(stat);
 }
 
 template <>
-std::string serializeStat(const sai_tunnel_stat_t stat)
+std::string serializeStat(_In_ const sai_tunnel_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_tunnel_stat(stat);
 }
 
 template <>
-std::string serializeStat(const sai_buffer_pool_stat_t stat)
+std::string serializeStat(_In_ const sai_buffer_pool_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_buffer_pool_stat(stat);
 }
 
 template <typename StatType>
-void deserializeStat(const char* name, StatType *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ StatType *stat)
 {
     SWSS_LOG_ENTER();
     SWSS_LOG_THROW("deserializeStat for default type parameter is not implemented");
 }
 
 template <>
-void deserializeStat(const char* name, sai_port_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_port_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_port_stat(name, stat);
 }
 
 template <>
-void deserializeStat(const char* name, sai_queue_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_queue_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_queue_stat(name, stat);
 }
 
 template <>
-void deserializeStat(const char* name, sai_ingress_priority_group_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_ingress_priority_group_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_ingress_priority_group_stat(name, stat);
 }
 
 template <>
-void deserializeStat(const char* name, sai_router_interface_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_router_interface_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_router_interface_stat(name, stat);
 }
 
 template <>
-void deserializeStat(const char* name, sai_switch_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_switch_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_switch_stat(name, stat);
 }
 
 template <>
-void deserializeStat(const char* name, sai_macsec_flow_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_macsec_flow_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_macsec_flow_stat(name, stat);
 }
 
 template <>
-void deserializeStat(const char* name, sai_macsec_sa_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_macsec_sa_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_macsec_sa_stat(name, stat);
 }
 
 template <>
-void deserializeStat(const char* name, sai_counter_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_counter_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_counter_stat(name, stat);
 }
 
 template <>
-void deserializeStat(const char* name, sai_tunnel_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_tunnel_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_tunnel_stat(name, stat);
 }
 
 template <>
-void deserializeStat(const char* name, sai_buffer_pool_stat_t *stat)
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_buffer_pool_stat_t *stat)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_buffer_pool_stat(name, stat);
 }
 
 template <typename AttrType>
-void deserializeAttr(const std::string& name, AttrType &attr)
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ AttrType &attr)
 {
     SWSS_LOG_ENTER();
     SWSS_LOG_THROW("deserializeAttr for default type parameter is not implemented");
 }
 
 template <>
-void deserializeAttr(const std::string& name, sai_queue_attr_t &attr)
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_queue_attr_t &attr)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_queue_attr(name, attr);
 }
 
 template <>
-void deserializeAttr(const std::string& name, sai_ingress_priority_group_attr_t &attr)
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_ingress_priority_group_attr_t &attr)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_ingress_priority_group_attr(name, attr);
 }
 
 template <>
-void deserializeAttr(const std::string& name, sai_macsec_sa_attr_t &attr)
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_macsec_sa_attr_t &attr)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_macsec_sa_attr(name, attr);
 }
 
 template <>
-void deserializeAttr(const std::string& name, sai_acl_counter_attr_t &attr)
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_acl_counter_attr_t &attr)
 {
     SWSS_LOG_ENTER();
     sai_deserialize_acl_counter_attr(name, attr);
@@ -488,7 +520,7 @@ public:
     }
 
 private:
-    bool isCounterSupported(StatType counter) const
+    bool isCounterSupported(_In_ StatType counter) const
     {
         SWSS_LOG_ENTER();
         return m_supportedCounters.count(counter) != 0;
