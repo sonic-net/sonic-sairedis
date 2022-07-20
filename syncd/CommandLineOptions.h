@@ -68,6 +68,8 @@ namespace syncd
              */
             bool m_enableConsistencyCheck;
 
+            bool m_enableIpcServer;
+
             bool m_enableSyncMode;
 
             bool m_enableSaiBulkSupport;

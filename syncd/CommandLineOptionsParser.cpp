@@ -19,9 +19,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:uSUCIsz:lrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:uSUCIsz:lh";
 #endif // SAITHRIFT
 
     while (true)
@@ -35,6 +35,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "disableExitSleep",        no_argument,       0, 'S' },
             { "enableUnittests",         no_argument,       0, 'U' },
             { "enableConsistencyCheck",  no_argument,       0, 'C' },
+            { "enableIpcServer",         no_argument,       0, 'I' },
             { "syncMode",                no_argument,       0, 's' },
             { "redisCommunicationMode",  required_argument, 0, 'z' },
             { "enableSaiBulkSupport",    no_argument,       0, 'l' },
@@ -94,6 +95,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 options->m_enableConsistencyCheck = true;
                 break;
 
+            case 'I':
+                options->m_enableIpcServer = true;
+                break;
+
             case 's':
                 SWSS_LOG_WARN("param -s is depreacated, use -z");
                 options->m_enableSyncMode = true;
@@ -151,9 +156,9 @@ void CommandLineOptionsParser::printUsage()
     SWSS_LOG_ENTER();
 
 #ifdef SAITHRIFT
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-r] [-m portmap] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-I] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-r] [-m portmap] [-h]" << std::endl;
 #else
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-I] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-h]" << std::endl;
 #endif // SAITHRIFT
 
     std::cout << "    -d --diag" << std::endl;
@@ -182,6 +187,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Context configuration file" << std::endl;
     std::cout << "    -b --breakConfig" << std::endl;
     std::cout << "        Comparison logic 'break before make' configuration file" << std::endl;
+    std::cout << "    -I --enableIpcServer" << std::endl;
+    std::cout << "        Enable IPC server" << std::endl;
 
 #ifdef SAITHRIFT
 

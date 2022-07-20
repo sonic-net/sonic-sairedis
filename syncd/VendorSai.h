@@ -30,6 +30,8 @@ namespace syncd
 
             sai_status_t uninitialize(void) override;
 
+            const sai_switch_api_t* get_switch_api(void) const;
+
         public: // SAI interface overrides
 
             virtual sai_status_t create(
