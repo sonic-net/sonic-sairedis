@@ -113,6 +113,10 @@ sai_status_t VendorSai::uninitialize(void)
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
+#ifdef MDIO_ACCESS_USE_NPU
+    MdioIpcServer::clearSwitchMdioApi();
+#endif
+
     auto status = sai_api_uninitialize();
 
     if (status == SAI_STATUS_SUCCESS)

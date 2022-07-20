@@ -26,15 +26,20 @@ namespace syncd
     {
         public:
 
-            MdioIpcServer(int globalContext);
+            MdioIpcServer(
+                    _In_ int globalContext);
 
             virtual ~MdioIpcServer();
 
         public:
 
-            static void setSwitchId(_In_ sai_object_id_t switchRid);
+            static void setSwitchId(
+                    _In_ sai_object_id_t switchRid);
 
-            static void setSwitchMdioApi(sai_switch_api_t *switch_api);
+            static void setSwitchMdioApi(
+                    _In_ sai_switch_api_t *switch_api);
+
+            static void clearSwitchMdioApi();
 
             int startMdioThread();
 
@@ -69,6 +74,5 @@ namespace syncd
             pthread_t taskId;
 
             int taskAlive;
-
     };
 }

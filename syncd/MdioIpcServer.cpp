@@ -33,11 +33,11 @@ typedef struct syncd_mdio_ipc_conn_s
     time_t timeout;
 } syncd_mdio_ipc_conn_t;
 
-MdioIpcServer::MdioIpcServer(int globalContext)
+MdioIpcServer::MdioIpcServer(
+        _In_ int globalContext):
+    taskAlive(0)
 {
     SWSS_LOG_ENTER();
-
-    MdioIpcServer::taskAlive = 0;
 
     /* globalContext == 0 for syncd, globalContext > 0 for gbsyncd */
     MdioIpcServer::syncdContext = (globalContext == 0);
@@ -67,7 +67,8 @@ void MdioIpcServer::setSwitchId(
             sai_serialize_object_id(MdioIpcServer::mdioSwitchId).c_str());
 }
 
-void MdioIpcServer::setSwitchMdioApi(sai_switch_api_t *switch_api)
+void MdioIpcServer::setSwitchMdioApi(
+        _In_ sai_switch_api_t *switch_api)
 {
     SWSS_LOG_ENTER();
 
@@ -79,6 +80,20 @@ void MdioIpcServer::setSwitchMdioApi(sai_switch_api_t *switch_api)
 
     MdioIpcServer::switch_mdio_api = switch_api;
     MdioIpcServer::accessInitialized = true;
+}
+
+void MdioIpcServer::clearSwitchMdioApi()
+{
+    SWSS_LOG_ENTER();
+
+    /* Switch mdio api is only relevant in syncd but not in gbsyncd */
+    if (!MdioIpcServer::syncdContext)
+    {
+        return;
+    }
+
+    MdioIpcServer::switch_mdio_api = NULL;
+    MdioIpcServer::accessInitialized = false;
 }
 
 /*
