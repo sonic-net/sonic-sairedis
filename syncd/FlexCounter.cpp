@@ -118,7 +118,8 @@ struct HasStatsMode
 
 // TODO: use if const expression when cpp17 is supported
 template <typename StatType>
-std::string serializeStat(_In_ const StatType stat)
+std::string serializeStat(
+        _In_ const StatType stat)
 {
     SWSS_LOG_ENTER();
     SWSS_LOG_THROW("serializeStat for default type parameter is not implemented");
@@ -127,70 +128,80 @@ std::string serializeStat(_In_ const StatType stat)
 }
 
 template <>
-std::string serializeStat(_In_ const sai_port_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_port_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_port_stat(stat);
 }
 
 template <>
-std::string serializeStat(_In_ const sai_queue_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_queue_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_queue_stat(stat);
 }
 
 template <>
-std::string serializeStat(_In_ const sai_ingress_priority_group_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_ingress_priority_group_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_ingress_priority_group_stat(stat);
 }
 
 template <>
-std::string serializeStat(_In_ const sai_router_interface_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_router_interface_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_router_interface_stat(stat);
 }
 
 template <>
-std::string serializeStat(_In_ const sai_switch_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_switch_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_switch_stat(stat);
 }
 
 template <>
-std::string serializeStat(_In_ const sai_macsec_flow_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_macsec_flow_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_macsec_flow_stat(stat);
 }
 
 template <>
-std::string serializeStat(_In_ const sai_macsec_sa_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_macsec_sa_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_macsec_sa_stat(stat);
 }
 
 template <>
-std::string serializeStat(_In_ const sai_counter_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_counter_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_counter_stat(stat);
 }
 
 template <>
-std::string serializeStat(_In_ const sai_tunnel_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_tunnel_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_tunnel_stat(stat);
 }
 
 template <>
-std::string serializeStat(_In_ const sai_buffer_pool_stat_t stat)
+std::string serializeStat(
+        _In_ const sai_buffer_pool_stat_t stat)
 {
     SWSS_LOG_ENTER();
     return sai_serialize_buffer_pool_stat(stat);
