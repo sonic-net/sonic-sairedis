@@ -4489,7 +4489,7 @@ void Syncd::run()
     std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
 
 #ifdef MDIO_ACCESS_USE_NPU
-    MdioIpcServer mdioServer(m_commandLineOptions->m_globalContext);
+    MdioIpcServer mdioServer(m_vendorSai, m_commandLineOptions->m_globalContext);
 #endif
 
     try

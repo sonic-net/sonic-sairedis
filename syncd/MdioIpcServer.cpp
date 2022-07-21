@@ -24,8 +24,6 @@ using namespace syncd;
 
 sai_object_id_t MdioIpcServer::mdioSwitchId = SAI_NULL_OBJECT_ID;
 bool MdioIpcServer::syncdContext = true;
-bool MdioIpcServer::accessInitialized = false;
-sai_switch_api_t* MdioIpcServer::switch_mdio_api = NULL;
 
 typedef struct syncd_mdio_ipc_conn_s
 {
@@ -34,7 +32,9 @@ typedef struct syncd_mdio_ipc_conn_s
 } syncd_mdio_ipc_conn_t;
 
 MdioIpcServer::MdioIpcServer(
+        _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ int globalContext):
+    m_vendorSai(vendorSai),
     taskAlive(0)
 {
     SWSS_LOG_ENTER();
@@ -67,35 +67,6 @@ void MdioIpcServer::setSwitchId(
             sai_serialize_object_id(MdioIpcServer::mdioSwitchId).c_str());
 }
 
-void MdioIpcServer::setSwitchMdioApi(
-        _In_ sai_switch_api_t *switch_api)
-{
-    SWSS_LOG_ENTER();
-
-    /* Switch mdio api is only relevant in syncd but not in gbsyncd */
-    if (!MdioIpcServer::syncdContext)
-    {
-        return;
-    }
-
-    MdioIpcServer::switch_mdio_api = switch_api;
-    MdioIpcServer::accessInitialized = true;
-}
-
-void MdioIpcServer::clearSwitchMdioApi()
-{
-    SWSS_LOG_ENTER();
-
-    /* Switch mdio api is only relevant in syncd but not in gbsyncd */
-    if (!MdioIpcServer::syncdContext)
-    {
-        return;
-    }
-
-    MdioIpcServer::switch_mdio_api = NULL;
-    MdioIpcServer::accessInitialized = false;
-}
-
 /*
  * mdio <port_oid> reg:     Read from the PHY register
  * mdio <port_oid> reg val: Write to the PHY register
@@ -119,21 +90,15 @@ sai_status_t MdioIpcServer::syncd_ipc_cmd_mdio_common(char *resp, int argc, char
         return SAI_STATUS_FAILURE;
     }
 
-    if (!MdioIpcServer::accessInitialized)
-    {
-        SWSS_LOG_ERROR("switch mdio access not initialized");
-        return SAI_STATUS_FAILURE;
-    }
-
     if (argc > 3)
     {
         val = (uint32_t)strtoul(argv[3], NULL, 0);
-        ret = MdioIpcServer::switch_mdio_api->switch_mdio_write(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, &val);
+        ret = m_vendorSai->mdioRegWrite(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, false, &val);
         sprintf(resp, "%d\n", ret);
     }
     else
     {
-        ret = MdioIpcServer::switch_mdio_api->switch_mdio_read(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, &val);
+        ret = m_vendorSai->mdioRegRead(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, false, &val);
         sprintf(resp, "%d 0x%x\n", ret, val);
     }
 
@@ -160,21 +125,15 @@ sai_status_t MdioIpcServer::syncd_ipc_cmd_mdio_common_cl22(char *resp, int argc,
         return SAI_STATUS_FAILURE;
     }
 
-    if (!MdioIpcServer::accessInitialized)
-    {
-        SWSS_LOG_ERROR("switch mdio cl22 access not initialized");
-        return SAI_STATUS_FAILURE;
-    }
-
     if (argc > 3)
     {
         val = (uint32_t)strtoul(argv[3], NULL, 0);
-        ret = MdioIpcServer::switch_mdio_api->switch_mdio_cl22_read(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, &val);
+        ret = m_vendorSai->mdioRegWrite(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, true, &val);
         sprintf(resp, "%d\n", ret);
     }
     else
     {
-        ret = MdioIpcServer::switch_mdio_api->switch_mdio_cl22_read(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, &val);
+        ret = m_vendorSai->mdioRegRead(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, true, &val);
         sprintf(resp, "%d 0x%x\n", ret, val);
     }
 

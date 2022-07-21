@@ -4,10 +4,6 @@
 
 #include "swss/logger.h"
 
-#ifdef MDIO_ACCESS_USE_NPU
-#include "MdioIpcServer.h"
-#endif
-
 #include <cinttypes>
 #include <cstring>
 
@@ -99,10 +95,6 @@ sai_status_t VendorSai::initialize(
         }
 
         m_apiInitialized = true;
-
-#ifdef MDIO_ACCESS_USE_NPU
-        MdioIpcServer::setSwitchMdioApi(m_apis.switch_api);
-#endif
     }
 
     return status;
@@ -112,10 +104,6 @@ sai_status_t VendorSai::uninitialize(void)
 {
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
-
-#ifdef MDIO_ACCESS_USE_NPU
-    MdioIpcServer::clearSwitchMdioApi();
-#endif
 
     auto status = sai_api_uninitialize();
 
@@ -1187,6 +1175,54 @@ sai_status_t VendorSai::flushFdbEntries(
     VENDOR_CHECK_API_INITIALIZED();
 
     return m_apis.fdb_api->flush_fdb_entries(switch_id, attr_count, attr_list);
+}
+
+sai_status_t VendorSai::mdioRegRead(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _In_ bool clause_22,
+        _Out_ uint32_t *reg_val)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+#if (SAI_API_VERSION >= SAI_VERSION(1, 11, 0))
+    if (clause_22)
+    {
+        return m_apis.switch_api->switch_mdio_cl22_read(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+    }
+    else
+#endif
+    {
+        return m_apis.switch_api->switch_mdio_read(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+    }
+}
+
+sai_status_t VendorSai::mdioRegWrite(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _In_ bool clause_22,
+        _In_ const uint32_t *reg_val)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+#if (SAI_API_VERSION >= SAI_VERSION(1, 11, 0))
+    if (clause_22)
+    {
+        return m_apis.switch_api->switch_mdio_cl22_write(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+    }
+    else
+#endif
+    {
+        return m_apis.switch_api->switch_mdio_write(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+    }
 }
 
 // SAI API

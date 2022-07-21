@@ -15,6 +15,8 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#include "VendorSai.h"
+
 extern "C" {
 #include <sai.h>
 #include <saiversion.h>
@@ -27,6 +29,7 @@ namespace syncd
         public:
 
             MdioIpcServer(
+                    _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
                     _In_ int globalContext);
 
             virtual ~MdioIpcServer();
@@ -35,11 +38,6 @@ namespace syncd
 
             static void setSwitchId(
                     _In_ sai_object_id_t switchRid);
-
-            static void setSwitchMdioApi(
-                    _In_ sai_switch_api_t *switch_api);
-
-            static void clearSwitchMdioApi();
 
             int startMdioThread();
 
@@ -50,10 +48,6 @@ namespace syncd
             static sai_object_id_t mdioSwitchId;
 
             static bool syncdContext;
-
-            static bool accessInitialized;
-
-            static sai_switch_api_t *switch_mdio_api;
 
             static void *syncd_ipc_task_enter(void*);
 
@@ -70,6 +64,8 @@ namespace syncd
             sai_status_t syncd_ipc_cmd_mdio(char *resp, int argc, char *argv[]);
 
             sai_status_t syncd_ipc_cmd_mdio_cl22(char *resp, int argc, char *argv[]);
+
+            std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
 
             pthread_t taskId;
 

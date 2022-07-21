@@ -121,6 +121,22 @@ namespace syncd
                     _In_ uint32_t attrCount,
                     _In_ const sai_attribute_t *attrList) override;
 
+            virtual sai_status_t mdioRegRead(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t device_addr,
+                    _In_ uint32_t start_reg_addr,
+                    _In_ uint32_t number_of_registers,
+                    _In_ bool clause_22,
+                    _Out_ uint32_t *reg_val) override;
+
+            virtual sai_status_t mdioRegWrite(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t device_addr,
+                    _In_ uint32_t start_reg_addr,
+                    _In_ uint32_t number_of_registers,
+                    _In_ bool clause_22,
+                    _In_ const uint32_t *reg_val) override;
+
         public: // SAI API
 
             virtual sai_status_t objectTypeGetAvailability(
