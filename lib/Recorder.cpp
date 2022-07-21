@@ -207,6 +207,8 @@ void Recorder::recordingFileReopen()
      * empty file here.
      */
 
+    m_recordingFile = m_recordingOutputDirectory + "/" + m_recordingFileName;
+
     m_ofstream.open(m_recordingFile, std::ofstream::out | std::ofstream::app);
 
     if (!m_ofstream.is_open())
