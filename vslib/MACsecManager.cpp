@@ -312,7 +312,14 @@ bool MACsecManager::update_macsec_sa_pn(
         ostream << " rx sci " << attr.m_sci;
     }
 
-    ostream << " sa " << attr.m_an << " pn " << pn;
+    ostream << " sa " << attr.m_an;
+
+    if (attr.is_xpn())
+    {
+        ostream << " ssci " << attr.m_ssci;
+    }
+
+    ostream << " pn " << pn;
 
     SWSS_LOG_NOTICE("%s", ostream.str().c_str());
 

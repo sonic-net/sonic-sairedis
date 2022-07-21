@@ -129,7 +129,7 @@ TEST(FlexCounter, addRemoveCounter)
     };
 
     testAddRemoveCounter(
-        sai_object_id_t(100),
+        sai_object_id_t(0x54000000000000),
         SAI_OBJECT_TYPE_COUNTER,
         FLOW_COUNTER_ID_LIST,
         {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
@@ -138,7 +138,7 @@ TEST(FlexCounter, addRemoveCounter)
         true);
 
     testAddRemoveCounter(
-        sai_object_id_t(101),
+        sai_object_id_t(0x5a000000000000),
         SAI_OBJECT_TYPE_MACSEC_FLOW,
         MACSEC_FLOW_COUNTER_ID_LIST,
         {"SAI_MACSEC_FLOW_STAT_CONTROL_PKTS", "SAI_MACSEC_FLOW_STAT_PKTS_UNTAGGED"},
@@ -147,7 +147,7 @@ TEST(FlexCounter, addRemoveCounter)
         false);
 
     testAddRemoveCounter(
-        sai_object_id_t(102),
+        sai_object_id_t(0x5c000000000000),
         SAI_OBJECT_TYPE_MACSEC_SA,
         MACSEC_SA_COUNTER_ID_LIST,
         {"SAI_MACSEC_SA_STAT_OCTETS_ENCRYPTED", "SAI_MACSEC_SA_STAT_OCTETS_PROTECTED"},
@@ -156,7 +156,7 @@ TEST(FlexCounter, addRemoveCounter)
         false);
 
     testAddRemoveCounter(
-        sai_object_id_t(103),
+        sai_object_id_t(0x1000000000000),
         SAI_OBJECT_TYPE_PORT,
         PORT_COUNTER_ID_LIST,
         {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
@@ -165,7 +165,7 @@ TEST(FlexCounter, addRemoveCounter)
         false);
 
     testAddRemoveCounter(
-        sai_object_id_t(104),
+        sai_object_id_t(0x1000000000000),
         SAI_OBJECT_TYPE_PORT,
         PORT_DEBUG_COUNTER_ID_LIST,
         {"SAI_PORT_STAT_IN_CONFIGURED_DROP_REASONS_0_DROPPED_PKTS", "SAI_PORT_STAT_IN_CONFIGURED_DROP_REASONS_1_DROPPED_PKTS"},
@@ -180,7 +180,7 @@ TEST(FlexCounter, addRemoveCounter)
     };
 
     testAddRemoveCounter(
-        sai_object_id_t(105),
+        sai_object_id_t(0x15000000000000),
         SAI_OBJECT_TYPE_QUEUE,
         QUEUE_COUNTER_ID_LIST,
         {"SAI_QUEUE_STAT_PACKETS", "SAI_QUEUE_STAT_BYTES"},
@@ -191,7 +191,7 @@ TEST(FlexCounter, addRemoveCounter)
     EXPECT_EQ(true, clearCalled);
 
     testAddRemoveCounter(
-        sai_object_id_t(106),
+        sai_object_id_t(0x1a000000000000),
         SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP,
         PG_COUNTER_ID_LIST,
         {"SAI_INGRESS_PRIORITY_GROUP_STAT_PACKETS", "SAI_INGRESS_PRIORITY_GROUP_STAT_BYTES"},
@@ -200,7 +200,7 @@ TEST(FlexCounter, addRemoveCounter)
         false);
 
     testAddRemoveCounter(
-        sai_object_id_t(107),
+        sai_object_id_t(0x6000000000000),
         SAI_OBJECT_TYPE_ROUTER_INTERFACE,
         RIF_COUNTER_ID_LIST,
         {"SAI_ROUTER_INTERFACE_STAT_IN_OCTETS", "SAI_ROUTER_INTERFACE_STAT_IN_PACKETS"},
@@ -209,7 +209,7 @@ TEST(FlexCounter, addRemoveCounter)
         false);
 
     testAddRemoveCounter(
-        sai_object_id_t(108),
+        sai_object_id_t(0x21000000000000),
         SAI_OBJECT_TYPE_SWITCH,
         SWITCH_DEBUG_COUNTER_ID_LIST,
         {"SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_0_DROPPED_PKTS", "SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_1_DROPPED_PKTS"},
@@ -218,7 +218,7 @@ TEST(FlexCounter, addRemoveCounter)
         false);
 
     testAddRemoveCounter(
-        sai_object_id_t(109),
+        sai_object_id_t(0x2a000000000000),
         SAI_OBJECT_TYPE_TUNNEL,
         TUNNEL_COUNTER_ID_LIST,
         {"SAI_TUNNEL_STAT_IN_OCTETS", "SAI_TUNNEL_STAT_IN_PACKETS"},
@@ -228,7 +228,7 @@ TEST(FlexCounter, addRemoveCounter)
 
     clearCalled = false;
     testAddRemoveCounter(
-        sai_object_id_t(109),
+        sai_object_id_t(0x18000000000000),
         SAI_OBJECT_TYPE_BUFFER_POOL,
         BUFFER_POOL_COUNTER_ID_LIST,
         {"SAI_BUFFER_POOL_STAT_CURR_OCCUPANCY_BYTES", "SAI_BUFFER_POOL_STAT_WATERMARK_BYTES"},
@@ -249,7 +249,7 @@ TEST(FlexCounter, addRemoveCounter)
     };
 
     testAddRemoveCounter(
-        sai_object_id_t(110),
+        sai_object_id_t(0x15000000000000),
         SAI_OBJECT_TYPE_QUEUE,
         QUEUE_ATTR_ID_LIST,
         {"SAI_QUEUE_ATTR_PAUSE_STATUS"},
@@ -269,7 +269,7 @@ TEST(FlexCounter, addRemoveCounter)
     };
 
     testAddRemoveCounter(
-        sai_object_id_t(111),
+        sai_object_id_t(0x1a000000000000),
         SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP,
         PG_ATTR_ID_LIST,
         {"SAI_INGRESS_PRIORITY_GROUP_ATTR_PORT"},
@@ -293,7 +293,7 @@ TEST(FlexCounter, addRemoveCounter)
     };
 
     testAddRemoveCounter(
-        sai_object_id_t(112),
+        sai_object_id_t(0x5c000000000000),
         SAI_OBJECT_TYPE_MACSEC_SA,
         MACSEC_SA_ATTR_ID_LIST,
         {"SAI_MACSEC_SA_ATTR_CONFIGURED_EGRESS_XPN", "SAI_MACSEC_SA_ATTR_AN"},
@@ -313,7 +313,7 @@ TEST(FlexCounter, addRemoveCounter)
     };
 
     testAddRemoveCounter(
-        sai_object_id_t(113),
+        sai_object_id_t(0x9000000000000),
         SAI_OBJECT_TYPE_ACL_COUNTER,
         ACL_COUNTER_ATTR_ID_LIST,
         {"SAI_ACL_COUNTER_ATTR_PACKETS"},
@@ -357,7 +357,7 @@ TEST(FlexCounter, queryCounterCapability)
     };
 
     testAddRemoveCounter(
-        sai_object_id_t(114),
+        sai_object_id_t(0x1000000000000),
         SAI_OBJECT_TYPE_PORT,
         PORT_COUNTER_ID_LIST,
         {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
@@ -382,7 +382,7 @@ TEST(FlexCounter, noSupportedCounters)
 
     test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
 
-    fc.addCounter(sai_object_id_t(100), sai_object_id_t(100), values);
+    fc.addCounter(sai_object_id_t(0x1000000000000), sai_object_id_t(0x1000000000000), values);
     // No supported counter, this object shall not be queried
     EXPECT_EQ(fc.isEmpty(), true);
 }
