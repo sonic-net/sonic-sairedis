@@ -1,20 +1,6 @@
 #pragma once
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <ctype.h>
-#include <errno.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <time.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <pthread.h>
-
+#include <thread>
 #include "VendorSai.h"
 
 extern "C" {
@@ -36,7 +22,7 @@ namespace syncd
 
         public:
 
-            static void setSwitchId(
+            void setSwitchId(
                     _In_ sai_object_id_t switchRid);
 
             int startMdioThread();
@@ -45,15 +31,11 @@ namespace syncd
 
         public:
 
-            static sai_object_id_t mdioSwitchId;
-
-            static bool syncdContext;
-
-            static void *syncd_ipc_task_enter(void*);
+            static void syncd_ipc_task_enter(void*);
 
         private:
 
-            void *syncd_ipc_task_main();
+            int syncd_ipc_task_main();
 
             sai_status_t syncd_ipc_cmd_mdio_common(char *resp, int argc, char *argv[]);
 
@@ -65,10 +47,14 @@ namespace syncd
 
             sai_status_t syncd_ipc_cmd_mdio_cl22(char *resp, int argc, char *argv[]);
 
+            static bool m_syncdContext;
+
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
 
-            pthread_t taskId;
+            sai_object_id_t m_switchRid;
 
-            int taskAlive;
+            std::thread m_taskThread;
+
+            int m_taskAlive;
     };
 }

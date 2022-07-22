@@ -17,6 +17,7 @@
 #include "BreakConfig.h"
 #include "NotificationProducerBase.h"
 #include "TimerWatchdog.h"
+#include "MdioIpcServer.h"
 
 #include "meta/SaiAttributeList.h"
 #include "meta/SelectableChannel.h"
@@ -442,6 +443,8 @@ namespace syncd
             std::shared_ptr<syncd::NotificationProcessor> m_processor;
 
             std::shared_ptr<sairedis::SelectableChannel> m_selectableChannel;
+
+            std::shared_ptr<syncd::MdioIpcServer> m_mdioIpcServer;
 
             bool m_enableSyncMode;
 

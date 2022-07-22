@@ -1,3 +1,17 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <ctype.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 #include "MdioIpcServer.h"
 
 #include "meta/sai_serialize.h"
@@ -22,8 +36,7 @@
 
 using namespace syncd;
 
-sai_object_id_t MdioIpcServer::mdioSwitchId = SAI_NULL_OBJECT_ID;
-bool MdioIpcServer::syncdContext = true;
+bool MdioIpcServer::m_syncdContext = true;
 
 typedef struct syncd_mdio_ipc_conn_s
 {
@@ -35,19 +48,22 @@ MdioIpcServer::MdioIpcServer(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ int globalContext):
     m_vendorSai(vendorSai),
-    taskAlive(0)
+    m_switchRid(SAI_NULL_OBJECT_ID),
+    m_taskThread(),
+    m_taskAlive(0)
 {
     SWSS_LOG_ENTER();
 
     /* globalContext == 0 for syncd, globalContext > 0 for gbsyncd */
-    MdioIpcServer::syncdContext = (globalContext == 0);
+    MdioIpcServer::m_syncdContext = (globalContext == 0);
 }
 
 MdioIpcServer::~MdioIpcServer()
 {
     SWSS_LOG_ENTER();
 
-    // empty
+    m_taskAlive = 0;
+    if(m_taskThread.joinable()) m_taskThread.join();
 }
 
 void MdioIpcServer::setSwitchId(
@@ -55,16 +71,24 @@ void MdioIpcServer::setSwitchId(
 {
     SWSS_LOG_ENTER();
 
+#ifdef MDIO_ACCESS_USE_NPU
     /* MDIO switch id is only relevant in syncd but not in gbsyncd */
-    if (!MdioIpcServer::syncdContext)
+    if (!MdioIpcServer::m_syncdContext)
     {
         return;
     }
 
-    MdioIpcServer::mdioSwitchId = switchRid;
+    if (m_switchRid != SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("mdio switch id already initialized");
+        return;
+    }
+
+    m_switchRid = switchRid;
 
     SWSS_LOG_NOTICE("Initialize mdio switch id with RID = %s",
-            sai_serialize_object_id(MdioIpcServer::mdioSwitchId).c_str());
+            sai_serialize_object_id(m_switchRid).c_str());
+#endif
 }
 
 /*
@@ -84,7 +108,7 @@ sai_status_t MdioIpcServer::syncd_ipc_cmd_mdio_common(char *resp, int argc, char
     mdio_addr = (uint32_t)strtoul(argv[1], NULL, 0);
     reg_addr = (uint32_t)strtoul(argv[2], NULL, 0);
 
-    if (MdioIpcServer::mdioSwitchId == SAI_NULL_OBJECT_ID)
+    if (m_switchRid == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_ERROR("mdio switch id not initialized");
         return SAI_STATUS_FAILURE;
@@ -93,12 +117,12 @@ sai_status_t MdioIpcServer::syncd_ipc_cmd_mdio_common(char *resp, int argc, char
     if (argc > 3)
     {
         val = (uint32_t)strtoul(argv[3], NULL, 0);
-        ret = m_vendorSai->mdioRegWrite(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, false, &val);
+        ret = m_vendorSai->switchMdioWrite(m_switchRid, mdio_addr, reg_addr, 1, &val);
         sprintf(resp, "%d\n", ret);
     }
     else
     {
-        ret = m_vendorSai->mdioRegRead(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, false, &val);
+        ret = m_vendorSai->switchMdioRead(m_switchRid, mdio_addr, reg_addr, 1, &val);
         sprintf(resp, "%d 0x%x\n", ret, val);
     }
 
@@ -119,7 +143,7 @@ sai_status_t MdioIpcServer::syncd_ipc_cmd_mdio_common_cl22(char *resp, int argc,
     mdio_addr = (uint32_t)strtoul(argv[1], NULL, 0);
     reg_addr = (uint32_t)strtoul(argv[2], NULL, 0);
 
-    if (MdioIpcServer::mdioSwitchId == SAI_NULL_OBJECT_ID)
+    if (m_switchRid == SAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_ERROR("mdio switch id not initialized");
         return SAI_STATUS_FAILURE;
@@ -128,12 +152,12 @@ sai_status_t MdioIpcServer::syncd_ipc_cmd_mdio_common_cl22(char *resp, int argc,
     if (argc > 3)
     {
         val = (uint32_t)strtoul(argv[3], NULL, 0);
-        ret = m_vendorSai->mdioRegWrite(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, true, &val);
+        ret = m_vendorSai->switchMdioCl22Write(m_switchRid, mdio_addr, reg_addr, 1, &val);
         sprintf(resp, "%d\n", ret);
     }
     else
     {
-        ret = m_vendorSai->mdioRegRead(MdioIpcServer::mdioSwitchId, mdio_addr, reg_addr, 1, true, &val);
+        ret = m_vendorSai->switchMdioCl22Read(m_switchRid, mdio_addr, reg_addr, 1, &val);
         sprintf(resp, "%d 0x%x\n", ret, val);
     }
 
@@ -156,7 +180,7 @@ sai_status_t MdioIpcServer::syncd_ipc_cmd_mdio_cl22(char *resp, int argc, char *
 #endif
 }
 
-void *MdioIpcServer::syncd_ipc_task_main()
+int MdioIpcServer::syncd_ipc_task_main()
 {
     SWSS_LOG_ENTER();
 
@@ -179,14 +203,14 @@ void *MdioIpcServer::syncd_ipc_task_main()
     if (fd < 0)
     {
         SWSS_LOG_ERROR("Unable to open the directory %s for IPC\n", path);
-        return &errno;
+        return errno;
     }
 
     sock_srv = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sock_srv < 0)
     {
         SWSS_LOG_ERROR("socket() returns %d", errno);
-        return &errno;
+        return errno;
     }
 
     /***************************************/
@@ -205,7 +229,7 @@ void *MdioIpcServer::syncd_ipc_task_main()
     {
         SWSS_LOG_ERROR("bind() returns %d", errno);
         close(sock_srv);
-        return &errno;
+        return errno;
     }
 
     /* Listen for the upcoming client sockets */
@@ -214,13 +238,13 @@ void *MdioIpcServer::syncd_ipc_task_main()
         SWSS_LOG_ERROR("listen() returns %d", errno);
         unlink(addr.sun_path);
         close(sock_srv);
-        return &errno;
+        return errno;
     }
 
     SWSS_LOG_NOTICE("IPC service is online\n");
 
     memset(conn, 0, sizeof(conn));
-    while (taskAlive)
+    while (m_taskAlive)
     {
         time_t now;
         struct timeval timeout;
@@ -389,55 +413,57 @@ void *MdioIpcServer::syncd_ipc_task_main()
     }
     close(sock_srv);
     unlink(addr.sun_path);
-    return &errno;
+    return errno;
 }
 
-void *MdioIpcServer::syncd_ipc_task_enter(void *ctx)
+void MdioIpcServer::syncd_ipc_task_enter(void *ctx)
 {
     SWSS_LOG_ENTER();
 
     MdioIpcServer *mdioServer = (MdioIpcServer *)ctx;
-    return mdioServer->syncd_ipc_task_main();
+    mdioServer->syncd_ipc_task_main();
 }
 
 void MdioIpcServer::stopMdioThread(void)
 {
     SWSS_LOG_ENTER();
 
-    int *err = NULL;
-
+#ifdef MDIO_ACCESS_USE_NPU
     /* MDIO IPC server thread is only relevant in syncd but not in gbsyncd */
-    if (!MdioIpcServer::syncdContext)
+    if (!MdioIpcServer::m_syncdContext)
     {
         return;
     }
 
-    taskAlive = 0;
-    pthread_join(taskId, (void **)&err);
+    m_taskAlive = 0;
+    m_taskThread.join();
     SWSS_LOG_NOTICE("IPC task thread is stopped\n");
+#endif
 }
 
 int MdioIpcServer::startMdioThread()
 {
     SWSS_LOG_ENTER();
 
-    int err = 0;
-
+#ifdef MDIO_ACCESS_USE_NPU
     /* MDIO IPC server thread is only relevant in syncd but not in gbsyncd */
-    if (!MdioIpcServer::syncdContext)
+    if (!MdioIpcServer::m_syncdContext)
     {
         return 0;
     }
 
-    if (!taskAlive)
+    if (!m_taskAlive)
     {
-        taskAlive = 1;
-        err = pthread_create(&taskId, NULL, MdioIpcServer::syncd_ipc_task_enter, this);
-        if (err != 0)
-        {
-            MdioIpcServer::taskAlive = 0;
-            SWSS_LOG_ERROR("Unable to create IPC task thread");
+        m_taskAlive = 1;
+        try {
+            m_taskThread = std::thread(&MdioIpcServer::syncd_ipc_task_enter, this);
+        }
+        catch(const std::exception& e) {
+            MdioIpcServer::m_taskAlive = 0;
+            SWSS_LOG_ERROR("Unable to create IPC task thread: %s", e.what());
+            return SAI_STATUS_FAILURE;
         }
     }
-    return err;
+#endif
+    return SAI_STATUS_SUCCESS;
 }

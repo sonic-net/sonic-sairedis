@@ -33,10 +33,6 @@
 #include <iterator>
 #include <algorithm>
 
-#ifdef MDIO_ACCESS_USE_NPU
-#include "MdioIpcServer.h"
-#endif
-
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 
 using namespace syncd;
@@ -110,6 +106,7 @@ Syncd::Syncd(
     // we need STATE_DB ASIC_DB and COUNTERS_DB
 
     m_dbAsic = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
+    m_mdioIpcServer = std::make_shared<MdioIpcServer>(m_vendorSai, m_commandLineOptions->m_globalContext);
 
     if (m_contextConfig->m_zmqEnable)
     {
@@ -2616,6 +2613,8 @@ sai_status_t Syncd::processOidCreate(
 
             m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai);
 
+            m_mdioIpcServer->setSwitchId(objectRid);
+
             startDiagShell(objectRid);
         }
 
@@ -3900,6 +3899,8 @@ void Syncd::onSwitchCreateInInitViewMode(
 
         m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai);
 
+        m_mdioIpcServer->setSwitchId(switchRid);
+
         startDiagShell(switchRid);
     }
     else
@@ -4488,10 +4489,6 @@ void Syncd::run()
 
     std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
 
-#ifdef MDIO_ACCESS_USE_NPU
-    MdioIpcServer mdioServer(m_vendorSai, m_commandLineOptions->m_globalContext);
-#endif
-
     try
     {
         onSyncdStart(m_commandLineOptions->m_startType == SAI_START_TYPE_WARM_BOOT);
@@ -4502,9 +4499,12 @@ void Syncd::run()
         // notification queue is created before we create switch
         m_processor->startNotificationsProcessingThread();
 
-#ifdef MDIO_ACCESS_USE_NPU
-        mdioServer.startMdioThread();
-#endif
+        for (auto& sw: m_switches)
+        {
+            m_mdioIpcServer->setSwitchId(sw.second->getRid());
+        }
+
+        m_mdioIpcServer->startMdioThread();
 
         SWSS_LOG_NOTICE("syncd listening for events");
 
@@ -4690,9 +4690,7 @@ void Syncd::run()
 
     m_manager->removeAllCounters();
 
-#ifdef MDIO_ACCESS_USE_NPU
-    mdioServer.stopMdioThread();
-#endif
+    m_mdioIpcServer->stopMdioThread();
 
     sai_status_t status = removeAllSwitches();
 
