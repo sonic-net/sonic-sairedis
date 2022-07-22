@@ -5,6 +5,7 @@
 
 extern "C" {
     const char* __lsan_default_suppressions() {
+        // SWSS_LOG_ENTER(); // disabled
         return "leak:__static_initialization_and_destruction_0\n";
     }
 }
