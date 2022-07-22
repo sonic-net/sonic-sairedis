@@ -2612,6 +2612,16 @@ sai_status_t Syncd::processOidCreate(
 
             m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai);
 
+            /*
+             * If IPC server is enabled, it needs to remember switch object rid and
+             * switch api, used by the calling of switch_mdio_read/write.
+             */
+            if (m_ipcServer && m_switches.size() == 1)
+            {
+                m_ipcServer->setSwitchId(objectRid);
+                m_ipcServer->setSwitchApi(dynamic_cast<VendorSai*>(m_vendorSai.get())->get_switch_api());
+            }
+
             startDiagShell(objectRid);
         }
 
@@ -4493,6 +4503,12 @@ void Syncd::run()
         // processing possible quick fdb notifications, and pointer for
         // notification queue is created before we create switch
         m_processor->startNotificationsProcessingThread();
+
+        if (m_commandLineOptions->m_enableIpcServer)
+        {
+            m_ipcServer = std::make_shared<syncd::IpcServer>();
+            m_ipcServer->startThread();
+        }
 
         SWSS_LOG_NOTICE("syncd listening for events");
 

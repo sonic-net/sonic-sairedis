@@ -17,6 +17,7 @@
 #include "BreakConfig.h"
 #include "NotificationProducerBase.h"
 #include "TimerWatchdog.h"
+#include "Ipc.h"
 
 #include "meta/SaiAttributeList.h"
 #include "meta/SelectableChannel.h"
@@ -494,5 +495,7 @@ namespace syncd
             TimerWatchdog m_timerWatchdog;
 
             std::set<sai_object_id_t> m_createdInInitView;
+
+            std::shared_ptr<syncd::IpcServer> m_ipcServer;
     };
 }

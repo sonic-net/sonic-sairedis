@@ -1270,3 +1270,10 @@ sai_status_t VendorSai::logSet(
 
     return sai_log_set(api, log_level);
 }
+
+const sai_switch_api_t* VendorSai::get_switch_api(void) const
+{
+    SWSS_LOG_ENTER();
+
+    return m_apis.switch_api;
+}

@@ -250,3 +250,12 @@ typedef enum _sai_redis_switch_attr_t
     SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT,
 
 } sai_redis_switch_attr_t;
+
+typedef enum _sai_redis_switch_register_fn_t
+{
+    SAI_REDIS_SWITCH_REGISTER_FN_NULL = 0,
+    SAI_REDIS_SWITCH_REGISTER_FN_MDIO_CL22_READ,
+    SAI_REDIS_SWITCH_REGISTER_FN_MDIO_CL22_WRITE,
+    SAI_REDIS_SWITCH_REGISTER_FN_MDIO_CL45_READ,
+    SAI_REDIS_SWITCH_REGISTER_FN_MDIO_CL45_WRITE,
+} sai_redis_switch_register_fn_t;

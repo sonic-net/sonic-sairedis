@@ -1,4 +1,5 @@
 #include "NotificationHandler.h"
+#include "Mdio.h"
 #include "sairediscommon.h"
 
 #include "swss/logger.h"
@@ -110,6 +111,20 @@ void NotificationHandler::updateNotificationsPointers(
 
             case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
                 attr.value.ptr = (void*)m_switchNotifications.on_bfd_session_state_change;
+                break;
+
+            case SAI_SWITCH_ATTR_REGISTER_READ:
+                if (attr.value.ptr == (void*)SAI_REDIS_SWITCH_REGISTER_FN_MDIO_CL22_READ)
+                    attr.value.ptr = (void*)switch_register_mdio_cl22_read;
+                else if (attr.value.ptr == (void*)SAI_REDIS_SWITCH_REGISTER_FN_MDIO_CL45_READ)
+                    attr.value.ptr = (void*)switch_register_mdio_cl45_read;
+                break;
+
+            case SAI_SWITCH_ATTR_REGISTER_WRITE:
+                if (attr.value.ptr == (void*)SAI_REDIS_SWITCH_REGISTER_FN_MDIO_CL22_WRITE)
+                    attr.value.ptr = (void*)switch_register_mdio_cl22_write;
+                else if (attr.value.ptr == (void*)SAI_REDIS_SWITCH_REGISTER_FN_MDIO_CL45_WRITE)
+                    attr.value.ptr = (void*)switch_register_mdio_cl45_write;
                 break;
 
             default:
