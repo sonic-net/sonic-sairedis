@@ -247,12 +247,24 @@ config_syncd_barefoot()
         echo "SAI_KEY_WARM_BOOT_READ_FILE=/var/warmboot/sai-warmboot.bin" >> $PROFILE_FILE
     fi
     CMD_ARGS+=" -l -p $PROFILE_FILE"
-
-    # Check and load SDE profile
+    # Check if SDE profile configured
     P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
     if [[ -n "$P4_PROFILE" ]]; then
         if [[ ( -d /opt/bfn/install_${P4_PROFILE} ) && ( -L /opt/bfn/install || ! -e /opt/bfn/install ) ]]; then
             ln -srfn /opt/bfn/install_${P4_PROFILE} /opt/bfn/install
+        fi
+    else
+        CHIP_FAMILY_INFO="$(cat $HWSKU_DIR/switch-tna-sai.conf | grep chip_family | awk -F : '{print $2}' | cut -d '"'  -f 2)"
+        CHIP_FAMILY=${CHIP_FAMILY_INFO,,}
+        [[ "$CHIP_FAMILY" == "tofino" ]] && P4_PTYPE="x" || P4_PTYPE="y"
+        # Check if the current profile fits the ASIC family
+        PROFILE_DEFAULT=$(readlink /opt/bfn/install)
+        if [[ "$PROFILE_DEFAULT" != "install_$P4_PTYPE"*"_profile" &&  $PROFILE_DEFAULT != *"_$CHIP_FAMILY"  ]]; then
+            # Find suitable profile
+            PROFILE=$(ls -d /opt/bfn/install_$P4_PTYPE*_profile -d  /opt/bfn/install_*_$CHIP_FAMILY 2> /dev/null | head -1)
+            if [[ ! -z $PROFILE  ]]; then
+                ln -srfn $PROFILE /opt/bfn/install
+            fi
         fi
     fi
     export PYTHONHOME=/opt/bfn/install/
