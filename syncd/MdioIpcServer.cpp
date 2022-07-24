@@ -63,7 +63,10 @@ MdioIpcServer::~MdioIpcServer()
     SWSS_LOG_ENTER();
 
     m_taskAlive = 0;
-    if(m_taskThread.joinable()) m_taskThread.join();
+    if(m_taskThread.joinable())
+    {
+        m_taskThread.join();
+    }
 }
 
 void MdioIpcServer::setSwitchId(
