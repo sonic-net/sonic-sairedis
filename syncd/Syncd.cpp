@@ -4183,15 +4183,36 @@ sai_status_t Syncd::setUninitDataPlaneOnRemovalOnAllSwitches()
 
         auto strRid = sai_serialize_object_id(rid);
 
-        auto status = m_vendorSai->set(SAI_OBJECT_TYPE_SWITCH, rid, &attr);
+        sai_attr_capability_t attr_capability = {};
 
-        if (status != SAI_STATUS_SUCCESS)
+        sai_status_t queryStatus;
+
+        queryStatus = m_vendorSai->queryAttributeCapability(rid,
+                                                            SAI_OBJECT_TYPE_SWITCH,
+                                                            SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL,
+                                                            &attr_capability);
+        if (queryStatus != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL=false: %s:%s",
-                    strRid.c_str(),
-                    sai_serialize_status(status).c_str());
+            SWSS_LOG_ERROR("Failed to get SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL capabilities: %s:%s",
+                           strRid.c_str(),
+                           sai_serialize_status(queryStatus).c_str());
 
-            result = status;
+            result = queryStatus;
+            continue;
+        }
+
+        if (attr_capability.set_implemented)
+        {
+            auto status = m_vendorSai->set(SAI_OBJECT_TYPE_SWITCH, rid, &attr);
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL=false: %s:%s",
+                               strRid.c_str(),
+                               sai_serialize_status(status).c_str());
+
+                result = status;
+            }
         }
     }
 
@@ -4426,14 +4447,10 @@ void Syncd::run()
         }
     }
 
-#ifdef SAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
-
     if (shutdownType == SYNCD_RESTART_TYPE_FAST || shutdownType == SYNCD_RESTART_TYPE_WARM)
     {
         setUninitDataPlaneOnRemovalOnAllSwitches();
     }
-
-#endif
 
     m_manager->removeAllCounters();
 

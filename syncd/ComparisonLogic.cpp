@@ -1473,7 +1473,7 @@ bool ComparisonLogic::performObjectSetTransition(
 
                 if (m_switch->isDiscoveredRid(rid))
                 {
-                    SWSS_LOG_INFO("performing default on existing object VID %s: %s: %s, we need default dependency TREE, FIXME",
+                    SWSS_LOG_WARN("performing default on existing object VID %s: %s: %s, we need default dependency TREE, FIXME",
                             sai_serialize_object_id(vid).c_str(),
                             meta->attridname,
                             currentAttr->getStrAttrValue().c_str());
@@ -2089,7 +2089,8 @@ void ComparisonLogic::removeCurrentObjectDependencyTree(
                     continue;
                 }
 
-                if (revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID)
+                if (revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_OBJECT_ID &&
+                        revgraph->attrmetadata->attrvaluetype != SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_OBJECT_ID)
                 {
                     // currently we only support reference on OID, not list
                     SWSS_LOG_THROW("attr value type %d, not supported yet, FIXME",
@@ -2452,7 +2453,7 @@ void ComparisonLogic::populateExistingObjects(
             }
         }
 
-        if (warmBootNewDiscoveredVids.size())
+        if (warmBootNewDiscoveredVids.find(vid) != warmBootNewDiscoveredVids.end())
         {
             // We have some new discovered VIDs after warm boot, we need to
             // create temporary objects from them, so comparison logic will not
@@ -2464,8 +2465,11 @@ void ComparisonLogic::populateExistingObjects(
 
             performColdCheck = false;
 
-            SWSS_LOG_NOTICE("creating and matching %zu new discovered WARM BOOT objects",
-                    warmBootNewDiscoveredVids.size());
+            sai_object_type_t ot = VidManager::objectTypeQuery(vid);
+
+            SWSS_LOG_NOTICE("creating temporary object for new discovered VID %s:%s",
+                    sai_serialize_object_type(ot).c_str(),
+                    sai_serialize_object_id(vid).c_str());
         }
 
         if (performColdCheck && coldBootDiscoveredVids.find(vid) == coldBootDiscoveredVids.end())
@@ -2866,6 +2870,46 @@ void ComparisonLogic::createPreMatchMap(
         auto& cObj = cur.m_soAll.at(it->second.at(0));
 
         createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
+    }
+
+    for (auto&pk: tmp.m_neighborsByIp)
+    {
+        auto& ip = pk.first;
+
+        // look only for unique neighbors
+
+        if (pk.second.size() != 1)
+            continue;
+
+        auto it = cur.m_neighborsByIp.find(ip);
+
+        if (it == cur.m_neighborsByIp.end())
+            continue;
+
+        if (it->second.size() != 1)
+            continue;
+
+        auto& tObj = tmp.m_soAll.at(pk.second.at(0));
+        auto& cObj = cur.m_soAll.at(it->second.at(0));
+
+        createPreMatchMapForObject(cur, tmp, cObj, tObj, processed);
+
+        sai_object_id_t tRifVid = tObj->m_meta_key.objectkey.key.neighbor_entry.rif_id;
+        sai_object_id_t cRifVid = cObj->m_meta_key.objectkey.key.neighbor_entry.rif_id;
+
+        if (processed.find(cObj->m_str_object_id) == processed.end())
+        {
+            SWSS_LOG_INFO("pre match Neighbor RIF: cur: %s, tmp: %s",
+                    sai_serialize_object_id(cRifVid).c_str(),
+                    sai_serialize_object_id(tRifVid).c_str());
+
+            tmp.m_preMatchMap[tRifVid] = cRifVid;
+
+            auto& cO = cur.m_oOids.at(cRifVid);
+            auto& tO = tmp.m_oOids.at(tRifVid);
+
+            createPreMatchMapForObject(cur, tmp, cO, tO, processed);
+        }
     }
 
     cretePreMatchForLagMembers(cur, tmp, processed);

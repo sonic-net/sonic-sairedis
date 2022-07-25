@@ -424,3 +424,15 @@ PRIVATE extern std::shared_ptr<sairedis::Sai>   redis_sai;
     _X(ROUTE_ENTRY,route_entry);            \
     _X(NAT_ENTRY,nat_entry);                \
 
+// BULK get/set DECLARE
+
+#define REDIS_BULK_GET_SET(OT,ot)   \
+    REDIS_BULK_GET(OT,ot);          \
+    REDIS_BULK_SET(OT,ot);
+
+// BULK get/set API
+
+#define REDIS_BULK_GET_SET_API(ot)     \
+    redis_bulk_get_ ## ot,             \
+    redis_bulk_set_ ## ot,
+

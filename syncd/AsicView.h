@@ -280,6 +280,7 @@ namespace syncd
             StrObjectIdToSaiObjectHash m_soAll;
 
             std::unordered_map<std::string,std::vector<std::string>> m_routesByPrefix;
+            std::unordered_map<std::string,std::vector<std::string>> m_neighborsByIp;
 
             ObjectIdToSaiObjectHash m_oOids;
 

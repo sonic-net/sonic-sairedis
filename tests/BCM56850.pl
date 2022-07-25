@@ -707,7 +707,11 @@ sub test_brcm_warm_new_object_port_serdes
 {
     fresh_start;
 
-    play "empty_sw.rec";
+    # use buffer profile and pool objects since they
+    # are not default created on the switch
+    # so asic operations should still be zero
+
+    play "buffer_profile_get_A.rec";
 
     print "port serdes objects in ASIC_DB: ";
     print `redis-cli -n 1 keys "*_SERDES*" | wc -l`;
@@ -732,7 +736,7 @@ sub test_brcm_warm_new_object_port_serdes
 
     start_syncd_warm;
 
-    play "empty_sw.rec", 0;
+    play "buffer_profile_get_A.rec", 0;
 
     print "check ASIC_DB for serdes\n";
     print "RIDTOVID: ", `redis-cli -n 1 HKEYS RIDTOVID |grep oid:0x5700 |wc -l`;
@@ -747,8 +751,22 @@ sub test_remove_port_serdes
     play "test_remove_port_serdes.rec";
 }
 
+sub test_neighbor_lag
+{
+    fresh_start;
+
+    play "test_neighbor_lag.rec";
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+    play "test_neighbor_lag.rec", 3;
+}
+
 # RUN TESTS
 
+test_neighbor_lag;
 test_lag_member;
 test_remove_port_serdes;
 test_brcm_warm_new_object_port_serdes;

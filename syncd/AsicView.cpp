@@ -94,6 +94,9 @@ void AsicView::fromDump(
             case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
                 sai_deserialize_neighbor_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.neighbor_entry);
                 m_soNeighbors[o->m_str_object_id] = o;
+
+                m_neighborsByIp[sai_serialize_ip_address(o->m_meta_key.objectkey.key.neighbor_entry.ip_address)].push_back(o->m_str_object_id);
+
                 break;
 
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
