@@ -247,7 +247,7 @@ config_syncd_barefoot()
         echo "SAI_KEY_WARM_BOOT_READ_FILE=/var/warmboot/sai-warmboot.bin" >> $PROFILE_FILE
     fi
     CMD_ARGS+=" -l -p $PROFILE_FILE"
-    # Check if SDE profile configured
+    # Check if SDE profile is configured
     P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
     if [[ -n "$P4_PROFILE" ]]; then
         if [[ ( -d /opt/bfn/install_${P4_PROFILE} ) && ( -L /opt/bfn/install || ! -e /opt/bfn/install ) ]]; then
@@ -259,7 +259,7 @@ config_syncd_barefoot()
         [[ "$CHIP_FAMILY" == "tofino" ]] && P4_PTYPE="x" || P4_PTYPE="y"
         # Check if the current profile fits the ASIC family
         PROFILE_DEFAULT=$(readlink /opt/bfn/install)
-        if [[ "$PROFILE_DEFAULT" != "install_$P4_PTYPE"*"_profile" &&  $PROFILE_DEFAULT != *"_$CHIP_FAMILY"  ]]; then
+        if [[ "$PROFILE_DEFAULT" != "install_$P4_PTYPE"*"_profile" && "$PROFILE_DEFAULT" != *"_$CHIP_FAMILY"  ]]; then
             # Find suitable profile
             PROFILE=$(ls -d /opt/bfn/install_$P4_PTYPE*_profile -d  /opt/bfn/install_*_$CHIP_FAMILY 2> /dev/null | head -1)
             if [[ ! -z $PROFILE  ]]; then
