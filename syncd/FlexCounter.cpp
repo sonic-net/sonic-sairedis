@@ -116,6 +116,18 @@ struct HasStatsMode
     enum { value = std::is_void<decltype(check<T>(0))>::value };
 };
 
+// BulkStatsContext is used to store bulk counter related
+// data and avoid construct them each time calling SAI bulk API
+template <typename StatType>
+struct BulkStatsContext
+{
+    std::vector<sai_object_id_t> object_vids;
+    std::vector<sai_object_key_t> object_keys;
+    std::vector<StatType> counter_ids;
+    std::vector<sai_status_t> object_statuses;
+    std::vector<uint64_t> counters;
+};
+
 // TODO: use if const expression when cpp17 is supported
 template <typename StatType>
 std::string serializeStat(
@@ -356,6 +368,7 @@ class CounterContext : public BaseCounterContext
 {
 public:
     typedef CounterIds<StatType> CounterIdsType;
+    typedef BulkStatsContext<StatType> BulkContextType;
 
     CounterContext(
             _In_ const std::string &name,
@@ -436,24 +449,49 @@ public:
             }
         }
 
-        auto it = m_objectIdsMap.find(vid);
-        if (it != m_objectIdsMap.end())
-        {
-            it->second->counter_ids = supportedIds;
-            return;
-        }
+         // Perform a remove and re-add to simplify the logic here
+        removeObject(vid, false);
 
-        auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
+        bool supportBulk;
         // TODO: use if const expression when cpp17 is supported
         if (HasStatsMode<CounterIdsType>::value)
         {
-            counter_data->setStatsMode(instance_stats_mode);
+            supportBulk = false;
         }
-        m_objectIdsMap.emplace(vid, counter_data);
+        else
+        {
+            supportBulk = checkBulkCapability(vid, rid, supportedIds);
+        }
+
+        if (!supportBulk)
+        {
+            auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
+            // TODO: use if const expression when cpp17 is supported
+            if (HasStatsMode<CounterIdsType>::value)
+            {
+                counter_data->setStatsMode(instance_stats_mode);
+            }
+            m_objectIdsMap.emplace(vid, counter_data);
+        }
+        else
+        {
+            std::sort(supportedIds.begin(), supportedIds.end());
+            auto bulkContext = getBulkStatsContext(supportedIds);
+            addBulkStatsContext(vid, rid, supportedIds, *bulkContext.get());
+        }
     }
 
     void removeObject(
             _In_ sai_object_id_t vid) override
+    {
+        SWSS_LOG_ENTER();
+
+        removeObject(vid, true);
+    }
+
+    void removeObject(
+            _In_ sai_object_id_t vid,
+            _In_ bool log)
     {
         SWSS_LOG_ENTER();
 
@@ -464,9 +502,12 @@ public:
         }
         else
         {
-            SWSS_LOG_NOTICE("Trying to remove nonexisting %s %s",
-                sai_serialize_object_type(m_objectType).c_str(),
-                sai_serialize_object_id(vid).c_str());
+            if (!removeBulkStatsContext(vid) && log)
+            {
+                SWSS_LOG_NOTICE("Trying to remove nonexisting %s %s",
+                    sai_serialize_object_type(m_objectType).c_str(),
+                    sai_serialize_object_id(vid).c_str());
+            }
         }
     }
 
@@ -501,6 +542,11 @@ public:
             }
             countersTable.set(sai_serialize_object_id(vid), values, "");
         }
+
+        for (const auto &kv : m_bulkContexts)
+        {
+            bulkCollectData(countersTable, *kv.second.get());
+        }
     }
 
     void runPlugin(
@@ -509,16 +555,25 @@ public:
     {
         SWSS_LOG_ENTER();
 
-        if (m_objectIdsMap.empty())
+        if (!hasObject())
         {
             return;
         }
         std::vector<std::string> idStrings;
         idStrings.reserve(m_objectIdsMap.size());
         std::transform(m_objectIdsMap.begin(),
-                        m_objectIdsMap.end(),
-                        std::back_inserter(idStrings),
-                        [] (auto &kv) { return sai_serialize_object_id(kv.first); });
+                       m_objectIdsMap.end(),
+                       std::back_inserter(idStrings),
+                       [] (auto &kv) { return sai_serialize_object_id(kv.first); });
+
+        for (auto &kv : m_bulkContexts)
+        {
+            std::transform(kv.second->object_vids.begin(),
+                           kv.second->object_vids.end(),
+                           std::back_inserter(idStrings),
+                           [] (auto &vid) { return sai_serialize_object_id(vid); });
+        }
+
         std::for_each(m_plugins.begin(),
                       m_plugins.end(),
                       [&] (auto &sha) { runRedisScript(counters_db, sha, idStrings, argv); });
@@ -527,11 +582,12 @@ public:
     bool hasObject() const override
     {
         SWSS_LOG_ENTER();
-        return !m_objectIdsMap.empty();
+        return !m_objectIdsMap.empty() || !m_bulkContexts.empty();
     }
 
 private:
-    bool isCounterSupported(_In_ StatType counter) const
+    bool isCounterSupported(
+            _In_ StatType counter) const
     {
         SWSS_LOG_ENTER();
         return m_supportedCounters.count(counter) != 0;
@@ -615,6 +671,135 @@ private:
         }
 
         return true;
+    }
+
+    void bulkCollectData(
+        _In_ swss::Table &countersTable,
+        _Inout_ BulkContextType &ctx)
+    {
+        SWSS_LOG_ENTER();
+        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        sai_status_t status = m_vendorSai->bulkGetStats(
+                            SAI_NULL_OBJECT_ID,
+                            m_objectType,
+                            static_cast<uint32_t>(ctx.object_keys.size()),
+                            ctx.object_keys.data(),
+                            static_cast<uint32_t>(ctx.counter_ids.size()),
+                            reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
+                            statsMode,
+                            ctx.object_statuses.data(),
+                            ctx.counters.data());
+        if (SAI_STATUS_SUCCESS != status)
+        {
+            SWSS_LOG_WARN("Failed to bulk get stats for %s: %u", m_name.c_str(), status);
+        }
+
+        std::vector<swss::FieldValueTuple> values;
+        for (size_t i = 0; i < ctx.object_keys.size(); i++)
+        {
+            if (SAI_STATUS_SUCCESS != ctx.object_statuses[i])
+            {
+                SWSS_LOG_ERROR("Failed to get stats of %s 0x%" PRIx64 ": %d", m_name.c_str(), ctx.object_keys[i].key.object_id, ctx.object_statuses[i]);
+                continue;
+            }
+            const auto &vid = ctx.object_vids[i];
+
+            for (size_t j = 0; j < ctx.counter_ids.size(); j++)
+            {
+                values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
+            }
+            countersTable.set(sai_serialize_object_id(vid), values, "");
+            values.clear();
+        }
+    }
+
+    auto getBulkStatsContext(
+        _In_ const std::vector<StatType>& counterIds)
+    {
+        SWSS_LOG_ENTER();
+        auto iter = m_bulkContexts.find(counterIds);
+        if (iter != m_bulkContexts.end())
+        {
+            return iter->second;
+        }
+
+        auto ret = m_bulkContexts.emplace(counterIds, std::make_shared<BulkContextType>());
+        return ret.first->second;
+    }
+
+    void addBulkStatsContext(
+            _In_    sai_object_id_t vid,
+            _In_    sai_object_id_t rid,
+            _In_    const std::vector<StatType>& counterIds,
+            _Inout_ BulkContextType &ctx)
+    {
+        SWSS_LOG_ENTER();
+        ctx.object_vids.push_back(vid);
+        sai_object_key_t object_key;
+        object_key.key.object_id = rid;
+        ctx.object_keys.push_back(object_key);
+        if (ctx.counter_ids.empty())
+        {
+            ctx.counter_ids = counterIds;
+        }
+        ctx.object_statuses.push_back(SAI_STATUS_SUCCESS);
+        ctx.counters.resize(counterIds.size() * ctx.object_keys.size());
+    }
+
+    bool removeBulkStatsContext(
+        _In_  sai_object_id_t vid)
+    {
+        SWSS_LOG_ENTER();
+        bool found = false;
+        for (auto iter = m_bulkContexts.begin(); iter != m_bulkContexts.end(); iter++)
+        {
+            auto &ctx = *iter->second.get();
+            auto vid_iter = std::find(ctx.object_vids.begin(), ctx.object_vids.end(), vid);
+            if (vid_iter == ctx.object_vids.end())
+            {
+                continue;
+            }
+            found = true;
+            auto index = std::distance(ctx.object_vids.begin(), vid_iter);
+            ctx.object_vids.erase(vid_iter);
+            if (ctx.object_vids.empty())
+            {
+                m_bulkContexts.erase(iter);
+            }
+            else
+            {
+                auto key_iter = ctx.object_keys.begin();
+                std::advance(key_iter, index);
+                ctx.object_keys.erase(key_iter);
+                ctx.counters.resize(ctx.counter_ids.size() * ctx.object_keys.size());
+                ctx.object_statuses.pop_back();
+            }
+            break;
+        }
+
+        return found;
+    }
+
+    bool checkBulkCapability(
+            _In_ sai_object_id_t vid,
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<StatType>& counter_ids)
+    {
+        SWSS_LOG_ENTER();
+        BulkContextType ctx;
+        addBulkStatsContext(vid, rid, counter_ids, ctx);
+        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        sai_status_t status = m_vendorSai->bulkGetStats(
+                            SAI_NULL_OBJECT_ID,
+                            m_objectType,
+                            static_cast<uint32_t>(ctx.object_keys.size()),
+                            ctx.object_keys.data(),
+                            static_cast<uint32_t>(ctx.counter_ids.size()),
+                            reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
+                            statsMode,
+                            ctx.object_statuses.data(),
+                            ctx.counters.data());
+        return status == SAI_STATUS_SUCCESS;
     }
 
     void updateSupportedCounters(
@@ -721,6 +906,7 @@ protected:
     sai_stats_mode_t& m_groupStatsMode;
     std::set<StatType> m_supportedCounters;
     std::map<sai_object_id_t, std::shared_ptr<CounterIdsType>> m_objectIdsMap;
+    std::map<std::vector<StatType>, std::shared_ptr<BulkContextType>> m_bulkContexts;
 };
 
 template <typename AttrType>

@@ -646,6 +646,58 @@ sai_status_t VendorSai::clearStats(
     return ptr(object_id, number_of_counters, counter_ids);
 }
 
+sai_status_t VendorSai::bulkGetStats(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_key_t *object_key,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Inout_ sai_status_t *object_statuses,
+        _Out_ uint64_t *counters)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    return sai_bulk_object_get_stats(
+            switchId,
+            object_type,
+            object_count,
+            object_key,
+            number_of_counters,
+            counter_ids,
+            mode,
+            object_statuses,
+            counters);
+}
+
+sai_status_t VendorSai::bulkClearStats(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_key_t *object_key,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Inout_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    return sai_bulk_object_clear_stats(
+            switchId,
+            object_type,
+            object_count,
+            object_key,
+            number_of_counters,
+            counter_ids,
+            mode,
+            object_statuses);
+}
+
 // BULK QUAD OID
 
 sai_status_t VendorSai::bulkCreate(

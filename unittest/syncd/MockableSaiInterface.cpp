@@ -200,6 +200,45 @@ sai_status_t MockableSaiInterface::clearStats(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t MockableSaiInterface::bulkGetStats(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t object_type,
+    _In_ uint32_t object_count,
+    _In_ const sai_object_key_t *object_key,
+    _In_ uint32_t number_of_counters,
+    _In_ const sai_stat_id_t *counter_ids,
+    _In_ sai_stats_mode_t mode,
+    _Inout_ sai_status_t *object_statuses,
+    _Out_ uint64_t *counters)
+{
+    SWSS_LOG_ENTER();
+    if (mock_bulkGetStats)
+    {
+        return mock_bulkGetStats(switchId, object_type, object_count, object_key, number_of_counters, counter_ids, mode, object_statuses, counters);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t MockableSaiInterface::bulkClearStats(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t object_type,
+    _In_ uint32_t object_count,
+    _In_ const sai_object_key_t *object_key,
+    _In_ uint32_t number_of_counters,
+    _In_ const sai_stat_id_t *counter_ids,
+    _In_ sai_stats_mode_t mode,
+    _Inout_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+    if (mock_bulkClearStats)
+    {
+        return mock_bulkClearStats(switchId, object_type, object_count, object_key, number_of_counters, counter_ids, mode, object_statuses);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t MockableSaiInterface::flushFdbEntries(
     _In_ sai_object_id_t switchId,
     _In_ uint32_t attrCount,

@@ -116,6 +116,27 @@ namespace sairedis
                     _In_ uint32_t number_of_counters,
                     _In_ const sai_stat_id_t *counter_ids) override;
 
+            virtual sai_status_t bulkGetStats(
+                    _In_ sai_object_id_t switchId,
+                    _In_ sai_object_type_t object_type,
+                    _In_ uint32_t object_count,
+                    _In_ const sai_object_key_t *object_key,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Inout_ sai_status_t *object_statuses,
+                    _Out_ uint64_t *counters) override;
+
+            virtual sai_status_t bulkClearStats(
+                    _In_ sai_object_id_t switchId,
+                    _In_ sai_object_type_t object_type,
+                    _In_ uint32_t object_count,
+                    _In_ const sai_object_key_t *object_key,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Inout_ sai_status_t *object_statuses) override;
+
         public: // non QUAD API
 
             virtual sai_status_t flushFdbEntries(

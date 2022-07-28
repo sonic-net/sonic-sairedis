@@ -1850,6 +1850,37 @@ sai_status_t Meta::clearStats(
     return status;
 }
 
+sai_status_t Meta::bulkGetStats(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_key_t *object_key,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Inout_ sai_status_t *object_statuses,
+        _Out_ uint64_t *counters)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t Meta::bulkClearStats(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_key_t *object_key,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Inout_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 // for bulk operations actually we could make copy of current db and actually
 // execute to see if all will succeed
 
