@@ -312,7 +312,15 @@ sai_status_t ClientServerSai::bulkGetStats(
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_sai->bulkGetStats(switchId,
+                               object_type,
+                               object_count,
+                               object_key,
+                               number_of_counters,
+                               counter_ids,
+                               mode,
+                               object_statuses,
+                               counters);
 }
 
 sai_status_t ClientServerSai::bulkClearStats(
@@ -329,7 +337,14 @@ sai_status_t ClientServerSai::bulkClearStats(
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_sai->bulkClearStats(switchId,
+                                 object_type,
+                                 object_count,
+                                 object_key,
+                                 number_of_counters,
+                                 counter_ids,
+                                 mode,
+                                 object_statuses);
 }
 
 // BULK QUAD OID

@@ -81,3 +81,48 @@ TEST(ClientServerSai, logSet)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->logSet(SAI_API_PORT, SAI_LOG_LEVEL_NOTICE));
 }
+
+TEST(ClientServerSai, bulkGetClearStats)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->bulkGetStats(SAI_NULL_OBJECT_ID,
+                                                    SAI_OBJECT_TYPE_PORT,
+                                                    0,
+                                                    nullptr,
+                                                    0,
+                                                    nullptr,
+                                                    SAI_STATS_MODE_BULK_READ,
+                                                    nullptr,
+                                                    nullptr));
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->bulkClearStats(SAI_NULL_OBJECT_ID,
+                                                      SAI_OBJECT_TYPE_PORT,
+                                                      0,
+                                                      nullptr,
+                                                      0,
+                                                      nullptr,
+                                                      SAI_STATS_MODE_BULK_CLEAR,
+                                                      nullptr));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkGetStats(SAI_NULL_OBJECT_ID,
+                                                            SAI_OBJECT_TYPE_PORT,
+                                                            0,
+                                                            nullptr,
+                                                            0,
+                                                            nullptr,
+                                                            SAI_STATS_MODE_BULK_READ,
+                                                            nullptr,
+                                                            nullptr));
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkClearStats(SAI_NULL_OBJECT_ID,
+                                                              SAI_OBJECT_TYPE_PORT,
+                                                              0,
+                                                              nullptr,
+                                                              0,
+                                                              nullptr,
+                                                              SAI_STATS_MODE_BULK_CLEAR,
+                                                              nullptr));
+}

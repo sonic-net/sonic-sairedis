@@ -328,9 +328,19 @@ sai_status_t ServerSai::bulkGetStats(
         _Inout_ sai_status_t *object_statuses,
         _Out_ uint64_t *counters)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_sai->bulkGetStats(switchId,
+                               object_type,
+                               object_count,
+                               object_key,
+                               number_of_counters,
+                               counter_ids,
+                               mode,
+                               object_statuses,
+                               counters);
 }
 
 sai_status_t ServerSai::bulkClearStats(
@@ -343,9 +353,18 @@ sai_status_t ServerSai::bulkClearStats(
         _In_ sai_stats_mode_t mode,
         _Inout_ sai_status_t *object_statuses)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_sai->bulkClearStats(switchId,
+                                 object_type,
+                                 object_count,
+                                 object_key,
+                                 number_of_counters,
+                                 counter_ids,
+                                 mode,
+                                 object_statuses);
 }
 
 // BULK QUAD OID
