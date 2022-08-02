@@ -9,7 +9,7 @@ tests_SOURCES = \
 				../../meta/NumberOidIndexGenerator.cpp \
 				TestSwitch.cpp \
 				TestClientConfig.cpp \
-				TestClientServerSai.cppa \
+				TestClientServerSai.cpp \
 				TestContext.cpp \
 				TestContextConfig.cpp \
 				TestContextConfigContainer.cpp \
