@@ -28,6 +28,7 @@ SaiAttributeList::SaiAttributeList(
 
         sai_deserialize_attr_id(str_attr_id, attr.id);
 
+        // TODO object type is not necessary, we can use get attr metadata from attr id name
         auto meta = sai_metadata_get_attr_metadata(objectType, attr.id);
 
         if (meta == NULL)
@@ -64,6 +65,7 @@ SaiAttributeList::SaiAttributeList(
 
         sai_deserialize_attr_id(str_attr_id, attr.id);
 
+        // TODO object type is not necessary, we can use get attr metadata from attr id name
         auto meta = sai_metadata_get_attr_metadata(objectType, attr.id);
 
         if (meta == NULL)

@@ -20,8 +20,8 @@ namespace syncd
         public:
 
             virtual void send(
-                    _In_ const std::string& op, 
-                    _In_ const std::string& data, 
+                    _In_ const std::string& op,
+                    _In_ const std::string& data,
                     _In_ const std::vector<swss::FieldValueTuple>& values) override;
 
         private:

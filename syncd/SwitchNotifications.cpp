@@ -5,7 +5,7 @@
 using namespace syncd;
 
 SwitchNotifications::SlotBase::SlotBase(
-        _In_ sai_switch_notifications_t sn):
+        _In_ const sai_switch_notifications_t& sn):
     m_handler(nullptr),
     m_sn(sn)
 {
@@ -55,6 +55,16 @@ void SwitchNotifications::SlotBase::onPortStateChange(
     SWSS_LOG_ENTER();
 
     return m_slots.at(context)->m_handler->onPortStateChange(count, data);
+}
+
+void SwitchNotifications::SlotBase::onBfdSessionStateChange(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_bfd_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onBfdSessionStateChange(count, data);
 }
 
 void SwitchNotifications::SlotBase::onQueuePfcDeadlock(

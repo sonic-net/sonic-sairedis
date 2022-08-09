@@ -1,0 +1,179 @@
+parameters:
+- name: arch
+  type: string
+  values:
+  - amd64
+  - armhf
+  - arm64
+
+- name: pool
+  type: string
+  values:
+  - sonicbld
+  - sonicbld-arm64
+  - sonicbld-armhf
+  - default
+  default: default
+
+- name: timeout
+  type: number
+  default: 60
+
+- name: sonic_slave
+  type: string
+
+- name: swss_common_artifact_name
+  type: string
+
+- name: artifact_name
+  type: string
+
+- name: syslog_artifact_name
+  type: string
+
+- name: run_unit_test
+  type: boolean
+  default: false
+
+- name: archive_gcov
+  type: boolean
+  default: false
+
+jobs:
+- job:
+  displayName: ${{ parameters.arch }}
+  timeoutInMinutes: ${{ parameters.timeout }}
+  variables:
+    DIFF_COVER_CHECK_THRESHOLD: 80
+    ${{ if eq(parameters.run_unit_test, true) }}:
+      DIFF_COVER_ENABLE: 'true'
+
+  pool:
+    ${{ if ne(parameters.pool, 'default') }}:
+      name: ${{ parameters.pool }}
+    ${{ else }}:
+      vmImage: 'ubuntu-20.04'
+
+  container:
+    image: sonicdev-microsoft.azurecr.io:443/${{ parameters.sonic_slave }}:latest
+    options:  "--privileged"
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: true
+  - script: |
+      sudo apt-get install -qq -y \
+        qtbase5-dev \
+        libdbus-glib-1-2 \
+        libdbus-glib-1-dev \
+        libpcsclite-dev \
+        docbook-to-man \
+        docbook-utils \
+        aspell-en \
+        libhiredis0.14 \
+        libhiredis-dev \
+        libnl-3-dev \
+        libnl-genl-3-dev \
+        libnl-route-3-dev \
+        libnl-nf-3-dev \
+        libnl-cli-3-dev \
+        swig3.0 \
+        libpython2.7-dev \
+        libzmq5 \
+        libzmq3-dev \
+        autoconf-archive
+
+      sudo apt-get install -y redis-server
+      sudo sed -ri 's/^# unixsocket/unixsocket/' /etc/redis/redis.conf
+      sudo sed -ri 's/^unixsocketperm .../unixsocketperm 777/' /etc/redis/redis.conf
+      sudo sed -ri 's/redis-server.sock/redis.sock/' /etc/redis/redis.conf
+      sudo service redis-server start
+
+      sudo apt-get install -y rsyslog
+      sudo service rsyslog start
+
+    displayName: "Install dependencies"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-swss-common
+      artifact: ${{ parameters.swss_common_artifact_name }}
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+    displayName: "Download sonic swss common deb packages"
+  - script: |
+      set -ex
+      sudo dpkg -i download/libswsscommon_1.0.0_${{ parameters.arch }}.deb
+      sudo dpkg -i download/libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
+      rm -rf download
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install sonic swss Common"
+  - script: |
+      set -ex
+      rm ../*.deb || true
+      ./autogen.sh
+      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      mv ../*.deb .
+    displayName: "Compile sonic sairedis with coverage enabled"
+  - script: |
+      sudo cp azsyslog.conf /etc/rsyslog.conf
+      sudo service rsyslog restart
+    displayName: "Update rsyslog.conf"
+  - ${{ if eq(parameters.run_unit_test, true) }}:
+    - script: |
+        set -ex
+        git clone https://github.com/Spacetown/gcovr.git
+        cd gcovr/
+        git checkout origin/recursive_search_file
+        sudo pip3 install setuptools
+        sudo python3 setup.py install
+        cd ..
+        sudo rm -rf gcovr
+      displayName: "Install gcovr 5.0 with recursive fix"
+    - script: |
+        set -ex
+        # Add SYS_TIME capability for settimeofday ok in syncd test
+        sudo setcap "cap_sys_time=eip" syncd/.libs/tests
+        make check
+        gcovr --version
+        find SAI/meta -name "*.gc*" | xargs rm -vf
+        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --exclude-throw-branches -x --xml-pretty -o coverage.xml
+      displayName: "Run sonic sairedis unit tests"
+  - publish: $(System.DefaultWorkingDirectory)/
+    artifact: ${{ parameters.artifact_name }}
+    displayName: "Archive sonic sairedis debian packages"
+  - ${{ if eq(parameters.archive_gcov, true) }}:
+      - script: |
+          set -ex
+          # Install .NET CORE
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          sudo apt-add-repository https://packages.microsoft.com/debian/10/prod
+          sudo apt-get update
+          sudo apt-get install -y dotnet-sdk-5.0
+        displayName: "Install .NET CORE"
+      - task: PublishCodeCoverageResults@1
+        inputs:
+            codeCoverageTool: Cobertura
+            summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+        displayName: 'Publish test coverage'
+  - script: |
+      pwd
+      sudo chmod a+r /var/log/syslog*
+      tar -czf syslog-all.tgz /var/log/syslog*
+      ls -al .
+      ls -al /var/log/
+    displayName: "Env info"
+    condition: always()
+  - task: CopyFiles@2
+    displayName: "Copy syslog to staging directory"
+    condition: always()
+    inputs:
+        contents: 'syslog-all.tgz'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+  - publish: $(Build.ArtifactStagingDirectory)/
+    artifact: ${{ parameters.syslog_artifact_name }}
+    displayName: "Publish syslog artifacts"
+    condition: always()

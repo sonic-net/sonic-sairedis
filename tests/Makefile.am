@@ -1,30 +1,30 @@
-AM_CPPFLAGS = -I$(top_srcdir)/vslib/inc -I$(top_srcdir)/lib/inc -I$(top_srcdir)/SAI/inc -I$(top_srcdir)/SAI/meta -I$(top_srcdir)/SAI/experimental
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/vslib
 
-bin_PROGRAMS = vssyncd tests
+bin_PROGRAMS = vssyncd tests testclient
 
-if DEBUG
-DBGFLAGS = -ggdb -DDEBUG
-else
-DBGFLAGS = -g
-endif
+SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs
 
-SAILIB=-L$(top_srcdir)/vslib/src/.libs -lsaivs
-
-vssyncd_SOURCES = ../syncd/main.cpp
-
-vssyncd_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON) $(SAIFLAGS)
-vssyncd_LDADD = ../syncd/libSyncd.a ../lib/src/libSaiRedis.a -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lzmq
+vssyncd_SOURCES = main.cpp
+vssyncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+vssyncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+vssyncd_LDADD = $(top_srcdir)/syncd/libSyncd.a $(top_srcdir)/lib/libSaiRedis.a \
+				-lhiredis -lswsscommon $(SAILIB) -lpthread \
+				-L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -ldl -lzmq $(CODE_COVERAGE_LIBS)
 
 if SAITHRIFT
 vssyncd_LDADD += -lrpcserver -lthrift
 endif
 
 tests_SOURCES = tests.cpp
-tests_CPPFLAGS = $(DBGFLAGS) $(AM_CPPFLAGS) $(CFLAGS_COMMON)
+tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = -lhiredis -lswsscommon -lpthread \
-			  $(top_srcdir)/lib/src/libsairedis.la \
-			  $(top_srcdir)/syncd/libSyncd.a \
-			  -L$(top_srcdir)/meta/.libs \
-			  -lsaimetadata -lsaimeta -lzmq
+			  $(top_srcdir)/lib/libsairedis.la $(top_srcdir)/syncd/libSyncd.a \
+			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
-TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh tests BCM56850.pl MLNX2700.pl
+testclient_SOURCES = testclient.cpp
+testclient_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
+testclient_LDADD = -lhiredis -lswsscommon -lpthread \
+				   $(top_srcdir)/lib/libsairedis.la $(top_srcdir)/syncd/libSyncd.a \
+				   -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
+
+TESTS = aspellcheck.pl conflictnames.pl swsslogentercheck.sh checkwhitespace.sh tests BCM56850.pl MLNX2700.pl BCM56971B0.pl

@@ -58,6 +58,7 @@ std::shared_ptr<SaiSwitch> SingleReiniter::hardReinit()
     processOids();
     processRoutes(true);
     processRoutes(false);
+    processInsegs();
     processNatEntries();
 
 #ifdef ENABLE_PERF
@@ -485,6 +486,45 @@ void SingleReiniter::processRoutes(
     }
 }
 
+void SingleReiniter::processInsegs()
+{
+    SWSS_LOG_ENTER();
+
+    for (auto &kv: m_insegs)
+    {
+        const std::string &strInsegEntry = kv.first;
+        const std::string &asicKey = kv.second;
+
+        sai_object_meta_key_t meta_key;
+
+        meta_key.objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY;
+
+        sai_deserialize_inseg_entry(strInsegEntry, meta_key.objectkey.key.inseg_entry);
+
+        processStructNonObjectIds(meta_key);
+
+        std::shared_ptr<SaiAttributeList> list = m_attributesLists[asicKey];
+
+        sai_attribute_t *attrList = list->get_attr_list();
+
+        uint32_t attrCount = list->get_attr_count();
+
+        processAttributesForOids(SAI_OBJECT_TYPE_INSEG_ENTRY, attrCount, attrList);
+
+        sai_status_t status = sai_metadata_sai_mpls_api->
+            create_inseg_entry(&meta_key.objectkey.key.inseg_entry, attrCount, attrList);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            listFailedAttributes(SAI_OBJECT_TYPE_INSEG_ENTRY, attrCount, attrList);
+
+            SWSS_LOG_THROW("failed to create_inseg_entry %s: %s",
+                    strInsegEntry.c_str(),
+                    sai_serialize_status(status).c_str());
+        }
+    }
+}
+
 void SingleReiniter::processNatEntries()
 {
     SWSS_LOG_ENTER();
@@ -590,7 +630,7 @@ void SingleReiniter::listFailedAttributes(
 
         if (meta == NULL)
         {
-            SWSS_LOG_ERROR("failed to get atribute metadata %s %d",
+            SWSS_LOG_ERROR("failed to get attribute metadata %s %d",
                     sai_serialize_object_type(objectType).c_str(),
                     attr->id);
 
@@ -751,7 +791,7 @@ sai_object_id_t SingleReiniter::processSingleVid(
 
             if (meta == NULL)
             {
-                SWSS_LOG_THROW("failed to get atribute metadata %s: %d",
+                SWSS_LOG_THROW("failed to get attribute metadata %s: %d",
                         sai_serialize_object_type(objectType).c_str(),
                         attr->id);
             }
@@ -760,7 +800,7 @@ sai_object_id_t SingleReiniter::processSingleVid(
             if (meta->objecttype == SAI_OBJECT_TYPE_SWITCH &&
                     attr->id == SAI_SWITCH_ATTR_SRC_MAC_ADDRESS)
             {
-                SWSS_LOG_WARN("skipping to set MAC addres since not supported on mlnx 2700");
+                SWSS_LOG_WARN("skipping to set MAC address since not supported on Mellanox platforms");
                 continue;
             }
 

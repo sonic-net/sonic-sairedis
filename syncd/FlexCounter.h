@@ -4,7 +4,7 @@ extern "C" {
 #include "sai.h"
 }
 
-#include "SaiInterface.h"
+#include "meta/SaiInterface.h"
 
 #include "swss/table.h"
 
@@ -13,17 +13,55 @@ extern "C" {
 #include <condition_variable>
 #include <unordered_map>
 #include <memory>
+#include <type_traits>
 
 namespace syncd
 {
+    class BaseCounterContext
+    {
+    public:
+        BaseCounterContext(const std::string &name);
+        void addPlugins(
+            _In_ const std::vector<std::string>& shaStrings);
+
+        bool hasPlugin() const {return !m_plugins.empty();}
+
+        void removePlugins() {m_plugins.clear();}
+
+        virtual void addObject(
+                _In_ sai_object_id_t vid,
+                _In_ sai_object_id_t rid,
+                _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
+        virtual void removeObject(
+                _In_ sai_object_id_t vid) = 0;
+
+        virtual void collectData(
+                _In_ swss::Table &countersTable) = 0;
+
+        virtual void runPlugin(
+                _In_ swss::DBConnector& counters_db,
+                _In_ const std::vector<std::string>& argv) = 0;
+
+        virtual bool hasObject() const = 0;
+
+    protected:
+        std::string m_name;
+        std::set<std::string> m_plugins;
+
+    public:
+        bool always_check_supported_counters = false;
+        bool use_sai_stats_capa_query = true;
+        bool use_sai_stats_ext = false;
+        bool double_confirm_supported_counters = false;
+    };
     class FlexCounter
     {
         private:
-
             FlexCounter(const FlexCounter&) = delete;
 
         public:
-
             FlexCounter(
                     _In_ const std::string& instanceId,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
@@ -32,7 +70,6 @@ namespace syncd
             virtual ~FlexCounter();
 
         public:
-
             void addCounterPlugin(
                     _In_ const std::vector<swss::FieldValueTuple>& values);
 
@@ -61,254 +98,28 @@ namespace syncd
             void setStatsMode(
                     _In_ const std::string& mode);
 
-        private: // plugins
-
-            void addPortCounterPlugin(
-                    _In_ const std::string& sha);
-
-            void addRifCounterPlugin(
-                    _In_ const std::string& sha);
-
-            void addBufferPoolCounterPlugin(
-                    _In_ const std::string& sha);
-
-            void addPriorityGroupCounterPlugin(
-                    _In_ const std::string& sha);
-
-            void addQueueCounterPlugin(
-                    _In_ const std::string& sha);
-
         private:
-
-            void checkPluginRegistered(
-                    _In_ const std::string& sha) const;
-
             bool allIdsEmpty() const;
 
             bool allPluginsEmpty() const;
 
         private: // remove counter
-
-            void removePort(
-                    _In_ sai_object_id_t portVid);
-
-            void removePortDebugCounters(
-                    _In_ sai_object_id_t portVid);
-
-            void removeQueue(
-                    _In_ sai_object_id_t queueVid);
-
-            void removePriorityGroup(
-                    _In_ sai_object_id_t priorityGroupVid);
-
-            void removeRif(
-                    _In_ sai_object_id_t rifVid);
-
-            void removeBufferPool(
-                    _In_ sai_object_id_t bufferPoolVid);
-
-            void removeSwitchDebugCounters(
-                    _In_ sai_object_id_t switchVid);
-
-            void removeMACsecSA(
-                    _In_ sai_object_id_t macsecSAVid);
-
-        private: // set counter list
-
-            void setPortCounterList(
-                    _In_ sai_object_id_t portVid,
-                    _In_ sai_object_id_t portRid,
-                    _In_ const std::vector<sai_port_stat_t> &counterIds);
-
-            void setPortDebugCounterList(
-                    _In_ sai_object_id_t portVid,
-                    _In_ sai_object_id_t portRid,
-                    _In_ const std::vector<sai_port_stat_t> &counterIds);
-
-            void setQueueCounterList(
-                    _In_ sai_object_id_t queueVid,
-                    _In_ sai_object_id_t queueRid,
-                    _In_ const std::vector<sai_queue_stat_t> &counterIds);
-
-            void setPriorityGroupCounterList(
-                    _In_ sai_object_id_t priorityGroupVid,
-                    _In_ sai_object_id_t priorityGroupRid,
-                    _In_ const std::vector<sai_ingress_priority_group_stat_t> &counterIds);
-
-            void setRifCounterList(
-                    _In_ sai_object_id_t rifVid,
-                    _In_ sai_object_id_t rifRid,
-                    _In_ const std::vector<sai_router_interface_stat_t> &counterIds);
-
-            void setSwitchDebugCounterList(
-                    _In_ sai_object_id_t switchVid,
-                    _In_ sai_object_id_t switchRid,
-                    _In_ const std::vector<sai_switch_stat_t> &counterIds);
-
-            void setBufferPoolCounterList(
-                    _In_ sai_object_id_t bufferPoolVid,
-                    _In_ sai_object_id_t bufferPoolRid,
-                    _In_ const std::vector<sai_buffer_pool_stat_t>& counterIds,
-                    _In_ const std::string& statsMode);
-
-        private: // set attr list
-
-            void setQueueAttrList(
-                    _In_ sai_object_id_t queueVid,
-                    _In_ sai_object_id_t queueRid,
-                    _In_ const std::vector<sai_queue_attr_t> &attrIds);
-
-            void setPriorityGroupAttrList(
-                    _In_ sai_object_id_t priorityGroupVid,
-                    _In_ sai_object_id_t priorityGroupRid,
-                    _In_ const std::vector<sai_ingress_priority_group_attr_t> &attrIds);
-
-            void setMACsecSAAttrList(
-                    _In_ sai_object_id_t macsecSAVid,
-                    _In_ sai_object_id_t macsecSARid,
-                    _In_ const std::vector<sai_macsec_sa_attr_t> &attrIds);
-
-        private: // is counter supported
-
-            bool isPortCounterSupported(
-                    _In_ sai_port_stat_t counter) const;
-
-            bool isPriorityGroupCounterSupported(
-                    _In_ sai_ingress_priority_group_stat_t counter) const;
-
-            bool isQueueCounterSupported(
-                    _In_ sai_queue_stat_t counter) const;
-
-            bool isRifCounterSupported(
-                    _In_ sai_router_interface_stat_t counter) const;
-
-            bool isBufferPoolCounterSupported(
-                    _In_ sai_buffer_pool_stat_t counter) const;
-
-        private: // update supported counters
-
-            void updateSupportedPortCounters(
-                    _In_ sai_object_id_t portRid);
-
-            std::vector<sai_port_stat_t> saiCheckSupportedPortDebugCounters(
-                    _In_ sai_object_id_t portRid,
-                    _In_ const std::vector<sai_port_stat_t> &counterIds);
-
-            void updateSupportedQueueCounters(
-                    _In_ sai_object_id_t queueRid,
-                    _In_ const std::vector<sai_queue_stat_t> &counterIds);
-
-            void updateSupportedRifCounters(
-                    _In_ sai_object_id_t rifRid);
-
-            void updateSupportedBufferPoolCounters(
-                    _In_ sai_object_id_t bufferPoolRid,
-                    _In_ const std::vector<sai_buffer_pool_stat_t> &counterIds,
-                    _In_ sai_stats_mode_t statsMode);
-
-            void updateSupportedPriorityGroupCounters(
-                    _In_ sai_object_id_t priorityGroupRid,
-                    _In_ const std::vector<sai_ingress_priority_group_stat_t> &counterIds);
-
-            std::vector<sai_switch_stat_t> saiCheckSupportedSwitchDebugCounters(
-                    _In_ sai_object_id_t switchRid,
-                    _In_ const std::vector<sai_switch_stat_t> &counterIds);
+            void removeDataFromCountersDB(
+                    _In_ sai_object_id_t vid,
+                    _In_ const std::string &ratePrefix);
 
         private:
+            std::shared_ptr<BaseCounterContext> getCounterContext(
+                    _In_ const std::string &name);
 
-            struct QueueCounterIds
-            {
-                QueueCounterIds(
-                        _In_ sai_object_id_t queue,
-                        _In_ const std::vector<sai_queue_stat_t> &queueIds);
+            std::shared_ptr<BaseCounterContext> createCounterContext(
+                    _In_ const std::string &name);
 
-                sai_object_id_t queueId;
-                std::vector<sai_queue_stat_t> queueCounterIds;
-            };
+            void removeCounterContext(
+                    _In_ const std::string &name);
 
-            struct QueueAttrIds
-            {
-                QueueAttrIds(
-                        _In_ sai_object_id_t queue,
-                        _In_ const std::vector<sai_queue_attr_t> &queueIds);
-
-                sai_object_id_t queueId;
-                std::vector<sai_queue_attr_t> queueAttrIds;
-            };
-
-            struct IngressPriorityGroupCounterIds
-            {
-                IngressPriorityGroupCounterIds(
-                        _In_ sai_object_id_t priorityGroup,
-                        _In_ const std::vector<sai_ingress_priority_group_stat_t> &priorityGroupIds);
-
-                sai_object_id_t priorityGroupId;
-                std::vector<sai_ingress_priority_group_stat_t> priorityGroupCounterIds;
-            };
-
-            struct IngressPriorityGroupAttrIds
-            {
-                IngressPriorityGroupAttrIds(
-                        _In_ sai_object_id_t priorityGroup,
-                        _In_ const std::vector<sai_ingress_priority_group_attr_t> &priorityGroupIds);
-
-                sai_object_id_t priorityGroupId;
-                std::vector<sai_ingress_priority_group_attr_t> priorityGroupAttrIds;
-            };
-
-            struct BufferPoolCounterIds
-            {
-                BufferPoolCounterIds(
-                        _In_ sai_object_id_t bufferPool,
-                        _In_ const std::vector<sai_buffer_pool_stat_t> &bufferPoolIds,
-                        _In_ sai_stats_mode_t statsMode);
-
-                sai_object_id_t bufferPoolId;
-                sai_stats_mode_t bufferPoolStatsMode;
-                std::vector<sai_buffer_pool_stat_t> bufferPoolCounterIds;
-            };
-
-            struct PortCounterIds
-            {
-                PortCounterIds(
-                        _In_ sai_object_id_t port,
-                        _In_ const std::vector<sai_port_stat_t> &portIds);
-
-                sai_object_id_t portId;
-                std::vector<sai_port_stat_t> portCounterIds;
-            };
-
-            struct SwitchCounterIds
-            {
-                SwitchCounterIds(
-                        _In_ sai_object_id_t oid,
-                        _In_ const std::vector<sai_switch_stat_t> &counterIds);
-
-                sai_object_id_t switchId;
-                std::vector<sai_switch_stat_t> switchCounterIds;
-            };
-
-            struct RifCounterIds
-            {
-                RifCounterIds(
-                        _In_ sai_object_id_t rif,
-                        _In_ const std::vector<sai_router_interface_stat_t> &rifIds);
-
-                sai_object_id_t rifId;
-                std::vector<sai_router_interface_stat_t> rifCounterIds;
-            };
-
-            struct MACsecSAAttrIds
-            {
-                MACsecSAAttrIds(
-                        _In_ sai_object_id_t macsecSA,
-                        _In_ const std::vector<sai_macsec_sa_attr_t> &macsecSAIds);
-
-                sai_object_id_t m_macsecSAId;
-                std::vector<sai_macsec_sa_attr_t> m_macsecSAAttrIds;
-            };
-
-        private:
+            bool hasCounterContext(
+                    _In_ const std::string &name) const;
 
             void collectCounters(
                     _In_ swss::Table &countersTable);
@@ -323,88 +134,11 @@ namespace syncd
             void flexCounterThreadRunFunction();
 
         private:
+            void waitPoll();
 
-            typedef void (FlexCounter::*collect_counters_handler_t)(
-                    _In_ swss::Table &countersTable);
-
-            typedef std::unordered_map<std::string, collect_counters_handler_t> collect_counters_handler_unordered_map_t;
-
-        private: // collect counters:
-
-            void collectPortCounters(
-                    _In_ swss::Table &countersTable);
-
-            void collectPortDebugCounters(
-                    _In_ swss::Table &countersTable);
-
-            void collectQueueCounters(
-                    _In_ swss::Table &countersTable);
-
-            void collectPriorityGroupCounters(
-                    _In_ swss::Table &countersTable);
-
-            void collectRifCounters(
-                    _In_ swss::Table &countersTable);
-
-            void collectBufferPoolCounters(
-                    _In_ swss::Table &countersTable);
-
-            void collectSwitchDebugCounters(
-                    _In_ swss::Table &countersTable);
-
-        private: // collect attributes
-
-            void collectQueueAttrs(
-                    _In_ swss::Table &countersTable);
-
-            void collectPriorityGroupAttrs(
-                    _In_ swss::Table &countersTable);
-
-            void collectMACsecSAAttrs(
-                    _In_ swss::Table &countersTable);
+            void notifyPoll();
 
         private:
-
-            void addCollectCountersHandler(
-                    _In_ const std::string& key,
-                    _In_ const collect_counters_handler_t &handler);
-
-            void removeCollectCountersHandler(
-                    _In_ const std::string& key);
-
-        private: // plugins
-
-            std::set<std::string> m_queuePlugins;
-            std::set<std::string> m_portPlugins;
-            std::set<std::string> m_rifPlugins;
-            std::set<std::string> m_priorityGroupPlugins;
-            std::set<std::string> m_bufferPoolPlugins;
-
-        private: // supported counters
-
-            std::set<sai_port_stat_t> m_supportedPortCounters;
-            std::set<sai_ingress_priority_group_stat_t> m_supportedPriorityGroupCounters;
-            std::set<sai_queue_stat_t> m_supportedQueueCounters;
-            std::set<sai_router_interface_stat_t> m_supportedRifCounters;
-            std::set<sai_buffer_pool_stat_t> m_supportedBufferPoolCounters;
-
-        private: // registered VID maps
-
-            std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> m_portCounterIdsMap;
-            std::map<sai_object_id_t, std::shared_ptr<PortCounterIds>> m_portDebugCounterIdsMap;
-            std::map<sai_object_id_t, std::shared_ptr<QueueCounterIds>> m_queueCounterIdsMap;
-            std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupCounterIds>> m_priorityGroupCounterIdsMap;
-            std::map<sai_object_id_t, std::shared_ptr<RifCounterIds>> m_rifCounterIdsMap;
-            std::map<sai_object_id_t, std::shared_ptr<BufferPoolCounterIds>> m_bufferPoolCounterIdsMap;
-            std::map<sai_object_id_t, std::shared_ptr<SwitchCounterIds>> m_switchDebugCounterIdsMap;
-
-            std::map<sai_object_id_t, std::shared_ptr<QueueAttrIds>> m_queueAttrIdsMap;
-            std::map<sai_object_id_t, std::shared_ptr<IngressPriorityGroupAttrIds>> m_priorityGroupAttrIdsMap;
-
-            std::map<sai_object_id_t, std::shared_ptr<MACsecSAAttrIds>> m_macsecSAAttrIdsMap;
-
-        private:
-
             bool m_runFlexCounterThread;
 
             std::shared_ptr<std::thread> m_flexCounterThread;
@@ -417,6 +151,8 @@ namespace syncd
 
             std::condition_variable m_pollCond;
 
+            bool m_readyToPoll;
+
             uint32_t m_pollInterval;
 
             std::string m_instanceId;
@@ -425,12 +161,12 @@ namespace syncd
 
             bool m_enable;
 
-            collect_counters_handler_unordered_map_t m_collectCountersHandlers;
-
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
 
             std::string m_dbCounters;
 
             bool m_isDiscarded;
+
+            std::map<std::string, std::shared_ptr<BaseCounterContext>> m_counterContext;
     };
 }

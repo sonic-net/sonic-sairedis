@@ -116,20 +116,10 @@ sai_status_t DummySaiInterface::get(                \
     return m_status;                                \
 }
 
-#define DECLARE_ALL(X)                  \
-    X(FDB_ENTRY,fdb_entry)              \
-    X(INSEG_ENTRY,inseg_entry);         \
-    X(IPMC_ENTRY,ipmc_entry);           \
-    X(L2MC_ENTRY,l2mc_entry);           \
-    X(MCAST_FDB_ENTRY,mcast_fdb_entry); \
-    X(NEIGHBOR_ENTRY,neighbor_entry);   \
-    X(ROUTE_ENTRY,route_entry);         \
-    X(NAT_ENTRY,nat_entry);
-
-DECLARE_ALL(DECLARE_REMOVE_ENTRY);
-DECLARE_ALL(DECLARE_CREATE_ENTRY);
-DECLARE_ALL(DECLARE_SET_ENTRY);
-DECLARE_ALL(DECLARE_GET_ENTRY);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
+SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
 
 sai_status_t DummySaiInterface::flushFdbEntries(
         _In_ sai_object_id_t switchId,
@@ -189,6 +179,16 @@ sai_status_t DummySaiInterface::getStats(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::queryStatsCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t DummySaiInterface::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -207,6 +207,37 @@ sai_status_t DummySaiInterface::clearStats(
         _In_ sai_object_id_t object_id,
         _In_ uint32_t number_of_counters,
         _In_ const sai_stat_id_t *counter_ids)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::bulkGetStats(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_key_t *object_key,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Inout_ sai_status_t *object_statuses,
+        _Out_ uint64_t *counters)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::bulkClearStats(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_key_t *object_key,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Inout_ sai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -260,6 +291,20 @@ sai_status_t DummySaiInterface::bulkRemove(
 
 sai_status_t DummySaiInterface::bulkRemove(
         _In_ uint32_t object_count,
+        _In_ const sai_inseg_entry_t *inseg_entry,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+        object_statuses[idx] = m_status;
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::bulkRemove(
+        _In_ uint32_t object_count,
         _In_ const sai_fdb_entry_t *fdb_entry,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
@@ -272,6 +317,19 @@ sai_status_t DummySaiInterface::bulkRemove(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::bulkRemove(
+        _In_ uint32_t object_count,
+        _In_ const sai_my_sid_entry_t *my_sid_entry,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+        object_statuses[idx] = m_status;
+
+    return m_status;
+}
 
 sai_status_t DummySaiInterface::bulkSet(
         _In_ sai_object_type_t object_type,
@@ -321,7 +379,37 @@ sai_status_t DummySaiInterface::bulkSet(
 
 sai_status_t DummySaiInterface::bulkSet(
         _In_ uint32_t object_count,
+        _In_ const sai_inseg_entry_t *inseg_entry,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+        object_statuses[idx] = m_status;
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::bulkSet(
+        _In_ uint32_t object_count,
         _In_ const sai_fdb_entry_t *fdb_entry,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+        object_statuses[idx] = m_status;
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::bulkSet(
+        _In_ uint32_t object_count,
+        _In_ const sai_my_sid_entry_t *my_sid_entry,
         _In_ const sai_attribute_t *attr_list,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
@@ -386,7 +474,39 @@ sai_status_t DummySaiInterface::bulkCreate(
 
 sai_status_t DummySaiInterface::bulkCreate(
         _In_ uint32_t object_count,
+        _In_ const sai_inseg_entry_t *inseg_entry,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+        object_statuses[idx] = m_status;
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::bulkCreate(
+        _In_ uint32_t object_count,
         _In_ const sai_nat_entry_t *nat_entry,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+        object_statuses[idx] = m_status;
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::bulkCreate(
+        _In_ uint32_t object_count,
+        _In_ const sai_my_sid_entry_t *my_sid_entry,
         _In_ const uint32_t *attr_count,
         _In_ const sai_attribute_t **attr_list,
         _In_ sai_bulk_op_error_mode_t mode,

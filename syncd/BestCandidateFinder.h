@@ -2,7 +2,7 @@
 
 #include "SaiObj.h"
 #include "AsicView.h"
-#include "SaiSwitch.h"
+#include "SaiSwitchInterface.h"
 
 #include <memory>
 
@@ -25,7 +25,7 @@ namespace syncd
             BestCandidateFinder(
                     _In_ const AsicView &currentView,
                     _In_ const AsicView &temporaryView,
-                    _In_ std::shared_ptr<const SaiSwitch> sw);
+                    _In_ std::shared_ptr<const SaiSwitchInterface> sw);
 
 
             virtual ~BestCandidateFinder() = default;
@@ -95,6 +95,15 @@ namespace syncd
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
                     _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
 
+            std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingLabel(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+                    _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
+
+            std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingLabel(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+                    _In_ const std::vector<sai_object_compare_info_t> &candidateObjects,
+                    _In_ sai_attr_id_t attrId);
+
             std::shared_ptr<SaiObj> findCurrentBestMatchForGenericObjectUsingGraph(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
                     _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
@@ -118,6 +127,9 @@ namespace syncd
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
 
             std::shared_ptr<SaiObj> findCurrentBestMatchForNatEntry(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
+
+            std::shared_ptr<SaiObj> findCurrentBestMatchForInsegEntry(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
 
         private:
@@ -167,7 +179,7 @@ namespace syncd
 
             static std::shared_ptr<SaiAttr> getSaiAttrFromDefaultValue(
                     _In_ const AsicView &currentView,
-                    _In_ std::shared_ptr<const SaiSwitch> sw,
+                    _In_ std::shared_ptr<const SaiSwitchInterface> sw,
                     _In_ const sai_attr_metadata_t &meta);
 
             static bool hasEqualQosMapList(
@@ -179,10 +191,10 @@ namespace syncd
 
             const AsicView& m_temporaryView;
 
-            std::shared_ptr<const SaiSwitch> m_switch;
+            std::shared_ptr<const SaiSwitchInterface> m_switch;
 
             std::shared_ptr<const SaiObj> m_temporaryObj;
-            
+
             std::vector<sai_object_compare_info_t> m_candidateObjects;
     };
 }

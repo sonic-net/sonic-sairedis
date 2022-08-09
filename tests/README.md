@@ -1,4 +1,4 @@
-# Running Tests 
+# Running Tests
 
 ## Overview
 
@@ -23,14 +23,14 @@ In sonic-buildimage/rules/config, enable KEEP_SLAVE_ON:
 KEEP_SLAVE_ON = yes
 ```
 
-Then, build (do not make clean, just start a new build). In the following example, 
+Then, build (do not make clean, just start a new build). In the following example,
 primary build is stretch-based at the time of writing:
 
 ```
 $ make target/sonic-vs.img.gz
 ```
 
-If the build complains nothing to do, remove the target 
+If the build complains nothing to do, remove the target
 
 ```
 $ make target/sonic-vs.img.gz
@@ -40,7 +40,7 @@ $ rm target/sonic-vs.img.gz
 
 and try again.
 
-The first docker you will drop into is jessie, exit that docker by typing 
+The first docker you will drop into is jessie, exit that docker by typing
 exit at the prompt, and the build will continue with stretch:
 
 ```
@@ -55,9 +55,9 @@ SONiC Build System
 user@288feb4edd39:/sonic$
 ```
 
-At this point, some debians from the build need to be installed. Copy and paste the following into 
+At this point, some debians from the build need to be installed. Copy and paste the following into
 a bash script, and execute to install redis, dependency libs, and enable rsyslog logging to aid
-in debugging test script failures. Do this in the docker, in /sonic directory (paths in the 
+in debugging test script failures. Do this in the docker, in /sonic directory (paths in the
 script are relative to that location):
 
 ```

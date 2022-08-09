@@ -14,7 +14,7 @@ using namespace syncd;
 BestCandidateFinder::BestCandidateFinder(
         _In_ const AsicView& currentView,
         _In_ const AsicView& temporaryView,
-        _In_ std::shared_ptr<const SaiSwitch> sw):
+        _In_ std::shared_ptr<const SaiSwitchInterface> sw):
     m_currentView(currentView),
     m_temporaryView(temporaryView),
     m_switch(sw)
@@ -61,7 +61,7 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForLag(
 
         if (lagMemberLagAttr->getSaiAttr()->value.oid == tmpLagVid)
         {
-            SWSS_LOG_NOTICE("found temp LAG member %s which uses temp LAG %s",
+            SWSS_LOG_NOTICE("found temp LAG member %s which uses temp LAG member %s",
                     temporaryObj->m_str_object_id.c_str(),
                     lagMember->m_str_object_id.c_str());
 
@@ -283,17 +283,34 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForAclCounter(
             if (tmpAclEntryActionCounterAttr->getOid() != temporaryObj->getVid())
                 continue; // not the counter we are looking for
 
+            // try use priority attribute first since it should be unique
+            // TODO we should use HASH from all non OID attribute here to have
+            // better chance for finding best candidate, this could be also
+            // used in pre match logic
+
+            std::vector<std::shared_ptr<const SaiAttr>> values;
+
+            if (tmpAclEntry->hasAttr(SAI_ACL_ENTRY_ATTR_PRIORITY))
+            {
+                values.push_back(tmpAclEntry->getSaiAttr(SAI_ACL_ENTRY_ATTR_PRIORITY));
+            }
+
             for (auto&attr: tmpAclEntry->getAllAttributes())
             {
-                auto*meta = attr.second->getAttrMetadata();
+                values.push_back(attr.second);
+            }
 
-                if (!meta->isaclfield)
+            for (auto&attr: values)
+            {
+                auto*meta = attr->getAttrMetadata();
+
+                if (!meta->isaclfield && meta->attrid != SAI_ACL_ENTRY_ATTR_PRIORITY)
                     continue; // looking only for acl fields
 
                 if (meta->isoidattribute)
                     continue; // only non oid fields
 
-                auto tmpValue = attr.second->getStrAttrValue();
+                auto tmpValue = attr->getStrAttrValue();
 
                 const auto curAclEntries = m_currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_ENTRY);
 
@@ -1392,6 +1409,78 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjectUsingLabel(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    switch (temporaryObj->getObjectType())
+    {
+        case SAI_OBJECT_TYPE_LAG:
+            return findCurrentBestMatchForGenericObjectUsingLabel(temporaryObj, candidateObjects, SAI_LAG_ATTR_LABEL);
+
+        case SAI_OBJECT_TYPE_VIRTUAL_ROUTER:
+            return findCurrentBestMatchForGenericObjectUsingLabel(temporaryObj, candidateObjects, SAI_VIRTUAL_ROUTER_ATTR_LABEL);
+
+        default:
+            return nullptr;
+    }
+}
+
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjectUsingLabel(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects,
+        _In_ sai_attr_id_t attrId)
+{
+    SWSS_LOG_ENTER();
+
+    auto labelAttr = temporaryObj->tryGetSaiAttr(attrId);
+
+    if (!labelAttr)
+    {
+        // no label attribute on that object
+        return nullptr;
+    }
+
+    auto label = labelAttr->getStrAttrValue();
+
+    std::vector<sai_object_compare_info_t> sameLabel;
+
+    for (auto& co: candidateObjects)
+    {
+        if (co.obj->hasAttr(attrId) && co.obj->getSaiAttr(attrId)->getStrAttrValue() == label)
+        {
+            sameLabel.push_back(co);
+        }
+    }
+
+    if (sameLabel.size() == 0)
+    {
+        // no objects with that label, fallback to attr count
+        return nullptr;
+    }
+
+    if (sameLabel.size() == 1)
+    {
+        SWSS_LOG_NOTICE("matched object by label '%s' for %s:%s",
+            label.c_str(),
+            temporaryObj->m_str_object_type.c_str(),
+            temporaryObj->m_str_object_id.c_str());
+
+        return sameLabel.at(0).obj;
+    }
+
+    SWSS_LOG_WARN("same label '%s' found on multiple objects for %s:%s, selecting one with most common atributes",
+            label.c_str(),
+            temporaryObj->m_str_object_type.c_str(),
+            temporaryObj->m_str_object_id.c_str());
+
+    std::sort(sameLabel.begin(), sameLabel.end(), compareByEqualAttributes);
+
+    return sameLabel.at(0).obj;
+}
+
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjectUsingGraph(
         _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
         _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
@@ -1403,7 +1492,7 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
     candidate = findCurrentBestMatchForGenericObjectUsingPreMatchMap(temporaryObj, candidateObjects);
 
     if (candidate != nullptr)
-            return candidate;
+        return candidate;
 
     switch (temporaryObj->getObjectType())
     {
@@ -1622,6 +1711,8 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
     for (const auto &currentObj: notProcessedObjects)
     {
+        SWSS_LOG_INFO("* examing current obj: %s", currentObj->m_str_object_id.c_str());
+
         sai_object_compare_info_t soci = { 0, currentObj };
 
         bool has_different_create_only_attr = false;
@@ -1790,6 +1881,10 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
             continue;
         }
 
+        SWSS_LOG_INFO("* current obj: %s has equal %lu attributes",
+                currentObj->m_str_object_id.c_str(),
+                soci.equal_attributes);
+
         candidateObjects.push_back(soci);
     }
 
@@ -1814,6 +1909,13 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
         return candidateObjects.begin()->obj;
     }
+
+    auto labelCandidate = findCurrentBestMatchForGenericObjectUsingLabel(
+            temporaryObj,
+            candidateObjects);
+
+    if (labelCandidate != nullptr)
+        return labelCandidate;
 
     /*
      * If we have more than 1 object matched actually more preferred
@@ -2094,6 +2196,85 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForRouteEntry(
 }
 
 /**
+ * @brief Find current best match for inseg.
+ *
+ * For Inseg we don't need to iterate via all current insegs, we can do
+ * dictionary lookup, but we need to do smart trick, since temporary object was
+ * processed we just need to check whether VID in inseg_entry struct is
+ * matched/final and it has RID assigned from current view. If, RID exists, we
+ * can use that RID to get VID of current view, exchange in inseg_entry struct
+ * and do dictionary lookup on serialized inseg_entry.
+ *
+ * With this approach for many entries this is the quickest possible way. In
+ * case when RID doesn't exist, that means we have invalid inseg entry, so we
+ * must return null.
+ *
+ * @param currentView Current view.
+ * @param temporaryView Temporary view.
+ * @param temporaryObj Temporary object.
+ *
+ * @return Best match object if found or nullptr.
+ */
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForInsegEntry(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Make a copy here to not destroy object data, later
+     * on this data should be read only.
+     */
+
+    sai_object_meta_key_t mk = temporaryObj->m_meta_key;
+
+    if (!exchangeTemporaryVidToCurrentVid(mk))
+    {
+        /*
+         * Not all oids inside struct object were translated, so there is no
+         * matching object in current view, we need to return null.
+         */
+
+        return nullptr;
+    }
+
+    std::string str_inseg_entry = sai_serialize_inseg_entry(mk.objectkey.key.inseg_entry);
+
+    /*
+     * Now when we have serialized inseg entry with temporary vr_id VID
+     * replaced to current vr_id VID we can do dictionary lookup for inseg.
+     */
+    auto currentInsegIt = m_currentView.m_soInsegs.find(str_inseg_entry);
+
+    if (currentInsegIt == m_currentView.m_soInsegs.end())
+    {
+        SWSS_LOG_DEBUG("unable to find inseg entry %s in current asic view", str_inseg_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same inseg entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentInsegObj = currentInsegIt->second;
+
+    if (currentInsegObj->getObjectStatus() == SAI_OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentInsegObj;
+    }
+
+    /*
+     * If we are here, that means this inseg was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_THROW("found inseg entry %s in current view, but it status is %d, FATAL",
+            str_inseg_entry.c_str(),
+            currentInsegObj->getObjectStatus());
+}
+
+/**
  * @brief Find current best match for FDB.
  *
  * For FDB we don't need to iterate via all current FDBs, we can do dictionary
@@ -2332,6 +2513,9 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatch(
 
         case SAI_OBJECT_TYPE_NAT_ENTRY:
             return findCurrentBestMatchForNatEntry(temporaryObj);
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            return findCurrentBestMatchForInsegEntry(temporaryObj);
 
             /*
              * We can have special case for switch since we know there should
@@ -2713,7 +2897,7 @@ bool BestCandidateFinder::hasEqualAttribute(
 
 std::shared_ptr<SaiAttr> BestCandidateFinder::getSaiAttrFromDefaultValue(
         _In_ const AsicView &currentView,
-        _In_ std::shared_ptr<const SaiSwitch> sw,
+        _In_ std::shared_ptr<const SaiSwitchInterface> sw,
         _In_ const sai_attr_metadata_t &meta)
 {
     SWSS_LOG_ENTER();
@@ -2949,7 +3133,7 @@ bool BestCandidateFinder::exchangeTemporaryVidToCurrentVid(
              * This is just sanity check, should never happen.
              */
 
-            SWSS_LOG_THROW("found tempoary RID %s but current VID doesn't exist, FATAL",
+            SWSS_LOG_THROW("found temporary RID %s but current VID doesn't exist, FATAL",
                     sai_serialize_object_id(temporaryRid).c_str());
         }
 

@@ -188,7 +188,7 @@ namespace syncd
              * @param[in] rid Real ID
              * @param[in] vid Virtual ID
              */
-            void createDummyExistingObject(
+            std::shared_ptr<SaiObj> createDummyExistingObject(
                     _In_ sai_object_id_t rid,
                     _In_ sai_object_id_t vid);
 
@@ -276,10 +276,12 @@ namespace syncd
             StrObjectIdToSaiObjectHash m_soNeighbors;
             StrObjectIdToSaiObjectHash m_soRoutes;
             StrObjectIdToSaiObjectHash m_soNatEntries;
+            StrObjectIdToSaiObjectHash m_soInsegs;
             StrObjectIdToSaiObjectHash m_soOids;
             StrObjectIdToSaiObjectHash m_soAll;
 
             std::unordered_map<std::string,std::vector<std::string>> m_routesByPrefix;
+            std::unordered_map<std::string,std::vector<std::string>> m_neighborsByIp;
 
             ObjectIdToSaiObjectHash m_oOids;
 

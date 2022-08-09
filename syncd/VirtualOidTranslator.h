@@ -7,7 +7,7 @@ extern "C"{
 #include "VirtualObjectIdManager.h"
 #include "RedisClient.h"
 
-#include "SaiInterface.h"
+#include "meta/SaiInterface.h"
 
 #include <mutex>
 #include <unordered_map>

@@ -16,9 +16,11 @@
 #include "ContextConfig.h"
 #include "BreakConfig.h"
 #include "NotificationProducerBase.h"
-#include "SelectableChannel.h"
+#include "TimerWatchdog.h"
+#include "MdioIpcServer.h"
 
 #include "meta/SaiAttributeList.h"
+#include "meta/SelectableChannel.h"
 
 #include "swss/consumertable.h"
 #include "swss/producertable.h"
@@ -63,7 +65,7 @@ namespace syncd
         public: // TODO private
 
             void processEvent(
-                    _In_ SelectableChannel& consumer);
+                    _In_ sairedis::SelectableChannel& consumer);
 
             sai_status_t processQuadEventInInitViewMode(
                     _In_ sai_object_type_t objectType,
@@ -440,7 +442,9 @@ namespace syncd
 
             std::shared_ptr<syncd::NotificationProcessor> m_processor;
 
-            std::shared_ptr<SelectableChannel> m_selectableChannel;
+            std::shared_ptr<sairedis::SelectableChannel> m_selectableChannel;
+
+            std::shared_ptr<syncd::MdioIpcServer> m_mdioIpcServer;
 
             bool m_enableSyncMode;
 
@@ -489,5 +493,9 @@ namespace syncd
             std::shared_ptr<sairedis::ContextConfig> m_contextConfig;
 
             std::shared_ptr<BreakConfig> m_breakConfig;
+
+            TimerWatchdog m_timerWatchdog;
+
+            std::set<sai_object_id_t> m_createdInInitView;
     };
 }

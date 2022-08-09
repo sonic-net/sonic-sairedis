@@ -2,7 +2,7 @@ Source: sonic
 Maintainer: Kamil Cudnik <kcudnik@microsoft.com>
 Section: net
 Priority: optional
-Build-Depends: debhelper (>=9), autotools-dev
+Build-Depends: debhelper (>=9), autotools-dev, libzmq5-dev
 Standards-Version: 1.0.0
 
 Package: syncd
@@ -26,12 +26,13 @@ Description: This package contains sync daemon for SONiC project linked with vir
 
 Package: libsairedis
 Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
 Section: libs
 Description: This package contains SAI-Redis implementation for SONiC project.
 
 Package: libsairedis-dev
 Architecture: any
-Depends: libsairedis (= ${binary:Version})
+Depends: libsairedis (= ${binary:Version}), libzmq5-dev
 Section: libdevel
 Description: This package contains development files for SAI-Redis.
 
@@ -113,3 +114,17 @@ Depends:
     libsaimetadata (= ${binary:Version}),
     ${misc:Depends}
 Description: debugging symbols for libsaimetadata
+
+Package: python-pysairedis
+Architecture: any
+Build-Profiles: <!nopython2>
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
+Section: libs
+Description: This package contains Switch State Service sairedis Python2 library.
+
+Package: python3-pysairedis
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
+Section: libs
+Description: This package contains Switch State Service sairedis Python3 library.
+

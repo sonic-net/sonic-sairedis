@@ -4,6 +4,9 @@
 *.la
 *.lo
 *.o
+*.so
+*.pyc
+*_wrap.cpp
 
 # Packaging Files #
 ###################
@@ -15,6 +18,8 @@ debian/autoreconf.before
 debian/debhelper-build-stamp
 debian/files
 
+debian/python-pysairedis/
+debian/python3-pysairedis/
 debian/libsaimetadata-dbg/
 debian/libsaimetadata-dev/
 debian/libsaimetadata/
@@ -39,6 +44,7 @@ debian/tmp/
 Makefile.in
 aclocal.m4
 autom4te.cache/
+aminclude_static.am
 config.h
 config.h.in
 config.log
@@ -72,7 +78,6 @@ tests/swsslogentercheck.sh.trs
 tests/test-suite.log
 
 vslib/src/test-suite.log
-vslib/src/tests
 vslib/src/tests.log
 vslib/src/tests.trs
 
@@ -82,8 +87,9 @@ deps/
 
 # Executables #
 ###############
-lib/src/tests
+lib/tests
 meta/tests
+saiasiccmp/saiasiccmp
 saidiscovery/saidiscovery
 saidump/saidump
 saiplayer/saiplayer
@@ -91,13 +97,32 @@ saisdkdump/saisdkdump
 syncd/syncd
 syncd/syncd_request_shutdown
 tests/syncd
+tests/testclient
+tests/tests
 tests/vssyncd
+unittest/lib/tests
+unittest/lib/testslibsairedis
+unittest/meta/tests
+unittest/syncd/tests
+unittest/vslib/tests
+unittest/vslib/testslibsaivs
+vslib/tests
 
 # Temporary files #
 ###################
 **/*~
 **/*.rec
 **/*.swp
+**/*.swo
+**/*.gcda
+**/*.gcno
+**/*.gcov
 
 tests/applyview.log
+tests/sai_warmboot.bin.bak
 tests/sai_warmboot.bin
+tests/[0-9]*
+
+pyext/py2/pysairedis.py
+pyext/py3/pysairedis.py
+pyext/pysairedis.py

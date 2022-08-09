@@ -5,8 +5,7 @@
 #include "RedisClient.h"
 #include "NotificationHandler.h"
 
-#include "lib/inc/SaiInterface.h"
-
+#include "meta/SaiInterface.h"
 #include "meta/SaiAttributeList.h"
 
 #include <string>
@@ -66,6 +65,8 @@ namespace syncd
 
             void processNatEntries();
 
+            void processInsegs();
+
             sai_object_id_t processSingleVid(
                     _In_ sai_object_id_t vid);
 
@@ -116,6 +117,7 @@ namespace syncd
             StringHash m_routes;
             StringHash m_neighbors;
             StringHash m_nats;
+            StringHash m_insegs;
 
             std::vector<std::string> m_asicKeys;
 

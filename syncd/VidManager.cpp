@@ -1,6 +1,6 @@
 #include "VidManager.h"
 
-#include "lib/inc/VirtualObjectIdManager.h"
+#include "lib/VirtualObjectIdManager.h"
 
 #include "meta/sai_serialize.h"
 
@@ -80,4 +80,29 @@ uint32_t VidManager::getGlobalContext(
     }
 
     return sairedis::VirtualObjectIdManager::getGlobalContext(objectId);
+}
+
+uint64_t VidManager::getObjectIndex(
+        _In_ sai_object_id_t objectId)
+{
+    SWSS_LOG_ENTER();
+
+    auto swid = sairedis::VirtualObjectIdManager::switchIdQuery(objectId);
+
+    if (swid == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_THROW("invalid object id %s",
+                sai_serialize_object_id(objectId).c_str());
+    }
+
+    return sairedis::VirtualObjectIdManager::getObjectIndex(objectId);
+}
+
+sai_object_id_t VidManager::updateObjectIndex(
+        _In_ sai_object_id_t objectId,
+        _In_ uint64_t objectIndex)
+{
+    SWSS_LOG_ENTER();
+
+    return sairedis::VirtualObjectIdManager::updateObjectIndex(objectId, objectIndex);
 }

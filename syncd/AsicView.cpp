@@ -94,6 +94,9 @@ void AsicView::fromDump(
             case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
                 sai_deserialize_neighbor_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.neighbor_entry);
                 m_soNeighbors[o->m_str_object_id] = o;
+
+                m_neighborsByIp[sai_serialize_ip_address(o->m_meta_key.objectkey.key.neighbor_entry.ip_address)].push_back(o->m_str_object_id);
+
                 break;
 
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
@@ -107,6 +110,11 @@ void AsicView::fromDump(
             case SAI_OBJECT_TYPE_NAT_ENTRY:
                 sai_deserialize_nat_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.nat_entry);
                 m_soNatEntries[o->m_str_object_id] = o;
+                break;
+
+            case SAI_OBJECT_TYPE_INSEG_ENTRY:
+                sai_deserialize_inseg_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.inseg_entry);
+                m_soInsegs[o->m_str_object_id] = o;
                 break;
 
             default:
@@ -339,7 +347,7 @@ void AsicView::bindNewVidReference(
 
     int referenceCount = ++(it->second);
 
-    SWSS_LOG_INFO("increased vid %s refrence to %d",
+    SWSS_LOG_INFO("increased vid %s reference to %d",
             sai_serialize_object_id(vid).c_str(),
             referenceCount);
 }
@@ -501,7 +509,7 @@ std::vector<std::shared_ptr<SaiObj>> AsicView::getAllNotProcessedObjects() const
  * @param[in] rid Real ID
  * @param[in] vid Virtual ID
  */
-void AsicView::createDummyExistingObject(
+std::shared_ptr<SaiObj> AsicView::createDummyExistingObject(
         _In_ sai_object_id_t rid,
         _In_ sai_object_id_t vid)
 {
@@ -535,6 +543,8 @@ void AsicView::createDummyExistingObject(
 
     m_ridToVid[rid] = vid;
     m_vidToRid[vid] = rid;
+
+    return o;
 }
 
 /**
@@ -696,6 +706,10 @@ void AsicView::asicCreateObject(
                 m_soNatEntries[currentObj->m_str_object_id] = currentObj;
                 break;
 
+            case SAI_OBJECT_TYPE_INSEG_ENTRY:
+                m_soInsegs[currentObj->m_str_object_id] = currentObj;
+                break;
+
             default:
 
                 SWSS_LOG_THROW("unsupported object type: %s",
@@ -840,6 +854,10 @@ void AsicView::asicRemoveObject(
                 m_soNatEntries.erase(currentObj->m_str_object_id);
                 break;
 
+            case SAI_OBJECT_TYPE_INSEG_ENTRY:
+                m_soInsegs.erase(currentObj->m_str_object_id);
+                break;
+
             default:
 
                 SWSS_LOG_THROW("unsupported object type: %s",
@@ -954,7 +972,7 @@ std::vector<AsicOperation> AsicView::asicGetWithOptimizedRemoveOperations() cons
 
         if (op.m_vid == SAI_NULL_OBJECT_ID)
         {
-            SWSS_LOG_THROW("non object id remove not exected here");
+            SWSS_LOG_THROW("non object id remove not expected here");
         }
 
         auto mit = m_vidToAsicOperationId.find(op.m_vid);
@@ -1251,7 +1269,7 @@ void AsicView::updateNonObjectIdVidReferenceCountByValue(
 
             if (m_enableRefernceCountLogs)
             {
-                SWSS_LOG_WARN("updated vid %s refrence to %d",
+                SWSS_LOG_WARN("updated vid %s reference to %d",
                         sai_serialize_object_id(vid).c_str(),
                         m_vidReference[vid]);
             }
@@ -1276,10 +1294,10 @@ void AsicView::checkObjectsStatus() const
         {
             const auto &o = *p.second;
 
-            SWSS_LOG_ERROR("object was not processed: %s %s, status: %d (ref: %d)",
+            SWSS_LOG_ERROR("object was not processed: %s %s, status: %s (ref: %d)",
                     o.m_str_object_type.c_str(),
                     o.m_str_object_id.c_str(),
-                    o.getObjectStatus(),
+                    ObjectStatus::sai_serialize_object_status(o.getObjectStatus()).c_str(),
                     o.isOidObject() ? getVidReferenceCount(o.getVid()): -1);
 
             count++;

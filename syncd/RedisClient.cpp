@@ -10,8 +10,11 @@
 
 using namespace syncd;
 
+// vid and rid maps contains objects from all switches
 #define VIDTORID                    "VIDTORID"
 #define RIDTOVID                    "RIDTOVID"
+
+// those here are per switch
 #define LANES                       "LANES"
 #define HIDDEN                      "HIDDEN"
 #define COLDVIDS                    "COLDVIDS"
@@ -664,7 +667,9 @@ void RedisClient::removeColdVid(
 
     auto strVid = sai_serialize_object_id(vid);
 
-    m_dbAsic->hdel(COLDVIDS, strVid);
+    auto key = getRedisColdVidsKey(vid);
+
+    m_dbAsic->hdel(key, strVid);
 }
 
 std::unordered_map<std::string, std::string> RedisClient::getAttributesFromAsicKey(
@@ -885,7 +890,7 @@ void RedisClient::processFlushEvent(
             break;
 
         default:
-            SWSS_LOG_THROW("unknow fdb flush entry type: %d", type);
+            SWSS_LOG_THROW("unknown fdb flush entry type: %d", type);
     }
 
     for (int flush_static: vals)

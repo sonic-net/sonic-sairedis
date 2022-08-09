@@ -27,6 +27,7 @@ SaiSwitch::SaiSwitch(
         _In_ std::shared_ptr<VirtualOidTranslator> translator,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ bool warmBoot):
+    SaiSwitchInterface(switch_vid, switch_rid),
     m_vendorSai(vendorSai),
     m_warmBoot(warmBoot),
     m_translator(translator),
@@ -35,9 +36,6 @@ SaiSwitch::SaiSwitch(
     SWSS_LOG_ENTER();
 
     SWSS_LOG_TIMER("constructor");
-
-    m_switch_rid = switch_rid;
-    m_switch_vid = switch_vid;
 
     GlobalSwitchId::setSwitchId(m_switch_rid);
 
@@ -55,27 +53,25 @@ SaiSwitch::SaiSwitch(
 
     helperDiscover();
 
+    if (warmBoot)
+    {
+        checkWarmBootDiscoveredRids();
+    }
+
     helperSaveDiscoveredObjectsToRedis();
 
     helperInternalOids();
 
-    if (getSwitchType() == SAI_SWITCH_TYPE_NPU) 
+    if (getSwitchType() == SAI_SWITCH_TYPE_NPU)
     {
         helperCheckLaneMap();
     }
 
     helperLoadColdVids();
 
-    helperPopulateWarmBootVids();
-
-    if (getSwitchType() == SAI_SWITCH_TYPE_NPU) 
+    if (getSwitchType() == SAI_SWITCH_TYPE_NPU)
     {
         saiGetMacAddress(m_default_mac_address);
-    }
-
-    if (warmBoot)
-    {
-        checkWarmBootDiscoveredRids();
     }
 }
 
@@ -341,20 +337,6 @@ void SaiSwitch::redisSetDummyAsicStateForRealObjectId(
     m_client->setDummyAsicStateObject(vid);
 }
 
-sai_object_id_t SaiSwitch::getVid() const
-{
-    SWSS_LOG_ENTER();
-
-    return m_switch_vid;
-}
-
-sai_object_id_t SaiSwitch::getRid() const
-{
-    SWSS_LOG_ENTER();
-
-    return m_switch_rid;
-}
-
 std::string SaiSwitch::getHardwareInfo() const
 {
     SWSS_LOG_ENTER();
@@ -548,25 +530,6 @@ sai_object_id_t SaiSwitch::helperGetSwitchAttrOid(
     m_default_rid_map[attr_id] = rid;
 
     return rid;
-}
-
-sai_object_id_t SaiSwitch::getSwitchDefaultAttrOid(
-        _In_ sai_attr_id_t attr_id) const
-{
-    SWSS_LOG_ENTER();
-
-    auto it = m_default_rid_map.find(attr_id);
-
-    if (it == m_default_rid_map.end())
-    {
-        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr_id);
-
-        const char* name = (meta) ? meta->attridname : "UNKNOWN";
-
-        SWSS_LOG_THROW("attribute %s (%d) not found in default RID map", name, attr_id);
-    }
-
-    return it->second;
 }
 
 bool SaiSwitch::isColdBootDiscoveredRid(
@@ -765,14 +728,14 @@ void SaiSwitch::redisSaveInternalOids(
      * Please note it is possible to discover new Switch internal OID in warm-boot also
      * if SAI gets upgraded as part of warm-boot so we are adding to ColdVid also
      * so that comparison logic do not remove this OID in warm-boot case. One example
-     * is SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID which is discovered in warm-boot 
+     * is SAI_SWITCH_ATTR_DEFAULT_STP_INST_ID which is discovered in warm-boot
      * when upgrading to new SAI Version*/
 
     m_client->setDummyAsicStateObject(vid);
 
     m_client->saveColdBootDiscoveredVids(m_switch_vid, coldVids);
 
-    SWSS_LOG_NOTICE("put switch internal discovered rid %s to Asic View and COLDVIDS", 
+    SWSS_LOG_NOTICE("put switch internal discovered rid %s to Asic View and COLDVIDS",
             sai_serialize_object_id(rid).c_str());
 
 }
@@ -934,21 +897,6 @@ sai_object_id_t SaiSwitch::getDefaultValueForOidAttr(
     return ita->second;
 }
 
-void SaiSwitch::helperPopulateWarmBootVids()
-{
-    SWSS_LOG_ENTER();
-
-    if (!m_warmBoot)
-        return;
-
-    for (sai_object_id_t rid: m_discovered_rids)
-    {
-        sai_object_id_t vid = m_translator->translateRidToVid(rid, m_switch_vid);
-
-        m_warmBootDiscoveredVids.insert(vid);
-    }
-}
-
 std::vector<uint32_t> SaiSwitch::saiGetPortLanes(
         _In_ sai_object_id_t port_rid)
 {
@@ -1098,6 +1046,21 @@ void SaiSwitch::collectPortRelatedObjects(
         related.insert(objlist.begin(), objlist.end());
     }
 
+    // treat port serdes as related object
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
+
+    auto status = m_vendorSai->get(SAI_OBJECT_TYPE_PORT, portRid, 1, &attr);
+
+    if (status == SAI_STATUS_SUCCESS && attr.value.oid != SAI_NULL_OBJECT_ID)
+    {
+        // some platforms not support PORT SERDES, so get it only on success
+
+        related.insert(attr.value.oid);
+    }
+
     SWSS_LOG_NOTICE("obtained %zu port %s related RIDs",
             related.size(),
             sai_serialize_object_id(portRid).c_str());
@@ -1175,37 +1138,63 @@ void SaiSwitch::checkWarmBootDiscoveredRids()
 {
     SWSS_LOG_ENTER();
 
-    /*
+    if (!m_warmBoot)
+    {
+        return;
+    }
+
+    SWSS_LOG_NOTICE("check warm boot RIDs");
+
+    /**
+     * It may happen, that after warm boot some new oids were discovered that
+     * were not present on warm shutdown, this may happen during vendor SAI
+     * update and for example introducing some new default objects on switch or
+     * queues on cpu. In this case, translator will create new VID/RID pair on
+     * database and local memory.
+     *
      * After switch was created, rid discovery method was called, and all
      * discovered RIDs should be present in current RID2VID map in redis
-     * database. If any RID is missing, then ether there is bug in vendor code,
-     * and after warm boot some RID values changed or we have a bug and forgot
-     * to put rid/vid pair to redis.
+     * database. If any RID is missing, then ether:
+     * - there is bug in vendor code and after warm boot some RID values changed
+     * - or we have a bug and forgot to put rid/vid pair to redis
+     * - or we new objects was actually introduced with new firmware like for
+     *   example PORT_SERDES
      *
      * Assumption here is that during warm boot ASIC state will not change.
      */
 
     auto rid2vid = getRidToVidMap();
 
-    bool success = true;
-
-    for (auto rid: getDiscoveredRids())
+    for (sai_object_id_t rid: getDiscoveredRids())
     {
-        if (rid2vid.find(rid) != rid2vid.end())
-            continue;
+        sai_object_id_t vid = m_translator->translateRidToVid(rid, m_switch_vid);
 
-        SWSS_LOG_ERROR("RID %s is missing from current RID2VID map after WARM boot!",
-                sai_serialize_object_id(rid).c_str());
+        m_warmBootDiscoveredVids.insert(vid);
 
-        success = false;
+        if (rid2vid.find(rid) == rid2vid.end())
+        {
+            auto ot = m_vendorSai->objectTypeQuery(rid);
+
+            SWSS_LOG_NOTICE("spotted new RID %s missing from current RID2VID (new VID %s) (%s) on WARM BOOT",
+                    sai_serialize_object_id(rid).c_str(),
+                    sai_serialize_object_id(vid).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+
+            m_warmBootNewDiscoveredVids.insert(vid);
+
+            // this means that some new objects were discovered but they are
+            // not present in current ASIC_VIEW, and we need to create dummy
+            // entries for them
+
+            redisSetDummyAsicStateForRealObjectId(rid);
+        }
     }
 
-    if (!success)
+    if (m_warmBootNewDiscoveredVids.size())
     {
-        SWSS_LOG_THROW("FATAL, some discovered RIDs are not present in current RID2VID map, bug");
+        SWSS_LOG_NOTICE("discovered %zu new RIDs on WARM BOOT, new firmware? or bug", m_warmBootNewDiscoveredVids.size());
     }
 
     SWSS_LOG_NOTICE("all discovered RIDs are present in current RID2VID map for switch VID %s",
             sai_serialize_object_id(m_switch_vid).c_str());
 }
-
