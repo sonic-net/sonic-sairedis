@@ -19,6 +19,7 @@ tests_SOURCES = \
 				TestMetaKeyHasher.cpp \
 				TestNotificationFactory.cpp \
 				TestNotificationFdbEvent.cpp \
+				TestNotificationNatEvent.cpp \
 				TestNotificationPortStateChange.cpp \
 				TestNotificationQueuePfcDeadlock.cpp \
 				TestNotificationSwitchShutdownRequest.cpp \
