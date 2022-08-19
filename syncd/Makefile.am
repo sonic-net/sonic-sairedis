@@ -1,4 +1,4 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/vslib
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/vslib -I$(top_srcdir)/syncd/sdk_source_topflite/include -I$(top_srcdir)/syncd/pai_inc
 
 if SAIVS
 SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs
@@ -50,7 +50,8 @@ libSyncd_a_SOURCES = \
 				WatchdogScope.cpp \
 				Workaround.cpp \
 				ZeroMQNotificationProducer.cpp \
-				syncd_main.cpp
+				syncd_main.cpp \
+				phy_pai.cpp
 
 libSyncd_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libSyncd_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
@@ -59,7 +60,7 @@ syncd_SOURCES = main.cpp
 syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 syncd_LDADD = libSyncd.a $(top_srcdir)/lib/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
-			  -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS)
+	      -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS) -L$(top_srcdir)/syncd -lsaitry -L$(top_srcdir)/syncd -lbrcm_pai
 syncd_LDFLAGS = -rdynamic
 
 if SAITHRIFT
@@ -88,7 +89,9 @@ syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a $(top_srcdir)/lib/libSa
 
 tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/.libs -lsairedis \
-			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
+#tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/.libs -lsairedis \
+#			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
+tests_LDADD = libSyncd.a $(top_srcdir)/lib/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
+	      -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS) -L$(top_srcdir)/syncd -lsaitry -L$(top_srcdir)/syncd -lbrcm_pai
 TESTS = tests

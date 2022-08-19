@@ -1,0 +1,24 @@
+/*
+ * $Id: $
+ * $Copyright: (c) 2020 Broadcom.
+ * Broadcom Proprietary and Confidential. All rights reserved.$
+ *
+ * Broadcom Built-in binary file system.
+ *
+ */
+
+#ifndef __BINFS_H___
+#define __BINFS_H___
+
+typedef struct {
+    const char *name;
+    const uint8 *data;
+    int len;
+} binfs_file_t;
+
+extern const binfs_file_t *binfs_file_list[];
+extern int
+binfs_file_data_get(char *filename, const uint8 **data, int *len);
+
+
+#endif /* __BINFS_H___ */

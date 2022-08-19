@@ -24,6 +24,7 @@
 #include "meta/ZeroMQSelectableChannel.h"
 #include "meta/RedisSelectableChannel.h"
 #include "meta/PerformanceIntervalTimer.h"
+#include "phy_pai.h"
 
 #include "vslib/saivs.h"
 
@@ -2450,6 +2451,7 @@ sai_status_t Syncd::processOidCreate(
 
     sai_object_id_t objectVid;
     sai_deserialize_object_id(strObjectId, objectVid);
+    int ret;
 
     // Object id is VID, we can use it to extract switch id.
 
@@ -2507,6 +2509,16 @@ sai_status_t Syncd::processOidCreate(
             m_switches.at(switchVid)->onPostPortCreate(objectRid, objectVid);
         }
     }
+
+    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    {
+	    ret = gearbox_init();
+	    SWSS_LOG_NOTICE("gearbox_init ret: %d", ret);
+
+	    ret = retimer_init();
+	    SWSS_LOG_NOTICE("retimer_init ret: %d", ret);
+    }
+
 
     return status;
 }
