@@ -2200,6 +2200,36 @@ sai_status_t SwitchStateBase::refresh_port_serdes_id(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::refresh_port_oper_speed(
+                    _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+
+    if (attr.value.s32 == SAI_PORT_OPER_STATUS_DOWN)
+    {
+        attr.value.u32 = 0;
+    }
+    else
+    {
+        if (!vs_get_oper_speed(port_id, attr.value.u32))
+        {
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 // XXX extra work may be needed on GET api if N on list will be > then actual
 
 /*
@@ -2312,6 +2342,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
 
             case SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE:
                 return SAI_STATUS_SUCCESS;
+
+            case SAI_PORT_ATTR_OPER_SPEED:
+                return refresh_port_oper_speed(object_id);
         }
     }
 

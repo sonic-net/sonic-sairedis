@@ -117,6 +117,38 @@ TEST(SwitchBCM81724, refresh_read_only)
 
     EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, strPortId, 1, &attr), SAI_STATUS_SUCCESS);
 
+    char fakeinfo_buffer[sizeof(HostInterfaceInfo)] = { 0 };
+    HostInterfaceInfo *fakeinfo = reinterpret_cast<HostInterfaceInfo *>(reinterpret_cast<void *>(fakeinfo_buffer));
+    fakeinfo->m_portId = portId;
+    sw.m_hostif_info_map[""] = std::shared_ptr<HostInterfaceInfo>(fakeinfo, [](HostInterfaceInfo *){});
+    sw.m_switchConfig->m_laneMap->m_lane_to_ifname[1] = "eth0";
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+    attr.value.s32 = SAI_PORT_OPER_STATUS_DOWN;
+
+    EXPECT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, strPortId, &attr), SAI_STATUS_SUCCESS);
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+
+    EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, strPortId, 1, &attr), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(attr.value.u32, 0);
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+    attr.value.s32 = SAI_PORT_OPER_STATUS_UP;
+
+    EXPECT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, strPortId, &attr), SAI_STATUS_SUCCESS);
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+
+    EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, strPortId, 1, &attr), SAI_STATUS_SUCCESS);
+    EXPECT_GE(attr.value.u32, 0);
+
+    sw.m_hostif_info_map.clear();
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+
+    EXPECT_NE(sw.get(SAI_OBJECT_TYPE_PORT, strPortId, 1, &attr), SAI_STATUS_SUCCESS);
+
     //std::cout << sw.dump_switch_database_for_warm_restart();
 }
 
