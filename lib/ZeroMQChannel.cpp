@@ -247,31 +247,7 @@ void ZeroMQChannel::del(
 
     std::vector<swss::FieldValueTuple> values;
 
-    swss::FieldValueTuple opdata(key, command);
-
-    values.insert(values.begin(), opdata);
-
-    std::string msg = swss::JSon::buildJson(values);
-
-    SWSS_LOG_DEBUG("sending: %s", msg.c_str());
-
-    for (int i = 0; true ; ++i)
-    {
-        int rc = zmq_send(m_socket, msg.c_str(), msg.length(), 0);
-
-        if (rc <= 0 && zmq_errno() == EINTR && i < ZMQ_MAX_RETRY)
-        {
-            continue;
-        }
-        if (rc <= 0)
-        {
-            SWSS_LOG_THROW("zmq_send failed, on endpoint %s, zmqerrno: %d: %s",
-                    m_endpoint.c_str(),
-                    zmq_errno(),
-                    zmq_strerror(zmq_errno()));
-        }
-        break;
-    }
+    set(key, values, command);
 }
 
 sai_status_t ZeroMQChannel::wait(
