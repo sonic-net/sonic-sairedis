@@ -117,6 +117,7 @@ Description: debugging symbols for libsaimetadata
 
 Package: python-pysairedis
 Architecture: any
+Build-Profiles: <!nopython2>
 Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
 Section: libs
 Description: This package contains Switch State Service sairedis Python2 library.

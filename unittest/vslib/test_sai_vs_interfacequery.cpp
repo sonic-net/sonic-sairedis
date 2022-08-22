@@ -55,3 +55,28 @@ TEST(libsaivs, sai_switch_id_query)
 {
     EXPECT_EQ(SAI_NULL_OBJECT_ID, sai_switch_id_query(SAI_NULL_OBJECT_ID));
 }
+
+TEST(libsaivs, sai_bulk_object_get_stats)
+{
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_bulk_object_get_stats(SAI_NULL_OBJECT_ID,
+                                                                    SAI_OBJECT_TYPE_PORT,
+                                                                    0,
+                                                                    nullptr,
+                                                                    0,
+                                                                    nullptr,
+                                                                    SAI_STATS_MODE_BULK_READ,
+                                                                    nullptr,
+                                                                    nullptr));
+}
+
+TEST(libsaivs, sai_bulk_object_clear_stats)
+{
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_bulk_object_clear_stats(SAI_NULL_OBJECT_ID,
+                                                                      SAI_OBJECT_TYPE_PORT,
+                                                                      0,
+                                                                      nullptr,
+                                                                      0,
+                                                                      nullptr,
+                                                                      SAI_STATS_MODE_BULK_CLEAR,
+                                                                      nullptr));
+}

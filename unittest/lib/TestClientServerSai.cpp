@@ -1,5 +1,7 @@
 #include "ClientServerSai.h"
 
+#include "sairedis.h"
+
 #include "swss/logger.h"
 
 #include <gtest/gtest.h>
@@ -30,6 +32,25 @@ static int profile_get_next_value(
 
 static sai_service_method_table_t test_services = {
     profile_get_value,
+    profile_get_next_value
+};
+
+static const char* client_profile_get_value(
+        _In_ sai_switch_profile_id_t profile_id,
+        _In_ const char* variable)
+{
+    SWSS_LOG_ENTER();
+
+    if (variable != NULL && strcmp(variable, SAI_REDIS_KEY_ENABLE_CLIENT) == 0 )
+        return "true";
+    else
+        return NULL;
+
+    return nullptr;
+}
+
+static sai_service_method_table_t test_client_services = {
+    client_profile_get_value,
     profile_get_next_value
 };
 
@@ -80,4 +101,71 @@ TEST(ClientServerSai, logSet)
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->logSet(SAI_API_PORT, SAI_LOG_LEVEL_NOTICE));
+}
+
+TEST(ClientServerSai, bulkGetClearStats)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->bulkGetStats(SAI_NULL_OBJECT_ID,
+                                                    SAI_OBJECT_TYPE_PORT,
+                                                    0,
+                                                    nullptr,
+                                                    0,
+                                                    nullptr,
+                                                    SAI_STATS_MODE_BULK_READ,
+                                                    nullptr,
+                                                    nullptr));
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->bulkClearStats(SAI_NULL_OBJECT_ID,
+                                                      SAI_OBJECT_TYPE_PORT,
+                                                      0,
+                                                      nullptr,
+                                                      0,
+                                                      nullptr,
+                                                      SAI_STATS_MODE_BULK_CLEAR,
+                                                      nullptr));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkGetStats(SAI_NULL_OBJECT_ID,
+                                                            SAI_OBJECT_TYPE_PORT,
+                                                            0,
+                                                            nullptr,
+                                                            0,
+                                                            nullptr,
+                                                            SAI_STATS_MODE_BULK_READ,
+                                                            nullptr,
+                                                            nullptr));
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkClearStats(SAI_NULL_OBJECT_ID,
+                                                              SAI_OBJECT_TYPE_PORT,
+                                                              0,
+                                                              nullptr,
+                                                              0,
+                                                              nullptr,
+                                                              SAI_STATS_MODE_BULK_CLEAR,
+                                                              nullptr));
+
+    css = std::make_shared<ClientServerSai>();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_client_services));
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkGetStats(SAI_NULL_OBJECT_ID,
+                                                            SAI_OBJECT_TYPE_PORT,
+                                                            0,
+                                                            nullptr,
+                                                            0,
+                                                            nullptr,
+                                                            SAI_STATS_MODE_BULK_READ,
+                                                            nullptr,
+                                                            nullptr));
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkClearStats(SAI_NULL_OBJECT_ID,
+                                                              SAI_OBJECT_TYPE_PORT,
+                                                              0,
+                                                              nullptr,
+                                                              0,
+                                                              nullptr,
+                                                              SAI_STATS_MODE_BULK_CLEAR,
+                                                              nullptr));
 }

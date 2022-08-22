@@ -9,7 +9,7 @@ tests_SOURCES = \
 				../../meta/NumberOidIndexGenerator.cpp \
 				TestSwitch.cpp \
 				TestClientConfig.cpp \
-				TestClientServerSai.cppa \
+				TestClientServerSai.cpp \
 				TestContext.cpp \
 				TestContextConfig.cpp \
 				TestContextConfigContainer.cpp \
@@ -21,6 +21,7 @@ tests_SOURCES = \
 				TestSkipRecordAttrContainer.cpp \
 				TestServerConfig.cpp \
 				TestRedisVidIndexGenerator.cpp \
+				TestRecorder.cpp \
 				TestRedisChannel.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)

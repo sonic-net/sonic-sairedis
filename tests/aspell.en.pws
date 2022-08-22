@@ -31,6 +31,7 @@ FDB
 FDBs
 FIXME
 FlexCounter
+gbsyncd
 GCM
 GRE
 GUID
@@ -87,6 +88,7 @@ TODO
 TPID
 TXSC
 TestCase
+tokenize
 VID
 VIDCOUNTER
 VIDTORID
@@ -261,6 +263,8 @@ macsec
 MACsec
 MCAST
 md
+mdio
+MDIO
 Mellanox
 memcpy
 metadata
@@ -295,6 +299,7 @@ param
 params
 performTransition
 pfc
+PHY
 plaintext
 pn
 PN

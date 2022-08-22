@@ -114,12 +114,61 @@ namespace syncd
                     _In_ uint32_t number_of_counters,
                     _In_ const sai_stat_id_t *counter_ids) override;
 
+            virtual sai_status_t bulkGetStats(
+                    _In_ sai_object_id_t switchId,
+                    _In_ sai_object_type_t object_type,
+                    _In_ uint32_t object_count,
+                    _In_ const sai_object_key_t *object_key,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Inout_ sai_status_t *object_statuses,
+                    _Out_ uint64_t *counters) override;
+
+            virtual sai_status_t bulkClearStats(
+                    _In_ sai_object_id_t switchId,
+                    _In_ sai_object_type_t object_type,
+                    _In_ uint32_t object_count,
+                    _In_ const sai_object_key_t *object_key,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Inout_ sai_status_t *object_statuses) override;
+
         public: // non QUAD API
 
             virtual sai_status_t flushFdbEntries(
                     _In_ sai_object_id_t switchId,
                     _In_ uint32_t attrCount,
                     _In_ const sai_attribute_t *attrList) override;
+
+            virtual sai_status_t switchMdioRead(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t device_addr,
+                    _In_ uint32_t start_reg_addr,
+                    _In_ uint32_t number_of_registers,
+                    _Out_ uint32_t *reg_val) override;
+
+            virtual sai_status_t switchMdioWrite(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t device_addr,
+                    _In_ uint32_t start_reg_addr,
+                    _In_ uint32_t number_of_registers,
+                    _In_ const uint32_t *reg_val) override;
+
+            virtual sai_status_t switchMdioCl22Read(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t device_addr,
+                    _In_ uint32_t start_reg_addr,
+                    _In_ uint32_t number_of_registers,
+                    _Out_ uint32_t *reg_val) override;
+
+            virtual sai_status_t switchMdioCl22Write(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t device_addr,
+                    _In_ uint32_t start_reg_addr,
+                    _In_ uint32_t number_of_registers,
+                    _In_ const uint32_t *reg_val) override;
 
         public: // SAI API
 

@@ -21,14 +21,14 @@ MACsecManager::MACsecManager()
 {
     SWSS_LOG_ENTER();
 
-    cleanup_macsec_device();
+    // empty
 }
 
 MACsecManager::~MACsecManager()
 {
     SWSS_LOG_ENTER();
 
-    cleanup_macsec_device();
+    // empty
 }
 
 bool MACsecManager::create_macsec_port(
@@ -312,7 +312,14 @@ bool MACsecManager::update_macsec_sa_pn(
         ostream << " rx sci " << attr.m_sci;
     }
 
-    ostream << " sa " << attr.m_an << " pn " << pn;
+    ostream << " sa " << attr.m_an;
+
+    if (attr.is_xpn())
+    {
+        ostream << " ssci " << attr.m_ssci;
+    }
+
+    ostream << " pn " << pn;
 
     SWSS_LOG_NOTICE("%s", ostream.str().c_str());
 
@@ -895,7 +902,7 @@ void MACsecManager::cleanup_macsec_device() const
     //     cipher suite: GCM-AES-128, using ICV length 16
     //     TXSC: fe5400409b920001 on SA 0
     // Use pattern : '^\d+:\s*(\w+):' to extract all MACsec interface names
-    const std::regex pattern("^\\d+:\\s*(\\w+):");
+    const std::regex pattern("\\d+:\\s*(\\w+):");
     std::smatch matches;
     std::string::const_iterator searchPos(macsecInfos.cbegin());
 

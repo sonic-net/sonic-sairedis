@@ -106,6 +106,7 @@ Syncd::Syncd(
     // we need STATE_DB ASIC_DB and COUNTERS_DB
 
     m_dbAsic = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
+    m_mdioIpcServer = std::make_shared<MdioIpcServer>(m_vendorSai, m_commandLineOptions->m_globalContext);
 
     if (m_contextConfig->m_zmqEnable)
     {
@@ -2617,6 +2618,8 @@ sai_status_t Syncd::processOidCreate(
 
             m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai);
 
+            m_mdioIpcServer->setSwitchId(objectRid);
+
             startDiagShell(objectRid);
         }
 
@@ -3901,6 +3904,8 @@ void Syncd::onSwitchCreateInInitViewMode(
 
         m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai);
 
+        m_mdioIpcServer->setSwitchId(switchRid);
+
         startDiagShell(switchRid);
     }
     else
@@ -4403,7 +4408,7 @@ sai_status_t Syncd::setUninitDataPlaneOnRemovalOnAllSwitches()
 
         sai_status_t queryStatus;
 
-        queryStatus = sai_query_attribute_capability(rid,
+        queryStatus = m_vendorSai->queryAttributeCapability(rid,
                                                      SAI_OBJECT_TYPE_SWITCH,
                                                      SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL,
                                                      &attr_capability);
@@ -4499,6 +4504,13 @@ void Syncd::run()
         // processing possible quick fdb notifications, and pointer for
         // notification queue is created before we create switch
         m_processor->startNotificationsProcessingThread();
+
+        for (auto& sw: m_switches)
+        {
+            m_mdioIpcServer->setSwitchId(sw.second->getRid());
+        }
+
+        m_mdioIpcServer->startMdioThread();
 
         SWSS_LOG_NOTICE("syncd listening for events");
 
@@ -4683,6 +4695,8 @@ void Syncd::run()
     }
 
     m_manager->removeAllCounters();
+
+    m_mdioIpcServer->stopMdioThread();
 
     sai_status_t status = removeAllSwitches();
 

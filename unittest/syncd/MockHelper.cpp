@@ -10,11 +10,3 @@ namespace test_syncd {
         mock_objectTypeQuery_result = mock_result;
     }
 }
-
-namespace syncd {
-    sai_object_type_t VidManager::objectTypeQuery(_In_ sai_object_id_t objectId)
-    {
-        SWSS_LOG_ENTER();
-        return test_syncd::mock_objectTypeQuery_result;
-    }
-}

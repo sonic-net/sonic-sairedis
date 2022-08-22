@@ -16,6 +16,7 @@ AX_CODE_COVERAGE
 AX_ADD_AM_MACRO_STATIC([])
 
 AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BAREFOOT,   test x$CONFIGURED_PLATFORM = xbarefoot)
+AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BROADCOM,   test x$CONFIGURED_PLATFORM = xbroadcom)
 
 AC_ARG_ENABLE(debug,
 [  --enable-debug          turn on debugging],
@@ -181,6 +182,30 @@ CXXFLAGS="$SAVED_FLAGS"
 AC_SUBST(CXXFLAGS_COMMON)
 
 AC_SUBST(SAIINC, "-I\$(top_srcdir)/SAI/inc -I\$(top_srcdir)/SAI/experimental -I\$(top_srcdir)/SAI/meta")
+
+AM_COND_IF([SYNCD], [
+AM_COND_IF([SAIVS], [], [
+SAVED_FLAGS="$CXXFLAGS"
+CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
+AC_CHECK_FUNCS(sai_query_api_version, [
+AC_MSG_CHECKING([SAI headers API version and library version check])
+AC_TRY_RUN([
+extern "C" {
+#include <sai.h>
+}
+int main() {
+    sai_api_version_t version;
+    if (SAI_STATUS_SUCCESS != sai_query_api_version(&version))
+    {
+        return 1;
+    }
+    return (version != SAI_API_VERSION);
+}],
+[AC_MSG_RESULT(ok)],
+[AC_MSG_RESULT(failed)
+AC_MSG_ERROR("SAI headers API version and library version mismatch")])])
+CXXFLAGS="$SAVED_FLAGS"
+])])
 
 AC_OUTPUT(Makefile
           meta/Makefile

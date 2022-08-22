@@ -197,3 +197,51 @@ sai_status_t SaiInterface::get(
             return SAI_STATUS_FAILURE;
     }
 }
+
+sai_status_t SaiInterface::switchMdioRead(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _Out_ uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_FAILURE;
+}
+
+sai_status_t SaiInterface::switchMdioWrite(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _In_ const uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_FAILURE;
+}
+
+sai_status_t SaiInterface::switchMdioCl22Read(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _Out_ uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_FAILURE;
+}
+
+sai_status_t SaiInterface::switchMdioCl22Write(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _In_ const uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_FAILURE;
+}

@@ -90,6 +90,14 @@ config_syncd_cisco_8000()
 {
     export BASE_OUTPUT_DIR=/opt/cisco/silicon-one
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+
+    # Cisco SDK debug shell support
+    version=$(python3 -V 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\.\2/')
+    if [ ! -z "$version" ]; then
+        export SAI_SHELL_ENABLE=1
+        export SAI_DEBUG_PYTHON_SO_PATH=/usr/lib/python${version}/config-${version}m-x86_64-linux-gnu/libpython${version}m.so
+        export PYTHONPATH=/usr/lib/cisco/pylib
+    fi
 }
 
 config_syncd_bcm()
@@ -167,6 +175,7 @@ config_syncd_bcm()
     fi
 
     echo "SAI_OBJECT_TYPE_ACL_TABLE" >> /tmp/break_before_make_objects
+    echo "SAI_OBJECT_TYPE_TUNNEL" >> /tmp/break_before_make_objects
     CMD_ARGS+=" -b /tmp/break_before_make_objects"
 
     [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
@@ -239,12 +248,24 @@ config_syncd_barefoot()
         echo "SAI_KEY_WARM_BOOT_READ_FILE=/var/warmboot/sai-warmboot.bin" >> $PROFILE_FILE
     fi
     CMD_ARGS+=" -l -p $PROFILE_FILE"
-
-    # Check and load SDE profile
+    # Check if SDE profile is configured
     P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
     if [[ -n "$P4_PROFILE" ]]; then
         if [[ ( -d /opt/bfn/install_${P4_PROFILE} ) && ( -L /opt/bfn/install || ! -e /opt/bfn/install ) ]]; then
             ln -srfn /opt/bfn/install_${P4_PROFILE} /opt/bfn/install
+        fi
+    else
+        CHIP_FAMILY_INFO="$(cat $HWSKU_DIR/switch-tna-sai.conf | grep chip_family | awk -F : '{print $2}' | cut -d '"'  -f 2)"
+        CHIP_FAMILY=${CHIP_FAMILY_INFO,,}
+        [[ "$CHIP_FAMILY" == "tofino" ]] && P4_PTYPE="x" || P4_PTYPE="y"
+        # Check if the current profile fits the ASIC family
+        PROFILE_DEFAULT=$(readlink /opt/bfn/install)
+        if [[ "$PROFILE_DEFAULT" != "install_$P4_PTYPE"*"_profile" && "$PROFILE_DEFAULT" != *"_$CHIP_FAMILY"  ]]; then
+            # Find suitable profile
+            PROFILE=$(ls -d /opt/bfn/install_$P4_PTYPE*_profile -d  /opt/bfn/install_*_$CHIP_FAMILY 2> /dev/null | head -1)
+            if [[ ! -z $PROFILE  ]]; then
+                ln -srfn $PROFILE /opt/bfn/install
+            fi
         fi
     fi
     export PYTHONHOME=/opt/bfn/install/
