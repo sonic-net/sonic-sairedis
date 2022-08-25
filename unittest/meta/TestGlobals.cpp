@@ -27,9 +27,7 @@ TEST(Globals, getHardwareInfo)
 
     EXPECT_EQ("", Globals::getHardwareInfo(1, &attr));
 
-    char hwinfo[SAI_MAX_HARDWARE_ID_LEN + 2];
-
-    memset(hwinfo, '0', SAI_MAX_HARDWARE_ID_LEN + 2);
+    char hwinfo[SAI_MAX_HARDWARE_ID_LEN + 2] = {'0'};
 
     hwinfo[SAI_MAX_HARDWARE_ID_LEN + 1] = 0;
 

@@ -12,9 +12,7 @@ static sai_switch_notifications_t handle_notification(
 {
     SWSS_LOG_ENTER();
 
-    sai_switch_notifications_t ntf;
-
-    memset(&ntf, 0, sizeof(ntf));
+    sai_switch_notifications_t ntf = {0};
 
     return ntf;
 }

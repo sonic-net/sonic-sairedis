@@ -442,8 +442,7 @@ TEST(SwitchBCM56850, test_nexthop_group_type_enum_values_capability)
             sc);
 
     sai_s32_list_t enum_val_cap;
-    int32_t list[5];
-    memset(list, 0, sizeof(list));
+    int32_t list[5] = {0};
 
     enum_val_cap.count = 4;
     enum_val_cap.list = list;

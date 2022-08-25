@@ -236,10 +236,8 @@ TEST(LegacyRouteEntry, route_entry_set)
     clear_local();
 
     sai_status_t    status;
-    sai_attribute_t attr;
+    sai_attribute_t attr = {0};
     sai_object_id_t switch_id = create_switch();
-
-    memset(&attr, 0, sizeof(attr));
 
     sai_route_entry_t route_entry;
 
@@ -330,10 +328,8 @@ TEST(LegacyRouteEntry, route_entry_get)
     clear_local();
 
     sai_status_t    status;
-    sai_attribute_t attr;
+    sai_attribute_t attr = {0};
     sai_object_id_t switch_id = create_switch();
-
-    memset(&attr, 0, sizeof(attr));
 
     sai_route_entry_t route_entry;
 

@@ -2531,9 +2531,7 @@ bool ComparisonLogic::checkAsicVsDatabaseConsistency(
 
             auto info = sai_metadata_get_object_type_info(obj->getObjectType());
 
-            sai_attribute_t attr;
-
-            memset(&attr, 0, sizeof(attr));
+            sai_attribute_t attr = {0};
 
             if (attrs.size() == 0)
             {

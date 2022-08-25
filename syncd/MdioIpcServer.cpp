@@ -194,8 +194,8 @@ int MdioIpcServer::syncd_ipc_task_main()
     int sock_srv;
     int sock_cli;
     int sock_max;
-    syncd_mdio_ipc_conn_t conn[CONN_MAX];
-    struct sockaddr_un addr;
+    syncd_mdio_ipc_conn_t conn[CONN_MAX] = {0};
+    struct sockaddr_un addr = {0};
     char path[64];
     fd_set rfds;
     char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE], *argv[64], *save;
@@ -224,7 +224,6 @@ int MdioIpcServer::syncd_ipc_task_main()
     /* Delete the file so the bind will    */
     /* succeed, then bind to that file.    */
     /***************************************/
-    memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     sprintf(addr.sun_path, "%s/%s.srv", path, SYNCD_IPC_SOCK_FILE);
     unlink(addr.sun_path);
@@ -246,7 +245,6 @@ int MdioIpcServer::syncd_ipc_task_main()
 
     SWSS_LOG_NOTICE("IPC service is online\n");
 
-    memset(conn, 0, sizeof(conn));
     while (m_taskAlive)
     {
         time_t now;

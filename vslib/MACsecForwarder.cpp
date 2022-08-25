@@ -38,8 +38,7 @@ MACsecForwarder::MACsecForwarder(
                 errno);
     }
 
-    struct sockaddr_ll sockAddress;
-    memset(&sockAddress, 0, sizeof(sockAddress));
+    struct sockaddr_ll sockAddress = {0};
 
     sockAddress.sll_family = PF_PACKET;
     sockAddress.sll_protocol = htons(ETH_P_ALL);

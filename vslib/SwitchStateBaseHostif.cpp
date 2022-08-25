@@ -54,9 +54,7 @@ int SwitchStateBase::vs_create_tap_device(
         return -1;
     }
 
-    struct ifreq ifr;
-
-    memset(&ifr, 0, sizeof(ifr));
+    struct ifreq ifr = {0};
 
     ifr.ifr_flags = (short int)flags;  // IFF_TUN or IFF_TAP, IFF_NO_PI
 
@@ -238,9 +236,7 @@ int SwitchStateBase::ifup(
         return -1;
     }
 
-    struct ifreq ifr;
-
-    memset(&ifr, 0, sizeof ifr);
+    struct ifreq ifr = {0};
 
     strncpy(ifr.ifr_name, dev , MAX_INTERFACE_NAME_LEN);
 
@@ -305,9 +301,7 @@ int SwitchStateBase::promisc(
         return -1;
     }
 
-    struct ifreq ifr;
-
-    memset(&ifr, 0, sizeof ifr);
+    struct ifreq ifr = {0};
 
     strncpy(ifr.ifr_name, dev , MAX_INTERFACE_NAME_LEN);
 
@@ -461,9 +455,7 @@ bool SwitchStateBase::hostif_create_tap_veth_forwarding(
 
     // bind to device
 
-    struct sockaddr_ll sock_address;
-
-    memset(&sock_address, 0, sizeof(sock_address));
+    struct sockaddr_ll sock_address = {0};
 
     sock_address.sll_family = PF_PACKET;
     sock_address.sll_protocol = htons(ETH_P_ALL);
@@ -611,9 +603,7 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
 
     SWSS_LOG_INFO("created TAP device for %s, fd: %d", name.c_str(), tapfd);
 
-    sai_attribute_t attr;
-
-    memset(&attr, 0, sizeof(attr));
+    sai_attribute_t attr = {0};
 
     attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
 

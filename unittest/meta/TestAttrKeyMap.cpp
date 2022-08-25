@@ -10,9 +10,7 @@ TEST(AttrKeyMap, constructKey)
 {
     auto akm = std::make_shared<AttrKeyMap>();
 
-    sai_object_meta_key_t mk;
-
-    memset(&mk, 0, sizeof(mk));
+    sai_object_meta_key_t mk = {0};
 
     EXPECT_THROW(
             akm->constructKey(SAI_NULL_OBJECT_ID, mk, 0, nullptr),

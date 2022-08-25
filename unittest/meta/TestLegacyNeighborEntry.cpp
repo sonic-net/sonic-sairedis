@@ -240,9 +240,7 @@ TEST(LegacyNeighborEntry, neighbor_entry_set)
 
     sai_status_t    status;
 
-    sai_attribute_t attr;
-
-    memset(&attr, 0, sizeof(attr));
+    sai_attribute_t attr = {0};
 
     sai_object_id_t switch_id = create_switch();
     sai_neighbor_entry_t neighbor_entry;
@@ -317,9 +315,7 @@ TEST(LegacyNeighborEntry, neighbor_entry_get)
 
     sai_status_t    status;
 
-    sai_attribute_t attr;
-
-    memset(&attr, 0, sizeof(attr));
+    sai_attribute_t attr = {0};
 
     sai_object_id_t switch_id = create_switch();
     sai_neighbor_entry_t neighbor_entry;
