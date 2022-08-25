@@ -603,7 +603,7 @@ sai_status_t SwitchStateBase::vs_create_hostif_tap_interface(
 
     SWSS_LOG_INFO("created TAP device for %s, fd: %d", name.c_str(), tapfd);
 
-    sai_attribute_t attr = {0};
+    sai_attribute_t attr = {};
 
     attr.id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
 
