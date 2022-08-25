@@ -22,7 +22,7 @@ TEST(TrafficForwarder, addVlanTag)
 
     size_t length = 1;
 
-    struct msghdr hdr = {0};
+    struct msghdr hdr = {};
 
     EXPECT_FALSE(TrafficForwarder::addVlanTag(buffer, length, hdr));
 

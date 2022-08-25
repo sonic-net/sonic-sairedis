@@ -54,7 +54,7 @@ int SwitchStateBase::vs_create_tap_device(
         return -1;
     }
 
-    struct ifreq ifr = {0};
+    struct ifreq ifr = {};
 
     ifr.ifr_flags = (short int)flags;  // IFF_TUN or IFF_TAP, IFF_NO_PI
 
@@ -236,7 +236,7 @@ int SwitchStateBase::ifup(
         return -1;
     }
 
-    struct ifreq ifr = {0};
+    struct ifreq ifr = {};
 
     strncpy(ifr.ifr_name, dev , MAX_INTERFACE_NAME_LEN);
 
@@ -301,7 +301,7 @@ int SwitchStateBase::promisc(
         return -1;
     }
 
-    struct ifreq ifr = {0};
+    struct ifreq ifr = {};
 
     strncpy(ifr.ifr_name, dev , MAX_INTERFACE_NAME_LEN);
 
@@ -455,7 +455,7 @@ bool SwitchStateBase::hostif_create_tap_veth_forwarding(
 
     // bind to device
 
-    struct sockaddr_ll sock_address = {0};
+    struct sockaddr_ll sock_address = {};
 
     sock_address.sll_family = PF_PACKET;
     sock_address.sll_protocol = htons(ETH_P_ALL);
