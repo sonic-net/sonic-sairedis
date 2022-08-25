@@ -54,7 +54,7 @@ TEST(Meta, quad_mcast_fdb_entry)
     attrs[1].id = SAI_MCAST_FDB_ENTRY_ATTR_PACKET_ACTION;
     attrs[1].value.s32 = SAI_PACKET_ACTION_FORWARD;
 
-    sai_mcast_fdb_entry_t e = {0};
+    sai_mcast_fdb_entry_t e = {};
 
     e.bv_id = vlanId;
     e.switch_id = switchId;
@@ -101,7 +101,7 @@ TEST(Meta, quad_l2mc_entry)
     attr.id = SAI_L2MC_ENTRY_ATTR_PACKET_ACTION;
     attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
 
-    sai_l2mc_entry_t e = {0};
+    sai_l2mc_entry_t e = {};
 
     e.bv_id = vlanId;
     e.switch_id = switchId;
@@ -143,7 +143,7 @@ TEST(Meta, quad_inseg_entry)
     attr.id = SAI_L2MC_ENTRY_ATTR_PACKET_ACTION;
     attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
 
-    sai_inseg_entry_t e = {0};
+    sai_inseg_entry_t e = {};
 
     e.switch_id = switchId;
     e.label = 1;
@@ -182,7 +182,7 @@ TEST(Meta, quad_nat_entry)
     attr.id = SAI_NAT_ENTRY_ATTR_NAT_TYPE;
     attr.value.s32 = SAI_NAT_TYPE_NONE;
 
-    sai_nat_entry_t e = {0};
+    sai_nat_entry_t e = {};
 
     e.switch_id = switchId;
     e.vr_id = vrId;
@@ -230,7 +230,7 @@ TEST(Meta, quad_impc_entry)
     attrs[1].id = SAI_IPMC_ENTRY_ATTR_RPF_GROUP_ID;
     attrs[1].value.oid = rpfGroupId;
 
-    sai_ipmc_entry_t e = {0};
+    sai_ipmc_entry_t e = {};
 
     e.switch_id = switchId;
     e.vr_id = vrId;
@@ -572,7 +572,7 @@ TEST(Meta, quad_my_sid_entry)
     attrs[0].id = SAI_MY_SID_ENTRY_ATTR_ENDPOINT_BEHAVIOR;
     attrs[0].value.s32 = SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_E;
 
-    sai_my_sid_entry_t e = {0};
+    sai_my_sid_entry_t e = {};
 
     e.switch_id = switchId;
     e.vr_id = vrId;
@@ -617,7 +617,7 @@ TEST(Meta, quad_bulk_route_entry)
 
     // create
 
-    sai_route_entry_t e[2] = {0};
+    sai_route_entry_t e[2] = {};
 
     e[0].switch_id = switchId;
     e[1].switch_id = switchId;
@@ -690,7 +690,7 @@ TEST(Meta, quad_bulk_nat_entry)
 
     // create
 
-    sai_nat_entry_t e[2] = {0};
+    sai_nat_entry_t e[2] = {};
 
     e[0].switch_id = switchId;
     e[1].switch_id = switchId;
@@ -830,7 +830,7 @@ TEST(Meta, quad_bulk_my_sid_entry)
 
     // create
 
-    sai_my_sid_entry_t e[2] = {0};
+    sai_my_sid_entry_t e[2] = {};
 
     e[0].switch_id = switchId;
     e[1].switch_id = switchId;
@@ -909,7 +909,7 @@ TEST(Meta, quad_bulk_inseg_entry)
 
     // create
 
-    sai_inseg_entry_t e[2] = {0};
+    sai_inseg_entry_t e[2] = {};
 
     e[0].switch_id = switchId;
     e[1].switch_id = switchId;

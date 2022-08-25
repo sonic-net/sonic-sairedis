@@ -251,8 +251,8 @@ sai_status_t VirtualSwitchSaiInterface::flushFdbEntries(
 
     SWSS_LOG_NOTICE("generating fdb flush notifications");
 
-    sai_fdb_event_notification_data_t data = {0};
-    sai_attribute_t attrs[2] = {0};
+    sai_fdb_event_notification_data_t data = {};
+    sai_attribute_t attrs[2] = {};
 
     data.event_type             = SAI_FDB_EVENT_FLUSHED;
     data.fdb_entry.switch_id    = switch_id;

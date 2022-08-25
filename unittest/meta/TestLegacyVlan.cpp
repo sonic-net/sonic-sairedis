@@ -139,7 +139,7 @@ TEST(LegacyVlan, vlan_set)
 
     sai_status_t status;
 
-    sai_attribute_t attr = {0};
+    sai_attribute_t attr = {};
 
     sai_attribute_t vlan1_att;
     vlan1_att.id = SAI_VLAN_ATTR_VLAN_ID;
@@ -245,7 +245,7 @@ TEST(LegacyVlan, vlan_get)
     sai_object_id_t switch_id = create_switch();
     sai_status_t status;
 
-    sai_attribute_t attr = {0};
+    sai_attribute_t attr = {};
 
     sai_attribute_t vlan1_att;
     vlan1_att.id = SAI_VLAN_ATTR_VLAN_ID;

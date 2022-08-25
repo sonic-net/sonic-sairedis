@@ -194,7 +194,7 @@ int MdioIpcServer::syncd_ipc_task_main()
     int sock_srv;
     int sock_cli;
     int sock_max;
-    syncd_mdio_ipc_conn_t conn[CONN_MAX] = {0};
+    syncd_mdio_ipc_conn_t conn[CONN_MAX] = {};
     struct sockaddr_un addr = {};
     char path[64];
     fd_set rfds;

@@ -26,7 +26,7 @@ TEST(TrafficForwarder, addVlanTag)
 
     EXPECT_FALSE(TrafficForwarder::addVlanTag(buffer, length, hdr));
 
-    control p = {0};
+    control p = {};
 
     hdr.msg_controllen = sizeof(p);
     hdr.msg_control = &p;

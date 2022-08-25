@@ -231,7 +231,7 @@ TEST(LegacyFdbEntry, fdb_entry_set)
     clear_local();
 
     sai_status_t    status;
-    sai_attribute_t attr = {0};
+    sai_attribute_t attr = {};
 
     sai_fdb_entry_t fdb_entry = create_fdb_entry();
 
@@ -286,7 +286,7 @@ TEST(LegacyFdbEntry, fdb_entry_get)
     clear_local();
 
     sai_status_t    status;
-    sai_attribute_t attr = {0};
+    sai_attribute_t attr = {};
 
     sai_fdb_entry_t fdb_entry = create_fdb_entry();
 

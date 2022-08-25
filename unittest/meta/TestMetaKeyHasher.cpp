@@ -8,8 +8,8 @@ using namespace saimeta;
 
 TEST(MetaKeyHasher, operator_eq_route_entry)
 {
-    sai_route_entry_t ra = {0};
-    sai_route_entry_t rb = {0};
+    sai_route_entry_t ra = {};
+    sai_route_entry_t rb = {};
 
     sai_object_meta_key_t ma = { .objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY, .objectkey = { .key = { .route_entry = ra } } };
     sai_object_meta_key_t mb = { .objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY, .objectkey = { .key = { .route_entry = rb } } };
@@ -21,8 +21,8 @@ TEST(MetaKeyHasher, operator_eq_route_entry)
 
 TEST(MetaKeyHasher, operator_eq_nat_entry)
 {
-    sai_nat_entry_t ra = {0};
-    sai_nat_entry_t rb = {0};
+    sai_nat_entry_t ra = {};
+    sai_nat_entry_t rb = {};
 
     sai_object_meta_key_t ma = { .objecttype = SAI_OBJECT_TYPE_NAT_ENTRY, .objectkey = { .key = { .nat_entry = ra } } };
     sai_object_meta_key_t mb = { .objecttype = SAI_OBJECT_TYPE_NAT_ENTRY, .objectkey = { .key = { .nat_entry = rb } } };
@@ -34,8 +34,8 @@ TEST(MetaKeyHasher, operator_eq_nat_entry)
 
 TEST(MetaKeyHasher, operator_eq_inseg_entry)
 {
-    sai_inseg_entry_t ra = {0};
-    sai_inseg_entry_t rb = {0};
+    sai_inseg_entry_t ra = {};
+    sai_inseg_entry_t rb = {};
 
     sai_object_meta_key_t ma = { .objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY, .objectkey = { .key = { .inseg_entry = ra } } };
     sai_object_meta_key_t mb = { .objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY, .objectkey = { .key = { .inseg_entry = rb } } };
@@ -47,8 +47,8 @@ TEST(MetaKeyHasher, operator_eq_inseg_entry)
 
 TEST(MetaKeyHasher, operator_eq)
 {
-    sai_object_meta_key_t ma = {0};
-    sai_object_meta_key_t mb = {0};
+    sai_object_meta_key_t ma = {};
+    sai_object_meta_key_t mb = {};
 
     ma.objecttype = SAI_OBJECT_TYPE_ROUTE_ENTRY;
     mb.objecttype = SAI_OBJECT_TYPE_INSEG_ENTRY;
@@ -60,7 +60,7 @@ TEST(MetaKeyHasher, operator_eq)
 
 TEST(MetaKeyHasher, operator_hash)
 {
-    sai_object_meta_key_t ma = {0};
+    sai_object_meta_key_t ma = {};
 
     MetaKeyHasher mh;
 
@@ -95,8 +95,8 @@ TEST(MetaKeyHasher, operator_hash)
 
 TEST(MetaKeyHasher, operator_eq_l2mc)
 {
-    sai_object_meta_key_t ma = {0};
-    sai_object_meta_key_t mb = {0};
+    sai_object_meta_key_t ma = {};
+    sai_object_meta_key_t mb = {};
 
     ma.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
     mb.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
@@ -114,8 +114,8 @@ TEST(MetaKeyHasher, operator_eq_l2mc)
 
 TEST(MetaKeyHasher, operator_eq_ipck)
 {
-    sai_object_meta_key_t ma = {0};
-    sai_object_meta_key_t mb = {0};
+    sai_object_meta_key_t ma = {};
+    sai_object_meta_key_t mb = {};
 
     ma.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;
     mb.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;

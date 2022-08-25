@@ -195,7 +195,7 @@ TEST(Legacy, switch_set)
     clear_local();
 
     sai_status_t    status;
-    sai_attribute_t attr = {0};
+    sai_attribute_t attr = {};
 
     sai_object_id_t switch_id = create_switch();
 
@@ -328,7 +328,7 @@ TEST(Legacy, switch_get)
     clear_local();
 
     sai_status_t    status;
-    sai_attribute_t attr = {0};
+    sai_attribute_t attr = {};
 
     sai_object_id_t switch_id = create_switch();
 
@@ -738,7 +738,7 @@ TEST(Legacy, acl_entry_field_and_action)
 
     for (uint32_t i = 0; i < sizeof(ids)/sizeof(int32_t); ++i)
     {
-        sai_attribute_t attr = {0};
+        sai_attribute_t attr = {};
 
         attr.value.aclfield.enable = true;
         attr.value.aclaction.enable = true;
