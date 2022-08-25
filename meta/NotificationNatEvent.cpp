@@ -72,9 +72,6 @@ sai_object_id_t NotificationNatEvent::getAnyObjectId() const
         {
             return nat.vr_id;
         }
-
-        // TODO check attribute list
-        SWSS_LOG_WARN("check attribute list for any object id, FIXME");
     }
 
     return SAI_NULL_OBJECT_ID;
