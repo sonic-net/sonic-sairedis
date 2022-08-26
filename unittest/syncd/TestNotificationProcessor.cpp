@@ -1,9 +1,9 @@
 #include "VirtualOidTranslator.h"
+#include "RedisNotificationProducer.h"
+#include "NotificationProcessor.h"
 #include "lib/RedisVidIndexGenerator.h"
 #include "lib/sairediscommon.h"
 #include "vslib/Sai.h"
-#include "NotificationProcessor.h"
-#include "RedisNotificationProducer.h"
 
 #include <gtest/gtest.h>
 
@@ -36,9 +36,18 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     EXPECT_NE(translator, nullptr);
     notificationProcessor->m_translator = translator;
 
-    // Check NAT notification
+    // Check NAT notification without RIDs
     std::vector<swss::FieldValueTuple> natEntry;
     swss::KeyOpFieldsValuesTuple natFV(SAI_SWITCH_NOTIFICATION_NAME_NAT_EVENT, natData, natEntry);
     notificationProcessor->syncProcessNotification(natFV);
+
+    // Check NAT notification with RIDs present
+    translator->insertRidAndVid(0x21000000000000,0x210000000000);
+    translator->insertRidAndVid(0x3000000000048,0x30000000048);
+
+    notificationProcessor->syncProcessNotification(natFV);
+
+    translator->eraseRidAndVid(0x21000000000000,0x210000000000);
+    translator->eraseRidAndVid(0x3000000000048,0x30000000048);
 }
 
