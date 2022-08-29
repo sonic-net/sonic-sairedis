@@ -20,6 +20,9 @@ static std::string null =
 
 static std::string fullnull = "[]";
 
+static std::string none =
+"[{\"nat_entry\":\"{\\\"nat_data\\\":{\\\"key\\\":{\\\"dst_ip\\\":\\\"10.10.10.10\\\",\\\"l4_dst_port\\\":\\\"20006\\\",\\\"l4_src_port\\\":\\\"0\\\",\\\"proto\\\":\\\"6\\\",\\\"src_ip\\\":\\\"0.0.0.0\\\"},\\\"mask\\\":{\\\"dst_ip\\\":\\\"255.255.255.255\\\",\\\"l4_dst_port\\\":\\\"65535\\\",\\\"l4_src_port\\\":\\\"0\\\",\\\"proto\\\":\\\"255\\\",\\\"src_ip\\\":\\\"0.0.0.0\\\"}},\\\"nat_type\\\":\\\"SAI_NAT_TYPE_DESTINATION_NAT\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\",\\\"vr\\\":\\\"oid:0x3000000000048\\\"}\",\"nat_event\":\"SAI_NAT_EVENT_NONE\"}]";
+
 TEST(NotificationNatEvent, ctr)
 {
     NotificationNatEvent n(s);
@@ -61,6 +64,9 @@ TEST(NotificationNatEvent, processMetadata)
     auto meta = std::make_shared<Meta>(sai);
 
     n.processMetadata(meta);
+
+    NotificationNatEvent n4(none);
+    n4.processMetadata(meta);
 }
 
 static void on_nat_event(
