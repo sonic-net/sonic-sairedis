@@ -150,7 +150,7 @@ jobs:
       set -ex
       rm ../*.deb || true
       ./autogen.sh
-      DEB_BUILD_OPTIONS=nocheck DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' dpkg-buildpackage -us -uc -b -P syncd,vs -j$(nproc)
+      DEB_BUILD_OPTIONS=nocheck DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' dpkg-buildpackage -us -uc -b -Psyncd,vs -j$(nproc)
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
