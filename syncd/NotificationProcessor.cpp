@@ -162,6 +162,13 @@ void NotificationProcessor::redisPutFdbEntryToAsicView(
 
     if (fdb->event_type == SAI_FDB_EVENT_LEARNED || fdb->event_type == SAI_FDB_EVENT_MOVE)
     {
+        if (fdb->event_type == SAI_FDB_EVENT_MOVE)
+        {
+            SWSS_LOG_DEBUG("remove fdb entry %s for SAI_FDB_EVENT_MOVE",
+                    sai_serialize_object_meta_key(metaKey).c_str());
+
+            m_client->removeAsicObject(metaKey);
+        }
         // currently we need to add type manually since fdb event don't contain type
         sai_attribute_t attr;
 
