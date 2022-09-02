@@ -25,6 +25,7 @@
 #include <linux/if.h>
 
 #include <algorithm>
+#include <fstream>
 
 using namespace saivs;
 
@@ -869,6 +870,44 @@ bool SwitchStateBase::hasIfIndex(
     }
 
     return false;
+}
+
+bool SwitchStateBase::vs_get_oper_speed(
+        _In_ sai_object_id_t port_id,
+        _Out_ uint32_t& speed)
+
+{
+    SWSS_LOG_ENTER();
+
+    auto info = findHostInterfaceInfoByPort(port_id);
+
+    if (!info)
+    {
+        SWSS_LOG_ERROR("Port %s don't exists",
+            sai_serialize_object_id(port_id).c_str());
+
+        return false;
+    }
+
+    auto veth_name = vs_get_veth_name(info->m_name, port_id);
+    std::string veth_speed_filename = "/sys/class/net/";
+
+    veth_speed_filename += veth_name;
+    veth_speed_filename += "/speed";
+
+    std::ifstream ifs(veth_speed_filename);
+
+    if (!ifs.is_open())
+    {
+        SWSS_LOG_ERROR("Failed to open %s", veth_speed_filename.c_str());
+
+        return false;
+    }
+
+    ifs >> speed;
+    ifs.close();
+
+    return true;
 }
 
 void SwitchStateBase::syncOnLinkMsg(
