@@ -19,6 +19,8 @@ extraction:
       - autoconf-archive
       - libgtest-dev
       - libgmock-dev
+      - uuid
+      - uuid-dev
     after_prepare:
       - ls -l
       - git clone https://github.com/Azure/sonic-swss-common; pushd sonic-swss-common; ./autogen.sh; fakeroot dpkg-buildpackage -us -uc -b; popd
