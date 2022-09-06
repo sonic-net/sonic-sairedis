@@ -3035,7 +3035,8 @@ sai_status_t SwitchStateBase::initialize_voq_switch_objects(
                 {
                     // Switch is not being set as VOQ type.
                     SWSS_LOG_NOTICE("initialize_voq_switch_objects the value is %d", attr_list[i].value.u32);
-                    if (attr_list[i].value.u32 == SAI_SWITCH_TYPE_FABRIC) {
+                    if (attr_list[i].value.u32 == SAI_SWITCH_TYPE_FABRIC)
+                    {
                        SWSS_LOG_NOTICE("about to config fabric ports");
                        if (m_switchConfig->m_fabricLaneMap)
                        {
