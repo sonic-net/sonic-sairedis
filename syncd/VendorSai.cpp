@@ -672,7 +672,7 @@ sai_status_t VendorSai::bulkGetStats(
             mode,
             object_statuses,
             counters);
-#else
+#else // For vendors do not support this API
     return SAI_STATUS_NOT_IMPLEMENTED;
 #endif
 }
@@ -701,7 +701,7 @@ sai_status_t VendorSai::bulkClearStats(
             counter_ids,
             mode,
             object_statuses);
-#else
+#else // For vendors do not support this API
     return SAI_STATUS_NOT_IMPLEMENTED;
 #endif
 }
