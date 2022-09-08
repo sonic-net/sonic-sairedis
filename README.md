@@ -1,7 +1,16 @@
+*static analysis:*
+
 [![Total alerts](https://img.shields.io/lgtm/alerts/g/Azure/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Azure/sonic-sairedis/alerts/)
 [![Language grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/Azure/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Azure/sonic-sairedis/context:cpp)
 
-VS[![Build Status](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/sonic-sairedis-build/)
+*sairedis builds:*
+
+[![master build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=master&label=master)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=master)
+[![202205 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=202205&label=202205)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=202205)
+[![202111 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=202111&label=202111)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=202111)
+[![202106 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=202106&label=202106)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=202106)
+[![202012 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=202012&label=202012)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=202012)
+[![201911 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=201911&label=201911)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=201911)
 
 # SONiC - SAI Redis - sairedis
 
