@@ -47,7 +47,7 @@ For your convenience, you can install prepared packages on Debian Jessie:
 
 #### Install from Source
 
-Checkout the source: `git clone https://github.com/Azure/sonic-sairedis.git` and install it yourself.
+Checkout the source: `git clone https://github.com/sonic-net/sonic-sairedis.git` and install it yourself.
 
 You will also need SAI submodule: `git submodule update --init --recursive`
 
@@ -60,7 +60,7 @@ Install prerequisite packages:
 
     sudo apt-get install libswsscommon libswsscommon-dev libhiredis-dev libzmq3-dev libpython-dev
 
-Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest sonic-buildimage Jenkins build: https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/buildimage-vs-all/lastSuccessfulBuild/artifact/target/debs/buster/.
+> Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest [sonic-buildimage build](https://sonic-build.azurewebsites.net/api/sonic/artifacts?branchName=master&platform=vs&format=zip&target=target%2Fdebs%2Fbuster).
 
 Install SAI dependencies:
 
@@ -85,13 +85,13 @@ If you do not have libsai, you can build a debian package using:
 ## Need Help?
 
 For general questions, setup help, or troubleshooting:
-- [sonicproject on Google Groups](https://groups.google.com/d/forum/sonicproject)
+- [sonicproject on Google Groups](https://groups.google.com/g/sonicproject)
 
 For bug reports or feature requests, please open an Issue.
 
 ## Contribution guide
 
-See the [contributors guide](https://github.com/Azure/SONiC/blob/gh-pages/CONTRIBUTING.md) for information about how to contribute.
+See the [contributors guide](https://github.com/sonic-net/SONiC/wiki/Becoming-a-contributor) for information about how to contribute.
 
 ### GitHub Workflow
 
@@ -125,4 +125,3 @@ For example:
 * Push your changes to your private fork and do "pull-request" to this repository
 * Use a pull request to do code review
 * Use issues to keep track of what is going on
-
