@@ -39,6 +39,9 @@ parameters:
   type: boolean
   default: false
 
+- name: debian_version
+  type: string
+
 jobs:
 - job:
   displayName: ${{ parameters.arch }}
