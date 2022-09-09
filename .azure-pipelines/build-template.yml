@@ -98,6 +98,23 @@ jobs:
     inputs:
       source: specific
       project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+    displayName: "Download libyang from common lib"
+  - script: |
+      set -ex
+      sudo dpkg -i $(find ./download -name *.deb)
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install libyang from common lib"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
       pipeline: Azure.sonic-swss-common
       artifact: ${{ parameters.swss_common_artifact_name }}
       runVersion: 'latestFromBranch'
