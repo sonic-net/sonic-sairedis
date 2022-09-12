@@ -207,6 +207,8 @@ AC_MSG_ERROR("SAI headers API version and library version mismatch")])])
 CXXFLAGS="$SAVED_FLAGS"
 ])])
 
+AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats)
+
 AC_OUTPUT(Makefile
           meta/Makefile
           lib/Makefile
