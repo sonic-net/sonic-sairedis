@@ -165,6 +165,9 @@ namespace saivs
             virtual sai_status_t refresh_port_serdes_id(
                     _In_ sai_object_id_t bridge_id);
 
+            virtual sai_status_t refresh_port_oper_speed(
+                    _In_ sai_object_id_t port_id);
+
         public:
 
             virtual sai_status_t warm_boot_initialize_objects();
@@ -485,6 +488,10 @@ namespace saivs
 
             bool hasIfIndex(
                     _In_ int ifIndex) const;
+
+            bool vs_get_oper_speed(
+                    _In_ sai_object_id_t port_id,
+                    _Out_ uint32_t& speed);
 
         public: // TODO move inside warm boot load state
 

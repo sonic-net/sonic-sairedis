@@ -2200,6 +2200,36 @@ sai_status_t SwitchStateBase::refresh_port_serdes_id(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::refresh_port_oper_speed(
+                    _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+
+    if (attr.value.s32 == SAI_PORT_OPER_STATUS_DOWN)
+    {
+        attr.value.u32 = 0;
+    }
+    else
+    {
+        if (!vs_get_oper_speed(port_id, attr.value.u32))
+        {
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 // XXX extra work may be needed on GET api if N on list will be > then actual
 
 /*
@@ -2312,6 +2342,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
 
             case SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE:
                 return SAI_STATUS_SUCCESS;
+
+            case SAI_PORT_ATTR_OPER_SPEED:
+                return refresh_port_oper_speed(object_id);
         }
     }
 
@@ -3001,6 +3034,16 @@ sai_status_t SwitchStateBase::initialize_voq_switch_objects(
                 if (attr_list[i].value.u32 != SAI_SWITCH_TYPE_VOQ)
                 {
                     // Switch is not being set as VOQ type.
+                    SWSS_LOG_NOTICE("initialize_voq_switch_objects the value is %d", attr_list[i].value.u32);
+                    if (attr_list[i].value.u32 == SAI_SWITCH_TYPE_FABRIC)
+                    {
+                       SWSS_LOG_NOTICE("about to config fabric ports");
+                       if (m_switchConfig->m_fabricLaneMap)
+                       {
+                          CHECK_STATUS(create_fabric_ports());
+                          CHECK_STATUS(set_fabric_port_list());
+                       }
+                    }
                     return SAI_STATUS_SUCCESS;
                 }
                 else

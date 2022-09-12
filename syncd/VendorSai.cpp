@@ -661,6 +661,7 @@ sai_status_t VendorSai::bulkGetStats(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
+#ifdef HAVE_SAI_BULK_OBJECT_GET_STATS
     return sai_bulk_object_get_stats(
             switchId,
             object_type,
@@ -671,6 +672,9 @@ sai_status_t VendorSai::bulkGetStats(
             mode,
             object_statuses,
             counters);
+#else // For vendors do not support this API
+    return SAI_STATUS_NOT_IMPLEMENTED;
+#endif
 }
 
 sai_status_t VendorSai::bulkClearStats(
@@ -687,6 +691,7 @@ sai_status_t VendorSai::bulkClearStats(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
+#ifdef HAVE_SAI_BULK_OBJECT_CLEAR_STATS
     return sai_bulk_object_clear_stats(
             switchId,
             object_type,
@@ -696,6 +701,9 @@ sai_status_t VendorSai::bulkClearStats(
             counter_ids,
             mode,
             object_statuses);
+#else // For vendors do not support this API
+    return SAI_STATUS_NOT_IMPLEMENTED;
+#endif
 }
 
 // BULK QUAD OID
