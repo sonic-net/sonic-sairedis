@@ -50,4 +50,3 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->eraseRidAndVid(0x21000000000000,0x210000000000);
     translator->eraseRidAndVid(0x3000000000048,0x30000000048);
 }
-

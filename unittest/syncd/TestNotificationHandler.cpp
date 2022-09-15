@@ -30,4 +30,3 @@ TEST(NotificationHandler, NotificationHandlerTest)
     sai_deserialize_nat_event_ntf(natData, count, &natevent);
     notificationHandler->onNatEvent(count, natevent);
 }
-
