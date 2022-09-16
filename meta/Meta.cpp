@@ -7611,6 +7611,9 @@ void Meta::meta_sai_on_nat_event_single(
                         sai_serialize_object_meta_key(meta_key_nat).c_str());
                 break;
             }
+            // meta_generic_validation_post_remove is not done at this point
+            // as Natorch will be performing the cleanup for both Aging and
+            // Hitbit implementations.
 
             break;
 
