@@ -7612,8 +7612,8 @@ void Meta::meta_sai_on_nat_event_single(
                 break;
             }
             // meta_generic_validation_post_remove is not done at this point
-            // as Natorch will be performing the cleanup for both Aging and
-            // Hitbit implementations.
+            // as Nat-orch will be performing the cleanup for both Aging and
+            // Hit-bit implementations.
 
             break;
 
