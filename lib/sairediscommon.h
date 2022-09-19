@@ -68,6 +68,11 @@
 #define REDIS_TABLE_NOTIFICATIONS   "NOTIFICATIONS"
 
 /**
+ * @brief Table which will be used to forward notifications from gbsyncd.
+ */
+#define REDIS_TABLE_GBNOTIFICATIONS "GBNOTIFICATIONS"
+
+/**
  * @brief Table which will be used to send API response from syncd.
  */
 #define REDIS_TABLE_GETRESPONSE     "GETRESPONSE"
