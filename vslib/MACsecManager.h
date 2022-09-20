@@ -44,7 +44,9 @@ namespace saivs
                     _In_ const MACsecAttr &attr,
                     _Out_ sai_uint64_t &pn) const;
 
-        private:
+            void cleanup_macsec_device() const;
+
+        protected:
 
             bool create_macsec_egress_sc(
                     _In_ const MACsecAttr &attr);
@@ -122,12 +124,10 @@ namespace saivs
                     _In_ sai_int32_t direction,
                     _In_ const std::string &sci) const;
 
-            void cleanup_macsec_device() const;
-
             std::string shellquote(
                     _In_ const std::string &str) const;
 
-            bool exec(
+            virtual bool exec(
                     _In_ const std::string &command,
                     _Out_ std::string &output) const;
 

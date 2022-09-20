@@ -80,3 +80,28 @@ TEST(libsairedis, sai_query_stats_capability)
 {
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_query_stats_capability(0,SAI_OBJECT_TYPE_NULL,0));
 }
+
+TEST(libsairedis, sai_bulk_object_get_stats)
+{
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_bulk_object_get_stats(SAI_NULL_OBJECT_ID,
+                                                                    SAI_OBJECT_TYPE_PORT,
+                                                                    0,
+                                                                    nullptr,
+                                                                    0,
+                                                                    nullptr,
+                                                                    SAI_STATS_MODE_BULK_READ,
+                                                                    nullptr,
+                                                                    nullptr));
+}
+
+TEST(libsairedis, sai_bulk_object_clear_stats)
+{
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_bulk_object_clear_stats(SAI_NULL_OBJECT_ID,
+                                                                      SAI_OBJECT_TYPE_PORT,
+                                                                      0,
+                                                                      nullptr,
+                                                                      0,
+                                                                      nullptr,
+                                                                      SAI_STATS_MODE_BULK_CLEAR,
+                                                                      nullptr));
+}

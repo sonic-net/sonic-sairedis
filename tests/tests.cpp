@@ -11,6 +11,8 @@
 
 #include "meta/sai_serialize.h"
 
+#include <unistd.h>
+#include <signal.h>
 #include <thread>
 #include <memory>
 
@@ -18,6 +20,18 @@ using namespace syncd;
 using namespace sairedis;
 
 #define ASSERT_EQ(a,b) if ((a) != (b)) { SWSS_LOG_THROW("ASSERT EQ FAILED: " #a " != " #b); }
+
+#define ASSERT_THROW(a,b)                      \
+    try {                                      \
+        a;                                     \
+        SWSS_LOG_ERROR("ASSERT_THROW FAILED"); \
+        exit(1);                               \
+    }                                          \
+    catch(const b &e) {                        \
+    }                                          \
+    catch(...) {                               \
+        SWSS_LOG_THROW("ASSERT_THROW FAILED"); \
+    }
 
 /*
  * Test if destructor proper clean and join zeromq socket and context, and
@@ -86,13 +100,54 @@ static void test_zeromqchannel_first_notification()
     }
 }
 
+void send_signals()
+{
+    SWSS_LOG_ENTER();
+    pid_t pid = getpid();
+    for (int i = 0; i < 11; ++i)
+    {
+        sleep(1);
+        kill(pid, SIGHUP);
+    }
+};
+
+/*
+ * Test if runtime_error will be thrown if zmq wait reaches max retry due to
+ * signal interrupt.
+ */
+static void test_zeromqchannel_eintr_errno_on_wait()
+{
+    SWSS_LOG_ENTER();
+
+    std::cout << " * " << __FUNCTION__ << std::endl;
+
+    ZeroMQChannel z("ipc:///tmp/feeds1", "ipc:///tmp/feeds2", nullptr);
+    z.setResponseTimeout(60000);
+
+    std::thread signal_thread(send_signals);
+
+    swss::KeyOpFieldsValuesTuple kco;
+    ASSERT_THROW(z.wait("foo", kco), std::runtime_error);
+
+    signal_thread.join();
+}
+
+void sighup_handler(int signo)
+{
+    SWSS_LOG_ENTER();
+}
+
 int main()
 {
     SWSS_LOG_ENTER();
 
+    signal(SIGHUP, sighup_handler);
+
     test_zeromqchannel_destructor();
 
     test_zeromqchannel_first_notification();
+
+    test_zeromqchannel_eintr_errno_on_wait();
 
     return 0;
 }

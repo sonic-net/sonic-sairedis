@@ -274,6 +274,9 @@ sai_status_t SwitchBCM81724::refresh_read_only(
 
             case SAI_PORT_ATTR_OPER_STATUS:
                 return SAI_STATUS_SUCCESS;
+
+            case SAI_PORT_ATTR_OPER_SPEED:
+                return refresh_port_oper_speed(object_id);
         }
     }
 

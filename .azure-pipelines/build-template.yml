@@ -39,6 +39,9 @@ parameters:
   type: boolean
   default: false
 
+- name: debian_version
+  type: string
+
 jobs:
 - job:
   displayName: ${{ parameters.arch }}
@@ -56,6 +59,7 @@ jobs:
 
   container:
     image: sonicdev-microsoft.azurecr.io:443/${{ parameters.sonic_slave }}:latest
+    options:  "--privileged"
 
   steps:
   - checkout: self
@@ -94,6 +98,38 @@ jobs:
 
     displayName: "Install dependencies"
   - task: DownloadPipelineArtifact@2
+    # amd64 artifact name does not has arch suffix
+    condition: eq('${{ parameters.arch }}', 'amd64')
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+    displayName: "Download libyang from amd64 common lib"
+  - task: DownloadPipelineArtifact@2
+    condition: ne('${{ parameters.arch }}', 'amd64')
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib.${{ parameters.arch }}
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+    displayName: "Download libyang from common lib"
+  - script: |
+      set -ex
+      sudo dpkg -i $(find ./download -name *.deb)
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install libyang from common lib"
+  - task: DownloadPipelineArtifact@2
     inputs:
       source: specific
       project: build
@@ -114,7 +150,7 @@ jobs:
       set -ex
       rm ../*.deb || true
       ./autogen.sh
-      fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
@@ -134,6 +170,8 @@ jobs:
       displayName: "Install gcovr 5.0 with recursive fix"
     - script: |
         set -ex
+        # Add SYS_TIME capability for settimeofday ok in syncd test
+        sudo setcap "cap_sys_time=eip" syncd/.libs/tests
         make check
         gcovr --version
         find SAI/meta -name "*.gc*" | xargs rm -vf

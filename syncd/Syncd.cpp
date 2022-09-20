@@ -106,6 +106,7 @@ Syncd::Syncd(
     // we need STATE_DB ASIC_DB and COUNTERS_DB
 
     m_dbAsic = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbAsic, 0);
+    m_mdioIpcServer = std::make_shared<MdioIpcServer>(m_vendorSai, m_commandLineOptions->m_globalContext);
 
     if (m_contextConfig->m_zmqEnable)
     {
@@ -203,9 +204,9 @@ void Syncd::performStartupLogic()
 {
     SWSS_LOG_ENTER();
 
-    // ignore warm logic here if syncd starts in Mellanox fastfast boot mode
+    // ignore warm logic here if syncd starts in fast-boot or Mellanox fastfast boot mode
 
-    if (m_isWarmStart && (m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT))
+    if (m_isWarmStart && m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT && m_commandLineOptions->m_startType != SAI_START_TYPE_FAST_BOOT)
     {
         SWSS_LOG_WARN("override command line startType=%s via SAI_START_TYPE_WARM_BOOT",
                 CommandLineOptions::startTypeToString(m_commandLineOptions->m_startType).c_str());
@@ -2612,6 +2613,8 @@ sai_status_t Syncd::processOidCreate(
 
             m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai);
 
+            m_mdioIpcServer->setSwitchId(objectRid);
+
             startDiagShell(objectRid);
         }
 
@@ -3896,6 +3899,8 @@ void Syncd::onSwitchCreateInInitViewMode(
 
         m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai);
 
+        m_mdioIpcServer->setSwitchId(switchRid);
+
         startDiagShell(switchRid);
     }
     else
@@ -4494,6 +4499,13 @@ void Syncd::run()
         // notification queue is created before we create switch
         m_processor->startNotificationsProcessingThread();
 
+        for (auto& sw: m_switches)
+        {
+            m_mdioIpcServer->setSwitchId(sw.second->getRid());
+        }
+
+        m_mdioIpcServer->startMdioThread();
+
         SWSS_LOG_NOTICE("syncd listening for events");
 
         s->addSelectable(m_selectableChannel.get());
@@ -4677,6 +4689,8 @@ void Syncd::run()
     }
 
     m_manager->removeAllCounters();
+
+    m_mdioIpcServer->stopMdioThread();
 
     sai_status_t status = removeAllSwitches();
 

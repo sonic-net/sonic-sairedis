@@ -26,8 +26,10 @@ else
     CMD_ARGS=
 fi
 
-# Use temporary view between init and apply
-CMD_ARGS+=" -u"
+# Use temporary view between init and apply except when in fast-reboot
+if [[ "$(cat /proc/cmdline)" != *"SONIC_BOOT_TYPE=fast-reboot"* ]]; then
+    CMD_ARGS+=" -u"
+fi
 
 # Use bulk APIs in SAI
 # currently disabled since most vendors don't support that yet
@@ -90,6 +92,14 @@ config_syncd_cisco_8000()
 {
     export BASE_OUTPUT_DIR=/opt/cisco/silicon-one
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+
+    # Cisco SDK debug shell support
+    version=$(python3 -V 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\.\2/')
+    if [ ! -z "$version" ]; then
+        export SAI_SHELL_ENABLE=1
+        export SAI_DEBUG_PYTHON_SO_PATH=/usr/lib/python${version}/config-${version}m-x86_64-linux-gnu/libpython${version}m.so
+        export PYTHONPATH=/usr/lib/cisco/pylib
+    fi
 }
 
 config_syncd_bcm()
@@ -167,6 +177,7 @@ config_syncd_bcm()
     fi
 
     echo "SAI_OBJECT_TYPE_ACL_TABLE" >> /tmp/break_before_make_objects
+    echo "SAI_OBJECT_TYPE_TUNNEL" >> /tmp/break_before_make_objects
     CMD_ARGS+=" -b /tmp/break_before_make_objects"
 
     [ -e /dev/linux-bcm-knet ] || mknod /dev/linux-bcm-knet c 122 0
@@ -239,12 +250,24 @@ config_syncd_barefoot()
         echo "SAI_KEY_WARM_BOOT_READ_FILE=/var/warmboot/sai-warmboot.bin" >> $PROFILE_FILE
     fi
     CMD_ARGS+=" -l -p $PROFILE_FILE"
-
-    # Check and load SDE profile
+    # Check if SDE profile is configured
     P4_PROFILE=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["p4_profile"]')
     if [[ -n "$P4_PROFILE" ]]; then
         if [[ ( -d /opt/bfn/install_${P4_PROFILE} ) && ( -L /opt/bfn/install || ! -e /opt/bfn/install ) ]]; then
             ln -srfn /opt/bfn/install_${P4_PROFILE} /opt/bfn/install
+        fi
+    else
+        CHIP_FAMILY_INFO="$(cat $HWSKU_DIR/switch-tna-sai.conf | grep chip_family | awk -F : '{print $2}' | cut -d '"'  -f 2)"
+        CHIP_FAMILY=${CHIP_FAMILY_INFO,,}
+        [[ "$CHIP_FAMILY" == "tofino" ]] && P4_PTYPE="x" || P4_PTYPE="y"
+        # Check if the current profile fits the ASIC family
+        PROFILE_DEFAULT=$(readlink /opt/bfn/install)
+        if [[ "$PROFILE_DEFAULT" != "install_$P4_PTYPE"*"_profile" && "$PROFILE_DEFAULT" != *"_$CHIP_FAMILY"  ]]; then
+            # Find suitable profile
+            PROFILE=$(ls -d /opt/bfn/install_$P4_PTYPE*_profile -d  /opt/bfn/install_*_$CHIP_FAMILY 2> /dev/null | head -1)
+            if [[ ! -z $PROFILE  ]]; then
+                ln -srfn $PROFILE /opt/bfn/install
+            fi
         fi
     fi
     export PYTHONHOME=/opt/bfn/install/
@@ -279,6 +302,55 @@ config_syncd_innovium()
     mkdir -p $II_ROOT
 }
 
+config_syncd_xsight()
+{
+    SYS_MODE="asic"
+    CFG_FILE="/etc/sonic/xlink.cfg"
+    LABEL_REVISION_FILE="/etc/sonic/hw_revision"
+    ONIE_MACHINE=`sed -n -e 's/^.*onie_machine=//p' /etc/machine.conf`
+
+    ln -sf /usr/share/sonic/hwsku/xdrv_config.json /etc/xsight/xdrv_config.json
+    ln -sf /usr/share/sonic/hwsku/xlink_cfg.json /etc/xsight/xlink_cfg.json
+    ln -sf /usr/share/sonic/hwsku/lanes_polarity.json /etc/xsight/lanes_polarity.json
+
+    if [ -f  ${LABEL_REVISION_FILE} ]; then
+        LABEL_REVISION=`cat ${LABEL_REVISION_FILE}`
+        if [[ x${LABEL_REVISION} == x"R0B" ]] || [[ x${LABEL_REVISION} == x"R0B2" ]]; then
+            ln -sf /etc/xsight/serdes_config_A0.json /etc/xsight/serdes_config.json
+        else
+            ln -sf /etc/xsight/serdes_config_A1.json /etc/xsight/serdes_config.json
+        fi
+    fi
+
+    #export XLOG_DEBUG="XSW SAI SAI-HOST XHAL-TBL XHAL-LKP XHAL-LPM XHAL-TCAM XHAL-DTE XHAL-RNG XHAL-SP XHAL-RPC"
+    export XLOG_SYSLOG=ALL
+    export XLOG_LEVEL=ERROR
+    #export XLOG_FILE="/tmp/xsai.log"
+
+    #ports for XCLI Thrift client
+    export SAI_RPC_PORT=31000
+    export XSW_RPC_PORT=31001
+    export XHAL_RPC_PORT=31002
+
+    if [[ ${ONIE_MACHINE,,} != *"kvm"* ]]; then
+        # Working on HW box. Determine what to run XBM/ASIC
+        if [[ -f ${CFG_FILE} ]]; then
+            SYS_MODE=`sed -n -e 's/^.*sys_mode[[:blank:]]*=[[:blank:]]*//p' ${CFG_FILE}`
+        fi
+    else
+        SYS_MODE="xbm"
+    fi
+
+    if [[ ${SYS_MODE,,} == "xbm" ]]; then
+        rm -f /xbm/log/*
+        /xbm/run_xbm.sh &
+    else
+        export XDRV_PLUGIN_SO=libxpci_drv_plugin.so
+    fi
+
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
 config_syncd()
 {
     check_warm_boot
@@ -306,6 +378,8 @@ config_syncd()
         config_syncd_innovium
     elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
         config_syncd_soda
+    elif [ "$SONIC_ASIC_TYPE" == "xsight" ]; then
+        config_syncd_xsight
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1

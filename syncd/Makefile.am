@@ -23,6 +23,7 @@ libSyncd_a_SOURCES = \
 				FlexCounterManager.cpp \
 				GlobalSwitchId.cpp \
 				HardReiniter.cpp \
+				MdioIpcServer.cpp \
 				MetadataLogger.cpp \
 				NotificationHandler.cpp \
 				NotificationProcessor.cpp \
@@ -71,6 +72,10 @@ syncd_CXXFLAGS += -DSAITHRIFT=yes
 syncd_LDADD += -lrpcserver -lthrift
 endif
 
+if SONIC_ASIC_PLATFORM_BROADCOM
+libSyncd_a_CXXFLAGS += -DMDIO_ACCESS_USE_NPU
+endif
+
 libSyncdRequestShutdown_a_SOURCES = \
 									RequestShutdown.cpp \
 									RequestShutdownCommandLineOptions.cpp \
@@ -86,6 +91,7 @@ syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a $(top_srcdir)/lib/libSa
 
 tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
+tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs
 tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/.libs -lsairedis \
 			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 

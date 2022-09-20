@@ -58,13 +58,14 @@ sai_status_t VendorSai::initialize(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+#ifdef HAVE_SAI_QUERY_API_VERSION
     sai_api_version_t version{};
-    auto status = sai_query_api_version(&version);
-    if (status != SAI_STATUS_SUCCESS)
+    auto api_status = sai_query_api_version(&version);
+    if (api_status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("failed to query SAI API version");
 
-        return status;
+        return api_status;
     }
 
     SWSS_LOG_NOTICE("SAI API version: %" PRId64, version);
@@ -76,10 +77,11 @@ sai_status_t VendorSai::initialize(
 
         return SAI_STATUS_FAILURE;
     }
+#endif
 
     memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
 
-    status = sai_api_initialize(flags, service_method_table);
+    auto status = sai_api_initialize(flags, service_method_table);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -644,6 +646,66 @@ sai_status_t VendorSai::clearStats(
     return ptr(object_id, number_of_counters, counter_ids);
 }
 
+sai_status_t VendorSai::bulkGetStats(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_key_t *object_key,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Inout_ sai_status_t *object_statuses,
+        _Out_ uint64_t *counters)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+#ifdef HAVE_SAI_BULK_OBJECT_GET_STATS
+    return sai_bulk_object_get_stats(
+            switchId,
+            object_type,
+            object_count,
+            object_key,
+            number_of_counters,
+            counter_ids,
+            mode,
+            object_statuses,
+            counters);
+#else // For vendors do not support this API
+    return SAI_STATUS_NOT_IMPLEMENTED;
+#endif
+}
+
+sai_status_t VendorSai::bulkClearStats(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_key_t *object_key,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Inout_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+#ifdef HAVE_SAI_BULK_OBJECT_CLEAR_STATS
+    return sai_bulk_object_clear_stats(
+            switchId,
+            object_type,
+            object_count,
+            object_key,
+            number_of_counters,
+            counter_ids,
+            mode,
+            object_statuses);
+#else // For vendors do not support this API
+    return SAI_STATUS_NOT_IMPLEMENTED;
+#endif
+}
+
 // BULK QUAD OID
 
 sai_status_t VendorSai::bulkCreate(
@@ -1173,6 +1235,70 @@ sai_status_t VendorSai::flushFdbEntries(
     VENDOR_CHECK_API_INITIALIZED();
 
     return m_apis.fdb_api->flush_fdb_entries(switch_id, attr_count, attr_list);
+}
+
+sai_status_t VendorSai::switchMdioRead(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _Out_ uint32_t *reg_val)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    return m_apis.switch_api->switch_mdio_read(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+}
+
+sai_status_t VendorSai::switchMdioWrite(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _In_ const uint32_t *reg_val)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    return m_apis.switch_api->switch_mdio_write(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+}
+
+sai_status_t VendorSai::switchMdioCl22Read(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _Out_ uint32_t *reg_val)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+#if (SAI_API_VERSION >= SAI_VERSION(1, 11, 0))
+    return m_apis.switch_api->switch_mdio_cl22_read(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+#else
+    return m_apis.switch_api->switch_mdio_read(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+#endif
+}
+
+sai_status_t VendorSai::switchMdioCl22Write(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _In_ const uint32_t *reg_val)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+#if (SAI_API_VERSION >= SAI_VERSION(1, 11, 0))
+    return m_apis.switch_api->switch_mdio_cl22_write(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+#else
+    return m_apis.switch_api->switch_mdio_write(switch_id, device_addr, start_reg_addr, number_of_registers, reg_val);
+#endif
 }
 
 // SAI API

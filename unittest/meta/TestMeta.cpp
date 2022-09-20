@@ -1056,3 +1056,25 @@ TEST(Meta, populate)
 
     m.populate(dump);
 }
+
+TEST(Meta, bulkGetClearStats)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, m.bulkGetStats(SAI_NULL_OBJECT_ID,
+                                                         SAI_OBJECT_TYPE_PORT,
+                                                         0,
+                                                         nullptr,
+                                                         0,
+                                                         nullptr,
+                                                         SAI_STATS_MODE_BULK_READ,
+                                                         nullptr,
+                                                         nullptr));
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, m.bulkClearStats(SAI_NULL_OBJECT_ID,
+                                                           SAI_OBJECT_TYPE_PORT,
+                                                           0,
+                                                           nullptr,
+                                                           0,
+                                                           nullptr,
+                                                           SAI_STATS_MODE_BULK_CLEAR,
+                                                           nullptr));
+}
