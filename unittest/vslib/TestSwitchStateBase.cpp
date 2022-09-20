@@ -74,5 +74,5 @@ TEST(SwitchStateBase, initialize_voq_switch)
 
     // Check the result of the initialize_voq_switch_objects
     EXPECT_EQ(SAI_STATUS_SUCCESS,
-              ss.initialize_voq_switch_objects(1, &attr));
+              ss.initialize_voq_switch_objects((uint32_t)attrs.size(), attrs.data()));
 }
