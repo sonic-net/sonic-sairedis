@@ -32,3 +32,21 @@ TEST(SwitchStateBase, initialize_voq_switch_objects)
               ss.initialize_voq_switch_objects(1, &attr));
 }
 
+TEST(SwitchStateBase, initialize_voq_switch)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    SwitchStateBase ss(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_TYPE;
+    attr.value.u32 = SAI_SWITCH_TYPE_VOQ;
+    // Check the result of the initialize_voq_switch_objects
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              ss.initialize_voq_switch_objects(1, &attr));
+}
