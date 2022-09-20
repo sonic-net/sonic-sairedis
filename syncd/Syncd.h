@@ -347,7 +347,7 @@ namespace syncd
             void sendNotifyResponse(
                     _In_ sai_status_t status);
 
-        private: // snoop get response oids
+        public: // snoop get response oids
 
             void snoopGetResponse(
                     _In_ sai_object_type_t object_type,

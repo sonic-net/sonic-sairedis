@@ -12,6 +12,7 @@ tests_SOURCES = main.cpp \
 				TestFlexCounter.cpp \
 				TestVirtualOidTranslator.cpp \
 				TestNotificationQueue.cpp \
+				TestSyncd.cpp \
 				TestVendorSai.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
