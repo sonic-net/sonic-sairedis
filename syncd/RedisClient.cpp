@@ -48,11 +48,20 @@ std::string RedisClient::getRedisLanesKey(
      * NOTE: To support multiple switches LANES needs to be made per switch.
      *
      * return std::string(LANES) + ":" + sai_serialize_object_id(m_switch_vid);
+     *
+     * Only switch with index 0 and global context 0 will have key "LANES" for
+     * backward compatibility. We could convert that during runtime at first
+     * time.
      */
 
     auto index = VidManager::getSwitchIndex(switchVid);
 
     auto context = VidManager::getGlobalContext(switchVid);
+
+    if (index == 0 && context == 0)
+    {
+        return std::string(LANES);
+    }
 
     return (LANES ":") + sai_serialize_object_id(switchVid);
 }
