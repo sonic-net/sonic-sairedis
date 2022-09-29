@@ -95,10 +95,10 @@ libMdioIpcClient_a_SOURCES = MdioIpcClient.cpp
 
 libMdioIpcClient_la_SOURCES = MdioIpcClient.cpp
 
-libMdioIpcClient_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libMdioIpcClient_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS) -Wno-format-truncation
 libMdioIpcClient_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 
-libMdioIpcClient_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libMdioIpcClient_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS) -Wno-format-truncation
 libMdioIpcClient_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 libMdioIpcClient_la_LIBADD = $(CODE_COVERAGE_LIBS)
 
