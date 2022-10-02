@@ -21,7 +21,6 @@ extraction:
       - libgmock-dev
       - uuid
       - uuid-dev
-      - libyang
       - libyang-dev
     after_prepare:
       - ls -l
