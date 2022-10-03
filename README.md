@@ -15,7 +15,8 @@
 # SONiC - SAI Redis - sairedis
 
 ## Description
-The SAI Redis provides a SAI redis service built on top of redis database. It contains two major components: 
+The SAI Redis provides a SAI redis service built on top of redis database. It contains two major components:
+
 1) `SAI library` that puts SAI objects into the redis database.
 2) `syncd` that takes the SAI objects and puts them into the ASIC.
 
