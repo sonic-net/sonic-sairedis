@@ -15,6 +15,7 @@
 # SONiC - SAI Redis - sairedis
 
 ## Description
+
 The SAI Redis provides a SAI redis service built on top of redis database. It contains two major components:
 
 1) `SAI library` that puts SAI objects into the redis database.
@@ -87,6 +88,7 @@ If you do not have libsai, you can build a debian package using:
 ## Need Help?
 
 For general questions, setup help, or troubleshooting:
+
 - [sonicproject on Google Groups](https://groups.google.com/g/sonicproject)
 
 For bug reports or feature requests, please open an Issue.
@@ -94,6 +96,9 @@ For bug reports or feature requests, please open an Issue.
 ## Contribution guide
 
 See the [contributors guide](https://github.com/sonic-net/SONiC/wiki/Becoming-a-contributor) for information about how to contribute.
+
+All contributors must sign an [Individual Contributor License Agreement (ICLA)](https://docs.linuxfoundation.org/lfx/easycla/v2-current/contributors/individual-contributor) before contributions can be accepted. This process is managed by the [Linux Foundation - EasyCLA](https://easycla.lfx.linuxfoundation.org/) and automated
+via a GitHub bot. If the contributor has not yet signed a CLA, the bot will create a comment on the pull request containing a link to electronically sign the CLA.
 
 ### GitHub Workflow
 
