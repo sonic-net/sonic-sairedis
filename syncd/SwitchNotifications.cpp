@@ -47,6 +47,16 @@ void SwitchNotifications::SlotBase::onFdbEvent(
     return m_slots.at(context)->m_handler->onFdbEvent(count,data);
 }
 
+void SwitchNotifications::SlotBase::onNatEvent(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_nat_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onNatEvent(count,data);
+}
+
 void SwitchNotifications::SlotBase::onPortStateChange(
         _In_ int context,
         _In_ uint32_t count,

@@ -21,6 +21,8 @@ extraction:
       - libgmock-dev
       - uuid
       - uuid-dev
+      - libyang-dev
+      - libyang
     after_prepare:
       - ls -l
       - git clone https://github.com/Azure/sonic-swss-common; pushd sonic-swss-common; ./autogen.sh; fakeroot dpkg-buildpackage -us -uc -b; popd

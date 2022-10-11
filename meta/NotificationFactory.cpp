@@ -1,5 +1,6 @@
 #include "NotificationFactory.h"
 #include "NotificationFdbEvent.h"
+#include "NotificationNatEvent.h"
 #include "NotificationPortStateChange.h"
 #include "NotificationQueuePfcDeadlock.h"
 #include "NotificationSwitchShutdownRequest.h"
@@ -19,6 +20,9 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT)
         return std::make_shared<NotificationFdbEvent>(serializedNotification);
+
+    if (name == SAI_SWITCH_NOTIFICATION_NAME_NAT_EVENT)
+        return std::make_shared<NotificationNatEvent>(serializedNotification);
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE)
         return std::make_shared<NotificationPortStateChange>(serializedNotification);

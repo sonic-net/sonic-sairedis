@@ -1,13 +1,25 @@
-[![Total alerts](https://img.shields.io/lgtm/alerts/g/Azure/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Azure/sonic-sairedis/alerts/)
-[![Language grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/Azure/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/Azure/sonic-sairedis/context:cpp)
+*static analysis:*
 
-VS[![Build Status](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/sonic-sairedis-build/badge/icon)](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/sonic-sairedis-build/)
+[![Total alerts](https://img.shields.io/lgtm/alerts/g/sonic-net/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/sonic-net/sonic-sairedis/alerts/)
+[![Language grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/sonic-net/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/sonic-net/sonic-sairedis/context:cpp)
+
+*sairedis builds:*
+
+[![master build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=master&label=master)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=master)
+[![202205 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=202205&label=202205)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=202205)
+[![202111 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=202111&label=202111)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=202111)
+[![202106 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=202106&label=202106)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=202106)
+[![202012 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=202012&label=202012)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=202012)
+[![201911 build](https://dev.azure.com/mssonic/build/_apis/build/status/Azure.sonic-sairedis?branchName=201911&label=201911)](https://dev.azure.com/mssonic/build/_build/latest?definitionId=12&branchName=201911)
 
 # SONiC - SAI Redis - sairedis
 
 ## Description
-The SAI Redis provides a SAI redis service that built on top of redis database. It contains two major components, 1) a SAI library
-that puts SAI objects into the redis database, 2) a syncd that takes the SAI objects and puts them into the ASIC.
+
+The SAI Redis provides a SAI redis service built on top of redis database. It contains two major components:
+
+1) `SAI library` that puts SAI objects into the redis database.
+2) `syncd` that takes the SAI objects and puts them into the ASIC.
 
 ## Getting Started
 
@@ -38,7 +50,7 @@ For your convenience, you can install prepared packages on Debian Jessie:
 
 #### Install from Source
 
-Checkout the source: `git clone https://github.com/Azure/sonic-sairedis.git` and install it yourself.
+Checkout the source: `git clone https://github.com/sonic-net/sonic-sairedis.git` and install it yourself.
 
 You will also need SAI submodule: `git submodule update --init --recursive`
 
@@ -51,7 +63,7 @@ Install prerequisite packages:
 
     sudo apt-get install libswsscommon libswsscommon-dev libhiredis-dev libzmq3-dev libpython-dev
 
-Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest sonic-buildimage Jenkins build: https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/buildimage-vs-all/lastSuccessfulBuild/artifact/target/debs/buster/.
+> Note: libswsscommon-dev requires libnl-3-200-dev, libnl-route-3-200-dev and libnl-nf-3-200-dev version >= 3.5.0. If these are not available via apt repositories, you can get them from the latest [sonic-buildimage build](https://sonic-build.azurewebsites.net/api/sonic/artifacts?branchName=master&platform=vs&format=zip&target=target%2Fdebs%2Fbuster).
 
 Install SAI dependencies:
 
@@ -76,13 +88,17 @@ If you do not have libsai, you can build a debian package using:
 ## Need Help?
 
 For general questions, setup help, or troubleshooting:
-- [sonicproject on Google Groups](https://groups.google.com/d/forum/sonicproject)
+
+- [sonicproject on Google Groups](https://groups.google.com/g/sonicproject)
 
 For bug reports or feature requests, please open an Issue.
 
 ## Contribution guide
 
-See the [contributors guide](https://github.com/Azure/SONiC/blob/gh-pages/CONTRIBUTING.md) for information about how to contribute.
+See the [contributors guide](https://github.com/sonic-net/SONiC/wiki/Becoming-a-contributor) for information about how to contribute.
+
+All contributors must sign an [Individual Contributor License Agreement (ICLA)](https://docs.linuxfoundation.org/lfx/easycla/v2-current/contributors/individual-contributor) before contributions can be accepted. This process is managed by the [Linux Foundation - EasyCLA](https://easycla.lfx.linuxfoundation.org/) and automated
+via a GitHub bot. If the contributor has not yet signed a CLA, the bot will create a comment on the pull request containing a link to electronically sign the CLA.
 
 ### GitHub Workflow
 
@@ -116,4 +132,3 @@ For example:
 * Push your changes to your private fork and do "pull-request" to this repository
 * Use a pull request to do code review
 * Use issues to keep track of what is going on
-

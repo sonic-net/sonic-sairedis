@@ -41,6 +41,10 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ const sai_fdb_event_notification_data_t *data);
 
+            void onNatEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_nat_event_notification_data_t *data);
+
             void onPortStateChange(
                     _In_ uint32_t count,
                     _In_ const sai_port_oper_status_notification_t *data);

@@ -58,6 +58,11 @@ sai_status_t SwitchBCM81724::create_port_dependencies(
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
+    attr.id = SAI_PORT_ATTR_PORT_SERDES_ID;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -273,6 +278,7 @@ sai_status_t SwitchBCM81724::refresh_read_only(
                  */
 
             case SAI_PORT_ATTR_OPER_STATUS:
+            case SAI_PORT_ATTR_PORT_SERDES_ID:
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_OPER_SPEED:

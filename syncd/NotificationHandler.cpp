@@ -100,6 +100,10 @@ void NotificationHandler::updateNotificationsPointers(
                 attr.value.ptr = (void*)m_switchNotifications.on_fdb_event;
                 break;
 
+            case SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY:
+                attr.value.ptr = (void*)m_switchNotifications.on_nat_event;
+                break;
+
             case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
                 attr.value.ptr = (void*)m_switchNotifications.on_port_state_change;
                 break;
@@ -136,6 +140,17 @@ void NotificationHandler::onFdbEvent(
     std::string s = sai_serialize_fdb_event_ntf(count, data);
 
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s);
+}
+
+void NotificationHandler::onNatEvent(
+        _In_ uint32_t count,
+        _In_ const sai_nat_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_nat_event_ntf(count, data);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_NAT_EVENT, s);
 }
 
 void NotificationHandler::onPortStateChange(
