@@ -1521,6 +1521,7 @@ void FlexCounter::removeCounter(
     {
         if (hasCounterContext(COUNTER_TYPE_RIF))
         {
+            removeDataFromCountersDB(vid, ":RIF");
             getCounterContext(COUNTER_TYPE_RIF)->removeObject(vid);
         }
     }
