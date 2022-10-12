@@ -72,4 +72,4 @@ override_dh_installinit:
 	dh_installinit --init-script=syncd
 
 override_dh_shlibdeps:
-	$(LD_LIBRARY_PATH_CONFIG) dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
+	$(LD_LIBRARY_PATH_CONFIG) dh_shlibdeps -- --ignore-missing-info -xlibsai
