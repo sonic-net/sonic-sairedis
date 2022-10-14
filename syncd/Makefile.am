@@ -100,7 +100,7 @@ libMdioIpcClient_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CO
 
 libMdioIpcClient_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS) -Wno-format-truncation
 libMdioIpcClient_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libMdioIpcClient_la_LIBADD = $(CODE_COVERAGE_LIBS)
+libMdioIpcClient_la_LIBADD = -lswsscommon $(CODE_COVERAGE_LIBS)
 
 tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)

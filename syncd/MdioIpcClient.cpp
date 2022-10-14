@@ -12,17 +12,14 @@
 #include <unistd.h>
 #include <time.h>
 #include <pthread.h>
+#include <mutex>
 
 #include "MdioIpcClient.h"
+#include "MdioIpcCommon.h"
 
-#define SAI_IPC_SOCK_DIR_SYNCD      "/var/run/sswsyncd"
-#define SAI_IPC_SOCK_DIR_HOST       "/var/run/docker-syncd"
-#define SAI_IPC_SOCK_FILE           "mdio-ipc"
-#define SAI_IPC_BUFF_SIZE           256
+#include "swss/logger.h"
 
-#define CONN_TIMEOUT                25     /* shorter than 30 sec on server side */
-
-static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static std::mutex ipcMutex;
 
 /* Global variables */
 
@@ -48,16 +45,16 @@ static int syncd_mdio_ipc_command(char *cmd, char *resp)
 
     if (strlen(path) == 0)
     {
-        strcpy(path, SAI_IPC_SOCK_DIR_SYNCD);
+        strcpy(path, SYNCD_IPC_SOCK_SYNCD);
         fd = open(path, O_DIRECTORY);
         if (fd < 0)
         {
-            printf("%s: Program is not run on host\n", __func__);
-            strcpy(path, SAI_IPC_SOCK_DIR_HOST);
+            SWSS_LOG_INFO("Program is not run on host\n");
+            strcpy(path, SYNCD_IPC_SOCK_HOST);
             fd = open(path, O_DIRECTORY);
             if (fd < 0)
             {
-                printf("%s: Unable to open the directory for IPC\n", __func__);
+                SWSS_LOG_ERROR("Unable to open the directory for IPC\n");
                 return errno;
             }
         }
@@ -68,26 +65,26 @@ static int syncd_mdio_ipc_command(char *cmd, char *resp)
         sock = socket(AF_UNIX, SOCK_STREAM, 0);
         if (sock < 0)
         {
-            perror("socket()");
+            SWSS_LOG_ERROR("socket() :%s", strerror(errno));
             return errno;
         }
 
         caddr.sun_family = AF_UNIX;
-        snprintf(caddr.sun_path, sizeof(caddr.sun_path), "%s/%s.cli.%d", path, SAI_IPC_SOCK_FILE, getpid());
+        snprintf(caddr.sun_path, sizeof(caddr.sun_path), "%s/%s.cli.%d", path, SYNCD_IPC_SOCK_FILE, getpid());
         unlink(caddr.sun_path);
         if (bind(sock, (struct sockaddr *)&caddr, sizeof(caddr)) < 0)
         {
-            perror("bind()");
+            SWSS_LOG_ERROR("bind() :%s", strerror(errno));
             close(sock);
             sock = 0;
             return errno;
         }
 
         saddr.sun_family = AF_UNIX;
-        snprintf(saddr.sun_path, sizeof(saddr.sun_path), "%s/%s.srv", path, SAI_IPC_SOCK_FILE);
+        snprintf(saddr.sun_path, sizeof(saddr.sun_path), "%s/%s.srv", path, SYNCD_IPC_SOCK_FILE);
         if (connect(sock, (struct sockaddr *) &saddr, sizeof(saddr)) < 0)
         {
-            perror("connect()");
+            SWSS_LOG_ERROR("connect() :%s", strerror(errno));
             close(sock);
             sock = 0;
             unlink(caddr.sun_path);
@@ -99,24 +96,24 @@ static int syncd_mdio_ipc_command(char *cmd, char *resp)
     ret = send(sock, cmd, len, 0);
     if (ret < (ssize_t)len)
     {
-        printf("send failed, ret=%ld, expected=%ld\n", ret, len);
+        SWSS_LOG_ERROR("send failed, ret=%ld, expected=%ld\n", ret, len);
         close(sock);
         sock = 0;
         unlink(caddr.sun_path);
         return -EIO;
     }
 
-    ret = recv(sock, resp, SAI_IPC_BUFF_SIZE - 1, 0);
+    ret = recv(sock, resp, SYNCD_IPC_BUFF_SIZE - 1, 0);
     if (ret <= 0)
     {
-        printf("recv failed, ret=%ld\n", ret);
+        SWSS_LOG_ERROR("recv failed, ret=%ld\n", ret);
         close(sock);
         sock = 0;
         unlink(caddr.sun_path);
         return -EIO;
     }
 
-    timeout = time(NULL) + CONN_TIMEOUT;
+    timeout = time(NULL) + MDIO_CLIENT_TIMEOUT;
     return (int)strtol(resp, NULL, 0);
 }
 
@@ -126,24 +123,29 @@ extern "C" sai_status_t mdio_read(uint64_t platform_context, uint32_t mdio_addr,
         uint32_t number_of_registers, uint32_t *data)
 {
     int rc = SAI_STATUS_FAILURE;
-    char cmd[SAI_IPC_BUFF_SIZE], resp[SAI_IPC_BUFF_SIZE];
+    char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE];
 
     if (number_of_registers > 1)
     {
-        printf("Multiple register reads are not supported, num_of_registers: %d\n", number_of_registers);
+        SWSS_LOG_ERROR("Multiple register reads are not supported, num_of_registers: %d\n", number_of_registers);
         return SAI_STATUS_FAILURE;
     }
 
-    pthread_mutex_lock(&mutex);
+    ipcMutex.lock();
 
     sprintf(cmd, "mdio 0x%x 0x%x\n", mdio_addr, reg_addr);
-    if (syncd_mdio_ipc_command(cmd, resp) == 0)
+    rc = syncd_mdio_ipc_command(cmd, resp);
+    if (rc == 0)
     {
         *data = (uint32_t)strtoul(strchrnul(resp, ' ') + 1, NULL, 0);
         rc = SAI_STATUS_SUCCESS;
     }
+    else
+    {
+        SWSS_LOG_ERROR("syncd_mdio_ipc_command returns : %d\n", rc);
+    }
 
-    pthread_mutex_unlock(&mutex);
+    ipcMutex.unlock();
     return rc;
 }
 
@@ -152,23 +154,28 @@ extern "C" sai_status_t mdio_write(uint64_t platform_context, uint32_t mdio_addr
         uint32_t number_of_registers, const uint32_t *data)
 {
     int rc = SAI_STATUS_FAILURE;
-    char cmd[SAI_IPC_BUFF_SIZE], resp[SAI_IPC_BUFF_SIZE];
+    char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE];
 
     if (number_of_registers > 1)
     {
-        printf("Multiple register reads are not supported, num_of_registers: %d\n", number_of_registers);
+        SWSS_LOG_ERROR("Multiple register reads are not supported, num_of_registers: %d\n", number_of_registers);
         return SAI_STATUS_FAILURE;
     }
 
-    pthread_mutex_lock(&mutex);
+    ipcMutex.lock();
 
     sprintf(cmd, "mdio 0x%x 0x%x 0x%x\n", mdio_addr, reg_addr, *data);
-    if (syncd_mdio_ipc_command(cmd, resp) == 0)
+    rc = syncd_mdio_ipc_command(cmd, resp);
+    if (rc == 0)
     {
         rc = SAI_STATUS_SUCCESS;
     }
+    else
+    {
+        SWSS_LOG_ERROR("syncd_mdio_ipc_command returns : %d\n", rc);
+    }
 
-    pthread_mutex_unlock(&mutex);
+    ipcMutex.unlock();
     return rc;
 }
 
@@ -177,24 +184,29 @@ extern "C" sai_status_t mdio_read_cl22(uint64_t platform_context, uint32_t mdio_
         uint32_t number_of_registers, uint32_t *data)
 {
     int rc = SAI_STATUS_FAILURE;
-    char cmd[SAI_IPC_BUFF_SIZE], resp[SAI_IPC_BUFF_SIZE];
+    char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE];
 
     if (number_of_registers > 1)
     {
-        printf("Multiple register reads are not supported, num_of_registers: %d\n", number_of_registers);
+        SWSS_LOG_ERROR("Multiple register reads are not supported, num_of_registers: %d\n", number_of_registers);
         return SAI_STATUS_FAILURE;
     }
 
-    pthread_mutex_lock(&mutex);
+    ipcMutex.lock();
 
     sprintf(cmd, "mdio-cl22 0x%x 0x%x\n", mdio_addr, reg_addr);
-    if (syncd_mdio_ipc_command(cmd, resp) == 0)
+    rc = syncd_mdio_ipc_command(cmd, resp);
+    if (rc == 0)
     {
         *data = (uint32_t)strtoul(strchrnul(resp, ' ') + 1, NULL, 0);
         rc = SAI_STATUS_SUCCESS;
     }
+    else
+    {
+        SWSS_LOG_ERROR("syncd_mdio_ipc_command returns : %d\n", rc);
+    }
 
-    pthread_mutex_unlock(&mutex);
+    ipcMutex.unlock();
     return rc;
 }
 
@@ -203,22 +215,27 @@ extern "C" sai_status_t mdio_write_cl22(uint64_t platform_context, uint32_t mdio
         uint32_t number_of_registers, const uint32_t *data)
 {
     int rc = SAI_STATUS_FAILURE;
-    char cmd[SAI_IPC_BUFF_SIZE], resp[SAI_IPC_BUFF_SIZE];
+    char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE];
 
     if (number_of_registers > 1)
     {
-        printf("Multiple register reads are not supported, num_of_registers: %d\n", number_of_registers);
+        SWSS_LOG_ERROR("Multiple register reads are not supported, num_of_registers: %d\n", number_of_registers);
         return SAI_STATUS_FAILURE;
     }
 
-    pthread_mutex_lock(&mutex);
+    ipcMutex.lock();
 
     sprintf(cmd, "mdio-cl22 0x%x 0x%x 0x%x\n", mdio_addr, reg_addr, *data);
-    if (syncd_mdio_ipc_command(cmd, resp) == 0)
+    rc = syncd_mdio_ipc_command(cmd, resp);
+    if (rc == 0)
     {
         rc = SAI_STATUS_SUCCESS;
     }
+    else
+    {
+        SWSS_LOG_ERROR("syncd_mdio_ipc_command returns : %d\n", rc);
+    }
 
-    pthread_mutex_unlock(&mutex);
+    ipcMutex.unlock();
     return rc;
 }

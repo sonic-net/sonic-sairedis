@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "MdioIpcServer.h"
+#include "MdioIpcCommon.h"
 
 #include "meta/sai_serialize.h"
 
@@ -22,13 +23,6 @@
 #include <boost/algorithm/string/trim.hpp>
 #include <vector>
 
-#define SYNCD_IPC_SOCK_SYNCD  "/var/run/sswsyncd"
-#define SYNCD_IPC_SOCK_HOST   "/var/run/docker-syncd"
-#define SYNCD_IPC_SOCK_FILE   "mdio-ipc"
-#define SYNCD_IPC_BUFF_SIZE   256   /* buffer size */
-
-#define CONN_TIMEOUT        30     /* sec, connection timeout */
-#define CONN_MAX            18     /* max. number of connections */
 
 #ifndef COUNTOF
 #define COUNTOF(x)          ((int)(sizeof((x)) / sizeof((x)[0])))
@@ -324,7 +318,7 @@ int MdioIpcServer::syncd_ipc_task_main()
             if (i < CONN_MAX)
             {
                 conn[i].fd = sock_cli;
-                conn[i].timeout = now + CONN_TIMEOUT;
+                conn[i].timeout = now + MDIO_SERVER_TIMEOUT;
             }
             else
             {
@@ -381,10 +375,18 @@ int MdioIpcServer::syncd_ipc_task_main()
             else if (strcmp("mdio", argv[0]) == 0)
             {
                 rc = MdioIpcServer::syncd_ipc_cmd_mdio(resp, argc, argv);
+                if (rc != 0)
+                {
+                    SWSS_LOG_ERROR("command %s returns %d", cmd, rc);
+                }
             }
             else if (strcmp("mdio-cl22", argv[0]) == 0)
             {
                 rc = MdioIpcServer::syncd_ipc_cmd_mdio_cl22(resp, argc, argv);
+                if (rc != 0)
+                {
+                    SWSS_LOG_ERROR("command %s returns %d", cmd, rc);
+                }
             }
 
             /* build the error message */
@@ -401,7 +403,7 @@ int MdioIpcServer::syncd_ipc_task_main()
             }
 
             /* update the connection timeout counter */
-            conn[i].timeout = time(NULL) + CONN_TIMEOUT;
+            conn[i].timeout = time(NULL) + MDIO_SERVER_TIMEOUT;
         }
     }
 
