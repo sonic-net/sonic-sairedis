@@ -322,7 +322,7 @@ static inline std::size_t sai_get_hash(
 
     // TODO revisit - may depend on nat_type
 
-    return ne.data.key.src_ip ^ ne.data.key.dst_ip;
+    return ne.data.key.src_ip ^ ne.data.key.dst_ip ^ ne.data.key.proto ^ ne.data.key.l4_src_port ^ ne.data.key.l4_dst_port;
 }
 
 static inline std::size_t sai_get_hash(

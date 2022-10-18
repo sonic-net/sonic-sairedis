@@ -197,6 +197,10 @@ namespace saimeta
                     _In_ uint32_t count,
                     _In_ const sai_fdb_event_notification_data_t *data);
 
+            void meta_sai_on_nat_event(
+                    _In_ uint32_t count,
+                    _In_ const sai_nat_event_notification_data_t *data);
+
             void meta_sai_on_switch_state_change(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_switch_oper_status_t switch_oper_status);
@@ -226,6 +230,9 @@ namespace saimeta
 
             void meta_sai_on_fdb_event_single(
                     _In_ const sai_fdb_event_notification_data_t& data);
+
+            void meta_sai_on_nat_event_single(
+                    _In_ const sai_nat_event_notification_data_t& data);
 
             void meta_sai_on_port_state_change_single(
                     _In_ const sai_port_oper_status_notification_t& data);

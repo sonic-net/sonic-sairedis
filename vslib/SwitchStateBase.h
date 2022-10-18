@@ -108,6 +108,9 @@ namespace saivs
                     _In_ uint32_t sys_port_count,
                     _In_ const sai_system_port_config_t *sys_port_cfg_list);
 
+            sai_status_t create_voqs();
+            sai_status_t create_voq_per_sysport(
+                    _In_ sai_object_id_t sys_port_id);
             sai_status_t set_system_port_list();
 
         public:

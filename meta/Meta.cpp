@@ -7594,6 +7594,55 @@ void Meta::meta_sai_on_fdb_event(
     }
 }
 
+void Meta::meta_sai_on_nat_event_single(
+        _In_ const sai_nat_event_notification_data_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    const sai_object_meta_key_t meta_key_nat = { .objecttype = SAI_OBJECT_TYPE_NAT_ENTRY, .objectkey = { .key = { .nat_entry = data.nat_entry } } };
+
+    switch (data.event_type)
+    {
+        case SAI_NAT_EVENT_AGED:
+
+            if (!m_saiObjectCollection.objectExists(meta_key_nat))
+            {
+                SWSS_LOG_WARN("object key %s doesn't exist but received AGED event",
+                        sai_serialize_object_meta_key(meta_key_nat).c_str());
+                break;
+            }
+            // meta_generic_validation_post_remove is not done at this point
+            // as Nat-orch will be performing the cleanup for both Aging and
+            // Hit-bit implementations.
+
+            break;
+
+        case SAI_NAT_EVENT_NONE:
+        default:
+
+            SWSS_LOG_ERROR("got NAT_ENTRY notification with unknown event_type %d, bug?", data.event_type);
+            break;
+    }
+}
+
+void Meta::meta_sai_on_nat_event(
+        _In_ uint32_t count,
+        _In_ const sai_nat_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("nat_event_notification_data pointer is NULL when count is %u", count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meta_sai_on_nat_event_single(data[i]);
+    }
+}
+
 void Meta::meta_sai_on_switch_state_change(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t switch_oper_status)

@@ -40,6 +40,11 @@ namespace syncd
                             _In_ uint32_t count,
                             _In_ const sai_fdb_event_notification_data_t *data);
 
+                    static void onNatEvent(
+                            _In_ int context,
+                            _In_ uint32_t count,
+                            _In_ const sai_nat_event_notification_data_t *data);
+
                     static void onPortStateChange(
                             _In_ int context,
                             _In_ uint32_t count,
@@ -82,7 +87,7 @@ namespace syncd
                             .on_bfd_session_state_change = &Slot<context>::onBfdSessionStateChange,
                             .on_fdb_event = &Slot<context>::onFdbEvent,
                             .on_ipsec_sa_status_change = nullptr,
-                            .on_nat_event = nullptr,
+                            .on_nat_event = &Slot<context>::onNatEvent,
                             .on_packet_event = nullptr,
                             .on_port_state_change = &Slot<context>::onPortStateChange,
                             .on_queue_pfc_deadlock = &Slot<context>::onQueuePfcDeadlock,
@@ -102,6 +107,15 @@ namespace syncd
                     SWSS_LOG_ENTER();
 
                     return SlotBase::onFdbEvent(context, count, data);
+                }
+
+                static void onNatEvent(
+                        _In_ uint32_t count,
+                        _In_ const sai_nat_event_notification_data_t *data)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onNatEvent(context, count, data);
                 }
 
                 static void onPortStateChange(
@@ -164,6 +178,7 @@ namespace syncd
         public: // wrapped methods
 
             std::function<void(uint32_t, const sai_fdb_event_notification_data_t*)>         onFdbEvent;
+            std::function<void(uint32_t, const sai_nat_event_notification_data_t*)>         onNatEvent;
             std::function<void(uint32_t, const sai_port_oper_status_notification_t*)>       onPortStateChange;
             std::function<void(uint32_t, const sai_queue_deadlock_notification_data_t*)>    onQueuePfcDeadlock;
             std::function<void(sai_object_id_t)>                                            onSwitchShutdownRequest;
