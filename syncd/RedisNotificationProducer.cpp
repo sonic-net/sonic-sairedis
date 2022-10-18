@@ -13,8 +13,7 @@ RedisNotificationProducer::RedisNotificationProducer(
 
     m_db = std::make_shared<swss::DBConnector>(dbName, 0);
 
-    m_notificationProducer = std::make_shared<swss::NotificationProducer>(m_db.get(),
-        dbName == "GB_ASIC_DB" ? REDIS_TABLE_GBNOTIFICATIONS : REDIS_TABLE_NOTIFICATIONS);
+    m_notificationProducer = std::make_shared<swss::NotificationProducer>(m_db.get(), REDIS_TABLE_NOTIFICATIONS_PER_DB(dbName));
 }
 
 void RedisNotificationProducer::send(
