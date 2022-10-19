@@ -5,7 +5,7 @@ REDIS_GENERIC_QUAD(TUNNEL,tunnel);
 REDIS_GENERIC_QUAD(TUNNEL_TERM_TABLE_ENTRY,tunnel_term_table_entry);
 REDIS_GENERIC_QUAD(TUNNEL_MAP_ENTRY,tunnel_map_entry);
 REDIS_GENERIC_STATS(TUNNEL,tunnel);
-REDIS_BULK_GET_SET(TUNNEL,tunnels);
+REDIS_BULK_QUAD(TUNNEL,tunnels);
 
 const sai_tunnel_api_t redis_tunnel_api = {
 
@@ -14,5 +14,5 @@ const sai_tunnel_api_t redis_tunnel_api = {
     REDIS_GENERIC_STATS_API(tunnel)
     REDIS_GENERIC_QUAD_API(tunnel_term_table_entry)
     REDIS_GENERIC_QUAD_API(tunnel_map_entry)
-    REDIS_BULK_GET_SET_API(tunnels)
+    REDIS_BULK_QUAD_API(tunnels)
 };

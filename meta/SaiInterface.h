@@ -22,6 +22,7 @@ extern "C" {
     _X(NAT_ENTRY,nat_entry);                    \
     _X(ROUTE_ENTRY,route_entry);                \
     _X(MY_SID_ENTRY,my_sid_entry);              \
+    _X(NEIGHBOR_ENTRY,neighbor_entry);          \
 
 #define SAIREDIS_SAIINTERFACE_DECLARE_QUAD_ENTRY_VIRTUAL(OT,ot)     \
     virtual sai_status_t create(                                    \
