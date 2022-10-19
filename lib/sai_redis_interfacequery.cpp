@@ -79,6 +79,7 @@ static sai_apis_t redis_apis = {
     API(system_port),
     API(my_mac),
     API(ipsec),
+    API(generic_programmable),
     API(bmtor),
 };
 

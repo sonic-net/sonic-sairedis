@@ -16,6 +16,6 @@ const sai_next_hop_group_api_t redis_next_hop_group_api = {
     redis_bulk_create_next_hop_group_members,
     redis_bulk_remove_next_hop_group_members,
     REDIS_GENERIC_QUAD_API(next_hop_group_map)
-    redis_bulk_get_next_hop_group_members,
-    redis_bulk_set_next_hop_group_members
+    redis_bulk_set_next_hop_group_members,
+    redis_bulk_get_next_hop_group_members
 };
