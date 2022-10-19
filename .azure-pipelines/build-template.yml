@@ -39,6 +39,10 @@ parameters:
   type: boolean
   default: false
 
+- name: asan
+  type: boolean
+  default: false
+
 - name: debian_version
   type: string
 
@@ -150,7 +154,11 @@ jobs:
       set -ex
       rm ../*.deb || true
       ./autogen.sh
-      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      extraflags='--enable-code-coverage'
+      if [ '${{ parameters.asan }}' == True ]; then
+         extraflags='--enable-asan'
+      fi
+      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS=$extraflags CFLAGS="" CXXFLAGS="" binary-syncd-vs
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |

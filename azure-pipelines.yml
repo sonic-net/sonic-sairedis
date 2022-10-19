@@ -60,6 +60,21 @@ stages:
       archive_gcov: true
       debian_version: ${{ parameters.debian_version }}
 
+- stage: BuildAsan
+  dependsOn: []
+  jobs:
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: amd64
+      sonic_slave: sonic-slave-${{ parameters.debian_version }}
+      swss_common_artifact_name: sonic-swss-common
+      artifact_name: sonic-sairedis-asan
+      syslog_artifact_name: sonic-sairedis-asan.syslog
+      asan: true
+      run_unit_test: false
+      archive_gcov: false
+      debian_version: ${{ parameters.debian_version }}
+
 - stage: BuildArm
   dependsOn: Build
   condition: succeeded('Build')
@@ -110,6 +125,20 @@ stages:
       swss_artifact_name: sonic-swss
       artifact_name: docker-sonic-vs
 
+- stage: BuildDockerAsan
+  dependsOn:
+    - BuildAsan
+    - BuildSwss
+  condition: and(succeeded('BuildAsan'), succeeded('BuildSwss'))
+  jobs:
+  - template: .azure-pipelines/build-docker-sonic-vs-template.yml
+    parameters:
+      swss_common_artifact_name: sonic-swss-common
+      sairedis_artifact_name: sonic-sairedis-asan
+      swss_artifact_name: sonic-swss
+      artifact_name: docker-sonic-vs-asan
+      asan: true
+
 - stage: Test
   dependsOn: BuildDocker
   condition: succeeded('BuildDocker')
@@ -117,3 +146,13 @@ stages:
   - template: .azure-pipelines/test-docker-sonic-vs-template.yml
     parameters:
       log_artifact_name: log
+
+- stage: TestAsan
+  dependsOn: BuildDockerAsan
+  condition: succeeded('BuildDockerAsan')
+  jobs:
+  - template: .azure-pipelines/test-docker-sonic-vs-template.yml
+    parameters:
+      docker_sonic_vs_name: docker-sonic-vs-asan
+      log_artifact_name: log-asan
+      asan: true
