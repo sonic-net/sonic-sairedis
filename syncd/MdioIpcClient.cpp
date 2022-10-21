@@ -122,6 +122,8 @@ static int syncd_mdio_ipc_command(char *cmd, char *resp)
 extern "C" sai_status_t mdio_read(uint64_t platform_context, uint32_t mdio_addr, uint32_t reg_addr,
         uint32_t number_of_registers, uint32_t *data)
 {
+    // SWSS_LOG_ENTER(); // disabled
+
     int rc = SAI_STATUS_FAILURE;
     char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE];
 
@@ -153,6 +155,8 @@ extern "C" sai_status_t mdio_read(uint64_t platform_context, uint32_t mdio_addr,
 extern "C" sai_status_t mdio_write(uint64_t platform_context, uint32_t mdio_addr, uint32_t reg_addr,
         uint32_t number_of_registers, const uint32_t *data)
 {
+    // SWSS_LOG_ENTER(); // disabled
+
     int rc = SAI_STATUS_FAILURE;
     char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE];
 
@@ -183,6 +187,8 @@ extern "C" sai_status_t mdio_write(uint64_t platform_context, uint32_t mdio_addr
 extern "C" sai_status_t mdio_read_cl22(uint64_t platform_context, uint32_t mdio_addr, uint32_t reg_addr,
         uint32_t number_of_registers, uint32_t *data)
 {
+    // SWSS_LOG_ENTER(); // disabled
+
     int rc = SAI_STATUS_FAILURE;
     char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE];
 
@@ -214,6 +220,8 @@ extern "C" sai_status_t mdio_read_cl22(uint64_t platform_context, uint32_t mdio_
 extern "C" sai_status_t mdio_write_cl22(uint64_t platform_context, uint32_t mdio_addr, uint32_t reg_addr,
         uint32_t number_of_registers, const uint32_t *data)
 {
+    // SWSS_LOG_ENTER(); // disabled
+
     int rc = SAI_STATUS_FAILURE;
     char cmd[SYNCD_IPC_BUFF_SIZE], resp[SYNCD_IPC_BUFF_SIZE];
 
