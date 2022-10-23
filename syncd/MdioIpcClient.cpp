@@ -25,6 +25,8 @@ static std::mutex ipcMutex;
 
 static int syncd_mdio_ipc_command(char *cmd, char *resp)
 {
+    // SWSS_LOG_ENTER(); // disabled
+
     int fd;
     ssize_t ret;
     size_t len;
