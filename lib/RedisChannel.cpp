@@ -25,7 +25,7 @@ RedisChannel::RedisChannel(
     m_getConsumer           = std::make_shared<swss::ConsumerTable>(m_db.get(), REDIS_TABLE_GETRESPONSE);
 
     m_dbNtf                 = std::make_shared<swss::DBConnector>(dbAsic, 0);
-    m_notificationConsumer  = std::make_shared<swss::NotificationConsumer>(m_dbNtf.get(), REDIS_TABLE_NOTIFICATIONS);
+    m_notificationConsumer  = std::make_shared<swss::NotificationConsumer>(m_dbNtf.get(), REDIS_TABLE_NOTIFICATIONS_PER_DB(dbAsic));
 
     m_runNotificationThread = true;
 
