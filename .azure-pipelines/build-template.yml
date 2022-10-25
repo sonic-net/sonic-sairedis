@@ -150,7 +150,7 @@ jobs:
       set -ex
       rm ../*.deb || true
       ./autogen.sh
-      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      DEB_BUILD_OPTIONS=nocheck DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' dpkg-buildpackage -us -uc -b -Psyncd,vs -j$(nproc)
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
@@ -209,6 +209,6 @@ jobs:
         contents: 'syslog-all.tgz'
         targetFolder: $(Build.ArtifactStagingDirectory)
   - publish: $(Build.ArtifactStagingDirectory)/
-    artifact: ${{ parameters.syslog_artifact_name }}
+    artifact: ${{ parameters.syslog_artifact_name }}@$(System.JobAttempt)
     displayName: "Publish syslog artifacts"
     condition: always()
