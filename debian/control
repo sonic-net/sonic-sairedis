@@ -2,17 +2,23 @@ Source: sonic
 Maintainer: Kamil Cudnik <kcudnik@microsoft.com>
 Section: net
 Priority: optional
-Build-Depends: debhelper (>=9), autotools-dev, libzmq5-dev
+Build-Depends: debhelper (>= 12), autotools-dev, libzmq5-dev
 Standards-Version: 1.0.0
 
 Package: syncd
 Architecture: any
+Build-Profiles: <syncd !rpc !vs>
+Depends: ${misc:Pre-Depends}
+Recommends: ${shlibs:Depends}
 Conflicts: syncd-rpc, syncd-vs
 Description: This package contains sync daemon for SONiC project.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
 
 Package: syncd-rpc
 Architecture: any
+Build-Profiles: <syncd rpc !vs>
+Depends: ${misc:Pre-Depends}
+Recommends: ${shlibs:Depends}
 Conflicts: syncd, syncd-vs
 Description: This package contains sync daemon with rpc for SONiC project.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
@@ -20,6 +26,9 @@ Description: This package contains sync daemon with rpc for SONiC project.
 
 Package: syncd-vs
 Architecture: any
+Build-Profiles: <syncd !rpc vs>
+Depends: ${misc:Pre-Depends}
+Recommends: ${shlibs:Depends}
 Conflicts: syncd-rpc, syncd
 Description: This package contains sync daemon for SONiC project linked with virtual switch.
   This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
@@ -38,6 +47,7 @@ Description: This package contains development files for SAI-Redis.
 
 Package: libsaivs
 Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
 Section: libs
 Description: This package contains SAI-VirtualSwitch implementation for SONiC project.
 
@@ -49,6 +59,7 @@ Description: This package contains development files for SAI-VirtualSwitch.
 
 Package: libsaimetadata
 Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
 Section: libs
 Description: This package contains SAI-Metadata implementation for SONiC project.
 
@@ -57,63 +68,6 @@ Architecture: any
 Depends: libsaimetadata (= ${binary:Version})
 Section: libdevel
 Description: This package contains development files for SAI-Metadata.
-
-Package: syncd-dbg
-Architecture: any
-Section: debug
-Priority: extra
-Conflicts: syncd-rpc-dbg, syncd-vs
-Depends:
-    syncd (= ${binary:Version}),
-    ${misc:Depends}
-Description: debugging symbols for syncd
-
-Package: syncd-rpc-dbg
-Architecture: any
-Section: debug
-Priority: extra
-Conflicts: syncd-dbg, syncd-vs
-Depends:
-    syncd-rpc (= ${binary:Version}),
-    ${misc:Depends}
-Description: debugging symbols for syncd-rpc
-
-Package: syncd-vs-dbg
-Architecture: any
-Section: debug
-Priority: extra
-Conflicts: syncd-dbg, syncd-rpc-dbg
-Depends:
-    syncd-vs (= ${binary:Version}),
-    ${misc:Depends}
-Description: debugging symbols for syncd-vs
-
-Package: libsairedis-dbg
-Architecture: any
-Section: debug
-Priority: extra
-Depends:
-    libsairedis (= ${binary:Version}),
-    ${misc:Depends}
-Description: debugging symbols for libsairedis
-
-Package: libsaivs-dbg
-Architecture: any
-Section: debug
-Priority: extra
-Depends:
-    libsaivs (= ${binary:Version}),
-    ${misc:Depends}
-Description: debugging symbols for libsaivs
-
-Package: libsaimetadata-dbg
-Architecture: any
-Section: debug
-Priority: extra
-Depends:
-    libsaimetadata (= ${binary:Version}),
-    ${misc:Depends}
-Description: debugging symbols for libsaimetadata
 
 Package: python-pysairedis
 Architecture: any
