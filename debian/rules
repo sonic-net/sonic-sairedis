@@ -3,6 +3,14 @@
 # output every command that modifies files on the build system.
 #export DH_VERBOSE = 1
 
+.ONESHELL:
+SHELL = /bin/bash
+.SHELLFLAGS += -ex
+
+# see EXAMPLES in dpkg-buildflags(1) and read /usr/share/dpkg/*
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/default.mk
+
 ifneq (${SWSS_COMMON_INC},)
 	SWSS_COMMON_CONFIG = "--with-swss-common-inc=${SWSS_COMMON_INC}"
 endif
@@ -13,7 +21,7 @@ ifneq (${SWSS_COMMON_LIB},)
 endif
 
 # see FEATURE AREAS in dpkg-buildflags(1)
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+#export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 # see ENVIRONMENT in dpkg-buildflags(1)
 # package maintainers to append CFLAGS
@@ -23,32 +31,45 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 DOPACKAGES = $(shell dh_listpackages)
 
-configure_opts = --disable-static
-ifeq ($(ENABLE_ASAN), y)
-	configure_opts += --enable-asan
-endif
-
 # For Debian jessie, stretch, and buster, and Ubuntu bionic and focal, build
 # Python 2 bindings. This is controlled by the build profile being used.
-ifeq (,$(filter nopython2,$(DEB_BUILD_PROFILES)))
+ifneq (,$(filter python-pysairedis,$(DOPACKAGES)))
 configure_opts += --enable-python2
 else
 configure_opts += --disable-python2
 endif
 
-ifneq ($(filter syncd,$(DEB_BUILD_PROFILES)),)
-ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
-configure_opts += --enable-rpcserver
-endif
-ifneq ($(filter vs,$(DEB_BUILD_PROFILES)),)
-configure_opts += --with-sai=vs
-endif
-else
-configure_opts += --disable-syncd
-endif
+clean:
+	dh $@ --with autotools-dev
 
-%:
-	dh $@
+build:
+	echo build stage is skipped. Please use binary to generate debian packages
+
+binary: binary-syncd-rpc binary-syncd
+
+binary-sairedis:
+	echo '--enable-syncd=no' > /tmp/syncd-build
+	ENABLESYNCD=no dh clean  --with autotools-dev
+	dh build  -N syncd -N syncd-dbg -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+	dh binary -N syncd -N syncd-dbg -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+
+binary-syncd:
+	echo > /tmp/syncd-build
+	dh clean  --with autotools-dev
+	dh build  -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+	dh binary -N syncd-rpc -N syncd-rpc-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+
+binary-syncd-rpc: | binary-syncd
+	echo '--enable-rpcserver=yes' > /tmp/syncd-build
+	dh clean  --with autotools-dev
+	dh build  -N syncd -N syncd-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+	dh binary -N syncd -N syncd-dbg -N syncd-vs -N syncd-vs-dbg --with autotools-dev
+
+binary-syncd-vs:
+	echo '--with-sai=vs' > /tmp/syncd-build
+	dh clean  --with autotools-dev
+	dh build  -N syncd -N syncd-dbg -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
+	dh binary -N syncd -N syncd-dbg -N syncd-rpc -N syncd-rpc-dbg --with autotools-dev
 
 # dh_make generated override targets
 # This is example for Cmake (See https://bugs.debian.org/641051 )
@@ -56,20 +77,32 @@ endif
 #	dh_auto_configure -- \
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
+configure_opts =
+ifeq ($(ENABLE_ASAN), y)
+	configure_opts += --enable-asan
+endif
+
 override_dh_auto_configure:
-	dh_auto_configure -- ${SWSS_COMMON_CONFIG} $(configure_opts)
+	./autogen.sh
+	dh_auto_configure -- $(DEB_CONFIGURE_EXTRA_FLAGS) $(shell cat /tmp/syncd-build) ${SWSS_COMMON_CONFIG} $(configure_opts)
 
 override_dh_install:
 	dh_install
 	# Note: escape $ with an extra $ symbol
-ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
-	if [ -f debian/syncd-rpc/usr/bin/syncd_init_common.sh ] ; then
+	if egrep -q '(^| )--enable-rpcserver=yes( |$$)' /tmp/syncd-build && [ -f debian/syncd-rpc/usr/bin/syncd_init_common.sh ] ; then
 		sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
 	fi
-endif
 
 override_dh_installinit:
 	dh_installinit --init-script=syncd
 
 override_dh_shlibdeps:
-	$(LD_LIBRARY_PATH_CONFIG) dh_shlibdeps -- --ignore-missing-info -xlibsai
+	$(LD_LIBRARY_PATH_CONFIG) dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info
+
+override_dh_strip:
+	dh_strip -psyncd-rpc --dbg-package=syncd-rpc-dbg
+	dh_strip -psyncd --dbg-package=syncd-dbg
+	dh_strip -psyncd-vs --dbg-package=syncd-vs-dbg
+	dh_strip -plibsairedis --dbg-package=libsairedis-dbg
+	dh_strip -plibsaivs --dbg-package=libsaivs-dbg
+	dh_strip -plibsaimetadata --dbg-package=libsaimetadata-dbg

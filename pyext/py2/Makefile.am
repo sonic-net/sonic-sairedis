@@ -9,7 +9,7 @@ AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I..
 BUILT_SOURCES = pysairedis_wrap.cpp
 
 _pysairedis_la_SOURCES = pysairedis_wrap.cpp $(SOURCES)
-_pysairedis_la_CXXFLAGS = $(PYTHON2_CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) \
+_pysairedis_la_CXXFLAGS = -I/usr/include/python$(PYTHON_VERSION) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) \
 						  -Wno-cast-qual -Wno-shadow -Wno-redundant-decls -Wno-conversion $(NO_CAST_FUNCTION_TYPE)
 
 _pysairedis_la_LDFLAGS = -module \
@@ -18,7 +18,7 @@ _pysairedis_la_LDFLAGS = -module \
 		-L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
 		-lzmq
 
-_pysairedis_la_LIBADD = $(PYTHON2_LIBS)
+_pysairedis_la_LIBADD = -lpython$(PYTHON_VERSION)
 
 SWIG_FLAG = -Wall -c++ -python -keyword
 if ARCH64
