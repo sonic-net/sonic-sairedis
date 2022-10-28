@@ -453,6 +453,11 @@ TEST(SaiSerialize, sai_serialize_fdb_event_ntf)
     EXPECT_THROW(sai_serialize_fdb_event_ntf(1, nullptr), std::runtime_error);
 }
 
+TEST(SaiSerialize, sai_serialize_nat_event_ntf)
+{
+    EXPECT_THROW(sai_serialize_nat_event_ntf(1, nullptr), std::runtime_error);
+}
+
 TEST(SaiSerialize, sai_serialize_port_oper_status_ntf)
 {
     sai_port_oper_status_notification_t ntf;

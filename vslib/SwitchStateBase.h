@@ -108,6 +108,9 @@ namespace saivs
                     _In_ uint32_t sys_port_count,
                     _In_ const sai_system_port_config_t *sys_port_cfg_list);
 
+            sai_status_t create_voqs();
+            sai_status_t create_voq_per_sysport(
+                    _In_ sai_object_id_t sys_port_id);
             sai_status_t set_system_port_list();
 
         public:
@@ -164,6 +167,9 @@ namespace saivs
 
             virtual sai_status_t refresh_port_serdes_id(
                     _In_ sai_object_id_t bridge_id);
+
+            virtual sai_status_t refresh_port_oper_speed(
+                    _In_ sai_object_id_t port_id);
 
         public:
 
@@ -485,6 +491,10 @@ namespace saivs
 
             bool hasIfIndex(
                     _In_ int ifIndex) const;
+
+            bool vs_get_oper_speed(
+                    _In_ sai_object_id_t port_id,
+                    _Out_ uint32_t& speed);
 
         public: // TODO move inside warm boot load state
 

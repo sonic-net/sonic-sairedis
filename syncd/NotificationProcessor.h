@@ -58,6 +58,9 @@ namespace syncd
             bool check_fdb_event_notification_data(
                     _In_ const sai_fdb_event_notification_data_t& data);
 
+            bool check_nat_event_notification_data(
+                    _In_ const sai_nat_event_notification_data_t& data);
+
             bool contains_fdb_flush_event(
                     _In_ uint32_t count,
                     _In_ const sai_fdb_event_notification_data_t *data);
@@ -72,6 +75,10 @@ namespace syncd
             void process_on_fdb_event(
                     _In_ uint32_t count,
                     _In_ sai_fdb_event_notification_data_t *data);
+
+            void process_on_nat_event(
+                    _In_ uint32_t count,
+                    _In_ sai_nat_event_notification_data_t *data);
 
             void process_on_queue_deadlock_event(
                     _In_ uint32_t count,
@@ -94,6 +101,9 @@ namespace syncd
                     _In_ const std::string &data);
 
             void handle_fdb_event(
+                    _In_ const std::string &data);
+
+            void handle_nat_event(
                     _In_ const std::string &data);
 
             void handle_queue_deadlock(

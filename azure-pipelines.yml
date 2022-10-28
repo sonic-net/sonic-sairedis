@@ -58,6 +58,7 @@ stages:
       syslog_artifact_name: sonic-sairedis.syslog
       run_unit_test: true
       archive_gcov: true
+      debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildArm
   dependsOn: Build
@@ -72,6 +73,7 @@ stages:
       swss_common_artifact_name: sonic-swss-common.armhf
       artifact_name: sonic-sairedis.armhf
       syslog_artifact_name: sonic-sairedis.syslog.armhf
+      debian_version: ${{ parameters.debian_version }}
 
   - template: .azure-pipelines/build-template.yml
     parameters:
@@ -82,6 +84,7 @@ stages:
       swss_common_artifact_name: sonic-swss-common.arm64
       artifact_name: sonic-sairedis.arm64
       syslog_artifact_name: sonic-sairedis.syslog.arm64
+      debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildSwss
   dependsOn: Build

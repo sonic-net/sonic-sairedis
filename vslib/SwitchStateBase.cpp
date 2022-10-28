@@ -2200,6 +2200,36 @@ sai_status_t SwitchStateBase::refresh_port_serdes_id(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::refresh_port_oper_speed(
+                    _In_ sai_object_id_t port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+
+    CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+
+    if (attr.value.s32 == SAI_PORT_OPER_STATUS_DOWN)
+    {
+        attr.value.u32 = 0;
+    }
+    else
+    {
+        if (!vs_get_oper_speed(port_id, attr.value.u32))
+        {
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
 // XXX extra work may be needed on GET api if N on list will be > then actual
 
 /*
@@ -2312,6 +2342,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
 
             case SAI_PORT_ATTR_SUPPORTED_AUTO_NEG_MODE:
                 return SAI_STATUS_SUCCESS;
+
+            case SAI_PORT_ATTR_OPER_SPEED:
+                return refresh_port_oper_speed(object_id);
         }
     }
 
@@ -2321,6 +2354,8 @@ sai_status_t SwitchStateBase::refresh_read_only(
         {
             case SAI_SYSTEM_PORT_ATTR_TYPE:
             case SAI_SYSTEM_PORT_ATTR_PORT:
+            case SAI_SYSTEM_PORT_ATTR_QOS_NUMBER_OF_VOQS:
+            case SAI_SYSTEM_PORT_ATTR_QOS_VOQ_LIST:
                 return SAI_STATUS_SUCCESS;
         }
     }
@@ -3001,6 +3036,16 @@ sai_status_t SwitchStateBase::initialize_voq_switch_objects(
                 if (attr_list[i].value.u32 != SAI_SWITCH_TYPE_VOQ)
                 {
                     // Switch is not being set as VOQ type.
+                    SWSS_LOG_NOTICE("initialize_voq_switch_objects the value is %d", attr_list[i].value.u32);
+                    if (attr_list[i].value.u32 == SAI_SWITCH_TYPE_FABRIC)
+                    {
+                       SWSS_LOG_NOTICE("about to config fabric ports");
+                       if (m_switchConfig->m_fabricLaneMap)
+                       {
+                          CHECK_STATUS(create_fabric_ports());
+                          CHECK_STATUS(set_fabric_port_list());
+                       }
+                    }
                     return SAI_STATUS_SUCCESS;
                 }
                 else
@@ -3063,6 +3108,7 @@ sai_status_t SwitchStateBase::initialize_voq_switch_objects(
     }
 
     CHECK_STATUS(create_system_ports(voq_switch_id, sys_port_count, sys_port_cfg_list));
+    CHECK_STATUS(create_voqs());
 
     CHECK_STATUS(set_system_port_list());
 
@@ -3114,6 +3160,61 @@ sai_status_t SwitchStateBase::filter_available_lanes(
         {
             lanes++;
         }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::create_voq_per_sysport(
+        _In_ sai_object_id_t sys_port_id)
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    const uint32_t voq_count = 8;
+
+    std::vector<sai_object_id_t> voqs;
+
+    for (uint32_t i = 0; i < voq_count; ++i)
+    {
+        sai_object_id_t voq_id;
+
+        CHECK_STATUS(create(SAI_OBJECT_TYPE_QUEUE, &voq_id, m_switch_id, 0, NULL));
+        voqs.push_back(voq_id);
+
+        attr.id = SAI_QUEUE_ATTR_TYPE;
+        attr.value.s32 = SAI_QUEUE_TYPE_UNICAST_VOQ;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, voq_id, &attr));
+
+        attr.id = SAI_QUEUE_ATTR_INDEX;
+        attr.value.u8 = (uint8_t)i;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_QUEUE, voq_id, &attr));
+    }
+
+    attr.id = SAI_SYSTEM_PORT_ATTR_QOS_NUMBER_OF_VOQS;
+    attr.value.u32 = voq_count;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SYSTEM_PORT, sys_port_id, &attr));
+
+    attr.id = SAI_SYSTEM_PORT_ATTR_QOS_VOQ_LIST;
+    attr.value.objlist.count = voq_count;
+    attr.value.objlist.list = voqs.data();
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SYSTEM_PORT, sys_port_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::create_voqs()
+{
+    SWSS_LOG_ENTER();
+
+    for (auto &sys_port_id: m_system_port_list)
+    {
+        CHECK_STATUS(create_voq_per_sysport(sys_port_id));
     }
 
     return SAI_STATUS_SUCCESS;

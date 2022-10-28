@@ -33,6 +33,9 @@ sai_status_t transfer_attributes(
 std::string sai_serialize_fdb_event(
         _In_ sai_fdb_event_t event);
 
+std::string sai_serialize_nat_event(
+        _In_ sai_nat_event_t event);
+
 std::string sai_serialize_ipv6(
         _In_ const sai_ip6_t& ip);
 
@@ -232,6 +235,10 @@ std::string sai_serialize_fdb_event_ntf(
         _In_ uint32_t count,
         _In_ const sai_fdb_event_notification_data_t* fdb_event);
 
+std::string sai_serialize_nat_event_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_nat_event_notification_data_t* nat_event);
+
 std::string sai_serialize_port_oper_status_ntf(
         _In_ uint32_t count,
         _In_ const sai_port_oper_status_notification_t* port_oper_status);
@@ -394,6 +401,11 @@ void sai_deserialize_fdb_event_ntf(
         _Out_ uint32_t &count,
         _Out_ sai_fdb_event_notification_data_t** fdbdata);
 
+void sai_deserialize_nat_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_nat_event_notification_data_t** natdata);
+
 void sai_deserialize_port_oper_status_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
@@ -420,6 +432,10 @@ void sai_deserialize_free_attribute_value(
 void sai_deserialize_free_fdb_event_ntf(
         _In_ uint32_t count,
         _In_ sai_fdb_event_notification_data_t* fdbdata);
+
+void sai_deserialize_free_nat_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_nat_event_notification_data_t* natdata);
 
 void sai_deserialize_free_port_oper_status_ntf(
         _In_ uint32_t count,

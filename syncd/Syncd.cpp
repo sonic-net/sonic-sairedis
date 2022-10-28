@@ -140,6 +140,7 @@ Syncd::Syncd(
     m_handler = std::make_shared<NotificationHandler>(m_processor);
 
     m_sn.onFdbEvent = std::bind(&NotificationHandler::onFdbEvent, m_handler.get(), _1, _2);
+    m_sn.onNatEvent = std::bind(&NotificationHandler::onNatEvent, m_handler.get(), _1, _2);
     m_sn.onPortStateChange = std::bind(&NotificationHandler::onPortStateChange, m_handler.get(), _1, _2);
     m_sn.onQueuePfcDeadlock = std::bind(&NotificationHandler::onQueuePfcDeadlock, m_handler.get(), _1, _2);
     m_sn.onSwitchShutdownRequest = std::bind(&NotificationHandler::onSwitchShutdownRequest, m_handler.get(), _1);
@@ -204,9 +205,9 @@ void Syncd::performStartupLogic()
 {
     SWSS_LOG_ENTER();
 
-    // ignore warm logic here if syncd starts in Mellanox fastfast boot mode
+    // ignore warm logic here if syncd starts in fast-boot or Mellanox fastfast boot mode
 
-    if (m_isWarmStart && (m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT))
+    if (m_isWarmStart && m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT && m_commandLineOptions->m_startType != SAI_START_TYPE_FAST_BOOT)
     {
         SWSS_LOG_WARN("override command line startType=%s via SAI_START_TYPE_WARM_BOOT",
                 CommandLineOptions::startTypeToString(m_commandLineOptions->m_startType).c_str());
@@ -1395,6 +1396,10 @@ sai_status_t Syncd::processBulkEntry(
         {
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
                 sai_deserialize_route_entry(objectIds[idx], metaKey.objectkey.key.route_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_NAT_ENTRY:
+                sai_deserialize_nat_entry(objectIds[idx], metaKey.objectkey.key.nat_entry);
                 break;
 
             case SAI_OBJECT_TYPE_FDB_ENTRY:
@@ -4014,6 +4019,7 @@ void Syncd::performWarmRestartSingleSwitch(
         SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY,
         SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY,
         SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY,
+        SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY,
         SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY,
         SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY,
         SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY
