@@ -67,8 +67,8 @@ jobs:
       runVersion: 'latestFromBranch'
       runBranch: 'refs/heads/$(BUILD_BRANCH)'
       path: $(Build.ArtifactStagingDirectory)/download
-      patterns: '**/target/{{ parameters.artifact_name }}.gz'
-    displayName: "Download sonic-buildimage {{ parameters.artifact_name }}"
+      patterns: '**/target/${{ parameters.artifact_name }}.gz'
+    displayName: "Download sonic-buildimage ${{ parameters.artifact_name }}"
   - script: |
       set -ex
       echo $(Build.DefinitionName).$(Build.BuildNumber)
@@ -92,7 +92,7 @@ jobs:
 
       docker save docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber).asan-${{ parameters.asan }} | gzip -c > $(Build.ArtifactStagingDirectory)/docker-sonic-vs.gz
       rm -rf $(Build.ArtifactStagingDirectory)/download
-    displayName: "Build {{ parameters.artifact_name }}"
+    displayName: "Build ${{ parameters.artifact_name }}"
 
   - publish: $(Build.ArtifactStagingDirectory)/
     artifact: ${{ parameters.artifact_name }}
