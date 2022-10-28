@@ -68,6 +68,18 @@
 #define REDIS_TABLE_NOTIFICATIONS   "NOTIFICATIONS"
 
 /**
+ * @brief Table which will be used to forward notifications per DB scope
+ *
+ * In https://redis.io/docs/manual/pubsub/, it says:
+ * "Pub/Sub has no relation to the key space. It was made to not interfere with
+ * it on any level, including database numbers."
+ */
+#define REDIS_TABLE_NOTIFICATIONS_PER_DB(dbName) \
+    ((dbName) == "ASIC_DB" ? \
+     REDIS_TABLE_NOTIFICATIONS : \
+     (dbName) + "_" + REDIS_TABLE_NOTIFICATIONS)
+
+/**
  * @brief Table which will be used to send API response from syncd.
  */
 #define REDIS_TABLE_GETRESPONSE     "GETRESPONSE"

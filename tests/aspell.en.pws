@@ -231,6 +231,7 @@ inseg
 Inseg
 INSEG
 insegs
+io
 ip
 IP
 ipc
@@ -308,6 +309,7 @@ PORTs
 pre
 printf
 ptr
+pubsub
 qos
 queueCounterIds
 queueId
