@@ -35,7 +35,7 @@ RedisChannel::RedisChannel(
     SWSS_LOG_NOTICE("creating notification thread");
 
     m_notificationThread = std::make_shared<std::thread>(&RedisChannel::notificationThreadFunction, this);
-    
+
     g_events_handle = events_init_publisher("sonic-events-swss");
 
 }
