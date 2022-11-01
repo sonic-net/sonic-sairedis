@@ -2490,7 +2490,7 @@ void FlexCounter::getSupportedPortCounters(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_NOTICE("Counter %s is not supported on port RID %s: %s",
+            SWSS_LOG_INFO("Counter %s is not supported on port RID %s: %s",
                     sai_serialize_port_stat(counter).c_str(),
                     sai_serialize_object_id(portRid).c_str(),
                     sai_serialize_status(status).c_str());
@@ -2735,7 +2735,7 @@ void FlexCounter::getSupportedPriorityGroupCounters(
 
         if (status != SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_NOTICE("%s: counter %s is not supported on PG %s, rv: %s",
+            SWSS_LOG_INFO("%s: counter %s is not supported on PG %s, rv: %s",
                     m_instanceId.c_str(),
                     sai_serialize_ingress_priority_group_stat(counter).c_str(),
                     sai_serialize_object_id(priorityGroupRid).c_str(),
@@ -2754,7 +2754,7 @@ void FlexCounter::getSupportedPriorityGroupCounters(
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_NOTICE("%s: clear counter %s is not supported on PG %s, rv: %s",
+                SWSS_LOG_INFO("%s: clear counter %s is not supported on PG %s, rv: %s",
                         m_instanceId.c_str(),
                         sai_serialize_ingress_priority_group_stat(counter).c_str(),
                         sai_serialize_object_id(priorityGroupRid).c_str(),
