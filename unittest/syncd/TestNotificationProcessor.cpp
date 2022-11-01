@@ -58,7 +58,7 @@ TEST(NotificationProcessor, NotificationProcessorTest)
 
     sai_fdb_event_notification_data_t fdb;
     memset(&fdb, 0, sizeof(sai_fdb_event_notification_data_t));
-    fdb.event_type = SAI_FDB_EVENT_MOVED;
+    fdb.event_type = SAI_FDB_EVENT_MOVE;
     fdb.fdb_entry.switch_id = 0x21000000000000;
     fdb.fdb_entry.mac_address[5] = 1;
     fdb.fdb_entry.bv_id = 0x26000000000001;
@@ -67,10 +67,13 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     attr[0].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
     attr[0].value.oid = 0x3a000000000a99;
     fdb.attr = attr;
+    std::string s = sai_serialize_fdb_event_ntf(1, &fdb);
+    std::vector<swss::FieldValueTuple> entry;
+    swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s, entry);
 
-    notificationProcessor->redisPutFdbEntryToAsicView(&fdb);
-    string bridgeport = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
-    string ip = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_ENDPOINT_IP");
+    notificationProcessor->syncProcessNotification(item);
+    std::string bridgeport = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
+    std::string ip = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_ENDPOINT_IP");
     EXPECT_EQ(bridgeport, "0x3a000000000a99");
     EXPECT_EQ(ip, "");
 }
