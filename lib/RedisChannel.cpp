@@ -197,7 +197,5 @@ sai_status_t RedisChannel::wait(
 
     SWSS_LOG_ERROR("failed to get response for %s", command.c_str());
 
-    event_publish(g_events_handle, "redis-getresponse-failure");
-
     return SAI_STATUS_FAILURE;
 }
