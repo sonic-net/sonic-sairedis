@@ -56,24 +56,20 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     dbAsic->hset(key, "SAI_FDB_ENTRY_ATTR_TYPE", "SAI_FDB_ENTRY_TYPE_STATIC");
     dbAsic->hset(key, "SAI_FDB_ENTRY_ATTR_ENDPOINT_IP", "10.0.0.1");
 
-    sai_fdb_event_notification_data_t fdb;
-    memset(&fdb, 0, sizeof(sai_fdb_event_notification_data_t));
-    fdb.event_type = SAI_FDB_EVENT_MOVE;
-    fdb.fdb_entry.switch_id = 0x21000000000000;
-    fdb.fdb_entry.mac_address[5] = 1;
-    fdb.fdb_entry.bv_id = 0x26000000000001;
-    fdb.attr_count = 1;
-    sai_attribute_t attr[1];
-    attr[0].id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
-    attr[0].value.oid = 0x3a000000000a99;
-    fdb.attr = attr;
-    std::string s = sai_serialize_fdb_event_ntf(1, &fdb);
-    std::vector<swss::FieldValueTuple> entry;
-    swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, s, entry);
+    translator->insertRidAndVid(0x21000000000000,0x210000000000);
+    translator->insertRidAndVid(0x1003a0000004a,0x3a000000000a99);
+    translator->insertRidAndVid(0x2600000001,0x26000000000001);
+
+    static std::string fdb_data = "[{\"fdb_entry\":\"{\"bvid\":\"oid:0x2600000001\",\"mac\":\"00:00:00:00:00:01\",\"switch_id\":\"oid:0x21000000000000\"}\",\"fdb_event\":\"SAI_FDB_EVENT_MOVE\",\"list\":[{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x1003a0000004a\"}]}]"
+    std::vector<swss::FieldValueTuple> fdb_entry;
+    swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, fdb_data, fdb_entry);
 
     notificationProcessor->syncProcessNotification(item);
-    std::string bridgeport = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
-    std::string ip = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_ENDPOINT_IP");
-    EXPECT_EQ(bridgeport, "0x3a000000000a99");
-    EXPECT_EQ(ip, "");
+    translator->eraseRidAndVid(0x21000000000000,0x210000000000);
+    translator->eraseRidAndVid(0x1003a0000004a,0x3a000000000a99);
+    translator->eraseRidAndVid(0x2600000001,0x26000000000001);
+    auto bridgeport = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
+    auto ip = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_ENDPOINT_IP");
+    EXPECT_EQ(*bridgeport, "0x3a000000000a99");
+    EXPECT_EQ(*ip, "");
 }
