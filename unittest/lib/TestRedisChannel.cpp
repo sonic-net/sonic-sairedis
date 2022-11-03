@@ -55,7 +55,7 @@ TEST(RedisChannel, flush)
     rc.flush();
 }
 
-Test(RedisChannel, wait)
+TEST(RedisChannel, wait)
 {
     RedisChannel rc("ASIC_DB", callback);
 
