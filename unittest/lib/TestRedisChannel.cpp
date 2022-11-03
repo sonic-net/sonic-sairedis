@@ -55,10 +55,10 @@ TEST(RedisChannel, flush)
     rc.flush();
 }
 
-Test(RedisChannel, wait)
+Test(RedisChannel, testEventParams)
 {
     RedisChannel rc("ASIC_DB", callback);
-    std::string command = "notify"
+    std::string command = "notify";
 
     rc.wait(command, NULL);
 
