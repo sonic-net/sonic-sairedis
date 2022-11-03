@@ -55,12 +55,15 @@ TEST(RedisChannel, flush)
     rc.flush();
 }
 
-Test(RedisChannel, testEventParams)
+Test(RedisChannel, wait)
 {
     RedisChannel rc("ASIC_DB", callback);
-    std::string command = "notify";
 
-    rc.wait(command, NULL);
+    rc.setResponseTimeout(60);
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    EXPECT_EQ(rc.wait("notify", kco), SAI_STATUS_FAILURE);
 
     EXPECT_EQ(rc.m_event_params.size(), 2);
     EXPECT_NE(rc.m_event_params["operation_result"], "");
