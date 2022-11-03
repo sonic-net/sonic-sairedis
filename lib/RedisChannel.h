@@ -53,7 +53,7 @@ namespace sairedis
                     _In_ const std::string& command,
                     _Out_ swss::KeyOpFieldsValuesTuple& kco) override;
 
-            events_params_t m_event_params;
+            event_params_t m_event_params;
 
         protected:
 
