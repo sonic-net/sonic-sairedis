@@ -186,11 +186,11 @@ sai_status_t RedisChannel::wait(
 
         SWSS_LOG_ERROR("SELECT operation result: %s on %s", swss::Select::resultToString(result).c_str(), command.c_str());
 
-        event_params_t params = {
+        m_event_params = {
             { "operation_result", swss::Select::resultToString(result) },
             { "command", command }};
 
-        event_publish(g_events_handle, "select-operation-failure", &params);
+        event_publish(g_events_handle, "select-operation-failure", &m_event_params);
 
         break;
     }

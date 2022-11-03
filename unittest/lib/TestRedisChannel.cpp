@@ -54,3 +54,15 @@ TEST(RedisChannel, flush)
 
     rc.flush();
 }
+
+Test(RedisChannel, wait)
+{
+    RedisChannel rc("ASIC_DB", callback);
+    std::string command = "notify"
+
+    rc.wait(command, NULL);
+
+    EXPECT_EQ(rc.m_event_params.size(), 2);
+    EXPECT_NE(rc.m_event_params["operation_result"], "");
+    EXPECT_NE(rc.m_event_params["command"], "");
+}
