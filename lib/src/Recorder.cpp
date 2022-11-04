@@ -198,6 +198,8 @@ void Recorder::requestLogRotate()
 
 void Recorder::recordingFileReopen()
 {
+    MUTEX();
+
     SWSS_LOG_ENTER();
 
     m_ofstream.close();
@@ -221,6 +223,8 @@ void Recorder::recordingFileReopen()
 
 void Recorder::startRecording()
 {
+    MUTEX();
+
     SWSS_LOG_ENTER();
 
     m_recordingFile = m_recordingOutputDirectory + "/" + m_recordingFileName;
@@ -240,6 +244,8 @@ void Recorder::startRecording()
 
 void Recorder::stopRecording()
 {
+    MUTEX();
+
     SWSS_LOG_ENTER();
 
     SWSS_LOG_NOTICE("stopped recording");
