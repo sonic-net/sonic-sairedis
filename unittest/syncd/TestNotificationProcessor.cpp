@@ -60,7 +60,7 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->insertRidAndVid(0x1003a0000004a,0x3a000000000a99);
     translator->insertRidAndVid(0x2600000001,0x26000000000001);
 
-    static std::string fdb_data = "[{\"fdb_entry\":\"{\"bvid\":\"oid:0x2600000001\",\"mac\":\"00:00:00:00:00:01\",\"switch_id\":\"oid:0x21000000000000\"}\",\"fdb_event\":\"SAI_FDB_EVENT_MOVE\",\"list\":[{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x1003a0000004a\"}]}]";
+    static std::string fdb_data = "[{\"fdb_entry\":\"{\\\"bvid\\\":\\\"oid:0x2600000001\\\",\\\"mac\\\":\\\"00:00:00:00:00:01\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\"}\",\"fdb_event\":\"SAI_FDB_EVENT_MOVE\",\"list\":[{\"id\":\"SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID\",\"value\":\"oid:0x1003a0000004a\"}]}]";
     std::vector<swss::FieldValueTuple> fdb_entry;
     swss::KeyOpFieldsValuesTuple item(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, fdb_data, fdb_entry);
 
