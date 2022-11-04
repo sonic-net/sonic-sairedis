@@ -219,7 +219,6 @@ void Recorder::recordingFileReopen()
 
 void Recorder::startRecording()
 {
-
     SWSS_LOG_ENTER();
 
     m_recordingFile = m_recordingOutputDirectory + "/" + m_recordingFileName;
