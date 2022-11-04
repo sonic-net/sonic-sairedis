@@ -220,18 +220,20 @@ void Recorder::recordingFileReopen()
 
 void Recorder::startRecording()
 {
-    MUTEX();
 
     SWSS_LOG_ENTER();
 
     m_recordingFile = m_recordingOutputDirectory + "/" + m_recordingFileName;
 
-    m_ofstream.open(m_recordingFile, std::ofstream::out | std::ofstream::app);
-
-    if (!m_ofstream.is_open())
     {
-        SWSS_LOG_ERROR("failed to open recording file %s: %s", m_recordingFile.c_str(), strerror(errno));
-        return;
+        MUTEX();
+        m_ofstream.open(m_recordingFile, std::ofstream::out | std::ofstream::app);
+
+        if (!m_ofstream.is_open())
+        {
+            SWSS_LOG_ERROR("failed to open recording file %s: %s", m_recordingFile.c_str(), strerror(errno));
+            return;
+        }
     }
 
     recordLine("#|recording on: " + m_recordingFile);
