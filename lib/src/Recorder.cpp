@@ -190,10 +190,7 @@ void Recorder::requestLogRotate()
 
     /* double check since reopen could fail */
 
-    if (m_ofstream.is_open())
-    {
-        m_ofstream << getTimestamp() << "|" << "#|logrotate on: " << m_recordingFile << std::endl;
-    }
+    recordLine("#|logrotate on: " + m_recordingFile);
 }
 
 void Recorder::recordingFileReopen()
