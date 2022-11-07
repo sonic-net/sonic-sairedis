@@ -51,6 +51,7 @@ libSyncd_a_SOURCES = \
 				WatchdogScope.cpp \
 				Workaround.cpp \
 				ZeroMQNotificationProducer.cpp \
+				ShareMemoryNotificationProducer.cpp \
 				syncd_main.cpp
 
 libSyncd_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)

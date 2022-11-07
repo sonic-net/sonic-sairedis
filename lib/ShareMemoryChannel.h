@@ -12,8 +12,6 @@
 
 #include <boost/interprocess/ipc/message_queue.hpp>
 
-using boost::interprocess;
-
 namespace sairedis
 {
     class ShareMemoryChannel:
@@ -60,8 +58,8 @@ namespace sairedis
 
             std::vector<uint8_t> m_buffer;
 
-            message_queue* m_queue;
+            boost::interprocess::message_queue* m_queue;
 
-            message_queue* m_ntfQueue;
+            boost::interprocess::message_queue* m_ntfQueue;
     };
 }

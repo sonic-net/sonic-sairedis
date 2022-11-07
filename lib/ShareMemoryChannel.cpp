@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 using namespace sairedis;
+using boost::interprocess;
 
 #define MQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
 #define MQ_SIZE 100
@@ -31,26 +32,33 @@ ShareMemoryChannel::ShareMemoryChannel(
 
     // configure message queue for main communication
 
-    m_queue = message_queue(open_or_create,
-                               m_queueName,
-                               MQ_SIZE,
-                               MQ_RESPONSE_BUFFER_SIZE);
-    if (m_queue == 0)
+    try
     {
-        SWSS_LOG_THROW("failed to open or create main message queue %s",
-                m_queueName.c_str());
+        m_queue = message_queue(open_or_create,
+                                   m_queueName,
+                                   MQ_SIZE,
+                                   MQ_RESPONSE_BUFFER_SIZE);
+    }
+    catch (const interprocess_exception& e)
+    {
+        SWSS_LOG_THROW("failed to open or create main message queue %s: %s",
+                m_queueName.c_str(),
+                e.what());
     }
 
     // configure notification message queue
-
-    m_ntfQueue = message_queue(open_or_create,
-                               m_ntfQueueName,
-                               MQ_SIZE,
-                               MQ_RESPONSE_BUFFER_SIZE);
-    if (m_ntfQueue == 0)
+    try
     {
-        SWSS_LOG_THROW("failed to open or create ntf message queue %s",
-                m_ntfQueueName.c_str());
+        m_ntfQueue = message_queue(open_or_create,
+                                   m_ntfQueueName,
+                                   MQ_SIZE,
+                                   MQ_RESPONSE_BUFFER_SIZE);
+    }
+    catch (const interprocess_exception& e)
+    {
+        SWSS_LOG_THROW("failed to open or create ntf message queue %s: %s",
+                m_ntfQueueName.c_str(),
+                e.what());
     }
 
     // start thread
