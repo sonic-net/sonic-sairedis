@@ -10,6 +10,8 @@
 #include <unistd.h>
 
 using namespace sairedis;
+
+#include <boost/interprocess/ipc/message_queue.hpp>
 using boost::interprocess;
 
 #define MQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
@@ -34,7 +36,7 @@ ShareMemoryChannel::ShareMemoryChannel(
 
     try
     {
-        m_queue = message_queue(open_or_create,
+        m_queue = std::make_shared<message_queue>(open_or_create,
                                    m_queueName,
                                    MQ_SIZE,
                                    MQ_RESPONSE_BUFFER_SIZE);
@@ -49,7 +51,7 @@ ShareMemoryChannel::ShareMemoryChannel(
     // configure notification message queue
     try
     {
-        m_ntfQueue = message_queue(open_or_create,
+        m_ntfQueue = std::make_shared<message_queue>(open_or_create,
                                    m_ntfQueueName,
                                    MQ_SIZE,
                                    MQ_RESPONSE_BUFFER_SIZE);
@@ -87,7 +89,7 @@ ShareMemoryChannel::~ShareMemoryChannel()
     }
 
     // create new message queue, and perform send to break notification recv
-    tmpQueue = message_queue(open_or_create,
+    std::shared_ptr<message_queue> tmpQueue = std::make_shared<message_queue>(open_or_create,
                                m_ntfQueueName,
                                MQ_SIZE,
                                MQ_RESPONSE_BUFFER_SIZE);
@@ -157,7 +159,7 @@ void ShareMemoryChannel::notificationThreadFunction()
         
         try
         {
-            m_ntfQueue.receive(buffer.data(), MQ_RESPONSE_BUFFER_SIZE, recvd_size, priority);
+            m_ntfQueue->receive(buffer.data(), MQ_RESPONSE_BUFFER_SIZE, recvd_size, priority);
         }
         catch (const interprocess_exception& e)
         {
@@ -259,7 +261,7 @@ void ShareMemoryChannel::set(
     {
         try
         {
-            m_queue.send(msg.c_str(), msg.length(), 0);
+            m_queue->send(msg.c_str(), msg.length(), 0);
         }
         catch (const interprocess_exception& e)
         {
@@ -302,7 +304,7 @@ sai_status_t ShareMemoryChannel::wait(
 
         try
         {
-            m_queue.receive(buffer.data(), MQ_RESPONSE_BUFFER_SIZE, recvd_size, priority);
+            m_queue->receive(buffer.data(), MQ_RESPONSE_BUFFER_SIZE, recvd_size, priority);
         }
         catch (const interprocess_exception& e)
         {

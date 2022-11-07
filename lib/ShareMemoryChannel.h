@@ -10,7 +10,7 @@
 #include <memory>
 #include <functional>
 
-#include <boost/interprocess/ipc/message_queue.hpp>
+class boost::interprocess::message_queue;
 
 namespace sairedis
 {
@@ -58,8 +58,8 @@ namespace sairedis
 
             std::vector<uint8_t> m_buffer;
 
-            boost::interprocess::message_queue* m_queue;
+            std::shared_ptr<boost::interprocess::message_queue> m_queue;
 
-            boost::interprocess::message_queue* m_ntfQueue;
+            std::shared_ptr<boost::interprocess::message_queue> m_ntfQueue;
     };
 }

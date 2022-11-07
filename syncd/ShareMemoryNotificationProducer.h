@@ -5,7 +5,7 @@
 #include "swss/dbconnector.h"
 #include "swss/notificationproducer.h"
 
-#include <boost/interprocess/ipc/message_queue.hpp>
+class boost::interprocess::message_queue;
 
 namespace syncd
 {
@@ -30,6 +30,6 @@ namespace syncd
 
             std::string m_ntfQueueName;
 
-            boost::interprocess::message_queue* m_ntfQueue;
+            std::shared_ptr<boost::interprocess::message_queue> m_ntfQueue;
     };
 }
