@@ -12,7 +12,7 @@
 using namespace sairedis;
 
 #include <boost/interprocess/ipc/message_queue.hpp>
-using boost::interprocess;
+using namespace boost::interprocess;
 
 #define MQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
 #define MQ_SIZE 100

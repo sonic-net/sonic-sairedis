@@ -12,8 +12,8 @@
 #define MQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
 #define MQ_SIZE 100
 #define MQ_MAX_RETRY 10
+using namespace boost::interprocess;
 
-#include <boost/interprocess/ipc/message_queue.hpp>
 using namespace sairedis;
 
 ShareMemorySelectableChannel::ShareMemorySelectableChannel(
@@ -25,7 +25,7 @@ ShareMemorySelectableChannel::ShareMemorySelectableChannel(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_NOTICE("binding on %s", endpoint.c_str());
+    SWSS_LOG_NOTICE("binding on %s", m_queueName.c_str());
 
     m_buffer.resize(MQ_RESPONSE_BUFFER_SIZE);
 
@@ -55,7 +55,7 @@ ShareMemorySelectableChannel::~ShareMemorySelectableChannel()
 
     try
     {
-        message_queue::remove(m_queueName);
+        message_queue::remove(m_queueName.c_str());
     }
     catch (const interprocess_exception& e)
     {
