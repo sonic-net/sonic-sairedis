@@ -19,5 +19,6 @@ saiplayer_LDADD =  libSaiPlayer.a $(top_srcdir)/syncd/libSyncd.a $(top_srcdir)/l
 				   -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 if GCOV_ENABLED
 #saiplayer_LDADD += -lgcovpreload
-saiplayer_LDFLAGS = -Wl,-L$(top_srcdir)/gcovpreload/ -Wl,--no-as-needed,-Bdynamic -lgcovpreload
+saiplayer_LDADD += -L$(top_srcdir)/gcovpreload/.libs/ -lgcovpreload
+saiplayer_LDFLAGS = -Wl,--no-as-needed,-Bdynamic
 endif

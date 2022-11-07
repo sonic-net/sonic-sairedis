@@ -74,6 +74,7 @@ stages:
       swss_common_artifact_name: sonic-swss-common.armhf
       artifact_name: sonic-sairedis.armhf
       syslog_artifact_name: sonic-sairedis.syslog.armhf
+      gcov_unittest_artifact_name: gcov_unitest.info
       debian_version: ${{ parameters.debian_version }}
 
   - template: .azure-pipelines/build-template.yml
@@ -85,6 +86,7 @@ stages:
       swss_common_artifact_name: sonic-swss-common.arm64
       artifact_name: sonic-sairedis.arm64
       syslog_artifact_name: sonic-sairedis.syslog.arm64
+      gcov_unittest_artifact_name: gcov_unitest.info
       debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildSwss

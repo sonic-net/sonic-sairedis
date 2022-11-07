@@ -9,5 +9,6 @@ saidump_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsa
 				-L$(top_srcdir)/lib/.libs -lsairedis -lzmq $(CODE_COVERAGE_LIBS)
 if GCOV_ENABLED
 #saidump_LDADD += -lgcovpreload
-saidump_LDFLAGS = -Wl,-L$(top_srcdir)/gcovpreload/ -Wl,--no-as-needed,-Bdynamic -lgcovpreload
+saidump_LDADD += -L$(top_srcdir)/gcovpreload/.libs/ -lgcovpreload
+saidump_LDFLAGS = -Wl,--no-as-needed,-Bdynamic
 endif

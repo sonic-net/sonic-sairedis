@@ -15,5 +15,6 @@ saisdkdump_LDADD = -lhiredis -lswsscommon $(SAILIB) -lpthread -L$(top_srcdir)/me
 
 if GCOV_ENABLED
 #saisdkdump_LDADD += -lgcovpreload
-saisdkdump_LDFLAGS = -Wl,-L$(top_srcdir)/gcovpreload/ -Wl,--no-as-needed,-Bdynamic -lgcovpreload
+saisdkdump_LDADD += -L$(top_srcdir)/gcovpreload/.libs/ -lgcovpreload
+saisdkdump_LDFLAGS = -Wl,--no-as-needed,-Bdynamic
 endif
