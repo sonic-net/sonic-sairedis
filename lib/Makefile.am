@@ -26,7 +26,8 @@ libSaiRedis_a_SOURCES = \
 						 SwitchContainer.cpp \
 						 Utils.cpp \
 						 VirtualObjectIdManager.cpp \
-						 ZeroMQChannel.cpp
+						 ZeroMQChannel.cpp \
+						 ShareMemoryChannel.cpp
 
 libsairedis_la_SOURCES = \
 						 sai_redis_acl.cpp \
