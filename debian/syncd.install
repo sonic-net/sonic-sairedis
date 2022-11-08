@@ -1,3 +1,4 @@
+usr/lib/*/libgcovpreload*.so.* usr/lib
 usr/bin/saidump
 usr/bin/saiplayer
 usr/bin/saisdkdump
@@ -5,5 +6,4 @@ usr/bin/saidiscovery
 usr/bin/saiasiccmp
 usr/bin/syncd*
 syncd/scripts/* usr/bin
-usr/lib/libgcovpreload.so usr/lib
 gcov tmp
