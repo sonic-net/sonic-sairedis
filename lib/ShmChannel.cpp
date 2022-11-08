@@ -1,4 +1,4 @@
-#include "ShareMemoryChannel.h"
+#include "ShmChannel.h"
 
 #include "sairediscommon.h"
 
@@ -18,7 +18,7 @@ using namespace boost::interprocess;
 #define MQ_MAX_RETRY 10
 #define MQ_POLL_TIMEOUT (1000)
 
-ShareMemoryChannel::ShareMemoryChannel(
+ShmChannel::ShmChannel(
         _In_ const std::string& queueName,
         _In_ const std::string& ntfQueueName,
         _In_ Channel::Callback callback):
@@ -69,10 +69,10 @@ ShareMemoryChannel::ShareMemoryChannel(
 
     SWSS_LOG_NOTICE("creating notification thread");
 
-    m_notificationThread = std::make_shared<std::thread>(&ShareMemoryChannel::notificationThreadFunction, this);
+    m_notificationThread = std::make_shared<std::thread>(&ShmChannel::notificationThreadFunction, this);
 }
 
-ShareMemoryChannel::~ShareMemoryChannel()
+ShmChannel::~ShmChannel()
 {
     SWSS_LOG_ENTER();
 
@@ -140,7 +140,7 @@ ShareMemoryChannel::~ShareMemoryChannel()
     }
 }
 
-void ShareMemoryChannel::notificationThreadFunction()
+void ShmChannel::notificationThreadFunction()
 {
     SWSS_LOG_ENTER();
     SWSS_LOG_NOTICE("start listening for notifications");
@@ -233,7 +233,7 @@ void ShareMemoryChannel::notificationThreadFunction()
     SWSS_LOG_NOTICE("exiting notification thread");
 }
 
-void ShareMemoryChannel::setBuffered(
+void ShmChannel::setBuffered(
         _In_ bool buffered)
 {
     SWSS_LOG_ENTER();
@@ -241,14 +241,14 @@ void ShareMemoryChannel::setBuffered(
     // not supported
 }
 
-void ShareMemoryChannel::flush()
+void ShmChannel::flush()
 {
     SWSS_LOG_ENTER();
 
     // not supported
 }
 
-void ShareMemoryChannel::set(
+void ShmChannel::set(
         _In_ const std::string& key,
         _In_ const std::vector<swss::FieldValueTuple>& values,
         _In_ const std::string& command)
@@ -286,7 +286,7 @@ void ShareMemoryChannel::set(
     }
 }
 
-void ShareMemoryChannel::del(
+void ShmChannel::del(
         _In_ const std::string& key,
         _In_ const std::string& command)
 {
@@ -297,7 +297,7 @@ void ShareMemoryChannel::del(
     set(key, values, command);
 }
 
-sai_status_t ShareMemoryChannel::wait(
+sai_status_t ShmChannel::wait(
         _In_ const std::string& command,
         _Out_ swss::KeyOpFieldsValuesTuple& kco)
 {

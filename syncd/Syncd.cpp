@@ -11,7 +11,7 @@
 #include "BreakConfigParser.h"
 #include "RedisNotificationProducer.h"
 #include "ZeroMQNotificationProducer.h"
-#include "ShareMemoryNotificationProducer.h"
+#include "ShmNotificationProducer.h"
 #include "WatchdogScope.h"
 
 #include "sairediscommon.h"
@@ -23,7 +23,7 @@
 
 #include "meta/sai_serialize.h"
 #include "meta/ZeroMQSelectableChannel.h"
-#include "meta/ShareMemorySelectableChannel.h"
+#include "meta/ShmSelectableChannel.h"
 #include "meta/RedisSelectableChannel.h"
 #include "meta/PerformanceIntervalTimer.h"
 
@@ -139,13 +139,13 @@ Syncd::Syncd(
     }
     else if (m_contextConfig->m_shmEnable)
     {
-        m_notifications = std::make_shared<ShareMemoryNotificationProducer>(m_contextConfig->m_shmNtfName);
+        m_notifications = std::make_shared<ShmNotificationProducer>(m_contextConfig->m_shmNtfName);
 
         SWSS_LOG_NOTICE("shared memory enabled, forcing sync mode");
 
         m_enableSyncMode = true;
 
-        m_selectableChannel = std::make_shared<sairedis::ShareMemorySelectableChannel>(m_contextConfig->m_shmName);
+        m_selectableChannel = std::make_shared<sairedis::ShmSelectableChannel>(m_contextConfig->m_shmName);
     }
     else
     {

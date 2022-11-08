@@ -1,4 +1,4 @@
-#include "ShareMemoryNotificationProducer.h"
+#include "ShmNotificationProducer.h"
 
 using namespace syncd;
 
@@ -9,7 +9,7 @@ using namespace boost::interprocess;
 #define MQ_SIZE 100
 #define MQ_MAX_RETRY 10
 
-ShareMemoryNotificationProducer::ShareMemoryNotificationProducer(
+ShmNotificationProducer::ShmNotificationProducer(
         _In_ const std::string& ntfQueueName):
     m_ntfQueueName(ntfQueueName),
     m_ntfQueue(nullptr)
@@ -33,7 +33,7 @@ ShareMemoryNotificationProducer::ShareMemoryNotificationProducer(
     SWSS_LOG_NOTICE("opening ntf message queue: %s", m_ntfQueueName.c_str());
 }
 
-ShareMemoryNotificationProducer::~ShareMemoryNotificationProducer()
+ShmNotificationProducer::~ShmNotificationProducer()
 {
     SWSS_LOG_ENTER();
 
@@ -48,7 +48,7 @@ ShareMemoryNotificationProducer::~ShareMemoryNotificationProducer()
     }
 }
 
-void ShareMemoryNotificationProducer::send(
+void ShmNotificationProducer::send(
         _In_ const std::string& op,
         _In_ const std::string& data,
         _In_ const std::vector<swss::FieldValueTuple>& values)

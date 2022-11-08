@@ -6,10 +6,10 @@
 #include <assert.h>
 
 #include "syncd/ZeroMQNotificationProducer.h"
-#include "syncd/ShareMemoryNotificationProducer.h"
+#include "syncd/ShmNotificationProducer.h"
 
 #include "lib/ZeroMQChannel.h"
-#include "lib/ShareMemoryChannel.h"
+#include "lib/ShmChannel.h"
 
 #include "meta/sai_serialize.h"
 
@@ -65,7 +65,7 @@ static void test_shmchannel_destructor()
 
     for (int i = 0; i < 10; i++)
     {
-        ShareMemoryChannel z("feeds1", "feeds2", nullptr);
+        ShmChannel z("feeds1", "feeds2", nullptr);
 
         usleep(10*1000);
     }
@@ -151,9 +151,9 @@ static void test_shmchannel_first_notification()
             got = true;
         };
 
-        ShareMemoryChannel z("feeds1", "feeds2", callback);
+        ShmChannel z("feeds1", "feeds2", callback);
 
-        ShareMemoryNotificationProducer p("feeds2");
+        ShmNotificationProducer p("feeds2");
 
         p.send("foo", "bar", {});
 
@@ -210,7 +210,7 @@ static void test_shmchannel_eintr_errno_on_wait()
 
     std::cout << " * " << __FUNCTION__ << std::endl;
 
-    ShareMemoryChannel z("feeds1", "feeds2", nullptr);
+    ShmChannel z("feeds1", "feeds2", nullptr);
 
     // shared memory receive method can't break by SIGHUP signal.
     z.setResponseTimeout(1000);

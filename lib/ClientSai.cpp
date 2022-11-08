@@ -2,7 +2,7 @@
 #include "SaiInternal.h"
 #include "RedisRemoteSaiInterface.h"
 #include "ZeroMQChannel.h"
-#include "ShareMemoryChannel.h"
+#include "ShmChannel.h"
 #include "Utils.h"
 #include "sairediscommon.h"
 #include "ClientConfig.h"
@@ -84,7 +84,7 @@ sai_status_t ClientSai::initialize(
 
     if (cc->m_shmName != "" && cc->m_shmNtfName != "")
     {
-        m_communicationChannel = std::make_shared<ShareMemoryChannel>(
+        m_communicationChannel = std::make_shared<ShmChannel>(
                 cc->m_shmName,
                 cc->m_shmNtfName,
                 std::bind(&ClientSai::handleNotification, this, _1, _2, _3));

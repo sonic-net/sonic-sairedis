@@ -14,17 +14,17 @@
 
 namespace sairedis
 {
-    class ShareMemoryChannel:
+    class ShmChannel:
         public Channel
     {
         public:
 
-            ShareMemoryChannel(
+            ShmChannel(
                     _In_ const std::string& queueName,
                     _In_ const std::string& ntfQueueName,
                     _In_ Channel::Callback callback);
 
-            virtual ~ShareMemoryChannel();
+            virtual ~ShmChannel();
 
         public:
 

@@ -9,15 +9,15 @@
 
 namespace syncd
 {
-    class ShareMemoryNotificationProducer:
+    class ShmNotificationProducer:
         public NotificationProducerBase
     {
         public:
 
-            ShareMemoryNotificationProducer(
+            ShmNotificationProducer(
                     _In_ const std::string& ntfQueueName);
 
-            virtual ~ShareMemoryNotificationProducer();
+            virtual ~ShmNotificationProducer();
 
         public:
 

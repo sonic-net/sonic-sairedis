@@ -1,5 +1,5 @@
-#include "ShareMemorySelectableChannel.h"
-#include "ShareMemoryChannel.h"
+#include "ShmSelectableChannel.h"
+#include "ShmChannel.h"
 
 #include "swss/select.h"
 
@@ -9,14 +9,14 @@ using namespace sairedis;
 
 TEST(ShmSelectableChannel, empty)
 {
-    ShareMemorySelectableChannel c("shm_test");
+    ShmSelectableChannel c("shm_test");
 
     EXPECT_EQ(c.empty(), true);
 }
 
 TEST(ShmSelectableChannel, pop)
 {
-    ShareMemorySelectableChannel c("shm_test");
+    ShmSelectableChannel c("shm_test");
 
     swss::KeyOpFieldsValuesTuple kco;
 
@@ -25,21 +25,21 @@ TEST(ShmSelectableChannel, pop)
 
 TEST(ShmSelectableChannel, hasData)
 {
-    ShareMemorySelectableChannel c("shm_test");
+    ShmSelectableChannel c("shm_test");
 
     EXPECT_EQ(c.hasData(), false);
 }
 
 TEST(ShmSelectableChannel, hasCachedData)
 {
-    ShareMemorySelectableChannel c("shm_test");
+    ShmSelectableChannel c("shm_test");
 
     EXPECT_EQ(c.hasCachedData(), false);
 }
 
 TEST(ShmSelectableChannel, set)
 {
-    ShareMemorySelectableChannel c("shm_test");
+    ShmSelectableChannel c("shm_test");
 
     std::vector<swss::FieldValueTuple> values;
 
@@ -59,9 +59,9 @@ static void cb(
 
 TEST(ShmSelectableChannel, readData)
 {
-    ShareMemoryChannel main("shm_test", "shm_test_ntf", cb);
+    ShmChannel main("shm_test", "shm_test_ntf", cb);
 
-    ShareMemorySelectableChannel c("shm_test");
+    ShmSelectableChannel c("shm_test");
 
     swss::Select ss;
 

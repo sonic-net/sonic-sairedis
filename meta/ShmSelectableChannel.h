@@ -13,15 +13,15 @@
 
 namespace sairedis
 {
-    class ShareMemorySelectableChannel:
+    class ShmSelectableChannel:
         public SelectableChannel
     {
         public:
 
-            ShareMemorySelectableChannel(
+            ShmSelectableChannel(
                     _In_ const std::string& queueName);
 
-            virtual ~ShareMemorySelectableChannel();
+            virtual ~ShmSelectableChannel();
 
         public: // SelectableChannel overrides
 

@@ -5,7 +5,7 @@
 #include "SkipRecordAttrContainer.h"
 #include "SwitchContainer.h"
 #include "ZeroMQChannel.h"
-#include "ShareMemoryChannel.h"
+#include "ShmChannel.h"
 
 #include "sairediscommon.h"
 
@@ -86,7 +86,7 @@ sai_status_t RedisRemoteSaiInterface::initialize(
     }
     else if (m_contextConfig->m_shmEnable)
     {
-        m_communicationChannel = std::make_shared<ShareMemoryChannel>(
+        m_communicationChannel = std::make_shared<ShmChannel>(
                 m_contextConfig->m_shmName,
                 m_contextConfig->m_shmNtfName,
                 std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
@@ -453,7 +453,7 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                     // main communication channel was created at initialize method
                     // so this command will replace it with shared memory channel
 
-                    m_communicationChannel = std::make_shared<ShareMemoryChannel>(
+                    m_communicationChannel = std::make_shared<ShmChannel>(
                             m_contextConfig->m_shmName,
                             m_contextConfig->m_shmNtfName,
                             std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));

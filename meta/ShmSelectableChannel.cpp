@@ -1,4 +1,4 @@
-#include "ShareMemorySelectableChannel.h"
+#include "ShmSelectableChannel.h"
 
 #include "swss/logger.h"
 #include "swss/json.h"
@@ -16,7 +16,7 @@
 using namespace sairedis;
 using namespace boost::interprocess;
 
-ShareMemorySelectableChannel::ShareMemorySelectableChannel(
+ShmSelectableChannel::ShmSelectableChannel(
         _In_ const std::string& queueName):
     m_queueName(queueName),
     m_messageQueue(nullptr),
@@ -43,10 +43,10 @@ ShareMemorySelectableChannel::ShareMemorySelectableChannel(
                 e.what());
     }
 
-    m_mqPollThread = std::make_shared<std::thread>(&ShareMemorySelectableChannel::mqPollThread, this);
+    m_mqPollThread = std::make_shared<std::thread>(&ShmSelectableChannel::mqPollThread, this);
 }
 
-ShareMemorySelectableChannel::~ShareMemorySelectableChannel()
+ShmSelectableChannel::~ShmSelectableChannel()
 {
     SWSS_LOG_ENTER();
 
@@ -70,7 +70,7 @@ ShareMemorySelectableChannel::~ShareMemorySelectableChannel()
     SWSS_LOG_NOTICE("ended mq poll thread for channel %s", m_queueName.c_str());
 }
 
-void ShareMemorySelectableChannel::mqPollThread()
+void ShmSelectableChannel::mqPollThread()
 {
     SWSS_LOG_ENTER();
 
@@ -94,16 +94,6 @@ void ShareMemorySelectableChannel::mqPollThread()
                                                 priority,
                                                 boost::posix_time::ptime(microsec_clock::universal_time()) + boost::posix_time::milliseconds(MQ_POLL_TIMEOUT));
 
-            if (recvd_size >= MQ_RESPONSE_BUFFER_SIZE)
-            {
-                SWSS_LOG_THROW("message queue received message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
-                        MQ_RESPONSE_BUFFER_SIZE,
-                        recvd_size);
-            }
-
-            m_buffer.at(recvd_size) = 0; // make sure that we end string with zero before parse
-            m_queue.push((char*)m_buffer.data());
-
             if (m_runThread == false)
             {
                 SWSS_LOG_NOTICE("ending pool thread, since run is false");
@@ -116,6 +106,16 @@ void ShareMemorySelectableChannel::mqPollThread()
                 SWSS_LOG_DEBUG("message queue timed receive: no events, continue");
                 continue;
             }
+
+            if (recvd_size >= MQ_RESPONSE_BUFFER_SIZE)
+            {
+                SWSS_LOG_THROW("message queue received message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
+                        MQ_RESPONSE_BUFFER_SIZE,
+                        recvd_size);
+            }
+
+            m_buffer.at(recvd_size) = 0; // make sure that we end string with zero before parse
+            m_queue.push((char*)m_buffer.data());
 
             m_selectableEvent.notify(); // will release epoll
             while (m_runThread && !m_allowMqPoll)
@@ -135,14 +135,14 @@ void ShareMemorySelectableChannel::mqPollThread()
 
 // SelectableChannel overrides
 
-bool ShareMemorySelectableChannel::empty()
+bool ShmSelectableChannel::empty()
 {
     SWSS_LOG_ENTER();
 
     return m_queue.size() == 0;
 }
 
-void ShareMemorySelectableChannel::pop(
+void ShmSelectableChannel::pop(
         _Out_ swss::KeyOpFieldsValuesTuple& kco,
         _In_ bool initViewMode)
 {
@@ -170,7 +170,7 @@ void ShareMemorySelectableChannel::pop(
     values.erase(values.begin());
 }
 
-void ShareMemorySelectableChannel::set(
+void ShmSelectableChannel::set(
         _In_ const std::string& key,
         _In_ const std::vector<swss::FieldValueTuple>& values,
         _In_ const std::string& op)
@@ -205,14 +205,14 @@ void ShareMemorySelectableChannel::set(
 
 // Selectable overrides
 
-int ShareMemorySelectableChannel::getFd()
+int ShmSelectableChannel::getFd()
 {
     SWSS_LOG_ENTER();
 
     return m_selectableEvent.getFd();
 }
 
-uint64_t ShareMemorySelectableChannel::readData()
+uint64_t ShmSelectableChannel::readData()
 {
     SWSS_LOG_ENTER();
 
@@ -249,14 +249,14 @@ uint64_t ShareMemorySelectableChannel::readData()
     return 0;
 }
 
-bool ShareMemorySelectableChannel::hasData()
+bool ShmSelectableChannel::hasData()
 {
     SWSS_LOG_ENTER();
 
     return m_queue.size() > 0;
 }
 
-bool ShareMemorySelectableChannel::hasCachedData()
+bool ShmSelectableChannel::hasCachedData()
 {
     SWSS_LOG_ENTER();
 

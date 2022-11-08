@@ -1,4 +1,4 @@
-#include "ShareMemoryChannel.h"
+#include "ShmChannel.h"
 
 #include "swss/logger.h"
 
@@ -10,14 +10,14 @@ using namespace sairedis;
 
 TEST(ShmChannel, flush)
 {
-    auto c = std::make_shared<ShareMemoryChannel>("valid_shm_name", "valid_ntf_shm_name", nullptr);
+    auto c = std::make_shared<ShmChannel>("valid_shm_name", "valid_ntf_shm_name", nullptr);
 
     c->flush();
 }
 
 TEST(ShmChannel, wait)
 {
-    auto c = std::make_shared<ShareMemoryChannel>("valid_shm_name", "valid_ntf_shm_name", nullptr);
+    auto c = std::make_shared<ShmChannel>("valid_shm_name", "valid_ntf_shm_name", nullptr);
 
     c->setResponseTimeout(60);
 
