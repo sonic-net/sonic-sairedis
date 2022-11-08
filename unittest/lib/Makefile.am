@@ -25,7 +25,7 @@ tests_SOURCES = \
 				TestRedisChannel.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/lib/libSaiRedis.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
+tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/lib/libSaiRedis.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) -lrt
 
 testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_acl.cpp \
@@ -76,6 +76,6 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_wred.cpp
 
 testslibsairedis_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-testslibsairedis_LDADD = $(LDADD_GTEST) -L$(top_srcdir)/lib/.libs -lsairedis -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
+testslibsairedis_LDADD = $(LDADD_GTEST) -L$(top_srcdir)/lib/.libs -lsairedis -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) -lrt
 
 TESTS = testslibsairedis tests
