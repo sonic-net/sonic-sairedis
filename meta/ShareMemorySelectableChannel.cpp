@@ -4,6 +4,7 @@
 #include "swss/json.h"
 
 #include <unistd.h>
+#include <boost/interprocess/ipc/message_queue.hpp>
 
 #define MQ_POLL_TIMEOUT (1000)
 
@@ -11,9 +12,9 @@
 #define MQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
 #define MQ_SIZE 100
 #define MQ_MAX_RETRY 10
-using namespace boost::interprocess;
 
 using namespace sairedis;
+using namespace boost::interprocess;
 
 ShareMemorySelectableChannel::ShareMemorySelectableChannel(
         _In_ const std::string& queueName):
