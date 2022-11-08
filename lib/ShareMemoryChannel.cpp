@@ -16,6 +16,7 @@ using namespace boost::interprocess;
 #define MQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
 #define MQ_SIZE 100
 #define MQ_MAX_RETRY 10
+#define MQ_POLL_TIMEOUT (1000)
 
 ShareMemoryChannel::ShareMemoryChannel(
         _In_ const std::string& queueName,
@@ -142,11 +143,9 @@ ShareMemoryChannel::~ShareMemoryChannel()
 void ShareMemoryChannel::notificationThreadFunction()
 {
     SWSS_LOG_ENTER();
-
     SWSS_LOG_NOTICE("start listening for notifications");
 
     std::vector<uint8_t> buffer;
-
     buffer.resize(MQ_RESPONSE_BUFFER_SIZE);
 
     while (m_runNotificationThread)
@@ -155,10 +154,14 @@ void ShareMemoryChannel::notificationThreadFunction()
         // which will inherit from Selectable class, and name this as ntf receiver
         unsigned int priority;
         message_queue::size_type recvd_size;
-        
+        bool received = false;
         try
         {
-            m_ntfQueue->receive(buffer.data(), MQ_RESPONSE_BUFFER_SIZE, recvd_size, priority);
+            received = m_ntfQueue->timed_receive(buffer.data(),
+                                                    MQ_RESPONSE_BUFFER_SIZE,
+                                                    recvd_size,
+                                                    priority,
+                                                    boost::posix_time::ptime(microsec_clock::universal_time()) + boost::posix_time::milliseconds(MQ_POLL_TIMEOUT));
         }
         catch (const interprocess_exception& e)
         {
@@ -170,7 +173,6 @@ void ShareMemoryChannel::notificationThreadFunction()
                 continue;
             }
             else
-            
             {
                 break;
             }
@@ -179,6 +181,11 @@ void ShareMemoryChannel::notificationThreadFunction()
         if (!m_runNotificationThread)
         {
             break;
+        }
+        
+        if (!received)
+        {
+            continue;
         }
 
         if (recvd_size >= MQ_RESPONSE_BUFFER_SIZE)
@@ -205,6 +212,7 @@ void ShareMemoryChannel::notificationThreadFunction()
 
 
         SWSS_LOG_DEBUG("ntf: %s", buffer.data());
+        std::string message((char*)buffer.data());
 
         std::vector<swss::FieldValueTuple> values;
 

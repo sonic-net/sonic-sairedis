@@ -41,9 +41,10 @@ tests_SOURCES = \
 				TestLegacyRouteEntry.cpp \
 				TestLegacyOther.cpp \
 				TestZeroMQSelectableChannel.cpp \
+				TestShmSelectableChannel.cpp \
 				TestMeta.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = $(LDADD_GTEST) -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) -lrt
+tests_LDADD = $(LDADD_GTEST) -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) -lrt  $(top_srcdir)/lib/libSaiRedis.a 
 
 TESTS = tests

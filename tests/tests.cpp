@@ -6,8 +6,10 @@
 #include <assert.h>
 
 #include "syncd/ZeroMQNotificationProducer.h"
+#include "syncd/ShareMemoryNotificationProducer.h"
 
 #include "lib/ZeroMQChannel.h"
+#include "lib/ShareMemoryChannel.h"
 
 #include "meta/sai_serialize.h"
 
@@ -46,6 +48,24 @@ static void test_zeromqchannel_destructor()
     for (int i = 0; i < 10; i++)
     {
         ZeroMQChannel z("ipc:///tmp/feeds1", "ipc:///tmp/feeds2", nullptr);
+
+        usleep(10*1000);
+    }
+}
+
+/*
+ * Test if destructor proper clean and join share memory and context, and
+ * break recv method.
+ */
+static void test_shmchannel_destructor()
+{
+    SWSS_LOG_ENTER();
+
+    std::cout << " * " << __FUNCTION__ << std::endl;
+
+    for (int i = 0; i < 10; i++)
+    {
+        ShareMemoryChannel z("feeds1", "feeds2", nullptr);
 
         usleep(10*1000);
     }
@@ -92,7 +112,55 @@ static void test_zeromqchannel_first_notification()
 
         while (!got && count++ < 200) // in total we will wait max 2 seconds
         {
-            usleep(10*1000);
+            usleep(10);
+        }
+
+        ASSERT_EQ(rop, "foo");
+        ASSERT_EQ(rdata, "bar");
+    }
+}
+
+/*
+ * Test if first notification sent from notification producer will arrive at
+ * share memory channel notification thread. There is an issue with PUB/SUB inside
+ * share memory, and in our model this was changed to push/pull model.
+ */
+static void test_shmchannel_first_notification()
+{
+    SWSS_LOG_ENTER();
+
+    std::cout << " * " << __FUNCTION__ << std::endl;
+
+    for (int i = 0; i < 10; i++)
+    {
+        std::string rop;
+        std::string rdata;
+
+        bool got = false;
+
+        auto callback = [&](
+                const std::string& op,
+                const std::string& data,
+                const std::vector<swss::FieldValueTuple>& values)
+        {
+            SWSS_LOG_NOTICE("got: %s %s", op.c_str(), data.c_str());
+
+            rop = op;
+            rdata = data;
+
+            got = true;
+        };
+
+        ShareMemoryChannel z("feeds1", "feeds2", callback);
+
+        ShareMemoryNotificationProducer p("feeds2");
+
+        p.send("foo", "bar", {});
+
+        int count = 0;
+        while (!got && count++ < 200) // in total we will wait max 2 seconds
+        {
+            usleep(10);
         }
 
         ASSERT_EQ(rop, "foo");
@@ -132,6 +200,29 @@ static void test_zeromqchannel_eintr_errno_on_wait()
     signal_thread.join();
 }
 
+/*
+ * Test if runtime_error will be thrown if share memory wait reaches max retry due to
+ * signal interrupt.
+ */
+static void test_shmchannel_eintr_errno_on_wait()
+{
+    SWSS_LOG_ENTER();
+
+    std::cout << " * " << __FUNCTION__ << std::endl;
+
+    ShareMemoryChannel z("feeds1", "feeds2", nullptr);
+
+    // shared memory receive method can't break by SIGHUP signal.
+    z.setResponseTimeout(1000);
+
+    std::thread signal_thread(send_signals);
+
+    swss::KeyOpFieldsValuesTuple kco;
+    z.wait("foo", kco);
+
+    signal_thread.join();
+}
+
 void sighup_handler(int signo)
 {
     SWSS_LOG_ENTER();
@@ -142,12 +233,17 @@ int main()
     SWSS_LOG_ENTER();
 
     signal(SIGHUP, sighup_handler);
+    
+    test_shmchannel_destructor();
+    
+    test_shmchannel_first_notification();
+
+    test_shmchannel_eintr_errno_on_wait();
 
     test_zeromqchannel_destructor();
 
     test_zeromqchannel_first_notification();
 
     test_zeromqchannel_eintr_errno_on_wait();
-
     return 0;
 }
