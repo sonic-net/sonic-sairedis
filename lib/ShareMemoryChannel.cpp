@@ -303,7 +303,21 @@ sai_status_t ShareMemoryChannel::wait(
     {
         try
         {
-            m_queue->receive(m_buffer.data(), MQ_RESPONSE_BUFFER_SIZE, recvd_size, priority);
+            bool received = m_queue->timed_receive(m_buffer.data(),
+                                                        MQ_RESPONSE_BUFFER_SIZE,
+                                                        recvd_size,
+                                                        priority,
+                                                        boost::posix_time::ptime(microsec_clock::universal_time()) + boost::posix_time::milliseconds(m_responseTimeoutMs));
+                                                        
+            if (!received)
+            {
+                SWSS_LOG_ERROR("share memory receive timed out for: %s", command.c_str());
+
+                // notice, at this point we could throw, since in REP/REQ pattern
+                // we are forced to use send/recv in that specific order
+
+                return SAI_STATUS_FAILURE;
+            }
         }
         catch (const interprocess_exception& e)
         {
