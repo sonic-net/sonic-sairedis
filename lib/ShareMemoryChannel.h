@@ -10,7 +10,7 @@
 #include <memory>
 #include <functional>
 
-class boost::interprocess::message_queue;
+#include <boost/interprocess/ipc/message_queue.hpp>
 
 namespace sairedis
 {

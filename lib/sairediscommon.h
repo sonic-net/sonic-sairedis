@@ -15,6 +15,7 @@
 #define REDIS_COMMUNICATION_MODE_REDIS_ASYNC_STRING "redis_async"
 #define REDIS_COMMUNICATION_MODE_REDIS_SYNC_STRING  "redis_sync"
 #define REDIS_COMMUNICATION_MODE_ZMQ_SYNC_STRING    "zmq_sync"
+#define REDIS_COMMUNICATION_MODE_SHM_SYNC_STRING    "shm_sync"
 
 /*
  * Asic state table commands. Those names are special and they will be used

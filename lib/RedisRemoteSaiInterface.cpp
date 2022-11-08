@@ -5,6 +5,7 @@
 #include "SkipRecordAttrContainer.h"
 #include "SwitchContainer.h"
 #include "ZeroMQChannel.h"
+#include "ShareMemoryChannel.h"
 
 #include "sairediscommon.h"
 
@@ -80,6 +81,17 @@ sai_status_t RedisRemoteSaiInterface::initialize(
                 std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
 
         SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
+
+        m_syncMode = true;
+    }
+    else if (m_contextConfig->m_shmEnable)
+    {
+        m_communicationChannel = std::make_shared<ShareMemoryChannel>(
+                m_contextConfig->m_shmName,
+                m_contextConfig->m_shmNtfName,
+                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+        SWSS_LOG_NOTICE("shared memory enabled, forcing sync mode");
 
         m_syncMode = true;
     }
@@ -367,6 +379,12 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
                 m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
             }
+            else if (m_contextConfig->m_shmEnable)
+            {
+                SWSS_LOG_NOTICE("share memory enabled via context config");
+
+                m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_SHM_SYNC;
+            }
 
             m_communicationChannel = nullptr;
 
@@ -419,6 +437,30 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                     m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
                     SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
+
+                    m_syncMode = true;
+
+                    SWSS_LOG_NOTICE("disabling buffered pipeline in sync mode");
+
+                    m_communicationChannel->setBuffered(false);
+
+                    return SAI_STATUS_SUCCESS;
+
+                case SAI_REDIS_COMMUNICATION_MODE_SHM_SYNC:
+
+                    m_contextConfig->m_shmEnable = true;
+
+                    // main communication channel was created at initialize method
+                    // so this command will replace it with shared memory channel
+
+                    m_communicationChannel = std::make_shared<ShareMemoryChannel>(
+                            m_contextConfig->m_shmName,
+                            m_contextConfig->m_shmNtfName,
+                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+
+                    m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
+
+                    SWSS_LOG_NOTICE("shared memory enabled, forcing sync mode");
 
                     m_syncMode = true;
 

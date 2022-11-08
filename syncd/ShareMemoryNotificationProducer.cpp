@@ -2,8 +2,7 @@
 
 using namespace syncd;
 
-#include <boost/interprocess/ipc/message_queue.hpp>
-using boost::interprocess;
+using namespace boost::interprocess;
 
 // TODO: improve POC code, define dupe code in same place
 #define MQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
@@ -20,14 +19,14 @@ ShareMemoryNotificationProducer::ShareMemoryNotificationProducer(
     try
     {
         m_ntfQueue = std::make_shared<message_queue>(open_or_create,
-                                   m_ntfQueueName,
-                                   MQ_SIZE,
-                                   MQ_RESPONSE_BUFFER_SIZE);
+                                                       m_ntfQueueName.c_str(),
+                                                       MQ_SIZE,
+                                                       MQ_RESPONSE_BUFFER_SIZE);
     }
     catch (const interprocess_exception& e)
     {
         SWSS_LOG_THROW("failed to open or create ntf message queue %s: %s",
-                m_queueName.c_str(),
+                m_ntfQueueName.c_str(),
                 e.what());
     }
 
@@ -40,7 +39,7 @@ ShareMemoryNotificationProducer::~ShareMemoryNotificationProducer()
 
     try
     {
-        message_queue::remove(m_ntfQueueName);
+        message_queue::remove(m_ntfQueueName.c_str());
     }
     catch (const interprocess_exception& e)
     {
@@ -73,7 +72,7 @@ void ShareMemoryNotificationProducer::send(
     catch (const interprocess_exception& e)
     {
         SWSS_LOG_THROW("message queue %s send failed: %s",
-                m_queueName.c_str(),
+                m_ntfQueueName.c_str(),
                 e.what());
     }
 }

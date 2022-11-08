@@ -47,5 +47,11 @@ namespace sairedis
             std::string m_zmqNtfEndpoint;
 
             std::shared_ptr<SwitchConfigContainer> m_scc;
+
+            bool m_shmEnable;
+
+            std::string m_shmName;
+
+            std::string m_shmNtfName;
     };
 }

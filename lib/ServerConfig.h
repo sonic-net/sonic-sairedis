@@ -25,5 +25,9 @@ namespace sairedis
             std::string m_zmqEndpoint;
 
             std::string m_zmqNtfEndpoint;
+
+            std::string m_shmName;
+
+            std::string m_shmNtfName;
     };
 }

@@ -3,7 +3,6 @@
 #include "swss/logger.h"
 #include "swss/json.h"
 
-#include <zmq.h>
 #include <unistd.h>
 
 #define MQ_POLL_TIMEOUT (1000)
@@ -32,9 +31,9 @@ ShareMemorySelectableChannel::ShareMemorySelectableChannel(
     try
     {
         m_messageQueue = std::make_shared<message_queue>(open_or_create,
-                                   m_queueName,
-                                   MQ_SIZE,
-                                   MQ_RESPONSE_BUFFER_SIZE);
+                                                           m_queueName.c_str(),
+                                                           MQ_SIZE,
+                                                           MQ_RESPONSE_BUFFER_SIZE);
     }
     catch (const interprocess_exception& e)
     {
@@ -63,11 +62,11 @@ ShareMemorySelectableChannel::~ShareMemorySelectableChannel()
         SWSS_LOG_NOTICE("Failed to close a using message queue '%s': %s", m_queueName.c_str(), e.what());
     }
 
-    SWSS_LOG_NOTICE("ending zmq poll thread for channel %s", m_endpoint.c_str());
+    SWSS_LOG_NOTICE("ending mq poll thread for channel %s", m_queueName.c_str());
 
     m_mqPollThread->join();
 
-    SWSS_LOG_NOTICE("ended zmq poll thread for channel %s", m_endpoint.c_str());
+    SWSS_LOG_NOTICE("ended mq poll thread for channel %s", m_queueName.c_str());
 }
 
 void ShareMemorySelectableChannel::mqPollThread()
@@ -92,7 +91,7 @@ void ShareMemorySelectableChannel::mqPollThread()
                                                 MQ_RESPONSE_BUFFER_SIZE,
                                                 recvd_size,
                                                 priority,
-                                                boost::posix_time::ptime(microsec_clock::universal_time()) + boost::posix_time::milliseconds(MQ_POLL_TIMEOUT))
+                                                boost::posix_time::ptime(microsec_clock::universal_time()) + boost::posix_time::milliseconds(MQ_POLL_TIMEOUT));
 
             if (recvd_size >= MQ_RESPONSE_BUFFER_SIZE)
             {
@@ -125,7 +124,7 @@ void ShareMemorySelectableChannel::mqPollThread()
         }
         catch (const interprocess_exception& e)
         {
-            SWSS_LOG_ERROR("message queue %s timed receive failed: %s", m_ntfQueueName.c_str(), e.what());
+            SWSS_LOG_ERROR("message queue %s timed receive failed: %s", m_queueName.c_str(), e.what());
             break;
         }
     }
@@ -187,7 +186,6 @@ void ShareMemorySelectableChannel::set(
 
     SWSS_LOG_DEBUG("sending: %s", msg.c_str());
 
-    int rc = zmq_send(m_socket, msg.c_str(), msg.length(), 0);
     try
     {
         m_messageQueue->send(msg.c_str(), msg.length(), 0);
@@ -233,7 +231,7 @@ uint64_t ShareMemorySelectableChannel::readData()
     }
     catch (const interprocess_exception& e)
     {
-        SWSS_LOG_ERROR("message queue %s receive failed: %s", m_ntfQueueName.c_str(), e.what());
+        SWSS_LOG_ERROR("message queue %s receive failed: %s", m_queueName.c_str(), e.what());
     }
 
     if (recvd_size >= MQ_RESPONSE_BUFFER_SIZE)

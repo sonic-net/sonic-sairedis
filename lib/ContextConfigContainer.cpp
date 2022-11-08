@@ -131,6 +131,15 @@ std::shared_ptr<ContextConfigContainer> ContextConfigContainer::loadFromFile(
                     (cc->m_zmqEnable) ? "true" : "false",
                     cc->m_zmqEndpoint.c_str(),
                     cc->m_zmqNtfEndpoint.c_str());
+            
+            cc->m_shmEnable = item["shm_enable"];
+            cc->m_shmName = item["shm_name"];
+            cc->m_shmNtfName = item["shm_ntf_name"];
+
+            SWSS_LOG_NOTICE("contextConfig shared memory enable %s, endpoint: %s, ntf endpoint: %s",
+                    (cc->m_shmEnable) ? "true" : "false",
+                    cc->m_shmName.c_str(),
+                    cc->m_shmNtfName.c_str());
 
             for (size_t k = 0; k < item["switches"].size(); k++)
             {

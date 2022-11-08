@@ -7,6 +7,7 @@
 #include "meta/sai_serialize.h"
 #include "meta/SaiAttributeList.h"
 #include "meta/ZeroMQSelectableChannel.h"
+#include "meta/ShareMemorySelectableChannel.h"
 
 #include "swss/logger.h"
 #include "swss/select.h"
@@ -89,7 +90,14 @@ sai_status_t ServerSai::initialize(
 
         auto cc = ServerConfig::loadFromFile(serverConfig);
 
-        m_selectableChannel = std::make_shared<ZeroMQSelectableChannel>(cc->m_zmqEndpoint);
+        if (cc->m_shmName != "")
+        {
+            m_selectableChannel = std::make_shared<ShareMemorySelectableChannel>(cc->m_shmName);
+        }
+        else
+        {
+            m_selectableChannel = std::make_shared<ZeroMQSelectableChannel>(cc->m_zmqEndpoint);
+        }
 
         SWSS_LOG_NOTICE("starting server thread");
 

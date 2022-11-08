@@ -126,6 +126,10 @@ TEST(SaiSerialize, sai_deserialize_redis_communication_mode)
     sai_deserialize_redis_communication_mode(REDIS_COMMUNICATION_MODE_ZMQ_SYNC_STRING, value);
 
     EXPECT_EQ(value, SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC);
+
+    sai_deserialize_redis_communication_mode(REDIS_COMMUNICATION_MODE_SHM_SYNC_STRING, value);
+
+    EXPECT_EQ(value, SAI_REDIS_COMMUNICATION_MODE_SHM_SYNC);
 }
 
 TEST(SaiSerialize, sai_deserialize_ingress_priority_group_attr)

@@ -2294,6 +2294,9 @@ std::string sai_serialize_redis_communication_mode(
         case SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC:
             return REDIS_COMMUNICATION_MODE_ZMQ_SYNC_STRING;
 
+        case SAI_REDIS_COMMUNICATION_MODE_SHM_SYNC:
+            return REDIS_COMMUNICATION_MODE_SHM_SYNC_STRING;
+
         default:
 
             SWSS_LOG_THROW("unknown value on sai_redis_communication_mode_t: %d", value);
@@ -4394,6 +4397,10 @@ void sai_deserialize_redis_communication_mode(
     else if (s == REDIS_COMMUNICATION_MODE_ZMQ_SYNC_STRING)
     {
         value = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+    }
+    else if (s == REDIS_COMMUNICATION_MODE_SHM_SYNC_STRING)
+    {
+        value = SAI_REDIS_COMMUNICATION_MODE_SHM_SYNC;
     }
     else
     {

@@ -11,6 +11,7 @@
 #include "BreakConfigParser.h"
 #include "RedisNotificationProducer.h"
 #include "ZeroMQNotificationProducer.h"
+#include "ShareMemoryNotificationProducer.h"
 #include "WatchdogScope.h"
 
 #include "sairediscommon.h"
@@ -22,6 +23,7 @@
 
 #include "meta/sai_serialize.h"
 #include "meta/ZeroMQSelectableChannel.h"
+#include "meta/ShareMemorySelectableChannel.h"
 #include "meta/RedisSelectableChannel.h"
 #include "meta/PerformanceIntervalTimer.h"
 
@@ -76,6 +78,14 @@ Syncd::Syncd(
 
         m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
     }
+    else if (m_contextConfig->m_shmEnable && m_commandLineOptions->m_enableSyncMode)
+    {
+        SWSS_LOG_NOTICE("disabling command line sync mode, since context share memory enabled");
+
+        m_commandLineOptions->m_enableSyncMode = false;
+
+        m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_SHM_SYNC;
+    }
 
     if (m_commandLineOptions->m_enableSyncMode)
     {
@@ -93,6 +103,15 @@ Syncd::Syncd(
         SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line");
 
         m_contextConfig->m_zmqEnable = true;
+
+        m_enableSyncMode = true;
+    }
+
+    if (m_commandLineOptions->m_redisCommunicationMode == SAI_REDIS_COMMUNICATION_MODE_SHM_SYNC)
+    {
+        SWSS_LOG_NOTICE("share memory sync mode enabled via cmd line");
+
+        m_contextConfig->m_shmEnable = true;
 
         m_enableSyncMode = true;
     }
@@ -117,6 +136,16 @@ Syncd::Syncd(
         m_enableSyncMode = true;
 
         m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint);
+    }
+    else if (m_contextConfig->m_shmEnable)
+    {
+        m_notifications = std::make_shared<ShareMemoryNotificationProducer>(m_contextConfig->m_shmNtfName);
+
+        SWSS_LOG_NOTICE("shared memory enabled, forcing sync mode");
+
+        m_enableSyncMode = true;
+
+        m_selectableChannel = std::make_shared<sairedis::ShareMemorySelectableChannel>(m_contextConfig->m_shmName);
     }
     else
     {

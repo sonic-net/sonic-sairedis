@@ -84,7 +84,7 @@ libSaiRedis_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_CO
 
 libsairedis_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsairedis_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsairedis_la_LIBADD = -lhiredis -lswsscommon libSaiRedis.a $(CODE_COVERAGE_LIBS)
+libsairedis_la_LIBADD = -lhiredis -lswsscommon libSaiRedis.a $(CODE_COVERAGE_LIBS) -lrt
 
 bin_PROGRAMS = tests
 

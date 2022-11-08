@@ -5,7 +5,7 @@
 #include "swss/dbconnector.h"
 #include "swss/notificationproducer.h"
 
-class boost::interprocess::message_queue;
+#include <boost/interprocess/ipc/message_queue.hpp>
 
 namespace syncd
 {

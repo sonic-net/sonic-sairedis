@@ -10,6 +10,9 @@
             "zmq_enable": false,
             "zmq_endpoint": "tcp://127.0.0.1:5555",
             "zmq_ntf_endpoint": "tcp://127.0.0.1:5556",
+            "shm_enable": false,
+            "shm_name": "",
+            "shm_ntf_name": "",
             "switches": [
                 {
                     "index" : 0,
@@ -31,6 +34,9 @@
             "zmq_enable":false,
             "zmq_endpoint": "tcp://127.0.0.1:5565",
             "zmq_ntf_endpoint": "tcp://127.0.0.1:5566",
+            "shm_enable": false,
+            "shm_name": "",
+            "shm_ntf_name": "",
             "switches": [
                 {
                     "index" : 0,

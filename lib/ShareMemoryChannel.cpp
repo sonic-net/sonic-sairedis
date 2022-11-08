@@ -11,7 +11,6 @@
 
 using namespace sairedis;
 
-#include <boost/interprocess/ipc/message_queue.hpp>
 using namespace boost::interprocess;
 
 #define MQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
@@ -37,9 +36,9 @@ ShareMemoryChannel::ShareMemoryChannel(
     try
     {
         m_queue = std::make_shared<message_queue>(open_or_create,
-                                   m_queueName,
-                                   MQ_SIZE,
-                                   MQ_RESPONSE_BUFFER_SIZE);
+                                                   m_queueName.c_str(),
+                                                   MQ_SIZE,
+                                                   MQ_RESPONSE_BUFFER_SIZE);
     }
     catch (const interprocess_exception& e)
     {
@@ -52,9 +51,9 @@ ShareMemoryChannel::ShareMemoryChannel(
     try
     {
         m_ntfQueue = std::make_shared<message_queue>(open_or_create,
-                                   m_ntfQueueName,
-                                   MQ_SIZE,
-                                   MQ_RESPONSE_BUFFER_SIZE);
+                                                       m_ntfQueueName.c_str(),
+                                                       MQ_SIZE,
+                                                       MQ_RESPONSE_BUFFER_SIZE);
     }
     catch (const interprocess_exception& e)
     {
@@ -69,7 +68,7 @@ ShareMemoryChannel::ShareMemoryChannel(
 
     SWSS_LOG_NOTICE("creating notification thread");
 
-    m_notificationThread = std::make_shared<std::thread>(&ZeroMQChannel::notificationThreadFunction, this);
+    m_notificationThread = std::make_shared<std::thread>(&ShareMemoryChannel::notificationThreadFunction, this);
 }
 
 ShareMemoryChannel::~ShareMemoryChannel()
@@ -80,7 +79,7 @@ ShareMemoryChannel::~ShareMemoryChannel()
 
     try
     {
-        message_queue::remove(m_queueName);
+        message_queue::remove(m_queueName.c_str());
     }
     catch (const interprocess_exception& e)
     {
@@ -90,7 +89,7 @@ ShareMemoryChannel::~ShareMemoryChannel()
 
     // create new message queue, and perform send to break notification recv
     std::shared_ptr<message_queue> tmpQueue = std::make_shared<message_queue>(open_or_create,
-                               m_ntfQueueName,
+                               m_ntfQueueName.c_str(),
                                MQ_SIZE,
                                MQ_RESPONSE_BUFFER_SIZE);
 
@@ -102,7 +101,7 @@ ShareMemoryChannel::~ShareMemoryChannel()
 
     try
     {
-        tmpQueue.send("TERM", 5, 0);
+        tmpQueue->send("TERM", 5, 0);
     }
     catch (const interprocess_exception& e)
     {
@@ -111,7 +110,7 @@ ShareMemoryChannel::~ShareMemoryChannel()
 
     try
     {
-        message_queue::remove(m_ntfQueueName);
+        message_queue::remove(m_ntfQueueName.c_str());
     }
     catch (const interprocess_exception& e)
     {
@@ -131,7 +130,7 @@ ShareMemoryChannel::~ShareMemoryChannel()
 
     try
     {
-        message_queue::remove(m_ntfQueueName);
+        message_queue::remove(m_ntfQueueName.c_str());
     }
     catch (const interprocess_exception& e)
     {
@@ -182,17 +181,6 @@ void ShareMemoryChannel::notificationThreadFunction()
             break;
         }
 
-        // TODO: POC code, improve this by user a thread safe flag.
-        if (recvd_size == 5)
-        {
-            string_view message(reinterpret_cast<char*>(buffer.data()), buffer.size());
-            if (message == "TERM")
-            {
-                SWSS_LOG_NOTICE("message queu receive interrupted with TERM, ending thread");
-                break;
-            }
-        }
-
         if (recvd_size >= MQ_RESPONSE_BUFFER_SIZE)
         {
             SWSS_LOG_WARN("queue message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
@@ -203,6 +191,18 @@ void ShareMemoryChannel::notificationThreadFunction()
         }
 
         buffer.at(recvd_size) = 0; // make sure that we end string with zero before parse
+
+        // TODO: POC code, improve this by user a thread safe flag.
+        if (recvd_size == 5)
+        {
+            std::string message((char*)buffer.data());
+            if (message == "TERM")
+            {
+                SWSS_LOG_NOTICE("message queu receive interrupted with TERM, ending thread");
+                break;
+            }
+        }
+
 
         SWSS_LOG_DEBUG("ntf: %s", buffer.data());
 
@@ -297,18 +297,17 @@ sai_status_t ShareMemoryChannel::wait(
 
     SWSS_LOG_INFO("wait for %s response", command.c_str());
 
+    unsigned int priority;
+    message_queue::size_type recvd_size;
     for (int i = 0; true ; ++i)
     {
-        unsigned int priority;
-        message_queue::size_type recvd_size;
-
         try
         {
-            m_queue->receive(buffer.data(), MQ_RESPONSE_BUFFER_SIZE, recvd_size, priority);
+            m_queue->receive(m_buffer.data(), MQ_RESPONSE_BUFFER_SIZE, recvd_size, priority);
         }
         catch (const interprocess_exception& e)
         {
-            SWSS_LOG_ERROR("message queue %s receive failed: %s", m_queueName.c_str(), e.what());
+            SWSS_LOG_THROW("message queue %s receive failed: %s", m_queueName.c_str(), e.what());
         }
 
         if (i < MQ_MAX_RETRY)

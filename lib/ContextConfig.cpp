@@ -19,7 +19,10 @@ ContextConfig::ContextConfig(
     m_dbState(dbState),
     m_zmqEnable(false),
     m_zmqEndpoint("ipc:///tmp/zmq_ep"),
-    m_zmqNtfEndpoint("ipc:///tmp/zmq_ntf_ep")
+    m_zmqNtfEndpoint("ipc:///tmp/zmq_ntf_ep"),
+    m_shmEnable(false),
+    m_shmName("shm_name"),
+    m_shmNtfName("shm_ntf_name")
 {
     SWSS_LOG_ENTER();
 
@@ -87,6 +90,18 @@ bool ContextConfig::hasConflict(
     if (m_zmqNtfEndpoint == ctx->m_zmqNtfEndpoint)
     {
         SWSS_LOG_ERROR("zmqNtfEndpoint %s conflict", m_zmqNtfEndpoint.c_str());
+        return true;
+    }
+
+    if (m_shmName == ctx->m_shmName)
+    {
+        SWSS_LOG_ERROR("shmName %s conflict", m_shmName.c_str());
+        return true;
+    }
+
+    if (m_shmNtfName == ctx->m_shmNtfName)
+    {
+        SWSS_LOG_ERROR("shmNtfName %s conflict", m_shmNtfName.c_str());
         return true;
     }
 

@@ -83,6 +83,22 @@ typedef enum _sai_redis_communication_mode_t
      */
     SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC,
 
+    /**
+     * @brief Synchronous mode using boost shared memory queue library.
+     *
+     * When enabled syncd also needs to be running in share memory synchronous mode.
+     * Command pipeline will be disabled when this flag will be set to true.
+     *
+     * This attribute is only introduced to help kick start using synchronous
+     * mode with share memory queue. This mode requires some additional configuration
+     * like main channel string and notification channel string. When using
+     * this attribute those channels are set to default values:
+     * "shm_name" and "shm_ntf_name". To take control of
+     * those values a context config json file must be provided via
+     * SAI_REDIS_KEY_CONTEXT_CONFIG profile argument.
+     */
+    SAI_REDIS_COMMUNICATION_MODE_SHM_SYNC,
+
 } sai_redis_communication_mode_t;
 
 typedef enum _sai_redis_switch_attr_t

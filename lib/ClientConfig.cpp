@@ -12,7 +12,9 @@ using namespace sairedis;
 
 ClientConfig::ClientConfig():
     m_zmqEndpoint("ipc:///tmp/saiServer"),
-    m_zmqNtfEndpoint("ipc:///tmp/saiServerNtf")
+    m_zmqNtfEndpoint("ipc:///tmp/saiServerNtf"),
+    m_shmName("saiServer"),
+    m_shmNtfName("saiServerNtf")
 {
     SWSS_LOG_ENTER();
 
@@ -56,10 +58,14 @@ std::shared_ptr<ClientConfig> ClientConfig::loadFromFile(
 
         cc->m_zmqEndpoint = j["zmq_endpoint"];
         cc->m_zmqNtfEndpoint = j["zmq_ntf_endpoint"];
+        cc->m_shmName = j["shm_name"];
+        cc->m_shmNtfName = j["shm_ntf_name"];
 
-        SWSS_LOG_NOTICE("client config: %s, %s",
+        SWSS_LOG_NOTICE("client config: %s, %s, %s, %s",
                 cc->m_zmqEndpoint.c_str(),
-                cc->m_zmqNtfEndpoint.c_str());
+                cc->m_zmqNtfEndpoint.c_str(),
+                cc->m_shmName.c_str(),
+                cc->m_shmNtfName.c_str());
 
         SWSS_LOG_NOTICE("loaded %s client config", path);
 
