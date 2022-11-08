@@ -35,7 +35,7 @@ TEST(ContextConfig, hasConflict)
     aa->m_zmqNtfEndpoint = originalValue;
 
     // check m_shmName
-    auto originalValue = aa->m_shmName;
+    originalValue = aa->m_shmName;
     aa->m_shmName = "AA";
 
     EXPECT_TRUE(cc->hasConflict(aa));
