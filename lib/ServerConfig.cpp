@@ -13,6 +13,7 @@ using namespace sairedis;
 ServerConfig::ServerConfig():
     m_zmqEndpoint("ipc:///tmp/saiServer"),
     m_zmqNtfEndpoint("ipc:///tmp/saiServerNtf"),
+    m_shmEnable(false),
     m_shmName("saiServer"),
     m_shmNtfName("saiServerNtf")
 {
@@ -58,12 +59,15 @@ std::shared_ptr<ServerConfig> ServerConfig::loadFromFile(
 
         cc->m_zmqEndpoint = j["zmq_endpoint"];
         cc->m_zmqNtfEndpoint = j["zmq_ntf_endpoint"];
+        cc->m_shmEnable = j["shm_enable"];
         cc->m_shmName = j["shm_name"];
         cc->m_shmNtfName = j["shm_ntf_name"];
 
-        SWSS_LOG_NOTICE("server config: %s, %s, %s, %s",
+        SWSS_LOG_NOTICE("server config: %s, %s, %B, %s, %s",
                 cc->m_zmqEndpoint.c_str(),
                 cc->m_zmqNtfEndpoint.c_str(),
+                cc->m_zmqNtfEndpoint.c_str(),
+                cc->m_shmEnable,
                 cc->m_shmName.c_str(),
                 cc->m_shmNtfName.c_str());
 

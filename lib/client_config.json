@@ -1,4 +1,7 @@
 {
     "zmq_endpoint": "ipc:///tmp/saiServer",
-    "zmq_ntf_endpoint": "ipc:///tmp/saiServerNtf"
+    "zmq_ntf_endpoint": "ipc:///tmp/saiServerNtf",
+    "shm_enable": false,
+    "shm_name": "saiServer",
+    "shm_ntf_name": "saiServerNtf"
 }

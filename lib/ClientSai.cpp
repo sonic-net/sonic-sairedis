@@ -82,7 +82,7 @@ sai_status_t ClientSai::initialize(
 
     auto cc = ClientConfig::loadFromFile(clientConfig);
 
-    if (cc->m_shmName != "" && cc->m_shmNtfName != "")
+    if (cc->m_shmEnable)
     {
         m_communicationChannel = std::make_shared<ShmChannel>(
                 cc->m_shmName,

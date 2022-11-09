@@ -90,7 +90,7 @@ sai_status_t ServerSai::initialize(
 
         auto cc = ServerConfig::loadFromFile(serverConfig);
 
-        if (cc->m_shmName != "")
+        if (cc->m_shmEnable)
         {
             m_selectableChannel = std::make_shared<ShmSelectableChannel>(cc->m_shmName);
         }
