@@ -214,7 +214,3 @@ jobs:
     artifact: ${{ parameters.syslog_artifact_name }}
     displayName: "Publish syslog artifacts"
     condition: always()
-  - publish: /__w/1/s/
-    artifact: Makefile
-    displayName: "Publish Makefile artifact"
-    condition: always()
