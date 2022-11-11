@@ -3974,7 +3974,6 @@ sai_status_t Meta::meta_sai_validate_neighbor_entry(
 
     sai_object_meta_key_t meta_key_rif = { .objecttype = expected, .objectkey = { .key = { .object_id = rif } } };
 
-
     if (!m_saiObjectCollection.objectExists(meta_key_rif))
     {
         SWSS_LOG_ERROR("object key %s doesn't exist",

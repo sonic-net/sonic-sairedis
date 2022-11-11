@@ -1274,22 +1274,7 @@ sai_status_t ClientSai::bulkCreate(
 
     // TODO support mode
 
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_neighbor_entry(neighbor_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            SAI_OBJECT_TYPE_NEIGHBOR_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 // BULK CREATE HELPERS
@@ -1478,14 +1463,7 @@ sai_status_t ClientSai::bulkRemove(
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_neighbor_entry(neighbor_entry[idx]));
-    }
-
-    return bulkRemove(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectIds, mode, object_statuses);
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 // BULK REMOVE HELPERS
@@ -1670,14 +1648,7 @@ sai_status_t ClientSai::bulkSet(
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_neighbor_entry(neighbor_entry[idx]));
-    }
-
-    return bulkSet(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 // BULK SET HELPERS

@@ -1452,18 +1452,6 @@ json sai_serialize_port_lane_latch_status_item(
     return j;
 }
 
-std::string sai_serialize_port_lane_latch_status(
-        _In_ const sai_port_lane_latch_status_t& lane_latch_status)
-{
-    SWSS_LOG_ENTER();
-    json j;
-
-    j["lane"] = lane_latch_status.lane;
-    j["value"] = sai_serialize_latch_status(lane_latch_status.value);
-
-    return j.dump();
-}
-
 std::string sai_serialize_port_lane_latch_status_list(
         _In_ const sai_port_lane_latch_status_list_t& status_list,
         _In_ bool countOnly)
@@ -3343,14 +3331,11 @@ void sai_deserialize_latch_status(
 
 }
 
-void sai_serialize_port_lane_latch_status(
-        _In_ const std::string& s,
+void sai_deserialize_port_lane_latch_status(
+        _In_ const json& j,
         _Out_ sai_port_lane_latch_status_t& lane_latch_status)
 {
     SWSS_LOG_ENTER();
-    json j = json::parse(s);
-
-    sai_deserialize_number(j["lane"], lane_latch_status.lane, false);
     sai_deserialize_latch_status(j["value"], lane_latch_status.value);
 }
 
@@ -3389,7 +3374,7 @@ void sai_deserialize_port_lane_latch_status_list(
     {
         const json &item = arr[i];
 
-        sai_serialize_port_lane_latch_status(item, status_list.list[i]);
+        sai_deserialize_port_lane_latch_status(item, status_list.list[i]);
     }
 }
 
@@ -4100,7 +4085,6 @@ void sai_deserialize_object_meta_key(
     }
 }
 
-
 // deserialize notifications
 
 static void sai_deserialize_json_fdb_event_notification_data(
@@ -4277,9 +4261,12 @@ void sai_deserialize_free_attribute_value(
         case SAI_ATTR_VALUE_TYPE_POINTER:
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
         case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
-        case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
-        case SAI_ATTR_VALUE_TYPE_JSON:
+        case SAI_ATTR_VALUE_TYPE_OBJECT_ID:        
         case SAI_ATTR_VALUE_TYPE_LATCH_STATUS:
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_JSON:
+            sai_free_list(attr.value.json.json);
             break;
 
         case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
