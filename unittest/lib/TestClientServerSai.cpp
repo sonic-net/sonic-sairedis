@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <arpa/inet.h>
+
 using namespace sairedis;
 
 static const char* profile_get_value(
@@ -168,4 +170,20 @@ TEST(ClientServerSai, bulkGetClearStats)
                                                               nullptr,
                                                               SAI_STATS_MODE_BULK_CLEAR,
                                                               nullptr));
+}
+
+TEST(ClientServerSai, bulk_neighbor_op)
+{
+    auto css = std::make_shared<ClientServerSai>();
+    sai_neighbor_entry_t e[2];
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->bulkSet(2, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
+    css = std::make_shared<ClientServerSai>();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_client_services));
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkSet(2, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
+
 }
