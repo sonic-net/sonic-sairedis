@@ -3680,6 +3680,7 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
+	    case SAI_ATTR_VALUE_TYPE_JSON:
                 // no special action required
                 break;
 
@@ -4928,6 +4929,10 @@ sai_status_t Meta::meta_generic_validation_create(
                 VALIDATION_LIST(md, value.segmentlist);
                 break;
 
+	    case SAI_ATTR_VALUE_TYPE_JSON:
+                VALIDATION_LIST(md, value.json.json);
+                break;
+
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
 
                 if (value.u32range.min > value.u32range.max)
@@ -5581,6 +5586,10 @@ sai_status_t Meta::meta_generic_validation_set(
             VALIDATION_LIST(md, value.segmentlist);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_JSON:
+            VALIDATION_LIST(md, value.json.json);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
 
             if (value.u32range.min > value.u32range.max)
@@ -5992,6 +6001,10 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.segmentlist);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_JSON:
+                VALIDATION_LIST(md, value.json.json);
+                break;
+
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
                 // primitives
@@ -6236,6 +6249,10 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
                 VALIDATION_LIST_GET(md, value.segmentlist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_JSON:
+                VALIDATION_LIST_GET(md, value.json.json);
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -7136,6 +7153,7 @@ void Meta::meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
+            case SAI_ATTR_VALUE_TYPE_JSON:
                 // no special action required
                 break;
 
@@ -7376,6 +7394,7 @@ void Meta::meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
         case SAI_ATTR_VALUE_TYPE_ACL_CAPABILITY:
         case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
+        case SAI_ATTR_VALUE_TYPE_JSON:
             // no special action required
             break;
 
