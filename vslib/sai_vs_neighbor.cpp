@@ -8,6 +8,7 @@ static sai_status_t vs_remove_all_neighbor_entries(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+VS_BULK_QUAD_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 VS_GENERIC_QUAD_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 
 const sai_neighbor_api_t vs_neighbor_api = {
@@ -15,4 +16,6 @@ const sai_neighbor_api_t vs_neighbor_api = {
     VS_GENERIC_QUAD_API(neighbor_entry)
 
     vs_remove_all_neighbor_entries,
+
+    VS_BULK_QUAD_API(neighbor_entry)
 };
