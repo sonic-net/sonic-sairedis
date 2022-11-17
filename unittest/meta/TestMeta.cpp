@@ -586,9 +586,9 @@ TEST(Meta, quad_generic_programmable_entry)
     attr.id = SAI_GENERIC_PROGRAMMABLE_ATTR_ENTRY;
     attr.value.s8list.count = (uint32_t)json_value.size();
     attr.value.s8list.list = (int8_t *)const_cast<char *>(json_value.c_str());
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&objId, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(SAI_OBJECT_TYPE_GENERIC_PROGRAMMABLE, objId, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&objId));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(SAI_OBJECT_TYPE_GENERIC_PROGRAMMABLE, objId));
 }
 
 
