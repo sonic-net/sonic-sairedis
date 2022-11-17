@@ -588,6 +588,9 @@ TEST(Meta, quad_generic_programmable_entry)
     attr.value.s8list.list = (int8_t *)const_cast<char *>(json_value.c_str());
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(SAI_OBJECT_TYPE_GENERIC_PROGRAMMABLE, objId, &attr));
 
+    attr.id = SAI_GENERIC_PROGRAMMABLE_ATTR_ENTRY;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_GENERIC_PROGRAMMABLE, objId, 1, &attr));
+
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(SAI_OBJECT_TYPE_GENERIC_PROGRAMMABLE, objId));
 }
 
