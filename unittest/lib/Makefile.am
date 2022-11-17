@@ -37,6 +37,7 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_debug_counter.cpp \
 				test_sai_redis_dtel.cpp \
 				test_sai_redis_fdb.cpp \
+				test_sai_redis_generic_programmable.cpp \
 				test_sai_redis_ipmc.cpp \
 				test_sai_redis_l2mc.cpp \
 				test_sai_redis_l2mcgroup.cpp \
