@@ -555,6 +555,43 @@ TEST(Meta, meta_validate_stats)
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.call_meta_validate_stats(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, vrId, 2, counter_ids, counters, SAI_STATS_MODE_READ));
 }
 
+TEST(Meta, quad_generic_programmable_entry)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    std::string table_name = "test_table";
+    std::string json_value = "[{"match":{"datatype":"SAI_ATTR_VALUE_TYPE_UINT16","value":"0x07b"}},{"action":[{"field":{"datatype":"SAI_ATTR_VALUE_TYPE_UINT32","value":"0x000007d0"}}]}]";
+
+    sai_attribute_t attrs[2];
+    attrs[0].id = SAI_GENERIC_PROGRAMMABLE_ATTR_OBJECT_NAME;
+    attrs[0].value.s8list.count = (uint32_t)table_name.size();
+    attrs[0].value.s8list.list = (int8_t *)const_cast<char *>(table_name.c_str());
+
+    attrs[1].id = SAI_GENERIC_PROGRAMMABLE_ATTR_ENTRY;
+    attrs[1].value.s8list.count = (uint32_t)json_value.size();
+    attrs[1].value.s8list.list = (int8_t *)const_cast<char *>(json_value.c_str());
+
+    sai_object_id_t objId = 0;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_GENERIC_PROGRAMMABLE, &objId, switchId, 2, attrs));
+
+    attr.id = SAI_GENERIC_PROGRAMMABLE_ATTR_ENTRY;
+    attr.value.s8list.count = (uint32_t)json_value.size();
+    attr.value.s8list.list = (int8_t *)const_cast<char *>(json_value.c_str());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(objId, &attr));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(objId));
+}
+
+
 TEST(Meta, quad_my_sid_entry)
 {
     Meta m(std::make_shared<MetaTestSaiInterface>());
