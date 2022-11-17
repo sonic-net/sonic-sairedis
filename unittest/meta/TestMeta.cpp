@@ -569,7 +569,7 @@ TEST(Meta, quad_generic_programmable_entry)
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
 
     std::string table_name = "test_table";
-    std::string json_value = "[{"match":{"datatype":"SAI_ATTR_VALUE_TYPE_UINT16","value":"0x07b"}},{"action":[{"field":{"datatype":"SAI_ATTR_VALUE_TYPE_UINT32","value":"0x000007d0"}}]}]";
+    std::string json_value = "test_json";
 
     sai_attribute_t attrs[2];
     attrs[0].id = SAI_GENERIC_PROGRAMMABLE_ATTR_OBJECT_NAME;
@@ -586,9 +586,9 @@ TEST(Meta, quad_generic_programmable_entry)
     attr.id = SAI_GENERIC_PROGRAMMABLE_ATTR_ENTRY;
     attr.value.s8list.count = (uint32_t)json_value.size();
     attr.value.s8list.list = (int8_t *)const_cast<char *>(json_value.c_str());
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(objId, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&objId, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(objId));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&objId));
 }
 
 
