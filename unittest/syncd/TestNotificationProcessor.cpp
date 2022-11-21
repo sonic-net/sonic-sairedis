@@ -51,7 +51,7 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->eraseRidAndVid(0x3000000000048,0x30000000048);
 
     // Test FDB MOVE event
-    std::string key = "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x26000000000001\",\"mac\":\"00:00:00:00:00:01\",\"switch_id\":\"oid:0x21000000000000\"}";
+    std::string key = "ASIC_STATE:SAI_OBJECT_TYPE_FDB_ENTRY:{\"bvid\":\"oid:0x26000000000001\",\"mac\":\"00:00:00:00:00:01\",\"switch_id\":\"oid:0x210000000000\"}";
     dbAsic->hset(key, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID", "oid:0x3a000000000a98");
     dbAsic->hset(key, "SAI_FDB_ENTRY_ATTR_TYPE", "SAI_FDB_ENTRY_TYPE_STATIC");
     dbAsic->hset(key, "SAI_FDB_ENTRY_ATTR_ENDPOINT_IP", "10.0.0.1");
@@ -70,6 +70,6 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->eraseRidAndVid(0x2600000001,0x26000000000001);
     auto bridgeport = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
     auto ip = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_ENDPOINT_IP");
-    EXPECT_EQ(*bridgeport, "0x3a000000000a99");
+    EXPECT_EQ(*bridgeport, "oid:0x3a000000000a99");
     EXPECT_EQ(*ip, "");
 }
