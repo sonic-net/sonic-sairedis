@@ -62,7 +62,10 @@ SaiSwitch::SaiSwitch(
 
     helperInternalOids();
 
-    helperCheckLaneMap();
+    if (getSwitchType() == SAI_SWITCH_TYPE_NPU || getSwitchType() == SAI_SWITCH_TYPE_VOQ)
+    {
+        helperCheckLaneMap();
+    }
 
     helperLoadColdVids();
 
