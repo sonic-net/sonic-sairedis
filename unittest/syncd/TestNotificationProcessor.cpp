@@ -70,6 +70,7 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->eraseRidAndVid(0x2600000001,0x26000000000001);
     auto bridgeport = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
     auto ip = dbAsic->hget(key, "SAI_FDB_ENTRY_ATTR_ENDPOINT_IP");
+    EXPECT_NE(bridgeport, nullptr);
     EXPECT_EQ(*bridgeport, "oid:0x3a000000000a99");
-    EXPECT_EQ(*ip, "");
+    EXPECT_EQ(ip, nullptr);
 }
