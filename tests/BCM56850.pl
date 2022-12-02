@@ -778,6 +778,13 @@ sub test_neighbor_lag
     play "test_neighbor_lag.rec", 3;
 }
 
+sub test_voq_switch_create
+{
+    fresh_start("-z", "redis_sync");
+
+    play("-z", "redis_sync", "voq_switch_create.rec")
+}
+
 # RUN TESTS
 
 test_neighbor_lag;
@@ -850,5 +857,6 @@ test_brcm_full_to_empty_hostif_remove_segfault;
 test_brcm_full_to_empty_no_queue_no_ipg_no_buffer_profile;
 test_brcm_query_attr_enum_values_capability;
 test_brcm_query_object_type_get_availability;
+test_voq_switch_create;
 
 kill_syncd;
