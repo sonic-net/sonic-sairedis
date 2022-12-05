@@ -362,10 +362,14 @@ TEST(Legacy, switch_get)
     EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
     sai_attribute_t attr1;
+    memset(&attr1, 0, sizeof(attr1));
     attr1.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    attr1.value.oid = SAI_OBJECT_TYPE_NULL;
 
     sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
     attr2.id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+    attr2.value.oid = SAI_OBJECT_TYPE_NULL;
     sai_attribute_t list[2] = { attr1, attr2 };
 
     status = g_meta->get(SAI_OBJECT_TYPE_SWITCH, switch_id, 2, list);
