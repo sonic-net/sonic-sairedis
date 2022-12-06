@@ -3827,7 +3827,7 @@ sai_status_t Meta::meta_sai_validate_fdb_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_fdb).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // fdb entry is valid
