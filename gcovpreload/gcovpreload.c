@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <signal.h>
-#define SIMPLE_WAY
 
 void sighandler(int signo)
 {
@@ -16,7 +15,7 @@ void sighandler(int signo)
 }
 
 /**
-* The code for cracking the preloaded dynamic library gcov_preload.so is as follows, where __attribute__((constructor)) is the symbol of gcc
+* The code for cracking the preloaded dynamic library gcov_preload.so is as follows, where __attribute__((constructor)) is the symbol of gcc.
 * The modified function will be called before the main function is executed. We use it to intercept the exception signal to our own function, and then call __gcov_flush() to output the error message
 */
 
