@@ -82,18 +82,21 @@ jobs:
         test_set+=("${test}")
         if [ ${#test_set[@]} -ge 20 ]; then
           test_name=$(echo "${test_set[0]}" | cut -d "." -f 1)
+          if [ '${{ parameters.archive_gcov }}' == True ]; then
+          echo "${test_set[*]}" | xargs sudo py.test -v --force-flaky --junitxml="${test_name}_tr.xml" --keeptb --imgname=docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber)
+        else
           echo "${test_set[*]}" | xargs sudo py.test -v --force-flaky --junitxml="${test_name}_tr.xml" --imgname=docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber)
+        fi
           test_set=()
         fi
       done
       if [ ${#test_set[@]} -gt 0 ]; then
         test_name=$(echo "${test_set[0]}" | cut -d "." -f 1)
-        echo "${test_set[*]}" | xargs sudo py.test -v --force-flaky --junitxml="${test_name}_tr.xml" --imgname=docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber)
-      fi
-      if [ '${{ parameters.archive_gcov }}' == True ]; then
-        sudo py.test -v --force-flaky --junitxml=tr.xml --keeptb --imgname=docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber)
-      else
-        sudo py.test -v --force-flaky --junitxml=tr.xml --imgname=docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber)
+        if [ '${{ parameters.archive_gcov }}' == True ]; then
+          echo "${test_set[*]}" | xargs sudo py.test -v --force-flaky --junitxml="${test_name}_tr.xml" --keeptb --imgname=docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber)
+        else
+          echo "${test_set[*]}" | xargs sudo py.test -v --force-flaky --junitxml="${test_name}_tr.xml" --imgname=docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber)
+        fi
       fi
       rm -rf $(Build.ArtifactStagingDirectory)/download
     displayName: "Run vs tests"
