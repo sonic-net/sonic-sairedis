@@ -1298,6 +1298,12 @@ sai_status_t VirtualSwitchSaiInterface::bulkCreate(
 {
     SWSS_LOG_ENTER();
 
+    // create new real object IDs
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        object_id[idx] = m_realObjectIdManager->allocateNewObjectId(object_type, switch_id);
+    }
+
     std::vector<std::string> serialized_object_ids;
 
     // on create vid is put in db by syncd

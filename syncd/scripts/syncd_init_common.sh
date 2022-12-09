@@ -189,7 +189,7 @@ config_syncd_bcm()
 
 config_syncd_mlnx()
 {
-    CMD_ARGS+=" -p /tmp/sai.profile"
+    CMD_ARGS+=" -l -p /tmp/sai.profile"
 
     [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
 
@@ -285,7 +285,7 @@ config_syncd_nephos()
 
 config_syncd_vs()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
 }
 
 config_syncd_soda()

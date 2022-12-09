@@ -21,6 +21,11 @@ TEST(libsaivs, port)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_port_attribute(0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_port_attribute(0,0,0));
 
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->create_ports(0,0,0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_ports(0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->set_ports_attribute(0,0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->get_ports_attribute(0,0,0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0));
+
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_port_stats(0,0,0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_port_stats_ext(0,0,0,SAI_STATS_MODE_READ,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->clear_port_stats(0,0,0));
