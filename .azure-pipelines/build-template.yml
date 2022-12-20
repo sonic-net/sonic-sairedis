@@ -124,14 +124,14 @@ jobs:
   - ${{ if eq(parameters.run_unit_test, true) }}:
     - script: |
         set -ex
-        git clone https://github.com/Spacetown/gcovr.git
+        git clone https://github.com/gcovr/gcovr.git
         cd gcovr/
-        git checkout origin/recursive_search_file
+        git checkout 5.2
         sudo pip3 install setuptools
         sudo python3 setup.py install
         cd ..
         sudo rm -rf gcovr
-      displayName: "Install gcovr 5.0 with recursive fix"
+      displayName: "Install gcovr 5.2 (for --exclude-throw-branches support)"
     - script: |
         set -ex
         make check
