@@ -4,6 +4,7 @@
 
 #include "meta/sai_serialize.h"
 #include "meta/NotificationPortStateChange.h"
+#include "meta/System.h"
 
 #include "swss/logger.h"
 
@@ -46,7 +47,7 @@ int SwitchStateBase::vs_create_tap_device(
 
     const char *tundev = "/dev/net/tun";
 
-    int fd = open(tundev, O_RDWR);
+    int fd = saimeta::System::open(tundev, O_RDWR);
 
     if (fd < 0)
     {
@@ -63,7 +64,7 @@ int SwitchStateBase::vs_create_tap_device(
 
     strncpy(ifr.ifr_name, dev, MAX_INTERFACE_NAME_LEN);
 
-    int err = ioctl(fd, TUNSETIFF, (void *) &ifr);
+    int err = saimeta::System::ioctl(fd, TUNSETIFF, (void *) &ifr);
 
     if (err < 0)
     {
@@ -230,7 +231,7 @@ int SwitchStateBase::ifup(
 {
     SWSS_LOG_ENTER();
 
-    int s = socket(AF_INET, SOCK_DGRAM, 0);
+    int s = saimeta::System::socket(AF_INET, SOCK_DGRAM, 0);
 
     if (s < 0)
     {
@@ -245,7 +246,7 @@ int SwitchStateBase::ifup(
 
     strncpy(ifr.ifr_name, dev , MAX_INTERFACE_NAME_LEN);
 
-    int err = ioctl(s, SIOCGIFFLAGS, &ifr);
+    int err = saimeta::System::ioctl(s, SIOCGIFFLAGS, &ifr);
 
     if (err < 0)
     {
@@ -280,7 +281,7 @@ int SwitchStateBase::ifup(
         ifr.ifr_flags &= ~IFF_UP;
     }
 
-    err = ioctl(s, SIOCSIFFLAGS, &ifr);
+    err = saimeta::System::ioctl(s, SIOCSIFFLAGS, &ifr);
 
     if (err < 0)
     {
@@ -297,7 +298,7 @@ int SwitchStateBase::promisc(
 {
     SWSS_LOG_ENTER();
 
-    int s = socket(AF_INET, SOCK_DGRAM, 0);
+    int s = saimeta::System::socket(AF_INET, SOCK_DGRAM, 0);
 
     if (s < 0)
     {
@@ -312,7 +313,7 @@ int SwitchStateBase::promisc(
 
     strncpy(ifr.ifr_name, dev , MAX_INTERFACE_NAME_LEN);
 
-    int err = ioctl(s, SIOCGIFFLAGS, &ifr);
+    int err = saimeta::System::ioctl(s, SIOCGIFFLAGS, &ifr);
 
     if (err < 0)
     {
@@ -332,7 +333,7 @@ int SwitchStateBase::promisc(
 
     ifr.ifr_flags |= IFF_PROMISC;
 
-    err = ioctl(s, SIOCSIFFLAGS, &ifr);
+    err = saimeta::System::ioctl(s, SIOCSIFFLAGS, &ifr);
 
     if (err < 0)
     {
@@ -444,7 +445,7 @@ bool SwitchStateBase::hostif_create_tap_veth_forwarding(
 
     std::string vethname = vs_get_veth_name(tapname, port_id);
 
-    int packet_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    int packet_socket = saimeta::System::socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
 
     if (packet_socket < 0)
     {
@@ -454,7 +455,7 @@ bool SwitchStateBase::hostif_create_tap_veth_forwarding(
     }
 
     int val = 1;
-    if (setsockopt(packet_socket, SOL_PACKET, PACKET_AUXDATA, &val, sizeof(val)) < 0)
+    if (saimeta::System::setsockopt(packet_socket, SOL_PACKET, PACKET_AUXDATA, &val, sizeof(val)) < 0)
     {
         SWSS_LOG_ERROR("setsockopt() set PACKET_AUXDATA failed: %s", strerror(errno));
         return false;
@@ -468,7 +469,7 @@ bool SwitchStateBase::hostif_create_tap_veth_forwarding(
 
     sock_address.sll_family = PF_PACKET;
     sock_address.sll_protocol = htons(ETH_P_ALL);
-    sock_address.sll_ifindex = if_nametoindex(vethname.c_str());
+    sock_address.sll_ifindex = saimeta::System::if_nametoindex(vethname.c_str());
 
     if (sock_address.sll_ifindex == 0)
     {
@@ -490,7 +491,7 @@ bool SwitchStateBase::hostif_create_tap_veth_forwarding(
         return false;
     }
 
-    if (bind(packet_socket, (struct sockaddr*) &sock_address, sizeof(sock_address)) < 0)
+    if (saimeta::System::bind(packet_socket, (struct sockaddr*) &sock_address, sizeof(sock_address)) < 0)
     {
         SWSS_LOG_ERROR("bind failed on %s", vethname.c_str());
 

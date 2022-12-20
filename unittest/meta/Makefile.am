@@ -41,6 +41,7 @@ tests_SOURCES = \
 				TestLegacyRouteEntry.cpp \
 				TestLegacyOther.cpp \
 				TestZeroMQSelectableChannel.cpp \
+				TestSystem.cpp \
 				TestMeta.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)

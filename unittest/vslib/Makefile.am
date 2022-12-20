@@ -5,6 +5,7 @@ bin_PROGRAMS = tests testslibsaivs
 LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 
 tests_SOURCES = main.cpp \
+				MockSwitchStateBase.cpp \
 				TestBuffer.cpp \
 				TestContextConfigContainer.cpp \
 				TestCorePortIndexMap.cpp \
@@ -43,6 +44,7 @@ tests_SOURCES = main.cpp \
 				TestSwitchBCM81724.cpp \
 				TestSwitchStateBaseMACsec.cpp \
 				TestMACsecManager.cpp \
+				TestSwitchStateBaseHostif.cpp \
 				TestSwitchStateBase.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control

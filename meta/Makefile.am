@@ -47,6 +47,7 @@ libsaimeta_la_SOURCES = \
 				SaiObjectCollection.cpp \
 				SaiSerialize.cpp \
 				SelectableChannel.cpp \
+				System.cpp \
 				ZeroMQSelectableChannel.cpp
 
 libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
