@@ -120,7 +120,7 @@ template<class B, template<size_t> class D, size_t... i>
 static constexpr auto declare_static(std::index_sequence<i...>)
 {
     SWSS_LOG_ENTER();
-    return std::array<B*, sizeof...(i)>{{new D<i>()...}};
+    return std::array<std::shared_ptr<B>, sizeof...(i)>{{std::make_shared<D<i>>()...}};
 }
 
 template<class B, template<size_t> class D, size_t size>
@@ -128,10 +128,10 @@ static constexpr auto declare_static()
 {
     SWSS_LOG_ENTER();
     auto arr = declare_static<B,D>(std::make_index_sequence<size>{});
-    return std::vector<B*>{arr.begin(), arr.end()};
+    return std::vector<std::shared_ptr<B>>{arr.begin(), arr.end()};
 }
 
-std::vector<SwitchNotifications::SlotBase*> SwitchNotifications::m_slots =
+std::vector<std::shared_ptr<SwitchNotifications::SlotBase>> SwitchNotifications::m_slots =
     declare_static<SwitchNotifications::SlotBase, SwitchNotifications::Slot, 0x10>();
 
 #pragma GCC diagnostic pop
