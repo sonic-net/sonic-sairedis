@@ -213,7 +213,7 @@ config_syncd_mlnx()
     echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
 
     if [[ "$DUAL_TOR" == "enable" ]] && [[ "$DSCP_REMAPPING" == "enable" ]]; then
-       echo "SAI_DSCP_REMAPPING_ENABLED=1" >> /tmp/sai.profile 
+       echo "SAI_DSCP_REMAPPING_ENABLED=1" >> /tmp/sai.profile
     fi
 
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
