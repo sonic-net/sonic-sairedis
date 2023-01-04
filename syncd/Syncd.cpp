@@ -484,6 +484,15 @@ sai_status_t Syncd::processAttrEnumValuesCapabilityQuery(
 
         SWSS_LOG_DEBUG("Sending response: capabilities = '%s', count = %d", strCap.c_str(), enumCapList.count);
     }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        entry =
+        {
+            swss::FieldValueTuple("ENUM_COUNT", std::to_string(enumCapList.count))
+        };
+
+        SWSS_LOG_DEBUG("Sending response: count = %u", enumCapList.count);
+    }
 
     m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
 
