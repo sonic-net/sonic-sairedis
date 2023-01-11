@@ -13,6 +13,7 @@
 #include "meta/SaiAttributeList.h"
 #include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
+#include "swss/exec.h"
 
 #include <inttypes.h>
 
@@ -276,6 +277,7 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
+    std::string ret_str;
 
     if (attr == nullptr)
     {
@@ -2077,6 +2079,7 @@ sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
         case SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW:
         case SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW:
         case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
+        case SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP:
             break;
 
         default:
@@ -2115,6 +2118,12 @@ sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
             case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
 
                 SWSS_LOG_NOTICE("inspect ASIC SUCCEEDED");
+
+                break;
+
+            case SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP:
+
+                SWSS_LOG_NOTICE("invoked DUMP succeeded");
 
                 break;
 
