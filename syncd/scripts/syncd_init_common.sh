@@ -49,7 +49,8 @@ case "$(cat /proc/cmdline)" in
     ;;
   *SONIC_BOOT_TYPE=fast*|*fast-reboot*)
     # check that the key exists
-    if [[ $(sonic-db-cli STATE_DB GET "FAST_REBOOT|system") == "1" ]]; then
+    SYSTEM_FAST_REBOOT=`sonic-db-cli STATE_DB GET "FAST_REBOOT|system"`
+    if [[ ${SYSTEM_FAST_REBOOT} == "enable" ]]; then
        FAST_REBOOT='yes'
     else
        FAST_REBOOT='no'
