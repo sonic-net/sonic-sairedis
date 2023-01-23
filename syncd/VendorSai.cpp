@@ -733,6 +733,10 @@ sai_status_t VendorSai::bulkCreate(
 
     switch (object_type)
     {
+        case SAI_OBJECT_TYPE_PORT:
+            ptr = m_apis.port_api->create_ports;
+            break;
+
         case SAI_OBJECT_TYPE_LAG_MEMBER:
             ptr = m_apis.lag_api->create_lag_members;
             break;
@@ -792,6 +796,10 @@ sai_status_t VendorSai::bulkRemove(
 
     switch (object_type)
     {
+        case SAI_OBJECT_TYPE_PORT:
+            ptr = m_apis.port_api->remove_ports;
+            break;
+
         case SAI_OBJECT_TYPE_LAG_MEMBER:
             ptr = m_apis.lag_api->remove_lag_members;
             break;

@@ -1576,6 +1576,11 @@ sai_status_t Syncd::processBulkOidCreate(
             SWSS_LOG_INFO("saved VID %s to RID %s",
                     sai_serialize_object_id(objectVids[idx]).c_str(),
                     sai_serialize_object_id(objectRids[idx]).c_str());
+
+            if (objectType == SAI_OBJECT_TYPE_PORT)
+            {
+                m_switches.at(switchVid)->onPostPortCreate(objectRids[idx], objectVids[idx]);
+            }
         }
     }
 
@@ -1606,6 +1611,12 @@ sai_status_t Syncd::processBulkOidRemove(
     {
         sai_deserialize_object_id(objectIds[idx], objectVids[idx]);
         objectRids[idx] = m_translator->translateVidToRid(objectVids[idx]);
+
+        if (objectType == SAI_OBJECT_TYPE_PORT)
+        {
+            sai_object_id_t switchVid = VidManager::switchIdQuery(objectVids[idx]);
+            m_switches.at(switchVid)->collectPortRelatedObjects(objectRids[idx]);
+        }
     }
 
     status = m_vendorSai->bulkRemove(
@@ -1638,6 +1649,11 @@ sai_status_t Syncd::processBulkOidRemove(
             if (m_switches.at(switchVid)->isDiscoveredRid(objectRids[idx]))
             {
                 m_switches.at(switchVid)->removeExistingObjectReference(objectRids[idx]);
+            }
+
+            if (objectType == SAI_OBJECT_TYPE_PORT)
+            {
+                m_switches.at(switchVid)->postPortRemove(objectRids[idx]);
             }
         }
     }
