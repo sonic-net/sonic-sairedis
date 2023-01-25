@@ -219,6 +219,10 @@ config_syncd_mlnx()
        echo "SAI_DSCP_REMAPPING_ENABLED=1" >> /tmp/sai.profile
     fi
 
+    if [[ "$DUAL_TOR" == "enable" ]]; then
+       echo "SAI_ADDITIONAL_MAC_ENABLED=1" >> /tmp/sai.profile
+    fi
+
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
     if [ ! -d "$SDK_DUMP_PATH" ]; then
         mkdir -p "$SDK_DUMP_PATH"
