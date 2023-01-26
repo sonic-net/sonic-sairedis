@@ -179,7 +179,7 @@ jobs:
     - script: |
         set -ex
         # Add SYS_TIME capability for settimeofday ok in syncd test
-        sudo setcap "cap_sys_time=eip" syncd/.libs/tests
+        sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
         make check
         gcovr --version
         find SAI/meta -name "*.gc*" | xargs rm -vf

@@ -214,6 +214,7 @@ AC_OUTPUT(Makefile
           lib/Makefile
           vslib/Makefile
           syncd/Makefile
+          syncd/tests/Makefile
           saiplayer/Makefile
           saidump/Makefile
           saisdkdump/Makefile

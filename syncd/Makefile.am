@@ -1,3 +1,5 @@
+SUBDIRS = . tests
+
 AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/vslib
 
 if SAIVS
@@ -6,7 +8,7 @@ else
 SAILIB=-lsai
 endif
 
-bin_PROGRAMS = syncd syncd_request_shutdown tests
+bin_PROGRAMS = syncd syncd_request_shutdown syncd_tests
 
 noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
 
@@ -89,10 +91,10 @@ syncd_request_shutdown_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_request_shutdown_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a $(top_srcdir)/lib/libSaiRedis.a -lhiredis -lswsscommon -lpthread $(CODE_COVERAGE_LIBS)
 
-tests_SOURCES = tests.cpp
-tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs
-tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/.libs -lsairedis \
+syncd_tests_SOURCES = tests.cpp
+syncd_tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
+syncd_tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs
+syncd_tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/.libs -lsairedis \
 			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
-TESTS = tests
+TESTS = syncd_tests
