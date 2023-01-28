@@ -55,6 +55,8 @@ std::string mockCallArg;
 namespace swss {
     int exec(const std::string &cmd, std::string &stdout)
     {
+        SWSS_LOG_ENTER();
+
         mockCallArg=cmd;
         return 0;
     }
