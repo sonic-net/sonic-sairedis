@@ -1,3 +1,4 @@
+#include "config.h"
 #include "VendorSai.h"
 
 #include "meta/sai_serialize.h"

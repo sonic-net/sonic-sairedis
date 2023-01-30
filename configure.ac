@@ -207,7 +207,12 @@ AC_MSG_ERROR("SAI headers API version and library version mismatch")])])
 CXXFLAGS="$SAVED_FLAGS"
 ])])
 
+AM_COND_IF([SYNCD], [
+SAVED_FLAGS="$CXXFLAGS"
+CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
 AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats)
+CXXFLAGS="$SAVED_FLAGS"
+])
 
 AC_OUTPUT(Makefile
           meta/Makefile
