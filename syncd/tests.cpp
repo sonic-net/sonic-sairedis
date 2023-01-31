@@ -176,7 +176,6 @@ void test_enable_recording()
     ASSERT_SUCCESS("Failed to enable recording");
 }
 
-
 bool starts_with(const std::string& str, const std::string& substr)
 {
     SWSS_LOG_ENTER();

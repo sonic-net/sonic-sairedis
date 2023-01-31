@@ -13,7 +13,6 @@
 #include "meta/SaiAttributeList.h"
 #include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
-#include "swss/exec.h"
 
 #include <inttypes.h>
 
@@ -277,7 +276,6 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
-    std::string ret_str;
 
     if (attr == nullptr)
     {
