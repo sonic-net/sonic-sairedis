@@ -42,6 +42,10 @@ parameters:
   type: boolean
   default: false
 
+- name: asan
+  type: boolean
+  default: false
+
 - name: debian_version
   type: string
 
@@ -153,8 +157,13 @@ jobs:
       set -ex
       rm ../*.deb || true
       ./autogen.sh
-      export ENABLE_GCOV=y
-      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage --enable-gcov' CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      extraflags='--enable-code-coverage --enable-gcov'
+      if [ '${{ parameters.asan }}' == True ]; then
+         extraflags='--enable-asan'
+      else
+         export ENABLE_GCOV=y
+      fi
+      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS=$extraflags CFLAGS="" CXXFLAGS="" binary-syncd-vs
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
@@ -164,21 +173,14 @@ jobs:
   - ${{ if eq(parameters.run_unit_test, true) }}:
     - script: |
         set -ex
-        git clone https://github.com/Spacetown/gcovr.git
+        git clone https://github.com/gcovr/gcovr.git
         cd gcovr/
-        git checkout origin/recursive_search_file
+        git checkout 5.2
         sudo pip3 install setuptools
         sudo python3 setup.py install
         cd ..
         sudo rm -rf gcovr
-      displayName: "Install gcovr 5.0 with recursive fix"
-    # - script: |
-    #     set -ex
-    #     make check
-    #     gcovr --version
-    #     find SAI/meta -name "*.gc*" | xargs rm -vf
-    #     gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --exclude-throw-branches -x --xml-pretty -o coverage.xml
-    #   displayName: "Run sonic sairedis unit tests"
+      displayName: "Install gcovr 5.2 (for --exclude-throw-branches support)"
     - script: |
         set -ex
         # Add SYS_TIME capability for settimeofday ok in syncd test

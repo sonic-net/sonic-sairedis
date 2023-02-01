@@ -326,10 +326,14 @@ TEST(LegacyFdbEntry, fdb_entry_get)
 
     // correct 2 attributes
     sai_attribute_t attr1;
+    memset(&attr1, 0, sizeof(attr1));
     attr1.id = SAI_FDB_ENTRY_ATTR_TYPE;
+    attr1.value.oid = SAI_OBJECT_TYPE_NULL;
 
     sai_attribute_t attr2;
+    memset(&attr2, 0, sizeof(attr2));
     attr2.id = SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID;
+    attr2.value.oid = SAI_OBJECT_TYPE_NULL;
     sai_attribute_t list[2] = { attr1, attr2 };
 
     status = g_meta->get(&fdb_entry, 2, list);

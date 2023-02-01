@@ -1453,6 +1453,24 @@ sai_status_t RedisRemoteSaiInterface::bulkRemove(
     return bulkRemove(SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectIds, mode, object_statuses);
 }
 
+sai_status_t RedisRemoteSaiInterface::bulkRemove(
+        _In_ uint32_t object_count,
+        _In_ const sai_neighbor_entry_t *neighbor_entry,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> serializedObjectIds;
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        serializedObjectIds.emplace_back(sai_serialize_neighbor_entry(neighbor_entry[idx]));
+    }
+
+    return bulkRemove(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectIds, mode, object_statuses);
+}
+
 sai_status_t RedisRemoteSaiInterface::bulkSet(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t object_count,
@@ -1566,6 +1584,25 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
     }
 
     return bulkSet(SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
+}
+
+sai_status_t RedisRemoteSaiInterface::bulkSet(
+        _In_ uint32_t object_count,
+        _In_ const sai_neighbor_entry_t *neighbor_entry,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<std::string> serializedObjectIds;
+
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        serializedObjectIds.emplace_back(sai_serialize_neighbor_entry(neighbor_entry[idx]));
+    }
+
+    return bulkSet(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
 }
 
 sai_status_t RedisRemoteSaiInterface::bulkSet(
@@ -1870,6 +1907,36 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
 
     return bulkCreate(
             SAI_OBJECT_TYPE_MY_SID_ENTRY,
+            serialized_object_ids,
+            attr_count,
+            attr_list,
+            mode,
+            object_statuses);
+}
+
+sai_status_t RedisRemoteSaiInterface::bulkCreate(
+        _In_ uint32_t object_count,
+        _In_ const sai_neighbor_entry_t* neighbor_entry,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    // TODO support mode
+
+    std::vector<std::string> serialized_object_ids;
+
+    // on create vid is put in db by syncd
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        std::string str_object_id = sai_serialize_neighbor_entry(neighbor_entry[idx]);
+        serialized_object_ids.push_back(str_object_id);
+    }
+
+    return bulkCreate(
+            SAI_OBJECT_TYPE_NEIGHBOR_ENTRY,
             serialized_object_ids,
             attr_count,
             attr_list,

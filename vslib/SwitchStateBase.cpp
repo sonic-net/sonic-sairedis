@@ -735,7 +735,7 @@ sai_status_t SwitchStateBase::bulkCreate(
 
     for (it = 0; it < object_count; it++)
     {
-        object_statuses[it] = create_internal(object_type, serialized_object_ids[it], switch_id, attr_count[it], attr_list[it]);
+        object_statuses[it] = create(object_type, serialized_object_ids[it], switch_id, attr_count[it], attr_list[it]);
 
         if (object_statuses[it] != SAI_STATUS_SUCCESS)
         {
@@ -779,7 +779,7 @@ sai_status_t SwitchStateBase::bulkRemove(
 
     for (it = 0; it < object_count; it++)
     {
-        object_statuses[it] = remove_internal(object_type, serialized_object_ids[it]);
+        object_statuses[it] = remove(object_type, serialized_object_ids[it]);
 
         if (object_statuses[it] != SAI_STATUS_SUCCESS)
         {

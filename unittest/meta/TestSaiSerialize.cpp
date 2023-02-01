@@ -64,6 +64,44 @@ TEST(SaiSerialize, sai_serialize_object_meta_key)
     }
 }
 
+TEST(SaiSerialize, sai_serialize_port_lane_latch_status_list)
+{
+    sai_attribute_t attr;
+
+    memset(&attr, 0, sizeof(attr));
+
+    for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
+    {
+        auto meta = sai_metadata_attr_sorted_by_id_name[idx];
+        if(meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST)
+        {
+            attr.id = meta->attrid;
+
+            if (meta->isaclaction)
+            {
+                attr.value.aclaction.enable = true;
+            }
+
+            if (meta->isaclfield)
+            {
+                attr.value.aclfield.enable = true;
+            }
+
+            sai_port_lane_latch_status_t list[1];
+            list[0].lane = 1;
+            list[0].value.changed=true;
+            list[0].value.current_status=true;
+
+            attr.value.portlanelatchstatuslist.count=1;
+            attr.value.portlanelatchstatuslist.list = list;
+
+            auto s = sai_serialize_attr_value(*meta, attr, false);
+
+            sai_deserialize_attr_value(s, *meta, attr, false);
+        }
+    }
+}
+
 TEST(SaiSerialize, sai_serialize_attr_value)
 {
     sai_attribute_t attr;

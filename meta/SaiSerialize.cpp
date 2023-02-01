@@ -245,6 +245,18 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.timespec, dst_attr.value.timespec);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_JSON:
+            transfer_primitive(src_attr.value.json, dst_attr.value.json);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.portlanelatchstatuslist, dst_attr.value.portlanelatchstatuslist, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_LATCH_STATUS:
+            transfer_primitive(src_attr.value.latchstatus, dst_attr.value.latchstatus);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.vlanlist, dst_attr.value.vlanlist, countOnly));
             break;
@@ -1417,6 +1429,60 @@ std::string sai_serialize_acl_resource_list(
     return j.dump();
 }
 
+std::string sai_serialize_latch_status(
+        _In_ const sai_latch_status_t& latch_status)
+{
+    SWSS_LOG_ENTER();
+
+    auto changed = sai_serialize_bool(latch_status.changed);
+    auto current_status = sai_serialize_bool(latch_status.current_status);
+
+    return changed + ":" + current_status;
+}
+
+json sai_serialize_port_lane_latch_status_item(
+        _In_ const sai_port_lane_latch_status_t& lane_latch_status)
+{
+    SWSS_LOG_ENTER();
+    json j;
+
+    j["lane"] = lane_latch_status.lane;
+    j["value"] = sai_serialize_latch_status(lane_latch_status.value);
+
+    return j;
+}
+
+std::string sai_serialize_port_lane_latch_status_list(
+        _In_ const sai_port_lane_latch_status_list_t& status_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["count"] = status_list.count;
+
+    if (status_list.list == NULL || countOnly)
+    {
+        j["list"] = nullptr;
+
+        return j.dump();
+    }
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < status_list.count; ++i)
+    {
+        json item = sai_serialize_port_lane_latch_status_item(status_list.list[i]);
+
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    return j.dump();
+}
+
 template <typename T>
 std::string sai_serialize_range(
         _In_ const T& range)
@@ -1605,6 +1671,18 @@ std::string sai_serialize_system_port_config(
     return j.dump();
 }
 
+std::string sai_serialize_json(
+    _In_ const sai_json_t js)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["json"] = sai_serialize_number_list(js.json, false);
+
+    return j.dump();
+}
+
 json sai_serialize_system_port_cfg_list_item(
         _In_ const sai_system_port_config_t &sysportconfig)
 {
@@ -1711,6 +1789,9 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_UINT16:
             return sai_serialize_number(attr.value.u16);
 
+        case SAI_ATTR_VALUE_TYPE_JSON:
+            return sai_serialize_json(attr.value.json);
+
 //        case SAI_ATTR_VALUE_TYPE_INT16:
 //            return sai_serialize_number(attr.value.s16);
 
@@ -1755,6 +1836,12 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_INT8_LIST:
             return sai_serialize_number_list(attr.value.s8list, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_LATCH_STATUS:
+            return sai_serialize_latch_status(attr.value.latchstatus);
+
+        case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+            return sai_serialize_port_lane_latch_status_list(attr.value.portlanelatchstatuslist, countOnly);
 
 //        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
 //            return sai_serialize_number_list(attr.value.u16list, countOnly);
@@ -3211,6 +3298,86 @@ void sai_deserialize_system_port_config(
 
 }
 
+void sai_deserialize_json(
+        _In_ const std::string& s,
+        _Out_ sai_json_t& js)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_number_list(j["json"], js.json, false);
+
+}
+
+void sai_deserialize_latch_status(
+        _In_ const std::string& s,
+        _Out_ sai_latch_status_t& latch_status)
+{
+    SWSS_LOG_ENTER();
+
+    auto pos = s.find(":");
+
+    if (pos == std::string::npos)
+    {
+        SWSS_LOG_THROW("Invalid latch status %s", s.c_str());
+    }
+
+    std::string changed = s.substr(0, pos);
+    std::string current_status = s.substr(pos + 1);
+
+    sai_deserialize_bool(changed, latch_status.changed);
+    sai_deserialize_bool(current_status, latch_status.current_status);
+
+}
+
+void sai_deserialize_port_lane_latch_status(
+        _In_ const json& j,
+        _Out_ sai_port_lane_latch_status_t& lane_latch_status)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_latch_status(j["value"], lane_latch_status.value);
+}
+
+void sai_deserialize_port_lane_latch_status_list(
+        _In_ const std::string& s,
+        _Out_ sai_port_lane_latch_status_list_t& status_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    status_list.count = j["count"];
+
+    if (countOnly)
+    {
+        return;
+    }
+
+    if (j["list"] == nullptr)
+    {
+        status_list.list = NULL;
+        return;
+    }
+
+    json arr = j["list"];
+
+    if (arr.size() != (size_t)status_list.count)
+    {
+        SWSS_LOG_THROW("port lane latch status count mismatch %lu vs %u", arr.size(),status_list.count);
+    }
+
+    status_list.list = sai_alloc_n_of_ptr_type(status_list.count, status_list.list);
+
+    for (uint32_t i = 0; i < status_list.count; ++i)
+    {
+        const json &item = arr[i];
+
+        sai_deserialize_port_lane_latch_status(item, status_list.list[i]);
+    }
+}
+
 static void sai_deserialize_system_port_cfg_list_item(
         _In_ const json& j,
         _Out_ sai_system_port_config_t& sysportconfig)
@@ -3291,6 +3458,9 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_UINT16:
             return sai_deserialize_number(s, attr.value.u16);
 
+        case SAI_ATTR_VALUE_TYPE_JSON:
+            return sai_deserialize_json(s, attr.value.json);
+
 //        case SAI_ATTR_VALUE_TYPE_INT16:
 //            return sai_deserialize_number(s, attr.value.s16);
 
@@ -3335,6 +3505,12 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_INT8_LIST:
             return sai_deserialize_number_list(s, attr.value.s8list, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_LATCH_STATUS:
+            return sai_deserialize_latch_status(s, attr.value.latchstatus);
+
+        case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+            return sai_deserialize_port_lane_latch_status_list(s, attr.value.portlanelatchstatuslist, countOnly);
 
 //        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
 //            return sai_deserialize_number_list(s, attr.value.u16list, countOnly);
@@ -3909,7 +4085,6 @@ void sai_deserialize_object_meta_key(
     }
 }
 
-
 // deserialize notifications
 
 static void sai_deserialize_json_fdb_event_notification_data(
@@ -4087,6 +4262,11 @@ void sai_deserialize_free_attribute_value(
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS:
         case SAI_ATTR_VALUE_TYPE_IP_PREFIX:
         case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+        case SAI_ATTR_VALUE_TYPE_LATCH_STATUS:
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_JSON:
+            sai_free_list(attr.value.json.json);
             break;
 
         case SAI_ATTR_VALUE_TYPE_OBJECT_LIST:
@@ -4143,6 +4323,10 @@ void sai_deserialize_free_attribute_value(
 
         case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             sai_free_list(attr.value.segmentlist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+            sai_free_list(attr.value.portlanelatchstatuslist);
             break;
 
             /* ACL FIELD DATA */

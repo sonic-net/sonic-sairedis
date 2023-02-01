@@ -92,6 +92,7 @@ config_syncd_cisco_8000()
 {
     export BASE_OUTPUT_DIR=/opt/cisco/silicon-one
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    CMD_ARGS+=" -l"
 
     # Cisco SDK debug shell support
     version=$(python3 -V 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\.\2/')
@@ -188,7 +189,7 @@ config_syncd_bcm()
 
 config_syncd_mlnx()
 {
-    CMD_ARGS+=" -p /tmp/sai.profile"
+    CMD_ARGS+=" -l -p /tmp/sai.profile"
 
     [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
 
@@ -284,7 +285,7 @@ config_syncd_nephos()
 
 config_syncd_vs()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
 }
 
 config_syncd_soda()

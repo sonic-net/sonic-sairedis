@@ -17,6 +17,6 @@ const sai_next_hop_group_api_t vs_next_hop_group_api = {
     vs_bulk_create_next_hop_group_members,
     vs_bulk_remove_next_hop_group_members,
     VS_GENERIC_QUAD_API(next_hop_group_map)
-    vs_bulk_get_next_hop_group_members,
-    vs_bulk_set_next_hop_group_members
+    vs_bulk_set_next_hop_group_members,
+    vs_bulk_get_next_hop_group_members
 };
