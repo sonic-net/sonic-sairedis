@@ -51,8 +51,9 @@ typedef enum _sai_redis_notify_syncd_t
 
     SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW,
 
-    SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC
+    SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC,
 
+    SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP
 } sai_redis_notify_syncd_t;
 
 typedef enum _sai_redis_communication_mode_t
@@ -248,5 +249,4 @@ typedef enum _sai_redis_switch_attr_t
      * @default 60000
      */
     SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT,
-
 } sai_redis_switch_attr_t;

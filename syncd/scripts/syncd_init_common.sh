@@ -31,6 +31,9 @@ if [[ "$(cat /proc/cmdline)" != *"SONIC_BOOT_TYPE=fast-reboot"* ]]; then
     CMD_ARGS+=" -u"
 fi
 
+# Create a folder for SAI failure dump files
+mkdir -p /var/log/sai_failure_dump/
+
 # Use bulk APIs in SAI
 # currently disabled since most vendors don't support that yet
 # CMD_ARGS+=" -l"

@@ -2359,6 +2359,9 @@ std::string sai_serialize(
         case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
             return SYNCD_INSPECT_ASIC;
 
+        case SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP:
+            return SYNCD_INVOKE_DUMP;
+
         default:
 
             SWSS_LOG_THROW("unknown value on sai_redis_notify_syncd_t: %d", value);
@@ -4542,6 +4545,10 @@ void sai_deserialize(
     else if (s == SYNCD_INSPECT_ASIC)
     {
         value = SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC;
+    }
+    else if (s == SYNCD_INVOKE_DUMP)
+    {
+        value = SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP;
     }
     else
     {

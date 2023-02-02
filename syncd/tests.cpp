@@ -42,7 +42,26 @@ using namespace syncd;
     if ((status)!=SAI_STATUS_SUCCESS) \
         SWSS_LOG_THROW(format ": %s", ##__VA_ARGS__, sai_serialize_status(status).c_str());
 
+#define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
+
+#define CHECK_STATUS(x)  \
+    if (status != SAI_STATUS_SUCCESS) { exit(1); }
+
+
 using namespace saimeta;
+
+std::string mockCallArg;
+
+namespace swss {
+    int exec(const std::string &cmd, std::string &stdout)
+    {
+        SWSS_LOG_ENTER();
+
+        mockCallArg=cmd;
+        return 0;
+    }
+}
+
 static std::shared_ptr<swss::DBConnector> g_db1;
 
 static sai_next_hop_group_api_t test_next_hop_group_api;
@@ -652,9 +671,6 @@ void test_bulk_route_set()
     ASSERT_SUCCESS("Failed to bulk remove route entry");
 }
 
-#define CHECK_STATUS(x)  \
-    if (status != SAI_STATUS_SUCCESS) { exit(1); }
-
 void syncdThread()
 {
     SWSS_LOG_ENTER();
@@ -677,6 +693,31 @@ void syncdThread()
     SWSS_LOG_WARN("starting run");
     syncd->run();
 }
+
+void test_invoke_dump()
+{
+    SWSS_LOG_ENTER();
+    clearDB();
+
+    auto syncd = std::make_shared<std::thread>(syncdThread);
+    syncd->detach();
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP;
+
+    auto sairedis = std::make_shared<sairedis::Sai>();
+
+    sai_status_t status = sairedis->initialize(0, &test_services);
+
+    CHECK_STATUS(status);
+
+    status = sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+
+    ASSERT_SUCCESS("Failed to invoke dump");
+    assert(mockCallArg == SAI_FAILURE_DUMP_SCRIPT);
+}
+
 
 void test_bulk_route_create()
 {
@@ -869,6 +910,8 @@ int main()
         printf("\n[ %s ]\n\n", sai_serialize_status(SAI_STATUS_SUCCESS).c_str());
 
         test_watchdog_timer_clock_rollback();
+
+        test_invoke_dump();
     }
     catch (const std::exception &e)
     {
