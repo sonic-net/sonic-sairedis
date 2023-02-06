@@ -50,6 +50,11 @@ namespace syncd
 
             bool isDiscarded();
 
+            std::string getRifCounterTableKey(std::string s);
+            std::string getRifRateTableKey(std::string s);
+            std::string getRifRateInitTableKey(std::string s);
+            void cleanUpRifFromCounterDb(_In_ sai_object_id_t rifId);
+
         private:
 
             void setPollInterval(

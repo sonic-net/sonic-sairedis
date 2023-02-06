@@ -1016,6 +1016,38 @@ void FlexCounter::removeFlowCounter(
     }
 }
 
+string FlexCounter::getRifCounterTableKey(string key)
+{
+    SWSS_LOG_ENTER();
+    return "COUNTERS:" + key;
+}
+
+string FlexCounter::getRifRateTableKey(string key)
+{
+    SWSS_LOG_ENTER();
+    return "RATES:" + key;
+}
+
+string FlexCounter::getRifRateInitTableKey(string key)
+{
+    SWSS_LOG_ENTER();
+    return "RATES:" + key + ":RIF";
+}
+
+void FlexCounter::cleanUpRifFromCounterDb(_In_ sai_object_id_t rifId)
+{
+    SWSS_LOG_ENTER();
+    const auto id = sai_serialize_object_id(rifId);
+    swss::DBConnector db(m_dbCounters, 0);
+    string counter_key = getRifCounterTableKey(id);
+    string rate_key = getRifRateTableKey(id);
+    string rate_init_key = getRifRateInitTableKey(id);
+    db.del(counter_key);
+    db.del(rate_key);
+    db.del(rate_init_key);
+    SWSS_LOG_NOTICE("CleanUp oid %s from counter db", id.c_str());
+}
+
 void FlexCounter::removeRif(
         _In_ sai_object_id_t rifVid)
 {
@@ -1030,6 +1062,7 @@ void FlexCounter::removeRif(
     }
 
     m_rifCounterIdsMap.erase(it);
+    cleanUpRifFromCounterDb(rifVid);
 
     if (m_rifCounterIdsMap.empty())
     {
