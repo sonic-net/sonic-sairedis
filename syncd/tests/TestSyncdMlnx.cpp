@@ -4,7 +4,9 @@
 #include <memory>
 #include <vector>
 #include <array>
+#include <set>
 #include <thread>
+#include <algorithm>
 
 #include <gtest/gtest.h>
 
@@ -159,6 +161,53 @@ protected:
 
     sai_object_id_t m_switchId = SAI_NULL_OBJECT_ID;
 };
+
+TEST_F(SyncdMlnxTest, queryAttrEnumValuesCapability)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_sairedis->queryAattributeEnumValuesCapability(
+        m_switchId, SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+
+    std::vector<sai_int32_t> hfList(data.count);
+    data.list = hfList.data();
+
+    status = m_sairedis->queryAattributeEnumValuesCapability(
+        m_switchId, SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const std::set<sai_native_hash_field_t> hfSet1 = {
+        SAI_NATIVE_HASH_FIELD_IN_PORT,
+        SAI_NATIVE_HASH_FIELD_DST_MAC,
+        SAI_NATIVE_HASH_FIELD_SRC_MAC,
+        SAI_NATIVE_HASH_FIELD_ETHERTYPE,
+        SAI_NATIVE_HASH_FIELD_VLAN_ID,
+        SAI_NATIVE_HASH_FIELD_IP_PROTOCOL,
+        SAI_NATIVE_HASH_FIELD_DST_IP,
+        SAI_NATIVE_HASH_FIELD_SRC_IP,
+        SAI_NATIVE_HASH_FIELD_L4_DST_PORT,
+        SAI_NATIVE_HASH_FIELD_L4_SRC_PORT,
+        SAI_NATIVE_HASH_FIELD_INNER_DST_MAC,
+        SAI_NATIVE_HASH_FIELD_INNER_SRC_MAC,
+        SAI_NATIVE_HASH_FIELD_INNER_ETHERTYPE,
+        SAI_NATIVE_HASH_FIELD_INNER_IP_PROTOCOL,
+        SAI_NATIVE_HASH_FIELD_INNER_DST_IP,
+        SAI_NATIVE_HASH_FIELD_INNER_SRC_IP,
+        SAI_NATIVE_HASH_FIELD_INNER_L4_DST_PORT,
+        SAI_NATIVE_HASH_FIELD_INNER_L4_SRC_PORT
+    };
+
+    std::set<sai_native_hash_field_t> hfSet2;
+
+    std::transform(
+        hfList.cbegin(), hfList.cend(), std::inserter(hfSet2, hfSet2.begin()),
+        [](sai_int32_t value) { return static_cast<sai_native_hash_field_t>(value); }
+    );
+    ASSERT_EQ(hfSet1, hfSet2);
+}
 
 TEST_F(SyncdMlnxTest, portBulkAddRemove)
 {
