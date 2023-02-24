@@ -1,3 +1,4 @@
+#include "config.h"
 #include "Syncd.h"
 #include "VidManager.h"
 #include "NotificationHandler.h"
@@ -4738,7 +4739,11 @@ void Syncd::run()
 
     m_mdioIpcServer->stopMdioThread();
 
-    sai_status_t status = removeAllSwitches();
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    if (shutdownType != SYNCD_RESTART_TYPE_COLD || 0 != strcmp(SONIC_ASIC_PLATFORM, "mellanox"))
+    {
+        status = removeAllSwitches();
+    }
 
     // Stop notification thread after removing switch
     m_processor->stopNotificationsProcessingThread();
