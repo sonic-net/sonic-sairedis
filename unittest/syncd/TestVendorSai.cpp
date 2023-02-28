@@ -1,3 +1,9 @@
+#include <cstdint>
+
+#include <memory>
+#include <vector>
+#include <array>
+
 #include <gtest/gtest.h>
 #include "VendorSai.h"
 #include "swss/logger.h"
@@ -36,6 +42,96 @@ static sai_service_method_table_t test_services = {
     profile_get_value,
     profile_get_next_value
 };
+
+class VendorSaiTest : public ::testing::Test
+{
+public:
+    VendorSaiTest() = default;
+    virtual ~VendorSaiTest() = default;
+
+public:
+    virtual void SetUp() override
+    {
+        m_vsai = std::make_shared<VendorSai>();
+
+        auto status = m_vsai->initialize(0, &test_services);
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+        sai_attribute_t attr;
+        attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+        attr.value.booldata = true;
+
+        status = m_vsai->create(SAI_OBJECT_TYPE_SWITCH, &m_swid, SAI_NULL_OBJECT_ID, 1, &attr);
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    }
+
+    virtual void TearDown() override
+    {
+        auto status = m_vsai->remove(SAI_OBJECT_TYPE_SWITCH, m_swid);
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+        status = m_vsai->uninitialize();
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    }
+
+protected:
+    std::shared_ptr<VendorSai> m_vsai;
+
+    sai_object_id_t m_swid = SAI_NULL_OBJECT_ID;
+};
+
+TEST_F(VendorSaiTest, portBulkAddRemove)
+{
+    const std::uint32_t portCount = 1;
+    const std::uint32_t laneCount = 4;
+
+    // Generate port config
+    std::array<std::uint32_t, laneCount> laneList = { 0, 1, 2, 3 };
+
+    sai_attribute_t attr;
+    std::vector<sai_attribute_t> attrList;
+
+    attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+    attr.value.u32list.count = static_cast<std::uint32_t>(laneList.size());
+    attr.value.u32list.list = laneList.data();
+    attrList.push_back(attr);
+
+    attr.id = SAI_PORT_ATTR_SPEED;
+    attr.value.u32 = 1000;
+    attrList.push_back(attr);
+
+    std::array<std::uint32_t, portCount> attrCountList = { static_cast<std::uint32_t>(attrList.size()) };
+    std::array<const sai_attribute_t*, portCount> attrPtrList = { attrList.data() };
+
+    std::array<sai_object_id_t, portCount> oidList = { SAI_NULL_OBJECT_ID };
+    std::array<sai_status_t, portCount> statusList = { SAI_STATUS_SUCCESS };
+
+    // Validate port bulk add
+    auto status = m_vsai->bulkCreate(
+        SAI_OBJECT_TYPE_PORT, m_swid, portCount, attrCountList.data(), attrPtrList.data(),
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+        oidList.data(), statusList.data()
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (std::uint32_t i = 0; i < portCount; i++)
+    {
+        ASSERT_EQ(statusList.at(i), SAI_STATUS_SUCCESS);
+    }
+
+    // Validate port bulk remove
+    status = m_vsai->bulkRemove(
+        SAI_OBJECT_TYPE_PORT, portCount, oidList.data(),
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+        statusList.data()
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (std::uint32_t i = 0; i < portCount; i++)
+    {
+        ASSERT_EQ(statusList.at(i), SAI_STATUS_SUCCESS);
+    }
+}
 
 TEST(VendorSai, bulkGetStats)
 {

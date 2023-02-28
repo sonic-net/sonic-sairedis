@@ -1089,11 +1089,22 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAattributeEnumValuesCapability
             position++;
         }
     }
-    else if (status ==  SAI_STATUS_BUFFER_OVERFLOW)
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
     {
-        // TODO on sai status overflow we should populate correct count on the list
+        const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
 
-        SWSS_LOG_ERROR("TODO need to handle SAI_STATUS_BUFFER_OVERFLOW, FIXME");
+        if (values.size() != 1)
+        {
+            SWSS_LOG_ERROR("Invalid response from syncd: expected 1 value, received %zu", values.size());
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        const uint32_t num_capabilities = std::stoi(fvValue(values[0]));
+
+        SWSS_LOG_DEBUG("Received payload: count = %u", num_capabilities);
+
+        enumValuesCapability->count = num_capabilities;
     }
 
     return status;
@@ -2077,6 +2088,7 @@ sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
         case SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW:
         case SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW:
         case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
+        case SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP:
             break;
 
         default:
@@ -2115,6 +2127,12 @@ sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
             case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
 
                 SWSS_LOG_NOTICE("inspect ASIC SUCCEEDED");
+
+                break;
+
+            case SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP:
+
+                SWSS_LOG_NOTICE("invoked DUMP succeeded");
 
                 break;
 

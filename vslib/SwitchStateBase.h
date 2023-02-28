@@ -55,6 +55,8 @@ namespace saivs
 
             virtual sai_status_t set_switch_default_attributes();
 
+            virtual sai_status_t create_default_hash();
+
             virtual sai_status_t create_default_vlan();
 
             virtual sai_status_t create_cpu_port();
@@ -644,6 +646,9 @@ namespace saivs
             sai_object_id_t m_default_bridge_port_1q_router;
             sai_object_id_t m_default_vlan_id;
 
+            sai_object_id_t m_ecmp_hash_id;
+            sai_object_id_t m_lag_hash_id;
+
             std::vector<sai_object_id_t> m_system_port_list;
 
         protected:
@@ -681,7 +686,8 @@ namespace saivs
             virtual sai_status_t queryNextHopGroupTypeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
-
+            virtual sai_status_t queryHashNativeHashFieldListCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
 
         public: // TODO private
 

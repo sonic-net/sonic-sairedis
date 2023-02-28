@@ -31,6 +31,9 @@ if [[ "$(cat /proc/cmdline)" != *"SONIC_BOOT_TYPE=fast-reboot"* ]]; then
     CMD_ARGS+=" -u"
 fi
 
+# Create a folder for SAI failure dump files
+mkdir -p /var/log/sai_failure_dump/
+
 # Use bulk APIs in SAI
 # currently disabled since most vendors don't support that yet
 # CMD_ARGS+=" -l"
@@ -197,6 +200,10 @@ config_syncd_mlnx()
     # Read MAC address
     MAC_ADDRESS="$(echo $SYNCD_VARS | jq -r '.mac')"
 
+    # Read dual ToR and DSCP remapping information
+    DUAL_TOR="$(echo $SYNCD_VARS | jq -r '.dual_tor')"
+    DSCP_REMAPPING="$(echo $SYNCD_VARS | jq -r '.dscp_remapping')"
+
     # Make default sai.profile
     if [[ -f $HWSKU_DIR/sai.profile.j2 ]]; then
         export RESOURCE_TYPE="$(echo $SYNCD_VARS | jq -r '.resource_type')"
@@ -208,6 +215,14 @@ config_syncd_mlnx()
     # Update sai.profile with MAC_ADDRESS and WARM_BOOT settings
     echo "DEVICE_MAC_ADDRESS=$MAC_ADDRESS" >> /tmp/sai.profile
     echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
+
+    if [[ "$DUAL_TOR" == "enable" ]] && [[ "$DSCP_REMAPPING" == "enable" ]]; then
+       echo "SAI_DSCP_REMAPPING_ENABLED=1" >> /tmp/sai.profile
+    fi
+
+    if [[ "$DUAL_TOR" == "enable" ]]; then
+       echo "SAI_ADDITIONAL_MAC_ENABLED=1" >> /tmp/sai.profile
+    fi
 
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
     if [ ! -d "$SDK_DUMP_PATH" ]; then
