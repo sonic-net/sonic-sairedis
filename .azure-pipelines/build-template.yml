@@ -70,6 +70,8 @@ jobs:
     clean: true
     submodules: true
   - script: |
+      set -ex
+      sudo apt-get update
       sudo apt-get install -qq -y \
         qtbase5-dev \
         libdbus-glib-1-2 \
