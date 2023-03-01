@@ -14,6 +14,7 @@
 #include "SwitchBCM56850.h"
 #include "SwitchBCM56971B0.h"
 #include "SwitchMLNX2700.h"
+#include "SwitchNvdaMBF2H536C.h"
 
 #include <inttypes.h>
 
@@ -575,6 +576,11 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
 
             m_switchStateMap[switch_id] = std::make_shared<SwitchMLNX2700>(switch_id, m_realObjectIdManager, config, warmBootState);
 
+            break;
+
+        case SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C:
+
+            m_switchStateMap[switch_id] = std::make_shared<SwitchNvdaMBF2H536C>(switch_id, m_realObjectIdManager, config, warmBootState);
             break;
 
         default:

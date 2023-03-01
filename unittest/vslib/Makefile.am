@@ -39,6 +39,7 @@ tests_SOURCES = main.cpp \
 				TestSwitchContainer.cpp \
 				TestSwitch.cpp \
 				TestSwitchMLNX2700.cpp \
+				TestSwitchNvdaMBF2H536C.cpp \
 				TestSwitchBCM56850.cpp \
 				TestSwitchBCM81724.cpp \
 				TestSwitchStateBaseMACsec.cpp \

@@ -75,6 +75,10 @@ bool SwitchConfig::parseSwitchType(
     {
         switchType = SAI_VS_SWITCH_TYPE_MLNX2700;
     }
+    else if (st == SAI_VALUE_VS_SWITCH_TYPE_NVDA_MBF2H536C)
+    {
+        switchType = SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C;
+    }
     else
     {
         SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s|%s|%s|%s)",

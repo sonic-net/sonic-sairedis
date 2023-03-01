@@ -1,15 +1,67 @@
-#include "Meta.h"
-#include "MockMeta.h"
-#include "MetaTestSaiInterface.h"
+// includes -----------------------------------------------------------------------------------------------------------
+
+#include <cstdint>
+#include <memory>
+#include <vector>
+#include <array>
+#include <set>
+#include <thread>
+#include <algorithm>
+
+#include <gtest/gtest.h>
 
 #include <arpa/inet.h>
 #include <net/ethernet.h>
 
-#include <gtest/gtest.h>
+#include <swss/logger.h>
 
-#include <memory>
+#include "Sai.h"
+#include "Syncd.h"
+#include "MetadataLogger.h"
 
-using namespace saimeta;
+#include "TestSyncdLib.h"
+
+using namespace syncd;
+
+// functions ----------------------------------------------------------------------------------------------------------
+
+static const char* profile_get_value(
+    _In_ sai_switch_profile_id_t profile_id,
+    _In_ const char* variable)
+{
+    SWSS_LOG_ENTER();
+
+    return NULL;
+}
+
+static int profile_get_next_value(
+    _In_ sai_switch_profile_id_t profile_id,
+    _Out_ const char** variable,
+    _Out_ const char** value)
+{
+    SWSS_LOG_ENTER();
+
+    if (value == NULL)
+    {
+        SWSS_LOG_INFO("resetting profile map iterator");
+        return 0;
+    }
+
+    if (variable == NULL)
+    {
+        SWSS_LOG_WARN("variable is null");
+        return -1;
+    }
+
+    SWSS_LOG_INFO("iterator reached end");
+    return -1;
+}
+
+static sai_service_method_table_t test_services = {
+    profile_get_value,
+    profile_get_next_value
+};
+
 
 template<typename L>
 static bool compare_lists(L la, L lb)
@@ -61,94 +113,178 @@ static bool operator==(sai_u16_range_t a, sai_u16_range_t b)
     return (a.min == b.min) && (a.max == b.max);
 }
 
-static sai_object_id_t create_switch(Meta &m)
+// Nvidia ASIC --------------------------------------------------------------------------------------------------------
+
+void syncdNvdaBfWorkerThread()
 {
     SWSS_LOG_ENTER();
 
-    sai_object_id_t oid;
-    sai_attribute_t attr;
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
+    MetadataLogger::initialize();
 
-    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
-    attr.value.booldata = true;
+    auto vendorSai = std::make_shared<VendorSai>();
+    auto commandLineOptions = std::make_shared<CommandLineOptions>();
+    auto isWarmStart = false;
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &oid, SAI_NULL_OBJECT_ID, 1, &attr));
+    commandLineOptions->m_enableSyncMode= true;
+    commandLineOptions->m_enableTempView = false;
+    commandLineOptions->m_disableExitSleep = true;
+    commandLineOptions->m_enableUnittests = false;
+    commandLineOptions->m_enableSaiBulkSupport = true;
+    commandLineOptions->m_startType = SAI_START_TYPE_COLD_BOOT;
+    commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+    commandLineOptions->m_profileMapFile = "./nvda-bf/sai.profile";
 
-    return oid;
+    auto syncd = std::make_shared<Syncd>(vendorSai, commandLineOptions, isWarmStart);
+    syncd->run();
+
+    SWSS_LOG_NOTICE("Started syncd worker");
 }
 
-static sai_object_id_t create_counter(Meta &m, sai_object_id_t switchid)
+class SyncdNvdaBfTest : public ::testing::Test
 {
-    SWSS_LOG_ENTER();
+public:
+    SyncdNvdaBfTest() = default;
+    virtual ~SyncdNvdaBfTest() = default;
 
-    sai_object_id_t oid;
+public:
+    virtual void SetUp() override
+    {
+        SWSS_LOG_ENTER();
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_COUNTER, &oid, switchid, 0, nullptr));
+        // flush ASIC DB
 
-    return oid;
-}
+        flushAsicDb();
 
-static void remove_counter(Meta &m, sai_object_id_t counter)
+        // start syncd worker
+
+        m_worker = std::make_shared<std::thread>(syncdNvdaBfWorkerThread);
+
+        // initialize SAI redis
+
+        m_sairedis = std::make_shared<sairedis::Sai>();
+
+        auto status = m_sairedis->initialize(0, &test_services);
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+        // set communication mode
+
+        sai_attribute_t attr;
+
+        attr.id = SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE;
+        attr.value.s32 = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+
+        status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+        // enable recording
+
+        attr.id = SAI_REDIS_SWITCH_ATTR_RECORD;
+        attr.value.booldata = true;
+
+        status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+        // create switch
+
+        attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+        attr.value.booldata = true;
+
+        status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &m_switchId, SAI_NULL_OBJECT_ID, 1, &attr);
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    }
+
+    virtual void TearDown() override
+    {
+        SWSS_LOG_ENTER();
+
+        // uninitialize SAI redis
+
+        auto status = m_sairedis->uninitialize();
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+        // stop syncd worker
+
+        sendSyncdShutdownNotification();
+        m_worker->join();
+    }
+
+    sai_object_id_t CreateCounter()
+    {
+        SWSS_LOG_ENTER();
+
+        sai_object_id_t oid;
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(SAI_OBJECT_TYPE_COUNTER, &oid, m_switchId, 0, nullptr));
+
+        return oid;
+    }
+
+    void RemoveCounter(sai_object_id_t counter)
+    {
+        SWSS_LOG_ENTER();
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_COUNTER, counter));
+    }
+
+    sai_object_id_t CreateVnet(uint32_t vni)
+    {
+        SWSS_LOG_ENTER();
+
+        sai_object_id_t oid;
+        sai_attribute_t attr;
+
+        attr.id = SAI_VNET_ATTR_VNI;
+        attr.value.u32 = vni;
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_VNET, &oid, m_switchId, 1, &attr));
+
+        return oid;
+    }
+
+    void RemoveVnet(sai_object_id_t vnet)
+    {
+        SWSS_LOG_ENTER();
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
+    }
+
+    sai_object_id_t CreateEni(sai_object_id_t vnet)
+    {
+        SWSS_LOG_ENTER();
+
+        sai_object_id_t oid;
+        sai_attribute_t attr;
+
+        attr.id = SAI_ENI_ATTR_VNET_ID;
+        attr.value.oid = vnet;
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_ENI, &oid, m_switchId, 1, &attr));
+
+        return oid;
+    }
+
+    void RemoveEni(sai_object_id_t eni)
+    {
+        SWSS_LOG_ENTER();
+
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni));
+    }
+
+protected:
+    std::shared_ptr<std::thread> m_worker;
+    std::shared_ptr<sairedis::Sai> m_sairedis;
+
+    sai_object_id_t m_switchId = SAI_NULL_OBJECT_ID;
+};
+
+TEST_F(SyncdNvdaBfTest, dashDirectionLookup)
 {
-    SWSS_LOG_ENTER();
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_COUNTER, counter));
-}
-
-static sai_object_id_t create_vnet(Meta &m, sai_object_id_t switchid, uint32_t vni)
-{
-    SWSS_LOG_ENTER();
-
-    sai_object_id_t oid;
-    sai_attribute_t attr;
-
-    attr.id = SAI_VNET_ATTR_VNI;
-    attr.value.u32 = vni;
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_VNET, &oid, switchid, 1, &attr));
-
-    return oid;
-}
-
-static void remove_vnet(Meta &m, sai_object_id_t vnet)
-{
-    SWSS_LOG_ENTER();
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
-}
-
-static sai_object_id_t create_eni(Meta &m, sai_object_id_t switchid, sai_object_id_t vnet)
-{
-    SWSS_LOG_ENTER();
-
-    sai_object_id_t oid;
-    sai_attribute_t attr;
-
-    attr.id = SAI_ENI_ATTR_VNET_ID;
-    attr.value.oid = vnet;
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_ENI, &oid, switchid, 1, &attr));
-
-    return oid;
-}
-
-static void remove_eni(Meta &m, sai_object_id_t eni)
-{
-    SWSS_LOG_ENTER();
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni));
-}
-
-TEST(Meta, quad_dash_direction_lookup)
-{
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
     sai_direction_lookup_entry_t entry;
 
-    entry.switch_id = switchid;
+    entry.switch_id = m_switchId;
     entry.vni = 1;
 
     std::vector<sai_attribute_t> attrs;
@@ -157,23 +293,19 @@ TEST(Meta, quad_dash_direction_lookup)
     attr.value.s32 = SAI_DIRECTION_LOOKUP_ENTRY_ACTION_SET_OUTBOUND_DIRECTION;
     attrs.push_back(attr);
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(&entry, (uint32_t)attrs.size(), attrs.data()));
 
     attr.id = SAI_DIRECTION_LOOKUP_ENTRY_ATTR_ACTION;
     attr.value.s32 = SAI_DIRECTION_LOOKUP_ENTRY_ACTION_SET_OUTBOUND_DIRECTION;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&entry, &attr));
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set(&entry, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get(&entry, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.s32, SAI_DIRECTION_LOOKUP_ENTRY_ACTION_SET_OUTBOUND_DIRECTION);
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove(&entry));
 }
 
-TEST(Meta, bulk_dash_direction_lookup)
+TEST_F(SyncdNvdaBfTest, dashDirectionLookupBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t entries_count = 2;
     const uint32_t entry_attrs_count = 1;
 
@@ -194,69 +326,61 @@ TEST(Meta, bulk_dash_direction_lookup)
     sai_status_t statuses[entries_count] = {};
 
     sai_direction_lookup_entry_t entries[entries_count] = {
-        { .switch_id = switchid, .vni = 10},
-        { .switch_id = switchid, .vni = 20},
+        { .switch_id = m_switchId, .vni = 10},
+        { .switch_id = m_switchId, .vni = 20},
     };
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 }
 
-TEST(Meta, quad_dash_eni_ether_address_map_entry)
+TEST_F(SyncdNvdaBfTest, dashEniEtherAddressMapEntry)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
-    sai_object_id_t vnet = create_vnet(m, switchid, 100);
-    sai_object_id_t eni = create_eni(m, switchid, vnet);
+    sai_object_id_t vnet = CreateVnet(100);
+    sai_object_id_t eni = CreateEni(vnet);
 
-    sai_eni_ether_address_map_entry_t entry = { .switch_id = switchid, .address = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 }};
+    sai_eni_ether_address_map_entry_t entry = { .switch_id = m_switchId, .address = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 }};
 
     std::vector<sai_attribute_t> attrs;
     attr.id = SAI_ENI_ETHER_ADDRESS_MAP_ENTRY_ATTR_ENI_ID;
     attr.value.oid = eni;
     attrs.push_back(attr);
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(&entry, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get(&entry, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.oid, eni);
 
     attr.id = SAI_ENI_ETHER_ADDRESS_MAP_ENTRY_ATTR_ENI_ID;
     attr.value.oid = eni;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&entry, &attr));
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set(&entry, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get(&entry, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.oid, eni);
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
-    remove_eni(m, eni);
-    remove_vnet(m, vnet);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove(&entry));
+    RemoveEni(eni);
+    RemoveVnet(vnet);
 }
 
-TEST(Meta, bulk_dash_eni_ether_address_map_entry)
+TEST_F(SyncdNvdaBfTest, dashEniEtherAddressMapEntryBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t entries_count = 2;
     const uint32_t entry_attrs_count = 1;
 
-    sai_object_id_t vnet0 = create_vnet(m, switchid, 100);
-    sai_object_id_t eni0 = create_eni(m, switchid, vnet0);
+    sai_object_id_t vnet0 = CreateVnet(100);
+    sai_object_id_t eni0 = CreateEni(vnet0);
 
-    sai_object_id_t vnet1 = create_vnet(m, switchid, 200);
-    sai_object_id_t eni1 = create_eni(m, switchid, vnet1);
+    sai_object_id_t vnet1 = CreateVnet(200);
+    sai_object_id_t eni1 = CreateEni(vnet1);
 
     sai_attribute_t attrs0[entry_attrs_count] = {
         {.id = SAI_ENI_ETHER_ADDRESS_MAP_ENTRY_ATTR_ENI_ID, .value = (sai_attribute_value_t){.oid = eni0}},
@@ -275,32 +399,28 @@ TEST(Meta, bulk_dash_eni_ether_address_map_entry)
     sai_status_t statuses[entries_count] = {};
 
     sai_eni_ether_address_map_entry_t entries[entries_count] = {
-        { .switch_id = switchid, .address = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 }},
-        { .switch_id = switchid, .address = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x06 }},
+        { .switch_id = m_switchId, .address = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 }},
+        { .switch_id = m_switchId, .address = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x06 }},
     };
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    remove_eni(m, eni0);
-    remove_eni(m, eni1);
-    remove_vnet(m, vnet0);
-    remove_vnet(m, vnet1);
+    RemoveEni(eni0);
+    RemoveEni(eni1);
+    RemoveVnet(vnet0);
+    RemoveVnet(vnet1);
 }
 
-TEST(Meta, quad_dash_eni)
+TEST_F(SyncdNvdaBfTest, dashEni)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
     sai_ip_address_t uip4, uip6;
@@ -309,7 +429,7 @@ TEST(Meta, quad_dash_eni)
     uip6.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
     inet_pton(AF_INET6, "100::ffff:ffff:ffff:ffff", &uip6.addr.ip6);
 
-    sai_object_id_t vnet = create_vnet(m, switchid, 101);
+    sai_object_id_t vnet = CreateVnet(101);
 
     std::vector<sai_attribute_t> attrs;
 
@@ -342,9 +462,9 @@ TEST(Meta, quad_dash_eni)
     attrs.push_back(attr);
 
     sai_object_id_t eni;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_ENI, &eni, switchid, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_ENI, &eni, m_switchId, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.oid, vnet);
     EXPECT_TRUE(attrs[1].value.booldata);
     EXPECT_EQ(attrs[2].value.u32, 123);
@@ -355,26 +475,22 @@ TEST(Meta, quad_dash_eni)
 
     attr.id = SAI_ENI_ATTR_CPS;
     attr.value.u32 = 10;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, &attr));
     attr.id = SAI_ENI_ATTR_VM_UNDERLAY_DIP;
     attr.value.ipaddr = uip6;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, &attr));
 
-    remove_eni(m, eni);
-    remove_vnet(m, vnet);
+    RemoveEni(eni);
+    RemoveVnet(vnet);
 }
 
-TEST(Meta, bulk_dash_eni)
+TEST_F(SyncdNvdaBfTest, dashEniBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t enis_count = 2;
     const uint32_t eni_attrs_count = 6;
 
-    sai_object_id_t vnet0 = create_vnet(m, switchid, 101);
-    sai_object_id_t vnet1 = create_vnet(m, switchid, 102);
+    sai_object_id_t vnet0 = CreateVnet(101);
+    sai_object_id_t vnet1 = CreateVnet(102);
 
     sai_ip_address_t ipaddr0, ipaddr1;
     ipaddr0.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
@@ -410,26 +526,22 @@ TEST(Meta, bulk_dash_eni)
     sai_object_id_t enis[enis_count] = {};
     sai_status_t statuses[enis_count] = {};
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_ENI, switchid, enis_count, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, enis, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_switchId, enis_count, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, enis, statuses));
     for (uint32_t i = 0; i < enis_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, enis_count, enis, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, enis_count, enis, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < enis_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    remove_vnet(m, vnet0);
-    remove_vnet(m, vnet1);
+    RemoveVnet(vnet0);
+    RemoveVnet(vnet1);
 }
 
-TEST(Meta, quad_dash_eni_acl)
+TEST_F(SyncdNvdaBfTest, dashEniAcl)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
     std::vector<sai_eni_attr_t> acl_attrs = {
@@ -459,38 +571,34 @@ TEST(Meta, quad_dash_eni_acl)
     std::vector<sai_object_id_t> acl_groups, acl_groups_new;
     for (auto at : acl_attrs) {
         sai_object_id_t acl_group;
-        EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &acl_group, switchid, 0, nullptr));
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &acl_group, m_switchId, 0, nullptr));
         acl_groups.push_back(acl_group);
 
         attr.id = at;
         attr.value.oid = acl_group;
         attrs.push_back(attr);
 
-        EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &acl_group, switchid, 0, nullptr));
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &acl_group, m_switchId, 0, nullptr));
         acl_groups_new.push_back(acl_group);
     }
 
     sai_object_id_t eni;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_ENI, &eni, switchid, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_ENI, &eni, m_switchId, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, (uint32_t)attrs.size(), attrs.data()));
     for (size_t i = 0; i < attrs.size(); i++) {
         attr.id = attrs[i].id;
         attr.value.oid = acl_groups_new[i];
-        EXPECT_EQ(SAI_STATUS_SUCCESS, m.set((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, &attr));
+        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, &attr));
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni));
 }
 
-TEST(Meta, quad_dash_vip)
+TEST_F(SyncdNvdaBfTest, dashVip)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
     std::vector<sai_attribute_t> attrs;
@@ -503,25 +611,21 @@ TEST(Meta, quad_dash_vip)
     vip_addr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
     inet_pton(AF_INET, "192.168.0.1", &vip_addr.addr.ip4);
 
-    sai_vip_entry_t vip = { .switch_id = switchid, .vip = vip_addr };
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&vip, (uint32_t)attrs.size(), attrs.data()));
+    sai_vip_entry_t vip = { .switch_id = m_switchId, .vip = vip_addr };
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(&vip, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&vip, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get(&vip, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.s32, SAI_VIP_ENTRY_ACTION_ACCEPT);
 
     attr.id = SAI_ENI_ETHER_ADDRESS_MAP_ENTRY_ATTR_ENI_ID;
     attr.value.s32 = SAI_VIP_ENTRY_ACTION_ACCEPT;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&vip, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set(&vip, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&vip));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove(&vip));
 }
 
-TEST(Meta, bulk_dash_vip)
+TEST_F(SyncdNvdaBfTest, dashVipBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t vips_count = 2;
     const uint32_t vip_attrs_count = 1;
 
@@ -548,27 +652,23 @@ TEST(Meta, bulk_dash_vip)
     inet_pton(AF_INET6, "100::ffff:ffff:ffff:ffff", &vip_addr1.addr.ip6);
 
     sai_vip_entry_t vips[vips_count] = {
-        {.switch_id = switchid, .vip = vip_addr0},
-        {.switch_id = switchid, .vip = vip_addr1},
+        {.switch_id = m_switchId, .vip = vip_addr0},
+        {.switch_id = m_switchId, .vip = vip_addr1},
     };
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(vips_count, vips, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate(vips_count, vips, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < vips_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(vips_count, vips, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove(vips_count, vips, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < vips_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 }
 
-TEST(Meta, quad_dash_acl_group)
+TEST_F(SyncdNvdaBfTest, dashAclGroup)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
     std::vector<sai_attribute_t> attrs;
@@ -578,24 +678,20 @@ TEST(Meta, quad_dash_acl_group)
     attrs.push_back(attr);
 
     sai_object_id_t acl_group;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &acl_group, switchid, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &acl_group, m_switchId, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, acl_group, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, acl_group, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.s32, SAI_IP_ADDR_FAMILY_IPV4);
 
     attr.id = SAI_DASH_ACL_GROUP_ATTR_IP_ADDR_FAMILY;
     attr.value.s32 = SAI_IP_ADDR_FAMILY_IPV6;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, acl_group, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, acl_group, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, acl_group));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, acl_group));
 }
 
-TEST(Meta, bulk_dash_acl_group)
+TEST_F(SyncdNvdaBfTest, dashAclGroupBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t acls_count = 2;
     const uint32_t acl_attrs_count = 1;
 
@@ -616,29 +712,25 @@ TEST(Meta, bulk_dash_acl_group)
     sai_object_id_t acls[acls_count];
     sai_status_t statuses[acls_count] = {};
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, switchid, acls_count, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, acls, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, m_switchId, acls_count, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, acls, statuses));
     for (uint32_t i = 0; i < acls_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, acls_count, acls, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, acls_count, acls, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < acls_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 }
 
-TEST(Meta, quad_dash_acl_rule)
+TEST_F(SyncdNvdaBfTest, dashAclRule)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
     sai_object_id_t group;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &group, switchid, 0, nullptr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &group, m_switchId, 0, nullptr));
 
-    sai_object_id_t counter = create_counter(m, switchid);
+    sai_object_id_t counter = CreateCounter();
 
     sai_ip_prefix_t ip_addr_list[2] = {};
 
@@ -697,9 +789,9 @@ TEST(Meta, quad_dash_acl_rule)
     attrs.push_back(attr);
 
     sai_object_id_t acl;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, &acl, switchid, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, &acl, m_switchId, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acl, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acl, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.s32, SAI_DASH_ACL_RULE_ACTION_PERMIT);
     EXPECT_EQ(attrs[1].value.oid, group);
     ASSERT_TRUE(compare_lists(attrs[2].value.ipprefixlist, ip_prefix_list0));
@@ -712,30 +804,26 @@ TEST(Meta, quad_dash_acl_rule)
 
     attr.id = SAI_DASH_ACL_RULE_ATTR_ACTION;
     attr.value.s32 = SAI_DASH_ACL_RULE_ACTION_DENY_AND_CONTINUE;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acl, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acl, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acl));
-    remove_counter(m, counter);
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, group));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acl));
+    RemoveCounter(counter);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, group));
 }
 
-TEST(Meta, bulk_dash_acl_rule)
+TEST_F(SyncdNvdaBfTest, dashAclRuleBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t acls_count = 2;
     const uint32_t acl_attrs_count = 9;
 
-    sai_object_id_t counter0 = create_counter(m, switchid);
-    sai_object_id_t counter1 = create_counter(m, switchid);
+    sai_object_id_t counter0 = CreateCounter();
+    sai_object_id_t counter1 = CreateCounter();
 
     sai_object_id_t group0;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &group0, switchid, 0, nullptr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &group0, m_switchId, 0, nullptr));
 
     sai_object_id_t group1;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &group1, switchid, 0, nullptr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, &group1, m_switchId, 0, nullptr));
 
     sai_ip_prefix_t ip_prefix_arr0[2] = {};
     ip_prefix_arr0[0].addr_family = SAI_IP_ADDR_FAMILY_IPV4;
@@ -799,51 +887,43 @@ TEST(Meta, bulk_dash_acl_rule)
     sai_object_id_t acls[acls_count];
     sai_status_t statuses[acls_count] = {};
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, switchid, acls_count, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, acls, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, m_switchId, acls_count, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, acls, statuses));
     for (uint32_t i = 0; i < acls_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acls_count, acls, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acls_count, acls, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < acls_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, group0));
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, group1));
-    remove_counter(m, counter0);
-    remove_counter(m, counter1);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, group0));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP, group1));
+    RemoveCounter(counter0);
+    RemoveCounter(counter1);
 }
 
-TEST(Meta, quad_dash_vnet)
+TEST_F(SyncdNvdaBfTest, dashVnet)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
     sai_object_id_t vnet;
     attr.id = SAI_VNET_ATTR_VNI;
     attr.value.u32 = 10;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_VNET, &vnet, switchid, 1, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_VNET, &vnet, m_switchId, 1, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet, 1, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet, 1, &attr));
     EXPECT_EQ(attr.value.u32, 10);
 
     attr.id = SAI_VNET_ATTR_VNI;
     attr.value.u32 = 20;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
 }
 
-TEST(Meta, bulk_dash_vnet)
+TEST_F(SyncdNvdaBfTest, dashVnetBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t vnets_count = 2;
     const uint32_t vnet_attrs_count = 1;
 
@@ -864,27 +944,23 @@ TEST(Meta, bulk_dash_vnet)
     sai_object_id_t vnets[vnets_count];
     sai_status_t statuses[vnets_count] = {};
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_VNET, switchid, vnets_count, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, vnets, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_VNET, m_switchId, vnets_count, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, vnets, statuses));
     for (uint32_t i = 0; i < vnets_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnets_count, vnets, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnets_count, vnets, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < vnets_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 }
 
-TEST(Meta, quad_dash_inbound_routing_entry)
+TEST_F(SyncdNvdaBfTest, dashInboundRoutingEntry)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
-    sai_object_id_t vnet = create_vnet(m, switchid, 10);
-    sai_object_id_t eni = create_eni(m, switchid, vnet);
+    sai_object_id_t vnet = CreateVnet(10);
+    sai_object_id_t eni = CreateEni(vnet);
 
     sai_ip_address_t sip, sip_mask;
     sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
@@ -892,7 +968,7 @@ TEST(Meta, quad_dash_inbound_routing_entry)
     sip_mask.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
     inet_pton(AF_INET, "255.255.255.0", &sip_mask.addr.ip4);
 
-    sai_inbound_routing_entry_t entry = { .switch_id = switchid, .eni_id = eni, .vni = 10, .sip = sip, .sip_mask = sip_mask, .priority = 1};
+    sai_inbound_routing_entry_t entry = { .switch_id = m_switchId, .eni_id = eni, .vni = 10, .sip = sip, .sip_mask = sip_mask, .priority = 1};
 
     std::vector<sai_attribute_t> attrs;
     attr.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
@@ -903,33 +979,29 @@ TEST(Meta, quad_dash_inbound_routing_entry)
     attr.value.oid = vnet;
     attrs.push_back(attr);
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(&entry, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get(&entry, (uint32_t)attrs.size(), attrs.data()));
 
     attr.id = SAI_INBOUND_ROUTING_ENTRY_ATTR_ACTION;
     attr.value.s32 = SAI_INBOUND_ROUTING_ENTRY_ACTION_VXLAN_DECAP;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&entry, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set(&entry, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
-    remove_eni(m, eni);
-    remove_vnet(m, vnet);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove(&entry));
+    RemoveEni(eni);
+    RemoveVnet(vnet);
 }
 
-TEST(Meta, bulk_dash_inbound_routing_entry)
+TEST_F(SyncdNvdaBfTest, dashInboundRoutingEntryBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t entries_count = 2;
     const uint32_t entry_attrs_count = 2;
 
-    sai_object_id_t vnet0 = create_vnet(m, switchid, 101);
-    sai_object_id_t eni0 = create_eni(m, switchid, vnet0);
+    sai_object_id_t vnet0 = CreateVnet(101);
+    sai_object_id_t eni0 = CreateEni(vnet0);
 
-    sai_object_id_t vnet1 = create_vnet(m, switchid, 102);
-    sai_object_id_t eni1 = create_eni(m, switchid, vnet0);
+    sai_object_id_t vnet1 = CreateVnet(102);
+    sai_object_id_t eni1 = CreateEni(vnet0);
 
     sai_ip_address_t sip0, sip_mask0;
     sai_ip_address_t sip1, sip_mask1;
@@ -961,38 +1033,34 @@ TEST(Meta, bulk_dash_inbound_routing_entry)
     sai_status_t statuses[entries_count] = {};
 
     sai_inbound_routing_entry_t entries[entries_count] = {
-        { .switch_id = switchid, .eni_id = eni0, .vni = 10, .sip = sip0, .sip_mask = sip_mask0, .priority = 1},
-        { .switch_id = switchid, .eni_id = eni1, .vni = 100, .sip = sip1, .sip_mask = sip_mask1, .priority = 2}
+        { .switch_id = m_switchId, .eni_id = eni0, .vni = 10, .sip = sip0, .sip_mask = sip_mask0, .priority = 1},
+        { .switch_id = m_switchId, .eni_id = eni1, .vni = 100, .sip = sip1, .sip_mask = sip_mask1, .priority = 2}
     };
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    remove_eni(m, eni0);
-    remove_eni(m, eni1);
-    remove_vnet(m, vnet0);
-    remove_vnet(m, vnet1);
+    RemoveEni(eni0);
+    RemoveEni(eni1);
+    RemoveVnet(vnet0);
+    RemoveVnet(vnet1);
 }
 
-TEST(Meta, quad_dash_pa_validation)
+TEST_F(SyncdNvdaBfTest, dashPaValidation)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
-    sai_object_id_t vnet = create_vnet(m, switchid, 10);
+    sai_object_id_t vnet = CreateVnet(10);
 
     sai_pa_validation_entry_t entry;
-    entry.switch_id = switchid;
+    entry.switch_id = m_switchId;
     entry.vnet_id = vnet;
     entry.sip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
     inet_pton(AF_INET, "192.3.3.3", &entry.sip.addr.ip4);
@@ -1002,30 +1070,26 @@ TEST(Meta, quad_dash_pa_validation)
     attr.value.s32 = SAI_PA_VALIDATION_ENTRY_ACTION_PERMIT;
     attrs.push_back(attr);
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(&entry, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get(&entry, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.s32, SAI_PA_VALIDATION_ENTRY_ACTION_PERMIT);
 
     attr.id = SAI_PA_VALIDATION_ENTRY_ATTR_ACTION;
     attr.value.s32 = SAI_PA_VALIDATION_ENTRY_ACTION_PERMIT;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&entry, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set(&entry, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
-    remove_vnet(m, vnet);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove(&entry));
+    RemoveVnet(vnet);
 }
 
-TEST(Meta, bulk_dash_pa_validation)
+TEST_F(SyncdNvdaBfTest, dashPaValidationBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t entries_count = 2;
     const uint32_t entry_attrs_count = 1;
 
-    sai_object_id_t vnet0 = create_vnet(m, switchid, 10);
-    sai_object_id_t vnet1 = create_vnet(m, switchid, 20);
+    sai_object_id_t vnet0 = CreateVnet(10);
+    sai_object_id_t vnet1 = CreateVnet(20);
 
     sai_ip_address_t sip0 = {};
     sai_ip_address_t sip1 = {};
@@ -1051,42 +1115,38 @@ TEST(Meta, bulk_dash_pa_validation)
     sai_status_t statuses[entries_count] = {};
 
     sai_pa_validation_entry_t entries[entries_count] = {
-        { .switch_id = switchid, .vnet_id = vnet0, .sip = sip0},
-        { .switch_id = switchid, .vnet_id = vnet1, .sip = sip1},
+        { .switch_id = m_switchId, .vnet_id = vnet0, .sip = sip0},
+        { .switch_id = m_switchId, .vnet_id = vnet1, .sip = sip1},
     };
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    remove_vnet(m, vnet0);
-    remove_vnet(m, vnet1);
+    RemoveVnet(vnet0);
+    RemoveVnet(vnet1);
 }
 
-TEST(Meta, quad_dash_outbound_routing_entry)
+TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntry)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     sai_attribute_t attr;
 
-    sai_object_id_t counter = create_counter(m, switchid);
-    sai_object_id_t vnet = create_vnet(m, switchid, 101);
-    sai_object_id_t eni = create_eni(m, switchid, vnet);
+    sai_object_id_t counter = CreateCounter();
+    sai_object_id_t vnet = CreateVnet(101);
+    sai_object_id_t eni = CreateEni(vnet);
 
     sai_ip_address_t oip6;
     oip6.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
     inet_pton(AF_INET6, "ffff::", &oip6.addr);
 
     sai_outbound_routing_entry_t entry0;
-    entry0.switch_id = switchid;
+    entry0.switch_id = m_switchId;
     entry0.eni_id = eni;
     entry0.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
     inet_pton(AF_INET, "192.168.1.0", &entry0.destination.addr.ip4);
@@ -1105,9 +1165,9 @@ TEST(Meta, quad_dash_outbound_routing_entry)
     attr.id = SAI_OUTBOUND_ROUTING_ENTRY_ATTR_COUNTER_ID;
     attr.value.oid = counter;
     attrs.push_back(attr);
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry0, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(&entry0, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&entry0, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get(&entry0, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.u32, SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_VNET);
     EXPECT_EQ(attrs[1].value.oid, vnet);
     EXPECT_EQ(attrs[2].value.ipaddr, oip6);
@@ -1115,26 +1175,22 @@ TEST(Meta, quad_dash_outbound_routing_entry)
 
     attr.id = SAI_OUTBOUND_ROUTING_ENTRY_ATTR_ACTION;
     attr.value.u32 = SAI_OUTBOUND_ROUTING_ENTRY_ACTION_ROUTE_DIRECT;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&entry0, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set(&entry0, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry0));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove(&entry0));
 
-    remove_eni(m, eni);
-    remove_vnet(m, vnet);
-    remove_counter(m, counter);
+    RemoveEni(eni);
+    RemoveVnet(vnet);
+    RemoveCounter(counter);
 }
 
-TEST(Meta, bulk_dash_outbound_routing_entry)
+TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntryBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t entries_count = 2;
     const uint32_t entry_attrs_count = 4;
 
-    sai_object_id_t counter0 = create_counter(m, switchid);
-    sai_object_id_t counter1 = create_counter(m, switchid);
+    sai_object_id_t counter0 = CreateCounter();
+    sai_object_id_t counter1 = CreateCounter();
 
     sai_ip_address_t oip4, oip6;
     oip4.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
@@ -1142,10 +1198,10 @@ TEST(Meta, bulk_dash_outbound_routing_entry)
     oip6.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
     inet_pton(AF_INET6, "ffff::", &oip6.addr);
 
-    sai_object_id_t vnet0 = create_vnet(m, switchid, 101);
-    sai_object_id_t vnet1 = create_vnet(m, switchid, 102);
-    sai_object_id_t eni0 = create_eni(m, switchid, vnet0);
-    sai_object_id_t eni1 = create_eni(m, switchid, vnet1);
+    sai_object_id_t vnet0 = CreateVnet(101);
+    sai_object_id_t vnet1 = CreateVnet(102);
+    sai_object_id_t eni0 = CreateEni(vnet0);
+    sai_object_id_t eni1 = CreateEni(vnet1);
 
     sai_ip_prefix_t dst0 = {};
     sai_ip_prefix_t dst1 = {};
@@ -1179,44 +1235,40 @@ TEST(Meta, bulk_dash_outbound_routing_entry)
     sai_status_t statuses[entries_count] = {};
 
     sai_outbound_routing_entry_t entries[entries_count] = {
-        { .switch_id = switchid, .eni_id = eni0, .destination = dst0},
-        { .switch_id = switchid, .eni_id = eni1, .destination = dst1},
+        { .switch_id = m_switchId, .eni_id = eni0, .destination = dst0},
+        { .switch_id = m_switchId, .eni_id = eni1, .destination = dst1},
     };
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    remove_eni(m, eni0);
-    remove_eni(m, eni1);
-    remove_vnet(m, vnet0);
-    remove_vnet(m, vnet1);
-    remove_counter(m, counter0);
-    remove_counter(m, counter1);
+    RemoveEni(eni0);
+    RemoveEni(eni1);
+    RemoveVnet(vnet0);
+    RemoveVnet(vnet1);
+    RemoveCounter(counter0);
+    RemoveCounter(counter1);
 }
 
-TEST(Meta, quad_dash_outbound_ca_to_pa_entry)
+TEST_F(SyncdNvdaBfTest, dashOutboundCaToPaEntry)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
-    sai_object_id_t counter = create_counter(m, switchid);
+    sai_object_id_t counter = CreateCounter();
 
     sai_ip_address_t uip4;
     uip4.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
     inet_pton(AF_INET, "192.168.0.1", &uip4.addr.ip4);
 
-    sai_object_id_t vnet = create_vnet(m, switchid, 10);
+    sai_object_id_t vnet = CreateVnet(10);
 
     sai_outbound_ca_to_pa_entry_t entry;
-    entry.switch_id = switchid;
+    entry.switch_id = m_switchId;
     entry.dst_vnet_id = vnet;
     entry.dip.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
     inet_pton(AF_INET, "192.168.0.1", &entry.dip.addr.ip4);
@@ -1241,9 +1293,9 @@ TEST(Meta, quad_dash_outbound_ca_to_pa_entry)
     attr.value.oid = counter;
     attrs.push_back(attr);
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(&entry, (uint32_t)attrs.size(), attrs.data()));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&entry, (uint32_t)attrs.size(), attrs.data()));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->get(&entry, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.ipaddr, uip4);
     EXPECT_EQ(memcmp(attrs[1].value.mac, dmac, sizeof(dmac)), 0);
     EXPECT_EQ(attrs[2].value.booldata, true);
@@ -1251,28 +1303,24 @@ TEST(Meta, quad_dash_outbound_ca_to_pa_entry)
 
     attr.id = SAI_OUTBOUND_CA_TO_PA_ENTRY_ATTR_USE_DST_VNET_VNI;
     attr.value.booldata = true;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&entry, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->set(&entry, &attr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove(&entry));
 
-    remove_vnet(m, vnet);
-    remove_counter(m, counter);
+    RemoveVnet(vnet);
+    RemoveCounter(counter);
 }
 
-TEST(Meta, bulk_dash_outbound_ca_to_pa_entry)
+TEST_F(SyncdNvdaBfTest, dashOutboundCaToPaEntryBulk)
 {
-    Meta m(std::make_shared<MetaTestSaiInterface>());
-
-    sai_object_id_t switchid = create_switch(m);
-
     const uint32_t entries_count = 2;
     const uint32_t entry_attrs_count = 4;
 
-    sai_object_id_t counter0 = create_counter(m, switchid);
-    sai_object_id_t counter1 = create_counter(m, switchid);
+    sai_object_id_t counter0 = CreateCounter();
+    sai_object_id_t counter1 = CreateCounter();
 
-    sai_object_id_t vnet0 = create_vnet(m, switchid, 10);
-    sai_object_id_t vnet1 = create_vnet(m, switchid, 20);
+    sai_object_id_t vnet0 = CreateVnet(10);
+    sai_object_id_t vnet1 = CreateVnet(20);
 
     sai_ip_address_t dip0 = {};
     sai_ip_address_t dip1 = {};
@@ -1310,22 +1358,22 @@ TEST(Meta, bulk_dash_outbound_ca_to_pa_entry)
     sai_status_t statuses[entries_count] = {};
 
     sai_outbound_ca_to_pa_entry_t entries[entries_count] = {
-        { .switch_id = switchid, .dst_vnet_id = vnet0, .dip = dip0},
-        { .switch_id = switchid, .dst_vnet_id = vnet1, .dip = dip1},
+        { .switch_id = m_switchId, .dst_vnet_id = vnet0, .dip = dip0},
+        { .switch_id = m_switchId, .dst_vnet_id = vnet1, .dip = dip1},
     };
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkRemove(entries_count, entries, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
     for (uint32_t i = 0; i < entries_count; i++) {
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    remove_vnet(m, vnet0);
-    remove_vnet(m, vnet1);
-    remove_counter(m, counter0);
-    remove_counter(m, counter1);
+    RemoveVnet(vnet0);
+    RemoveVnet(vnet1);
+    RemoveCounter(counter0);
+    RemoveCounter(counter1);
 }
