@@ -453,31 +453,73 @@ namespace saimeta
 
             sai_status_t meta_sai_validate_neighbor_entry(
                     _In_ const sai_neighbor_entry_t* neighbor_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_route_entry(
                     _In_ const sai_route_entry_t* route_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_l2mc_entry(
                     _In_ const sai_l2mc_entry_t* l2mc_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_ipmc_entry(
                     _In_ const sai_ipmc_entry_t* ipmc_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_nat_entry(
                     _In_ const sai_nat_entry_t* nat_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_inseg_entry(
                     _In_ const sai_inseg_entry_t* inseg_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_my_sid_entry(
                     _In_ const sai_my_sid_entry_t* my_sid_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_direction_lookup_entry(
+                    _In_ const sai_direction_lookup_entry_t* direction_lookup_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_eni_ether_address_map_entry(
+                    _In_ const sai_eni_ether_address_map_entry_t* eni_ether_address_map_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_vip_entry(
+                    _In_ const sai_vip_entry_t* vip_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_inbound_routing_entry(
+                    _In_ const sai_inbound_routing_entry_t* inbound_routing_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_pa_validation_entry(
+                    _In_ const sai_pa_validation_entry_t* pa_validation_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_outbound_routing_entry(
+                    _In_ const sai_outbound_routing_entry_t* outbound_routing_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_outbound_ca_to_pa_entry(
+                    _In_ const sai_outbound_ca_to_pa_entry_t* outbound_ca_to_pa_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
 
         public:
 

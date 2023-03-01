@@ -34,6 +34,15 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_bridge.cpp \
 				test_sai_redis_buffer.cpp \
 				test_sai_redis_counter.cpp \
+				test_sai_redis_dash_vip.cpp \
+				test_sai_redis_dash_pa_validation.cpp \
+				test_sai_redis_dash_vnet.cpp \
+				test_sai_redis_dash_outbound_routing.cpp \
+				test_sai_redis_dash_outbound_ca_to_pa.cpp \
+				test_sai_redis_dash_inbound_routing.cpp \
+				test_sai_redis_dash_eni.cpp \
+				test_sai_redis_dash_direction_lookup.cpp \
+				test_sai_redis_dash_acl.cpp \
 				test_sai_redis_debug_counter.cpp \
 				test_sai_redis_dtel.cpp \
 				test_sai_redis_fdb.cpp \

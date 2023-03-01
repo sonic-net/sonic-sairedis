@@ -39,6 +39,7 @@ tests_SOURCES = main.cpp \
 				TestSwitchContainer.cpp \
 				TestSwitch.cpp \
 				TestSwitchMLNX2700.cpp \
+				TestSwitchNvdaMBF2H536C.cpp \
 				TestSwitchBCM56850.cpp \
 				TestSwitchBCM81724.cpp \
 				TestSwitchStateBaseMACsec.cpp \
@@ -57,6 +58,15 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_bridge.cpp \
 				test_sai_vs_buffer.cpp \
 				test_sai_vs_counter.cpp \
+				test_sai_vs_dash_vip.cpp \
+				test_sai_vs_dash_pa_validation.cpp \
+				test_sai_vs_dash_vnet.cpp \
+				test_sai_vs_dash_outbound_routing.cpp \
+				test_sai_vs_dash_outbound_ca_to_pa.cpp \
+				test_sai_vs_dash_inbound_routing.cpp \
+				test_sai_vs_dash_eni.cpp \
+				test_sai_vs_dash_direction_lookup.cpp \
+				test_sai_vs_dash_acl.cpp \
 				test_sai_vs_debug_counter.cpp \
 				test_sai_vs_dtel.cpp \
 				test_sai_vs_fdb.cpp \

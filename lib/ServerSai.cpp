@@ -1237,7 +1237,7 @@ sai_status_t ServerSai::processBulkCreateEntry(
         attr_lists[idx] = attributes[idx]->get_attr_list();
     }
 
-    switch (objectType)
+    switch ((int)objectType)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
         {
@@ -1322,6 +1322,139 @@ sai_status_t ServerSai::processBulkCreateEntry(
             for (uint32_t it = 0; it < object_count; it++)
             {
                 sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+        {
+            std::vector<sai_direction_lookup_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_direction_lookup_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+        {
+            std::vector<sai_eni_ether_address_map_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_eni_ether_address_map_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+        {
+            std::vector<sai_vip_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_vip_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+        {
+            std::vector<sai_inbound_routing_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inbound_routing_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+        {
+            std::vector<sai_pa_validation_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_pa_validation_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+        {
+            std::vector<sai_outbound_routing_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_routing_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+        {
+            std::vector<sai_outbound_ca_to_pa_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_ca_to_pa_entry(objectIds[it], entries[it]);
             }
 
             status = m_sai->bulkCreate(
@@ -1354,7 +1487,7 @@ sai_status_t ServerSai::processBulkRemoveEntry(
 
     sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
 
-    switch (objectType)
+    switch ((int)objectType)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
         {
@@ -1431,6 +1564,119 @@ sai_status_t ServerSai::processBulkRemoveEntry(
             for (uint32_t it = 0; it < object_count; it++)
             {
                 sai_deserialize_my_sid_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+        {
+            std::vector<sai_direction_lookup_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_direction_lookup_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+        {
+            std::vector<sai_eni_ether_address_map_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_eni_ether_address_map_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+        {
+            std::vector<sai_vip_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_vip_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+        {
+            std::vector<sai_inbound_routing_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inbound_routing_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+        {
+            std::vector<sai_pa_validation_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_pa_validation_entry(objectIds[it], entries[it]);
+            }
+
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+        {
+            std::vector<sai_outbound_routing_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_routing_entry(objectIds[it], entries[it]);
+            }
+            status = m_sai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+        {
+            std::vector<sai_outbound_ca_to_pa_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_ca_to_pa_entry(objectIds[it], entries[it]);
             }
 
             status = m_sai->bulkRemove(

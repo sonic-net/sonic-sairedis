@@ -26,6 +26,8 @@ namespace saivs
 
         SAI_VS_SWITCH_TYPE_MLNX2700,
 
+        SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C,
+
     } sai_vs_switch_type_t;
 
     typedef enum _sai_vs_boot_type_t

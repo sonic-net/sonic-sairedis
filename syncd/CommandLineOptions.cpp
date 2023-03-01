@@ -34,6 +34,8 @@ CommandLineOptions::CommandLineOptions()
 
     m_breakConfig = "";
 
+    m_watchdogWarnTimeSpan = 30 * 1000000;
+
 #ifdef SAITHRIFT
 
     m_runRPCServer = false;
@@ -63,6 +65,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " GlobalContext=" << m_globalContext;
     ss << " ContextConfig=" << m_contextConfig;
     ss << " BreakConfig=" << m_breakConfig;
+    ss << " WatchdogWarnTimeSpan=" << m_watchdogWarnTimeSpan;
 
 #ifdef SAITHRIFT
 

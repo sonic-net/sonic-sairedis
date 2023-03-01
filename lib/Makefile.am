@@ -35,6 +35,15 @@ libsairedis_la_SOURCES = \
 						 sai_redis_bridge.cpp \
 						 sai_redis_buffer.cpp \
 						 sai_redis_counter.cpp \
+						 sai_redis_dash_vip.cpp \
+						 sai_redis_dash_pa_validation.cpp \
+						 sai_redis_dash_vnet.cpp \
+						 sai_redis_dash_outbound_routing.cpp \
+						 sai_redis_dash_outbound_ca_to_pa.cpp \
+						 sai_redis_dash_inbound_routing.cpp \
+						 sai_redis_dash_eni.cpp \
+						 sai_redis_dash_direction_lookup.cpp \
+						 sai_redis_dash_acl.cpp \
 						 sai_redis_debug_counter.cpp \
 						 sai_redis_dtel.cpp \
 						 sai_redis_fdb.cpp \

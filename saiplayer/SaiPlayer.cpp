@@ -681,6 +681,234 @@ sai_status_t SaiPlayer::handle_inseg(
     }
 }
 
+sai_status_t SaiPlayer::handle_dash_direction_lookup(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_direction_lookup_entry_t entry;
+    sai_deserialize_direction_lookup_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH direction_lookup other apis not implemented");
+    }
+}
+
+sai_status_t SaiPlayer::handle_dash_eni_ether_address_map(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_eni_ether_address_map_entry_t entry;
+    sai_deserialize_eni_ether_address_map_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH eni_ether_address_map_entry other apis not implemented");
+    }
+}
+
+sai_status_t SaiPlayer::handle_dash_vip(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_vip_entry_t entry;
+    sai_deserialize_vip_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH vip other apis not implemented");
+    }
+}
+
+sai_status_t SaiPlayer::handle_dash_inbound_routing(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_inbound_routing_entry_t entry;
+    sai_deserialize_inbound_routing_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+    entry.eni_id = translate_local_to_redis(entry.eni_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH inbound_routing other apis not implemented");
+    }
+}
+
+sai_status_t SaiPlayer::handle_dash_pa_validation(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_pa_validation_entry_t entry;
+    sai_deserialize_pa_validation_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+    entry.vnet_id = translate_local_to_redis(entry.vnet_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH pa_validation other apis not implemented");
+    }
+}
+
+sai_status_t SaiPlayer::handle_dash_outbound_routing(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_outbound_routing_entry_t entry;
+    sai_deserialize_outbound_routing_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+    entry.eni_id = translate_local_to_redis(entry.eni_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH outbound_routing other apis not implemented");
+    }
+}
+
+sai_status_t SaiPlayer::handle_dash_outbound_ca_to_pa(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_outbound_ca_to_pa_entry_t entry;
+    sai_deserialize_outbound_ca_to_pa_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+    entry.dst_vnet_id = translate_local_to_redis(entry.dst_vnet_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH outbound_ca_to_pa other apis not implemented");
+    }
+}
+
 void SaiPlayer::update_notifications_pointers(
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list)
@@ -1426,7 +1654,7 @@ sai_status_t SaiPlayer::handle_bulk_entry(
             attr_lists[idx] = attributes[idx]->get_attr_list();
         }
 
-        switch (object_type)
+        switch ((int)object_type)
         {
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
             {
@@ -1481,13 +1709,129 @@ sai_status_t SaiPlayer::handle_bulk_entry(
             }
             break;
 
+            case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            {
+                std::vector<sai_direction_lookup_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_direction_lookup_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("direction_lookup_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            {
+                std::vector<sai_eni_ether_address_map_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_eni_ether_address_map_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("eni_ether_address_map_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_VIP_ENTRY:
+            {
+                std::vector<sai_vip_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_vip_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("vip_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            {
+                std::vector<sai_inbound_routing_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_inbound_routing_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("inbound_routing_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            {
+                std::vector<sai_pa_validation_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_pa_validation_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].vnet_id = translate_local_to_redis(entries[it].vnet_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("pa_validation_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            {
+                std::vector<sai_outbound_routing_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_outbound_routing_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("outbound_routing_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            {
+                std::vector<sai_outbound_ca_to_pa_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_outbound_ca_to_pa_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].dst_vnet_id = translate_local_to_redis(entries[it].dst_vnet_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("outbound_ca_to_pa_entry");
+
+            }
+            break;
+
             default:
                 SWSS_LOG_THROW("api %s is not supported in bulk", sai_serialize_common_api(api).c_str());
         }
     }
     else if (api == SAI_COMMON_API_BULK_REMOVE)
     {
-        switch (object_type)
+        switch ((int)object_type)
         {
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
             {
@@ -1543,6 +1887,122 @@ sai_status_t SaiPlayer::handle_bulk_entry(
             }
             break;
 
+            case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            {
+                std::vector<sai_direction_lookup_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_direction_lookup_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("direction_lookup_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            {
+                std::vector<sai_eni_ether_address_map_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_eni_ether_address_map_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("eni_ether_address_map_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_VIP_ENTRY:
+            {
+                std::vector<sai_vip_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_vip_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("vip_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            {
+                std::vector<sai_inbound_routing_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_inbound_routing_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("inbound_routing_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            {
+                std::vector<sai_pa_validation_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_pa_validation_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].vnet_id = translate_local_to_redis(entries[it].vnet_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("pa_validation_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            {
+                std::vector<sai_outbound_routing_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_outbound_routing_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("outbound_routing_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            {
+                std::vector<sai_outbound_ca_to_pa_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_outbound_ca_to_pa_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].dst_vnet_id = translate_local_to_redis(entries[it].dst_vnet_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("outbound_ca_to_pa_entry");
+
+            }
+            break;
+
             default:
                 SWSS_LOG_THROW("api %s is not supported in bulk", sai_serialize_common_api(api).c_str());
 
@@ -1556,7 +2016,7 @@ sai_status_t SaiPlayer::handle_bulk_entry(
         {
             attr_lists.push_back(attributes[it]->get_attr_list()[0]);
         }
-        switch (object_type)
+        switch ((int)object_type)
         {
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
             {
@@ -1608,6 +2068,122 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                 }
 
                 CALL_BULK_SET_API_WITH_TIMER("nat_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            {
+                std::vector<sai_direction_lookup_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_direction_lookup_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("direction_lookup_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            {
+                std::vector<sai_eni_ether_address_map_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_eni_ether_address_map_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("eni_ether_address_map_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_VIP_ENTRY:
+            {
+                std::vector<sai_vip_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_vip_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("vip_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            {
+                std::vector<sai_inbound_routing_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_inbound_routing_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("inbound_routing_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            {
+                std::vector<sai_pa_validation_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_pa_validation_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].vnet_id = translate_local_to_redis(entries[it].vnet_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("pa_validation_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            {
+                std::vector<sai_outbound_routing_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_outbound_routing_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("outbound_routing_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            {
+                std::vector<sai_outbound_ca_to_pa_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_outbound_ca_to_pa_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].dst_vnet_id = translate_local_to_redis(entries[it].dst_vnet_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("outbound_ca_to_pa_entry");
 
             }
             break;
@@ -1848,11 +2424,18 @@ void SaiPlayer::processBulk(
 
     auto info = sai_metadata_get_object_type_info(object_type);
 
-    switch (object_type)
+    switch ((int)object_type)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
         case SAI_OBJECT_TYPE_FDB_ENTRY:
         case SAI_OBJECT_TYPE_NAT_ENTRY:
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
             status = handle_bulk_entry(object_ids, object_type, api, attributes, statuses);
             break;
 
@@ -2034,7 +2617,7 @@ int SaiPlayer::replay()
 
         auto info = sai_metadata_get_object_type_info(object_type);
 
-        switch (object_type)
+        switch ((int)object_type)
         {
             case SAI_OBJECT_TYPE_FDB_ENTRY:
                 status = handle_fdb(str_object_id, api, attr_count, attr_list);
@@ -2050,6 +2633,34 @@ int SaiPlayer::replay()
 
             case SAI_OBJECT_TYPE_INSEG_ENTRY:
                 status = handle_inseg(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+                status = handle_dash_direction_lookup(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+                status = handle_dash_eni_ether_address_map(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_VIP_ENTRY:
+                status = handle_dash_vip(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+                status = handle_dash_inbound_routing(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+                status = handle_dash_pa_validation(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+                status = handle_dash_outbound_routing(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+                status = handle_dash_outbound_ca_to_pa(str_object_id, api, attr_count, attr_list);
                 break;
 
             default:

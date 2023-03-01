@@ -171,6 +171,13 @@ namespace sairedis
             SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(route_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(nat_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(my_sid_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(direction_lookup_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(eni_ether_address_map_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(vip_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(inbound_routing_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(pa_validation_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(outbound_routing_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_CREATE(outbound_ca_to_pa_entry);
 
         public: // remove ENTRY
 
@@ -183,6 +190,13 @@ namespace sairedis
             SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(route_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(nat_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(my_sid_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(direction_lookup_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(eni_ether_address_map_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(vip_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(inbound_routing_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(pa_validation_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(outbound_routing_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_REMOVE(outbound_ca_to_pa_entry);
 
         public: // set ENTRY
 
@@ -195,6 +209,13 @@ namespace sairedis
             SAI_REDIS_RECORDER_DECLARE_RECORD_SET(route_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_SET(nat_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_SET(my_sid_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_SET(direction_lookup_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_SET(eni_ether_address_map_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_SET(vip_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_SET(inbound_routing_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_SET(pa_validation_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_SET(outbound_routing_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_SET(outbound_ca_to_pa_entry);
 
         public: // get ENTRY
 
@@ -207,6 +228,13 @@ namespace sairedis
             SAI_REDIS_RECORDER_DECLARE_RECORD_GET(route_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_GET(nat_entry);
             SAI_REDIS_RECORDER_DECLARE_RECORD_GET(my_sid_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_GET(direction_lookup_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_GET(eni_ether_address_map_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_GET(vip_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_GET(inbound_routing_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_GET(pa_validation_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_GET(outbound_routing_entry);
+            SAI_REDIS_RECORDER_DECLARE_RECORD_GET(outbound_ca_to_pa_entry);
 
         public: // SAI stats API
 

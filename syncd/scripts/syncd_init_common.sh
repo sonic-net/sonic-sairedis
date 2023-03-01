@@ -314,6 +314,44 @@ config_syncd_innovium()
     mkdir -p $II_ROOT
 }
 
+config_syncd_nvidia_bluefield()
+{
+        # Read MAC addresses
+    base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
+    eth0_mac=$(cat /sys/class/net/Ethernet0/address)
+    eth4_mac=$(cat /sys/class/net/Ethernet4/address)
+
+    cp $HWSKU_DIR/sai.profile /tmp/sai.profile
+
+    # Update sai.profile with MAC_ADDRESS
+    echo "DEVICE_MAC_ADDRESS=$base_mac" >> /tmp/sai.profile
+    echo "PORT_1_MAC_ADDRESS=$eth0_mac" >> /tmp/sai.profile
+    echo "PORT_2_MAC_ADDRESS=$eth4_mac" >> /tmp/sai.profile
+    echo "DASH_ACL_DEFAULT_RULE_ACTION=permit" >> /tmp/sai.profile
+
+    CMD_ARGS+=" -l -p /tmp/sai.profile -w 180000000"
+
+    echo 5632 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    mkdir -p /mnt/huge
+    mount -t hugetlbfs pagesize=1GB /mnt/huge
+
+    devlink dev eswitch set pci/0000:03:00.0 mode legacy
+    devlink dev eswitch set pci/0000:03:00.1 mode legacy
+
+    echo multiport_esw | tee /sys/class/net/Ethernet0/compat/devlink/lag_port_select_mode
+    echo multiport_esw | tee /sys/class/net/Ethernet4/compat/devlink/lag_port_select_mode
+
+    devlink dev eswitch set pci/0000:03:00.0 mode switchdev
+    devlink dev eswitch set pci/0000:03:00.1 mode switchdev
+
+    ethtool -A Ethernet0 rx off tx off
+    ethtool -A Ethernet4 rx off tx off
+
+    mcra /dev/mst/*_pciconf0 0x60188.19:1 1
+    mcra /dev/mst/*_pciconf0 0x60154.0 0x80000000
+    mcra /dev/mst/*_pciconf0 0x60150.0 0x80000000
+}
+
 config_syncd_xsight()
 {
     SYS_MODE="asic"
@@ -390,6 +428,8 @@ config_syncd()
         config_syncd_innovium
     elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
         config_syncd_soda
+    elif [ "$SONIC_ASIC_TYPE" == "nvidia-bluefield" ]; then
+        config_syncd_nvidia_bluefield
     elif [ "$SONIC_ASIC_TYPE" == "xsight" ]; then
         config_syncd_xsight
     else

@@ -84,6 +84,8 @@ namespace syncd
 
             std::string m_breakConfig;
 
+            int64_t m_watchdogWarnTimeSpan;
+
 #ifdef SAITHRIFT
             bool m_runRPCServer;
             std::string m_portMapFile;

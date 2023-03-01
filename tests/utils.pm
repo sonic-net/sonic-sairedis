@@ -51,6 +51,12 @@ sub start_syncd
     `./vssyncd -SUu -p "$DIR/vsprofile.ini" @_ >/dev/null 2>/dev/null &`;
 }
 
+sub start_syncd_bulk
+{
+    print color('bright_blue') . "Starting syncd bulk" . color('reset') . "\n";
+    `./vssyncd -SUul -p "$DIR/vsprofile.ini" @_ >/dev/null 2>/dev/null &`;
+}
+
 sub start_syncd_warm
 {
     print color('bright_blue') . "Starting syncd warm" . color('reset') . "\n";
@@ -163,6 +169,19 @@ sub fresh_start
     start_syncd @_;
 }
 
+sub fresh_start_bulk
+{
+    my $caller = GetCaller();
+
+    `rm -f applyview.log`;
+
+    print "$caller: " . color('bright_blue') . "Fresh start with bulk" . color('reset') . "\n";
+
+    kill_syncd;
+    flush_redis;
+    start_syncd_bulk @_;
+}
+
 sub sync_fresh_start
 {
     my $caller = GetCaller();
@@ -181,7 +200,7 @@ BEGIN
 {
     our @ISA    = qw(Exporter);
     our @EXPORT = qw/ color
-    kill_syncd flush_redis start_syncd play fresh_start start_syncd_warm request_warm_shutdown
+    kill_syncd flush_redis start_syncd play fresh_start fresh_start_bulk start_syncd_warm request_warm_shutdown
     sync_start_syncd sync_fresh_start sync_start_syncd_warm sync_start_syncd sync_play
     /;
 

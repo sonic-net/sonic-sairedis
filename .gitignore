@@ -101,6 +101,8 @@ syncd/syncd_tests
 syncd/tests/tests
 tests/syncd
 tests/testclient
+tests/testclient_dash
+tests/testdash_gtest
 tests/tests
 tests/vssyncd
 unittest/lib/tests

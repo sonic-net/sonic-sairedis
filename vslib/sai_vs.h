@@ -13,54 +13,63 @@ extern "C" {
 
 #define PRIVATE __attribute__((visibility("hidden")))
 
-PRIVATE extern const sai_acl_api_t                     vs_acl_api;
-PRIVATE extern const sai_bfd_api_t                     vs_bfd_api;
-PRIVATE extern const sai_bmtor_api_t                   vs_bmtor_api;
-PRIVATE extern const sai_generic_programmable_api_t    vs_generic_programmable_api;
-PRIVATE extern const sai_bridge_api_t                  vs_bridge_api;
-PRIVATE extern const sai_buffer_api_t                  vs_buffer_api;
-PRIVATE extern const sai_counter_api_t                 vs_counter_api;
-PRIVATE extern const sai_debug_counter_api_t           vs_debug_counter_api;
-PRIVATE extern const sai_dtel_api_t                    vs_dtel_api;
-PRIVATE extern const sai_fdb_api_t                     vs_fdb_api;
-PRIVATE extern const sai_hash_api_t                    vs_hash_api;
-PRIVATE extern const sai_hostif_api_t                  vs_hostif_api;
-PRIVATE extern const sai_ipmc_api_t                    vs_ipmc_api;
-PRIVATE extern const sai_ipmc_group_api_t              vs_ipmc_group_api;
-PRIVATE extern const sai_isolation_group_api_t         vs_isolation_group_api;
-PRIVATE extern const sai_l2mc_api_t                    vs_l2mc_api;
-PRIVATE extern const sai_l2mc_group_api_t              vs_l2mc_group_api;
-PRIVATE extern const sai_lag_api_t                     vs_lag_api;
-PRIVATE extern const sai_macsec_api_t                  vs_macsec_api;
-PRIVATE extern const sai_mcast_fdb_api_t               vs_mcast_fdb_api;
-PRIVATE extern const sai_mirror_api_t                  vs_mirror_api;
-PRIVATE extern const sai_mpls_api_t                    vs_mpls_api;
-PRIVATE extern const sai_nat_api_t                     vs_nat_api;
-PRIVATE extern const sai_neighbor_api_t                vs_neighbor_api;
-PRIVATE extern const sai_next_hop_api_t                vs_next_hop_api;
-PRIVATE extern const sai_next_hop_group_api_t          vs_next_hop_group_api;
-PRIVATE extern const sai_policer_api_t                 vs_policer_api;
-PRIVATE extern const sai_port_api_t                    vs_port_api;
-PRIVATE extern const sai_qos_map_api_t                 vs_qos_map_api;
-PRIVATE extern const sai_queue_api_t                   vs_queue_api;
-PRIVATE extern const sai_route_api_t                   vs_route_api;
-PRIVATE extern const sai_router_interface_api_t        vs_router_interface_api;
-PRIVATE extern const sai_rpf_group_api_t               vs_rpf_group_api;
-PRIVATE extern const sai_samplepacket_api_t            vs_samplepacket_api;
-PRIVATE extern const sai_scheduler_api_t               vs_scheduler_api;
-PRIVATE extern const sai_scheduler_group_api_t         vs_scheduler_group_api;
-PRIVATE extern const sai_srv6_api_t                    vs_srv6_api;
-PRIVATE extern const sai_stp_api_t                     vs_stp_api;
-PRIVATE extern const sai_switch_api_t                  vs_switch_api;
-PRIVATE extern const sai_system_port_api_t             vs_system_port_api;
-PRIVATE extern const sai_tam_api_t                     vs_tam_api;
-PRIVATE extern const sai_tunnel_api_t                  vs_tunnel_api;
-PRIVATE extern const sai_udf_api_t                     vs_udf_api;
-PRIVATE extern const sai_virtual_router_api_t          vs_virtual_router_api;
-PRIVATE extern const sai_vlan_api_t                    vs_vlan_api;
-PRIVATE extern const sai_wred_api_t                    vs_wred_api;
-PRIVATE extern const sai_my_mac_api_t                  vs_my_mac_api;
-PRIVATE extern const sai_ipsec_api_t                   vs_ipsec_api;
+PRIVATE extern const sai_acl_api_t                    vs_acl_api;
+PRIVATE extern const sai_bfd_api_t                    vs_bfd_api;
+PRIVATE extern const sai_bmtor_api_t                  vs_bmtor_api;
+PRIVATE extern const sai_generic_programmable_api_t   vs_generic_programmable_api;
+PRIVATE extern const sai_bridge_api_t                 vs_bridge_api;
+PRIVATE extern const sai_buffer_api_t                 vs_buffer_api;
+PRIVATE extern const sai_counter_api_t                vs_counter_api;
+PRIVATE extern const sai_dash_vip_api_t               vs_dash_vip_api;
+PRIVATE extern const sai_dash_pa_validation_api_t     vs_dash_pa_validation_api;
+PRIVATE extern const sai_dash_vnet_api_t              vs_dash_vnet_api;
+PRIVATE extern const sai_dash_outbound_routing_api_t  vs_dash_outbound_routing_api;
+PRIVATE extern const sai_dash_outbound_ca_to_pa_api_t vs_dash_outbound_ca_to_pa_api;
+PRIVATE extern const sai_dash_inbound_routing_api_t   vs_dash_inbound_routing_api;
+PRIVATE extern const sai_dash_eni_api_t               vs_dash_eni_api;
+PRIVATE extern const sai_dash_direction_lookup_api_t  vs_dash_direction_lookup_api;
+PRIVATE extern const sai_dash_acl_api_t               vs_dash_acl_api;
+PRIVATE extern const sai_debug_counter_api_t          vs_debug_counter_api;
+PRIVATE extern const sai_dtel_api_t                   vs_dtel_api;
+PRIVATE extern const sai_fdb_api_t                    vs_fdb_api;
+PRIVATE extern const sai_hash_api_t                   vs_hash_api;
+PRIVATE extern const sai_hostif_api_t                 vs_hostif_api;
+PRIVATE extern const sai_ipmc_api_t                   vs_ipmc_api;
+PRIVATE extern const sai_ipmc_group_api_t             vs_ipmc_group_api;
+PRIVATE extern const sai_isolation_group_api_t        vs_isolation_group_api;
+PRIVATE extern const sai_l2mc_api_t                   vs_l2mc_api;
+PRIVATE extern const sai_l2mc_group_api_t             vs_l2mc_group_api;
+PRIVATE extern const sai_lag_api_t                    vs_lag_api;
+PRIVATE extern const sai_macsec_api_t                 vs_macsec_api;
+PRIVATE extern const sai_mcast_fdb_api_t              vs_mcast_fdb_api;
+PRIVATE extern const sai_mirror_api_t                 vs_mirror_api;
+PRIVATE extern const sai_mpls_api_t                   vs_mpls_api;
+PRIVATE extern const sai_nat_api_t                    vs_nat_api;
+PRIVATE extern const sai_neighbor_api_t               vs_neighbor_api;
+PRIVATE extern const sai_next_hop_api_t               vs_next_hop_api;
+PRIVATE extern const sai_next_hop_group_api_t         vs_next_hop_group_api;
+PRIVATE extern const sai_policer_api_t                vs_policer_api;
+PRIVATE extern const sai_port_api_t                   vs_port_api;
+PRIVATE extern const sai_qos_map_api_t                vs_qos_map_api;
+PRIVATE extern const sai_queue_api_t                  vs_queue_api;
+PRIVATE extern const sai_route_api_t                  vs_route_api;
+PRIVATE extern const sai_router_interface_api_t       vs_router_interface_api;
+PRIVATE extern const sai_rpf_group_api_t              vs_rpf_group_api;
+PRIVATE extern const sai_samplepacket_api_t           vs_samplepacket_api;
+PRIVATE extern const sai_scheduler_api_t              vs_scheduler_api;
+PRIVATE extern const sai_scheduler_group_api_t        vs_scheduler_group_api;
+PRIVATE extern const sai_srv6_api_t                   vs_srv6_api;
+PRIVATE extern const sai_stp_api_t                    vs_stp_api;
+PRIVATE extern const sai_switch_api_t                 vs_switch_api;
+PRIVATE extern const sai_system_port_api_t            vs_system_port_api;
+PRIVATE extern const sai_tam_api_t                    vs_tam_api;
+PRIVATE extern const sai_tunnel_api_t                 vs_tunnel_api;
+PRIVATE extern const sai_udf_api_t                    vs_udf_api;
+PRIVATE extern const sai_virtual_router_api_t         vs_virtual_router_api;
+PRIVATE extern const sai_vlan_api_t                   vs_vlan_api;
+PRIVATE extern const sai_wred_api_t                   vs_wred_api;
+PRIVATE extern const sai_my_mac_api_t                 vs_my_mac_api;
+PRIVATE extern const sai_ipsec_api_t                  vs_ipsec_api;
 
 PRIVATE extern std::shared_ptr<sairedis::SaiInterface>      vs_sai;
 
@@ -256,60 +265,60 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>      vs_sai;
 
 // BULK QUAD
 
-#define VS_BULK_CREATE(OT,fname)                    \
-    static sai_status_t vs_bulk_create_ ## fname(   \
-            _In_ sai_object_id_t switch_id,         \
-            _In_ uint32_t object_count,             \
-            _In_ const uint32_t *attr_count,        \
-            _In_ const sai_attribute_t **attr_list, \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_object_id_t *object_id,       \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return vs_sai->bulkCreate(                      \
-            SAI_OBJECT_TYPE_ ## OT,                 \
-            switch_id,                              \
-            object_count,                           \
-            attr_count,                             \
-            attr_list,                              \
-            mode,                                   \
-            object_id,                              \
-            object_statuses);                       \
+#define VS_BULK_CREATE(OT,fname)                       \
+    static sai_status_t vs_bulk_create_ ## fname(      \
+            _In_ sai_object_id_t switch_id,            \
+            _In_ uint32_t object_count,                \
+            _In_ const uint32_t *attr_count,           \
+            _In_ const sai_attribute_t **attr_list,    \
+            _In_ sai_bulk_op_error_mode_t mode,        \
+            _Out_ sai_object_id_t *object_id,          \
+            _Out_ sai_status_t *object_statuses)       \
+{                                                      \
+    SWSS_LOG_ENTER();                                  \
+    return vs_sai->bulkCreate(                         \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, \
+            switch_id,                                 \
+            object_count,                              \
+            attr_count,                                \
+            attr_list,                                 \
+            mode,                                      \
+            object_id,                                 \
+            object_statuses);                          \
 }
 
-#define VS_BULK_REMOVE(OT,fname)                    \
-    static sai_status_t vs_bulk_remove_ ## fname(   \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_object_id_t *object_id,  \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return vs_sai->bulkRemove(                      \
-            SAI_OBJECT_TYPE_ ## OT,                 \
-            object_count,                           \
-            object_id,                              \
-            mode,                                   \
-            object_statuses);                       \
+#define VS_BULK_REMOVE(OT,fname)                       \
+    static sai_status_t vs_bulk_remove_ ## fname(      \
+            _In_ uint32_t object_count,                \
+            _In_ const sai_object_id_t *object_id,     \
+            _In_ sai_bulk_op_error_mode_t mode,        \
+            _Out_ sai_status_t *object_statuses)       \
+{                                                      \
+    SWSS_LOG_ENTER();                                  \
+    return vs_sai->bulkRemove(                         \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, \
+            object_count,                              \
+            object_id,                                 \
+            mode,                                      \
+            object_statuses);                          \
 }
 
-#define VS_BULK_SET(OT,fname)                       \
-    static sai_status_t vs_bulk_set_ ## fname(      \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_object_id_t *object_id,  \
-            _In_ const sai_attribute_t *attr_list,  \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return vs_sai->bulkSet(                         \
-            SAI_OBJECT_TYPE_ ## OT,                 \
-            object_count,                           \
-            object_id,                              \
-            attr_list,                              \
-            mode,                                   \
-            object_statuses);                       \
+#define VS_BULK_SET(OT,fname)                          \
+    static sai_status_t vs_bulk_set_ ## fname(         \
+            _In_ uint32_t object_count,                \
+            _In_ const sai_object_id_t *object_id,     \
+            _In_ const sai_attribute_t *attr_list,     \
+            _In_ sai_bulk_op_error_mode_t mode,        \
+            _Out_ sai_status_t *object_statuses)       \
+{                                                      \
+    SWSS_LOG_ENTER();                                  \
+    return vs_sai->bulkSet(                            \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, \
+            object_count,                              \
+            object_id,                                 \
+            attr_list,                                 \
+            mode,                                      \
+            object_statuses);                          \
 }
 
 #define VS_BULK_GET(OT,fname)                       \
@@ -336,8 +345,11 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>      vs_sai;
 
 // BULK QUAD ENTRY
 
-#define VS_BULK_CREATE_ENTRY(OT,ot)                 \
-    static sai_status_t vs_bulk_create_ ## ot(      \
+#define VS_BULK_CREATE_ENTRY(OT,ot)   \
+    VS_BULK_CREATE_ENTRY_EX(OT,ot,ot)
+
+#define VS_BULK_CREATE_ENTRY_EX(OT,ot,fname)        \
+    static sai_status_t vs_bulk_create_ ## fname(   \
             _In_ uint32_t object_count,             \
             _In_ const sai_ ## ot ## _t *entry,     \
             _In_ const uint32_t *attr_count,        \
@@ -355,8 +367,11 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>      vs_sai;
             object_statuses);                       \
 }
 
-#define VS_BULK_REMOVE_ENTRY(OT,ot)                 \
-    static sai_status_t vs_bulk_remove_ ## ot(      \
+#define VS_BULK_REMOVE_ENTRY(OT,ot) \
+    VS_BULK_REMOVE_ENTRY_EX(OT, ot, ot)
+
+#define VS_BULK_REMOVE_ENTRY_EX(OT,ot,fname)        \
+    static sai_status_t vs_bulk_remove_ ## fname(   \
             _In_ uint32_t object_count,             \
             _In_ const sai_ ## ot ##_t *entry,      \
             _In_ sai_bulk_op_error_mode_t mode,     \
