@@ -4740,10 +4740,14 @@ void Syncd::run()
     m_mdioIpcServer->stopMdioThread();
 
     sai_status_t status = SAI_STATUS_SUCCESS;
-    if (shutdownType != SYNCD_RESTART_TYPE_COLD || 0 != strcmp(SONIC_ASIC_PLATFORM, "mellanox"))
+#ifdef MELLANOX
+    if (shutdownType != SYNCD_RESTART_TYPE_COLD)
     {
         status = removeAllSwitches();
     }
+#else
+    status = removeAllSwitches();
+#endif
 
     // Stop notification thread after removing switch
     m_processor->stopNotificationsProcessingThread();
