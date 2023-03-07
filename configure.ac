@@ -15,13 +15,12 @@ AM_PATH_PYTHON3
 AX_CODE_COVERAGE
 AX_ADD_AM_MACRO_STATIC([])
 
-# Generate a macro "#define MELLANOX_PLATFORM 1" in config.h
-if test x$CONFIGURED_PLATFORM = xmellanox; then
-    AC_DEFINE([MELLANOX], [1], [Define to 1 on Mellanox platform])
-fi
-
 AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BAREFOOT,   test x$CONFIGURED_PLATFORM = xbarefoot)
 AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BROADCOM,   test x$CONFIGURED_PLATFORM = xbroadcom)
+AM_CONDITIONAL(SONIC_ASIC_PLATFORM_MELLANOX,   test x$CONFIGURED_PLATFORM = xmellanox)
+
+AM_COND_IF([SONIC_ASIC_PLATFORM_MELLANOX],
+        AC_DEFINE([MELLANOX], [1], [Define to 1 on Mellanox Platform]))
 
 AC_ARG_ENABLE(debug,
 [  --enable-debug          turn on debugging],
@@ -67,9 +66,9 @@ AC_ARG_ENABLE(syncd,
 esac],[syncd=true])
 AS_IF([test "x${ENABLESYNCD}" = "xno" ],[syncd=false],[])
 AM_CONDITIONAL(SYNCD, test x$syncd = xtrue)
-#AM_COND_IF([SYNCD], [
-#        AM_COND_IF([SAIVS], [], [AC_CHECK_LIB([sai], [main], [AC_MSG_NOTICE(libsai found)], [AC_MSG_ERROR(libsai is required for syncd)])
-#])])
+AM_COND_IF([SYNCD], [
+        AM_COND_IF([SAIVS], [], [AC_CHECK_LIB([sai], [main], [AC_MSG_NOTICE(libsai found)], [AC_MSG_ERROR(libsai is required for syncd)])
+])])
 
 AC_ARG_ENABLE(rpcserver,
 [  --enable-rpcserver      compile with thrift rpcserver included],
