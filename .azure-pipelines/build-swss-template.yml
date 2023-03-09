@@ -78,6 +78,7 @@ jobs:
       artifact: ${{ parameters.swss_common_artifact_name }}
       runVersion: 'latestFromBranch'
       runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      allowPartiallySucceededBuilds: true
       path: $(Build.ArtifactStagingDirectory)/download
       patterns: |
         libswsscommon_1.0.0_*.deb
