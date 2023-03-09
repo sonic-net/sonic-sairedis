@@ -1,12 +1,143 @@
-#include "SwitchMLNX2700.h"
+#include <cstdint>
 
-#include "meta/sai_serialize.h"
+#include <memory>
+#include <string>
+#include <vector>
+#include <array>
 
 #include <gtest/gtest.h>
 
-#include <memory>
+#include "meta/Globals.h"
+#include "meta/sai_serialize.h"
 
+#include "ContextConfigContainer.h"
+#include "SwitchMLNX2700.h"
+
+using namespace saimeta;
 using namespace saivs;
+
+class SwitchMLNX2700Test : public ::testing::Test
+{
+public:
+    SwitchMLNX2700Test() = default;
+    virtual ~SwitchMLNX2700Test() = default;
+
+public:
+    virtual void SetUp() override
+    {
+        m_ccc = ContextConfigContainer::getDefault();
+        m_cc = m_ccc->get(m_guid);
+        m_scc = m_cc->m_scc;
+        m_sc = m_scc->getConfig(m_scid);
+
+        m_sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+        m_sc->m_switchType = SAI_VS_SWITCH_TYPE_MLNX2700;
+        m_sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+        m_sc->m_useTapDevice = false;
+        m_sc->m_laneMap = LaneMap::getDefaultLaneMap();
+        m_sc->m_eventQueue = std::make_shared<EventQueue>(std::make_shared<Signal>());
+
+        m_ridmgr = std::make_shared<RealObjectIdManager>(m_cc->m_guid, m_cc->m_scc);
+        m_swid = m_ridmgr->allocateNewSwitchObjectId(Globals::getHardwareInfo(0, nullptr));
+        m_ss = std::make_shared<SwitchMLNX2700>(m_swid, m_ridmgr, m_sc);
+    }
+
+    virtual void TearDown() override
+    {
+        // Empty
+    }
+
+protected:
+    std::shared_ptr<ContextConfigContainer> m_ccc;
+    std::shared_ptr<ContextConfig> m_cc;
+    std::shared_ptr<SwitchConfigContainer> m_scc;
+    std::shared_ptr<SwitchConfig> m_sc;
+    std::shared_ptr<RealObjectIdManager> m_ridmgr;
+    std::shared_ptr<SwitchStateBase> m_ss;
+
+    sai_object_id_t m_swid = SAI_NULL_OBJECT_ID;
+
+    const std::uint32_t m_guid = 0; // default context config id
+    const std::uint32_t m_scid = 0; // default switch config id
+};
+
+TEST_F(SwitchMLNX2700Test, portBulkAddRemove)
+{
+    const std::uint32_t portCount = 32;
+    const std::uint32_t laneCount = 4;
+
+    // Generate port object ids
+    std::vector<sai_object_id_t> oidList(portCount, SAI_NULL_OBJECT_ID);
+
+    for (std::uint32_t idx = 0; idx < portCount; idx++)
+    {
+        oidList[idx] = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, m_swid);
+    }
+
+    // Serialize port object ids
+    std::vector<std::string> serializedOidList;
+
+    for (std::uint32_t idx = 0; idx < portCount; idx++)
+    {
+        serializedOidList.emplace_back(sai_serialize_object_id(oidList[idx]));
+    }
+
+    // Generate port config
+    std::vector<std::array<std::uint32_t, laneCount>> laneDataList;
+    std::vector<std::vector<sai_attribute_t>> attrDataList;
+    std::vector<std::uint32_t> attrCountList;
+    std::vector<const sai_attribute_t*> attrPtrList;
+
+    std::vector<sai_status_t> statusList(portCount, SAI_STATUS_SUCCESS);
+
+    for (std::uint32_t idx = 0; idx < portCount * 4; idx += 4)
+    {
+        sai_attribute_t attr;
+        std::vector<sai_attribute_t> attrList;
+
+        std::array<std::uint32_t, laneCount> laneList = { idx, idx + 1, idx + 2, idx + 3 };
+        laneDataList.push_back(laneList);
+
+        attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+        attr.value.u32list.count = static_cast<std::uint32_t>(laneDataList.back().size());
+        attr.value.u32list.list = laneDataList.back().data();
+        attrList.push_back(attr);
+
+        attr.id = SAI_PORT_ATTR_SPEED;
+        attr.value.u32 = 1000;
+        attrList.push_back(attr);
+
+        attrDataList.push_back(attrList);
+        attrCountList.push_back(static_cast<std::uint32_t>(attrDataList.back().size()));
+        attrPtrList.push_back(attrDataList.back().data());
+    }
+
+    // Verify port bulk add
+    auto status = m_ss->bulkCreate(
+        m_swid, SAI_OBJECT_TYPE_PORT, serializedOidList, attrCountList.data(), attrPtrList.data(),
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+        statusList.data()
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (std::uint32_t i = 0; i < portCount; i++)
+    {
+        ASSERT_EQ(statusList.at(i), SAI_STATUS_SUCCESS);
+    }
+
+    // Verify port bulk remove
+    status = m_ss->bulkRemove(
+        SAI_OBJECT_TYPE_PORT, serializedOidList,
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+        statusList.data()
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (std::uint32_t i = 0; i < portCount; i++)
+    {
+        ASSERT_EQ(statusList.at(i), SAI_STATUS_SUCCESS);
+    }
+}
 
 TEST(SwitchMLNX2700, ctr)
 {

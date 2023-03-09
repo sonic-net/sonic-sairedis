@@ -1,3 +1,4 @@
+#include "config.h"
 #include "VendorSai.h"
 
 #include "meta/sai_serialize.h"
@@ -733,6 +734,10 @@ sai_status_t VendorSai::bulkCreate(
 
     switch (object_type)
     {
+        case SAI_OBJECT_TYPE_PORT:
+            ptr = m_apis.port_api->create_ports;
+            break;
+
         case SAI_OBJECT_TYPE_LAG_MEMBER:
             ptr = m_apis.lag_api->create_lag_members;
             break;
@@ -792,6 +797,10 @@ sai_status_t VendorSai::bulkRemove(
 
     switch (object_type)
     {
+        case SAI_OBJECT_TYPE_PORT:
+            ptr = m_apis.port_api->remove_ports;
+            break;
+
         case SAI_OBJECT_TYPE_LAG_MEMBER:
             ptr = m_apis.lag_api->remove_lag_members;
             break;
@@ -979,6 +988,33 @@ sai_status_t VendorSai::bulkCreate(
             mode,
             object_statuses);
 }
+
+sai_status_t VendorSai::bulkCreate(
+        _In_ uint32_t object_count,
+        _In_ const sai_neighbor_entry_t* entries,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    if (!m_apis.neighbor_api->create_neighbor_entries)
+    {
+        SWSS_LOG_INFO("create_neighbor_entries is not supported");
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return m_apis.neighbor_api->create_neighbor_entries(
+            object_count,
+            entries,
+            attr_count,
+            attr_list,
+            mode,
+            object_statuses);
+}
 // BULK REMOVE
 
 sai_status_t VendorSai::bulkRemove(
@@ -1097,6 +1133,28 @@ sai_status_t VendorSai::bulkRemove(
             object_statuses);
 }
 
+sai_status_t VendorSai::bulkRemove(
+        _In_ uint32_t object_count,
+        _In_ const sai_neighbor_entry_t *entries,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    if (!m_apis.neighbor_api->remove_neighbor_entries)
+    {
+        SWSS_LOG_INFO("remove_neighbor_entries is not supported");
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return m_apis.neighbor_api->remove_neighbor_entries(
+            object_count,
+            entries,
+            mode,
+            object_statuses);
+}
 // BULK SET
 
 sai_status_t VendorSai::bulkSet(
@@ -1217,6 +1275,31 @@ sai_status_t VendorSai::bulkSet(
     }
 
     return m_apis.srv6_api->set_my_sid_entries_attribute(
+            object_count,
+            entries,
+            attr_list,
+            mode,
+            object_statuses);
+}
+
+sai_status_t VendorSai::bulkSet(
+        _In_ uint32_t object_count,
+        _In_ const sai_neighbor_entry_t *entries,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    if (!m_apis.neighbor_api->set_neighbor_entries_attribute)
+    {
+        SWSS_LOG_INFO("set_neighbor_entries_attribute is not supported");
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return m_apis.neighbor_api->set_neighbor_entries_attribute(
             object_count,
             entries,
             attr_list,

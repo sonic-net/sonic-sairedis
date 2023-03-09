@@ -39,6 +39,10 @@ parameters:
   type: boolean
   default: false
 
+- name: asan
+  type: boolean
+  default: false
+
 - name: debian_version
   type: string
 
@@ -66,6 +70,8 @@ jobs:
     clean: true
     submodules: true
   - script: |
+      set -ex
+      sudo apt-get update
       sudo apt-get install -qq -y \
         qtbase5-dev \
         libdbus-glib-1-2 \
@@ -150,7 +156,11 @@ jobs:
       set -ex
       rm ../*.deb || true
       ./autogen.sh
-      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS='--enable-code-coverage' CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      extraflags='--enable-code-coverage'
+      if [ '${{ parameters.asan }}' == True ]; then
+         extraflags='--enable-asan'
+      fi
+      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS=$extraflags CFLAGS="" CXXFLAGS="" binary-syncd-vs
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
@@ -160,22 +170,22 @@ jobs:
   - ${{ if eq(parameters.run_unit_test, true) }}:
     - script: |
         set -ex
-        git clone https://github.com/Spacetown/gcovr.git
+        git clone https://github.com/gcovr/gcovr.git
         cd gcovr/
-        git checkout origin/recursive_search_file
+        git checkout 5.0
         sudo pip3 install setuptools
         sudo python3 setup.py install
         cd ..
         sudo rm -rf gcovr
-      displayName: "Install gcovr 5.0 with recursive fix"
+      displayName: "Install gcovr 5.0"
     - script: |
         set -ex
         # Add SYS_TIME capability for settimeofday ok in syncd test
-        sudo setcap "cap_sys_time=eip" syncd/.libs/tests
+        sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
         make check
         gcovr --version
         find SAI/meta -name "*.gc*" | xargs rm -vf
-        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --exclude-throw-branches -x --xml-pretty -o coverage.xml
+        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches -x --xml-pretty -o coverage.xml
       displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}

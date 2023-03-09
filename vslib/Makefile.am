@@ -70,6 +70,7 @@ libsaivs_la_SOURCES = \
 					  sai_vs_debug_counter.cpp\
 					  sai_vs_dtel.cpp \
 					  sai_vs_fdb.cpp \
+					  sai_vs_genericprogrammable.cpp \
 					  sai_vs_hash.cpp \
 					  sai_vs_hostif.cpp \
 					  sai_vs_interfacequery.cpp \

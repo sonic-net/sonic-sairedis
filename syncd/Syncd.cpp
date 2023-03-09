@@ -19,6 +19,7 @@
 #include "swss/select.h"
 #include "swss/tokenize.h"
 #include "swss/notificationproducer.h"
+#include "swss/exec.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/ZeroMQSelectableChannel.h"
@@ -34,6 +35,7 @@
 #include <algorithm>
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
+#define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
 
 using namespace syncd;
 using namespace saimeta;
@@ -481,6 +483,15 @@ sai_status_t Syncd::processAttrEnumValuesCapabilityQuery(
         };
 
         SWSS_LOG_DEBUG("Sending response: capabilities = '%s', count = %d", strCap.c_str(), enumCapList.count);
+    }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        entry =
+        {
+            swss::FieldValueTuple("ENUM_COUNT", std::to_string(enumCapList.count))
+        };
+
+        SWSS_LOG_DEBUG("Sending response: count = %u", enumCapList.count);
     }
 
     m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
@@ -1574,6 +1585,11 @@ sai_status_t Syncd::processBulkOidCreate(
             SWSS_LOG_INFO("saved VID %s to RID %s",
                     sai_serialize_object_id(objectVids[idx]).c_str(),
                     sai_serialize_object_id(objectRids[idx]).c_str());
+
+            if (objectType == SAI_OBJECT_TYPE_PORT)
+            {
+                m_switches.at(switchVid)->onPostPortCreate(objectRids[idx], objectVids[idx]);
+            }
         }
     }
 
@@ -1604,6 +1620,12 @@ sai_status_t Syncd::processBulkOidRemove(
     {
         sai_deserialize_object_id(objectIds[idx], objectVids[idx]);
         objectRids[idx] = m_translator->translateVidToRid(objectVids[idx]);
+
+        if (objectType == SAI_OBJECT_TYPE_PORT)
+        {
+            sai_object_id_t switchVid = VidManager::switchIdQuery(objectVids[idx]);
+            m_switches.at(switchVid)->collectPortRelatedObjects(objectRids[idx]);
+        }
     }
 
     status = m_vendorSai->bulkRemove(
@@ -1636,6 +1658,11 @@ sai_status_t Syncd::processBulkOidRemove(
             if (m_switches.at(switchVid)->isDiscoveredRid(objectRids[idx]))
             {
                 m_switches.at(switchVid)->removeExistingObjectReference(objectRids[idx]);
+            }
+
+            if (objectType == SAI_OBJECT_TYPE_PORT)
+            {
+                m_switches.at(switchVid)->postPortRemove(objectRids[idx]);
             }
         }
     }
@@ -3247,6 +3274,7 @@ sai_status_t Syncd::processNotifySyncd(
     SWSS_LOG_ENTER();
 
     auto& key = kfvKey(kco);
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     if (!m_commandLineOptions->m_enableTempView)
     {
@@ -3258,6 +3286,20 @@ sai_status_t Syncd::processNotifySyncd(
     }
 
     auto redisNotifySyncd = sai_deserialize_redis_notify_syncd(key);
+
+    if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP)
+    {
+        SWSS_LOG_NOTICE("Invoking SAI failure dump");
+        std::string ret_str;
+        int ret = swss::exec(SAI_FAILURE_DUMP_SCRIPT, ret_str);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Error in executing SAI failure dump %s", ret_str.c_str());
+            status = SAI_STATUS_FAILURE;
+        }
+        sendNotifyResponse(status);
+        return status;
+    }
 
     if (m_veryFirstRun && m_firstInitWasPerformed && redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW)
     {
@@ -3273,7 +3315,6 @@ sai_status_t Syncd::processNotifySyncd(
     {
         SWSS_LOG_NOTICE("very first run is TRUE, op = %s", key.c_str());
 
-        sai_status_t status = SAI_STATUS_SUCCESS;
 
         /*
          * On the very first start of syncd, "compile" view is directly applied
@@ -3348,7 +3389,6 @@ sai_status_t Syncd::processNotifySyncd(
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
 
-        sai_status_t status;
 
         try
         {

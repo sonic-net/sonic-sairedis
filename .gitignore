@@ -65,7 +65,8 @@ meta/tests.log
 meta/tests.trs
 
 syncd/test-suite.log
-syncd/tests
+syncd/sai_warmboot.bin
+syncd/tests/sai_warmboot.bin
 
 tests/applyview.log
 tests/brcm.pl.log
@@ -96,6 +97,8 @@ saiplayer/saiplayer
 saisdkdump/saisdkdump
 syncd/syncd
 syncd/syncd_request_shutdown
+syncd/syncd_tests
+syncd/tests/tests
 tests/syncd
 tests/testclient
 tests/tests
@@ -119,8 +122,6 @@ vslib/tests
 **/*.gcov
 
 tests/applyview.log
-tests/sai_warmboot.bin.bak
-tests/sai_warmboot.bin
 tests/[0-9]*
 
 pyext/py2/pysairedis.py

@@ -38,6 +38,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_debug_counter.cpp \
 						 sai_redis_dtel.cpp \
 						 sai_redis_fdb.cpp \
+						 sai_redis_genericprogrammable.cpp \
 						 sai_redis_hash.cpp \
 						 sai_redis_hostif.cpp \
 						 sai_redis_interfacequery.cpp \

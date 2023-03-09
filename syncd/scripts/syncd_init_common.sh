@@ -31,6 +31,9 @@ if [[ "$(cat /proc/cmdline)" != *"SONIC_BOOT_TYPE=fast-reboot"* ]]; then
     CMD_ARGS+=" -u"
 fi
 
+# Create a folder for SAI failure dump files
+mkdir -p /var/log/sai_failure_dump/
+
 # Use bulk APIs in SAI
 # currently disabled since most vendors don't support that yet
 # CMD_ARGS+=" -l"
@@ -49,7 +52,8 @@ case "$(cat /proc/cmdline)" in
     ;;
   *SONIC_BOOT_TYPE=fast*|*fast-reboot*)
     # check that the key exists
-    if [[ $(sonic-db-cli STATE_DB GET "FAST_REBOOT|system") == "1" ]]; then
+    SYSTEM_FAST_REBOOT=`sonic-db-cli STATE_DB GET "FAST_RESTART_ENABLE_TABLE|system"`
+    if [[ ${SYSTEM_FAST_REBOOT} == "enable" ]]; then
        FAST_REBOOT='yes'
     else
        FAST_REBOOT='no'
@@ -92,6 +96,7 @@ config_syncd_cisco_8000()
 {
     export BASE_OUTPUT_DIR=/opt/cisco/silicon-one
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    CMD_ARGS+=" -l"
 
     # Cisco SDK debug shell support
     version=$(python3 -V 2>&1 | sed 's/.* \([0-9]\).\([0-9]\).*/\1\.\2/')
@@ -188,12 +193,16 @@ config_syncd_bcm()
 
 config_syncd_mlnx()
 {
-    CMD_ARGS+=" -p /tmp/sai.profile"
+    CMD_ARGS+=" -l -p /tmp/sai.profile"
 
     [ -e /dev/sxdevs/sxcdev ] || ( mkdir -p /dev/sxdevs && mknod /dev/sxdevs/sxcdev c 231 193 )
 
     # Read MAC address
     MAC_ADDRESS="$(echo $SYNCD_VARS | jq -r '.mac')"
+
+    # Read dual ToR and DSCP remapping information
+    DUAL_TOR="$(echo $SYNCD_VARS | jq -r '.dual_tor')"
+    DSCP_REMAPPING="$(echo $SYNCD_VARS | jq -r '.dscp_remapping')"
 
     # Make default sai.profile
     if [[ -f $HWSKU_DIR/sai.profile.j2 ]]; then
@@ -206,6 +215,14 @@ config_syncd_mlnx()
     # Update sai.profile with MAC_ADDRESS and WARM_BOOT settings
     echo "DEVICE_MAC_ADDRESS=$MAC_ADDRESS" >> /tmp/sai.profile
     echo "SAI_WARM_BOOT_WRITE_FILE=/var/warmboot/" >> /tmp/sai.profile
+
+    if [[ "$DUAL_TOR" == "enable" ]] && [[ "$DSCP_REMAPPING" == "enable" ]]; then
+       echo "SAI_DSCP_REMAPPING_ENABLED=1" >> /tmp/sai.profile
+    fi
+
+    if [[ "$DUAL_TOR" == "enable" ]]; then
+       echo "SAI_ADDITIONAL_MAC_ENABLED=1" >> /tmp/sai.profile
+    fi
 
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
     if [ ! -d "$SDK_DUMP_PATH" ]; then
@@ -284,7 +301,7 @@ config_syncd_nephos()
 
 config_syncd_vs()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
 }
 
 config_syncd_soda()

@@ -42,6 +42,30 @@ static sai_status_t vs_switch_mdio_write(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+static sai_status_t vs_switch_mdio_cl22_read(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _Out_ uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+static sai_status_t vs_switch_mdio_cl22_write(
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t device_addr,
+        _In_ uint32_t start_reg_addr,
+        _In_ uint32_t number_of_registers,
+        _In_ const uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 const sai_switch_api_t vs_switch_api = {
 
     vs_create_switch_uniq,
@@ -55,5 +79,6 @@ const sai_switch_api_t vs_switch_api = {
     vs_switch_mdio_write,
 
     VS_GENERIC_QUAD_API(switch_tunnel)
-
+    vs_switch_mdio_cl22_read,
+    vs_switch_mdio_cl22_write
 };

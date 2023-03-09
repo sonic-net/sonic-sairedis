@@ -8,11 +8,13 @@ static sai_status_t redis_remove_all_neighbor_entries(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+REDIS_BULK_QUAD_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 REDIS_GENERIC_QUAD_ENTRY(NEIGHBOR_ENTRY,neighbor_entry);
 
 const sai_neighbor_api_t redis_neighbor_api = {
 
     REDIS_GENERIC_QUAD_API(neighbor_entry)
-
     redis_remove_all_neighbor_entries,
+
+    REDIS_BULK_QUAD_API(neighbor_entry)
 };
