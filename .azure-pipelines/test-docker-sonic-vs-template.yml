@@ -95,7 +95,8 @@ jobs:
       fi
       rm -rf $(Build.ArtifactStagingDirectory)/download
     displayName: "Run vs tests"
-    continueOnError: ${{ parameters.asan }}
+    ${{ if ne(variables['Build.Reason'], 'PullRequest') }}:
+      continueOnError: true
 
   - task: PublishTestResults@2
     inputs:
