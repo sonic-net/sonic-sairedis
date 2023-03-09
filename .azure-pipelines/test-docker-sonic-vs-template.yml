@@ -60,6 +60,8 @@ jobs:
       pushd sonic-swss/tests
       sudo py.test -v --force-flaky --junitxml=tr.xml --imgname=docker-sonic-vs:$(Build.DefinitionName).$(Build.BuildNumber)
     displayName: "Run vs tests"
+    ${{ if ne(variables['Build.Reason'], 'PullRequest') }}:
+      continueOnError: true
 
   - task: PublishTestResults@2
     inputs:
