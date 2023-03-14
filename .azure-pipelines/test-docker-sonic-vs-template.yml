@@ -96,7 +96,7 @@ jobs:
       fi
       rm -rf $(Build.ArtifactStagingDirectory)/download
     displayName: "Run vs tests"
-    ${{ if ne(variables['Build.Reason'], 'PullRequest') }}:
+    ${{ if or(ne(variables['Build.Reason'], 'PullRequest'), eq(parameters.asan, true)) }}:
       continueOnError: true
 
   - task: PublishTestResults@2
