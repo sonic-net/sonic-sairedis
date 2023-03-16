@@ -104,7 +104,11 @@ TEST(MdioIpcServer, mdioCl22Write)
     strcpy(path, SYNCD_IPC_SOCK_SYNCD);
     if (open(path, O_DIRECTORY) < 0)
     {
-        mkdir(SYNCD_IPC_SOCK_SYNCD, 0755);
+        SWSS_LOG_NOTICE("Directory %s does not exist", SYNCD_IPC_SOCK_SYNCD);
+        if (mkdir(SYNCD_IPC_SOCK_SYNCD, 0755) < 0)
+        {
+            SWSS_LOG_WARN("Can not create directory %s", SYNCD_IPC_SOCK_SYNCD);
+        }
     }
     mdioDevCl22RegValMap.clear();
     std::shared_ptr<MdioIpcServer> mdio_server(new MdioIpcServer(mdio_sai, 0));
@@ -130,7 +134,11 @@ TEST(MdioIpcServer, mdioCl22Read)
     strcpy(path, SYNCD_IPC_SOCK_SYNCD);
     if (open(path, O_DIRECTORY) < 0)
     {
-        mkdir(SYNCD_IPC_SOCK_SYNCD, 0755);
+        SWSS_LOG_NOTICE("Directory %s does not exist", SYNCD_IPC_SOCK_SYNCD);
+        if (mkdir(SYNCD_IPC_SOCK_SYNCD, 0755) < 0)
+        {
+            SWSS_LOG_WARN("Can not create directory %s", SYNCD_IPC_SOCK_SYNCD);
+        }
     }
     mdioDevCl22RegValMap.clear();
     std::shared_ptr<MdioIpcServer> mdio_server(new MdioIpcServer(mdio_sai, 0));
@@ -157,7 +165,11 @@ TEST(MdioIpcServer, mdioWrite)
     strcpy(path, SYNCD_IPC_SOCK_SYNCD);
     if (open(path, O_DIRECTORY) < 0)
     {
-        mkdir(SYNCD_IPC_SOCK_SYNCD, 0755);
+        SWSS_LOG_NOTICE("Directory %s does not exist", SYNCD_IPC_SOCK_SYNCD);
+        if (mkdir(SYNCD_IPC_SOCK_SYNCD, 0755) < 0)
+        {
+            SWSS_LOG_WARN("Can not create directory %s", SYNCD_IPC_SOCK_SYNCD);
+        }
     }
     mdioDevRegValMap.clear();
     std::shared_ptr<MdioIpcServer> mdio_server(new MdioIpcServer(mdio_sai, 0));
@@ -183,7 +195,11 @@ TEST(MdioIpcServer, mdioRead)
     strcpy(path, SYNCD_IPC_SOCK_SYNCD);
     if (open(path, O_DIRECTORY) < 0)
     {
-        mkdir(SYNCD_IPC_SOCK_SYNCD, 0755);
+        SWSS_LOG_NOTICE("Directory %s does not exist", SYNCD_IPC_SOCK_SYNCD);
+        if (mkdir(SYNCD_IPC_SOCK_SYNCD, 0755) < 0)
+        {
+            SWSS_LOG_WARN("Can not create directory %s", SYNCD_IPC_SOCK_SYNCD);
+        }
     }
     mdioDevRegValMap.clear();
     std::shared_ptr<MdioIpcServer> mdio_server(new MdioIpcServer(mdio_sai, 0));
