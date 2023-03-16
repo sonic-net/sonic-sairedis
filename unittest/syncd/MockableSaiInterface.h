@@ -154,6 +154,42 @@ class MockableSaiInterface: public saimeta::DummySaiInterface
 
         std::function<sai_status_t(sai_object_id_t, uint32_t, const sai_attribute_t *)> mock_flushFdbEntries;
 
+       virtual sai_status_t switchMdioRead(
+               _In_ sai_object_id_t switchId,
+               _In_ uint32_t device_addr,
+               _In_ uint32_t start_reg_addr,
+               _In_ uint32_t number_of_registers,
+               _Out_ uint32_t *reg_val) override;
+
+        std::function<sai_status_t(sai_object_id_t, uint32_t, uint32_t, uint32_t, uint32_t *)> mock_switchMdioRead;
+
+       virtual sai_status_t switchMdioWrite(
+               _In_ sai_object_id_t switchId,
+               _In_ uint32_t device_addr,
+               _In_ uint32_t start_reg_addr,
+               _In_ uint32_t number_of_registers,
+               _In_ const uint32_t *reg_val) override;
+
+        std::function<sai_status_t(sai_object_id_t, uint32_t, uint32_t, uint32_t, const uint32_t *)> mock_switchMdioWrite;
+
+       virtual sai_status_t switchMdioCl22Read(
+               _In_ sai_object_id_t switchId,
+               _In_ uint32_t device_addr,
+               _In_ uint32_t start_reg_addr,
+               _In_ uint32_t number_of_registers,
+               _Out_ uint32_t *reg_val) override;
+
+        std::function<sai_status_t(sai_object_id_t, uint32_t, uint32_t, uint32_t, uint32_t *)> mock_switchMdioCl22Read;
+
+       virtual sai_status_t switchMdioCl22Write(
+               _In_ sai_object_id_t switchId,
+               _In_ uint32_t device_addr,
+               _In_ uint32_t start_reg_addr,
+               _In_ uint32_t number_of_registers,
+               _In_ const uint32_t *reg_val) override;
+
+        std::function<sai_status_t(sai_object_id_t, uint32_t, uint32_t, uint32_t, const uint32_t *)> mock_switchMdioCl22Write;
+
     public: // SAI API
 
         virtual sai_status_t objectTypeGetAvailability(

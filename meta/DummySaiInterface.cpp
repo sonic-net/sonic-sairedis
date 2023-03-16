@@ -131,6 +131,54 @@ sai_status_t DummySaiInterface::flushFdbEntries(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::switchMdioRead(
+    _In_ sai_object_id_t switchId,
+    _In_ uint32_t device_addr,
+    _In_ uint32_t start_reg_addr,
+    _In_ uint32_t number_of_registers,
+    _Out_ uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::switchMdioWrite(
+    _In_ sai_object_id_t switchId,
+    _In_ uint32_t device_addr,
+    _In_ uint32_t start_reg_addr,
+    _In_ uint32_t number_of_registers,
+    _In_ const uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::switchMdioCl22Read(
+    _In_ sai_object_id_t switchId,
+    _In_ uint32_t device_addr,
+    _In_ uint32_t start_reg_addr,
+    _In_ uint32_t number_of_registers,
+    _Out_ uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::switchMdioCl22Write(
+    _In_ sai_object_id_t switchId,
+    _In_ uint32_t device_addr,
+    _In_ uint32_t start_reg_addr,
+    _In_ uint32_t number_of_registers,
+    _In_ const uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
 sai_status_t DummySaiInterface::objectTypeGetAvailability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
