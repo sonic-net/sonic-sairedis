@@ -3258,7 +3258,7 @@ sai_status_t Meta::meta_generic_validation_remove(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
@@ -3540,7 +3540,7 @@ sai_status_t Meta::meta_sai_validate_oid(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_oid).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -3883,7 +3883,7 @@ sai_status_t Meta::meta_sai_validate_mcast_fdb_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_bv).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // check if fdb entry exists
@@ -3910,7 +3910,7 @@ sai_status_t Meta::meta_sai_validate_mcast_fdb_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_fdb).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // fdb entry is valid
@@ -3980,7 +3980,7 @@ sai_status_t Meta::meta_sai_validate_neighbor_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_rif).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     sai_object_meta_key_t meta_key_neighbor = { .objecttype = SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, .objectkey = { .key = { .neighbor_entry = *neighbor_entry } } };
@@ -4005,7 +4005,7 @@ sai_status_t Meta::meta_sai_validate_neighbor_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_neighbor).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // neighbor entry is valid
@@ -4087,7 +4087,7 @@ sai_status_t Meta::meta_sai_validate_route_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_vr).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // check if route entry exists
@@ -4114,7 +4114,7 @@ sai_status_t Meta::meta_sai_validate_route_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_route).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -4210,7 +4210,7 @@ sai_status_t Meta::meta_sai_validate_l2mc_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_bv).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // check if l2mc entry exists
@@ -4237,7 +4237,7 @@ sai_status_t Meta::meta_sai_validate_l2mc_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_route).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -4333,7 +4333,7 @@ sai_status_t Meta::meta_sai_validate_ipmc_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_bv).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // check if ipmc entry exists
@@ -4360,7 +4360,7 @@ sai_status_t Meta::meta_sai_validate_ipmc_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_route).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -4416,7 +4416,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_vr).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // check if NAT entry exists
@@ -4441,7 +4441,7 @@ sai_status_t Meta::meta_sai_validate_nat_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_nat).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -4515,7 +4515,7 @@ sai_status_t Meta::meta_sai_validate_my_sid_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key_vr).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // check if my_sid_entry exists
@@ -4540,7 +4540,7 @@ sai_status_t Meta::meta_sai_validate_my_sid_entry(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                     sai_serialize_object_meta_key(meta_key_my_sid_entry).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -5722,7 +5722,7 @@ sai_status_t Meta::meta_generic_validation_set(
         META_LOG_ERROR(md, "object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     // object exists in DB so we can do "set" operation
@@ -6034,7 +6034,7 @@ sai_status_t Meta::meta_generic_validation_get(
         SWSS_LOG_ERROR("object key %s doesn't exist",
                 sai_serialize_object_meta_key(meta_key).c_str());
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return SAI_STATUS_ITEM_NOT_FOUND;
     }
 
     auto info = sai_metadata_get_object_type_info(meta_key.objecttype);
