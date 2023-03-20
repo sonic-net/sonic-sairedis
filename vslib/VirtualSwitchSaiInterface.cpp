@@ -412,7 +412,7 @@ sai_status_t VirtualSwitchSaiInterface::remove(                 \
     SWSS_LOG_ENTER();                                           \
     return remove(                                              \
             entry->switch_id,                                   \
-            SAI_OBJECT_TYPE_ ## OT,                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
             sai_serialize_ ## ot(*entry));                      \
 }
 
@@ -430,7 +430,7 @@ sai_status_t VirtualSwitchSaiInterface::create(                 \
     timer.start();                                              \
     auto status =  create(                                      \
             entry->switch_id,                                   \
-            SAI_OBJECT_TYPE_ ## OT,                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
             sai_serialize_ ## ot(*entry),                       \
             attr_count,                                         \
             attr_list);                                         \
@@ -449,12 +449,88 @@ sai_status_t VirtualSwitchSaiInterface::set(                    \
     SWSS_LOG_ENTER();                                           \
     return set(                                                 \
             entry->switch_id,                                   \
-            SAI_OBJECT_TYPE_ ## OT,                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
             sai_serialize_ ## ot(*entry),                       \
             attr);                                              \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
+
+#define DECLARE_BULK_CREATE_ENTRY(OT,ot)                              \
+sai_status_t VirtualSwitchSaiInterface::bulkCreate(                   \
+        _In_ uint32_t object_count,                                   \
+        _In_ const sai_ ## ot ## _t* ot,                              \
+        _In_ const uint32_t *attr_count,                              \
+        _In_ const sai_attribute_t **attr_list,                       \
+        _In_ sai_bulk_op_error_mode_t mode,                           \
+        _Out_ sai_status_t *object_statuses)                          \
+{                                                                     \
+    SWSS_LOG_ENTER();                                                 \
+    std::vector<std::string> serialized_object_ids;                   \
+    for (uint32_t idx = 0; idx < object_count; idx++)                 \
+    {                                                                 \
+        std::string str_object_id = sai_serialize_ ##ot (ot[idx]);    \
+        serialized_object_ids.push_back(str_object_id);               \
+    }                                                                 \
+    return bulkCreate(                                                \
+            ot->switch_id,                                            \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                \
+            serialized_object_ids,                                    \
+            attr_count,                                               \
+            attr_list,                                                \
+            mode,                                                     \
+            object_statuses);                                         \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY);
+
+#define DECLARE_BULK_REMOVE_ENTRY(OT,ot)                                   \
+sai_status_t VirtualSwitchSaiInterface::bulkRemove(                        \
+        _In_ uint32_t object_count,                                        \
+        _In_ const sai_ ## ot ## _t* ot,                                   \
+        _In_ sai_bulk_op_error_mode_t mode,                                \
+        _Out_ sai_status_t *object_statuses)                               \
+{                                                                          \
+    SWSS_LOG_ENTER();                                                      \
+    std::vector<std::string> serializedObjectIds;                          \
+    for (uint32_t idx = 0; idx < object_count; idx++)                      \
+    {                                                                      \
+        serializedObjectIds.emplace_back(sai_serialize_ ##ot (ot[idx]));   \
+    }                                                                      \
+    return bulkRemove(                                                     \
+            ot->switch_id,                                                 \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                     \
+            serializedObjectIds,                                           \
+            mode,                                                          \
+            object_statuses);                                              \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY);
+
+#define DECLARE_BULK_SET_ENTRY(OT,ot)                                      \
+sai_status_t VirtualSwitchSaiInterface::bulkSet(                           \
+        _In_ uint32_t object_count,                                        \
+        _In_ const sai_ ## ot ## _t* ot,                                   \
+        _In_ const sai_attribute_t *attr_list,                             \
+        _In_ sai_bulk_op_error_mode_t mode,                                \
+        _Out_ sai_status_t *object_statuses)                               \
+{                                                                          \
+    SWSS_LOG_ENTER();                                                      \
+    std::vector<std::string> serializedObjectIds;                          \
+    for (uint32_t idx = 0; idx < object_count; idx++)                      \
+    {                                                                      \
+        serializedObjectIds.emplace_back(sai_serialize_ ##ot (ot[idx]));   \
+    }                                                                      \
+    return bulkSet(                                                        \
+            ot->switch_id,                                                 \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                     \
+            serializedObjectIds,                                           \
+            attr_list,                                                     \
+            mode,                                                          \
+            object_statuses);                                              \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
 
 std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
         _In_ sai_object_id_t switch_id,
@@ -715,7 +791,7 @@ sai_status_t VirtualSwitchSaiInterface::get(                    \
     SWSS_LOG_ENTER();                                           \
     return get(                                                 \
             entry->switch_id,                                   \
-            SAI_OBJECT_TYPE_ ## OT,                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
             sai_serialize_ ## ot(*entry),                       \
             attr_count,                                         \
             attr_list);                                         \
@@ -1027,114 +1103,6 @@ sai_status_t VirtualSwitchSaiInterface::bulkRemove(
     return bulkRemove(switchId, object_type, serializedObjectIds, mode, object_statuses);
 }
 
-sai_status_t VirtualSwitchSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_route_entry(route_entry[idx]));
-    }
-
-    return bulkRemove(route_entry->switch_id, SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_my_sid_entry_t *my_sid_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_my_sid_entry(my_sid_entry[idx]));
-    }
-
-    return bulkRemove(my_sid_entry->switch_id, SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_neighbor_entry(neighbor_entry[idx]));
-    }
-
-    return bulkRemove(neighbor_entry->switch_id, SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_nat_entry_t *nat_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_nat_entry(nat_entry[idx]));
-    }
-
-    return bulkRemove(nat_entry->switch_id, SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_inseg_entry_t *inseg_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_inseg_entry(inseg_entry[idx]));
-    }
-
-    return bulkRemove(inseg_entry->switch_id, SAI_OBJECT_TYPE_INSEG_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_fdb_entry(fdb_entry[idx]));
-    }
-
-    return bulkRemove(fdb_entry->switch_id, SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
 sai_status_t VirtualSwitchSaiInterface::bulkSet(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t object_count,
@@ -1155,120 +1123,6 @@ sai_status_t VirtualSwitchSaiInterface::bulkSet(
     auto switchId = switchIdQuery(*object_id);
 
     return bulkSet(switchId, object_type, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_route_entry(route_entry[idx]));
-    }
-
-    return bulkSet(route_entry->switch_id, SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_my_sid_entry_t *my_sid_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_my_sid_entry(my_sid_entry[idx]));
-    }
-
-    return bulkSet(my_sid_entry->switch_id, SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_neighbor_entry(neighbor_entry[idx]));
-    }
-
-    return bulkSet(neighbor_entry->switch_id, SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_nat_entry_t *nat_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_nat_entry(nat_entry[idx]));
-    }
-
-    return bulkSet(nat_entry->switch_id, SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_inseg_entry_t *inseg_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_inseg_entry(inseg_entry[idx]));
-    }
-
-    return bulkSet(inseg_entry->switch_id, SAI_OBJECT_TYPE_INSEG_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_fdb_entry(fdb_entry[idx]));
-    }
-
-    return bulkSet(fdb_entry->switch_id, SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
 }
 
 sai_status_t VirtualSwitchSaiInterface::bulkSet(
@@ -1309,6 +1163,7 @@ sai_status_t VirtualSwitchSaiInterface::bulkCreate(
     // on create vid is put in db by syncd
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
+        object_id[idx] = m_realObjectIdManager->allocateNewObjectId(object_type, switch_id);
         std::string str_object_id = sai_serialize_object_id(object_id[idx]);
         serialized_object_ids.push_back(str_object_id);
     }
@@ -1337,180 +1192,6 @@ sai_status_t VirtualSwitchSaiInterface::bulkCreate(
     auto ss = m_switchStateMap.at(switchId);
 
     return ss->bulkCreate(switchId, object_type, serialized_object_ids, attr_count, attr_list, mode, object_statuses);;
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_route_entry(route_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            route_entry->switch_id,
-            SAI_OBJECT_TYPE_ROUTE_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_fdb_entry(fdb_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            fdb_entry->switch_id,
-            SAI_OBJECT_TYPE_FDB_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_inseg_entry_t* inseg_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_inseg_entry(inseg_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            inseg_entry->switch_id,
-            SAI_OBJECT_TYPE_INSEG_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_my_sid_entry_t* my_sid_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_my_sid_entry(my_sid_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            my_sid_entry->switch_id,
-            SAI_OBJECT_TYPE_MY_SID_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_neighbor_entry(neighbor_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            neighbor_entry->switch_id,
-            SAI_OBJECT_TYPE_NEIGHBOR_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-}
-
-sai_status_t VirtualSwitchSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_nat_entry_t* nat_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_nat_entry(nat_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            nat_entry->switch_id,
-            SAI_OBJECT_TYPE_NAT_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
 }
 
 sai_object_type_t VirtualSwitchSaiInterface::objectTypeQuery(

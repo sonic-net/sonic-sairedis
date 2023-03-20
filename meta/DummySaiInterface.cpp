@@ -116,10 +116,55 @@ sai_status_t DummySaiInterface::get(                \
     return m_status;                                \
 }
 
+#define DECLARE_BULK_CREATE_ENTRY(OT,ot)                \
+sai_status_t DummySaiInterface::bulkCreate(             \
+        _In_ uint32_t object_count,                     \
+        _In_ const sai_ ## ot ## _t* ot,                \
+        _In_ const uint32_t *attr_count,                \
+        _In_ const sai_attribute_t **attr_list,         \
+        _In_ sai_bulk_op_error_mode_t mode,             \
+        _Out_ sai_status_t *object_statuses)            \
+{                                                       \
+    SWSS_LOG_ENTER();                                   \
+    for (uint32_t idx = 0; idx < object_count; idx++)   \
+        object_statuses[idx] = m_status;                \
+    return m_status;                                    \
+}
+
+#define DECLARE_BULK_REMOVE_ENTRY(OT,ot)                \
+sai_status_t DummySaiInterface::bulkRemove(             \
+        _In_ uint32_t object_count,                     \
+        _In_ const sai_ ## ot ## _t* ot,                \
+        _In_ sai_bulk_op_error_mode_t mode,             \
+        _Out_ sai_status_t *object_statuses)            \
+{                                                       \
+    SWSS_LOG_ENTER();                                   \
+    for (uint32_t idx = 0; idx < object_count; idx++)   \
+        object_statuses[idx] = m_status;                \
+    return m_status;                                    \
+}
+
+#define DECLARE_BULK_SET_ENTRY(OT,ot)                   \
+sai_status_t DummySaiInterface::bulkSet(                \
+        _In_ uint32_t object_count,                     \
+        _In_ const sai_ ## ot ## _t* ot,                \
+        _In_ const sai_attribute_t *attr_list,          \
+        _In_ sai_bulk_op_error_mode_t mode,             \
+        _Out_ sai_status_t *object_statuses)            \
+{                                                       \
+    SWSS_LOG_ENTER();                                   \
+    for (uint32_t idx = 0; idx < object_count; idx++)   \
+        object_statuses[idx] = m_status;                \
+    return m_status;                                    \
+}
+
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY);
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY);
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
 
 sai_status_t DummySaiInterface::flushFdbEntries(
         _In_ sai_object_id_t switchId,
@@ -261,184 +306,10 @@ sai_status_t DummySaiInterface::bulkRemove(
     return m_status;
 }
 
-sai_status_t DummySaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_nat_entry_t *nat_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_inseg_entry_t *inseg_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_my_sid_entry_t *my_sid_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
 sai_status_t DummySaiInterface::bulkSet(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t object_count,
         _In_ const sai_object_id_t *object_id,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_nat_entry_t *nat_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_inseg_entry_t *inseg_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_my_sid_entry_t *my_sid_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
         _In_ const sai_attribute_t *attr_list,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
@@ -459,102 +330,6 @@ sai_status_t DummySaiInterface::bulkCreate(
         _In_ const sai_attribute_t **attr_list,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_object_id_t *object_id,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_inseg_entry_t *inseg_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_nat_entry_t *nat_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_my_sid_entry_t *my_sid_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-        object_statuses[idx] = m_status;
-
-    return m_status;
-}
-
-sai_status_t DummySaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();

@@ -869,7 +869,8 @@ void Recorder::recordRemove(                                            \
         _In_ const sai_ ## ot ## _t* ot)                                \
 {                                                                       \
     SWSS_LOG_ENTER();                                                   \
-    recordRemove(SAI_OBJECT_TYPE_ ## OT, sai_serialize_ ## ot(*ot));    \
+    recordRemove((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,             \
+        sai_serialize_ ## ot(*ot));                                     \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_REMOVE_ENTRY);
@@ -881,7 +882,8 @@ void Recorder::recordCreate(                                                    
         _In_ const sai_attribute_t *attr_list)                                                  \
 {                                                                                               \
     SWSS_LOG_ENTER();                                                                           \
-    recordCreate(SAI_OBJECT_TYPE_ ## OT, sai_serialize_ ## ot(*ot), attr_count, attr_list);     \
+    recordCreate((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                     \
+        sai_serialize_ ## ot(*ot), attr_count, attr_list);                                      \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_CREATE_ENTRY);
@@ -892,7 +894,8 @@ void Recorder::recordSet(                                                       
         _In_ const sai_attribute_t *attr)                                                       \
 {                                                                                               \
     SWSS_LOG_ENTER();                                                                           \
-    recordSet(SAI_OBJECT_TYPE_ ## OT, sai_serialize_ ## ot(*ot), attr);                         \
+    recordSet((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                        \
+        sai_serialize_ ## ot(*ot), attr);                                                       \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_SET_ENTRY);
@@ -904,7 +907,8 @@ void Recorder::recordGet(                                                       
         _In_ const sai_attribute_t *attr_list)                                                  \
 {                                                                                               \
     SWSS_LOG_ENTER();                                                                           \
-    recordGet(SAI_OBJECT_TYPE_ ## OT, sai_serialize_ ## ot(*ot), attr_count, attr_list);        \
+    recordGet((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                        \
+        sai_serialize_ ## ot(*ot), attr_count, attr_list);                                      \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_RECORD_GET_ENTRY);

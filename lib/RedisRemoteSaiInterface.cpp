@@ -541,7 +541,7 @@ sai_status_t RedisRemoteSaiInterface::remove(                   \
 {                                                               \
     SWSS_LOG_ENTER();                                           \
     return remove(                                              \
-            SAI_OBJECT_TYPE_ ## OT,                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
             sai_serialize_ ## ot(*ot));                         \
 }
 
@@ -555,7 +555,7 @@ sai_status_t RedisRemoteSaiInterface::create(                   \
 {                                                               \
     SWSS_LOG_ENTER();                                           \
     return create(                                              \
-            SAI_OBJECT_TYPE_ ## OT,                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
             sai_serialize_ ## ot(*ot),                          \
             attr_count,                                         \
             attr_list);                                         \
@@ -570,12 +570,81 @@ sai_status_t RedisRemoteSaiInterface::set(                      \
 {                                                               \
     SWSS_LOG_ENTER();                                           \
     return set(                                                 \
-            SAI_OBJECT_TYPE_ ## OT,                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
             sai_serialize_ ## ot(*ot),                          \
             attr);                                              \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
+
+#define DECLARE_BULK_CREATE_ENTRY(OT,ot)                                                     \
+sai_status_t RedisRemoteSaiInterface::bulkCreate(                                            \
+        _In_ uint32_t object_count,                                                          \
+        _In_ const sai_ ## ot ## _t *ot,                                                     \
+        _In_ const uint32_t *attr_count,                                                     \
+        _In_ const sai_attribute_t **attr_list,                                              \
+        _In_ sai_bulk_op_error_mode_t mode,                                                  \
+        _Out_ sai_status_t *object_statuses)                                                 \
+{                                                                                            \
+    SWSS_LOG_ENTER();                                                                        \
+    static PerformanceIntervalTimer timer("RedisRemoteSaiInterface::bulkCreate(" #ot ")");   \
+    timer.start();                                                                           \
+    std::vector<std::string> serialized_object_ids;                                          \
+    for (uint32_t idx = 0; idx < object_count; idx++)                                        \
+    {                                                                                        \
+        std::string str_object_id = sai_serialize_ ##ot (ot[idx]);                           \
+        serialized_object_ids.push_back(str_object_id);                                      \
+    }                                                                                        \
+    auto status = bulkCreate(                                                                \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                       \
+            serialized_object_ids,                                                           \
+            attr_count,                                                                      \
+            attr_list,                                                                       \
+            mode,                                                                            \
+            object_statuses);                                                                \
+    timer.stop();                                                                            \
+    timer.inc(object_count);                                                                 \
+    return status;                                                                           \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY);
+
+#define DECLARE_BULK_REMOVE_ENTRY(OT,ot)                                                                        \
+sai_status_t RedisRemoteSaiInterface::bulkRemove(                                                               \
+        _In_ uint32_t object_count,                                                                             \
+        _In_ const sai_ ## ot ## _t *ot,                                                                        \
+        _In_ sai_bulk_op_error_mode_t mode,                                                                     \
+        _Out_ sai_status_t *object_statuses)                                                                    \
+{                                                                                                               \
+    SWSS_LOG_ENTER();                                                                                           \
+    std::vector<std::string> serializedObjectIds;                                                               \
+    for (uint32_t idx = 0; idx < object_count; idx++)                                                           \
+    {                                                                                                           \
+        serializedObjectIds.emplace_back(sai_serialize_ ##ot (ot[idx]));                                        \
+    }                                                                                                           \
+    return bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, serializedObjectIds, mode, object_statuses);   \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY);
+
+#define DECLARE_BULK_SET_ENTRY(OT,ot)                                                                                   \
+sai_status_t RedisRemoteSaiInterface::bulkSet(                                                                          \
+        _In_ uint32_t object_count,                                                                                     \
+        _In_ const sai_ ## ot ## _t *ot,                                                                                \
+        _In_ const sai_attribute_t *attr_list,                                                                          \
+        _In_ sai_bulk_op_error_mode_t mode,                                                                             \
+        _Out_ sai_status_t *object_statuses)                                                                            \
+{                                                                                                                       \
+    SWSS_LOG_ENTER();                                                                                                   \
+    std::vector<std::string> serializedObjectIds;                                                                       \
+    for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
+    {                                                                                                                   \
+        serializedObjectIds.emplace_back(sai_serialize_ ##ot (ot[idx]));                                                \
+    }                                                                                                                   \
+    return bulkSet((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, serializedObjectIds, attr_list, mode, object_statuses);   \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
 
 sai_status_t RedisRemoteSaiInterface::create(
         _In_ sai_object_type_t object_type,
@@ -787,7 +856,7 @@ sai_status_t RedisRemoteSaiInterface::get(                      \
 {                                                               \
     SWSS_LOG_ENTER();                                           \
     return get(                                                 \
-            SAI_OBJECT_TYPE_ ## OT,                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
             sai_serialize_ ## ot(*ot),                          \
             attr_count,                                         \
             attr_list);                                         \
@@ -1374,114 +1443,6 @@ sai_status_t RedisRemoteSaiInterface::bulkRemove(
     return bulkRemove(object_type, serializedObjectIds, mode, object_statuses);
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_route_entry(route_entry[idx]));
-    }
-
-    return bulkRemove(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_nat_entry_t *nat_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_nat_entry(nat_entry[idx]));
-    }
-
-    return bulkRemove(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_inseg_entry_t *inseg_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_inseg_entry(inseg_entry[idx]));
-    }
-
-    return bulkRemove(SAI_OBJECT_TYPE_INSEG_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_fdb_entry(fdb_entry[idx]));
-    }
-
-    return bulkRemove(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_my_sid_entry_t *my_sid_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_my_sid_entry(my_sid_entry[idx]));
-    }
-
-    return bulkRemove(SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_neighbor_entry(neighbor_entry[idx]));
-    }
-
-    return bulkRemove(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectIds, mode, object_statuses);
-}
-
 sai_status_t RedisRemoteSaiInterface::bulkSet(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t object_count,
@@ -1500,120 +1461,6 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
     }
 
     return bulkSet(object_type, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_route_entry_t *route_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_route_entry(route_entry[idx]));
-    }
-
-    return bulkSet(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_nat_entry_t *nat_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_nat_entry(nat_entry[idx]));
-    }
-
-    return bulkSet(SAI_OBJECT_TYPE_NAT_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_inseg_entry_t *inseg_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_inseg_entry(inseg_entry[idx]));
-    }
-
-    return bulkSet(SAI_OBJECT_TYPE_INSEG_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t *fdb_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_fdb_entry(fdb_entry[idx]));
-    }
-
-    return bulkSet(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_my_sid_entry_t *my_sid_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_my_sid_entry(my_sid_entry[idx]));
-    }
-
-    return bulkSet(SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_neighbor_entry_t *neighbor_entry,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    std::vector<std::string> serializedObjectIds;
-
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        serializedObjectIds.emplace_back(sai_serialize_neighbor_entry(neighbor_entry[idx]));
-    }
-
-    return bulkSet(SAI_OBJECT_TYPE_NEIGHBOR_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);
 }
 
 sai_status_t RedisRemoteSaiInterface::bulkSet(
@@ -1753,206 +1600,6 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     m_communicationChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_CREATE);
 
     return waitForBulkResponse(SAI_COMMON_API_BULK_CREATE, (uint32_t)serialized_object_ids.size(), object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_route_entry_t* route_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO support mode
-
-    static PerformanceIntervalTimer timer("RedisRemoteSaiInterface::bulkCreate(route_entry)");
-
-    timer.start();
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_route_entry(route_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    auto status = bulkCreate(
-            SAI_OBJECT_TYPE_ROUTE_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-
-    timer.stop();
-
-    timer.inc(object_count);
-
-    return status;
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_fdb_entry_t* fdb_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO support mode
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_fdb_entry(fdb_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            SAI_OBJECT_TYPE_FDB_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_inseg_entry_t* inseg_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO support mode
-
-    static PerformanceIntervalTimer timer("RedisRemoteSaiInterface::bulkCreate(inseg_entry)");
-
-    timer.start();
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_inseg_entry(inseg_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    auto status = bulkCreate(
-            SAI_OBJECT_TYPE_INSEG_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-
-    timer.stop();
-
-    timer.inc(object_count);
-
-    return status;
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_nat_entry_t* nat_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO support mode
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_nat_entry(nat_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            SAI_OBJECT_TYPE_NAT_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_my_sid_entry_t* my_sid_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO support mode
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_my_sid_entry(my_sid_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            SAI_OBJECT_TYPE_MY_SID_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-}
-
-sai_status_t RedisRemoteSaiInterface::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_neighbor_entry_t* neighbor_entry,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    SWSS_LOG_ENTER();
-
-    // TODO support mode
-
-    std::vector<std::string> serialized_object_ids;
-
-    // on create vid is put in db by syncd
-    for (uint32_t idx = 0; idx < object_count; idx++)
-    {
-        std::string str_object_id = sai_serialize_neighbor_entry(neighbor_entry[idx]);
-        serialized_object_ids.push_back(str_object_id);
-    }
-
-    return bulkCreate(
-            SAI_OBJECT_TYPE_NEIGHBOR_ENTRY,
-            serialized_object_ids,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
 }
 
 sai_status_t RedisRemoteSaiInterface::notifySyncd(

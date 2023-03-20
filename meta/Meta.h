@@ -453,31 +453,38 @@ namespace saimeta
 
             sai_status_t meta_sai_validate_neighbor_entry(
                     _In_ const sai_neighbor_entry_t* neighbor_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_route_entry(
                     _In_ const sai_route_entry_t* route_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_l2mc_entry(
                     _In_ const sai_l2mc_entry_t* l2mc_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_ipmc_entry(
                     _In_ const sai_ipmc_entry_t* ipmc_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_nat_entry(
                     _In_ const sai_nat_entry_t* nat_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_inseg_entry(
                     _In_ const sai_inseg_entry_t* inseg_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
             sai_status_t meta_sai_validate_my_sid_entry(
                     _In_ const sai_my_sid_entry_t* my_sid_entry,
-                    _In_ bool create);
+                    _In_ bool create,
+                    _In_ bool get = false);
 
         public:
 

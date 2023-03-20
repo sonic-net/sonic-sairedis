@@ -256,60 +256,60 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>      vs_sai;
 
 // BULK QUAD
 
-#define VS_BULK_CREATE(OT,fname)                    \
-    static sai_status_t vs_bulk_create_ ## fname(   \
-            _In_ sai_object_id_t switch_id,         \
-            _In_ uint32_t object_count,             \
-            _In_ const uint32_t *attr_count,        \
-            _In_ const sai_attribute_t **attr_list, \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_object_id_t *object_id,       \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return vs_sai->bulkCreate(                      \
-            SAI_OBJECT_TYPE_ ## OT,                 \
-            switch_id,                              \
-            object_count,                           \
-            attr_count,                             \
-            attr_list,                              \
-            mode,                                   \
-            object_id,                              \
-            object_statuses);                       \
+#define VS_BULK_CREATE(OT,fname)                       \
+    static sai_status_t vs_bulk_create_ ## fname(      \
+            _In_ sai_object_id_t switch_id,            \
+            _In_ uint32_t object_count,                \
+            _In_ const uint32_t *attr_count,           \
+            _In_ const sai_attribute_t **attr_list,    \
+            _In_ sai_bulk_op_error_mode_t mode,        \
+            _Out_ sai_object_id_t *object_id,          \
+            _Out_ sai_status_t *object_statuses)       \
+{                                                      \
+    SWSS_LOG_ENTER();                                  \
+    return vs_sai->bulkCreate(                         \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, \
+            switch_id,                                 \
+            object_count,                              \
+            attr_count,                                \
+            attr_list,                                 \
+            mode,                                      \
+            object_id,                                 \
+            object_statuses);                          \
 }
 
-#define VS_BULK_REMOVE(OT,fname)                    \
-    static sai_status_t vs_bulk_remove_ ## fname(   \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_object_id_t *object_id,  \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return vs_sai->bulkRemove(                      \
-            SAI_OBJECT_TYPE_ ## OT,                 \
-            object_count,                           \
-            object_id,                              \
-            mode,                                   \
-            object_statuses);                       \
+#define VS_BULK_REMOVE(OT,fname)                       \
+    static sai_status_t vs_bulk_remove_ ## fname(      \
+            _In_ uint32_t object_count,                \
+            _In_ const sai_object_id_t *object_id,     \
+            _In_ sai_bulk_op_error_mode_t mode,        \
+            _Out_ sai_status_t *object_statuses)       \
+{                                                      \
+    SWSS_LOG_ENTER();                                  \
+    return vs_sai->bulkRemove(                         \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, \
+            object_count,                              \
+            object_id,                                 \
+            mode,                                      \
+            object_statuses);                          \
 }
 
-#define VS_BULK_SET(OT,fname)                       \
-    static sai_status_t vs_bulk_set_ ## fname(      \
-            _In_ uint32_t object_count,             \
-            _In_ const sai_object_id_t *object_id,  \
-            _In_ const sai_attribute_t *attr_list,  \
-            _In_ sai_bulk_op_error_mode_t mode,     \
-            _Out_ sai_status_t *object_statuses)    \
-{                                                   \
-    SWSS_LOG_ENTER();                               \
-    return vs_sai->bulkSet(                         \
-            SAI_OBJECT_TYPE_ ## OT,                 \
-            object_count,                           \
-            object_id,                              \
-            attr_list,                              \
-            mode,                                   \
-            object_statuses);                       \
+#define VS_BULK_SET(OT,fname)                          \
+    static sai_status_t vs_bulk_set_ ## fname(         \
+            _In_ uint32_t object_count,                \
+            _In_ const sai_object_id_t *object_id,     \
+            _In_ const sai_attribute_t *attr_list,     \
+            _In_ sai_bulk_op_error_mode_t mode,        \
+            _Out_ sai_status_t *object_statuses)       \
+{                                                      \
+    SWSS_LOG_ENTER();                                  \
+    return vs_sai->bulkSet(                            \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, \
+            object_count,                              \
+            object_id,                                 \
+            attr_list,                                 \
+            mode,                                      \
+            object_statuses);                          \
 }
 
 #define VS_BULK_GET(OT,fname)                       \
@@ -336,8 +336,11 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>      vs_sai;
 
 // BULK QUAD ENTRY
 
-#define VS_BULK_CREATE_ENTRY(OT,ot)                 \
-    static sai_status_t vs_bulk_create_ ## ot(      \
+#define VS_BULK_CREATE_ENTRY(OT,ot)   \
+    VS_BULK_CREATE_ENTRY_EX(OT,ot,ot)
+
+#define VS_BULK_CREATE_ENTRY_EX(OT,ot,fname)        \
+    static sai_status_t vs_bulk_create_ ## fname(   \
             _In_ uint32_t object_count,             \
             _In_ const sai_ ## ot ## _t *entry,     \
             _In_ const uint32_t *attr_count,        \
@@ -355,8 +358,11 @@ PRIVATE extern std::shared_ptr<sairedis::SaiInterface>      vs_sai;
             object_statuses);                       \
 }
 
-#define VS_BULK_REMOVE_ENTRY(OT,ot)                 \
-    static sai_status_t vs_bulk_remove_ ## ot(      \
+#define VS_BULK_REMOVE_ENTRY(OT,ot) \
+    VS_BULK_REMOVE_ENTRY_EX(OT, ot, ot)
+
+#define VS_BULK_REMOVE_ENTRY_EX(OT,ot,fname)        \
+    static sai_status_t vs_bulk_remove_ ## fname(   \
             _In_ uint32_t object_count,             \
             _In_ const sai_ ## ot ##_t *entry,      \
             _In_ sai_bulk_op_error_mode_t mode,     \

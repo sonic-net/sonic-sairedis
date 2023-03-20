@@ -180,10 +180,4 @@ TEST(ClientServerSai, bulk_neighbor_op)
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->bulkSet(2, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
-    css = std::make_shared<ClientServerSai>();
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_client_services));
-    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
-    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkSet(2, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
-    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
-
 }
