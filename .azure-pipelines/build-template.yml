@@ -74,21 +74,18 @@ jobs:
       sudo apt-get update
       sudo apt-get install -qq -y \
         qtbase5-dev \
-        libdbus-glib-1-2 \
         libdbus-glib-1-dev \
         libpcsclite-dev \
         docbook-to-man \
         docbook-utils \
         aspell-en \
-        libhiredis0.14 \
         libhiredis-dev \
         libnl-3-dev \
         libnl-genl-3-dev \
         libnl-route-3-dev \
         libnl-nf-3-dev \
         libnl-cli-3-dev \
-        swig3.0 \
-        libpython2.7-dev \
+        swig4.0 \
         libzmq5 \
         libzmq3-dev \
         autoconf-archive
@@ -161,7 +158,7 @@ jobs:
       if [ '${{ parameters.asan }}' == True ]; then
          extraflags='--enable-asan'
       fi
-      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS=$extraflags CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS=$extraflags DEB_BUILD_PROFILES=nopython2 CFLAGS="" CXXFLAGS="" binary-syncd-vs
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
