@@ -14,12 +14,23 @@ extern "C" {
 #define PRIVATE __attribute__((visibility("hidden")))
 
 PRIVATE extern const sai_acl_api_t                     vs_acl_api;
+PRIVATE extern const sai_ars_api_t                     vs_ars_api;
+PRIVATE extern const sai_ars_profile_api_t             vs_ars_profile_api;
 PRIVATE extern const sai_bfd_api_t                     vs_bfd_api;
 PRIVATE extern const sai_bmtor_api_t                   vs_bmtor_api;
 PRIVATE extern const sai_generic_programmable_api_t    vs_generic_programmable_api;
 PRIVATE extern const sai_bridge_api_t                  vs_bridge_api;
 PRIVATE extern const sai_buffer_api_t                  vs_buffer_api;
 PRIVATE extern const sai_counter_api_t                 vs_counter_api;
+PRIVATE extern const sai_dash_vip_api_t                vs_dash_vip_api;
+PRIVATE extern const sai_dash_pa_validation_api_t      vs_dash_pa_validation_api;
+PRIVATE extern const sai_dash_vnet_api_t               vs_dash_vnet_api;
+PRIVATE extern const sai_dash_outbound_routing_api_t   vs_dash_outbound_routing_api;
+PRIVATE extern const sai_dash_outbound_ca_to_pa_api_t  vs_dash_outbound_ca_to_pa_api;
+PRIVATE extern const sai_dash_inbound_routing_api_t    vs_dash_inbound_routing_api;
+PRIVATE extern const sai_dash_eni_api_t                vs_dash_eni_api;
+PRIVATE extern const sai_dash_direction_lookup_api_t   vs_dash_direction_lookup_api;
+PRIVATE extern const sai_dash_acl_api_t                vs_dash_acl_api;
 PRIVATE extern const sai_debug_counter_api_t           vs_debug_counter_api;
 PRIVATE extern const sai_dtel_api_t                    vs_dtel_api;
 PRIVATE extern const sai_fdb_api_t                     vs_fdb_api;

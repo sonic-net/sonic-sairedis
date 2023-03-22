@@ -1884,6 +1884,10 @@ void Meta::meta_generic_validation_post_remove(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+                // no special action required
+                break;
+
             default:
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
@@ -2741,6 +2745,328 @@ sai_status_t Meta::meta_sai_validate_my_sid_entry(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t Meta::meta_sai_validate_direction_lookup_entry(
+        _In_ const sai_direction_lookup_entry_t* direction_lookup_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (direction_lookup_entry == NULL)
+    {
+        SWSS_LOG_ERROR("direction_lookup_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_meta_key_t meta_key_direction_lookup_entry = {
+        .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY,
+        .objectkey = {
+            .key = { .direction_lookup_entry = *direction_lookup_entry }
+        }
+    };
+
+    if (create)
+    {
+        if (m_saiObjectCollection.objectExists(meta_key_direction_lookup_entry))
+        {
+            SWSS_LOG_ERROR("object key %s already exists",
+                    sai_serialize_object_meta_key(meta_key_direction_lookup_entry).c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+    if (!m_saiObjectCollection.objectExists(meta_key_direction_lookup_entry))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist",
+                    sai_serialize_object_meta_key(meta_key_direction_lookup_entry).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_eni_ether_address_map_entry(
+        _In_ const sai_eni_ether_address_map_entry_t* eni_ether_address_map_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (eni_ether_address_map_entry == NULL)
+    {
+        SWSS_LOG_ERROR("eni_ether_address_map_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_meta_key_t meta_key_eni_ether_address_map_entry = {
+        .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY,
+        .objectkey = {
+            .key = { .eni_ether_address_map_entry = *eni_ether_address_map_entry }
+        }
+    };
+
+    if (create)
+    {
+        if (m_saiObjectCollection.objectExists(meta_key_eni_ether_address_map_entry))
+        {
+            SWSS_LOG_ERROR("object key %s already exists",
+                    sai_serialize_object_meta_key(meta_key_eni_ether_address_map_entry).c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+    if (!m_saiObjectCollection.objectExists(meta_key_eni_ether_address_map_entry))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist",
+                    sai_serialize_object_meta_key(meta_key_eni_ether_address_map_entry).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_vip_entry(
+        _In_ const sai_vip_entry_t* vip_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (vip_entry == NULL)
+    {
+        SWSS_LOG_ERROR("vip_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_meta_key_t meta_key_vip_entry = {
+        .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_VIP_ENTRY,
+        .objectkey = {
+            .key = { .vip_entry = *vip_entry }
+        }
+    };
+
+    if (create)
+    {
+        if (m_saiObjectCollection.objectExists(meta_key_vip_entry))
+        {
+            SWSS_LOG_ERROR("object key %s already exists",
+                    sai_serialize_object_meta_key(meta_key_vip_entry).c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+    if (!m_saiObjectCollection.objectExists(meta_key_vip_entry))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist",
+                    sai_serialize_object_meta_key(meta_key_vip_entry).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_inbound_routing_entry(
+        _In_ const sai_inbound_routing_entry_t* inbound_routing_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (inbound_routing_entry == NULL)
+    {
+        SWSS_LOG_ERROR("inbound_routing_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_meta_key_t meta_key_inbound_routing_entry = {
+        .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY,
+        .objectkey = {
+            .key = { .inbound_routing_entry = *inbound_routing_entry }
+        }
+    };
+
+    if (create)
+    {
+        if (m_saiObjectCollection.objectExists(meta_key_inbound_routing_entry))
+        {
+            SWSS_LOG_ERROR("object key %s already exists",
+                    sai_serialize_object_meta_key(meta_key_inbound_routing_entry).c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+    if (!m_saiObjectCollection.objectExists(meta_key_inbound_routing_entry))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist",
+                    sai_serialize_object_meta_key(meta_key_inbound_routing_entry).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_pa_validation_entry(
+        _In_ const sai_pa_validation_entry_t* pa_validation_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (pa_validation_entry == NULL)
+    {
+        SWSS_LOG_ERROR("pa_validation_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_meta_key_t meta_key_pa_validation_entry = {
+        .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY,
+        .objectkey = {
+            .key = { .pa_validation_entry = *pa_validation_entry }
+        }
+    };
+
+    if (create)
+    {
+        if (m_saiObjectCollection.objectExists(meta_key_pa_validation_entry))
+        {
+            SWSS_LOG_ERROR("object key %s already exists",
+                    sai_serialize_object_meta_key(meta_key_pa_validation_entry).c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+    if (!m_saiObjectCollection.objectExists(meta_key_pa_validation_entry))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist",
+                    sai_serialize_object_meta_key(meta_key_pa_validation_entry).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_outbound_routing_entry(
+        _In_ const sai_outbound_routing_entry_t* outbound_routing_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (outbound_routing_entry == NULL)
+    {
+        SWSS_LOG_ERROR("outbound_routing_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_meta_key_t meta_key_outbound_routing_entry = {
+        .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY,
+        .objectkey = {
+            .key = { .outbound_routing_entry = *outbound_routing_entry }
+        }
+    };
+
+    if (create)
+    {
+        if (m_saiObjectCollection.objectExists(meta_key_outbound_routing_entry))
+        {
+            SWSS_LOG_ERROR("object key %s already exists",
+                    sai_serialize_object_meta_key(meta_key_outbound_routing_entry).c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+    if (!m_saiObjectCollection.objectExists(meta_key_outbound_routing_entry))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist",
+                    sai_serialize_object_meta_key(meta_key_outbound_routing_entry).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
+        _In_ const sai_outbound_ca_to_pa_entry_t* outbound_ca_to_pa_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (outbound_ca_to_pa_entry == NULL)
+    {
+        SWSS_LOG_ERROR("outbound_ca_to_pa_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_meta_key_t meta_key_outbound_ca_to_pa_entry = {
+        .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY,
+        .objectkey = {
+            .key = { .outbound_ca_to_pa_entry = *outbound_ca_to_pa_entry }
+        }
+    };
+
+    if (create)
+    {
+        if (m_saiObjectCollection.objectExists(meta_key_outbound_ca_to_pa_entry))
+        {
+            SWSS_LOG_ERROR("object key %s already exists",
+                    sai_serialize_object_meta_key(meta_key_outbound_ca_to_pa_entry).c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+    if (!m_saiObjectCollection.objectExists(meta_key_outbound_ca_to_pa_entry))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist",
+                    sai_serialize_object_meta_key(meta_key_outbound_ca_to_pa_entry).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t Meta::meta_generic_validation_create(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
@@ -3192,6 +3518,10 @@ sai_status_t Meta::meta_generic_validation_create(
                 break;
 
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+                VALIDATION_LIST(md, value.ipprefixlist);
                 break;
 
             default:
@@ -3859,6 +4189,10 @@ sai_status_t Meta::meta_generic_validation_set(
         case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
             break;
 
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+            VALIDATION_LIST(md, value.ipprefixlist);
+            break;
+
         default:
 
             META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -4242,6 +4576,10 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.sysportconfiglist);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+                VALIDATION_LIST(md, value.ipprefixlist);
+                break;
+
             default:
 
                 // acl capability will is more complex since is in/out we need to check stage
@@ -4509,6 +4847,10 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
                 VALIDATION_LIST_GET(md, value.sysportconfiglist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+                VALIDATION_LIST_GET(md, value.ipprefixlist);
                 break;
 
             default:
@@ -5401,6 +5743,10 @@ void Meta::meta_generic_validation_post_create(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+                // no special action required
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -5633,6 +5979,10 @@ void Meta::meta_generic_validation_post_set(
 
         case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG:
         case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
+            // no special action required
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
             // no special action required
             break;
 

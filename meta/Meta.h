@@ -486,6 +486,41 @@ namespace saimeta
                     _In_ bool create,
                     _In_ bool get = false);
 
+             sai_status_t meta_sai_validate_direction_lookup_entry(
+                    _In_ const sai_direction_lookup_entry_t* direction_lookup_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_eni_ether_address_map_entry(
+                    _In_ const sai_eni_ether_address_map_entry_t* eni_ether_address_map_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_vip_entry(
+                    _In_ const sai_vip_entry_t* vip_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_inbound_routing_entry(
+                    _In_ const sai_inbound_routing_entry_t* inbound_routing_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_pa_validation_entry(
+                    _In_ const sai_pa_validation_entry_t* pa_validation_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_outbound_routing_entry(
+                    _In_ const sai_outbound_routing_entry_t* outbound_routing_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_outbound_ca_to_pa_entry(
+                    _In_ const sai_outbound_ca_to_pa_entry_t* outbound_ca_to_pa_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
         public:
 
             /*

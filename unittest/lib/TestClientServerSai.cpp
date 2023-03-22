@@ -176,7 +176,7 @@ TEST(ClientServerSai, bulkGetClearStats)
 TEST(ClientServerSai, OT)                                                \
 {                                                                        \
     auto css = std::make_shared<ClientServerSai>();                      \
-    sai_ ## ot ## _t e;                                                  \
+    sai_ ## ot ## _t e = {};                                             \
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));   \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->create(&e, 0, nullptr));          \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->set(&e, nullptr));                \
@@ -197,7 +197,7 @@ SAIREDIS_DECLARE_EVERY_ENTRY(TEST_ENTRY)
 TEST(ClientServerSai, bulk_ ## OT)                                                                                           \
 {                                                                                                                            \
     auto css = std::make_shared<ClientServerSai>();                                                                          \
-    sai_ ## ot ## _t e[2];                                                                                                   \
+    sai_ ## ot ## _t e[2] = {};                                                                                              \
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));                                                       \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));    \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->bulkSet(2, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));                \

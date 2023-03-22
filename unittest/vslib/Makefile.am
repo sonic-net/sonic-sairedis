@@ -57,6 +57,15 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_bridge.cpp \
 				test_sai_vs_buffer.cpp \
 				test_sai_vs_counter.cpp \
+				test_sai_vs_dash_vip.cpp \
+				test_sai_vs_dash_pa_validation.cpp \
+				test_sai_vs_dash_vnet.cpp \
+				test_sai_vs_dash_outbound_routing.cpp \
+				test_sai_vs_dash_outbound_ca_to_pa.cpp \
+				test_sai_vs_dash_inbound_routing.cpp \
+				test_sai_vs_dash_eni.cpp \
+				test_sai_vs_dash_direction_lookup.cpp \
+				test_sai_vs_dash_acl.cpp \
 				test_sai_vs_debug_counter.cpp \
 				test_sai_vs_dtel.cpp \
 				test_sai_vs_fdb.cpp \

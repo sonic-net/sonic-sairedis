@@ -22,6 +22,15 @@ PRIVATE extern const sai_generic_programmable_api_t    redis_generic_programmabl
 PRIVATE extern const sai_bridge_api_t                  redis_bridge_api;
 PRIVATE extern const sai_buffer_api_t                  redis_buffer_api;
 PRIVATE extern const sai_counter_api_t                 redis_counter_api;
+PRIVATE extern const sai_dash_vip_api_t                redis_dash_vip_api;
+PRIVATE extern const sai_dash_pa_validation_api_t      redis_dash_pa_validation_api;
+PRIVATE extern const sai_dash_vnet_api_t               redis_dash_vnet_api;
+PRIVATE extern const sai_dash_outbound_routing_api_t   redis_dash_outbound_routing_api;
+PRIVATE extern const sai_dash_outbound_ca_to_pa_api_t  redis_dash_outbound_ca_to_pa_api;
+PRIVATE extern const sai_dash_inbound_routing_api_t    redis_dash_inbound_routing_api;
+PRIVATE extern const sai_dash_eni_api_t                redis_dash_eni_api;
+PRIVATE extern const sai_dash_direction_lookup_api_t   redis_dash_direction_lookup_api;
+PRIVATE extern const sai_dash_acl_api_t                redis_dash_acl_api;
 PRIVATE extern const sai_debug_counter_api_t           redis_debug_counter_api;
 PRIVATE extern const sai_dtel_api_t                    redis_dtel_api;
 PRIVATE extern const sai_fdb_api_t                     redis_fdb_api;

@@ -26,7 +26,7 @@ sai_status_t SaiInterface::create(
         return create(metaKey.objecttype, &metaKey.objectkey.key.object_id, switch_id, attr_count, attr_list);
     }
 
-    switch (info->objecttype)
+    switch ((int)info->objecttype)
     {
         case SAI_OBJECT_TYPE_FDB_ENTRY:
             return create(&metaKey.objectkey.key.fdb_entry, attr_count, attr_list);
@@ -45,6 +45,27 @@ sai_status_t SaiInterface::create(
 
         case SAI_OBJECT_TYPE_MY_SID_ENTRY:
             return create(&metaKey.objectkey.key.my_sid_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            return create(&metaKey.objectkey.key.direction_lookup_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            return create(&metaKey.objectkey.key.eni_ether_address_map_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+            return create(&metaKey.objectkey.key.vip_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            return create(&metaKey.objectkey.key.inbound_routing_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            return create(&metaKey.objectkey.key.pa_validation_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            return create(&metaKey.objectkey.key.outbound_routing_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            return create(&metaKey.objectkey.key.outbound_ca_to_pa_entry, attr_count, attr_list);
 
         default:
 
@@ -73,7 +94,7 @@ sai_status_t SaiInterface::remove(
         return remove(metaKey.objecttype, metaKey.objectkey.key.object_id);
     }
 
-    switch (info->objecttype)
+    switch ((int)info->objecttype)
     {
         case SAI_OBJECT_TYPE_FDB_ENTRY:
             return remove(&metaKey.objectkey.key.fdb_entry);
@@ -92,6 +113,27 @@ sai_status_t SaiInterface::remove(
 
         case SAI_OBJECT_TYPE_MY_SID_ENTRY:
             return remove(&metaKey.objectkey.key.my_sid_entry);
+
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            return remove(&metaKey.objectkey.key.direction_lookup_entry);
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            return remove(&metaKey.objectkey.key.eni_ether_address_map_entry);
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+            return remove(&metaKey.objectkey.key.vip_entry);
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            return remove(&metaKey.objectkey.key.inbound_routing_entry);
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            return remove(&metaKey.objectkey.key.pa_validation_entry);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            return remove(&metaKey.objectkey.key.outbound_routing_entry);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            return remove(&metaKey.objectkey.key.outbound_ca_to_pa_entry);
 
         default:
 
@@ -121,7 +163,7 @@ sai_status_t SaiInterface::set(
         return set(metaKey.objecttype, metaKey.objectkey.key.object_id, attr);
     }
 
-    switch (info->objecttype)
+    switch ((int)info->objecttype)
     {
         case SAI_OBJECT_TYPE_FDB_ENTRY:
             return set(&metaKey.objectkey.key.fdb_entry, attr);
@@ -140,6 +182,27 @@ sai_status_t SaiInterface::set(
 
         case SAI_OBJECT_TYPE_MY_SID_ENTRY:
             return set(&metaKey.objectkey.key.my_sid_entry, attr);
+
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            return set(&metaKey.objectkey.key.direction_lookup_entry, attr);
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            return set(&metaKey.objectkey.key.eni_ether_address_map_entry, attr);
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+            return set(&metaKey.objectkey.key.vip_entry, attr);
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            return set(&metaKey.objectkey.key.inbound_routing_entry, attr);
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            return set(&metaKey.objectkey.key.pa_validation_entry, attr);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            return set(&metaKey.objectkey.key.outbound_routing_entry, attr);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            return set(&metaKey.objectkey.key.outbound_ca_to_pa_entry, attr);
 
         default:
 
@@ -170,7 +233,7 @@ sai_status_t SaiInterface::get(
         return get(metaKey.objecttype, metaKey.objectkey.key.object_id, attr_count, attr_list);
     }
 
-    switch (info->objecttype)
+    switch ((int)info->objecttype)
     {
         case SAI_OBJECT_TYPE_FDB_ENTRY:
             return get(&metaKey.objectkey.key.fdb_entry, attr_count, attr_list);
@@ -189,6 +252,27 @@ sai_status_t SaiInterface::get(
 
         case SAI_OBJECT_TYPE_MY_SID_ENTRY:
             return get(&metaKey.objectkey.key.my_sid_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            return get(&metaKey.objectkey.key.direction_lookup_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            return get(&metaKey.objectkey.key.eni_ether_address_map_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+            return get(&metaKey.objectkey.key.vip_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            return get(&metaKey.objectkey.key.inbound_routing_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            return get(&metaKey.objectkey.key.pa_validation_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            return get(&metaKey.objectkey.key.outbound_routing_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            return get(&metaKey.objectkey.key.outbound_ca_to_pa_entry, attr_count, attr_list);
 
         default:
 
