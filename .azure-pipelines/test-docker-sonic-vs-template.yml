@@ -50,6 +50,7 @@ jobs:
       path: $(Build.ArtifactStagingDirectory)/download
       runVersion: 'latestFromBranch'
       runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      allowPartiallySucceededBuilds: true
     displayName: "Download sonic swss common deb packages"
 
   - script: |
@@ -95,7 +96,8 @@ jobs:
       fi
       rm -rf $(Build.ArtifactStagingDirectory)/download
     displayName: "Run vs tests"
-    continueOnError: ${{ parameters.asan }}
+    ${{ if or(ne(variables['Build.Reason'], 'PullRequest'), eq(parameters.asan, true)) }}:
+      continueOnError: true
 
   - task: PublishTestResults@2
     inputs:
