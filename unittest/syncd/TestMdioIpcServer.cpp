@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <gtest/gtest.h>
 
@@ -123,6 +124,9 @@ public:
         mdio_server = std::make_shared<MdioIpcServer>(mdio_sai, 0);
         mdio_server->setSwitchId(0x21000000000000);
         mdio_server->startMdioThread();
+
+        /* enough time for the server thread to finish setting up socket */
+        sleep(3);
     }
 
     virtual void TearDown() override
