@@ -142,6 +142,7 @@ protected:
 
 TEST_F(MdioIpcServerTest, mdioCl22Write)
 {
+    mdio_server->setSwitchId(0x21000000000000);
     mdioDevCl22RegValMap.clear();
     sai_status_t rc;
     uint32_t data = 0xCAFE;
@@ -155,6 +156,7 @@ TEST_F(MdioIpcServerTest, mdioCl22Write)
 
 TEST_F(MdioIpcServerTest, mdioCl22Read)
 {
+    mdio_server->setSwitchId(0x21000000000000);
     mdioDevCl22RegValMap.clear();
     sai_status_t rc;
     uint32_t data = 0x0;
@@ -169,6 +171,7 @@ TEST_F(MdioIpcServerTest, mdioCl22Read)
 
 TEST_F(MdioIpcServerTest, mdioWrite)
 {
+    mdio_server->setSwitchId(0x21000000000000);
     mdioDevRegValMap.clear();
     sai_status_t rc;
     uint32_t data = 0xBEEF;
@@ -182,6 +185,7 @@ TEST_F(MdioIpcServerTest, mdioWrite)
 
 TEST_F(MdioIpcServerTest, mdioRead)
 {
+    mdio_server->setSwitchId(0x21000000000000);
     mdioDevRegValMap.clear();
     sai_status_t rc;
     uint32_t data = 0;
