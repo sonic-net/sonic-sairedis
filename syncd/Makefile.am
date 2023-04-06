@@ -80,6 +80,10 @@ if SONIC_ASIC_PLATFORM_BROADCOM
 libSyncd_a_CXXFLAGS += -DMDIO_ACCESS_USE_NPU
 endif
 
+if SONIC_ASIC_PLATFORM_VS
+libSyncd_a_CXXFLAGS += -DMDIO_ACCESS_USE_NPU
+endif
+
 libSyncdRequestShutdown_a_SOURCES = \
 									RequestShutdown.cpp \
 									RequestShutdownCommandLineOptions.cpp \
