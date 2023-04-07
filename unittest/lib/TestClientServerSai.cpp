@@ -172,12 +172,42 @@ TEST(ClientServerSai, bulkGetClearStats)
                                                               nullptr));
 }
 
-TEST(ClientServerSai, bulk_neighbor_op)
-{
-    auto css = std::make_shared<ClientServerSai>();
-    sai_neighbor_entry_t e[2];
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
-    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
-    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->bulkSet(2, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
-    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));
+#define TEST_ENTRY(OT,ot)                                                \
+TEST(ClientServerSai, OT)                                                \
+{                                                                        \
+    auto css = std::make_shared<ClientServerSai>();                      \
+    sai_ ## ot ## _t e;                                                  \
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));   \
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->create(&e, 0, nullptr));          \
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->set(&e, nullptr));                \
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->get(&e, 0, nullptr));             \
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->remove(&e));                      \
+                                                                         \
+    auto ss = std::make_shared<ClientServerSai>();                       \
+    EXPECT_EQ(SAI_STATUS_SUCCESS, ss->initialize(0, &test_services));    \
+    EXPECT_NE(SAI_STATUS_SUCCESS, ss->create(&e, 0, nullptr));           \
+    EXPECT_NE(SAI_STATUS_SUCCESS, ss->set(&e, nullptr));                 \
+    EXPECT_NE(SAI_STATUS_SUCCESS, ss->get(&e, 0, nullptr));              \
+    EXPECT_NE(SAI_STATUS_SUCCESS, ss->remove(&e));                       \
 }
+
+SAIREDIS_DECLARE_EVERY_ENTRY(TEST_ENTRY)
+
+#define TEST_BULK_ENTRY(OT,ot)                                                                                               \
+TEST(ClientServerSai, bulk_ ## OT)                                                                                           \
+{                                                                                                                            \
+    auto css = std::make_shared<ClientServerSai>();                                                                          \
+    sai_ ## ot ## _t e[2];                                                                                                   \
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));                                                       \
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));    \
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->bulkSet(2, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));                \
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));                      \
+                                                                                                                             \
+    auto ss = std::make_shared<ClientServerSai>();                                                                           \
+    EXPECT_EQ(SAI_STATUS_SUCCESS, ss->initialize(0, &test_client_services));                                                 \
+    EXPECT_NE(SAI_STATUS_SUCCESS, ss->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));     \
+    EXPECT_NE(SAI_STATUS_SUCCESS, ss->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));                 \
+    EXPECT_NE(SAI_STATUS_SUCCESS, ss->bulkRemove(0, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));                       \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(TEST_BULK_ENTRY)
