@@ -162,7 +162,7 @@ jobs:
       if [ '${{ parameters.asan }}' == True ]; then
          extraflags='--enable-asan'
       fi
-      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS=$extraflags CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS=$extraflags CFLAGS="" CXXFLAGS="-DMDIO_ACCESS_USE_NPU" binary-syncd-vs
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
