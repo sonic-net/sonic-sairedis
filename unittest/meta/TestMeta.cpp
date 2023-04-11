@@ -23,6 +23,7 @@ class MetaTest : public ::testing::Test
 
         void SetupMeta()
         {
+            SWSS_LOG_ENTER();
             m_attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
             m_attr.value.booldata = true;
 
@@ -37,6 +38,7 @@ class MetaTest : public ::testing::Test
         }
         void CreatePort()
         {
+            SWSS_LOG_ENTER();
             std::vector<sai_attribute_t> attrs;
             sai_attribute_t attr;
 
@@ -56,6 +58,7 @@ class MetaTest : public ::testing::Test
 
         void CreateRif()
         {
+            SWSS_LOG_ENTER();
             std::vector<sai_attribute_t> attrs;
             sai_attribute_t attr;
 
@@ -75,6 +78,7 @@ class MetaTest : public ::testing::Test
         }
         sai_fdb_entry_t GenFdbEntry()
         {
+            SWSS_LOG_ENTER();
             m_attrs.clear();
 
             sai_fdb_entry_t fdb_entry;
@@ -89,6 +93,7 @@ class MetaTest : public ::testing::Test
         }
         sai_mcast_fdb_entry_t GenMcastFdbEntry()
         {
+            SWSS_LOG_ENTER();
             m_attrs.clear();
             sai_object_id_t l2mc_group_id = 0;
             m_meta->create(SAI_OBJECT_TYPE_L2MC_GROUP, &l2mc_group_id, m_switch_id, 0, 0);
@@ -109,12 +114,13 @@ class MetaTest : public ::testing::Test
         }
         sai_neighbor_entry_t GenNeighEntry()
         {
+            SWSS_LOG_ENTER();
             CreatePort();
             CreateRif();
 
             sai_neighbor_entry_t neigh_entry;
             memset(&neigh_entry, 0, sizeof(neigh_entry));
-            neigh_entry.switch_id = m_switch_id;    
+            neigh_entry.switch_id = m_switch_id;
             neigh_entry.ip_address.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
             inet_pton(AF_INET, std::string("1.1.1.1").c_str(), &neigh_entry.ip_address.addr.ip4);
             neigh_entry.rif_id = m_rif_id;
@@ -128,11 +134,12 @@ class MetaTest : public ::testing::Test
             m_attr.id = SAI_NEIGHBOR_ENTRY_ATTR_PACKET_ACTION;
             m_attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
             m_attrs.push_back(m_attr);
-            
+
             return neigh_entry;
         }
         sai_route_entry_t GenRouteEntry()
         {
+            SWSS_LOG_ENTER();
             m_attrs.clear();
             sai_route_entry_t route_entry;
             memset(&route_entry, 0, sizeof(route_entry));
@@ -148,6 +155,7 @@ class MetaTest : public ::testing::Test
         }
         sai_l2mc_entry_t GenL2MCEntry()
         {
+            SWSS_LOG_ENTER();
             m_attrs.clear();
             sai_l2mc_entry_t l2mc_entry;
             memset(&l2mc_entry, 0, sizeof(l2mc_entry));
@@ -164,6 +172,7 @@ class MetaTest : public ::testing::Test
         }
         sai_ipmc_entry_t GenIPMCEntry()
         {
+            SWSS_LOG_ENTER();
             m_attrs.clear();
             sai_object_id_t rpfGroupId = 0;
 
@@ -187,7 +196,8 @@ class MetaTest : public ::testing::Test
         }
         sai_nat_entry_t GenNATEntry()
         {
-            m_attrs.clear(); 
+            SWSS_LOG_ENTER();
+            m_attrs.clear();
 
             sai_nat_entry_t nat_entry;
 
@@ -204,6 +214,7 @@ class MetaTest : public ::testing::Test
         }
         sai_my_sid_entry_t GenMySIDEntry()
         {
+            SWSS_LOG_ENTER();
             m_attrs.clear();
 
             sai_my_sid_entry_t my_sid_entry;
