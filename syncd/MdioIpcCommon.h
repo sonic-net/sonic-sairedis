@@ -6,4 +6,4 @@
 #define MDIO_SERVER_TIMEOUT   30     /* sec, connection timeout */
 #define MDIO_CLIENT_TIMEOUT   25     /* shorter than 30 sec on server side */
 
-#define CONN_MAX              18     /* max. number of connections */
+#define MDIO_CONN_MAX         18     /* max. number of connections */
