@@ -201,4 +201,45 @@ TEST(MdioIpcServer, mdioAccess)
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
 
     mdio_server->stopMdioThread();
+    sleep(1);
+}
+
+TEST(MdioIpcServer, mdioConnect)
+{
+    SWSS_LOG_ENTER();
+    std::shared_ptr<MockableSaiInterface> mdio_sai(new MockableSaiInterface());
+    mdio_sai->mock_switchMdioRead = MockMdioRead;
+    mdio_sai->mock_switchMdioWrite = MockMdioWrite;
+    mdio_sai->mock_switchMdioCl22Read = MockMdioCl22Read;
+    mdio_sai->mock_switchMdioCl22Write = MockMdioCl22Write;
+    char path[64];
+    strcpy(path, SYNCD_IPC_SOCK_SYNCD);
+    if (open(path, O_DIRECTORY) < 0)
+    {
+        SWSS_LOG_NOTICE("Directory %s does not exist", SYNCD_IPC_SOCK_SYNCD);
+        if (mkdir(SYNCD_IPC_SOCK_SYNCD, 0755) < 0)
+        {
+            SWSS_LOG_WARN("Can not create directory %s", SYNCD_IPC_SOCK_SYNCD);
+        }
+    }
+    std::shared_ptr<MdioIpcServer> mdio_server(new MdioIpcServer(mdio_sai, 0));
+    mdio_server->setSwitchId(0x21000000000000);
+    mdio_server->startMdioThread();
+    sleep(1);
+
+    uint32_t data;
+    uint64_t key;
+    sai_status_t rc;
+
+    /* ipc connect fail without setIpcTestMode() on non broadcom platform */
+    mdioDevRegValMap.clear();
+    data = 0;
+    key = 0x4;
+    key <<= 32;
+    key |= 0x1A;
+    mdioDevRegValMap[key] = 0xC0DE;
+    rc = mdio_read(0xF0F0F0F0F0F0F0F0, 0x4, 0x1A, 1, &data);
+    EXPECT_NE(rc, SAI_STATUS_SUCCESS);
+
+    mdio_server->stopMdioThread();
 }
