@@ -201,7 +201,7 @@ TEST(MdioIpcServer, mdioAccess)
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
 
     mdio_server->stopMdioThread();
-    sleep(1);
+    sleep(MDIO_CLIENT_TIMEOUT+1);
 }
 
 TEST(MdioIpcServer, mdioConnect)
