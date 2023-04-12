@@ -97,6 +97,7 @@ static sai_status_t MockMdioCl22Write(
     return SAI_STATUS_SUCCESS;
 }
 
+#if 0
 TEST(MdioIpcServer1, mdioRead1)
 {
     std::shared_ptr<MockableSaiInterface> mdio_sai1(new MockableSaiInterface());
@@ -127,6 +128,7 @@ TEST(MdioIpcServer1, mdioRead1)
     key |= 0x1A;
     mdioDevRegValMap[key] = 0xC0DE;
     rc = mdio_read(0xF0F0F0F0F0F0F0F0, 0x4, 0x1A, 1, &data);
+    SWSS_LOG_NOTICE("rc = %d, data = %x", rc, data);
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     EXPECT_EQ(data, 0xC0DE);
     mdio_server1->stopMdioThread();
@@ -159,10 +161,12 @@ TEST(MdioIpcServer1, mdioWrite1)
     sai_status_t rc;
     uint32_t data = 0xBEEF;
     rc = mdio_write(0xF0F0F0F0F0F0F0F0, 0x3, 0x1B, 1, &data);
+    SWSS_LOG_NOTICE("rc = %d", rc);
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     uint64_t key = 0x3;
     key <<= 32;
     key |= 0x1B;
+    SWSS_LOG_NOTICE("reg = %x", mdioDevRegValMap[key]);
     EXPECT_EQ(mdioDevRegValMap[key], 0xBEEF);
     mdio_server1->stopMdioThread();
     sleep(1);
@@ -198,6 +202,7 @@ TEST(MdioIpcServer1, mdioCl22Read1)
     key |= 0x1C;
     mdioDevCl22RegValMap[key] = 0xFEED;
     rc = mdio_read_cl22(0xF0F0F0F0F0F0F0F0, 0x2, 0x1C, 1, &data);
+    SWSS_LOG_NOTICE("rc = %d, data = %x", rc, data);
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     EXPECT_EQ(data, 0xFEED);
     mdio_server1->stopMdioThread();
@@ -230,14 +235,17 @@ TEST(MdioIpcServer1, mdioCl22Write1)
     sai_status_t rc;
     uint32_t data = 0xCAFE;
     rc = mdio_write_cl22(0xF0F0F0F0F0F0F0F0, 0x1, 0x1D, 1, &data);
+    SWSS_LOG_NOTICE("rc = %d", rc);
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     uint64_t key = 0x1;
     key <<= 32;
     key |= 0x1D;
+    SWSS_LOG_NOTICE("cl22 reg = %x", mdioDevCl22RegValMap[key]);
     EXPECT_EQ(mdioDevCl22RegValMap[key], 0xCAFE);
     mdio_server1->stopMdioThread();
     sleep(1);
 }
+#endif
 
 class MdioIpcServerTest : public ::testing::Test
 {
@@ -292,10 +300,12 @@ TEST_F(MdioIpcServerTest, mdioCl22Write)
     sai_status_t rc;
     uint32_t data = 0xCAFE;
     rc = mdio_write_cl22(0xF0F0F0F0F0F0F0F0, 0x1, 0x1D, 1, &data);
+    SWSS_LOG_NOTICE("rc = %d", rc);
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     uint64_t key = 0x1;
     key <<= 32;
     key |= 0x1D;
+    SWSS_LOG_NOTICE("cl22 reg = %x", mdioDevCl22RegValMap[key]);
     EXPECT_EQ(mdioDevCl22RegValMap[key], 0xCAFE);
 }
 
@@ -309,6 +319,7 @@ TEST_F(MdioIpcServerTest, mdioCl22Read)
     key |= 0x1C;
     mdioDevCl22RegValMap[key] = 0xFEED;
     rc = mdio_read_cl22(0xF0F0F0F0F0F0F0F0, 0x2, 0x1C, 1, &data);
+    SWSS_LOG_NOTICE("rc = %d, data = %x", rc, data);
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     EXPECT_EQ(data, 0xFEED);
 }
@@ -319,10 +330,12 @@ TEST_F(MdioIpcServerTest, mdioWrite)
     sai_status_t rc;
     uint32_t data = 0xBEEF;
     rc = mdio_write(0xF0F0F0F0F0F0F0F0, 0x3, 0x1B, 1, &data);
+    SWSS_LOG_NOTICE("rc = %d", rc);
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     uint64_t key = 0x3;
     key <<= 32;
     key |= 0x1B;
+    SWSS_LOG_NOTICE("reg = %x", mdioDevRegValMap[key]);
     EXPECT_EQ(mdioDevRegValMap[key], 0xBEEF);
 }
 
@@ -336,6 +349,7 @@ TEST_F(MdioIpcServerTest, mdioRead)
     key |= 0x1A;
     mdioDevRegValMap[key] = 0xC0DE;
     rc = mdio_read(0xF0F0F0F0F0F0F0F0, 0x4, 0x1A, 1, &data);
+    SWSS_LOG_NOTICE("rc = %d, data = %x", rc, data);
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     EXPECT_EQ(data, 0xC0DE);
 }
