@@ -119,7 +119,7 @@ TEST(MdioIpcServer1, mdioRead1)
     mdio_server1->setIpcTestMode();
     mdio_server1->setSwitchId(0x21000000000000);
     mdio_server1->startMdioThread();
-    sleep(3);
+    sleep(1);
     sai_status_t rc;
     uint32_t data = 0;
     uint64_t key = 0x4;
@@ -130,7 +130,7 @@ TEST(MdioIpcServer1, mdioRead1)
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     EXPECT_EQ(data, 0xC0DE);
     mdio_server1->stopMdioThread();
-    sleep(3);
+    sleep(1);
 }
 
 TEST(MdioIpcServer1, mdioWrite1)
@@ -155,7 +155,7 @@ TEST(MdioIpcServer1, mdioWrite1)
     mdio_server1->setIpcTestMode();
     mdio_server1->setSwitchId(0x21000000000000);
     mdio_server1->startMdioThread();
-    sleep(3);
+    sleep(1);
     sai_status_t rc;
     uint32_t data = 0xBEEF;
     rc = mdio_write(0xF0F0F0F0F0F0F0F0, 0x3, 0x1B, 1, &data);
@@ -165,7 +165,7 @@ TEST(MdioIpcServer1, mdioWrite1)
     key |= 0x1B;
     EXPECT_EQ(mdioDevRegValMap[key], 0xBEEF);
     mdio_server1->stopMdioThread();
-    sleep(3);
+    sleep(1);
 }
 
 TEST(MdioIpcServer1, mdioCl22Read1)
@@ -190,7 +190,7 @@ TEST(MdioIpcServer1, mdioCl22Read1)
     mdio_server1->setIpcTestMode();
     mdio_server1->setSwitchId(0x21000000000000);
     mdio_server1->startMdioThread();
-    sleep(3);
+    sleep(1);
     sai_status_t rc;
     uint32_t data = 0x0;
     uint64_t key = 0x2;
@@ -201,7 +201,7 @@ TEST(MdioIpcServer1, mdioCl22Read1)
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     EXPECT_EQ(data, 0xFEED);
     mdio_server1->stopMdioThread();
-    sleep(3);
+    sleep(1);
 }
 
 TEST(MdioIpcServer1, mdioCl22Write1)
@@ -226,7 +226,7 @@ TEST(MdioIpcServer1, mdioCl22Write1)
     mdio_server1->setIpcTestMode();
     mdio_server1->setSwitchId(0x21000000000000);
     mdio_server1->startMdioThread();
-    sleep(3);
+    sleep(1);
     sai_status_t rc;
     uint32_t data = 0xCAFE;
     rc = mdio_write_cl22(0xF0F0F0F0F0F0F0F0, 0x1, 0x1D, 1, &data);
@@ -236,7 +236,7 @@ TEST(MdioIpcServer1, mdioCl22Write1)
     key |= 0x1D;
     EXPECT_EQ(mdioDevCl22RegValMap[key], 0xCAFE);
     mdio_server1->stopMdioThread();
-    sleep(3);
+    sleep(1);
 }
 
 class MdioIpcServerTest : public ::testing::Test
@@ -269,7 +269,7 @@ public:
         mdio_server->startMdioThread();
 
         /* enough time for the server thread to finish setting up socket */
-        sleep(3);
+        sleep(1);
     }
 
     virtual void TearDown() override
@@ -277,7 +277,7 @@ public:
         mdio_server->stopMdioThread();
 
         /* enough time stop the server thread*/
-        sleep(3);
+        sleep(1);
     }
 
 protected:
