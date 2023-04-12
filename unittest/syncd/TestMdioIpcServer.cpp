@@ -11,6 +11,8 @@
 
 #include <gtest/gtest.h>
 
+#define MDIO_MISSING_DEV_ADDR 0x1F
+#define MDIO_MISSING_REG_ADDR 0xFFFF
 
 using namespace syncd;
 using namespace std;
@@ -51,6 +53,10 @@ static sai_status_t MockMdioWrite(
     _In_ const uint32_t *reg_val)
 {
     SWSS_LOG_ENTER();
+    if (MDIO_MISSING_DEV_ADDR == device_addr)
+    {
+        return SAI_STATUS_FAILURE;
+    }
     uint64_t key = device_addr;
     key <<= 32;
     key |= start_reg_addr;
@@ -90,6 +96,10 @@ static sai_status_t MockMdioCl22Write(
     _In_ const uint32_t *reg_val)
 {
     SWSS_LOG_ENTER();
+    if (MDIO_MISSING_DEV_ADDR == device_addr)
+    {
+        return SAI_STATUS_FAILURE;
+    }
     uint64_t key = device_addr;
     key <<= 32;
     key |= start_reg_addr;
@@ -137,6 +147,9 @@ TEST(MdioIpcServer, mdioAccess)
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     EXPECT_EQ(data, 0xC0DE);
 
+    rc = mdio_read(0xF0F0F0F0F0F0F0F0, MDIO_MISSING_DEV_ADDR, MDIO_MISSING_REG_ADDR, 1, &data);
+    EXPECT_NE(rc, SAI_STATUS_SUCCESS);
+
     /* MDIO write */
     mdioDevRegValMap.clear();
     data = 0xBEEF;
@@ -148,6 +161,9 @@ TEST(MdioIpcServer, mdioAccess)
     key |= 0x1B;
     SWSS_LOG_NOTICE("reg = %x", mdioDevRegValMap[key]);
     EXPECT_EQ(mdioDevRegValMap[key], 0xBEEF);
+
+    rc = mdio_write(0xF0F0F0F0F0F0F0F0, MDIO_MISSING_DEV_ADDR, MDIO_MISSING_REG_ADDR, 1, &data);
+    EXPECT_NE(rc, SAI_STATUS_SUCCESS);
 
     /* MDIO CL22 read */
     mdioDevCl22RegValMap.clear();
@@ -161,6 +177,9 @@ TEST(MdioIpcServer, mdioAccess)
     EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
     EXPECT_EQ(data, 0xFEED);
 
+    rc = mdio_read_cl22(0xF0F0F0F0F0F0F0F0, MDIO_MISSING_DEV_ADDR, MDIO_MISSING_REG_ADDR, 1, &data);
+    EXPECT_NE(rc, SAI_STATUS_SUCCESS);
+
     /* MDIO CL22 write */
     mdioDevCl22RegValMap.clear();
     data = 0xCAFE;
@@ -172,6 +191,9 @@ TEST(MdioIpcServer, mdioAccess)
     key |= 0x1D;
     SWSS_LOG_NOTICE("cl22 reg = %x", mdioDevCl22RegValMap[key]);
     EXPECT_EQ(mdioDevCl22RegValMap[key], 0xCAFE);
+
+    rc = mdio_write_cl22(0xF0F0F0F0F0F0F0F0, MDIO_MISSING_DEV_ADDR, MDIO_MISSING_REG_ADDR, 1, &data);
+    EXPECT_NE(rc, SAI_STATUS_SUCCESS);
 
     mdio_server->stopMdioThread();
 }
