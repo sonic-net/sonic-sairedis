@@ -195,5 +195,10 @@ TEST(MdioIpcServer, mdioAccess)
     rc = mdio_write_cl22(0xF0F0F0F0F0F0F0F0, MDIO_MISSING_DEV_ADDR, MDIO_MISSING_REG_ADDR, 1, &data);
     EXPECT_NE(rc, SAI_STATUS_SUCCESS);
 
+    /* Test ipc client timeout */
+    sleep(MDIO_CLIENT_TIMEOUT+1);
+    rc = mdio_read_cl22(0xF0F0F0F0F0F0F0F0, 0x1, 0x1D, 1, &data);
+    EXPECT_EQ(rc, SAI_STATUS_SUCCESS);
+
     mdio_server->stopMdioThread();
 }
