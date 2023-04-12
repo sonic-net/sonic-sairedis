@@ -134,6 +134,7 @@ TEST(MdioIpcServer, mdioAccess)
     uint32_t data;
     uint64_t key;
     sai_status_t rc;
+    uint32_t data2[2];
 
     /* MDIO read */
     mdioDevRegValMap.clear();
@@ -148,6 +149,9 @@ TEST(MdioIpcServer, mdioAccess)
     EXPECT_EQ(data, 0xC0DE);
 
     rc = mdio_read(0xF0F0F0F0F0F0F0F0, MDIO_MISSING_DEV_ADDR, MDIO_MISSING_REG_ADDR, 1, &data);
+    EXPECT_NE(rc, SAI_STATUS_SUCCESS);
+
+    rc = mdio_read(0xF0F0F0F0F0F0F0F0, 0x4, 0x1A, 2, data2);
     EXPECT_NE(rc, SAI_STATUS_SUCCESS);
 
     /* MDIO write */
@@ -165,6 +169,9 @@ TEST(MdioIpcServer, mdioAccess)
     rc = mdio_write(0xF0F0F0F0F0F0F0F0, MDIO_MISSING_DEV_ADDR, MDIO_MISSING_REG_ADDR, 1, &data);
     EXPECT_NE(rc, SAI_STATUS_SUCCESS);
 
+    rc = mdio_write(0xF0F0F0F0F0F0F0F0, 0x3, 0x1B, 2, data2);
+    EXPECT_NE(rc, SAI_STATUS_SUCCESS);
+
     /* MDIO CL22 read */
     mdioDevCl22RegValMap.clear();
     data = 0x0;
@@ -180,6 +187,9 @@ TEST(MdioIpcServer, mdioAccess)
     rc = mdio_read_cl22(0xF0F0F0F0F0F0F0F0, MDIO_MISSING_DEV_ADDR, MDIO_MISSING_REG_ADDR, 1, &data);
     EXPECT_NE(rc, SAI_STATUS_SUCCESS);
 
+    rc = mdio_read_cl22(0xF0F0F0F0F0F0F0F0, 0x2, 0x1C, 2, data2);
+    EXPECT_NE(rc, SAI_STATUS_SUCCESS);
+
     /* MDIO CL22 write */
     mdioDevCl22RegValMap.clear();
     data = 0xCAFE;
@@ -193,6 +203,9 @@ TEST(MdioIpcServer, mdioAccess)
     EXPECT_EQ(mdioDevCl22RegValMap[key], 0xCAFE);
 
     rc = mdio_write_cl22(0xF0F0F0F0F0F0F0F0, MDIO_MISSING_DEV_ADDR, MDIO_MISSING_REG_ADDR, 1, &data);
+    EXPECT_NE(rc, SAI_STATUS_SUCCESS);
+
+    rc = mdio_write_cl22(0xF0F0F0F0F0F0F0F0, 0x1, 0x1D, 2, data2);
     EXPECT_NE(rc, SAI_STATUS_SUCCESS);
 
     /* Test ipc client timeout */
