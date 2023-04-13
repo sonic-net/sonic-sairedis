@@ -55,7 +55,6 @@ class MetaTest : public ::testing::Test
 
             EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_PORT, &m_port_id, m_switch_id, (uint32_t)attrs.size(), attrs.data()));
         }
-
         void CreateRif()
         {
             SWSS_LOG_ENTER();
@@ -266,6 +265,16 @@ TEST_F(MetaTest, create_duplicate_mcast_fdb_entry)
     EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
 }
 
+TEST_F(MetaTest, create_mcast_fdb_entry_with_nonexistent_vlan)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VLAN, m_vlan_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_mcast_fdb_entry_t mcast_fdb_entry = GenMcastFdbEntry();
+    status = m_meta->create(&mcast_fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
 TEST_F(MetaTest, remove_nonexistent_mcast_fdb_entry)
 {
     sai_mcast_fdb_entry_t mcast_fdb_entry = GenMcastFdbEntry();
@@ -280,6 +289,17 @@ TEST_F(MetaTest, create_duplicate_neigh_entry)
     EXPECT_EQ(SAI_STATUS_SUCCESS, status);
     status = m_meta->create(&neigh_entry, (uint32_t)m_attrs.size(), m_attrs.data());
     EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, create_neigh_entry_with_nonexistent_rif)
+{
+    // GenNeighEntry() is responsible for creating the RIF, so we must call it before trying to remove the RIF
+    sai_neighbor_entry_t neigh_entry = GenNeighEntry();
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_rif_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    status = m_meta->create(&neigh_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
 }
 
 TEST_F(MetaTest, remove_nonexistent_neigh_entry)
@@ -314,6 +334,16 @@ TEST_F(MetaTest, create_duplicate_l2mc_entry)
     EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
 }
 
+TEST_F(MetaTest, create_l2mc_entry_with_nonexistent_vlan)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VLAN, m_vlan_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_l2mc_entry_t l2mc_entry = GenL2MCEntry();
+    status = m_meta->create(&l2mc_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
 TEST_F(MetaTest, remove_nonexistent_l2mc_entry)
 {
     sai_l2mc_entry_t l2mc_entry = GenL2MCEntry();
@@ -328,6 +358,16 @@ TEST_F(MetaTest, create_duplicate_ipmc_entry)
     EXPECT_EQ(SAI_STATUS_SUCCESS, status);
     status = m_meta->create(&ipmc_entry, (uint32_t)m_attrs.size(), m_attrs.data());
     EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, create_ipmc_entry_with_nonexistent_vr)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_vr_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_ipmc_entry_t ipmc_entry = GenIPMCEntry();
+    status = m_meta->create(&ipmc_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
 }
 
 TEST_F(MetaTest, remove_nonexistent_ipmc_entry)
@@ -346,6 +386,16 @@ TEST_F(MetaTest, create_duplicate_nat_entry)
     EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
 }
 
+TEST_F(MetaTest, create_nat_entry_with_nonexistent_vr)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_vr_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_nat_entry_t nat_entry = GenNATEntry();
+    status = m_meta->create(&nat_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
 TEST_F(MetaTest, remove_nonexistent_nat_entry)
 {
     sai_nat_entry_t nat_entry = GenNATEntry();
@@ -360,6 +410,16 @@ TEST_F(MetaTest, create_duplicate_my_sid_entry)
     EXPECT_EQ(SAI_STATUS_SUCCESS, status);
     status = m_meta->create(&my_sid_entry, (uint32_t)m_attrs.size(), m_attrs.data());
     EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, create_my_sid_entry_with_nonexistent_vr)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_vr_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_my_sid_entry_t my_sid_entry = GenMySIDEntry();
+    status = m_meta->create(&my_sid_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
 }
 
 TEST_F(MetaTest, remove_nonexistent_my_sid_entry)
