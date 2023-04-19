@@ -140,7 +140,14 @@ jobs:
         make check
         gcovr --version
         find SAI/meta -name "*.gc*" | xargs rm -vf
-        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --exclude-throw-branches -x --xml-pretty -o coverage.xml
+        gcov_dirs=$(find . -path "*.libs*gcda" | xargs dirname | sort -u |  cut -c"3-")
+        for dir in ${gcov_dirs}; do
+          source_dir=$(dirname $dir)
+          output_file="coverage-$source_dir.json"
+          gcovr --exclude-unreachable-branches --json-pretty -o $output_file --object-directory $source_dir $dir
+        done
+        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --json-pretty -o coverage-all.json
+        gcovr -a "coverage-*.json" -x --xml-pretty -o coverage.xml
       displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}

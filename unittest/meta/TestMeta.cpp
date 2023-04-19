@@ -2,17 +2,455 @@
 #include "MockMeta.h"
 #include "MetaTestSaiInterface.h"
 
+#include <arpa/inet.h>
+#include <net/ethernet.h>
+
 #include <gtest/gtest.h>
 
 #include <memory>
 
+#define VLAN_ID 2
+
 using namespace saimeta;
+
+class MetaTest : public ::testing::Test
+{
+    protected:
+        sai_object_id_t m_switch_id, m_vlan_id, m_vr_id, m_port_id, m_rif_id;
+        std::vector<sai_attribute_t> m_attrs;
+        sai_attribute_t m_attr;
+        Meta *m_meta;
+
+        void SetupMeta()
+        {
+            SWSS_LOG_ENTER();
+            m_attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+            m_attr.value.booldata = true;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_SWITCH, &m_switch_id, SAI_NULL_OBJECT_ID, 1, &m_attr));
+
+            m_attr.id = SAI_VLAN_ATTR_VLAN_ID;
+            m_attr.value.u16 = VLAN_ID;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_VLAN, &m_vlan_id, m_switch_id, 1, &m_attr));
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, &m_vr_id, m_switch_id, 0, &m_attr));
+        }
+        void CreatePort()
+        {
+            SWSS_LOG_ENTER();
+            std::vector<sai_attribute_t> attrs;
+            sai_attribute_t attr;
+
+            uint32_t list[1] = { 2 };
+
+            attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+            attr.value.u32list.count = 1;
+            attr.value.u32list.list = list;
+            attrs.push_back(attr);
+
+            attr.id = SAI_PORT_ATTR_SPEED;
+            attr.value.u32 = 10000;
+            attrs.push_back(attr);
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_PORT, &m_port_id, m_switch_id, (uint32_t)attrs.size(), attrs.data()));
+        }
+        void CreateRif()
+        {
+            SWSS_LOG_ENTER();
+            std::vector<sai_attribute_t> attrs;
+            sai_attribute_t attr;
+
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+            attr.value.oid = m_vr_id;
+            attrs.push_back(attr);
+
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+            attr.value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+            attrs.push_back(attr);
+
+            attr.id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+            attr.value.oid = m_port_id;
+            attrs.push_back(attr);
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, &m_rif_id, m_switch_id, (uint32_t)attrs.size(), attrs.data()));
+        }
+        sai_fdb_entry_t GenFdbEntry()
+        {
+            SWSS_LOG_ENTER();
+            m_attrs.clear();
+
+            sai_fdb_entry_t fdb_entry;
+            memset(&fdb_entry, 0, sizeof(fdb_entry));
+            fdb_entry.switch_id = m_switch_id;
+            fdb_entry.bv_id = m_vlan_id;
+
+            m_attr.id = SAI_FDB_ENTRY_ATTR_TYPE;
+            m_attr.value.s32 = SAI_FDB_ENTRY_TYPE_STATIC;
+            m_attrs.push_back(m_attr);
+            return fdb_entry;
+        }
+        sai_mcast_fdb_entry_t GenMcastFdbEntry()
+        {
+            SWSS_LOG_ENTER();
+            m_attrs.clear();
+            sai_object_id_t l2mc_group_id = 0;
+            m_meta->create(SAI_OBJECT_TYPE_L2MC_GROUP, &l2mc_group_id, m_switch_id, 0, 0);
+
+            sai_mcast_fdb_entry_t mcast_fdb_entry;
+            memset(&mcast_fdb_entry, 0, sizeof(mcast_fdb_entry));
+            mcast_fdb_entry.bv_id = m_vlan_id;
+            mcast_fdb_entry.switch_id = m_switch_id;
+
+            m_attr.id = SAI_MCAST_FDB_ENTRY_ATTR_GROUP_ID;
+            m_attr.value.oid = l2mc_group_id;
+            m_attrs.push_back(m_attr);
+
+            m_attr.id = SAI_MCAST_FDB_ENTRY_ATTR_PACKET_ACTION;
+            m_attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+            m_attrs.push_back(m_attr);
+            return mcast_fdb_entry;
+        }
+        sai_neighbor_entry_t GenNeighEntry()
+        {
+            SWSS_LOG_ENTER();
+            CreatePort();
+            CreateRif();
+
+            sai_neighbor_entry_t neigh_entry;
+            memset(&neigh_entry, 0, sizeof(neigh_entry));
+            neigh_entry.switch_id = m_switch_id;
+            neigh_entry.ip_address.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            inet_pton(AF_INET, std::string("1.1.1.1").c_str(), &neigh_entry.ip_address.addr.ip4);
+            neigh_entry.rif_id = m_rif_id;
+
+            m_attrs.clear();
+            sai_mac_t mac = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+            m_attr.id = SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS;
+            memcpy(m_attr.value.mac, mac, 6);
+            m_attrs.push_back(m_attr);
+
+            m_attr.id = SAI_NEIGHBOR_ENTRY_ATTR_PACKET_ACTION;
+            m_attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+            m_attrs.push_back(m_attr);
+
+            return neigh_entry;
+        }
+        sai_route_entry_t GenRouteEntry()
+        {
+            SWSS_LOG_ENTER();
+            m_attrs.clear();
+            sai_route_entry_t route_entry;
+            memset(&route_entry, 0, sizeof(route_entry));
+
+            route_entry.switch_id = m_switch_id;
+
+            route_entry.vr_id = m_vr_id;
+
+            route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+            inet_pton(AF_INET, std::string("255.255.255.255").c_str(), &route_entry.destination.mask.ip4);
+            inet_pton(AF_INET, std::string("1.1.1.1").c_str(), &route_entry.destination.addr.ip4);
+            return route_entry;
+        }
+        sai_l2mc_entry_t GenL2MCEntry()
+        {
+            SWSS_LOG_ENTER();
+            m_attrs.clear();
+            sai_l2mc_entry_t l2mc_entry;
+            memset(&l2mc_entry, 0, sizeof(l2mc_entry));
+
+            l2mc_entry.bv_id = m_vlan_id;
+            l2mc_entry.switch_id = m_switch_id;
+
+            m_attr.id = SAI_L2MC_ENTRY_ATTR_PACKET_ACTION;
+            m_attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+            m_attrs.push_back(m_attr);
+
+            return l2mc_entry;
+
+        }
+        sai_ipmc_entry_t GenIPMCEntry()
+        {
+            SWSS_LOG_ENTER();
+            m_attrs.clear();
+            sai_object_id_t rpfGroupId = 0;
+
+            EXPECT_EQ(SAI_STATUS_SUCCESS, m_meta->create(SAI_OBJECT_TYPE_RPF_GROUP, &rpfGroupId, m_switch_id, 0, m_attrs.data()));
+
+            sai_ipmc_entry_t ipmc_entry;
+            memset(&ipmc_entry, 0, sizeof(ipmc_entry));
+
+            ipmc_entry.switch_id = m_switch_id;
+            ipmc_entry.vr_id = m_vr_id;
+
+            m_attr.id = SAI_IPMC_ENTRY_ATTR_PACKET_ACTION;
+            m_attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+            m_attrs.push_back(m_attr);
+
+            m_attr.id = SAI_IPMC_ENTRY_ATTR_RPF_GROUP_ID;
+            m_attr.value.oid = rpfGroupId;
+            m_attrs.push_back(m_attr);
+
+            return ipmc_entry;
+        }
+        sai_nat_entry_t GenNATEntry()
+        {
+            SWSS_LOG_ENTER();
+            m_attrs.clear();
+
+            sai_nat_entry_t nat_entry;
+
+            memset(&nat_entry, 0, sizeof(nat_entry));
+
+            nat_entry.switch_id = m_switch_id;
+            nat_entry.vr_id = m_vr_id;
+
+            m_attr.id = SAI_NAT_ENTRY_ATTR_NAT_TYPE;
+            m_attr.value.s32 = SAI_NAT_TYPE_NONE;
+            m_attrs.push_back(m_attr);
+
+            return nat_entry;
+        }
+        sai_my_sid_entry_t GenMySIDEntry()
+        {
+            SWSS_LOG_ENTER();
+            m_attrs.clear();
+
+            sai_my_sid_entry_t my_sid_entry;
+
+            memset(&my_sid_entry, 0, sizeof(my_sid_entry));
+
+            my_sid_entry.switch_id = m_switch_id;
+            my_sid_entry.vr_id = m_vr_id;
+
+            m_attr.id = SAI_MY_SID_ENTRY_ATTR_ENDPOINT_BEHAVIOR;
+            m_attr.value.s32 = SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_E;
+            m_attrs.push_back(m_attr);
+
+            return my_sid_entry;
+        }
+        void SetUp() override
+        {
+            m_meta = new Meta(std::make_shared<MetaTestSaiInterface>());
+            SetupMeta();
+        }
+        void TearDown() override
+        {
+            m_attrs.clear();
+        }
+};
+
+TEST_F(MetaTest, create_duplicate_fdb_entry)
+{
+    sai_fdb_entry_t fdb_entry = GenFdbEntry();
+    sai_status_t status = m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+    status = m_meta->create(&fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, remove_nonexistent_fdb_entry)
+{
+    sai_fdb_entry_t fdb_entry = GenFdbEntry();
+    sai_status_t status = m_meta->remove(&fdb_entry);
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, create_duplicate_mcast_fdb_entry)
+{
+    sai_mcast_fdb_entry_t mcast_fdb_entry = GenMcastFdbEntry();
+    sai_status_t status = m_meta->create(&mcast_fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+    status = m_meta->create(&mcast_fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, create_mcast_fdb_entry_with_nonexistent_vlan)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VLAN, m_vlan_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_mcast_fdb_entry_t mcast_fdb_entry = GenMcastFdbEntry();
+    status = m_meta->create(&mcast_fdb_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, remove_nonexistent_mcast_fdb_entry)
+{
+    sai_mcast_fdb_entry_t mcast_fdb_entry = GenMcastFdbEntry();
+    sai_status_t status = m_meta->remove(&mcast_fdb_entry);
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, create_duplicate_neigh_entry)
+{
+    sai_neighbor_entry_t neigh_entry = GenNeighEntry();
+    sai_status_t status = m_meta->create(&neigh_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+    status = m_meta->create(&neigh_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, create_neigh_entry_with_nonexistent_rif)
+{
+    // GenNeighEntry() is responsible for creating the RIF, so we must call it before trying to remove the RIF
+    sai_neighbor_entry_t neigh_entry = GenNeighEntry();
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_rif_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    status = m_meta->create(&neigh_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, remove_nonexistent_neigh_entry)
+{
+    sai_neighbor_entry_t neigh_entry = GenNeighEntry();
+    sai_status_t status = m_meta->remove(&neigh_entry);
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, create_duplicate_route_entry)
+{
+    sai_route_entry_t route_entry = GenRouteEntry();
+    sai_status_t status = m_meta->create(&route_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+    status = m_meta->create(&route_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, remove_nonexistent_route_entry)
+{
+    sai_route_entry_t route_entry = GenRouteEntry();
+    sai_status_t status = m_meta->remove(&route_entry);
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, create_duplicate_l2mc_entry)
+{
+    sai_l2mc_entry_t l2mc_entry = GenL2MCEntry();
+    sai_status_t status = m_meta->create(&l2mc_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+    status = m_meta->create(&l2mc_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, create_l2mc_entry_with_nonexistent_vlan)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VLAN, m_vlan_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_l2mc_entry_t l2mc_entry = GenL2MCEntry();
+    status = m_meta->create(&l2mc_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, remove_nonexistent_l2mc_entry)
+{
+    sai_l2mc_entry_t l2mc_entry = GenL2MCEntry();
+    sai_status_t status = m_meta->remove(&l2mc_entry);
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, create_duplicate_ipmc_entry)
+{
+    sai_ipmc_entry_t ipmc_entry = GenIPMCEntry();
+    sai_status_t status = m_meta->create(&ipmc_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+    status = m_meta->create(&ipmc_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, create_ipmc_entry_with_nonexistent_vr)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_vr_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_ipmc_entry_t ipmc_entry = GenIPMCEntry();
+    status = m_meta->create(&ipmc_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, remove_nonexistent_ipmc_entry)
+{
+    sai_ipmc_entry_t ipmc_entry = GenIPMCEntry();
+    sai_status_t status = m_meta->remove(&ipmc_entry);
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, create_duplicate_nat_entry)
+{
+    sai_nat_entry_t nat_entry = GenNATEntry();
+    sai_status_t status = m_meta->create(&nat_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+    status = m_meta->create(&nat_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, create_nat_entry_with_nonexistent_vr)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_vr_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_nat_entry_t nat_entry = GenNATEntry();
+    status = m_meta->create(&nat_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, remove_nonexistent_nat_entry)
+{
+    sai_nat_entry_t nat_entry = GenNATEntry();
+    sai_status_t status = m_meta->remove(&nat_entry);
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, create_duplicate_my_sid_entry)
+{
+    sai_my_sid_entry_t my_sid_entry = GenMySIDEntry();
+    sai_status_t status = m_meta->create(&my_sid_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+    status = m_meta->create(&my_sid_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_ALREADY_EXISTS, status);
+}
+
+TEST_F(MetaTest, create_my_sid_entry_with_nonexistent_vr)
+{
+    sai_status_t status = m_meta->remove(SAI_OBJECT_TYPE_VIRTUAL_ROUTER, m_vr_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    sai_my_sid_entry_t my_sid_entry = GenMySIDEntry();
+    status = m_meta->create(&my_sid_entry, (uint32_t)m_attrs.size(), m_attrs.data());
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, remove_nonexistent_my_sid_entry)
+{
+    sai_my_sid_entry_t my_sid_entry = GenMySIDEntry();
+    sai_status_t status = m_meta->remove(&my_sid_entry);
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
+
+TEST_F(MetaTest, remove_nonexistent_generic_object)
+{
+    sai_attribute_t attr;
+    sai_object_id_t vlan_id;
+    attr.id = SAI_VLAN_ATTR_VLAN_ID;
+    attr.value.u16 = 99;
+
+    sai_status_t status = m_meta->create(SAI_OBJECT_TYPE_VLAN, &vlan_id, m_switch_id, 1, &attr);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    status = m_meta->remove(SAI_OBJECT_TYPE_VLAN, vlan_id);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    status = m_meta->remove(SAI_OBJECT_TYPE_VLAN, vlan_id);
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, status);
+}
 
 TEST(Meta, initialize)
 {
     Meta m(std::make_shared<DummySaiInterface>());
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.initialize(0,0));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.initialize(0, 0));
 }
 
 TEST(Meta, uninitialize)
