@@ -95,6 +95,7 @@ jobs:
       sudo sed -ri 's/^unixsocketperm .../unixsocketperm 777/' /etc/redis/redis.conf
       sudo sed -ri 's/redis-server.sock/redis.sock/' /etc/redis/redis.conf
       sudo service redis-server start
+      sudo mkdir -m 755 /var/run/sswsyncd
 
       sudo apt-get install -y rsyslog
       sudo service rsyslog start
@@ -180,6 +181,8 @@ jobs:
         set -ex
         # Add SYS_TIME capability for settimeofday ok in syncd test
         sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
+        # Add CAP_DAC_OVERRIDE capability for system directory creation in syncd unittest
+        sudo setcap "cap_dac_override,cap_ipc_lock,cap_ipc_owner,cap_sys_time=eip" unittest/syncd/.libs/tests
         make check
         gcovr --version
         find SAI/meta -name "*.gc*" | xargs rm -vf

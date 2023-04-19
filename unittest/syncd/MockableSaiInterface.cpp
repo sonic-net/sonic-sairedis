@@ -1,7 +1,6 @@
 #include "MockableSaiInterface.h"
 #include "swss/logger.h"
 
-
 MockableSaiInterface::MockableSaiInterface()
 {
     SWSS_LOG_ENTER();
@@ -248,6 +247,70 @@ sai_status_t MockableSaiInterface::flushFdbEntries(
     if (mock_flushFdbEntries)
     {
         return mock_flushFdbEntries(switchId, attrCount, attrList);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t MockableSaiInterface::switchMdioRead(
+    _In_ sai_object_id_t switchId,
+    _In_ uint32_t device_addr,
+    _In_ uint32_t start_reg_addr,
+    _In_ uint32_t number_of_registers,
+    _Out_ uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+    if (mock_switchMdioRead)
+    {
+        return mock_switchMdioRead(switchId, device_addr, start_reg_addr, number_of_registers, reg_val);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t MockableSaiInterface::switchMdioWrite(
+    _In_ sai_object_id_t switchId,
+    _In_ uint32_t device_addr,
+    _In_ uint32_t start_reg_addr,
+    _In_ uint32_t number_of_registers,
+    _In_ const uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+    if (mock_switchMdioWrite)
+    {
+        return mock_switchMdioWrite(switchId, device_addr, start_reg_addr, number_of_registers, reg_val);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t MockableSaiInterface::switchMdioCl22Read(
+    _In_ sai_object_id_t switchId,
+    _In_ uint32_t device_addr,
+    _In_ uint32_t start_reg_addr,
+    _In_ uint32_t number_of_registers,
+    _Out_ uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+    if (mock_switchMdioCl22Read)
+    {
+        return mock_switchMdioCl22Read(switchId, device_addr, start_reg_addr, number_of_registers, reg_val);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t MockableSaiInterface::switchMdioCl22Write(
+    _In_ sai_object_id_t switchId,
+    _In_ uint32_t device_addr,
+    _In_ uint32_t start_reg_addr,
+    _In_ uint32_t number_of_registers,
+    _In_ const uint32_t *reg_val)
+{
+    SWSS_LOG_ENTER();
+    if (mock_switchMdioCl22Write)
+    {
+        return mock_switchMdioCl22Write(switchId, device_addr, start_reg_addr, number_of_registers, reg_val);
     }
 
     return SAI_STATUS_SUCCESS;
