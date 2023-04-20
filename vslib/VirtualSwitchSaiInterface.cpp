@@ -15,6 +15,7 @@
 #include "SwitchBCM56971B0.h"
 #include "SwitchMLNX2700.h"
 #include "SwitchNvdaMBF2H536C.h"
+#include "SwitchMrvlTL7.h"
 
 #include <inttypes.h>
 
@@ -601,6 +602,11 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
             m_switchStateMap[switch_id] = std::make_shared<SwitchNvdaMBF2H536C>(switch_id, m_realObjectIdManager, config, warmBootState);
             break;
 
+        case SAI_VS_SWITCH_TYPE_MRVLTL7:
+
+            m_switchStateMap[switch_id] = std::make_shared<SwitchMrvlTL7>(switch_id, m_realObjectIdManager, config, warmBootState);
+            break;
+
         default:
 
             SWSS_LOG_WARN("unknown switch type: %d", config->m_switchType);
@@ -981,6 +987,8 @@ sai_status_t VirtualSwitchSaiInterface::queryStatsCapability(
 {
     SWSS_LOG_ENTER();
 
+    uint32_t i=0;
+
     if (m_switchStateMap.find(switchId) == m_switchStateMap.end())
     {
         SWSS_LOG_ERROR("failed to find switch %s in switch state map", sai_serialize_object_id(switchId).c_str());
@@ -989,6 +997,94 @@ sai_status_t VirtualSwitchSaiInterface::queryStatsCapability(
     }
 
     auto ss = m_switchStateMap.at(switchId);
+
+
+    if (objectType == SAI_OBJECT_TYPE_QUEUE)
+    {
+        if (stats_capability->count < SAI_OBJECT_TYPE_QUEUE)
+        {
+            stats_capability->count = SAI_QUEUE_STAT_DELAY_WATERMARK_NS;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        stats_capability->count = SAI_QUEUE_STAT_DELAY_WATERMARK_NS;
+
+        for(i = 0; i < stats_capability->count; i++)
+        {
+            stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ ;
+            stats_capability->list[i].stat_enum = i;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+    else if (objectType == SAI_OBJECT_TYPE_PORT)
+    {
+        if (stats_capability->count < 51)
+        {
+            stats_capability->count = 51;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+
+        stats_capability->count = 51;
+        stats_capability->list[0].stat_enum = SAI_PORT_STAT_IF_IN_OCTETS;
+        stats_capability->list[1].stat_enum = SAI_PORT_STAT_IF_IN_UCAST_PKTS;
+        stats_capability->list[2].stat_enum = SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS;
+        stats_capability->list[3].stat_enum = SAI_PORT_STAT_IF_IN_DISCARDS;
+        stats_capability->list[4].stat_enum = SAI_PORT_STAT_IF_IN_ERRORS;
+        stats_capability->list[5].stat_enum = SAI_PORT_STAT_IF_IN_UNKNOWN_PROTOS;
+        stats_capability->list[6].stat_enum = SAI_PORT_STAT_IF_IN_BROADCAST_PKTS;
+        stats_capability->list[7].stat_enum = SAI_PORT_STAT_IF_IN_MULTICAST_PKTS;
+        stats_capability->list[8].stat_enum = SAI_PORT_STAT_IF_IN_VLAN_DISCARDS;
+        stats_capability->list[9].stat_enum = SAI_PORT_STAT_IF_OUT_OCTETS;
+        stats_capability->list[10].stat_enum = SAI_PORT_STAT_IF_OUT_UCAST_PKTS;
+        stats_capability->list[11].stat_enum = SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS;
+        stats_capability->list[12].stat_enum = SAI_PORT_STAT_IF_OUT_DISCARDS;
+        stats_capability->list[13].stat_enum = SAI_PORT_STAT_IF_OUT_ERRORS;
+        stats_capability->list[14].stat_enum = SAI_PORT_STAT_IF_OUT_QLEN;
+        stats_capability->list[15].stat_enum = SAI_PORT_STAT_IF_OUT_BROADCAST_PKTS;
+        stats_capability->list[16].stat_enum = SAI_PORT_STAT_IF_OUT_MULTICAST_PKTS;
+        stats_capability->list[17].stat_enum = SAI_PORT_STAT_ETHER_STATS_DROP_EVENTS;
+        stats_capability->list[18].stat_enum = SAI_PORT_STAT_ETHER_STATS_MULTICAST_PKTS;
+        stats_capability->list[19].stat_enum = SAI_PORT_STAT_ETHER_STATS_BROADCAST_PKTS;
+        stats_capability->list[20].stat_enum = SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS;
+        stats_capability->list[21].stat_enum = SAI_PORT_STAT_ETHER_STATS_FRAGMENTS;
+        stats_capability->list[22].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_64_OCTETS;
+        stats_capability->list[23].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_65_TO_127_OCTETS;
+        stats_capability->list[24].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_128_TO_255_OCTETS;
+        stats_capability->list[25].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_256_TO_511_OCTETS;
+        stats_capability->list[26].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_512_TO_1023_OCTETS;
+        stats_capability->list[27].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_1024_TO_1518_OCTETS;
+        stats_capability->list[28].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_1519_TO_2047_OCTETS;
+        stats_capability->list[29].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_2048_TO_4095_OCTETS;
+        stats_capability->list[30].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_4096_TO_9216_OCTETS;
+        stats_capability->list[31].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_9217_TO_16383_OCTETS;
+        stats_capability->list[32].stat_enum = SAI_PORT_STAT_ETHER_STATS_OVERSIZE_PKTS;
+        stats_capability->list[33].stat_enum = SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS;
+        stats_capability->list[34].stat_enum = SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS;
+        stats_capability->list[35].stat_enum = SAI_PORT_STAT_ETHER_STATS_JABBERS;
+        stats_capability->list[36].stat_enum = SAI_PORT_STAT_ETHER_STATS_OCTETS;
+        stats_capability->list[37].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS;
+        stats_capability->list[38].stat_enum = SAI_PORT_STAT_ETHER_STATS_COLLISIONS;
+        stats_capability->list[39].stat_enum = SAI_PORT_STAT_ETHER_STATS_CRC_ALIGN_ERRORS;
+        stats_capability->list[40].stat_enum = SAI_PORT_STAT_ETHER_STATS_TX_NO_ERRORS;
+        stats_capability->list[41].stat_enum = SAI_PORT_STAT_ETHER_STATS_RX_NO_ERRORS;
+        stats_capability->list[42].stat_enum = SAI_PORT_STAT_GREEN_WRED_DROPPED_PACKETS;
+        stats_capability->list[43].stat_enum = SAI_PORT_STAT_GREEN_WRED_DROPPED_BYTES;
+        stats_capability->list[44].stat_enum = SAI_PORT_STAT_YELLOW_WRED_DROPPED_PACKETS;
+        stats_capability->list[45].stat_enum = SAI_PORT_STAT_YELLOW_WRED_DROPPED_BYTES;
+        stats_capability->list[46].stat_enum = SAI_PORT_STAT_RED_WRED_DROPPED_PACKETS;
+        stats_capability->list[47].stat_enum = SAI_PORT_STAT_RED_WRED_DROPPED_BYTES;
+        stats_capability->list[48].stat_enum = SAI_PORT_STAT_WRED_DROPPED_PACKETS;
+        stats_capability->list[49].stat_enum = SAI_PORT_STAT_WRED_DROPPED_BYTES;
+        stats_capability->list[50].stat_enum = SAI_PORT_STAT_ECN_MARKED_PACKETS;
+
+        for(i = 0; i < stats_capability->count; i++)
+        {
+            stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ ;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
 
     return ss->queryStatsCapability(
             switchId,

@@ -2786,6 +2786,66 @@ std::string sai_serialize_redis_link_event_damping_aied_config(
     return j.dump();
 }
 
+json sai_serialize_stat_capability(
+        _In_ const sai_stat_capability_t& stat_capability,
+        _In_ const sai_enum_metadata_t* meta)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["stat_enum"] = sai_serialize_enum(stat_capability.stat_enum, meta);
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < sai_metadata_enum_sai_stats_mode_t.valuescount; ++i)
+    {
+	if (stat_capability.stat_modes & sai_metadata_enum_sai_stats_mode_t.values[i])
+	{
+            json item = sai_serialize_enum(sai_metadata_enum_sai_stats_mode_t.values[i],
+                            &sai_metadata_enum_sai_stats_mode_t);
+
+            arr.push_back(item);
+	}
+    }
+
+    j["stat_modes"] = arr;
+
+    return j;
+}
+
+std::string sai_serialize_stats_capability_list(
+        _In_ const sai_stat_capability_list_t& stat_capability_list,
+        _In_ const sai_enum_metadata_t* meta,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["count"] = stat_capability_list.count;
+
+    if (stat_capability_list.list == NULL || countOnly)
+    {
+        j["list"] = nullptr;
+
+        return j.dump();
+    }
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < stat_capability_list.count; ++i)
+    {
+        json item = sai_serialize_stat_capability(stat_capability_list.list[i], meta);
+
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    return j.dump();
+}
+
 std::string sai_serialize_poe_port_active_channel_type(
         _In_ const sai_poe_port_active_channel_type_t value)
 {
@@ -5545,4 +5605,81 @@ void sai_deserialize_redis_link_event_damping_aied_config(
     sai_deserialize_number(j["reuse_threshold"], value.reuse_threshold, false);
     sai_deserialize_number(j["decay_half_life"], value.decay_half_life, false);
     sai_deserialize_number(j["flap_penalty"], value.flap_penalty, false);
+}
+
+/**
+*   @brief deserialize the stats capability list
+*
+*   Iterates thru stat_enum_str and populate
+*   the stats_capability with respective
+*   stat_enum (String to Enum conversion).
+*   Also iterates thru stat_modes_str and populate
+*   the stats_capability with respective
+*   stat_modes (String to Enum conversion)
+*
+*   @param stats_capability stats capability enum list
+*   @param stat_enum_str SAI stat enum list as string
+*   @param stat_modes_str SAI stat mode list as string
+*   @return Void
+*/
+void sai_deserialize_stats_capability_list(
+        _Inout_ sai_stat_capability_list_t *stats_capability,
+        _In_ const std::string& stat_enum_str,
+        _In_ const std::string& stat_modes_str)
+{
+    SWSS_LOG_ENTER();
+
+    if (stats_capability == NULL)
+    {
+        SWSS_LOG_THROW("Stats capability pointer in deserialize is NULL");
+    }
+
+    uint32_t num_capabilities = stats_capability->count;
+    size_t stat_enum_position = 0;
+    size_t stat_modes_position = 0;
+
+    for (uint32_t i = 0; i < num_capabilities; i++)
+    {
+        /* 1. Populate stat_enum */
+        size_t old_stat_enum_position = stat_enum_position;
+        stat_enum_position = stat_enum_str.find(",", old_stat_enum_position);
+        std::string stat_enum = stat_enum_str.substr(old_stat_enum_position,
+                stat_enum_position - old_stat_enum_position);
+        stats_capability->list[i].stat_enum = std::stoi(stat_enum);
+
+        /* We have run out of values to add to our list */
+        if (stat_enum_position == std::string::npos)
+        {
+            if (num_capabilities != i + 1)
+            {
+                SWSS_LOG_THROW("Lesser stat_enums than expected: expected %d, received %d",
+                        num_capabilities, i+1);
+            }
+
+            break;
+        }
+
+        /* 2. Populate stat_modes */
+        size_t old_stat_modes_position = stat_modes_position;
+        stat_modes_position = stat_modes_str.find(",", old_stat_modes_position);
+        std::string stat_modes = stat_modes_str.substr(old_stat_modes_position,
+                stat_modes_position - old_stat_modes_position);
+        stats_capability->list[i].stat_modes = std::stoi(stat_modes);
+
+        /* We have run out of values to add to our list */
+        if (stat_modes_position == std::string::npos)
+        {
+            if (num_capabilities != i + 1)
+            {
+                SWSS_LOG_THROW("Lesser stat_modes than expected: expected %d, received %d",
+                        num_capabilities, i+1);
+            }
+
+            break;
+        }
+
+        /* Skip the commas */
+        stat_enum_position++;
+        stat_modes_position++;
+    }
 }
