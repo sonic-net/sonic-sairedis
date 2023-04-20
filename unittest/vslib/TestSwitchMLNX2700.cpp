@@ -577,3 +577,56 @@ TEST(SwitchMLNX2700, test_port_autoneg_fec_override_support)
     EXPECT_EQ(attr_capability.set_implemented, true);
     EXPECT_EQ(attr_capability.get_implemented, true);
 }
+
+TEST(SwitchMLNX2700, test_stats_query_capability)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_MLNX2700;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchMLNX2700 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_stat_capability_t capability_list[51];
+    sai_stat_capability_list_t stats_capability;
+    stats_capability.count = 1;
+    stats_capability.list = capability_list;
+    /* Get queue stats capability */
+    EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
+                                          SAI_OBJECT_TYPE_QUEUE,
+                                          &stats_capability),
+                                          SAI_STATUS_BUFFER_OVERFLOW);
+
+    stats_capability.count = SAI_QUEUE_STAT_DELAY_WATERMARK_NS;
+
+    EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
+                                          SAI_OBJECT_TYPE_QUEUE,
+                                          &stats_capability),
+                                          SAI_STATUS_SUCCESS);
+
+    /* Get port stats capability */
+    stats_capability.count = 1;
+    EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
+                                          SAI_OBJECT_TYPE_PORT,
+                                          &stats_capability),
+                                          SAI_STATUS_BUFFER_OVERFLOW);
+    stats_capability.count = 51;
+
+    EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
+                                          SAI_OBJECT_TYPE_PORT,
+                                          &stats_capability),
+                                          SAI_STATUS_SUCCESS);
+}

@@ -300,6 +300,11 @@ namespace saivs
                               _In_ sai_attr_id_t attr_id,
                              _Inout_ sai_s32_list_t *enum_values_capability);
 
+           virtual sai_status_t queryStatsCapability(
+                              _In_ sai_object_id_t switchId,
+                              _In_ sai_object_type_t objectType,
+                              _Inout_ sai_stat_capability_list_t *stats_capability);
+
            virtual sai_status_t queryAttributeCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
