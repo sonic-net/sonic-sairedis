@@ -304,12 +304,19 @@ namespace sairedis
 
             sai_service_method_table_t m_service_method_table;
 
-            std::shared_ptr<SaiInterface> m_sai;
 
             std::shared_ptr<std::thread> m_serverThread;
 
-            std::shared_ptr<SelectableChannel> m_selectableChannel;
 
             swss::SelectableEvent m_serverThreadThreadShouldEndEvent;
+
+        protected:
+
+            sai_status_t processStatsCapabilityQuery(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
+            std::shared_ptr<SelectableChannel> m_selectableChannel;
+
+            std::shared_ptr<SaiInterface> m_sai;
     };
 }

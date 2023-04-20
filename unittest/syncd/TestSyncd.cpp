@@ -1,4 +1,5 @@
 #include "Syncd.h"
+#include "sai_serialize.h"
 #include "RequestShutdown.h"
 #include "vslib/ContextConfigContainer.h"
 #include "vslib/VirtualSwitchSaiInterface.h"
@@ -256,6 +257,42 @@ TEST_F(SyncdTest, processNotifySyncd)
     EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
         kfvKey(kco) = SYNCD_APPLY_VIEW;
         kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_NOTIFY;
+    }));
+    syncd_object.processEvent(consumer);
+}
+TEST_F(SyncdTest, processStatsCapabilityQuery)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto opt = std::make_shared<syncd::CommandLineOptions>();
+    opt->m_enableTempView = true;
+    opt->m_startType = SAI_START_TYPE_FASTFAST_BOOT;
+    syncd::Syncd syncd_object(sai, opt, false);
+
+    auto translator = syncd_object.m_translator;
+    translator->insertRidAndVid(0x11000000000000, 0x21000000000000);
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+    EXPECT_CALL(consumer, pop(testing::_, testing::_))
+        .Times(1)
+        .WillRepeatedly(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+        static int callCount = 0;
+        if (callCount == 0)
+        {
+            kfvKey(kco) = "oid:0x21000000000000";
+            kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_QUERY;
+            kfvFieldsValues(kco) = {
+                std::make_pair("OBJECT_TYPE", "SAI_OBJECT_TYPE_QUEUE"),
+                std::make_pair("LIST_SIZE", "1")
+        };
+        }
+        else
+        {
+                kfvKey(kco) = "";
+                kfvOp(kco) = "";
+                kfvFieldsValues(kco).clear();
+        }
+        ++callCount;
     }));
     syncd_object.processEvent(consumer);
 }
