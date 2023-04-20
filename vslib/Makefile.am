@@ -50,6 +50,7 @@ libSaiVS_a_SOURCES = \
 					  Switch.cpp \
 					  SwitchMLNX2700.cpp \
 					  SwitchNvdaMBF2H536C.cpp \
+					  SwitchMrvlTL7.cpp \
 					  SwitchStateBase.cpp \
 					  SwitchStateBaseFdb.cpp \
 					  SwitchStateBaseHostif.cpp \

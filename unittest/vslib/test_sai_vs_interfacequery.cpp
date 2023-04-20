@@ -80,3 +80,7 @@ TEST(libsaivs, sai_bulk_object_clear_stats)
                                                                       SAI_STATS_MODE_BULK_CLEAR,
                                                                       nullptr));
 }
+TEST(libsaivs, sai_query_stats_capability)
+{
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai_query_stats_capability(0,SAI_OBJECT_TYPE_NULL,0));
+}

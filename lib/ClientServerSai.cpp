@@ -256,7 +256,10 @@ sai_status_t ClientServerSai::queryStatsCapability(
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_sai->queryStatsCapability(
+            switchId,
+            objectType,
+            stats_capability);
 }
 
 sai_status_t ClientServerSai::getStatsExt(

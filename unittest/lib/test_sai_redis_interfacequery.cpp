@@ -78,7 +78,8 @@ TEST(libsairedis, sai_get_object_key)
 
 TEST(libsairedis, sai_query_stats_capability)
 {
-    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_query_stats_capability(0,SAI_OBJECT_TYPE_NULL,0));
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai_query_stats_capability(0,SAI_OBJECT_TYPE_NULL,0));
+
 }
 
 TEST(libsairedis, sai_bulk_object_get_stats)

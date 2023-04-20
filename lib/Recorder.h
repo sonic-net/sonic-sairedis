@@ -353,6 +353,16 @@ namespace sairedis
                     _In_ sai_attr_id_t attrId,
                     _In_ const sai_s32_list_t* enumValuesCapability);
 
+            void recordQueryStatsCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_capability_list_t* stats_capability);
+
+            void recordQueryStatsCapabilityResponse(
+                    _In_ sai_status_t status,
+                    _In_ sai_object_type_t objectType,
+                    _In_ const sai_stat_capability_list_t *stats_capability);
+
             // TODO move to private
             void recordQueryAttributeCapability(
                     _In_ const std::string& key,
@@ -377,6 +387,14 @@ namespace sairedis
             void recordObjectTypeGetAvailabilityResponse(
                     _In_ sai_status_t status,
                     _In_ const std::vector<swss::FieldValueTuple>& arguments);
+
+            void recordQueryStatsCapability(
+                    _In_ const std::string& key,
+                    _In_ const std::vector<swss::FieldValueTuple>& arguments);
+
+            void recordQueryStatsCapabilityResponse(
+                    _In_ sai_status_t status,
+                    _In_ const std::string& arguments);
 
         public: // SAI notifications
 
