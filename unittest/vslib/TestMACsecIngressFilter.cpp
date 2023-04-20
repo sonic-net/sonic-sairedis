@@ -19,9 +19,7 @@ TEST(MACsecIngressFilter, forward)
 
     filter.set_macsec_fd(0);
 
-    uint8_t packet[4000];
-
-    memset(packet, 0, sizeof(packet));
+    uint8_t packet[4000] = {0};
 
     ethhdr* eth = (ethhdr*)packet;
 

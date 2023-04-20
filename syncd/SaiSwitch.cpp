@@ -163,9 +163,7 @@ std::string SaiSwitch::saiGetHardwareInfo() const
 
     sai_attribute_t attr;
 
-    char info[MAX_HARDWARE_INFO_LENGTH];
-
-    memset(info, 0, MAX_HARDWARE_INFO_LENGTH);
+    char info[MAX_HARDWARE_INFO_LENGTH] = {0};
 
     attr.id = SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO;
 
@@ -241,9 +239,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> SaiSwitch::saiGetHardwareLaneM
 
     for (const auto &port_rid: portList)
     {
-        sai_uint32_t lanes[MAX_LANES_PER_PORT];
-
-        memset(lanes, 0, sizeof(lanes));
+        sai_uint32_t lanes[MAX_LANES_PER_PORT] = {0};
 
         sai_attribute_t attr;
 

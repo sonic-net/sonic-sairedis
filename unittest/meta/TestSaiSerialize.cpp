@@ -18,11 +18,8 @@ TEST(SaiSerialize, transfer_attributes)
 {
     SWSS_LOG_ENTER();
 
-    sai_attribute_t src;
-    sai_attribute_t dst;
-
-    memset(&src, 0, sizeof(src));
-    memset(&dst, 0, sizeof(dst));
+    sai_attribute_t src = {};
+    sai_attribute_t dst = {};
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attributes(SAI_OBJECT_TYPE_SWITCH, 1, &src, &dst, true));
 
@@ -104,9 +101,7 @@ TEST(SaiSerialize, sai_serialize_port_lane_latch_status_list)
 
 TEST(SaiSerialize, sai_serialize_attr_value)
 {
-    sai_attribute_t attr;
-
-    memset(&attr, 0, sizeof(attr));
+    sai_attribute_t attr = {};
 
     for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
     {
@@ -142,7 +137,6 @@ TEST(SaiSerialize, sai_serialize_attr_value)
         }
 
         auto s = sai_serialize_attr_value(*meta, attr, false);
-
         sai_deserialize_attr_value(s, *meta, attr, false);
 
         sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
@@ -186,11 +180,8 @@ TEST(SaiSerialize, sai_deserialize_ingress_priority_group_attr)
 
 TEST(SaiSerialize, transfer_list)
 {
-    sai_attribute_t src;
-    sai_attribute_t dst;
-
-    memset(&src, 0, sizeof(src));
-    memset(&dst, 0, sizeof(dst));
+    sai_attribute_t src = {};
+    sai_attribute_t dst = {};
 
     src.id = SAI_PORT_ATTR_HW_LANE_LIST;
     dst.id = SAI_PORT_ATTR_HW_LANE_LIST;
@@ -224,9 +215,7 @@ TEST(SaiSerialize, transfer_list)
 
 TEST(SaiSerialize, sai_deserialize_ip_prefix)
 {
-    sai_ip_prefix_t p;
-
-    memset(&p, 0, sizeof(p));
+    sai_ip_prefix_t p = {};
 
     p.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
 
@@ -443,9 +432,7 @@ TEST(SaiSerialize, sai_serialize_hex_binary)
 
 TEST(SaiSerialize, sai_serialize_system_port_config_list)
 {
-    sai_system_port_config_t pc;
-
-    memset(&pc, 0, sizeof(pc));
+    sai_system_port_config_t pc = {};
 
     sai_system_port_config_list_t list;
 
@@ -459,9 +446,7 @@ TEST(SaiSerialize, sai_serialize_system_port_config_list)
 
 TEST(SaiSerialize, sai_deserialize_system_port_config_list)
 {
-    sai_system_port_config_t pc;
-
-    memset(&pc, 0, sizeof(pc));
+    sai_system_port_config_t pc = {};
 
     sai_system_port_config_list_t list;
 
@@ -498,9 +483,7 @@ TEST(SaiSerialize, sai_serialize_nat_event_ntf)
 
 TEST(SaiSerialize, sai_serialize_port_oper_status_ntf)
 {
-    sai_port_oper_status_notification_t ntf;
-
-    memset(&ntf, 0, sizeof(ntf));
+    sai_port_oper_status_notification_t ntf = {};
 
     sai_serialize_port_oper_status_ntf(1, &ntf);
 
@@ -509,9 +492,7 @@ TEST(SaiSerialize, sai_serialize_port_oper_status_ntf)
 
 TEST(SaiSerialize, sai_serialize_queue_deadlock_ntf)
 {
-    sai_queue_deadlock_notification_data_t ntf;
-
-    memset(&ntf, 0, sizeof(ntf));
+    sai_queue_deadlock_notification_data_t ntf = {};
 
     sai_serialize_queue_deadlock_ntf(1, &ntf);
 
