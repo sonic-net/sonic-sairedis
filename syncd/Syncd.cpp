@@ -1,4 +1,3 @@
-#include "config.h"
 #include "Syncd.h"
 #include "VidManager.h"
 #include "NotificationHandler.h"
@@ -4708,15 +4707,7 @@ void Syncd::run()
 
     m_mdioIpcServer->stopMdioThread();
 
-    sai_status_t status = SAI_STATUS_SUCCESS;
-#ifdef MELLANOX
-    if (shutdownType != SYNCD_RESTART_TYPE_COLD)
-    {
-        status = removeAllSwitches();
-    }
-#else
-    status = removeAllSwitches();
-#endif
+    sai_status_t status = removeAllSwitches();
 
     // Stop notification thread after removing switch
     m_processor->stopNotificationsProcessingThread();
