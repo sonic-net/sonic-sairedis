@@ -70,7 +70,7 @@ jobs:
 
   - script: |
       set -ex
-      (while true; do date +%FT%TZ >> $(Build.ArtifactStagingDirectory)/log/top.log; LINES=20 top -o %MEM -b -n 1 -w >> $(Build.ArtifactStagingDirectory)/log/top.log;sleep 60;done) &
+      (while true; do date +%FT%TZ >> $(Build.ArtifactStagingDirectory)/top.log; LINES=20 top -o %MEM -b -n 1 -w >> $(Build.ArtifactStagingDirectory)/top.log;sleep 60;done) &
       sudo docker load -i $(Build.ArtifactStagingDirectory)/download/docker-sonic-vs.gz
       docker ps
       ip netns list
