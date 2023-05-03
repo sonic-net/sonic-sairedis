@@ -1699,3 +1699,107 @@ TEST(Meta, bulkGetClearStats)
                                                            SAI_STATS_MODE_BULK_CLEAR,
                                                            nullptr));
 }
+
+TEST(Meta, quad_ars)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_object_id_t ars;
+
+    std::vector<sai_attribute_t> attrs;
+
+    attr.id = SAI_ARS_ATTR_MODE;
+    attr.value.u32 = SAI_ARS_MODE_FLOWLET_QUALITY;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_ATTR_IDLE_TIME;
+    attr.value.u32 = 100;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_ATTR_MAX_FLOWS;
+    attr.value.u32 = 500;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_ATTR_MON_ENABLE;
+    attr.value.booldata = true;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_ATTR_SAMPLEPACKET_ENABLE;
+    attr.value.oid = SAI_NULL_OBJECT_ID;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_ATTR_MAX_ALT_MEMEBERS_PER_GROUP;
+    attr.value.u32 = 15;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_ATTR_MAX_PRIMARY_MEMEBERS_PER_GROUP;
+    attr.value.u32 = 14;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_ATTR_PRIMARY_PATH_QUALITY_THRESHOLD;
+    attr.value.u32 = 14;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_ATTR_ALTERNATE_PATH_COST;
+    attr.value.u32 = 1;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_ATTR_ALTERNATE_PATH_BIAS;
+    attr.value.u32 = 1;
+    attrs.push_back(attr);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_ARS, &ars, switchId, (uint32_t)attrs.size(), attrs.data()));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_ARS, ars, (uint32_t)attrs.size(), attrs.data()));
+
+    attr.id = SAI_ARS_ATTR_ALTERNATE_PATH_BIAS;
+    attr.value.u32 = 1;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(SAI_OBJECT_TYPE_ARS, ars, &attr));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(SAI_OBJECT_TYPE_ARS, ars));
+}
+
+TEST(Meta, quad_ars_profile)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_object_id_t ars_profile;
+
+    std::vector<sai_attribute_t> attrs;
+
+    attr.id = SAI_ARS_PROFILE_ATTR_ALGO;
+    attr.value.u32 = SAI_ARS_PROFILE_ALGO_EWMA;
+    attrs.push_back(attr);
+
+    attr.id = SAI_ARS_PROFILE_ATTR_SAMPLING_INTERVAL;
+    attr.value.u32 = 15;
+    attrs.push_back(attr);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_ARS_PROFILE, &ars_profile, switchId, (uint32_t)attrs.size(), attrs.data()));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_ARS_PROFILE, ars_profile, (uint32_t)attrs.size(), attrs.data()));
+
+    attr.id = SAI_ARS_PROFILE_ATTR_ARS_RANDOM_SEED;
+    attr.value.u32 = 1;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(SAI_OBJECT_TYPE_ARS_PROFILE, ars_profile, &attr));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(SAI_OBJECT_TYPE_ARS_PROFILE, ars_profile));
+}

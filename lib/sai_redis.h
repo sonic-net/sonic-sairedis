@@ -14,6 +14,8 @@ extern "C" {
 #define PRIVATE __attribute__((visibility("hidden")))
 
 PRIVATE extern const sai_acl_api_t                     redis_acl_api;
+PRIVATE extern const sai_ars_api_t                     redis_ars_api;
+PRIVATE extern const sai_ars_profile_api_t             redis_ars_profile_api;
 PRIVATE extern const sai_bfd_api_t                     redis_bfd_api;
 PRIVATE extern const sai_bmtor_api_t                   redis_bmtor_api;
 PRIVATE extern const sai_generic_programmable_api_t    redis_generic_programmable_api;

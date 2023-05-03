@@ -74,7 +74,9 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_virtual_router.cpp \
 				test_sai_redis_vlan.cpp \
 				test_sai_redis_hostif.cpp \
-				test_sai_redis_wred.cpp
+				test_sai_redis_wred.cpp \
+				test_sai_redis_ars.cpp \
+				test_sai_redis_ars_profile.cpp
 
 testslibsairedis_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 testslibsairedis_LDADD = $(LDADD_GTEST) -L$(top_srcdir)/lib/.libs -lsairedis -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)

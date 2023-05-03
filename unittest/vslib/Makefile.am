@@ -97,7 +97,9 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_virtual_router.cpp \
 				test_sai_vs_vlan.cpp \
 				test_sai_vs_hostif.cpp \
-				test_sai_vs_wred.cpp
+				test_sai_vs_wred.cpp \
+				test_sai_vs_ars.cpp \
+				test_sai_vs_ars_profile.cpp
 
 testslibsaivs_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 testslibsaivs_LDADD = $(LDADD_GTEST) -L$(top_srcdir)/vslib/.libs -lsaivs -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
