@@ -43,9 +43,9 @@ using namespace sairediscommon;
 using namespace std::placeholders;
 
 #ifdef ASAN_ENABLED
-#define ASAN_DELAY_FACTOR 2
+#define WD_DELAY_FACTOR 2
 #else
-#define ASAN_DELAY_FACTOR 1
+#define WD_DELAY_FACTOR 1
 #endif
 
 Syncd::Syncd(
@@ -59,7 +59,7 @@ Syncd::Syncd(
     m_vendorSai(vendorSai),
     m_veryFirstRun(false),
     m_enableSyncMode(false),
-    m_timerWatchdog(30 * 1000000 * ASAN_DELAY_FACTOR) // watch for executions over 30 seconds
+    m_timerWatchdog(30 * 1000000 * WD_DELAY_FACTOR) // watch for executions over 30 seconds or 60 seconds if ASAN enabled
 {
     SWSS_LOG_ENTER();
 
