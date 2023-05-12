@@ -1,29 +1,6 @@
-// includes -----------------------------------------------------------------------------------------------------------
-
-#include <cstdint>
-#include <memory>
-#include <vector>
-#include <array>
-#include <set>
-#include <thread>
-#include <algorithm>
-
-#include <gtest/gtest.h>
-
-#include <arpa/inet.h>
-#include <net/ethernet.h>
-
-#include <swss/logger.h>
-
-#include "Sai.h"
-#include "Syncd.h"
-#include "MetadataLogger.h"
-
-#include "TestSyncdLib.h"
+#include "TestSyncdNvdaBf.h"
 
 using namespace syncd;
-
-// functions ----------------------------------------------------------------------------------------------------------
 
 static const char* profile_get_value(
     _In_ sai_switch_profile_id_t profile_id,
@@ -113,8 +90,6 @@ static bool operator==(sai_u16_range_t a, sai_u16_range_t b)
     return (a.min == b.min) && (a.max == b.max);
 }
 
-// Nvidia ASIC --------------------------------------------------------------------------------------------------------
-
 void syncdNvdaBfWorkerThread()
 {
     SWSS_LOG_ENTER();
@@ -141,142 +116,128 @@ void syncdNvdaBfWorkerThread()
     SWSS_LOG_NOTICE("Started syncd worker");
 }
 
-class SyncdNvdaBfTest : public ::testing::Test
+void SyncdNvdaBfTest::SetUp()
 {
-public:
-    SyncdNvdaBfTest() = default;
-    virtual ~SyncdNvdaBfTest() = default;
+    SWSS_LOG_ENTER();
 
-public:
-    virtual void SetUp() override
-    {
-        SWSS_LOG_ENTER();
+    // flush ASIC DB
 
-        // flush ASIC DB
+    flushAsicDb();
 
-        flushAsicDb();
+    // start syncd worker
 
-        // start syncd worker
+    m_worker = std::make_shared<std::thread>(syncdNvdaBfWorkerThread);
 
-        m_worker = std::make_shared<std::thread>(syncdNvdaBfWorkerThread);
+    // initialize SAI redis
 
-        // initialize SAI redis
+    m_sairedis = std::make_shared<sairedis::Sai>();
 
-        m_sairedis = std::make_shared<sairedis::Sai>();
+    auto status = m_sairedis->initialize(0, &test_services);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
-        auto status = m_sairedis->initialize(0, &test_services);
-        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    // set communication mode
 
-        // set communication mode
+    sai_attribute_t attr;
 
-        sai_attribute_t attr;
+    attr.id = SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE;
+    attr.value.s32 = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
 
-        attr.id = SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE;
-        attr.value.s32 = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
-        status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
-        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    // enable recording
 
-        // enable recording
+    attr.id = SAI_REDIS_SWITCH_ATTR_RECORD;
+    attr.value.booldata = true;
 
-        attr.id = SAI_REDIS_SWITCH_ATTR_RECORD;
-        attr.value.booldata = true;
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
-        status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
-        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    // create switch
 
-        // create switch
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
 
-        attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
-        attr.value.booldata = true;
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &m_switchId, SAI_NULL_OBJECT_ID, 1, &attr);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+}
 
-        status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &m_switchId, SAI_NULL_OBJECT_ID, 1, &attr);
-        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
-    }
+void SyncdNvdaBfTest::TearDown()
+{
+    SWSS_LOG_ENTER();
 
-    virtual void TearDown() override
-    {
-        SWSS_LOG_ENTER();
+    // uninitialize SAI redis
 
-        // uninitialize SAI redis
+    auto status = m_sairedis->uninitialize();
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
-        auto status = m_sairedis->uninitialize();
-        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    // stop syncd worker
 
-        // stop syncd worker
+    sendSyncdShutdownNotification();
+    m_worker->join();
+}
 
-        sendSyncdShutdownNotification();
-        m_worker->join();
-    }
+sai_object_id_t SyncdNvdaBfTest::CreateCounter()
+{
+    SWSS_LOG_ENTER();
 
-    sai_object_id_t CreateCounter()
-    {
-        SWSS_LOG_ENTER();
+    sai_object_id_t oid;
 
-        sai_object_id_t oid;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(SAI_OBJECT_TYPE_COUNTER, &oid, m_switchId, 0, nullptr));
 
-        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create(SAI_OBJECT_TYPE_COUNTER, &oid, m_switchId, 0, nullptr));
+    return oid;
+}
 
-        return oid;
-    }
+void SyncdNvdaBfTest::RemoveCounter(sai_object_id_t counter)
+{
+    SWSS_LOG_ENTER();
 
-    void RemoveCounter(sai_object_id_t counter)
-    {
-        SWSS_LOG_ENTER();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_COUNTER, counter));
+}
 
-        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_COUNTER, counter));
-    }
+sai_object_id_t SyncdNvdaBfTest::CreateVnet(uint32_t vni)
+{
+    SWSS_LOG_ENTER();
 
-    sai_object_id_t CreateVnet(uint32_t vni)
-    {
-        SWSS_LOG_ENTER();
+    sai_object_id_t oid;
+    sai_attribute_t attr;
 
-        sai_object_id_t oid;
-        sai_attribute_t attr;
+    attr.id = SAI_VNET_ATTR_VNI;
+    attr.value.u32 = vni;
 
-        attr.id = SAI_VNET_ATTR_VNI;
-        attr.value.u32 = vni;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_VNET, &oid, m_switchId, 1, &attr));
 
-        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_VNET, &oid, m_switchId, 1, &attr));
+    return oid;
+}
 
-        return oid;
-    }
+void SyncdNvdaBfTest::RemoveVnet(sai_object_id_t vnet)
+{
+    SWSS_LOG_ENTER();
 
-    void RemoveVnet(sai_object_id_t vnet)
-    {
-        SWSS_LOG_ENTER();
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
+}
 
-        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_VNET, vnet));
-    }
+sai_object_id_t SyncdNvdaBfTest::CreateEni(sai_object_id_t vnet)
+{
+    SWSS_LOG_ENTER();
 
-    sai_object_id_t CreateEni(sai_object_id_t vnet)
-    {
-        SWSS_LOG_ENTER();
+    sai_object_id_t oid;
+    sai_attribute_t attr;
 
-        sai_object_id_t oid;
-        sai_attribute_t attr;
+    attr.id = SAI_ENI_ATTR_VNET_ID;
+    attr.value.oid = vnet;
 
-        attr.id = SAI_ENI_ATTR_VNET_ID;
-        attr.value.oid = vnet;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_ENI, &oid, m_switchId, 1, &attr));
 
-        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_ENI, &oid, m_switchId, 1, &attr));
+    return oid;
+}
 
-        return oid;
-    }
+void SyncdNvdaBfTest::RemoveEni(sai_object_id_t eni)
+{
+    SWSS_LOG_ENTER();
 
-    void RemoveEni(sai_object_id_t eni)
-    {
-        SWSS_LOG_ENTER();
-
-        EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni));
-    }
-
-protected:
-    std::shared_ptr<std::thread> m_worker;
-    std::shared_ptr<sairedis::Sai> m_sairedis;
-
-    sai_object_id_t m_switchId = SAI_NULL_OBJECT_ID;
-};
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni));
+}
 
 TEST_F(SyncdNvdaBfTest, dashDirectionLookup)
 {

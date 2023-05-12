@@ -389,7 +389,8 @@ bool MetaKeyHasher::operator()(
 
 static_assert(sizeof(std::size_t) >= sizeof(uint32_t), "size_t must be at least 32 bits");
 
-static inline std::size_t sai_get_hash(_In_ const sai_ip_address_t& addr)
+static inline std::size_t sai_get_hash(
+    _In_ const sai_ip_address_t& addr)
 {
     // SWSS_LOG_ENTER(); // disabled for performance reason
 
@@ -416,7 +417,8 @@ static inline std::size_t sai_get_hash(_In_ const sai_ip_address_t& addr)
     SWSS_LOG_THROW("unknown IP addr family: %d", addr.addr_family);
 }
 
-static inline std::size_t sai_get_hash(_In_ const sai_ip_prefix_t& prefix)
+static inline std::size_t sai_get_hash(
+    _In_ const sai_ip_prefix_t& prefix)
 {
     // SWSS_LOG_ENTER(); // disabled for performance reason
 
