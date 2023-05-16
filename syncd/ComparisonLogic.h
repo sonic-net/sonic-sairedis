@@ -180,6 +180,11 @@ namespace syncd
                     _Inout_ AsicView& tmp,
                     _Inout_ std::set<std::string>& processed);
 
+            void cretePreMatchForAclEntries(
+                    _In_ const AsicView& cur,
+                    _Inout_ AsicView& tmp,
+                    _Inout_ std::set<std::string>& processed);
+
             sai_object_id_t asic_translate_vid_to_rid(
                     _In_ const AsicView& current,
                     _In_ const AsicView& temporary,

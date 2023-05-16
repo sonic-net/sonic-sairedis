@@ -3002,6 +3002,13 @@ std::shared_ptr<SaiAttr> BestCandidateFinder::getSaiAttrFromDefaultValue(
                         return std::make_shared<SaiAttr>(meta.attridname, str_attr_value);
                     }
 
+                case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT8:
+                case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_UINT16:
+
+                    // ACL field data don't have default values (disabled)
+
+                    return nullptr;
+
                 default:
 
                     SWSS_LOG_ERROR("serialization type %s is not supported yet, FIXME",
