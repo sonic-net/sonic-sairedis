@@ -12,7 +12,8 @@ TEST(CommandLineOptions, getCommandLineString)
 
     EXPECT_EQ(str, " EnableDiagShell=NO EnableTempView=NO DisableExitSleep=NO EnableUnittests=NO"
             " EnableConsistencyCheck=NO EnableSyncMode=NO RedisCommunicationMode=redis_async"
-            " EnableSaiBulkSuport=NO StartType=cold ProfileMapFile= GlobalContext=0 ContextConfig= BreakConfig=");
+            " EnableSaiBulkSuport=NO StartType=cold ProfileMapFile= GlobalContext=0 ContextConfig= BreakConfig="
+            " WatchdogWarnTimeSpan=30000000");
 }
 
 TEST(CommandLineOptions, startTypeStringToStartType)
