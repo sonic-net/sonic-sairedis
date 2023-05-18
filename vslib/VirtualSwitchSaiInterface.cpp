@@ -847,6 +847,19 @@ sai_status_t VirtualSwitchSaiInterface::objectTypeGetAvailability(
         *count = 512;
         return SAI_STATUS_SUCCESS;
     }
+    else if ((objectType == (sai_object_type_t)SAI_OBJECT_TYPE_VNET) ||
+             (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI) ||
+             (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY) ||
+             (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY) ||
+             (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY) ||
+             (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY) ||
+             (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY) ||
+             (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP) ||
+             (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE))
+    {
+        *count = 100000;
+        return SAI_STATUS_SUCCESS;
+    }
 
     return SAI_STATUS_NOT_SUPPORTED;
 }
