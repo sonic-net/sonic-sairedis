@@ -6,6 +6,40 @@
 
 using namespace syncd;
 
+const std::string expected_usage =
+R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-h]
+    -d --diag
+        Enable diagnostic shell
+    -p --profile profile
+        Provide profile map file
+    -t --startType type
+        Specify start type (cold|warm|fast|fastfast)
+    -u --useTempView
+        Use temporary view between init and apply
+    -S --disableExitSleep
+        Disable sleep when syncd crashes
+    -U --enableUnittests
+        Metadata enable unittests
+    -C --enableConsistencyCheck
+        Enable consisteny check DB vs ASIC after comparison logic
+    -s --syncMode
+        Enable synchronous mode (depreacated, use -z)
+    -z --redisCommunicationMode
+        Redis communication mode (redis_async|redis_sync|zmq_sync), default: redis_async
+    -l --enableBulk
+        Enable SAI Bulk support
+    -g --globalContext
+        Global context index to load from context config file
+    -x --contextConfig
+        Context configuration file
+    -b --breakConfig
+        Comparison logic 'break before make' configuration file
+    -w --watchdogWarnTimeSpan
+        Watchdog time span to watch for execution
+    -h --help
+        Print out this message
+)";
+
 TEST(CommandLineOptions, getCommandLineString)
 {
     syncd::CommandLineOptions opt;
@@ -23,6 +57,17 @@ TEST(CommandLineOptions, startTypeStringToStartType)
     auto st = syncd::CommandLineOptions::startTypeStringToStartType("foo");
 
     EXPECT_EQ(st, SAI_START_TYPE_UNKNOWN);
+}
+
+TEST(CommandLineOptionsParser, printUsage)
+{
+    std::stringstream buffer;
+    std::streambuf *sbuf = std::cout.rdbuf();
+    std::cout.rdbuf(buffer.rdbuf());
+    syncd::CommandLineOptionsParser::printUsage();
+    std::cout.rdbuf(sbuf);
+
+    EXPECT_EQ(expected_usage, buffer.str());
 }
 
 TEST(CommandLineOptionsParser, parseCommandLine)
