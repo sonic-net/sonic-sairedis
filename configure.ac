@@ -192,6 +192,7 @@ AC_MSG_CHECKING([SAI headers API version and library version check])
 AC_TRY_RUN([
 extern "C" {
 #include <sai.h>
+#include <cstdio>
 }
 int main() {
     sai_api_version_t version;
@@ -216,7 +217,7 @@ https://github.com/opencomputeproject/SAI/pull/1795 (structs)
     sai_api_version_t minversion = SAI_VERSION(1,9,0);
     printf("min SAI version: %ld, sairedis SAI headers version: %ld, vendor lib SAI query api version: %ld\n",
            minversion, SAI_API_VERSION, version);
-    return (version >= minversion) && (SAI_API_VERSION >= minversion);
+    return (version < minversion) || (SAI_API_VERSION < minversion);
 }],
 [AC_MSG_RESULT(ok)],
 [AC_MSG_RESULT(failed)
