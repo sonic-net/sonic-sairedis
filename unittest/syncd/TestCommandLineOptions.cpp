@@ -35,7 +35,7 @@ R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [
     -b --breakConfig
         Comparison logic 'break before make' configuration file
     -w --watchdogWarnTimeSpan
-        Watchdog time span to watch for execution
+        Watchdog time span (in microseconds) to watch for execution
     -h --help
         Print out this message
 )";

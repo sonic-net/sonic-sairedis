@@ -188,7 +188,7 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "    -b --breakConfig" << std::endl;
     std::cout << "        Comparison logic 'break before make' configuration file" << std::endl;
     std::cout << "    -w --watchdogWarnTimeSpan" << std::endl;
-    std::cout << "        Watchdog time span to watch for execution" << std::endl;
+    std::cout << "        Watchdog time span (in microseconds) to watch for execution" << std::endl;
 
 #ifdef SAITHRIFT
 
