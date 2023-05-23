@@ -2973,11 +2973,11 @@ void ComparisonLogic::createPreMatchMap(
             count++;
     }
 
+    cretePreMatchForAclEntries(cur, tmp, processed);
+
     SWSS_LOG_NOTICE("preMatch map size: %zu, tmp oid obj: %zu",
             tmp.m_preMatchMap.size(),
             count);
-
-    cretePreMatchForAclEntries(cur, tmp, processed);
 }
 
 void ComparisonLogic::transferNotProcessed(
