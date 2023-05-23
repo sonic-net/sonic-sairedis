@@ -42,6 +42,12 @@ using namespace saimeta;
 using namespace sairediscommon;
 using namespace std::placeholders;
 
+#ifdef ASAN_ENABLED
+#define WD_DELAY_FACTOR 2
+#else
+#define WD_DELAY_FACTOR 1
+#endif
+
 Syncd::Syncd(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ std::shared_ptr<CommandLineOptions> cmd,
@@ -53,7 +59,7 @@ Syncd::Syncd(
     m_vendorSai(vendorSai),
     m_veryFirstRun(false),
     m_enableSyncMode(false),
-    m_timerWatchdog(cmd->m_watchdogWarnTimeSpan)
+    m_timerWatchdog(cmd->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR)
 {
     SWSS_LOG_ENTER();
 

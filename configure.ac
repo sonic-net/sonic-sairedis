@@ -192,6 +192,7 @@ AC_MSG_CHECKING([SAI headers API version and library version check])
 AC_TRY_RUN([
 extern "C" {
 #include <sai.h>
+#include <cstdio>
 }
 int main() {
     sai_api_version_t version;
@@ -199,7 +200,24 @@ int main() {
     {
         return 1;
     }
-    return (version != SAI_API_VERSION);
+/*
+since commit 8e1fb37 (v1.8.0) there is check enum binary backward compatibility
+so we are relaxing this check below, versions do not have to be equal but both
+need to be at least 2ebde24 (v1.9.0), this will make sure that enums are always
+ok, but since that commit some data structures changed and are not binary
+backwad compatible like next hop group api, acl_capability, structs are
+backward binary compatible from commit aed34c8, which closest tag version for
+it is commit 3ff228a (v1.12.0), so min version check should be set to
+(v1.12.0), but some production branches do not use that high SAI version yet,
+some use even version v1.7.0 which then it is impossible to provide even enum
+backward compatibility, check those links:
+https://github.com/opencomputeproject/SAI/pull/1297 (enums)
+https://github.com/opencomputeproject/SAI/pull/1795 (structs)
+*/
+    sai_api_version_t minversion = SAI_VERSION(1,9,0);
+    printf("min SAI version: %ld, sairedis SAI headers version: %ld, vendor lib SAI query api version: %ld\n",
+           minversion, SAI_API_VERSION, version);
+    return (version < minversion) || (SAI_API_VERSION < minversion);
 }],
 [AC_MSG_RESULT(ok)],
 [AC_MSG_RESULT(failed)
