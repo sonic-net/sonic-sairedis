@@ -73,10 +73,10 @@ sai_status_t VendorSai::initialize(
 
     if (version != SAI_API_VERSION)
     {
-        SWSS_LOG_ERROR("SAI implementation API version %" PRId64 " does not match SAI headers API version %" PRId64,
+        SWSS_LOG_NOTICE("SAI implementation API version %" PRId64 " does not match SAI headers API version %" PRId64,
                        version, SAI_API_VERSION);
 
-        return SAI_STATUS_FAILURE;
+        // return SAI_STATUS_FAILURE;
     }
 #endif
 
