@@ -79,8 +79,8 @@ sai_status_t VendorSai::initialize(
 
     if ((version < minversion) || (SAI_API_VERSION < minversion))
     {
-        SWSS_LOG_ERROR("SAI implementation API version %" PRId64 " does not match SAI headers API version %" PRId64,
-                       version, SAI_API_VERSION);
+        SWSS_LOG_ERROR("SAI implementation API version %" PRId64 " or SAI headers API version %" PRId64 " does not meet minimum version requirements, min version required: %" PRId64,
+                       version, SAI_API_VERSION, minversion);
 
         return SAI_STATUS_FAILURE;
     }
