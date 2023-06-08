@@ -2,7 +2,7 @@ FROM docker-sonic-vs
 
 ARG docker_container_name
 
-ADD ["debs", "/debs"]
+COPY ["debs", "/debs"]
 
 RUN dpkg --purge python-swsscommon python3-swsscommon swss libsairedis sonic-db-cli libswsscommon libsaimetadata libsaivs syncd-vs
 
