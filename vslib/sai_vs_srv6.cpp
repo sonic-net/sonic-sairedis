@@ -15,6 +15,10 @@ const sai_srv6_api_t vs_srv6_api = {
     vs_bulk_create_srv6_sidlists,
     vs_bulk_remove_srv6_sidlists,
 
+    NULL,
+    NULL,
+    NULL,
+
     VS_GENERIC_QUAD_API(my_sid_entry)
     VS_BULK_QUAD_API(my_sid_entry)
 };

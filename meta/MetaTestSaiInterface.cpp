@@ -71,6 +71,26 @@ sai_status_t MetaTestSaiInterface::create(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t MetaTestSaiInterface::bulkCreate(
+        _In_ sai_object_type_t object_type,
+        _In_ sai_object_id_t switch_id,
+        _In_ uint32_t object_count,
+        _In_ const uint32_t *attr_count,
+        _In_ const sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_object_id_t *object_id,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t idx = 0; idx < object_count; ++idx)
+    {
+        object_statuses[idx] = create(object_type, &object_id[idx], switch_id, attr_count[idx], attr_list[idx]);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_object_type_t MetaTestSaiInterface::objectTypeQuery(
         _In_ sai_object_id_t objectId)
 {

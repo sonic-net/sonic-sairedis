@@ -5,3 +5,4 @@ usr/bin/saidiscovery
 usr/bin/saiasiccmp
 usr/bin/syncd*
 syncd/scripts/* usr/bin
+usr/lib/*/libMdioIpcClient.so.*

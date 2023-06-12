@@ -4,8 +4,54 @@
 #include "swss/logger.h"
 
 #include <cstring>
+#include <boost/functional/hash.hpp>
 
 using namespace saimeta;
+
+static bool operator==(
+        _In_ const sai_ip_address_t& a,
+        _In_ const sai_ip_address_t& b)
+{
+    if (a.addr_family != b.addr_family)
+    {
+        return false;
+    }
+
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        return a.addr.ip4 == b.addr.ip4;
+    }
+
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
+    {
+        return memcmp(a.addr.ip6, b.addr.ip6, sizeof(a.addr.ip6)) == 0;
+    }
+
+    SWSS_LOG_THROW("unknown IP addr family= %d", a.addr_family);
+}
+
+static bool operator==(
+        _In_ const sai_ip_prefix_t& a,
+        _In_ const sai_ip_prefix_t& b)
+{
+    if (a.addr_family != b.addr_family)
+    {
+        return false;
+    }
+
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        return a.addr.ip4 == b.addr.ip4 && a.mask.ip4 == b.mask.ip4;
+    }
+
+    if (a.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
+    {
+        return memcmp(a.addr.ip6, b.addr.ip6, sizeof(a.addr.ip6)) == 0 &&
+            memcmp(a.mask.ip6, b.mask.ip6, sizeof(a.mask.ip6)) == 0;
+    }
+
+    SWSS_LOG_THROW("unknown IP addr family= %d", a.addr_family);
+}
 
 static bool operator==(
         _In_ const sai_fdb_entry_t& a,
@@ -207,6 +253,74 @@ static bool operator==(
     return part && memcmp(a.sid, b.sid, sizeof(a.sid)) == 0;
 }
 
+static bool operator==(
+        _In_ const sai_direction_lookup_entry_t& a,
+        _In_ const sai_direction_lookup_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return a.switch_id == b.switch_id && a.vni == b.vni;
+}
+
+static bool operator==(
+        _In_ const sai_eni_ether_address_map_entry_t& a,
+        _In_ const sai_eni_ether_address_map_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return a.switch_id == b.switch_id && memcmp(a.address, b.address, sizeof(a.address)) == 0;
+}
+
+static bool operator==(
+        _In_ const sai_vip_entry_t& a,
+        _In_ const sai_vip_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return a.switch_id == b.switch_id && a.vip == b.vip;
+}
+
+static bool operator==(
+        _In_ const sai_inbound_routing_entry_t& a,
+        _In_ const sai_inbound_routing_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return a.switch_id == b.switch_id &&
+           a.eni_id == b.eni_id &&
+           a.vni == b.vni &&
+           a.sip == b.sip &&
+           a.sip_mask == b.sip_mask &&
+           a.priority == b.priority;
+}
+
+static bool operator==(
+        _In_ const sai_pa_validation_entry_t& a,
+        _In_ const sai_pa_validation_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return a.switch_id == b.switch_id && a.vnet_id == b.vnet_id && a.sip == b.sip;
+}
+
+static bool operator==(
+        _In_ const sai_outbound_routing_entry_t& a,
+        _In_ const sai_outbound_routing_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return a.switch_id == b.switch_id && a.eni_id == b.eni_id && a.destination == b.destination;
+}
+
+static bool operator==(
+        _In_ const sai_outbound_ca_to_pa_entry_t& a,
+        _In_ const sai_outbound_ca_to_pa_entry_t& b)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    return a.switch_id == b.switch_id && a.dst_vnet_id == b.dst_vnet_id && a.dip == b.dip;
+}
+
 bool MetaKeyHasher::operator()(
         _In_ const sai_object_meta_key_t& a,
         _In_ const sai_object_meta_key_t& b) const
@@ -248,12 +362,95 @@ bool MetaKeyHasher::operator()(
     if (a.objecttype == SAI_OBJECT_TYPE_IPMC_ENTRY)
         return a.objectkey.key.ipmc_entry == b.objectkey.key.ipmc_entry;
 
+    if ((sai_object_type_extensions_t)a.objecttype == SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY)
+        return a.objectkey.key.direction_lookup_entry == b.objectkey.key.direction_lookup_entry;
+
+    if ((sai_object_type_extensions_t)a.objecttype == SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY)
+        return a.objectkey.key.eni_ether_address_map_entry == b.objectkey.key.eni_ether_address_map_entry;
+
+    if ((sai_object_type_extensions_t)a.objecttype == SAI_OBJECT_TYPE_VIP_ENTRY)
+        return a.objectkey.key.vip_entry == b.objectkey.key.vip_entry;
+
+    if ((sai_object_type_extensions_t)a.objecttype == SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY)
+        return a.objectkey.key.inbound_routing_entry == b.objectkey.key.inbound_routing_entry;
+
+    if ((sai_object_type_extensions_t)a.objecttype == SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY)
+        return a.objectkey.key.pa_validation_entry == b.objectkey.key.pa_validation_entry;
+
+    if ((sai_object_type_extensions_t)a.objecttype == SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY)
+        return a.objectkey.key.outbound_routing_entry == b.objectkey.key.outbound_routing_entry;
+
+    if ((sai_object_type_extensions_t)a.objecttype == SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY)
+        return a.objectkey.key.outbound_ca_to_pa_entry == b.objectkey.key.outbound_ca_to_pa_entry;
 
     SWSS_LOG_THROW("not implemented: %s",
             sai_serialize_object_meta_key(a).c_str());
 }
 
 static_assert(sizeof(std::size_t) >= sizeof(uint32_t), "size_t must be at least 32 bits");
+
+static inline std::size_t sai_get_hash(
+    _In_ const sai_ip_address_t& addr)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reason
+
+    size_t hash = 0;
+
+    if (addr.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        boost::hash_combine(hash, addr.addr.ip4);
+
+        return hash;
+    }
+    else if (addr.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
+    {
+        uint32_t ip6[4];
+        memcpy(ip6, addr.addr.ip6, sizeof(ip6));
+        boost::hash_combine(hash, ip6[0]);
+        boost::hash_combine(hash, ip6[1]);
+        boost::hash_combine(hash, ip6[2]);
+        boost::hash_combine(hash, ip6[3]);
+
+        return hash;
+    }
+
+    SWSS_LOG_THROW("unknown IP addr family: %d", addr.addr_family);
+}
+
+static inline std::size_t sai_get_hash(
+    _In_ const sai_ip_prefix_t& prefix)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reason
+
+    size_t hash = 0;
+
+    if (prefix.addr_family == SAI_IP_ADDR_FAMILY_IPV4)
+    {
+        boost::hash_combine(hash, prefix.addr.ip4);
+        boost::hash_combine(hash, prefix.mask.ip4);
+
+        return hash;
+    }
+    else if (prefix.addr_family == SAI_IP_ADDR_FAMILY_IPV6)
+    {
+        uint32_t ip6[4];
+        memcpy(ip6, prefix.addr.ip6, sizeof(ip6));
+        boost::hash_combine(hash, ip6[0]);
+        boost::hash_combine(hash, ip6[1]);
+        boost::hash_combine(hash, ip6[2]);
+        boost::hash_combine(hash, ip6[3]);
+
+        memcpy(ip6, prefix.mask.ip6, sizeof(ip6));
+        boost::hash_combine(hash, ip6[0]);
+        boost::hash_combine(hash, ip6[1]);
+        boost::hash_combine(hash, ip6[2]);
+        boost::hash_combine(hash, ip6[3]);
+
+        return hash;
+    }
+
+    SWSS_LOG_THROW("unknown IP addr family: %d", prefix.addr_family);
+}
 
 static inline std::size_t sai_get_hash(
         _In_ const sai_route_entry_t& re)
@@ -402,6 +599,98 @@ static inline std::size_t sai_get_hash(
     SWSS_LOG_THROW("unknown ipmc entry IP addr family: %d", ie.destination.addr_family);
 }
 
+static inline std::size_t sai_get_hash(
+        _In_ const sai_direction_lookup_entry_t& de)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    size_t hash = 0;
+    boost::hash_combine(hash, de.vni);
+
+    return hash;
+}
+
+static inline std::size_t sai_get_hash(
+        _In_ const sai_eni_ether_address_map_entry_t & ee)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    std::size_t hash = 0;
+
+    boost::hash_combine(hash, ee.address[0]);
+    boost::hash_combine(hash, ee.address[1]);
+    boost::hash_combine(hash, ee.address[2]);
+    boost::hash_combine(hash, ee.address[3]);
+    boost::hash_combine(hash, ee.address[4]);
+    boost::hash_combine(hash, ee.address[5]);
+
+    return hash;
+}
+
+static inline std::size_t sai_get_hash(
+        _In_ const sai_vip_entry_t & ve)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    std::size_t hash = 0;
+
+    boost::hash_combine(hash, sai_get_hash(ve.vip));
+
+    return hash;
+}
+
+static inline std::size_t sai_get_hash(
+        _In_ const sai_inbound_routing_entry_t & re)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    size_t hash = 0;
+    boost::hash_combine(hash, sai_get_hash(re.sip));
+    boost::hash_combine(hash, sai_get_hash(re.sip_mask));
+    boost::hash_combine(hash, re.eni_id);
+    boost::hash_combine(hash, re.vni);
+    boost::hash_combine(hash, re.priority);
+
+    return hash;
+}
+
+static inline std::size_t sai_get_hash(
+        _In_ const sai_pa_validation_entry_t & pe)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    std::size_t hash = 0;
+
+    boost::hash_combine(hash, pe.vnet_id);
+    boost::hash_combine(hash, sai_get_hash(pe.sip));
+
+    return hash;
+}
+
+static inline std::size_t sai_get_hash(
+        _In_ const sai_outbound_routing_entry_t & oe)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    std::size_t hash = 0;
+    boost::hash_combine(hash, oe.eni_id);
+    boost::hash_combine(hash, sai_get_hash(oe.destination));
+
+    return hash;
+}
+
+static inline std::size_t sai_get_hash(
+        _In_ const sai_outbound_ca_to_pa_entry_t & oe)
+{
+    // SWSS_LOG_ENTER(); // disabled for performance reasons
+
+    std::size_t hash = 0;
+    boost::hash_combine(hash, oe.dst_vnet_id);
+    boost::hash_combine(hash, sai_get_hash(oe.dip));
+
+    return hash;
+}
+
 std::size_t MetaKeyHasher::operator()(
         _In_ const sai_object_meta_key_t& k) const
 {
@@ -443,6 +732,33 @@ std::size_t MetaKeyHasher::operator()(
 
         case SAI_OBJECT_TYPE_IPMC_ENTRY:
             return sai_get_hash(k.objectkey.key.ipmc_entry);
+        default:
+            // Do nothing. Go to extensions
+            break;
+    }
+
+    switch ((sai_object_type_extensions_t)k.objecttype)
+    {
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            return sai_get_hash(k.objectkey.key.direction_lookup_entry);
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            return sai_get_hash(k.objectkey.key.eni_ether_address_map_entry);
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+            return sai_get_hash(k.objectkey.key.vip_entry);
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            return sai_get_hash(k.objectkey.key.inbound_routing_entry);
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            return sai_get_hash(k.objectkey.key.pa_validation_entry);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            return sai_get_hash(k.objectkey.key.outbound_routing_entry);
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            return sai_get_hash(k.objectkey.key.outbound_ca_to_pa_entry);
 
         default:
             SWSS_LOG_THROW("not handled: %s", sai_serialize_object_type(k.objecttype).c_str());

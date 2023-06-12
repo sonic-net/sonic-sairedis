@@ -37,7 +37,7 @@ resources:
 parameters:
   - name: debian_version
     type: string
-    default: buster
+    default: bullseye
 variables:
   - name: BUILD_BRANCH
     ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:

@@ -19,6 +19,7 @@
 #include "swss/select.h"
 #include "swss/tokenize.h"
 #include "swss/notificationproducer.h"
+#include "swss/exec.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/ZeroMQSelectableChannel.h"
@@ -34,11 +35,18 @@
 #include <algorithm>
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
+#define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
 
 using namespace syncd;
 using namespace saimeta;
 using namespace sairediscommon;
 using namespace std::placeholders;
+
+#ifdef ASAN_ENABLED
+#define WD_DELAY_FACTOR 2
+#else
+#define WD_DELAY_FACTOR 1
+#endif
 
 Syncd::Syncd(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
@@ -51,7 +59,7 @@ Syncd::Syncd(
     m_vendorSai(vendorSai),
     m_veryFirstRun(false),
     m_enableSyncMode(false),
-    m_timerWatchdog(30 * 1000000) // watch for executions over 30 seconds
+    m_timerWatchdog(cmd->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR)
 {
     SWSS_LOG_ENTER();
 
@@ -481,6 +489,15 @@ sai_status_t Syncd::processAttrEnumValuesCapabilityQuery(
         };
 
         SWSS_LOG_DEBUG("Sending response: capabilities = '%s', count = %d", strCap.c_str(), enumCapList.count);
+    }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        entry =
+        {
+            swss::FieldValueTuple("ENUM_COUNT", std::to_string(enumCapList.count))
+        };
+
+        SWSS_LOG_DEBUG("Sending response: count = %u", enumCapList.count);
     }
 
     m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE);
@@ -940,7 +957,7 @@ sai_status_t Syncd::processBulkCreateEntry(
         attr_lists[idx] = attributes[idx]->get_attr_list();
     }
 
-    switch (objectType)
+    switch ((int)objectType)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
         {
@@ -1058,6 +1075,157 @@ sai_status_t Syncd::processBulkCreateEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+        {
+            std::vector<sai_direction_lookup_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_direction_lookup_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+        {
+            std::vector<sai_eni_ether_address_map_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_eni_ether_address_map_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+        {
+            std::vector<sai_vip_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_vip_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+        {
+            std::vector<sai_inbound_routing_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inbound_routing_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+        {
+            std::vector<sai_pa_validation_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_pa_validation_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vnet_id = m_translator->translateVidToRid(entries[it].vnet_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+        {
+            std::vector<sai_outbound_routing_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_routing_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+        {
+            std::vector<sai_outbound_ca_to_pa_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_ca_to_pa_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].dst_vnet_id = m_translator->translateVidToRid(entries[it].dst_vnet_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
         default:
             return SAI_STATUS_NOT_SUPPORTED;
     }
@@ -1084,7 +1252,7 @@ sai_status_t Syncd::processBulkRemoveEntry(
 
     sai_bulk_op_error_mode_t mode = SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR;
 
-    switch (objectType)
+    switch ((int)objectType)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
         {
@@ -1185,6 +1353,143 @@ sai_status_t Syncd::processBulkRemoveEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+        {
+            std::vector<sai_direction_lookup_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_direction_lookup_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+        {
+            std::vector<sai_eni_ether_address_map_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_eni_ether_address_map_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+        {
+            std::vector<sai_vip_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_vip_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+        {
+            std::vector<sai_inbound_routing_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_inbound_routing_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+        {
+            std::vector<sai_pa_validation_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_pa_validation_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].vnet_id = m_translator->translateVidToRid(entries[it].vnet_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+        {
+            std::vector<sai_outbound_routing_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_routing_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+        {
+            std::vector<sai_outbound_ca_to_pa_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_ca_to_pa_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].dst_vnet_id = m_translator->translateVidToRid(entries[it].dst_vnet_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
         default:
             return SAI_STATUS_NOT_SUPPORTED;
     }
@@ -1219,7 +1524,7 @@ sai_status_t Syncd::processBulkSetEntry(
         attr_lists.push_back(attributes[it]->get_attr_list()[0]);
     }
 
-    switch (objectType)
+    switch ((int)objectType)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
         {
@@ -1392,7 +1697,7 @@ sai_status_t Syncd::processBulkEntry(
 
         metaKey.objecttype = objectType;
 
-        switch (objectType)
+        switch ((int)objectType)
         {
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
                 sai_deserialize_route_entry(objectIds[idx], metaKey.objectkey.key.route_entry);
@@ -1408,6 +1713,34 @@ sai_status_t Syncd::processBulkEntry(
 
             case SAI_OBJECT_TYPE_INSEG_ENTRY:
                 sai_deserialize_inseg_entry(objectIds[idx], metaKey.objectkey.key.inseg_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+                sai_deserialize_direction_lookup_entry(objectIds[idx], metaKey.objectkey.key.direction_lookup_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+                sai_deserialize_eni_ether_address_map_entry(objectIds[idx], metaKey.objectkey.key.eni_ether_address_map_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_VIP_ENTRY:
+                sai_deserialize_vip_entry(objectIds[idx], metaKey.objectkey.key.vip_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+                sai_deserialize_inbound_routing_entry(objectIds[idx], metaKey.objectkey.key.inbound_routing_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+                sai_deserialize_pa_validation_entry(objectIds[idx], metaKey.objectkey.key.pa_validation_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+                sai_deserialize_outbound_routing_entry(objectIds[idx], metaKey.objectkey.key.outbound_routing_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+                sai_deserialize_outbound_ca_to_pa_entry(objectIds[idx], metaKey.objectkey.key.outbound_ca_to_pa_entry);
                 break;
 
             default:
@@ -1574,6 +1907,11 @@ sai_status_t Syncd::processBulkOidCreate(
             SWSS_LOG_INFO("saved VID %s to RID %s",
                     sai_serialize_object_id(objectVids[idx]).c_str(),
                     sai_serialize_object_id(objectRids[idx]).c_str());
+
+            if (objectType == SAI_OBJECT_TYPE_PORT)
+            {
+                m_switches.at(switchVid)->onPostPortCreate(objectRids[idx], objectVids[idx]);
+            }
         }
     }
 
@@ -1604,6 +1942,12 @@ sai_status_t Syncd::processBulkOidRemove(
     {
         sai_deserialize_object_id(objectIds[idx], objectVids[idx]);
         objectRids[idx] = m_translator->translateVidToRid(objectVids[idx]);
+
+        if (objectType == SAI_OBJECT_TYPE_PORT)
+        {
+            sai_object_id_t switchVid = VidManager::switchIdQuery(objectVids[idx]);
+            m_switches.at(switchVid)->collectPortRelatedObjects(objectRids[idx]);
+        }
     }
 
     status = m_vendorSai->bulkRemove(
@@ -1636,6 +1980,11 @@ sai_status_t Syncd::processBulkOidRemove(
             if (m_switches.at(switchVid)->isDiscoveredRid(objectRids[idx]))
             {
                 m_switches.at(switchVid)->removeExistingObjectReference(objectRids[idx]);
+            }
+
+            if (objectType == SAI_OBJECT_TYPE_PORT)
+            {
+                m_switches.at(switchVid)->postPortRemove(objectRids[idx]);
             }
         }
     }
@@ -3247,6 +3596,7 @@ sai_status_t Syncd::processNotifySyncd(
     SWSS_LOG_ENTER();
 
     auto& key = kfvKey(kco);
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     if (!m_commandLineOptions->m_enableTempView)
     {
@@ -3258,6 +3608,20 @@ sai_status_t Syncd::processNotifySyncd(
     }
 
     auto redisNotifySyncd = sai_deserialize_redis_notify_syncd(key);
+
+    if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP)
+    {
+        SWSS_LOG_NOTICE("Invoking SAI failure dump");
+        std::string ret_str;
+        int ret = swss::exec(SAI_FAILURE_DUMP_SCRIPT, ret_str);
+        if (ret != 0)
+        {
+            SWSS_LOG_ERROR("Error in executing SAI failure dump %s", ret_str.c_str());
+            status = SAI_STATUS_FAILURE;
+        }
+        sendNotifyResponse(status);
+        return status;
+    }
 
     if (m_veryFirstRun && m_firstInitWasPerformed && redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW)
     {
@@ -3273,7 +3637,6 @@ sai_status_t Syncd::processNotifySyncd(
     {
         SWSS_LOG_NOTICE("very first run is TRUE, op = %s", key.c_str());
 
-        sai_status_t status = SAI_STATUS_SUCCESS;
 
         /*
          * On the very first start of syncd, "compile" view is directly applied
@@ -3348,7 +3711,6 @@ sai_status_t Syncd::processNotifySyncd(
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
 
-        sai_status_t status;
 
         try
         {
