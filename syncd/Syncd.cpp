@@ -3957,6 +3957,8 @@ void Syncd::onSwitchCreateInInitViewMode(
                 sai_serialize_object_id(switchVid).c_str(),
                 newHw.c_str());
 
+        currentHW = currentHW == "none"? "":currentHW;
+
         if (currentHw != newHw)
         {
             SWSS_LOG_THROW("hardware info mismatch: current '%s' vs new '%s'", currentHw.c_str(), newHw.c_str());
