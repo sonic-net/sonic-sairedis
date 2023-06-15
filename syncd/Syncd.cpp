@@ -3957,7 +3957,13 @@ void Syncd::onSwitchCreateInInitViewMode(
                 sai_serialize_object_id(switchVid).c_str(),
                 newHw.c_str());
 
+        SWSS_LOG_NOTICE("current switch contains hardware info: '%s'",
+                currentHw.c_str());
+
         currentHw = currentHw == "none"? "":currentHw;
+
+        SWSS_LOG_NOTICE("current switch contains hardware info: '%s'",
+                currentHw.c_str());
 
         if (currentHw != newHw)
         {
