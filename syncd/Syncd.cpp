@@ -3957,7 +3957,7 @@ void Syncd::onSwitchCreateInInitViewMode(
                 sai_serialize_object_id(switchVid).c_str(),
                 newHw.c_str());
 
-        currentHW = currentHW == "none"? "":currentHW;
+        currentHw = currentHw == "none"? "":currentHw;
 
         if (currentHw != newHw)
         {
