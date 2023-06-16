@@ -4309,6 +4309,11 @@ void Syncd::onSwitchCreateInInitViewMode(
                 sai_serialize_object_id(switchVid).c_str(),
                 newHw.c_str());
 
+        /*
+         * The line below is added due to a behavior change of SAI call.
+         *
+         * TODO: remove the line when SAI vendor agrees fix on their end.
+        */
         currentHw = currentHw == "none"? "":currentHw;
 
         if (currentHw != newHw)
