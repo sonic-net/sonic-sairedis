@@ -4313,8 +4313,8 @@ void Syncd::onSwitchCreateInInitViewMode(
          * The line below is added due to a behavior change of SAI call.
          *
          * TODO: remove the line when SAI vendor agrees fix on their end.
-        */
-        currentHw = currentHw == "none"? "":currentHw;
+         */
+        currentHw = currentHw == "none"? "" : currentHw;
 
         if (currentHw != newHw)
         {
