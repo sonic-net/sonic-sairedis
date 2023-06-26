@@ -128,6 +128,11 @@ if test "x$python2" = "xtrue"; then
 	PYTHON2_LIBS=$PYTHON_LIBS
 	AC_SUBST(PYTHON2_CPPFLAGS)
 	AC_SUBST(PYTHON2_LIBS)
+else
+	# The py-compile script either uses $PYTHON (which won't be set if we're not building python 2 bindings),
+	# or assumes a default of `python` (which may or may not exist as a symlink). Therefore, just assign
+	# PYTHON3 to PYTHON to make sure it always points to a valid binary.
+	PYTHON=$PYTHON3
 fi
 
 AM_CONDITIONAL(ASAN_ENABLED, test x$asan_enabled = xtrue)
