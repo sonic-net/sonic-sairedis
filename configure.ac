@@ -127,6 +127,7 @@ CFLAGS_COMMON+=" -Wwrite-strings"
 CFLAGS_COMMON+=" -Wno-switch-default"
 CFLAGS_COMMON+=" -Wconversion"
 CFLAGS_COMMON+=" -Wno-psabi"
+CFLAGS_COMMON+=" -fno-omit-frame-pointer"
 
 SAVED_FLAGS="$CXXFLAGS"
 CXXFLAGS="-Wcast-align=strict"
