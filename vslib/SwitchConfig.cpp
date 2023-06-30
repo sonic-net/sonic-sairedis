@@ -79,6 +79,15 @@ bool SwitchConfig::parseSwitchType(
     {
         switchType = SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C;
     }
+    else if (st == SAI_VALUE_VS_SWITCH_TYPE_NPU)
+    {
+        /*
+         * Temporarily set switchType to SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C
+         * for NPU. This will need to be revisited when there are other NPU
+         * types.
+         */
+        switchType = SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C;
+    }
     else
     {
         SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s|%s|%s|%s)",
