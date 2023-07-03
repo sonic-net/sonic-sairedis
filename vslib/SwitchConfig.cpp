@@ -79,12 +79,12 @@ bool SwitchConfig::parseSwitchType(
     {
         switchType = SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C;
     }
-    else if (st == SAI_VALUE_VS_SWITCH_TYPE_NPU)
+    else if (st == SAI_VALUE_VS_SWITCH_TYPE_DPU_SIMU_2P)
     {
         /*
          * Temporarily set switchType to SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C
-         * for NPU. This will need to be revisited when there are other NPU
-         * types.
+         * for 2-port DPU. This will need to be revisited when there are other
+         * DPU types.
          */
         switchType = SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C;
     }
