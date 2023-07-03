@@ -367,10 +367,12 @@ config_syncd_xsight()
 
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
+
 config_syncd_clounix()
 {
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile -l"
 }
+
 config_syncd()
 {
     check_warm_boot
