@@ -87,7 +87,11 @@ jobs:
       name: build
       run: |
         ./autogen.sh
-        DEB_BUILD_OPTIONS=nocheck SWSS_COMMON_INC="$(dirname $GITHUB_WORKSPACE)/usr/include" SWSS_COMMON_LIB="$(dirname $GITHUB_WORKSPACE)/usr/lib/x86_64-linux-gnu" fakeroot debian/rules CFLAGS="-Wno-error" CXXFLAGS="-Wno-error" binary-syncd-vs
+        DEB_BUILD_OPTIONS=nocheck \
+        SWSS_COMMON_INC="$(dirname $GITHUB_WORKSPACE)/usr/include" \
+        SWSS_COMMON_LIB="$(dirname $GITHUB_WORKSPACE)/usr/lib/x86_64-linux-gnu" \
+        DEB_CFLAGS_SET="-Wno-error" DEB_CXXFLAGS_SET="-Wno-error" \
+        dpkg-buildpackage -us -uc -b -Psyncd,vs,nopython2 -j$(nproc)
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2.1.29
