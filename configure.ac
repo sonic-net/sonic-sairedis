@@ -10,8 +10,8 @@ AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_LIBTOOL
 AC_HEADER_STDC
-AM_PATH_PYTHON
 AM_PATH_PYTHON3
+AX_PYTHON3_DEVEL
 AX_CODE_COVERAGE
 AX_ADD_AM_MACRO_STATIC([])
 
@@ -102,6 +102,14 @@ AC_ARG_ENABLE(asan,
 	*) AC_MSG_ERROR(bad value ${enableval} for --enable-asan) ;;
 esac],[asan_enabled=false])
 
+AC_ARG_ENABLE(python2,
+[  --enable-python2     Generate Python 2 bindings],
+[case "${enableval}" in
+	yes) python2=true ;;
+	no)  python2=false ;;
+	*) AC_MSG_ERROR(bad value ${enableval} for --enable-python2) ;;
+esac],[python2=true])
+
 if test "x$asan_enabled" = "xtrue"; then
     CFLAGS_ASAN+=" -fsanitize=address"
     CFLAGS_ASAN+=" -DASAN_ENABLED"
@@ -112,13 +120,31 @@ if test "x$asan_enabled" = "xtrue"; then
     AC_SUBST(LDFLAGS_ASAN)
 fi
 
+if test "x$python2" = "xtrue"; then
+	m4_define_default([_AM_PYTHON_INTERPRETER_LIST],
+					  [python2 python2.7 python2.6 python2.5 python2.4 python2.3 python2.2 python2.1 python2.0])
+	AM_PATH_PYTHON
+	AX_PYTHON_DEVEL([< '3'])
+	PYTHON2_CPPFLAGS=$PYTHON_CPPFLAGS
+	PYTHON2_LIBS=$PYTHON_LIBS
+	AC_SUBST(PYTHON2_CPPFLAGS)
+	AC_SUBST(PYTHON2_LIBS)
+else
+	# The py-compile script either uses $PYTHON (which won't be set if we're not building python 2 bindings),
+	# or assumes a default of `python` (which may or may not exist as a symlink). Therefore, just assign
+	# PYTHON3 to PYTHON to make sure it always points to a valid binary.
+	PYTHON=$PYTHON3
+fi
+
 AM_CONDITIONAL(ASAN_ENABLED, test x$asan_enabled = xtrue)
+AM_CONDITIONAL(PYTHON2, test x$python2 = xtrue)
 
 AC_PATH_PROGS(SWIG, [swig3.0 swig])
 
 CXXFLAGS_COMMON=""
 CXXFLAGS_COMMON+=" -ansi"
 CXXFLAGS_COMMON+=" -fPIC"
+CXXFLAGS_COMMON+=" -pipe"
 CXXFLAGS_COMMON+=" -std=c++14"
 CXXFLAGS_COMMON+=" -Wall"
 CXXFLAGS_COMMON+=" -Wcast-align"
@@ -193,6 +219,7 @@ AC_MSG_CHECKING([SAI headers API version and library version check])
 AC_TRY_RUN([
 extern "C" {
 #include <sai.h>
+#include <cstdio>
 }
 int main() {
     sai_api_version_t version;
@@ -200,7 +227,24 @@ int main() {
     {
         return 1;
     }
-    return (version != SAI_API_VERSION);
+/*
+since commit 8e1fb37 (v1.8.0) there is check enum binary backward compatibility
+so we are relaxing this check below, versions do not have to be equal but both
+need to be at least 2ebde24 (v1.9.0), this will make sure that enums are always
+ok, but since that commit some data structures changed and are not binary
+backwad compatible like next hop group api, acl_capability, structs are
+backward binary compatible from commit aed34c8, which closest tag version for
+it is commit 3ff228a (v1.12.0), so min version check should be set to
+(v1.12.0), but some production branches do not use that high SAI version yet,
+some use even version v1.7.0 which then it is impossible to provide even enum
+backward compatibility, check those links:
+https://github.com/opencomputeproject/SAI/pull/1297 (enums)
+https://github.com/opencomputeproject/SAI/pull/1795 (structs)
+*/
+    sai_api_version_t minversion = SAI_VERSION(1,9,0);
+    printf("min SAI version: %ld, sairedis SAI headers version: %ld, vendor lib SAI query api version: %ld\n",
+           minversion, SAI_API_VERSION, version);
+    return (version < minversion) || (SAI_API_VERSION < minversion);
 }],
 [AC_MSG_RESULT(ok)],
 [AC_MSG_RESULT(failed)

@@ -1,3 +1,5 @@
 meta/sai*.h usr/include/sai
 meta/Sai*.h usr/include/sai
 SAI/meta/sai*.h usr/include/sai
+usr/lib/*/libsaimetadata.so
+usr/lib/*/libsaimeta.so

@@ -10,7 +10,9 @@ endif
 
 bin_PROGRAMS = syncd syncd_request_shutdown syncd_tests
 
-noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a
+lib_LTLIBRARIES = libMdioIpcClient.la
+
+noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a libMdioIpcClient.a
 
 libSyncd_a_SOURCES = \
 				AsicOperation.cpp \
@@ -61,6 +63,7 @@ libSyncd_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 syncd_SOURCES = main.cpp
 if ASAN_ENABLED
 syncd_SOURCES += Asan.cpp
+libSyncd_a_CXXFLAGS += -DASAN_ENABLED
 endif
 syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS) $(CFLAGS_ASAN)
@@ -93,6 +96,17 @@ syncd_request_shutdown_SOURCES = syncd_request_shutdown.cpp
 syncd_request_shutdown_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_request_shutdown_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 syncd_request_shutdown_LDADD = libSyncdRequestShutdown.a $(top_srcdir)/lib/libSaiRedis.a -lhiredis -lswsscommon -lpthread $(CODE_COVERAGE_LIBS)
+
+libMdioIpcClient_a_SOURCES = MdioIpcClient.cpp
+
+libMdioIpcClient_la_SOURCES = MdioIpcClient.cpp
+
+libMdioIpcClient_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS) -Wno-format-truncation
+libMdioIpcClient_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+
+libMdioIpcClient_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS) -Wno-format-truncation
+libMdioIpcClient_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+libMdioIpcClient_la_LIBADD = -lswsscommon $(CODE_COVERAGE_LIBS)
 
 syncd_tests_SOURCES = tests.cpp
 syncd_tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)

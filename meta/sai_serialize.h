@@ -138,6 +138,27 @@ std::string sai_serialize_hex_binary(
         _In_ const void *buffer,
         _In_ size_t length);
 
+std::string sai_serialize_direction_lookup_entry(
+        _In_ const sai_direction_lookup_entry_t &direction_lookup_entry);
+
+std::string sai_serialize_eni_ether_address_map_entry(
+        _In_ const sai_eni_ether_address_map_entry_t &eni_ether_address_map_entry);
+
+std::string sai_serialize_vip_entry(
+        _In_ const sai_vip_entry_t &vip_entry);
+
+std::string sai_serialize_inbound_routing_entry(
+        _In_ const sai_inbound_routing_entry_t &inbound_routing_entry);
+
+std::string sai_serialize_pa_validation_entry(
+        _In_ const sai_pa_validation_entry_t &pa_validation_entry);
+
+std::string sai_serialize_outbound_routing_entry(
+        _In_ const sai_outbound_routing_entry_t &outbound_routing_entry);
+
+std::string sai_serialize_outbound_ca_to_pa_entry(
+        _In_ const sai_outbound_ca_to_pa_entry_t &outbound_ca_to_pa_entry);
+
 void sai_deserialize_system_port_config_list(
         _In_ const std::string& s,
         _Out_ sai_system_port_config_list_t& sysportconfiglist,
@@ -347,6 +368,34 @@ void sai_deserialize_mcast_fdb_entry(
 void sai_deserialize_vlan_id(
         _In_ const std::string& s,
         _In_ sai_vlan_id_t& vlan_id);
+
+void sai_deserialize_direction_lookup_entry(
+        _In_ const std::string &s,
+        _Out_ sai_direction_lookup_entry_t& direction_lookup_entry);
+
+void sai_deserialize_eni_ether_address_map_entry(
+        _In_ const std::string &s,
+        _Out_ sai_eni_ether_address_map_entry_t& eni_ether_address_map_entry);
+
+void sai_deserialize_vip_entry(
+        _In_ const std::string &s,
+        _Out_ sai_vip_entry_t& vip_entry);
+
+void sai_deserialize_inbound_routing_entry(
+        _In_ const std::string &s,
+        _Out_ sai_inbound_routing_entry_t& inbound_routing_entry);
+
+void sai_deserialize_pa_validation_entry(
+        _In_ const std::string &s,
+        _Out_ sai_pa_validation_entry_t& pa_validation_entry);
+
+void sai_deserialize_outbound_routing_entry(
+        _In_ const std::string &s,
+        _Out_ sai_outbound_routing_entry_t& outbound_routing_entry);
+
+void sai_deserialize_outbound_ca_to_pa_entry(
+        _In_ const std::string &s,
+        _Out_ sai_outbound_ca_to_pa_entry_t& outbound_ca_to_pa_entry);
 
 void sai_deserialize_attr_value(
         _In_ const std::string& s,

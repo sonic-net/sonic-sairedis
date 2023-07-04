@@ -13,6 +13,10 @@ const sai_srv6_api_t redis_srv6_api = {
     redis_bulk_create_srv6_sidlist,
     redis_bulk_remove_srv6_sidlist,
 
+    NULL,
+    NULL,
+    NULL,
+
     REDIS_GENERIC_QUAD_API(my_sid_entry)
     REDIS_BULK_QUAD_API(my_sid_entry)
 };

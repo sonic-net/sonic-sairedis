@@ -3,6 +3,8 @@
 %include "carrays.i"
 
 %{
+#pragma GCC optimize("no-var-tracking-assignments")
+
 #include "pysairedis.h"
 
 extern "C"{

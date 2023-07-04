@@ -241,6 +241,10 @@ sai_status_t transfer_attribute(
 //            transfer_primitive(src_attr.value.s32range, dst_attr.value.s32range);
 //            break;
 
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.u16rangelist, dst_attr.value.u16rangelist, countOnly));
+            break;
+
         case SAI_ATTR_VALUE_TYPE_TIMESPEC:
             transfer_primitive(src_attr.value.timespec, dst_attr.value.timespec);
             break;
@@ -482,6 +486,10 @@ sai_status_t transfer_attribute(
 
         case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.sysportconfiglist, dst_attr.value.sysportconfiglist, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.ipprefixlist, dst_attr.value.ipprefixlist, countOnly));
             break;
 
         default:
@@ -1233,6 +1241,15 @@ std::string sai_serialize_ip_address_list(
     return sai_serialize_list(list, countOnly, [&](sai_ip_address_t item) { return sai_serialize_ip_address(item);} );
 }
 
+std::string sai_serialize_ip_prefix_list(
+        _In_ const sai_ip_prefix_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_list(list, countOnly, [&](sai_ip_prefix_t item) { return sai_serialize_ip_prefix(item);} );
+}
+
 std::string sai_serialize_enum_list(
         _In_ const sai_s32_list_t& list,
         _In_ const sai_enum_metadata_t* meta,
@@ -1492,6 +1509,15 @@ std::string sai_serialize_range(
     return sai_serialize_number(range.min) + "," + sai_serialize_number(range.max);
 }
 
+std::string sai_serialize_u16_range_list(
+        _In_ const sai_u16_range_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_list(list, countOnly, [&](sai_u16_range_t item) { return sai_serialize_range(item);} );
+}
+
 std::string sai_serialize_acl_action(
         _In_ const sai_attr_metadata_t& meta,
         _In_ const sai_acl_action_data_t& action,
@@ -1651,6 +1677,104 @@ std::string sai_serialize_hex_binary(
     }
 
     return s;
+}
+
+std::string sai_serialize_direction_lookup_entry(
+        _In_ const sai_direction_lookup_entry_t &direction_lookup_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(direction_lookup_entry.switch_id);
+    j["vni"] = sai_serialize_number(direction_lookup_entry.vni);
+
+    return j.dump();
+}
+
+std::string sai_serialize_eni_ether_address_map_entry(
+        _In_ const sai_eni_ether_address_map_entry_t &eni_ether_address_map_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(eni_ether_address_map_entry.switch_id);
+    j["address"] = sai_serialize_mac(eni_ether_address_map_entry.address);
+
+    return j.dump();
+}
+
+std::string sai_serialize_vip_entry(
+        _In_ const sai_vip_entry_t &vip_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(vip_entry.switch_id);
+    j["vip"] = sai_serialize_ip_address(vip_entry.vip);
+
+    return j.dump();
+}
+
+std::string sai_serialize_inbound_routing_entry(
+        _In_ const sai_inbound_routing_entry_t &inbound_routing_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(inbound_routing_entry.switch_id);
+    j["eni_id"] = sai_serialize_object_id(inbound_routing_entry.eni_id);
+    j["vni"] = sai_serialize_number(inbound_routing_entry.vni);
+    j["sip"] = sai_serialize_ip_address(inbound_routing_entry.sip);
+    j["sip_mask"] = sai_serialize_ip_address(inbound_routing_entry.sip_mask);
+    j["priority"] = sai_serialize_number(inbound_routing_entry.priority);
+
+    return j.dump();
+}
+
+std::string sai_serialize_pa_validation_entry(
+        _In_ const sai_pa_validation_entry_t &pa_validation_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(pa_validation_entry.switch_id);
+    j["vnet_id"] = sai_serialize_object_id(pa_validation_entry.vnet_id);
+    j["sip"] = sai_serialize_ip_address(pa_validation_entry.sip);
+
+    return j.dump();
+}
+
+std::string sai_serialize_outbound_routing_entry(
+        _In_ const sai_outbound_routing_entry_t &outbound_routing_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(outbound_routing_entry.switch_id);
+    j["eni_id"] = sai_serialize_object_id(outbound_routing_entry.eni_id);
+    j["destination"] = sai_serialize_ip_prefix(outbound_routing_entry.destination);
+
+    return j.dump();
+}
+
+std::string sai_serialize_outbound_ca_to_pa_entry(
+        _In_ const sai_outbound_ca_to_pa_entry_t &outbound_ca_to_pa_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(outbound_ca_to_pa_entry.switch_id);
+    j["dst_vnet_id"] = sai_serialize_object_id(outbound_ca_to_pa_entry.dst_vnet_id);
+    j["dip"] = sai_serialize_ip_address(outbound_ca_to_pa_entry.dip);
+
+    return j.dump();
 }
 
 std::string sai_serialize_system_port_config(
@@ -1861,6 +1985,9 @@ std::string sai_serialize_attr_value(
 //        case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
 //            return sai_serialize_range(attr.value.s32range);
 
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
+            return sai_serialize_u16_range_list(attr.value.u16rangelist, countOnly);
+
         case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
             return sai_serialize_number_list(attr.value.vlanlist, countOnly);
 
@@ -1939,6 +2066,9 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
             return sai_serialize_system_port_config_list(meta, attr.value.sysportconfiglist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+            return sai_serialize_ip_prefix_list(attr.value.ipprefixlist, countOnly);
 
         default:
             SWSS_LOG_THROW("sai attr value type %s is not implemented, FIXME", sai_serialize_attr_value_type(meta.attrvaluetype).c_str());
@@ -2272,6 +2402,98 @@ std::string sai_serialize_my_sid_entry(
     return j.dump();
 }
 
+static bool sai_serialize_object_entry(
+        _In_ const sai_object_type_t objecttype,
+        _In_ const sai_object_key_entry_t& key_entry,
+        _Out_ std::string& key)
+{
+    SWSS_LOG_ENTER();
+
+    switch (objecttype)
+    {
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
+            key = sai_serialize_fdb_entry(key_entry.fdb_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+            key = sai_serialize_route_entry(key_entry.route_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            key = sai_serialize_neighbor_entry(key_entry.neighbor_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+            key = sai_serialize_nat_entry(key_entry.nat_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            key = sai_serialize_inseg_entry(key_entry.inseg_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+            key = sai_serialize_my_sid_entry(key_entry.my_sid_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_L2MC_ENTRY:
+            key = sai_serialize_l2mc_entry(key_entry.l2mc_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_IPMC_ENTRY:
+            key = sai_serialize_ipmc_entry(key_entry.ipmc_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_MCAST_FDB_ENTRY:
+            key = sai_serialize_mcast_fdb_entry(key_entry.mcast_fdb_entry);
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+static bool sai_serialize_object_extension_entry(
+        _In_ const sai_object_type_extensions_t objecttype,
+        _In_ const sai_object_key_entry_t& key_entry,
+        _Out_ std::string& key)
+{
+    SWSS_LOG_ENTER();
+
+    switch (objecttype)
+    {
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            key = sai_serialize_direction_lookup_entry(key_entry.direction_lookup_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            key = sai_serialize_eni_ether_address_map_entry(key_entry.eni_ether_address_map_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+            key = sai_serialize_vip_entry(key_entry.vip_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            key = sai_serialize_inbound_routing_entry(key_entry.inbound_routing_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            key = sai_serialize_pa_validation_entry(key_entry.pa_validation_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            key = sai_serialize_outbound_routing_entry(key_entry.outbound_routing_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            key = sai_serialize_outbound_ca_to_pa_entry(key_entry.outbound_ca_to_pa_entry);
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 std::string sai_serialize_object_meta_key(
         _In_ const sai_object_meta_key_t& meta_key)
 {
@@ -2284,56 +2506,17 @@ std::string sai_serialize_object_meta_key(
         SWSS_LOG_THROW("invalid object type value %s", sai_serialize_object_type(meta_key.objecttype).c_str());
     }
 
-    const auto& meta = sai_metadata_get_object_type_info(meta_key.objecttype);
-
-    switch (meta_key.objecttype)
+    if (!sai_serialize_object_entry(meta_key.objecttype, meta_key.objectkey.key, key) &&
+        !sai_serialize_object_extension_entry((sai_object_type_extensions_t)meta_key.objecttype, meta_key.objectkey.key, key))
     {
-        case SAI_OBJECT_TYPE_FDB_ENTRY:
-            key = sai_serialize_fdb_entry(meta_key.objectkey.key.fdb_entry);
-            break;
+        const auto& meta = sai_metadata_get_object_type_info(meta_key.objecttype);
+        if (meta->isnonobjectid)
+        {
+            SWSS_LOG_THROW("object %s is non object id, not supported yet, FIXME",
+                    sai_serialize_object_type(meta->objecttype).c_str());
+        }
 
-        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
-            key = sai_serialize_route_entry(meta_key.objectkey.key.route_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
-            key = sai_serialize_neighbor_entry(meta_key.objectkey.key.neighbor_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_NAT_ENTRY:
-            key = sai_serialize_nat_entry(meta_key.objectkey.key.nat_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_INSEG_ENTRY:
-            key = sai_serialize_inseg_entry(meta_key.objectkey.key.inseg_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
-            key = sai_serialize_my_sid_entry(meta_key.objectkey.key.my_sid_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_L2MC_ENTRY:
-            key = sai_serialize_l2mc_entry(meta_key.objectkey.key.l2mc_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_IPMC_ENTRY:
-            key = sai_serialize_ipmc_entry(meta_key.objectkey.key.ipmc_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_MCAST_FDB_ENTRY:
-            key = sai_serialize_mcast_fdb_entry(meta_key.objectkey.key.mcast_fdb_entry);
-            break;
-
-        default:
-
-            if (meta->isnonobjectid)
-            {
-                SWSS_LOG_THROW("object %s is non object id, not supported yet, FIXME",
-                        sai_serialize_object_type(meta->objecttype).c_str());
-            }
-
-            key = sai_serialize_object_id(meta_key.objectkey.key.object_id);
-            break;
+        key = sai_serialize_object_id(meta_key.objectkey.key.object_id);
     }
 
     key = sai_serialize_object_type(meta_key.objecttype) + ":" + key;
@@ -2987,6 +3170,16 @@ void sai_deserialize_ip_address_list(
     sai_deserialize_list(s, list, countOnly, [&](const std::string sitem, sai_ip_address_t& item) { sai_deserialize_ip_address(sitem, item);} );
 }
 
+void sai_deserialize_ip_prefix_list(
+        _In_ const std::string& s,
+        _Out_ sai_ip_prefix_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_list(s, list, countOnly, [&](const std::string sitem, sai_ip_prefix_t& item) { sai_deserialize_ip_prefix(sitem, item);} );
+}
+
 void sai_deserialize_segment_list(
         _In_ const std::string& s,
         _Out_ sai_segment_list_t& list,
@@ -3050,6 +3243,56 @@ void sai_deserialize_range(
 
     sai_deserialize_number(tokens[0], range.min);
     sai_deserialize_number(tokens[1], range.max);
+}
+
+void sai_deserialize_u16_range_list(
+        _In_ const std::string& s,
+        _Out_ sai_u16_range_list_t& list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    if (countOnly)
+    {
+        sai_deserialize_number(s, list.count);
+        return;
+    }
+
+    auto pos = s.find(":");
+
+    if (pos == std::string::npos)
+    {
+        SWSS_LOG_THROW("invalid list %s", s.c_str());
+    }
+
+    std::string scount = s.substr(0, pos);
+
+    sai_deserialize_number(scount, list.count);
+
+    std::string slist = s.substr(pos + 1);
+
+    if (slist == "null")
+    {
+        list.list = NULL;
+        return;
+    }
+
+    auto tokens = swss::tokenize(slist, ',');
+
+    if (tokens.size() != list.count * 2)
+    {
+        SWSS_LOG_THROW("invalid u16_range_list count %lu != %u", tokens.size(), list.count * 2);
+    }
+
+    list.list = sai_alloc_n_of_ptr_type(list.count, list.list);
+
+    for (uint32_t i = 0; i < list.count * 2; i+=2)
+    {
+        std::ostringstream range;
+        range << tokens[i] << "," << tokens[i+1];
+
+        sai_deserialize_range(range.str(), list.list[i/2]);
+    }
 }
 
 void sai_deserialize_acl_field(
@@ -3533,6 +3776,9 @@ void sai_deserialize_attr_value(
 //        case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
 //            return sai_deserialize_range(s, attr.value.s32range);
 
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
+            return sai_deserialize_u16_range_list(s, attr.value.u16rangelist, countOnly);
+
         case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
             return sai_deserialize_number_list(s, attr.value.vlanlist, countOnly);
 
@@ -3609,6 +3855,9 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
             return sai_deserialize_system_port_config_list(s, attr.value.sysportconfiglist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+            return sai_deserialize_ip_prefix_list(s, attr.value.ipprefixlist, countOnly);
 
         default:
             SWSS_LOG_THROW("deserialize type %d is not supported yet FIXME", meta.attrvaluetype);
@@ -3977,6 +4226,97 @@ void sai_deserialize_mcast_fdb_entry(
     sai_deserialize_mac(j["mac_address"], mcast_fdb_entry.mac_address);
 }
 
+void sai_deserialize_direction_lookup_entry(
+        _In_ const std::string &s,
+        _Out_ sai_direction_lookup_entry_t& direction_lookup_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], direction_lookup_entry.switch_id);
+    sai_deserialize_number(j["vni"], direction_lookup_entry.vni);
+}
+
+void sai_deserialize_eni_ether_address_map_entry(
+        _In_ const std::string &s,
+        _Out_ sai_eni_ether_address_map_entry_t& eni_ether_address_map_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], eni_ether_address_map_entry.switch_id);
+    sai_deserialize_mac(j["address"], eni_ether_address_map_entry.address);
+}
+
+void sai_deserialize_vip_entry(
+        _In_ const std::string &s,
+        _Out_ sai_vip_entry_t& vip_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], vip_entry.switch_id);
+    sai_deserialize_ip_address(j["vip"], vip_entry.vip);
+}
+
+void sai_deserialize_inbound_routing_entry(
+        _In_ const std::string &s,
+        _Out_ sai_inbound_routing_entry_t& inbound_routing_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], inbound_routing_entry.switch_id);
+    sai_deserialize_object_id(j["eni_id"], inbound_routing_entry.eni_id);
+    sai_deserialize_number(j["vni"], inbound_routing_entry.vni);
+    sai_deserialize_ip_address(j["sip"], inbound_routing_entry.sip);
+    sai_deserialize_ip_address(j["sip_mask"], inbound_routing_entry.sip_mask);
+    sai_deserialize_number(j["priority"], inbound_routing_entry.priority);
+}
+
+void sai_deserialize_pa_validation_entry(
+        _In_ const std::string &s,
+        _Out_ sai_pa_validation_entry_t& pa_validation_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], pa_validation_entry.switch_id);
+    sai_deserialize_object_id(j["vnet_id"], pa_validation_entry.vnet_id);
+    sai_deserialize_ip_address(j["sip"], pa_validation_entry.sip);
+}
+
+void sai_deserialize_outbound_routing_entry(
+        _In_ const std::string &s,
+        _Out_ sai_outbound_routing_entry_t& outbound_routing_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], outbound_routing_entry.switch_id);
+    sai_deserialize_object_id(j["eni_id"], outbound_routing_entry.eni_id);
+    sai_deserialize_ip_prefix(j["destination"], outbound_routing_entry.destination);
+}
+
+void sai_deserialize_outbound_ca_to_pa_entry(
+        _In_ const std::string &s,
+        _Out_ sai_outbound_ca_to_pa_entry_t& outbound_ca_to_pa_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], outbound_ca_to_pa_entry.switch_id);
+    sai_deserialize_object_id(j["dst_vnet_id"], outbound_ca_to_pa_entry.dst_vnet_id);
+    sai_deserialize_ip_address(j["dip"], outbound_ca_to_pa_entry.dip);
+}
+
 void sai_deserialize_attr_id(
         _In_ const std::string& s,
         _Out_ const sai_attr_metadata_t** meta)
@@ -4017,6 +4357,96 @@ void sai_deserialize_attr_id(
     attrid = meta->attrid;
 }
 
+bool sai_deserialize_object_entry(
+    _In_ const std::string object_id,
+    _Inout_ sai_object_meta_key_t& meta_key)
+{
+    SWSS_LOG_ENTER();
+
+    switch (meta_key.objecttype)
+    {
+        case SAI_OBJECT_TYPE_FDB_ENTRY:
+            sai_deserialize_fdb_entry(object_id, meta_key.objectkey.key.fdb_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+            sai_deserialize_route_entry(object_id, meta_key.objectkey.key.route_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            sai_deserialize_neighbor_entry(object_id, meta_key.objectkey.key.neighbor_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_NAT_ENTRY:
+            sai_deserialize_nat_entry(object_id, meta_key.objectkey.key.nat_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_INSEG_ENTRY:
+            sai_deserialize_inseg_entry(object_id, meta_key.objectkey.key.inseg_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
+            sai_deserialize_my_sid_entry(object_id, meta_key.objectkey.key.my_sid_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_L2MC_ENTRY:
+            sai_deserialize_l2mc_entry(object_id, meta_key.objectkey.key.l2mc_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_IPMC_ENTRY:
+            sai_deserialize_ipmc_entry(object_id, meta_key.objectkey.key.ipmc_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_MCAST_FDB_ENTRY:
+            sai_deserialize_mcast_fdb_entry(object_id, meta_key.objectkey.key.mcast_fdb_entry);
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+bool sai_deserialize_object_extension_entry(
+    _In_ const std::string object_id,
+    _Inout_ sai_object_meta_key_t& meta_key)
+{
+    SWSS_LOG_ENTER();
+
+    switch ((sai_object_type_extensions_t)meta_key.objecttype)
+    {
+        case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
+            sai_deserialize_direction_lookup_entry(object_id, meta_key.objectkey.key.direction_lookup_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY:
+            sai_deserialize_eni_ether_address_map_entry(object_id, meta_key.objectkey.key.eni_ether_address_map_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_VIP_ENTRY:
+            sai_deserialize_vip_entry(object_id, meta_key.objectkey.key.vip_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_INBOUND_ROUTING_ENTRY:
+            sai_deserialize_inbound_routing_entry(object_id, meta_key.objectkey.key.inbound_routing_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
+            sai_deserialize_pa_validation_entry(object_id, meta_key.objectkey.key.pa_validation_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
+            sai_deserialize_outbound_routing_entry(object_id, meta_key.objectkey.key.outbound_routing_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+            sai_deserialize_outbound_ca_to_pa_entry(object_id, meta_key.objectkey.key.outbound_ca_to_pa_entry);
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 void sai_deserialize_object_meta_key(
         _In_ const std::string &s,
         _Out_ sai_object_meta_key_t& meta_key)
@@ -4035,56 +4465,18 @@ void sai_deserialize_object_meta_key(
         SWSS_LOG_THROW("invalid object type value %s", sai_serialize_object_type(meta_key.objecttype).c_str());
     }
 
-    const auto& meta = sai_metadata_get_object_type_info(meta_key.objecttype);
-
-    switch (meta_key.objecttype)
+    if (!sai_deserialize_object_entry(str_object_id, meta_key) &&
+        !sai_deserialize_object_extension_entry(str_object_id, meta_key))
     {
-        case SAI_OBJECT_TYPE_FDB_ENTRY:
-            sai_deserialize_fdb_entry(str_object_id, meta_key.objectkey.key.fdb_entry);
-            break;
+        const auto& meta = sai_metadata_get_object_type_info(meta_key.objecttype);
 
-        case SAI_OBJECT_TYPE_ROUTE_ENTRY:
-            sai_deserialize_route_entry(str_object_id, meta_key.objectkey.key.route_entry);
-            break;
+        if (meta->isnonobjectid)
+        {
+            SWSS_LOG_THROW("object %s is non object id, not supported yet, FIXME",
+                    sai_serialize_object_type(meta->objecttype).c_str());
+        }
 
-        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
-            sai_deserialize_neighbor_entry(str_object_id, meta_key.objectkey.key.neighbor_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_NAT_ENTRY:
-            sai_deserialize_nat_entry(str_object_id, meta_key.objectkey.key.nat_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_INSEG_ENTRY:
-            sai_deserialize_inseg_entry(str_object_id, meta_key.objectkey.key.inseg_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_MY_SID_ENTRY:
-            sai_deserialize_my_sid_entry(str_object_id, meta_key.objectkey.key.my_sid_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_L2MC_ENTRY:
-            sai_deserialize_l2mc_entry(str_object_id, meta_key.objectkey.key.l2mc_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_IPMC_ENTRY:
-            sai_deserialize_ipmc_entry(str_object_id, meta_key.objectkey.key.ipmc_entry);
-            break;
-
-        case SAI_OBJECT_TYPE_MCAST_FDB_ENTRY:
-            sai_deserialize_mcast_fdb_entry(str_object_id, meta_key.objectkey.key.mcast_fdb_entry);
-            break;
-
-        default:
-
-            if (meta->isnonobjectid)
-            {
-                SWSS_LOG_THROW("object %s is non object id, not supported yet, FIXME",
-                        sai_serialize_object_type(meta->objecttype).c_str());
-            }
-
-            sai_deserialize_object_id(str_object_id, meta_key.objectkey.key.object_id);
-            break;
+        sai_deserialize_object_id(str_object_id, meta_key.objectkey.key.object_id);
     }
 }
 
@@ -4304,6 +4696,10 @@ void sai_deserialize_free_attribute_value(
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             break;
 
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
+            sai_free_list(attr.value.u16rangelist);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_VLAN_LIST:
             sai_free_list(attr.value.vlanlist);
             break;
@@ -4398,6 +4794,10 @@ void sai_deserialize_free_attribute_value(
 
         case SAI_ATTR_VALUE_TYPE_SYSTEM_PORT_CONFIG_LIST:
             sai_free_list(attr.value.sysportconfiglist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+            sai_free_list(attr.value.ipprefixlist);
             break;
 
         default:

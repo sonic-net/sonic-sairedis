@@ -78,7 +78,18 @@ static sai_apis_t vs_apis = {
     API(my_mac),
     API(ipsec),
     API(generic_programmable),
+    API(ars),
+    API(ars_profile),
     API(bmtor),
+    API(dash_acl),
+    API(dash_direction_lookup),
+    API(dash_eni),
+    API(dash_inbound_routing),
+    API(dash_outbound_ca_to_pa),
+    API(dash_outbound_routing),
+    API(dash_vnet),
+    API(dash_pa_validation),
+    API(dash_vip),
 };
 
 static_assert((sizeof(sai_apis_t)/sizeof(void*)) == (SAI_API_EXTENSIONS_MAX - 1));

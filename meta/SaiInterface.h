@@ -5,24 +5,38 @@ extern "C" {
 #include "saimetadata.h"
 }
 
-#define SAIREDIS_DECLARE_EVERY_ENTRY(_X)    \
-    _X(FDB_ENTRY,fdb_entry);                \
-    _X(INSEG_ENTRY,inseg_entry);            \
-    _X(IPMC_ENTRY,ipmc_entry);              \
-    _X(L2MC_ENTRY,l2mc_entry);              \
-    _X(MCAST_FDB_ENTRY,mcast_fdb_entry);    \
-    _X(NEIGHBOR_ENTRY,neighbor_entry);      \
-    _X(ROUTE_ENTRY,route_entry);            \
-    _X(NAT_ENTRY,nat_entry);                \
-    _X(MY_SID_ENTRY,my_sid_entry);          \
+#define SAIREDIS_DECLARE_EVERY_ENTRY(_X)                                     \
+    _X(FDB_ENTRY,fdb_entry);                                                 \
+    _X(INSEG_ENTRY,inseg_entry);                                             \
+    _X(IPMC_ENTRY,ipmc_entry);                                               \
+    _X(L2MC_ENTRY,l2mc_entry);                                               \
+    _X(MCAST_FDB_ENTRY,mcast_fdb_entry);                                     \
+    _X(NEIGHBOR_ENTRY,neighbor_entry);                                       \
+    _X(ROUTE_ENTRY,route_entry);                                             \
+    _X(NAT_ENTRY,nat_entry);                                                 \
+    _X(MY_SID_ENTRY,my_sid_entry);                                           \
+    _X(DIRECTION_LOOKUP_ENTRY,direction_lookup_entry);                       \
+    _X(ENI_ETHER_ADDRESS_MAP_ENTRY,eni_ether_address_map_entry);             \
+    _X(VIP_ENTRY,vip_entry);                                                 \
+    _X(INBOUND_ROUTING_ENTRY,inbound_routing_entry);                         \
+    _X(PA_VALIDATION_ENTRY,pa_validation_entry);                             \
+    _X(OUTBOUND_ROUTING_ENTRY,outbound_routing_entry);                       \
+    _X(OUTBOUND_CA_TO_PA_ENTRY,outbound_ca_to_pa_entry);                     \
 
-#define SAIREDIS_DECLARE_EVERY_BULK_ENTRY(_X)   \
-    _X(FDB_ENTRY,fdb_entry);                    \
-    _X(INSEG_ENTRY,inseg_entry);                \
-    _X(NAT_ENTRY,nat_entry);                    \
-    _X(ROUTE_ENTRY,route_entry);                \
-    _X(MY_SID_ENTRY,my_sid_entry);              \
-    _X(NEIGHBOR_ENTRY,neighbor_entry);          \
+#define SAIREDIS_DECLARE_EVERY_BULK_ENTRY(_X)                                \
+    _X(FDB_ENTRY,fdb_entry);                                                 \
+    _X(INSEG_ENTRY,inseg_entry);                                             \
+    _X(NAT_ENTRY,nat_entry);                                                 \
+    _X(ROUTE_ENTRY,route_entry);                                             \
+    _X(MY_SID_ENTRY,my_sid_entry);                                           \
+    _X(NEIGHBOR_ENTRY,neighbor_entry);                                       \
+    _X(DIRECTION_LOOKUP_ENTRY,direction_lookup_entry);                       \
+    _X(ENI_ETHER_ADDRESS_MAP_ENTRY,eni_ether_address_map_entry);             \
+    _X(VIP_ENTRY,vip_entry);                                                 \
+    _X(INBOUND_ROUTING_ENTRY,inbound_routing_entry);                         \
+    _X(PA_VALIDATION_ENTRY,pa_validation_entry);                             \
+    _X(OUTBOUND_ROUTING_ENTRY,outbound_routing_entry);                       \
+    _X(OUTBOUND_CA_TO_PA_ENTRY,outbound_ca_to_pa_entry);                     \
 
 #define SAIREDIS_SAIINTERFACE_DECLARE_QUAD_ENTRY_VIRTUAL(OT,ot)     \
     virtual sai_status_t create(                                    \

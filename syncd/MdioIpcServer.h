@@ -25,6 +25,8 @@ namespace syncd
             void setSwitchId(
                     _In_ sai_object_id_t switchRid);
 
+            void setIpcTestMode();
+
             int startMdioThread();
 
             void stopMdioThread();
@@ -48,6 +50,8 @@ namespace syncd
             sai_status_t syncd_ipc_cmd_mdio_cl22(char *resp, int argc, char *argv[]);
 
             static bool m_syncdContext;
+
+            bool m_accessUseNPU;
 
             std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
 

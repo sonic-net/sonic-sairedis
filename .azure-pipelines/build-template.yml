@@ -74,21 +74,18 @@ jobs:
       sudo apt-get update
       sudo apt-get install -qq -y \
         qtbase5-dev \
-        libdbus-glib-1-2 \
         libdbus-glib-1-dev \
         libpcsclite-dev \
         docbook-to-man \
         docbook-utils \
         aspell-en \
-        libhiredis0.14 \
         libhiredis-dev \
         libnl-3-dev \
         libnl-genl-3-dev \
         libnl-route-3-dev \
         libnl-nf-3-dev \
         libnl-cli-3-dev \
-        swig3.0 \
-        libpython2.7-dev \
+        swig4.0 \
         libzmq5 \
         libzmq3-dev \
         autoconf-archive
@@ -98,6 +95,7 @@ jobs:
       sudo sed -ri 's/^unixsocketperm .../unixsocketperm 777/' /etc/redis/redis.conf
       sudo sed -ri 's/redis-server.sock/redis.sock/' /etc/redis/redis.conf
       sudo service redis-server start
+      sudo mkdir -m 755 /var/run/sswsyncd
 
       sudo apt-get install -y rsyslog
       sudo service rsyslog start
@@ -143,6 +141,7 @@ jobs:
       artifact: ${{ parameters.swss_common_artifact_name }}
       runVersion: 'latestFromBranch'
       runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      allowPartiallySucceededBuilds: true
       path: $(Build.ArtifactStagingDirectory)/download
     displayName: "Download sonic swss common deb packages"
   - script: |
@@ -160,7 +159,7 @@ jobs:
       if [ '${{ parameters.asan }}' == True ]; then
          extraflags='--enable-asan'
       fi
-      DEB_BUILD_OPTIONS=nocheck fakeroot debian/rules DEB_CONFIGURE_EXTRA_FLAGS=$extraflags CFLAGS="" CXXFLAGS="" binary-syncd-vs
+      DEB_BUILD_OPTIONS=nocheck DEB_CONFIGURE_EXTRA_FLAGS=$extraflags dpkg-buildpackage -us -uc -b -Psyncd,vs,nopython2 -j$(nproc)
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
@@ -182,10 +181,19 @@ jobs:
         set -ex
         # Add SYS_TIME capability for settimeofday ok in syncd test
         sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
+        # Add CAP_DAC_OVERRIDE capability for system directory creation in syncd unittest
+        sudo setcap "cap_dac_override,cap_ipc_lock,cap_ipc_owner,cap_sys_time=eip" unittest/syncd/.libs/tests
         make check
         gcovr --version
         find SAI/meta -name "*.gc*" | xargs rm -vf
-        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches -x --xml-pretty -o coverage.xml
+        gcov_dirs=$(find . -path "*.libs*gcda" | xargs dirname | sort -u |  cut -c"3-")
+        for dir in ${gcov_dirs}; do
+          source_dir=$(dirname $dir)
+          output_file="coverage-$source_dir.json"
+          gcovr --exclude-unreachable-branches --json-pretty -o $output_file --object-directory $source_dir $dir
+        done
+        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" --exclude-unreachable-branches --json-pretty -o coverage-all.json
+        gcovr -a "coverage-*.json" -x --xml-pretty -o coverage.xml
       displayName: "Run sonic sairedis unit tests"
   - publish: $(System.DefaultWorkingDirectory)/
     artifact: ${{ parameters.artifact_name }}
@@ -195,9 +203,9 @@ jobs:
           set -ex
           # Install .NET CORE
           curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-          sudo apt-add-repository https://packages.microsoft.com/debian/10/prod
+          sudo apt-add-repository https://packages.microsoft.com/debian/11/prod
           sudo apt-get update
-          sudo apt-get install -y dotnet-sdk-5.0
+          sudo apt-get install -y dotnet-sdk-7.0
         displayName: "Install .NET CORE"
       - task: PublishCodeCoverageResults@1
         inputs:
@@ -219,6 +227,6 @@ jobs:
         contents: 'syslog-all.tgz'
         targetFolder: $(Build.ArtifactStagingDirectory)
   - publish: $(Build.ArtifactStagingDirectory)/
-    artifact: ${{ parameters.syslog_artifact_name }}
+    artifact: ${{ parameters.syslog_artifact_name }}@$(System.JobAttempt)
     displayName: "Publish syslog artifacts"
     condition: always()

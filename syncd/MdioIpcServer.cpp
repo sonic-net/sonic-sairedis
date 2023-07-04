@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "MdioIpcServer.h"
+#include "MdioIpcCommon.h"
 
 #include "meta/sai_serialize.h"
 
@@ -22,13 +23,6 @@
 #include <boost/algorithm/string/trim.hpp>
 #include <vector>
 
-#define SYNCD_IPC_SOCK_SYNCD  "/var/run/sswsyncd"
-#define SYNCD_IPC_SOCK_HOST   "/var/run/docker-syncd"
-#define SYNCD_IPC_SOCK_FILE   "mdio-ipc"
-#define SYNCD_IPC_BUFF_SIZE   256   /* buffer size */
-
-#define CONN_TIMEOUT        30     /* sec, connection timeout */
-#define CONN_MAX            18     /* max. number of connections */
 
 #ifndef COUNTOF
 #define COUNTOF(x)          ((int)(sizeof((x)) / sizeof((x)[0])))
@@ -56,6 +50,11 @@ MdioIpcServer::MdioIpcServer(
 
     /* globalContext == 0 for syncd, globalContext > 0 for gbsyncd */
     MdioIpcServer::m_syncdContext = (globalContext == 0);
+#ifdef MDIO_ACCESS_USE_NPU
+    MdioIpcServer::m_accessUseNPU = true;
+#else
+    MdioIpcServer::m_accessUseNPU = false;
+#endif
 }
 
 MdioIpcServer::~MdioIpcServer()
@@ -74,7 +73,12 @@ void MdioIpcServer::setSwitchId(
 {
     SWSS_LOG_ENTER();
 
-#ifdef MDIO_ACCESS_USE_NPU
+    /* Skip on any platform where MDIO access not using NPU */
+    if (!m_accessUseNPU)
+    {
+        return;
+    }
+
     /* MDIO switch id is only relevant in syncd but not in gbsyncd */
     if (!MdioIpcServer::m_syncdContext)
     {
@@ -91,6 +95,15 @@ void MdioIpcServer::setSwitchId(
 
     SWSS_LOG_NOTICE("Initialize mdio switch id with RID = %s",
             sai_serialize_object_id(m_switchRid).c_str());
+}
+
+void MdioIpcServer::setIpcTestMode()
+{
+    SWSS_LOG_ENTER();
+
+#ifndef MDIO_ACCESS_USE_NPU
+    /* Allow unit test to start IPC server */
+    MdioIpcServer::m_accessUseNPU = true;
 #endif
 }
 
@@ -194,7 +207,7 @@ int MdioIpcServer::syncd_ipc_task_main()
     int sock_srv;
     int sock_cli;
     int sock_max;
-    syncd_mdio_ipc_conn_t conn[CONN_MAX];
+    syncd_mdio_ipc_conn_t conn[MDIO_CONN_MAX];
     struct sockaddr_un addr;
     char path[64];
     fd_set rfds;
@@ -236,7 +249,7 @@ int MdioIpcServer::syncd_ipc_task_main()
     }
 
     /* Listen for the upcoming client sockets */
-    if (listen(sock_srv, CONN_MAX) < 0)
+    if (listen(sock_srv, MDIO_CONN_MAX) < 0)
     {
         SWSS_LOG_ERROR("listen() returns %d", errno);
         unlink(addr.sun_path);
@@ -254,7 +267,7 @@ int MdioIpcServer::syncd_ipc_task_main()
 
         /* garbage collection */
         now = time(NULL);
-        for (i = 0; i < CONN_MAX; ++i)
+        for (i = 0; i < MDIO_CONN_MAX; ++i)
         {
             if ((conn[i].fd > 0) && (conn[i].timeout < now))
             {
@@ -269,7 +282,7 @@ int MdioIpcServer::syncd_ipc_task_main()
         FD_ZERO(&rfds);
         FD_SET(sock_srv, &rfds);
         sock_max = sock_srv;
-        for (i = 0; i < CONN_MAX; ++i)
+        for (i = 0; i < MDIO_CONN_MAX; ++i)
         {
             if (conn[i].fd <= 0)
             {
@@ -314,17 +327,17 @@ int MdioIpcServer::syncd_ipc_task_main()
                 continue;
             }
 
-            for (i = 0; i < CONN_MAX; ++i)
+            for (i = 0; i < MDIO_CONN_MAX; ++i)
             {
                 if (conn[i].fd <= 0)
                 {
                     break;
                 }
             }
-            if (i < CONN_MAX)
+            if (i < MDIO_CONN_MAX)
             {
                 conn[i].fd = sock_cli;
-                conn[i].timeout = now + CONN_TIMEOUT;
+                conn[i].timeout = now + MDIO_SERVER_TIMEOUT;
             }
             else
             {
@@ -334,7 +347,7 @@ int MdioIpcServer::syncd_ipc_task_main()
         }
 
         /* Handle the client requests */
-        for (i = 0; i < CONN_MAX; ++i)
+        for (i = 0; i < MDIO_CONN_MAX; ++i)
         {
             sai_status_t rc = SAI_STATUS_NOT_SUPPORTED;
 
@@ -381,10 +394,18 @@ int MdioIpcServer::syncd_ipc_task_main()
             else if (strcmp("mdio", argv[0]) == 0)
             {
                 rc = MdioIpcServer::syncd_ipc_cmd_mdio(resp, argc, argv);
+                if (rc != 0)
+                {
+                    SWSS_LOG_ERROR("command %s returns %d", cmd, rc);
+                }
             }
             else if (strcmp("mdio-cl22", argv[0]) == 0)
             {
                 rc = MdioIpcServer::syncd_ipc_cmd_mdio_cl22(resp, argc, argv);
+                if (rc != 0)
+                {
+                    SWSS_LOG_ERROR("command %s returns %d", cmd, rc);
+                }
             }
 
             /* build the error message */
@@ -401,12 +422,12 @@ int MdioIpcServer::syncd_ipc_task_main()
             }
 
             /* update the connection timeout counter */
-            conn[i].timeout = time(NULL) + CONN_TIMEOUT;
+            conn[i].timeout = time(NULL) + MDIO_SERVER_TIMEOUT;
         }
     }
 
     /* close socket descriptors */
-    for (i = 0; i < CONN_MAX; ++i)
+    for (i = 0; i < MDIO_CONN_MAX; ++i)
     {
         if (conn[i].fd <= 0)
         {
@@ -431,7 +452,12 @@ void MdioIpcServer::stopMdioThread(void)
 {
     SWSS_LOG_ENTER();
 
-#ifdef MDIO_ACCESS_USE_NPU
+    /* Skip on any platform where MDIO access not using NPU */
+    if (!m_accessUseNPU)
+    {
+        return;
+    }
+
     /* MDIO IPC server thread is only relevant in syncd but not in gbsyncd */
     if (!MdioIpcServer::m_syncdContext)
     {
@@ -441,14 +467,18 @@ void MdioIpcServer::stopMdioThread(void)
     m_taskAlive = 0;
     m_taskThread.join();
     SWSS_LOG_NOTICE("IPC task thread is stopped\n");
-#endif
 }
 
 int MdioIpcServer::startMdioThread()
 {
     SWSS_LOG_ENTER();
 
-#ifdef MDIO_ACCESS_USE_NPU
+    /* Skip on any platform where MDIO access not using NPU */
+    if (!m_accessUseNPU)
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
     /* MDIO IPC server thread is only relevant in syncd but not in gbsyncd */
     if (!MdioIpcServer::m_syncdContext)
     {
@@ -467,6 +497,5 @@ int MdioIpcServer::startMdioThread()
             return SAI_STATUS_FAILURE;
         }
     }
-#endif
     return SAI_STATUS_SUCCESS;
 }

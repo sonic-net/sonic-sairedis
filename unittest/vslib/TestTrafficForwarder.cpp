@@ -16,6 +16,8 @@ typedef union _control
 static_assert(sizeof(cmsghdr) >= 8, "header must be at leasts 8 bytes");
 static_assert(sizeof(control) >= (sizeof(cmsghdr) + sizeof(tpacket_auxdata)), "control must at least include both");
 
+#pragma GCC diagnostic ignored "-Wcast-align"
+
 TEST(TrafficForwarder, addVlanTag)
 {
     uint8_t buffer[ETH_FRAME_BUFFER_SIZE];
