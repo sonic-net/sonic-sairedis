@@ -785,8 +785,35 @@ sub test_voq_switch_create
     play("-z", "redis_sync", "voq_switch_create.rec")
 }
 
+sub test_acl_counter_match
+{
+    # this will test scenario where we have 1 acl entry with counter and after
+    # warm boot 2 acl entries and 2 counters the same which could end up
+    # matching wrong acl counter and causing fail "object exist" on broadcom
+    # acl entry set, which will require improve pre match logic for acl entry
+
+    fresh_start;
+
+    play "acl_counter_match.rec";
+
+    open (my $H, "<", "applyview.log") or die "failed to open applyview.log $!";
+
+    my $line = <$H>;
+
+    close ($H);
+
+    chomp$line;
+
+    if (not $line =~ /ASIC_OPERATIONS: (\d+)/ or $1 != 2)
+    {
+        print color('red') . "expected 2 ASIC_OPERATIONS count on first line, but got: '$line'" . color('reset') . "\n";
+        exit 1;
+    }
+}
+
 # RUN TESTS
 
+test_acl_counter_match;
 test_neighbor_lag;
 test_lag_member;
 test_remove_port_serdes;

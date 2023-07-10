@@ -40,7 +40,7 @@ jobs:
         config-file: ./.github/codeql/codeql-config.yml
         languages: ${{ matrix.language }}
 
-    - name: prepare
+    - name: Install prerequisites
       run: |
         sudo apt-get update
         sudo apt-get install -y libxml-simple-perl \
@@ -72,24 +72,30 @@ jobs:
             python
 
     - if: matrix.language == 'cpp'
-      name: build-swss-common
+      name: Build sonic-swss-common
       run: |
         cd ..
         git clone https://github.com/sonic-net/sonic-swss-common
         pushd sonic-swss-common
         ./autogen.sh
-        fakeroot dpkg-buildpackage -us -uc -b
+        dpkg-buildpackage -rfakeroot -us -uc -b -j$(nproc)
         popd
-        dpkg-deb -x libswsscommon_1.0.0_amd64.deb $(dirname $GITHUB_WORKSPACE)
-        dpkg-deb -x libswsscommon-dev_1.0.0_amd64.deb $(dirname $GITHUB_WORKSPACE)
+        dpkg-deb -x libswsscommon_${SWSSCOMMON_VER}_amd64.deb $(dirname $GITHUB_WORKSPACE)
+        dpkg-deb -x libswsscommon-dev_${SWSSCOMMON_VER}_amd64.deb $(dirname $GITHUB_WORKSPACE)
+      env:
+        SWSSCOMMON_VER: "1.0.0"
 
     - if: matrix.language == 'cpp'
-      name: build
+      name: Build repository
       run: |
         ./autogen.sh
-        DEB_BUILD_OPTIONS=nocheck SWSS_COMMON_INC="$(dirname $GITHUB_WORKSPACE)/usr/include" SWSS_COMMON_LIB="$(dirname $GITHUB_WORKSPACE)/usr/lib/x86_64-linux-gnu" fakeroot debian/rules CFLAGS="-Wno-error" CXXFLAGS="-Wno-error" binary-syncd-vs
+        DEB_BUILD_OPTIONS=nocheck \
+        SWSS_COMMON_INC="$(dirname $GITHUB_WORKSPACE)/usr/include" \
+        SWSS_COMMON_LIB="$(dirname $GITHUB_WORKSPACE)/usr/lib/x86_64-linux-gnu" \
+        DEB_CFLAGS_SET="-Wno-error" DEB_CXXFLAGS_SET="-Wno-error" \
+        dpkg-buildpackage -us -uc -b -Psyncd,vs,nopython2 -j$(nproc)
 
-    - name: Perform CodeQL Analysis
+    - name: Perform CodeQL analysis
       uses: github/codeql-action/analyze@v2.1.29
       with:
         category: "/language:${{matrix.language}}"

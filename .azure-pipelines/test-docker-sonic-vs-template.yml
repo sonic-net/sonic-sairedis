@@ -106,9 +106,11 @@ jobs:
     condition: always()
 
   - script: |
-      cp -r sonic-swss/tests/log $(Build.ArtifactStagingDirectory)/
-      if [ '${{ parameters.asan }}' == True ]; then
-        cp -vr sonic-swss/tests/log/*/log/asan $(Build.ArtifactStagingDirectory)/
+      if [ -d sonic-swss/tests/log ]; then
+        cp -r sonic-swss/tests/log $(Build.ArtifactStagingDirectory)/
+        if [ '${{ parameters.asan }}' == True ]; then
+          cp -vr sonic-swss/tests/log/*/log/asan $(Build.ArtifactStagingDirectory)/
+        fi
       fi
     displayName: "Collect logs"
     condition: always()

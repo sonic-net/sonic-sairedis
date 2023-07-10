@@ -19,9 +19,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:w:uSUCsz:lrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:w:uSUCsz:lh";
 #endif // SAITHRIFT
 
     while (true)
@@ -41,6 +41,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "globalContext",           required_argument, 0, 'g' },
             { "contextContig",           required_argument, 0, 'x' },
             { "breakConfig",             required_argument, 0, 'b' },
+            { "watchdogWarnTimeSpan",    optional_argument, 0, 'w' },
 #ifdef SAITHRIFT
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
@@ -119,6 +120,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 options->m_breakConfig = std::string(optarg);
                 break;
 
+            case 'w':
+                options->m_watchdogWarnTimeSpan = (int64_t)std::stoll(optarg);
+                break;
+
 #ifdef SAITHRIFT
             case 'r':
                 options->m_runRPCServer = true;
@@ -161,7 +166,7 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "    -p --profile profile" << std::endl;
     std::cout << "        Provide profile map file" << std::endl;
     std::cout << "    -t --startType type" << std::endl;
-    std::cout << "        Specify start type (cold|warm|fast|fastfast) " << std::endl;
+    std::cout << "        Specify start type (cold|warm|fast|fastfast)" << std::endl;
     std::cout << "    -u --useTempView" << std::endl;
     std::cout << "        Use temporary view between init and apply" << std::endl;
     std::cout << "    -S --disableExitSleep" << std::endl;
@@ -182,6 +187,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Context configuration file" << std::endl;
     std::cout << "    -b --breakConfig" << std::endl;
     std::cout << "        Comparison logic 'break before make' configuration file" << std::endl;
+    std::cout << "    -w --watchdogWarnTimeSpan" << std::endl;
+    std::cout << "        Watchdog time span (in microseconds) to watch for execution" << std::endl;
 
 #ifdef SAITHRIFT
 

@@ -2806,6 +2806,53 @@ void ComparisonLogic::cretePreMatchForLagMembers(
     }
 }
 
+void ComparisonLogic::cretePreMatchForAclEntries(
+        _In_ const AsicView& cur,
+        _Inout_ AsicView& tmp,
+        _Inout_ std::set<std::string>& processed)
+{
+    SWSS_LOG_ENTER();
+
+    // match acl entries which have the same priority attribute
+
+    auto cAclEntries = cur.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_ENTRY);
+    auto tAclEntries = tmp.getObjectsByObjectType(SAI_OBJECT_TYPE_ACL_ENTRY);
+
+    for (auto& cAclEntry: cAclEntries)
+    {
+        if (processed.find(cAclEntry->m_str_object_id) != processed.end())
+            continue;
+
+        for (auto& tAclEntry: tAclEntries)
+        {
+            if (processed.find(tAclEntry->m_str_object_id) != processed.end())
+                continue;
+
+            auto cPrio = cAclEntry->getSaiAttr(SAI_ACL_ENTRY_ATTR_PRIORITY);
+            auto tPrio = tAclEntry->getSaiAttr(SAI_ACL_ENTRY_ATTR_PRIORITY);
+
+            if (cPrio->getStrAttrValue() != tPrio->getStrAttrValue())
+            {
+                continue;
+            }
+
+            // at this point current and temporary acl entry share the same
+            // priority, then we can assume that those objects are the same
+
+            SWSS_LOG_NOTICE("pre match Acl Entry: cur: %s, tmp: %s, using prio: %s",
+                    cAclEntry->m_str_object_id.c_str(),
+                    tAclEntry->m_str_object_id.c_str(),
+                    cPrio->getStrAttrValue().c_str());
+
+            tmp.m_preMatchMap[tAclEntry->getVid()] = cAclEntry->getVid();
+
+            createPreMatchMapForObject(cur, tmp, cAclEntry, tAclEntry, processed);
+
+            break;
+        }
+    }
+}
+
 void ComparisonLogic::createPreMatchMap(
         _In_ const AsicView& cur,
         _Inout_ AsicView& tmp)
@@ -2926,6 +2973,8 @@ void ComparisonLogic::createPreMatchMap(
             count++;
     }
 
+    cretePreMatchForAclEntries(cur, tmp, processed);
+
     SWSS_LOG_NOTICE("preMatch map size: %zu, tmp oid obj: %zu",
             tmp.m_preMatchMap.size(),
             count);
@@ -3045,7 +3094,8 @@ void ComparisonLogic::applyViewTransition(
     {
         // TODO make generic list of root objects (or meta SAI for this)
 
-        if (obj.second->getObjectType() == SAI_OBJECT_TYPE_ACL_TABLE_GROUP)
+        if (obj.second->getObjectType() == SAI_OBJECT_TYPE_ACL_TABLE_GROUP ||
+            obj.second->getObjectType() == SAI_OBJECT_TYPE_ACL_ENTRY)
         {
             if (temp.m_preMatchMap.find(obj.second->getVid()) == temp.m_preMatchMap.end())
             {

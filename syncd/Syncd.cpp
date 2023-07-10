@@ -42,6 +42,12 @@ using namespace saimeta;
 using namespace sairediscommon;
 using namespace std::placeholders;
 
+#ifdef ASAN_ENABLED
+#define WD_DELAY_FACTOR 2
+#else
+#define WD_DELAY_FACTOR 1
+#endif
+
 Syncd::Syncd(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ std::shared_ptr<CommandLineOptions> cmd,
@@ -53,7 +59,7 @@ Syncd::Syncd(
     m_vendorSai(vendorSai),
     m_veryFirstRun(false),
     m_enableSyncMode(false),
-    m_timerWatchdog(30 * 1000000) // watch for executions over 30 seconds
+    m_timerWatchdog(cmd->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR)
 {
     SWSS_LOG_ENTER();
 
@@ -4302,6 +4308,13 @@ void Syncd::onSwitchCreateInInitViewMode(
         SWSS_LOG_NOTICE("new switch %s contains hardware info: '%s'",
                 sai_serialize_object_id(switchVid).c_str(),
                 newHw.c_str());
+
+        /*
+         * The line below is added due to a behavior change of SAI call.
+         *
+         * TODO: remove the line when SAI vendor agrees fix on their end.
+         */
+        currentHw = currentHw == "none"? "" : currentHw;
 
         if (currentHw != newHw)
         {

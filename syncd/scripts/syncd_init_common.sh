@@ -324,6 +324,39 @@ config_syncd_innovium()
     mkdir -p $II_ROOT
 }
 
+config_syncd_nvidia_bluefield()
+{
+    # Read MAC addresses
+    base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
+    eth0_mac=$(cat /sys/class/net/Ethernet0/address)
+    eth4_mac=$(cat /sys/class/net/Ethernet4/address)
+
+    cp $HWSKU_DIR/sai.profile /tmp/sai.profile
+
+    # Update sai.profile with MAC_ADDRESS
+    echo "DEVICE_MAC_ADDRESS=$base_mac" >> /tmp/sai.profile
+    echo "PORT_1_MAC_ADDRESS=$eth0_mac" >> /tmp/sai.profile
+    echo "PORT_2_MAC_ADDRESS=$eth4_mac" >> /tmp/sai.profile
+
+    CMD_ARGS+=" -l -p /tmp/sai.profile -w 180000000"
+
+    echo 4096 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    mkdir -p /mnt/huge
+    mount -t hugetlbfs pagesize=1GB /mnt/huge
+
+    devlink dev eswitch set pci/0000:03:00.0 mode legacy
+    devlink dev eswitch set pci/0000:03:00.1 mode legacy
+    devlink dev eswitch set pci/0000:03:00.0 mode switchdev
+    devlink dev eswitch set pci/0000:03:00.1 mode switchdev
+    devlink dev param set pci/0000:03:00.0 name esw_multiport value 1 cmode runtime
+    devlink dev param set pci/0000:03:00.1 name esw_multiport value 1 cmode runtime
+
+    ethtool -A Ethernet0 rx off tx off
+    ethtool -A Ethernet4 rx off tx off
+
+    mlnx-sf --device 0000:03:00.0 --action create --sfnum 1 --hwaddr ${base_mac} -t
+}
+
 config_syncd_xsight()
 {
     SYS_MODE="asic"
@@ -400,6 +433,8 @@ config_syncd()
         config_syncd_innovium
     elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
         config_syncd_soda
+    elif [ "$SONIC_ASIC_TYPE" == "nvidia-bluefield" ]; then
+        config_syncd_nvidia_bluefield
     elif [ "$SONIC_ASIC_TYPE" == "xsight" ]; then
         config_syncd_xsight
     else

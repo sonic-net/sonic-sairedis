@@ -1,1 +1,2 @@
 lib/sairedis.h usr/include/sai
+usr/lib/*/libsairedis.so

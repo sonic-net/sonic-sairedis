@@ -69,12 +69,18 @@ sai_status_t VendorSai::initialize(
         return api_status;
     }
 
-    SWSS_LOG_NOTICE("SAI API version: %" PRId64, version);
+    // please refer to https://github.com/sonic-net/sonic-sairedis/pull/1246 or commit 606703e1
 
-    if (version != SAI_API_VERSION)
+    sai_api_version_t minversion = SAI_VERSION(1,9,0);
+
+    SWSS_LOG_NOTICE("SAI API vendor version: %" PRId64, version);
+    SWSS_LOG_NOTICE("SAI API min version: %" PRId64, minversion);
+    SWSS_LOG_NOTICE("SAI API headers version: %" PRId64, SAI_API_VERSION);
+
+    if ((version < minversion) || (SAI_API_VERSION < minversion))
     {
-        SWSS_LOG_ERROR("SAI implementation API version %" PRId64 " does not match SAI headers API version %" PRId64,
-                       version, SAI_API_VERSION);
+        SWSS_LOG_ERROR("SAI implementation API version %" PRId64 " or SAI headers API version %" PRId64 " does not meet minimum version requirements, min version required: %" PRId64,
+                       version, SAI_API_VERSION, minversion);
 
         return SAI_STATUS_FAILURE;
     }
