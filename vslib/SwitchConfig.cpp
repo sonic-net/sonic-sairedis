@@ -3,6 +3,8 @@
 
 #include "swss/logger.h"
 
+#include <boost/algorithm/string/join.hpp>
+
 #include <cstring>
 
 using namespace saivs;
@@ -90,14 +92,18 @@ bool SwitchConfig::parseSwitchType(
     }
     else
     {
-        SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s|%s|%s|%s|%s|%s)",
-                switchTypeStr,
+        std::vector<std::string> vals {
                 SAI_VALUE_VS_SWITCH_TYPE_BCM81724,
                 SAI_VALUE_VS_SWITCH_TYPE_BCM56850,
                 SAI_VALUE_VS_SWITCH_TYPE_BCM56971B0,
                 SAI_VALUE_VS_SWITCH_TYPE_MLNX2700,
                 SAI_VALUE_VS_SWITCH_TYPE_NVDA_MBF2H536C,
-                SAI_VALUE_VS_SWITCH_TYPE_DPU_SIMU_2P);
+                SAI_VALUE_VS_SWITCH_TYPE_DPU_SIMU_2P
+        };
+
+        SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s)",
+                switchTypeStr,
+                boost::algorithm::join(vals, "|").c_str());
 
         return false;
     }
