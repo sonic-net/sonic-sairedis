@@ -8,10 +8,10 @@ BUILT_SOURCES = $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saim
 $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h: saimeta-gen
 
 saimeta-gen:
-	make -C $(top_srcdir)/SAI/meta saimetadata.c
+	$(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
 
 clean-local:
-	make -C $(top_srcdir)/SAI/meta clean
+	$(MAKE) -C $(top_srcdir)/SAI/meta clean
 
 libsaimetadata_la_SOURCES =  \
 				$(top_srcdir)/SAI/meta/saimetadata.c \

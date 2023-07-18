@@ -14,4 +14,4 @@ RUN dpkg -i /debs/libswsscommon_1.0.0_amd64.deb \
             /debs/syncd-vs_1.0.0_amd64.deb \
             /debs/swss_1.0.0_amd64.deb
 
-RUN if [ "$need_dbg" = "y" ] ; then dpkg -i /debs/syncd-vs-dbg_1.0.0_amd64.deb ; fi
+RUN if [ "$need_dbg" = "y" ] ; then dpkg -i /debs/syncd-vs-dbgsym_1.0.0_amd64.deb ; fi
