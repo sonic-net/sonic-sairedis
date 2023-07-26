@@ -21,8 +21,6 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 # package maintainers to append LDFLAGS
 #export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 
-DOPACKAGES = $(shell dh_listpackages)
-
 configure_opts = --disable-static
 ifeq ($(ENABLE_ASAN), y)
 	configure_opts += --enable-asan
@@ -61,11 +59,8 @@ override_dh_auto_configure:
 
 override_dh_install:
 	dh_install
-	# Note: escape $ with an extra $ symbol
 ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
-	if [ -f debian/syncd-rpc/usr/bin/syncd_init_common.sh ] ; then
-		sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
-	fi
+	sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
 endif
 
 override_dh_installinit:
