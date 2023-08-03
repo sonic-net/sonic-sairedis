@@ -861,8 +861,6 @@ sai_status_t VirtualSwitchSaiInterface::queryAttributeCapability(
 
     auto ss = m_switchStateMap.at(switch_id);
     return ss->queryAttributeCapability(switch_id, object_type, attr_id, capability);
-
-    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t VirtualSwitchSaiInterface::queryAattributeEnumValuesCapability(
