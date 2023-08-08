@@ -105,3 +105,11 @@ TEST(libsairedis, sai_bulk_object_clear_stats)
                                                                       SAI_STATS_MODE_BULK_CLEAR,
                                                                       nullptr));
 }
+
+TEST(libsairedis, sai_query_api_version)
+{
+    sai_api_version_t version;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai_query_api_version(nullptr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai_query_api_version(&version));
+}
