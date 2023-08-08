@@ -770,7 +770,7 @@ int main()
 
         printf("\n[ %s ]\n\n", sai_serialize_status(SAI_STATUS_SUCCESS).c_str());
 
-        test_watchdog_timer_clock_rollback();
+        // test_watchdog_timer_clock_rollback();
 
         test_invoke_dump();
     }

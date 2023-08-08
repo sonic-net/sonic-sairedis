@@ -31,8 +31,16 @@ VendorSai::VendorSai()
         .api_query = &sai_api_query,
         .api_uninitialize = &sai_api_uninitialize,
         .bulk_get_attribute = nullptr,
+#ifdef HAVE_SAI_BULK_OBJECT_CLEAR_STATS
+        .bulk_object_clear_stats = &sai_bulk_object_clear_stats,
+#else
         .bulk_object_clear_stats = nullptr,
+#endif
+#ifdef HAVE_SAI_BULK_OBJECT_GET_STATS
+        .bulk_object_get_stats = &sai_bulk_object_get_stats
+#else
         .bulk_object_get_stats = nullptr,
+#endif
         .dbg_generate_dump = nullptr,
         .get_maximum_attribute_count = nullptr,
         .get_object_count = nullptr,
@@ -41,7 +49,7 @@ VendorSai::VendorSai()
         .object_type_get_availability = &sai_object_type_get_availability,
         .object_type_query = &sai_object_type_query,
         .query_api_version = &sai_query_api_version,
-        .query_attribute_capability = &sai_query_attribute_capability ,
+        .query_attribute_capability = &sai_query_attribute_capability,
         .query_attribute_enum_values_capability = &sai_query_attribute_enum_values_capability,
         .query_object_stage = nullptr,
         .query_stats_capability = &sai_query_stats_capability,
@@ -86,10 +94,12 @@ sai_status_t VendorSai::initialize(
     }
 
     sai_api_version_t version{};
+
     auto api_status = m_globalApis.query_api_version(&version);
+
     if (api_status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_ERROR("failed to query SAI API version");
+        SWSS_LOG_ERROR("failed to query SAI API version: %s", sai_serialize_status(api_status).c_str());
 
         return api_status;
     }
@@ -379,20 +389,18 @@ sai_status_t VendorSai::bulkGetStats(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-#ifdef HAVE_SAI_BULK_OBJECT_GET_STATS
-    return sai_bulk_object_get_stats(
-            switchId,
-            object_type,
-            object_count,
-            object_key,
-            number_of_counters,
-            counter_ids,
-            mode,
-            object_statuses,
-            counters);
-#else // For vendors do not support this API
-    return SAI_STATUS_NOT_IMPLEMENTED;
-#endif
+    return (m_globalApis.bulk_object_get_stats == nullptr)
+        ? SAI_STATUS_NOT_IMPLEMENTED
+        : m_globalApis.bulk_object_get_stats(
+                switchId,
+                object_type,
+                object_count,
+                object_key,
+                number_of_counters,
+                counter_ids,
+                mode,
+                object_statuses,
+                counters);
 }
 
 sai_status_t VendorSai::bulkClearStats(
@@ -409,19 +417,17 @@ sai_status_t VendorSai::bulkClearStats(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-#ifdef HAVE_SAI_BULK_OBJECT_CLEAR_STATS
-    return sai_bulk_object_clear_stats(
-            switchId,
-            object_type,
-            object_count,
-            object_key,
-            number_of_counters,
-            counter_ids,
-            mode,
-            object_statuses);
-#else // For vendors do not support this API
-    return SAI_STATUS_NOT_IMPLEMENTED;
-#endif
+    return (m_globalApis.bulk_object_clear_stats == nullptr)
+        ? SAI_STATUS_NOT_IMPLEMENTED
+        : m_globalApis.bulk_object_clear_stats(
+                switchId,
+                object_type,
+                object_count,
+                object_key,
+                number_of_counters,
+                counter_ids,
+                mode,
+                object_statuses);
 }
 
 // BULK QUAD OID
