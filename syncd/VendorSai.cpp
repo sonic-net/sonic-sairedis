@@ -24,6 +24,32 @@ VendorSai::VendorSai()
     m_apiInitialized = false;
 
     memset(&m_apis, 0, sizeof(m_apis));
+
+    sai_global_apis_t ga =
+    {
+        .api_initialize = &sai_api_initialize,
+        .api_query = &sai_api_query,
+        .api_uninitialize = &sai_api_uninitialize,
+        .bulk_get_attribute = nullptr,
+        .bulk_object_clear_stats = nullptr,
+        .bulk_object_get_stats = nullptr,
+        .dbg_generate_dump = nullptr,
+        .get_maximum_attribute_count = nullptr,
+        .get_object_count = nullptr,
+        .get_object_key = nullptr,
+        .log_set = &sai_log_set,
+        .object_type_get_availability = &sai_object_type_get_availability,
+        .object_type_query = &sai_object_type_query,
+        .query_api_version = &sai_query_api_version,
+        .query_attribute_capability = &sai_query_attribute_capability ,
+        .query_attribute_enum_values_capability = &sai_query_attribute_enum_values_capability,
+        .query_object_stage = nullptr,
+        .query_stats_capability = &sai_query_stats_capability,
+        .switch_id_query = &sai_switch_id_query,
+        .tam_telemetry_get_data = nullptr,
+    };
+
+    m_globalApis = ga;
 }
 
 VendorSai::~VendorSai()
@@ -59,9 +85,8 @@ sai_status_t VendorSai::initialize(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-#ifdef HAVE_SAI_QUERY_API_VERSION
     sai_api_version_t version{};
-    auto api_status = sai_query_api_version(&version);
+    auto api_status = m_globalApis.query_api_version(&version);
     if (api_status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("failed to query SAI API version");
@@ -75,26 +100,25 @@ sai_status_t VendorSai::initialize(
 
     SWSS_LOG_NOTICE("SAI API vendor version: %" PRId64, version);
     SWSS_LOG_NOTICE("SAI API min version: %" PRId64, minversion);
-    SWSS_LOG_NOTICE("SAI API headers version: %" PRId64, SAI_API_VERSION);
+    SWSS_LOG_NOTICE("SAI API headers version: %d", SAI_API_VERSION);
 
     if ((version < minversion) || (SAI_API_VERSION < minversion))
     {
-        SWSS_LOG_ERROR("SAI implementation API version %" PRId64 " or SAI headers API version %" PRId64 " does not meet minimum version requirements, min version required: %" PRId64,
+        SWSS_LOG_ERROR("SAI implementation API version %" PRId64 " or SAI headers API version %d does not meet minimum version requirements, min version required: %" PRId64,
                        version, SAI_API_VERSION, minversion);
 
         return SAI_STATUS_FAILURE;
     }
-#endif
 
     memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
 
-    auto status = sai_api_initialize(flags, service_method_table);
+    auto status = m_globalApis.api_initialize(flags, service_method_table);
 
     if (status == SAI_STATUS_SUCCESS)
     {
         memset(&m_apis, 0, sizeof(m_apis));
 
-        int failed = sai_metadata_apis_query(sai_api_query, &m_apis);
+        int failed = sai_metadata_apis_query(m_globalApis.api_query, &m_apis);
 
         if (failed > 0)
         {
@@ -112,7 +136,7 @@ sai_status_t VendorSai::uninitialize(void)
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    auto status = sai_api_uninitialize();
+    auto status = m_globalApis.api_uninitialize();
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -137,35 +161,9 @@ sai_status_t VendorSai::create(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    auto info = sai_metadata_get_object_type_info(objectType);
-
-    if (!info)
-    {
-        SWSS_LOG_ERROR("unable to get info for object type: %s",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (!info->create)
-    {
-        SWSS_LOG_ERROR("object type %s has no create method",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (info->isnonobjectid)
-    {
-        SWSS_LOG_ERROR("passed non object id as object id!: %s",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
     sai_object_meta_key_t mk = { .objecttype = objectType, .objectkey = { .key = { .object_id = 0 } } };
 
-    auto status = info->create(&mk, switchId, attr_count, attr_list);
+    auto status = sai_metadata_generic_create(&m_apis, &mk, switchId, attr_count, attr_list);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -183,35 +181,9 @@ sai_status_t VendorSai::remove(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    auto info = sai_metadata_get_object_type_info(objectType);
-
-    if (!info)
-    {
-        SWSS_LOG_ERROR("unable to get info for object type: %s",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (!info->remove)
-    {
-        SWSS_LOG_ERROR("object type %s has no remove method",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (info->isnonobjectid)
-    {
-        SWSS_LOG_ERROR("passed non object id as object id!: %s",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
     sai_object_meta_key_t mk = { .objecttype = objectType, .objectkey = { .key = { .object_id = objectId } } };
 
-    return info->remove(&mk);
+    return sai_metadata_generic_remove(&m_apis, &mk);
 }
 
 sai_status_t VendorSai::set(
@@ -223,32 +195,6 @@ sai_status_t VendorSai::set(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    auto info = sai_metadata_get_object_type_info(objectType);
-
-    if (!info)
-    {
-        SWSS_LOG_ERROR("unable to get info for object type: %s",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (!info->set)
-    {
-        SWSS_LOG_ERROR("object type %s has no set method",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (info->isnonobjectid)
-    {
-        SWSS_LOG_ERROR("passed non object id as object id!: %s",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
     sai_object_meta_key_t mk = { .objecttype = objectType, .objectkey = { .key = { .object_id = objectId } } };
 
     if (objectType == SAI_OBJECT_TYPE_SWITCH && attr && attr->id == SAI_SWITCH_ATTR_SWITCH_SHELL_ENABLE)
@@ -258,7 +204,7 @@ sai_status_t VendorSai::set(
         _lock.unlock();
     }
 
-    return info->set(&mk, attr);
+    return sai_metadata_generic_set(&m_apis, &mk, attr);
 }
 
 sai_status_t VendorSai::get(
@@ -271,35 +217,9 @@ sai_status_t VendorSai::get(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    auto info = sai_metadata_get_object_type_info(objectType);
-
-    if (!info)
-    {
-        SWSS_LOG_ERROR("unable to get info for object type: %s",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (!info->get)
-    {
-        SWSS_LOG_ERROR("object type %s has no get method",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (info->isnonobjectid)
-    {
-        SWSS_LOG_ERROR("passed non object id as object id!: %s",
-                sai_serialize_object_type(objectType).c_str());
-
-        return SAI_STATUS_FAILURE;
-    }
-
     sai_object_meta_key_t mk = { .objecttype = objectType, .objectkey = { .key = { .object_id = objectId } } };
 
-    return info->get(&mk, attr_count, attr_list);
+    return sai_metadata_generic_get(&m_apis, &mk, attr_count, attr_list);
 }
 
 // QUAD ENTRY
@@ -386,86 +306,15 @@ sai_status_t VendorSai::getStats(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    sai_status_t (*ptr)(
-            _In_ sai_object_id_t port_id,
-            _In_ uint32_t number_of_counters,
-            _In_ const sai_stat_id_t *counter_ids,
-            _Out_ uint64_t *counters);
-
     if (!counter_ids || !counters)
     {
         SWSS_LOG_ERROR("NULL pointer function argument");
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    switch ((int)object_type)
-    {
-        case SAI_OBJECT_TYPE_PORT:
-            ptr = m_apis.port_api->get_port_stats;
-            break;
-        case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
-            ptr = m_apis.router_interface_api->get_router_interface_stats;
-            break;
-        case SAI_OBJECT_TYPE_POLICER:
-            ptr = m_apis.policer_api->get_policer_stats;
-            break;
-        case SAI_OBJECT_TYPE_QUEUE:
-            ptr = m_apis.queue_api->get_queue_stats;
-            break;
-        case SAI_OBJECT_TYPE_BUFFER_POOL:
-            ptr = m_apis.buffer_api->get_buffer_pool_stats;
-            break;
-        case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
-            ptr = m_apis.buffer_api->get_ingress_priority_group_stats;
-            break;
-        case SAI_OBJECT_TYPE_SWITCH:
-            ptr = m_apis.switch_api->get_switch_stats;
-            break;
-        case SAI_OBJECT_TYPE_VLAN:
-            ptr = m_apis.vlan_api->get_vlan_stats;
-            break;
-        case SAI_OBJECT_TYPE_TUNNEL:
-            ptr = m_apis.tunnel_api->get_tunnel_stats;
-            break;
-        case SAI_OBJECT_TYPE_BRIDGE:
-            ptr = m_apis.bridge_api->get_bridge_stats;
-            break;
-        case SAI_OBJECT_TYPE_BRIDGE_PORT:
-            ptr = m_apis.bridge_api->get_bridge_port_stats;
-            break;
-        case SAI_OBJECT_TYPE_PORT_POOL:
-            ptr = m_apis.port_api->get_port_pool_stats;
-            break;
-        case SAI_OBJECT_TYPE_BFD_SESSION:
-            ptr = m_apis.bfd_api->get_bfd_session_stats;
-            break;
-        case SAI_OBJECT_TYPE_COUNTER:
-            ptr = m_apis.counter_api->get_counter_stats;
-            break;
-        case SAI_OBJECT_TYPE_TABLE_BITMAP_CLASSIFICATION_ENTRY:
-            ptr = m_apis.bmtor_api->get_table_bitmap_classification_entry_stats;
-            break;
-        case SAI_OBJECT_TYPE_TABLE_BITMAP_ROUTER_ENTRY:
-            ptr = m_apis.bmtor_api->get_table_bitmap_router_entry_stats;
-            break;
-        case SAI_OBJECT_TYPE_TABLE_META_TUNNEL_ENTRY:
-            ptr = m_apis.bmtor_api->get_table_meta_tunnel_entry_stats;
-            break;
+    sai_object_meta_key_t mk = { .objecttype = object_type, .objectkey = { .key = { .object_id = object_id} } };
 
-        case SAI_OBJECT_TYPE_MACSEC_FLOW:
-            ptr = m_apis.macsec_api->get_macsec_flow_stats;
-            break;
-
-        case SAI_OBJECT_TYPE_MACSEC_SA:
-            ptr = m_apis.macsec_api->get_macsec_sa_stats;
-            break;
-
-        default:
-            SWSS_LOG_ERROR("not implemented, FIXME");
-            return SAI_STATUS_FAILURE;
-    }
-
-    return ptr(object_id, number_of_counters, counter_ids, counters);
+    return sai_metadata_generic_get_stats(&m_apis, &mk, number_of_counters, counter_ids, counters);
 }
 
 sai_status_t VendorSai::queryStatsCapability(
@@ -477,7 +326,7 @@ sai_status_t VendorSai::queryStatsCapability(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    return sai_query_stats_capability(
+    return m_globalApis.query_stats_capability(
             switchId,
             objectType,
             stats_capability);
@@ -495,81 +344,9 @@ sai_status_t VendorSai::getStatsExt(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    sai_status_t (*ptr)(
-            _In_ sai_object_id_t port_id,
-            _In_ uint32_t number_of_counters,
-            _In_ const sai_stat_id_t *counter_ids,
-            _In_ sai_stats_mode_t mode,
-            _Out_ uint64_t *counters);
+    sai_object_meta_key_t mk = { .objecttype = object_type, .objectkey = { .key = { .object_id = object_id} } };
 
-    switch ((int)object_type)
-    {
-        case SAI_OBJECT_TYPE_PORT:
-            ptr = m_apis.port_api->get_port_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
-            ptr = m_apis.router_interface_api->get_router_interface_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_POLICER:
-            ptr = m_apis.policer_api->get_policer_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_QUEUE:
-            ptr = m_apis.queue_api->get_queue_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_BUFFER_POOL:
-            ptr = m_apis.buffer_api->get_buffer_pool_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
-            ptr = m_apis.buffer_api->get_ingress_priority_group_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_SWITCH:
-            ptr = m_apis.switch_api->get_switch_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_VLAN:
-            ptr = m_apis.vlan_api->get_vlan_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_TUNNEL:
-            ptr = m_apis.tunnel_api->get_tunnel_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_BRIDGE:
-            ptr = m_apis.bridge_api->get_bridge_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_BRIDGE_PORT:
-            ptr = m_apis.bridge_api->get_bridge_port_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_PORT_POOL:
-            ptr = m_apis.port_api->get_port_pool_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_BFD_SESSION:
-            ptr = m_apis.bfd_api->get_bfd_session_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_COUNTER:
-            ptr = m_apis.counter_api->get_counter_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_TABLE_BITMAP_CLASSIFICATION_ENTRY:
-            ptr = m_apis.bmtor_api->get_table_bitmap_classification_entry_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_TABLE_BITMAP_ROUTER_ENTRY:
-            ptr = m_apis.bmtor_api->get_table_bitmap_router_entry_stats_ext;
-            break;
-        case SAI_OBJECT_TYPE_TABLE_META_TUNNEL_ENTRY:
-            ptr = m_apis.bmtor_api->get_table_meta_tunnel_entry_stats_ext;
-            break;
-
-        case SAI_OBJECT_TYPE_MACSEC_FLOW:
-            ptr = m_apis.macsec_api->get_macsec_flow_stats_ext;
-            break;
-
-        case SAI_OBJECT_TYPE_MACSEC_SA:
-            ptr = m_apis.macsec_api->get_macsec_sa_stats_ext;
-            break;
-
-        default:
-            SWSS_LOG_ERROR("not implemented, FIXME");
-            return SAI_STATUS_FAILURE;
-    }
-
-    return ptr(object_id, number_of_counters, counter_ids, mode, counters);
+    return sai_metadata_generic_get_stats_ext(&m_apis, &mk, number_of_counters, counter_ids, mode, counters);
 }
 
 sai_status_t VendorSai::clearStats(
@@ -582,79 +359,9 @@ sai_status_t VendorSai::clearStats(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    sai_status_t (*ptr)(
-            _In_ sai_object_id_t port_id,
-            _In_ uint32_t number_of_counters,
-            _In_ const sai_stat_id_t *counter_ids);
+    sai_object_meta_key_t mk = { .objecttype = object_type, .objectkey = { .key = { .object_id = object_id} } };
 
-    switch ((int)object_type)
-    {
-        case SAI_OBJECT_TYPE_PORT:
-            ptr = m_apis.port_api->clear_port_stats;
-            break;
-        case SAI_OBJECT_TYPE_ROUTER_INTERFACE:
-            ptr = m_apis.router_interface_api->clear_router_interface_stats;
-            break;
-        case SAI_OBJECT_TYPE_POLICER:
-            ptr = m_apis.policer_api->clear_policer_stats;
-            break;
-        case SAI_OBJECT_TYPE_QUEUE:
-            ptr = m_apis.queue_api->clear_queue_stats;
-            break;
-        case SAI_OBJECT_TYPE_BUFFER_POOL:
-            ptr = m_apis.buffer_api->clear_buffer_pool_stats;
-            break;
-        case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
-            ptr = m_apis.buffer_api->clear_ingress_priority_group_stats;
-            break;
-        case SAI_OBJECT_TYPE_SWITCH:
-            ptr = m_apis.switch_api->clear_switch_stats;
-            break;
-        case SAI_OBJECT_TYPE_VLAN:
-            ptr = m_apis.vlan_api->clear_vlan_stats;
-            break;
-        case SAI_OBJECT_TYPE_TUNNEL:
-            ptr = m_apis.tunnel_api->clear_tunnel_stats;
-            break;
-        case SAI_OBJECT_TYPE_BRIDGE:
-            ptr = m_apis.bridge_api->clear_bridge_stats;
-            break;
-        case SAI_OBJECT_TYPE_BRIDGE_PORT:
-            ptr = m_apis.bridge_api->clear_bridge_port_stats;
-            break;
-        case SAI_OBJECT_TYPE_PORT_POOL:
-            ptr = m_apis.port_api->clear_port_pool_stats;
-            break;
-        case SAI_OBJECT_TYPE_BFD_SESSION:
-            ptr = m_apis.bfd_api->clear_bfd_session_stats;
-            break;
-        case SAI_OBJECT_TYPE_COUNTER:
-            ptr = m_apis.counter_api->clear_counter_stats;
-            break;
-        case SAI_OBJECT_TYPE_TABLE_BITMAP_CLASSIFICATION_ENTRY:
-            ptr = m_apis.bmtor_api->clear_table_bitmap_classification_entry_stats;
-            break;
-        case SAI_OBJECT_TYPE_TABLE_BITMAP_ROUTER_ENTRY:
-            ptr = m_apis.bmtor_api->clear_table_bitmap_router_entry_stats;
-            break;
-        case SAI_OBJECT_TYPE_TABLE_META_TUNNEL_ENTRY:
-            ptr = m_apis.bmtor_api->clear_table_meta_tunnel_entry_stats;
-            break;
-
-        case SAI_OBJECT_TYPE_MACSEC_FLOW:
-            ptr = m_apis.macsec_api->clear_macsec_flow_stats;
-            break;
-
-        case SAI_OBJECT_TYPE_MACSEC_SA:
-            ptr = m_apis.macsec_api->clear_macsec_sa_stats;
-            break;
-
-        default:
-            SWSS_LOG_ERROR("not implemented, FIXME");
-            return SAI_STATUS_FAILURE;
-    }
-
-    return ptr(object_id, number_of_counters, counter_ids);
+    return sai_metadata_generic_clear_stats(&m_apis, &mk, number_of_counters, counter_ids);
 }
 
 sai_status_t VendorSai::bulkGetStats(
@@ -1890,7 +1597,7 @@ sai_status_t VendorSai::objectTypeGetAvailability(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    return sai_object_type_get_availability(
+    return m_globalApis.object_type_get_availability(
             switchId,
             objectType,
             attrCount,
@@ -1908,7 +1615,7 @@ sai_status_t VendorSai::queryAttributeCapability(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    return sai_query_attribute_capability(
+    return m_globalApis.query_attribute_capability(
             switchId,
             objectType,
             attrId,
@@ -1925,7 +1632,7 @@ sai_status_t VendorSai::queryAattributeEnumValuesCapability(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    return sai_query_attribute_enum_values_capability(
+    return m_globalApis.query_attribute_enum_values_capability(
             switchId,
             objectType,
             attrId,
@@ -1944,7 +1651,7 @@ sai_object_type_t VendorSai::objectTypeQuery(
         return SAI_OBJECT_TYPE_NULL;
     }
 
-    return sai_object_type_query(objectId);
+    return m_globalApis.object_type_query(objectId);
 }
 
 sai_object_id_t VendorSai::switchIdQuery(
@@ -1959,7 +1666,7 @@ sai_object_id_t VendorSai::switchIdQuery(
         return SAI_NULL_OBJECT_ID;
     }
 
-    return sai_switch_id_query(objectId);
+    return m_globalApis.switch_id_query(objectId);
 }
 
 sai_status_t VendorSai::logSet(
@@ -1968,5 +1675,5 @@ sai_status_t VendorSai::logSet(
 {
     SWSS_LOG_ENTER();
 
-    return sai_log_set(api, log_level);
+    return m_globalApis.log_set(api, log_level);
 }
