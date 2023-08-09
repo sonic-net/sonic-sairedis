@@ -295,6 +295,12 @@ namespace saivs
                               _In_ sai_attr_id_t attr_id,
                              _Inout_ sai_s32_list_t *enum_values_capability);
 
+           virtual sai_status_t queryAttributeCapability(
+                              _In_ sai_object_id_t switch_id,
+                              _In_ sai_object_type_t object_type,
+                              _In_ sai_attr_id_t attr_id,
+                             _Out_ sai_attr_capability_t *attr_capability);
+
         protected:
 
             virtual sai_status_t remove_internal(
@@ -688,6 +694,9 @@ namespace saivs
 
             virtual sai_status_t queryHashNativeHashFieldListCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
+
+            virtual sai_status_t queryPortAutonegFecOverrideSupportCapability(
+                                      _Out_ sai_attr_capability_t *attr_capability);
 
         public: // TODO private
 

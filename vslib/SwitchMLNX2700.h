@@ -54,6 +54,7 @@ namespace saivs
                                       _Inout_ sai_s32_list_t *enum_values_capability) override;
             virtual sai_status_t queryVlanfloodTypeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability) override;
-
+            virtual sai_status_t queryPortAutonegFecOverrideSupportCapability(
+                                      _Out_ sai_attr_capability_t *attr_capability) override;
     };
 }
