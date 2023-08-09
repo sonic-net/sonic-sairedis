@@ -859,16 +859,8 @@ sai_status_t VirtualSwitchSaiInterface::queryAttributeCapability(
 {
     SWSS_LOG_ENTER();
 
-    // TODO: We should generate this metadata for the virtual switch rather
-    // than hard-coding it here.
-
-    // in virtual switch by default all apis are implemented for all objects. SUCCESS for all attributes
-
-    capability->create_implemented = true;
-    capability->set_implemented    = true;
-    capability->get_implemented    = true;
-
-    return SAI_STATUS_SUCCESS;
+    auto ss = m_switchStateMap.at(switch_id);
+    return ss->queryAttributeCapability(switch_id, object_type, attr_id, capability);
 }
 
 sai_status_t VirtualSwitchSaiInterface::queryAattributeEnumValuesCapability(
