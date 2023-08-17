@@ -17,6 +17,23 @@ using namespace saivs;
 
 #define VS_COUNTERS_COUNT_MSB (0x80000000)
 
+const std::map<sai_stat_id_t, std::string> SwitchState::createStatIdMap()
+{
+    std::map<sai_stat_id_t, std::string> statIdMap = {
+        { SAI_PORT_STAT_IF_IN_OCTETS, "rx_bytes" },
+        { SAI_PORT_STAT_IF_IN_UCAST_PKTS, "rx_packets" },
+        { SAI_PORT_STAT_IF_IN_ERRORS, "rx_errors" },
+        { SAI_PORT_STAT_IF_IN_DISCARDS, "rx_dropped" },
+        { SAI_PORT_STAT_IF_OUT_OCTETS, "tx_bytes" },
+        { SAI_PORT_STAT_IF_OUT_UCAST_PKTS, "tx_packets" },
+        { SAI_PORT_STAT_IF_OUT_ERRORS, "tx_errors" },
+        { SAI_PORT_STAT_IF_OUT_DISCARDS, "tx_dropped" }
+    };
+
+    return statIdMap;
+}
+const std::map<sai_stat_id_t, std::string> SwitchState::m_statIdMap = SwitchState::createStatIdMap();
+
 SwitchState::SwitchState(
         _In_ sai_object_id_t switch_id,
         _In_ std::shared_ptr<SwitchConfig> config):
@@ -199,6 +216,81 @@ void SwitchState::asyncOnLinkMsg(
     m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NET_LINK_MSG, payload));
 }
 
+sai_status_t SwitchState::getNetStat(
+        _In_ sai_stat_id_t counterId,
+        _In_ std::string& ifName,
+        _Out_ uint64_t& counter)
+{
+    SWSS_LOG_ENTER();
+
+    FILE *fp;
+    char stat[100];
+    std::string counterName;
+    sai_status_t rc = SAI_STATUS_SUCCESS;
+
+    try
+    { 
+        counterName = m_statIdMap.at(counterId);
+    }
+    catch (std::out_of_range const& e)
+    {
+        /* not an error only few counters supported */
+        return rc;
+    }
+
+    std::string cmd = "/bin/cat /sys/class/net/" + ifName + "/statistics/" + counterName;
+
+    fp = popen(cmd.c_str(), "r");
+
+    if ((fp != NULL) && (fgets(stat, sizeof(stat), fp) != NULL))
+    {
+        counter = atoi(stat);
+        SWSS_LOG_DEBUG("%s [ %s ]  = %s", ifName.c_str(), counterName.c_str(), stat);
+    }
+    else
+    {
+        counter = -1;
+        SWSS_LOG_ERROR("get counter cmd %s failed fp=%x", cmd, fp);
+        rc = SAI_STATUS_FAILURE;
+    }
+
+    if (fp != NULL)
+    {
+        pclose(fp);
+    }
+
+    return rc;
+}
+
+
+sai_status_t SwitchState::getPortStat(
+        _In_ sai_object_id_t portId,
+        _In_ const sai_stat_id_t counterId,
+        _Out_ uint64_t& counter)
+{
+    SWSS_LOG_ENTER();
+
+    std::string ifName;
+
+    /* zero out counter */
+    counter = 0;
+
+    if (getTapNameFromPortId(portId, ifName) == false)
+    {
+        /* Port not ready */
+        SWSS_LOG_DEBUG("Port not ready %s", sai_serialize_object_id(portId).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (getNetStat(counterId, ifName, counter) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Port stat get failed %s", ifName.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchState::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -249,6 +341,7 @@ sai_status_t SwitchState::getStatsExt(
     for (uint32_t i = 0; i < number_of_counters; ++i)
     {
         int32_t id = counter_ids[i];
+        uint64_t counter;
 
         if (perform_set)
         {
@@ -266,6 +359,17 @@ sai_status_t SwitchState::getStatsExt(
             else
             {
                 counters[i] = it->second;
+            }
+
+            /* In non unit test mode, fetch port counters from host interface */
+            if (!enabled && (object_type == SAI_OBJECT_TYPE_PORT))
+            {
+                if (getPortStat(object_id, id, counter) != SAI_STATUS_SUCCESS)
+                {
+                    return SAI_STATUS_FAILURE;
+                }
+
+                localcounters[ id ] = counter;
             }
 
             if (mode == SAI_STATS_MODE_READ_AND_CLEAR)
