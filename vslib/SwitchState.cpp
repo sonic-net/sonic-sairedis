@@ -17,11 +17,8 @@ using namespace saivs;
 
 #define VS_COUNTERS_COUNT_MSB (0x80000000)
 
-const std::map<sai_stat_id_t, std::string> SwitchState::createStatIdMap()
+const std::map<sai_stat_id_t, std::string> SwitchState::m_statIdMap =
 {
-    SWSS_LOG_ENTER();
-
-    std::map<sai_stat_id_t, std::string> statIdMap = {
         { SAI_PORT_STAT_IF_IN_OCTETS, "rx_bytes" },
         { SAI_PORT_STAT_IF_IN_UCAST_PKTS, "rx_packets" },
         { SAI_PORT_STAT_IF_IN_ERRORS, "rx_errors" },
@@ -30,11 +27,7 @@ const std::map<sai_stat_id_t, std::string> SwitchState::createStatIdMap()
         { SAI_PORT_STAT_IF_OUT_UCAST_PKTS, "tx_packets" },
         { SAI_PORT_STAT_IF_OUT_ERRORS, "tx_errors" },
         { SAI_PORT_STAT_IF_OUT_DISCARDS, "tx_dropped" }
-    };
-
-    return statIdMap;
-}
-const std::map<sai_stat_id_t, std::string> SwitchState::m_statIdMap = SwitchState::createStatIdMap();
+};
 
 SwitchState::SwitchState(
         _In_ sai_object_id_t switch_id,
@@ -225,14 +218,12 @@ sai_status_t SwitchState::getNetStat(
 {
     SWSS_LOG_ENTER();
 
-    FILE *fp;
-    char stat[100];
     std::string counterName;
     sai_status_t rc = SAI_STATUS_SUCCESS;
 
     try
     {
-        counterName = m_statIdMap.at(counterId);
+        counterName = SwitchState::m_statIdMap.at(counterId);
     }
     catch (std::out_of_range const& e)
     {
@@ -240,24 +231,18 @@ sai_status_t SwitchState::getNetStat(
         return rc;
     }
 
-    std::string cmd = "/bin/cat /sys/class/net/" + ifName + "/statistics/" + counterName;
-    fp = popen(cmd.c_str(), "r");
+    std::string filename = "/sys/class/net/" + ifName + "/statistics/" + counterName;
+    std::ifstream istrm(filename.c_str(), std::ifstream::in);
 
-    if ((fp != NULL) && (fgets(stat, sizeof(stat), fp) != NULL))
+    if (istrm.good())
     {
-        counter = atoi(stat);
-        SWSS_LOG_DEBUG("%s [ %s ]  = %s", ifName.c_str(), counterName.c_str(), stat);
+        istrm >> counter;
     }
     else
     {
+        SWSS_LOG_ERROR("failed to open ifstream in file %s", filename.c_str());
         counter = -1;
-        SWSS_LOG_ERROR("get counter cmd %s failed fp=%x", cmd, fp);
         rc = SAI_STATUS_FAILURE;
-    }
-
-    if (fp != NULL)
-    {
-        pclose(fp);
     }
 
     return rc;

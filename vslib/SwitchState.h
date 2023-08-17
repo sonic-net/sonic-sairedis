@@ -133,7 +133,6 @@ namespace saivs
         private : // port counter mapping
 
             static const std::map<sai_stat_id_t, std::string> m_statIdMap;
-            static const std::map<sai_stat_id_t, std::string> createStatIdMap();
 
         protected:
 
