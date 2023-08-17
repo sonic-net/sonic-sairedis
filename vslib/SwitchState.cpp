@@ -20,7 +20,7 @@ using namespace saivs;
 const std::map<sai_stat_id_t, std::string> SwitchState::createStatIdMap()
 {
     SWSS_LOG_ENTER();
- 
+
     std::map<sai_stat_id_t, std::string> statIdMap = {
         { SAI_PORT_STAT_IF_IN_OCTETS, "rx_bytes" },
         { SAI_PORT_STAT_IF_IN_UCAST_PKTS, "rx_packets" },
