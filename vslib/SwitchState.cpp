@@ -19,6 +19,8 @@ using namespace saivs;
 
 const std::map<sai_stat_id_t, std::string> SwitchState::createStatIdMap()
 {
+    SWSS_LOG_ENTER();
+ 
     std::map<sai_stat_id_t, std::string> statIdMap = {
         { SAI_PORT_STAT_IF_IN_OCTETS, "rx_bytes" },
         { SAI_PORT_STAT_IF_IN_UCAST_PKTS, "rx_packets" },
@@ -229,7 +231,7 @@ sai_status_t SwitchState::getNetStat(
     sai_status_t rc = SAI_STATUS_SUCCESS;
 
     try
-    { 
+    {
         counterName = m_statIdMap.at(counterId);
     }
     catch (std::out_of_range const& e)
@@ -239,7 +241,6 @@ sai_status_t SwitchState::getNetStat(
     }
 
     std::string cmd = "/bin/cat /sys/class/net/" + ifName + "/statistics/" + counterName;
-
     fp = popen(cmd.c_str(), "r");
 
     if ((fp != NULL) && (fgets(stat, sizeof(stat), fp) != NULL))
@@ -261,7 +262,6 @@ sai_status_t SwitchState::getNetStat(
 
     return rc;
 }
-
 
 sai_status_t SwitchState::getPortStat(
         _In_ sai_object_id_t portId,
