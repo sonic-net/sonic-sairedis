@@ -219,33 +219,27 @@ sai_status_t SwitchState::getNetStat(
     SWSS_LOG_ENTER();
 
     std::string counterName;
-    sai_status_t rc = SAI_STATUS_SUCCESS;
 
-    try
-    {
-        counterName = SwitchState::m_statIdMap.at(counterId);
-    }
-    catch (std::out_of_range const& e)
-    {
-        /* not an error only few counters supported */
-        return rc;
-    }
+    auto mapit = SwitchState::m_statIdMap.find(counterId);
 
-    std::string filename = "/sys/class/net/" + ifName + "/statistics/" + counterName;
-    std::ifstream istrm(filename.c_str(), std::ifstream::in);
+    if (mapit != SwitchState::m_statIdMap.end())
+    {
+        std::string filename = "/sys/class/net/" + ifName + "/statistics/" + mapit->second;
+        std::ifstream istrm(filename.c_str(), std::ifstream::in);
 
-    if (istrm.good())
-    {
-        istrm >> counter;
-    }
-    else
-    {
-        SWSS_LOG_ERROR("failed to open ifstream in file %s", filename.c_str());
-        counter = -1;
-        rc = SAI_STATUS_FAILURE;
+        if (istrm.good())
+        {
+            istrm >> counter;
+        }
+        else
+        {
+            SWSS_LOG_ERROR("failed to open ifstream in file %s", filename.c_str());
+            counter = -1;
+            return SAI_STATUS_FAILURE;
+        }
     }
 
-    return rc;
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchState::getPortStat(
