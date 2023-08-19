@@ -109,6 +109,10 @@ jobs:
         target/debs/${{ parameters.debian_version }}/libnl-route*.deb
         target/debs/${{ parameters.debian_version }}/libnl-nf*.deb
         target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libprotobuf*.deb
+        target/debs/${{ parameters.debian_version }}/libprotoc*.deb
+        target/debs/${{ parameters.debian_version }}/protobuf-compiler*.deb
+        target/debs/${{ parameters.debian_version }}/libdashapi*.deb
     displayName: "Download common libs"
 
   - script: |
