@@ -233,6 +233,11 @@ config_syncd_mlnx()
     if [[ -f /tmp/sai_extra.profile ]]; then
         cat /tmp/sai_extra.profile >> /tmp/sai.profile
     fi
+
+    if [[ -f /$HWSKU_DIR/independent_mode_support.profile ]]; then
+        cat /$HWSKU_DIR/independent_mode_support.profile >> /tmp/sai.profile
+    fi
+
 }
 
 config_syncd_centec()

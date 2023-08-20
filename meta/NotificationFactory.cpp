@@ -6,6 +6,7 @@
 #include "NotificationSwitchShutdownRequest.h"
 #include "NotificationSwitchStateChange.h"
 #include "NotificationBfdSessionStateChange.h"
+#include "NotificationPortHostTxReadyEvent.cpp"
 #include "sairediscommon.h"
 
 #include "swss/logger.h"
@@ -23,6 +24,9 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_NAT_EVENT)
         return std::make_shared<NotificationNatEvent>(serializedNotification);
+
+    if (name == SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY)
+        return std::make_shared<NotificationPortHostTxReady>(serializedNotification);
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE)
         return std::make_shared<NotificationPortStateChange>(serializedNotification);

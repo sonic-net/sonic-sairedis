@@ -108,6 +108,10 @@ void NotificationHandler::updateNotificationsPointers(
                 attr.value.ptr = (void*)m_switchNotifications.on_port_state_change;
                 break;
 
+            case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
+                attr.value.ptr = (void*)m_switchNotifications.on_port_host_tx_ready;
+                break;
+
             case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
                 attr.value.ptr = (void*)m_switchNotifications.on_queue_pfc_deadlock;
                 break;
@@ -162,6 +166,18 @@ void NotificationHandler::onPortStateChange(
     auto s = sai_serialize_port_oper_status_ntf(count, data);
 
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, s);
+}
+
+void NotificationHandler::onPortHostTxReady(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id,
+        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status)
+{
+    SWSS_LOG_ENTER();
+
+    auto s = sai_serialize_port_host_tx_ready_ntf(switch_id, port_id, host_tx_ready_status);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY, s);
 }
 
 void NotificationHandler::onQueuePfcDeadlock(
