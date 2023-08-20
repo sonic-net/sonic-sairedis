@@ -95,6 +95,11 @@ void Switch::updateNotifications(
                     (sai_port_state_change_notification_fn)attr.value.ptr;
                 break;
 
+            case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
+                m_switchNotifications.on_port_host_tx_ready = 
+                    (sai_port_host_tx_ready_notification_fn)attr.value.ptr;
+                break;
+
             case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
                 m_switchNotifications.on_packet_event =
                     (sai_packet_event_notification_fn)attr.value.ptr;

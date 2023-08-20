@@ -463,6 +463,28 @@ void NotificationProcessor::process_on_queue_deadlock_event(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_QUEUE_PFC_DEADLOCK, s);
 }
 
+
+void NotificationProcessor::process_on_port_host_tx_ready_change(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id,
+        _In_ sai_port_host_tx_ready_status_t *host_tx_ready_status)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("Port ID before translating from RID to VID is 0x%lx", port_id);
+    sai_object_id_t port_vid = m_translator->translateRidToVid(port_id, SAI_NULL_OBJECT_ID);
+    SWSS_LOG_DEBUG("Port ID after translating from RID to VID is 0x%lx", port_vid);
+
+    sai_object_id_t switch_vid = m_translator->translateRidToVid(switch_id, SAI_NULL_OBJECT_ID);
+    
+    std::string s = sai_serialize_port_host_tx_ready_ntf(switch_vid, port_vid, *host_tx_ready_status);
+
+    SWSS_LOG_DEBUG("Host_tx_ready status after sai_serialize is %s", s.c_str());
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY, s);
+}
+
+
 void NotificationProcessor::process_on_port_state_change(
         _In_ uint32_t count,
         _In_ sai_port_oper_status_notification_t *data)
@@ -626,6 +648,22 @@ void NotificationProcessor::handle_port_state_change(
     sai_deserialize_free_port_oper_status_ntf(count, portoperstatus);
 }
 
+void NotificationProcessor::handle_port_host_tx_ready_change(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t port_id;
+    sai_object_id_t switch_id;
+    sai_port_host_tx_ready_status_t host_tx_ready_status;
+
+    sai_deserialize_port_host_tx_ready_ntf(data, switch_id, port_id, host_tx_ready_status);
+
+    process_on_port_host_tx_ready_change(switch_id, port_id, &host_tx_ready_status);
+
+    sai_deserialize_free_port_host_tx_ready_ntf(host_tx_ready_status);
+}
+
 void NotificationProcessor::handle_bfd_session_state_change(
         _In_ const std::string &data)
 {
@@ -684,6 +722,10 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE)
     {
         handle_port_state_change(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY)
+    {
+        handle_port_host_tx_ready_change(data);
     }
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST)
     {

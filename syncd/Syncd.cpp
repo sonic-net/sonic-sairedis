@@ -158,6 +158,7 @@ Syncd::Syncd(
     m_sn.onSwitchShutdownRequest = std::bind(&NotificationHandler::onSwitchShutdownRequest, m_handler.get(), _1);
     m_sn.onSwitchStateChange = std::bind(&NotificationHandler::onSwitchStateChange, m_handler.get(), _1, _2);
     m_sn.onBfdSessionStateChange = std::bind(&NotificationHandler::onBfdSessionStateChange, m_handler.get(), _1, _2);
+    m_sn.onPortHostTxReady = std::bind(&NotificationHandler::onPortHostTxReady, m_handler.get(), _1, _2, _3);
 
     m_handler->setSwitchNotifications(m_sn.getSwitchNotifications());
 

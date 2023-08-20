@@ -50,6 +50,13 @@ namespace syncd
                             _In_ uint32_t count,
                             _In_ const sai_port_oper_status_notification_t *data);
 
+
+                    static void onPortHostTxReady(
+                            _In_ int context,
+                            _In_ sai_object_id_t switch_id,
+                            _In_ sai_object_id_t port_id,
+                            _In_ sai_port_host_tx_ready_status_t host_tx_ready_status);
+
                     static void onQueuePfcDeadlock(
                             _In_ int context,
                             _In_ uint32_t count,
@@ -87,6 +94,7 @@ namespace syncd
                             .on_switch_state_change = &Slot<context>::onSwitchStateChange,
                             .on_switch_shutdown_request = &Slot<context>::onSwitchShutdownRequest,
                             .on_fdb_event = &Slot<context>::onFdbEvent,
+                            .on_port_host_tx_ready = &Slot<context>::onPortHostTxReady,
                             .on_port_state_change = &Slot<context>::onPortStateChange,
                             .on_packet_event = nullptr,
                             .on_queue_pfc_deadlock = &Slot<context>::onQueuePfcDeadlock,
@@ -95,7 +103,6 @@ namespace syncd
                             .on_ipsec_sa_status_change = nullptr,
                             .on_nat_event = &Slot<context>::onNatEvent,
                             .on_switch_asic_sdk_health_event = nullptr,
-                            .on_port_host_tx_ready = nullptr,
                             .on_twamp_session_event = nullptr,
                             }) { }
 
@@ -128,6 +135,16 @@ namespace syncd
                     SWSS_LOG_ENTER();
 
                     return SlotBase::onPortStateChange(context, count, data);
+                }
+
+                static void onPortHostTxReady(
+                        _In_ sai_object_id_t switch_id,
+                        _In_ sai_object_id_t port_id,
+                        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onPortHostTxReady(context, switch_id, port_id, host_tx_ready_status);
                 }
 
                 static void onBfdSessionStateChange(
@@ -180,13 +197,14 @@ namespace syncd
 
         public: // wrapped methods
 
-            std::function<void(uint32_t, const sai_fdb_event_notification_data_t*)>         onFdbEvent;
-            std::function<void(uint32_t, const sai_nat_event_notification_data_t*)>         onNatEvent;
-            std::function<void(uint32_t, const sai_port_oper_status_notification_t*)>       onPortStateChange;
-            std::function<void(uint32_t, const sai_queue_deadlock_notification_data_t*)>    onQueuePfcDeadlock;
-            std::function<void(sai_object_id_t)>                                            onSwitchShutdownRequest;
-            std::function<void(sai_object_id_t switch_id, sai_switch_oper_status_t)>        onSwitchStateChange;
-            std::function<void(uint32_t, const sai_bfd_session_state_notification_t*)>      onBfdSessionStateChange;
+            std::function<void(uint32_t, const sai_fdb_event_notification_data_t*)>                 onFdbEvent;
+            std::function<void(uint32_t, const sai_nat_event_notification_data_t*)>                 onNatEvent;
+            std::function<void(uint32_t, const sai_port_oper_status_notification_t*)>               onPortStateChange;
+            std::function<void(sai_object_id_t, sai_object_id_t, sai_port_host_tx_ready_status_t)>  onPortHostTxReady;
+            std::function<void(uint32_t, const sai_queue_deadlock_notification_data_t*)>            onQueuePfcDeadlock;
+            std::function<void(sai_object_id_t)>                                                    onSwitchShutdownRequest;
+            std::function<void(sai_object_id_t switch_id, sai_switch_oper_status_t)>                onSwitchStateChange;
+            std::function<void(uint32_t, const sai_bfd_session_state_notification_t*)>              onBfdSessionStateChange;
 
         private:
 

@@ -67,6 +67,17 @@ void SwitchNotifications::SlotBase::onPortStateChange(
     return m_slots.at(context)->m_handler->onPortStateChange(count, data);
 }
 
+void SwitchNotifications::SlotBase::onPortHostTxReady(
+        _In_ int context,
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id,
+        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onPortHostTxReady(switch_id, port_id, host_tx_ready_status);
+}
+
 void SwitchNotifications::SlotBase::onBfdSessionStateChange(
         _In_ int context,
         _In_ uint32_t count,
