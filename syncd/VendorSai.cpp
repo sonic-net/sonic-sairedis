@@ -37,7 +37,7 @@ VendorSai::VendorSai()
         .bulk_object_clear_stats = nullptr,
 #endif
 #ifdef HAVE_SAI_BULK_OBJECT_GET_STATS
-        .bulk_object_get_stats = &sai_bulk_object_get_stats
+        .bulk_object_get_stats = &sai_bulk_object_get_stats,
 #else
         .bulk_object_get_stats = nullptr,
 #endif
