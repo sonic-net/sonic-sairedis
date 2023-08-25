@@ -218,8 +218,6 @@ sai_status_t SwitchState::getNetStat(
 {
     SWSS_LOG_ENTER();
 
-    std::string counterName;
-
     auto mapit = SwitchState::m_statIdMap.find(counterId);
 
     if (mapit != SwitchState::m_statIdMap.end())
@@ -256,8 +254,12 @@ sai_status_t SwitchState::getPortStat(
 
     if (getTapNameFromPortId(portId, ifName) == false)
     {
-        /* Port not ready */
-        SWSS_LOG_DEBUG("Port not ready %s", sai_serialize_object_id(portId).c_str());
+        /* 
+         * Hostif not avialble is expected during init. 
+         * Hostif missing after init is failure. 
+         * In both case return counter zero with debug log.
+         */
+        SWSS_LOG_DEBUG("Hostif is not ready %s", sai_serialize_object_id(portId).c_str());
         return SAI_STATUS_SUCCESS;
     }
 
