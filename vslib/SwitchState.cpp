@@ -255,7 +255,7 @@ sai_status_t SwitchState::getPortStat(
     if (getTapNameFromPortId(portId, ifName) == false)
     {
         /*
-         * Hostif not avialble is expected during init.
+         * Hostif not available is expected during init.
          * Hostif missing after init is failure.
          * In both case return counter zero with debug log.
          */
