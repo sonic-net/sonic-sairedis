@@ -254,9 +254,9 @@ sai_status_t SwitchState::getPortStat(
 
     if (getTapNameFromPortId(portId, ifName) == false)
     {
-        /* 
-         * Hostif not avialble is expected during init. 
-         * Hostif missing after init is failure. 
+        /*
+         * Hostif not avialble is expected during init.
+         * Hostif missing after init is failure.
          * In both case return counter zero with debug log.
          */
         SWSS_LOG_DEBUG("Hostif is not ready %s", sai_serialize_object_id(portId).c_str());
