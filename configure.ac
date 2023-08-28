@@ -247,7 +247,8 @@ https://github.com/opencomputeproject/SAI/pull/1795 (structs)
 }],
 [AC_MSG_RESULT(ok)],
 [AC_MSG_RESULT(failed)
-AC_MSG_ERROR("SAI headers API version and library version mismatch")])])
+AC_MSG_ERROR("SAI headers API version and library version mismatch")])],
+[AC_MSG_ERROR("SAI library libsai.so does not have sai_query_api_version API which is required")])
 CXXFLAGS="$SAVED_FLAGS"
 ])])
 

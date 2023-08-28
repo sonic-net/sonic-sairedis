@@ -258,7 +258,20 @@ sai_status_t sai_query_api_version(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    if (version)
+    {
+        *version = SAI_API_VERSION;
+
+        // TODO FIXME implement proper query for syncd, currently this is not an issue since swss is not using this API
+
+        SWSS_LOG_WARN("retruning SAI API version %d with sairedis compiled SAI headers, not actual libsai.so", SAI_API_VERSION);
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SWSS_LOG_ERROR("version parameter is NULL");
+
+    return SAI_STATUS_INVALID_PARAMETER;
 }
 
 sai_status_t sai_bulk_object_get_stats(

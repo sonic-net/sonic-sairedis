@@ -7,7 +7,7 @@ Standards-Version: 1.0.0
 
 Package: syncd
 Architecture: any
-Build-Profiles: <syncd !rpc !vs>
+Build-Profiles: <syncd !vs>
 Depends: ${misc:Pre-Depends}
 Recommends: ${shlibs:Depends}
 Conflicts: syncd-rpc, syncd-vs

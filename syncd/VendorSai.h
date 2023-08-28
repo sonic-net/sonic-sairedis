@@ -210,5 +210,7 @@ namespace syncd
             sai_service_method_table_t m_service_method_table;
 
             sai_apis_t m_apis;
+
+            sai_global_apis_t m_globalApis;
     };
 }
