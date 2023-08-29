@@ -17,6 +17,18 @@ using namespace saivs;
 
 #define VS_COUNTERS_COUNT_MSB (0x80000000)
 
+const std::map<sai_stat_id_t, std::string> SwitchState::m_statIdMap =
+{
+        { SAI_PORT_STAT_IF_IN_OCTETS, "rx_bytes" },
+        { SAI_PORT_STAT_IF_IN_UCAST_PKTS, "rx_packets" },
+        { SAI_PORT_STAT_IF_IN_ERRORS, "rx_errors" },
+        { SAI_PORT_STAT_IF_IN_DISCARDS, "rx_dropped" },
+        { SAI_PORT_STAT_IF_OUT_OCTETS, "tx_bytes" },
+        { SAI_PORT_STAT_IF_OUT_UCAST_PKTS, "tx_packets" },
+        { SAI_PORT_STAT_IF_OUT_ERRORS, "tx_errors" },
+        { SAI_PORT_STAT_IF_OUT_DISCARDS, "tx_dropped" }
+};
+
 SwitchState::SwitchState(
         _In_ sai_object_id_t switch_id,
         _In_ std::shared_ptr<SwitchConfig> config):
@@ -199,6 +211,67 @@ void SwitchState::asyncOnLinkMsg(
     m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NET_LINK_MSG, payload));
 }
 
+sai_status_t SwitchState::getNetStat(
+        _In_ sai_stat_id_t counterId,
+        _In_ std::string& ifName,
+        _Out_ uint64_t& counter)
+{
+    SWSS_LOG_ENTER();
+
+    auto mapit = SwitchState::m_statIdMap.find(counterId);
+
+    if (mapit != SwitchState::m_statIdMap.end())
+    {
+        std::string filename = "/sys/class/net/" + ifName + "/statistics/" + mapit->second;
+        std::ifstream istrm(filename.c_str(), std::ifstream::in);
+
+        if (istrm.good())
+        {
+            istrm >> counter;
+        }
+        else
+        {
+            SWSS_LOG_ERROR("failed to open ifstream in file %s", filename.c_str());
+            counter = -1;
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchState::getPortStat(
+        _In_ sai_object_id_t portId,
+        _In_ const sai_stat_id_t counterId,
+        _Out_ uint64_t& counter)
+{
+    SWSS_LOG_ENTER();
+
+    std::string ifName;
+
+    /* zero out counter */
+    counter = 0;
+
+    if (getTapNameFromPortId(portId, ifName) == false)
+    {
+        /*
+         * Hostif not available is expected during init.
+         * Hostif missing after init is failure.
+         * In both case return counter zero with debug log.
+         */
+        SWSS_LOG_DEBUG("Hostif is not ready %s", sai_serialize_object_id(portId).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (getNetStat(counterId, ifName, counter) != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Port stat get failed %s", ifName.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchState::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -249,6 +322,7 @@ sai_status_t SwitchState::getStatsExt(
     for (uint32_t i = 0; i < number_of_counters; ++i)
     {
         int32_t id = counter_ids[i];
+        uint64_t counter;
 
         if (perform_set)
         {
@@ -266,6 +340,17 @@ sai_status_t SwitchState::getStatsExt(
             else
             {
                 counters[i] = it->second;
+            }
+
+            /* In non unit test mode, fetch port counters from host interface */
+            if (!enabled && (object_type == SAI_OBJECT_TYPE_PORT))
+            {
+                if (getPortStat(object_id, id, counter) != SAI_STATUS_SUCCESS)
+                {
+                    return SAI_STATUS_FAILURE;
+                }
+
+                localcounters[ id ] = counter;
             }
 
             if (mode == SAI_STATS_MODE_READ_AND_CLEAR)

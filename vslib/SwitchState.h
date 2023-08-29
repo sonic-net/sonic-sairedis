@@ -86,6 +86,18 @@ namespace saivs
                     _In_ const sai_object_id_t port_id,
                     _Out_ std::string& if_name);
 
+        private:
+
+            sai_status_t getPortStat(
+                    _In_ sai_object_id_t portId,
+                    _In_ const sai_stat_id_t counterId,
+                    _Out_ uint64_t& counter);
+
+           sai_status_t getNetStat(
+                   _In_ sai_stat_id_t counterId,
+                   _In_ std::string& ifName,
+                   _Out_ uint64_t& counter);
+
         protected:
 
             void registerLinkCallback();
@@ -117,6 +129,10 @@ namespace saivs
             uint64_t m_linkCallbackIndex;
 
             std::mutex m_mutex;
+
+        private : // port counter mapping
+
+            static const std::map<sai_stat_id_t, std::string> m_statIdMap;
 
         protected:
 
