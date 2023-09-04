@@ -68,9 +68,11 @@ jobs:
         libzmq3-dev \
         swig4.0 \
         libdbus-1-dev \
-        libteam-dev
+        libteam-dev \
+        rsyslog
 
-      sudo apt-get install -y rsyslog
+      sudo sed -ie '/GLOBAL DIRECTIVES/{s/$/\n\$template SONiCFileFormat,"%TIMESTAMP%.%timestamp:::date-subseconds% %HOSTNAME% %syslogseverity-text:::uppercase% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-    last-lf%\\n"\n\$ActionFileDefaultTemplate SONiCFileFormat/}' /etc/rsyslog.conf
+
       sudo service rsyslog start
     displayName: "Install dependencies"
   - task: DownloadPipelineArtifact@2
