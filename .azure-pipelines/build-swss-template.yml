@@ -33,6 +33,9 @@ parameters:
 - name: artifact_name
   type: string
 
+- name: syslog_artifact_name
+  type: string
+
 jobs:
 - job:
   displayName: ${{ parameters.arch }}
@@ -121,6 +124,9 @@ jobs:
       sudo dpkg -i $(find ./download -name libyang_*.deb)
       sudo dpkg -i $(find ./download -name *.deb)
       rm -rf download || true
+
+      cat /etc/apt/sources.list
+      dpkg --list |grep libnl
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install libnl3, sonic swss common, and sairedis"
   - script: |
@@ -133,3 +139,21 @@ jobs:
   - publish: $(Build.ArtifactStagingDirectory)
     artifact: ${{ parameters.artifact_name }}
     displayName: "Archive swss debian packages"
+  - script: |
+      pwd
+      sudo chmod a+r /var/log/syslog*
+      tar -czf syslog-swss.tgz /var/log/syslog*
+      ls -al .
+      ls -al /var/log/
+    displayName: "Env info"
+    condition: always()
+  - task: CopyFiles@2
+    displayName: "Copy syslog to staging directory"
+    condition: always()
+    inputs:
+        contents: 'syslog-swss.tgz'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+  - publish: $(Build.ArtifactStagingDirectory)/
+    artifact: ${{ parameters.syslog_artifact_name }}@$(System.JobAttempt)
+    displayName: "Publish syslog artifacts"
+    condition: always()
