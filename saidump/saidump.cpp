@@ -478,7 +478,7 @@ int dump_from_redis_rdb_file(string file_name)
     ifstream input_file(file_name);
     if (!input_file.is_open())
     {
-        SWSS_LOG_NOTICE("The file %s is not exsisted for dumping from redis dump.rdb file", file_name);
+        SWSS_LOG_NOTICE("The file %s does not exist for dumping from redis dump.rdb file.", file_name);
         return SAI_STATUS_FAILURE;
     }
 
