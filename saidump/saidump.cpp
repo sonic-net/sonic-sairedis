@@ -21,18 +21,17 @@ extern "C" {
 // TODO split to multiple cpp
 
 using namespace swss;
-using namespace std;
 using json = nlohmann::json;
 
 // 100 MB
-const int64_t RDB_FILE_MAX_SIZE = 1024 * 1024 * 100;
+constexpr int64_t RDB_FILE_MAX_SIZE = 1024 * 1024 * 100;
 
 struct CmdOptions
 {
     bool skipAttributes;
     bool dumpTempView;
     bool dumpGraph;
-    string rdb_file;
+    std::string rdbFile;
 };
 
 CmdOptions g_cmdOptions;
@@ -97,8 +96,8 @@ CmdOptions handleCmdLine(int argc, char **argv)
                 break;
 
             case 'r':
-                SWSS_LOG_WARN("Dumping from dump.rdb");
-                options.rdb_file = string(optarg);                
+                SWSS_LOG_NOTICE("Dumping from dump.rdb");
+                options.rdbFile = std::string(optarg);
                 break;
 
             case 'h':
@@ -421,17 +420,17 @@ void dumpGraph(const TableDump& td)
 /*
  preprocess the input json file to make sure it's a valid json file.
 */
-int pre_process_file(string file_name)
+static int preProcessFile(std::string file_name)
 {
-    ifstream input_file(file_name);
+    std::ifstream input_file(file_name);
 
     if (!input_file.is_open())
     {
-        cerr << "Failed to open the input file." << endl;
+        std::cerr << "Failed to open the input file." << std::endl;
         return SAI_STATUS_FAILURE;
     }
 
-    input_file.seekg(0, ios::end);     // Move to the end of the file
+    input_file.seekg(0, std::ios::end);     // Move to the end of the file
     int64_t file_size = input_file.tellg(); // Get the current position
 
     if (file_size >= RDB_FILE_MAX_SIZE)
@@ -442,16 +441,16 @@ int pre_process_file(string file_name)
         input_file.close();
         return SAI_STATUS_FAILURE;
     }
-    input_file.seekg(0, ios::beg);     // Move to the begin of the file
+    input_file.seekg(0, std::ios::beg);     // Move to the begin of the file
 
     // Read the content of the input file into a string
-    string content((istreambuf_iterator<char>(input_file)),
-                   istreambuf_iterator<char>());
+    std::string content((std::istreambuf_iterator<char>(input_file)),
+                   std::istreambuf_iterator<char>());
 
 
     input_file.close();
 
-    content = regex_replace(content,  regex("\\},\\{\\r"), ",");
+    content = regex_replace(content,  std::regex("\\},\\{\\r"), ",");
 
     //erase the 1st and last char.
     if (content.length() >= 2 && content[0] == '[' && content[content.length()-1] == ']')  {
@@ -459,11 +458,11 @@ int pre_process_file(string file_name)
         content.erase(content.length() - 1);
     }
 
-    ofstream outputFile(file_name);
+    std::ofstream outputFile(file_name);
 
     if (!outputFile.is_open())
     {
-        cerr << "Failed to open the output file." << endl;
+        std::cerr << "Failed to open the output file." << std::endl;
         return SAI_STATUS_FAILURE;
     }
 
@@ -473,16 +472,16 @@ int pre_process_file(string file_name)
     return SAI_STATUS_SUCCESS;
 }
 
-int dump_from_redis_rdb_file(string file_name)
+int dump_from_redis_rdb_file(std::string file_name)
 {
-    ifstream input_file(file_name);
+    std::ifstream input_file(file_name);
     if (!input_file.is_open())
     {
         SWSS_LOG_NOTICE("The file %s does not exist for dumping from redis dump.rdb file.", file_name);
         return SAI_STATUS_FAILURE;
     }
 
-    input_file.seekg(0, ios::end);     // Move to the end of the file
+    input_file.seekg(0, std::ios::end);     // Move to the end of the file
     int64_t file_size = input_file.tellg(); // Get the current position
     if (file_size >= RDB_FILE_MAX_SIZE)
     {
@@ -492,7 +491,7 @@ int dump_from_redis_rdb_file(string file_name)
         input_file.close();
         return SAI_STATUS_FAILURE;
     }
-    input_file.seekg(0, ios::beg);     // Move to the begin of the file
+    input_file.seekg(0, std::ios::beg);     // Move to the begin of the file
 
     try
     {
@@ -507,17 +506,17 @@ int dump_from_redis_rdb_file(string file_name)
         {
             json jj_key = it.key();
 
-            string keystr = jj_key;
-            string item_name = keystr;
+            std::string keystr = jj_key;
+            std::string item_name = keystr;
             size_t pos = keystr.find_first_of(":");
-            if (pos != string::npos)
+            if (pos != std::string::npos)
             {
-                if("ASIC_STATE" != keystr.substr(0, pos))  // filter out non ASIC_STATE
+                if(ASIC_STATE_TABLE != keystr.substr(0, pos))  // filter out non ASIC_STATE
                 {
                     continue;
                 }
                 item_name = keystr.substr(pos + 1);
-                if (item_name.find(":") != string::npos)
+                if (item_name.find(":") != std::string::npos)
                 {
                     item_name.replace(item_name.find_first_of(":"), 1, " ");
                 }
@@ -527,16 +526,17 @@ int dump_from_redis_rdb_file(string file_name)
                 continue;
             }
 
-            cout << item_name << " " << endl;
+            std::cout << item_name << " \r\n";
 
             json jj = it.value();
 
-            if (!(*it).is_object())
+            if (!it->is_object())
             {
                 continue;
             }
 
             TableMap map;
+
             for (json::iterator itt = jj.begin(); itt != jj.end(); ++itt)
             {
                 if (itt.key() == "NULL")
@@ -548,24 +548,26 @@ int dump_from_redis_rdb_file(string file_name)
 
             size_t indent = 4;
             size_t max_len = get_max_attr_len(map);
-            string str_indent = pad_string("", indent);
+            std::string str_indent = pad_string("", indent);
 
             for (const auto&field: map)
             {
-                stringstream ss;
+                std::stringstream ss;
                 ss << str_indent << pad_string(field.first, max_len) << " : ";
                 ss << field.second;
-                cout << ss.str() << std::endl;
+                std::cout << ss.str() << "\r\n";
             }
-            cout << endl;
+            std::cout << "\r\n";
         }
-        return SAI_STATUS_SUCCESS;    
-    }  
-    catch (exception &ex)
+        return SAI_STATUS_SUCCESS;
+    }
+    catch (std::exception &ex)
     {
         input_file.close();
-        cerr << "JSON file:" << file_name << " is invalid." << endl;
-        cerr << "JSON parsing error: " << ex.what() << endl;
+        std::cerr << "JSON file:" << file_name << " is invalid." << std::endl;
+        std::cerr << "JSON parsing error: " << ex.what() << std::endl;
+        SWSS_LOG_ERROR("JSON file %s is invalid\n", file_name);
+        SWSS_LOG_ERROR("JSON parsing error: %s", ex.what());
     }
     return SAI_STATUS_FAILURE;
 }
@@ -582,13 +584,13 @@ int main(int argc, char **argv)
 
     g_cmdOptions = handleCmdLine(argc, argv);
 
-    if (g_cmdOptions.rdb_file.size() > 0)
+    if (g_cmdOptions.rdbFile.size() > 0)
     {
-        if (SAI_STATUS_FAILURE == pre_process_file(g_cmdOptions.rdb_file))
+        if (SAI_STATUS_FAILURE == preProcessFile(g_cmdOptions.rdbFile))
         {
             return EXIT_FAILURE;
-        }        
-        dump_from_redis_rdb_file(g_cmdOptions.rdb_file);
+        }
+        dump_from_redis_rdb_file(g_cmdOptions.rdbFile);
         return EXIT_SUCCESS;
     }
 
