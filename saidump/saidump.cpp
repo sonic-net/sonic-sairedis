@@ -426,7 +426,8 @@ static int preProcessFile(std::string file_name)
 
     if (!input_file.is_open())
     {
-        std::cerr << "Failed to open the input file." << std::endl;
+        std::cerr << "Failed to open the input file " << file_name << std::endl;
+        SWSS_LOG_ERROR("Failed to open the input file %s.", file_name.c_str());
         return SAI_STATUS_FAILURE;
     }
 
@@ -435,25 +436,25 @@ static int preProcessFile(std::string file_name)
 
     if (file_size >= RDB_FILE_MAX_SIZE)
     {
-        SWSS_LOG_ERROR("Get %s's size failure or its size %ld  >= %ld MB.\n", file_name.c_str(), file_size, RDB_FILE_MAX_SIZE / 1024 / 1024);
-
+        std::cerr << "Get " << file_name.c_str() << "'s size failure or its size " << file_size << "  >= "<< RDB_FILE_MAX_SIZE / 1024 / 1024<<" MB." << std::endl;
+        SWSS_LOG_ERROR("Get %s's size failure or its size %ld  >= %ld MB.", file_name.c_str(), file_size, RDB_FILE_MAX_SIZE / 1024 / 1024);
         // Close the input file
         input_file.close();
         return SAI_STATUS_FAILURE;
     }
+
     input_file.seekg(0, std::ios::beg);     // Move to the begin of the file
 
     // Read the content of the input file into a string
     std::string content((std::istreambuf_iterator<char>(input_file)),
                    std::istreambuf_iterator<char>());
-
-
     input_file.close();
 
-    content = regex_replace(content,  std::regex("\\},\\{\\r"), ",");
+    content = regex_replace(content, std::regex("\\},\\{\\r"), ",");
 
     //erase the 1st and last char.
-    if (content.length() >= 2 && content[0] == '[' && content[content.length()-1] == ']')  {
+    if (content.length() >= 2 && content[0] == '[' && content[content.length()-1] == ']')
+    {
         content.erase(0, 1);
         content.erase(content.length() - 1);
     }
@@ -462,7 +463,8 @@ static int preProcessFile(std::string file_name)
 
     if (!outputFile.is_open())
     {
-        std::cerr << "Failed to open the output file." << std::endl;
+        std::cerr << "Failed to open the output file " << file_name << std::endl;
+        SWSS_LOG_ERROR("Failed to open the output file %s.", file_name.c_str());
         return SAI_STATUS_FAILURE;
     }
 
@@ -475,22 +477,27 @@ static int preProcessFile(std::string file_name)
 int dump_from_redis_rdb_file(std::string file_name)
 {
     std::ifstream input_file(file_name);
+
     if (!input_file.is_open())
     {
-        SWSS_LOG_NOTICE("The file %s does not exist for dumping from redis dump.rdb file.", file_name);
+        std::cerr << "Failed to open the input file " << file_name << std::endl;
+        SWSS_LOG_ERROR("The file %s does not exist for dumping from redis dump.rdb file.", file_name.c_str());
         return SAI_STATUS_FAILURE;
     }
 
     input_file.seekg(0, std::ios::end);     // Move to the end of the file
     int64_t file_size = input_file.tellg(); // Get the current position
+
     if (file_size >= RDB_FILE_MAX_SIZE)
     {
-        SWSS_LOG_ERROR("Get %s's size failure or its size %ld  >= %ld MB.\n", file_name.c_str(), file_size, RDB_FILE_MAX_SIZE / 1024 / 1024);
+        std::cerr << "Get " << file_name.c_str() << "'s size failure or its size " << file_size << "  >= "<< RDB_FILE_MAX_SIZE / 1024 / 1024<<" MB." << std::endl;
+        SWSS_LOG_ERROR("Get %s's size failure or its size %ld  >= %ld MB.", file_name.c_str(), file_size, RDB_FILE_MAX_SIZE / 1024 / 1024);
 
         // Close the input file
         input_file.close();
         return SAI_STATUS_FAILURE;
     }
+
     input_file.seekg(0, std::ios::beg);     // Move to the begin of the file
 
     try
@@ -500,7 +507,7 @@ int dump_from_redis_rdb_file(std::string file_name)
         input_file >> jsonData;
         input_file.close();
 
-        SWSS_LOG_DEBUG("%s\n","JSON file is valid.\n");
+        SWSS_LOG_DEBUG("JSON file is valid.");
 
         for (json::iterator it = jsonData.begin(); it != jsonData.end(); ++it)
         {
@@ -509,6 +516,7 @@ int dump_from_redis_rdb_file(std::string file_name)
             std::string keystr = jj_key;
             std::string item_name = keystr;
             size_t pos = keystr.find_first_of(":");
+
             if (pos != std::string::npos)
             {
                 if(ASIC_STATE_TABLE != keystr.substr(0, pos))  // filter out non ASIC_STATE
@@ -566,8 +574,8 @@ int dump_from_redis_rdb_file(std::string file_name)
         input_file.close();
         std::cerr << "JSON file:" << file_name << " is invalid." << std::endl;
         std::cerr << "JSON parsing error: " << ex.what() << std::endl;
-        SWSS_LOG_ERROR("JSON file %s is invalid\n", file_name);
-        SWSS_LOG_ERROR("JSON parsing error: %s", ex.what());
+        SWSS_LOG_ERROR("JSON file %s is invalid.", file_name.c_str());
+        SWSS_LOG_ERROR("JSON parsing error: %s.", ex.what());
     }
     return SAI_STATUS_FAILURE;
 }
@@ -590,6 +598,7 @@ int main(int argc, char **argv)
         {
             return EXIT_FAILURE;
         }
+
         dump_from_redis_rdb_file(g_cmdOptions.rdbFile);
         return EXIT_SUCCESS;
     }
