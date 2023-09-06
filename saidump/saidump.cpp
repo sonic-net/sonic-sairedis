@@ -70,7 +70,7 @@ CmdOptions handleCmdLine(int argc, char **argv)
         {
             { "dumpGraph",      no_argument,       0, 'g' },
             { "tempView",       no_argument,       0, 't' },
-            {  "rdb",           required_argument, 0, 'r' },
+            { "rdb",            required_argument, 0, 'r' },
             { "help",           no_argument,       0, 'h' },
             { 0,                0,                 0,  0  }
         };
@@ -419,7 +419,7 @@ void dumpGraph(const TableDump& td)
 }
 
 /*
- preprocess the input json file to make make sure it's a valid json file.
+ preprocess the input json file to make sure it's a valid json file.
 */
 int pre_process_file(string file_name)
 {
