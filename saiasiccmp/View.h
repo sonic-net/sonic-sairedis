@@ -5,7 +5,7 @@ extern "C" {
 #include "saimetadata.h"
 }
 
-#include "swss/json.hpp"
+#include <nlohmann/json.hpp>
 #include "swss/table.h"
 
 #include "syncd/AsicView.h"

@@ -3,10 +3,7 @@
 
 #include "swss/tokenize.h"
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow"
-#include "swss/json.hpp"
-#pragma GCC diagnostic pop
+#include <nlohmann/json.hpp>
 
 #include <inttypes.h>
 #include <vector>
