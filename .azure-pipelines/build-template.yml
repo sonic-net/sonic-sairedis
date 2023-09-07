@@ -100,6 +100,9 @@ jobs:
       sudo apt-get install -y rsyslog
       sudo service rsyslog start
 
+      cat /etc/apt/sources.list
+      dpkg --list | grep libnl
+
     displayName: "Install dependencies"
   - task: DownloadPipelineArtifact@2
     # amd64 artifact name does not has arch suffix

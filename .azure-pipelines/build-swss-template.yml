@@ -33,6 +33,9 @@ parameters:
 - name: artifact_name
   type: string
 
+- name: syslog_artifact_name
+  type: string
+
 jobs:
 - job:
   displayName: ${{ parameters.arch }}
@@ -65,7 +68,14 @@ jobs:
         libzmq3-dev \
         swig4.0 \
         libdbus-1-dev \
-        libteam-dev
+        libteam-dev \
+        rsyslog
+
+      sudo perl -i.bk -ne 'print if not /SONiCFileFormat|ActionFileDefaultTemplate/' /etc/rsyslog.conf
+      sudo sed -ie '/GLOBAL DIRECTIVES/{s/$/\n\$template SONiCFileFormat,"%TIMESTAMP%.%timestamp:::date-subseconds% %HOSTNAME% %syslogseverity-text:::uppercase% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-lst-lf%\\n"\n\$ActionFileDefaultTemplate SONiCFileFormat/}' /etc/rsyslog.conf
+
+      sudo service rsyslog start
+
     displayName: "Install dependencies"
   - task: DownloadPipelineArtifact@2
     inputs:
@@ -121,6 +131,8 @@ jobs:
       sudo dpkg -i $(find ./download -name libyang_*.deb)
       sudo dpkg -i $(find ./download -name *.deb)
       rm -rf download || true
+      cat /etc/apt/sources.list
+      dpkg --list |grep libnl
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install libnl3, sonic swss common, and sairedis"
   - script: |
@@ -133,3 +145,21 @@ jobs:
   - publish: $(Build.ArtifactStagingDirectory)
     artifact: ${{ parameters.artifact_name }}
     displayName: "Archive swss debian packages"
+  - script: |
+      pwd
+      sudo chmod a+r /var/log/syslog*
+      tar -czf syslog-swss.tgz /var/log/syslog*
+      ls -al .
+      ls -al /var/log/
+    displayName: "Env info"
+    condition: always()
+  - task: CopyFiles@2
+    displayName: "Copy syslog to staging directory"
+    condition: always()
+    inputs:
+        contents: 'syslog-swss.tgz'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+  - publish: $(Build.ArtifactStagingDirectory)/
+    artifact: ${{ parameters.syslog_artifact_name }}@$(System.JobAttempt)
+    displayName: "Publish syslog artifacts"
+    condition: always()
