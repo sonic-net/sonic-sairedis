@@ -1,7 +1,7 @@
 #include "ClientConfig.h"
 
 #include "swss/logger.h"
-#include "swss/json.hpp"
+#include <nlohmann/json.hpp>
 
 #include <cstring>
 #include <fstream>
