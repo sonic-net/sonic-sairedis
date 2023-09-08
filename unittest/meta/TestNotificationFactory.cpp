@@ -4,6 +4,7 @@
 #include "sai_serialize.h"
 
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include <memory>
 
@@ -13,7 +14,7 @@ TEST(NotificationFactory, deserialize)
 {
     EXPECT_THROW(NotificationFactory::deserialize("foo", "bar"), std::runtime_error);
 
-    EXPECT_THROW(NotificationFactory::deserialize(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, "bar"), std::invalid_argument);
+    EXPECT_THROW(NotificationFactory::deserialize(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, "bar"), nlohmann::detail::parse_error);
 }
 
 TEST(NotificationFactory, deserialize_fdb_event)
