@@ -3800,6 +3800,12 @@ sai_status_t Meta::meta_generic_validation_create(
             // maybe we can let it go here?
             if (attrs.find(md.attrid) != attrs.end())
             {
+                if (md.isconditionrelaxed)
+                {
+                    META_LOG_WARN(md, "conditional, but condition was not met, this attribute is not required, but passed (relaxed condition)");
+                    continue;
+                }
+
                 META_LOG_ERROR(md, "conditional, but condition was not met, this attribute is not required, but passed");
 
                 return SAI_STATUS_INVALID_PARAMETER;
