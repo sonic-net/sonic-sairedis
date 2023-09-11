@@ -69,6 +69,7 @@ jobs:
             autoconf-archive \
             uuid-dev \
             libjansson-dev \
+            nlohmann-json3-dev \
             python
 
     - if: matrix.language == 'cpp'
