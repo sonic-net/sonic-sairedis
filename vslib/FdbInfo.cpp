@@ -6,7 +6,7 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
-#include "swss/json.hpp"
+#include <nlohmann/json.hpp>
 #pragma GCC diagnostic pop
 
 using namespace saivs;
