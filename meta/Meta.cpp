@@ -801,6 +801,13 @@ sai_status_t Meta::objectTypeGetAvailability(
 
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+            {
+                sai_object_type_t ot = objectTypeQuery(attrList[idx].value.oid);
+                PARAMETER_CHECK_OBJECT_TYPE_VALID(ot);
+                PARAMETER_CHECK_OID_EXISTS(attrList[idx].value.oid, ot);
+                break;
+            }
             default:
 
                 META_LOG_THROW(*mdp, "value type %s not supported yet, FIXME!",

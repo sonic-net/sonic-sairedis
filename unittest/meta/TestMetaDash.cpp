@@ -138,6 +138,26 @@ static void remove_eni(Meta &m, sai_object_id_t eni)
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni));
 }
 
+TEST(Meta, dash_get_availability)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchid = create_switch(m);
+
+    sai_attribute_t attr;
+    attr.id = SAI_DASH_ACL_RULE_ATTR_DASH_ACL_GROUP_ID;
+    attr.value.oid = 0;
+
+    uint64_t count = 0;
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.objectTypeGetAvailability(switchid, (sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, 1, &attr, &count));
+
+    attr.id = SAI_DASH_ACL_RULE_ATTR_DASH_ACL_GROUP_ID;
+    attr.value.oid = 0xFFFFFFF;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.objectTypeGetAvailability(switchid, (sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, 1, &attr, &count));
+}
+
+
 TEST(Meta, quad_dash_direction_lookup)
 {
     Meta m(std::make_shared<MetaTestSaiInterface>());
@@ -713,6 +733,12 @@ TEST(Meta, quad_dash_acl_rule)
     attr.id = SAI_DASH_ACL_RULE_ATTR_ACTION;
     attr.value.s32 = SAI_DASH_ACL_RULE_ACTION_DENY_AND_CONTINUE;
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.set((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acl, &attr));
+
+    attr.id = SAI_DASH_ACL_RULE_ATTR_DASH_ACL_GROUP_ID;
+    attr.value.oid = acl;
+    uint64_t count = 0;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.objectTypeGetAvailability(switchid, (sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, 1, &attr, &count));
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_RULE, acl));
     remove_counter(m, counter);
