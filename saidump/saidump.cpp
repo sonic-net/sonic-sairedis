@@ -14,7 +14,7 @@ extern "C" {
 #include "swss/table.h"
 #include "meta/sai_serialize.h"
 #include "sairediscommon.h"
-#include "swss/json.hpp"
+#include <nlohmann/json.hpp>
 
 #include <getopt.h>
 
@@ -125,7 +125,7 @@ CmdOptions handleCmdLine(int argc, char **argv)
                 }
 
                 options.rdbJSonSizeLimit = result * 1024 * 1024;
-                SWSS_LOG_NOTICE("Configure the RDB JSON MAX size to %llu MB", options.rdbJSonSizeLimit / 1024 / 1024);                    
+                SWSS_LOG_NOTICE("Configure the RDB JSON MAX size to %llu MB", options.rdbJSonSizeLimit / 1024 / 1024);
 
                 break;
 
@@ -449,7 +449,7 @@ void dumpGraph(const TableDump& td)
 #define SWSS_LOG_ERROR_AND_STDERR(format, ...) { fprintf(stderr, format"\n", ##__VA_ARGS__); SWSS_LOG_ERROR(format, ##__VA_ARGS__); }
 
 /**
- * @brief Preprocess the input JSON file to make sure it's a valid JSON file for Nlohmann JSON library.
+ * @brief Process the input JSON file to make sure it's a valid JSON file for the JSON library.
  */
 static sai_status_t preProcessFile(const std::string file_name)
 {
@@ -465,10 +465,11 @@ static sai_status_t preProcessFile(const std::string file_name)
 
     input_file.seekg(0, std::ios::end);     // Move to the end of the file
     uint64_t file_size = input_file.tellg(); // Get the current position
+    SWSS_LOG_NOTICE("Get %s's size %" PRIu64 " Bytes, limit: %" PRIu64 " MB.", file_name.c_str(), file_size, g_cmdOptions.rdbJSonSizeLimit / 1024 / 1024);
 
     if (file_size >= g_cmdOptions.rdbJSonSizeLimit)
-    {        
-        SWSS_LOG_ERROR_AND_STDERR("Get %s's size failure or its size %ld  >= %ld MB.", file_name.c_str(), file_size, g_cmdOptions.rdbJSonSizeLimit / 1024 / 1024);
+    {
+        SWSS_LOG_ERROR_AND_STDERR("Get %s's size failure or its size %" PRIu64 " >= %" PRIu64 " MB.", file_name.c_str(), file_size, g_cmdOptions.rdbJSonSizeLimit / 1024 / 1024);
         return SAI_STATUS_FAILURE;
     }
 
@@ -488,7 +489,7 @@ static sai_status_t preProcessFile(const std::string file_name)
         return SAI_STATUS_FAILURE;
     }
 
-    //Romove the 1st and last char to make sure its format is same as previous saidump's output
+    //Remove the 1st and last char to make sure its format is same as previous output
     if (content.size() >= 2 && content[0] == '[' && content[content.length()-1] == ']')
     {
         outputFile << content.substr(1, content.size()-2);
@@ -583,11 +584,11 @@ static sai_status_t dumpFromRedisRdbJson(const std::string file_name)
         return SAI_STATUS_SUCCESS;
     }
     catch (std::exception &ex)
-    {        
+    {
         SWSS_LOG_ERROR_AND_STDERR("JSON file %s is invalid.", file_name.c_str());
         SWSS_LOG_ERROR_AND_STDERR("JSON parsing error: %s.", ex.what());
     }
-        
+
     return SAI_STATUS_FAILURE;
 }
 
