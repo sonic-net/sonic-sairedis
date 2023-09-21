@@ -264,6 +264,14 @@ AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats)
 CXXFLAGS="$SAVED_FLAGS"
 ])
 
+AC_DEFINE([SAIREDIS_GIT_REVISION],
+        "[m4_esyscmd([echo -n $(git rev-parse --short HEAD || echo 0000000)])]",
+        [sairedis git revision information])
+
+AC_DEFINE([SAI_GIT_REVISION],
+        "[m4_esyscmd([echo -n $(cd SAI && git rev-parse --short HEAD || echo 0000000)])]",
+        [SAI git revision information])
+
 AC_OUTPUT(Makefile
           meta/Makefile
           lib/Makefile

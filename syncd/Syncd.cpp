@@ -28,6 +28,8 @@
 
 #include "vslib/saivs.h"
 
+#include "config.h"
+
 #include <unistd.h>
 #include <inttypes.h>
 
@@ -62,6 +64,8 @@ Syncd::Syncd(
     m_timerWatchdog(cmd->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR)
 {
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("sairedis git revision %s, SAI git revision: %s", SAIREDIS_GIT_REVISION, SAI_GIT_REVISION);
 
     setSaiApiLogLevel();
 
