@@ -15,6 +15,7 @@ VS_GENERIC_QUAD(PORT_SERDES,port_serdes);
 VS_GENERIC_STATS(PORT,port);
 VS_GENERIC_STATS(PORT_POOL,port_pool);
 VS_BULK_QUAD(PORT,ports);
+VS_BULK_QUAD(PORT_SERDES, port_serdeses);
 
 const sai_port_api_t vs_port_api = {
 
@@ -30,4 +31,5 @@ const sai_port_api_t vs_port_api = {
 
     VS_GENERIC_QUAD_API(port_serdes)
     VS_BULK_QUAD_API(ports)
+    VS_BULK_QUAD_API(port_serdeses)
 };

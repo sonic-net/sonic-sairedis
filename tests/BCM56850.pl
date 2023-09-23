@@ -811,8 +811,17 @@ sub test_acl_counter_match
     }
 }
 
+sub test_relaxed
+{
+    fresh_start;
+
+    play "relaxed.rec";
+    play "relaxed.rec", 0;
+}
+
 # RUN TESTS
 
+test_relaxed;
 test_acl_counter_match;
 test_neighbor_lag;
 test_lag_member;

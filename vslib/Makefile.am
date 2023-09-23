@@ -121,7 +121,9 @@ libsaivs_la_SOURCES = \
 					  sai_vs_my_mac.cpp \
 					  sai_vs_ipsec.cpp \
 					  sai_vs_ars.cpp \
-					  sai_vs_ars_profile.cpp
+					  sai_vs_ars_profile.cpp \
+					  sai_vs_twamp.cpp \
+					  sai_vs_dash_meter.cpp
 
 libSaiVS_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libSaiVS_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)

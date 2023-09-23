@@ -801,6 +801,13 @@ sai_status_t Meta::objectTypeGetAvailability(
 
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+            {
+                sai_object_type_t ot = objectTypeQuery(attrList[idx].value.oid);
+                PARAMETER_CHECK_OBJECT_TYPE_VALID(ot);
+                PARAMETER_CHECK_OID_EXISTS(attrList[idx].value.oid, ot);
+                break;
+            }
             default:
 
                 META_LOG_THROW(*mdp, "value type %s not supported yet, FIXME!",
@@ -3793,6 +3800,12 @@ sai_status_t Meta::meta_generic_validation_create(
             // maybe we can let it go here?
             if (attrs.find(md.attrid) != attrs.end())
             {
+                if (md.isconditionrelaxed)
+                {
+                    META_LOG_WARN(md, "conditional, but condition was not met, this attribute is not required, but passed (relaxed condition)");
+                    continue;
+                }
+
                 META_LOG_ERROR(md, "conditional, but condition was not met, this attribute is not required, but passed");
 
                 return SAI_STATUS_INVALID_PARAMETER;
