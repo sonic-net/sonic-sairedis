@@ -313,7 +313,7 @@ void SaiDiscovery::setApiLogLevel(
 
         if (status == SAI_STATUS_SUCCESS)
         {
-            SWSS_LOG_NOTICE("Setting SAI loglevel %s on %s",
+            SWSS_LOG_INFO("setting SAI loglevel %s on %s",
                     sai_serialize_log_level(logLevel).c_str(),
                     sai_serialize_api((sai_api_t)api).c_str());
         }
