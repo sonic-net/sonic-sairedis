@@ -6,6 +6,7 @@ VS_GENERIC_QUAD(ACL_COUNTER,acl_counter);
 VS_GENERIC_QUAD(ACL_RANGE,acl_range);
 VS_GENERIC_QUAD(ACL_TABLE_GROUP,acl_table_group);
 VS_GENERIC_QUAD(ACL_TABLE_GROUP_MEMBER,acl_table_group_member);
+VS_GENERIC_QUAD(ACL_TABLE_CHAIN_GROUP,acl_table_chain_group)
 
 const sai_acl_api_t vs_acl_api = {
 
@@ -15,4 +16,5 @@ const sai_acl_api_t vs_acl_api = {
     VS_GENERIC_QUAD_API(acl_range)
     VS_GENERIC_QUAD_API(acl_table_group)
     VS_GENERIC_QUAD_API(acl_table_group_member)
+    VS_GENERIC_QUAD_API(acl_table_chain_group)
 };

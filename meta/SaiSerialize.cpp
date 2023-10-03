@@ -489,6 +489,18 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.ipprefixlist, dst_attr.value.ipprefixlist, countOnly));
             break;
 
+        case SAI_ATTR_VALUE_TYPE_PORT_FREQUENCY_OFFSET_PPM_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.portfrequencyoffsetppmlist, dst_attr.value.portfrequencyoffsetppmlist, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.portsnrlist, dst_attr.value.portsnrlist, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_ACL_CHAIN_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.aclchainlist, dst_attr.value.aclchainlist, countOnly));
+            break;
+
         default:
             SWSS_LOG_THROW("sai attr value %s is not implemented, FIXME", sai_serialize_attr_value_type(serialization_type).c_str());
     }

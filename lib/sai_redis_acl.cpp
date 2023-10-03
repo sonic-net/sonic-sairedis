@@ -6,6 +6,7 @@ REDIS_GENERIC_QUAD(ACL_COUNTER,acl_counter);
 REDIS_GENERIC_QUAD(ACL_RANGE,acl_range);
 REDIS_GENERIC_QUAD(ACL_TABLE_GROUP,acl_table_group);
 REDIS_GENERIC_QUAD(ACL_TABLE_GROUP_MEMBER,acl_table_group_member);
+REDIS_GENERIC_QUAD(ACL_TABLE_CHAIN_GROUP,acl_table_chain_group)
 
 const sai_acl_api_t redis_acl_api = {
 
@@ -15,4 +16,5 @@ const sai_acl_api_t redis_acl_api = {
     REDIS_GENERIC_QUAD_API(acl_range)
     REDIS_GENERIC_QUAD_API(acl_table_group)
     REDIS_GENERIC_QUAD_API(acl_table_group_member)
+    REDIS_GENERIC_QUAD_API(acl_table_chain_group)
 };

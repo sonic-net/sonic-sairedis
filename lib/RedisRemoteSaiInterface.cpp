@@ -14,6 +14,8 @@
 #include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
 
+#include "config.h"
+
 #include <inttypes.h>
 
 using namespace sairedis;
@@ -36,6 +38,8 @@ RedisRemoteSaiInterface::RedisRemoteSaiInterface(
     m_notificationCallback(notificationCallback)
 {
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("sairedis git revision %s, SAI git revision: %s", SAIREDIS_GIT_REVISION, SAI_GIT_REVISION);
 
     m_initialized = false;
 

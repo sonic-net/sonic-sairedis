@@ -15,6 +15,7 @@ REDIS_GENERIC_QUAD(PORT_CONNECTOR,port_connector);
 REDIS_GENERIC_STATS(PORT,port);
 REDIS_GENERIC_STATS(PORT_POOL,port_pool);
 REDIS_BULK_QUAD(PORT, ports);
+REDIS_BULK_QUAD(PORT_SERDES, port_serdeses);
 
 const sai_port_api_t redis_port_api = {
 
@@ -28,4 +29,5 @@ const sai_port_api_t redis_port_api = {
     REDIS_GENERIC_QUAD_API(port_connector)
     REDIS_GENERIC_QUAD_API(port_serdes)
     REDIS_BULK_QUAD_API(ports)
+    REDIS_BULK_QUAD_API(port_serdeses)
 };
