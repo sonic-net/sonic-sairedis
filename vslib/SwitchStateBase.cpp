@@ -2382,6 +2382,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_FABRIC_ATTACHED:
+            case SAI_PORT_ATTR_FABRIC_ATTACHED_SWITCH_ID:
+            case SAI_PORT_ATTR_FABRIC_ATTACHED_PORT_INDEX:
+            case SAI_PORT_ATTR_HW_LANE_LIST:
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_PORT_SERDES_ID:
@@ -3429,7 +3432,7 @@ sai_status_t SwitchStateBase::create_fabric_ports()
         sai_attribute_t attr;
 
         attr.id = SAI_PORT_ATTR_FABRIC_ATTACHED;
-        attr.value.booldata = false;
+        attr.value.booldata = true;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
 
@@ -3444,6 +3447,14 @@ sai_status_t SwitchStateBase::create_fabric_ports()
         attr.id = SAI_PORT_ATTR_TYPE;
         attr.value.s32 = SAI_PORT_TYPE_FABRIC;
 
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_FABRIC_ATTACHED_SWITCH_ID;
+        attr.value.s32 = i;
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_FABRIC_ATTACHED_PORT_INDEX;
+        attr.value.s32 = i;
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
     }
 
