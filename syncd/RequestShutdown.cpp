@@ -37,7 +37,7 @@ void RequestShutdown::send()
 
     swss::DBConnector db(m_contextConfig->m_dbAsic, 0);
 
-    swss::NotificationProducer restartQuery(&db, SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY);
+    swss::NotificationProducer restartQuery(&db, SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY_PER_DB(m_contextConfig->m_dbAsic));
 
     std::vector<swss::FieldValueTuple> values;
 
