@@ -3736,6 +3736,29 @@ sai_status_t SwitchStateBase::queryHashNativeHashFieldListCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::querySwitchHashAlgorithmCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 7)
+    {
+        enum_values_capability->count = 7;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 7;
+    enum_values_capability->list[0] = SAI_HASH_ALGORITHM_CRC;
+    enum_values_capability->list[1] = SAI_HASH_ALGORITHM_XOR;
+    enum_values_capability->list[2] = SAI_HASH_ALGORITHM_RANDOM;
+    enum_values_capability->list[3] = SAI_HASH_ALGORITHM_CRC_32LO;
+    enum_values_capability->list[4] = SAI_HASH_ALGORITHM_CRC_32HI;
+    enum_values_capability->list[5] = SAI_HASH_ALGORITHM_CRC_CCITT;
+    enum_values_capability->list[6] = SAI_HASH_ALGORITHM_CRC_XOR;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -3761,6 +3784,11 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
     else if (object_type == SAI_OBJECT_TYPE_HASH && attr_id == SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST)
     {
         return queryHashNativeHashFieldListCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_SWITCH && (attr_id == SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_ALGORITHM ||
+                                                       attr_id == SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_ALGORITHM))
+    {
+        return querySwitchHashAlgorithmCapability(enum_values_capability);
     }
 
     return SAI_STATUS_NOT_SUPPORTED;
