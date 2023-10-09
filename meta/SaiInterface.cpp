@@ -329,3 +329,13 @@ sai_status_t SaiInterface::switchMdioCl22Write(
 
     return SAI_STATUS_FAILURE;
 }
+
+sai_log_level_t SaiInterface::logGet(
+        _In_ sai_api_t api)
+{
+    SWSS_LOG_ENTER();
+
+    // default for all apis
+
+    return SAI_LOG_LEVEL_NOTICE;
+}

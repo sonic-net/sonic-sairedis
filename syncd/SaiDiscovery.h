@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <set>
+#include <map>
 #include <unordered_map>
 
 namespace syncd
@@ -49,6 +50,11 @@ namespace syncd
 
             void setApiLogLevel(
                     _In_ sai_log_level_t logLevel);
+
+            void setApiLogLevel(
+                    _In_ const std::map<sai_api_t, sai_log_level_t>& levels);
+
+            std::map<sai_api_t, sai_log_level_t> getApiLogLevel();
 
         private:
 
