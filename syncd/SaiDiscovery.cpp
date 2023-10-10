@@ -264,11 +264,13 @@ std::set<sai_object_id_t> SaiDiscovery::discover(
     {
         SWSS_LOG_TIMER("discover");
 
+        auto levels = getApiLogLevel();
+
         setApiLogLevel(SAI_LOG_LEVEL_CRITICAL);
 
         discover(startRid, discovered_rids);
 
-        setApiLogLevel(SAI_LOG_LEVEL_NOTICE);
+        setApiLogLevel(levels);
     }
 
     SWSS_LOG_NOTICE("discovered objects count: %zu", discovered_rids.size());
@@ -322,4 +324,48 @@ void SaiDiscovery::setApiLogLevel(
             SWSS_LOG_INFO("set loglevel failed: %s", sai_serialize_status(status).c_str());
         }
     }
+}
+
+void SaiDiscovery::setApiLogLevel(
+        _In_ const std::map<sai_api_t, sai_log_level_t>& levels)
+{
+    SWSS_LOG_ENTER();
+
+    // We start from 1 since 0 is SAI_API_UNSPECIFIED.
+
+    for (uint32_t api = 1; api < sai_metadata_enum_sai_api_t.valuescount; ++api)
+    {
+        auto it = levels.find((sai_api_t)api);
+
+        sai_log_level_t logLevel = (it == levels.end()) ? SAI_LOG_LEVEL_NOTICE : it->second;
+
+        sai_status_t status = m_sai->logSet((sai_api_t)api, logLevel);
+
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_INFO("setting SAI loglevel %s on %s",
+                    sai_serialize_log_level(logLevel).c_str(),
+                    sai_serialize_api((sai_api_t)api).c_str());
+        }
+        else
+        {
+            SWSS_LOG_INFO("set loglevel failed: %s", sai_serialize_status(status).c_str());
+        }
+    }
+}
+
+std::map<sai_api_t, sai_log_level_t> SaiDiscovery::getApiLogLevel()
+{
+    SWSS_LOG_ENTER();
+
+    std::map<sai_api_t, sai_log_level_t> levels;
+
+    // We start from 1 since 0 is SAI_API_UNSPECIFIED.
+
+    for (uint32_t api = 1; api < sai_metadata_enum_sai_api_t.valuescount; ++api)
+    {
+        levels[(sai_api_t)api] = m_sai->logGet((sai_api_t)api);
+    }
+
+    return levels;
 }

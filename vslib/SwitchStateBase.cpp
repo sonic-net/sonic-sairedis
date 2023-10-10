@@ -3653,13 +3653,14 @@ sai_status_t SwitchStateBase::queryTunnelPeerModeCapability(
 }
 
 sai_status_t SwitchStateBase::queryPortAutonegFecOverrideSupportCapability(
-                   _Out_ sai_attr_capability_t *capability)
+                   _Out_ sai_attr_capability_t *attr_capability)
 {
     SWSS_LOG_ENTER();
 
-    capability->create_implemented = false;
-    capability->set_implemented    = false;
-    capability->get_implemented    = false;
+    attr_capability->create_implemented = false;
+    attr_capability->set_implemented    = false;
+    attr_capability->get_implemented    = false;
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -3769,17 +3770,18 @@ sai_status_t SwitchStateBase::queryAttributeCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
                               _In_ sai_attr_id_t attr_id,
-                              _Out_ sai_attr_capability_t *capability)
+                              _Out_ sai_attr_capability_t *attr_capability)
 {
     SWSS_LOG_ENTER();
 
     if (object_type == SAI_OBJECT_TYPE_PORT && attr_id == SAI_PORT_ATTR_AUTO_NEG_FEC_MODE_OVERRIDE)
     {
-        return queryPortAutonegFecOverrideSupportCapability(capability);
+        return queryPortAutonegFecOverrideSupportCapability(attr_capability);
     }
-    capability->create_implemented = true;
-    capability->set_implemented    = true;
-    capability->get_implemented    = true;
+
+    attr_capability->create_implemented = true;
+    attr_capability->set_implemented    = true;
+    attr_capability->get_implemented    = true;
 
     return SAI_STATUS_SUCCESS;
 }

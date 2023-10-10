@@ -316,5 +316,10 @@ namespace sairedis
             virtual sai_status_t logSet(
                     _In_ sai_api_t api,
                     _In_ sai_log_level_t log_level) = 0;
+
+        public: // non SAI API
+
+            virtual sai_log_level_t logGet(
+                    _In_ sai_api_t api);
     };
 }

@@ -1681,5 +1681,24 @@ sai_status_t VendorSai::logSet(
 {
     SWSS_LOG_ENTER();
 
+    m_logLevelMap[api] = log_level;
+
     return m_globalApis.log_set(api, log_level);
+}
+
+sai_log_level_t VendorSai::logGet(
+        _In_ sai_api_t api)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_logLevelMap.find(api);
+
+    if (it != m_logLevelMap.end())
+    {
+        return it->second;
+    }
+
+    // no level defined yet, just return default
+
+    return SAI_LOG_LEVEL_NOTICE;
 }
