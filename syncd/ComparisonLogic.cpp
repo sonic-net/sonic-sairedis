@@ -2806,6 +2806,8 @@ void ComparisonLogic::cretePreMatchForLagMembers(
     }
 }
 
+#define PFC_ACL_RULE_PRIORITY "999"
+
 void ComparisonLogic::cretePreMatchForAclEntries(
         _In_ const AsicView& cur,
         _Inout_ AsicView& tmp,
@@ -2834,6 +2836,21 @@ void ComparisonLogic::cretePreMatchForAclEntries(
             if (cPrio->getStrAttrValue() != tPrio->getStrAttrValue())
             {
                 continue;
+            }
+
+            if (cPrio->getStrAttrValue() == PFC_ACL_RULE_PRIORITY)
+            {
+                // this is special case, all pfc rules to prevent packet storm
+                // will have same priority, we will need to check SAI_ACL_ENTRY_ATTR_FIELD_TC
+
+                auto cTc = cAclEntry->getSaiAttr(SAI_ACL_ENTRY_ATTR_FIELD_TC);
+                auto tTc = tAclEntry->getSaiAttr(SAI_ACL_ENTRY_ATTR_FIELD_TC);
+
+                if (!cTc || !cTc || cTc->getStrAttrValue() != tTc->getStrAttrValue())
+                {
+                    // TC attribute is different, not looking for this one
+                    continue;
+                }
             }
 
             // at this point current and temporary acl entry share the same

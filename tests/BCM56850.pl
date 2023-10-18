@@ -819,8 +819,18 @@ sub test_relaxed
     play "relaxed.rec", 0;
 }
 
+sub test_acl_pre_match_999
+{
+    fresh_start;
+
+    play "acl_pre_match_999.rec";
+
+    for (1..8) { play "acl_pre_match_999.rec", 0; }
+}
+
 # RUN TESTS
 
+test_acl_pre_match_999;
 test_relaxed;
 test_acl_counter_match;
 test_neighbor_lag;
