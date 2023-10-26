@@ -234,8 +234,8 @@ config_syncd_mlnx()
         cat /tmp/sai_extra.profile >> /tmp/sai.profile
     fi
 
-    if [[ -f /$HWSKU_DIR/independent_mode_support.profile ]]; then
-        cat /$HWSKU_DIR/independent_mode_support.profile >> /tmp/sai.profile
+    if [[ -f /$HWSKU_DIR/module_control_support.profile ]]; then
+        cat /$HWSKU_DIR/module_control_support.profile >> /tmp/sai.profile
     fi
 
 }
