@@ -6,7 +6,7 @@
 #include "NotificationSwitchShutdownRequest.h"
 #include "NotificationSwitchStateChange.h"
 #include "NotificationBfdSessionStateChange.h"
-#include "NotificationPortHostTxReadyEvent.cpp"
+#include "NotificationPortHostTxReadyEvent.h"
 #include "sairediscommon.h"
 
 #include "swss/logger.h"

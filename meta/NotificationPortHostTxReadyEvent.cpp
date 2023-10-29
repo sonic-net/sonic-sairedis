@@ -6,12 +6,6 @@
 
 using namespace sairedis;
 
-// NotificationSwitchStateChange::NotificationSwitchStateChange(
-//         _In_ const std::string& serializedNotification):
-//     Notification(
-//             SAI_SWITCH_NOTIFICATION_TYPE_SWITCH_STATE_CHANGE,
-//             serializedNotification)
-
 NotificationPortHostTxReady::NotificationPortHostTxReady(
         _In_ const std::string& serializedNotification):
     Notification(
@@ -30,8 +24,6 @@ NotificationPortHostTxReady::NotificationPortHostTxReady(
 NotificationPortHostTxReady::~NotificationPortHostTxReady()
 {
     SWSS_LOG_ENTER();
-
-    sai_deserialize_free_port_host_tx_ready_ntf(m_portHostTxReadyStatus);
 }
 
 sai_object_id_t NotificationPortHostTxReady::getSwitchId() const
@@ -45,12 +37,7 @@ sai_object_id_t NotificationPortHostTxReady::getAnyObjectId() const
 {
     SWSS_LOG_ENTER();
 
-    if (m_portId != SAI_NULL_OBJECT_ID)
-    {
-        return m_portId;
-    }
-    
-    return SAI_NULL_OBJECT_ID;
+    return m_portId;
 }
 
 void NotificationPortHostTxReady::processMetadata(

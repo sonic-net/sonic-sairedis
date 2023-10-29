@@ -2287,7 +2287,6 @@ std::string sai_serialize_port_oper_status_ntf(
     return j.dump();
 }
 
-
 std::string sai_serialize_port_host_tx_ready_ntf(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_id_t port_id,
@@ -2306,7 +2305,6 @@ std::string sai_serialize_port_host_tx_ready_ntf(
 
     return j.dump();
 }
-
 
 std::string sai_serialize_queue_deadlock_ntf(
         _In_ uint32_t count,
@@ -4657,10 +4655,9 @@ void sai_deserialize_port_host_tx_ready_ntf(
         SWSS_LOG_ERROR("Recieved an exception after trying to parse %s", s.c_str());
         return;
     }
-    // auto count = (uint32_t)j.size();
 
     sai_deserialize_object_id(j[0]["port_id"], port_id);
-    sai_deserialize_object_id(j[0]["switch_id"], switch_id);    
+    sai_deserialize_object_id(j[0]["switch_id"], switch_id);
     sai_deserialize_port_host_tx_ready_status(j[0]["host_tx_ready_status"], host_tx_ready_status);
 }
 
@@ -4950,12 +4947,6 @@ void sai_deserialize_free_port_oper_status_ntf(
     SWSS_LOG_ENTER();
 
     delete[] port_oper_status;
-}
-
-void sai_deserialize_free_port_host_tx_ready_ntf(
-        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status)
-{
-    SWSS_LOG_ENTER();
 }
 
 void sai_deserialize_free_queue_deadlock_ntf(

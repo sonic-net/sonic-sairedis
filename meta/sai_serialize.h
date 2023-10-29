@@ -513,9 +513,6 @@ void sai_deserialize_free_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ sai_bfd_session_state_notification_t* bfdsessionstate);
 
-void sai_deserialize_free_port_host_tx_ready_ntf(
-        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status);
-
 void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,
         _Out_ sai_ingress_priority_group_attr_t& attr);

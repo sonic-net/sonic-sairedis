@@ -6445,29 +6445,23 @@ void Meta::meta_sai_on_port_host_tx_ready_change(
             &sai_metadata_enum_sai_port_host_tx_ready_status_t,
             host_tx_ready_status))
     {
-        SWSS_LOG_WARN("port host_tx_ready value (%d) not found in sai_port_host_tx_ready_status_t",
+        SWSS_LOG_WARN("port host_tx_ready value (%d) not found in sai_port_host_tx_ready_status_t. Dropping the notification",
                 host_tx_ready_status);
-    }
-    
-    auto ot = objectTypeQuery(port_id);
-    auto valid = false;
-    
-    switch (ot)
-    {
-        case SAI_OBJECT_TYPE_PORT:
-        // case SAI_OBJECT_TYPE_BRIDGE_PORT:
-        // case SAI_OBJECT_TYPE_LAG:
-            valid = true;
-            break;
 
-        default:
-            SWSS_LOG_ERROR("port_id %s has unexpected type: %s, expected PORT", //, BRIDGE_PORT or LAG
+        return;
+    }
+
+    auto ot = objectTypeQuery(port_id);
+
+    if (ot != SAI_OBJECT_TYPE_PORT)
+    {
+        SWSS_LOG_ERROR("port_id %s has unexpected type: %s, expected PORT",
                     sai_serialize_object_id(port_id).c_str(),
                     sai_serialize_object_type(ot).c_str());
-            break;
+        return;
     }
 
-    if (valid && !m_oids.objectReferenceExists(port_id))
+    if (!m_oids.objectReferenceExists(port_id))
     {
         SWSS_LOG_NOTICE("port_id new object spotted %s not present in local DB (snoop!)",
                 sai_serialize_object_id(port_id).c_str());

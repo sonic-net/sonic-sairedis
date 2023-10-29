@@ -471,12 +471,12 @@ void NotificationProcessor::process_on_port_host_tx_ready_change(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("Port ID before translating from RID to VID is 0x%lx", port_id);
+    SWSS_LOG_DEBUG("Port ID before translating from RID to VID is %s", sai_serialize_object_id(port_id).c_str());
     sai_object_id_t port_vid = m_translator->translateRidToVid(port_id, SAI_NULL_OBJECT_ID);
-    SWSS_LOG_DEBUG("Port ID after translating from RID to VID is 0x%lx", port_vid);
+    SWSS_LOG_DEBUG("Port ID after translating from RID to VID is %s", sai_serialize_object_id(port_id).c_str());
 
     sai_object_id_t switch_vid = m_translator->translateRidToVid(switch_id, SAI_NULL_OBJECT_ID);
-    
+
     std::string s = sai_serialize_port_host_tx_ready_ntf(switch_vid, port_vid, *host_tx_ready_status);
 
     SWSS_LOG_DEBUG("Host_tx_ready status after sai_serialize is %s", s.c_str());
@@ -660,8 +660,6 @@ void NotificationProcessor::handle_port_host_tx_ready_change(
     sai_deserialize_port_host_tx_ready_ntf(data, switch_id, port_id, host_tx_ready_status);
 
     process_on_port_host_tx_ready_change(switch_id, port_id, &host_tx_ready_status);
-
-    sai_deserialize_free_port_host_tx_ready_ntf(host_tx_ready_status);
 }
 
 void NotificationProcessor::handle_bfd_session_state_change(
