@@ -10,7 +10,7 @@
 #define SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY     "RESTARTQUERY"
 
 /**
- * @brief Notification channel 'restartquery' per DB scope
+ * @brief Notification channel 'restartQuery' per DB scope
  *
  * In https://redis.io/docs/manual/pubsub/, it says:
  * "Pub/Sub has no relation to the key space. It was made to not interfere with
