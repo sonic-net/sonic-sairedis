@@ -32,6 +32,7 @@ libsaimeta_la_SOURCES = \
 				NotificationNatEvent.cpp \
 				NotificationPortStateChange.cpp \
 				NotificationQueuePfcDeadlock.cpp \
+				NotificationSwitchAsicSdkHealthEvent.cpp \
 				NotificationSwitchShutdownRequest.cpp \
 				NotificationSwitchStateChange.cpp \
 				NotificationBfdSessionStateChange.cpp \

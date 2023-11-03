@@ -204,6 +204,17 @@ std::string sai_serialize_switch_oper_status(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t status);
 
+std::string sai_serialize_timespec(
+        _In_ const sai_timespec_t &timespec);
+
+std::string sai_serialize_switch_asic_sdk_health_event(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ const sai_timespec_t &timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ const sai_switch_health_data_t &data,
+        _In_ const sai_u8_list_t &description);
+
 std::string sai_serialize_switch_shutdown_request(
         _In_ sai_object_id_t switch_id);
 
@@ -218,6 +229,12 @@ std::string sai_serialize_enum_list(
 
 std::string sai_serialize_number(
         _In_ uint32_t number,
+        _In_ bool hex = false);
+
+template <typename T>
+std::string sai_serialize_number_list(
+        _In_ const T& list,
+        _In_ bool countOnly,
         _In_ bool hex = false);
 
 std::string sai_serialize_attr_id(
@@ -326,6 +343,19 @@ void sai_deserialize_switch_oper_status(
         _In_ const std::string& s,
         _Out_ sai_object_id_t &switch_id,
         _Out_ sai_switch_oper_status_t& status);
+
+void sai_deserialize_timespec(
+        _In_ const std::string& s,
+        _Out_ sai_timespec_t &timestamp);
+
+void sai_deserialize_switch_asic_sdk_health_event(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t &switch_id,
+        _Out_ sai_switch_asic_sdk_health_severity_t &severity,
+        _Out_ sai_timespec_t &timestamp,
+        _Out_ sai_switch_asic_sdk_health_category_t &category,
+        _Out_ sai_switch_health_data_t &data,
+        _Out_ sai_u8_list_t &description);
 
 void sai_deserialize_switch_shutdown_request(
         _In_ const std::string& s,
@@ -535,6 +565,9 @@ void sai_deserialize_free_queue_deadlock_ntf(
 void sai_deserialize_free_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ sai_bfd_session_state_notification_t* bfdsessionstate);
+
+void sai_deserialize_free_switch_asic_sdk_health_event(
+        _In_ sai_u8_list_t &description);
 
 void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,

@@ -98,6 +98,19 @@ void SwitchNotifications::SlotBase::onQueuePfcDeadlock(
 
     return m_slots[context]->m_handler->onQueuePfcDeadlock(count, data);
 }
+void SwitchNotifications::SlotBase::onSwitchAsicSdkHealthEvent(
+        _In_ int context,
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onSwitchAsicSdkHealthEvent(switch_id, severity, timestamp, category, data, description);
+}
 
 void SwitchNotifications::SlotBase::onSwitchShutdownRequest(
         _In_ int context,

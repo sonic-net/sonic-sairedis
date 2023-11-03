@@ -155,6 +155,7 @@ Syncd::Syncd(
     m_sn.onNatEvent = std::bind(&NotificationHandler::onNatEvent, m_handler.get(), _1, _2);
     m_sn.onPortStateChange = std::bind(&NotificationHandler::onPortStateChange, m_handler.get(), _1, _2);
     m_sn.onQueuePfcDeadlock = std::bind(&NotificationHandler::onQueuePfcDeadlock, m_handler.get(), _1, _2);
+    m_sn.onSwitchAsicSdkHealthEvent = std::bind(&NotificationHandler::onSwitchAsicSdkHealthEvent, m_handler.get(), _1, _2, _3, _4, _5, _6);
     m_sn.onSwitchShutdownRequest = std::bind(&NotificationHandler::onSwitchShutdownRequest, m_handler.get(), _1);
     m_sn.onSwitchStateChange = std::bind(&NotificationHandler::onSwitchStateChange, m_handler.get(), _1, _2);
     m_sn.onBfdSessionStateChange = std::bind(&NotificationHandler::onBfdSessionStateChange, m_handler.get(), _1, _2);

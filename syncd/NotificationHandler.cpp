@@ -96,6 +96,10 @@ void NotificationHandler::updateNotificationsPointers(
                 attr.value.ptr = (void*)m_switchNotifications.on_switch_shutdown_request;
                 break;
 
+            case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
+                attr.value.ptr = (void*)m_switchNotifications.on_switch_asic_sdk_health_event;
+                break;
+
             case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
                 attr.value.ptr = (void*)m_switchNotifications.on_fdb_event;
                 break;
@@ -203,6 +207,21 @@ void NotificationHandler::onSwitchShutdownRequest(
     auto s = sai_serialize_switch_shutdown_request(switch_id);
 
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST, s);
+}
+
+void  NotificationHandler::onSwitchAsicSdkHealthEvent(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_switch_asic_sdk_health_event(switch_id, severity, timestamp, category, data, description);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_ASIC_SDK_HEALTH_EVENT, s);
 }
 
 void NotificationHandler::onSwitchStateChange(

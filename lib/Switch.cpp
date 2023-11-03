@@ -83,6 +83,11 @@ void Switch::updateNotifications(
                     (sai_switch_state_change_notification_fn)attr.value.ptr;
                 break;
 
+            case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
+                m_switchNotifications.on_switch_asic_sdk_health_event =
+                    (sai_switch_asic_sdk_health_event_notification_fn)attr.value.ptr;
+                break;
+
             case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
                 m_switchNotifications.on_switch_shutdown_request =
                     (sai_switch_shutdown_request_notification_fn)attr.value.ptr;

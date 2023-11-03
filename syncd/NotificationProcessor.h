@@ -97,6 +97,14 @@ namespace syncd
                     _In_ sai_object_id_t port_id,
                     _In_ sai_port_host_tx_ready_status_t *host_tx_ready_status);
 
+            void process_on_switch_asic_sdk_health_event(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_switch_asic_sdk_health_severity_t severity,
+                    _In_ sai_timespec_t timestamp,
+                    _In_ sai_switch_asic_sdk_health_category_t category,
+                    _In_ sai_switch_health_data_t data,
+                    _In_ const sai_u8_list_t description);
+
             void process_on_switch_shutdown_request(
                     _In_ sai_object_id_t switch_rid);
 
@@ -122,6 +130,9 @@ namespace syncd
                     _In_ const std::string &data);
 
             void handle_bfd_session_state_change(
+                    _In_ const std::string &data);
+
+            void handle_switch_asic_sdk_health_event(
                     _In_ const std::string &data);
 
             void handle_switch_shutdown_request(

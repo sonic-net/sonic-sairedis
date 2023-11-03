@@ -5,6 +5,7 @@
 #include "NotificationQueuePfcDeadlock.h"
 #include "NotificationSwitchShutdownRequest.h"
 #include "NotificationSwitchStateChange.h"
+#include "NotificationSwitchAsicSdkHealthEvent.h"
 #include "NotificationBfdSessionStateChange.h"
 #include "NotificationTwampSessionEvent.h"
 #include "NotificationPortHostTxReadyEvent.h"
@@ -37,6 +38,9 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST)
         return std::make_shared<NotificationSwitchShutdownRequest>(serializedNotification);
+
+    if (name == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_ASIC_SDK_HEALTH_EVENT)
+        return std::make_shared<NotificationSwitchAsicSdkHealthEvent>(serializedNotification);
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_STATE_CHANGE)
         return std::make_shared<NotificationSwitchStateChange>(serializedNotification);

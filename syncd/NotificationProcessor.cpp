@@ -558,6 +558,24 @@ void NotificationProcessor::process_on_bfd_session_state_change(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
+
+void NotificationProcessor::process_on_switch_asic_sdk_health_event(
+        _In_ sai_object_id_t switch_rid,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_vid = m_translator->translateRidToVid(switch_rid, SAI_NULL_OBJECT_ID);
+
+    std::string s = sai_serialize_switch_asic_sdk_health_event(switch_vid, severity, timestamp, category, data, description);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_ASIC_SDK_HEALTH_EVENT, s);
+}
+
 void NotificationProcessor::process_on_switch_shutdown_request(
         _In_ sai_object_id_t switch_rid)
 {
@@ -707,6 +725,35 @@ void NotificationProcessor::handle_bfd_session_state_change(
     sai_deserialize_free_bfd_session_state_ntf(count, bfdsessionstate);
 }
 
+void NotificationProcessor::handle_switch_asic_sdk_health_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_id;
+    sai_switch_asic_sdk_health_severity_t severity;
+    sai_timespec_t timestamp;
+    sai_switch_asic_sdk_health_category_t category;
+    sai_switch_health_data_t health_data;
+    sai_u8_list_t description;
+
+    sai_deserialize_switch_asic_sdk_health_event(data,
+                                                 switch_id,
+                                                 severity,
+                                                 timestamp,
+                                                 category,
+                                                 health_data,
+                                                 description);
+
+    process_on_switch_asic_sdk_health_event(switch_id,
+                                            severity,
+                                            timestamp,
+                                            category,
+                                            health_data,
+                                            description);
+
+    sai_deserialize_free_switch_asic_sdk_health_event(description);
+}
 void NotificationProcessor::handle_switch_shutdown_request(
         _In_ const std::string &data)
 {
@@ -773,6 +820,10 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST)
     {
         handle_switch_shutdown_request(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_ASIC_SDK_HEALTH_EVENT)
+    {
+        handle_switch_asic_sdk_health_event(data);
     }
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_QUEUE_PFC_DEADLOCK)
     {

@@ -6513,6 +6513,54 @@ void Meta::meta_sai_on_switch_state_change(
     // we should not snoop switch_id, since switch id should be created directly by user
 }
 
+void Meta::meta_sai_on_switch_asic_sdk_health_event(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
+{
+    SWSS_LOG_ENTER();
+
+    if (!sai_metadata_get_enum_value_name(
+            &sai_metadata_enum_sai_switch_asic_sdk_health_severity_t,
+            severity))
+    {
+        SWSS_LOG_WARN("Switch ASIC/SDK health event severity value (%d) not found in sai_switch_asic_sdk_health_severity_t",
+                      severity);
+    }
+
+    if (!sai_metadata_get_enum_value_name(
+            &sai_metadata_enum_sai_switch_asic_sdk_health_category_t,
+            category))
+    {
+        SWSS_LOG_WARN("Switch ASIC/SDK health event category value (%d) not found in sai_switch_asic_sdk_health_severity_t",
+                      category);
+    }
+
+    auto ot = objectTypeQuery(switch_id);
+
+    if (ot != SAI_OBJECT_TYPE_SWITCH)
+    {
+        SWSS_LOG_WARN("switch_id %s is of type %s, but expected SAI_OBJECT_TYPE_SWITCH",
+                sai_serialize_object_id(switch_id).c_str(),
+                sai_serialize_object_type(ot).c_str());
+
+        return;
+    }
+
+    sai_object_meta_key_t switch_meta_key = { .objecttype = ot , .objectkey = { .key = { .object_id = switch_id } } };
+
+    if (!m_saiObjectCollection.objectExists(switch_meta_key))
+    {
+        SWSS_LOG_ERROR("switch_id %s don't exists in local database",
+                sai_serialize_object_id(switch_id).c_str());
+    }
+
+    // we should not snoop switch_id, since switch id should be created directly by user
+}
+
 void Meta::meta_sai_on_switch_shutdown_request(
         _In_ sai_object_id_t switch_id)
 {
