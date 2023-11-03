@@ -87,6 +87,7 @@ SaiPlayer::SaiPlayer(
     m_sn.onFdbEvent = std::bind(&SaiPlayer::onFdbEvent, this, _1, _2);
     m_sn.onPortStateChange = std::bind(&SaiPlayer::onPortStateChange, this, _1, _2);
     m_sn.onQueuePfcDeadlock = std::bind(&SaiPlayer::onQueuePfcDeadlock, this, _1, _2);
+    m_sn.onSwitchAsicSdkHealthEvent = std::bind(&SaiPlayer::onSwitchAsicSdkHealthEvent, this, _1, _2, _3, _4, _5, _6);
     m_sn.onSwitchShutdownRequest = std::bind(&SaiPlayer::onSwitchShutdownRequest, this, _1);
     m_sn.onSwitchStateChange = std::bind(&SaiPlayer::onSwitchStateChange, this, _1, _2);
     m_sn.onBfdSessionStateChange = std::bind(&SaiPlayer::onBfdSessionStateChange, this, _1, _2);
@@ -189,6 +190,19 @@ void SaiPlayer::onPortHostTxReady(
 void SaiPlayer::onQueuePfcDeadlock(
         _In_ uint32_t count,
         _In_ const sai_queue_deadlock_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    // empty
+}
+
+void SaiPlayer::onSwitchAsicSdkHealthEvent(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
 {
     SWSS_LOG_ENTER();
 

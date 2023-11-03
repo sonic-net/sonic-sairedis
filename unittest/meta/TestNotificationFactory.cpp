@@ -68,6 +68,25 @@ TEST(NotificationFactory, deserialize_queue_pfc_deadlock)
     EXPECT_EQ(str, ntf->getSerializedNotification());
 }
 
+TEST(NotificationFactory, deserialize_switch_asic_sdk_health_event)
+{
+    auto ntf = NotificationFactory::deserialize(
+        SAI_SWITCH_NOTIFICATION_NAME_SWITCH_ASIC_SDK_HEALTH_EVENT,
+        "{"
+            "\"category\":\"SAI_SWITCH_ASIC_SDK_HEALTH_CATEGORY_FW\","
+            "\"data.data_type\":\"SAI_HEALTH_DATA_TYPE_GENERAL\","
+            "\"description\":\"2:30,30\","
+            "\"severity\":\"SAI_SWITCH_ASIC_SDK_HEALTH_SEVERITY_FATAL\","
+            "\"switch_id\":\"oid:0x21000000000000\","
+            "\"timestamp\":\"{"
+                "\\\"tv_nsec\\\":\\\"28715881\\\","
+                "\\\"tv_sec\\\":\\\"1700042919\\\""
+            "}\""
+        "}");
+
+    EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_SWITCH_ASIC_SDK_HEALTH_EVENT);
+}
+
 TEST(NotificationFactory, deserialize_shutdown_request)
 {
     auto ntf = NotificationFactory::deserialize(

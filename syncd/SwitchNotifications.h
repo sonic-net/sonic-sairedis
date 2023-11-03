@@ -62,6 +62,15 @@ namespace syncd
                             _In_ uint32_t count,
                             _In_ const sai_queue_deadlock_notification_data_t *data);
 
+                    static void onSwitchAsicSdkHealthEvent(
+                            _In_ int context,
+                            _In_ sai_object_id_t switch_id,
+                            _In_ sai_switch_asic_sdk_health_severity_t severity,
+                            _In_ sai_timespec_t timestamp,
+                            _In_ sai_switch_asic_sdk_health_category_t category,
+                            _In_ sai_switch_health_data_t data,
+                            _In_ const sai_u8_list_t description);
+
                     static void onSwitchShutdownRequest(
                             _In_ int context,
                             _In_ sai_object_id_t switch_id);
@@ -106,7 +115,7 @@ namespace syncd
                             .on_tam_event = nullptr,
                             .on_ipsec_sa_status_change = nullptr,
                             .on_nat_event = &Slot<context>::onNatEvent,
-                            .on_switch_asic_sdk_health_event = nullptr,
+                            .on_switch_asic_sdk_health_event = &Slot<context>::onSwitchAsicSdkHealthEvent,
                             .on_port_host_tx_ready = &Slot<context>::onPortHostTxReady,
                             .on_twamp_session_event = &Slot<context>::onTwampSessionEvent,
                             }) { }
@@ -170,6 +179,25 @@ namespace syncd
                     return SlotBase::onQueuePfcDeadlock(context, count, data);
                 }
 
+                static void onSwitchAsicSdkHealthEvent(
+                        _In_ sai_object_id_t switch_id,
+                        _In_ sai_switch_asic_sdk_health_severity_t severity,
+                        _In_ sai_timespec_t timestamp,
+                        _In_ sai_switch_asic_sdk_health_category_t category,
+                        _In_ sai_switch_health_data_t data,
+                        _In_ const sai_u8_list_t description)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onSwitchAsicSdkHealthEvent(context,
+                                                                 switch_id,
+                                                                 severity,
+                                                                 timestamp,
+                                                                 category,
+                                                                 data,
+                                                                 description);
+                }
+
                 static void onSwitchShutdownRequest(
                         _In_ sai_object_id_t switch_id)
                 {
@@ -216,6 +244,12 @@ namespace syncd
             std::function<void(uint32_t, const sai_port_oper_status_notification_t*)>               onPortStateChange;
             std::function<void(sai_object_id_t, sai_object_id_t, sai_port_host_tx_ready_status_t)>  onPortHostTxReady;
             std::function<void(uint32_t, const sai_queue_deadlock_notification_data_t*)>            onQueuePfcDeadlock;
+            std::function<void(sai_object_id_t,
+                               sai_switch_asic_sdk_health_severity_t,
+                               sai_timespec_t,
+                               sai_switch_asic_sdk_health_category_t,
+                               sai_switch_health_data_t,
+                               const sai_u8_list_t)>                                                onSwitchAsicSdkHealthEvent;
             std::function<void(sai_object_id_t)>                                                    onSwitchShutdownRequest;
             std::function<void(sai_object_id_t switch_id, sai_switch_oper_status_t)>                onSwitchStateChange;
             std::function<void(uint32_t, const sai_bfd_session_state_notification_t*)>              onBfdSessionStateChange;

@@ -23,6 +23,7 @@ tests_SOURCES = \
 				TestNotificationPortStateChange.cpp \
 				TestNotificationQueuePfcDeadlock.cpp \
 				TestNotificationSwitchShutdownRequest.cpp \
+				TestNotificationSwitchAsicSdkHealthEvent.cpp \
 				TestNotificationSwitchStateChange.cpp \
 				TestNotificationBfdSessionStateChange.cpp \
 				TestOidRefCounter.cpp \

@@ -1131,6 +1131,41 @@ std::string sai_serialize_egress_drop_reason(
     return sai_serialize_enum(reason, &sai_metadata_enum_sai_out_drop_reason_t);
 }
 
+std::string sai_serialize_timespec(
+        _In_ const sai_timespec_t &timespec)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["tv_sec"] = sai_serialize_number<uint64_t>(timespec.tv_sec);
+    j["tv_nsec"] = sai_serialize_number<uint32_t>(timespec.tv_nsec);
+
+    return j.dump();
+}
+
+std::string sai_serialize_switch_asic_sdk_health_event(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ const sai_timespec_t &timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ const sai_switch_health_data_t &data,
+        _In_ const sai_u8_list_t &description)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(switch_id);
+    j["severity"] = sai_serialize_enum(severity, &sai_metadata_enum_sai_switch_asic_sdk_health_severity_t);
+    j["timestamp"] = sai_serialize_timespec(timestamp);
+    j["category"] = sai_serialize_enum(category, &sai_metadata_enum_sai_switch_asic_sdk_health_category_t);
+    j["data.data_type"] = sai_serialize_enum(data.data_type, &sai_metadata_enum_sai_health_data_type_t);
+    j["description"] = sai_serialize_number_list(description, false);
+
+    return j.dump();
+}
+
 std::string sai_serialize_switch_shutdown_request(
         _In_ sai_object_id_t switch_id)
 {
@@ -1299,7 +1334,7 @@ template <typename T>
 std::string sai_serialize_number_list(
         _In_ const T& list,
         _In_ bool countOnly,
-        _In_ bool hex = false)
+        _In_ bool hex)
 {
     SWSS_LOG_ENTER();
 
@@ -4145,6 +4180,63 @@ void sai_deserialize_switch_oper_status(
 
     sai_deserialize_object_id(j["switch_id"], switch_id);
     sai_deserialize_enum(j["status"], &sai_metadata_enum_sai_switch_oper_status_t, (int32_t&)status);
+}
+
+void sai_deserialize_timespec(
+        _In_ const std::string& s,
+        _Out_ sai_timespec_t &timestamp)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+    try
+    {
+        j = json::parse(s);
+    }
+    catch (const std::exception&)
+    {
+        SWSS_LOG_ERROR("Received an exception after trying to parse timespec_t from %s", s.c_str());
+    }
+
+    sai_deserialize_number<uint64_t>(j["tv_sec"], timestamp.tv_sec);
+    sai_deserialize_number<uint32_t>(j["tv_nsec"], timestamp.tv_nsec);
+}
+
+void sai_deserialize_switch_asic_sdk_health_event(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t &switch_id,
+        _Out_ sai_switch_asic_sdk_health_severity_t &severity,
+        _Out_ sai_timespec_t &timestamp,
+        _Out_ sai_switch_asic_sdk_health_category_t &category,
+        _Out_ sai_switch_health_data_t &data,
+        _Out_ sai_u8_list_t &description)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+    try
+    {
+        j = json::parse(s);
+    }
+    catch (const std::exception&)
+    {
+        SWSS_LOG_ERROR("Received an exception after trying to parse switch_asic_sdk_health_event from %s", s.c_str());
+    }
+
+    sai_deserialize_object_id(j["switch_id"], switch_id);
+    sai_deserialize_enum(j["severity"], &sai_metadata_enum_sai_switch_asic_sdk_health_severity_t, (int32_t&)severity);
+    sai_deserialize_timespec(j["timestamp"], timestamp);
+    sai_deserialize_enum(j["category"], &sai_metadata_enum_sai_switch_asic_sdk_health_category_t, (int32_t&)category);
+    int32_t data_type;
+    sai_deserialize_enum(j["data.data_type"], &sai_metadata_enum_sai_health_data_type_t, data_type);
+    data.data_type = (sai_health_data_type_t)data_type;
+    data.data_type = SAI_HEALTH_DATA_TYPE_GENERAL;
+    sai_deserialize_number_list(j["description"], description, false, false);
+}
+
+void sai_deserialize_free_switch_asic_sdk_health_event(_In_ sai_u8_list_t &description)
+{
+    sai_free_list(description);
 }
 
 void sai_deserialize_switch_shutdown_request(
