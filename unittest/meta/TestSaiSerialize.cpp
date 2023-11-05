@@ -483,6 +483,11 @@ TEST(SaiSerialize, sai_serialize_port_oper_status)
     EXPECT_EQ(sai_serialize_port_oper_status(SAI_PORT_OPER_STATUS_UP), "SAI_PORT_OPER_STATUS_UP");
 }
 
+TEST(SaiSerialize, sai_serialize_port_host_tx_ready)
+{
+    EXPECT_EQ(sai_serialize_port_host_tx_ready(SAI_PORT_HOST_TX_READY_STATUS_READY), "SAI_PORT_HOST_TX_READY_STATUS_READY");
+}
+
 TEST(SaiSerialize, sai_serialize_queue_deadlock_event)
 {
     EXPECT_EQ(sai_serialize_queue_deadlock_event(SAI_QUEUE_PFC_DEADLOCK_EVENT_TYPE_DETECTED),
