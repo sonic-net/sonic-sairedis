@@ -182,7 +182,7 @@ void SaiPlayer::onPortHostTxReady(
         _In_ sai_port_host_tx_ready_status_t host_tx_ready_status)
 {
     SWSS_LOG_ENTER();
-    
+
     // empty
 }
 

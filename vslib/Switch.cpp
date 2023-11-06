@@ -96,7 +96,7 @@ void Switch::updateNotifications(
                 break;
 
             case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
-                m_switchNotifications.on_port_host_tx_ready = 
+                m_switchNotifications.on_port_host_tx_ready =
                     (sai_port_host_tx_ready_notification_fn)attr.value.ptr;
                 break;
 
