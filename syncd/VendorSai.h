@@ -10,6 +10,7 @@ extern "C" {
 #include <vector>
 #include <memory>
 #include <mutex>
+#include <map>
 
 namespace syncd
 {
@@ -201,6 +202,11 @@ namespace syncd
                     _In_ sai_api_t api,
                     _In_ sai_log_level_t log_level) override;
 
+        public: // extra API
+
+            virtual sai_log_level_t logGet(
+                    _In_ sai_api_t api) override;
+
         private:
 
             bool m_apiInitialized;
@@ -212,5 +218,7 @@ namespace syncd
             sai_apis_t m_apis;
 
             sai_global_apis_t m_globalApis;
+
+            std::map<sai_api_t, sai_log_level_t> m_logLevelMap;
     };
 }

@@ -33,5 +33,16 @@ namespace sairedis
 
             static void clearOidList(
                     _Out_ sai_object_list_t& list);
+
+            static uint64_t timeToReachTargetValueUsingHalfLife(
+                    _In_ uint64_t halfLifeUsec,
+                    _In_ uint32_t initialValue,
+                    _In_ uint32_t targetValue);
+
+            static uint32_t valueAfterDecay(
+                    _In_ uint64_t timeToDecayUsec,
+                    _In_ uint64_t halfLifeUsec,
+                    _In_ uint32_t initialValue);
+
     };
 }

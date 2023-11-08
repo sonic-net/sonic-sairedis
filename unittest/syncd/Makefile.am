@@ -9,6 +9,7 @@ tests_SOURCES = main.cpp \
                 MockableSaiInterface.cpp \
                 MockHelper.cpp \
 				TestCommandLineOptions.cpp \
+				TestConcurrentQueue.cpp \
 				TestFlexCounter.cpp \
 				TestVirtualOidTranslator.cpp \
 				TestNotificationQueue.cpp \
