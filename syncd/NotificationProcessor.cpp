@@ -528,7 +528,7 @@ void NotificationProcessor::process_on_bfd_session_state_change(
          * switch vid.
          */
 
-        bfd_session_state->bfd_session_id = m_translator->translateRidToVid(bfd_session_state->bfd_session_id, SAI_NULL_OBJECT_ID);
+        bfd_session_state->bfd_session_id = m_translator->translateRidToVid(bfd_session_state->bfd_session_id, SAI_NULL_OBJECT_ID, true);
     }
 
     std::string s = sai_serialize_bfd_session_state_ntf(count, data);
