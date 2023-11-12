@@ -4645,16 +4645,7 @@ void sai_deserialize_port_host_tx_ready_ntf(
 {
     SWSS_LOG_ENTER();
 
-    json j;
-    try
-    {
-        j = json::parse(s);
-    }
-    catch (const std::exception&)
-    {
-        SWSS_LOG_ERROR("Recieved an exception after trying to parse %s", s.c_str());
-        return;
-    }
+    json j = json::parse(s);
 
     sai_deserialize_object_id(j[0]["port_id"], port_id);
     sai_deserialize_object_id(j[0]["switch_id"], switch_id);
