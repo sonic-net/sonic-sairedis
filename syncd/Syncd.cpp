@@ -161,7 +161,7 @@ Syncd::Syncd(
 
     m_handler->setSwitchNotifications(m_sn.getSwitchNotifications());
 
-    m_restartQuery = std::make_shared<swss::NotificationConsumer>(m_dbAsic.get(), SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY);
+    m_restartQuery = std::make_shared<swss::NotificationConsumer>(m_dbAsic.get(), SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY_PER_DB(m_contextConfig->m_dbAsic));
 
     // TODO to be moved to ASIC_DB
     m_dbFlexCounter = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbFlex, 0);
