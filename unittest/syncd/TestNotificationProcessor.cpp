@@ -110,8 +110,6 @@ TEST(NotificationProcessor, BfdSessionState)
 
     std::string bfdData = sai_serialize_bfd_session_state_ntf(1, &data);
 
-    printf("bfdDate = %s\n", bfdData.c_str());
-
     swss::KeyOpFieldsValuesTuple bfdFV(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, bfdData, bfdEntry);
     notificationProcessor->syncProcessNotification(bfdFV);
 }
