@@ -4,6 +4,7 @@
 #include "lib/RedisVidIndexGenerator.h"
 #include "lib/sairediscommon.h"
 #include "vslib/Sai.h"
+#include "meta/sai_serialize.h"
 
 #include <gtest/gtest.h>
 
@@ -12,7 +13,7 @@ using namespace syncd;
 static std::string natData =
 "[{\"nat_entry\":\"{\\\"nat_data\\\":{\\\"key\\\":{\\\"dst_ip\\\":\\\"10.10.10.10\\\",\\\"l4_dst_port\\\":\\\"20006\\\",\\\"l4_src_port\\\":\\\"0\\\",\\\"proto\\\":\\\"6\\\",\\\"src_ip\\\":\\\"0.0.0.0\\\"},\\\"mask\\\":{\\\"dst_ip\\\":\\\"255.255.255.255\\\",\\\"l4_dst_port\\\":\\\"65535\\\",\\\"l4_src_port\\\":\\\"0\\\",\\\"proto\\\":\\\"255\\\",\\\"src_ip\\\":\\\"0.0.0.0\\\"}},\\\"nat_type\\\":\\\"SAI_NAT_TYPE_DESTINATION_NAT\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\",\\\"vr\\\":\\\"oid:0x3000000000048\\\"}\",\"nat_event\":\"SAI_NAT_EVENT_AGED\"}]";
 
-TEST(NotificationProcessor, NotificationProcessorTest)
+TEST(NotificationProcessor, NatEvent)
 {
     auto sai = std::make_shared<saivs::Sai>();
     auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
@@ -73,4 +74,44 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     EXPECT_NE(bridgeport, nullptr);
     EXPECT_EQ(*bridgeport, "oid:0x3a000000000a99");
     EXPECT_EQ(ip, nullptr);
+}
+
+TEST(NotificationProcessor, BfdSessionState)
+{
+    auto sai = std::make_shared<saivs::Sai>();
+    auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
+    auto client = std::make_shared<RedisClient>(dbAsic);
+    auto producer = std::make_shared<syncd::RedisNotificationProducer>("ASIC_DB");
+
+    auto notificationProcessor = std::make_shared<NotificationProcessor>(producer, client,
+                                                             [](const swss::KeyOpFieldsValuesTuple&){});
+    EXPECT_NE(notificationProcessor, nullptr);
+
+    auto switchConfigContainer = std::make_shared<sairedis::SwitchConfigContainer>();
+    auto redisVidIndexGenerator = std::make_shared<sairedis::RedisVidIndexGenerator>(dbAsic, REDIS_KEY_VIDCOUNTER);
+    EXPECT_NE(redisVidIndexGenerator, nullptr);
+
+    auto virtualObjectIdManager = std::make_shared<sairedis::VirtualObjectIdManager>(0, switchConfigContainer, redisVidIndexGenerator);
+    EXPECT_NE(virtualObjectIdManager, nullptr);
+
+    auto translator = std::make_shared<VirtualOidTranslator>(client,
+                                                             virtualObjectIdManager,
+                                                             sai);
+    EXPECT_NE(translator, nullptr);
+    notificationProcessor->m_translator = translator;
+
+    // Check BFD notification without RIDs
+    std::vector<swss::FieldValueTuple> bfdEntry;
+
+    sai_bfd_session_state_notification_t data = {
+        .bfd_session_id = SAI_NULL_OBJECT_ID,
+        .session_state = SAI_BFD_SESSION_STATE_ADMIN_DOWN,
+    };
+
+    std::string bfdData = sai_serialize_bfd_session_state_ntf(1, &data);
+
+    printf("bfdDate = %s\n", bfdData.c_str());
+
+    swss::KeyOpFieldsValuesTuple bfdFV(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, bfdData, bfdEntry);
+    notificationProcessor->syncProcessNotification(bfdFV);
 }
