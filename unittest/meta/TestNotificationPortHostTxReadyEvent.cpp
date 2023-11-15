@@ -5,7 +5,7 @@
 #include "sairediscommon.h"
 #include "sai_serialize.h"
 
-#include <gtest/gtest/h>
+#include <gtest/gtest.h>
 #include <memory>
 
 using namespace sairedis;
@@ -70,7 +70,7 @@ TEST(NotificationPortHostTxReadyEvent, executeCallback)
 {
     NotificationPortHostTxReadyEvent n(s);
 
-    sai_switch_notification_t ntfs;
+    sai_switch_notifications_t ntfs;
 
     ntfs.on_port_host_tx_ready_change = &on_port_host_tx_ready_change_notification;
 

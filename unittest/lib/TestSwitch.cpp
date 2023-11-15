@@ -49,7 +49,7 @@ TEST(Switch, updateNotifications)
     attrs[8].id = SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY;
     attrs[9].id = SAI_SWITCH_ATTR_INIT_SWITCH;
 
-    s->updateNotifications(8, attrs);
+    s->updateNotifications(9, attrs);
 
     auto sn = s->getSwitchNotifications();
 

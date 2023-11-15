@@ -50,8 +50,7 @@ TEST(NotificationFactory, deserialize_port_host_tx_ready_status)
 {
     auto ntf = NotificationFactory::deserialize(
             SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY,
-            "[{\"host_tx_ready_status\":\"SAI_PORT_HOST_TX_READY_STATUS_READY\"}]"
-    );
+            "[{\"host_tx_ready_status\":\"SAI_PORT_HOST_TX_READY_STATUS_READY\",\"port_id\":\"oid:0x100000000001a\",\"switch_id\":\"oid:0x2100000000\"}]");
 
     EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_PORT_HOST_TX_READY);
 }
