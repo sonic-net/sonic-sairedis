@@ -6,6 +6,8 @@
 
 using namespace syncd;
 
+constexpr size_t PortStateChangeHandler::PORT_STATE_CHANGE_QUEUE_SIZE;
+
 PortStateChangeHandler::PortStateChangeHandler(
         _In_ std::shared_ptr<swss::SelectableEvent> portStateChangeEvent)
 {
