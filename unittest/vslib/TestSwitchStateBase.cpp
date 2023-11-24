@@ -138,6 +138,42 @@ TEST_F(SwitchStateBaseTest, switchHashCapabilitiesGet)
     ASSERT_EQ(hfSet1, hfSet2);
 }
 
+TEST_F(SwitchStateBaseTest, switchHashAlgorithmCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_ALGORITHM, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+
+    std::vector<sai_int32_t> haList(data.count);
+    data.list = haList.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_ALGORITHM, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const std::set<sai_hash_algorithm_t> haSet1 = {
+        SAI_HASH_ALGORITHM_CRC,
+        SAI_HASH_ALGORITHM_XOR,
+        SAI_HASH_ALGORITHM_RANDOM,
+        SAI_HASH_ALGORITHM_CRC_32LO,
+        SAI_HASH_ALGORITHM_CRC_32HI,
+        SAI_HASH_ALGORITHM_CRC_CCITT,
+        SAI_HASH_ALGORITHM_CRC_XOR
+    };
+
+    std::set<sai_hash_algorithm_t> haSet2;
+
+    std::transform(
+        haList.cbegin(), haList.cend(), std::inserter(haSet2, haSet2.begin()),
+        [](sai_int32_t value) { return static_cast<sai_hash_algorithm_t>(value); }
+    );
+    ASSERT_EQ(haSet1, haSet2);
+}
+
 //Test the following function:
 //sai_status_t initialize_voq_switch_objects(
 //             _In_ uint32_t attr_count,

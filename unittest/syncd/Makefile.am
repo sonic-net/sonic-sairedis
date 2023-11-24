@@ -16,6 +16,7 @@ tests_SOURCES = main.cpp \
 				TestNotificationProcessor.cpp \
 				TestNotificationHandler.cpp \
 				TestMdioIpcServer.cpp \
+				TestPortStateChangeHandler.cpp \
 				TestVendorSai.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
