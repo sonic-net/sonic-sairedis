@@ -37,6 +37,7 @@ TEST(Switch, updateNotifications)
     attrs[6].value.ptr = (void*)1;
     attrs[7].value.ptr = (void*)1;
     attrs[8].value.ptr = (void*)1;
+    attrs[9].value.ptr = (void*)1;
 
     attrs[0].id = SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY;
     attrs[1].id = SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY;
