@@ -4403,12 +4403,6 @@ void Syncd::performWarmRestartSingleSwitch(
 
     attrs.push_back(attr);
 
-    for (size_t idx = 0; idx < sai_metadata_switch_notify_attr_count; idx++)
-    {
-        attr.id = sai_metadata_switch_notify_attr[idx]->attrid;
-        attr.value.ptr = (void*)1; // any non-null pointer
-    }
-
     sai_attribute_t *attrList = list.get_attr_list();
 
     uint32_t attrCount = list.get_attr_count();
