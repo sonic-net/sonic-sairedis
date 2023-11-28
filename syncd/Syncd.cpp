@@ -4399,7 +4399,7 @@ void Syncd::performWarmRestartSingleSwitch(
     sai_attribute_t attr;
 
     attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
-    attr.value.booldata = true;
+    attr.value.booldata = false;
 
     attrs.push_back(attr);
 
