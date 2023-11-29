@@ -217,10 +217,11 @@ Syncd::~Syncd()
 void Syncd::performStartupLogic()
 {
     SWSS_LOG_ENTER();
+    // ignore warm logic here if syncd starts in fast-boot, express-boot or Mellanox fastfast boot mode
 
-    // ignore warm logic here if syncd starts in fast-boot or Mellanox fastfast boot mode
-
-    if (m_isWarmStart && m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT && m_commandLineOptions->m_startType != SAI_START_TYPE_FAST_BOOT)
+    if (m_isWarmStart && m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT &&
+        m_commandLineOptions->m_startType != SAI_START_TYPE_EXPRESS_BOOT &&
+        m_commandLineOptions->m_startType != SAI_START_TYPE_FAST_BOOT)
     {
         SWSS_LOG_WARN("override command line startType=%s via SAI_START_TYPE_WARM_BOOT",
                 CommandLineOptions::startTypeToString(m_commandLineOptions->m_startType).c_str());
@@ -3675,9 +3676,10 @@ sai_status_t Syncd::processNotifySyncd(
 
             m_asicInitViewMode = false;
 
-            if (m_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT)
+            if (m_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT ||
+                m_commandLineOptions->m_startType == SAI_START_TYPE_EXPRESS_BOOT)
             {
-                // fastfast boot configuration end
+                // express/fastfast boot configuration end
 
                 status = onApplyViewInFastFastBoot();
             }
@@ -4716,6 +4718,39 @@ sai_status_t Syncd::setRestartWarmOnAllSwitches(
     return result;
 }
 
+sai_status_t Syncd::setFastAPIEnableOnAllSwitches()
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t result = SAI_STATUS_SUCCESS;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_FAST_API_ENABLE;
+    attr.value.booldata = true;
+
+    for (auto& sw: m_switches)
+    {
+        auto rid = sw.second->getRid();
+
+        auto strRid = sai_serialize_object_id(rid);
+
+        auto status = m_vendorSai->set(SAI_OBJECT_TYPE_SWITCH, rid, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_PRE_SHUTDOWN=true: %s:%s",
+                    strRid.c_str(),
+                    sai_serialize_status(status).c_str());
+
+            result = status;
+            break;
+        }
+    }
+
+    return result;
+}
+
 sai_status_t Syncd::setPreShutdownOnAllSwitches()
 {
     SWSS_LOG_ENTER();
@@ -4933,7 +4968,7 @@ void Syncd::run()
 
                 shutdownType = handleRestartQuery(*m_restartQuery);
 
-                if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN)
+                if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN && shutdownType != SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN)
                 {
                     // break out the event handling loop to shutdown syncd
                     runMainLoop = false;
@@ -4943,7 +4978,7 @@ void Syncd::run()
                 // Handle switch pre-shutdown and wait for the final shutdown
                 // event
 
-                SWSS_LOG_TIMER("warm pre-shutdown");
+                SWSS_LOG_TIMER("%s pre-shutdown", (shutdownType == SYNCD_RESTART_TYPE_PRE_SHUTDOWN) ? "warm" : "express");
 
                 m_manager->removeAllCounters();
 
@@ -4958,6 +4993,22 @@ void Syncd::run()
 
                     warmRestartTable.setFlagFailed();
                     continue;
+                }
+
+                if (shutdownType == SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN)
+                {
+                    SWSS_LOG_NOTICE("express boot, enable fast API pre-shutdown");
+                    status = setFastAPIEnableOnAllSwitches();
+                    if (status != SAI_STATUS_SUCCESS)
+                    {
+                        SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_FAST_API_ENABLE=true: %s for express pre-shutdown. Fall back to cold restart",
+				       sai_serialize_status(status).c_str());
+
+                        shutdownType = SYNCD_RESTART_TYPE_COLD;
+
+                        warmRestartTable.setFlagFailed();
+                        continue;
+                    }
                 }
 
                 status = setPreShutdownOnAllSwitches();
@@ -5052,7 +5103,7 @@ void Syncd::run()
         }
     }
 
-    if (shutdownType == SYNCD_RESTART_TYPE_FAST || shutdownType == SYNCD_RESTART_TYPE_WARM)
+    if (shutdownType == SYNCD_RESTART_TYPE_FAST || shutdownType == SYNCD_RESTART_TYPE_WARM || shutdownType == SYNCD_RESTART_TYPE_EXPRESS)
     {
         setUninitDataPlaneOnRemovalOnAllSwitches();
     }
@@ -5066,7 +5117,7 @@ void Syncd::run()
     // Stop notification thread after removing switch
     m_processor->stopNotificationsProcessingThread();
 
-    if (shutdownType == SYNCD_RESTART_TYPE_WARM)
+    if (shutdownType == SYNCD_RESTART_TYPE_WARM || shutdownType == SYNCD_RESTART_TYPE_EXPRESS)
     {
         warmRestartTable.setWarmShutdown(status == SAI_STATUS_SUCCESS);
     }

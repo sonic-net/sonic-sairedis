@@ -14,7 +14,11 @@ namespace syncd
 
         SYNCD_RESTART_TYPE_FAST,
 
+        SYNCD_RESTART_TYPE_EXPRESS,
+
         SYNCD_RESTART_TYPE_PRE_SHUTDOWN,
+
+        SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN,
 
     } syncd_restart_type_t;
 

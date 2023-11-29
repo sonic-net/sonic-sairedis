@@ -103,6 +103,8 @@ namespace syncd
             sai_status_t setRestartWarmOnAllSwitches(
                     _In_ bool flag);
 
+            sai_status_t setFastAPIEnableOnAllSwitches();
+
             sai_status_t setPreShutdownOnAllSwitches();
 
             sai_status_t setUninitDataPlaneOnRemovalOnAllSwitches();

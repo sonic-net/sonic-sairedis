@@ -37,7 +37,9 @@ void RequestShutdownCommandLineOptions::setRestartType(
 #define STRING_RESTART_COLD         "COLD"
 #define STRING_RESTART_WARM         "WARM"
 #define STRING_RESTART_FAST         "FAST"
+#define STRING_RESTART_EXPRESS      "EXPRESS"
 #define STRING_RESTART_PRE_SHUTDOWN "PRE-SHUTDOWN"
+#define STRING_RESTART_PRE_EXPRESS_SHUTDOWN "PRE-EXPRESS-SHUTDOWN"
 
 syncd_restart_type_t RequestShutdownCommandLineOptions::stringToRestartType(
         _In_ const std::string& restartType)
@@ -53,8 +55,14 @@ syncd_restart_type_t RequestShutdownCommandLineOptions::stringToRestartType(
     if (restartType == STRING_RESTART_FAST)
         return SYNCD_RESTART_TYPE_FAST;
 
+    if (restartType == STRING_RESTART_EXPRESS)
+        return SYNCD_RESTART_TYPE_EXPRESS;
+
     if (restartType == STRING_RESTART_PRE_SHUTDOWN)
         return SYNCD_RESTART_TYPE_PRE_SHUTDOWN;
+
+    if (restartType == STRING_RESTART_PRE_EXPRESS_SHUTDOWN)
+        return SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN;
 
     SWSS_LOG_WARN("unknown restart type '%s' returning COLD", restartType.c_str());
 
@@ -77,8 +85,14 @@ std::string RequestShutdownCommandLineOptions::restartTypeToString(
         case SYNCD_RESTART_TYPE_FAST:
             return STRING_RESTART_FAST;
 
+        case SYNCD_RESTART_TYPE_EXPRESS:
+            return STRING_RESTART_EXPRESS;
+
         case SYNCD_RESTART_TYPE_PRE_SHUTDOWN:
             return STRING_RESTART_PRE_SHUTDOWN;
+
+        case SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN:
+            return STRING_RESTART_PRE_EXPRESS_SHUTDOWN;
 
         default:
 

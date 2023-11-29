@@ -166,7 +166,7 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "    -p --profile profile" << std::endl;
     std::cout << "        Provide profile map file" << std::endl;
     std::cout << "    -t --startType type" << std::endl;
-    std::cout << "        Specify start type (cold|warm|fast|fastfast)" << std::endl;
+    std::cout << "        Specify start type (cold|warm|fast|fastfast|express)" << std::endl;
     std::cout << "    -u --useTempView" << std::endl;
     std::cout << "        Use temporary view between init and apply" << std::endl;
     std::cout << "    -S --disableExitSleep" << std::endl;

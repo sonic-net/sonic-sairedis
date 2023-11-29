@@ -50,6 +50,11 @@ case "$(cat /proc/cmdline)" in
         FASTFAST_REBOOT='yes'
     fi
     ;;
+  *SONIC_BOOT_TYPE=express*)
+    if [ -e /var/warmboot/warm-starting ]; then
+        EXPRESS_REBOOT='yes'
+    fi
+    ;;
   *SONIC_BOOT_TYPE=fast*|*fast-reboot*)
     # check that the key exists
     SYSTEM_FAST_REBOOT=`sonic-db-cli STATE_DB hget "FAST_RESTART_ENABLE_TABLE|system" enable`
@@ -89,6 +94,8 @@ function set_start_type()
         CMD_ARGS+=" -t fast"
     elif [ x"$FASTFAST_REBOOT" == x"yes" ]; then
         CMD_ARGS+=" -t fastfast"
+    elif [ x"$EXPRESS_REBOOT" == x"yes" ]; then
+        CMD_ARGS+=" -t express"
     fi
 }
 
