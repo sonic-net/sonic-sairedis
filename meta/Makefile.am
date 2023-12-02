@@ -35,6 +35,7 @@ libsaimeta_la_SOURCES = \
 				NotificationSwitchShutdownRequest.cpp \
 				NotificationSwitchStateChange.cpp \
 				NotificationBfdSessionStateChange.cpp \
+				NotificationTwampSessionEvent.cpp \
 				NotificationPortHostTxReadyEvent.cpp \
 				NumberOidIndexGenerator.cpp \
 				OidRefCounter.cpp \

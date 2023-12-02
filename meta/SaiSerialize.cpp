@@ -2221,6 +2221,52 @@ std::string sai_serialize_bfd_session_state(
     return sai_serialize_enum(status, &sai_metadata_enum_sai_bfd_session_state_t);
 }
 
+std::string sai_serialize_twamp_session_state(
+        _In_ sai_twamp_session_state_t status)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(status, &sai_metadata_enum_sai_twamp_session_state_t);
+}
+
+std::string sai_serialize_twamp_session_stat(
+        _In_ sai_twamp_session_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_twamp_session_stat_t);
+}
+
+static json sai_serialize_json_twamp_session_event_notification_data(
+        _In_ const sai_twamp_session_event_notification_data_t& twamp_session_data)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["twamp_session_id"] = sai_serialize_object_id(twamp_session_data.twamp_session_id);
+    j["session_state"] = sai_serialize_twamp_session_state(twamp_session_data.session_state);
+
+    j["index"] = sai_serialize_number(twamp_session_data.session_stats.index);
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < twamp_session_data.session_stats.number_of_counters; ++i)
+    {
+        json item;
+
+        item["counters_ids"] = sai_serialize_twamp_session_stat(twamp_session_data.session_stats.counters_ids[i]);
+        item["counters"] = sai_serialize_number(twamp_session_data.session_stats.counters[i]);
+
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    // we don't need count since it can be deduced
+    return j;
+}
+
 std::string sai_serialize_fdb_event_ntf(
         _In_ uint32_t count,
         _In_ const sai_fdb_event_notification_data_t* fdb_event)
@@ -2361,6 +2407,30 @@ std::string sai_serialize_bfd_session_state_ntf(
 
         item["bfd_session_id"] = sai_serialize_object_id(bfd_session_state[i].bfd_session_id);
         item["session_state"] = sai_serialize_bfd_session_state(bfd_session_state[i].session_state);
+
+        j.push_back(item);
+    }
+
+    // we don't need count since it can be deduced
+    return j.dump();
+}
+
+std::string sai_serialize_twamp_session_event_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_twamp_session_event_notification_data_t* twamp_session_event)
+{
+    SWSS_LOG_ENTER();
+
+    if (twamp_session_event == NULL)
+    {
+        SWSS_LOG_THROW("twamp_session_state pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        json item = sai_serialize_json_twamp_session_event_notification_data(twamp_session_event[i]);
 
         j.push_back(item);
     }
@@ -4046,6 +4116,24 @@ void sai_deserialize_bfd_session_state(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_bfd_session_state_t, (int32_t&)state);
 }
 
+void sai_deserialize_twamp_session_state(
+        _In_ const std::string& s,
+        _Out_ sai_twamp_session_state_t& state)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_twamp_session_state_t, (int32_t&)state);
+}
+
+void sai_deserialize_twamp_session_stat(
+        _In_ const std::string& s,
+        _Out_ sai_twamp_session_stat_t& stat)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_twamp_session_stat_t, (int32_t&)stat);
+}
+
 void sai_deserialize_switch_oper_status(
         _In_ const std::string& s,
         _Out_ sai_object_id_t &switch_id,
@@ -4130,6 +4218,60 @@ void sai_deserialize_neighbor_entry(
     sai_deserialize_object_id(j["switch_id"], ne.switch_id);
     sai_deserialize_object_id(j["rif"], ne.rif_id);
     sai_deserialize_ip_address(j["ip"], ne.ip_address);
+}
+
+void sai_deserialize_twamp_session_stats_data(
+        _In_ const std::string& s,
+        _Out_ sai_twamp_session_stats_data_t &twamp_session_stats_data)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_number(j["index"], twamp_session_stats_data.index);
+
+    json arr = j["list"];
+
+    twamp_session_stats_data.number_of_counters = (uint32_t)arr.size();
+    twamp_session_stats_data.counters_ids = new sai_twamp_session_stat_t[twamp_session_stats_data.number_of_counters];
+    twamp_session_stats_data.counters = new uint64_t[twamp_session_stats_data.number_of_counters];
+
+    for (uint32_t i = 0; i < twamp_session_stats_data.number_of_counters; ++i)
+    {
+        const json &item = arr[i];
+
+        sai_deserialize_twamp_session_stat(item["counters_ids"], twamp_session_stats_data.counters_ids[i]);
+
+        sai_deserialize_number(item["counters"], twamp_session_stats_data.counters[i]);
+    }
+}
+
+void sai_deserialize_json_twamp_session_event_notification_data(
+        _In_ const json& j,
+        _Out_ sai_twamp_session_event_notification_data_t& twamp_session_data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_object_id(j["twamp_session_id"], twamp_session_data.twamp_session_id);
+    sai_deserialize_twamp_session_state(j["session_state"], twamp_session_data.session_state);
+
+    sai_deserialize_number(j["index"], twamp_session_data.session_stats.index);
+
+    json arr = j["list"];
+
+    twamp_session_data.session_stats.number_of_counters = (uint32_t)arr.size();
+    twamp_session_data.session_stats.counters_ids = new sai_twamp_session_stat_t[twamp_session_data.session_stats.number_of_counters];
+    twamp_session_data.session_stats.counters = new uint64_t[twamp_session_data.session_stats.number_of_counters];
+
+    for (uint32_t i = 0; i < twamp_session_data.session_stats.number_of_counters; ++i)
+    {
+        const json &item = arr[i];
+
+        sai_deserialize_twamp_session_stat(item["counters_ids"], twamp_session_data.session_stats.counters_ids[i]);
+
+        sai_deserialize_number(item["counters"], twamp_session_data.session_stats.counters[i]);
+    }
+
 }
 
 #define EXPECT(x) { \
@@ -4753,6 +4895,27 @@ void sai_deserialize_bfd_session_state_ntf(
     *bfd_session_state = data;
 }
 
+void sai_deserialize_twamp_session_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_twamp_session_event_notification_data_t** twamp_session_event)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_twamp_session_event_notification_data_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_json_twamp_session_event_notification_data(j[i], data[i]);
+    }
+
+    *twamp_session_event = data;
+}
+
 // deserialize free
 
 void sai_deserialize_free_attribute_value(
@@ -5013,6 +5176,15 @@ void sai_deserialize_free_bfd_session_state_ntf(
     SWSS_LOG_ENTER();
 
     delete[] bfd_session_state;
+}
+
+void sai_deserialize_free_twamp_session_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_twamp_session_event_notification_data_t* twamp_session_event)
+{
+    SWSS_LOG_ENTER();
+
+    delete[] twamp_session_event;
 }
 
 void sai_deserialize_ingress_priority_group_attr(

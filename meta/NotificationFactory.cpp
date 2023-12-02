@@ -6,6 +6,7 @@
 #include "NotificationSwitchShutdownRequest.h"
 #include "NotificationSwitchStateChange.h"
 #include "NotificationBfdSessionStateChange.h"
+#include "NotificationTwampSessionEvent.h"
 #include "NotificationPortHostTxReadyEvent.h"
 #include "sairediscommon.h"
 
@@ -42,6 +43,9 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE)
         return std::make_shared<NotificationBfdSessionStateChange>(serializedNotification);
+
+    if (name == SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT)
+        return std::make_shared<NotificationTwampSessionEvent>(serializedNotification);
 
     SWSS_LOG_THROW("unknown notification: '%s', FIXME", name.c_str());
 }

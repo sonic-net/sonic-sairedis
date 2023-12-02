@@ -100,6 +100,10 @@ namespace syncd
             void process_on_switch_shutdown_request(
                     _In_ sai_object_id_t switch_rid);
 
+            void process_on_twamp_session_event(
+                    _In_ uint32_t count,
+                    _In_ sai_twamp_session_event_notification_data_t *data);
+
         private: // handlers
 
             void handle_switch_state_change(
@@ -124,6 +128,9 @@ namespace syncd
                     _In_ const std::string &data);
 
             void handle_port_host_tx_ready_change(
+                    _In_ const std::string &data);
+
+            void handle_twamp_session_event(
                     _In_ const std::string &data);
 
             void processNotification(

@@ -120,6 +120,10 @@ void NotificationHandler::updateNotificationsPointers(
                 attr.value.ptr = (void*)m_switchNotifications.on_bfd_session_state_change;
                 break;
 
+            case SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY:
+                attr.value.ptr = (void*)m_switchNotifications.on_twamp_session_event;
+                break;
+
             default:
 
                 SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
@@ -238,6 +242,17 @@ void NotificationHandler::enqueueNotification(
     {
         m_processor->signal();
     }
+}
+
+void NotificationHandler::onTwampSessionEvent(
+        _In_ uint32_t count,
+        _In_ const sai_twamp_session_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_twamp_session_event_ntf(count, data);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT, s);
 }
 
 void NotificationHandler::enqueueNotification(

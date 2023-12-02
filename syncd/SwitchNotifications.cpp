@@ -117,6 +117,16 @@ void SwitchNotifications::SlotBase::onSwitchStateChange(
     return m_slots.at(context)->m_handler->onSwitchStateChange(switch_id, switch_oper_status);
 }
 
+void SwitchNotifications::SlotBase::onTwampSessionEvent(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_twamp_session_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onTwampSessionEvent(count, data);
+}
+
 const sai_switch_notifications_t& SwitchNotifications::SlotBase::getSwitchNotifications() const
 {
     SWSS_LOG_ENTER();

@@ -253,6 +253,9 @@ std::string sai_serialize_nat_entry_type(
 std::string sai_serialize_qos_map_item(
         _In_ const sai_qos_map_t& qosmap);
 
+std::string sai_serialize_twamp_session_stat(
+        _In_ const sai_twamp_session_stat_t counter);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -279,6 +282,10 @@ std::string sai_serialize_port_host_tx_ready_ntf(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_id_t port_id,
         _In_ sai_port_host_tx_ready_status_t host_tx_ready_status);
+
+std::string sai_serialize_twamp_session_event_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_twamp_session_event_notification_data_t* twamp_session_event);
 
 // sairedis
 
@@ -496,6 +503,11 @@ void sai_deserialize_port_host_tx_ready_ntf(
         _Out_ sai_port_host_tx_ready_status_t& host_tx_ready_status);
 
 
+void sai_deserialize_twamp_session_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_twamp_session_event_notification_data_t** twamp_session_data);
+
 // free methods
 
 void sai_deserialize_free_attribute_value(
@@ -527,6 +539,10 @@ void sai_deserialize_free_bfd_session_state_ntf(
 void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,
         _Out_ sai_ingress_priority_group_attr_t& attr);
+
+void sai_deserialize_free_twamp_session_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_twamp_session_event_notification_data_t* twamp_session_event);
 
 void sai_deserialize_queue_attr(
         _In_ const std::string& s,

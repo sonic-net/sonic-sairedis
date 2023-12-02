@@ -76,6 +76,11 @@ namespace syncd
                             _In_ uint32_t count,
                             _In_ const sai_bfd_session_state_notification_t *data);
 
+                    static void onTwampSessionEvent(
+                            _In_ int context,
+                            _In_ uint32_t count,
+                            _In_ const sai_twamp_session_event_notification_data_t *data);
+
                 protected:
 
                     SwitchNotifications* m_handler;
@@ -103,7 +108,7 @@ namespace syncd
                             .on_nat_event = &Slot<context>::onNatEvent,
                             .on_switch_asic_sdk_health_event = nullptr,
                             .on_port_host_tx_ready = &Slot<context>::onPortHostTxReady,
-                            .on_twamp_session_event = nullptr,
+                            .on_twamp_session_event = &Slot<context>::onTwampSessionEvent,
                             }) { }
 
                 virtual ~Slot() {}
@@ -181,6 +186,15 @@ namespace syncd
 
                     return SlotBase::onSwitchStateChange(context, switch_id, switch_oper_status);
                 }
+
+                static void onTwampSessionEvent(
+                        _In_ uint32_t count,
+                        _In_ const sai_twamp_session_event_notification_data_t *data)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onTwampSessionEvent(context, count, data);
+                }
         };
 
             static std::vector<SwitchNotifications::SlotBase*> m_slots;
@@ -205,6 +219,7 @@ namespace syncd
             std::function<void(sai_object_id_t)>                                                    onSwitchShutdownRequest;
             std::function<void(sai_object_id_t switch_id, sai_switch_oper_status_t)>                onSwitchStateChange;
             std::function<void(uint32_t, const sai_bfd_session_state_notification_t*)>              onBfdSessionStateChange;
+            std::function<void(uint32_t, const sai_twamp_session_event_notification_data_t*)>       onTwampSessionEvent;
 
         private:
 

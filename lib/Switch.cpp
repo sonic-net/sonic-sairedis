@@ -123,6 +123,11 @@ void Switch::updateNotifications(
                     (sai_port_host_tx_ready_notification_fn)attr.value.ptr;
                 break;
 
+            case SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY:
+                m_switchNotifications.on_twamp_session_event =
+                    (sai_twamp_session_event_notification_fn)attr.value.ptr;
+                break;
+
             default:
                 SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
                 break;

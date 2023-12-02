@@ -535,7 +535,7 @@ void NotificationProcessor::process_on_bfd_session_state_change(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("bfd sessuin state notification count: %u", count);
+    SWSS_LOG_DEBUG("bfd session state notification count: %u", count);
 
     for (uint32_t i = 0; i < count; i++)
     {
@@ -568,6 +568,36 @@ void NotificationProcessor::process_on_switch_shutdown_request(
     std::string s = sai_serialize_switch_shutdown_request(switch_vid);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST, s);
+}
+
+void NotificationProcessor::process_on_twamp_session_event(
+        _In_ uint32_t count,
+        _In_ sai_twamp_session_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("twamp session state notification count: %u", count);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_twamp_session_event_notification_data_t *twamp_session_state = &data[i];
+
+        /*
+         * We are using switch_rid as null, since TWAMP should be already
+         * defined inside local db after creation.
+         *
+         * If this will be faster than return from create TWAMP then we can use
+         * query switch id and extract rid of switch id and then convert it to
+         * switch vid.
+         */
+
+        twamp_session_state->twamp_session_id = m_translator->translateRidToVid(twamp_session_state->twamp_session_id, SAI_NULL_OBJECT_ID);
+    }
+
+    /* send notification to syncd */
+    std::string s = sai_serialize_twamp_session_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT, s);
 }
 
 void NotificationProcessor::handle_switch_state_change(
@@ -689,6 +719,21 @@ void NotificationProcessor::handle_switch_shutdown_request(
     process_on_switch_shutdown_request(switch_id);
 }
 
+void NotificationProcessor::handle_twamp_session_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_twamp_session_event_notification_data_t *twampsessionevent = NULL;
+
+    sai_deserialize_twamp_session_event_ntf(data, count, &twampsessionevent);
+
+    process_on_twamp_session_event(count, twampsessionevent);
+
+    sai_deserialize_free_twamp_session_event_ntf(count, twampsessionevent);
+}
+
 void NotificationProcessor::processNotification(
         _In_ const swss::KeyOpFieldsValuesTuple& item)
 {
@@ -736,6 +781,10 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE)
     {
         handle_bfd_session_state_change(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT)
+    {
+        handle_twamp_session_event(data);
     }
     else
     {

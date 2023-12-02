@@ -69,6 +69,10 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
 
+            void onTwampSessionEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_twamp_session_event_notification_data_t *data);
+
         private:
 
             void enqueueNotification(

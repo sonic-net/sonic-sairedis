@@ -6729,6 +6729,84 @@ void Meta::meta_sai_on_bfd_session_state_change(
     }
 }
 
+void Meta::meta_sai_on_twamp_session_event_single(
+        _In_ const sai_twamp_session_event_notification_data_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    auto ot = objectTypeQuery(data.twamp_session_id);
+
+    bool valid = false;
+
+    switch (ot)
+    {
+        // TODO hardcoded types, must advance SAI repository commit to get metadata for this
+        case SAI_OBJECT_TYPE_TWAMP_SESSION:
+
+            valid = true;
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("data.twamp_session_id %s has unexpected type: %s, expected TWAMP_SESSION",
+                    sai_serialize_object_id(data.twamp_session_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+            break;
+    }
+
+    // check if all counter ids are in enum range
+    for (uint32_t idx = 0; idx < data.session_stats.number_of_counters; idx++)
+    {
+        if (!sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_twamp_session_stat_t, data.session_stats.counters_ids[idx]))
+        {
+            SWSS_LOG_ERROR("value %d is not in range on sai_twamp_session_stat_t ", data.session_stats.counters_ids[idx]);
+
+            return;
+        }
+    }
+
+    if (valid && !m_oids.objectReferenceExists(data.twamp_session_id))
+    {
+        SWSS_LOG_NOTICE("data.twamp_session_id new object spotted %s not present in local DB (snoop!)",
+                sai_serialize_object_id(data.twamp_session_id).c_str());
+
+        sai_object_meta_key_t key = { .objecttype = (sai_object_type_t)ot, .objectkey = { .key = { .object_id = data.twamp_session_id } } };
+
+        m_oids.objectReferenceInsert(data.twamp_session_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
+    }
+
+    if (!sai_metadata_get_enum_value_name(
+                &sai_metadata_enum_sai_twamp_session_state_t,
+                data.session_state))
+    {
+        SWSS_LOG_WARN("session_state value (%d) not found sai_twamp_session_state_t",
+                data.session_state);
+    }
+}
+
+void Meta::meta_sai_on_twamp_session_event(
+        _In_ uint32_t count,
+        _In_ const sai_twamp_session_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("sai_twamp_session_event_notification_data_t pointer is NULL but count is %u", count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meta_sai_on_twamp_session_event_single(data[i]);
+    }
+}
+
 int32_t Meta::getObjectReferenceCount(
         _In_ sai_object_id_t oid) const
 {
