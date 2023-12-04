@@ -4999,6 +4999,7 @@ void Syncd::run()
                 {
                     SWSS_LOG_NOTICE("express boot, enable fast API pre-shutdown");
                     status = setFastAPIEnableOnAllSwitches();
+
                     if (status != SAI_STATUS_SUCCESS)
                     {
                         SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_FAST_API_ENABLE=true: %s for express pre-shutdown. Fall back to cold restart",
