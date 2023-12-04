@@ -8,11 +8,20 @@
 #include <inttypes.h>
 #include <vector>
 #include <climits>
+#include <unordered_map>
 
 #include <arpa/inet.h>
 #include <errno.h>
 
 using json = nlohmann::json;
+
+static const std::unordered_map<sai_redis_link_event_damping_algorithm_t, std::string> sai_redis_link_event_damping_algorithm_to_name_map = {
+        {SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED, "SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED"},
+        {SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED, "SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED"}};
+
+static const std::unordered_map<sai_redis_port_attr_t, std::string> sai_redis_port_attr_to_name_map = {
+        {SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM, "SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM"},
+        {SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG, "SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG"}};
 
 static int char_to_int(
         _In_ const char c)
@@ -2617,6 +2626,54 @@ std::string sai_serialize_redis_communication_mode(
     }
 }
 
+std::string sai_serialize_redis_port_attr_id(
+        _In_ const sai_redis_port_attr_t value)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = sai_redis_port_attr_to_name_map.find(value);
+    if (it != sai_redis_port_attr_to_name_map.end())
+    {
+        return it->second;
+    }
+
+    SWSS_LOG_WARN("enum value %d not found in enum sai_redis_port_attr_t.", value);
+
+    return sai_serialize_number(value, false);
+}
+
+std::string sai_serialize_redis_link_event_damping_algorithm(
+        _In_ const sai_redis_link_event_damping_algorithm_t value)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = sai_redis_link_event_damping_algorithm_to_name_map.find(value);
+    if (it != sai_redis_link_event_damping_algorithm_to_name_map.end())
+    {
+        return it->second;
+    }
+
+    SWSS_LOG_WARN("enum value %d not found in enum sai_redis_link_event_damping_algorithm_t.", value);
+
+    return sai_serialize_number(value, false);
+}
+
+std::string sai_serialize_redis_link_event_damping_aied_config(
+         _In_ const sai_redis_link_event_damping_algo_aied_config_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["max_suppress_time"] = sai_serialize_number(value.max_suppress_time, false);
+    j["suppress_threshold"] = sai_serialize_number(value.suppress_threshold, false);
+    j["reuse_threshold"] = sai_serialize_number(value.reuse_threshold, false);
+    j["decay_half_life"] = sai_serialize_number(value.decay_half_life, false);
+    j["flap_penalty"] = sai_serialize_number(value.flap_penalty, false);
+
+    return j.dump();
+}
+
 // deserialize
 
 void sai_deserialize_bool(
@@ -5058,4 +5115,61 @@ void sai_deserialize_redis_communication_mode(
     {
         SWSS_LOG_THROW("enum '%s' not found in sai_redis_communication_mode_t", s.c_str());
     }
+}
+
+void sai_deserialize_redis_port_attr_id(
+        _In_ const std::string& s,
+        _Out_ sai_redis_port_attr_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    for (const auto& entry : sai_redis_port_attr_to_name_map)
+    {
+        if (s == entry.second)
+        {
+            value = entry.first;
+            return;
+        }
+    }
+
+    SWSS_LOG_WARN("%s is not found in sai_redis_port_attr_to_name_map.", s.c_str());
+
+    sai_deserialize_number(s, value, false);
+}
+
+// Link event damping.
+
+void sai_deserialize_redis_link_event_damping_algorithm(
+        _In_ const std::string& s,
+        _Out_ sai_redis_link_event_damping_algorithm_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    for (const auto& entry : sai_redis_link_event_damping_algorithm_to_name_map)
+    {
+        if (s == entry.second)
+        {
+            value = entry.first;
+            return;
+        }
+    }
+
+    SWSS_LOG_WARN("%s is not found in sai_redis_link_event_damping_algorithm_to_name_map.", s.c_str());
+
+    sai_deserialize_number(s, value, false);
+}
+
+void sai_deserialize_redis_link_event_damping_aied_config(
+        _In_ const std::string& s,
+        _Out_ sai_redis_link_event_damping_algo_aied_config_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_number(j["max_suppress_time"], value.max_suppress_time, false);
+    sai_deserialize_number(j["suppress_threshold"], value.suppress_threshold, false);
+    sai_deserialize_number(j["reuse_threshold"], value.reuse_threshold, false);
+    sai_deserialize_number(j["decay_half_life"], value.decay_half_life, false);
+    sai_deserialize_number(j["flap_penalty"], value.flap_penalty, false);
 }
