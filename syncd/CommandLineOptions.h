@@ -28,7 +28,8 @@ namespace syncd
          * boot mode
          */
         SAI_START_TYPE_FASTFAST_BOOT = 3,
-	/**
+
+        /**
          * A special type of boot used by Cisco platforms to start in 'express'
          * boot mode
          */
