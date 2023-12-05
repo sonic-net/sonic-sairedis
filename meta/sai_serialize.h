@@ -293,6 +293,17 @@ std::string sai_serialize(
 std::string sai_serialize_redis_communication_mode(
         _In_ sai_redis_communication_mode_t value);
 
+std::string sai_serialize_redis_port_attr_id(
+        _In_ const sai_redis_port_attr_t value);
+
+// Link event damping.
+
+std::string sai_serialize_redis_link_event_damping_algorithm(
+        _In_ const sai_redis_link_event_damping_algorithm_t value);
+
+std::string sai_serialize_redis_link_event_damping_aied_config(
+         _In_ const sai_redis_link_event_damping_algo_aied_config_t& value);
+
 // deserialize
 
 void sai_deserialize_enum(
@@ -547,7 +558,23 @@ void sai_deserialize_redis_communication_mode(
         _In_ const std::string& s,
         _Out_ sai_redis_communication_mode_t& value);
 
+
 void sai_deserialize_stats_capability_list(
         _Inout_ sai_stat_capability_list_t *stats_capability,
         _In_    const std::string& stat_enum_str,
         _In_    const std::string& stat_modes_str);
+
+void sai_deserialize_redis_port_attr_id(
+        _In_ const std::string& s,
+        _Out_ sai_redis_port_attr_t& value);
+
+// Link event damping.
+
+void sai_deserialize_redis_link_event_damping_algorithm(
+        _In_ const std::string& s,
+        _Out_ sai_redis_link_event_damping_algorithm_t& value);
+
+void sai_deserialize_redis_link_event_damping_aied_config(
+        _In_ const std::string& s,
+         _Out_ sai_redis_link_event_damping_algo_aied_config_t& value);
+

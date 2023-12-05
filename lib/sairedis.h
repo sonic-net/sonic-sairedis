@@ -254,15 +254,15 @@ typedef enum _sai_redis_switch_attr_t
 /**
  * @brief Link event damping algorithms.
  */
-typedef enum _sai_link_event_damping_algorithm_t
+typedef enum _sai_redis_link_event_damping_algorithm_t
 {
     /** Link event damping algorithm disabled. */
-    SAI_LINK_EVENT_DAMPING_ALGORITHM_DISABLED = 0,
+    SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED = 0,
 
     /** Additive increase exponential decrease based link event damping algorithm. */
-    SAI_LINK_EVENT_DAMPING_ALGORITHM_AIED = 1,
+    SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED = 1,
 
-} sai_link_event_damping_algorithm_t;
+} sai_redis_link_event_damping_algorithm_t;
 
 typedef struct _sai_redis_link_event_damping_algo_aied_config_t
 {
@@ -288,9 +288,9 @@ typedef enum _sai_redis_port_attr_t
     /**
      * @brief Link event damping algorithm.
      *
-     * @type sai_link_event_damping_algorithm_t
+     * @type sai_redis_link_event_damping_algorithm_t
      * @flags CREATE_AND_SET
-     * @default SAI_LINK_EVENT_DAMPING_ALGORITHM_DISABLED
+     * @default SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED
      */
     SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM = SAI_PORT_ATTR_CUSTOM_RANGE_START,
 
@@ -299,7 +299,7 @@ typedef enum _sai_redis_port_attr_t
      *
      * @type sai_redis_link_event_damping_algo_aied_config_t
      * @flags CREATE_AND_SET
-     * @validonly SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM = SAI_LINK_EVENT_DAMPING_ALGORITHM_AIED
+     * @validonly SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED
      * @default internal
      */
     SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG,
