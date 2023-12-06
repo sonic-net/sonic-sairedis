@@ -122,8 +122,22 @@ jobs:
         target/debs/${{ parameters.debian_version }}/libprotobuf*.deb
         target/debs/${{ parameters.debian_version }}/libprotoc*.deb
         target/debs/${{ parameters.debian_version }}/protobuf-compiler*.deb
-        target/debs/${{ parameters.debian_version }}/libdashapi*.deb
     displayName: "Download common libs"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: sonic-net.sonic-dash-api
+      ${{ if eq(parameters.arch, 'amd64') }}:
+        artifact: sonic-dash-api
+      ${{ else }}:
+        artifact: sonic-dash-api.${{ parameters.arch }}
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      patterns: |
+        libdashapi*.deb
+    displayName: "Download dash api"
 
   - script: |
       set -ex

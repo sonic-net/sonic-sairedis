@@ -70,6 +70,21 @@ jobs:
       path: $(Build.ArtifactStagingDirectory)/download
       patterns: '**/target/${{ parameters.artifact_name }}.gz'
     displayName: "Download sonic-buildimage ${{ parameters.artifact_name }}"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: sonic-net.sonic-dash-api
+      ${{ if eq(parameters.arch, 'amd64') }}:
+        artifact: sonic-dash-api
+      ${{ else }}:
+        artifact: sonic-dash-api.${{ parameters.arch }}
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      patterns: |
+        libdashapi*.deb
+    displayName: "Download dash api"
   - script: |
       set -ex
       echo $(Build.DefinitionName).$(Build.BuildNumber)
