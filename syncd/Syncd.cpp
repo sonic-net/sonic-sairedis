@@ -383,6 +383,9 @@ sai_status_t Syncd::processSingleEvent(
     if (op == REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_QUERY)
         return processObjectTypeGetAvailabilityQuery(kco);
 
+    if (op == REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET)
+        return processLinkEventDampingConfigSet(kco);
+
     if (op == REDIS_FLEX_COUNTER_COMMAND_START_POLL)
         return processFlexCounterEvent(key, SET_COMMAND, kfvFieldsValues(kco));
 
@@ -578,6 +581,36 @@ sai_status_t Syncd::processObjectTypeGetAvailabilityQuery(
     m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE);
 
     return status;
+}
+
+sai_status_t Syncd::processLinkEventDampingConfigSet(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    sendLinkEventDampingConfigResponse(SAI_STATUS_NOT_IMPLEMENTED);
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+void Syncd::sendLinkEventDampingConfigResponse(
+        _In_ sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    // If sync mode is not enabled, do not send response.
+    if (!m_enableSyncMode)
+    {
+        return;
+    }
+
+    std::string strStatus = sai_serialize_status(status);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    SWSS_LOG_INFO("sending link event damping config response: %s", strStatus.c_str());
+
+    m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET);
 }
 
 sai_status_t Syncd::processFdbFlush(

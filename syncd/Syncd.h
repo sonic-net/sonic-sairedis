@@ -210,6 +210,9 @@ namespace syncd
                     _In_ const std::vector<swss::FieldValueTuple> &values,
                     _In_ bool fromAsicChannel=true);
 
+            sai_status_t processLinkEventDampingConfigSet(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
         private: // process quad oid
 
             sai_status_t processOidCreate(
@@ -359,6 +362,9 @@ namespace syncd
                     _In_ sai_attribute_t *attr_list);
 
             void sendNotifyResponse(
+                    _In_ sai_status_t status);
+
+            void sendLinkEventDampingConfigResponse(
                     _In_ sai_status_t status);
 
         private: // snoop get response oids
