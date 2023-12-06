@@ -105,6 +105,74 @@ TEST(ClientServerSai, logSet)
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->logSet(SAI_API_PORT, SAI_LOG_LEVEL_NOTICE));
 }
 
+TEST(ClientServerSai, VerifySaiRedisPortAttrNotSupportedInClientMode)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis client.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_client_services));
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM;
+    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+}
+
+TEST(ClientServerSai, SetLinkEventDampingAlgorithm)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis server.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM;
+    attr.value.s32 = SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+}
+
+TEST(ClientServerSai, SetLinkEventDampingConfig)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis server.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+
+    // Failure when config is NULL.
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG;
+    attr.value.ptr = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+
+    sai_redis_link_event_damping_algo_aied_config_t config = {
+      .max_suppress_time = 5000,
+      .suppress_threshold = 1500,
+      .reuse_threshold = 1200,
+      .decay_half_life = 3000,
+      .flap_penalty = 1000};
+
+    attr.value.ptr = (void *) &config;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+}
+
+TEST(ClientServerSai, SetInvalidSaiRedisPortAttribute)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    // Initialize as sairedis server.
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+
+    sai_attribute_t attr;
+    // Set an id that is not supported yet.
+    attr.id = SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG + 100;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, css->set(SAI_OBJECT_TYPE_PORT, SAI_NULL_OBJECT_ID, &attr));
+}
+
 TEST(ClientServerSai, bulkGetClearStats)
 {
     auto css = std::make_shared<ClientServerSai>();
