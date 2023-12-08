@@ -173,6 +173,11 @@ namespace saivs
             virtual sai_status_t refresh_port_oper_speed(
                     _In_ sai_object_id_t port_id);
 
+            virtual sai_status_t refresh_acl_table_entries(
+                    _In_ sai_object_id_t acl_table_id);
+
+            virtual sai_status_t refresh_acl_table_counters(
+                    _In_ sai_object_id_t acl_table_id);
         public:
 
             virtual sai_status_t warm_boot_initialize_objects();
@@ -680,6 +685,8 @@ namespace saivs
 
             constexpr static const int m_maxAclTables = 3;
             constexpr static const int m_maxAclTableGroups = 200;
+            constexpr static const int m_maxAclTableEntries = 1000;
+            constexpr static const int m_maxAclTableCounters = 1000;
 
         protected:
 
