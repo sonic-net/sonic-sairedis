@@ -279,7 +279,7 @@ sai_status_t DummySaiInterface::queryStatsCapability(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_status;
 }
 
 sai_status_t DummySaiInterface::getStatsExt(

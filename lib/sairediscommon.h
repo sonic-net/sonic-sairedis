@@ -52,6 +52,9 @@
 #define REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_QUERY     "object_type_get_availability_query"
 #define REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE  "object_type_get_availability_response"
 
+#define REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_QUERY      "stats_capability_query"
+#define REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_RESPONSE   "stats_capability_response"
+
 /**
  * @brief Redis virtual object id counter key name.
  *

@@ -253,6 +253,11 @@ std::string sai_serialize_nat_entry_type(
 std::string sai_serialize_qos_map_item(
         _In_ const sai_qos_map_t& qosmap);
 
+std::string sai_serialize_stats_capability_list(
+        _In_ const sai_stat_capability_list_t& stat_capability_list,
+        _In_ const sai_enum_metadata_t* meta,
+        _In_ bool countOnly);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -553,6 +558,12 @@ void sai_deserialize_redis_communication_mode(
         _In_ const std::string& s,
         _Out_ sai_redis_communication_mode_t& value);
 
+
+void sai_deserialize_stats_capability_list(
+        _Inout_ sai_stat_capability_list_t *stats_capability,
+        _In_    const std::string& stat_enum_str,
+        _In_    const std::string& stat_modes_str);
+
 void sai_deserialize_redis_port_attr_id(
         _In_ const std::string& s,
         _Out_ sai_redis_port_attr_t& value);
@@ -566,3 +577,4 @@ void sai_deserialize_redis_link_event_damping_algorithm(
 void sai_deserialize_redis_link_event_damping_aied_config(
         _In_ const std::string& s,
          _Out_ sai_redis_link_event_damping_algo_aied_config_t& value);
+
