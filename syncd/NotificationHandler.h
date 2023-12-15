@@ -35,6 +35,12 @@ namespace syncd
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list) const;
 
+            // Handling of port state change event when received after being
+            // processed in link event damping logic.
+            virtual void onPortStateChangePostLinkEventDamping(
+                    _In_ uint32_t count,
+                    _In_ const sai_port_oper_status_notification_t *data);
+
         public: // members reflecting SAI callbacks
 
             void onFdbEvent(

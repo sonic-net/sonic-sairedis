@@ -132,6 +132,17 @@ void NotificationHandler::updateNotificationsPointers(
     }
 }
 
+void NotificationHandler::onPortStateChangePostLinkEventDamping(
+        _In_ uint32_t count,
+        _In_ const sai_port_oper_status_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    auto s = sai_serialize_port_oper_status_ntf(count, data);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, s);
+}
+
 // TODO use same Notification class from sairedis lib
 // then this will handle deserialize free
 
