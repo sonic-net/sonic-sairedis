@@ -1419,10 +1419,13 @@ void FlexCounter::flexCounterThreadRunFunction()
 
             SWSS_LOG_DEBUG("End of flex counter thread FC %s, took %d ms", m_instanceId.c_str(), delay);
 
-            std::unique_lock<std::mutex> lk(m_mtxSleep);
+            // If m_runFlexCounterThread is already disabled, do not wait for signal
+            if (m_runFlexCounterThread)
+            {
+                std::unique_lock<std::mutex> lk(m_mtxSleep);
 
-            m_cvSleep.wait_for(lk, std::chrono::milliseconds(correction));
-
+                m_cvSleep.wait_for(lk, std::chrono::milliseconds(correction));
+            }
             continue;
         }
 
