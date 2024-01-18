@@ -177,7 +177,7 @@ void Recorder::recordLine(
 
     if (m_ofstream.is_open())
     {
-        m_ofstream << getTimestamp() << "|" << line << std::endl;
+        m_ofstream << getTimestamp() << "|" << line << '\n';
     }
 }
 
@@ -1110,6 +1110,11 @@ void Recorder::recordStats(
     m_recordStats = enable;
 }
 
+void Recorder::flush()
+{
+    MUTEX();
+    m_ofstream.flush();
+}
 
 void Recorder::recordGenericResponse(
         _In_ sai_status_t status)
