@@ -340,6 +340,7 @@ config_syncd_nvidia_bluefield()
 {
     # Read MAC addresses
     base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
+    hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')
     eth0_mac=$(cat /sys/class/net/Ethernet0/address)
     eth4_mac=$(cat /sys/class/net/Ethernet4/address)
 
@@ -352,7 +353,12 @@ config_syncd_nvidia_bluefield()
 
     CMD_ARGS+=" -l -p /tmp/sai.profile -w 180000000"
 
-    echo 4096 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    SDK_DUMP_PATH=$(cat /tmp/sai.profile | grep "SAI_DUMP_STORE_PATH" | cut -d = -f2)
+    if [ ! -d "$SDK_DUMP_PATH" ]; then
+        mkdir -p "$SDK_DUMP_PATH"
+    fi
+
+    echo 9216 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
     mkdir -p /mnt/huge
     mount -t hugetlbfs pagesize=1GB /mnt/huge
 
@@ -360,13 +366,14 @@ config_syncd_nvidia_bluefield()
     devlink dev eswitch set pci/0000:03:00.1 mode legacy
     devlink dev eswitch set pci/0000:03:00.0 mode switchdev
     devlink dev eswitch set pci/0000:03:00.1 mode switchdev
-    devlink dev param set pci/0000:03:00.0 name esw_multiport value 1 cmode runtime
-    devlink dev param set pci/0000:03:00.1 name esw_multiport value 1 cmode runtime
+
+    if [[ $hwsku != *"-C1" ]]; then
+        devlink dev param set pci/0000:03:00.0 name esw_multiport value 1 cmode runtime
+        devlink dev param set pci/0000:03:00.1 name esw_multiport value 1 cmode runtime
+    fi
 
     ethtool -A Ethernet0 rx off tx off
     ethtool -A Ethernet4 rx off tx off
-
-    mlnx-sf --device 0000:03:00.0 --action create --sfnum 1 --hwaddr ${base_mac} -t
 }
 
 config_syncd_xsight()
