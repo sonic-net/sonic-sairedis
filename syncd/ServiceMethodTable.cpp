@@ -2,6 +2,7 @@
 
 #include "swss/logger.h"
 
+#include <array>
 #include <utility>
 
 using namespace syncd;
