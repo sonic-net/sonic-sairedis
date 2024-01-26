@@ -23,6 +23,7 @@ VS_GENERIC_QUAD(TAM_TELEMETRY,tam_telemetry);
 VS_GENERIC_QUAD(TAM_COLLECTOR,tam_collector);
 VS_GENERIC_QUAD(TAM_EVENT_ACTION,tam_event_action);
 VS_GENERIC_QUAD(TAM_EVENT,tam_event);
+VS_GENERIC_QUAD(TAM_COUNTER_SUBSCRIPTION,tam_counter_subscription);
 
 const sai_tam_api_t vs_tam_api = {
 
@@ -37,5 +38,6 @@ const sai_tam_api_t vs_tam_api = {
     VS_GENERIC_QUAD_API(tam_collector)
     VS_GENERIC_QUAD_API(tam_event_action)
     VS_GENERIC_QUAD_API(tam_event)
+    VS_GENERIC_QUAD_API(tam_counter_subscription)
 
 };
