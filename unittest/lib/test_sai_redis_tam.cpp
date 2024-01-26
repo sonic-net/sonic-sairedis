@@ -70,6 +70,11 @@ TEST(libsairedis, tam)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_tam_event(0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tam_event_attribute(0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tam_event_attribute(0,0,0));
+
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->create_tam_counter_subscription(&id,0,0,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_tam_counter_subscription(0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->set_tam_counter_subscription_attribute(0,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tam_counter_subscription_attribute(0,0,0));
 }
 
 TEST(libsairedis, sai_tam_telemetry_get_data)
