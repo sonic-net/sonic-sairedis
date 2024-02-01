@@ -15,28 +15,14 @@ extern "C" {
 #include "meta/sai_serialize.h"
 #include "sairediscommon.h"
 #include "swss/json.hpp"
-
+#include "saidump.h"
 #include <getopt.h>
 
 // TODO split to multiple cpp
 
 using namespace swss;
 using json = nlohmann::json;
-
-// Default value: 100 MB
-constexpr int64_t RDB_JSON_MAX_SIZE = 1024 * 1024 * 100;
-
-struct CmdOptions
-{
-    bool skipAttributes;
-    bool dumpTempView;
-    bool dumpGraph;
-    std::string rdbJsonFile;
-    uint64_t rdbJSonSizeLimit;
-};
-
-
-static CmdOptions g_cmdOptions;
+CmdOptions g_cmdOptions;
 static std::map<sai_object_id_t, const TableMap*> g_oid_map;
 
 void printUsage()
@@ -451,7 +437,7 @@ void dumpGraph(const TableDump& td)
 /**
  * @brief Process the input JSON file to make sure it's a valid JSON file for the JSON library.
  */
-static sai_status_t preProcessFile(const std::string file_name)
+sai_status_t preProcessFile(const std::string file_name)
 {
     SWSS_LOG_ENTER();
 
@@ -502,7 +488,7 @@ static sai_status_t preProcessFile(const std::string file_name)
     return SAI_STATUS_SUCCESS;
 }
 
-static sai_status_t dumpFromRedisRdbJson(const std::string file_name)
+sai_status_t dumpFromRedisRdbJson(const std::string file_name)
 {
     SWSS_LOG_ENTER();
 
@@ -592,6 +578,7 @@ static sai_status_t dumpFromRedisRdbJson(const std::string file_name)
     return SAI_STATUS_FAILURE;
 }
 
+#ifndef _UNITTEST_
 int main(int argc, char **argv)
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -674,3 +661,4 @@ int main(int argc, char **argv)
 
     return EXIT_SUCCESS;
 }
+#endif
