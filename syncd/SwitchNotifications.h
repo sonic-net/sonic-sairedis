@@ -91,18 +91,18 @@ namespace syncd
 
                 Slot():
                     SlotBase({
-                            .on_switch_state_change = &Slot<context>::onSwitchStateChange,
-                            .on_switch_shutdown_request = &Slot<context>::onSwitchShutdownRequest,
-                            .on_fdb_event = &Slot<context>::onFdbEvent,
-                            .on_port_state_change = &Slot<context>::onPortStateChange,
-                            .on_packet_event = nullptr,
-                            .on_queue_pfc_deadlock = &Slot<context>::onQueuePfcDeadlock,
                             .on_bfd_session_state_change = &Slot<context>::onBfdSessionStateChange,
-                            .on_tam_event = nullptr,
+                            .on_fdb_event = &Slot<context>::onFdbEvent,
                             .on_ipsec_sa_status_change = nullptr,
                             .on_nat_event = &Slot<context>::onNatEvent,
-                            .on_switch_asic_sdk_health_event = nullptr,
+                            .on_packet_event = nullptr,
                             .on_port_host_tx_ready = &Slot<context>::onPortHostTxReady,
+                            .on_port_state_change = &Slot<context>::onPortStateChange,
+                            .on_queue_pfc_deadlock = &Slot<context>::onQueuePfcDeadlock,
+                            .on_switch_asic_sdk_health_event = nullptr,
+                            .on_switch_shutdown_request = &Slot<context>::onSwitchShutdownRequest,
+                            .on_switch_state_change = &Slot<context>::onSwitchStateChange,
+                            .on_tam_event = nullptr,
                             .on_twamp_session_event = nullptr,
                             }) { }
 
