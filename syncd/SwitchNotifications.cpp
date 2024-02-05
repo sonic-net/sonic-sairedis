@@ -1,6 +1,7 @@
 #include "SwitchNotifications.h"
 
 #include "swss/logger.h"
+#include <array>
 
 using namespace syncd;
 
