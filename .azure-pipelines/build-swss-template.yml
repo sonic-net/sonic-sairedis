@@ -137,8 +137,7 @@ jobs:
       path: $(Build.ArtifactStagingDirectory)/download
       patterns: |
         libdashapi*.deb
-    displayName: "Download dash api"
-
+    displayName: "Download dash api test"
   - script: |
       set -ex
       # install libyang before install libswsscommon
