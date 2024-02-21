@@ -64,7 +64,7 @@ void LaneMapFileParser::parse(
 
     size_t n = tokens.size();
 
-    if (n != 1 && n != 2 && n != 4)
+    if (n != 1 && n != 2 && n != 4 && n != 8)
     {
         SWSS_LOG_ERROR("invalid number of lanes (%zu) assigned to interface %s", n, ifname.c_str());
         return;
