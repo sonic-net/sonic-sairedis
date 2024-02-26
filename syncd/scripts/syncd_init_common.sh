@@ -211,13 +211,22 @@ config_syncd_mlnx()
     DUAL_TOR="$(echo $SYNCD_VARS | jq -r '.dual_tor')"
     DSCP_REMAPPING="$(echo $SYNCD_VARS | jq -r '.dscp_remapping')"
 
-    # Make default sai.profile
+    SAI_COMMON_FILE_PATH=/etc/mlnx/sai-common.profile
+
     if [[ -f $HWSKU_DIR/sai.profile.j2 ]]; then
         export RESOURCE_TYPE="$(echo $SYNCD_VARS | jq -r '.resource_type')"
-        j2 -e RESOURCE_TYPE $HWSKU_DIR/sai.profile.j2 -o /tmp/sai.profile
+        j2 -e RESOURCE_TYPE $HWSKU_DIR/sai.profile.j2 -o /tmp/sai-temp.profile
     else
-        cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
+        cat $HWSKU_DIR/sai.profile > /tmp/sai-temp.profile
     fi
+
+    if [[ -f $SAI_COMMON_FILE_PATH ]]; then
+        cat $SAI_COMMON_FILE_PATH >> /tmp/sai-temp.profile
+    fi
+
+    # keep only the first occurence of each prefix with '=' sign, and remove the others.
+    awk -F= '!seen[$1]++' /tmp/sai-temp.profile > /tmp/sai.profile
+    rm -f /tmp/sai-temp.profile
 
     # Update sai.profile with MAC_ADDRESS and WARM_BOOT settings
     echo "DEVICE_MAC_ADDRESS=$MAC_ADDRESS" >> /tmp/sai.profile
