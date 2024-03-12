@@ -245,6 +245,12 @@ sai_status_t Sai::set(
 
     REDIS_CHECK_CONTEXT(objectId);
 
+    if (RedisRemoteSaiInterface::isRedisPortAttribute(objectType, attr))
+    {
+        // skip metadata if attribute is redis extension port attribute.
+        return context->m_redisSai->set(objectType, objectId, attr);
+    }
+
     return context->m_meta->set(objectType, objectId, attr);
 }
 
