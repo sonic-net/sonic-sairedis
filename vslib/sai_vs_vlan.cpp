@@ -5,12 +5,14 @@ VS_BULK_REMOVE(VLAN_MEMBER,vlan_members);
 
 VS_GENERIC_QUAD(VLAN,vlan);
 VS_GENERIC_QUAD(VLAN_MEMBER,vlan_member);
+VS_GENERIC_QUAD(VLAN_STACK,vlan_stack);
 VS_GENERIC_STATS(VLAN,vlan);
 
 const sai_vlan_api_t vs_vlan_api = {
 
     VS_GENERIC_QUAD_API(vlan)
     VS_GENERIC_QUAD_API(vlan_member)
+    VS_GENERIC_QUAD_API(vlan_stack)
 
     vs_bulk_create_vlan_members,
     vs_bulk_remove_vlan_members,
