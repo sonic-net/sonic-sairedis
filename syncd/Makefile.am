@@ -32,6 +32,7 @@ libSyncd_a_SOURCES = \
 				NotificationHandler.cpp \
 				NotificationProcessor.cpp \
 				NotificationQueue.cpp \
+				PortLinkEventDamper.cpp \
 				PortMap.cpp \
 				PortMapParser.cpp \
 				PortStateChangeHandler.cpp \
