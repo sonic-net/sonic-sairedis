@@ -297,8 +297,9 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     fvVector.clear();
 
     // 2. Start counter polling for the port just created
+    // Try with a bad key first
     sai_redis_flex_counter_parameter_t flexCounterParam;
-    std::string key = "PORT_STAT_COUNTER:" + sai_serialize_object_id(oidList[0]);
+    std::string key = "PORT_STAT_COUNTER";
     std::string counters = "SAI_PORT_STAT_IF_IN_OCTETS";
     std::string counter_field_name = "PORT_COUNTER_ID_LIST";
 
@@ -314,6 +315,14 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER;
     attr.value.ptr = (void*)&flexCounterParam;
 
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    ASSERT_EQ(status, SAI_STATUS_FAILURE);
+    ASSERT_FALSE(m_flexCounterTable->get(key, fvVector));
+
+    // Try with a good key
+    key = "PORT_STAT_COUNTER:" + sai_serialize_object_id(oidList[0]);
+    flexCounterParam.counter_key.list = (int8_t*)const_cast<char *>(key.c_str());
+    flexCounterParam.counter_key.count = (uint32_t)key.length();
     status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
     ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 

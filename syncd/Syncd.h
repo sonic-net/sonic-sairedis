@@ -198,17 +198,17 @@ namespace syncd
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
 
-            void processFlexCounterGroupEvent(
+            sai_status_t processFlexCounterGroupEvent(
                     _In_ const std::string &key,
                     _In_ const std::string &op,
                     _In_ const std::vector<swss::FieldValueTuple> &values,
-                    _In_ bool addDb=true);
+                    _In_ bool fromAsicChannel=true);
 
-            void processFlexCounterEvent(
+            sai_status_t processFlexCounterEvent(
                     _In_ const std::string &key,
                     _In_ const std::string &op,
                     _In_ const std::vector<swss::FieldValueTuple> &values,
-                    _In_ bool addDb=true);
+                    _In_ bool fromAsicChannel=true);
 
         private: // process quad oid
 

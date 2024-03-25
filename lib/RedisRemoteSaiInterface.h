@@ -343,8 +343,18 @@ namespace sairedis
                     _In_ sai_object_id_t objectId,
                     _In_ const sai_attribute_t *attr);
 
-            bool isSaiS8ListValidString(const sai_s8_list_t &s8list,
-                                        const char *hint);
+            bool isSaiS8ListValidString(
+                    _In_ const sai_s8_list_t &s8list);
+
+            bool emplaceStrings(
+                    _In_ const sai_s8_list_t &field,
+                    _In_ const sai_s8_list_t &value,
+                    _Out_ std::vector<swss::FieldValueTuple> &entries);
+
+            bool emplaceStrings(
+                    _In_ const char *field,
+                    _In_ const sai_s8_list_t &value,
+                    _Out_ std::vector<swss::FieldValueTuple> &entries);
 
             sai_status_t notifyCounterGroupOperations(
                     _In_ sai_object_id_t objectId,
