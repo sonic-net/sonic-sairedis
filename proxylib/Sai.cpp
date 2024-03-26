@@ -68,11 +68,11 @@ sai_status_t Sai::initialize(
 
     memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
 
-    // TODO move to service method table and  
+    // TODO move to service method table and
     // TODO enable for channel to work!
-//    m_communicationChannel = std::make_shared<ZeroMQChannel>(
+//    m_communicationChannel = std::make_shared<_ZeroMQChannel>(
 //            "/tmp/saiproxy",
-//            "/tmp/saiproxyntf",
+//            "/tmp/saiproxy_ntf",
 //            std::bind(&Sai::handleNotification, this, _1, _2, _3));
 
     m_apiInitialized = true;
@@ -512,9 +512,7 @@ sai_object_type_t Sai::objectTypeQuery(
 
     //json j;
 
-    //j["switch_id"] = sai_serialize_object_id(ne.switch_id);
-    //j["rif"] = sai_serialize_object_id(ne.rif_id);
-    //j["ip"] = sai_serialize_ip_address(ne.ip_address);
+    //j["switch_id"] = sai_serialize_object_id(switch_id);
 
     //return j.dump();
 
@@ -587,10 +585,10 @@ sai_status_t Sai::logSet(
 //
 //    if (notification)
 //    {
-//        auto sn = m_notificationCallback(notification); // will be synchronized to api mutex
+//        auto _sn = m_notificationCallback(notification); // will be synchronized to api mutex
 //
 //        // execute callback from notification thread
 //
-//        notification->executeCallback(sn);
+//        notification->executeCallback(_sn);
 //    }
 //}
