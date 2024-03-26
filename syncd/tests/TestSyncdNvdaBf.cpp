@@ -101,7 +101,6 @@ void syncdNvdaBfWorkerThread()
     auto commandLineOptions = std::make_shared<CommandLineOptions>();
     auto isWarmStart = false;
 
-    commandLineOptions->m_enableSyncMode= true;
     commandLineOptions->m_enableTempView = false;
     commandLineOptions->m_disableExitSleep = true;
     commandLineOptions->m_enableUnittests = false;

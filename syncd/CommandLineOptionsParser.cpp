@@ -19,9 +19,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:w:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:w:uSUCz:lrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:w:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:w:uSUCz:lh";
 #endif // SAITHRIFT
 
     while (true)
@@ -35,7 +35,6 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "disableExitSleep",        no_argument,       0, 'S' },
             { "enableUnittests",         no_argument,       0, 'U' },
             { "enableConsistencyCheck",  no_argument,       0, 'C' },
-            { "syncMode",                no_argument,       0, 's' },
             { "redisCommunicationMode",  required_argument, 0, 'z' },
             { "enableSaiBulkSupport",    no_argument,       0, 'l' },
             { "globalContext",           required_argument, 0, 'g' },
@@ -93,11 +92,6 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
             case 'C':
                 options->m_enableConsistencyCheck = true;
-                break;
-
-            case 's':
-                SWSS_LOG_WARN("param -s is depreacated, use -z");
-                options->m_enableSyncMode = true;
                 break;
 
             case 'z':
@@ -175,8 +169,6 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Metadata enable unittests" << std::endl;
     std::cout << "    -C --enableConsistencyCheck" << std::endl;
     std::cout << "        Enable consisteny check DB vs ASIC after comparison logic" << std::endl;
-    std::cout << "    -s --syncMode" << std::endl;
-    std::cout << "        Enable synchronous mode (depreacated, use -z)" << std::endl;
     std::cout << "    -z --redisCommunicationMode" << std::endl;
     std::cout << "        Redis communication mode (redis_async|redis_sync|zmq_sync), default: redis_async" << std::endl;
     std::cout << "    -l --enableBulk" << std::endl;
