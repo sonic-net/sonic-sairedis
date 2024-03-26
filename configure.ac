@@ -290,11 +290,13 @@ AC_OUTPUT(Makefile
           saidiscovery/Makefile
           saiasiccmp/Makefile
           tests/Makefile
+          proxylib/Makefile
           unittest/Makefile
           unittest/meta/Makefile
           unittest/lib/Makefile
           unittest/vslib/Makefile
           unittest/syncd/Makefile
+          unittest/proxylib/Makefile
           pyext/Makefile
           pyext/py2/Makefile
           pyext/py3/Makefile)
