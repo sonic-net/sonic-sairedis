@@ -4236,6 +4236,8 @@ void sai_deserialize_switch_asic_sdk_health_event(
 
 void sai_deserialize_free_switch_asic_sdk_health_event(_In_ sai_u8_list_t &description)
 {
+    SWSS_LOG_ENTER();
+
     sai_free_list(description);
 }
 
