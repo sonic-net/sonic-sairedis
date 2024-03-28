@@ -52,7 +52,7 @@ TEST(Switch, updateNotifications)
     attrs[9].id = SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY;
     attrs[10].id = SAI_SWITCH_ATTR_INIT_SWITCH;
 
-    s->updateNotifications(9, attrs);
+    s->updateNotifications(10, attrs);
 
     auto sn = s->getSwitchNotifications();
 
