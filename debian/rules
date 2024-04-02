@@ -37,6 +37,9 @@ endif
 ifneq ($(filter syncd,$(DEB_BUILD_PROFILES)),)
 ifneq ($(filter vs,$(DEB_BUILD_PROFILES)),)
 configure_opts += --with-sai=vs
+ifneq ($(filter dashsai,$(DEB_BUILD_PROFILES)),)
+configure_opts += --with-dashsai
+endif
 endif
 else
 configure_opts += --disable-syncd

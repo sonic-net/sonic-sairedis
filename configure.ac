@@ -41,6 +41,11 @@ AC_ARG_WITH(sai,
 esac])
 AM_CONDITIONAL(SAIVS,   test x$sai = xvs)
 
+AC_ARG_WITH(dashsai,
+    [ --with-dashsai         compiling against DASH SAI],
+    [AM_CONDITIONAL(DASHSAI,   true)],
+    [AM_CONDITIONAL(DASHSAI,   false)])
+
 AC_ARG_WITH(swss-common-inc,
 [  --with-swss-common-inc=DIR
                            prefix where swss-common includes are installed],
