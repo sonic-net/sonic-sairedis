@@ -99,6 +99,11 @@ function set_start_type()
     fi
 }
 
+config_syncd_pensando()
+{
+    CMD_ARGS+=" -l"
+}
+
 config_syncd_cisco_8000()
 {
     export BASE_OUTPUT_DIR=/opt/cisco/silicon-one
@@ -460,6 +465,8 @@ config_syncd()
         config_syncd_nvidia_bluefield
     elif [ "$SONIC_ASIC_TYPE" == "xsight" ]; then
         config_syncd_xsight
+    elif [ "$SONIC_ASIC_TYPE" == "pensando" ]; then
+	config_syncd_pensando
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
