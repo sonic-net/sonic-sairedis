@@ -4195,7 +4195,7 @@ void sai_deserialize_timespec(
     }
     catch (const std::exception&)
     {
-        SWSS_LOG_ERROR("Received an exception after trying to parse timespec_t from %s", s.c_str());
+        SWSS_LOG_THROW("Received an exception after trying to parse timespec_t from %s", s.c_str());
     }
 
     sai_deserialize_number<uint64_t>(j["tv_sec"], timestamp.tv_sec);
@@ -4220,7 +4220,7 @@ void sai_deserialize_switch_asic_sdk_health_event(
     }
     catch (const std::exception&)
     {
-        SWSS_LOG_ERROR("Received an exception after trying to parse switch_asic_sdk_health_event from %s", s.c_str());
+        SWSS_LOG_THROW("Received an exception after trying to parse switch_asic_sdk_health_event from %s", s.c_str());
     }
 
     sai_deserialize_object_id(j["switch_id"], switch_id);
@@ -4234,7 +4234,8 @@ void sai_deserialize_switch_asic_sdk_health_event(
     sai_deserialize_number_list(j["description"], description, false, false);
 }
 
-void sai_deserialize_free_switch_asic_sdk_health_event(_In_ sai_u8_list_t &description)
+void sai_deserialize_free_switch_asic_sdk_health_event(
+        _In_ sai_u8_list_t &description)
 {
     SWSS_LOG_ENTER();
 
