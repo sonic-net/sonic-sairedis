@@ -319,7 +319,7 @@ bool MACsecManager::update_macsec_sa_pn(
         ostream << " ssci " << attr.m_ssci;
     }
 
-    ostream << " pn " << pn;
+    ostream << ( attr.is_xpn() ? " xpn " : " pn " ) << pn;
 
     SWSS_LOG_NOTICE("%s", ostream.str().c_str());
 
@@ -447,7 +447,7 @@ bool MACsecManager::create_macsec_egress_sa(
         << shellquote(attr.m_macsecName)
         << " tx sa "
         << attr.m_an
-        << " pn "
+        << ( attr.is_xpn() ? " xpn " : " pn ")
         << attr.m_pn
         << ( attr.is_xpn() ? " ssci " : "" )
         << ( attr.is_xpn() ? std::to_string(attr.m_ssci) : "" )
@@ -484,7 +484,7 @@ bool MACsecManager::create_macsec_ingress_sa(
         << attr.m_sci
         << " sa "
         << attr.m_an
-        << " pn "
+        << ( attr.is_xpn() ? " xpn " : " pn " )
         << attr.m_pn
         << ( attr.is_xpn() ? " ssci " : "" )
         << ( attr.is_xpn() ? std::to_string(attr.m_ssci) : "" )
