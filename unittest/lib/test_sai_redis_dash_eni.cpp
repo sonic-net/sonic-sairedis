@@ -28,6 +28,9 @@ TEST(libsairedis, dash_eni)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_eni(0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_eni_attribute(0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_eni_attribute(0,0,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->get_eni_stats(0,0,0,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->get_eni_stats_ext(0,0,0,SAI_STATS_MODE_READ,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->clear_eni_stats(0,0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->create_enis(0,0,0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_enis(0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0));
 }
