@@ -112,6 +112,7 @@ stages:
       swss_common_artifact_name: sonic-swss-common-bookworm
       artifact_name: sonic-sairedis-bookworm
       syslog_artifact_name: sonic-sairedis-bookworm.syslog
+      run_unit_test: true
       debian_version: ${{ parameters.debian_version }}
 
   - template: .azure-pipelines/build-template.yml
