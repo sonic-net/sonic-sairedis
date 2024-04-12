@@ -98,7 +98,7 @@ jobs:
       sudo mkdir -m 755 /var/run/sswsyncd
 
       sudo apt-get install -y rsyslog
-      sudo service rsyslog start
+      sudo rsyslogd
 
       cat /etc/apt/sources.list
       dpkg --list | grep libnl
@@ -167,7 +167,8 @@ jobs:
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
       sudo cp azsyslog.conf /etc/rsyslog.conf
-      sudo service rsyslog restart
+      sudo killall rsyslogd
+      sudo rsyslogd
     displayName: "Update rsyslog.conf"
   - ${{ if eq(parameters.run_unit_test, true) }}:
     - script: |
