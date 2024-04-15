@@ -706,11 +706,11 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
         // So, this conversion is useful to convert SSCI from the host order to network order.
         //
         // Starting with Debian Bookworm (iproute2 6.1), ssci is interpreted as a hex string,
-        // so this needs to convert the ssci integer to a hex string and account for encoding.
-        auto ssci = attr->value.u32;
+        // so this needs to convert the ssci integer to a hex string, and doesn't need to change
+        // the encoding at this point.
         std::stringstream ssciHexStr;
 
-        ssciHexStr << std::hex << ssci;
+        ssciHexStr << std::hex << attr->value.u32;
 
         macsecAttr.m_ssci = ssciHexStr.str();
 
