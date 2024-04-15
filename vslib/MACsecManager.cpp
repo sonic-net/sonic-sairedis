@@ -450,7 +450,7 @@ bool MACsecManager::create_macsec_egress_sa(
         << ( attr.is_xpn() ? " xpn " : " pn ")
         << attr.m_pn
         << ( attr.is_xpn() ? " ssci " : "" )
-        << ( attr.is_xpn() ? std::to_string(attr.m_ssci) : "" )
+        << ( attr.is_xpn() ? attr.m_ssci : "" )
         << ( attr.is_xpn() ? " salt " : "" )
         << ( attr.is_xpn() ? attr.m_salt : "" )
         << " on key "
@@ -487,7 +487,7 @@ bool MACsecManager::create_macsec_ingress_sa(
         << ( attr.is_xpn() ? " xpn " : " pn " )
         << attr.m_pn
         << ( attr.is_xpn() ? " ssci " : "" )
-        << ( attr.is_xpn() ? std::to_string(attr.m_ssci) : "" )
+        << ( attr.is_xpn() ? attr.m_ssci : "" )
         << ( attr.is_xpn() ? " salt " : "" )
         << ( attr.is_xpn() ? attr.m_salt : "" )
         << " on key "
