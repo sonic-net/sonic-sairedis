@@ -1,31 +1,8 @@
-#include <inttypes.h>
-#include <string>
-#include <set>
-#include <sstream>
-#include <iostream>
-#include <fstream>
-#include <regex>
-#include <climits>
-
-extern "C" {
-#include <sai.h>
-}
-
-#include "swss/table.h"
-#include "meta/sai_serialize.h"
-#include "sairediscommon.h"
-#include "swss/json.hpp"
 #include "saidump.h"
-#include <getopt.h>
+using namespace syncd;
 
-// TODO split to multiple cpp
 
-using namespace swss;
-using json = nlohmann::json;
-CmdOptions g_cmdOptions;
-static std::map<sai_object_id_t, const TableMap*> g_oid_map;
-
-void printUsage()
+void SaiDump::printUsage()
 {
     SWSS_LOG_ENTER();
 
@@ -42,15 +19,14 @@ void printUsage()
     std::cout << "        Print out this message" << std::endl;
 }
 
-CmdOptions handleCmdLine(int argc, char **argv)
+sai_status_t SaiDump::handleCmdLine(int argc, char **argv)
 {
     SWSS_LOG_ENTER();
 
-    CmdOptions options;
-
-    options.dumpTempView = false;
-    options.dumpGraph = false;
-    options.rdbJSonSizeLimit = RDB_JSON_MAX_SIZE;
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    dumpTempView = false;
+    dumpGraph = false;
+    rdbJSonSizeLimit = RDB_JSON_MAX_SIZE;
 
     const char* const optstring = "gtr:m:h";
     uint64_t result = 0;
@@ -80,17 +56,20 @@ CmdOptions handleCmdLine(int argc, char **argv)
         {
             case 'g':
                 SWSS_LOG_NOTICE("Dumping graph");
-                options.dumpGraph = true;
+                dumpGraph = true;
+                status = SAI_STATUS_SUCCESS;
                 break;
 
             case 't':
                 SWSS_LOG_NOTICE("Dumping temp view");
-                options.dumpTempView = true;
+                dumpTempView = true;
+                status = SAI_STATUS_SUCCESS;
                 break;
 
             case 'r':
                 SWSS_LOG_NOTICE("Dumping from %s", optarg);
-                options.rdbJsonFile = std::string(optarg);
+                rdbJsonFile = std::string(optarg);
+                status = SAI_STATUS_SUCCESS;
                 break;
 
             case 'm':
@@ -110,9 +89,9 @@ CmdOptions handleCmdLine(int argc, char **argv)
                     exit(EXIT_SUCCESS);
                 }
 
-                options.rdbJSonSizeLimit = result * 1024 * 1024;
-                SWSS_LOG_NOTICE("Configure the RDB JSON MAX size to %llu MB", options.rdbJSonSizeLimit / 1024 / 1024);
-
+                rdbJSonSizeLimit = result * 1024 * 1024;
+                SWSS_LOG_NOTICE("Configure the RDB JSON MAX size to %llu MB", rdbJSonSizeLimit / 1024 / 1024);
+                status = SAI_STATUS_SUCCESS;
                 break;
 
             case 'h':
@@ -129,11 +108,10 @@ CmdOptions handleCmdLine(int argc, char **argv)
                 exit(EXIT_FAILURE);
         }
     }
-
-    return options;
+    return status;
 }
 
-size_t get_max_attr_len(const TableMap& map)
+size_t SaiDump::get_max_attr_len(const TableMap& map)
 {
     SWSS_LOG_ENTER();
 
@@ -147,7 +125,7 @@ size_t get_max_attr_len(const TableMap& map)
     return max;
 }
 
-std::string pad_string(std::string s, size_t pad)
+std::string SaiDump::pad_string(std::string s, size_t pad)
 {
     SWSS_LOG_ENTER();
 
@@ -161,7 +139,7 @@ std::string pad_string(std::string s, size_t pad)
     return s;
 }
 
-const TableMap* get_table_map(sai_object_id_t object_id)
+const TableMap* SaiDump::get_table_map(sai_object_id_t object_id)
 {
     SWSS_LOG_ENTER();
 
@@ -176,7 +154,7 @@ const TableMap* get_table_map(sai_object_id_t object_id)
     return it->second;
 }
 
-void print_attributes(size_t indent, const TableMap& map)
+void SaiDump::print_attributes(size_t indent, const TableMap& map)
 {
     SWSS_LOG_ENTER();
 
@@ -204,7 +182,7 @@ void print_attributes(size_t indent, const TableMap& map)
 #define GV_ROOT_COLOR   "0.650 0.200 1.000"
 #define GV_NODE_COLOR   "0.650 0.500 1.000"
 
-void dumpGraph(const TableDump& td)
+void SaiDump::dumpGraphFun(const TableDump& td)
 {
     SWSS_LOG_ENTER();
 
@@ -437,7 +415,7 @@ void dumpGraph(const TableDump& td)
 /**
  * @brief Process the input JSON file to make sure it's a valid JSON file for the JSON library.
  */
-sai_status_t preProcessFile(const std::string file_name)
+sai_status_t SaiDump::preProcessFile(const std::string file_name)
 {
     SWSS_LOG_ENTER();
 
@@ -451,11 +429,11 @@ sai_status_t preProcessFile(const std::string file_name)
 
     input_file.seekg(0, std::ios::end);     // Move to the end of the file
     uint64_t file_size = input_file.tellg(); // Get the current position
-    SWSS_LOG_NOTICE("Get %s's size %" PRIu64 " Bytes, limit: %" PRIu64 " MB.", file_name.c_str(), file_size, g_cmdOptions.rdbJSonSizeLimit / 1024 / 1024);
+    SWSS_LOG_NOTICE("Get %s's size %" PRIu64 " Bytes, limit: %" PRIu64 " MB.", file_name.c_str(), file_size, rdbJSonSizeLimit / 1024 / 1024);
 
-    if (file_size >= g_cmdOptions.rdbJSonSizeLimit)
+    if (file_size >= rdbJSonSizeLimit)
     {
-        SWSS_LOG_ERROR_AND_STDERR("Get %s's size failure or its size %" PRIu64 " >= %" PRIu64 " MB.", file_name.c_str(), file_size, g_cmdOptions.rdbJSonSizeLimit / 1024 / 1024);
+        SWSS_LOG_ERROR_AND_STDERR("Get %s's size failure or its size %" PRIu64 " >= %" PRIu64 " MB.", file_name.c_str(), file_size, rdbJSonSizeLimit / 1024 / 1024);
         return SAI_STATUS_FAILURE;
     }
 
@@ -488,15 +466,20 @@ sai_status_t preProcessFile(const std::string file_name)
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t dumpFromRedisRdbJson(const std::string file_name)
+sai_status_t SaiDump::dumpFromRedisRdbJson()
 {
     SWSS_LOG_ENTER();
 
-    std::ifstream input_file(file_name);
+    if (SAI_STATUS_FAILURE == preProcessFile(rdbJsonFile))
+    {
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::ifstream input_file(rdbJsonFile);
 
     if (!input_file.is_open())
     {
-        SWSS_LOG_ERROR_AND_STDERR("The file %s does not exist for dumping from Redis RDB JSON file.", file_name.c_str());
+        SWSS_LOG_ERROR_AND_STDERR("The file %s does not exist for dumping from Redis RDB JSON file.", rdbJsonFile.c_str());
         return SAI_STATUS_FAILURE;
     }
 
@@ -571,42 +554,27 @@ sai_status_t dumpFromRedisRdbJson(const std::string file_name)
     }
     catch (std::exception &ex)
     {
-        SWSS_LOG_ERROR_AND_STDERR("JSON file %s is invalid.", file_name.c_str());
+        SWSS_LOG_ERROR_AND_STDERR("JSON file %s is invalid.", rdbJsonFile.c_str());
         SWSS_LOG_ERROR_AND_STDERR("JSON parsing error: %s.", ex.what());
     }
 
     return SAI_STATUS_FAILURE;
 }
 
-#ifndef _UNITTEST_
-int main(int argc, char **argv)
+void SaiDump::dumpFromRedisDb()
 {
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
-
     SWSS_LOG_ENTER();
-
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
-
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
-
-    g_cmdOptions = handleCmdLine(argc, argv);
-
-
-    if (g_cmdOptions.rdbJsonFile.size() > 0)
+    if (rdbJsonFile.size() > 0)
     {
-        if (SAI_STATUS_FAILURE == preProcessFile(g_cmdOptions.rdbJsonFile))
-        {
-            return EXIT_FAILURE;
-        }
-
-        return dumpFromRedisRdbJson(g_cmdOptions.rdbJsonFile);
+         dumpFromRedisRdbJson();
+         return;
     }
 
     swss::DBConnector db("ASIC_DB", 0);
 
     std::string table = ASIC_STATE_TABLE;
 
-    if (g_cmdOptions.dumpTempView)
+    if (dumpTempView)
     {
         table = TEMP_PREFIX + table;
     }
@@ -614,7 +582,6 @@ int main(int argc, char **argv)
     swss::Table t(&db, table);
 
     TableDump dump;
-
     t.dump(dump);
 
     for (const auto&key: dump)
@@ -632,16 +599,14 @@ int main(int argc, char **argv)
         {
             sai_object_id_t object_id;
             sai_deserialize_object_id(str_object_id, object_id);
-
             g_oid_map[object_id] = &key.second;
         }
     }
 
-    if (g_cmdOptions.dumpGraph)
+    if (dumpGraph)
     {
-        dumpGraph(dump);
-
-        return EXIT_SUCCESS;
+        dumpGraphFun(dump);
+        return;
     }
 
     for (const auto&key: dump)
@@ -649,16 +614,10 @@ int main(int argc, char **argv)
         auto start = key.first.find_first_of(":");
         auto str_object_type = key.first.substr(0, start);
         auto str_object_id  = key.first.substr(start + 1);
-
         std::cout << str_object_type << " " << str_object_id << " " << std::endl;
 
         size_t indent = 4;
-
         print_attributes(indent, key.second);
-
         std::cout << std::endl;
     }
-
-    return EXIT_SUCCESS;
 }
-#endif

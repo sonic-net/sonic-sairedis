@@ -2,7 +2,7 @@ AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib
 
 bin_PROGRAMS = saidump
 
-saidump_SOURCES = saidump.cpp
+saidump_SOURCES = main.cpp saidump.cpp
 saidump_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 saidump_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 saidump_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
@@ -10,4 +10,3 @@ saidump_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsa
 
 noinst_LIBRARIES = libsaidump.a
 libsaidump_a_SOURCES = saidump.cpp
-AM_CPPFLAGS = -D_UNITTEST_

@@ -3,13 +3,12 @@
 #include "saidump.h"
 #define ARGVN 5
 
-extern CmdOptions g_cmdOptions;
-
 TEST(SaiDump, printUsage)
 {
     SWSS_LOG_ENTER();
     testing::internal::CaptureStdout();
-    printUsage();
+    syncd::SaiDump m_saiDump;
+    m_saiDump.printUsage();
     std::string output = testing::internal::GetCapturedStdout();
     EXPECT_EQ(true, output.find("Usage: saidump [-t] [-g] [-r] [-m] [-h]") != std::string::npos);
 }
@@ -25,28 +24,35 @@ TEST(SaiDump, handleCmdLine)
         argv[i] = const_cast<char *>(arr[i]);
     }
 
-    g_cmdOptions = handleCmdLine(ARGVN, argv);
+    syncd::SaiDump m_saiDump;
+    m_saiDump.handleCmdLine(ARGVN, argv);
     delete[] argv;
-    EXPECT_EQ(g_cmdOptions.rdbJsonFile, "./dump.json");
-    EXPECT_EQ(g_cmdOptions.rdbJSonSizeLimit, RDB_JSON_MAX_SIZE);
+    EXPECT_EQ(m_saiDump.rdbJsonFile, "./dump.json");
+    EXPECT_EQ(m_saiDump.rdbJSonSizeLimit, RDB_JSON_MAX_SIZE);
 }
+
 
 TEST(SaiDump, dumpFromRedisRdbJson)
 {
     SWSS_LOG_ENTER();
-    EXPECT_EQ(SAI_STATUS_FAILURE, dumpFromRedisRdbJson(""));
-    EXPECT_EQ(SAI_STATUS_FAILURE, dumpFromRedisRdbJson("./dump.json"));
+    syncd::SaiDump m_saiDump;
+    m_saiDump.rdbJsonFile = "";
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_saiDump.dumpFromRedisRdbJson());
+    m_saiDump.rdbJsonFile = "./dump.json";
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_saiDump.dumpFromRedisRdbJson());
 }
 
 TEST(SaiDump, preProcessFile)
 {
     SWSS_LOG_ENTER();
-    EXPECT_EQ(SAI_STATUS_FAILURE, preProcessFile(""));
-    g_cmdOptions.rdbJSonSizeLimit = 0;
-    EXPECT_EQ(SAI_STATUS_FAILURE, preProcessFile("./dump.json"));
-    g_cmdOptions.rdbJSonSizeLimit = RDB_JSON_MAX_SIZE;
-    EXPECT_EQ(SAI_STATUS_SUCCESS, preProcessFile("./dump.json"));
-    EXPECT_EQ(SAI_STATUS_SUCCESS, dumpFromRedisRdbJson("./dump.json"));
+    syncd::SaiDump m_saiDump;    
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_saiDump.preProcessFile(""));
+    m_saiDump.rdbJSonSizeLimit = 0;
+    EXPECT_EQ(SAI_STATUS_FAILURE, m_saiDump.preProcessFile("./dump.json"));
+    m_saiDump.rdbJSonSizeLimit = RDB_JSON_MAX_SIZE;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_saiDump.preProcessFile("./dump.json"));
+    m_saiDump.rdbJsonFile = "./dump.json";    
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_saiDump.dumpFromRedisRdbJson());
 }
 
 int main(int argc, char *argv[])
