@@ -5,8 +5,6 @@ using namespace syncd;
 int main(int argc, char **argv)
 {
     SWSS_LOG_ENTER();
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
-    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_NOTICE);
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_INFO);
 
     SaiDump m_saiDump;
