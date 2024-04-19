@@ -17,7 +17,7 @@ extern "C" {
 
 namespace syncd
 {
-    class BaseCounterContext
+   class BaseCounterContext
     {
     public:
         BaseCounterContext(const std::string &name);
@@ -38,7 +38,8 @@ namespace syncd
                 _In_ sai_object_id_t vid) = 0;
 
         virtual void collectData(
-                _In_ swss::Table &countersTable) = 0;
+                _In_ swss::Table &countersTable,
+                _In_ swss::Table *appDbCountersTable) = 0;
 
         virtual void runPlugin(
                 _In_ swss::DBConnector& counters_db,
@@ -122,7 +123,8 @@ namespace syncd
                     _In_ const std::string &name) const;
 
             void collectCounters(
-                    _In_ swss::Table &countersTable);
+                    _In_ swss::Table &countersTable,
+                    _In_ swss::Table *appDbCountersTable);
 
             void runPlugins(
                     _In_ swss::DBConnector& db);
