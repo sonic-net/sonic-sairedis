@@ -101,6 +101,42 @@ stages:
       syslog_artifact_name: sonic-sairedis.syslog.arm64
       debian_version: ${{ parameters.debian_version }}
 
+- stage: BuildBookworm
+  dependsOn: BuildArm
+  condition: succeeded('BuildArm')
+  jobs:
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: amd64
+      sonic_slave: sonic-slave-bookworm
+      swss_common_artifact_name: sonic-swss-common-bookworm
+      artifact_name: sonic-sairedis-bookworm
+      syslog_artifact_name: sonic-sairedis-bookworm.syslog
+      run_unit_test: true
+      debian_version: ${{ parameters.debian_version }}
+
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: armhf
+      timeout: 180
+      pool: sonicbld-armhf
+      sonic_slave: sonic-slave-bookworm-armhf
+      swss_common_artifact_name: sonic-swss-common-bookworm.armhf
+      artifact_name: sonic-sairedis-bookworm.armhf
+      syslog_artifact_name: sonic-sairedis-bookworm.syslog.armhf
+      debian_version: ${{ parameters.debian_version }}
+
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: arm64
+      timeout: 180
+      pool: sonicbld-arm64
+      sonic_slave: sonic-slave-bookworm-arm64
+      swss_common_artifact_name: sonic-swss-common-bookworm.arm64
+      artifact_name: sonic-sairedis-bookworm.arm64
+      syslog_artifact_name: sonic-sairedis-bookworm.syslog.arm64
+      debian_version: ${{ parameters.debian_version }}
+
 - stage: BuildSwss
   dependsOn: Build
   condition: succeeded('Build')

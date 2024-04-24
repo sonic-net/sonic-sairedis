@@ -3,7 +3,12 @@ SUBDIRS = . tests
 AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/vslib
 
 if SAIVS
+if DASHSAI
+SAILIB = -lsai
+EXTRA_LIBSAI_LDFLAGS += -lprotobuf -lpiprotobuf -lpiprotogrpc -lgrpc++
+else
 SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs
+endif
 else
 SAILIB=-lsai
 endif

@@ -5,6 +5,7 @@ REDIS_BULK_CREATE_ENTRY_EX(ENI_ETHER_ADDRESS_MAP_ENTRY, eni_ether_address_map_en
 REDIS_BULK_REMOVE_ENTRY_EX(ENI_ETHER_ADDRESS_MAP_ENTRY, eni_ether_address_map_entry, eni_ether_address_map_entries);
 
 REDIS_GENERIC_QUAD(ENI, eni);
+REDIS_GENERIC_STATS(ENI, eni);
 REDIS_BULK_CREATE(ENI, enis);
 REDIS_BULK_REMOVE(ENI, enis);
 
@@ -14,6 +15,7 @@ const sai_dash_eni_api_t redis_dash_eni_api = {
     redis_bulk_remove_eni_ether_address_map_entries,
 
     REDIS_GENERIC_QUAD_API(eni)
+    REDIS_GENERIC_STATS_API(eni)
     redis_bulk_create_enis,
     redis_bulk_remove_enis,
 };
