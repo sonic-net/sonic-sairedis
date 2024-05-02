@@ -350,15 +350,15 @@ config_syncd_nvidia_bluefield()
     # Read MAC addresses
     base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
     hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')
+    single_port=$([[ $hwsku == *"-com-dpu" ]] && echo true || echo false)
+
     eth0_mac=$(cat /sys/class/net/Ethernet0/address)
-    eth4_mac=$(cat /sys/class/net/Ethernet4/address)
 
     cp $HWSKU_DIR/sai.profile /tmp/sai.profile
 
     # Update sai.profile with MAC_ADDRESS
     echo "DEVICE_MAC_ADDRESS=$base_mac" >> /tmp/sai.profile
     echo "PORT_1_MAC_ADDRESS=$eth0_mac" >> /tmp/sai.profile
-    echo "PORT_2_MAC_ADDRESS=$eth4_mac" >> /tmp/sai.profile
 
     CMD_ARGS+=" -l -p /tmp/sai.profile -w 180000000"
 
@@ -372,17 +372,24 @@ config_syncd_nvidia_bluefield()
     mount -t hugetlbfs pagesize=1GB /mnt/huge
 
     devlink dev eswitch set pci/0000:03:00.0 mode legacy
-    devlink dev eswitch set pci/0000:03:00.1 mode legacy
     devlink dev eswitch set pci/0000:03:00.0 mode switchdev
-    devlink dev eswitch set pci/0000:03:00.1 mode switchdev
 
-    if [[ $hwsku != *"-C1" ]]; then
+    if [[ $hwsku != *"-C1" ]] && [[ $single_port == false ]]; then
         devlink dev param set pci/0000:03:00.0 name esw_multiport value 1 cmode runtime
         devlink dev param set pci/0000:03:00.1 name esw_multiport value 1 cmode runtime
     fi
 
     ethtool -A Ethernet0 rx off tx off
-    ethtool -A Ethernet4 rx off tx off
+
+    if [[ $single_port == false ]]; then
+        eth4_mac=$(cat /sys/class/net/Ethernet4/address)
+        echo "PORT_2_MAC_ADDRESS=$eth4_mac" >> /tmp/sai.profile
+
+        devlink dev eswitch set pci/0000:03:00.1 mode legacy
+        devlink dev eswitch set pci/0000:03:00.1 mode switchdev
+
+        ethtool -A Ethernet4 rx off tx off
+    fi
 }
 
 config_syncd_xsight()
