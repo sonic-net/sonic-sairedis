@@ -3,12 +3,7 @@ SUBDIRS = . tests
 AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/vslib
 
 if SAIVS
-if DASHSAI
-SAILIB = -lsai
-EXTRA_LIBSAI_LDFLAGS += -lprotobuf -lpiprotobuf -lpiprotogrpc -lgrpc++
-else
 SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs
-endif
 else
 SAILIB=-lsai
 endif
@@ -118,3 +113,15 @@ syncd_tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/
 			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
 TESTS = syncd_tests
+
+if SAIVS
+if DASHSAI
+bin_PROGRAMS += syncd_dash
+syncd_dash_SOURCES = $(syncd_SOURCES)
+syncd_dash_CPPFLAGS = $(syncd_CPPFLAGS)
+syncd_dash_CXXFLAGS = $(syncd_CXXFLAGS)
+syncd_dash_LDADD = libSyncd.a $(top_srcdir)/lib/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
+			  -ldl -lhiredis -lswsscommon -lsai -lprotobuf -lpiprotobuf -lpiprotogrpc -lgrpc++ -lpthread -lzmq $(CODE_COVERAGE_LIBS) $(EXTRA_LIBSAI_LDFLAGS)
+syncd_dash_LDFLAGS = $(syncd_LDFLAGS)
+endif
+endif
