@@ -16,17 +16,17 @@ set -e
 cd ..
 
 find -name "*.o" |
-grep -v pyext | 
-grep -v tests | 
-while read all; 
-do 
-    echo -n $all; 
-    nm $all | 
-    grep "U sai_" | 
-    grep -vP "sai_metadata|sai_serialize|sai_deserialize" | 
+grep -v pyext |
+grep -v tests |
+while read all;
+do
+    echo -n $all;
+    nm $all |
+    grep "U sai_" |
+    grep -vP "sai_metadata|sai_serialize|sai_deserialize" |
     perl -npe 'chomp'
     echo
-done | 
+done |
 grep "U sai_" |
 awk '{print $1}' |
 perl -ne 'chomp; die "file $_ is using global sai_xxx API, please correct your code" if not /VendorSai.o|saisdkdump/'
