@@ -90,6 +90,7 @@ libsairedis_la_SOURCES = \
 						 sai_redis_ars.cpp \
 						 sai_redis_ars_profile.cpp \
 						 sai_redis_twamp.cpp \
+						 sai_redis_poe.cpp \
 						 sai_redis_dash_meter.cpp
 
 libSaiRedis_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)

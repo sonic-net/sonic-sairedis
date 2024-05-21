@@ -83,6 +83,7 @@ static sai_apis_t redis_apis = {
     API(ars),
     API(ars_profile),
     API(twamp),
+    API(poe),
     API(bmtor),
     API(dash_acl),
     API(dash_direction_lookup),

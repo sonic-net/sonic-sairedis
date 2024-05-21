@@ -109,6 +109,7 @@ testslibsaivs_SOURCES =	main_libsaivs.cpp \
 				test_sai_vs_hostif.cpp \
 				test_sai_vs_wred.cpp \
 				test_sai_vs_ars.cpp \
+				test_sai_vs_poe.cpp \
 				test_sai_vs_ars_profile.cpp
 
 testslibsaivs_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
