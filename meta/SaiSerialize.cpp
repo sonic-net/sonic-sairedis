@@ -4121,7 +4121,7 @@ void sai_deserialize_attr_value(
             return sai_deserialize_poe_port_power_consumption(s, attr.value.portpowerconsumption);
 
         default:
-            SWSS_LOG_THROW("deserialize type %s is not supported yet FIXME", 
+            SWSS_LOG_THROW("deserialize type %s is not supported yet FIXME",
                     sai_serialize_attr_value_type(meta.attrvaluetype).c_str());
     }
 }
@@ -5287,7 +5287,7 @@ void sai_deserialize_poe_port_power_consumption(
     sai_deserialize_number(j["current"], value.current);
     sai_deserialize_number(j["consumption"], value.consumption);
     sai_deserialize_poe_port_class_method_type(j["class_method"], value.class_method);
-    sai_deserialzie_poe_port_signature_type(j["signature_type"],value.signature_type); 
+    sai_deserialzie_poe_port_signature_type(j["signature_type"],value.signature_type);
     sai_deserialize_number(j["measured_class_a"], value.measured_class_a);
     sai_deserialize_number(j["assigned_class_a"], value.assigned_class_a);
     sai_deserialize_number(j["measured_class_b"], value.measured_class_b);
