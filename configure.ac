@@ -12,6 +12,7 @@ AC_PROG_LIBTOOL
 AC_HEADER_STDC
 AM_PATH_PYTHON3
 AX_PYTHON3_DEVEL
+AX_CODE_COVERAGE
 AX_ADD_AM_MACRO_STATIC([])
 
 AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BAREFOOT,   test x$CONFIGURED_PLATFORM = xbarefoot)
@@ -27,6 +28,10 @@ esac],[debug=false])
 AM_CONDITIONAL(DEBUG, test x$debug = xtrue)
 
 AM_COND_IF([DEBUG], AC_SUBST(DBGFLAGS, "-ggdb -DDEBUG"), AC_SUBST(DBGFLAGS, "-g"))
+
+AM_COND_IF([DEBUG],
+        [AM_COND_IF([CODE_COVERAGE_ENABLED],
+            AC_MSG_ERROR("Flag conflict --enable-debug 'DEBUG' and --enable-code-coverage 'NDEBUG'"))])
 
 AC_ARG_WITH(sai,
 [  --with-sai=vs           compiling against specific SAI],

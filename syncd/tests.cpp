@@ -698,8 +698,6 @@ void test_bulk_neighbor_set()
     std::vector<sai_neighbor_entry_t> neighbors;
     std::vector<sai_attribute_t> attrs;
 
-    uint32_t index = 15;
-
     sai_attribute_t swattr;
 
     swattr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
@@ -714,7 +712,7 @@ void test_bulk_neighbor_set()
     std::vector<const sai_attribute_t *> neighbor_attrs_array;
     std::vector<uint32_t> neighbor_attrs_count;
 
-    for (uint32_t i = index; i < index + count; ++i)
+    for (uint32_t i = 0; i < count; ++i)
     {
         sai_neighbor_entry_t neighbor_entry;
 
@@ -771,13 +769,13 @@ void test_bulk_neighbor_set()
         ASSERT_SUCCESS("Failed to create neighbor # %zu", j);
     }
 
-    for (uint32_t i = index; i < index + count; ++i)
+    for (uint32_t i = 0; i < count; ++i)
     {
         sai_attribute_t attr;
         attr.id = SAI_NEIGHBOR_ENTRY_ATTR_PACKET_ACTION;
         attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
 
-        status = sai_neighbor_api->set_neighbor_entry_attribute(&neighbors[i - index], &attr);
+        status = sai_neighbor_api->set_neighbor_entry_attribute(&neighbors[i], &attr);
 
         attrs.push_back(attr);
 

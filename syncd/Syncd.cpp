@@ -1033,7 +1033,6 @@ sai_status_t Syncd::processBulkCreateEntry(
                     attr_lists.data(),
                     mode,
                     statuses.data());
-
         }
         break;
 
@@ -1339,7 +1338,6 @@ sai_status_t Syncd::processBulkRemoveEntry(
                     entries.data(),
                     mode,
                     statuses.data());
-
         }
         break;
 
@@ -1633,7 +1631,6 @@ sai_status_t Syncd::processBulkSetEntry(
                     attr_lists.data(),
                     mode,
                     statuses.data());
-
         }
         break;
 
