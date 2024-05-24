@@ -180,6 +180,9 @@ namespace saivs
                     _In_ sai_api_t api,
                     _In_ sai_log_level_t log_level) override;
 
+            virtual sai_status_t queryApiVersion(
+                    _Out_ sai_api_version_t *version) override;
+
         private: // QUAD API helpers
 
             sai_status_t create(

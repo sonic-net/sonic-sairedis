@@ -418,3 +418,20 @@ sai_status_t DummySaiInterface::logSet(
 
     return m_status;
 }
+
+sai_status_t DummySaiInterface::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    if (version)
+    {
+        *version = SAI_API_VERSION;
+
+        return m_status;
+    }
+
+    SWSS_LOG_ERROR("version parameter is NULL");
+
+    return m_status;
+}

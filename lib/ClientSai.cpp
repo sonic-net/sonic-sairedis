@@ -1497,3 +1497,15 @@ sai_status_t ClientSai::logSet(
 
     return SAI_STATUS_SUCCESS;
 }
+
+sai_status_t ClientSai::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    SWSS_LOG_ERROR("queryApiVersion not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}

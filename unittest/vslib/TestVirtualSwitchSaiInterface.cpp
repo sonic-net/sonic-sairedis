@@ -113,3 +113,11 @@ TEST_F(VirtualSwitchSaiInterfaceTest, portBulkAddRemove)
         ASSERT_EQ(statusList.at(i), SAI_STATUS_SUCCESS);
     }
 }
+
+TEST_F(VirtualSwitchSaiInterfaceTest, queryApiVersion)
+{
+    sai_api_version_t version;
+
+    EXPECT_EQ(m_vssai->queryApiVersion(NULL), SAI_STATUS_INVALID_PARAMETER);
+    EXPECT_EQ(m_vssai->queryApiVersion(&version), SAI_STATUS_SUCCESS);
+}

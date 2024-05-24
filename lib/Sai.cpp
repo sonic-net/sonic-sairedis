@@ -700,6 +700,31 @@ sai_status_t Sai::logSet(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t Sai::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    // TODO we should use specific context, but we don't know which one since
+    // there is no object ID parameter, we can use default context or cast
+    // version as context id same as passed in SAI_REDIS_SWITCH_ATTR_CONTEXT
+    // currently we will return just first context on context map, since
+    // user maybe not aware of trick with casting context
+
+    for (auto&kvp: m_contextMap)
+    {
+        SWSS_LOG_WARN("using first context");
+
+        return kvp.second->m_meta->queryApiVersion(version);
+    }
+
+    SWSS_LOG_ERROR("context map is empty");
+
+    return SAI_STATUS_FAILURE;
+}
+
 /*
  * NOTE: Notifications during switch create and switch remove.
  *

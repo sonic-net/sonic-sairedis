@@ -613,6 +613,16 @@ sai_status_t ServerSai::logSet(
     return m_sai->logSet(api, log_level);
 }
 
+sai_status_t ServerSai::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    return m_sai->queryApiVersion(version);
+}
+
 void ServerSai::serverThreadFunction()
 {
     SWSS_LOG_ENTER();

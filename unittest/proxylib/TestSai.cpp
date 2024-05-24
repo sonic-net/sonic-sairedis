@@ -48,3 +48,13 @@ TEST_F(SaiTest, Ctr)
 {
     auto s = std::make_shared<Sai>();
 }
+
+TEST(Sai, queryApiVersion)
+{
+    Sai sai;
+
+    sai_api_version_t version;
+
+    EXPECT_EQ(sai.queryApiVersion(NULL), SAI_STATUS_INVALID_PARAMETER);
+    EXPECT_EQ(sai.queryApiVersion(&version), SAI_STATUS_SUCCESS);
+}

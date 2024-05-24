@@ -1854,6 +1854,27 @@ sai_status_t RedisRemoteSaiInterface::logSet(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t RedisRemoteSaiInterface::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    if (version)
+    {
+        *version = SAI_API_VERSION;
+
+        // TODO FIXME implement proper query for syncd, currently this is not an issue since swss is not using this API
+
+        SWSS_LOG_WARN("retruning SAI API version %d with sairedis compiled SAI headers, not actual libsai.so", SAI_API_VERSION);
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SWSS_LOG_ERROR("version parameter is NULL");
+
+    return SAI_STATUS_INVALID_PARAMETER;
+}
+
 sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
         _In_ sai_object_id_t switchId,
         _In_ const sai_attribute_t *attr)

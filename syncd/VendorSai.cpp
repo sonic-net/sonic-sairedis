@@ -1686,6 +1686,14 @@ sai_status_t VendorSai::logSet(
     return m_globalApis.log_set(api, log_level);
 }
 
+sai_status_t VendorSai::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    return m_globalApis.query_api_version(version);
+}
+
 sai_log_level_t VendorSai::logGet(
         _In_ sai_api_t api)
 {

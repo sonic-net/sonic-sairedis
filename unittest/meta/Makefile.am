@@ -15,6 +15,7 @@ tests_SOURCES = \
 				../../lib/Channel.cpp \
 				MockMeta.cpp \
 				TestAttrKeyMap.cpp \
+				TestDummySaiInterface.cpp \
 				TestGlobals.cpp \
 				TestMetaKeyHasher.cpp \
 				TestNotificationFactory.cpp \

@@ -558,6 +558,29 @@ sai_status_t Sai::logSet(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t Sai::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    // TODO this should be forwarded to SaiInterface object
+
+    if (version)
+    {
+        *version = SAI_API_VERSION;
+
+        // TODO FIXME implement proper query for syncd, currently this is not an issue since swss is not using this API
+
+        SWSS_LOG_WARN("retruning SAI API version %d with saiproxy compiled SAI headers, not actual libsai.so", SAI_API_VERSION);
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SWSS_LOG_ERROR("version parameter is NULL");
+
+    return SAI_STATUS_INVALID_PARAMETER;
+}
+
 //sai_switch_notifications_t Sai::handle_notification(
 //        _In_ std::shared_ptr<Notification> notification)
 //{

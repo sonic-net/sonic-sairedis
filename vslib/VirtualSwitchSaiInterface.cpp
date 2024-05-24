@@ -1230,6 +1230,21 @@ sai_status_t VirtualSwitchSaiInterface::logSet(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t VirtualSwitchSaiInterface::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    if (version)
+    {
+        *version = SAI_API_VERSION;
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SWSS_LOG_ERROR("version parameter is NULL");
+
+    return SAI_STATUS_INVALID_PARAMETER;
+}
+
 bool VirtualSwitchSaiInterface::writeWarmBootFile(
         _In_ const char* warmBootFile) const
 {

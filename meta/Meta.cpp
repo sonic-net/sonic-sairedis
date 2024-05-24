@@ -1377,6 +1377,16 @@ sai_status_t Meta::logSet(
     return m_implementation->logSet(api, log_level);
 }
 
+sai_status_t Meta::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    PARAMETER_CHECK_IF_NOT_NULL(version);
+
+    return m_implementation->queryApiVersion(version);
+}
+
 void Meta::clean_after_switch_remove(
         _In_ sai_object_id_t switchId)
 {

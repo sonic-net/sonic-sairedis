@@ -807,6 +807,16 @@ sai_status_t Sai::logSet(
     return m_meta->logSet(api, log_level);
 }
 
+sai_status_t Sai::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VS_CHECK_API_INITIALIZED();
+
+    return m_meta->queryApiVersion(version);
+}
+
 std::shared_ptr<Context> Sai::getContext(
         _In_ uint32_t globalContext) const
 {
