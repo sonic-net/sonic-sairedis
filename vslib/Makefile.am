@@ -123,6 +123,7 @@ libsaivs_la_SOURCES = \
 					  sai_vs_ars.cpp \
 					  sai_vs_ars_profile.cpp \
 					  sai_vs_twamp.cpp \
+					  sai_vs_poe.cpp \
 					  sai_vs_dash_meter.cpp
 
 libSaiVS_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)

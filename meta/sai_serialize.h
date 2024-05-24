@@ -273,6 +273,9 @@ std::string sai_serialize_qos_map_item(
 std::string sai_serialize_twamp_session_stat(
         _In_ const sai_twamp_session_stat_t counter);
 
+std::string sai_serialize_poe_port_power_consumption(
+        _In_ const sai_poe_port_power_consumption_t& pppc);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -498,6 +501,10 @@ void sai_deserialize_ipv6(
 void sai_deserialize_chardata(
         _In_ const std::string& s,
         _Out_ char chardata[32]);
+
+void sai_deserialize_poe_port_power_consumption(
+        _In_ const std::string& s,
+        _Out_ sai_poe_port_power_consumption_t& pppc);
 
 // deserialize notifications
 

@@ -85,6 +85,7 @@ testslibsairedis_SOURCES =	main_libsairedis.cpp \
 				test_sai_redis_hostif.cpp \
 				test_sai_redis_wred.cpp \
 				test_sai_redis_ars.cpp \
+				test_sai_redis_poe.cpp \
 				test_sai_redis_ars_profile.cpp
 
 testslibsairedis_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
