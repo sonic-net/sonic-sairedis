@@ -69,6 +69,7 @@ libsaiproxy_la_SOURCES = \
 						 sai_proxy_ars.cpp \
 						 sai_proxy_ars_profile.cpp \
 						 sai_proxy_twamp.cpp \
+						 sai_proxy_poe.cpp \
 						 sai_proxy_dash_meter.cpp
 
 libSaiProxy_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)

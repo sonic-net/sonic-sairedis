@@ -84,6 +84,7 @@ static sai_apis_t proxy_apis = {
     API(ars),
     API(ars_profile),
     API(twamp),
+    API(poe),
     API(bmtor),
     API(dash_acl),
     API(dash_direction_lookup),
@@ -267,6 +268,8 @@ sai_status_t sai_query_api_version(
         _Out_ sai_api_version_t *version)
 {
     SWSS_LOG_ENTER();
+
+    // TODO this should be forwarded to SaiInterface object
 
     if (version)
     {

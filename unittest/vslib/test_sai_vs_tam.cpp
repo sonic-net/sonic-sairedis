@@ -77,7 +77,7 @@ TEST(libsaivs, tam)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_tam_counter_subscription_attribute(0,0,0));
 }
 
-TEST(libsairedis, sai_tam_telemetry_get_data)
+TEST(libsaivs, sai_tam_telemetry_get_data)
 {
     sai_object_list_t list;
 

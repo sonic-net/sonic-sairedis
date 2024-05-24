@@ -69,6 +69,7 @@ testslibsaiproxy_SOURCES =	main_libsaiproxy.cpp \
 				test_sai_proxy_hostif.cpp \
 				test_sai_proxy_wred.cpp \
 				test_sai_proxy_ars.cpp \
+				test_sai_proxy_poe.cpp \
 				test_sai_proxy_ars_profile.cpp
 
 testslibsaiproxy_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
