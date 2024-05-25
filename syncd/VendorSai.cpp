@@ -93,6 +93,23 @@ sai_status_t VendorSai::initialize(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
+
+    auto status = m_globalApis.api_initialize(flags, service_method_table);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        memset(&m_apis, 0, sizeof(m_apis));
+
+        int failed = sai_metadata_apis_query(m_globalApis.api_query, &m_apis);
+
+        if (failed > 0)
+        {
+            SWSS_LOG_NOTICE("sai_api_query failed for %d apis", failed);
+        }
+
+    }
+
     sai_api_version_t version{};
 
     auto api_status = m_globalApis.query_api_version(&version);
@@ -120,23 +137,7 @@ sai_status_t VendorSai::initialize(
         return SAI_STATUS_FAILURE;
     }
 
-    memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
-
-    auto status = m_globalApis.api_initialize(flags, service_method_table);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        memset(&m_apis, 0, sizeof(m_apis));
-
-        int failed = sai_metadata_apis_query(m_globalApis.api_query, &m_apis);
-
-        if (failed > 0)
-        {
-            SWSS_LOG_NOTICE("sai_api_query failed for %d apis", failed);
-        }
-
-        m_apiInitialized = true;
-    }
+    m_apiInitialized = true;
 
     return status;
 }
