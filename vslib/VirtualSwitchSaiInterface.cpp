@@ -1233,6 +1233,8 @@ sai_status_t VirtualSwitchSaiInterface::logSet(
 sai_status_t VirtualSwitchSaiInterface::queryApiVersion(
         _Out_ sai_api_version_t *version)
 {
+    SWSS_LOG_ENTER();
+
     if (version)
     {
         *version = SAI_API_VERSION;
