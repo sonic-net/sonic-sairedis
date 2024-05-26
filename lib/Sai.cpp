@@ -578,6 +578,28 @@ sai_status_t Sai::bulkSet(                                  \
 
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
 
+// BULK GET
+
+#define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
+sai_status_t Sai::bulkGet(                                  \
+        _In_ uint32_t object_count,                         \
+        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const uint32_t *attr_count,                    \
+        _Inout_ sai_attribute_t **attr_list,                \
+        _In_ sai_bulk_op_error_mode_t mode,                 \
+        _Out_ sai_status_t *object_statuses)                \
+{                                                           \
+    MUTEX();                                                \
+    SWSS_LOG_ENTER();                                       \
+    REDIS_CHECK_API_INITIALIZED();                          \
+    REDIS_CHECK_POINTER(entries)                            \
+    REDIS_CHECK_CONTEXT(entries->switch_id);                \
+    SWSS_LOG_ERROR("FIXME not implemented");                \
+    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
+
 // NON QUAD API
 
 sai_status_t Sai::flushFdbEntries(

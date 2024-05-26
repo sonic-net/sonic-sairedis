@@ -87,6 +87,13 @@ extern "C" {
             _In_ const sai_attribute_t *attr_list,                  \
             _In_ sai_bulk_op_error_mode_t mode,                     \
             _Out_ sai_status_t *object_statuses) = 0;               \
+    virtual sai_status_t bulkGet(                                   \
+            _In_ uint32_t object_count,                             \
+            _In_ const sai_ ## ot ## _t *ot,                        \
+            _In_ const uint32_t *attr_count,                        \
+            _Inout_ sai_attribute_t **attr_list,                    \
+            _In_ sai_bulk_op_error_mode_t mode,                     \
+            _Out_ sai_status_t *object_statuses) = 0;               \
 
 #define SAIREDIS_SAIINTERFACE_DECLARE_BULK_ENTRY_OVERRIDE(OT,ot)    \
     virtual sai_status_t bulkCreate(                                \
@@ -105,6 +112,13 @@ extern "C" {
             _In_ uint32_t object_count,                             \
             _In_ const sai_ ## ot ## _t *ot,                        \
             _In_ const sai_attribute_t *attr_list,                  \
+            _In_ sai_bulk_op_error_mode_t mode,                     \
+            _Out_ sai_status_t *object_statuses) override;          \
+    virtual sai_status_t bulkGet(                                   \
+            _In_ uint32_t object_count,                             \
+            _In_ const sai_ ## ot ## _t *ot,                        \
+            _In_ const uint32_t *attr_count,                        \
+            _Inout_ sai_attribute_t **attr_list,                    \
             _In_ sai_bulk_op_error_mode_t mode,                     \
             _Out_ sai_status_t *object_statuses) override;          \
 
@@ -179,6 +193,15 @@ namespace sairedis
                     _In_ uint32_t object_count,
                     _In_ const sai_object_id_t *object_id,
                     _In_ const sai_attribute_t *attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses) = 0;
+
+            virtual sai_status_t bulkGet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ uint32_t object_count,
+                    _In_ const sai_object_id_t *object_id,
+                    _In_ const uint32_t *attr_count,
+                    _Inout_ sai_attribute_t **attr_list,
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) = 0;
 
@@ -301,7 +324,7 @@ namespace sairedis
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) = 0;
 
-            virtual sai_status_t queryAattributeEnumValuesCapability(
+            virtual sai_status_t queryAttributeEnumValuesCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id,

@@ -170,7 +170,7 @@ namespace sairedis
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) override;
 
-            virtual sai_status_t queryAattributeEnumValuesCapability(
+            virtual sai_status_t queryAttributeEnumValuesCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id,
