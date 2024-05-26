@@ -115,6 +115,7 @@ unittest/vslib/testslibsaivs
 unittest/proxylib/tests
 unittest/proxylib/testslibsaiproxy
 vslib/tests
+stub/tests
 
 # Temporary files #
 ###################
