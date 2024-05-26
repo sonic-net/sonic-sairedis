@@ -29,14 +29,14 @@ do
 done |
 grep "U sai_" |
 awk '{print $1}' |
-perl -ne 'chomp; die "file $_ is using global sai_xxx API, please correct your code" if not /VendorSai.o|saisdkdump/'
+perl -ne 'chomp; die "file $_ is using global sai_xxx API, please correct your code" if not /VendorSai.o|sai_redis.o|sai_vs.o|sai_proxy.o|saisdkdump/'
 
 REGEX=`cat SAI/meta/saimetadata.c|grep dlsym|grep handle|perl -ne 'print "$1|" if /(sai_\w+)/'|perl -pe 'chop'|perl -ne 'print "\\\\b($_)\\\\b"'`
 
 set +e
 find -name "*.cpp" -o -name "*.c" |
 xargs grep -P "$REGEX" |
-grep -vP "/unittest/|/tests/|/SAI/|/pyext/|tests.cpp|sai_vs_interfacequery|sai_proxy_interfacequery|sai_redis_interfacequery|saisdkdump|SWSS_LOG|.cpp:\s+\*|.cpp:\s+//|sai_status_t\s+sai_|VendorSai.cpp:.+=\s*&sai_"
+grep -vP "/unittest/|/tests/|/SAI/|/pyext/|tests.cpp|sai_vs.cpp|sai_proxy.cpp|sai_redis.cpp|saisdkdump|SWSS_LOG|.cpp:\s+\*|.cpp:\s+//|sai_status_t\s+sai_|VendorSai.cpp:.+=\s*&sai_|sai_stub_interfacequery.cpp"
 
 if [ $? == 0 ]; then
     echo not allowed files are using global sai_xxx API, please correct your code, only VendorSai.cpp and saisdkdump are allowed to use global SAI apis
