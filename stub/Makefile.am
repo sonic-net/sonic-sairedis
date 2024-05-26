@@ -74,6 +74,6 @@ bin_PROGRAMS = tests
 
 tests_SOURCES = tests.cpp ../meta/DummySaiInterface.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = -lswsscommon -L$(top_srcdir)/meta/.libs libsaistub.a -lsaimetadata -lsaimeta -lzmq
+tests_LDADD = -lswsscommon -L$(top_srcdir)/meta/.libs libsaistub.a -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
 TESTS = tests
