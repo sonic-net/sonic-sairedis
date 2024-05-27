@@ -864,57 +864,70 @@ public:
             counter_ids.push_back(stat);
         }
 
+        updateSupportedCounters(rids[0]/*hacking. it is not really used*/, counter_ids, effective_stats_mode);
+        vector<sai_stat_capability_list_t> stats_capabilities(rids.size());
+
+        bool supportBulk = HasStatsMode<CounterIdsType>::value;
+        bool fallback = !supportBulk;
+
+        if (supportBulk)
+        {
+            BulkContextType ctx;
+            ctx.object_vids = vids;
+            transform(rids.begin(), rids.end(), back_inserter(ctx.object_keys), [](sai_object_id_t rid) {
+                sai_object_key_t key;
+                key.key.object_id = rid;
+                return key;
+            });
+            ctx.counter_ids = counter_ids;
+            ctx.object_statuses = vector<sai_status_t>(vids.size(), SAI_STATUS_SUCCESS);
+            ctx.counters.resize(counter_ids.size() * ctx.object_keys.size());
+            auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+            auto status = m_vendorSai->bulkGetStats(
+                SAI_NULL_OBJECT_ID,
+                m_objectType,
+                static_cast<uint32_t>(ctx.object_keys.size()),
+                ctx.object_keys.data(),
+                static_cast<uint32_t>(ctx.counter_ids.size()),
+                reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
+                statsMode,
+                ctx.object_statuses.data(),
+                ctx.counters.data());
+            fallback = (status != SAI_STATUS_SUCCESS);
+        }
+
+        if (fallback)
+        {
+            // Fall back to old way
+            for (size_t i = 0; i < vids.size(); i++)
+            {
+                auto rid = rids[i];
+                auto vid = vids[i];
+                addObject(vid, rid, idStrings, per_object_stats_mode);
+            }
+
+            return;
+        }
+
+        std::vector<StatType> supportedIds;
+        for (auto &counter : counter_ids)
+        {
+            if (isCounterSupported(counter))
+            {
+                supportedIds.push_back(counter);
+            }
+        }
+
         for (size_t i = 0; i < vids.size(); i++)
         {
-            auto rid = rids[i];
-            auto vid = vids[i];
-            sai_stat_capability_list_t stats_capability;
-
-            auto status = queryObjectSupportedCounters(rid, stats_capability);
-            if (status != SAI_STATUS_SUCCESS)
-            {
-                // Fall back to old way
-                addObject(vid, rid, idStrings, per_object_stats_mode);
-                continue;
-            }
-
-            if (stats_capability.count == 0)
-            {
-                SWSS_LOG_NOTICE("%s RID %s can't provide the statistic",  m_name.c_str(), sai_serialize_object_id(rid).c_str());
-                continue;
-            }
-
-            std::unordered_map<StatType, uint32_t> stats_cap_map;
-            for (size_t j = 0; j < stats_capability.count; j++)
-            {
-                stats_cap_map.emplace(StatType(stats_capability.list[j].stat_enum), stats_capability.list[j].stat_modes);
-            }
-
-            bool supportBulk = HasStatsMode<CounterIdsType>::value;
-            std::vector<StatType> supportedIds;
-            for (auto &counter : counter_ids)
-            {
-                auto iter = stats_cap_map.find(counter);
-                if (iter != stats_cap_map.end())
-                {
-                    if (effective_stats_mode & iter->second)
-                    {
-                        supportedIds.push_back(counter);
-                    }
-
-                    auto bulkMode = effective_stats_mode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
-                    if ((bulkMode & iter->second) == 0)
-                    {
-                        supportBulk = false;
-                    }
-                }
-            }
-
+            auto &vid = vids[i];
+            auto &rid = rids[i];
             // Perform a remove and re-add to simplify the logic here
             removeObject(vid, false);
 
             if (!supportBulk)
             {
+                // Unlikely
                 auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
                 // TODO: use if const expression when cpp17 is supported
                 if (HasStatsMode<CounterIdsType>::value)
