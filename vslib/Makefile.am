@@ -63,10 +63,7 @@ libSaiVS_a_SOURCES = \
 
 BUILT_SOURCES = sai_vs.cpp
 
-sai_vs.cpp: saivs-gen
-
-# $(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
-saivs-gen: $(top_srcdir)/SAI/meta/saimetadata.c ../stub.pl
+sai_vs.cpp: ../stub.pl $(top_srcdir)/SAI/meta/saimetadata.c
 	../stub.pl -d ../SAI/ -c Sai -n saivs -f sai_vs.cpp -s stub
 
 clean-local:
