@@ -1,4 +1,4 @@
-#include "Sai.h"
+#include "ClientSai.h"
 
 #include <gtest/gtest.h>
 
@@ -28,21 +28,11 @@ static sai_service_method_table_t test_services = {
     profile_get_next_value
 };
 
-TEST(Sai, queryApiVersion)
+TEST(ClientSai, bulkGet)
 {
-    Sai sai;
-
-    sai_api_version_t version;
+    ClientSai sai;
 
     sai.apiInitialize(0,&test_services);
-
-    EXPECT_EQ(sai.queryApiVersion(NULL), SAI_STATUS_INVALID_PARAMETER);
-    EXPECT_EQ(sai.queryApiVersion(&version), SAI_STATUS_SUCCESS);
-}
-
-TEST(Sai, bulkGet)
-{
-    Sai sai;
 
     sai_object_id_t oids[1];
     uint32_t attrcount[1] = {0};

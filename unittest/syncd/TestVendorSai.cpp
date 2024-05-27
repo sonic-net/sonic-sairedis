@@ -1405,3 +1405,24 @@ TEST(VendorSai, bulk_dash_outbound_ca_to_pa_entry)
     remove_counter(sai, counter0);
     remove_counter(sai, counter1);
 }
+
+TEST(VendorSie, bulkGet)
+{
+    VendorSai sai;
+
+    sai_object_id_t oids[1];
+    uint32_t attrcount[1] = {0};
+    sai_attribute_t* attrs[1] = {0};
+    sai_status_t statuses[1];
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED,
+            sai.bulkGet(
+                SAI_OBJECT_TYPE_PORT,
+                1,
+                oids,
+                attrcount,
+                attrs,
+                SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
+                statuses));
+}
+

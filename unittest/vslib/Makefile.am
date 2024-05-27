@@ -45,6 +45,7 @@ tests_SOURCES = main.cpp \
 				TestSwitchStateBaseMACsec.cpp \
 				TestMACsecManager.cpp \
 				TestSwitchStateBase.cpp \
+				TestSai.cpp \
 				TestVirtualSwitchSaiInterface.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control

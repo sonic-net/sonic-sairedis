@@ -121,3 +121,22 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryApiVersion)
     EXPECT_EQ(m_vssai->queryApiVersion(NULL), SAI_STATUS_INVALID_PARAMETER);
     EXPECT_EQ(m_vssai->queryApiVersion(&version), SAI_STATUS_SUCCESS);
 }
+
+TEST_F(VirtualSwitchSaiInterfaceTest, bulkGet)
+{
+    sai_object_id_t oids[1];
+    uint32_t attrcount[1] = {0};
+    sai_attribute_t* attrs[1] = {0};
+    sai_status_t statuses[1];
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED,
+            m_vssai->bulkGet(
+                SAI_OBJECT_TYPE_PORT,
+                1,
+                oids,
+                attrcount,
+                attrs,
+                SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
+                statuses));
+}
+
