@@ -869,6 +869,7 @@ public:
             auto rid = rids[i];
             auto vid = vids[i];
             sai_stat_capability_list_t stats_capability;
+
             auto status = queryObjectSupportedCounters(rid, stats_capability);
             if (status != SAI_STATUS_SUCCESS)
             {
@@ -886,7 +887,7 @@ public:
             std::unordered_map<StatType, uint32_t> stats_cap_map;
             for (size_t j = 0; j < stats_capability.count; j++)
             {
-                stats_cap_map.emplace(stats_capability.list[j].stat_enum, stats_capability.list[j].stat_modes);
+                stats_cap_map.emplace(StatType(stats_capability.list[j].stat_enum), stats_capability.list[j].stat_modes);
             }
 
             bool supportBulk = HasStatsMode<CounterIdsType>::value;
@@ -1345,9 +1346,13 @@ private:
         stats_capability.count = 0;
         stats_capability.list = nullptr;
 
+        sai_object_key_t key;
+        key.key.object_id = rid;
+
         /* First call is to check the size needed to allocate */
-        sai_status_t status = m_vendorSai->queryObjectStatsCapability(
+        sai_status_t status = reinterpret_cast<class VendorSai*>(m_vendorSai)->queryObjectStatsCapability(
             rid,
+            key,
             m_objectType,
             &stats_capability);
 
@@ -1356,8 +1361,9 @@ private:
         {
             std::vector<sai_stat_capability_t> statCapabilityList(stats_capability.count);
             stats_capability.list = statCapabilityList.data();
-            status = m_vendorSai->queryObjectStatsCapability(
+            status = reinterpret_cast<class VendorSai*>(m_vendorSai)->queryObjectStatsCapability(
                 rid,
+                key,
                 m_objectType,
                 &stats_capability);
 
@@ -2792,8 +2798,8 @@ void FlexCounter::bulkAddCounter(
         else if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_DEBUG_COUNTER_ID_LIST)
         {
             getCounterContext(COUNTER_TYPE_PORT_DEBUG)->bulkAddObject(
-                    vid,
-                    rid,
+                    vids,
+                    rids,
                     idStrings,
                     "");
         }
