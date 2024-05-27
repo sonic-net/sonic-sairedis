@@ -109,7 +109,7 @@ public:
 
         m_sairedis = std::make_shared<sairedis::Sai>();
 
-        auto status = m_sairedis->initialize(0, &test_services);
+        auto status = m_sairedis->apiInitialize(0, &test_services);
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
         // set communication mode
@@ -137,7 +137,7 @@ public:
 
         // uninitialize SAI redis
 
-        auto status = m_sairedis->uninitialize();
+        auto status = m_sairedis->apiUninitialize();
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
         // stop syncd worker

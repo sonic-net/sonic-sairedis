@@ -37,11 +37,11 @@ namespace sairedis
 
         public:
 
-            virtual sai_status_t initialize(
+            virtual sai_status_t apiInitialize(
                     _In_ uint64_t flags,
                     _In_ const sai_service_method_table_t *service_method_table) override;
 
-            virtual sai_status_t uninitialize(void) override;
+            virtual sai_status_t apiUninitialize(void) override;
 
         public: // SAI interface overrides
 
@@ -96,6 +96,15 @@ namespace sairedis
                     _In_ uint32_t object_count,
                     _In_ const sai_object_id_t *object_id,
                     _In_ const sai_attribute_t *attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses) override;
+
+            virtual sai_status_t bulkGet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ uint32_t object_count,
+                    _In_ const sai_object_id_t *object_id,
+                    _In_ const uint32_t *attr_count,
+                    _Inout_ sai_attribute_t **attr_list,
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
@@ -322,7 +331,7 @@ namespace sairedis
             sai_status_t waitForQueryAttributeCapabilityResponse(
                     _Out_ sai_attr_capability_t* capability);
 
-            sai_status_t waitForQueryAattributeEnumValuesCapabilityResponse(
+            sai_status_t waitForQueryAttributeEnumValuesCapabilityResponse(
                     _Inout_ sai_s32_list_t* enumValuesCapability);
 
             sai_status_t waitForObjectTypeGetAvailabilityResponse(

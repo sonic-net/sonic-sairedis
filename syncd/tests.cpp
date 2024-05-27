@@ -699,6 +699,7 @@ void test_invoke_dump()
     SWSS_LOG_ENTER();
     clearDB();
 
+    swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
     auto syncd = std::make_shared<std::thread>(syncdThread);
     syncd->detach();
 
@@ -708,7 +709,7 @@ void test_invoke_dump()
 
     auto sairedis = std::make_shared<sairedis::Sai>();
 
-    sai_status_t status = sairedis->initialize(0, &test_services);
+    sai_status_t status = sairedis->apiInitialize(0, &test_services);
 
     CHECK_STATUS(status);
 
@@ -768,11 +769,11 @@ int main()
 
         sai_api_uninitialize();
 
-        printf("\n[ %s ]\n\n", sai_serialize_status(SAI_STATUS_SUCCESS).c_str());
-
-        test_watchdog_timer_clock_rollback();
+        //test_watchdog_timer_clock_rollback();
 
         test_invoke_dump();
+
+        printf("\n[ %s ]\n\n", sai_serialize_status(SAI_STATUS_SUCCESS).c_str());
     }
     catch (const std::exception &e)
     {

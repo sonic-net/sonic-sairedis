@@ -27,11 +27,11 @@ namespace sairedis
 
         public:
 
-            sai_status_t initialize(
+            sai_status_t apiInitialize(
                     _In_ uint64_t flags,
                     _In_ const sai_service_method_table_t *service_method_table) override;
 
-            sai_status_t uninitialize(void) override;
+            sai_status_t apiUninitialize(void) override;
 
         public: // SAI interface overrides
 

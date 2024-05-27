@@ -196,7 +196,7 @@ Syncd::Syncd(
 
     m_test_services = m_smt.getServiceMethodTable();
 
-    sai_status_t status = vendorSai->initialize(0, &m_test_services);
+    sai_status_t status = vendorSai->apiInitialize(0, &m_test_services);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -489,7 +489,7 @@ sai_status_t Syncd::processAttrEnumValuesCapabilityQuery(
     enumCapList.count = list_size;
     enumCapList.list = enum_capabilities_list.data();
 
-    sai_status_t status = m_vendorSai->queryAattributeEnumValuesCapability(switchRid, objectType, attrId, &enumCapList);
+    sai_status_t status = m_vendorSai->queryAttributeEnumValuesCapability(switchRid, objectType, attrId, &enumCapList);
 
     std::vector<swss::FieldValueTuple> entry;
 
@@ -5206,7 +5206,7 @@ void Syncd::run()
 
     SWSS_LOG_NOTICE("calling api uninitialize");
 
-    status = m_vendorSai->uninitialize();
+    status = m_vendorSai->apiUninitialize();
 
     if (status != SAI_STATUS_SUCCESS)
     {

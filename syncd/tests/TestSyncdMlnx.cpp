@@ -115,7 +115,7 @@ public:
 
         m_sairedis = std::make_shared<sairedis::Sai>();
 
-        auto status = m_sairedis->initialize(0, &test_services);
+        auto status = m_sairedis->apiInitialize(0, &test_services);
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
         // set communication mode
@@ -155,7 +155,7 @@ public:
 
         // uninitialize SAI redis
 
-        auto status = m_sairedis->uninitialize();
+        auto status = m_sairedis->apiUninitialize();
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
         // stop syncd worker
@@ -177,7 +177,7 @@ TEST_F(SyncdMlnxTest, queryAttrEnumValuesCapability)
 {
     sai_s32_list_t data = { .count = 0, .list = nullptr };
 
-    auto status = m_sairedis->queryAattributeEnumValuesCapability(
+    auto status = m_sairedis->queryAttributeEnumValuesCapability(
         m_switchId, SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST, &data
     );
     ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
@@ -185,7 +185,7 @@ TEST_F(SyncdMlnxTest, queryAttrEnumValuesCapability)
     std::vector<sai_int32_t> hfList(data.count);
     data.list = hfList.data();
 
-    status = m_sairedis->queryAattributeEnumValuesCapability(
+    status = m_sairedis->queryAttributeEnumValuesCapability(
         m_switchId, SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST, &data
     );
     ASSERT_EQ(status, SAI_STATUS_SUCCESS);

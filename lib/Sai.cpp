@@ -43,13 +43,13 @@ Sai::~Sai()
 
     if (m_apiInitialized)
     {
-        uninitialize();
+        apiUninitialize();
     }
 }
 
 // INITIALIZE UNINITIALIZE
 
-sai_status_t Sai::initialize(
+sai_status_t Sai::apiInitialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t *service_method_table)
 {
@@ -99,7 +99,7 @@ sai_status_t Sai::initialize(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t Sai::uninitialize(void)
+sai_status_t Sai::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
@@ -503,6 +503,22 @@ sai_status_t Sai::bulkSet(
             object_statuses);
 }
 
+sai_status_t Sai::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 // BULK QUAD ENTRY
 
 #define DECLARE_BULK_CREATE_ENTRY(OT,ot)                    \
@@ -592,13 +608,15 @@ sai_status_t Sai::bulkGet(                                  \
     MUTEX();                                                \
     SWSS_LOG_ENTER();                                       \
     REDIS_CHECK_API_INITIALIZED();                          \
-    REDIS_CHECK_POINTER(entries)                            \
-    REDIS_CHECK_CONTEXT(entries->switch_id);                \
+    REDIS_CHECK_POINTER(ot);                                \
+    REDIS_CHECK_POINTER(attr_count);                        \
+    REDIS_CHECK_POINTER(attr_list);                         \
+    REDIS_CHECK_POINTER(object_statuses);                   \
     SWSS_LOG_ERROR("FIXME not implemented");                \
     return SAI_STATUS_NOT_IMPLEMENTED;                      \
 }
 
-SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY);
 
 // NON QUAD API
 
@@ -658,7 +676,7 @@ sai_status_t Sai::queryAttributeCapability(
             capability);
 }
 
-sai_status_t Sai::queryAattributeEnumValuesCapability(
+sai_status_t Sai::queryAttributeEnumValuesCapability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,
         _In_ sai_attr_id_t attr_id,
@@ -669,7 +687,7 @@ sai_status_t Sai::queryAattributeEnumValuesCapability(
     REDIS_CHECK_API_INITIALIZED();
     REDIS_CHECK_CONTEXT(switch_id);
 
-    return context->m_meta->queryAattributeEnumValuesCapability(
+    return context->m_meta->queryAttributeEnumValuesCapability(
             switch_id,
             object_type,
             attr_id,

@@ -34,7 +34,7 @@ TEST(Sai, queryApiVersion)
 
     sai_api_version_t version;
 
-    sai.initialize(0,&test_services);
+    sai.apiInitialize(0,&test_services);
 
     EXPECT_EQ(sai.queryApiVersion(NULL), SAI_STATUS_INVALID_PARAMETER);
     EXPECT_EQ(sai.queryApiVersion(&version), SAI_STATUS_SUCCESS);

@@ -1,4 +1,4 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/stub -I/usr/include/libnl3
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/libnl3
 
 lib_LTLIBRARIES = libsaivs.la
 
@@ -61,6 +61,17 @@ libSaiVS_a_SOURCES = \
 					  VirtualSwitchSaiInterfaceFdb.cpp \
 					  VirtualSwitchSaiInterfacePort.cpp
 
+BUILT_SOURCES = sai_vs.cpp
+
+sai_vs.cpp: saivs-gen
+
+# $(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
+saivs-gen: $(top_srcdir)/SAI/meta/saimetadata.c
+	../stub.pl -d ../SAI/ -c Sai -n saivs -f sai_vs.cpp -s stub
+
+clean-local:
+	rm -f sai_vs.cpp
+
 libsaivs_la_SOURCES = sai_vs.cpp
 
 libSaiVS_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
@@ -68,7 +79,7 @@ libSaiVS_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 
 libsaivs_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaivs_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a ../stub/libsaistub.a $(CODE_COVERAGE_LIBS)
+libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a $(CODE_COVERAGE_LIBS)
 
 bin_PROGRAMS = tests
 

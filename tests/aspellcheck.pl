@@ -151,6 +151,7 @@ for my $file (@files)
     next if $file =~ m!/config.h!;
     next if $file =~ m!/python/.+wrap.cpp!;
     next if $file =~ m!/pyext/.+wrap.cpp!;
+    next if $file =~ m!sai_(redis|proxy|vs|stub).cpp!;
 
     my $data = ReadFile $file;
 

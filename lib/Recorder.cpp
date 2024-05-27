@@ -1016,7 +1016,7 @@ void Recorder::recordQueryAttributeCapabilityResponse(
     recordQueryAttributeCapabilityResponse(status, values);
 }
 
-void Recorder::recordQueryAattributeEnumValuesCapability(
+void Recorder::recordQueryAttributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
@@ -1053,7 +1053,7 @@ void Recorder::recordQueryAattributeEnumValuesCapability(
     recordQueryAttributeEnumValuesCapability(key, values);
 }
 
-void Recorder::recordQueryAattributeEnumValuesCapabilityResponse(
+void Recorder::recordQueryAttributeEnumValuesCapabilityResponse(
         _In_ sai_status_t status,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,

@@ -10,7 +10,7 @@ TEST(DummySaiInterface, queryApiVersion)
 {
     DummySaiInterface sai;
 
-    sai.initialize(0,0);
+    sai.apiInitialize(0,0);
 
     sai_api_version_t version;
 

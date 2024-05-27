@@ -11,7 +11,7 @@ MockableSaiInterface::~MockableSaiInterface()
     SWSS_LOG_ENTER();
 }
 
-sai_status_t MockableSaiInterface::initialize(
+sai_status_t MockableSaiInterface::apiInitialize(
     _In_ uint64_t flags,
     _In_ const sai_service_method_table_t *service_method_table)
 {
@@ -19,7 +19,7 @@ sai_status_t MockableSaiInterface::initialize(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t MockableSaiInterface::uninitialize()
+sai_status_t MockableSaiInterface::apiUninitialize()
 {
     SWSS_LOG_ENTER();
     return SAI_STATUS_SUCCESS;
@@ -135,6 +135,22 @@ sai_status_t MockableSaiInterface::bulkSet(
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t MockableSaiInterface::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 sai_status_t MockableSaiInterface::getStats(
@@ -347,16 +363,16 @@ sai_status_t MockableSaiInterface::queryAttributeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t MockableSaiInterface::queryAattributeEnumValuesCapability(
+sai_status_t MockableSaiInterface::queryAttributeEnumValuesCapability(
     _In_ sai_object_id_t switch_id,
     _In_ sai_object_type_t object_type,
     _In_ sai_attr_id_t attr_id,
     _Inout_ sai_s32_list_t *enum_values_capability)
 {
     SWSS_LOG_ENTER();
-    if (mock_queryAattributeEnumValuesCapability)
+    if (mock_queryAttributeEnumValuesCapability)
     {
-        return mock_queryAattributeEnumValuesCapability(switch_id, object_type, attr_id, enum_values_capability);
+        return mock_queryAttributeEnumValuesCapability(switch_id, object_type, attr_id, enum_values_capability);
     }
 
     return SAI_STATUS_SUCCESS;

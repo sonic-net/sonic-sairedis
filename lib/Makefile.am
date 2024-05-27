@@ -1,4 +1,4 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/stub
+AM_CXXFLAGS = $(SAIINC)
 
 lib_LTLIBRARIES = libsairedis.la
 
@@ -28,6 +28,17 @@ libSaiRedis_a_SOURCES = \
 						 VirtualObjectIdManager.cpp \
 						 ZeroMQChannel.cpp
 
+BUILT_SOURCES = sai_redis.cpp
+
+sai_redis.cpp: sairedis-gen
+
+# $(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
+sairedis-gen: $(top_srcdir)/SAI/meta/saimetadata.c
+	../stub.pl -d ../SAI/ -c ClientServerSai -n sairedis -f sai_redis.cpp -s stub
+
+clean-local:
+	rm -f sai_redis.cpp
+
 libsairedis_la_SOURCES = sai_redis.cpp
 
 libSaiRedis_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
@@ -35,7 +46,7 @@ libSaiRedis_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_CO
 
 libsairedis_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsairedis_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsairedis_la_LIBADD = -lhiredis -lswsscommon libSaiRedis.a ../stub/libsaistub.a $(CODE_COVERAGE_LIBS)
+libsairedis_la_LIBADD = -lhiredis -lswsscommon libSaiRedis.a $(CODE_COVERAGE_LIBS)
 
 bin_PROGRAMS = tests
 

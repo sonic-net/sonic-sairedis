@@ -134,11 +134,11 @@ namespace sairedis
 
         public:
 
-            virtual sai_status_t initialize(
+            virtual sai_status_t apiInitialize(
                     _In_ uint64_t flags,
                     _In_ const sai_service_method_table_t *service_method_table) = 0;
 
-            virtual sai_status_t uninitialize(void) = 0;
+            virtual sai_status_t apiUninitialize(void) = 0;
 
         public: // QUAD oid
 

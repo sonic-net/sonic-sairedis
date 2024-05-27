@@ -280,7 +280,6 @@ AC_DEFINE([SAI_GIT_REVISION],
 
 AC_OUTPUT(Makefile
           meta/Makefile
-          stub/Makefile
           lib/Makefile
           vslib/Makefile
           syncd/Makefile
@@ -298,7 +297,6 @@ AC_OUTPUT(Makefile
           unittest/vslib/Makefile
           unittest/syncd/Makefile
           unittest/proxylib/Makefile
-          unittest/stub/Makefile
           pyext/Makefile
           pyext/py2/Makefile
           pyext/py3/Makefile)

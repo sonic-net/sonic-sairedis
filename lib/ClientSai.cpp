@@ -46,11 +46,11 @@ ClientSai::~ClientSai()
 
     if (m_apiInitialized)
     {
-        uninitialize();
+        apiUninitialize();
     }
 }
 
-sai_status_t ClientSai::initialize(
+sai_status_t ClientSai::apiInitialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t *service_method_table)
 {
@@ -91,7 +91,7 @@ sai_status_t ClientSai::initialize(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t ClientSai::uninitialize(void)
+sai_status_t ClientSai::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
@@ -432,6 +432,26 @@ sai_status_t ClientSai::bulkSet(                                                
 }
 
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY)
+
+// BULK GET
+
+#define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
+sai_status_t ClientSai::bulkGet(                            \
+        _In_ uint32_t object_count,                         \
+        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const uint32_t *attr_count,                    \
+        _Inout_ sai_attribute_t **attr_list,                \
+        _In_ sai_bulk_op_error_mode_t mode,                 \
+        _Out_ sai_status_t *object_statuses)                \
+{                                                           \
+    MUTEX();                                                \
+    SWSS_LOG_ENTER();                                       \
+    REDIS_CHECK_API_INITIALIZED();                          \
+    SWSS_LOG_ERROR("FIXME not implemented");                \
+    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY)
 
 // QUAD API HELPERS
 
@@ -814,7 +834,7 @@ sai_status_t ClientSai::waitForQueryAttributeCapabilityResponse(
 
 // QUERY ATTRIBUTE ENUM CAPABILITY
 
-sai_status_t ClientSai::queryAattributeEnumValuesCapability(
+sai_status_t ClientSai::queryAttributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
@@ -1335,6 +1355,26 @@ sai_status_t ClientSai::bulkSet(
     m_communicationChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_SET);
 
     return waitForBulkResponse(SAI_COMMON_API_BULK_SET, (uint32_t)serialized_object_ids.size(), object_statuses);
+}
+
+// BULK GET
+
+sai_status_t ClientSai::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 // BULK RESPONSE HELPERS

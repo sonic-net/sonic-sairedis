@@ -10,16 +10,15 @@ use Data::Dumper;
 use Term::ANSIColor;
 
 my %options = ();
-getopts("d:", \%options);
+getopts("d:c:n:f:s:", \%options);
 
-my $optionSaiDir = $options{d} if defined $options{d};
-my $optionVariable = "stub";
+my $optionSaiDir        = $options{d} if defined $options{d};
+my $optionClass         = $options{c} if defined $options{c};
+my $optionNamespace     = $options{n} if defined $options{n};
+my $optionFileName      = $options{f} if defined $options{f};
+my $optionStub          = $options{s} if defined $options{s};
 
-# TODO to params
-my $VAR = $optionVariable;
-my $CLASS = "Sai";
-my $NS = "sairedis";
-my $FILE = "redis.cpp";
+my $STUB = $optionStub;
 
 my $DATA = "";
 my @OBJECT_TYPES = ();
@@ -30,6 +29,7 @@ my %FUNCTIONS = ();
 my @globalApis = ();
 my @apiStructs = ();
 my %apiStructs = ();
+my %ENTRIES = ();
 
 my $SOURCE_CONTENT = "";
 
@@ -51,6 +51,7 @@ sub LogError
 {
     $errors++;
     print color('bright_red') . "ERROR: @_" . color('reset') . "\n";
+    exit 1;
 }
 
 sub WriteFile
@@ -62,15 +63,6 @@ sub WriteFile
     print F $content;
 
     close F;
-}
-
-sub ExitOnErrors
-{
-    return if $errors == 0;
-
-    LogError "please correct all $errors error(s) before continue";
-
-    exit 1;
 }
 
 sub Write
@@ -107,9 +99,7 @@ sub GetFunctionCamelCaseName
 
 sub GetData
 {
-    my $dir = shift;
-
-    $DATA = `cat $dir/inc/sai*.h $dir/experimental/sai*.h`;
+    $DATA = `cat $optionSaiDir/inc/sai*.h $optionSaiDir/experimental/sai*.h`;
 }
 
 sub SanitizeData
@@ -147,6 +137,13 @@ sub ExtractData
 
         $apiStructs{$1} = $struct;
     }
+
+    my @entries = $DATA =~ /\bsai_(\w+_entry)_t\b/gms;
+
+    for my $e (@entries)
+    {
+        $ENTRIES{uc$e} = $e;
+    }
 }
 
 sub Entry
@@ -163,7 +160,7 @@ sub GetFunctionName
     my $OT = "";
     my $bulk = 0;
     my $entry = 0;
-    
+
     if ($fun =~ /(get|clear)_(\w+)_(stats(_ext)?)/ and defined $objectTypes{$2})
     {
         $OT = $objectTypes{$2};
@@ -200,27 +197,16 @@ sub GetFunctionName
     elsif ($fun =~ /(create|remove|set|get)_(\w+)(_attribute)?/ and defined $objectTypes{$2})
     {
         $OT = $objectTypes{$2};
-        $fun = $1; 
+        $fun = $1;
     }
     else
     {
         LogInfo "Unique function $fun";
     }
 
-    $entry = 1 if $OT =~ /_ENTRY/;
+    $entry = 1 if defined $ENTRIES{$OT};
 
     my $f = GetFunctionCamelCaseName($fun);
-
-    # TODO figure this out
-    $entry = 0 if $OT eq "ACL_ENTRY";
-    $entry = 0 if $OT eq "HOSTIF_TABLE_ENTRY";
-    $entry = 0 if $OT eq "TUNNEL_TERM_TABLE_ENTRY";
-    $entry = 0 if $OT eq "TUNNEL_MAP_ENTRY";
-    $entry = 0 if $OT eq "TABLE_BITMAP_CLASSIFICATION_ENTRY";
-    $entry = 0 if $OT eq "TABLE_BITMAP_ROUTER_ENTRY";
-    $entry = 0 if $OT eq "TABLE_META_TUNNEL_ENTRY";
-
-    #LogInfo "$bulk $entry $fun $f $OT";
 
     return ($OT, $f, $entry, $bulk);
 }
@@ -241,11 +227,7 @@ sub CreateApiStricts()
 
         my $struct = $apiStructs{$api};
 
-        if (not defined $struct)
-        {
-            LogError "api $api not found";
-            next;
-        }
+        LogError "api $api not found" if not defined $struct;
 
         while ($struct =~ /(sai_\w+_fn)\s+(\w+)/gms)
         {
@@ -254,11 +236,7 @@ sub CreateApiStricts()
 
             my $fun = $FUNCTIONS{$type};
 
-            if (not defined $fun)
-            {
-                LogError "function $fun not found";
-                next;
-            }
+            LogError "function $fun not found" if not defined $fun;
 
             next if not $fun =~ /(sai_\w+).+\((.+?)\)/gms;
 
@@ -268,40 +246,38 @@ sub CreateApiStricts()
 
             my ($OT, $fname, $entry, $bulk) = GetFunctionName($funname);
 
-            # TODO special case - switch 
-
             $par[0] = "switch_id,SAI_NULL_OBJECT_ID," if $OT eq "SWITCH" and $bulk == 0 and $fname eq "create";
 
-            Write "static $rettype ${VAR}_$funname($params)";
+            Write "static $rettype ${STUB}_$funname($params)";
             Write "{";
             Write "    SWSS_LOG_ENTER();";
             Write "";
 
             if ($fname =~ /(clearPortAllStats|removeAllNeighborEntries|recvHostifPacket|sendHostifPacket|allocateHostifPacket|freeHostifPacket)/)
             {
-                Write "    SWSS_LOG_ERROR(\"FixME please, no implementation for $fname!\");";
+                Write "    SWSS_LOG_ERROR(\"FIXME, no implementation for $fname!\");";
                 Write "    return SAI_STATUS_NOT_IMPLEMENTED;";
                 Write "}";
                 next;
             }
 
-            Write "    return $VAR" . "->$fname(@par);" if $OT eq "";
-            Write "    return $VAR" . "->$fname(@par);" if $OT ne "" and $bulk == 1 and $entry == 1;
-            Write "    return $VAR" . "->$fname(@par);" if $OT ne "" and $bulk == 0 and $entry == 1;
-            Write "    return $VAR" . "->$fname((sai_object_type_t)(SAI_OBJECT_TYPE_$OT),@par);" if $OT ne "" and $bulk == 0 and $entry == 0;
-            Write "    return $VAR" . "->$fname((sai_object_type_t)(SAI_OBJECT_TYPE_$OT),@par);" if $OT ne "" and $bulk == 1 and $entry == 0;
+            Write "    return $STUB" . "->$fname(@par);" if $OT eq "";
+            Write "    return $STUB" . "->$fname(@par);" if $OT ne "" and $bulk == 1 and $entry == 1;
+            Write "    return $STUB" . "->$fname(@par);" if $OT ne "" and $bulk == 0 and $entry == 1;
+            Write "    return $STUB" . "->$fname((sai_object_type_t)(SAI_OBJECT_TYPE_$OT),@par);" if $OT ne "" and $bulk == 0 and $entry == 0;
+            Write "    return $STUB" . "->$fname((sai_object_type_t)(SAI_OBJECT_TYPE_$OT),@par);" if $OT ne "" and $bulk == 1 and $entry == 0;
             Write "}";
             Write "";
         }
 
-        Write "const sai_${api}_api_t ${VAR}_${api} = {";
+        Write "const sai_${api}_api_t ${STUB}_${api} = {";
 
         while ($struct =~ /(sai_\w+_fn)\s+(\w+)/gms)
         {
             my $type = $1;
             my $funname = $2;
 
-            Write "    .$funname = ${VAR}_$funname,";
+            Write "    .$funname = ${STUB}_$funname,";
         }
 
         Write "};";
@@ -319,11 +295,11 @@ sub CreateHeader
     Write "#include \"saiextensions.h\"";
     Write "}";
     Write "#include \"meta/SaiInterface.h\"";
-    Write "#include \"$CLASS.h\"";
+    Write "#include \"$optionClass.h\"";
     Write "#include \"swss/logger.h\"";
     Write "#include <memory>";
     Write "";
-    Write "static std::shared_ptr<sairedis::SaiInterface> $VAR = std::make_shared<$NS" . "::$CLASS>();";
+    Write "static std::shared_ptr<sairedis::SaiInterface> $STUB = std::make_shared<$optionNamespace" . "::$optionClass>();";
     Write ""
 }
 
@@ -333,13 +309,13 @@ sub CreateApiStruct
     Write "/* ==== API STRUCTS === */";
     Write "";
 
-    Write "static sai_apis_t ${VAR}_apis = {";
+    Write "static sai_apis_t ${STUB}_apis = {";
 
     for my $API (@APIS)
     {
         my $api = lc $API;
 
-        Write "    .${api}_api = const_cast<sai_${api}_api_t*>(&${VAR}_${api}),";
+        Write "    .${api}_api = const_cast<sai_${api}_api_t*>(&${STUB}_${api}),";
     }
 
     Write "};";
@@ -376,7 +352,7 @@ sub CreateApiQuery
     Write "";
     Write "    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_api_t, sai_api_id))";
     Write "    {";
-    Write "        *api_method_table = ((void**)&${VAR}_apis)[sai_api_id - 1];";
+    Write "        *api_method_table = ((void**)&${STUB}_apis)[sai_api_id - 1];";
     Write "";
     Write "        return SAI_STATUS_SUCCESS;";
     Write "    }";
@@ -406,8 +382,6 @@ sub CreateGlobalApis
 
         my @par = $params =~ /(\w+,|\w+$)/gms;
 
-        $funname =~ s/^sai_api_//;
-
         my $fun = GetFunctionCamelCaseName($funname);
 
         $par[0] = "" if $par[0] eq "void";
@@ -419,13 +393,13 @@ sub CreateGlobalApis
 
         if ($fun =~ /(bulkObjectClearStats|bulkObjectGetStats|dbgGenerateDump|getMaximumAttributeCount|getObjectKey|bulkGetAttribute|dbgGenerateDump|tamTelemetryGetData|getObjectCount|queryAttributeEnumValuesCapability|queryObjectStage)/)
         {
-            Write "    SWSS_LOG_ERROR(\"FixME please, no implementation for $fun!\");";
+            Write "    SWSS_LOG_ERROR(\"FIXME, no implementation for $fun!\");";
             Write "    return SAI_STATUS_NOT_IMPLEMENTED;";
             Write "}";
             next;
         }
 
-        Write "    return $VAR" . "->$fun(@par);";
+        Write "    return $STUB" . "->$fun(@par);";
         Write "}";
         Write "";
     }
@@ -435,7 +409,20 @@ sub CreateGlobalApis
 # MAIN
 #
 
-GetData($optionSaiDir);
+
+LogError "Option SaiDir not specifird (-d)" if not defined $optionSaiDir;
+LogError "Option Class not specifird (-c)" if not defined $optionClass;
+LogError "Option Namespace not specifird (-n)" if not defined $optionNamespace;
+LogError "Option FileName not specifird (-f)" if not defined $optionFileName;
+LogError "Option Stub not specifird (-s)" if not defined $optionStub;
+
+LogInfo "optionSaiDir     = $optionSaiDir   ";
+LogInfo "optionClass      = $optionClass    ";
+LogInfo "optionNamespace  = $optionNamespace";
+LogInfo "optionFileName   = $optionFileName ";
+LogInfo "optionStub       = $optionStub     ";
+
+GetData();
 SanitizeData();
 ExtractData();
 CreateHeader();
@@ -443,5 +430,4 @@ CreateApiStricts();
 CreateApiStruct();
 CreateApiQuery();
 CreateGlobalApis();
-ExitOnErrors();
-WriteFile($FILE,$SOURCE_CONTENT);
+WriteFile($optionFileName,$SOURCE_CONTENT);

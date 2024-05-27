@@ -2850,7 +2850,7 @@ int SaiPlayer::run()
 
     m_test_services = m_smt.getServiceMethodTable();
 
-    EXIT_ON_ERROR(m_sai->initialize(0, &m_test_services));
+    EXIT_ON_ERROR(m_sai->apiInitialize(0, &m_test_services));
 
     sai_attribute_t attr;
 
@@ -2903,7 +2903,7 @@ int SaiPlayer::run()
         exitcode = replay();
     }
 
-    m_sai->uninitialize();
+    m_sai->apiUninitialize();
 
     return exitcode;
 }

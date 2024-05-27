@@ -1,1 +1,1 @@
-SUBDIRS = meta lib vslib syncd proxylib stub
+SUBDIRS = meta lib vslib syncd proxylib

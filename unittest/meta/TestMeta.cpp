@@ -450,14 +450,14 @@ TEST(Meta, initialize)
 {
     Meta m(std::make_shared<DummySaiInterface>());
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.initialize(0, 0));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.apiInitialize(0, 0));
 }
 
 TEST(Meta, uninitialize)
 {
     Meta m(std::make_shared<DummySaiInterface>());
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.uninitialize());
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.apiUninitialize());
 }
 
 TEST(Meta, quad_mcast_fdb_entry)
@@ -898,7 +898,7 @@ TEST(Meta, queryAttributeCapability)
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ACL_ENTRY, 100000, &cap));
 }
 
-TEST(Meta, queryAattributeEnumValuesCapability)
+TEST(Meta, queryAttributeEnumValuesCapability)
 {
     Meta m(std::make_shared<MetaTestSaiInterface>());
 
@@ -921,21 +921,21 @@ TEST(Meta, queryAattributeEnumValuesCapability)
     vals[0] = 0;
     vals[1] = 100000;
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_SWITCHING_MODE, &list));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.queryAttributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_SWITCHING_MODE, &list));
 
     // set count without list;
 
     list.list = nullptr;
 
-    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_SWITCHING_MODE, &list));
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAttributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_SWITCHING_MODE, &list));
 
     // non enum attribute
 
-    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_BCAST_CPU_FLOOD_ENABLE, &list));
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAttributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_BCAST_CPU_FLOOD_ENABLE, &list));
 
     // invalid attribute
 
-    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAattributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, 10000, &list));
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAttributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, 10000, &list));
 }
 
 TEST(Meta, meta_validate_stats)

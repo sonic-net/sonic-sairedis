@@ -146,20 +146,20 @@ Meta::Meta(
     m_warmBoot = false;
 }
 
-sai_status_t Meta::initialize(
+sai_status_t Meta::apiInitialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t *service_method_table)
 {
     SWSS_LOG_ENTER();
 
-    return m_implementation->initialize(flags, service_method_table);
+    return m_implementation->apiInitialize(flags, service_method_table);
 }
 
-sai_status_t Meta::uninitialize(void)
+sai_status_t Meta::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
 
-    return m_implementation->uninitialize();
+    return m_implementation->apiUninitialize();
 }
 
 void Meta::meta_warm_boot_notify()
@@ -723,9 +723,26 @@ sai_status_t Meta::bulkSet(                                                     
     return status;                                                                                                      \
 }
 
+// BULK GET
+
+#define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
+sai_status_t Meta::bulkGet(                                 \
+        _In_ uint32_t object_count,                         \
+        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const uint32_t *attr_count,                    \
+        _Inout_ sai_attribute_t **attr_list,                \
+        _In_ sai_bulk_op_error_mode_t mode,                 \
+        _Out_ sai_status_t *object_statuses)                \
+{                                                           \
+    SWSS_LOG_ENTER();                                       \
+    SWSS_LOG_ERROR("FIXME not implemented");                \
+    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+}
+
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY);
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY);
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY);
 
 sai_status_t Meta::objectTypeGetAvailability(
         _In_ sai_object_id_t switchId,
@@ -854,7 +871,7 @@ sai_status_t Meta::queryAttributeCapability(
     return status;
 }
 
-sai_status_t Meta::queryAattributeEnumValuesCapability(
+sai_status_t Meta::queryAttributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
@@ -892,7 +909,7 @@ sai_status_t Meta::queryAattributeEnumValuesCapability(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    auto status = m_implementation->queryAattributeEnumValuesCapability(switchId, objectType, attrId, enumValuesCapability);
+    auto status = m_implementation->queryAttributeEnumValuesCapability(switchId, objectType, attrId, enumValuesCapability);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1250,6 +1267,22 @@ sai_status_t Meta::bulkSet(
     }
 
     return status;
+}
+
+sai_status_t Meta::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 sai_status_t Meta::bulkCreate(
