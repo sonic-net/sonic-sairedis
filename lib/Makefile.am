@@ -28,7 +28,7 @@ libSaiRedis_a_SOURCES = \
 						 VirtualObjectIdManager.cpp \
 						 ZeroMQChannel.cpp
 
-BUILT_SOURCES = sai_redis.cpp 
+BUILT_SOURCES = sai_redis.cpp
 
 sai_redis.cpp: ../stub.pl $(top_srcdir)/SAI/meta/saimetadata.c
 	../stub.pl -d ../SAI/ -c ClientServerSai -n sairedis -f sai_redis.cpp -s stub
