@@ -2791,49 +2791,54 @@ sai_status_t Syncd::processFlexCounterEvent(
     }
 
     auto groupName = key.substr(0, delimiter);
-    auto strVid = key.substr(delimiter + 1);
+    auto strVids = key.substr(delimiter + 1);
+    auto vidStringVector = swss::tokenize(strVids, ',');
 
-    auto effective_op = op;
-
-    sai_object_id_t vid;
-    sai_deserialize_object_id(strVid, vid);
-
-    sai_object_id_t rid;
-
-    if (!m_translator->tryTranslateVidToRid(vid, rid))
+    for(auto &strVid : vidStringVector)
     {
-        if (fromAsicChannel)
+        auto effective_op = op;
+        auto singleKey = groupName + ":" + strVid;
+
+        sai_object_id_t vid;
+        sai_deserialize_object_id(strVid, vid);
+
+        sai_object_id_t rid;
+
+        if (!m_translator->tryTranslateVidToRid(vid, rid))
         {
-            SWSS_LOG_ERROR("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
-                           sai_serialize_object_id(vid).c_str());
+            if (fromAsicChannel)
+            {
+                SWSS_LOG_ERROR("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
+                               sai_serialize_object_id(vid).c_str());
+            }
+            else
+            {
+                SWSS_LOG_WARN("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
+                              sai_serialize_object_id(vid).c_str());
+            }
+            effective_op = DEL_COMMAND;
+        }
+
+        if (effective_op == SET_COMMAND)
+        {
+            m_manager->addCounter(vid, rid, groupName, values);
+            if (fromAsicChannel)
+            {
+                m_flexCounterTable->set(singleKey, values);
+            }
+        }
+        else if (effective_op == DEL_COMMAND)
+        {
+            if (fromAsicChannel)
+            {
+                m_flexCounterTable->del(singleKey);
+            }
+            m_manager->removeCounter(vid, groupName);
         }
         else
         {
-            SWSS_LOG_WARN("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
-                          sai_serialize_object_id(vid).c_str());
+            SWSS_LOG_ERROR("unknown command: %s", op.c_str());
         }
-        effective_op = DEL_COMMAND;
-    }
-
-    if (effective_op == SET_COMMAND)
-    {
-        m_manager->addCounter(vid, rid, groupName, values);
-        if (fromAsicChannel)
-        {
-            m_flexCounterTable->set(key, values);
-        }
-    }
-    else if (effective_op == DEL_COMMAND)
-    {
-        if (fromAsicChannel)
-        {
-            m_flexCounterTable->del(key);
-        }
-        m_manager->removeCounter(vid, groupName);
-    }
-    else
-    {
-        SWSS_LOG_ERROR("unknown command: %s", op.c_str());
     }
 
     if (fromAsicChannel)
