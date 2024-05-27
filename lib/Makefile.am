@@ -33,7 +33,7 @@ BUILT_SOURCES = sai_redis.cpp
 sai_redis.cpp: sairedis-gen
 
 # $(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
-sairedis-gen: $(top_srcdir)/SAI/meta/saimetadata.c
+sairedis-gen: $(top_srcdir)/SAI/meta/saimetadata.c ../stub.pl
 	../stub.pl -d ../SAI/ -c ClientServerSai -n sairedis -f sai_redis.cpp -s stub
 
 clean-local:

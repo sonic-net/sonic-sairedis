@@ -12,7 +12,7 @@ BUILT_SOURCES = sai_proxy.cpp
 sai_proxy.cpp: sairedis-gen
 
 # $(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
-sairedis-gen: $(top_srcdir)/SAI/meta/saimetadata.c
+sairedis-gen: $(top_srcdir)/SAI/meta/saimetadata.c ../stub.pl
 	../stub.pl -d ../SAI/ -c Sai -n saiproxy -f sai_proxy.cpp -s stub
 
 clean-local:
