@@ -217,10 +217,10 @@ TEST(ClientServerSai, bulkGet)
 {
     ClientServerSai sai;
 
-    sai_object_id_t oids[1];
+    sai_object_id_t oids[1] = {0};
     uint32_t attrcount[1] = {0};
     sai_attribute_t* attrs[1] = {0};
-    sai_status_t statuses[1];
+    sai_status_t statuses[1] = {0};
 
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED,
             sai.bulkGet(

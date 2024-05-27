@@ -12,7 +12,7 @@ TEST(Utils, clearOidValues)
 {
     sai_attribute_t attr;
 
-    sai_object_id_t oids[1];
+    sai_object_id_t oids[1] = {0};
 
     attr.id = 1000;
 
