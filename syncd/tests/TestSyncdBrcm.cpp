@@ -243,3 +243,149 @@ TEST_F(SyncdBrcmTest, routeBulkCreate)
     status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
     ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 }
+
+TEST_F(SyncdBrcmTest, neighborBulkTest)
+{
+    sai_object_id_t switchId;
+    sai_object_id_t rif;
+    sai_object_id_t port;
+    sai_attribute_t attrs[3];
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    auto status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    sai_object_id_t vr = attrs[0].value.oid;
+
+    // create port
+    static uint32_t id = 1;
+    id++;
+
+    uint32_t hw_lane_list[1] = { id };
+
+    attrs[0].id = SAI_PORT_ATTR_HW_LANE_LIST;
+    attrs[0].value.u32list.count = 1;
+    attrs[0].value.u32list.list = hw_lane_list;
+
+    attrs[1].id = SAI_PORT_ATTR_SPEED;
+    attrs[1].value.u32 = 10000;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_PORT, &port, switchId, 2, attrs);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // create rif
+    attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+    attrs[0].value.oid = vr;
+
+    attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    attrs[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+
+    attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+    attrs[2].value.oid = port;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, &rif, switchId, 3, attrs);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // create neighbor bulk neighbors in init view mode
+
+    std::vector<std::vector<sai_attribute_t>> neighbor_attrs;
+    std::vector<const sai_attribute_t *> neighbor_attrs_array;
+    std::vector<uint32_t> neighbor_attrs_count;
+    std::vector<sai_neighbor_entry_t> neighbors;
+
+    uint32_t count = 3;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_neighbor_entry_t neighbor_entry;
+
+        neighbor_entry.ip_address.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+        neighbor_entry.ip_address.addr.ip4 = 0x10000001 + i;
+        neighbor_entry.rif_id = rif;
+        neighbor_entry.switch_id = switchId;
+
+        neighbors.push_back(neighbor_entry);
+
+        std::vector<sai_attribute_t> list(1); // no attributes
+        sai_attribute_t &neigh_attr = list[0];
+
+        sai_mac_t mac = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+        neigh_attr.id = SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS;
+        memcpy(neigh_attr.value.mac, mac, 6);
+
+        neighbor_attrs.push_back(list);
+        neighbor_attrs_count.push_back(1);
+    }
+
+    for (size_t j = 0; j < neighbor_attrs.size(); j++)
+    {
+        neighbor_attrs_array.push_back(neighbor_attrs[j].data());
+    }
+
+    std::vector<sai_status_t> statuses(count);
+
+    status = m_sairedis->bulkCreate(
+            count,
+            neighbors.data(),
+            neighbor_attrs_count.data(),
+            neighbor_attrs_array.data(),
+            SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+            statuses.data());
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    }
+
+    statuses.clear();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        attrs[i].id = SAI_NEIGHBOR_ENTRY_ATTR_PACKET_ACTION;
+        attrs[i].value.s32 = SAI_PACKET_ACTION_FORWARD;
+    }
+
+    status = m_sairedis->bulkSet(
+        count,
+        neighbors.data(),
+        attrs,
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+        statuses.data());
+
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    }
+
+    statuses.clear();
+
+    status = m_sairedis->bulkRemove(
+        count,
+        neighbors.data(),
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+        statuses.data());
+
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    }
+}
