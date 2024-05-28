@@ -2793,7 +2793,34 @@ sai_status_t Syncd::processFlexCounterEvent(
     auto groupName = key.substr(0, delimiter);
     auto strVids = key.substr(delimiter + 1);
     auto vidStringVector = swss::tokenize(strVids, ',');
+#if 1
+    if (fromAsicChannel && op == SET_COMMAND)
+    {
+        std::vector<sai_object_id_t> vids(vidStringVector.size());
+        std::vector<sai_object_id_t> rids(vidStringVector.size());
 
+        for (auto &strVid: vidStringVector)
+        {
+            sai_object_id_t vid, rid;
+            sai_deserialize_object_id(strVid, vid);
+            vids.emplace_back(vid);
+
+            if (!m_translator->tryTranslateVidToRid(vid, rid))
+            {
+                SWSS_LOG_ERROR("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
+                               sai_serialize_object_id(vid).c_str());
+            }
+
+            rids.emplace_back(rid);
+        }
+
+        m_manager->bulkAddCounter(vids, rids, groupName, values);
+
+        m_flexCounterTable->set(key, values);
+
+        return SAI_STATUS_SUCCESS;
+    }
+#endif
     for(auto &strVid : vidStringVector)
     {
         auto effective_op = op;

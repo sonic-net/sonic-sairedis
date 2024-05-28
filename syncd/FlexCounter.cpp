@@ -2818,6 +2818,7 @@ void FlexCounter::bulkAddCounter(
         }
         else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_COUNTER_ID_LIST)
         {
+            SWSS_LOG_INFO("BULKCOUNTER bulk add queue");
             getCounterContext(COUNTER_TYPE_QUEUE)->bulkAddObject(
                     vids,
                     rids,
@@ -2835,6 +2836,7 @@ void FlexCounter::bulkAddCounter(
         }
         else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP && field == PG_COUNTER_ID_LIST)
         {
+            SWSS_LOG_INFO("BULKCOUNTER bulk add queue");
             getCounterContext(COUNTER_TYPE_PG)->bulkAddObject(
                     vids,
                     rids,
