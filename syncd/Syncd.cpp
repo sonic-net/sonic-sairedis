@@ -2793,11 +2793,11 @@ sai_status_t Syncd::processFlexCounterEvent(
     auto groupName = key.substr(0, delimiter);
     auto strVids = key.substr(delimiter + 1);
     auto vidStringVector = swss::tokenize(strVids, ',');
-#if 1
-    if (fromAsicChannel && op == SET_COMMAND)
+
+    if (fromAsicChannel && op == SET_COMMAND && vidStringVector.size() > 1)
     {
-        std::vector<sai_object_id_t> vids(vidStringVector.size());
-        std::vector<sai_object_id_t> rids(vidStringVector.size());
+        std::vector<sai_object_id_t> vids;
+        std::vector<sai_object_id_t> rids;
 
         for (auto &strVid: vidStringVector)
         {
@@ -2818,9 +2818,14 @@ sai_status_t Syncd::processFlexCounterEvent(
 
         m_flexCounterTable->set(key, values);
 
+        if (fromAsicChannel)
+        {
+            sendApiResponse(SAI_COMMON_API_SET, SAI_STATUS_SUCCESS);
+        }
+
         return SAI_STATUS_SUCCESS;
     }
-#endif
+
     for(auto &strVid : vidStringVector)
     {
         auto effective_op = op;

@@ -111,6 +111,7 @@ void FlexCounterManager::bulkAddCounter(
 
     auto fc = getInstance(instanceId);
     sai_object_type_t objectType = VidManager::objectTypeQuery(vids[0]); // VID and RID will have the same object type
+
     fc->bulkAddCounter(objectType, vids, rids, values);
 
     if (fc->isDiscarded())

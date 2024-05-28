@@ -867,8 +867,8 @@ public:
         updateSupportedCounters(rids[0]/*hacking. it is not really used*/, counter_ids, effective_stats_mode);
         vector<sai_stat_capability_list_t> stats_capabilities(rids.size());
 
-        bool supportBulk = HasStatsMode<CounterIdsType>::value;
-        bool fallback = !supportBulk;
+        bool fallback = HasStatsMode<CounterIdsType>::value;
+        bool supportBulk = !fallback;
 
         if (supportBulk)
         {
@@ -898,6 +898,8 @@ public:
 
         if (fallback)
         {
+            SWSS_LOG_NOTICE("BULKCOUNTER Fallback to single init");
+
             // Fall back to old way
             for (size_t i = 0; i < vids.size(); i++)
             {
@@ -2818,7 +2820,6 @@ void FlexCounter::bulkAddCounter(
         }
         else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_COUNTER_ID_LIST)
         {
-            SWSS_LOG_INFO("BULKCOUNTER bulk add queue");
             getCounterContext(COUNTER_TYPE_QUEUE)->bulkAddObject(
                     vids,
                     rids,
@@ -2836,7 +2837,6 @@ void FlexCounter::bulkAddCounter(
         }
         else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP && field == PG_COUNTER_ID_LIST)
         {
-            SWSS_LOG_INFO("BULKCOUNTER bulk add queue");
             getCounterContext(COUNTER_TYPE_PG)->bulkAddObject(
                     vids,
                     rids,
