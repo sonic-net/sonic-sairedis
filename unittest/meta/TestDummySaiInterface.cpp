@@ -39,3 +39,15 @@ TEST(DummySaiInterface, bulkGet)
                 SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
                 statuses));
 }
+
+TEST(DummySaiInterface, create)
+{
+    DummySaiInterface sai;
+
+    sai.apiInitialize(0,0);
+
+    sai_object_id_t oid;
+    sai.create(SAI_OBJECT_TYPE_SWITCH,&oid, 0, 0, 0);
+
+    EXPECT_NE(oid, SAI_NULL_OBJECT_ID);
+}

@@ -1,5 +1,8 @@
 #include "Sai.h"
+#include "Utils.h"
 #include "SaiInternal.h"
+#include "ZeroMQChannel.h"
+#include "SaiAttributeList.h"
 
 #include "meta/Meta.h"
 #include "meta/sai_serialize.h"
@@ -68,12 +71,12 @@ sai_status_t Sai::apiInitialize(
 
     memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
 
-    // TODO move to service method table and
-    // TODO enable for channel to work!
-//    m_communicationChannel = std::make_shared<_ZeroMQChannel>(
-//            "/tmp/saiproxy",
-//            "/tmp/saiproxy_ntf",
-//            std::bind(&Sai::handleNotification, this, _1, _2, _3));
+    // TODO move hard coded values to config
+
+    m_communicationChannel = std::make_shared<sairedis::ZeroMQChannel>(
+            "tcp://127.0.0.1:5555",
+            "tcp://127.0.0.1:5556",
+            std::bind(&Sai::handleNotification, this, _1, _2, _3));
 
     m_apiInitialized = true;
 
@@ -107,9 +110,39 @@ sai_status_t Sai::create(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    auto entry = saimeta::SaiAttributeList::serialize_attr_list(objectType, attr_count, attr_list, false);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    entry.emplace_back("SWITCH_ID", sai_serialize_object_id(switchId)); // last entry is switch_id
+
+    auto serializedObjectType = sai_serialize_object_type(objectType);
+
+    auto serializedObjectId = sai_serialize_object_id(SAI_NULL_OBJECT_ID);
+
+    std::string key = serializedObjectType + ":" + serializedObjectId;
+
+    m_communicationChannel->set(key, entry, "create");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait("create_response", kco);
+
+    // TODO SAVE pointers for notifications
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto& values = kfvFieldsValues(kco);
+
+        if (values.size() == 0)
+        {
+            SWSS_LOG_THROW("logic error, api returned 0 values!");
+        }
+
+        SWSS_LOG_NOTICE("deserialize new object id: %s", fvValue(values[0]).c_str());
+
+        sai_deserialize_object_id(fvValue(values[0]), *objectId);
+    }
+
+    return status;
 }
 
 sai_status_t Sai::remove(
@@ -120,9 +153,7 @@ sai_status_t Sai::remove(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return remove(objectType, sai_serialize_object_id(objectId));
 }
 
 sai_status_t Sai::set(
@@ -134,9 +165,7 @@ sai_status_t Sai::set(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return set(objectType, sai_serialize_object_id(objectId), attr);
 }
 
 sai_status_t Sai::get(
@@ -149,9 +178,7 @@ sai_status_t Sai::get(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return get(objectType, sai_serialize_object_id(objectId), attr_count, attr_list);
 }
 
 // QUAD ENTRY
@@ -166,8 +193,11 @@ sai_status_t Sai::create(                                   \
     SWSS_LOG_ENTER();                                       \
     PROXY_CHECK_API_INITIALIZED();                          \
     PROXY_CHECK_POINTER(entry)                              \
-    SWSS_LOG_ERROR("not implemented, FIXME");               \
-    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+    return create(                                          \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,      \
+            sai_serialize_ ## ot(*entry),                   \
+            attr_count,                                     \
+            attr_list);                                     \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
@@ -180,8 +210,9 @@ sai_status_t Sai::remove(                                   \
     SWSS_LOG_ENTER();                                       \
     PROXY_CHECK_API_INITIALIZED();                          \
     PROXY_CHECK_POINTER(entry)                              \
-    SWSS_LOG_ERROR("not implemented, FIXME");               \
-    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+    return remove(                                          \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,      \
+            sai_serialize_ ## ot(*entry));                  \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
@@ -195,8 +226,10 @@ sai_status_t Sai::set(                                      \
     SWSS_LOG_ENTER();                                       \
     PROXY_CHECK_API_INITIALIZED();                          \
     PROXY_CHECK_POINTER(entry)                              \
-    SWSS_LOG_ERROR("not implemented, FIXME");               \
-    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+    return set(                                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,      \
+            sai_serialize_ ## ot(*entry),                   \
+            attr);                                          \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
@@ -211,11 +244,132 @@ sai_status_t Sai::get(                                      \
     SWSS_LOG_ENTER();                                       \
     PROXY_CHECK_API_INITIALIZED();                          \
     PROXY_CHECK_POINTER(entry)                              \
-    SWSS_LOG_ERROR("not implemented, FIXME");               \
-    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+    return get(                                             \
+            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,      \
+            sai_serialize_ ## ot(*entry),                   \
+            attr_count,                                     \
+            attr_list);                                     \
 }
 
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
+
+sai_status_t Sai::create(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::string& entry,
+        _In_ uint32_t attr_count,
+        _In_ const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    auto vals = saimeta::SaiAttributeList::serialize_attr_list(objectType, attr_count, attr_list, false);
+
+    auto serializedObjectType = sai_serialize_object_type(objectType);
+
+    std::string key = serializedObjectType + ":" + entry;
+
+    // TODO SAVE pointers for notifications
+
+    m_communicationChannel->set(key, vals, "create_entry");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    return m_communicationChannel->wait("create_entry_response", kco);
+}
+
+sai_status_t Sai::remove(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::string& entry)
+{
+    SWSS_LOG_ENTER();
+
+    auto serializedObjectType = sai_serialize_object_type(objectType);
+
+    std::string key = serializedObjectType + ":" + entry;
+
+    m_communicationChannel->set(key, {}, "remove");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    return m_communicationChannel->wait("remove_response", kco);
+}
+
+sai_status_t Sai::set(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::string& entry,
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    auto val = saimeta::SaiAttributeList::serialize_attr_list(objectType, 1, attr, false);
+
+    // TODO SAVE pointers for notifications
+
+    auto serializedObjectType = sai_serialize_object_type(objectType);
+
+    std::string key = serializedObjectType + ":" + entry;
+
+    m_communicationChannel->set(key, val, "set");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    return m_communicationChannel->wait("set_response", kco);
+}
+
+sai_status_t Sai::get(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::string& entry,
+        _In_ uint32_t attr_count,
+        _Inout_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Since user may reuse buffers, then oid list buffers maybe not cleared
+     * and contain some garbage, let's clean them so we send all oids as null to
+     * syncd.
+     */
+
+    sairedis::Utils::clearOidValues(objectType, attr_count, attr_list);
+
+    auto vals = saimeta::SaiAttributeList::serialize_attr_list(objectType, attr_count, attr_list, false);
+
+    std::string serializedObjectType = sai_serialize_object_type(objectType);
+
+    std::string key = serializedObjectType + ":" + entry;
+
+    m_communicationChannel->set(key, vals, "get");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait("get_response", kco);
+
+    auto &values = kfvFieldsValues(kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        if (values.size() == 0)
+        {
+            SWSS_LOG_THROW("logic error, api returned 0 values!");
+        }
+
+        saimeta::SaiAttributeList list(objectType, values, false);
+
+        transfer_attributes(objectType, attr_count, list.get_attr_list(), attr_list, false);
+    }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        if (values.size() == 0)
+        {
+            SWSS_LOG_THROW("logic error, api returned 0 values!");
+        }
+
+        saimeta::SaiAttributeList list(objectType, values, true);
+
+        transfer_attributes(objectType, attr_count, list.get_attr_list(), attr_list, true);
+    }
+
+    return status;
+}
 
 // STATS
 
@@ -230,21 +384,49 @@ sai_status_t Sai::getStats(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    auto oi = sai_metadata_get_object_type_info(object_type);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
+    if (oi == NULL)
+    {
+        SWSS_LOG_ERROR("invalid object type: %s", sai_serialize_object_type(object_type).c_str());
 
-sai_status_t Sai::queryStatsCapability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
-        _Inout_ sai_stat_capability_list_t *stats_capability)
-{
-    SWSS_LOG_ENTER();
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    auto strObjectType = sai_serialize_object_type(object_type);
+    auto strObjectId = sai_serialize_object_id(object_id);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    std::string key = strObjectType + ":" + strObjectId;
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    for (uint32_t i = 0; i < number_of_counters; i++)
+    {
+        entry.emplace_back(sai_serialize_enum(counter_ids[i], oi->statenum), "");
+    }
+
+    m_communicationChannel->set(key, entry, "get_stats");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait("get_stats_response", kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto &values = kfvFieldsValues(kco);
+
+        if (values.size () != number_of_counters)
+        {
+            SWSS_LOG_THROW("logic error, wrong number of counters, got %zu, expected %u", values.size(), number_of_counters);
+        }
+
+        for (uint32_t idx = 0; idx < number_of_counters; idx++)
+        {
+            counters[idx] = stoull(fvValue(values[idx]));
+        }
+    }
+
+    return status;
 }
 
 sai_status_t Sai::getStatsExt(
@@ -259,9 +441,51 @@ sai_status_t Sai::getStatsExt(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    auto oi = sai_metadata_get_object_type_info(object_type);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    if (oi == NULL)
+    {
+        SWSS_LOG_ERROR("invalid object type: %s", sai_serialize_object_type(object_type).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto strObjectType = sai_serialize_object_type(object_type);
+    auto strObjectId = sai_serialize_object_id(object_id);
+
+    std::string key = strObjectType + ":" + strObjectId;
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    for (uint32_t i = 0; i < number_of_counters; i++)
+    {
+        entry.emplace_back(sai_serialize_enum(counter_ids[i], oi->statenum), "");
+    }
+
+    entry.emplace_back("STATS_MODE", std::to_string(mode)); // TODO add serialize
+
+    m_communicationChannel->set(key, entry, "get_stats_ext");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait("get_stats_ext_response", kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto &values = kfvFieldsValues(kco);
+
+        if (values.size () != number_of_counters)
+        {
+            SWSS_LOG_THROW("logic error, wrong number of counters, got %zu, expected %u", values.size(), number_of_counters);
+        }
+
+        for (uint32_t idx = 0; idx < number_of_counters; idx++)
+        {
+            counters[idx] = stoull(fvValue(values[idx]));
+        }
+    }
+
+    return status;
 }
 
 sai_status_t Sai::clearStats(
@@ -274,10 +498,47 @@ sai_status_t Sai::clearStats(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
+    auto oi = sai_metadata_get_object_type_info(object_type);
+
+    if (oi == NULL)
+    {
+        SWSS_LOG_ERROR("invalid object type: %s", sai_serialize_object_type(object_type).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto strObjectType = sai_serialize_object_type(object_type);
+    auto strObjectId = sai_serialize_object_id(object_id);
+
+    std::string key = strObjectType + ":" + strObjectId;
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    for (uint32_t i = 0; i < number_of_counters; i++)
+    {
+        entry.emplace_back(sai_serialize_enum(counter_ids[i], oi->statenum), "");
+    }
+
+    m_communicationChannel->set(key, entry, "clear_stats");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    return m_communicationChannel->wait("clear_stats_response", kco);
+}
+
+sai_status_t Sai::queryStatsCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
     SWSS_LOG_ERROR("not implemented, FIXME");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
+
+// BULK STATS
 
 sai_status_t Sai::bulkGetStats(
         _In_ sai_object_id_t switchId,
@@ -480,9 +741,24 @@ sai_status_t Sai::flushFdbEntries(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    auto entry = saimeta::SaiAttributeList::serialize_attr_list(
+            SAI_OBJECT_TYPE_FDB_FLUSH,
+            attr_count,
+            attr_list,
+            false);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    std::string serializedObjectId = sai_serialize_object_type(SAI_OBJECT_TYPE_FDB_FLUSH);
+
+    // NOTE ! we actually give switch ID since FLUSH is not real object
+    std::string key = serializedObjectId + ":" + sai_serialize_object_id(switch_id);
+
+    SWSS_LOG_NOTICE("flush key: %s, fields: %lu", key.c_str(), entry.size());
+
+    m_communicationChannel->set(key, entry, "flush_fdb_entries");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    return m_communicationChannel->wait("flush_fdb_entries_response", kco);
 }
 
 // SAI API
@@ -498,39 +774,190 @@ sai_status_t Sai::objectTypeGetAvailability(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    auto strSwitchId = sai_serialize_object_id(switchId);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    auto entry = saimeta::SaiAttributeList::serialize_attr_list(objectType, attrCount, attrList, false);
+
+    entry.emplace_back("OBJECT_TYPE", sai_serialize_object_type(objectType));
+
+    m_communicationChannel->set(strSwitchId, entry, "object_type_get_availability");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait("object_type_get_availability_response", kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto& values = kfvFieldsValues(kco);
+
+        if (values.size() == 0)
+        {
+            SWSS_LOG_THROW("logic error, api returned 0 values!");
+        }
+
+        *count = std::stoull(fvValue(values[0]));
+    }
+
+    return status;
 }
 
 sai_status_t Sai::queryAttributeCapability(
-        _In_ sai_object_id_t switch_id,
-        _In_ sai_object_type_t object_type,
-        _In_ sai_attr_id_t attr_id,
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
         _Out_ sai_attr_capability_t *capability)
 {
     MUTEX();
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    auto strSwitchId = sai_serialize_object_id(switchId);
+    auto strObjectType = sai_serialize_object_type(objectType);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+
+    if (meta == NULL)
+    {
+        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", strObjectType.c_str(), attrId);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    const std::string attrIdStr = meta->attridname;
+
+    const std::vector<swss::FieldValueTuple> entry =
+    {
+        swss::FieldValueTuple("OBJECT_TYPE", strObjectType),
+        swss::FieldValueTuple("ATTR_ID", attrIdStr)
+    };
+
+    m_communicationChannel->set(strSwitchId, entry, "query_attribute_capability");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait("query_attribute_capability_response", kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto &values = kfvFieldsValues(kco);
+
+        if (values.size() != 3)
+        {
+            SWSS_LOG_ERROR("logic error, api returned invalin numer in response: expected 3 values, received %zu", values.size());
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        capability->create_implemented = (fvValue(values[0]) == "true" ? true : false);
+        capability->set_implemented    = (fvValue(values[1]) == "true" ? true : false);
+        capability->get_implemented    = (fvValue(values[2]) == "true" ? true : false);
+    }
+
+    return status;
 }
 
 sai_status_t Sai::queryAttributeEnumValuesCapability(
-        _In_ sai_object_id_t switch_id,
-        _In_ sai_object_type_t object_type,
-        _In_ sai_attr_id_t attr_id,
-        _Inout_ sai_s32_list_t *enum_values_capability)
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _In_ sai_attr_id_t attrId,
+        _Inout_ sai_s32_list_t *enumValuesCapability)
 {
     MUTEX();
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    if (enumValuesCapability && enumValuesCapability->list)
+    {
+        // clear input list, since we use serialize to transfer values
+        for (uint32_t idx = 0; idx < enumValuesCapability->count; idx++)
+        {
+            enumValuesCapability->list[idx] = 0;
+        }
+    }
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    auto strSwitchId = sai_serialize_object_id(switchId);
+    auto strObjectType = sai_serialize_object_type(objectType);
+
+    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+
+    if (meta == NULL)
+    {
+        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", strObjectType.c_str(), attrId);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    const std::string strAttrId = meta->attridname;
+    const std::string listSize = std::to_string(enumValuesCapability->count);
+
+    const std::vector<swss::FieldValueTuple> entry =
+    {
+        swss::FieldValueTuple("OBJECT_TYPE", strObjectType),
+        swss::FieldValueTuple("ATTR_ID", strAttrId),
+        swss::FieldValueTuple("LIST_SIZE", listSize)
+    };
+
+    m_communicationChannel->set(strSwitchId, entry, "query_attribute_enum_values_capability");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait("query_attribute_enum_values_capability_response", kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+        if (values.size() != 2)
+        {
+            SWSS_LOG_ERROR("logic error, expected 2 values, received %zu", values.size());
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        const std::string &capability_str = fvValue(values[0]);
+        const uint32_t num_capabilities = std::stoi(fvValue(values[1]));
+
+        enumValuesCapability->count = num_capabilities;
+
+        size_t position = 0;
+
+        for (uint32_t i = 0; i < num_capabilities; i++)
+        {
+            size_t old_position = position;
+            position = capability_str.find(",", old_position);
+            std::string capability = capability_str.substr(old_position, position - old_position);
+            enumValuesCapability->list[i] = std::stoi(capability);
+
+            // We have run out of values to add to our list
+            if (position == std::string::npos)
+            {
+                if (num_capabilities != i + 1)
+                {
+                    SWSS_LOG_WARN("Query returned less attributes than expected: expected %d, received %d", num_capabilities, i+1);
+                }
+
+                break;
+            }
+
+            // Skip the commas
+            position++;
+        }
+    }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        const auto &values = kfvFieldsValues(kco);
+
+        if (values.size() != 1)
+        {
+            SWSS_LOG_ERROR("logic error, expected 1 value, received %zu", values.size());
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        enumValuesCapability->count = std::stoi(fvValue(values[0]));
+    }
+
+    return status;
 }
 
 sai_object_type_t Sai::objectTypeQuery(
@@ -541,20 +968,37 @@ sai_object_type_t Sai::objectTypeQuery(
 
     if (!m_apiInitialized)
     {
-        SWSS_LOG_ERROR("%s: SAI API not initialized", __PRETTY_FUNCTION__);
+        SWSS_LOG_ERROR("%s: api not initialized", __PRETTY_FUNCTION__);
 
         return SAI_OBJECT_TYPE_NULL;
     }
 
-    //json j;
+    auto key = sai_serialize_object_id(objectId);
 
-    //j["switch_id"] = sai_serialize_object_id(switch_id);
+    m_communicationChannel->set(key, {}, "object_type_query");
 
-    //return j.dump();
+    swss::KeyOpFieldsValuesTuple kco;
 
-    // TODO implement !
+    auto status = m_communicationChannel->wait("object_type_query_response", kco);
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto& values = kfvFieldsValues(kco);
+
+        if (values.size() == 0)
+        {
+            SWSS_LOG_THROW("logic error, api returned 0 values!");
+        }
+
+        sai_object_type_t objectType;
+        sai_deserialize_object_type(fvValue(values[0]), objectType);
+
+        return objectType;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("switchIdQuery failed: %s", sai_serialize_status(status).c_str());
+    }
 
     return SAI_OBJECT_TYPE_NULL;
 }
@@ -567,14 +1011,37 @@ sai_object_id_t Sai::switchIdQuery(
 
     if (!m_apiInitialized)
     {
-        SWSS_LOG_ERROR("%s: SAI API not initialized", __PRETTY_FUNCTION__);
+        SWSS_LOG_ERROR("%s: api not initialized", __PRETTY_FUNCTION__);
 
         return SAI_NULL_OBJECT_ID;
     }
 
-    // TODO implement !
+    auto key = sai_serialize_object_id(objectId);
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    m_communicationChannel->set(key, {}, "switch_id_query");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait("switch_id_query_response", kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto& values = kfvFieldsValues(kco);
+
+        if (values.size() == 0)
+        {
+            SWSS_LOG_THROW("logic error, api returned 0 values!");
+        }
+
+        sai_object_id_t switchId;
+        sai_deserialize_object_id(fvValue(values[0]), switchId);
+
+        return switchId;
+    }
+    else
+    {
+        SWSS_LOG_ERROR("switchIdQuery failed: %s", sai_serialize_status(status).c_str());
+    }
 
     return SAI_NULL_OBJECT_ID;
 }
@@ -587,34 +1054,62 @@ sai_status_t Sai::logSet(
     SWSS_LOG_ENTER();
     PROXY_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_WARN("log set not implemented for %s:%s",
-            sai_serialize_api(api).c_str(),
-            sai_serialize_log_level(log_level).c_str());
+    auto key = sai_serialize_api(api) + ":" + sai_serialize_log_level(log_level);
 
-    return SAI_STATUS_SUCCESS;
+    m_communicationChannel->set(key, {}, "log_set");
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    return m_communicationChannel->wait("log_set_response", kco);
 }
 
 sai_status_t Sai::queryApiVersion(
         _Out_ sai_api_version_t *version)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
+    PROXY_CHECK_API_INITIALIZED();
 
-    // TODO this should be forwarded to SaiInterface object
+    SWSS_LOG_NOTICE("compiled proxy headers SAI API version: %d", SAI_API_VERSION);
 
-    if (version)
+    if (version == NULL)
     {
-        *version = SAI_API_VERSION;
+        SWSS_LOG_ERROR("version parameter is NULL");
 
-        // TODO FIXME implement proper query for syncd, currently this is not an issue since swss is not using this API
-
-        SWSS_LOG_WARN("retruning SAI API version %d with saiproxy compiled SAI headers, not actual libsai.so", SAI_API_VERSION);
-
-        return SAI_STATUS_SUCCESS;
+        return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    SWSS_LOG_ERROR("version parameter is NULL");
+    m_communicationChannel->set("api", {}, "query_api_version");
 
-    return SAI_STATUS_INVALID_PARAMETER;
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait("query_api_version_response", kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        auto& values = kfvFieldsValues(kco);
+
+        if (values.size() == 0)
+        {
+            SWSS_LOG_THROW("logic error, api returned 0 values!");
+        }
+
+        SWSS_LOG_NOTICE("returned sai api version: %s", fvValue(values[0]).c_str());
+
+        *version = std::stoull(fvValue(values[0]));
+    }
+
+    return status;
+}
+
+void Sai::handleNotification(
+        _In_ const std::string &name,
+        _In_ const std::string &serializedNotification,
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("FIXME");
 }
 
 //sai_switch_notifications_t Sai::handle_notification(

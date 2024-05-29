@@ -1,10 +1,11 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I$(top_srcdir)/meta
 
 lib_LTLIBRARIES = libsaiproxy.la
 
 noinst_LIBRARIES = libSaiProxy.a
 
 libSaiProxy_a_SOURCES = \
+						 Proxy.cpp \
 						 Sai.cpp
 
 BUILT_SOURCES = sai_proxy.cpp

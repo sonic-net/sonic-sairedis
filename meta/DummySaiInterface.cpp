@@ -46,6 +46,11 @@ sai_status_t DummySaiInterface::create(
 {
     SWSS_LOG_ENTER();
 
+    if (objectId && m_status == SAI_STATUS_SUCCESS)
+    {
+        *objectId = (sai_object_id_t)1;
+    }
+
     return m_status;
 }
 
