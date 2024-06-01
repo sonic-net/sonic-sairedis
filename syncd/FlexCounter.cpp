@@ -518,7 +518,8 @@ public:
             _In_ std::vector<swss::FieldValueTuple> &counterValues,
             _In_ swss::DBConnector &countersDb,
             _In_ std::shared_ptr<swss::Table> cfgDeviceMetaDataTable,
-            _Out_ std::shared_ptr<swss::Table> appDbCountersTable ) {
+            _Out_ std::shared_ptr<swss::Table> appDbCountersTable )
+    {
        // We need to update CHASSIS_APP_DB only if it is a VOQ counter. So first check
        // if the counter is a QUEUE counter and if yes, query the queue attribute to check
        // if it is a VOQ queue or not.
@@ -533,6 +534,7 @@ public:
                    "status %d rid 0x%" PRIx64 "vid 0x%" PRIx64, status, rid, vid);
              return;
           }
+
           if (attr.value.s32 == SAI_QUEUE_TYPE_UNICAST_VOQ) {
              attr.id = SAI_QUEUE_ATTR_INDEX;
              status = m_vendorSai->get(m_objectType, rid, 1, &attr);
@@ -1090,7 +1092,7 @@ public:
 };
 
 void FlexCounter::getCfgSwitchType(
-         _In_ std::string &switch_type)
+         _Out_ std::string &switch_type)
 {
    try
    {
@@ -1113,7 +1115,6 @@ void FlexCounter::getCfgSwitchType(
       switch_type = "switch";
    }
 }
-
 
 FlexCounter::FlexCounter(
         _In_ const std::string& instanceId,
