@@ -61,23 +61,23 @@ TEST(ClientServerSai, ctr)
     auto css = std::make_shared<ClientServerSai>();
 }
 
-TEST(ClientServerSai, initialize)
+TEST(ClientServerSai, apiInitialize)
 {
     auto css = std::make_shared<ClientServerSai>();
 
-    EXPECT_NE(SAI_STATUS_SUCCESS, css->initialize(1, nullptr));
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->apiInitialize(1, nullptr));
 
-    EXPECT_NE(SAI_STATUS_SUCCESS, css->initialize(0, nullptr));
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->apiInitialize(0, nullptr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
 
     css = nullptr; // invoke uninitialize in destructor
 
     css = std::make_shared<ClientServerSai>();
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
 
-    EXPECT_NE(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+    EXPECT_NE(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
 }
 
 TEST(ClientServerSai, objectTypeQuery)
@@ -100,7 +100,7 @@ TEST(ClientServerSai, logSet)
 
     EXPECT_NE(SAI_STATUS_SUCCESS, css->logSet(SAI_API_PORT, SAI_LOG_LEVEL_NOTICE));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->logSet(SAI_API_PORT, SAI_LOG_LEVEL_NOTICE));
 }
@@ -128,7 +128,7 @@ TEST(ClientServerSai, bulkGetClearStats)
                                                       SAI_STATS_MODE_BULK_CLEAR,
                                                       nullptr));
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
 
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkGetStats(SAI_NULL_OBJECT_ID,
                                                             SAI_OBJECT_TYPE_PORT,
@@ -150,7 +150,7 @@ TEST(ClientServerSai, bulkGetClearStats)
                                                               nullptr));
 
     css = std::make_shared<ClientServerSai>();
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_client_services));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_client_services));
 
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, css->bulkGetStats(SAI_NULL_OBJECT_ID,
                                                             SAI_OBJECT_TYPE_PORT,
@@ -177,14 +177,14 @@ TEST(ClientServerSai, OT)                                                \
 {                                                                        \
     auto css = std::make_shared<ClientServerSai>();                      \
     sai_ ## ot ## _t e = {};                                             \
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));   \
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));   \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->create(&e, 0, nullptr));          \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->set(&e, nullptr));                \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->get(&e, 0, nullptr));             \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->remove(&e));                      \
                                                                          \
     auto ss = std::make_shared<ClientServerSai>();                       \
-    EXPECT_EQ(SAI_STATUS_SUCCESS, ss->initialize(0, &test_services));    \
+    EXPECT_EQ(SAI_STATUS_SUCCESS, ss->apiInitialize(0, &test_services));    \
     EXPECT_NE(SAI_STATUS_SUCCESS, ss->create(&e, 0, nullptr));           \
     EXPECT_NE(SAI_STATUS_SUCCESS, ss->set(&e, nullptr));                 \
     EXPECT_NE(SAI_STATUS_SUCCESS, ss->get(&e, 0, nullptr));              \
@@ -198,16 +198,38 @@ TEST(ClientServerSai, bulk_ ## OT)                                              
 {                                                                                                                            \
     auto css = std::make_shared<ClientServerSai>();                                                                          \
     sai_ ## ot ## _t e[2] = {};                                                                                              \
-    EXPECT_EQ(SAI_STATUS_SUCCESS, css->initialize(0, &test_services));                                                       \
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));                                                       \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));    \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->bulkSet(2, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));                \
     EXPECT_NE(SAI_STATUS_SUCCESS, css->bulkRemove(2, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));                      \
                                                                                                                              \
     auto ss = std::make_shared<ClientServerSai>();                                                                           \
-    EXPECT_EQ(SAI_STATUS_SUCCESS, ss->initialize(0, &test_client_services));                                                 \
+    EXPECT_EQ(SAI_STATUS_SUCCESS, ss->apiInitialize(0, &test_client_services));                                                 \
     EXPECT_NE(SAI_STATUS_SUCCESS, ss->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));     \
     EXPECT_NE(SAI_STATUS_SUCCESS, ss->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));                 \
     EXPECT_NE(SAI_STATUS_SUCCESS, ss->bulkRemove(0, e, SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, nullptr));                       \
 }
 
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(TEST_BULK_ENTRY)
+
+
+TEST(ClientServerSai, bulkGet)
+{
+    ClientServerSai sai;
+
+    sai_object_id_t oids[1] = {0};
+    uint32_t attrcount[1] = {0};
+    sai_attribute_t* attrs[1] = {0};
+    sai_status_t statuses[1] = {0};
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED,
+            sai.bulkGet(
+                SAI_OBJECT_TYPE_PORT,
+                1,
+                oids,
+                attrcount,
+                attrs,
+                SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
+                statuses));
+}
+

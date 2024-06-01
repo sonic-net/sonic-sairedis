@@ -341,13 +341,13 @@ namespace sairedis
                     _In_ sai_attr_id_t attrId,
                     _In_ const sai_attr_capability_t* capability);
 
-            void recordQueryAattributeEnumValuesCapability(
+            void recordQueryAttributeEnumValuesCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id,
                     _Inout_ sai_s32_list_t *enum_values_capability);
 
-            void recordQueryAattributeEnumValuesCapabilityResponse(
+            void recordQueryAttributeEnumValuesCapabilityResponse(
                     _In_ sai_status_t status,
                     _In_ sai_object_type_t objectType,
                     _In_ sai_attr_id_t attrId,

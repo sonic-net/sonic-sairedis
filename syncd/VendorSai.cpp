@@ -66,13 +66,13 @@ VendorSai::~VendorSai()
 
     if (m_apiInitialized)
     {
-        uninitialize();
+        apiUninitialize();
     }
 }
 
 // INITIALIZE UNINITIALIZE
 
-sai_status_t VendorSai::initialize(
+sai_status_t VendorSai::apiInitialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t *service_method_table)
 {
@@ -91,6 +91,23 @@ sai_status_t VendorSai::initialize(
         SWSS_LOG_ERROR("invalid service_method_table handle passed to SAI API initialize");
 
         return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
+
+    auto status = m_globalApis.api_initialize(flags, service_method_table);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        memset(&m_apis, 0, sizeof(m_apis));
+
+        int failed = sai_metadata_apis_query(m_globalApis.api_query, &m_apis);
+
+        if (failed > 0)
+        {
+            SWSS_LOG_NOTICE("sai_api_query failed for %d apis", failed);
+        }
+
     }
 
     sai_api_version_t version{};
@@ -120,28 +137,12 @@ sai_status_t VendorSai::initialize(
         return SAI_STATUS_FAILURE;
     }
 
-    memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
-
-    auto status = m_globalApis.api_initialize(flags, service_method_table);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        memset(&m_apis, 0, sizeof(m_apis));
-
-        int failed = sai_metadata_apis_query(m_globalApis.api_query, &m_apis);
-
-        if (failed > 0)
-        {
-            SWSS_LOG_NOTICE("sai_api_query failed for %d apis", failed);
-        }
-
-        m_apiInitialized = true;
-    }
+    m_apiInitialized = true;
 
     return status;
 }
 
-sai_status_t VendorSai::uninitialize(void)
+sai_status_t VendorSai::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
@@ -606,6 +607,43 @@ sai_status_t VendorSai::bulkSet(
 
     return SAI_STATUS_NOT_SUPPORTED;
 }
+
+sai_status_t VendorSai::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+// BULK GET
+
+#define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
+sai_status_t VendorSai::bulkGet(                            \
+        _In_ uint32_t object_count,                         \
+        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const uint32_t *attr_count,                    \
+        _Inout_ sai_attribute_t **attr_list,                \
+        _In_ sai_bulk_op_error_mode_t mode,                 \
+        _Out_ sai_status_t *object_statuses)                \
+{                                                           \
+    MUTEX();                                                \
+    SWSS_LOG_ENTER();                                       \
+    VENDOR_CHECK_API_INITIALIZED();                         \
+    SWSS_LOG_ERROR("FIXME not implemented");                \
+    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY);
+
 
 // BULK QUAD ENTRY
 
@@ -1628,7 +1666,7 @@ sai_status_t VendorSai::queryAttributeCapability(
             capability);
 }
 
-sai_status_t VendorSai::queryAattributeEnumValuesCapability(
+sai_status_t VendorSai::queryAttributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
@@ -1684,6 +1722,14 @@ sai_status_t VendorSai::logSet(
     m_logLevelMap[api] = log_level;
 
     return m_globalApis.log_set(api, log_level);
+}
+
+sai_status_t VendorSai::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    return m_globalApis.query_api_version(version);
 }
 
 sai_log_level_t VendorSai::logGet(

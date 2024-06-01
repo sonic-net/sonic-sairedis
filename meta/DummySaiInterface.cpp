@@ -21,7 +21,7 @@ void DummySaiInterface::setStatus(
     m_status = status;
 }
 
-sai_status_t DummySaiInterface::initialize(
+sai_status_t DummySaiInterface::apiInitialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t *service_method_table)
 {
@@ -30,7 +30,7 @@ sai_status_t DummySaiInterface::initialize(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t  DummySaiInterface::uninitialize(void)
+sai_status_t  DummySaiInterface::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
 
@@ -158,6 +158,22 @@ sai_status_t DummySaiInterface::bulkSet(                \
     return m_status;                                    \
 }
 
+#define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
+sai_status_t DummySaiInterface::bulkGet(                    \
+        _In_ uint32_t object_count,                         \
+        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const uint32_t *attr_count,                    \
+        _Inout_ sai_attribute_t **attr_list,                \
+        _In_ sai_bulk_op_error_mode_t mode,                 \
+        _Out_ sai_status_t *object_statuses)                \
+{                                                           \
+    SWSS_LOG_ENTER();                                       \
+    SWSS_LOG_ERROR("FIXME not implemented");                \
+    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+}
+
+// NON QUAD API
+
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
 SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
@@ -165,6 +181,7 @@ SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY);
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY);
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY);
 
 sai_status_t DummySaiInterface::flushFdbEntries(
         _In_ sai_object_id_t switchId,
@@ -247,7 +264,7 @@ sai_status_t DummySaiInterface::queryAttributeCapability(
     return m_status;
 }
 
-sai_status_t DummySaiInterface::queryAattributeEnumValuesCapability(
+sai_status_t DummySaiInterface::queryAttributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
@@ -279,7 +296,7 @@ sai_status_t DummySaiInterface::queryStatsCapability(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_status;
 }
 
 sai_status_t DummySaiInterface::getStatsExt(
@@ -370,6 +387,22 @@ sai_status_t DummySaiInterface::bulkSet(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t DummySaiInterface::bulkCreate(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t switch_id,
@@ -415,6 +448,23 @@ sai_status_t DummySaiInterface::logSet(
         _In_ sai_log_level_t log_level)
 {
     SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
+sai_status_t DummySaiInterface::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    if (version)
+    {
+        *version = SAI_API_VERSION;
+
+        return m_status;
+    }
+
+    SWSS_LOG_ERROR("version parameter is NULL");
 
     return m_status;
 }

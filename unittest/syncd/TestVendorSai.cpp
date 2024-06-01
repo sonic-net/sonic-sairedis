@@ -54,7 +54,7 @@ public:
     {
         m_vsai = std::make_shared<VendorSai>();
 
-        auto status = m_vsai->initialize(0, &test_services);
+        auto status = m_vsai->apiInitialize(0, &test_services);
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
         sai_attribute_t attr;
@@ -70,7 +70,7 @@ public:
         auto status = m_vsai->remove(SAI_OBJECT_TYPE_SWITCH, m_swid);
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
-        status = m_vsai->uninitialize();
+        status = m_vsai->apiUninitialize();
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
     }
 
@@ -136,7 +136,7 @@ TEST_F(VendorSaiTest, portBulkAddRemove)
 TEST(VendorSai, bulkGetStats)
 {
     VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
     ASSERT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai.bulkGetStats(SAI_NULL_OBJECT_ID,
                                                            SAI_OBJECT_TYPE_PORT,
                                                            0,
@@ -211,7 +211,7 @@ sai_object_id_t create_rif(
 TEST(VendorSai, quad_bulk_neighbor_entry)
 {
     VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchId = 0;
 
@@ -380,7 +380,7 @@ static void remove_eni(VendorSai &sai, sai_object_id_t eni)
 TEST(VendorSai, quad_dash_direction_lookup)
 {
     VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -405,7 +405,7 @@ TEST(VendorSai, quad_dash_direction_lookup)
 TEST(VendorSai, bulk_dash_direction_lookup)
 {
     VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -447,7 +447,7 @@ TEST(VendorSai, bulk_dash_direction_lookup)
 TEST(VendorSai, quad_dash_eni)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -501,7 +501,7 @@ TEST(VendorSai, quad_dash_eni)
 TEST(VendorSai, bulk_dash_eni)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -562,7 +562,7 @@ TEST(VendorSai, bulk_dash_eni)
 TEST(VendorSai, quad_dash_eni_acl)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -615,7 +615,7 @@ TEST(VendorSai, quad_dash_eni_acl)
 TEST(VendorSai, quad_dash_vip)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -642,7 +642,7 @@ TEST(VendorSai, quad_dash_vip)
 TEST(VendorSai, bulk_dash_vip)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -690,7 +690,7 @@ TEST(VendorSai, bulk_dash_vip)
 TEST(VendorSai, quad_dash_acl_group)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -711,7 +711,7 @@ TEST(VendorSai, quad_dash_acl_group)
 TEST(VendorSai, bulk_dash_acl_group)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -749,7 +749,7 @@ TEST(VendorSai, bulk_dash_acl_group)
 TEST(VendorSai, quad_dash_acl_rule)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -827,7 +827,7 @@ TEST(VendorSai, quad_dash_acl_rule)
 TEST(VendorSai, bulk_dash_acl_rule)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -924,7 +924,7 @@ TEST(VendorSai, bulk_dash_acl_rule)
 TEST(VendorSai, quad_dash_vnet)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -941,7 +941,7 @@ TEST(VendorSai, quad_dash_vnet)
 TEST(VendorSai, bulk_dash_vnet)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -979,7 +979,7 @@ TEST(VendorSai, bulk_dash_vnet)
 TEST(VendorSai, quad_dash_inbound_routing_entry)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -1015,7 +1015,7 @@ TEST(VendorSai, quad_dash_inbound_routing_entry)
 TEST(VendorSai, bulk_dash_inbound_routing_entry)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -1081,7 +1081,7 @@ TEST(VendorSai, bulk_dash_inbound_routing_entry)
 TEST(VendorSai, quad_dash_pa_validation)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -1109,7 +1109,7 @@ TEST(VendorSai, quad_dash_pa_validation)
 TEST(VendorSai, bulk_dash_pa_validation)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -1164,7 +1164,7 @@ TEST(VendorSai, bulk_dash_pa_validation)
 TEST(VendorSai, quad_dash_outbound_routing_entry)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -1210,7 +1210,7 @@ TEST(VendorSai, quad_dash_outbound_routing_entry)
 TEST(VendorSai, bulk_dash_outbound_routing_entry)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -1288,7 +1288,7 @@ TEST(VendorSai, bulk_dash_outbound_routing_entry)
 TEST(VendorSai, quad_dash_outbound_ca_to_pa_entry)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -1337,7 +1337,7 @@ TEST(VendorSai, quad_dash_outbound_ca_to_pa_entry)
 TEST(VendorSai, bulk_dash_outbound_ca_to_pa_entry)
 {
         VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     sai_object_id_t switchid = create_switch(sai);
 
@@ -1405,3 +1405,24 @@ TEST(VendorSai, bulk_dash_outbound_ca_to_pa_entry)
     remove_counter(sai, counter0);
     remove_counter(sai, counter1);
 }
+
+TEST(VendorSie, bulkGet)
+{
+    VendorSai sai;
+
+    sai_object_id_t oids[1] = {0};
+    uint32_t attrcount[1] = {0};
+    sai_attribute_t* attrs[1] = {0};
+    sai_status_t statuses[1] = {0};
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED,
+            sai.bulkGet(
+                SAI_OBJECT_TYPE_PORT,
+                1,
+                oids,
+                attrcount,
+                attrs,
+                SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
+                statuses));
+}
+

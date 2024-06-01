@@ -43,7 +43,7 @@ RedisRemoteSaiInterface::RedisRemoteSaiInterface(
 
     m_initialized = false;
 
-    initialize(0, nullptr);
+    apiInitialize(0, nullptr);
 }
 
 RedisRemoteSaiInterface::~RedisRemoteSaiInterface()
@@ -52,11 +52,11 @@ RedisRemoteSaiInterface::~RedisRemoteSaiInterface()
 
     if (m_initialized)
     {
-        uninitialize();
+        apiUninitialize();
     }
 }
 
-sai_status_t RedisRemoteSaiInterface::initialize(
+sai_status_t RedisRemoteSaiInterface::apiInitialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t *service_method_table)
 {
@@ -109,7 +109,7 @@ sai_status_t RedisRemoteSaiInterface::initialize(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t RedisRemoteSaiInterface::uninitialize(void)
+sai_status_t RedisRemoteSaiInterface::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
 
@@ -778,6 +778,25 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(                                  
 
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
 
+// BULK GET
+
+#define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
+sai_status_t RedisRemoteSaiInterface::bulkGet(              \
+        _In_ uint32_t object_count,                         \
+        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const uint32_t *attr_count,                    \
+        _Inout_ sai_attribute_t **attr_list,                \
+        _In_ sai_bulk_op_error_mode_t mode,                 \
+        _Out_ sai_status_t *object_statuses)                \
+{                                                           \
+    SWSS_LOG_ENTER();                                       \
+    SWSS_LOG_ERROR("FIXME not implemented");                \
+    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY);
+
+
 sai_status_t RedisRemoteSaiInterface::create(
         _In_ sai_object_type_t object_type,
         _In_ const std::string& serializedObjectId,
@@ -1182,7 +1201,7 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeCapabilityResponse(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::queryAattributeEnumValuesCapability(
+sai_status_t RedisRemoteSaiInterface::queryAttributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
@@ -1229,18 +1248,18 @@ sai_status_t RedisRemoteSaiInterface::queryAattributeEnumValuesCapability(
     // This query will not put any data into the ASIC view, just into the
     // message queue
 
-    m_recorder->recordQueryAattributeEnumValuesCapability(switchId, objectType, attrId, enumValuesCapability);
+    m_recorder->recordQueryAttributeEnumValuesCapability(switchId, objectType, attrId, enumValuesCapability);
 
     m_communicationChannel->set(switch_id_str, entry, REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_QUERY);
 
-    auto status = waitForQueryAattributeEnumValuesCapabilityResponse(enumValuesCapability);
+    auto status = waitForQueryAttributeEnumValuesCapabilityResponse(enumValuesCapability);
 
-    m_recorder->recordQueryAattributeEnumValuesCapabilityResponse(status, objectType, attrId, enumValuesCapability);
+    m_recorder->recordQueryAttributeEnumValuesCapabilityResponse(status, objectType, attrId, enumValuesCapability);
 
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::waitForQueryAattributeEnumValuesCapabilityResponse(
+sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeEnumValuesCapabilityResponse(
         _Inout_ sai_s32_list_t* enumValuesCapability)
 {
     SWSS_LOG_ENTER();
@@ -1635,6 +1654,22 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
     return waitForBulkResponse(SAI_COMMON_API_BULK_SET, (uint32_t)serialized_object_ids.size(), object_statuses);
 }
 
+sai_status_t RedisRemoteSaiInterface::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t RedisRemoteSaiInterface::bulkCreate(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t switch_id,
@@ -1852,6 +1887,27 @@ sai_status_t RedisRemoteSaiInterface::logSet(
     SWSS_LOG_ENTER();
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t RedisRemoteSaiInterface::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    if (version)
+    {
+        *version = SAI_API_VERSION;
+
+        // TODO FIXME implement proper query for syncd, currently this is not an issue since swss is not using this API
+
+        SWSS_LOG_WARN("retruning SAI API version %d with sairedis compiled SAI headers, not actual libsai.so", SAI_API_VERSION);
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SWSS_LOG_ERROR("version parameter is NULL");
+
+    return SAI_STATUS_INVALID_PARAMETER;
 }
 
 sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(

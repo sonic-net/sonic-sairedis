@@ -91,7 +91,7 @@ TEST(VirtualOidTranslator, tryTranslateVidToRid)
 
     sai_service_method_table_t test_services = smt.getServiceMethodTable();
 
-    sai_status_t status = sai->initialize(0, &test_services);
+    sai_status_t status = sai->apiInitialize(0, &test_services);
 
     EXPECT_EQ(status, SAI_STATUS_SUCCESS);
 
@@ -158,5 +158,5 @@ TEST(VirtualOidTranslator, tryTranslateVidToRid)
 
     EXPECT_FALSE(vot.tryTranslateVidToRid(mk));
 
-    sai->uninitialize();
+    sai->apiUninitialize();
 }

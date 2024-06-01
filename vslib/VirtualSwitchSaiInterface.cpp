@@ -47,7 +47,7 @@ VirtualSwitchSaiInterface::~VirtualSwitchSaiInterface()
     // empty
 }
 
-sai_status_t VirtualSwitchSaiInterface::initialize(
+sai_status_t VirtualSwitchSaiInterface::apiInitialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t *service_method_table)
 {
@@ -56,7 +56,7 @@ sai_status_t VirtualSwitchSaiInterface::initialize(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t VirtualSwitchSaiInterface::uninitialize(void)
+sai_status_t VirtualSwitchSaiInterface::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
 
@@ -533,6 +533,24 @@ sai_status_t VirtualSwitchSaiInterface::bulkSet(                           \
 
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
 
+// BULK GET
+
+#define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
+sai_status_t VirtualSwitchSaiInterface::bulkGet(            \
+        _In_ uint32_t object_count,                         \
+        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const uint32_t *attr_count,                    \
+        _Inout_ sai_attribute_t **attr_list,                \
+        _In_ sai_bulk_op_error_mode_t mode,                 \
+        _Out_ sai_status_t *object_statuses)                \
+{                                                           \
+    SWSS_LOG_ENTER();                                       \
+    SWSS_LOG_ERROR("FIXME not implemented");                \
+    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+}
+
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY);
+
 std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
         _In_ sai_object_id_t switch_id,
         _In_ std::shared_ptr<SwitchConfig> config,
@@ -876,7 +894,7 @@ sai_status_t VirtualSwitchSaiInterface::queryAttributeCapability(
     return ss->queryAttributeCapability(switch_id, object_type, attr_id, capability);
 }
 
-sai_status_t VirtualSwitchSaiInterface::queryAattributeEnumValuesCapability(
+sai_status_t VirtualSwitchSaiInterface::queryAttributeEnumValuesCapability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,
         _In_ sai_attr_id_t attr_id,
@@ -1151,6 +1169,22 @@ sai_status_t VirtualSwitchSaiInterface::bulkSet(
     return ss->bulkSet(object_type, serialized_object_ids, attr_list, mode, object_statuses);
 }
 
+sai_status_t VirtualSwitchSaiInterface::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t VirtualSwitchSaiInterface::bulkCreate(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t switch_id,
@@ -1228,6 +1262,23 @@ sai_status_t VirtualSwitchSaiInterface::logSet(
     SWSS_LOG_ENTER();
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t VirtualSwitchSaiInterface::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    if (version)
+    {
+        *version = SAI_API_VERSION;
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    SWSS_LOG_ERROR("version parameter is NULL");
+
+    return SAI_STATUS_INVALID_PARAMETER;
 }
 
 bool VirtualSwitchSaiInterface::writeWarmBootFile(

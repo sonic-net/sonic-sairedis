@@ -163,9 +163,9 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.u16, dst_attr.value.u16);
             break;
 
-//        case SAI_ATTR_VALUE_TYPE_INT16:
-//            transfer_primitive(src_attr.value.s16, dst_attr.value.s16);
-//            break;
+        case SAI_ATTR_VALUE_TYPE_INT16:
+            transfer_primitive(src_attr.value.s16, dst_attr.value.s16);
+            break;
 
         case SAI_ATTR_VALUE_TYPE_UINT32:
             transfer_primitive(src_attr.value.u32, dst_attr.value.u32);
@@ -508,6 +508,10 @@ sai_status_t transfer_attribute(
 
         case SAI_ATTR_VALUE_TYPE_ACL_CHAIN_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.aclchainlist, dst_attr.value.aclchainlist, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
+            transfer_primitive(src_attr.value.portpowerconsumption, dst_attr.value.portpowerconsumption);
             break;
 
         default:
@@ -1977,8 +1981,8 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_JSON:
             return sai_serialize_json(attr.value.json);
 
-//        case SAI_ATTR_VALUE_TYPE_INT16:
-//            return sai_serialize_number(attr.value.s16);
+        case SAI_ATTR_VALUE_TYPE_INT16:
+            return sai_serialize_number(attr.value.s16);
 
         case SAI_ATTR_VALUE_TYPE_UINT32:
             return sai_serialize_number(attr.value.u32);
@@ -2130,6 +2134,9 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
             return sai_serialize_ip_prefix_list(attr.value.ipprefixlist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
+            return sai_serialize_poe_port_power_consumption(attr.value.portpowerconsumption);
 
         default:
             SWSS_LOG_THROW("sai attr value type %s is not implemented, FIXME", sai_serialize_attr_value_type(meta.attrvaluetype).c_str());
@@ -2775,6 +2782,51 @@ std::string sai_serialize_redis_link_event_damping_aied_config(
     j["reuse_threshold"] = sai_serialize_number(value.reuse_threshold, false);
     j["decay_half_life"] = sai_serialize_number(value.decay_half_life, false);
     j["flap_penalty"] = sai_serialize_number(value.flap_penalty, false);
+
+    return j.dump();
+}
+
+std::string sai_serialize_poe_port_active_channel_type(
+        _In_ const sai_poe_port_active_channel_type_t value)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(value, &sai_metadata_enum_sai_poe_port_active_channel_type_t);
+}
+
+std::string sai_serialize_poe_port_class_method_type(
+        _In_ const sai_poe_port_class_method_type_t value)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(value, &sai_metadata_enum_sai_poe_port_class_method_type_t);
+}
+
+std::string sai_serialzie_poe_port_signature_type(
+        _In_ const sai_poe_port_signature_type_t value)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(value, &sai_metadata_enum_sai_poe_port_signature_type_t);
+}
+
+std::string sai_serialize_poe_port_power_consumption(
+        _In_ const sai_poe_port_power_consumption_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["active_channel"] = sai_serialize_poe_port_active_channel_type(value.active_channel);
+    j["voltage"] = sai_serialize_number(value.voltage, false);
+    j["current"] = sai_serialize_number(value.current, false);
+    j["consumption"] = sai_serialize_number(value.consumption, false);
+    j["signature_type"] = sai_serialzie_poe_port_signature_type(value.signature_type);
+    j["class_method"] = sai_serialize_poe_port_class_method_type(value.class_method);
+    j["measured_class_a"] = sai_serialize_number(value.measured_class_a, false);
+    j["assigned_class_a"] = sai_serialize_number(value.assigned_class_a, false);
+    j["measured_class_b"] = sai_serialize_number(value.measured_class_b, false);
+    j["assigned_class_b"] = sai_serialize_number(value.assigned_class_b, false);
 
     return j.dump();
 }
@@ -3913,8 +3965,8 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_JSON:
             return sai_deserialize_json(s, attr.value.json);
 
-//        case SAI_ATTR_VALUE_TYPE_INT16:
-//            return sai_deserialize_number(s, attr.value.s16);
+        case SAI_ATTR_VALUE_TYPE_INT16:
+            return sai_deserialize_number(s, attr.value.s16);
 
         case SAI_ATTR_VALUE_TYPE_UINT32:
             return sai_deserialize_number(s, attr.value.u32);
@@ -4065,8 +4117,12 @@ void sai_deserialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
             return sai_deserialize_ip_prefix_list(s, attr.value.ipprefixlist, countOnly);
 
+        case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
+            return sai_deserialize_poe_port_power_consumption(s, attr.value.portpowerconsumption);
+
         default:
-            SWSS_LOG_THROW("deserialize type %d is not supported yet FIXME", meta.attrvaluetype);
+            SWSS_LOG_THROW("deserialize type %s is not supported yet FIXME",
+                    sai_serialize_attr_value_type(meta.attrvaluetype).c_str());
     }
 }
 
@@ -5183,9 +5239,59 @@ void sai_deserialize_free_attribute_value(
             sai_free_list(attr.value.ipprefixlist);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
+            break;
+
         default:
             SWSS_LOG_THROW("sai attr value %s is not implemented, FIXME", sai_serialize_attr_value_type(type).c_str());
     }
+}
+
+void sai_deserialize_poe_port_active_channel_type(
+        _In_ const std::string& s,
+        _Out_ sai_poe_port_active_channel_type_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_poe_port_active_channel_type_t, (int32_t&)value);
+}
+
+void sai_deserialize_poe_port_class_method_type(
+        _In_ const std::string& s,
+        _Out_ sai_poe_port_class_method_type_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_poe_port_class_method_type_t, (int32_t&)value);
+}
+
+void sai_deserialzie_poe_port_signature_type(
+        _In_ const std::string& s,
+        _Out_ sai_poe_port_signature_type_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_poe_port_signature_type_t, (int32_t&)value);
+}
+
+void sai_deserialize_poe_port_power_consumption(
+        _In_ const std::string& s,
+        _Out_ sai_poe_port_power_consumption_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_poe_port_active_channel_type(j["active_channel"], value.active_channel);
+    sai_deserialize_number(j["voltage"], value.voltage);
+    sai_deserialize_number(j["current"], value.current);
+    sai_deserialize_number(j["consumption"], value.consumption);
+    sai_deserialize_poe_port_class_method_type(j["class_method"], value.class_method);
+    sai_deserialzie_poe_port_signature_type(j["signature_type"],value.signature_type);
+    sai_deserialize_number(j["measured_class_a"], value.measured_class_a);
+    sai_deserialize_number(j["assigned_class_a"], value.assigned_class_a);
+    sai_deserialize_number(j["measured_class_b"], value.measured_class_b);
+    sai_deserialize_number(j["assigned_class_b"], value.assigned_class_b);
 }
 
 // deserialize free notifications
