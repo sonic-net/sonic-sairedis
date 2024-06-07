@@ -261,7 +261,7 @@ TEST(APIBulk, eni_ether_address_map_entry)
     }
 
     for (uint32_t i = 0; i < entries_count; i++) {
-        attr.id = SAI_DIRECTION_LOOKUP_ENTRY_ATTR_ACTION;
+        attr.id = SAI_ENI_ETHER_ADDRESS_MAP_ENTRY_ATTR_ENI_ID;
         ASSERT_SUCCESS(dash_api->get_eni_ether_address_map_entry_attribute(&entries[i], 1, &attr));
         ASSERT_EQ(attr.value.oid, attr_list[i][0].value.oid);
     }
@@ -535,7 +535,7 @@ TEST(API, vip_entry)
 
     ASSERT_SUCCESS(dash_api->get_vip_entry_attribute(&vip, (uint32_t)attrs.size(), attrs.data()));
     ASSERT_EQ(attrs[0].value.s32, SAI_VIP_ENTRY_ACTION_ACCEPT);
-    attr.id = SAI_ENI_ETHER_ADDRESS_MAP_ENTRY_ATTR_ENI_ID;
+    attr.id = SAI_VIP_ENTRY_ATTR_ACTION;
     attr.value.s32 = SAI_VIP_ENTRY_ACTION_ACCEPT;
     ASSERT_SUCCESS(dash_api->set_vip_entry_attribute(&vip, &attr));
     ASSERT_SUCCESS(dash_api->get_vip_entry_attribute(&vip, (uint32_t)attrs.size(), attrs.data()));
