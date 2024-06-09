@@ -98,6 +98,11 @@ namespace saiproxy
 
             void processClearStats(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
+        private:
+
+            void loadProfileMap();
+
         private:
 
             syncd::ServiceMethodTable m_smt;

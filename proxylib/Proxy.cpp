@@ -49,11 +49,16 @@ Proxy::Proxy(
 
         SWSS_LOG_NOTICE("api initialized success");
     }
+
+    loadProfileMap();
+    // TODO populate profile map
 }
 
 Proxy::~Proxy()
 {
     SWSS_LOG_ENTER();
+
+    // TODO call stop()
 
     if (m_apiInitialized)
     {
@@ -71,6 +76,47 @@ Proxy::~Proxy()
     // until all possible notification thread will be sent
 
     m_notifications = nullptr;
+}
+
+void Proxy::loadProfileMap()
+{
+    SWSS_LOG_ENTER();
+
+    std::ifstream profile("config.ini");    // TODO to command line
+
+    if (!profile.is_open())
+    {
+        SWSS_LOG_WARN("failed to open profile map file: %s: %s",
+                "config.ini",
+                strerror(errno));
+
+        return;
+    }
+
+    std::string line;
+
+    while (getline(profile, line))
+    {
+        if (line.size() > 0 && (line[0] == '#' || line[0] == ';'))
+        {
+            continue;
+        }
+
+        size_t pos = line.find("=");
+
+        if (pos == std::string::npos)
+        {
+            SWSS_LOG_WARN("not found '=' in line %s", line.c_str());
+            continue;
+        }
+
+        std::string key = line.substr(0, pos);
+        std::string value = line.substr(pos + 1);
+
+        m_profileMap[key] = value;
+
+        SWSS_LOG_NOTICE("insert: %s:%s", key.c_str(), value.c_str());
+    }
 }
 
 const char* Proxy::profileGetValue(
