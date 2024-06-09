@@ -121,6 +121,8 @@ namespace saiproxy
 
             std::shared_ptr<syncd::NotificationProducerBase> m_notifications;
 
+            std::string m_configFile;
+
             /**
              * @brief Mutex for synchronizing api execution and notifications
              */

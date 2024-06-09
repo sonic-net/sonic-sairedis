@@ -26,10 +26,14 @@ Proxy::Proxy(
 {
     SWSS_LOG_ENTER();
 
+    m_configFile = "config.ini"; //  TODO to command line
+
     // TODO to move hard coded addresses to config
 
     m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>("tcp://127.0.0.1:5555");
     m_notifications = std::make_shared<syncd::ZeroMQNotificationProducer>("tcp://127.0.0.1:5556");
+
+    loadProfileMap();
 
     m_smt.profileGetValue = std::bind(&Proxy::profileGetValue, this, _1, _2);
     m_smt.profileGetNextValue = std::bind(&Proxy::profileGetNextValue, this, _1, _2, _3);
@@ -49,9 +53,6 @@ Proxy::Proxy(
 
         SWSS_LOG_NOTICE("api initialized success");
     }
-
-    loadProfileMap();
-    // TODO populate profile map
 }
 
 Proxy::~Proxy()
@@ -82,12 +83,12 @@ void Proxy::loadProfileMap()
 {
     SWSS_LOG_ENTER();
 
-    std::ifstream profile("config.ini");    // TODO to command line
+    std::ifstream profile(m_configFile.c_str());
 
     if (!profile.is_open())
     {
         SWSS_LOG_WARN("failed to open profile map file: %s: %s",
-                "config.ini",
+                m_configFile.c_str(),
                 strerror(errno));
 
         return;

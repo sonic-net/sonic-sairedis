@@ -23,9 +23,32 @@ void DummySaiInterface::setStatus(
 
 sai_status_t DummySaiInterface::apiInitialize(
         _In_ uint64_t flags,
-        _In_ const sai_service_method_table_t *service_method_table)
+        _In_ const sai_service_method_table_t *smt)
 {
     SWSS_LOG_ENTER();
+
+    if (smt)
+    {
+        if (smt->profile_get_value)
+        {
+            SWSS_LOG_NOTICE("Dummy: profile_get_value(NULL): %s", smt->profile_get_value(0, NULL));
+            SWSS_LOG_NOTICE("Dummy: profile_get_value(FOO): %s", smt->profile_get_value(0, "FOO"));
+            SWSS_LOG_NOTICE("Dummy: profile_get_value(FOO): %s", smt->profile_get_value(0, "CAR"));
+        }
+
+        if (smt->profile_get_next_value)
+        {
+
+            const char *var = NULL;
+            const char *val = NULL;
+
+            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, NULL, NULL));
+            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, NULL, &val));
+            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, &var, NULL));
+            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, &var, &val));
+            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, &var, &val));
+        }
+    }
 
     return SAI_STATUS_SUCCESS;
 }
