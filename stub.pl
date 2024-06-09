@@ -105,7 +105,7 @@ sub GetData
 sub SanitizeData
 {
     $DATA =~ s/SAI_OBJECT_TYPE_\w*(START|END|NULL|MAX)//gms;
-    $DATA =~ s/SAI_API_\w*(START|END|UNSPECIFIED|MAX)//gms;
+    $DATA =~ s/SAI_API_\w*(START|END|UNSPECIFIED|MAX|EXTENSIONS_RANGE_BASE)//gms;
 }
 
 sub ExtractData
@@ -197,7 +197,7 @@ sub GetFunctionName
     elsif ($fun =~ /(create|remove|set|get)_(\w+)(_attribute)?/ and defined $objectTypes{$2})
     {
         $OT = $objectTypes{$2};
-        $fun = $1;
+        $fun = "$1";
     }
     else
     {
@@ -303,35 +303,13 @@ sub CreateHeader
     Write ""
 }
 
-sub CreateApiStruct
-{
-    Write "";
-    Write "/* ==== API STRUCTS === */";
-    Write "";
-
-    Write "static sai_apis_t ${STUB}_apis = {";
-
-    for my $API (@APIS)
-    {
-        my $api = lc $API;
-
-        Write "    .${api}_api = const_cast<sai_${api}_api_t*>(&${STUB}_${api}),";
-    }
-
-    Write "};";
-    Write "";
-}
-
 sub CreateApiQuery
 {
     Write "";
     Write "/* ==== API QUERY === */";
     Write "";
-
-    Write "static_assert((sizeof(sai_apis_t)/sizeof(void*)) == (SAI_API_EXTENSIONS_MAX - 1));";
-    Write "";
     Write "sai_status_t sai_api_query(";
-    Write "        _In_ sai_api_t sai_api_id,";
+    Write "        _In_ sai_api_t api,";
     Write "        _Out_ void** api_method_table)";
     Write "{";
     Write "    SWSS_LOG_ENTER();";
@@ -343,21 +321,30 @@ sub CreateApiQuery
     Write "        return SAI_STATUS_INVALID_PARAMETER;";
     Write "    }";
     Write "";
-    Write "    if (sai_api_id == SAI_API_UNSPECIFIED)";
+    Write "    if (api == SAI_API_UNSPECIFIED)";
     Write "    {";
     Write "        SWSS_LOG_ERROR(\"api ID is unspecified api\");";
     Write "";
     Write "        return SAI_STATUS_INVALID_PARAMETER;";
     Write "    }";
     Write "";
-    Write "    if (sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_api_t, sai_api_id))";
+    Write "    switch((int)api)";
     Write "    {";
-    Write "        *api_method_table = ((void**)&${STUB}_apis)[sai_api_id - 1];";
-    Write "";
-    Write "        return SAI_STATUS_SUCCESS;";
+
+    for my $API (@APIS)
+    {
+        my $api = lc $API;
+
+        Write "        case SAI_API_$API:";
+        Write "            *api_method_table = (void**)&${STUB}_${api};";
+        Write "            return SAI_STATUS_SUCCESS;";
+    }
+
+    Write "        default:";
+    Write "            break;";
     Write "    }";
     Write "";
-    Write "    SWSS_LOG_ERROR(\"Invalid API type %d\", sai_api_id);";
+    Write "    SWSS_LOG_ERROR(\"Invalid API type %d\", api);";
     Write "";
     Write "    return SAI_STATUS_INVALID_PARAMETER;";
     Write "}";
@@ -427,7 +414,6 @@ SanitizeData();
 ExtractData();
 CreateHeader();
 CreateApiStricts();
-CreateApiStruct();
 CreateApiQuery();
 CreateGlobalApis();
 WriteFile($optionFileName,$SOURCE_CONTENT);

@@ -45,14 +45,14 @@ SwitchState::SwitchState(
                 sai_serialize_object_type(RealObjectIdManager::objectTypeQuery(switch_id)).c_str());
     }
 
-    for (int i = SAI_OBJECT_TYPE_NULL; i < (int)SAI_OBJECT_TYPE_EXTENSIONS_MAX; ++i)
+    for (size_t i = 0; i < sai_metadata_enum_sai_object_type_t.valuescount; ++i)
     {
         /*
          * Populate empty maps for each object to avoid checking if
          * objecttype exists.
          */
 
-        m_objectHash[(sai_object_type_t)i] = { };
+        m_objectHash[(sai_object_type_t)sai_metadata_enum_sai_object_type_t.values[i]] = { };
     }
 
     /*

@@ -58,9 +58,9 @@ TEST(SaiSerialize, sai_serialize_object_meta_key)
 
     memset(&mk, 0, sizeof(mk));
 
-    for (int32_t i = SAI_OBJECT_TYPE_NULL+1; i < SAI_OBJECT_TYPE_EXTENSIONS_MAX; i++)
+    for (size_t i = 1; i < sai_metadata_enum_sai_object_type_t.valuescount; ++i)
     {
-        mk.objecttype = (sai_object_type_t)i;
+        mk.objecttype = (sai_object_type_t)sai_metadata_enum_sai_object_type_t.values[i];
 
         auto s = sai_serialize_object_meta_key(mk);
 

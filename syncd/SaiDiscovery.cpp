@@ -309,15 +309,15 @@ void SaiDiscovery::setApiLogLevel(
 
     // We start from 1 since 0 is SAI_API_UNSPECIFIED.
 
-    for (uint32_t api = 1; api < sai_metadata_enum_sai_api_t.valuescount; ++api)
+    for (uint32_t idx = 1; idx < sai_metadata_enum_sai_api_t.valuescount; ++idx)
     {
-        sai_status_t status = m_sai->logSet((sai_api_t)api, logLevel);
+        sai_status_t status = m_sai->logSet((sai_api_t)sai_metadata_enum_sai_api_t.values[idx], logLevel);
 
         if (status == SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_INFO("setting SAI loglevel %s on %s",
                     sai_serialize_log_level(logLevel).c_str(),
-                    sai_serialize_api((sai_api_t)api).c_str());
+                    sai_serialize_api((sai_api_t)sai_metadata_enum_sai_api_t.values[idx]).c_str());
         }
         else
         {
@@ -333,19 +333,19 @@ void SaiDiscovery::setApiLogLevel(
 
     // We start from 1 since 0 is SAI_API_UNSPECIFIED.
 
-    for (uint32_t api = 1; api < sai_metadata_enum_sai_api_t.valuescount; ++api)
+    for (uint32_t idx = 1; idx < sai_metadata_enum_sai_api_t.valuescount; ++idx)
     {
-        auto it = levels.find((sai_api_t)api);
+        auto it = levels.find((sai_api_t)sai_metadata_enum_sai_api_t.values[idx]);
 
         sai_log_level_t logLevel = (it == levels.end()) ? SAI_LOG_LEVEL_NOTICE : it->second;
 
-        sai_status_t status = m_sai->logSet((sai_api_t)api, logLevel);
+        sai_status_t status = m_sai->logSet((sai_api_t)sai_metadata_enum_sai_api_t.values[idx], logLevel);
 
         if (status == SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_INFO("setting SAI loglevel %s on %s",
                     sai_serialize_log_level(logLevel).c_str(),
-                    sai_serialize_api((sai_api_t)api).c_str());
+                    sai_serialize_api((sai_api_t)sai_metadata_enum_sai_api_t.values[idx]).c_str());
         }
         else
         {
@@ -362,9 +362,9 @@ std::map<sai_api_t, sai_log_level_t> SaiDiscovery::getApiLogLevel()
 
     // We start from 1 since 0 is SAI_API_UNSPECIFIED.
 
-    for (uint32_t api = 1; api < sai_metadata_enum_sai_api_t.valuescount; ++api)
+    for (uint32_t idx = 1; idx < sai_metadata_enum_sai_api_t.valuescount; ++idx)
     {
-        levels[(sai_api_t)api] = m_sai->logGet((sai_api_t)api);
+        levels[(sai_api_t)sai_metadata_enum_sai_api_t.values[idx]] = m_sai->logGet((sai_api_t)sai_metadata_enum_sai_api_t.values[idx]);
     }
 
     return levels;
