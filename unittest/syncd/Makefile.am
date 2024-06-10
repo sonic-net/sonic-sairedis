@@ -5,7 +5,6 @@ bin_PROGRAMS = tests
 LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 
 tests_SOURCES = main.cpp \
-                ../../meta/DummySaiInterface.cpp \
                 MockableSaiInterface.cpp \
                 MockHelper.cpp \
 				TestCommandLineOptions.cpp \

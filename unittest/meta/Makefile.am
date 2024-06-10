@@ -6,7 +6,6 @@ LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 
 tests_SOURCES = \
 				main.cpp \
-				../../meta/DummySaiInterface.cpp \
 				../../meta/MetaTestSaiInterface.cpp \
 				../../lib/VirtualObjectIdManager.cpp \
 				../../lib/SwitchConfig.cpp \

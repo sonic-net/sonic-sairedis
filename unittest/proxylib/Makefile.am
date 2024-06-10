@@ -5,7 +5,6 @@ bin_PROGRAMS = tests
 LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 
 tests_SOURCES = \
-				../../meta/DummySaiInterface.cpp \
 				main.cpp \
 				TestProxy.cpp \
 				TestSai.cpp
