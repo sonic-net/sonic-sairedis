@@ -51,3 +51,22 @@ TEST(DummySaiInterface, create)
 
     EXPECT_NE(oid, SAI_NULL_OBJECT_ID);
 }
+
+TEST(DummySaiInterface, updateNotificationPointers)
+{
+    DummySaiInterface sai;
+
+    sai.apiInitialize(0,0);
+
+    for (uint32_t idx = 0 ; idx < sai_metadata_switch_notify_attr_count; idx++)
+    {
+        sai_attribute_t attr;
+
+        attr.id = sai_metadata_switch_notify_attr[idx]->attrid;
+        attr.value.ptr = NULL;
+
+        auto status = sai.set(SAI_OBJECT_TYPE_SWITCH, 0x0, &attr);
+
+        EXPECT_EQ(status, SAI_STATUS_SUCCESS);
+    }
+}

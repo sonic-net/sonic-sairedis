@@ -3,14 +3,17 @@
 #include "swss/logger.h"
 
 #include <memory>
+#include <cstring>
 
 using namespace saimeta;
 
-DummySaiInterface::DummySaiInterface()
+DummySaiInterface::DummySaiInterface():
+    m_status(SAI_STATUS_SUCCESS),
+    m_apiInitialized(false)
 {
     SWSS_LOG_ENTER();
 
-    m_status = SAI_STATUS_SUCCESS;
+    memset(&m_sn, 0, sizeof(m_sn));
 }
 
 void DummySaiInterface::setStatus(
@@ -27,13 +30,15 @@ sai_status_t DummySaiInterface::apiInitialize(
 {
     SWSS_LOG_ENTER();
 
+    memset(&m_sn, 0, sizeof(m_sn));
+
     if (smt)
     {
         if (smt->profile_get_value)
         {
             SWSS_LOG_NOTICE("Dummy: profile_get_value(NULL): %s", smt->profile_get_value(0, NULL));
             SWSS_LOG_NOTICE("Dummy: profile_get_value(FOO): %s", smt->profile_get_value(0, "FOO"));
-            SWSS_LOG_NOTICE("Dummy: profile_get_value(FOO): %s", smt->profile_get_value(0, "CAR"));
+            SWSS_LOG_NOTICE("Dummy: profile_get_value(CAR): %s", smt->profile_get_value(0, "CAR"));
         }
 
         if (smt->profile_get_next_value)
@@ -50,12 +55,16 @@ sai_status_t DummySaiInterface::apiInitialize(
         }
     }
 
+    m_apiInitialized = true;
+
     return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t  DummySaiInterface::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
+
+    m_apiInitialized = false;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -72,6 +81,11 @@ sai_status_t DummySaiInterface::create(
     if (objectId && m_status == SAI_STATUS_SUCCESS)
     {
         *objectId = (sai_object_id_t)1;
+    }
+
+    if (m_status == SAI_STATUS_SUCCESS && objectType == SAI_OBJECT_TYPE_SWITCH)
+    {
+        updateNotificationPointers(attr_count, attr_list);
     }
 
     return m_status;
@@ -92,6 +106,11 @@ sai_status_t DummySaiInterface::set(
         _In_ const sai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
+
+    if (m_status == SAI_STATUS_SUCCESS && objectType == SAI_OBJECT_TYPE_SWITCH)
+    {
+        updateNotificationPointers(1, attr);
+    }
 
     return m_status;
 }
@@ -495,4 +514,68 @@ sai_status_t DummySaiInterface::queryApiVersion(
     SWSS_LOG_ERROR("version parameter is NULL");
 
     return m_status;
+}
+
+void DummySaiInterface::updateNotificationPointers(
+        _In_ uint32_t count,
+        _In_ const sai_attribute_t* attrs)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t idx = 0; idx < count; idx++)
+    {
+        auto &attr = attrs[idx];
+
+        switch (attr.id)
+        {
+            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
+                m_sn.on_switch_state_change =
+                    (sai_switch_state_change_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
+                m_sn.on_switch_asic_sdk_health_event =
+                    (sai_switch_asic_sdk_health_event_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
+                m_sn.on_switch_shutdown_request =
+                    (sai_switch_shutdown_request_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
+                m_sn.on_fdb_event =
+                    (sai_fdb_event_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
+                m_sn.on_port_state_change =
+                    (sai_port_state_change_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
+                m_sn.on_port_host_tx_ready =
+                    (sai_port_host_tx_ready_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
+                m_sn.on_packet_event =
+                    (sai_packet_event_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
+                m_sn.on_queue_pfc_deadlock =
+                    (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
+                m_sn.on_bfd_session_state_change =
+                    (sai_bfd_session_state_change_notification_fn)attr.value.ptr;
+                break;
+
+            default:
+                SWSS_LOG_ERROR("pointer for attr id %d is not handled, FIXME!", attr.id);
+                continue;
+        }
+    }
 }

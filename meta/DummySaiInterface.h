@@ -218,6 +218,16 @@ namespace saimeta
 
         protected:
 
+            void updateNotificationPointers(
+                    _In_ uint32_t count,
+                    _In_ const sai_attribute_t* attrs);
+
+        protected:
+
+            sai_switch_notifications_t m_sn;
+
             sai_status_t m_status;
+
+            bool m_apiInitialized;
     };
 }
