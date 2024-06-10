@@ -5,6 +5,7 @@ lib_LTLIBRARIES = libsaiproxy.la
 noinst_LIBRARIES = libSaiProxy.a
 
 libSaiProxy_a_SOURCES = \
+						 Options.cpp \
 						 Proxy.cpp \
 						 Sai.cpp
 

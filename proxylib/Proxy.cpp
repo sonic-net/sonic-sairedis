@@ -21,17 +21,26 @@ using namespace std::placeholders;
 
 Proxy::Proxy(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai):
+    Proxy(vendorSai, std::make_shared<Options>())
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("using default options");
+}
+
+Proxy::Proxy(
+        _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
+        _In_ std::shared_ptr<Options> options):
     m_vendorSai(vendorSai),
+    m_options(options),
     m_apiInitialized(false)
 {
     SWSS_LOG_ENTER();
 
-    m_configFile = "config.ini"; //  TODO to command line
+    SWSS_LOG_NOTICE("Options: %s", m_options->getString().c_str());
 
-    // TODO to move hard coded addresses to config
-
-    m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>("tcp://127.0.0.1:5555");
-    m_notifications = std::make_shared<syncd::ZeroMQNotificationProducer>("tcp://127.0.0.1:5556");
+    m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>(m_options->m_zmqChannel);
+    m_notifications = std::make_shared<syncd::ZeroMQNotificationProducer>(m_options->m_zmqNtfChannel);
 
     loadProfileMap();
 
@@ -83,12 +92,12 @@ void Proxy::loadProfileMap()
 {
     SWSS_LOG_ENTER();
 
-    std::ifstream profile(m_configFile.c_str());
+    std::ifstream profile(m_options->m_config);
 
     if (!profile.is_open())
     {
         SWSS_LOG_WARN("failed to open profile map file: %s: %s",
-                m_configFile.c_str(),
+                m_options->m_config.c_str(),
                 strerror(errno));
 
         return;

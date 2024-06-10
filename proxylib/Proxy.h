@@ -8,6 +8,8 @@
 #include "syncd/ServiceMethodTable.h"
 #include "syncd/NotificationProducerBase.h"
 
+#include "Options.h"
+
 #include <map>
 #include <memory>
 #include <thread>
@@ -21,6 +23,10 @@ namespace saiproxy
 
             Proxy(
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai);
+
+            Proxy(
+                    _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
+                    _In_ std::shared_ptr<Options> options);
 
             virtual ~Proxy();
 
@@ -121,7 +127,7 @@ namespace saiproxy
 
             std::shared_ptr<syncd::NotificationProducerBase> m_notifications;
 
-            std::string m_configFile;
+            std::shared_ptr<Options> m_options;
 
             /**
              * @brief Mutex for synchronizing api execution and notifications
