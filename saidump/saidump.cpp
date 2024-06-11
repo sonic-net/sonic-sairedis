@@ -502,37 +502,20 @@ static sai_status_t preProcessFile(const std::string file_name)
     return SAI_STATUS_SUCCESS;
 }
 
-static sai_status_t dumpFromRedisRdbJson(const std::string file_name)
+static void traverseJson(const json & jsn)
 {
     SWSS_LOG_ENTER();
-
-    std::ifstream input_file(file_name);
-
-    if (!input_file.is_open())
+    if (jsn.is_object())
     {
-        SWSS_LOG_ERROR_AND_STDERR("The file %s does not exist for dumping from Redis RDB JSON file.", file_name.c_str());
-        return SAI_STATUS_FAILURE;
-    }
-
-    try
-    {
-        // Parse the JSON data from the file (validation)
-        nlohmann::json jsonData;
-        input_file >> jsonData;
-
-        SWSS_LOG_DEBUG("JSON file is valid.");
-
-        for (json::iterator it = jsonData.begin(); it != jsonData.end(); ++it)
+        for (auto it = jsn.begin(); it != jsn.end(); ++it)
         {
-            json jj_key = it.key();
-
-            std::string keystr = jj_key;
+            std::string keystr = it.key();
             std::string item_name = keystr;
             size_t pos = keystr.find_first_of(":");
 
             if (pos != std::string::npos)
             {
-                if(ASIC_STATE_TABLE != keystr.substr(0, pos))  // filter out non ASIC_STATE
+                if(ASIC_STATE_TABLE != keystr.substr(0, pos))  // filter out non "ASIC_STATE" items
                 {
                     continue;
                 }
@@ -550,8 +533,7 @@ static sai_status_t dumpFromRedisRdbJson(const std::string file_name)
             }
 
             std::cout << item_name << " " << std::endl;
-
-            json jj = it.value();
+            json jsn_sub = it.value();
 
             if (!it->is_object())
             {
@@ -560,11 +542,11 @@ static sai_status_t dumpFromRedisRdbJson(const std::string file_name)
 
             TableMap map;
 
-            for (json::iterator itt = jj.begin(); itt != jj.end(); ++itt)
+            for (auto it_sub = jsn_sub.begin(); it_sub != jsn_sub.end(); ++it_sub)
             {
-                if (itt.key() != "NULL")
+                if (it_sub.key() != "NULL")
                 {
-                    map[itt.key()] = itt.value();
+                    map[it_sub.key()] = it_sub.value();
                 }
             }
 
@@ -577,10 +559,39 @@ static sai_status_t dumpFromRedisRdbJson(const std::string file_name)
                 std::cout << str_indent << pad_string(field.first, max_len) << " : ";
                 std::cout << field.second << std::endl;
             }
-
             std::cout << std::endl;
         }
+    }
+    else if(jsn.is_array())
+    {
+        for (const auto& element : jsn)
+        {
+            if (element.is_object() || element.is_array())
+            {
+                traverseJson(element);
+            }
+        }
+    }
+}
 
+static sai_status_t dumpFromRedisRdbJson(const std::string file_name)
+{
+    SWSS_LOG_ENTER();
+
+    std::ifstream input_file(file_name);
+
+    if (!input_file.is_open())
+    {
+        SWSS_LOG_ERROR_AND_STDERR("The file %s does not exist for dumping from Redis RDB JSON file.", file_name.c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    try
+    {
+        // Parse the JSON data from the file (validation)
+        json jsonData;
+        input_file >> jsonData;
+        traverseJson(jsonData);
         return SAI_STATUS_SUCCESS;
     }
     catch (std::exception &ex)
