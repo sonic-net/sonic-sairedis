@@ -546,6 +546,14 @@ void DummySaiInterface::updateNotificationPointers(
     {
         auto &attr = attrs[idx];
 
+        auto* meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+        if (meta && meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_POINTER)
+        {
+            // skip non pointers
+            continue;
+        }
+
         switch (attr.id)
         {
             case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
@@ -594,7 +602,7 @@ void DummySaiInterface::updateNotificationPointers(
                 break;
 
             default:
-                SWSS_LOG_ERROR("pointer for attr id %d is not handled, FIXME!", attr.id);
+                SWSS_LOG_ERROR("pointer for attr id %d (%s) is not handled, FIXME!", attr.id, (meta ? meta->attridname : "UNKNOWN"));
                 continue;
         }
     }

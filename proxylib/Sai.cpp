@@ -1115,7 +1115,7 @@ void Sai::handleNotification(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    SWSS_LOG_ERROR("SAI: not implemented, FIXME");
 }
 
 //sai_switch_notifications_t Sai::handle_notification(

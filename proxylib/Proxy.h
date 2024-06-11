@@ -168,6 +168,10 @@ namespace saiproxy
                     _In_ uint32_t count,
                     _Inout_ sai_attribute_t* attr_list);
 
+        public:
+
+            uint64_t getNotificationsSentCount() const;
+
         private:
 
             syncd::ServiceMethodTable m_smt;

@@ -1177,6 +1177,8 @@ void Proxy::updateNotificationPointers(
     {
         auto &attr = attrs[idx];
 
+        auto* meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
         switch (attr.id)
         {
             case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
@@ -1225,7 +1227,7 @@ void Proxy::updateNotificationPointers(
                 break;
 
             default:
-                SWSS_LOG_ERROR("pointer for attr id %d is not handled, FIXME!", attr.id);
+                SWSS_LOG_ERROR("pointer for attr id %d (%s) is not handled, FIXME!", attr.id, (meta ? meta->attridname : "UNKNOWN"));
                 continue;
         }
     }
@@ -1362,4 +1364,11 @@ void Proxy::sendNotification(
     m_notificationsSentCount++;
 
     m_notifications->send(op, data, entry);
+}
+
+uint64_t Proxy::getNotificationsSentCount() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_notificationsSentCount;
 }

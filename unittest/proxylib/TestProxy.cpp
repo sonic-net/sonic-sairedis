@@ -58,6 +58,19 @@ static sai_service_method_table_t test_services = {
     profile_get_next_value
 };
 
+static int ntfCounter = 0;
+
+static void onSwitchStateChange(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_oper_status_t switch_oper_status)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("received onSwitchStateChange");
+
+    ntfCounter++;
+}
+
 TEST(Proxy, notifications)
 {
     Sai sai;
@@ -69,9 +82,9 @@ TEST(Proxy, notifications)
     auto proxy = std::make_shared<Proxy>(dummy);
 
     EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
-    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY), SAI_STATUS_SUCCESS);
-    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
-    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY), SAI_STATUS_SUCCESS);
+//    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY), SAI_STATUS_SUCCESS);
+//    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
+//    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY), SAI_STATUS_SUCCESS);
 
     auto thread = std::make_shared<std::thread>(fun,proxy);
 
@@ -93,10 +106,21 @@ TEST(Proxy, notifications)
     EXPECT_EQ(status, SAI_STATUS_SUCCESS);
     EXPECT_NE(switch_id, SAI_NULL_OBJECT_ID);
 
-    // TODO set notifications pointers
-    //
-    // TODO start dummy interface
-    // TODO stop dummy interface
+    attr.id = SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY;
+    attr.value.ptr = (void*)&onSwitchStateChange;
+
+    // set notification pointer
+    EXPECT_EQ(sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr), SAI_STATUS_SUCCESS);
+
+    // dummy start sending notifications
+    EXPECT_EQ(dummy->start(), SAI_STATUS_SUCCESS);
+
+    sleep(1); // give some time for proxy to receive notification
+
+    // dummy stop sending notifications
+    EXPECT_EQ(dummy->stop(), SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(proxy->getNotificationsSentCount(), 1);
 
     proxy->stop();
 
