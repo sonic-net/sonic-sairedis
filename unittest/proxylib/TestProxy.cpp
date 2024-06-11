@@ -23,3 +23,82 @@ TEST(Proxy, ctr)
 
     auto proxy = std::make_shared<Proxy>(dummy);
 }
+
+static void fun(std::shared_ptr<Proxy> proxy)
+{
+    SWSS_LOG_ENTER();
+
+    proxy->run();
+}
+
+static const char* profile_get_value(
+        _In_ sai_switch_profile_id_t profile_id,
+        _In_ const char* variable)
+{
+    SWSS_LOG_ENTER();
+
+    if (variable == NULL)
+        return NULL;
+
+    return nullptr;
+}
+
+static int profile_get_next_value(
+        _In_ sai_switch_profile_id_t profile_id,
+        _Out_ const char** variable,
+        _Out_ const char** value)
+{
+    SWSS_LOG_ENTER();
+
+    return 0;
+}
+
+static sai_service_method_table_t test_services = {
+    profile_get_value,
+    profile_get_next_value
+};
+
+TEST(Proxy, notifications)
+{
+    Sai sai;
+
+    EXPECT_EQ(sai.apiInitialize(0, &test_services), SAI_STATUS_SUCCESS);
+
+    std::shared_ptr<saimeta::DummySaiInterface> dummy = std::make_shared<saimeta::DummySaiInterface>();
+
+    auto proxy = std::make_shared<Proxy>(dummy);
+
+    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY), SAI_STATUS_SUCCESS);
+
+    auto thread = std::make_shared<std::thread>(fun,proxy);
+
+    sai_object_id_t switch_id;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    // create oid
+    auto status = sai.create(
+            SAI_OBJECT_TYPE_SWITCH,
+            &switch_id,
+            SAI_NULL_OBJECT_ID, // creating switch
+            1,
+            &attr);
+
+    EXPECT_EQ(status, SAI_STATUS_SUCCESS);
+    EXPECT_NE(switch_id, SAI_NULL_OBJECT_ID);
+
+    // TODO set notifications pointers
+    //
+    // TODO start dummy interface
+    // TODO stop dummy interface
+
+    proxy->stop();
+
+    thread->join();
+}

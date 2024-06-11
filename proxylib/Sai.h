@@ -8,6 +8,8 @@
 
 #include "swss/logger.h"
 
+#include "Options.h"
+
 #include <string>
 #include <vector>
 #include <memory>
@@ -232,5 +234,7 @@ namespace saiproxy
             std::shared_ptr<sairedis::Channel> m_communicationChannel;
 
             std::function<sai_switch_notifications_t(std::shared_ptr<sairedis::Notification>)> m_notificationCallback;
+
+            std::shared_ptr<Options> m_options;
     };
 }

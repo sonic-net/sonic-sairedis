@@ -20,6 +20,8 @@ using namespace std::placeholders;
         SWSS_LOG_ERROR("entry pointer " # pointer " is null");              \
         return SAI_STATUS_INVALID_PARAMETER; }
 
+// TODO add support for notifications
+
 Sai::Sai()
 {
     SWSS_LOG_ENTER();
@@ -71,11 +73,13 @@ sai_status_t Sai::apiInitialize(
 
     memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
 
-    // TODO move hard coded values to config
+    m_options = std::make_shared<Options>(); // load default options
+
+    // TODO options should be obtained from service method table
 
     m_communicationChannel = std::make_shared<sairedis::ZeroMQChannel>(
-            "tcp://127.0.0.1:5555",
-            "tcp://127.0.0.1:5556",
+            m_options->m_zmqChannel,
+            m_options->m_zmqNtfChannel,
             std::bind(&Sai::handleNotification, this, _1, _2, _3));
 
     m_apiInitialized = true;
@@ -89,6 +93,8 @@ sai_status_t Sai::apiUninitialize(void)
     PROXY_CHECK_API_INITIALIZED();
 
     SWSS_LOG_NOTICE("begin");
+
+    m_communicationChannel = nullptr; // will stop the thread
 
     m_apiInitialized = false;
 
@@ -1109,7 +1115,7 @@ void Sai::handleNotification(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_ERROR("FIXME");
+    SWSS_LOG_ERROR("not implemented, FIXME");
 }
 
 //sai_switch_notifications_t Sai::handle_notification(

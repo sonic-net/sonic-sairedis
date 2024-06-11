@@ -24,7 +24,7 @@ std::string Options::getString() const
 
     ss << " Config=" << m_config;
     ss << " ZmqChannel=" << m_zmqChannel;
-    ss << " ZmqNtfChannel=" << m_zmqChannel;
+    ss << " ZmqNtfChannel=" << m_zmqNtfChannel;
 
     return ss.str();
 }
