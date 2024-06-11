@@ -5,15 +5,30 @@
 #include <memory>
 #include <cstring>
 
+#define MUTEX() std::lock_guard<std::mutex> _lock(m_mutex)
+
 using namespace saimeta;
 
 DummySaiInterface::DummySaiInterface():
     m_status(SAI_STATUS_SUCCESS),
-    m_apiInitialized(false)
+    m_apiInitialized(false),
+    m_runThread(false)
 {
     SWSS_LOG_ENTER();
 
     memset(&m_sn, 0, sizeof(m_sn));
+}
+
+DummySaiInterface::~DummySaiInterface()
+{
+    SWSS_LOG_ENTER();
+
+    if (m_apiInitialized)
+    {
+        apiUninitialize();
+    }
+
+    stop();
 }
 
 void DummySaiInterface::setStatus(
@@ -32,27 +47,24 @@ sai_status_t DummySaiInterface::apiInitialize(
 
     memset(&m_sn, 0, sizeof(m_sn));
 
-    if (smt)
+    if (smt && smt->profile_get_value)
     {
-        if (smt->profile_get_value)
-        {
-            SWSS_LOG_NOTICE("Dummy: profile_get_value(NULL): %s", smt->profile_get_value(0, NULL));
-            SWSS_LOG_NOTICE("Dummy: profile_get_value(FOO): %s", smt->profile_get_value(0, "FOO"));
-            SWSS_LOG_NOTICE("Dummy: profile_get_value(CAR): %s", smt->profile_get_value(0, "CAR"));
-        }
+        SWSS_LOG_NOTICE("Dummy: profile_get_value(NULL): %s", smt->profile_get_value(0, NULL));
+        SWSS_LOG_NOTICE("Dummy: profile_get_value(FOO): %s", smt->profile_get_value(0, "FOO"));
+        SWSS_LOG_NOTICE("Dummy: profile_get_value(CAR): %s", smt->profile_get_value(0, "CAR"));
+    }
 
-        if (smt->profile_get_next_value)
-        {
+    if (smt && smt->profile_get_next_value)
+    {
 
-            const char *var = NULL;
-            const char *val = NULL;
+        const char *var = NULL;
+        const char *val = NULL;
 
-            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, NULL, NULL));
-            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, NULL, &val));
-            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, &var, NULL));
-            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, &var, &val));
-            SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, &var, &val));
-        }
+        SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, NULL, NULL));
+        SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, NULL, &val));
+        SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, &var, NULL));
+        SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, &var, &val));
+        SWSS_LOG_NOTICE("Dummy: profile_get_next_value: %d", smt->profile_get_next_value(0, &var, &val));
     }
 
     m_apiInitialized = true;
@@ -60,7 +72,7 @@ sai_status_t DummySaiInterface::apiInitialize(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t  DummySaiInterface::apiUninitialize(void)
+sai_status_t DummySaiInterface::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
 
@@ -516,11 +528,19 @@ sai_status_t DummySaiInterface::queryApiVersion(
     return m_status;
 }
 
+// TODO replace this method with with new SAI submodule for:
+// sai_metadata_update_switch_notification_pointers
+
 void DummySaiInterface::updateNotificationPointers(
         _In_ uint32_t count,
         _In_ const sai_attribute_t* attrs)
 {
     SWSS_LOG_ENTER();
+
+    if (attrs == NULL)
+    {
+        return;
+    }
 
     for (uint32_t idx = 0; idx < count; idx++)
     {
@@ -577,5 +597,205 @@ void DummySaiInterface::updateNotificationPointers(
                 SWSS_LOG_ERROR("pointer for attr id %d is not handled, FIXME!", attr.id);
                 continue;
         }
+    }
+}
+
+sai_status_t DummySaiInterface::start()
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_apiInitialized)
+    {
+        SWSS_LOG_ERROR("api not initialized");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    MUTEX();
+
+    if (m_runThread)
+    {
+        SWSS_LOG_NOTICE("thread already is running");
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    m_runThread = true;
+
+    m_thread = std::make_shared<std::thread>(&DummySaiInterface::run, this);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t DummySaiInterface::stop()
+{
+    SWSS_LOG_ENTER();
+
+    MUTEX();
+
+    m_runThread = false;
+
+    if (m_thread)
+    {
+        SWSS_LOG_NOTICE("joining thread");
+
+        m_thread->join();
+
+        m_thread = nullptr;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+void DummySaiInterface::run()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("starting dummy notification thread");
+
+    while(m_runThread)
+    {
+        sai_attr_id_t id;
+
+        if (tryGetNotificationToSend(id))
+        {
+            sendNotification(id);
+            continue;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(64));
+    }
+
+    SWSS_LOG_NOTICE("ending dummy notification thread");
+}
+
+sai_status_t DummySaiInterface::enqueueNotificationToSend(
+        _In_ sai_attr_id_t id)
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_apiInitialized)
+    {
+        SWSS_LOG_NOTICE("api not initialized");
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    MUTEX();
+
+    m_queue.push(id);
+
+    return SAI_STATUS_SUCCESS;
+}
+
+bool DummySaiInterface::tryGetNotificationToSend(
+        _Out_ sai_attr_id_t& id)
+{
+    SWSS_LOG_ENTER();
+
+    MUTEX();
+
+    if (m_queue.empty())
+        return false;
+
+    id = m_queue.front();
+
+    m_queue.pop();
+
+    return true;
+}
+
+void DummySaiInterface::sendNotification(
+        _In_ sai_attr_id_t id)
+{
+    SWSS_LOG_ENTER();
+
+    // get local copy, in case m_sn will change
+    // this probably should be under separate mutex (m_sn)
+
+    sai_switch_notifications_t sn = m_sn;
+
+    auto* m = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, id);
+
+    switch (id)
+    {
+        case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
+
+            if (sn.on_switch_state_change)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_switch_state_change(0x1, SAI_SWITCH_OPER_STATUS_UP)");
+
+                sn.on_switch_state_change(0x1, SAI_SWITCH_OPER_STATUS_UP);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_switch_state_change is NULL");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
+
+            if (sn.on_fdb_event)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_fdb_event(1,data)");
+
+                sai_fdb_event_notification_data_t data;
+
+                data.event_type = SAI_FDB_EVENT_LEARNED;
+                data.fdb_entry.switch_id = 0x1;
+                data.fdb_entry.mac_address[0] = 0x11;
+                data.fdb_entry.mac_address[1] = 0x22;
+                data.fdb_entry.mac_address[2] = 0x33;
+                data.fdb_entry.mac_address[3] = 0x44;
+                data.fdb_entry.mac_address[4] = 0x55;
+                data.fdb_entry.mac_address[5] = 0x66;
+                data.fdb_entry.bv_id = 0x2;
+
+                sn.on_fdb_event(1, &data);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_fdb_event is NULL");
+            }
+            break;
+
+
+        case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
+
+            if (sn.on_port_state_change)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_port_state_change");
+
+                sai_port_oper_status_notification_t data;
+
+                data.port_id = 0x2;
+                data.port_state = SAI_PORT_OPER_STATUS_UP;
+
+                sn.on_port_state_change(1, &data);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_port_state_change is NULL");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
+
+            if (sn.on_switch_shutdown_request)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_switch_shutdown_request");
+
+                sn.on_switch_shutdown_request(0x1);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_switch_shutdown_request is NULL");
+            }
+            break;
+
+        default:
+
+            SWSS_LOG_WARN("notification for SWITCH attr id: %d (%s) is not supported, FIXME", id, (m ? m->attridname : "UNKNOWN"));
+            break;
     }
 }
