@@ -90,6 +90,8 @@ sai_status_t DummySaiInterface::create(
 {
     SWSS_LOG_ENTER();
 
+    // TODO impelement some dummy OID handling
+
     if (objectId && m_status == SAI_STATUS_SUCCESS)
     {
         *objectId = (sai_object_id_t)1;
@@ -557,48 +559,34 @@ void DummySaiInterface::updateNotificationPointers(
         switch (attr.id)
         {
             case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                m_sn.on_switch_state_change =
-                    (sai_switch_state_change_notification_fn)attr.value.ptr;
+                m_sn.on_switch_state_change = (sai_switch_state_change_notification_fn)attrs[idx].value.ptr;
                 break;
-
-            case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
-                m_sn.on_switch_asic_sdk_health_event =
-                    (sai_switch_asic_sdk_health_event_notification_fn)attr.value.ptr;
+            case SAI_SWITCH_ATTR_SWITCH_SHUTDOWN_REQUEST_NOTIFY:
+                m_sn.on_switch_shutdown_request = (sai_switch_shutdown_request_notification_fn)attrs[idx].value.ptr;
                 break;
-
-            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                m_sn.on_switch_shutdown_request =
-                    (sai_switch_shutdown_request_notification_fn)attr.value.ptr;
-                break;
-
             case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                m_sn.on_fdb_event =
-                    (sai_fdb_event_notification_fn)attr.value.ptr;
+                m_sn.on_fdb_event = (sai_fdb_event_notification_fn)attrs[idx].value.ptr;
                 break;
-
             case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                m_sn.on_port_state_change =
-                    (sai_port_state_change_notification_fn)attr.value.ptr;
+                m_sn.on_port_state_change = (sai_port_state_change_notification_fn)attrs[idx].value.ptr;
                 break;
-
-            case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
-                m_sn.on_port_host_tx_ready =
-                    (sai_port_host_tx_ready_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
-                m_sn.on_packet_event =
-                    (sai_packet_event_notification_fn)attr.value.ptr;
-                break;
-
             case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                m_sn.on_queue_pfc_deadlock =
-                    (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
+                m_sn.on_queue_pfc_deadlock = (sai_queue_pfc_deadlock_notification_fn)attrs[idx].value.ptr;
                 break;
-
             case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
-                m_sn.on_bfd_session_state_change =
-                    (sai_bfd_session_state_change_notification_fn)attr.value.ptr;
+                m_sn.on_bfd_session_state_change = (sai_bfd_session_state_change_notification_fn)attrs[idx].value.ptr;
+                break;
+            case SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY:
+                m_sn.on_nat_event = (sai_nat_event_notification_fn)attrs[idx].value.ptr;
+                break;
+            case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
+                m_sn.on_switch_asic_sdk_health_event = (sai_switch_asic_sdk_health_event_notification_fn)attrs[idx].value.ptr;
+                break;
+            case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
+                m_sn.on_port_host_tx_ready = (sai_port_host_tx_ready_notification_fn)attrs[idx].value.ptr;
+                break;
+            case SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY:
+                m_sn.on_twamp_session_event = (sai_twamp_session_event_notification_fn)attrs[idx].value.ptr;
                 break;
 
             default:
@@ -731,7 +719,7 @@ void DummySaiInterface::sendNotification(
 
             if (sn.on_switch_state_change)
             {
-                SWSS_LOG_NOTICE("sending sn.on_switch_state_change(0x1, SAI_SWITCH_OPER_STATUS_UP)");
+                SWSS_LOG_NOTICE("sending sn.on_switch_state_change");
 
                 sn.on_switch_state_change(0x1, SAI_SWITCH_OPER_STATUS_UP);
             }
@@ -745,7 +733,7 @@ void DummySaiInterface::sendNotification(
 
             if (sn.on_fdb_event)
             {
-                SWSS_LOG_NOTICE("sending sn.on_fdb_event(1,data)");
+                SWSS_LOG_NOTICE("sending sn.on_fdb_event");
 
                 sai_fdb_event_notification_data_t data;
 
@@ -798,6 +786,140 @@ void DummySaiInterface::sendNotification(
             else
             {
                 SWSS_LOG_WARN("pointer sn.on_switch_shutdown_request is NULL");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY:
+
+            if (sn.on_nat_event)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_nat_event");
+
+                sai_nat_event_notification_data_t data;
+
+                data.event_type = SAI_NAT_EVENT_NONE;
+                data.nat_entry.switch_id = 0x1;
+                data.nat_entry.vr_id = 0x2;
+                data.nat_entry.nat_type = SAI_NAT_TYPE_NONE;
+
+                memset(&data.nat_entry.data, 0, sizeof(data.nat_entry.data));
+
+                sn.on_nat_event(1, &data);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_nat_event is NULL");
+            }
+            break;
+
+
+        case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
+
+            if (sn.on_nat_event)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_port_host_tx_ready");
+
+                sn.on_port_host_tx_ready(0x1, 0x2, SAI_PORT_HOST_TX_READY_STATUS_NOT_READY);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_port_host_tx_readyis NULL");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
+
+            if (sn.on_nat_event)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_switch_asic_sdk_health_event");
+
+                sai_timespec_t timespec;
+
+                timespec.tv_sec = 0;
+                timespec.tv_nsec = 0;
+
+                sai_switch_health_data_t hd;
+
+                hd.data_type = SAI_HEALTH_DATA_TYPE_GENERAL;
+
+                sai_u8_list_t desc;
+                desc.count = 0;
+                desc.list = NULL;
+
+                sn.on_switch_asic_sdk_health_event(
+                        0x1,
+                        SAI_SWITCH_ASIC_SDK_HEALTH_SEVERITY_NOTICE,
+                        timespec,
+                        SAI_SWITCH_ASIC_SDK_HEALTH_CATEGORY_SW,
+                        hd,
+                        desc);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.sn.on_switch_asic_sdk_health_event");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
+
+            if (sn.on_queue_pfc_deadlock)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_queue_pfc_deadlock");
+
+                sai_queue_deadlock_notification_data_t data;
+
+                data.queue_id = 0x2;
+                data.event = SAI_QUEUE_PFC_DEADLOCK_EVENT_TYPE_DETECTED;
+                data.app_managed_recovery = true;
+
+                sn.on_queue_pfc_deadlock(1, &data);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_port_host_tx_readyis NULL");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
+
+            if (sn.on_bfd_session_state_change)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_bfd_session_state_change");
+
+                sai_bfd_session_state_notification_t data;
+
+                data.bfd_session_id = 0x2;
+                data.session_state = SAI_BFD_SESSION_STATE_ADMIN_DOWN;
+
+                sn.on_bfd_session_state_change(1, &data);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_bfd_session_state_change");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY:
+
+            if (sn.on_twamp_session_event)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_twamp_session_event");
+
+                sai_twamp_session_event_notification_data_t data;
+
+                data.twamp_session_id = 0x1;
+                data.session_state = SAI_TWAMP_SESSION_STATE_INACTIVE;
+
+                data.session_stats.index = 0;
+                data.session_stats.number_of_counters = 0;
+                data.session_stats.counters_ids = nullptr;
+                data.session_stats.counters = nullptr;
+
+                sn.on_twamp_session_event(1, &data);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_twamp_session_event");
             }
             break;
 
