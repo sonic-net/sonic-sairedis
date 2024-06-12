@@ -1165,6 +1165,9 @@ void Proxy::updateAttributteNotificationPointers(
     }
 }
 
+// TODO replace this method with with new SAI submodule for:
+// sai_metadata_update_switch_notification_pointers
+
 void Proxy::updateNotificationPointers(
         _In_ uint32_t count,
         _In_ const sai_attribute_t* attrs)

@@ -203,6 +203,12 @@ namespace saiproxy
 
             syncd::SwitchNotifications m_swNtf;
 
+            /**
+             * @brief Notifications sent count.
+             *
+             * This value can be used to write unittests when testing
+             * notifications.
+             */
             uint64_t m_notificationsSentCount;
     };
 }
