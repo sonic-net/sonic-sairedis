@@ -746,6 +746,8 @@ void DummySaiInterface::sendNotification(
                 data.fdb_entry.mac_address[4] = 0x55;
                 data.fdb_entry.mac_address[5] = 0x66;
                 data.fdb_entry.bv_id = 0x2;
+                data.attr_count = 0;
+                data.attr = nullptr;
 
                 sn.on_fdb_event(1, &data);
             }
