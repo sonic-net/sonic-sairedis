@@ -245,6 +245,8 @@ namespace saimeta
             sai_status_t enqueueNotificationToSend(
                     _In_ sai_attr_id_t id);
 
+        protected:
+
             /**
              * @brief Try get notification to send.
              *
