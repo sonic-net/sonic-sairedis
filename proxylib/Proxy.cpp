@@ -1362,7 +1362,7 @@ void Proxy::sendNotification(
 
     swss::KeyOpFieldsValuesTuple item(op, data, entry);
 
-    SWSS_LOG_WARN("%s %s", op.c_str(), data.c_str());
+    SWSS_LOG_INFO("%s %s", op.c_str(), data.c_str());
 
     m_notificationsSentCount++;
 

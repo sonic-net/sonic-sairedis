@@ -90,7 +90,7 @@ sai_status_t DummySaiInterface::create(
 {
     SWSS_LOG_ENTER();
 
-    // TODO impelement some dummy OID handling
+    // TODO implement some dummy OID handling
 
     if (objectId && m_status == SAI_STATUS_SUCCESS)
     {

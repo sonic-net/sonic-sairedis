@@ -3,6 +3,7 @@
 #include "SaiInternal.h"
 #include "ZeroMQChannel.h"
 #include "SaiAttributeList.h"
+#include "NotificationFactory.h"
 
 #include "meta/Meta.h"
 #include "meta/sai_serialize.h"
@@ -19,8 +20,6 @@ using namespace std::placeholders;
     if ((pointer) == nullptr) {                                             \
         SWSS_LOG_ERROR("entry pointer " # pointer " is null");              \
         return SAI_STATUS_INVALID_PARAMETER; }
-
-// TODO add support for notifications
 
 Sai::Sai()
 {
@@ -72,6 +71,8 @@ sai_status_t Sai::apiInitialize(
     }
 
     memcpy(&m_service_method_table, service_method_table, sizeof(m_service_method_table));
+
+    memset(&m_sn, 0, sizeof(m_sn));
 
     m_options = std::make_shared<Options>(); // load default options
 
@@ -132,10 +133,13 @@ sai_status_t Sai::create(
 
     auto status = m_communicationChannel->wait("create_response", kco);
 
-    // TODO SAVE pointers for notifications
-
     if (status == SAI_STATUS_SUCCESS)
     {
+        if (objectType == SAI_OBJECT_TYPE_SWITCH)
+        {
+            updateNotifications(attr_count, attr_list); // TODO should be per switch
+        }
+
         auto& values = kfvFieldsValues(kco);
 
         if (values.size() == 0)
@@ -273,8 +277,6 @@ sai_status_t Sai::create(
 
     std::string key = serializedObjectType + ":" + entry;
 
-    // TODO SAVE pointers for notifications
-
     m_communicationChannel->set(key, vals, "create_entry");
 
     swss::KeyOpFieldsValuesTuple kco;
@@ -308,8 +310,6 @@ sai_status_t Sai::set(
 
     auto val = saimeta::SaiAttributeList::serialize_attr_list(objectType, 1, attr, false);
 
-    // TODO SAVE pointers for notifications
-
     auto serializedObjectType = sai_serialize_object_type(objectType);
 
     std::string key = serializedObjectType + ":" + entry;
@@ -318,7 +318,14 @@ sai_status_t Sai::set(
 
     swss::KeyOpFieldsValuesTuple kco;
 
-    return m_communicationChannel->wait("set_response", kco);
+    auto status = m_communicationChannel->wait("set_response", kco);
+
+    if (objectType == SAI_OBJECT_TYPE_SWITCH && status == SAI_STATUS_SUCCESS)
+    {
+        updateNotifications(1, attr);
+    }
+
+    return status;
 }
 
 sai_status_t Sai::get(
@@ -1108,47 +1115,115 @@ sai_status_t Sai::queryApiVersion(
     return status;
 }
 
+// TODO use function from SAI metadata to populate those
+
+void Sai::updateNotifications(
+        _In_ uint32_t attrCount,
+        _In_ const sai_attribute_t *attrList)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * This function should only be called on CREATE/SET
+     * api when object is SWITCH.
+     */
+
+    for (uint32_t index = 0; index < attrCount; ++index)
+    {
+        auto &attr = attrList[index];
+
+        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+        if (meta == NULL)
+            SWSS_LOG_THROW("failed to find metadata for switch attr %d", attr.id);
+
+        if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_POINTER)
+            continue;
+
+        switch (attr.id)
+        {
+            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
+                m_sn.on_switch_state_change =
+                    (sai_switch_state_change_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
+                m_sn.on_switch_asic_sdk_health_event =
+                    (sai_switch_asic_sdk_health_event_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
+                m_sn.on_switch_shutdown_request =
+                    (sai_switch_shutdown_request_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
+                m_sn.on_fdb_event =
+                    (sai_fdb_event_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY:
+                m_sn.on_nat_event =
+                    (sai_nat_event_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
+                m_sn.on_port_state_change =
+                    (sai_port_state_change_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
+                m_sn.on_queue_pfc_deadlock =
+                    (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
+                m_sn.on_bfd_session_state_change =
+                    (sai_bfd_session_state_change_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
+                m_sn.on_port_host_tx_ready =
+                    (sai_port_host_tx_ready_notification_fn)attr.value.ptr;
+                break;
+
+            case SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY:
+                m_sn.on_twamp_session_event =
+                    (sai_twamp_session_event_notification_fn)attr.value.ptr;
+                break;
+
+            default:
+                SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
+                break;
+        }
+    }
+}
+
 void Sai::handleNotification(
         _In_ const std::string &name,
         _In_ const std::string &serializedNotification,
         _In_ const std::vector<swss::FieldValueTuple> &values)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_ERROR("SAI: not implemented, FIXME");
-}
+    if (!m_apiInitialized)
+    {
+        SWSS_LOG_ERROR("%s: api not initialized", __PRETTY_FUNCTION__);
 
-//sai_switch_notifications_t Sai::handle_notification(
-//        _In_ std::shared_ptr<Notification> notification)
-//{
-//    MUTEX();
-//    SWSS_LOG_ENTER();
-//
-//    if (!m_apiInitialized)
-//    {
-//        SWSS_LOG_ERROR("%s: api not initialized", __PRETTY_FUNCTION__);
-//
-//        return { };
-//    }
-//
-//    return context->m_redisSai->syncProcessNotification(notification);
-//}
-//
-//void Sai::handleNotification(
-//        _In_ const std::string &name,
-//        _In_ const std::string &serializedNotification,
-//        _In_ const std::vector<swss::FieldValueTuple> &values)
-//{
-//    SWSS_LOG_ENTER();
-//
-//    auto notification = NotificationFactory::deserialize(name, serializedNotification);
-//
-//    if (notification)
-//    {
-//        auto _sn = m_notificationCallback(notification); // will be synchronized to api mutex
-//
-//        // execute callback from notification thread
-//
-//        notification->executeCallback(_sn);
-//    }
-//}
+        return;
+    }
+
+    // TODO should be per switch, and we should know on which switch call notification
+
+    auto notification = sairedis::NotificationFactory::deserialize(name, serializedNotification);
+
+    if (notification)
+    {
+        SWSS_LOG_INFO("got notification: %s, executing callback!", serializedNotification.c_str());
+
+        // execute callback from notification thread
+
+        notification->executeCallback(m_sn);
+    }
+}

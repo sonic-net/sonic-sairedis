@@ -215,13 +215,17 @@ namespace saiproxy
 
         private:
 
-            sai_switch_notifications_t handle_notification(
-                    _In_ std::shared_ptr<sairedis::Notification> notification);
+            //sai_switch_notifications_t handle_notification(
+            //        _In_ std::shared_ptr<sairedis::Notification> notification);
 
             void handleNotification(
                     _In_ const std::string &name,
                     _In_ const std::string &serializedNotification,
                     _In_ const std::vector<swss::FieldValueTuple> &values);
+
+            void updateNotifications(
+                    _In_ uint32_t attrCount,
+                    _In_ const sai_attribute_t *attrList);
 
         private:
 
@@ -233,8 +237,10 @@ namespace saiproxy
 
             std::shared_ptr<sairedis::Channel> m_communicationChannel;
 
-            std::function<sai_switch_notifications_t(std::shared_ptr<sairedis::Notification>)> m_notificationCallback;
+            //std::function<sai_switch_notifications_t(std::shared_ptr<sairedis::Notification>)> m_notificationCallback;
 
             std::shared_ptr<Options> m_options;
+
+            sai_switch_notifications_t m_sn;
     };
 }

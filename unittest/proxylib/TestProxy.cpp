@@ -163,7 +163,7 @@ static void onBfdSessionStateChange(
     ntfCounter++;
 }
 
-void onTwampSessionEvent(
+static void onTwampSessionEvent(
         _In_ uint32_t count,
         _In_ const sai_twamp_session_event_notification_data_t *data)
 {
