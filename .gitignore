@@ -118,6 +118,7 @@ unittest/vslib/tests
 unittest/vslib/testslibsaivs
 unittest/proxylib/tests
 unittest/proxylib/testslibsaiproxy
+unittest/saidump/tests
 vslib/tests
 stub/tests
 unittest/stub/stub/testslibsaistub
