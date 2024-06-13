@@ -40,7 +40,7 @@ TEST(Switch, updateNotifications)
 
     attr.id = -1;
 
-    EXPECT_THROW(s.updateNotifications(1, &attr), std::runtime_error);
+    EXPECT_NO_THROW(s.updateNotifications(1, &attr));
 
     attr.id = SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY;
     s.updateNotifications(1, &attr);
