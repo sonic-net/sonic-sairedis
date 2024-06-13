@@ -530,70 +530,13 @@ sai_status_t DummySaiInterface::queryApiVersion(
     return m_status;
 }
 
-// TODO replace this method with with new SAI submodule for:
-// sai_metadata_update_switch_notification_pointers
-
 void DummySaiInterface::updateNotificationPointers(
         _In_ uint32_t count,
         _In_ const sai_attribute_t* attrs)
 {
     SWSS_LOG_ENTER();
 
-    if (attrs == NULL)
-    {
-        return;
-    }
-
-    for (uint32_t idx = 0; idx < count; idx++)
-    {
-        auto &attr = attrs[idx];
-
-        auto* meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
-
-        if (meta && meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_POINTER)
-        {
-            // skip non pointers
-            continue;
-        }
-
-        switch (attr.id)
-        {
-            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                m_sn.on_switch_state_change = (sai_switch_state_change_notification_fn)attrs[idx].value.ptr;
-                break;
-            case SAI_SWITCH_ATTR_SWITCH_SHUTDOWN_REQUEST_NOTIFY:
-                m_sn.on_switch_shutdown_request = (sai_switch_shutdown_request_notification_fn)attrs[idx].value.ptr;
-                break;
-            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                m_sn.on_fdb_event = (sai_fdb_event_notification_fn)attrs[idx].value.ptr;
-                break;
-            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                m_sn.on_port_state_change = (sai_port_state_change_notification_fn)attrs[idx].value.ptr;
-                break;
-            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                m_sn.on_queue_pfc_deadlock = (sai_queue_pfc_deadlock_notification_fn)attrs[idx].value.ptr;
-                break;
-            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
-                m_sn.on_bfd_session_state_change = (sai_bfd_session_state_change_notification_fn)attrs[idx].value.ptr;
-                break;
-            case SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY:
-                m_sn.on_nat_event = (sai_nat_event_notification_fn)attrs[idx].value.ptr;
-                break;
-            case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
-                m_sn.on_switch_asic_sdk_health_event = (sai_switch_asic_sdk_health_event_notification_fn)attrs[idx].value.ptr;
-                break;
-            case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
-                m_sn.on_port_host_tx_ready = (sai_port_host_tx_ready_notification_fn)attrs[idx].value.ptr;
-                break;
-            case SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY:
-                m_sn.on_twamp_session_event = (sai_twamp_session_event_notification_fn)attrs[idx].value.ptr;
-                break;
-
-            default:
-                SWSS_LOG_ERROR("pointer for attr id %d (%s) is not handled, FIXME!", attr.id, (meta ? meta->attridname : "UNKNOWN"));
-                continue;
-        }
-    }
+    sai_metadata_update_switch_notification_pointers(&m_sn, count, attrs);
 }
 
 sai_status_t DummySaiInterface::start()

@@ -944,55 +944,9 @@ void SaiPlayer::update_notifications_pointers(
      * Sairedis is updating notifications pointers based on attribute, so when
      * we will do replay it will have invalid pointers from orchagent, so we
      * need to override them after create, and after set.
-     *
-     * NOTE: This needs to be updated every time new pointer will be added.
      */
 
-    for (uint32_t index = 0; index < attr_count; ++index)
-    {
-        sai_attribute_t &attr = attr_list[index];
-
-        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
-
-        if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_POINTER)
-        {
-            continue;
-        }
-
-        if (attr.value.ptr == nullptr) // allow nulls
-            continue;
-
-        switch (attr.id)
-        {
-            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_switch_state_change;
-                break;
-
-            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_switch_shutdown_request;
-                break;
-
-            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_fdb_event;
-                break;
-
-            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_port_state_change;
-                break;
-
-            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_queue_pfc_deadlock;
-                break;
-
-            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_bfd_session_state_change;
-                break;
-
-            default:
-                SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
-                break;
-        }
-    }
+    sai_metadata_update_attribute_notification_pointers(&m_switchNotifications, attr_count, attr_list);
 }
 
 sai_status_t SaiPlayer::handle_generic(

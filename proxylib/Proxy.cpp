@@ -18,7 +18,6 @@
 using namespace saiproxy;
 using namespace std::placeholders;
 
-// TODO we need pointers translation for receiving notifications
 // TODO handle diagnostic shell
 
 Proxy::Proxy(
@@ -1075,165 +1074,13 @@ void Proxy::processClearStats(
     m_selectableChannel->set(strStatus, entry, "clear_stats_response");
 }
 
-// TODO replace this method with with new SAI submodule for:
-// sai_metadata_update_switch_notification_pointers
-
 void Proxy::updateAttributteNotificationPointers(
         _In_ uint32_t count,
         _Inout_ sai_attribute_t* attr_list)
 {
     SWSS_LOG_ENTER();
 
-    for (uint32_t index = 0; index < count; ++index)
-    {
-        sai_attribute_t &attr = attr_list[index];
-
-        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
-
-        if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_POINTER)
-        {
-            continue;
-        }
-
-        /*
-         * Does not matter if pointer is valid or not, we just want the
-         * previous value.
-         */
-
-        sai_pointer_t prev = attr.value.ptr;
-
-        if (prev == NULL)
-        {
-            /*
-             * If pointer is NULL, then fine, let it be.
-             */
-
-            continue;
-        }
-
-        switch (attr.id)
-        {
-            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_switch_state_change;
-                break;
-
-            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_switch_shutdown_request;
-                break;
-
-            case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_switch_asic_sdk_health_event;
-                break;
-
-            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_fdb_event;
-                break;
-
-            case SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_nat_event;
-                break;
-
-            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_port_state_change;
-                break;
-
-            case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_port_host_tx_ready;
-                break;
-
-            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_queue_pfc_deadlock;
-                break;
-
-            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_bfd_session_state_change;
-                break;
-
-            case SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY:
-                attr.value.ptr = (void*)m_sn.on_twamp_session_event;
-                break;
-
-            default:
-
-                SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
-                continue;
-        }
-
-        // Here we translated pointer, just log it.
-
-        SWSS_LOG_NOTICE("%s: 0x%" PRIx64 " (orch) => 0x%" PRIx64 " (syncd)", meta->attridname, (uint64_t)prev, (uint64_t)attr.value.ptr);
-    }
-}
-
-// TODO replace this method with with new SAI submodule for:
-// sai_metadata_update_switch_notification_pointers
-
-void Proxy::updateNotificationPointers(
-        _In_ uint32_t count,
-        _In_ const sai_attribute_t* attrs)
-{
-    SWSS_LOG_ENTER();
-
-    // NOTE this is done under mutex
-
-    for (uint32_t idx = 0; idx < count; idx++)
-    {
-        auto &attr = attrs[idx];
-
-        auto* meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
-
-        switch (attr.id)
-        {
-            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                m_sn.on_switch_state_change =
-                    (sai_switch_state_change_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY:
-                m_sn.on_switch_asic_sdk_health_event =
-                    (sai_switch_asic_sdk_health_event_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                m_sn.on_switch_shutdown_request =
-                    (sai_switch_shutdown_request_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                m_sn.on_fdb_event =
-                    (sai_fdb_event_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                m_sn.on_port_state_change =
-                    (sai_port_state_change_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY:
-                m_sn.on_port_host_tx_ready =
-                    (sai_port_host_tx_ready_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_PACKET_EVENT_NOTIFY:
-                m_sn.on_packet_event =
-                    (sai_packet_event_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                m_sn.on_queue_pfc_deadlock =
-                    (sai_queue_pfc_deadlock_notification_fn)attr.value.ptr;
-                break;
-
-            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
-                m_sn.on_bfd_session_state_change =
-                    (sai_bfd_session_state_change_notification_fn)attr.value.ptr;
-                break;
-
-            default:
-                SWSS_LOG_ERROR("pointer for attr id %d (%s) is not handled, FIXME!", attr.id, (meta ? meta->attridname : "UNKNOWN"));
-                continue;
-        }
-    }
+    sai_metadata_update_attribute_notification_pointers(&m_sn, count, attr_list);
 }
 
 // TODO move to notification handler class
