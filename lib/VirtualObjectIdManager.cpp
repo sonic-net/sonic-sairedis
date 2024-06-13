@@ -327,7 +327,9 @@ sai_object_id_t VirtualObjectIdManager::constructObjectId(
 
     uint64_t extensionsFlag = (uint64_t)objectType >= SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START;
 
-    objectType = (sai_object_type_t)(objectType & 0xFF); // get lower part as 1 byte
+    objectType = extensionsFlag
+        ? (sai_object_type_t)(objectType - SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
+        : objectType;
 
     return (sai_object_id_t)(
             ((uint64_t)switchIndex << (SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |

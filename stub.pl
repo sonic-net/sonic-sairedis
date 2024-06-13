@@ -270,7 +270,7 @@ sub CreateApiStricts()
             Write "";
         }
 
-        Write "static const sai_${api}_api_t ${STUB}_${api} = {";
+        Write "static sai_${api}_api_t ${STUB}_${api} = {";
 
         while ($struct =~ /(sai_\w+_fn)\s+(\w+)/gms)
         {
