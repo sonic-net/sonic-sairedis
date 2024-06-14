@@ -3822,7 +3822,8 @@ sai_status_t Syncd::processNotifySyncd(
             m_asicInitViewMode = false;
 
             if (m_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT ||
-                m_commandLineOptions->m_startType == SAI_START_TYPE_EXPRESS_BOOT)
+                m_commandLineOptions->m_startType == SAI_START_TYPE_EXPRESS_BOOT ||
+                m_commandLineOptions->m_startType == SAI_START_TYPE_FAST_BOOT)
             {
                 // express/fastfast boot configuration end
 
