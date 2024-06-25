@@ -860,6 +860,11 @@ sai_status_t VirtualSwitchSaiInterface::objectTypeGetAvailability(
         }
         return SAI_STATUS_SUCCESS;
     }
+    else if (objectType == SAI_OBJECT_TYPE_L2_ECMP_GROUP)
+    {
+        *count = 1000;
+        return SAI_STATUS_SUCCESS;
+    }
     else if (objectType == SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MAP)
     {
         *count = 512;
