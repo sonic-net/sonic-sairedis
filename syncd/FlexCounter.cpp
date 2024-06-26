@@ -363,6 +363,7 @@ void deserializeAttr(
     sai_deserialize_acl_counter_attr(name, attr);
 }
 
+
 template <typename StatType>
 class CounterContext : public BaseCounterContext
 {
@@ -511,8 +512,84 @@ public:
         }
     }
 
+    void addVoqEntryToChassisAppDb(
+            _In_ const sai_object_id_t rid,
+            _In_ const sai_object_id_t vid,
+            _In_ std::vector<swss::FieldValueTuple> &counterValues,
+            _In_ swss::DBConnector &countersDb,
+            _In_ std::shared_ptr<swss::Table> cfgDeviceMetaDataTable,
+            _Out_ std::shared_ptr<swss::Table> appDbCountersTable )
+    {
+       // We need to update CHASSIS_APP_DB only if it is a VOQ counter. So first check
+       // if the counter is a QUEUE counter and if yes, query the queue attribute to check
+       // if it is a VOQ queue or not.
+       sai_status_t status;
+
+       if (m_objectType == SAI_OBJECT_TYPE_QUEUE) {
+          sai_attribute_t attr;
+          attr.id = SAI_QUEUE_ATTR_TYPE;
+          status = m_vendorSai->get(m_objectType, rid, 1, &attr);
+          if (status != SAI_STATUS_SUCCESS ) {
+             SWSS_LOG_ERROR("Failed to get queue attribute SAI_QUEUE_ATTR_TYPE. "
+                   "status %d rid 0x%" PRIx64 "vid 0x%" PRIx64, status, rid, vid);
+             return;
+          }
+
+          if (attr.value.s32 == SAI_QUEUE_TYPE_UNICAST_VOQ) {
+             attr.id = SAI_QUEUE_ATTR_INDEX;
+             status = m_vendorSai->get(m_objectType, rid, 1, &attr);
+             if (status != SAI_STATUS_SUCCESS ) {
+                SWSS_LOG_ERROR("Failed to get queue attribute SAI_QUEUE_ATTR_INDEX."
+                      " status %d rid 0x%" PRIx64 "vid 0x%" PRIx64, status, rid, vid) ;
+                return;
+             }
+
+             auto iface = countersDb.hget(COUNTERS_PORT_NAME_VOQ_MAP, sai_serialize_object_id(vid));
+             if (!iface)
+             {
+                SWSS_LOG_ERROR("Cannot query port name for queue. rid 0x%" PRIx64 "vid 0x%" PRIx64, rid, vid);
+                return;
+             }
+
+             string hostname;
+             if (!cfgDeviceMetaDataTable->hget("localhost", "hostname", hostname))
+             {
+                // hostname is not configured.
+                SWSS_LOG_ERROR("Host name is not configured");
+                return;
+             }
+
+             string asic;
+             if (!cfgDeviceMetaDataTable->hget("localhost", "asic_name", asic))
+             {
+                // Asic name not configured
+                SWSS_LOG_ERROR("Asic name is not configured");
+                return;
+             }
+
+             // Form the key to be inserted in "COUNTERS" table in CHASSIS_APP_DB.
+             // The key is of the form <INTF>@<VOQ>.
+             // Like this <table>|fsi_id|asic_id|intf@fsi_id|asic_id:VOQ_index
+             //   Interface part:
+             //   iface: "fsi_id|asic_id|intf" - desribes the chip and core where the intf
+             //   is present
+             //
+             //   VOQ part:
+             //   fsi_id: FSI id of the chip where the voq is present
+             //   asic_id: asic id of the core where the voq is present
+             //   VOQ_index: index of the voq among all the voqs for this interface on this chip and asic
+             string key = *iface + "@" + hostname + "|" + asic + ":" + std::to_string( attr.value.u8 );
+             appDbCountersTable->set(key, counterValues, "");
+          }
+       }
+    }
+
     virtual void collectData(
-            _In_ swss::Table &countersTable) override
+            _In_ swss::Table &countersTable,
+            _In_ std::string switchType,
+            _In_ swss::DBConnector &countersDb,
+            _In_ std::shared_ptr<swss::Table> cfgDeviceMetaDataTable,
+            _In_ std::shared_ptr<swss::Table> appDbCountersTable) override
     {
         SWSS_LOG_ENTER();
         sai_stats_mode_t effective_stats_mode = m_groupStatsMode;
@@ -541,6 +618,12 @@ public:
                 values.emplace_back(serializeStat(statIds[i]), std::to_string(stats[i]));
             }
             countersTable.set(sai_serialize_object_id(vid), values, "");
+
+            if (switchType == "voq")
+            {
+               // Chassis based system
+               addVoqEntryToChassisAppDb(rid, vid, values, countersDb, cfgDeviceMetaDataTable, appDbCountersTable);
+            }
         }
 
         for (const auto &kv : m_bulkContexts)
@@ -954,7 +1037,11 @@ public:
     }
 
     void collectData(
-            _In_ swss::Table &countersTable) override
+            _In_ swss::Table &countersTable,
+            _In_ std::string switchType,
+            _In_ swss::DBConnector &countersDb,
+            _In_ std::shared_ptr<swss::Table> cfgDeviceMetaDataTable,
+            _In_ std::shared_ptr<swss::Table> appDbCountersTable) override
     {
         SWSS_LOG_ENTER();
 
@@ -995,9 +1082,39 @@ public:
                 values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
             }
             countersTable.set(sai_serialize_object_id(vid), values, "");
+            if (switchType == "voq")
+            {
+               // Chassis based system
+               appDbCountersTable->set(sai_serialize_object_id(vid), values, "");
+            }
         }
     }
 };
+
+void FlexCounter::getCfgSwitchType(
+         _Out_ std::string &switch_type)
+{
+   try
+   {
+      if (!m_cfgDeviceMetaDataTable->hget("localhost", "switch_type", switch_type))
+      {
+         //Switch type is not configured. Consider it default = "switch" (regular switch)
+         switch_type = "switch";
+      }
+   }
+   catch(const std::system_error& e)
+   {
+      SWSS_LOG_ERROR("System error: %s", e.what());
+      switch_type = "switch";
+   }
+
+   if (switch_type != "voq" && switch_type != "fabric" && switch_type != "chassis-packet" && switch_type != "switch" && switch_type != "dpu")
+   {
+      SWSS_LOG_ERROR("Invalid switch type %s configured", switch_type.c_str());
+      //If configured switch type is none of the supported, assume regular switch
+      switch_type = "switch";
+   }
+}
 
 FlexCounter::FlexCounter(
         _In_ const std::string& instanceId,
@@ -1013,6 +1130,18 @@ FlexCounter::FlexCounter(
 
     m_enable = false;
     m_isDiscarded = false;
+
+    m_configDb = std::make_shared<swss::DBConnector>("CONFIG_DB", 0);
+    m_cfgDeviceMetaDataTable = std::make_shared<swss::Table>(m_configDb.get(), CFG_DEVICE_METADATA_TABLE_NAME);
+
+    getCfgSwitchType(m_switchType);
+
+    if (m_switchType == "voq")
+    {
+       m_appDb = std::make_shared<swss::DBConnector>("CHASSIS_APP_DB", 0, true);
+       m_appDbPipeline = std::make_shared<swss::RedisPipeline>(m_appDb.get());
+       m_appDbCountersTable = std::make_shared<swss::Table>(m_appDbPipeline.get(), "COUNTERS", true);
+    }
 
     startFlexCounterThread();
 }
@@ -1358,16 +1487,22 @@ bool FlexCounter::hasCounterContext(
 }
 
 void FlexCounter::collectCounters(
-        _In_ swss::Table &countersTable)
+        _In_ swss::Table &countersTable,
+        _In_ swss::DBConnector &countersDb)
 {
     SWSS_LOG_ENTER();
 
     for (const auto &it : m_counterContext)
     {
-        it.second->collectData(countersTable);
+        it.second->collectData(countersTable, m_switchType, countersDb, m_cfgDeviceMetaDataTable, m_appDbCountersTable);
     }
 
     countersTable.flush();
+    if (m_switchType == "voq")
+    {
+       // Release resources held in the redis pipeline
+       m_appDbCountersTable->flush();
+    }
 }
 
 void FlexCounter::runPlugins(
@@ -1404,7 +1539,7 @@ void FlexCounter::flexCounterThreadRunFunction()
         {
             auto start = std::chrono::steady_clock::now();
 
-            collectCounters(countersTable);
+            collectCounters(countersTable, db);
 
             runPlugins(db);
 

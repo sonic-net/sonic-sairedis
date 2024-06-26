@@ -17,7 +17,7 @@ extern "C" {
 
 namespace syncd
 {
-    class BaseCounterContext
+   class BaseCounterContext
     {
     public:
         BaseCounterContext(const std::string &name);
@@ -38,7 +38,11 @@ namespace syncd
                 _In_ sai_object_id_t vid) = 0;
 
         virtual void collectData(
-                _In_ swss::Table &countersTable) = 0;
+                _In_ swss::Table &countersTable,
+                _In_ std::string switchType,
+                _In_ swss::DBConnector &countersDb,
+                _In_ std::shared_ptr<swss::Table> cfgDeviceMetaDataTable,
+                _In_ std::shared_ptr<swss::Table> appDbCountersTable) = 0;
 
         virtual void runPlugin(
                 _In_ swss::DBConnector& counters_db,
@@ -122,7 +126,8 @@ namespace syncd
                     _In_ const std::string &name) const;
 
             void collectCounters(
-                    _In_ swss::Table &countersTable);
+                    _In_ swss::Table &countersTable,
+                    _In_ swss::DBConnector &countersDb);
 
             void runPlugins(
                     _In_ swss::DBConnector& db);
@@ -132,6 +137,9 @@ namespace syncd
             void endFlexCounterThread();
 
             void flexCounterThreadRunFunction();
+
+            void getCfgSwitchType(
+                    _In_ std::string &switch_type);
 
         private:
             void waitPoll();
@@ -168,5 +176,19 @@ namespace syncd
             bool m_isDiscarded;
 
             std::map<std::string, std::shared_ptr<BaseCounterContext>> m_counterContext;
+
+            /*** Agg voq counter variables ***/
+
+            std::string m_switchType;
+
+            std::shared_ptr<swss::DBConnector> m_configDb;
+
+            std::shared_ptr<swss::DBConnector> m_appDb;
+
+            std::shared_ptr<swss::RedisPipeline> m_appDbPipeline;
+
+            std::shared_ptr<swss::Table> m_cfgDeviceMetaDataTable;
+
+            std::shared_ptr<swss::Table> m_appDbCountersTable;
     };
 }
