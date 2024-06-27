@@ -276,6 +276,11 @@ std::string sai_serialize_twamp_session_stat(
 std::string sai_serialize_poe_port_power_consumption(
         _In_ const sai_poe_port_power_consumption_t& pppc);
 
+std::string sai_serialize_stats_capability_list(
+        _In_ const sai_stat_capability_list_t& stat_capability_list,
+        _In_ const sai_enum_metadata_t* meta,
+        _In_ bool countOnly);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -622,3 +627,8 @@ void sai_deserialize_redis_link_event_damping_algorithm(
 void sai_deserialize_redis_link_event_damping_aied_config(
         _In_ const std::string& s,
          _Out_ sai_redis_link_event_damping_algo_aied_config_t& value);
+
+void sai_deserialize_stats_capability_list(
+        _Inout_ sai_stat_capability_list_t *stats_capability,
+        _In_    const std::string& stat_enum_str,
+        _In_    const std::string& stat_modes_str);
