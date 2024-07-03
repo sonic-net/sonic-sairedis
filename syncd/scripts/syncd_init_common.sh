@@ -336,11 +336,11 @@ config_syncd_soda()
     CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
 }
 
-config_syncd_innovium()
+config_syncd_marvell_teralynx()
 {
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
     ulimit -s 65536
-    export II_ROOT="/var/log/invm"
+    export II_ROOT="/var/log/mrvl_teralynx"
     export II_APPEND_LOG=1
     mkdir -p $II_ROOT
 }
@@ -464,8 +464,8 @@ config_syncd()
         config_syncd_nephos
     elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
         config_syncd_vs
-    elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
-        config_syncd_innovium
+    elif [ "$SONIC_ASIC_TYPE" == "marvell-teralynx" ]; then
+        config_syncd_marvell_teralynx
     elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
         config_syncd_soda
     elif [ "$SONIC_ASIC_TYPE" == "nvidia-bluefield" ]; then
