@@ -64,6 +64,7 @@ libSaiVS_a_SOURCES = \
 					  SwitchMLNX2700.cpp \
 					  SwitchNokiaVS.cpp \
 					  SwitchNvdaMBF2H536C.cpp \
+					  SwitchPoE.cpp \
 					  SwitchStateBase.cpp \
 					  SwitchStateBaseFdb.cpp \
 					  SwitchStateBaseHostif.cpp \

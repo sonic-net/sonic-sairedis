@@ -2039,6 +2039,7 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_PORT_ILT_LANE_TRAINING_STATUS_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
+            case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
                 // no special action required
                 break;
 
@@ -3840,6 +3841,9 @@ sai_status_t Meta::meta_generic_validation_create(
                 VALIDATION_LIST(md, value.portserdestaps);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -4497,6 +4501,9 @@ sai_status_t Meta::meta_generic_validation_set(
             VALIDATION_LIST(md, value.portserdestaps);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
+            break;
+
         default:
 
             META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -4911,6 +4918,9 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.portserdestaps);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
+                break;
+
             default:
 
                 // acl capability will is more complex since is in/out we need to check stage
@@ -5231,6 +5241,9 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
                 VALIDATION_LIST_GET(md, value.portserdestaps);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
                 break;
 
             default:
@@ -6135,6 +6148,10 @@ void Meta::meta_generic_validation_post_create(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
+                // no special action required
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -6382,6 +6399,10 @@ void Meta::meta_generic_validation_post_set(
             break;
 
         case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+            // no special action required
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_POE_PORT_POWER_CONSUMPTION:
             // no special action required
             break;
 
