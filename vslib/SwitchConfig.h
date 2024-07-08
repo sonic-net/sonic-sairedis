@@ -35,6 +35,8 @@ namespace saivs
 
         SAI_VS_SWITCH_TYPE_MICAS_48CON2SFP,
 
+        SAI_VS_SWITCH_TYPE_POE,
+
     } sai_vs_switch_type_t;
 
     typedef enum _sai_vs_boot_type_t

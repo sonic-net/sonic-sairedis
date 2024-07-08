@@ -288,6 +288,8 @@ phy
 plaintext
 pn
 policer
+POE
+PSE
 pre
 printf
 ptr
