@@ -42,6 +42,7 @@ tests_SOURCES = main.cpp \
 				TestSwitchNvdaMBF2H536C.cpp \
 				TestSwitchBCM56850.cpp \
 				TestSwitchBCM81724.cpp \
+				TestSwitchPoe.cpp \
 				TestSwitchStateBaseMACsec.cpp \
 				TestMACsecManager.cpp \
 				TestSwitchStateBase.cpp \
