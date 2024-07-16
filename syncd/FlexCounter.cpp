@@ -1712,6 +1712,13 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     {
         return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_statsMode);
     }
+    else if (context_name == COUNTER_TYPE_POLICER)
+    {
+        SWSS_LOG_INFO("createCounterContext counter type %s", context_name.c_str());
+        auto context = std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        return context;
+    }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
     // GCC 8.3 requires a return value here
@@ -1990,6 +1997,14 @@ void FlexCounter::removeCounter(
             removeDataFromCountersDB(vid, ":TRAP");
         }
     }
+    else if (objectType == SAI_OBJECT_TYPE_POLICER)
+    {
+        if (hasCounterContext(COUNTER_TYPE_POLICER))
+        {
+            getCounterContext(COUNTER_TYPE_POLICER)->removeObject(vid);
+            // removeDataFromCountersDB(vid, ":POLICER");
+        }
+    }
     else
     {
         SWSS_LOG_ERROR("Object type for removal not supported, %s",
@@ -2119,6 +2134,14 @@ void FlexCounter::addCounter(
         else if (objectType == SAI_OBJECT_TYPE_COUNTER && field == FLOW_COUNTER_ID_LIST)
         {
             getCounterContext(COUNTER_TYPE_FLOW)->addObject(
+                    vid,
+                    rid,
+                    idStrings,
+                    "");
+        }
+        else if (objectType == SAI_OBJECT_TYPE_POLICER && field == POLICER_COUNTER_ID_LIST)
+        {
+            getCounterContext(COUNTER_TYPE_POLICER)->addObject(
                     vid,
                     rid,
                     idStrings,
