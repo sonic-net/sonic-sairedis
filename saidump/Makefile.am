@@ -9,6 +9,7 @@ saidump_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsa
 				-L$(top_srcdir)/lib/.libs -lsairedis -lzmq $(CODE_COVERAGE_LIBS)
 
 noinst_LIBRARIES = libsaidump.a
+
 libsaidump_a_SOURCES = SaiDump.cpp
 libsaidump_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaidump_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
