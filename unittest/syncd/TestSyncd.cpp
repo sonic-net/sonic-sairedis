@@ -3,6 +3,8 @@
 #include "CommandLineOptions.h"
 #include "sairediscommon.h"
 #include "SelectableChannel.h"
+#include "swss/dbconnector.h"
+#include "swss/redisreply.h"
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -18,8 +20,19 @@ public:
     MOCK_METHOD(uint64_t, readData, (), (override));
 };
 
+void clearDB()
+{
+    SWSS_LOG_ENTER();
+
+    swss::DBConnector db("ASIC_DB", 0, true);
+    swss::RedisReply r(&db, "FLUSHALL", REDIS_REPLY_STATUS);
+
+    r.checkStatusOK();
+}
+
 TEST(SyncdTest, processNotifySyncd)
 {
+    clearDB();
     auto sai = std::make_shared<MockableSaiInterface>();
     auto opt = std::make_shared<syncd::CommandLineOptions>();
     opt->m_enableTempView = true;
