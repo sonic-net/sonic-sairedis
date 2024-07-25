@@ -30,9 +30,21 @@ void clearDB()
     r.checkStatusOK();
 }
 
-TEST(SyncdTest, processNotifySyncd)
+class SyncdTest : public ::testing::Test
 {
-    clearDB();
+protected:
+    void SetUp() override
+    {
+        clearDB();
+    }
+    void TearDown() override
+    {
+        clearDB();
+    }
+};
+
+TEST_F(SyncdTest, processNotifySyncd)
+{
     auto sai = std::make_shared<MockableSaiInterface>();
     auto opt = std::make_shared<syncd::CommandLineOptions>();
     opt->m_enableTempView = true;
@@ -46,5 +58,4 @@ TEST(SyncdTest, processNotifySyncd)
         kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_NOTIFY;
     }));
     syncd_object.processEvent(consumer);
-    clearDB();
 }
