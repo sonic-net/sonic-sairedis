@@ -46,4 +46,5 @@ TEST(SyncdTest, processNotifySyncd)
         kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_NOTIFY;
     }));
     syncd_object.processEvent(consumer);
+    clearDB();
 }
