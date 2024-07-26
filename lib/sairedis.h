@@ -43,7 +43,7 @@ extern "C" {
 /**
  * @brief Default synchronous operation response timeout in milliseconds.
  */
-#define SAI_REDIS_DEFAULT_SYNC_OPERATION_RESPONSE_TIMEOUT (60*1000)
+#define SAI_REDIS_DEFAULT_SYNC_OPERATION_RESPONSE_TIMEOUT (80*1000)
 
 typedef enum _sai_redis_notify_syncd_t
 {
