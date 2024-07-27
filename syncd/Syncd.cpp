@@ -3689,16 +3689,6 @@ sai_status_t Syncd::processNotifySyncd(
 
     auto& key = kfvKey(kco);
     sai_status_t status = SAI_STATUS_SUCCESS;
-
-    if (!m_commandLineOptions->m_enableTempView)
-    {
-        SWSS_LOG_NOTICE("received %s, ignored since TEMP VIEW is not used, returning success", key.c_str());
-
-        sendNotifyResponse(SAI_STATUS_SUCCESS);
-
-        return SAI_STATUS_SUCCESS;
-    }
-
     auto redisNotifySyncd = sai_deserialize_redis_notify_syncd(key);
 
     if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP)
@@ -3713,6 +3703,15 @@ sai_status_t Syncd::processNotifySyncd(
         }
         sendNotifyResponse(status);
         return status;
+    }
+
+    if (!m_commandLineOptions->m_enableTempView)
+    {
+        SWSS_LOG_NOTICE("received %s, ignored since TEMP VIEW is not used, returning success", key.c_str());
+
+        sendNotifyResponse(SAI_STATUS_SUCCESS);
+
+        return SAI_STATUS_SUCCESS;
     }
 
     if (m_veryFirstRun && m_firstInitWasPerformed && redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW)
