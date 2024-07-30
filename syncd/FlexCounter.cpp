@@ -166,6 +166,14 @@ std::string serializeStat(
 
 template <>
 std::string serializeStat(
+        _In_ const sai_policer_stat_t stat)
+{
+    SWSS_LOG_ENTER();
+    return sai_serialize_policer_stat(stat);
+}
+
+template <>
+std::string serializeStat(
         _In_ const sai_queue_stat_t stat)
 {
     SWSS_LOG_ENTER();
@@ -268,6 +276,15 @@ void deserializeStat(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_port_stat(name, stat);
+}
+
+template <>
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_policer_stat_t *stat)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_policer_stat(name, stat);
 }
 
 template <>
