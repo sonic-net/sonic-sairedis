@@ -822,7 +822,7 @@ void syncdThread()
 
     auto commandLineOptions = std::make_shared<CommandLineOptions>();
 
-    commandLineOptions->m_enableTempView = true;
+    commandLineOptions->m_enableTempView = false;
     commandLineOptions->m_enableUnittests = false;
     commandLineOptions->m_disableExitSleep = true;
     commandLineOptions->m_profileMapFile = "testprofile.ini";
@@ -856,6 +856,11 @@ void test_invoke_dump()
 
     ASSERT_SUCCESS("Failed to invoke dump");
     assert(mockCallArg == SAI_FAILURE_DUMP_SCRIPT);
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+    status = sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    ASSERT_SUCCESS("Notify syncd failed");
 }
 
 void test_watchdog_timer_clock_rollback()
