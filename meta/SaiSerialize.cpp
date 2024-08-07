@@ -1822,7 +1822,7 @@ std::string sai_serialize_outbound_routing_entry(
     json j;
 
     j["switch_id"] = sai_serialize_object_id(outbound_routing_entry.switch_id);
-    j["eni_id"] = sai_serialize_object_id(outbound_routing_entry.eni_id);
+    j["eni_id"] = sai_serialize_object_id(outbound_routing_entry.outbound_routing_group_id);
     j["destination"] = sai_serialize_ip_prefix(outbound_routing_entry.destination);
 
     return j.dump();
@@ -4703,7 +4703,7 @@ void sai_deserialize_outbound_routing_entry(
     json j = json::parse(s);
 
     sai_deserialize_object_id(j["switch_id"], outbound_routing_entry.switch_id);
-    sai_deserialize_object_id(j["eni_id"], outbound_routing_entry.eni_id);
+    sai_deserialize_object_id(j["eni_id"], outbound_routing_entry.outbound_routing_group_id);
     sai_deserialize_ip_prefix(j["destination"], outbound_routing_entry.destination);
 }
 
