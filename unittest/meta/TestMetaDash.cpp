@@ -138,6 +138,24 @@ static void remove_eni(Meta &m, sai_object_id_t eni)
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni));
 }
 
+static sai_object_id_t create_route_group(Meta &m, sai_object_id_t switchid)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t oid;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_GROUP, &oid, switchid, 0, {}));
+
+    return oid;
+}
+
+static void sai_object_id_t remove_route_group(Meta &m, sai_object_id_t route_group)
+{
+    SWSS_LOG_ENTER();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_GROUP, route_group));
+}
+
 TEST(Meta, dash_get_availability)
 {
     Meta m(std::make_shared<MetaTestSaiInterface>());
@@ -1105,7 +1123,7 @@ TEST(Meta, quad_dash_outbound_routing_entry)
 
     sai_object_id_t counter = create_counter(m, switchid);
     sai_object_id_t vnet = create_vnet(m, switchid, 101);
-    sai_object_id_t eni = create_eni(m, switchid, vnet);
+    sai_object_id_t routeGroup = create_route_group(m, switchid);
 
     sai_ip_address_t oip6;
     oip6.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
@@ -1113,7 +1131,7 @@ TEST(Meta, quad_dash_outbound_routing_entry)
 
     sai_outbound_routing_entry_t entry0;
     entry0.switch_id = switchid;
-    entry0.eni_id = eni;
+    entry0.outbound_routing_group_id = routeGroup;
     entry0.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
     inet_pton(AF_INET, "192.168.1.0", &entry0.destination.addr.ip4);
     inet_pton(AF_INET, "255.255.255.0", &entry0.destination.mask.ip4);
@@ -1145,7 +1163,7 @@ TEST(Meta, quad_dash_outbound_routing_entry)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(&entry0));
 
-    remove_eni(m, eni);
+    remove_route_group(m, routeGroup);
     remove_vnet(m, vnet);
     remove_counter(m, counter);
 }
@@ -1170,8 +1188,8 @@ TEST(Meta, bulk_dash_outbound_routing_entry)
 
     sai_object_id_t vnet0 = create_vnet(m, switchid, 101);
     sai_object_id_t vnet1 = create_vnet(m, switchid, 102);
-    sai_object_id_t eni0 = create_eni(m, switchid, vnet0);
-    sai_object_id_t eni1 = create_eni(m, switchid, vnet1);
+    sai_object_id_t routeGroup0 = create_route_group(m, switchid);
+    sai_object_id_t routeGroup1 = create_route_group(m, switchid);
 
     sai_ip_prefix_t dst0 = {};
     sai_ip_prefix_t dst1 = {};
@@ -1205,8 +1223,8 @@ TEST(Meta, bulk_dash_outbound_routing_entry)
     sai_status_t statuses[entries_count] = {};
 
     sai_outbound_routing_entry_t entries[entries_count] = {
-        { .switch_id = switchid, .eni_id = eni0, .destination = dst0},
-        { .switch_id = switchid, .eni_id = eni1, .destination = dst1},
+        { .switch_id = switchid, .outbound_routing_group_id = routeGroup0, .destination = dst0},
+        { .switch_id = switchid, .outbound_routing_group_id = routeGroup1, .destination = dst1},
     };
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
@@ -1219,8 +1237,8 @@ TEST(Meta, bulk_dash_outbound_routing_entry)
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    remove_eni(m, eni0);
-    remove_eni(m, eni1);
+    remove_route_group(m, routeGroup0);
+    remove_route_group(m, routeGroup1);
     remove_vnet(m, vnet0);
     remove_vnet(m, vnet1);
     remove_counter(m, counter0);

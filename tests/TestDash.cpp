@@ -1290,14 +1290,12 @@ TEST(API, outbound_routing_entry)
     ASSERT_SUCCESS(counter_api->create_counter(&counter, switchid, 0, nullptr));
 
     sai_attribute_t attr;
-    sai_object_id_t eni, vnet;
+    sai_object_id_t routeGroup, vnet;
     attr.id = SAI_VNET_ATTR_VNI;
     attr.value.u32 = 101;
     ASSERT_SUCCESS(dash_vnet_api->create_vnet(&vnet, switchid, 1, &attr));
 
-    attr.id = SAI_ENI_ATTR_VNET_ID;
-    attr.value.oid = vnet;
-    ASSERT_SUCCESS(dash_eni_api->create_eni(&eni, switchid, 1, &attr));
+    ASSERT_SUCCESS(dash_api->create_outbound_routing_group(&routeGroup, switchid, 0, NULL));
 
     sai_ip_address_t oip6;
     oip6.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
@@ -1305,7 +1303,7 @@ TEST(API, outbound_routing_entry)
 
     sai_outbound_routing_entry_t entry0;
     entry0.switch_id = switchid;
-    entry0.eni_id = eni;
+    entry0.outbound_routing_group_id = routeGroup;
     entry0.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
     inet_pton(AF_INET, "192.168.1.0", &entry0.destination.addr.ip4);
     inet_pton(AF_INET, "255.255.255.0", &entry0.destination.mask.ip4);
@@ -1343,7 +1341,7 @@ TEST(API, outbound_routing_entry)
 
     ASSERT_SUCCESS(dash_api->remove_outbound_routing_entry(&entry0));
 
-    ASSERT_SUCCESS(dash_eni_api->remove_eni(eni));
+    ASSERT_SUCCESS(dash_api->remove_outbound_routing_group(routeGroup));
     ASSERT_SUCCESS(dash_vnet_api->remove_vnet(vnet));
     ASSERT_SUCCESS(counter_api->remove_counter(counter));
 }
@@ -1379,7 +1377,7 @@ TEST(APIBulk, outbound_routing_entry)
 
     sai_attribute_t attr;
     sai_object_id_t vnet0, vnet1;
-    sai_object_id_t eni0, eni1;
+    sai_object_id_t routeGroup0, routeGroup1;
     attr.id = SAI_VNET_ATTR_VNI;
     attr.value.u32 = 101;
     ASSERT_SUCCESS(dash_vnet_api->create_vnet(&vnet0, switchid, 1, &attr));
@@ -1388,13 +1386,8 @@ TEST(APIBulk, outbound_routing_entry)
     attr.value.u32 = 102;
     ASSERT_SUCCESS(dash_vnet_api->create_vnet(&vnet1, switchid, 1, &attr));
 
-    attr.id = SAI_ENI_ATTR_VNET_ID;
-    attr.value.oid = vnet0;
-    ASSERT_SUCCESS(dash_eni_api->create_eni(&eni0, switchid, 1, &attr));
-
-    attr.id = SAI_ENI_ATTR_VNET_ID;
-    attr.value.oid = vnet1;
-    ASSERT_SUCCESS(dash_eni_api->create_eni(&eni1, switchid, 1, &attr));
+    ASSERT_SUCCESS(dash_api->create_outbound_routing_group(&routeGroup0, switchid, 0, NULL));
+    ASSERT_SUCCESS(dash_api->create_outbound_routing_group(&routeGroup1, switchid, 0, NULL));
 
     sai_ip_prefix_t dst0 = {};
     sai_ip_prefix_t dst1 = {};
@@ -1428,8 +1421,8 @@ TEST(APIBulk, outbound_routing_entry)
     sai_status_t statuses[entries_count] = {};
 
     sai_outbound_routing_entry_t entries[entries_count] = {
-        { .switch_id = switchid, .eni_id = eni0, .destination = dst0},
-        { .switch_id = switchid, .eni_id = eni1, .destination = dst1},
+        { .switch_id = switchid, .outbound_routing_group_id = routeGroup0, .destination = dst0},
+        { .switch_id = switchid, .outbound_routing_group_id = routeGroup1, .destination = dst1},
     };
 
     ASSERT_SUCCESS(dash_api->create_outbound_routing_entries(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
@@ -1457,8 +1450,8 @@ TEST(APIBulk, outbound_routing_entry)
         ASSERT_SUCCESS(statuses[i]);
     }
 
-    ASSERT_SUCCESS(dash_eni_api->remove_eni(eni0));
-    ASSERT_SUCCESS(dash_eni_api->remove_eni(eni1));
+    ASSERT_SUCCESS(dash_api->remove_outbound_routing_group(routeGroup0));
+    ASSERT_SUCCESS(dash_api->remove_outbound_routing_group(routeGroup1));
     ASSERT_SUCCESS(dash_vnet_api->remove_vnet(vnet0));
     ASSERT_SUCCESS(dash_vnet_api->remove_vnet(vnet1));
     ASSERT_SUCCESS(counter_api->remove_counter(counter0));
