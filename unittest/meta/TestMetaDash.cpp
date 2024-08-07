@@ -149,7 +149,7 @@ static sai_object_id_t create_route_group(Meta &m, sai_object_id_t switchid)
     return oid;
 }
 
-static void sai_object_id_t remove_route_group(Meta &m, sai_object_id_t route_group)
+static void remove_route_group(Meta &m, sai_object_id_t route_group)
 {
     SWSS_LOG_ENTER();
 

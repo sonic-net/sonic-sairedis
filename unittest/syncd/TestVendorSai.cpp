@@ -1220,7 +1220,7 @@ TEST(VendorSai, quad_dash_outbound_routing_entry)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai.remove(&entry0));
 
-    remove_eni(sai, eni);
+    remove_route_group(sai, routeGroup);
     remove_vnet(sai, vnet);
     remove_counter(sai, counter);
 }
