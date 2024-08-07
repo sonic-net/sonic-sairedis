@@ -1421,8 +1421,8 @@ TEST(APIBulk, outbound_routing_entry)
     sai_status_t statuses[entries_count] = {};
 
     sai_outbound_routing_entry_t entries[entries_count] = {
-        { .switch_id = switchid, .outbound_routing_group_id = routeGroup0, .destination = dst0},
-        { .switch_id = switchid, .outbound_routing_group_id = routeGroup1, .destination = dst1},
+        { .switch_id = switchid, .destination = dst0, .outbound_routing_group_id = routeGroup0},
+        { .switch_id = switchid, .destination = dst1, .outbound_routing_group_id = routeGroup1},
     };
 
     ASSERT_SUCCESS(dash_api->create_outbound_routing_entries(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));

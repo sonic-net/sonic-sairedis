@@ -1214,8 +1214,8 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntryBulk)
     sai_status_t statuses[entries_count] = {};
 
     sai_outbound_routing_entry_t entries[entries_count] = {
-        { .switch_id = m_switchId, .outbound_routing_group_id = routeGroup0, .destination = dst0},
-        { .switch_id = m_switchId, .outbound_routing_group_id = routeGroup1, .destination = dst1},
+        { .switch_id = m_switchId, .destination = dst0, .outbound_routing_group_id = routeGroup0},
+        { .switch_id = m_switchId, .destination = dst1, .outbound_routing_group_id = routeGroup1},
     };
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
