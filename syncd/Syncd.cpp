@@ -1239,7 +1239,7 @@ sai_status_t Syncd::processBulkCreateEntry(
                 sai_deserialize_outbound_routing_entry(objectIds[it], entries[it]);
 
                 entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
-                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
+                entries[it].outbound_routing_group_id = m_translator->translateVidToRid(entries[it].outbound_routing_group_id);
             }
 
             status = m_vendorSai->bulkCreate(
@@ -1525,7 +1525,7 @@ sai_status_t Syncd::processBulkRemoveEntry(
                 sai_deserialize_outbound_routing_entry(objectIds[it], entries[it]);
 
                 entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
-                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
+                entries[it].outbound_routing_group_id = m_translator->translateVidToRid(entries[it].outbound_routing_group_id);
             }
 
             status = m_vendorSai->bulkRemove(
