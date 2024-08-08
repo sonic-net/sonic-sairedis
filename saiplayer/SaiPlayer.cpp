@@ -880,7 +880,7 @@ sai_status_t SaiPlayer::handle_dash_outbound_routing(
     sai_deserialize_outbound_routing_entry(str_object_id, entry);
 
     entry.switch_id = translate_local_to_redis(entry.switch_id);
-    entry.eni_id = translate_local_to_redis(entry.eni_id);
+    entry.outbound_routing_group_id = translate_local_to_redis(entry.outbound_routing_group_id);
 
     switch (api)
     {
@@ -1796,7 +1796,7 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                     sai_deserialize_outbound_routing_entry(object_ids[it], entries[it]);
 
                     entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
-                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                    entries[it].outbound_routing_group_id = translate_local_to_redis(entries[it].outbound_routing_group_id);
                 }
 
                 CALL_BULK_CREATE_API_WITH_TIMER("outbound_routing_entry");
@@ -1991,7 +1991,7 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                     sai_deserialize_outbound_routing_entry(object_ids[it], entries[it]);
 
                     entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
-                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                    entries[it].outbound_routing_group_id = translate_local_to_redis(entries[it].outbound_routing_group_id);
                 }
 
                 CALL_BULK_REMOVE_API_WITH_TIMER("outbound_routing_entry");
@@ -2193,7 +2193,7 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                     sai_deserialize_outbound_routing_entry(object_ids[it], entries[it]);
 
                     entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
-                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                    entries[it].outbound_routing_group_id = translate_local_to_redis(entries[it].outbound_routing_group_id);
                 }
 
                 CALL_BULK_SET_API_WITH_TIMER("outbound_routing_entry");

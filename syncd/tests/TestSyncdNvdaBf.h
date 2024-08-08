@@ -39,6 +39,9 @@ public:
     sai_object_id_t CreateEni(sai_object_id_t vnet);
     void RemoveEni(sai_object_id_t eni);
 
+    sai_object_id_t CreateRouteGroup();
+    void RemoveRouteGroup(sai_object_id_t routeGroup);
+
 protected:
     std::shared_ptr<std::thread> m_worker;
     std::shared_ptr<sairedis::Sai> m_sairedis;
