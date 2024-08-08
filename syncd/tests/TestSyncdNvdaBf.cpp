@@ -1158,7 +1158,7 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntry)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove(&entry0));
 
-    RemoveEni(route_group);
+    RemoveRouteGroup(route_group);
     RemoveVnet(vnet);
     RemoveCounter(counter);
 }
@@ -1179,8 +1179,8 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntryBulk)
 
     sai_object_id_t vnet0 = CreateVnet(101);
     sai_object_id_t vnet1 = CreateVnet(102);
-    sai_object_id_t routeGroup0 = CreateEni(vnet0);
-    sai_object_id_t routeGroup1 = CreateEni(vnet1);
+    sai_object_id_t routeGroup0 = CreateRouteGroup();
+    sai_object_id_t routeGroup1 = CreateRouteGroup();
 
     sai_ip_prefix_t dst0 = {};
     sai_ip_prefix_t dst1 = {};
@@ -1228,8 +1228,8 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntryBulk)
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    RemoveEni(routeGroup0);
-    RemoveEni(routeGroup1);
+    RemoveRouteGroup(routeGroup0);
+    RemoveRouteGroup(routeGroup1);
     RemoveVnet(vnet0);
     RemoveVnet(vnet1);
     RemoveCounter(counter0);
