@@ -426,7 +426,9 @@ TEST(FlexCounter, addRemoveCounterPlugin)
                             RIF_PLUGIN_FIELD,
                             BUFFER_POOL_PLUGIN_FIELD,
                             TUNNEL_PLUGIN_FIELD,
-                            FLOW_COUNTER_PLUGIN_FIELD};
+                            FLOW_COUNTER_PLUGIN_FIELD,
+                            WRED_QUEUE_PLUGIN_FIELD,
+                            WRED_PORT_PLUGIN_FIELD};
     for (auto &field : fields)
     {
         testAddRemovePlugin(field);
@@ -514,7 +516,7 @@ TEST(FlexCounter, addRemoveCounterForPort)
     fc.addCounter(counterVid, counterRid, values);
     EXPECT_EQ(fc.isEmpty(), false);
 
-    usleep(1000*1000);
+    usleep(1000*2000);
     countersTable.hget(expectedKey, "SAI_PORT_STAT_IF_IN_OCTETS", value);
     EXPECT_EQ(value, "100");
     countersTable.hget(expectedKey, "SAI_PORT_STAT_IF_IN_ERRORS", value);

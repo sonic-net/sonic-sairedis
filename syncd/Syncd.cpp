@@ -395,6 +395,9 @@ sai_status_t Syncd::processSingleEvent(
     if (op == REDIS_FLEX_COUNTER_COMMAND_DEL_GROUP)
         return processFlexCounterGroupEvent(key, DEL_COMMAND, kfvFieldsValues(kco));
 
+    if (op == REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_QUERY)
+        return processStatsCapabilityQuery(kco);
+
     SWSS_LOG_THROW("event op '%s' is not implemented, FIXME", op.c_str());
 }
 
@@ -576,6 +579,86 @@ sai_status_t Syncd::processObjectTypeGetAvailabilityQuery(
     }
 
     m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE);
+
+    return status;
+}
+
+sai_status_t Syncd::processStatsCapabilityQuery(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto& strSwitchVid = kfvKey(kco);
+
+    sai_object_id_t switchVid;
+    sai_deserialize_object_id(strSwitchVid, switchVid);
+
+    sai_object_id_t switchRid = m_translator->translateVidToRid(switchVid);
+
+    auto& values = kfvFieldsValues(kco);
+
+    if (values.size() != 2)
+    {
+        SWSS_LOG_ERROR("Invalid input: expected 2 arguments, received %zu", values.size());
+
+        m_selectableChannel->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_RESPONSE);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t objectType;
+    sai_deserialize_object_type(fvValue(values[0]), objectType);
+
+    uint32_t list_size = std::stoi(fvValue(values[1]));
+
+    std::vector<sai_stat_capability_t> stat_capability_list(list_size);
+
+    sai_stat_capability_list_t statCapList;
+
+    statCapList.count = list_size;
+    statCapList.list = stat_capability_list.data();
+
+    sai_status_t status = m_vendorSai->queryStatsCapability(switchRid, objectType, &statCapList);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        std::vector<std::string> vec_stat_enum;
+        std::vector<std::string> vec_stat_modes;
+
+	for (uint32_t it = 0; it < statCapList.count; it++)
+	{
+		vec_stat_enum.push_back(std::to_string(statCapList.list[it].stat_enum));
+		vec_stat_modes.push_back(std::to_string(statCapList.list[it].stat_modes));
+	}
+
+        std::ostringstream join_stat_enum;
+        std::copy(vec_stat_enum.begin(), vec_stat_enum.end(), std::ostream_iterator<std::string>(join_stat_enum, ","));
+        auto strCapEnum = join_stat_enum.str();
+
+        std::ostringstream join_stat_modes;
+        std::copy(vec_stat_modes.begin(), vec_stat_modes.end(), std::ostream_iterator<std::string>(join_stat_modes, ","));
+        auto strCapModes = join_stat_modes.str();
+
+        entry =
+        {
+            swss::FieldValueTuple("STAT_ENUM", strCapEnum),
+            swss::FieldValueTuple("STAT_MODES", strCapModes),
+            swss::FieldValueTuple("STAT_COUNT", std::to_string(statCapList.count))
+        };
+
+        SWSS_LOG_DEBUG("Sending response: stat_enums = '%s', stat_modes = '%s', count = %d",
+			strCapEnum.c_str(), strCapModes.c_str(), statCapList.count);
+    }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        entry = { swss::FieldValueTuple("STAT_COUNT", std::to_string(statCapList.count)) };
+
+        SWSS_LOG_DEBUG("Sending response: count = %u", statCapList.count);
+    }
+
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_RESPONSE);
 
     return status;
 }
