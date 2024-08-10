@@ -144,6 +144,18 @@ sai_status_t sai_query_attribute_capability(
             capability);
 }
 
+sai_status_t sai_query_object_stage(
+    _In_ sai_object_id_t switch_id,
+    _In_ sai_object_type_t object_type,
+    _In_ uint32_t attr_count,
+    _In_ const sai_attribute_t *attr_list,
+    _Out_ sai_object_stage_t *stage)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t sai_query_attribute_enum_values_capability(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_type_t object_type,
