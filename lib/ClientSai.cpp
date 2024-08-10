@@ -1,7 +1,7 @@
 #include "ClientSai.h"
 #include "SaiInternal.h"
 #include "RedisRemoteSaiInterface.h"
-#include "ZeroMQChannel.h"
+#include "RedisChannel.h"
 #include "Utils.h"
 #include "sairediscommon.h"
 #include "ClientConfig.h"
@@ -77,13 +77,8 @@ sai_status_t ClientSai::initialize(
 
     m_switchContainer = std::make_shared<SwitchContainer>();
 
-    auto clientConfig = service_method_table->profile_get_value(0, SAI_REDIS_KEY_CLIENT_CONFIG);
-
-    auto cc = ClientConfig::loadFromFile(clientConfig);
-
-    m_communicationChannel = std::make_shared<ZeroMQChannel>(
-            cc->m_zmqEndpoint,
-            cc->m_zmqNtfEndpoint,
+    m_communicationChannel = std::make_shared<RedisChannel>(
+            "ASIC_DB",
             std::bind(&ClientSai::handleNotification, this, _1, _2, _3));
 
     m_apiInitialized = true;
