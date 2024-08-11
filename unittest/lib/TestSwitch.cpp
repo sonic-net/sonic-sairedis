@@ -26,7 +26,7 @@ TEST(Switch, updateNotifications)
 
     attrs[0].id = 10000;
 
-    EXPECT_THROW(s->updateNotifications(1, attrs), std::runtime_error);
+    EXPECT_NO_THROW(s->updateNotifications(1, attrs));
 
     attrs[0].value.ptr = (void*)1;
     attrs[1].value.ptr = (void*)1;

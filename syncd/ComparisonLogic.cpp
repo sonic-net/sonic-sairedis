@@ -3281,9 +3281,11 @@ void ComparisonLogic::logViewObjectCount(
 
     bool asic_changes = false;
 
-    for (int i = SAI_OBJECT_TYPE_NULL + 1; i < SAI_OBJECT_TYPE_EXTENSIONS_MAX; i++)
+    // skip null object type
+
+    for (size_t i = 1; i < sai_metadata_enum_sai_object_type_t.valuescount; ++i)
     {
-        sai_object_type_t ot = (sai_object_type_t)i;
+        sai_object_type_t ot = (sai_object_type_t)sai_metadata_enum_sai_object_type_t.values[i];
 
         size_t c = currentView.getObjectsByObjectType(ot).size();
         size_t t = temporaryView.getObjectsByObjectType(ot).size();

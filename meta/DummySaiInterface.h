@@ -3,6 +3,9 @@
 #include "SaiInterface.h"
 
 #include <memory>
+#include <thread>
+#include <mutex>
+#include <queue>
 
 namespace saimeta
 {
@@ -18,7 +21,7 @@ namespace saimeta
 
             DummySaiInterface();
 
-            virtual ~DummySaiInterface() = default;
+            virtual ~DummySaiInterface();
 
         public:
 
@@ -218,6 +221,71 @@ namespace saimeta
 
         protected:
 
+            void updateNotificationPointers(
+                    _In_ uint32_t count,
+                    _In_ const sai_attribute_t* attrs);
+
+        public:
+
+            /**
+             * @brief Will start sending notifications
+             */
+            sai_status_t start();
+
+            /**
+             * @brief Will stop sending notifications
+             */
+            sai_status_t stop();
+
+            /**
+             * @brief Enqueue notification to send. Will send specific dummy
+             * notification from notifications thread.
+             */
+
+            sai_status_t enqueueNotificationToSend(
+                    _In_ sai_attr_id_t id);
+
+        protected:
+
+            /**
+             * @brief Try get notification to send.
+             *
+             * If notification queue is not empty, it will return true and
+             * set id to attribute of notification.
+             */
+            bool tryGetNotificationToSend(
+                    _Out_ sai_attr_id_t& id);
+
+            /**
+             * @brief Send notification.
+             *
+             * Will actually send notification if expected pointer for
+             * notification is not null.
+             */
+            void sendNotification(
+                    _In_ sai_attr_id_t id);
+
+        protected:
+
+            void run();
+
+        protected:
+
+            sai_switch_notifications_t m_sn;
+
             sai_status_t m_status;
+
+            bool m_apiInitialized;
+
+            /**
+             * @brief Thread that will be used to send notifications
+             */
+            std::shared_ptr<std::thread> m_thread;
+
+            std::mutex m_mutex;
+
+            bool m_runThread;
+
+            std::queue<sai_attr_id_t> m_queue;
     };
 }

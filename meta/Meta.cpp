@@ -1711,16 +1711,15 @@ sai_status_t Meta::meta_sai_validate_oid(
 {
     SWSS_LOG_ENTER();
 
-    if (object_type <= SAI_OBJECT_TYPE_NULL ||
-            object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
+    auto info = sai_metadata_get_object_type_info(object_type);
+
+    if (!info)
     {
         SWSS_LOG_ERROR("invalid object type specified: %d, FIXME", object_type);
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    const char* otname =  sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_object_type_t, object_type);
-
-    auto info = sai_metadata_get_object_type_info(object_type);
+    const char* otname =  info->objecttypename;
 
     if (info->isnonobjectid)
     {

@@ -79,7 +79,7 @@ void Sai::channelOpSetReadOnlyAttribute(
     sai_object_type_t object_type;
     sai_deserialize_object_type(str_object_type, object_type);
 
-    if (object_type == SAI_OBJECT_TYPE_NULL || object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
+    if (sai_metadata_is_object_type_valid(object_type) == false)
     {
         SWSS_LOG_ERROR("invalid object type: %d", object_type);
         return;

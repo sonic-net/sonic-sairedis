@@ -529,7 +529,7 @@ TEST(Meta, quad_dash_vip)
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(&vip, (uint32_t)attrs.size(), attrs.data()));
     EXPECT_EQ(attrs[0].value.s32, SAI_VIP_ENTRY_ACTION_ACCEPT);
 
-    attr.id = SAI_ENI_ETHER_ADDRESS_MAP_ENTRY_ATTR_ENI_ID;
+    attr.id = SAI_VIP_ENTRY_ATTR_ACTION;
     attr.value.s32 = SAI_VIP_ENTRY_ACTION_ACCEPT;
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(&vip, &attr));
 
