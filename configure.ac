@@ -278,6 +278,8 @@ AC_DEFINE([SAI_GIT_REVISION],
         "[m4_esyscmd([echo -n $(cd SAI && git rev-parse --short HEAD || echo 0000000)])]",
         [SAI git revision information])
 
+AM_CONDITIONAL(CXX_IS_GCC, test x$CXX = xg++)
+
 AC_OUTPUT(Makefile
           meta/Makefile
           lib/Makefile
