@@ -530,6 +530,16 @@ sai_status_t DummySaiInterface::queryApiVersion(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::dbgGenerateDump(
+         _In_ const char *dump_file_name)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 void DummySaiInterface::updateNotificationPointers(
         _In_ uint32_t count,
         _In_ const sai_attribute_t* attrs)

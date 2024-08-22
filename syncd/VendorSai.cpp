@@ -41,7 +41,7 @@ VendorSai::VendorSai()
 #else
         .bulk_object_get_stats = nullptr,
 #endif
-        .dbg_generate_dump = nullptr,
+        .dbg_generate_dump = &sai_dbg_generate_dump,
         .get_maximum_attribute_count = nullptr,
         .get_object_count = nullptr,
         .get_object_key = nullptr,
@@ -1878,4 +1878,12 @@ sai_log_level_t VendorSai::logGet(
     // no level defined yet, just return default
 
     return SAI_LOG_LEVEL_NOTICE;
+}
+
+sai_status_t VendorSai::dbgGenerateDump(
+           _In_ const char *dump_file_name)
+{
+    SWSS_LOG_ENTER();
+
+    return m_globalApis.dbg_generate_dump(dump_file_name);
 }

@@ -1281,6 +1281,14 @@ sai_status_t VirtualSwitchSaiInterface::queryApiVersion(
     return SAI_STATUS_INVALID_PARAMETER;
 }
 
+sai_status_t VirtualSwitchSaiInterface::dbgGenerateDump(
+            _In_ const char *dump_file_name)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_SUCCESS;
+}
+
 bool VirtualSwitchSaiInterface::writeWarmBootFile(
         _In_ const char* warmBootFile) const
 {

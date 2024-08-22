@@ -1117,6 +1117,25 @@ sai_status_t Sai::queryApiVersion(
 
 // TODO use function from SAI metadata to populate those
 
+sai_status_t Sai::dbgGenerateDump(
+       _In_ const char *dump_file_name)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    PROXY_CHECK_API_INITIALIZED();
+
+    const std::vector<swss::FieldValueTuple> entry =
+    {
+        swss::FieldValueTuple("DBG_GENERATE_DUMP", dump_file_name),
+    };
+
+    std::string key = "DBG_GEN_DUMP:01";
+
+    m_communicationChannel->set(key, entry, "dbg_gen_dump");
+
+    return SAI_STATUS_SUCCESS;
+}
+
 void Sai::updateNotifications(
         _In_ uint32_t attrCount,
         _In_ const sai_attribute_t *attrList)

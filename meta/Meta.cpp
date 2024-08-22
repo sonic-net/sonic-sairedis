@@ -1420,6 +1420,14 @@ sai_status_t Meta::queryApiVersion(
     return m_implementation->queryApiVersion(version);
 }
 
+sai_status_t Meta::dbgGenerateDump(
+        _In_ const char *dump_file_name)
+{
+    SWSS_LOG_ENTER();
+    
+    return m_implementation->dbgGenerateDump(dump_file_name);
+}
+
 void Meta::clean_after_switch_remove(
         _In_ sai_object_id_t switchId)
 {

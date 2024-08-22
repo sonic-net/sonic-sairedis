@@ -193,6 +193,9 @@ namespace saivs
             virtual sai_status_t queryApiVersion(
                     _Out_ sai_api_version_t *version) override;
 
+            virtual sai_status_t dbgGenerateDump(
+                    _In_ const char *dump_file_name) override;
+                    
         private: // QUAD pre
 
             sai_status_t preSet(

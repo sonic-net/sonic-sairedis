@@ -378,7 +378,7 @@ sub CreateGlobalApis
         Write "    SWSS_LOG_ENTER();";
         Write "";
 
-        if ($fun =~ /(bulkObjectClearStats|bulkObjectGetStats|dbgGenerateDump|getMaximumAttributeCount|getObjectKey|bulkGetAttribute|dbgGenerateDump|tamTelemetryGetData|getObjectCount|queryObjectStage)/)
+        if ($fun =~ /(bulkObjectClearStats|bulkObjectGetStats|getMaximumAttributeCount|getObjectKey|bulkGetAttribute|tamTelemetryGetData|getObjectCount|queryObjectStage)/)
         {
             Write "    SWSS_LOG_ERROR(\"FIXME, no implementation for $fun!\");";
             Write "    return SAI_STATUS_NOT_IMPLEMENTED;";
