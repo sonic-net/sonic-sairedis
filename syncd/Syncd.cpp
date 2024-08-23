@@ -36,6 +36,8 @@
 #include <iterator>
 #include <algorithm>
 
+#include <malloc.h>
+
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
 
@@ -3871,6 +3873,7 @@ sai_status_t Syncd::processNotifySyncd(
         try
         {
             status = applyView();
+            (void)malloc_trim(0);
         }
         catch(...)
         {
