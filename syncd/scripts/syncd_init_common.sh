@@ -124,8 +124,7 @@ function merge_config_bcm_files()
     to_file=$1
     from_file=$2
     message=$3
-    override=$4
-    logger -s "Merge $from_file to $to_file with override $override"
+    override=false
     echo "" >> $to_file
     echo "# Start of $message" >> $to_file
     while read line
@@ -134,11 +133,15 @@ function merge_config_bcm_files()
         if [ ! -z "$line" ];then
             if [ "${line::1}" == '#' ];then
                 echo $line >> $to_file
+            elif [ "$line" == "[Overwrite Section]" ];then
+                override=true
+                echo "# $line" >> $to_file
+                echo "Merge properties with override $override"
             else
                 sedline=${line%=*}
                 if grep -q $sedline $to_file ;then
                    if $override ;then
-                      logger -s "Override the config $(grep $sedline $to_file) with $line in $to_file"
+                      echo "Override the config $(grep $sedline $to_file) with $line in $to_file"
                       prop=${line:0:`expr index $line =`}
                       sed -i "/$prop/d" $to_file
                       echo $line >> $to_file
@@ -147,7 +150,7 @@ function merge_config_bcm_files()
                       if [ "${grepline::1}" == '#' ];then
                          echo $line >> $to_file
                       else
-                         logger -s "Keep the config $(grep $sedline $to_file) in $to_file"
+                         echo "Keep the config $(grep $sedline $to_file) in $to_file"
                       fi
                    fi
                 else
@@ -157,7 +160,7 @@ function merge_config_bcm_files()
         fi
     done < $from_file
     echo "# End of $message" >> $to_file
-    logger -s "Merged $from_file to $to_file"
+    echo "Merged $from_file to $to_file"
 }
 
 function merge_config_yml_files()
@@ -165,9 +168,8 @@ function merge_config_yml_files()
     to_file=$1
     from_file=$2
     message=$3
-    override=$4
+    override=false
     merged_cnt=0
-    logger -s "Merge $from_file to $to_file with override $override"
     echo "" >> $to_file
     echo "# Start of $message" >> $to_file
     while read line
@@ -176,11 +178,15 @@ function merge_config_yml_files()
         if [ ! -z "$line" ];then
             if [ "${line::1}" == '#' ];then
                 echo "        $line" >> $to_file
+            elif [ "$line" == "[Overwrite Section]"];then
+                override=true
+				echo "        # $line" >> $to_file
+                echo "Merge properties with override $override"
             else
                 sedline=${line%:*}
                 if grep -q $sedline $to_file ;then
                    if $override ;then
-                      logger -s "Override the config $(grep $sedline $to_file) with $line in $to_file"
+                      echo "Override the config $(grep $sedline $to_file) with $line in $to_file"
                       prop=${line:0:`expr index "$line" :`}
                       sed -i "/$prop/d" $to_file
                       echo "        $line" >> $to_file
@@ -192,7 +198,7 @@ function merge_config_yml_files()
                          echo "        $line" >> $to_file
                          merged_cnt+=1
                       else
-                         logger -s "Keep the config $(grep $sedline $to_file) in $to_file"
+                         echo "Keep the config $(grep $sedline $to_file) in $to_file"
                       fi
                    fi
                 else
@@ -213,13 +219,13 @@ function merge_config_yml_files()
     if [ $merged_cnt -gt 0 ]; then
        sed -i "/# End of/i \..." $to_file
     fi
-    logger -s "Merged $from_file to $to_file"
+    echo "Merged $from_file to $to_file"
 }
 
 config_syncd_bcm()
 {
     PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
-    PLT_CONFIG_BCM=$(find $HWSKU_DIR -name '*.bcm')
+    PLT_CONFIG_BCM=$(find $HWSKU_DIR -name '*.bcm' -not -path "*/phy/*")
     PLT_CONFIG_YML=$(find $HWSKU_DIR -name '*.yml')
 
     if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; then
@@ -234,25 +240,10 @@ config_syncd_bcm()
        chip_id=${readline#*0x14e4:0x}
        chip_id=${chip_id::3}
        COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -maxdepth 1 -name '*.bcm')
-       package=$(grep product_class /etc/sonic/sonic_branding.yml)
-       package=${package:15}
-       PACKAGE_CONFIG_BCM=()
-
-       echo "Package is $package"
-       echo "$COMMON_CONFIG_BCM"
-       if [ -d "$PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/$package" ]; then
-          PACKAGE_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/$package -name '*.bcm')
-          echo "Package specific config.bcm file present at ${PACKAGE_CONFIG_BCM[*]}"
-       else
-          echo "No package specific config.bcm file found"
-       fi
 
        if [ -f $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/*.bcm ]; then
           for file in $CONFIG_BCM; do
-             merge_config_bcm_files $file $COMMON_CONFIG_BCM "chip common properties" false
-             if [ ${#PACKAGE_CONFIG_BCM[@]} -gt 0 ]; then
-                merge_config_bcm_files $file $PACKAGE_CONFIG_BCM "package properties" true
-             fi
+             merge_config_bcm_files $file $COMMON_CONFIG_BCM "chip common properties"
           done
           echo "Merging $PLT_CONFIG_BCM with $COMMON_CONFIG_BCM, merge files stored in $CONFIG_BCM"
        fi
@@ -276,25 +267,10 @@ config_syncd_bcm()
        chip_id=${readline#*0:14e4:}
        chip_id=${chip_id::3}
        COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -maxdepth 1 -name '*.bcm')
-       package=$(grep product_class /etc/sonic/c      .yml)
-       package=${package:15}
-       PACKAGE_CONFIG_BCM=()
-
-       echo "Package is $package"
-       echo "$COMMON_CONFIG_BCM"
-       if [ -d "$PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/$package" ]; then
-          PACKAGE_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/$package -name '*.bcm')
-          echo "Package specific config.bcm file present at ${PACKAGE_CONFIG_BCM[*]}"
-       else
-          echo "No package specific config.bcm file found"
-       fi
 
        if [ -f $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/*.bcm ]; then
           for file in $CONFIG_YML; do
-             merge_config_yml_files $file $COMMON_CONFIG_BCM "chip common properties" false
-             if [ ${#PACKAGE_CONFIG_BCM[@]} -gt 0 ]; then
-                merge_config_yml_files $file $PACKAGE_CONFIG_BCM "package properties" true
-             fi
+             merge_config_yml_files $file $COMMON_CONFIG_BCM "chip common properties"
           done
           echo "Merging $PLT_CONFIG_YML with $COMMON_CONFIG_BCM, merge files stored in $CONFIG_YML "
        fi
