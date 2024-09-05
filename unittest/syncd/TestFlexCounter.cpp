@@ -85,7 +85,12 @@ void testAddRemoveCounter(
         const std::vector<std::string>& expectedValues,
         VerifyStatsFunc verifyFunc,
         bool autoRemoveDbEntry,
-        const std::string statsMode = STATS_MODE_READ)
+        const std::string statsMode = STATS_MODE_READ,
+        const std::string bulkChunkSize = "",
+        const std::string bulkChunkSizePerCounter = "",
+        bool bulkChunkSizeAfterPort = true,
+        const std::string pluginName = "",
+        bool immediatelyRemoveBulkChunkSizePerCounter = false)
 {
     SWSS_LOG_ENTER();
 
@@ -100,6 +105,20 @@ void testAddRemoveCounter(
     values.emplace_back(POLL_INTERVAL_FIELD, "1000");
     values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
     values.emplace_back(STATS_MODE_FIELD, statsMode);
+    std::vector<swss::FieldValueTuple> fcValues = values;
+    auto &bulkChunkSizeValues = bulkChunkSizeAfterPort ? fcValues : values;
+    if (!bulkChunkSize.empty())
+    {
+        bulkChunkSizeValues.emplace_back(BULK_CHUNK_SIZE_FIELD, bulkChunkSize);
+    }
+    if (!bulkChunkSizePerCounter.empty())
+    {
+        bulkChunkSizeValues.emplace_back(BULK_CHUNK_SIZE_PER_PREFIX_FIELD, bulkChunkSizePerCounter);
+    }
+    if (!pluginName.empty())
+    {
+        values.emplace_back(pluginName, "");
+    }
     fc.addCounterPlugin(values);
 
     values.clear();
@@ -107,6 +126,17 @@ void testAddRemoveCounter(
     for (auto object_id : object_ids)
     {
         fc.addCounter(object_id, object_id, values);
+    }
+
+    if (bulkChunkSizeAfterPort)
+    {
+        fc.addCounterPlugin(bulkChunkSizeValues);
+        if (immediatelyRemoveBulkChunkSizePerCounter)
+        {
+            bulkChunkSizeValues.clear();
+            bulkChunkSizeValues.emplace_back(BULK_CHUNK_SIZE_PER_PREFIX_FIELD, "");
+            fc.addCounterPlugin(bulkChunkSizeValues);
+        }
     }
 
     EXPECT_EQ(fc.isEmpty(), false);
@@ -763,6 +793,204 @@ TEST(FlexCounter, bulkCounter)
     EXPECT_EQ(false, clearCalled);
 }
 
+TEST(FlexCounter, bulkChunksize)
+{
+    /*
+     * Test logic
+     * 1. Generate counter values and store them whenever the bulk get stat is called after initialization
+     * 2. Convert stored counter values to string when the verify function is called
+     *    and verify whether the database content aligns with the stored values
+     * 3. Verify whether values of all counter IDs of all objects have been generated
+     * 4. Verify whether the bulk chunk size is correct
+     */
+    sai->mock_getStatsExt = [&](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [&](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_queryStatsCapability = [&](sai_object_id_t switch_id, sai_object_type_t object_type, sai_stat_capability_list_t *stats_capability) {
+        // For now, just return failure to make test simple, will write a singe test to cover querySupportedCounters
+        return SAI_STATUS_FAILURE;
+    };
+
+    // Map of number from {oid: {counter_id: counter value}}
+    std::map<sai_object_id_t, std::map<sai_stat_id_t, sai_uint64_t>> counterValuesMap;
+    // Map of string from {oid: {counter_id: counter value}}
+    std::map<std::string, std::map<std::string, std::string>> expectedValuesMap;
+
+    std::set<std::string> allCounterIds = {
+        "SAI_PORT_STAT_IF_IN_OCTETS",
+        "SAI_PORT_STAT_IF_IN_UCAST_PKTS",
+        "SAI_PORT_STAT_IF_OUT_QLEN",
+        "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES",
+        "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"
+    };
+    std::set<std::string> allObjectIds;
+    auto generateExpectedValues = [&]()
+    {
+        std::set<sai_uint64_t> allCounterValueSet;
+        for (const auto &oidRef : counterValuesMap)
+        {
+            auto &expected = expectedValuesMap[toOid(oidRef.first)];
+            std::set<std::string> localAllCounterIds = allCounterIds;
+            for (const auto &counters : oidRef.second)
+            {
+                // No duplicate counter value
+                EXPECT_EQ(allCounterValueSet.find(counters.second), allCounterValueSet.end());
+                allCounterValueSet.insert(counters.second);
+
+                // For each object, no unexpected counter ID
+                const auto &counterId = sai_serialize_port_stat((sai_port_stat_t)counters.first);
+                EXPECT_TRUE(localAllCounterIds.find(counterId) != localAllCounterIds.end());
+                localAllCounterIds.erase(counterId);
+
+                expected[counterId] = to_string(counters.second);
+            }
+
+            // For each object, all expected counters are generated
+            EXPECT_TRUE(localAllCounterIds.empty());
+        }
+    };
+
+    std::vector<std::vector<sai_stat_id_t>> counterRecord;
+    std::vector<std::vector<uint64_t>> valueRecord;
+    sai_uint64_t counterSeed = 0;
+    uint32_t unifiedBulkChunkSize = 0;
+    sai->mock_bulkGetStats = [&](sai_object_id_t,
+                                sai_object_type_t,
+                                uint32_t object_count,
+                                const sai_object_key_t *object_keys,
+                                uint32_t number_of_counters,
+                                const sai_stat_id_t *counter_ids,
+                                sai_stats_mode_t mode,
+                                sai_status_t *object_status,
+                                uint64_t *counters)
+    {
+        EXPECT_TRUE(mode == SAI_STATS_MODE_BULK_READ);
+        std::vector<sai_stat_id_t> record;
+        std::vector<uint64_t> value;
+        if (number_of_counters >= 5 && object_count == 1)
+        {
+            allObjectIds.insert(toOid(object_keys[0].key.object_id));
+            // This call is to check whether bulk counter polling is supported during initialization
+            return SAI_STATUS_SUCCESS;
+        }
+        for (uint32_t i = 0; i < object_count; i++)
+        {
+            object_status[i] = SAI_STATUS_SUCCESS;
+            auto &counterMap = counterValuesMap[object_keys[i].key.object_id];
+            for (uint32_t j = 0; j < number_of_counters; j++)
+            {
+                const auto &searchRef = counterMap.find(counter_ids[j]);
+                if (searchRef == counterMap.end())
+                {
+                    counterMap[counter_ids[j]] = ++counterSeed;
+                }
+                counters[i * number_of_counters + j] = counterMap[counter_ids[j]];
+                record.emplace_back(counter_ids[j]);
+                value.emplace_back(counterSeed);
+                if (unifiedBulkChunkSize > 0)
+                {
+                    if (object_count != unifiedBulkChunkSize)
+                    {
+                    EXPECT_EQ(object_count, unifiedBulkChunkSize);
+                    }
+                    continue;
+                }
+                switch (counter_ids[j])
+                {
+                case SAI_PORT_STAT_IF_IN_OCTETS:
+                case SAI_PORT_STAT_IF_IN_UCAST_PKTS:
+                    // default chunk size 2, object number 6, object count 6 / 2 = 3
+                    EXPECT_EQ(object_count, 3);
+                    break;
+                case SAI_PORT_STAT_IF_OUT_QLEN:
+                    // queue length chunk size 0, object number 6, object count 6
+                    EXPECT_EQ(object_count, 6);
+                    break;
+                case SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES:
+                case SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES:
+                    // FEC chunk size 2, object number 6, object count 6 / 3 = 2
+                    EXPECT_EQ(object_count, 2);
+                default:
+                    break;
+                }
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    auto counterVerifyFunc = [&] (swss::Table &countersTable, const std::string& key, const std::vector<std::string>& counterIdNames, const std::vector<std::string>&)
+    {
+        std::string value;
+        if (expectedValuesMap.empty())
+        {
+            generateExpectedValues();
+        }
+        auto const &searchRef = expectedValuesMap.find(key);
+        ASSERT_TRUE(searchRef != expectedValuesMap.end());
+        auto &oidCounters = searchRef->second;
+
+        for (auto const &counter : counterIdNames)
+        {
+            countersTable.hget(key, counter, value);
+            EXPECT_EQ(value, oidCounters[counter]);
+            oidCounters.erase(counter);
+        }
+
+        EXPECT_TRUE(oidCounters.empty());
+        expectedValuesMap.erase(searchRef);
+
+        allObjectIds.erase(key);
+    };
+
+    testAddRemoveCounter(
+        6,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_OUT_QLEN", "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES", "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"},
+        {},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        "3",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+    EXPECT_TRUE(allObjectIds.empty());
+
+    testAddRemoveCounter(
+        6,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_OUT_QLEN", "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES", "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"},
+        {},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        "3",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        false,
+        PORT_PLUGIN_FIELD);
+    EXPECT_TRUE(allObjectIds.empty());
+
+    unifiedBulkChunkSize = 3;
+    testAddRemoveCounter(
+        6,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_OUT_QLEN", "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES", "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"},
+        {},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        "3",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true,
+        "",
+        true);
+    EXPECT_TRUE(allObjectIds.empty());
+}
+
 TEST(FlexCounter, counterIdChange)
 {
     sai->mock_getStats = [&](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
@@ -1154,4 +1382,3 @@ TEST(FlexCounter, noEniDashMeterCounter)
         counterVerifyFunc,
         false);
 }
-
