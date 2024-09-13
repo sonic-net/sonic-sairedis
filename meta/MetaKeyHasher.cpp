@@ -309,7 +309,7 @@ static bool operator==(
 {
     // SWSS_LOG_ENTER(); // disabled for performance reasons
 
-    return a.switch_id == b.switch_id && a.eni_id == b.eni_id && a.destination == b.destination;
+    return a.switch_id == b.switch_id && a.destination == b.destination && a.outbound_routing_group_id == b.outbound_routing_group_id;
 }
 
 static bool operator==(
@@ -673,8 +673,8 @@ static inline std::size_t sai_get_hash(
     // SWSS_LOG_ENTER(); // disabled for performance reasons
 
     std::size_t hash = 0;
-    boost::hash_combine(hash, oe.eni_id);
     boost::hash_combine(hash, sai_get_hash(oe.destination));
+    boost::hash_combine(hash, oe.outbound_routing_group_id);
 
     return hash;
 }
