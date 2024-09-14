@@ -225,7 +225,7 @@ TEST(FlexCounter, addRemoveCounter)
         clearCalled = true;
         return SAI_STATUS_SUCCESS;
     };
- 
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_QUEUE,
