@@ -6310,18 +6310,29 @@ void Meta::meta_sai_on_fdb_event_single(
                 sai_attribute_t *list = data.attr;
                 uint32_t count = data.attr_count;
 
-                sai_attribute_t local[2]; // 2 for port id and type
+                /* Add an attr of type if there is no SAI_FDB_ENTRY_ATTR_TYPE in data.
+                 * There are two attributes but no SAI_FDB_ENTRY_ATTR_TYPE in VXLAN environment.
+                 */
+                std::vector<sai_attribute_t> local_attributes;
+                sai_attribute_t local_type;
 
-                if (count == 1)
+                bool hasType = false;
+                for (uint32_t i = 0; i < count; i++)
                 {
-                    // workaround for missing "TYPE" attribute on notification
-
-                    local[0] = data.attr[0]; // copy 1st attr
-                    local[1].id = SAI_FDB_ENTRY_ATTR_TYPE;
-                    local[1].value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC; // assume learned entries are always dynamic
-
-                    list = local;
-                    count = 2; // now we added type
+                    if(data.attr[i].id == SAI_FDB_ENTRY_ATTR_TYPE)
+                    {
+                        hasType = true;
+                        break;
+                    }
+                    local_attributes.push_back(data.attr[i]);//copy every attr
+                }
+                if(!hasType)
+                {
+                    local_type.id = SAI_FDB_ENTRY_ATTR_TYPE;
+                    local_type.value.s32 = SAI_FDB_ENTRY_TYPE_DYNAMIC;// assume learned entries are always dynamic
+                    local_attributes.push_back(local_type);
+                    list = local_attributes.data();
+                    count++;
                 }
 
                 sai_status_t status = meta_generic_validation_create(meta_key_fdb, data.fdb_entry.switch_id, count, list);
