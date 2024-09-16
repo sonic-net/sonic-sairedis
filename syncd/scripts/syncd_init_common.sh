@@ -280,6 +280,8 @@ config_syncd_marvell()
 {
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 
+    export MRVL_PSAI_SONIC=1
+
     [ -e /dev/net/tun ] || ( mkdir -p /dev/net && mknod /dev/net/tun c 10 200 )
 }
 
