@@ -21,5 +21,10 @@ TEST(libsairedis, neighbor)
     EXPECT_NE(SAI_STATUS_SUCCESS, api->set_neighbor_entry_attribute(0,0));
     EXPECT_NE(SAI_STATUS_SUCCESS, api->get_neighbor_entry_attribute(0,0,0));
 
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->create_neighbor_entries(0,0,0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->remove_neighbor_entries(0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->set_neighbor_entries_attribute(0,0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0));
+    EXPECT_NE(SAI_STATUS_SUCCESS, api->get_neighbor_entries_attribute(0,0,0,0,SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,0));
+
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, api->remove_all_neighbor_entries(0));
 }

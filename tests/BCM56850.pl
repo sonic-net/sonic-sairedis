@@ -580,6 +580,13 @@ sub test_bulk_route
     play "bulk_route.rec"
 }
 
+sub test_bulk_neighbor
+{
+    fresh_start;
+
+    play "bulk_neighbor.rec"
+}
+
 sub test_bulk_fdb
 {
     fresh_start;
@@ -862,6 +869,7 @@ test_ntf;
 test_acl_mask;
 test_empty_lag_buffer_acl;
 test_bulk_route;
+test_bulk_neighbor;
 test_bulk_fdb;
 test_bulk_object;
 test_brcm_config_acl;

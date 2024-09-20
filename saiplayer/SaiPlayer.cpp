@@ -1698,6 +1698,23 @@ sai_status_t SaiPlayer::handle_bulk_entry(
             }
             break;
 
+            case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            {
+                std::vector<sai_neighbor_entry_t> entries(object_count);
+
+                for (size_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_neighbor_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].rif_id = translate_local_to_redis(entries[it].rif_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("neighbor_entry");
+
+            }
+            break;
+
             case SAI_OBJECT_TYPE_FDB_ENTRY:
             {
 
@@ -1872,6 +1889,23 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                 }
 
                 CALL_BULK_REMOVE_API_WITH_TIMER("route_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            {
+                std::vector<sai_neighbor_entry_t> entries(object_count);
+
+                for (size_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_neighbor_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].rif_id = translate_local_to_redis(entries[it].rif_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("neighbor_entry");
 
             }
             break;
@@ -2057,6 +2091,23 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                 }
 
                 CALL_BULK_SET_API_WITH_TIMER("route_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            {
+                std::vector<sai_neighbor_entry_t> entries(object_count);
+
+                for (size_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_neighbor_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].rif_id = translate_local_to_redis(entries[it].rif_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("neighbor_entry");
 
             }
             break;
@@ -2452,6 +2503,7 @@ void SaiPlayer::processBulk(
     switch ((int)object_type)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
         case SAI_OBJECT_TYPE_FDB_ENTRY:
         case SAI_OBJECT_TYPE_NAT_ENTRY:
         case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:

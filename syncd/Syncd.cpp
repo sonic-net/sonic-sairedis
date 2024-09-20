@@ -1015,6 +1015,27 @@ sai_status_t Syncd::processBulkCreateEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+        {
+            std::vector<sai_neighbor_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_neighbor_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].rif_id = m_translator->translateVidToRid(entries[it].rif_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
         case SAI_OBJECT_TYPE_FDB_ENTRY:
         {
             std::vector<sai_fdb_entry_t> entries(object_count);
@@ -1301,6 +1322,25 @@ sai_status_t Syncd::processBulkRemoveEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+        {
+            std::vector<sai_neighbor_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_neighbor_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].rif_id = m_translator->translateVidToRid(entries[it].rif_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
         case SAI_OBJECT_TYPE_FDB_ENTRY:
         {
             std::vector<sai_fdb_entry_t> entries(object_count);
@@ -1574,6 +1614,26 @@ sai_status_t Syncd::processBulkSetEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+        {
+            std::vector<sai_neighbor_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_neighbor_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].rif_id = m_translator->translateVidToRid(entries[it].rif_id);
+            }
+
+            status = m_vendorSai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
         case SAI_OBJECT_TYPE_FDB_ENTRY:
         {
             std::vector<sai_fdb_entry_t> entries(object_count);
@@ -1728,6 +1788,10 @@ sai_status_t Syncd::processBulkEntry(
         {
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
                 sai_deserialize_route_entry(objectIds[idx], metaKey.objectkey.key.route_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+                sai_deserialize_neighbor_entry(objectIds[idx], metaKey.objectkey.key.neighbor_entry);
                 break;
 
             case SAI_OBJECT_TYPE_NAT_ENTRY:
