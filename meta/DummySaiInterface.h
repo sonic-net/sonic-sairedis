@@ -3,6 +3,9 @@
 #include "SaiInterface.h"
 
 #include <memory>
+#include <thread>
+#include <mutex>
+#include <queue>
 
 namespace saimeta
 {
@@ -18,7 +21,7 @@ namespace saimeta
 
             DummySaiInterface();
 
-            virtual ~DummySaiInterface() = default;
+            virtual ~DummySaiInterface();
 
         public:
 
@@ -27,11 +30,11 @@ namespace saimeta
 
         public:
 
-            virtual sai_status_t initialize(
+            virtual sai_status_t apiInitialize(
                     _In_ uint64_t flags,
                     _In_ const sai_service_method_table_t *service_method_table) override;
 
-            virtual sai_status_t uninitialize(void) override;
+            virtual sai_status_t apiUninitialize(void) override;
 
         public: // SAI interface overrides
 
@@ -86,6 +89,15 @@ namespace saimeta
                     _In_ uint32_t object_count,
                     _In_ const sai_object_id_t *object_id,
                     _In_ const sai_attribute_t *attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses) override;
+
+            virtual sai_status_t bulkGet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ uint32_t object_count,
+                    _In_ const sai_object_id_t *object_id,
+                    _In_ const uint32_t *attr_count,
+                    _Inout_ sai_attribute_t **attr_list,
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
@@ -188,7 +200,7 @@ namespace saimeta
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) override;
 
-            virtual sai_status_t queryAattributeEnumValuesCapability(
+            virtual sai_status_t queryAttributeEnumValuesCapability(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
                     _In_ sai_attr_id_t attr_id,
@@ -204,8 +216,76 @@ namespace saimeta
                     _In_ sai_api_t api,
                     _In_ sai_log_level_t log_level) override;
 
+            virtual sai_status_t queryApiVersion(
+                    _Out_ sai_api_version_t *version) override;
+
         protected:
 
+            void updateNotificationPointers(
+                    _In_ uint32_t count,
+                    _In_ const sai_attribute_t* attrs);
+
+        public:
+
+            /**
+             * @brief Will start sending notifications
+             */
+            sai_status_t start();
+
+            /**
+             * @brief Will stop sending notifications
+             */
+            sai_status_t stop();
+
+            /**
+             * @brief Enqueue notification to send. Will send specific dummy
+             * notification from notifications thread.
+             */
+
+            sai_status_t enqueueNotificationToSend(
+                    _In_ sai_attr_id_t id);
+
+        protected:
+
+            /**
+             * @brief Try get notification to send.
+             *
+             * If notification queue is not empty, it will return true and
+             * set id to attribute of notification.
+             */
+            bool tryGetNotificationToSend(
+                    _Out_ sai_attr_id_t& id);
+
+            /**
+             * @brief Send notification.
+             *
+             * Will actually send notification if expected pointer for
+             * notification is not null.
+             */
+            void sendNotification(
+                    _In_ sai_attr_id_t id);
+
+        protected:
+
+            void run();
+
+        protected:
+
+            sai_switch_notifications_t m_sn;
+
             sai_status_t m_status;
+
+            bool m_apiInitialized;
+
+            /**
+             * @brief Thread that will be used to send notifications
+             */
+            std::shared_ptr<std::thread> m_thread;
+
+            std::mutex m_mutex;
+
+            bool m_runThread;
+
+            std::queue<sai_attr_id_t> m_queue;
     };
 }

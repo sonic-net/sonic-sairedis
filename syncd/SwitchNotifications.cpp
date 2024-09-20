@@ -1,6 +1,7 @@
 #include "SwitchNotifications.h"
 
 #include "swss/logger.h"
+#include <array>
 
 using namespace syncd;
 
@@ -67,6 +68,17 @@ void SwitchNotifications::SlotBase::onPortStateChange(
     return m_slots.at(context)->m_handler->onPortStateChange(count, data);
 }
 
+void SwitchNotifications::SlotBase::onPortHostTxReady(
+        _In_ int context,
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id,
+        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onPortHostTxReady(switch_id, port_id, host_tx_ready_status);
+}
+
 void SwitchNotifications::SlotBase::onBfdSessionStateChange(
         _In_ int context,
         _In_ uint32_t count,
@@ -86,6 +98,19 @@ void SwitchNotifications::SlotBase::onQueuePfcDeadlock(
 
     return m_slots[context]->m_handler->onQueuePfcDeadlock(count, data);
 }
+void SwitchNotifications::SlotBase::onSwitchAsicSdkHealthEvent(
+        _In_ int context,
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onSwitchAsicSdkHealthEvent(switch_id, severity, timestamp, category, data, description);
+}
 
 void SwitchNotifications::SlotBase::onSwitchShutdownRequest(
         _In_ int context,
@@ -104,6 +129,16 @@ void SwitchNotifications::SlotBase::onSwitchStateChange(
     SWSS_LOG_ENTER();
 
     return m_slots.at(context)->m_handler->onSwitchStateChange(switch_id, switch_oper_status);
+}
+
+void SwitchNotifications::SlotBase::onTwampSessionEvent(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_twamp_session_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onTwampSessionEvent(count, data);
 }
 
 const sai_switch_notifications_t& SwitchNotifications::SlotBase::getSwitchNotifications() const

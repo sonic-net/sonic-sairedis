@@ -173,6 +173,11 @@ namespace saivs
             virtual sai_status_t refresh_port_oper_speed(
                     _In_ sai_object_id_t port_id);
 
+            virtual sai_status_t refresh_acl_table_entries(
+                    _In_ sai_object_id_t acl_table_id);
+
+            virtual sai_status_t refresh_acl_table_counters(
+                    _In_ sai_object_id_t acl_table_id);
         public:
 
             virtual sai_status_t warm_boot_initialize_objects();
@@ -294,6 +299,12 @@ namespace saivs
                               _In_ sai_object_type_t object_type,
                               _In_ sai_attr_id_t attr_id,
                              _Inout_ sai_s32_list_t *enum_values_capability);
+
+           virtual sai_status_t queryAttributeCapability(
+                              _In_ sai_object_id_t switch_id,
+                              _In_ sai_object_type_t object_type,
+                              _In_ sai_attr_id_t attr_id,
+                             _Out_ sai_attr_capability_t *attr_capability);
 
         protected:
 
@@ -674,6 +685,8 @@ namespace saivs
 
             constexpr static const int m_maxAclTables = 3;
             constexpr static const int m_maxAclTableGroups = 200;
+            constexpr static const int m_maxAclTableEntries = 1000;
+            constexpr static const int m_maxAclTableCounters = 1000;
 
         protected:
 
@@ -688,6 +701,12 @@ namespace saivs
 
             virtual sai_status_t queryHashNativeHashFieldListCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
+
+            virtual sai_status_t querySwitchHashAlgorithmCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
+            virtual sai_status_t queryPortAutonegFecOverrideSupportCapability(
+                                      _Out_ sai_attr_capability_t *attr_capability);
 
         public: // TODO private
 

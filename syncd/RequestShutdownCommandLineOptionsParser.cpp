@@ -23,7 +23,9 @@ std::shared_ptr<RequestShutdownCommandLineOptions> RequestShutdownCommandLineOpt
         { "cold", no_argument, 0, 'c' },
         { "warm", no_argument, 0, 'w' },
         { "fast", no_argument, 0, 'f' },
+        { "express", no_argument, 0, 'e' },
         { "pre",  no_argument, 0, 'p' }, // Requesting pre shutdown
+        { "pxe",  no_argument, 0, 'z' }, // Requesting pre-express shutdown
         { "help", no_argument, 0, 'h' },
 
         { "globalContext", required_argument, 0, 'g' },
@@ -37,7 +39,7 @@ std::shared_ptr<RequestShutdownCommandLineOptions> RequestShutdownCommandLineOpt
     {
         int option_index = 0;
 
-        int c = getopt_long(argc, argv, "cwfpg:x:h", long_options, &option_index);
+        int c = getopt_long(argc, argv, "cwfepzg:x:h", long_options, &option_index);
 
         if (c == -1)
             break;
@@ -59,8 +61,18 @@ std::shared_ptr<RequestShutdownCommandLineOptions> RequestShutdownCommandLineOpt
                 optionSpecified = true;
                 break;
 
+            case 'e':
+                options->setRestartType(SYNCD_RESTART_TYPE_EXPRESS);
+                optionSpecified = true;
+                break;
+
             case 'p':
                 options->setRestartType(SYNCD_RESTART_TYPE_PRE_SHUTDOWN);
+                optionSpecified = true;
+                break;
+
+            case 'z':
+                options->setRestartType(SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN);
                 optionSpecified = true;
                 break;
 
@@ -98,7 +110,7 @@ void RequestShutdownCommandLineOptionsParser::printUsage()
 {
     SWSS_LOG_ENTER();
 
-    std::cout << "Usage: syncd_request_shutdown [-w] [--warm] [-p] [--pre] [-c] [--cold] [-f] [--fast] [-g idx] [-x contextConfig] [-h] [--help]" << std::endl;
+    std::cout << "Usage: syncd_request_shutdown [-w] [--warm] [-p] [--pre] [-c] [--cold] [-f] [--fast] [-e] [--express] [-z --pxe] [-g idx] [-x contextConfig] [-h] [--help]" << std::endl;
 
     std::cerr << std::endl;
 
@@ -112,6 +124,10 @@ void RequestShutdownCommandLineOptionsParser::printUsage()
     std::cerr << "      For cold restart" << std::endl;
     std::cerr << "  -f --fast" << std::endl;
     std::cerr << "      For fast restart" << std::endl;
+    std::cerr << "  -e --express" << std::endl;
+    std::cerr << "      For express restart" << std::endl;
+    std::cerr << "  -z --pxe" << std::endl;
+    std::cerr << "      For express pre-shutdown" << std::endl;
     std::cout << "  -g --globalContext " << std::endl;
     std::cout << "      Global context index to load from context config file" << std::endl;
     std::cout << "  -x --contextConfig" << std::endl;

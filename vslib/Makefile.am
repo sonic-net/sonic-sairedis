@@ -61,67 +61,15 @@ libSaiVS_a_SOURCES = \
 					  VirtualSwitchSaiInterfaceFdb.cpp \
 					  VirtualSwitchSaiInterfacePort.cpp
 
-libsaivs_la_SOURCES = \
-					  sai_vs_acl.cpp \
-					  sai_vs_bfd.cpp \
-					  sai_vs_bmtor.cpp \
-					  sai_vs_bridge.cpp \
-					  sai_vs_buffer.cpp \
-					  sai_vs_counter.cpp \
-					  sai_vs_dash_vip.cpp \
-					  sai_vs_dash_pa_validation.cpp \
-					  sai_vs_dash_vnet.cpp \
-					  sai_vs_dash_outbound_routing.cpp \
-					  sai_vs_dash_outbound_ca_to_pa.cpp \
-					  sai_vs_dash_inbound_routing.cpp \
-					  sai_vs_dash_eni.cpp \
-					  sai_vs_dash_direction_lookup.cpp \
-					  sai_vs_dash_acl.cpp \
-					  sai_vs_debug_counter.cpp\
-					  sai_vs_dtel.cpp \
-					  sai_vs_fdb.cpp \
-					  sai_vs_genericprogrammable.cpp \
-					  sai_vs_hash.cpp \
-					  sai_vs_hostif.cpp \
-					  sai_vs_interfacequery.cpp \
-					  sai_vs_ipmc.cpp \
-					  sai_vs_ipmc_group.cpp \
-					  sai_vs_isolation_group.cpp \
-					  sai_vs_l2mc.cpp \
-					  sai_vs_l2mcgroup.cpp \
-					  sai_vs_lag.cpp \
-					  sai_vs_macsec.cpp \
-					  sai_vs_mcastfdb.cpp \
-					  sai_vs_mirror.cpp \
-					  sai_vs_mpls.cpp \
-					  sai_vs_nat.cpp \
-					  sai_vs_neighbor.cpp \
-					  sai_vs_nexthop.cpp \
-					  sai_vs_nexthopgroup.cpp \
-					  sai_vs_policer.cpp \
-					  sai_vs_port.cpp \
-					  sai_vs_qosmap.cpp \
-					  sai_vs_queue.cpp \
-					  sai_vs_route.cpp \
-					  sai_vs_router_interface.cpp \
-					  sai_vs_rpfgroup.cpp \
-					  sai_vs_samplepacket.cpp \
-					  sai_vs_scheduler.cpp \
-					  sai_vs_schedulergroup.cpp \
-					  sai_vs_srv6.cpp \
-					  sai_vs_stp.cpp \
-					  sai_vs_switch.cpp \
-					  sai_vs_system_port.cpp \
-					  sai_vs_tam.cpp \
-					  sai_vs_tunnel.cpp \
-					  sai_vs_udf.cpp \
-					  sai_vs_virtual_router.cpp \
-					  sai_vs_vlan.cpp \
-					  sai_vs_wred.cpp \
-					  sai_vs_my_mac.cpp \
-					  sai_vs_ipsec.cpp \
-					  sai_vs_ars.cpp \
-					  sai_vs_ars_profile.cpp
+BUILT_SOURCES = sai_vs.cpp
+
+sai_vs.cpp: ../stub.pl $(top_srcdir)/SAI/meta/saimetadata.c
+	../stub.pl -d ../SAI/ -c Sai -n saivs -f sai_vs.cpp -s stub
+
+clean-local:
+	rm -f sai_vs.cpp
+
+libsaivs_la_SOURCES = sai_vs.cpp
 
 libSaiVS_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libSaiVS_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)

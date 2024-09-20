@@ -465,7 +465,10 @@ void MdioIpcServer::stopMdioThread(void)
     }
 
     m_taskAlive = 0;
-    m_taskThread.join();
+    if(m_taskThread.joinable())
+    {
+        m_taskThread.join();
+    }
     SWSS_LOG_NOTICE("IPC task thread is stopped\n");
 }
 

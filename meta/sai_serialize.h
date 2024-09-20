@@ -122,6 +122,9 @@ std::string sai_serialize_ingress_priority_group_attr(
 std::string sai_serialize_buffer_pool_stat(
         _In_ const sai_buffer_pool_stat_t counter);
 
+std::string sai_serialize_eni_stat(
+        _In_ const sai_eni_stat_t counter);
+
 std::string sai_serialize_tunnel_stat(
         _In_ const sai_tunnel_stat_t counter);
 
@@ -204,6 +207,17 @@ std::string sai_serialize_switch_oper_status(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t status);
 
+std::string sai_serialize_timespec(
+        _In_ const sai_timespec_t &timespec);
+
+std::string sai_serialize_switch_asic_sdk_health_event(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ const sai_timespec_t &timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ const sai_switch_health_data_t &data,
+        _In_ const sai_u8_list_t &description);
+
 std::string sai_serialize_switch_shutdown_request(
         _In_ sai_object_id_t switch_id);
 
@@ -220,6 +234,12 @@ std::string sai_serialize_number(
         _In_ uint32_t number,
         _In_ bool hex = false);
 
+template <typename T>
+std::string sai_serialize_number_list(
+        _In_ const T& list,
+        _In_ bool countOnly,
+        _In_ bool hex = false);
+
 std::string sai_serialize_attr_id(
         _In_ const sai_attr_metadata_t& meta);
 
@@ -231,6 +251,9 @@ std::string sai_serialize_mac(
 
 std::string sai_serialize_port_oper_status(
         _In_ sai_port_oper_status_t status);
+
+std::string sai_serialize_port_host_tx_ready(
+        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status);
 
 std::string sai_serialize_ingress_drop_reason(
         _In_ const sai_in_drop_reason_t reason);
@@ -249,6 +272,12 @@ std::string sai_serialize_nat_entry_type(
 
 std::string sai_serialize_qos_map_item(
         _In_ const sai_qos_map_t& qosmap);
+
+std::string sai_serialize_twamp_session_stat(
+        _In_ const sai_twamp_session_stat_t counter);
+
+std::string sai_serialize_poe_port_power_consumption(
+        _In_ const sai_poe_port_power_consumption_t& pppc);
 
 // serialize notifications
 
@@ -272,6 +301,15 @@ std::string sai_serialize_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ const sai_bfd_session_state_notification_t* bfd_session_state);
 
+std::string sai_serialize_port_host_tx_ready_ntf(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id,
+        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status);
+
+std::string sai_serialize_twamp_session_event_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_twamp_session_event_notification_data_t* twamp_session_event);
+
 // sairedis
 
 std::string sai_serialize(
@@ -279,6 +317,17 @@ std::string sai_serialize(
 
 std::string sai_serialize_redis_communication_mode(
         _In_ sai_redis_communication_mode_t value);
+
+std::string sai_serialize_redis_port_attr_id(
+        _In_ const sai_redis_port_attr_t value);
+
+// Link event damping.
+
+std::string sai_serialize_redis_link_event_damping_algorithm(
+        _In_ const sai_redis_link_event_damping_algorithm_t value);
+
+std::string sai_serialize_redis_link_event_damping_aied_config(
+         _In_ const sai_redis_link_event_damping_algo_aied_config_t& value);
 
 // deserialize
 
@@ -300,6 +349,19 @@ void sai_deserialize_switch_oper_status(
         _In_ const std::string& s,
         _Out_ sai_object_id_t &switch_id,
         _Out_ sai_switch_oper_status_t& status);
+
+void sai_deserialize_timespec(
+        _In_ const std::string& s,
+        _Out_ sai_timespec_t &timestamp);
+
+void sai_deserialize_switch_asic_sdk_health_event(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t &switch_id,
+        _Out_ sai_switch_asic_sdk_health_severity_t &severity,
+        _Out_ sai_timespec_t &timestamp,
+        _Out_ sai_switch_asic_sdk_health_category_t &category,
+        _Out_ sai_switch_health_data_t &data,
+        _Out_ sai_u8_list_t &description);
 
 void sai_deserialize_switch_shutdown_request(
         _In_ const std::string& s,
@@ -443,6 +505,10 @@ void sai_deserialize_chardata(
         _In_ const std::string& s,
         _Out_ char chardata[32]);
 
+void sai_deserialize_poe_port_power_consumption(
+        _In_ const std::string& s,
+        _Out_ sai_poe_port_power_consumption_t& pppc);
+
 // deserialize notifications
 
 void sai_deserialize_fdb_event_ntf(
@@ -469,6 +535,18 @@ void sai_deserialize_bfd_session_state_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
         _Out_ sai_bfd_session_state_notification_t** bfdsession);
+
+void sai_deserialize_port_host_tx_ready_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& switch_id,
+        _Out_ sai_object_id_t& port_id,
+        _Out_ sai_port_host_tx_ready_status_t& host_tx_ready_status);
+
+
+void sai_deserialize_twamp_session_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_twamp_session_event_notification_data_t** twamp_session_data);
 
 // free methods
 
@@ -498,9 +576,16 @@ void sai_deserialize_free_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ sai_bfd_session_state_notification_t* bfdsessionstate);
 
+void sai_deserialize_free_switch_asic_sdk_health_event(
+        _In_ sai_u8_list_t &description);
+
 void sai_deserialize_ingress_priority_group_attr(
         _In_ const std::string& s,
         _Out_ sai_ingress_priority_group_attr_t& attr);
+
+void sai_deserialize_free_twamp_session_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_twamp_session_event_notification_data_t* twamp_session_event);
 
 void sai_deserialize_queue_attr(
         _In_ const std::string& s,
@@ -526,3 +611,17 @@ sai_redis_notify_syncd_t sai_deserialize_redis_notify_syncd(
 void sai_deserialize_redis_communication_mode(
         _In_ const std::string& s,
         _Out_ sai_redis_communication_mode_t& value);
+
+void sai_deserialize_redis_port_attr_id(
+        _In_ const std::string& s,
+        _Out_ sai_redis_port_attr_t& value);
+
+// Link event damping.
+
+void sai_deserialize_redis_link_event_damping_algorithm(
+        _In_ const std::string& s,
+        _Out_ sai_redis_link_event_damping_algorithm_t& value);
+
+void sai_deserialize_redis_link_event_damping_aied_config(
+        _In_ const std::string& s,
+         _Out_ sai_redis_link_event_damping_algo_aied_config_t& value);

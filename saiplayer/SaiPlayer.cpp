@@ -87,9 +87,11 @@ SaiPlayer::SaiPlayer(
     m_sn.onFdbEvent = std::bind(&SaiPlayer::onFdbEvent, this, _1, _2);
     m_sn.onPortStateChange = std::bind(&SaiPlayer::onPortStateChange, this, _1, _2);
     m_sn.onQueuePfcDeadlock = std::bind(&SaiPlayer::onQueuePfcDeadlock, this, _1, _2);
+    m_sn.onSwitchAsicSdkHealthEvent = std::bind(&SaiPlayer::onSwitchAsicSdkHealthEvent, this, _1, _2, _3, _4, _5, _6);
     m_sn.onSwitchShutdownRequest = std::bind(&SaiPlayer::onSwitchShutdownRequest, this, _1);
     m_sn.onSwitchStateChange = std::bind(&SaiPlayer::onSwitchStateChange, this, _1, _2);
     m_sn.onBfdSessionStateChange = std::bind(&SaiPlayer::onBfdSessionStateChange, this, _1, _2);
+    m_sn.onPortHostTxReady = std::bind(&SaiPlayer::onPortHostTxReady, this, _1, _2, _3);
 
     m_switchNotifications= m_sn.getSwitchNotifications();
 }
@@ -175,9 +177,32 @@ void SaiPlayer::onBfdSessionStateChange(
     // empty
 }
 
+void SaiPlayer::onPortHostTxReady(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id,
+        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status)
+{
+    SWSS_LOG_ENTER();
+
+    // empty
+}
+
 void SaiPlayer::onQueuePfcDeadlock(
         _In_ uint32_t count,
         _In_ const sai_queue_deadlock_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    // empty
+}
+
+void SaiPlayer::onSwitchAsicSdkHealthEvent(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
 {
     SWSS_LOG_ENTER();
 
@@ -855,7 +880,7 @@ sai_status_t SaiPlayer::handle_dash_outbound_routing(
     sai_deserialize_outbound_routing_entry(str_object_id, entry);
 
     entry.switch_id = translate_local_to_redis(entry.switch_id);
-    entry.eni_id = translate_local_to_redis(entry.eni_id);
+    entry.outbound_routing_group_id = translate_local_to_redis(entry.outbound_routing_group_id);
 
     switch (api)
     {
@@ -919,55 +944,9 @@ void SaiPlayer::update_notifications_pointers(
      * Sairedis is updating notifications pointers based on attribute, so when
      * we will do replay it will have invalid pointers from orchagent, so we
      * need to override them after create, and after set.
-     *
-     * NOTE: This needs to be updated every time new pointer will be added.
      */
 
-    for (uint32_t index = 0; index < attr_count; ++index)
-    {
-        sai_attribute_t &attr = attr_list[index];
-
-        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
-
-        if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_POINTER)
-        {
-            continue;
-        }
-
-        if (attr.value.ptr == nullptr) // allow nulls
-            continue;
-
-        switch (attr.id)
-        {
-            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_switch_state_change;
-                break;
-
-            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_switch_shutdown_request;
-                break;
-
-            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_fdb_event;
-                break;
-
-            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_port_state_change;
-                break;
-
-            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_queue_pfc_deadlock;
-                break;
-
-            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_bfd_session_state_change;
-                break;
-
-            default:
-                SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
-                break;
-        }
-    }
+    sai_metadata_update_attribute_notification_pointers(&m_switchNotifications, attr_count, attr_list);
 }
 
 sai_status_t SaiPlayer::handle_generic(
@@ -1673,6 +1652,23 @@ sai_status_t SaiPlayer::handle_bulk_entry(
             }
             break;
 
+            case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            {
+                std::vector<sai_neighbor_entry_t> entries(object_count);
+
+                for (size_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_neighbor_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].rif_id = translate_local_to_redis(entries[it].rif_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("neighbor_entry");
+
+            }
+            break;
+
             case SAI_OBJECT_TYPE_FDB_ENTRY:
             {
 
@@ -1800,7 +1796,7 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                     sai_deserialize_outbound_routing_entry(object_ids[it], entries[it]);
 
                     entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
-                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                    entries[it].outbound_routing_group_id = translate_local_to_redis(entries[it].outbound_routing_group_id);
                 }
 
                 CALL_BULK_CREATE_API_WITH_TIMER("outbound_routing_entry");
@@ -1847,6 +1843,23 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                 }
 
                 CALL_BULK_REMOVE_API_WITH_TIMER("route_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            {
+                std::vector<sai_neighbor_entry_t> entries(object_count);
+
+                for (size_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_neighbor_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].rif_id = translate_local_to_redis(entries[it].rif_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("neighbor_entry");
 
             }
             break;
@@ -1978,7 +1991,7 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                     sai_deserialize_outbound_routing_entry(object_ids[it], entries[it]);
 
                     entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
-                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                    entries[it].outbound_routing_group_id = translate_local_to_redis(entries[it].outbound_routing_group_id);
                 }
 
                 CALL_BULK_REMOVE_API_WITH_TIMER("outbound_routing_entry");
@@ -2032,6 +2045,23 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                 }
 
                 CALL_BULK_SET_API_WITH_TIMER("route_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+            {
+                std::vector<sai_neighbor_entry_t> entries(object_count);
+
+                for (size_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_neighbor_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].rif_id = translate_local_to_redis(entries[it].rif_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("neighbor_entry");
 
             }
             break;
@@ -2163,7 +2193,7 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                     sai_deserialize_outbound_routing_entry(object_ids[it], entries[it]);
 
                     entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
-                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                    entries[it].outbound_routing_group_id = translate_local_to_redis(entries[it].outbound_routing_group_id);
                 }
 
                 CALL_BULK_SET_API_WITH_TIMER("outbound_routing_entry");
@@ -2427,6 +2457,7 @@ void SaiPlayer::processBulk(
     switch ((int)object_type)
     {
         case SAI_OBJECT_TYPE_ROUTE_ENTRY:
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
         case SAI_OBJECT_TYPE_FDB_ENTRY:
         case SAI_OBJECT_TYPE_NAT_ENTRY:
         case SAI_OBJECT_TYPE_DIRECTION_LOOKUP_ENTRY:
@@ -2825,7 +2856,7 @@ int SaiPlayer::run()
 
     m_test_services = m_smt.getServiceMethodTable();
 
-    EXIT_ON_ERROR(m_sai->initialize(0, &m_test_services));
+    EXIT_ON_ERROR(m_sai->apiInitialize(0, &m_test_services));
 
     sai_attribute_t attr;
 
@@ -2878,7 +2909,7 @@ int SaiPlayer::run()
         exitcode = replay();
     }
 
-    m_sai->uninitialize();
+    m_sai->apiUninitialize();
 
     return exitcode;
 }

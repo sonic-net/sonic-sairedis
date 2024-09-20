@@ -11,7 +11,9 @@
 #include <gtest/gtest.h>
 
 #include <swss/logger.h>
+#include <swss/table.h>
 
+#include "meta/sai_serialize.h"
 #include "Sai.h"
 #include "Syncd.h"
 #include "MetadataLogger.h"
@@ -102,6 +104,9 @@ public:
 
         flushAsicDb();
 
+        // flush FLEX COUNTER DB
+        flushFlexCounterDb();
+
         // start syncd worker
 
         m_worker = std::make_shared<std::thread>(syncdMlnxWorkerThread);
@@ -110,7 +115,7 @@ public:
 
         m_sairedis = std::make_shared<sairedis::Sai>();
 
-        auto status = m_sairedis->initialize(0, &test_services);
+        auto status = m_sairedis->apiInitialize(0, &test_services);
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
         // set communication mode
@@ -138,6 +143,10 @@ public:
 
         status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &m_switchId, SAI_NULL_OBJECT_ID, 1, &attr);
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+        auto db = std::make_shared<swss::DBConnector>("FLEX_COUNTER_DB", 0);
+        m_flexCounterGroupTable = std::make_shared<swss::Table>(db.get(), "FLEX_COUNTER_GROUP_TABLE");
+        m_flexCounterTable = std::make_shared<swss::Table>(db.get(), "FLEX_COUNTER_TABLE");
     }
 
     virtual void TearDown() override
@@ -146,7 +155,7 @@ public:
 
         // uninitialize SAI redis
 
-        auto status = m_sairedis->uninitialize();
+        auto status = m_sairedis->apiUninitialize();
         ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
         // stop syncd worker
@@ -158,6 +167,8 @@ public:
 protected:
     std::shared_ptr<std::thread> m_worker;
     std::shared_ptr<sairedis::Sai> m_sairedis;
+    std::shared_ptr<swss::Table> m_flexCounterGroupTable;
+    std::shared_ptr<swss::Table> m_flexCounterTable;
 
     sai_object_id_t m_switchId = SAI_NULL_OBJECT_ID;
 };
@@ -166,7 +177,7 @@ TEST_F(SyncdMlnxTest, queryAttrEnumValuesCapability)
 {
     sai_s32_list_t data = { .count = 0, .list = nullptr };
 
-    auto status = m_sairedis->queryAattributeEnumValuesCapability(
+    auto status = m_sairedis->queryAttributeEnumValuesCapability(
         m_switchId, SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST, &data
     );
     ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
@@ -174,7 +185,7 @@ TEST_F(SyncdMlnxTest, queryAttrEnumValuesCapability)
     std::vector<sai_int32_t> hfList(data.count);
     data.list = hfList.data();
 
-    status = m_sairedis->queryAattributeEnumValuesCapability(
+    status = m_sairedis->queryAttributeEnumValuesCapability(
         m_switchId, SAI_OBJECT_TYPE_HASH, SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST, &data
     );
     ASSERT_EQ(status, SAI_STATUS_SUCCESS);
@@ -247,6 +258,102 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     {
         ASSERT_EQ(statusList.at(i), SAI_STATUS_SUCCESS);
     }
+
+    // Counter operations based on the created port
+    // 1. Enable counter polling for port stat counter group
+    sai_redis_flex_counter_group_parameter_t flexCounterGroupParam;
+
+    std::string group("PORT_STAT_COUNTER");
+    std::string poll_interval = "10000";
+    std::string stats_mode = "STATS_MODE_READ";
+    std::string operation = "enable";
+
+    flexCounterGroupParam.counter_group_name.list = (int8_t*)const_cast<char *>(group.c_str());
+    flexCounterGroupParam.counter_group_name.count = (uint32_t)group.length();
+    flexCounterGroupParam.poll_interval.list = (int8_t*)const_cast<char *>(poll_interval.c_str());
+    flexCounterGroupParam.poll_interval.count = (uint32_t)poll_interval.length();
+    flexCounterGroupParam.plugin_name.list = nullptr;
+    flexCounterGroupParam.plugin_name.count = 0;
+    flexCounterGroupParam.plugins.list = nullptr;
+    flexCounterGroupParam.plugins.count = 0;
+    flexCounterGroupParam.stats_mode.list = (int8_t*)const_cast<char *>(stats_mode.c_str());
+    flexCounterGroupParam.stats_mode.count = (uint32_t)stats_mode.length();
+    flexCounterGroupParam.operation.list = (int8_t*)const_cast<char *>(operation.c_str());;
+    flexCounterGroupParam.operation.count = (uint32_t)operation.length();
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP;
+    attr.value.ptr = (void*)&flexCounterGroupParam;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    std::vector<swss::FieldValueTuple> fvVector, fvVectorExpected;
+    ASSERT_TRUE(m_flexCounterGroupTable->get("PORT_STAT_COUNTER", fvVector));
+    fvVectorExpected.emplace_back(POLL_INTERVAL_FIELD, poll_interval);
+    fvVectorExpected.emplace_back(STATS_MODE_FIELD, stats_mode);
+    fvVectorExpected.emplace_back(FLEX_COUNTER_STATUS_FIELD, operation);
+    ASSERT_EQ(fvVectorExpected, fvVector);
+    fvVectorExpected.clear();
+    fvVector.clear();
+
+    // 2. Start counter polling for the port just created
+    // Try with a bad key first
+    sai_redis_flex_counter_parameter_t flexCounterParam;
+    std::string key = "PORT_STAT_COUNTER";
+    std::string counters = "SAI_PORT_STAT_IF_IN_OCTETS";
+    std::string counter_field_name = "PORT_COUNTER_ID_LIST";
+
+    flexCounterParam.counter_key.list = (int8_t*)const_cast<char *>(key.c_str());
+    flexCounterParam.counter_key.count = (uint32_t)key.length();
+    flexCounterParam.counter_ids.list = (int8_t*)const_cast<char *>(counters.c_str());
+    flexCounterParam.counter_ids.count = (uint32_t)counters.length();
+    flexCounterParam.counter_field_name.list = (int8_t*)const_cast<char *>(counter_field_name.c_str());
+    flexCounterParam.counter_field_name.count = (uint32_t)counter_field_name.length();
+    flexCounterParam.stats_mode.list = nullptr;
+    flexCounterParam.stats_mode.count = 0;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER;
+    attr.value.ptr = (void*)&flexCounterParam;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    ASSERT_EQ(status, SAI_STATUS_FAILURE);
+    ASSERT_FALSE(m_flexCounterTable->get(key, fvVector));
+
+    // Try with a good key
+    key = "PORT_STAT_COUNTER:" + sai_serialize_object_id(oidList[0]);
+    flexCounterParam.counter_key.list = (int8_t*)const_cast<char *>(key.c_str());
+    flexCounterParam.counter_key.count = (uint32_t)key.length();
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    ASSERT_TRUE(m_flexCounterTable->get(key, fvVector));
+    fvVectorExpected.emplace_back(counter_field_name, counters);
+    ASSERT_EQ(fvVectorExpected, fvVector);
+
+    flexCounterParam.counter_ids.list = nullptr;
+    flexCounterParam.counter_ids.count = 0;
+    flexCounterParam.counter_field_name.list = nullptr;
+    flexCounterParam.counter_field_name.count = 0;
+
+    // 3. Stop counter polling for the port
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    ASSERT_FALSE(m_flexCounterTable->get(key, fvVector));
+
+    // 4. Disable counter polling for the group
+    flexCounterGroupParam.poll_interval.list = nullptr;
+    flexCounterGroupParam.poll_interval.count = 0;
+    flexCounterGroupParam.stats_mode.list = nullptr;
+    flexCounterGroupParam.stats_mode.count = 0;
+    flexCounterGroupParam.operation.list = nullptr;
+    flexCounterGroupParam.operation.count = 0;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP;
+    attr.value.ptr = (void*)&flexCounterGroupParam;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    ASSERT_FALSE(m_flexCounterTable->get(key, fvVector));
 
     // Validate port bulk remove
     status = m_sairedis->bulkRemove(

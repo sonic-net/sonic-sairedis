@@ -5,6 +5,8 @@
 #include "sairedis.h"
 #include "sairediscommon.h"
 
+#include <nlohmann/json.hpp>
+
 #include <inttypes.h>
 #include <arpa/inet.h>
 
@@ -13,6 +15,8 @@
 #include <memory>
 
 using namespace saimeta;
+
+using json = nlohmann::json;
 
 TEST(SaiSerialize, transfer_attributes)
 {
@@ -54,9 +58,9 @@ TEST(SaiSerialize, sai_serialize_object_meta_key)
 
     memset(&mk, 0, sizeof(mk));
 
-    for (int32_t i = SAI_OBJECT_TYPE_NULL+1; i < SAI_OBJECT_TYPE_EXTENSIONS_MAX; i++)
+    for (size_t i = 1; i < sai_metadata_enum_sai_object_type_t.valuescount; ++i)
     {
-        mk.objecttype = (sai_object_type_t)i;
+        mk.objecttype = (sai_object_type_t)sai_metadata_enum_sai_object_type_t.values[i];
 
         auto s = sai_serialize_object_meta_key(mk);
 
@@ -123,6 +127,9 @@ TEST(SaiSerialize, sai_serialize_attr_value)
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_TLV_LIST:
             case SAI_ATTR_VALUE_TYPE_MAP_LIST:
+            case SAI_ATTR_VALUE_TYPE_PORT_FREQUENCY_OFFSET_PPM_LIST:
+            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+            case SAI_ATTR_VALUE_TYPE_ACL_CHAIN_LIST:
                 continue;
 
             default:
@@ -480,6 +487,11 @@ TEST(SaiSerialize, sai_serialize_port_oper_status)
     EXPECT_EQ(sai_serialize_port_oper_status(SAI_PORT_OPER_STATUS_UP), "SAI_PORT_OPER_STATUS_UP");
 }
 
+TEST(SaiSerialize, sai_serialize_port_host_tx_ready)
+{
+    EXPECT_EQ(sai_serialize_port_host_tx_ready(SAI_PORT_HOST_TX_READY_STATUS_READY), "SAI_PORT_HOST_TX_READY_STATUS_READY");
+}
+
 TEST(SaiSerialize, sai_serialize_queue_deadlock_event)
 {
     EXPECT_EQ(sai_serialize_queue_deadlock_event(SAI_QUEUE_PFC_DEADLOCK_EVENT_TYPE_DETECTED),
@@ -529,6 +541,82 @@ TEST(SaiSerialize, sai_serialize_redis_communication_mode)
 {
     EXPECT_EQ(sai_serialize_redis_communication_mode(SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC),
             REDIS_COMMUNICATION_MODE_REDIS_SYNC_STRING);
+}
+
+TEST(SaiSerialize, sai_serialize_redis_port_attr_id)
+{
+    for (const auto& attr :
+            {SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM, SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG})
+    {
+        sai_redis_port_attr_t deserialized_attr;
+        sai_deserialize_redis_port_attr_id(
+                sai_serialize_redis_port_attr_id(attr), deserialized_attr);
+
+        EXPECT_EQ(deserialized_attr, attr);
+    }
+
+    // Undefined enum.
+    int index = 1000;
+    std::string serialized_attr = sai_serialize_redis_port_attr_id(
+            static_cast<sai_redis_port_attr_t>(SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG + index));
+
+    EXPECT_EQ(serialized_attr,
+            std::to_string(SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG + index));
+
+    sai_redis_port_attr_t deserialized_attr;
+    sai_deserialize_redis_port_attr_id(serialized_attr, deserialized_attr);
+    EXPECT_EQ(deserialized_attr, SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG + index);
+}
+
+TEST(SaiSerialize, sai_serialize_redis_link_event_damping_algorithm)
+{
+    for (const auto& algo : {SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_DISABLED,
+                                SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED})
+    {
+        sai_redis_link_event_damping_algorithm_t deserialized_algo;
+        sai_deserialize_redis_link_event_damping_algorithm(
+                sai_serialize_redis_link_event_damping_algorithm(algo), deserialized_algo);
+
+        EXPECT_EQ(deserialized_algo, algo);
+    }
+
+    // Undefined enum.
+    int index = 1000;
+    std::string serialized_attr = sai_serialize_redis_link_event_damping_algorithm(
+            static_cast<sai_redis_link_event_damping_algorithm_t>(SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED + index));
+
+    EXPECT_EQ(serialized_attr,
+            std::to_string(SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED + index));
+
+    sai_redis_link_event_damping_algorithm_t deserialized_attr;
+    sai_deserialize_redis_link_event_damping_algorithm(serialized_attr, deserialized_attr);
+    EXPECT_EQ(deserialized_attr, SAI_REDIS_LINK_EVENT_DAMPING_ALGORITHM_AIED + index);
+}
+
+TEST(SaiSerialize, sai_serialize_redis_link_event_damping_aied_config)
+{
+    SWSS_LOG_ENTER();
+
+    sai_redis_link_event_damping_algo_aied_config_t config = {
+      .max_suppress_time = 500,
+      .suppress_threshold = 2500,
+      .reuse_threshold = 1000,
+      .decay_half_life = 100,
+      .flap_penalty = 100};
+
+    std::string expected = "{\"max_suppress_time\":\"500\",\"suppress_threshold\":\"2500\",\"reuse_threshold\":\"1000\",\"decay_half_life\":\"100\",\"flap_penalty\":\"100\"}";
+    std::string serialized_config = sai_serialize_redis_link_event_damping_aied_config(config);
+
+    EXPECT_EQ(json::parse(serialized_config), json::parse(expected));
+
+    sai_redis_link_event_damping_algo_aied_config_t deserialized_config;
+    sai_deserialize_redis_link_event_damping_aied_config(serialized_config, deserialized_config);
+
+    EXPECT_EQ(deserialized_config.max_suppress_time, config.max_suppress_time);
+    EXPECT_EQ(deserialized_config.suppress_threshold, config.suppress_threshold);
+    EXPECT_EQ(deserialized_config.reuse_threshold, config.reuse_threshold);
+    EXPECT_EQ(deserialized_config.decay_half_life, config.decay_half_life);
+    EXPECT_EQ(deserialized_config.flap_penalty, config.flap_penalty);
 }
 
 TEST(SaiSerialize, sai_deserialize_queue_attr)

@@ -4,6 +4,7 @@
 #include "sai_serialize.h"
 
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 #include <memory>
 
@@ -13,7 +14,7 @@ TEST(NotificationFactory, deserialize)
 {
     EXPECT_THROW(NotificationFactory::deserialize("foo", "bar"), std::runtime_error);
 
-    EXPECT_THROW(NotificationFactory::deserialize(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, "bar"), std::invalid_argument);
+    EXPECT_THROW(NotificationFactory::deserialize(SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT, "bar"), nlohmann::detail::parse_error);
 }
 
 TEST(NotificationFactory, deserialize_fdb_event)
@@ -45,6 +46,15 @@ TEST(NotificationFactory, deserialize_port_state_change)
     EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_PORT_STATE_CHANGE);
 }
 
+TEST(NotificationFactory, deserialize_port_host_tx_ready_status)
+{
+    auto ntf = NotificationFactory::deserialize(
+            SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY,
+            "[{\"host_tx_ready_status\":\"SAI_PORT_HOST_TX_READY_STATUS_READY\",\"port_id\":\"oid:0x100000000001a\",\"switch_id\":\"oid:0x2100000000\"}]");
+
+    EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_PORT_HOST_TX_READY);
+}
+
 TEST(NotificationFactory, deserialize_queue_pfc_deadlock)
 {
     auto str = "[{\"event\":\"SAI_QUEUE_PFC_DEADLOCK_EVENT_TYPE_DETECTED\",\"queue_id\":\"oid:0x1500000000020a\"}]";
@@ -56,6 +66,25 @@ TEST(NotificationFactory, deserialize_queue_pfc_deadlock)
     EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_QUEUE_PFC_DEADLOCK);
 
     EXPECT_EQ(str, ntf->getSerializedNotification());
+}
+
+TEST(NotificationFactory, deserialize_switch_asic_sdk_health_event)
+{
+    auto ntf = NotificationFactory::deserialize(
+        SAI_SWITCH_NOTIFICATION_NAME_SWITCH_ASIC_SDK_HEALTH_EVENT,
+        "{"
+            "\"category\":\"SAI_SWITCH_ASIC_SDK_HEALTH_CATEGORY_FW\","
+            "\"data.data_type\":\"SAI_HEALTH_DATA_TYPE_GENERAL\","
+            "\"description\":\"2:30,30\","
+            "\"severity\":\"SAI_SWITCH_ASIC_SDK_HEALTH_SEVERITY_FATAL\","
+            "\"switch_id\":\"oid:0x21000000000000\","
+            "\"timestamp\":\"{"
+                "\\\"tv_nsec\\\":\\\"28715881\\\","
+                "\\\"tv_sec\\\":\\\"1700042919\\\""
+            "}\""
+        "}");
+
+    EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_SWITCH_ASIC_SDK_HEALTH_EVENT);
 }
 
 TEST(NotificationFactory, deserialize_shutdown_request)

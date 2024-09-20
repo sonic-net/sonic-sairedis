@@ -43,7 +43,7 @@ TEST(SaiUnittests, ctr)
 {
     Sai sai;
 
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     std::vector<swss::FieldValueTuple> values;
 
@@ -101,7 +101,7 @@ TEST(SaiUnittests, handleUnittestChannelOp)
     // api not initialized
     vsntf.send("unknown op", "true", entry);
 
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     vsntf.send("unknown op", "true", entry);
 
@@ -112,7 +112,7 @@ TEST(SaiUnittests, channelOpSetReadOnlyAttribute)
 {
     Sai sai;
 
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     std::vector<swss::FieldValueTuple> values;
 
@@ -154,7 +154,7 @@ TEST(SaiUnittests, channelOpSetStats)
 {
     Sai sai;
 
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     std::vector<swss::FieldValueTuple> values;
 
@@ -187,7 +187,7 @@ TEST(SaiUnittests, bulkGetClearStats)
 {
     Sai sai;
 
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai.bulkGetStats(SAI_NULL_OBJECT_ID,
                                                            SAI_OBJECT_TYPE_PORT,

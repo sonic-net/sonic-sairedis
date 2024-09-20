@@ -580,6 +580,13 @@ sub test_bulk_route
     play "bulk_route.rec"
 }
 
+sub test_bulk_neighbor
+{
+    fresh_start;
+
+    play "bulk_neighbor.rec"
+}
+
 sub test_bulk_fdb
 {
     fresh_start;
@@ -811,8 +818,27 @@ sub test_acl_counter_match
     }
 }
 
+sub test_relaxed
+{
+    fresh_start;
+
+    play "relaxed.rec";
+    play "relaxed.rec", 0;
+}
+
+sub test_acl_pre_match_999
+{
+    fresh_start;
+
+    play "acl_pre_match_999.rec";
+
+    for (1..8) { play "acl_pre_match_999.rec", 0; }
+}
+
 # RUN TESTS
 
+test_acl_pre_match_999;
+test_relaxed;
 test_acl_counter_match;
 test_neighbor_lag;
 test_lag_member;
@@ -843,6 +869,7 @@ test_ntf;
 test_acl_mask;
 test_empty_lag_buffer_acl;
 test_bulk_route;
+test_bulk_neighbor;
 test_bulk_fdb;
 test_bulk_object;
 test_brcm_config_acl;

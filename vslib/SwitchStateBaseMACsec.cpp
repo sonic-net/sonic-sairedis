@@ -13,6 +13,7 @@
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <byteswap.h>
+#include <endian.h>
 
 using namespace saivs;
 
@@ -554,12 +555,7 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSC(
     std::stringstream sciHexStr;
 
     sciHexStr << std::setw(MACSEC_SCI_LENGTH) << std::setfill('0');
-
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    sciHexStr << std::hex << bswap_64(sci);
-#else
-    sciHexStr << std::hex << sci;
-#endif
+    sciHexStr << std::hex << htobe64(sci);
 
     macsecAttr.m_sci = sciHexStr.str();
 
@@ -708,7 +704,15 @@ sai_status_t SwitchStateBase::loadMACsecAttrFromMACsecSA(
 
         // The Linux kernel directly uses ssci to XOR with the salt that is network order,
         // So, this conversion is useful to convert SSCI from the host order to network order.
-        macsecAttr.m_ssci = htonl(attr->value.u32);
+        //
+        // Starting with Debian Bookworm (iproute2 6.1), ssci is interpreted as a hex string,
+        // so this needs to convert the ssci integer to a hex string, and doesn't need to change
+        // the encoding at this point.
+        std::stringstream ssciHexStr;
+
+        ssciHexStr << std::hex << attr->value.u32;
+
+        macsecAttr.m_ssci = ssciHexStr.str();
 
         SAI_METADATA_GET_ATTR_BY_ID(attr, SAI_MACSEC_SA_ATTR_SALT, attrCount, attrList);
 

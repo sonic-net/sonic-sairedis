@@ -459,6 +459,18 @@ sai_status_t SwitchMLNX2700::queryTunnelPeerModeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchMLNX2700::queryPortAutonegFecOverrideSupportCapability(
+                   _Out_ sai_attr_capability_t *attr_capability)
+{
+    SWSS_LOG_ENTER();
+
+    attr_capability->create_implemented = true;
+    attr_capability->set_implemented    = true;
+    attr_capability->get_implemented    = true;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchMLNX2700::create_port_serdes()
 {
     SWSS_LOG_ENTER();

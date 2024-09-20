@@ -1,5 +1,9 @@
 #include "RealObjectIdManager.h"
 
+extern "C" {
+#include "saimetadata.h"
+}
+
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -86,5 +90,21 @@ TEST(RealObjectIdManager, allocateNewObjectId)
 
 }
 
+TEST(RealObjectIdManager, extensions)
+{
+    auto sc = std::make_shared<SwitchConfig>(0,"");
 
+    auto scc = std::make_shared<SwitchConfigContainer>();
 
+    scc->insert(sc);
+
+    RealObjectIdManager mgr(0, scc);
+
+    auto sid = mgr.allocateNewSwitchObjectId("");
+
+    EXPECT_NE(sid, SAI_NULL_OBJECT_ID);
+
+    EXPECT_EQ(mgr.allocateNewObjectId((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP,sid), 0x0380000000);
+
+    EXPECT_EQ(mgr.objectTypeQuery(0x0380000000), SAI_OBJECT_TYPE_DASH_ACL_GROUP);
+}

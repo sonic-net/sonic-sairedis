@@ -42,6 +42,11 @@ AC_ARG_WITH(sai,
 esac])
 AM_CONDITIONAL(SAIVS,   test x$sai = xvs)
 
+AC_ARG_WITH(dashsai,
+    [ --with-dashsai         compiling against DASH SAI],
+    [AM_CONDITIONAL(DASHSAI,   true)],
+    [AM_CONDITIONAL(DASHSAI,   false)])
+
 AC_ARG_WITH(swss-common-inc,
 [  --with-swss-common-inc=DIR
                            prefix where swss-common includes are installed],
@@ -114,6 +119,7 @@ if test "x$asan_enabled" = "xtrue"; then
     CFLAGS_ASAN+=" -fsanitize=address"
     CFLAGS_ASAN+=" -DASAN_ENABLED"
     CFLAGS_ASAN+=" -ggdb -fno-omit-frame-pointer -U_FORTIFY_SOURCE"
+    CFLAGS_ASAN+=" -Wno-maybe-uninitialized"
     AC_SUBST(CFLAGS_ASAN)
 
     LDFLAGS_ASAN+=" -lasan"
@@ -208,12 +214,17 @@ CXXFLAGS="$SAVED_FLAGS"
 
 AC_SUBST(CXXFLAGS_COMMON)
 
+AC_ARG_WITH(extra-libsai-ldflags,
+[  --with-extra-libsai-ldflags=FLAGS
+                          extra libsai.so flags for vendor library],
+[AC_SUBST(EXTRA_LIBSAI_LDFLAGS, "${withval}")])
+
 AC_SUBST(SAIINC, "-I\$(top_srcdir)/SAI/inc -I\$(top_srcdir)/SAI/experimental -I\$(top_srcdir)/SAI/meta")
 
 AM_COND_IF([SYNCD], [
 AM_COND_IF([SAIVS], [], [
 SAVED_FLAGS="$CXXFLAGS"
-CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
+CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta $EXTRA_LIBSAI_LDFLAGS"
 AC_CHECK_FUNCS(sai_query_api_version, [
 AC_MSG_CHECKING([SAI headers API version and library version check])
 AC_TRY_RUN([
@@ -248,7 +259,8 @@ https://github.com/opencomputeproject/SAI/pull/1795 (structs)
 }],
 [AC_MSG_RESULT(ok)],
 [AC_MSG_RESULT(failed)
-AC_MSG_ERROR("SAI headers API version and library version mismatch")])])
+AC_MSG_ERROR("SAI headers API version and library version mismatch")])],
+[AC_MSG_ERROR("SAI library libsai.so does not have sai_query_api_version API which is required")])
 CXXFLAGS="$SAVED_FLAGS"
 ])])
 
@@ -258,6 +270,14 @@ CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experime
 AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats)
 CXXFLAGS="$SAVED_FLAGS"
 ])
+
+AC_DEFINE([SAIREDIS_GIT_REVISION],
+        "[m4_esyscmd([echo -n $(git rev-parse --short HEAD || echo 0000000)])]",
+        [sairedis git revision information])
+
+AC_DEFINE([SAI_GIT_REVISION],
+        "[m4_esyscmd([echo -n $(cd SAI && git rev-parse --short HEAD || echo 0000000)])]",
+        [SAI git revision information])
 
 AC_OUTPUT(Makefile
           meta/Makefile
@@ -271,11 +291,13 @@ AC_OUTPUT(Makefile
           saidiscovery/Makefile
           saiasiccmp/Makefile
           tests/Makefile
+          proxylib/Makefile
           unittest/Makefile
           unittest/meta/Makefile
           unittest/lib/Makefile
           unittest/vslib/Makefile
           unittest/syncd/Makefile
+          unittest/proxylib/Makefile
           pyext/Makefile
           pyext/py2/Makefile
           pyext/py3/Makefile)

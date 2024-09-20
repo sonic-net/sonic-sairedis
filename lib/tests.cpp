@@ -789,7 +789,7 @@ static void test_recorder_enum_value_capability_query_request(
 
     sai_s32_list_t enum_values_capability { .count = 0, .list = nullptr };
 
-    recorder.recordQueryAattributeEnumValuesCapability(
+    recorder.recordQueryAttributeEnumValuesCapability(
         switch_id,
         object_type,
         attr_id,
@@ -821,7 +821,7 @@ static void test_recorder_enum_value_capability_query_response(
     enum_values_capability.count = static_cast<int32_t>(enumList.size());
     enum_values_capability.list = enumList.data();
 
-    recorder.recordQueryAattributeEnumValuesCapabilityResponse(
+    recorder.recordQueryAttributeEnumValuesCapabilityResponse(
         status,
         object_type,
         attr_id,

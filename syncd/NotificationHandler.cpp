@@ -59,73 +59,7 @@ void NotificationHandler::updateNotificationsPointers(
      * Also notice that we are using the same pointers for ALL switches.
      */
 
-    for (uint32_t index = 0; index < attr_count; ++index)
-    {
-        sai_attribute_t &attr = attr_list[index];
-
-        auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
-
-        if (meta->attrvaluetype != SAI_ATTR_VALUE_TYPE_POINTER)
-        {
-            continue;
-        }
-
-        /*
-         * Does not matter if pointer is valid or not, we just want the
-         * previous value.
-         */
-
-        sai_pointer_t prev = attr.value.ptr;
-
-        if (prev == NULL)
-        {
-            /*
-             * If pointer is NULL, then fine, let it be.
-             */
-
-            continue;
-        }
-
-        switch (attr.id)
-        {
-            case SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_switch_state_change;
-                break;
-
-            case SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_switch_shutdown_request;
-                break;
-
-            case SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_fdb_event;
-                break;
-
-            case SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_nat_event;
-                break;
-
-            case SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_port_state_change;
-                break;
-
-            case SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_queue_pfc_deadlock;
-                break;
-
-            case SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY:
-                attr.value.ptr = (void*)m_switchNotifications.on_bfd_session_state_change;
-                break;
-
-            default:
-
-                SWSS_LOG_ERROR("pointer for %s is not handled, FIXME!", meta->attridname);
-                continue;
-        }
-
-        // Here we translated pointer, just log it.
-
-        SWSS_LOG_INFO("%s: 0x%" PRIx64 " (orch) => 0x%" PRIx64 " (syncd)", meta->attridname, (uint64_t)prev, (uint64_t)attr.value.ptr);
-    }
+    sai_metadata_update_attribute_notification_pointers(&m_switchNotifications, attr_count, attr_list);
 }
 
 // TODO use same Notification class from sairedis lib
@@ -164,6 +98,18 @@ void NotificationHandler::onPortStateChange(
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, s);
 }
 
+void NotificationHandler::onPortHostTxReady(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id,
+        _In_ sai_port_host_tx_ready_status_t host_tx_ready_status)
+{
+    SWSS_LOG_ENTER();
+
+    auto s = sai_serialize_port_host_tx_ready_ntf(switch_id, port_id, host_tx_ready_status);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY, s);
+}
+
 void NotificationHandler::onQueuePfcDeadlock(
         _In_ uint32_t count,
         _In_ const sai_queue_deadlock_notification_data_t *data)
@@ -183,6 +129,21 @@ void NotificationHandler::onSwitchShutdownRequest(
     auto s = sai_serialize_switch_shutdown_request(switch_id);
 
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST, s);
+}
+
+void  NotificationHandler::onSwitchAsicSdkHealthEvent(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_switch_asic_sdk_health_event(switch_id, severity, timestamp, category, data, description);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_ASIC_SDK_HEALTH_EVENT, s);
 }
 
 void NotificationHandler::onSwitchStateChange(
@@ -222,6 +183,17 @@ void NotificationHandler::enqueueNotification(
     {
         m_processor->signal();
     }
+}
+
+void NotificationHandler::onTwampSessionEvent(
+        _In_ uint32_t count,
+        _In_ const sai_twamp_session_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_twamp_session_event_ntf(count, data);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT, s);
 }
 
 void NotificationHandler::enqueueNotification(

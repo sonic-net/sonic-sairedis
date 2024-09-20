@@ -103,6 +103,8 @@ namespace syncd
             sai_status_t setRestartWarmOnAllSwitches(
                     _In_ bool flag);
 
+            sai_status_t setFastAPIEnableOnAllSwitches();
+
             sai_status_t setPreShutdownOnAllSwitches();
 
             sai_status_t setUninitDataPlaneOnRemovalOnAllSwitches();
@@ -195,6 +197,18 @@ namespace syncd
                     _In_ sai_common_api_t api,
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
+
+            sai_status_t processFlexCounterGroupEvent(
+                    _In_ const std::string &key,
+                    _In_ const std::string &op,
+                    _In_ const std::vector<swss::FieldValueTuple> &values,
+                    _In_ bool fromAsicChannel=true);
+
+            sai_status_t processFlexCounterEvent(
+                    _In_ const std::string &key,
+                    _In_ const std::string &op,
+                    _In_ const std::vector<swss::FieldValueTuple> &values,
+                    _In_ bool fromAsicChannel=true);
 
         private: // process quad oid
 
@@ -483,6 +497,8 @@ namespace syncd
             std::shared_ptr<swss::DBConnector> m_dbFlexCounter;
             std::shared_ptr<swss::ConsumerTable> m_flexCounter;
             std::shared_ptr<swss::ConsumerTable> m_flexCounterGroup;
+            std::shared_ptr<swss::Table> m_flexCounterTable;
+            std::shared_ptr<swss::Table> m_flexCounterGroupTable;
 
             std::shared_ptr<NotificationProducerBase> m_notifications;
 

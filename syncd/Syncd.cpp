@@ -28,6 +28,8 @@
 
 #include "vslib/saivs.h"
 
+#include "config.h"
+
 #include <unistd.h>
 #include <inttypes.h>
 
@@ -62,6 +64,8 @@ Syncd::Syncd(
     m_timerWatchdog(cmd->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR)
 {
     SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("sairedis git revision %s, SAI git revision: %s", SAIREDIS_GIT_REVISION, SAI_GIT_REVISION);
 
     setSaiApiLogLevel();
 
@@ -151,18 +155,23 @@ Syncd::Syncd(
     m_sn.onNatEvent = std::bind(&NotificationHandler::onNatEvent, m_handler.get(), _1, _2);
     m_sn.onPortStateChange = std::bind(&NotificationHandler::onPortStateChange, m_handler.get(), _1, _2);
     m_sn.onQueuePfcDeadlock = std::bind(&NotificationHandler::onQueuePfcDeadlock, m_handler.get(), _1, _2);
+    m_sn.onSwitchAsicSdkHealthEvent = std::bind(&NotificationHandler::onSwitchAsicSdkHealthEvent, m_handler.get(), _1, _2, _3, _4, _5, _6);
     m_sn.onSwitchShutdownRequest = std::bind(&NotificationHandler::onSwitchShutdownRequest, m_handler.get(), _1);
     m_sn.onSwitchStateChange = std::bind(&NotificationHandler::onSwitchStateChange, m_handler.get(), _1, _2);
     m_sn.onBfdSessionStateChange = std::bind(&NotificationHandler::onBfdSessionStateChange, m_handler.get(), _1, _2);
+    m_sn.onPortHostTxReady = std::bind(&NotificationHandler::onPortHostTxReady, m_handler.get(), _1, _2, _3);
+    m_sn.onTwampSessionEvent = std::bind(&NotificationHandler::onTwampSessionEvent, m_handler.get(), _1, _2);
 
     m_handler->setSwitchNotifications(m_sn.getSwitchNotifications());
 
-    m_restartQuery = std::make_shared<swss::NotificationConsumer>(m_dbAsic.get(), SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY);
+    m_restartQuery = std::make_shared<swss::NotificationConsumer>(m_dbAsic.get(), SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY_PER_DB(m_contextConfig->m_dbAsic));
 
     // TODO to be moved to ASIC_DB
     m_dbFlexCounter = std::make_shared<swss::DBConnector>(m_contextConfig->m_dbFlex, 0);
     m_flexCounter = std::make_shared<swss::ConsumerTable>(m_dbFlexCounter.get(), FLEX_COUNTER_TABLE);
     m_flexCounterGroup = std::make_shared<swss::ConsumerTable>(m_dbFlexCounter.get(), FLEX_COUNTER_GROUP_TABLE);
+    m_flexCounterTable = std::make_shared<swss::Table>(m_dbFlexCounter.get(), FLEX_COUNTER_TABLE);
+    m_flexCounterGroupTable = std::make_shared<swss::Table>(m_dbFlexCounter.get(), FLEX_COUNTER_GROUP_TABLE);
 
     m_switchConfigContainer = std::make_shared<sairedis::SwitchConfigContainer>();
     m_redisVidIndexGenerator = std::make_shared<sairedis::RedisVidIndexGenerator>(m_dbAsic, REDIS_KEY_VIDCOUNTER);
@@ -187,7 +196,7 @@ Syncd::Syncd(
 
     m_test_services = m_smt.getServiceMethodTable();
 
-    sai_status_t status = vendorSai->initialize(0, &m_test_services);
+    sai_status_t status = vendorSai->apiInitialize(0, &m_test_services);
 
     if (status != SAI_STATUS_SUCCESS)
     {
@@ -212,10 +221,11 @@ Syncd::~Syncd()
 void Syncd::performStartupLogic()
 {
     SWSS_LOG_ENTER();
+    // ignore warm logic here if syncd starts in fast-boot, express-boot or Mellanox fastfast boot mode
 
-    // ignore warm logic here if syncd starts in fast-boot or Mellanox fastfast boot mode
-
-    if (m_isWarmStart && m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT && m_commandLineOptions->m_startType != SAI_START_TYPE_FAST_BOOT)
+    if (m_isWarmStart && m_commandLineOptions->m_startType != SAI_START_TYPE_FASTFAST_BOOT &&
+        m_commandLineOptions->m_startType != SAI_START_TYPE_EXPRESS_BOOT &&
+        m_commandLineOptions->m_startType != SAI_START_TYPE_FAST_BOOT)
     {
         SWSS_LOG_WARN("override command line startType=%s via SAI_START_TYPE_WARM_BOOT",
                 CommandLineOptions::startTypeToString(m_commandLineOptions->m_startType).c_str());
@@ -373,6 +383,18 @@ sai_status_t Syncd::processSingleEvent(
     if (op == REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_QUERY)
         return processObjectTypeGetAvailabilityQuery(kco);
 
+    if (op == REDIS_FLEX_COUNTER_COMMAND_START_POLL)
+        return processFlexCounterEvent(key, SET_COMMAND, kfvFieldsValues(kco));
+
+    if (op == REDIS_FLEX_COUNTER_COMMAND_STOP_POLL)
+        return processFlexCounterEvent(key, DEL_COMMAND, kfvFieldsValues(kco));
+
+    if (op == REDIS_FLEX_COUNTER_COMMAND_SET_GROUP)
+        return processFlexCounterGroupEvent(key, SET_COMMAND, kfvFieldsValues(kco));
+
+    if (op == REDIS_FLEX_COUNTER_COMMAND_DEL_GROUP)
+        return processFlexCounterGroupEvent(key, DEL_COMMAND, kfvFieldsValues(kco));
+
     SWSS_LOG_THROW("event op '%s' is not implemented, FIXME", op.c_str());
 }
 
@@ -467,7 +489,7 @@ sai_status_t Syncd::processAttrEnumValuesCapabilityQuery(
     enumCapList.count = list_size;
     enumCapList.list = enum_capabilities_list.data();
 
-    sai_status_t status = m_vendorSai->queryAattributeEnumValuesCapability(switchRid, objectType, attrId, &enumCapList);
+    sai_status_t status = m_vendorSai->queryAttributeEnumValuesCapability(switchRid, objectType, attrId, &enumCapList);
 
     std::vector<swss::FieldValueTuple> entry;
 
@@ -602,7 +624,12 @@ sai_status_t Syncd::processFdbFlush(
         // update database right after fdb flush success (not in notification)
         // build artificial notification here to reuse code
 
-        sai_fdb_flush_entry_type_t type = SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
+        auto *md = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_FDB_FLUSH, SAI_FDB_FLUSH_ATTR_ENTRY_TYPE);
+        auto *dv =  md ? md->defaultvalue : nullptr;
+
+        sai_fdb_flush_entry_type_t type = dv
+            ? (sai_fdb_flush_entry_type_t)dv->s32
+            : SAI_FDB_FLUSH_ENTRY_TYPE_DYNAMIC;
 
         sai_object_id_t bvId = SAI_NULL_OBJECT_ID;
         sai_object_id_t bridgePortId = SAI_NULL_OBJECT_ID;
@@ -988,6 +1015,27 @@ sai_status_t Syncd::processBulkCreateEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+        {
+            std::vector<sai_neighbor_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_neighbor_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].rif_id = m_translator->translateVidToRid(entries[it].rif_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
         case SAI_OBJECT_TYPE_FDB_ENTRY:
         {
             std::vector<sai_fdb_entry_t> entries(object_count);
@@ -1191,7 +1239,7 @@ sai_status_t Syncd::processBulkCreateEntry(
                 sai_deserialize_outbound_routing_entry(objectIds[it], entries[it]);
 
                 entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
-                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
+                entries[it].outbound_routing_group_id = m_translator->translateVidToRid(entries[it].outbound_routing_group_id);
             }
 
             status = m_vendorSai->bulkCreate(
@@ -1274,6 +1322,25 @@ sai_status_t Syncd::processBulkRemoveEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+        {
+            std::vector<sai_neighbor_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_neighbor_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].rif_id = m_translator->translateVidToRid(entries[it].rif_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
         case SAI_OBJECT_TYPE_FDB_ENTRY:
         {
             std::vector<sai_fdb_entry_t> entries(object_count);
@@ -1458,7 +1525,7 @@ sai_status_t Syncd::processBulkRemoveEntry(
                 sai_deserialize_outbound_routing_entry(objectIds[it], entries[it]);
 
                 entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
-                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
+                entries[it].outbound_routing_group_id = m_translator->translateVidToRid(entries[it].outbound_routing_group_id);
             }
 
             status = m_vendorSai->bulkRemove(
@@ -1544,6 +1611,26 @@ sai_status_t Syncd::processBulkSetEntry(
                     mode,
                     statuses.data());
 
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+        {
+            std::vector<sai_neighbor_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_neighbor_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].rif_id = m_translator->translateVidToRid(entries[it].rif_id);
+            }
+
+            status = m_vendorSai->bulkSet(
+                    object_count,
+                    entries.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
         }
         break;
 
@@ -1701,6 +1788,10 @@ sai_status_t Syncd::processBulkEntry(
         {
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
                 sai_deserialize_route_entry(objectIds[idx], metaKey.objectkey.key.route_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
+                sai_deserialize_neighbor_entry(objectIds[idx], metaKey.objectkey.key.neighbor_entry);
                 break;
 
             case SAI_OBJECT_TYPE_NAT_ENTRY:
@@ -2430,18 +2521,44 @@ void Syncd::processFlexCounterGroupEvent( // TODO must be moved to go via ASIC c
 
     WatchdogScope ws(m_timerWatchdog, op + ":" + groupName, &kco);
 
+    processFlexCounterGroupEvent(groupName, op, values, false);
+}
+
+sai_status_t Syncd::processFlexCounterGroupEvent(
+        _In_ const std::string &groupName,
+        _In_ const std::string &op,
+        _In_ const std::vector<swss::FieldValueTuple> &values,
+        _In_ bool fromAsicChannel)
+{
+    SWSS_LOG_ENTER();
+
     if (op == SET_COMMAND)
     {
         m_manager->addCounterPlugin(groupName, values);
+        if (fromAsicChannel)
+        {
+            m_flexCounterGroupTable->set(groupName, values);
+        }
     }
     else if (op == DEL_COMMAND)
     {
+        if (fromAsicChannel)
+        {
+            m_flexCounterGroupTable->del(groupName);
+        }
         m_manager->removeCounterPlugins(groupName);
     }
     else
     {
         SWSS_LOG_ERROR("unknown command: %s", op.c_str());
     }
+
+    if (fromAsicChannel)
+    {
+        sendApiResponse(SAI_COMMON_API_SET, SAI_STATUS_SUCCESS);
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channel queue
@@ -2457,8 +2574,20 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
 
     auto& key = kfvKey(kco);
     auto& op = kfvOp(kco);
+    auto& values = kfvFieldsValues(kco);
 
     WatchdogScope ws(m_timerWatchdog, op + ":" + key, &kco);
+
+    processFlexCounterEvent(key, op, values, false);
+}
+
+sai_status_t Syncd::processFlexCounterEvent(
+        _In_ const std::string &key,
+        _In_ const std::string &op,
+        _In_ const std::vector<swss::FieldValueTuple> &values,
+        _In_ bool fromAsicChannel)
+{
+    SWSS_LOG_ENTER();
 
     auto delimiter = key.find_first_of(":");
 
@@ -2466,11 +2595,18 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
     {
         SWSS_LOG_ERROR("Failed to parse the key %s", key.c_str());
 
-        return; // if key is invalid there is no need to process this event again
+        if (fromAsicChannel)
+        {
+            sendApiResponse(SAI_COMMON_API_SET, SAI_STATUS_FAILURE);
+        }
+
+        return SAI_STATUS_FAILURE; // if key is invalid there is no need to process this event again
     }
 
     auto groupName = key.substr(0, delimiter);
     auto strVid = key.substr(delimiter + 1);
+
+    auto effective_op = op;
 
     sai_object_id_t vid;
     sai_deserialize_object_id(strVid, vid);
@@ -2479,26 +2615,46 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
 
     if (!m_translator->tryTranslateVidToRid(vid, rid))
     {
-        SWSS_LOG_WARN("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
-                sai_serialize_object_id(vid).c_str());
-
-        op = DEL_COMMAND;
+        if (fromAsicChannel)
+        {
+            SWSS_LOG_ERROR("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
+                           sai_serialize_object_id(vid).c_str());
+        }
+        else
+        {
+            SWSS_LOG_WARN("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
+                          sai_serialize_object_id(vid).c_str());
+        }
+        effective_op = DEL_COMMAND;
     }
 
-    const auto values = kfvFieldsValues(kco);
-
-    if (op == SET_COMMAND)
+    if (effective_op == SET_COMMAND)
     {
         m_manager->addCounter(vid, rid, groupName, values);
+        if (fromAsicChannel)
+        {
+            m_flexCounterTable->set(key, values);
+        }
     }
-    else if (op == DEL_COMMAND)
+    else if (effective_op == DEL_COMMAND)
     {
+        if (fromAsicChannel)
+        {
+            m_flexCounterTable->del(key);
+        }
         m_manager->removeCounter(vid, groupName);
     }
     else
     {
         SWSS_LOG_ERROR("unknown command: %s", op.c_str());
     }
+
+    if (fromAsicChannel)
+    {
+        sendApiResponse(SAI_COMMON_API_SET, SAI_STATUS_SUCCESS);
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 void Syncd::syncUpdateRedisQuadEvent(
@@ -3597,16 +3753,6 @@ sai_status_t Syncd::processNotifySyncd(
 
     auto& key = kfvKey(kco);
     sai_status_t status = SAI_STATUS_SUCCESS;
-
-    if (!m_commandLineOptions->m_enableTempView)
-    {
-        SWSS_LOG_NOTICE("received %s, ignored since TEMP VIEW is not used, returning success", key.c_str());
-
-        sendNotifyResponse(SAI_STATUS_SUCCESS);
-
-        return SAI_STATUS_SUCCESS;
-    }
-
     auto redisNotifySyncd = sai_deserialize_redis_notify_syncd(key);
 
     if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP)
@@ -3621,6 +3767,15 @@ sai_status_t Syncd::processNotifySyncd(
         }
         sendNotifyResponse(status);
         return status;
+    }
+
+    if (!m_commandLineOptions->m_enableTempView)
+    {
+        SWSS_LOG_NOTICE("received %s, ignored since TEMP VIEW is not used, returning success", key.c_str());
+
+        sendNotifyResponse(SAI_STATUS_SUCCESS);
+
+        return SAI_STATUS_SUCCESS;
     }
 
     if (m_veryFirstRun && m_firstInitWasPerformed && redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW)
@@ -3665,9 +3820,10 @@ sai_status_t Syncd::processNotifySyncd(
 
             m_asicInitViewMode = false;
 
-            if (m_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT)
+            if (m_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT ||
+                m_commandLineOptions->m_startType == SAI_START_TYPE_EXPRESS_BOOT)
             {
-                // fastfast boot configuration end
+                // express/fastfast boot configuration end
 
                 status = onApplyViewInFastFastBoot();
             }
@@ -4384,16 +4540,6 @@ void Syncd::performWarmRestartSingleSwitch(
 
     sai_object_id_t switchRid;
 
-    sai_attr_id_t notifs[] = {
-        SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY,
-        SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY,
-        SAI_SWITCH_ATTR_FDB_EVENT_NOTIFY,
-        SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY,
-        SAI_SWITCH_ATTR_PORT_STATE_CHANGE_NOTIFY,
-        SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY,
-        SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY
-    };
-
     std::vector<sai_attribute_t> attrs;
 
     sai_attribute_t attr;
@@ -4402,12 +4548,6 @@ void Syncd::performWarmRestartSingleSwitch(
     attr.value.booldata = true;
 
     attrs.push_back(attr);
-
-    for (size_t idx = 0; idx < (sizeof(notifs) / sizeof(notifs[0])); idx++)
-    {
-        attr.id = notifs[idx];
-        attr.value.ptr = (void*)1; // any non-null pointer
-    }
 
     sai_attribute_t *attrList = list.get_attr_list();
 
@@ -4722,6 +4862,39 @@ sai_status_t Syncd::setRestartWarmOnAllSwitches(
     return result;
 }
 
+sai_status_t Syncd::setFastAPIEnableOnAllSwitches()
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t result = SAI_STATUS_SUCCESS;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_FAST_API_ENABLE;
+    attr.value.booldata = true;
+
+    for (auto& sw: m_switches)
+    {
+        auto rid = sw.second->getRid();
+
+        auto strRid = sai_serialize_object_id(rid);
+
+        auto status = m_vendorSai->set(SAI_OBJECT_TYPE_SWITCH, rid, &attr);
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_PRE_SHUTDOWN=true: %s:%s",
+                    strRid.c_str(),
+                    sai_serialize_status(status).c_str());
+
+            result = status;
+            break;
+        }
+    }
+
+    return result;
+}
+
 sai_status_t Syncd::setPreShutdownOnAllSwitches()
 {
     SWSS_LOG_ENTER();
@@ -4939,7 +5112,7 @@ void Syncd::run()
 
                 shutdownType = handleRestartQuery(*m_restartQuery);
 
-                if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN)
+                if (shutdownType != SYNCD_RESTART_TYPE_PRE_SHUTDOWN && shutdownType != SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN)
                 {
                     // break out the event handling loop to shutdown syncd
                     runMainLoop = false;
@@ -4949,7 +5122,7 @@ void Syncd::run()
                 // Handle switch pre-shutdown and wait for the final shutdown
                 // event
 
-                SWSS_LOG_TIMER("warm pre-shutdown");
+                SWSS_LOG_TIMER("%s pre-shutdown", (shutdownType == SYNCD_RESTART_TYPE_PRE_SHUTDOWN) ? "warm" : "express");
 
                 m_manager->removeAllCounters();
 
@@ -4964,6 +5137,23 @@ void Syncd::run()
 
                     warmRestartTable.setFlagFailed();
                     continue;
+                }
+
+                if (shutdownType == SYNCD_RESTART_TYPE_PRE_EXPRESS_SHUTDOWN)
+                {
+                    SWSS_LOG_NOTICE("express boot, enable fast API pre-shutdown");
+                    status = setFastAPIEnableOnAllSwitches();
+
+                    if (status != SAI_STATUS_SUCCESS)
+                    {
+                        SWSS_LOG_ERROR("Failed to set SAI_SWITCH_ATTR_FAST_API_ENABLE=true: %s for express pre-shutdown. Fall back to cold restart",
+				       sai_serialize_status(status).c_str());
+
+                        shutdownType = SYNCD_RESTART_TYPE_COLD;
+
+                        warmRestartTable.setFlagFailed();
+                        continue;
+                    }
                 }
 
                 status = setPreShutdownOnAllSwitches();
@@ -5058,7 +5248,7 @@ void Syncd::run()
         }
     }
 
-    if (shutdownType == SYNCD_RESTART_TYPE_FAST || shutdownType == SYNCD_RESTART_TYPE_WARM)
+    if (shutdownType == SYNCD_RESTART_TYPE_FAST || shutdownType == SYNCD_RESTART_TYPE_WARM || shutdownType == SYNCD_RESTART_TYPE_EXPRESS)
     {
         setUninitDataPlaneOnRemovalOnAllSwitches();
     }
@@ -5072,14 +5262,14 @@ void Syncd::run()
     // Stop notification thread after removing switch
     m_processor->stopNotificationsProcessingThread();
 
-    if (shutdownType == SYNCD_RESTART_TYPE_WARM)
+    if (shutdownType == SYNCD_RESTART_TYPE_WARM || shutdownType == SYNCD_RESTART_TYPE_EXPRESS)
     {
         warmRestartTable.setWarmShutdown(status == SAI_STATUS_SUCCESS);
     }
 
     SWSS_LOG_NOTICE("calling api uninitialize");
 
-    status = m_vendorSai->uninitialize();
+    status = m_vendorSai->apiUninitialize();
 
     if (status != SAI_STATUS_SUCCESS)
     {

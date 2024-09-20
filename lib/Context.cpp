@@ -32,7 +32,7 @@ Context::~Context()
 {
     SWSS_LOG_ENTER();
 
-    m_redisSai->uninitialize(); // will stop threads
+    m_redisSai->apiUninitialize(); // will stop threads
 
     m_redisSai = nullptr;
 

@@ -2273,6 +2273,47 @@ sai_status_t SwitchStateBase::refresh_port_oper_speed(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::refresh_acl_table_entries(
+                    _In_ sai_object_id_t acl_table_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_id_t> acl_entries;
+
+    sai_attribute_t attr;
+    attr.id = SAI_ACL_ENTRY_ATTR_TABLE_ID;
+    attr.value.oid = acl_table_id;
+    findObjects(SAI_OBJECT_TYPE_ACL_ENTRY, attr, acl_entries);
+
+    attr.id = SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_ENTRY;
+    attr.value.u32 = m_maxAclTableEntries - (uint32_t) acl_entries.size();
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_ACL_TABLE, acl_table_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::refresh_acl_table_counters(
+                    _In_ sai_object_id_t acl_table_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_id_t> acl_counters;
+
+    sai_attribute_t attr;
+    attr.id = SAI_ACL_COUNTER_ATTR_TABLE_ID;
+    attr.value.oid = acl_table_id;
+    findObjects(SAI_OBJECT_TYPE_ACL_COUNTER, attr, acl_counters);
+
+    attr.id = SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_COUNTER;
+    attr.value.u32 = m_maxAclTableCounters - (uint32_t) acl_counters.size();
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_ACL_TABLE, acl_table_id, &attr));
+
+    return SAI_STATUS_SUCCESS;
+}
+
+
 // XXX extra work may be needed on GET api if N on list will be > then actual
 
 /*
@@ -2382,6 +2423,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_FABRIC_ATTACHED:
+            case SAI_PORT_ATTR_FABRIC_ATTACHED_SWITCH_ID:
+            case SAI_PORT_ATTR_FABRIC_ATTACHED_PORT_INDEX:
+            case SAI_PORT_ATTR_HW_LANE_LIST:
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_PORT_SERDES_ID:
@@ -2445,6 +2489,16 @@ sai_status_t SwitchStateBase::refresh_read_only(
     if (meta->objecttype == SAI_OBJECT_TYPE_MACSEC_SA)
     {
         return refresh_macsec_sa_stat(object_id);
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_ACL_TABLE && meta->attrid == SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_ENTRY)
+    {
+        return refresh_acl_table_entries(object_id);
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_ACL_TABLE && meta->attrid == SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_COUNTER)
+    {
+        return refresh_acl_table_counters(object_id);
     }
 
     auto mmeta = m_meta.lock();
@@ -3429,7 +3483,7 @@ sai_status_t SwitchStateBase::create_fabric_ports()
         sai_attribute_t attr;
 
         attr.id = SAI_PORT_ATTR_FABRIC_ATTACHED;
-        attr.value.booldata = false;
+        attr.value.booldata = true;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
 
@@ -3444,6 +3498,14 @@ sai_status_t SwitchStateBase::create_fabric_ports()
         attr.id = SAI_PORT_ATTR_TYPE;
         attr.value.s32 = SAI_PORT_TYPE_FABRIC;
 
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_FABRIC_ATTACHED_SWITCH_ID;
+        attr.value.s32 = i;
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_FABRIC_ATTACHED_PORT_INDEX;
+        attr.value.s32 = i;
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, fabric_port_id, &attr));
     }
 
@@ -3641,6 +3703,18 @@ sai_status_t SwitchStateBase::queryTunnelPeerModeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryPortAutonegFecOverrideSupportCapability(
+                   _Out_ sai_attr_capability_t *attr_capability)
+{
+    SWSS_LOG_ENTER();
+
+    attr_capability->create_implemented = false;
+    attr_capability->set_implemented    = false;
+    attr_capability->get_implemented    = false;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryVlanfloodTypeCapability(
                    _Inout_ sai_s32_list_t *enum_values_capability)
 {
@@ -3713,6 +3787,29 @@ sai_status_t SwitchStateBase::queryHashNativeHashFieldListCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::querySwitchHashAlgorithmCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 7)
+    {
+        enum_values_capability->count = 7;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 7;
+    enum_values_capability->list[0] = SAI_HASH_ALGORITHM_CRC;
+    enum_values_capability->list[1] = SAI_HASH_ALGORITHM_XOR;
+    enum_values_capability->list[2] = SAI_HASH_ALGORITHM_RANDOM;
+    enum_values_capability->list[3] = SAI_HASH_ALGORITHM_CRC_32LO;
+    enum_values_capability->list[4] = SAI_HASH_ALGORITHM_CRC_32HI;
+    enum_values_capability->list[5] = SAI_HASH_ALGORITHM_CRC_CCITT;
+    enum_values_capability->list[6] = SAI_HASH_ALGORITHM_CRC_XOR;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -3739,6 +3836,31 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
     {
         return queryHashNativeHashFieldListCapability(enum_values_capability);
     }
+    else if (object_type == SAI_OBJECT_TYPE_SWITCH && (attr_id == SAI_SWITCH_ATTR_ECMP_DEFAULT_HASH_ALGORITHM ||
+                                                       attr_id == SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_ALGORITHM))
+    {
+        return querySwitchHashAlgorithmCapability(enum_values_capability);
+    }
 
     return SAI_STATUS_NOT_SUPPORTED;
+}
+
+sai_status_t SwitchStateBase::queryAttributeCapability(
+                              _In_ sai_object_id_t switch_id,
+                              _In_ sai_object_type_t object_type,
+                              _In_ sai_attr_id_t attr_id,
+                              _Out_ sai_attr_capability_t *attr_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (object_type == SAI_OBJECT_TYPE_PORT && attr_id == SAI_PORT_ATTR_AUTO_NEG_FEC_MODE_OVERRIDE)
+    {
+        return queryPortAutonegFecOverrideSupportCapability(attr_capability);
+    }
+
+    attr_capability->create_implemented = true;
+    attr_capability->set_implemented    = true;
+    attr_capability->get_implemented    = true;
+
+    return SAI_STATUS_SUCCESS;
 }

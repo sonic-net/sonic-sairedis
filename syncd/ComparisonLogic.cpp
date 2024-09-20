@@ -2806,6 +2806,8 @@ void ComparisonLogic::cretePreMatchForLagMembers(
     }
 }
 
+#define PFC_ACL_RULE_PRIORITY "999"
+
 void ComparisonLogic::cretePreMatchForAclEntries(
         _In_ const AsicView& cur,
         _Inout_ AsicView& tmp,
@@ -2836,8 +2838,24 @@ void ComparisonLogic::cretePreMatchForAclEntries(
                 continue;
             }
 
+            if (cPrio->getStrAttrValue() == PFC_ACL_RULE_PRIORITY)
+            {
+                // this is special case, all pfc rules to prevent packet storm
+                // will have same priority, we will need to check SAI_ACL_ENTRY_ATTR_FIELD_TC
+
+                auto cTc = cAclEntry->tryGetSaiAttr(SAI_ACL_ENTRY_ATTR_FIELD_TC);
+                auto tTc = tAclEntry->tryGetSaiAttr(SAI_ACL_ENTRY_ATTR_FIELD_TC);
+
+                if (!cTc || !tTc || cTc->getStrAttrValue() != tTc->getStrAttrValue())
+                {
+                    // TC attribute is different, not looking for this one
+                    continue;
+                }
+            }
+
             // at this point current and temporary acl entry share the same
-            // priority, then we can assume that those objects are the same
+            // priority and in case of pfc priority, also the same TC field,
+            // then we can assume that those objects are the same
 
             SWSS_LOG_NOTICE("pre match Acl Entry: cur: %s, tmp: %s, using prio: %s",
                     cAclEntry->m_str_object_id.c_str(),
@@ -3263,9 +3281,11 @@ void ComparisonLogic::logViewObjectCount(
 
     bool asic_changes = false;
 
-    for (int i = SAI_OBJECT_TYPE_NULL + 1; i < SAI_OBJECT_TYPE_EXTENSIONS_MAX; i++)
+    // skip null object type
+
+    for (size_t i = 1; i < sai_metadata_enum_sai_object_type_t.valuescount; ++i)
     {
-        sai_object_type_t ot = (sai_object_type_t)i;
+        sai_object_type_t ot = (sai_object_type_t)sai_metadata_enum_sai_object_type_t.values[i];
 
         size_t c = currentView.getObjectsByObjectType(ot).size();
         size_t t = temporaryView.getObjectsByObjectType(ot).size();

@@ -463,6 +463,28 @@ void NotificationProcessor::process_on_queue_deadlock_event(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_QUEUE_PFC_DEADLOCK, s);
 }
 
+
+void NotificationProcessor::process_on_port_host_tx_ready_change(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t port_id,
+        _In_ sai_port_host_tx_ready_status_t *host_tx_ready_status)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("Port ID before translating from RID to VID is %s", sai_serialize_object_id(port_id).c_str());
+    sai_object_id_t port_vid = m_translator->translateRidToVid(port_id, SAI_NULL_OBJECT_ID);
+    SWSS_LOG_DEBUG("Port ID after translating from RID to VID is %s", sai_serialize_object_id(port_id).c_str());
+
+    sai_object_id_t switch_vid = m_translator->translateRidToVid(switch_id, SAI_NULL_OBJECT_ID);
+
+    std::string s = sai_serialize_port_host_tx_ready_ntf(switch_vid, port_vid, *host_tx_ready_status);
+
+    SWSS_LOG_DEBUG("Host_tx_ready status after sai_serialize is %s", s.c_str());
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY, s);
+}
+
+
 void NotificationProcessor::process_on_port_state_change(
         _In_ uint32_t count,
         _In_ sai_port_oper_status_notification_t *data)
@@ -513,7 +535,7 @@ void NotificationProcessor::process_on_bfd_session_state_change(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_DEBUG("bfd sessuin state notification count: %u", count);
+    SWSS_LOG_DEBUG("bfd session state notification count: %u", count);
 
     for (uint32_t i = 0; i < count; i++)
     {
@@ -528,12 +550,30 @@ void NotificationProcessor::process_on_bfd_session_state_change(
          * switch vid.
          */
 
-        bfd_session_state->bfd_session_id = m_translator->translateRidToVid(bfd_session_state->bfd_session_id, SAI_NULL_OBJECT_ID);
+        bfd_session_state->bfd_session_id = m_translator->translateRidToVid(bfd_session_state->bfd_session_id, SAI_NULL_OBJECT_ID, true);
     }
 
     std::string s = sai_serialize_bfd_session_state_ntf(count, data);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
+}
+
+
+void NotificationProcessor::process_on_switch_asic_sdk_health_event(
+        _In_ sai_object_id_t switch_rid,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_vid = m_translator->translateRidToVid(switch_rid, SAI_NULL_OBJECT_ID);
+
+    std::string s = sai_serialize_switch_asic_sdk_health_event(switch_vid, severity, timestamp, category, data, description);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_ASIC_SDK_HEALTH_EVENT, s);
 }
 
 void NotificationProcessor::process_on_switch_shutdown_request(
@@ -546,6 +586,36 @@ void NotificationProcessor::process_on_switch_shutdown_request(
     std::string s = sai_serialize_switch_shutdown_request(switch_vid);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST, s);
+}
+
+void NotificationProcessor::process_on_twamp_session_event(
+        _In_ uint32_t count,
+        _In_ sai_twamp_session_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("twamp session state notification count: %u", count);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_twamp_session_event_notification_data_t *twamp_session_state = &data[i];
+
+        /*
+         * We are using switch_rid as null, since TWAMP should be already
+         * defined inside local db after creation.
+         *
+         * If this will be faster than return from create TWAMP then we can use
+         * query switch id and extract rid of switch id and then convert it to
+         * switch vid.
+         */
+
+        twamp_session_state->twamp_session_id = m_translator->translateRidToVid(twamp_session_state->twamp_session_id, SAI_NULL_OBJECT_ID);
+    }
+
+    /* send notification to syncd */
+    std::string s = sai_serialize_twamp_session_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT, s);
 }
 
 void NotificationProcessor::handle_switch_state_change(
@@ -626,6 +696,20 @@ void NotificationProcessor::handle_port_state_change(
     sai_deserialize_free_port_oper_status_ntf(count, portoperstatus);
 }
 
+void NotificationProcessor::handle_port_host_tx_ready_change(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t port_id;
+    sai_object_id_t switch_id;
+    sai_port_host_tx_ready_status_t host_tx_ready_status;
+
+    sai_deserialize_port_host_tx_ready_ntf(data, switch_id, port_id, host_tx_ready_status);
+
+    process_on_port_host_tx_ready_change(switch_id, port_id, &host_tx_ready_status);
+}
+
 void NotificationProcessor::handle_bfd_session_state_change(
         _In_ const std::string &data)
 {
@@ -641,6 +725,35 @@ void NotificationProcessor::handle_bfd_session_state_change(
     sai_deserialize_free_bfd_session_state_ntf(count, bfdsessionstate);
 }
 
+void NotificationProcessor::handle_switch_asic_sdk_health_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_id;
+    sai_switch_asic_sdk_health_severity_t severity;
+    sai_timespec_t timestamp;
+    sai_switch_asic_sdk_health_category_t category;
+    sai_switch_health_data_t health_data;
+    sai_u8_list_t description;
+
+    sai_deserialize_switch_asic_sdk_health_event(data,
+                                                 switch_id,
+                                                 severity,
+                                                 timestamp,
+                                                 category,
+                                                 health_data,
+                                                 description);
+
+    process_on_switch_asic_sdk_health_event(switch_id,
+                                            severity,
+                                            timestamp,
+                                            category,
+                                            health_data,
+                                            description);
+
+    sai_deserialize_free_switch_asic_sdk_health_event(description);
+}
 void NotificationProcessor::handle_switch_shutdown_request(
         _In_ const std::string &data)
 {
@@ -651,6 +764,21 @@ void NotificationProcessor::handle_switch_shutdown_request(
     sai_deserialize_switch_shutdown_request(data, switch_id);
 
     process_on_switch_shutdown_request(switch_id);
+}
+
+void NotificationProcessor::handle_twamp_session_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_twamp_session_event_notification_data_t *twampsessionevent = NULL;
+
+    sai_deserialize_twamp_session_event_ntf(data, count, &twampsessionevent);
+
+    process_on_twamp_session_event(count, twampsessionevent);
+
+    sai_deserialize_free_twamp_session_event_ntf(count, twampsessionevent);
 }
 
 void NotificationProcessor::processNotification(
@@ -685,9 +813,17 @@ void NotificationProcessor::syncProcessNotification(
     {
         handle_port_state_change(data);
     }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_PORT_HOST_TX_READY)
+    {
+        handle_port_host_tx_ready_change(data);
+    }
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_SHUTDOWN_REQUEST)
     {
         handle_switch_shutdown_request(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_ASIC_SDK_HEALTH_EVENT)
+    {
+        handle_switch_asic_sdk_health_event(data);
     }
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_QUEUE_PFC_DEADLOCK)
     {
@@ -696,6 +832,10 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE)
     {
         handle_bfd_session_state_change(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT)
+    {
+        handle_twamp_session_event(data);
     }
     else
     {

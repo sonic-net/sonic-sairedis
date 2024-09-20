@@ -3,6 +3,7 @@ acl
 ACL
 ACLs
 AES
+AIED
 API
 APIs
 ASAN
@@ -50,6 +51,7 @@ IPGs
 IPv
 Inseg
 KEYs
+LLC
 LOGLEVEL
 LOOPBACK
 MACsec
@@ -80,6 +82,7 @@ SAs
 SCs
 SDK
 SGs
+SHA
 SONiC
 SRC
 STP
@@ -246,6 +249,7 @@ IPG
 ipgs
 IPGs
 ipmc
+iproute
 IPv
 isobjectid
 isoidattribute
@@ -436,6 +440,7 @@ updatable
 upgradable
 util
 utils
+validonly
 versa
 veth
 vEthernetX
@@ -468,3 +473,7 @@ zmq
 ZMQ
 ZMQ
 uncreated
+TWAMP
+saiproxy
+submodule
+Enqueue

@@ -10,6 +10,7 @@
 #define STRING_SAI_START_TYPE_WARM_BOOT         "warm"
 #define STRING_SAI_START_TYPE_FAST_BOOT         "fast"
 #define STRING_SAI_START_TYPE_FASTFAST_BOOT     "fastfast"
+#define STRING_SAI_START_TYPE_EXPRESS_BOOT      "express"
 #define STRING_SAI_START_TYPE_UNKNOWN           "unknown"
 
 namespace syncd
@@ -27,6 +28,12 @@ namespace syncd
          * boot mode
          */
         SAI_START_TYPE_FASTFAST_BOOT = 3,
+
+        /**
+         * A special type of boot used by Cisco platforms to start in 'express'
+         * boot mode
+         */
+        SAI_START_TYPE_EXPRESS_BOOT = 4,
 
         /**
          * Set at last, just for error purpose.

@@ -7,6 +7,8 @@ extern "C" {
 #include "meta/sai_serialize.h"
 #include "swss/logger.h"
 
+#include <cmath>
+
 using namespace sairedis;
 
 void Utils::clearOidList(
@@ -79,4 +81,41 @@ void Utils::clearOidValues(
         }
 
     }
+}
+
+uint64_t Utils::timeToReachTargetValueUsingHalfLife(
+        _In_ uint64_t halfLifeUsec,
+        _In_ uint32_t initialValue,
+        _In_ uint32_t targetValue)
+{
+    SWSS_LOG_ENTER();
+
+    // Check if all the input fields have positive values and targeted value is
+    // smaller than initial value.
+    if ((initialValue == 0) || (targetValue == 0) ||
+        (targetValue >= initialValue) || (halfLifeUsec == 0))
+    {
+        return 0;
+    }
+
+    // t = -half_life * log2[N(t)/N(0)] from half-life formula "N(t) = N(0) * 2 ^ (-t / half_life)"
+    return  uint64_t(-double(halfLifeUsec) * (log(double(targetValue)/double(initialValue))/log(2.0)));
+}
+
+uint32_t Utils::valueAfterDecay(
+        _In_ uint64_t timeToDecayUsec,
+        _In_ uint64_t halfLifeUsec,
+        _In_ uint32_t initialValue)
+{
+    SWSS_LOG_ENTER();
+
+    if ((initialValue == 0) || (timeToDecayUsec == 0) || (halfLifeUsec == 0))
+    {
+        return initialValue;
+    }
+
+    // Using half-life formula: N(t) = N(0) * 2 ^ (-t / half_life)
+    double ratio = double(timeToDecayUsec)/double(halfLifeUsec);
+
+    return uint32_t(double(initialValue) * pow(0.5, ratio));
 }

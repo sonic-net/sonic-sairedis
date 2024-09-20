@@ -26,6 +26,7 @@ static const std::string COUNTER_TYPE_MACSEC_SA = "MACSEC SA Counter";
 static const std::string COUNTER_TYPE_FLOW = "Flow Counter";
 static const std::string COUNTER_TYPE_TUNNEL = "Tunnel Counter";
 static const std::string COUNTER_TYPE_BUFFER_POOL = "Buffer Pool Counter";
+static const std::string COUNTER_TYPE_ENI = "DASH ENI Counter";
 static const std::string ATTR_TYPE_QUEUE = "Queue Attribute";
 static const std::string ATTR_TYPE_PG = "Priority Group Attribute";
 static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
@@ -219,6 +220,14 @@ std::string serializeStat(
     return sai_serialize_buffer_pool_stat(stat);
 }
 
+template <>
+std::string serializeStat(
+        _In_ const sai_eni_stat_t stat)
+{
+    SWSS_LOG_ENTER();
+    return sai_serialize_eni_stat(stat);
+}
+
 template <typename StatType>
 void deserializeStat(
         _In_ const char* name,
@@ -316,6 +325,15 @@ void deserializeStat(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_buffer_pool_stat(name, stat);
+}
+
+template <>
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_eni_stat_t *stat)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_eni_stat(name, stat);
 }
 
 template <typename AttrType>
@@ -1297,6 +1315,12 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->always_check_supported_counters = true;
         return context;
     }
+    else if (context_name == COUNTER_TYPE_ENI)
+    {
+        auto context = std::make_shared<CounterContext<sai_eni_stat_t>>(context_name, (sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        return context;
+    }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
         return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
@@ -1572,6 +1596,13 @@ void FlexCounter::removeCounter(
             getCounterContext(COUNTER_TYPE_TUNNEL)->removeObject(vid);
         }
     }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI)
+    {
+        if (hasCounterContext(COUNTER_TYPE_ENI))
+        {
+            getCounterContext(COUNTER_TYPE_ENI)->removeObject(vid);
+        }
+    }
     else if (objectType == SAI_OBJECT_TYPE_COUNTER)
     {
         if (hasCounterContext(COUNTER_TYPE_FLOW))
@@ -1725,6 +1756,14 @@ void FlexCounter::addCounter(
         else if (objectType == SAI_OBJECT_TYPE_TUNNEL && field == TUNNEL_COUNTER_ID_LIST)
         {
             getCounterContext(COUNTER_TYPE_TUNNEL)->addObject(
+                    vid,
+                    rid,
+                    idStrings,
+                    "");
+        }
+        else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI && field == ENI_COUNTER_ID_LIST)
+        {
+            getCounterContext(COUNTER_TYPE_ENI)->addObject(
                     vid,
                     rid,
                     idStrings,

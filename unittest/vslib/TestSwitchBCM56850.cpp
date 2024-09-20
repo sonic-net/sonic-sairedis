@@ -479,3 +479,38 @@ TEST(SwitchBCM56850, test_nexthop_group_type_enum_values_capability)
 
     EXPECT_EQ(nexthop_group_types_found, 5);
 }
+
+TEST(SwitchBCM56850, test_port_autoneg_fec_override_support)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_attr_capability_t attr_capability;
+
+    EXPECT_EQ(sw.queryAttributeCapability(0x2100000000,
+                                          SAI_OBJECT_TYPE_PORT,
+                                          SAI_PORT_ATTR_AUTO_NEG_FEC_MODE_OVERRIDE,
+                                          &attr_capability),
+                                          SAI_STATUS_SUCCESS);
+
+    EXPECT_EQ(attr_capability.create_implemented, false);
+    EXPECT_EQ(attr_capability.set_implemented, false);
+    EXPECT_EQ(attr_capability.get_implemented, false);
+}

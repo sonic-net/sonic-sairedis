@@ -21,8 +21,6 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 # package maintainers to append LDFLAGS
 #export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 
-DOPACKAGES = $(shell dh_listpackages)
-
 configure_opts = --disable-static
 ifeq ($(ENABLE_ASAN), y)
 	configure_opts += --enable-asan
@@ -37,11 +35,11 @@ configure_opts += --disable-python2
 endif
 
 ifneq ($(filter syncd,$(DEB_BUILD_PROFILES)),)
-ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
-configure_opts += --enable-rpcserver
-endif
 ifneq ($(filter vs,$(DEB_BUILD_PROFILES)),)
 configure_opts += --with-sai=vs
+ifneq ($(filter dashsai,$(DEB_BUILD_PROFILES)),)
+configure_opts += --with-dashsai
+endif
 endif
 else
 configure_opts += --disable-syncd
@@ -57,15 +55,22 @@ endif
 #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
 
 override_dh_auto_configure:
-	dh_auto_configure -- ${SWSS_COMMON_CONFIG} $(configure_opts)
+	dh_auto_configure -- ${SWSS_COMMON_CONFIG} $(configure_opts) $(DEB_CONFIGURE_EXTRA_FLAGS)
 
 override_dh_install:
-	dh_install
-	# Note: escape $ with an extra $ symbol
 ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
-	if [ -f debian/syncd-rpc/usr/bin/syncd_init_common.sh ] ; then
-		sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
-	fi
+	dh_install -N syncd-rpc
+	# This is to build a RPC-enabled version, and package that version into syncd-rpc
+	dh_auto_configure -- ${SWSS_COMMON_CONFIG} $(configure_opts) --enable-rpcserver
+	make clean
+	dh_auto_build
+	make install DESTDIR=$(shell pwd)/debian/tmp
+	dh_install -N syncd
+else
+	dh_install
+endif
+ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
+	sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
 endif
 
 override_dh_installinit:

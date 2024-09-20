@@ -2,6 +2,10 @@
 
 #include "meta/NumberOidIndexGenerator.h"
 
+extern "C" {
+#include "saimetadata.h"
+}
+
 #include "swss/logger.h"
 
 #include <gtest/gtest.h>
@@ -96,4 +100,15 @@ TEST(VirtualObjectIdManager, allocateNewObjectId)
     EXPECT_THROW(m->allocateNewObjectId(SAI_OBJECT_TYPE_SWITCH, sid), std::runtime_error);
 
     EXPECT_THROW(m->allocateNewObjectId(SAI_OBJECT_TYPE_PORT, 1), std::runtime_error);
+}
+
+TEST(VirtualObjectIdManager, extensions)
+{
+    auto m = createVirtualObjectIdManager();
+
+    auto sid = m->allocateNewSwitchObjectId("");
+
+    EXPECT_EQ(m->allocateNewObjectId((sai_object_type_t)SAI_OBJECT_TYPE_DASH_ACL_GROUP,sid), 0x0003008000000001);
+
+    EXPECT_EQ(m->objectTypeQuery(0x0003008000000001), SAI_OBJECT_TYPE_DASH_ACL_GROUP);
 }

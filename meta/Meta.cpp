@@ -146,20 +146,20 @@ Meta::Meta(
     m_warmBoot = false;
 }
 
-sai_status_t Meta::initialize(
+sai_status_t Meta::apiInitialize(
         _In_ uint64_t flags,
         _In_ const sai_service_method_table_t *service_method_table)
 {
     SWSS_LOG_ENTER();
 
-    return m_implementation->initialize(flags, service_method_table);
+    return m_implementation->apiInitialize(flags, service_method_table);
 }
 
-sai_status_t Meta::uninitialize(void)
+sai_status_t Meta::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
 
-    return m_implementation->uninitialize();
+    return m_implementation->apiUninitialize();
 }
 
 void Meta::meta_warm_boot_notify()
@@ -723,9 +723,26 @@ sai_status_t Meta::bulkSet(                                                     
     return status;                                                                                                      \
 }
 
+// BULK GET
+
+#define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
+sai_status_t Meta::bulkGet(                                 \
+        _In_ uint32_t object_count,                         \
+        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const uint32_t *attr_count,                    \
+        _Inout_ sai_attribute_t **attr_list,                \
+        _In_ sai_bulk_op_error_mode_t mode,                 \
+        _Out_ sai_status_t *object_statuses)                \
+{                                                           \
+    SWSS_LOG_ENTER();                                       \
+    SWSS_LOG_ERROR("FIXME not implemented");                \
+    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+}
+
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY);
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY);
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
+SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY);
 
 sai_status_t Meta::objectTypeGetAvailability(
         _In_ sai_object_id_t switchId,
@@ -801,6 +818,13 @@ sai_status_t Meta::objectTypeGetAvailability(
 
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
+            {
+                sai_object_type_t ot = objectTypeQuery(attrList[idx].value.oid);
+                PARAMETER_CHECK_OBJECT_TYPE_VALID(ot);
+                PARAMETER_CHECK_OID_EXISTS(attrList[idx].value.oid, ot);
+                break;
+            }
             default:
 
                 META_LOG_THROW(*mdp, "value type %s not supported yet, FIXME!",
@@ -847,7 +871,7 @@ sai_status_t Meta::queryAttributeCapability(
     return status;
 }
 
-sai_status_t Meta::queryAattributeEnumValuesCapability(
+sai_status_t Meta::queryAttributeEnumValuesCapability(
         _In_ sai_object_id_t switchId,
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
@@ -885,7 +909,7 @@ sai_status_t Meta::queryAattributeEnumValuesCapability(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    auto status = m_implementation->queryAattributeEnumValuesCapability(switchId, objectType, attrId, enumValuesCapability);
+    auto status = m_implementation->queryAttributeEnumValuesCapability(switchId, objectType, attrId, enumValuesCapability);
 
     if (status == SAI_STATUS_SUCCESS)
     {
@@ -1245,6 +1269,22 @@ sai_status_t Meta::bulkSet(
     return status;
 }
 
+sai_status_t Meta::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ uint32_t object_count,
+        _In_ const sai_object_id_t *object_id,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t Meta::bulkCreate(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t switchId,
@@ -1368,6 +1408,16 @@ sai_status_t Meta::logSet(
     }
 
     return m_implementation->logSet(api, log_level);
+}
+
+sai_status_t Meta::queryApiVersion(
+        _Out_ sai_api_version_t *version)
+{
+    SWSS_LOG_ENTER();
+
+    PARAMETER_CHECK_IF_NOT_NULL(version);
+
+    return m_implementation->queryApiVersion(version);
 }
 
 void Meta::clean_after_switch_remove(
@@ -1661,16 +1711,15 @@ sai_status_t Meta::meta_sai_validate_oid(
 {
     SWSS_LOG_ENTER();
 
-    if (object_type <= SAI_OBJECT_TYPE_NULL ||
-            object_type >= SAI_OBJECT_TYPE_EXTENSIONS_MAX)
+    auto info = sai_metadata_get_object_type_info(object_type);
+
+    if (!info)
     {
         SWSS_LOG_ERROR("invalid object type specified: %d, FIXME", object_type);
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    const char* otname =  sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_object_type_t, object_type);
-
-    auto info = sai_metadata_get_object_type_info(object_type);
+    const char* otname =  info->objecttypename;
 
     if (info->isnonobjectid)
     {
@@ -3793,6 +3842,12 @@ sai_status_t Meta::meta_generic_validation_create(
             // maybe we can let it go here?
             if (attrs.find(md.attrid) != attrs.end())
             {
+                if (md.isconditionrelaxed)
+                {
+                    META_LOG_WARN(md, "conditional, but condition was not met, this attribute is not required, but passed (relaxed condition)");
+                    continue;
+                }
+
                 META_LOG_ERROR(md, "conditional, but condition was not met, this attribute is not required, but passed");
 
                 return SAI_STATUS_INVALID_PARAMETER;
@@ -6421,6 +6476,49 @@ void Meta::meta_sai_on_nat_event(
     }
 }
 
+void Meta::meta_sai_on_port_host_tx_ready_change(
+                    _In_ sai_object_id_t port_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_port_host_tx_ready_status_t host_tx_ready_status)
+{
+    SWSS_LOG_ENTER();
+
+    if (!sai_metadata_get_enum_value_name(
+            &sai_metadata_enum_sai_port_host_tx_ready_status_t,
+            host_tx_ready_status))
+    {
+        SWSS_LOG_WARN("port host_tx_ready value (%d) not found in sai_port_host_tx_ready_status_t. Dropping the notification",
+                host_tx_ready_status);
+
+        return;
+    }
+
+    auto ot = objectTypeQuery(port_id);
+
+    if (ot != SAI_OBJECT_TYPE_PORT)
+    {
+        SWSS_LOG_ERROR("port_id %s has unexpected type: %s, expected PORT",
+                    sai_serialize_object_id(port_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+        return;
+    }
+
+    if (!m_oids.objectReferenceExists(port_id))
+    {
+        SWSS_LOG_NOTICE("port_id new object spotted %s not present in local DB (snoop!)",
+                sai_serialize_object_id(port_id).c_str());
+
+        sai_object_meta_key_t host_tx_ready_key = { .objecttype = ot, .objectkey = { .key = { .object_id = port_id } } };
+        m_oids.objectReferenceInsert(port_id);
+
+        if (!m_saiObjectCollection.objectExists(host_tx_ready_key))
+        {
+            m_saiObjectCollection.createObject(host_tx_ready_key);
+        }
+    }
+}
+
+
 void Meta::meta_sai_on_switch_state_change(
         _In_ sai_object_id_t switch_id,
         _In_ sai_switch_oper_status_t switch_oper_status)
@@ -6433,6 +6531,54 @@ void Meta::meta_sai_on_switch_state_change(
     {
         SWSS_LOG_WARN("switch oper status value (%d) not found in sai_switch_oper_status_t",
                 switch_oper_status);
+    }
+
+    auto ot = objectTypeQuery(switch_id);
+
+    if (ot != SAI_OBJECT_TYPE_SWITCH)
+    {
+        SWSS_LOG_WARN("switch_id %s is of type %s, but expected SAI_OBJECT_TYPE_SWITCH",
+                sai_serialize_object_id(switch_id).c_str(),
+                sai_serialize_object_type(ot).c_str());
+
+        return;
+    }
+
+    sai_object_meta_key_t switch_meta_key = { .objecttype = ot , .objectkey = { .key = { .object_id = switch_id } } };
+
+    if (!m_saiObjectCollection.objectExists(switch_meta_key))
+    {
+        SWSS_LOG_ERROR("switch_id %s don't exists in local database",
+                sai_serialize_object_id(switch_id).c_str());
+    }
+
+    // we should not snoop switch_id, since switch id should be created directly by user
+}
+
+void Meta::meta_sai_on_switch_asic_sdk_health_event(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_asic_sdk_health_severity_t severity,
+        _In_ sai_timespec_t timestamp,
+        _In_ sai_switch_asic_sdk_health_category_t category,
+        _In_ sai_switch_health_data_t data,
+        _In_ const sai_u8_list_t description)
+{
+    SWSS_LOG_ENTER();
+
+    if (!sai_metadata_get_enum_value_name(
+            &sai_metadata_enum_sai_switch_asic_sdk_health_severity_t,
+            severity))
+    {
+        SWSS_LOG_WARN("Switch ASIC/SDK health event severity value (%d) not found in sai_switch_asic_sdk_health_severity_t",
+                      severity);
+    }
+
+    if (!sai_metadata_get_enum_value_name(
+            &sai_metadata_enum_sai_switch_asic_sdk_health_category_t,
+            category))
+    {
+        SWSS_LOG_WARN("Switch ASIC/SDK health event category value (%d) not found in sai_switch_asic_sdk_health_severity_t",
+                      category);
     }
 
     auto ot = objectTypeQuery(switch_id);
@@ -6670,6 +6816,84 @@ void Meta::meta_sai_on_bfd_session_state_change(
     for (uint32_t i = 0; i < count; ++i)
     {
         meta_sai_on_bfd_session_state_change_single(data[i]);
+    }
+}
+
+void Meta::meta_sai_on_twamp_session_event_single(
+        _In_ const sai_twamp_session_event_notification_data_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    auto ot = objectTypeQuery(data.twamp_session_id);
+
+    bool valid = false;
+
+    switch (ot)
+    {
+        // TODO hardcoded types, must advance SAI repository commit to get metadata for this
+        case SAI_OBJECT_TYPE_TWAMP_SESSION:
+
+            valid = true;
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("data.twamp_session_id %s has unexpected type: %s, expected TWAMP_SESSION",
+                    sai_serialize_object_id(data.twamp_session_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+            break;
+    }
+
+    // check if all counter ids are in enum range
+    for (uint32_t idx = 0; idx < data.session_stats.number_of_counters; idx++)
+    {
+        if (!sai_metadata_get_enum_value_name(&sai_metadata_enum_sai_twamp_session_stat_t, data.session_stats.counters_ids[idx]))
+        {
+            SWSS_LOG_ERROR("value %d is not in range on sai_twamp_session_stat_t ", data.session_stats.counters_ids[idx]);
+
+            return;
+        }
+    }
+
+    if (valid && !m_oids.objectReferenceExists(data.twamp_session_id))
+    {
+        SWSS_LOG_NOTICE("data.twamp_session_id new object spotted %s not present in local DB (snoop!)",
+                sai_serialize_object_id(data.twamp_session_id).c_str());
+
+        sai_object_meta_key_t key = { .objecttype = (sai_object_type_t)ot, .objectkey = { .key = { .object_id = data.twamp_session_id } } };
+
+        m_oids.objectReferenceInsert(data.twamp_session_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
+    }
+
+    if (!sai_metadata_get_enum_value_name(
+                &sai_metadata_enum_sai_twamp_session_state_t,
+                data.session_state))
+    {
+        SWSS_LOG_WARN("session_state value (%d) not found sai_twamp_session_state_t",
+                data.session_state);
+    }
+}
+
+void Meta::meta_sai_on_twamp_session_event(
+        _In_ uint32_t count,
+        _In_ const sai_twamp_session_event_notification_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("sai_twamp_session_event_notification_data_t pointer is NULL but count is %u", count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meta_sai_on_twamp_session_event_single(data[i]);
     }
 }
 

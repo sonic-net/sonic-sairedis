@@ -22,11 +22,11 @@ TEST(Switch, updateNotifications)
 {
     auto s = std::make_shared<Switch>(7);
 
-    sai_attribute_t attrs[10];
+    sai_attribute_t attrs[11];
 
     attrs[0].id = 10000;
 
-    EXPECT_THROW(s->updateNotifications(1, attrs), std::runtime_error);
+    EXPECT_NO_THROW(s->updateNotifications(1, attrs));
 
     attrs[0].value.ptr = (void*)1;
     attrs[1].value.ptr = (void*)1;
@@ -36,6 +36,9 @@ TEST(Switch, updateNotifications)
     attrs[5].value.ptr = (void*)1;
     attrs[6].value.ptr = (void*)1;
     attrs[7].value.ptr = (void*)1;
+    attrs[8].value.ptr = (void*)1;
+    attrs[9].value.ptr = (void*)1;
+    attrs[10].value.ptr = (void*)1;
 
     attrs[0].id = SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY;
     attrs[1].id = SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY;
@@ -45,9 +48,11 @@ TEST(Switch, updateNotifications)
     attrs[5].id = SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY;
     attrs[6].id = SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY;
     attrs[7].id = SAI_SWITCH_ATTR_NAT_EVENT_NOTIFY;
-    attrs[8].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[8].id = SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY;
+    attrs[9].id = SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY;
+    attrs[10].id = SAI_SWITCH_ATTR_INIT_SWITCH;
 
-    s->updateNotifications(8, attrs);
+    s->updateNotifications(10, attrs);
 
     auto sn = s->getSwitchNotifications();
 
@@ -59,4 +64,6 @@ TEST(Switch, updateNotifications)
     EXPECT_EQ((void*)1, sn.on_switch_shutdown_request);
     EXPECT_EQ((void*)1, sn.on_switch_state_change);
     EXPECT_EQ((void*)1, sn.on_nat_event);
+    EXPECT_EQ((void*)1, sn.on_port_host_tx_ready);
+    EXPECT_EQ((void*)1, sn.on_switch_asic_sdk_health_event);
 }

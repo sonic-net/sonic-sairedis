@@ -229,6 +229,14 @@ namespace saiplayer
                     _In_ uint32_t count,
                     _In_ const sai_queue_deadlock_notification_data_t *data);
 
+            void onSwitchAsicSdkHealthEvent(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_switch_asic_sdk_health_severity_t severity,
+                    _In_ sai_timespec_t timestamp,
+                    _In_ sai_switch_asic_sdk_health_category_t category,
+                    _In_ sai_switch_health_data_t data,
+                    _In_ const sai_u8_list_t description);
+
             void onSwitchShutdownRequest(
                     _In_ sai_object_id_t switch_id)  __attribute__ ((noreturn));
 
@@ -239,6 +247,11 @@ namespace saiplayer
             void onBfdSessionStateChange(
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
+
+            void onPortHostTxReady(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_id_t port_id,
+                    _In_ sai_port_host_tx_ready_status_t host_tx_ready_status);
 
         private:
 

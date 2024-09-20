@@ -13,7 +13,7 @@ R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [
     -p --profile profile
         Provide profile map file
     -t --startType type
-        Specify start type (cold|warm|fast|fastfast)
+        Specify start type (cold|warm|fast|fastfast|express)
     -u --useTempView
         Use temporary view between init and apply
     -S --disableExitSleep
