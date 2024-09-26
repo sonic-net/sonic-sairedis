@@ -94,7 +94,14 @@ function set_start_type()
         CMD_ARGS+=" -t fast"
     elif [ x"$FASTFAST_REBOOT" == x"yes" ]; then
         CMD_ARGS+=" -t fastfast"
+    elif [ x"$EXPRESS_REBOOT" == x"yes" ]; then
+        CMD_ARGS+=" -t express"
     fi
+}
+
+config_syncd_pensando()
+{
+    CMD_ARGS+=" -l"
 }
 
 config_syncd_cisco_8000()
@@ -213,9 +220,13 @@ config_syncd_mlnx()
 
     if [[ -f $HWSKU_DIR/sai.profile.j2 ]]; then
         export RESOURCE_TYPE="$(echo $SYNCD_VARS | jq -r '.resource_type')"
-        j2 -e RESOURCE_TYPE $HWSKU_DIR/sai.profile.j2 -o /tmp/sai.profile
+        j2 -e RESOURCE_TYPE $HWSKU_DIR/sai.profile.j2 -o /tmp/sai-temp.profile
     else
-        cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
+        cat $HWSKU_DIR/sai.profile > /tmp/sai-temp.profile
+    fi
+
+    if [[ -f $SAI_COMMON_FILE_PATH ]]; then
+        cat $SAI_COMMON_FILE_PATH >> /tmp/sai-temp.profile
     fi
 
     # keep only the first occurence of each prefix with '=' sign, and remove the others.
@@ -352,6 +363,53 @@ config_syncd_innovium()
     mkdir -p $II_ROOT
 }
 
+config_syncd_nvidia_bluefield()
+{
+    # Read MAC addresses
+    base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
+    hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')
+    single_port=$([[ $hwsku == *"-com-dpu" ]] && echo true || echo false)
+
+    eth0_mac=$(cat /sys/class/net/Ethernet0/address)
+
+    cp $HWSKU_DIR/sai.profile /tmp/sai.profile
+
+    # Update sai.profile with MAC_ADDRESS
+    echo "DEVICE_MAC_ADDRESS=$base_mac" >> /tmp/sai.profile
+    echo "PORT_1_MAC_ADDRESS=$eth0_mac" >> /tmp/sai.profile
+
+    CMD_ARGS+=" -l -p /tmp/sai.profile -w 180000000"
+
+    SDK_DUMP_PATH=$(cat /tmp/sai.profile | grep "SAI_DUMP_STORE_PATH" | cut -d = -f2)
+    if [ ! -d "$SDK_DUMP_PATH" ]; then
+        mkdir -p "$SDK_DUMP_PATH"
+    fi
+
+    echo 9216 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    mkdir -p /mnt/huge
+    mount -t hugetlbfs pagesize=1GB /mnt/huge
+
+    devlink dev eswitch set pci/0000:03:00.0 mode legacy
+    devlink dev eswitch set pci/0000:03:00.0 mode switchdev
+
+    if [[ $hwsku != *"-C1" ]] && [[ $single_port == false ]]; then
+        devlink dev param set pci/0000:03:00.0 name esw_multiport value 1 cmode runtime
+        devlink dev param set pci/0000:03:00.1 name esw_multiport value 1 cmode runtime
+    fi
+
+    ethtool -A Ethernet0 rx off tx off
+
+    if [[ $single_port == false ]]; then
+        eth4_mac=$(cat /sys/class/net/Ethernet4/address)
+        echo "PORT_2_MAC_ADDRESS=$eth4_mac" >> /tmp/sai.profile
+
+        devlink dev eswitch set pci/0000:03:00.1 mode legacy
+        devlink dev eswitch set pci/0000:03:00.1 mode switchdev
+
+        ethtool -A Ethernet4 rx off tx off
+    fi
+}
+
 config_syncd_xsight()
 {
     SYS_MODE="asic"
@@ -434,6 +492,8 @@ config_syncd()
         config_syncd_nvidia_bluefield
     elif [ "$SONIC_ASIC_TYPE" == "xsight" ]; then
         config_syncd_xsight
+    elif [ "$SONIC_ASIC_TYPE" == "pensando" ]; then
+	config_syncd_pensando
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
