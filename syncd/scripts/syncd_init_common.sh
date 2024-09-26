@@ -94,14 +94,7 @@ function set_start_type()
         CMD_ARGS+=" -t fast"
     elif [ x"$FASTFAST_REBOOT" == x"yes" ]; then
         CMD_ARGS+=" -t fastfast"
-    elif [ x"$EXPRESS_REBOOT" == x"yes" ]; then
-        CMD_ARGS+=" -t express"
     fi
-}
-
-config_syncd_pensando()
-{
-    CMD_ARGS+=" -l"
 }
 
 config_syncd_cisco_8000()
@@ -220,13 +213,9 @@ config_syncd_mlnx()
 
     if [[ -f $HWSKU_DIR/sai.profile.j2 ]]; then
         export RESOURCE_TYPE="$(echo $SYNCD_VARS | jq -r '.resource_type')"
-        j2 -e RESOURCE_TYPE $HWSKU_DIR/sai.profile.j2 -o /tmp/sai-temp.profile
+        j2 -e RESOURCE_TYPE $HWSKU_DIR/sai.profile.j2 -o /tmp/sai.profile
     else
-        cat $HWSKU_DIR/sai.profile > /tmp/sai-temp.profile
-    fi
-
-    if [[ -f $SAI_COMMON_FILE_PATH ]]; then
-        cat $SAI_COMMON_FILE_PATH >> /tmp/sai-temp.profile
+        cat $HWSKU_DIR/sai.profile > /tmp/sai.profile
     fi
 
     # keep only the first occurence of each prefix with '=' sign, and remove the others.
@@ -330,6 +319,24 @@ config_syncd_vs()
     CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
 }
 
+vpp_api_check()
+{
+   VPP_API_SOCK=$1
+   while true
+   do
+      [ -S "$VPP_API_SOCK" ] && vpp_api_test socket-name $VPP_API_SOCK <<< "show_version" 2>/dev/null | grep "version:" && break
+      sleep 1
+   done
+}
+
+config_syncd_vpp()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    vpp_api_check "/run/vpp/api.sock"
+    source /etc/sonic/vpp/syncd_vpp_env
+    export NO_LINUX_NL
+}
+
 config_syncd_soda()
 {
     # Add support for SAI bulk operations
@@ -343,53 +350,6 @@ config_syncd_innovium()
     export II_ROOT="/var/log/invm"
     export II_APPEND_LOG=1
     mkdir -p $II_ROOT
-}
-
-config_syncd_nvidia_bluefield()
-{
-    # Read MAC addresses
-    base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
-    hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')
-    single_port=$([[ $hwsku == *"-com-dpu" ]] && echo true || echo false)
-
-    eth0_mac=$(cat /sys/class/net/Ethernet0/address)
-
-    cp $HWSKU_DIR/sai.profile /tmp/sai.profile
-
-    # Update sai.profile with MAC_ADDRESS
-    echo "DEVICE_MAC_ADDRESS=$base_mac" >> /tmp/sai.profile
-    echo "PORT_1_MAC_ADDRESS=$eth0_mac" >> /tmp/sai.profile
-
-    CMD_ARGS+=" -l -p /tmp/sai.profile -w 180000000"
-
-    SDK_DUMP_PATH=$(cat /tmp/sai.profile | grep "SAI_DUMP_STORE_PATH" | cut -d = -f2)
-    if [ ! -d "$SDK_DUMP_PATH" ]; then
-        mkdir -p "$SDK_DUMP_PATH"
-    fi
-
-    echo 9216 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
-    mkdir -p /mnt/huge
-    mount -t hugetlbfs pagesize=1GB /mnt/huge
-
-    devlink dev eswitch set pci/0000:03:00.0 mode legacy
-    devlink dev eswitch set pci/0000:03:00.0 mode switchdev
-
-    if [[ $hwsku != *"-C1" ]] && [[ $single_port == false ]]; then
-        devlink dev param set pci/0000:03:00.0 name esw_multiport value 1 cmode runtime
-        devlink dev param set pci/0000:03:00.1 name esw_multiport value 1 cmode runtime
-    fi
-
-    ethtool -A Ethernet0 rx off tx off
-
-    if [[ $single_port == false ]]; then
-        eth4_mac=$(cat /sys/class/net/Ethernet4/address)
-        echo "PORT_2_MAC_ADDRESS=$eth4_mac" >> /tmp/sai.profile
-
-        devlink dev eswitch set pci/0000:03:00.1 mode legacy
-        devlink dev eswitch set pci/0000:03:00.1 mode switchdev
-
-        ethtool -A Ethernet4 rx off tx off
-    fi
 }
 
 config_syncd_xsight()
@@ -464,6 +424,8 @@ config_syncd()
         config_syncd_nephos
     elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
         config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "vpp" ]; then
+        config_syncd_vpp
     elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
         config_syncd_innovium
     elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
@@ -472,8 +434,6 @@ config_syncd()
         config_syncd_nvidia_bluefield
     elif [ "$SONIC_ASIC_TYPE" == "xsight" ]; then
         config_syncd_xsight
-    elif [ "$SONIC_ASIC_TYPE" == "pensando" ]; then
-	config_syncd_pensando
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
