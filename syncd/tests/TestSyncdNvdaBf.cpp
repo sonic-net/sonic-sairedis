@@ -239,6 +239,28 @@ void SyncdNvdaBfTest::RemoveEni(sai_object_id_t eni)
     EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_ENI, eni));
 }
 
+sai_object_id_t SyncdNvdaBfTest::CreateOutboundRoutingGroup(bool disabled)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t oid;
+    sai_attribute_t attr;
+
+    attr.id = SAI_OUTBOUND_ROUTING_GROUP_ATTR_DISABLED;
+    attr.value.booldata = disabled;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->create((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_GROUP, &oid, m_switchId, 1, &attr));
+
+    return oid;
+}
+
+void SyncdNvdaBfTest::RemoveOutboundRoutingGroup(sai_object_id_t outbound_routing_group)
+{
+    SWSS_LOG_ENTER();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_ROUTING_GROUP, outbound_routing_group));
+}
+
 TEST_F(SyncdNvdaBfTest, dashDirectionLookup)
 {
     sai_attribute_t attr;
@@ -1100,7 +1122,7 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntry)
 
     sai_object_id_t counter = CreateCounter();
     sai_object_id_t vnet = CreateVnet(101);
-    sai_object_id_t eni = CreateEni(vnet);
+    sai_object_id_t outbound_routing_group = CreateOutboundRoutingGroup(false);
 
     sai_ip_address_t oip6;
     oip6.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
@@ -1108,7 +1130,7 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntry)
 
     sai_outbound_routing_entry_t entry0;
     entry0.switch_id = m_switchId;
-    entry0.eni_id = eni;
+    entry0.outbound_routing_group_id = outbound_routing_group;
     entry0.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
     inet_pton(AF_INET, "192.168.1.0", &entry0.destination.addr.ip4);
     inet_pton(AF_INET, "255.255.255.0", &entry0.destination.mask.ip4);
@@ -1140,7 +1162,7 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntry)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->remove(&entry0));
 
-    RemoveEni(eni);
+    RemoveOutboundRoutingGroup(outbound_routing_group);
     RemoveVnet(vnet);
     RemoveCounter(counter);
 }
@@ -1161,8 +1183,8 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntryBulk)
 
     sai_object_id_t vnet0 = CreateVnet(101);
     sai_object_id_t vnet1 = CreateVnet(102);
-    sai_object_id_t eni0 = CreateEni(vnet0);
-    sai_object_id_t eni1 = CreateEni(vnet1);
+    sai_object_id_t outbound_routing_group0 = CreateOutboundRoutingGroup(false);
+    sai_object_id_t outbound_routing_group1 = CreateOutboundRoutingGroup(false);
 
     sai_ip_prefix_t dst0 = {};
     sai_ip_prefix_t dst1 = {};
@@ -1196,8 +1218,8 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntryBulk)
     sai_status_t statuses[entries_count] = {};
 
     sai_outbound_routing_entry_t entries[entries_count] = {
-        { .switch_id = m_switchId, .eni_id = eni0, .destination = dst0},
-        { .switch_id = m_switchId, .eni_id = eni1, .destination = dst1},
+        { .switch_id = m_switchId, .destination = dst0, .outbound_routing_group_id = outbound_routing_group0},
+        { .switch_id = m_switchId, .destination = dst1, .outbound_routing_group_id = outbound_routing_group1},
     };
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m_sairedis->bulkCreate(entries_count, entries, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
@@ -1210,8 +1232,8 @@ TEST_F(SyncdNvdaBfTest, dashOutboundRoutingEntryBulk)
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 
-    RemoveEni(eni0);
-    RemoveEni(eni1);
+    RemoveOutboundRoutingGroup(outbound_routing_group0);
+    RemoveOutboundRoutingGroup(outbound_routing_group1);
     RemoveVnet(vnet0);
     RemoveVnet(vnet1);
     RemoveCounter(counter0);

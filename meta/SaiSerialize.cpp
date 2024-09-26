@@ -1041,6 +1041,14 @@ std::string sai_serialize_buffer_pool_stat(
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_buffer_pool_stat_t);
 }
 
+std::string sai_serialize_eni_stat(
+        _In_ const sai_eni_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_eni_stat_t);
+}
+
 std::string sai_serialize_tunnel_stat(
         _In_ const sai_tunnel_stat_t counter)
 {
@@ -1822,8 +1830,8 @@ std::string sai_serialize_outbound_routing_entry(
     json j;
 
     j["switch_id"] = sai_serialize_object_id(outbound_routing_entry.switch_id);
-    j["eni_id"] = sai_serialize_object_id(outbound_routing_entry.eni_id);
     j["destination"] = sai_serialize_ip_prefix(outbound_routing_entry.destination);
+    j["outbound_routing_group_id"] = sai_serialize_object_id(outbound_routing_entry.outbound_routing_group_id);
 
     return j.dump();
 }
@@ -4703,8 +4711,8 @@ void sai_deserialize_outbound_routing_entry(
     json j = json::parse(s);
 
     sai_deserialize_object_id(j["switch_id"], outbound_routing_entry.switch_id);
-    sai_deserialize_object_id(j["eni_id"], outbound_routing_entry.eni_id);
     sai_deserialize_ip_prefix(j["destination"], outbound_routing_entry.destination);
+    sai_deserialize_object_id(j["outbound_routing_group_id"], outbound_routing_entry.outbound_routing_group_id);
 }
 
 void sai_deserialize_outbound_ca_to_pa_entry(
