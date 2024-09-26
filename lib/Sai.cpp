@@ -231,8 +231,9 @@ sai_status_t Sai::set(
 
         for (auto& kvp: m_contextMap)
         {
-            if (objectType == SAI_OBJECT_TYPE_SWITCH && (attr->id == SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER ||
-                    attr->id == SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP))
+            if (objectType == SAI_OBJECT_TYPE_SWITCH && objectId != SAI_NULL_OBJECT_ID &&
+                    (attr->id == SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER ||
+                     attr->id == SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP))
             {
                 if (!kvp.second->m_redisSai->containsSwitch(objectId))
                 {

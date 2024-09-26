@@ -284,10 +284,14 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP;
     attr.value.ptr = (void*)&flexCounterGroupParam;
 
-    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    // Failed to create if the switchId is invalid for the context
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, m_switchId + 1, &attr);
+    std::vector<swss::FieldValueTuple> fvVector, fvVectorExpected;
+    ASSERT_FALSE(m_flexCounterGroupTable->get("PORT_STAT_COUNTER", fvVector));
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, m_switchId, &attr);
     ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
-    std::vector<swss::FieldValueTuple> fvVector, fvVectorExpected;
     ASSERT_TRUE(m_flexCounterGroupTable->get("PORT_STAT_COUNTER", fvVector));
     fvVectorExpected.emplace_back(POLL_INTERVAL_FIELD, poll_interval);
     fvVectorExpected.emplace_back(STATS_MODE_FIELD, stats_mode);
@@ -315,7 +319,7 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER;
     attr.value.ptr = (void*)&flexCounterParam;
 
-    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, m_switchId, &attr);
     ASSERT_EQ(status, SAI_STATUS_FAILURE);
     ASSERT_FALSE(m_flexCounterTable->get(key, fvVector));
 
@@ -323,7 +327,7 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     key = "PORT_STAT_COUNTER:" + sai_serialize_object_id(oidList[0]);
     flexCounterParam.counter_key.list = (int8_t*)const_cast<char *>(key.c_str());
     flexCounterParam.counter_key.count = (uint32_t)key.length();
-    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, m_switchId, &attr);
     ASSERT_EQ(status, SAI_STATUS_SUCCESS);
 
     ASSERT_TRUE(m_flexCounterTable->get(key, fvVector));
@@ -336,7 +340,7 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     flexCounterParam.counter_field_name.count = 0;
 
     // 3. Stop counter polling for the port
-    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, m_switchId, &attr);
     ASSERT_EQ(status, SAI_STATUS_SUCCESS);
     ASSERT_FALSE(m_flexCounterTable->get(key, fvVector));
 
@@ -351,7 +355,7 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP;
     attr.value.ptr = (void*)&flexCounterGroupParam;
 
-    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr);
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, m_switchId, &attr);
     ASSERT_EQ(status, SAI_STATUS_SUCCESS);
     ASSERT_FALSE(m_flexCounterTable->get(key, fvVector));
 
