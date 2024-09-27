@@ -1153,37 +1153,26 @@ void FlexCounter::addCounterPlugin(
         {
             setStatsMode(value);
         }
-        else if (field == QUEUE_PLUGIN_FIELD)
-        {
-            getCounterContext(COUNTER_TYPE_QUEUE)->addPlugins(shaStrings);
-        }
-        else if (field == PG_PLUGIN_FIELD)
-        {
-            getCounterContext(COUNTER_TYPE_PG)->addPlugins(shaStrings);
-        }
-        else if (field == PORT_PLUGIN_FIELD)
-        {
-            getCounterContext(COUNTER_TYPE_PORT)->addPlugins(shaStrings);
-        }
-        else if (field == RIF_PLUGIN_FIELD)
-        {
-            getCounterContext(COUNTER_TYPE_RIF)->addPlugins(shaStrings);
-        }
-        else if (field == BUFFER_POOL_PLUGIN_FIELD)
-        {
-            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->addPlugins(shaStrings);
-        }
-        else if (field == TUNNEL_PLUGIN_FIELD)
-        {
-            getCounterContext(COUNTER_TYPE_TUNNEL)->addPlugins(shaStrings);
-        }
-        else if (field == FLOW_COUNTER_PLUGIN_FIELD)
-        {
-            getCounterContext(COUNTER_TYPE_FLOW)->addPlugins(shaStrings);
-        }
         else
         {
-            SWSS_LOG_ERROR("Field is not supported %s", field.c_str());
+            std::map<std::string, std::string> plugIn2CounterType = {
+                {QUEUE_PLUGIN_FIELD, COUNTER_TYPE_QUEUE},
+                {PG_PLUGIN_FIELD, COUNTER_TYPE_PG},
+                {PORT_PLUGIN_FIELD, COUNTER_TYPE_PORT},
+                {RIF_PLUGIN_FIELD, COUNTER_TYPE_RIF},
+                {BUFFER_POOL_PLUGIN_FIELD, COUNTER_TYPE_BUFFER_POOL},
+                {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
+                {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW}};
+
+            auto counterTypeRef = plugIn2CounterType.find(field);
+            if (counterTypeRef != plugIn2CounterType.end())
+            {
+                getCounterContext(counterTypeRef->second)->addPlugins(shaStrings);
+            }
+            else
+            {
+                SWSS_LOG_ERROR("Field is not supported %s", field.c_str());
+            }
         }
     }
 
