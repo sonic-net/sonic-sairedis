@@ -553,6 +553,11 @@ namespace saimeta
                     _In_ bool create,
                     _In_ bool get = false);
 
+             sai_status_t meta_sai_validate_flow_entry(
+                    _In_ const sai_flow_entry_t* flow_entry,
+                    _In_ bool create,
+                    _In_ bool get = false);
+
         public:
 
             /*

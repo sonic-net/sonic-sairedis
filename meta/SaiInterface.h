@@ -22,6 +22,7 @@ extern "C" {
     _X(PA_VALIDATION_ENTRY,pa_validation_entry);                             \
     _X(OUTBOUND_ROUTING_ENTRY,outbound_routing_entry);                       \
     _X(OUTBOUND_CA_TO_PA_ENTRY,outbound_ca_to_pa_entry);                     \
+    _X(FLOW_ENTRY,flow_entry);                     \
 
 #define SAIREDIS_DECLARE_EVERY_BULK_ENTRY(_X)                                \
     _X(FDB_ENTRY,fdb_entry);                                                 \
@@ -37,6 +38,7 @@ extern "C" {
     _X(PA_VALIDATION_ENTRY,pa_validation_entry);                             \
     _X(OUTBOUND_ROUTING_ENTRY,outbound_routing_entry);                       \
     _X(OUTBOUND_CA_TO_PA_ENTRY,outbound_ca_to_pa_entry);                     \
+    _X(FLOW_ENTRY,flow_entry);                     \
 
 #define SAIREDIS_SAIINTERFACE_DECLARE_QUAD_ENTRY_VIRTUAL(OT,ot)     \
     virtual sai_status_t create(                                    \

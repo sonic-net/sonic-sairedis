@@ -1,5 +1,5 @@
 [submodule "SAI"]
 	path = SAI
-	url = https://github.com/opencomputeproject/SAI.git
+	url = https://github.com/jimmyzhai/SAI.git
 	ignore = dirty
 	branch = v1.3

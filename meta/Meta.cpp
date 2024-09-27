@@ -3116,6 +3116,52 @@ sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t Meta::meta_sai_validate_flow_entry(
+        _In_ const sai_flow_entry_t* flow_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (flow_entry == NULL)
+    {
+        SWSS_LOG_ERROR("flow_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_meta_key_t meta_key_flow_entry = {
+        .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_FLOW_ENTRY,
+        .objectkey = {
+            .key = { .flow_entry = *flow_entry }
+        }
+    };
+
+    if (create)
+    {
+        if (m_saiObjectCollection.objectExists(meta_key_flow_entry))
+        {
+            SWSS_LOG_ERROR("object key %s already exists",
+                    sai_serialize_object_meta_key(meta_key_flow_entry).c_str());
+
+            return SAI_STATUS_ITEM_ALREADY_EXISTS;
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // set, get, remove
+    if (!m_saiObjectCollection.objectExists(meta_key_flow_entry))
+    {
+        SWSS_LOG_ERROR("object key %s doesn't exist",
+                    sai_serialize_object_meta_key(meta_key_flow_entry).c_str());
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t Meta::meta_generic_validation_create(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
