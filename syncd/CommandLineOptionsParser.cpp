@@ -19,9 +19,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:w:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:B:w:uSUCsz:lrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:w:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:B:w:uSUCsz:lh";
 #endif // SAITHRIFT
 
     while (true)
@@ -46,6 +46,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
 #endif // SAITHRIFT
+            { "supportingBulkCounters",  required_argument, 0, 'B' },
             { "help",                    no_argument,       0, 'h' },
             { 0,                         0,                 0,  0  }
         };
@@ -133,6 +134,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 break;
 #endif // SAITHRIFT
 
+            case 'B':
+                options->m_supportingBulkCounterGroups = std::string(optarg);
+                break;
+
             case 'h':
                 printUsage();
                 exit(EXIT_SUCCESS);
@@ -156,9 +161,9 @@ void CommandLineOptionsParser::printUsage()
     SWSS_LOG_ENTER();
 
 #ifdef SAITHRIFT
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-r] [-m portmap] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-r] [-m portmap] [-B supportingBulkCounters] [-h]" << std::endl;
 #else
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-h]" << std::endl;
 #endif // SAITHRIFT
 
     std::cout << "    -d --diag" << std::endl;
@@ -198,6 +203,9 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Specify port map file" << std::endl;
 
 #endif // SAITHRIFT
+
+    std::cout << "    -B --supportingBulkCounters" << std::endl;
+    std::cout << "        Counter groups that support bulk polling" << std::endl;
 
     std::cout << "    -h --help" << std::endl;
     std::cout << "        Print out this message" << std::endl;

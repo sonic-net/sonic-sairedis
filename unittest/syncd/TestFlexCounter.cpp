@@ -88,7 +88,7 @@ void testAddRemoveCounter(
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter fc("test", sai, "COUNTERS_DB");
+    FlexCounter fc("test", sai, "COUNTERS_DB", false);
 
     test_syncd::mockVidManagerObjectTypeQuery(object_type);
 
@@ -441,7 +441,7 @@ TEST(FlexCounter, noSupportedCounters)
         return SAI_STATUS_FAILURE;
     };
 
-    FlexCounter fc("test", sai, "COUNTERS_DB");
+    FlexCounter fc("test", sai, "COUNTERS_DB", false);
     std::vector<swss::FieldValueTuple> values;
     values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_OCTETS,SAI_PORT_STAT_IF_IN_UCAST_PKTS");
 
@@ -456,7 +456,7 @@ void testAddRemovePlugin(const std::string& pluginFieldName)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter fc("test", sai, "COUNTERS_DB");
+    FlexCounter fc("test", sai, "COUNTERS_DB", false);
 
     std::vector<swss::FieldValueTuple> values;
     values.emplace_back(pluginFieldName, "dummy_sha_strings");
@@ -484,7 +484,7 @@ TEST(FlexCounter, addRemoveCounterPlugin)
 
 TEST(FlexCounter, addRemoveCounterForPort)
 {
-    FlexCounter fc("test", sai, "COUNTERS_DB");
+    FlexCounter fc("test", sai, "COUNTERS_DB", false);
 
     sai_object_id_t counterVid{0x1000000000000};
     sai_object_id_t counterRid{0x1000000000000};
@@ -799,7 +799,7 @@ TEST(FlexCounter, counterIdChange)
         }
     };
 
-    FlexCounter fc("test", sai, "COUNTERS_DB");
+    FlexCounter fc("test", sai, "COUNTERS_DB", false);
 
     test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
 

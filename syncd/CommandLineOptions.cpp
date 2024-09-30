@@ -74,6 +74,8 @@ std::string CommandLineOptions::getCommandLineString() const
 
 #endif // SAITHRIFT
 
+    ss << " supportingBulkCounters" << m_supportingBulkCounterGroups;
+
     return ss.str();
 }
 
