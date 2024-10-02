@@ -294,6 +294,9 @@ namespace sairedis
             sai_status_t processObjectTypeGetAvailabilityQuery(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
+            sai_status_t processStatsCapabilityQuery(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
         private:
 
             bool m_apiInitialized;

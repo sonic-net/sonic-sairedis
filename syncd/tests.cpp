@@ -20,6 +20,7 @@ extern "C" {
 #include "meta/OidRefCounter.h"
 #include "meta/SaiAttrWrapper.h"
 #include "meta/SaiObjectCollection.h"
+#include "meta/RedisSelectableChannel.h"
 
 #include "swss/logger.h"
 #include "swss/dbconnector.h"
@@ -63,6 +64,7 @@ namespace swss {
 }
 
 static std::shared_ptr<swss::DBConnector> g_db1;
+static std::shared_ptr<Syncd> g_syncd_obj;
 
 static sai_next_hop_group_api_t test_next_hop_group_api;
 static std::vector<std::tuple<sai_object_id_t, sai_object_id_t, std::vector<sai_attribute_t>>> created_next_hop_group_member;
@@ -829,6 +831,8 @@ void syncdThread()
 
     auto syncd = std::make_shared<Syncd>(vendorSai, commandLineOptions, isWarmStart);
 
+    g_syncd_obj = syncd;
+
     SWSS_LOG_WARN("starting run");
     syncd->run();
 }
@@ -889,6 +893,40 @@ void test_watchdog_timer_clock_rollback()
     twd.setEndTime();
 }
 
+void test_query_stats_capability_query()
+{
+    SWSS_LOG_ENTER();
+
+    MetadataLogger::initialize();
+
+    sai_object_id_t switch_id = 0x21000000000000;
+
+    /* KeyOpFieldsValuesTuple tuple = make_tuple(member_key, SET_COMMAND, fvVector); */
+    auto switchIdStr = sai_serialize_object_id(switch_id);
+
+    auto objectTypeStr = sai_serialize_object_type(SAI_OBJECT_TYPE_QUEUE);
+    const std::string list_size = std::to_string(1);
+    const std::string op = "stats_capability_query";
+
+    const std::vector<swss::FieldValueTuple> entry =
+    {
+        swss::FieldValueTuple("OBJECT_TYPE", objectTypeStr),
+        swss::FieldValueTuple("LIST_SIZE", list_size)
+    };
+
+    auto consumer = sairedis::RedisSelectableChannel(
+                g_db1,
+                ASIC_STATE_TABLE,
+                REDIS_TABLE_GETRESPONSE,
+                TEMP_PREFIX,
+                false);
+
+    consumer.set(switchIdStr, entry, op);
+
+    sleep(1);
+    g_syncd_obj->processEvent(consumer);
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -919,7 +957,10 @@ int main()
 
         test_invoke_dump();
 
+        test_query_stats_capability_query();
+
         printf("\n[ %s ]\n\n", sai_serialize_status(SAI_STATUS_SUCCESS).c_str());
+
     }
     catch (const std::exception &e)
     {

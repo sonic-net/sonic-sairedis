@@ -33,4 +33,4 @@ testdash_gtest_LDADD = -lgtest -lhiredis -lswsscommon -lpthread \
 				   $(top_srcdir)/lib/libsairedis.la $(top_srcdir)/syncd/libSyncd.a \
 				   -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
-TESTS = checksaiapi.sh aspellcheck.pl conflictnames.pl swsslogentercheck.sh checkwhitespace.sh tests BCM56850.pl MLNX2700.pl BCM56971B0.pl NVDAMBF2H536C.pl testdash_gtest
+TESTS = checksaiapi.sh aspellcheck.pl conflictnames.pl swsslogentercheck.sh checkwhitespace.sh tests BCM56850.pl MLNX2700.pl BCM56971B0.pl NVDAMBF2H536C.pl MRVLTL7.pl testdash_gtest
