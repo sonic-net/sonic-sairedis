@@ -66,3 +66,19 @@ TEST(NotificationQueue, EnqueueLimitTest)
     }
 }
 
+TEST(NotificationQueue, tryDequeue)
+{
+    syncd::NotificationQueue nq(5, 3);
+
+    EXPECT_EQ(nq.getQueueSize(), 0);
+
+    swss::KeyOpFieldsValuesTuple item;
+
+    nq.enqueue(item);
+
+    EXPECT_EQ(nq.getQueueSize(), 1);
+
+    EXPECT_EQ(nq.tryDequeue(item), true);
+
+    EXPECT_EQ(nq.getQueueSize(), 0);
+}

@@ -18,7 +18,7 @@ NotificationQueue::NotificationQueue(
 {
     SWSS_LOG_ENTER();
 
-    // empty;
+    m_queue = std::make_shared<std::queue<swss::KeyOpFieldsValuesTuple>>();
 }
 
 NotificationQueue::~NotificationQueue()
@@ -34,7 +34,9 @@ bool NotificationQueue::enqueue(
     MUTEX;
 
     SWSS_LOG_ENTER();
+
     bool candidateToDrop = false;
+
     std::string currentEvent;
 
     /*
@@ -49,8 +51,10 @@ bool NotificationQueue::enqueue(
      * will also be dropped regardless of its event type to protect the device from crashing due to
      * running out of memory
      */
-    auto queueSize = m_queue.size();
+    auto queueSize = m_queue->size();
+
     currentEvent = kfvKey(item);
+
     if (currentEvent == m_lastEvent)
     {
         m_lastEventCount++;
@@ -60,12 +64,15 @@ bool NotificationQueue::enqueue(
         m_lastEventCount = 1;
         m_lastEvent = currentEvent;
     }
+
     if (queueSize >= m_queueSizeLimit)
     {
-        /* Too many queued up already check if notification fits condition to e dropped
+        /*
+         * Too many queued up already check if notification fits condition to e dropped
          * 1. All FDB events should be dropped at this point.
          * 2. All other notification events will start to drop if it reached the consecutive threshold limit
          */
+
         if (currentEvent == SAI_SWITCH_NOTIFICATION_NAME_FDB_EVENT)
         {
             candidateToDrop = true;
@@ -81,7 +88,7 @@ bool NotificationQueue::enqueue(
 
     if (!candidateToDrop)
     {
-        m_queue.push(item);
+        m_queue->push(item);
 
         return true;
     }
@@ -106,14 +113,38 @@ bool NotificationQueue::tryDequeue(
 
     SWSS_LOG_ENTER();
 
-    if (m_queue.empty())
+    if (m_queue->empty())
     {
         return false;
     }
 
-    item = m_queue.front();
+    item = m_queue->front();
 
-    m_queue.pop();
+    m_queue->pop();
+
+    if (m_queue->empty())
+    {
+        /*
+         * Since there could be burst of notifications, that allocated memory
+         * can be over 2GB, but when queue will be drained that memory will not
+         * be automatically released. Underlying deque container contains
+         * function shrink_to_fit but that is just a request, and usually this
+         * function does nothing.
+         *
+         * Make sure we will destroy queue and allocate new one. Assignment
+         * operator is not enough here, since internal deque container will not
+         * release memory under assignment. While making sure queue is deleted
+         * all memory will be released.
+         *
+         * Downside of this approach is that even if we will have steady stream
+         * of single notifications, each time we will allocate new queue.
+         * Partial solution for this could allocating new queue only when
+         * previous queue exceeded some size limit, for example 128 items.
+         */
+        m_queue = nullptr;
+
+        m_queue = std::make_shared<std::queue<swss::KeyOpFieldsValuesTuple>>();
+    }
 
     return true;
 }
@@ -124,5 +155,5 @@ size_t NotificationQueue::getQueueSize()
 
     SWSS_LOG_ENTER();
 
-    return m_queue.size();
+    return m_queue->size();
 }
