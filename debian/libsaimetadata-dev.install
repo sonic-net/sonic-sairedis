@@ -1,5 +1,12 @@
 meta/sai*.h usr/include/sai
 meta/Sai*.h usr/include/sai
+meta/Meta.h usr/include/sai
+meta/AttrKeyMap.h usr/include/sai
+meta/MetaKeyHasher.h usr/include/sai
+meta/OidRefCounter.h usr/include/sai
+meta/PortRelatedSet.h usr/include/sai
+meta/Notification*.h usr/include/sai
+meta/Globals.h usr/include/sai
 SAI/meta/sai*.h usr/include/sai
 usr/lib/*/libsaimetadata.so
 usr/lib/*/libsaimeta.so
