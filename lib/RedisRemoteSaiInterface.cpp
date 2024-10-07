@@ -493,6 +493,83 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
     return SAI_STATUS_FAILURE;
 }
 
+sai_status_t RedisRemoteSaiInterface::setLinkEventDampingConfig(
+        _In_ sai_object_type_t objectType,
+        _In_ sai_object_id_t objectId,
+        _In_ const std::vector<swss::FieldValueTuple> &values)
+{
+    SWSS_LOG_ENTER();
+
+    std::string key = sai_serialize_object_type(objectType) + ":" + sai_serialize_object_id(objectId);
+
+    m_communicationChannel->set(key, values, REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET);
+
+    if (m_syncMode)
+    {
+        swss::KeyOpFieldsValuesTuple kco;
+        auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_DAMPING_CONFIG_SET, kco);
+
+        m_recorder->recordGenericSetResponse(status);
+
+        return status;
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t RedisRemoteSaiInterface::setRedisPortExtensionAttribute(
+        _In_ sai_object_type_t objectType,
+        _In_ sai_object_id_t objectId,
+        _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr == nullptr)
+    {
+        SWSS_LOG_ERROR("attr pointer is null");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    std::string str_attr_id = sai_serialize_redis_port_attr_id(
+            static_cast<sai_redis_port_attr_t>(attr->id));
+
+    switch (attr->id)
+    {
+        case SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGORITHM:
+        {
+            std::string str_attr_value = sai_serialize_redis_link_event_damping_algorithm(
+                    static_cast<sai_redis_link_event_damping_algorithm_t>(attr->value.s32));
+
+            return setLinkEventDampingConfig(
+                    objectType, objectId, {swss::FieldValueTuple(str_attr_id, str_attr_value)});
+        }
+        case SAI_REDIS_PORT_ATTR_LINK_EVENT_DAMPING_ALGO_AIED_CONFIG:
+        {
+            sai_redis_link_event_damping_algo_aied_config_t *config =
+                    (sai_redis_link_event_damping_algo_aied_config_t *)attr->value.ptr;
+
+            if (config == NULL)
+            {
+                SWSS_LOG_ERROR("invalid link damping config attr value NULL");
+
+                return SAI_STATUS_INVALID_PARAMETER;
+            }
+
+            std::string str_attr_value = sai_serialize_redis_link_event_damping_aied_config(*config);
+
+            return setLinkEventDampingConfig(
+                    objectType, objectId, {swss::FieldValueTuple(str_attr_id, str_attr_value)});
+        }
+        default:
+            break;
+    }
+
+    SWSS_LOG_ERROR("unknown redis port extension attribute: %d", attr->id);
+
+    return SAI_STATUS_INVALID_PARAMETER;
+}
+
 bool RedisRemoteSaiInterface::isSaiS8ListValidString(
         _In_ const sai_s8_list_t &s8list)
 {
@@ -623,6 +700,11 @@ sai_status_t RedisRemoteSaiInterface::set(
     if (RedisRemoteSaiInterface::isRedisAttribute(objectType, attr))
     {
         return setRedisExtensionAttribute(objectType, objectId, attr);
+    }
+
+    if (RedisRemoteSaiInterface::isRedisPortAttribute(objectType, attr))
+    {
+        return setRedisPortExtensionAttribute(objectType, objectId, attr);
     }
 
     auto status = set(
@@ -1820,6 +1902,20 @@ bool RedisRemoteSaiInterface::isRedisAttribute(
     SWSS_LOG_ENTER();
 
     if ((objectType != SAI_OBJECT_TYPE_SWITCH) || (attr == nullptr) || (attr->id < SAI_SWITCH_ATTR_CUSTOM_RANGE_START))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool RedisRemoteSaiInterface::isRedisPortAttribute(
+        _In_ sai_object_id_t objectType,
+        _In_ const sai_attribute_t* attr)
+{
+    SWSS_LOG_ENTER();
+
+    if ((objectType != SAI_OBJECT_TYPE_PORT) || (attr == nullptr) || (attr->id < SAI_PORT_ATTR_CUSTOM_RANGE_START))
     {
         return false;
     }

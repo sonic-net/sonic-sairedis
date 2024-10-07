@@ -240,7 +240,8 @@ sai_status_t ClientSai::set(
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    if (RedisRemoteSaiInterface::isRedisAttribute(objectType, attr))
+    if (RedisRemoteSaiInterface::isRedisAttribute(objectType, attr) ||
+        RedisRemoteSaiInterface::isRedisPortAttribute(objectType, attr))
     {
         SWSS_LOG_ERROR("sairedis extension attributes are not supported in CLIENT mode");
 
