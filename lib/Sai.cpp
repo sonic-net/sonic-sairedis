@@ -224,16 +224,12 @@ sai_status_t Sai::set(
 
         // skip metadata if attribute is redis extension attribute
 
-        // TODO this is setting on all contexts, but maybe we want one specific?
-        // and do set on all if objectId == NULL
-
         bool success = true;
 
+        // Setting on all contexts if objectType != SAI_OBJECT_TYPE_SWITCH or objectId == NULL
         for (auto& kvp: m_contextMap)
         {
-            if (objectType == SAI_OBJECT_TYPE_SWITCH && objectId != SAI_NULL_OBJECT_ID &&
-                    (attr->id == SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER ||
-                     attr->id == SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP))
+            if (objectType == SAI_OBJECT_TYPE_SWITCH && objectId != SAI_NULL_OBJECT_ID)
             {
                 if (!kvp.second->m_redisSai->containsSwitch(objectId))
                 {

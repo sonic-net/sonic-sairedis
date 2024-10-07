@@ -2056,7 +2056,7 @@ bool RedisRemoteSaiInterface::containsSwitch(
 
     if (!m_switchContainer->contains(switchId))
     {
-        SWSS_LOG_WARN("context %s failed to find switch %s",
+        SWSS_LOG_INFO("context %s failed to find switch %s",
                 m_contextConfig->m_name.c_str(), sai_serialize_object_id(switchId).c_str());
         return false;
     }
