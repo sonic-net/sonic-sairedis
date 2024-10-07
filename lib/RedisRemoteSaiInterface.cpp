@@ -456,6 +456,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
             m_communicationChannel->flush();
 
+            m_recorder->flush();
+
             return SAI_STATUS_SUCCESS;
 
         case SAI_REDIS_SWITCH_ATTR_RECORDING_OUTPUT_DIR:
