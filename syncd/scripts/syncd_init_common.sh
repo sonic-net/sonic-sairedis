@@ -179,8 +179,10 @@ function merge_config_yml_files()
             if [ "${line::1}" == '#' ];then
                 echo "        $line" >> $to_file
             elif [ "$line" == "[Overwrite Section]"];then
+                #Overwrite section in common config should
+                #be located after normal section
                 override=true
-				echo "        # $line" >> $to_file
+                echo "        # $line" >> $to_file
                 echo "Merge properties with override $override"
             else
                 sedline=${line%:*}
