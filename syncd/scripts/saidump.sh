@@ -10,8 +10,7 @@ save_saidump_by_rdb()
 import json
 with open('$filepath') as json_file:
   data = json.load(json_file)
-  print(data['INSTANCES']['redis']['hostname'], data['INSTANCES']['redis']['port'], data['INSTANCES']['redis']['unix_socket_path'])
-  json_file.close()")
+  print(data['INSTANCES']['redis']['hostname'], data['INSTANCES']['redis']['port'], data['INSTANCES']['redis']['unix_socket_path'])")
 
   # split
   redis_config=(${redis_config// / })
@@ -26,7 +25,7 @@ with open('$filepath') as json_file:
   logger "saidump.sh: [2] Run rdb-cli command to convert the dump files into JSON files."
   rdb-cli $redis_dir/dump.rdb json | tee $redis_dir/dump.json > /dev/null
 
-  logger "saidump.sh: [3] Run saidump -r to update the JSON files' format as same as the saidump before. Then we can get the saidump's result in standard output."
+  logger "saidump.sh: [3] Run saidump -r to get the result at standard output from the JSON file."
   saidump -r $redis_dir/dump.json -m 100
 
   logger "saidump.sh: [4] Clear the temporary files."
