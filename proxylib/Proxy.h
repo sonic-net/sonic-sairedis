@@ -206,5 +206,7 @@ namespace saiproxy
              * notifications.
              */
             uint64_t m_notificationsSentCount;
+
+            sai_api_version_t m_apiVersion;
     };
 }

@@ -146,10 +146,23 @@ Syncd::Syncd(
                 modifyRedis);
     }
 
+    sai_api_version_t apiVersion = SAI_VERSION(0,0,0); // invalid version
+
+    auto st = m_vendorSai->queryApiVersion(&apiVersion);
+
+    if (st != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_WARN("failed to obtain libsai api version: %s", sai_serialize_status(st).c_str());
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("libsai api version: %lu", apiVersion);
+    }
+
     m_client = std::make_shared<RedisClient>(m_dbAsic);
 
     m_processor = std::make_shared<NotificationProcessor>(m_notifications, m_client, std::bind(&Syncd::syncProcessNotification, this, _1));
-    m_handler = std::make_shared<NotificationHandler>(m_processor);
+    m_handler = std::make_shared<NotificationHandler>(m_processor, apiVersion);
 
     m_sn.onFdbEvent = std::bind(&NotificationHandler::onFdbEvent, m_handler.get(), _1, _2);
     m_sn.onNatEvent = std::bind(&NotificationHandler::onNatEvent, m_handler.get(), _1, _2);
