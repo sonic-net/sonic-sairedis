@@ -82,11 +82,11 @@ Proxy::Proxy(
         SWSS_LOG_NOTICE("api initialized success");
     }
 
-    auto status = m_vendorSai->queryApiVersion(&m_apiVersion);
+    auto st = m_vendorSai->queryApiVersion(&m_apiVersion);
 
     if (status != SAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_WARN("failed to obtain libsai api version: %s", sai_serialize_status(status).c_str());
+        SWSS_LOG_WARN("failed to obtain libsai api version: %s", sai_serialize_status(st).c_str());
     }
     else
     {
@@ -1126,7 +1126,7 @@ void Proxy::onPortStateChange(
 {
     SWSS_LOG_ENTER();
 
-    auto ntfdata = Workaround::convertPortOperStatusNotification(count, data, m_apiVersion);
+    auto ntfdata = syncd::Workaround::convertPortOperStatusNotification(count, data, m_apiVersion);
 
     auto s = sai_serialize_port_oper_status_ntf((uint32_t)ntfdata.size(), ntfdata.data());
 

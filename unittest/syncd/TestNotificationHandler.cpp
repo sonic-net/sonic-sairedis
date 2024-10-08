@@ -35,7 +35,7 @@ TEST(NotificationHandler, NotificationHandlerTest)
     auto notificationProcessor =
       std::make_shared<NotificationProcessor>(nullptr, nullptr, nullptr);
     auto notificationHandler =
-      std::make_shared<NotificationHandler>(notificationProcessor);
+      std::make_shared<NotificationHandler>(notificationProcessor, 0);
 
     notificationHandler->updateNotificationsPointers(1, attrs.data());
     uint32_t count;
