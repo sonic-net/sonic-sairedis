@@ -227,6 +227,9 @@ namespace sairedis
 
             const std::map<sai_object_id_t, swss::TableDump>& getTableDump() const;
 
+            bool containsSwitch(
+                    _In_ sai_object_id_t switchId) const;
+
         private: // QUAD API helpers
 
             sai_status_t create(

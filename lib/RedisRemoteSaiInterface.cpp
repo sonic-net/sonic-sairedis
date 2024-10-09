@@ -2049,6 +2049,21 @@ sai_switch_notifications_t RedisRemoteSaiInterface::syncProcessNotification(
     return { };
 }
 
+bool RedisRemoteSaiInterface::containsSwitch(
+        _In_ sai_object_id_t switchId) const
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_switchContainer->contains(switchId))
+    {
+        SWSS_LOG_INFO("context %s failed to find switch %s",
+                m_contextConfig->m_name.c_str(), sai_serialize_object_id(switchId).c_str());
+        return false;
+    }
+
+    return true;
+}
+
 const std::map<sai_object_id_t, swss::TableDump>& RedisRemoteSaiInterface::getTableDump() const
 {
     SWSS_LOG_ENTER();
