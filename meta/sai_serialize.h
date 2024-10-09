@@ -162,6 +162,9 @@ std::string sai_serialize_outbound_routing_entry(
 std::string sai_serialize_outbound_ca_to_pa_entry(
         _In_ const sai_outbound_ca_to_pa_entry_t &outbound_ca_to_pa_entry);
 
+std::string sai_serialize_flow_entry(
+        _In_ const sai_flow_entry_t &flow_entry);
+
 void sai_deserialize_system_port_config_list(
         _In_ const std::string& s,
         _Out_ sai_system_port_config_list_t& sysportconfiglist,
@@ -458,6 +461,10 @@ void sai_deserialize_outbound_routing_entry(
 void sai_deserialize_outbound_ca_to_pa_entry(
         _In_ const std::string &s,
         _Out_ sai_outbound_ca_to_pa_entry_t& outbound_ca_to_pa_entry);
+
+void sai_deserialize_flow_entry(
+        _In_ const std::string &s,
+        _Out_ sai_flow_entry_t& flow_entry);
 
 void sai_deserialize_attr_value(
         _In_ const std::string& s,
