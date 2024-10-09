@@ -671,6 +671,145 @@ void test_bulk_route_set()
     ASSERT_SUCCESS("Failed to bulk remove route entry");
 }
 
+void test_bulk_neighbor_set()
+{
+    SWSS_LOG_ENTER();
+
+
+    sai_reinit();
+
+
+    sai_status_t    status;
+
+    sai_neighbor_api_t  *sai_neighbor_api = NULL;
+    sai_switch_api_t *sai_switch_api = NULL;
+    sai_virtual_router_api_t * sai_virtual_router_api = NULL;
+    sai_lag_api_t *sai_lag_api = NULL;
+    sai_router_interface_api_t *sai_rif_api = NULL;
+
+    sai_api_query(SAI_API_NEIGHBOR, (void**)&sai_neighbor_api);
+    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+    sai_api_query(SAI_API_VIRTUAL_ROUTER, (void**)&sai_virtual_router_api);
+    sai_api_query(SAI_API_ROUTER_INTERFACE, (void **)&sai_rif_api);
+    sai_api_query(SAI_API_LAG, (void**)&sai_lag_api);
+
+    uint32_t count = 3;
+
+    std::vector<sai_neighbor_entry_t> neighbors;
+    std::vector<sai_attribute_t> attrs;
+
+    sai_attribute_t swattr;
+
+    swattr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    swattr.value.booldata = true;
+
+    sai_object_id_t switch_id;
+    status = sai_switch_api->create_switch(&switch_id, 1, &swattr);
+
+    ASSERT_SUCCESS("Failed to create switch");
+
+    std::vector<std::vector<sai_attribute_t>> neighbor_attrs;
+    std::vector<const sai_attribute_t *> neighbor_attrs_array;
+    std::vector<uint32_t> neighbor_attrs_count;
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_neighbor_entry_t neighbor_entry;
+
+        // virtual router
+        sai_object_id_t vr;
+
+        status = sai_virtual_router_api->create_virtual_router(&vr, switch_id, 0, NULL);
+
+        ASSERT_SUCCESS("failed to create virtual router");
+
+        // create lag
+        sai_object_id_t lag;
+        status = sai_lag_api->create_lag(&lag, switch_id, 0, NULL);
+
+        // create router interface
+        sai_object_id_t rif;
+        sai_attribute_t rifattr[3];
+        rifattr[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+        rifattr[0].value.oid = vr;
+        rifattr[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+        rifattr[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+        rifattr[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+        rifattr[2].value.oid = lag;
+        status = sai_rif_api->create_router_interface(&rif, switch_id, 3, rifattr);
+        ASSERT_SUCCESS("Failed to create router interface");
+
+        neighbor_entry.ip_address.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+        neighbor_entry.ip_address.addr.ip4 = 0x10000001 + i;
+        neighbor_entry.rif_id = rif;
+        neighbor_entry.switch_id = switch_id;
+        neighbors.push_back(neighbor_entry);
+
+        std::vector<sai_attribute_t> list(1);
+        sai_attribute_t &attr = list[0];
+
+        sai_mac_t mac = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+        attr.id = SAI_NEIGHBOR_ENTRY_ATTR_DST_MAC_ADDRESS;
+        memcpy(attr.value.mac, mac, 6);
+        neighbor_attrs.push_back(list);
+        neighbor_attrs_count.push_back(1);
+    }
+
+    for (size_t j = 0; j < neighbor_attrs.size(); j++)
+    {
+        neighbor_attrs_array.push_back(neighbor_attrs[j].data());
+    }
+
+    std::vector<sai_status_t> statuses(count);
+    status = sai_neighbor_api->create_neighbor_entries(count, neighbors.data(), neighbor_attrs_count.data(), neighbor_attrs_array.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
+    ASSERT_SUCCESS("Failed to create neighbor");
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_SUCCESS("Failed to create neighbor # %zu", j);
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_NEIGHBOR_ENTRY_ATTR_PACKET_ACTION;
+        attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+
+        status = sai_neighbor_api->set_neighbor_entry_attribute(&neighbors[i], &attr);
+
+        attrs.push_back(attr);
+
+        ASSERT_SUCCESS("Failed to set neighbor");
+    }
+
+    statuses.clear();
+    statuses.resize(attrs.size());
+
+    for (auto &attr: attrs)
+    {
+        attr.value.s32 = SAI_PACKET_ACTION_FORWARD;
+    }
+
+    status = sai_neighbor_api->set_neighbor_entries_attribute(
+        count,
+        neighbors.data(),
+        attrs.data(),
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+        statuses.data());
+
+    ASSERT_SUCCESS("Failed to bulk set neighbor");
+
+    for (auto s: statuses)
+    {
+        status = s;
+
+        ASSERT_SUCCESS("Failed to bulk set neighbor on one of the neighbors");
+    }
+
+    status = sai_neighbor_api->remove_neighbor_entries(count, neighbors.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
+    ASSERT_SUCCESS("Failed to bulk remove neighbor entry");
+}
+
 void syncdThread()
 {
     SWSS_LOG_ENTER();
@@ -768,6 +907,8 @@ int main()
         test_bulk_next_hop_group_member_create();
 
         test_bulk_fdb_create();
+
+        test_bulk_neighbor_set();
 
         test_bulk_route_set();
 
