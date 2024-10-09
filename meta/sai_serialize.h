@@ -75,6 +75,9 @@ std::string sai_serialize_vlan_id(
 std::string sai_serialize_object_type(
         _In_ const sai_object_type_t object_type);
 
+std::string sai_serialize_switch_type(
+        _In_ const sai_switch_type_t switch_type);
+
 std::string sai_serialize_object_id(
         _In_ const sai_object_id_t object_id);
 
