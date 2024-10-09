@@ -111,6 +111,7 @@ unittest/meta/tests
 unittest/syncd/tests
 unittest/vslib/tests
 unittest/vslib/testslibsaivs
+unittest/saidump/tests
 vslib/tests
 
 # Temporary files #
