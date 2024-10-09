@@ -2,13 +2,14 @@
 
 extern "C" {
 #include <sai.h>
-#include<saimetadata.h>
+#include <saimetadata.h>
 }
 
 #include "swss/table.h"
 
 #include <queue>
 #include <mutex>
+#include <memory>
 
 /**
  * @brief Default notification queue size limit.
@@ -54,7 +55,7 @@ namespace syncd
 
             std::mutex m_mutex;
 
-            std::queue<swss::KeyOpFieldsValuesTuple> m_queue;
+            std::shared_ptr<std::queue<swss::KeyOpFieldsValuesTuple>> m_queue;
 
             size_t m_queueSizeLimit;
 
