@@ -146,10 +146,33 @@ Syncd::Syncd(
                 modifyRedis);
     }
 
+    sai_status_t status = vendorSai->apiInitialize(0, &m_test_services);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("FATAL: failed to sai_api_initialize: %s",
+                sai_serialize_status(status).c_str());
+
+        abort();
+    }
+
+    sai_api_version_t apiVersion = SAI_VERSION(0,0,0); // invalid version
+
+    status = m_vendorSai->queryApiVersion(&apiVersion);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_WARN("failed to obtain libsai api version: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("libsai api version: %lu", apiVersion);
+    }
+
     m_client = std::make_shared<RedisClient>(m_dbAsic);
 
     m_processor = std::make_shared<NotificationProcessor>(m_notifications, m_client, std::bind(&Syncd::syncProcessNotification, this, _1));
-    m_handler = std::make_shared<NotificationHandler>(m_processor);
+    m_handler = std::make_shared<NotificationHandler>(m_processor, apiVersion);
 
     m_sn.onFdbEvent = std::bind(&NotificationHandler::onFdbEvent, m_handler.get(), _1, _2);
     m_sn.onNatEvent = std::bind(&NotificationHandler::onNatEvent, m_handler.get(), _1, _2);
@@ -195,16 +218,6 @@ Syncd::Syncd(
     m_smt.profileGetNextValue = std::bind(&Syncd::profileGetNextValue, this, _1, _2, _3);
 
     m_test_services = m_smt.getServiceMethodTable();
-
-    sai_status_t status = vendorSai->apiInitialize(0, &m_test_services);
-
-    if (status != SAI_STATUS_SUCCESS)
-    {
-        SWSS_LOG_ERROR("FATAL: failed to sai_api_initialize: %s",
-                sai_serialize_status(status).c_str());
-
-        abort();
-    }
 
     m_breakConfig = BreakConfigParser::parseBreakConfig(m_commandLineOptions->m_breakConfig);
 

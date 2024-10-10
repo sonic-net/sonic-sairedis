@@ -20,7 +20,8 @@ namespace syncd
         public:
 
             NotificationHandler(
-                    _In_ std::shared_ptr<NotificationProcessor> processor);
+                    _In_ std::shared_ptr<NotificationProcessor> processor,
+                    _In_ sai_api_version_t apiVersion);
 
             virtual ~NotificationHandler();
 
@@ -99,5 +100,7 @@ namespace syncd
             std::shared_ptr<NotificationQueue> m_notificationQueue;
 
             std::shared_ptr<NotificationProcessor> m_processor;
+
+            sai_api_version_t m_apiVersion;
     };
 }
