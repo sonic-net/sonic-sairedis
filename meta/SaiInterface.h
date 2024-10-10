@@ -6,37 +6,10 @@ extern "C" {
 }
 
 #define SAIREDIS_DECLARE_EVERY_ENTRY(_X)                                     \
-    _X(FDB_ENTRY,fdb_entry);                                                 \
-    _X(INSEG_ENTRY,inseg_entry);                                             \
-    _X(IPMC_ENTRY,ipmc_entry);                                               \
-    _X(L2MC_ENTRY,l2mc_entry);                                               \
-    _X(MCAST_FDB_ENTRY,mcast_fdb_entry);                                     \
-    _X(NEIGHBOR_ENTRY,neighbor_entry);                                       \
-    _X(ROUTE_ENTRY,route_entry);                                             \
-    _X(NAT_ENTRY,nat_entry);                                                 \
-    _X(MY_SID_ENTRY,my_sid_entry);                                           \
-    _X(DIRECTION_LOOKUP_ENTRY,direction_lookup_entry);                       \
-    _X(ENI_ETHER_ADDRESS_MAP_ENTRY,eni_ether_address_map_entry);             \
-    _X(VIP_ENTRY,vip_entry);                                                 \
-    _X(INBOUND_ROUTING_ENTRY,inbound_routing_entry);                         \
-    _X(PA_VALIDATION_ENTRY,pa_validation_entry);                             \
-    _X(OUTBOUND_ROUTING_ENTRY,outbound_routing_entry);                       \
-    _X(OUTBOUND_CA_TO_PA_ENTRY,outbound_ca_to_pa_entry);                     \
+    SAI_METADATA_DECLARE_EVERY_ENTRY(_X)
 
 #define SAIREDIS_DECLARE_EVERY_BULK_ENTRY(_X)                                \
-    _X(FDB_ENTRY,fdb_entry);                                                 \
-    _X(INSEG_ENTRY,inseg_entry);                                             \
-    _X(NAT_ENTRY,nat_entry);                                                 \
-    _X(ROUTE_ENTRY,route_entry);                                             \
-    _X(MY_SID_ENTRY,my_sid_entry);                                           \
-    _X(NEIGHBOR_ENTRY,neighbor_entry);                                       \
-    _X(DIRECTION_LOOKUP_ENTRY,direction_lookup_entry);                       \
-    _X(ENI_ETHER_ADDRESS_MAP_ENTRY,eni_ether_address_map_entry);             \
-    _X(VIP_ENTRY,vip_entry);                                                 \
-    _X(INBOUND_ROUTING_ENTRY,inbound_routing_entry);                         \
-    _X(PA_VALIDATION_ENTRY,pa_validation_entry);                             \
-    _X(OUTBOUND_ROUTING_ENTRY,outbound_routing_entry);                       \
-    _X(OUTBOUND_CA_TO_PA_ENTRY,outbound_ca_to_pa_entry);                     \
+    SAI_METADATA_DECLARE_EVERY_BULK_ENTRY(_X)
 
 #define SAIREDIS_SAIINTERFACE_DECLARE_QUAD_ENTRY_VIRTUAL(OT,ot)     \
     virtual sai_status_t create(                                    \
@@ -273,6 +246,26 @@ namespace sairedis
                     _In_ const sai_stat_id_t *counter_ids,
                     _In_ sai_stats_mode_t mode,
                     _Inout_ sai_status_t *object_statuses) = 0;
+
+        public: // entry stats
+
+            virtual sai_status_t getStats(
+                    _In_ const sai_meter_bucket_entry_t* entry,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _Out_ uint64_t *counters);
+
+            virtual sai_status_t getStatsExt(
+                    _In_ const sai_meter_bucket_entry_t* entry,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ sai_stats_mode_t mode,
+                    _Out_ uint64_t *counters);
+
+            virtual sai_status_t clearStats(
+                    _In_ const sai_meter_bucket_entry_t* entry,
+                    _In_ uint32_t number_of_counters,
+                    _In_ const sai_stat_id_t *counter_ids);
 
         public: // non QUAD API
 
