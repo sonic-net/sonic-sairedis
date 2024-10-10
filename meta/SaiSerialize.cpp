@@ -961,6 +961,26 @@ std::string sai_serialize_fdb_entry(
     return j.dump();
 }
 
+__attribute__((__noreturn__)) std::string sai_serialize_meter_bucket_entry(
+        _In_ const sai_meter_bucket_entry_t &meter_bucket_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    SWSS_LOG_THROW("not implemented, FIXME");
+}
+
+__attribute__((__noreturn__)) std::string sai_serialize_flow_entry(
+        _In_ const sai_flow_entry_t &flow_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    SWSS_LOG_THROW("not implemented, FIXME");
+}
+
 std::string sai_serialize_l2mc_entry_type(
         _In_ const sai_l2mc_entry_type_t type)
 {
@@ -2178,6 +2198,14 @@ std::string sai_serialize_port_oper_status(
     SWSS_LOG_ENTER();
 
     return sai_serialize_enum(status, &sai_metadata_enum_sai_port_oper_status_t);
+}
+
+std::string sai_serialize_port_error_status(
+        _In_ sai_port_error_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(status, &sai_metadata_enum_sai_port_error_status_t);
 }
 
 std::string sai_serialize_port_host_tx_ready(
@@ -4152,6 +4180,15 @@ void sai_deserialize_port_oper_status(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_port_oper_status_t, (int32_t&)status);
 }
 
+void sai_deserialize_port_error_status(
+        _In_ const std::string& s,
+        _Out_ sai_port_error_status_t& status)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_port_error_status_t, (int32_t&)status);
+}
+
 void sai_deserialize_port_host_tx_ready_status(
         _In_ const std::string& s,
         _Out_ sai_port_host_tx_ready_status_t& status)
@@ -4377,6 +4414,28 @@ void sai_deserialize_neighbor_entry(
     sai_deserialize_object_id(j["switch_id"], ne.switch_id);
     sai_deserialize_object_id(j["rif"], ne.rif_id);
     sai_deserialize_ip_address(j["ip"], ne.ip_address);
+}
+
+__attribute__((__noreturn__)) void sai_deserialize_meter_bucket_entry(
+        _In_ const std::string& s,
+        _Out_ sai_meter_bucket_entry_t& meter_bucket_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    SWSS_LOG_THROW("not implemented, FIXME");
+}
+
+__attribute__((__noreturn__)) void sai_deserialize_flow_entry(
+        _In_ const std::string& s,
+        _Out_ sai_flow_entry_t &flow_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    SWSS_LOG_THROW("not implemented, FIXME");
 }
 
 void sai_deserialize_twamp_session_stats_data(
@@ -4990,6 +5049,7 @@ void sai_deserialize_port_oper_status_ntf(
     {
         sai_deserialize_object_id(j[i]["port_id"], data[i].port_id);
         sai_deserialize_port_oper_status(j[i]["port_state"], data[i].port_state);
+        sai_deserialize_port_error_status(j[i]["port_error_status"], data[i].port_error_status);
     }
 
     *port_oper_status = data;
