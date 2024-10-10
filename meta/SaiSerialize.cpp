@@ -961,24 +961,37 @@ std::string sai_serialize_fdb_entry(
     return j.dump();
 }
 
-__attribute__((__noreturn__)) std::string sai_serialize_meter_bucket_entry(
+std::string sai_serialize_meter_bucket_entry(
         _In_ const sai_meter_bucket_entry_t &meter_bucket_entry)
 {
     SWSS_LOG_ENTER();
 
     json j;
 
-    SWSS_LOG_THROW("not implemented, FIXME");
+    j["switch_id"] = sai_serialize_object_id(meter_bucket_entry.switch_id);
+    j["eni_id"] = sai_serialize_object_id(meter_bucket_entry.eni_id);
+    j["meter_class"] = sai_serialize_number<uint32_t>(meter_bucket_entry.meter_class);
+
+    return j.dump();
 }
 
-__attribute__((__noreturn__)) std::string sai_serialize_flow_entry(
+std::string sai_serialize_flow_entry(
         _In_ const sai_flow_entry_t &flow_entry)
 {
     SWSS_LOG_ENTER();
 
     json j;
 
-    SWSS_LOG_THROW("not implemented, FIXME");
+    j["switch_id"] = sai_serialize_object_id(flow_entry.switch_id);
+    j["eni_mac"] = sai_serialize_mac(flow_entry.eni_mac);
+    j["vnet_id"] = sai_serialize_number<uint16_t>(flow_entry.vnet_id);
+    j["ip_proto"] = sai_serialize_number<uint8_t>(flow_entry.ip_proto);
+    j["src_ip"] = sai_serialize_ip_address(flow_entry.src_ip);
+    j["dst_ip"] = sai_serialize_ip_address(flow_entry.dst_ip);
+    j["src_port"] = sai_serialize_number<uint16_t>(flow_entry.src_port);
+    j["dst_port"] = sai_serialize_number<uint16_t>(flow_entry.dst_port);
+
+    return j.dump();
 }
 
 std::string sai_serialize_l2mc_entry_type(
@@ -2688,6 +2701,14 @@ static bool sai_serialize_object_extension_entry(
 
         case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
             key = sai_serialize_outbound_ca_to_pa_entry(key_entry.outbound_ca_to_pa_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_FLOW_ENTRY:
+            key = sai_serialize_flow_entry(key_entry.flow_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_METER_BUCKET_ENTRY:
+            key = sai_serialize_meter_bucket_entry(key_entry.meter_bucket_entry);
             return true;
 
         default:
@@ -4416,7 +4437,7 @@ void sai_deserialize_neighbor_entry(
     sai_deserialize_ip_address(j["ip"], ne.ip_address);
 }
 
-__attribute__((__noreturn__)) void sai_deserialize_meter_bucket_entry(
+void sai_deserialize_meter_bucket_entry(
         _In_ const std::string& s,
         _Out_ sai_meter_bucket_entry_t& meter_bucket_entry)
 {
@@ -4424,10 +4445,12 @@ __attribute__((__noreturn__)) void sai_deserialize_meter_bucket_entry(
 
     json j = json::parse(s);
 
-    SWSS_LOG_THROW("not implemented, FIXME");
+    sai_deserialize_object_id(j["switch_id"], meter_bucket_entry.switch_id);
+    sai_deserialize_object_id(j["eni_id"], meter_bucket_entry.eni_id);
+    sai_deserialize_number(j["meter_class"], meter_bucket_entry.meter_class);
 }
 
-__attribute__((__noreturn__)) void sai_deserialize_flow_entry(
+void sai_deserialize_flow_entry(
         _In_ const std::string& s,
         _Out_ sai_flow_entry_t &flow_entry)
 {
@@ -4435,7 +4458,14 @@ __attribute__((__noreturn__)) void sai_deserialize_flow_entry(
 
     json j = json::parse(s);
 
-    SWSS_LOG_THROW("not implemented, FIXME");
+    sai_deserialize_object_id(j["switch_id"], flow_entry.switch_id);
+    sai_deserialize_mac(j["eni_mac"], flow_entry.eni_mac);
+    sai_deserialize_number(j["vnet_id"], flow_entry.vnet_id);
+    sai_deserialize_number(j["ip_proto"], flow_entry.ip_proto);
+    sai_deserialize_ip_address(j["src_ip"], flow_entry.src_ip);
+    sai_deserialize_ip_address(j["dst_ip"], flow_entry.dst_ip);
+    sai_deserialize_number(j["src_port"], flow_entry.src_port);
+    sai_deserialize_number(j["dst_port"], flow_entry.dst_port);
 }
 
 void sai_deserialize_twamp_session_stats_data(
@@ -4910,6 +4940,14 @@ bool sai_deserialize_object_extension_entry(
 
         case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
             sai_deserialize_outbound_ca_to_pa_entry(object_id, meta_key.objectkey.key.outbound_ca_to_pa_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_FLOW_ENTRY:
+            sai_deserialize_flow_entry(object_id, meta_key.objectkey.key.flow_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_METER_BUCKET_ENTRY:
+            sai_deserialize_meter_bucket_entry(object_id, meta_key.objectkey.key.meter_bucket_entry);
             return true;
 
         default:
