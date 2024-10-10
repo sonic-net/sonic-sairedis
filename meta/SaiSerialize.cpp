@@ -2425,6 +2425,7 @@ std::string sai_serialize_port_oper_status_ntf(
 
         item["port_id"] = sai_serialize_object_id(port_oper_status[i].port_id);
         item["port_state"] = sai_serialize_port_oper_status(port_oper_status[i].port_state);
+        item["port_error_status"] = sai_serialize_port_error_status(port_oper_status[i].port_error_status);
 
         j.push_back(item);
     }
