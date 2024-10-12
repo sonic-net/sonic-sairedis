@@ -1850,6 +1850,25 @@ std::string sai_serialize_outbound_ca_to_pa_entry(
     return j.dump();
 }
 
+std::string sai_serialize_flow_entry(
+        _In_ const sai_flow_entry_t &flow_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(flow_entry.switch_id);
+    j["eni_mac"] = sai_serialize_mac(flow_entry.eni_mac);
+    j["vnet_id"] = sai_serialize_number(flow_entry.vnet_id);
+    j["ip_proto"] = sai_serialize_number(flow_entry.ip_proto);
+    j["src_ip"] = sai_serialize_ip_address(flow_entry.src_ip);
+    j["dst_ip"] = sai_serialize_ip_address(flow_entry.dst_ip);
+    j["src_port"] = sai_serialize_number(flow_entry.src_port);
+    j["dst_port"] = sai_serialize_number(flow_entry.dst_port);
+
+    return j.dump();
+}
+
 std::string sai_serialize_system_port_config(
         _In_ const sai_attr_metadata_t &meta,
         _In_ const sai_system_port_config_t &sysportconfig)
@@ -4726,6 +4745,24 @@ void sai_deserialize_outbound_ca_to_pa_entry(
     sai_deserialize_object_id(j["switch_id"], outbound_ca_to_pa_entry.switch_id);
     sai_deserialize_object_id(j["dst_vnet_id"], outbound_ca_to_pa_entry.dst_vnet_id);
     sai_deserialize_ip_address(j["dip"], outbound_ca_to_pa_entry.dip);
+}
+
+void sai_deserialize_flow_entry(
+        _In_ const std::string &s,
+        _Out_ sai_flow_entry_t& flow_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], flow_entry.switch_id);
+    sai_deserialize_mac(j["eni_mac"], flow_entry.eni_mac);
+    sai_deserialize_number(j["vnet_id"], flow_entry.vnet_id);
+    sai_deserialize_number(j["ip_proto"], flow_entry.ip_proto);
+    sai_deserialize_ip_address(j["src_ip"], flow_entry.src_ip);
+    sai_deserialize_ip_address(j["dst_ip"], flow_entry.dst_ip);
+    sai_deserialize_number(j["src_port"], flow_entry.src_port);
+    sai_deserialize_number(j["dst_port"], flow_entry.dst_port);
 }
 
 void sai_deserialize_attr_id(
