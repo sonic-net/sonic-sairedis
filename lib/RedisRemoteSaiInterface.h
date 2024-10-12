@@ -219,6 +219,15 @@ namespace sairedis
                     _In_ sai_object_id_t switchId,
                     _In_ const sai_attribute_t* attr);
 
+            /**
+             * @brief Checks whether attribute is custom SAI_REDIS_PORT attribute.
+             *
+             * This function should only be used on port_api set function.
+             */
+            static bool isRedisPortAttribute(
+                    _In_ sai_object_id_t obejctType,
+                    _In_ const sai_attribute_t* attr);
+
             void setMeta(
                     _In_ std::weak_ptr<saimeta::Meta> meta);
 
@@ -355,6 +364,11 @@ namespace sairedis
                     _In_ sai_object_id_t objectId,
                     _In_ const sai_attribute_t *attr);
 
+            sai_status_t setRedisPortExtensionAttribute(
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_object_id_t objectId,
+                    _In_ const sai_attribute_t *attr);
+
             bool isSaiS8ListValidString(
                     _In_ const sai_s8_list_t &s8list);
 
@@ -381,6 +395,11 @@ namespace sairedis
             sai_status_t sai_redis_notify_syncd(
                     _In_ sai_object_id_t switchId,
                     _In_ const sai_attribute_t *attr);
+
+            sai_status_t setLinkEventDampingConfig(
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_object_id_t objectId,
+                    _In_ const std::vector<swss::FieldValueTuple> &values);
 
             void clear_local_state();
 
