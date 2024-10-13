@@ -10,7 +10,8 @@
 
 using namespace syncd;
 
-#define MUTEX() std::lock_guard<std::mutex> _lock(m_apimutex)
+#define MUTEX() std::unique_lock<std::shared_mutex> _lock(m_apimutex)
+#define SHARED_MUTEX() std::shared_lock<std::shared_mutex> _shared_lock(m_apimutex)
 
 #define VENDOR_CHECK_API_INITIALIZED()                                       \
     if (!m_apiInitialized) {                                                \
@@ -202,7 +203,7 @@ sai_status_t VendorSai::set(
         _In_ sai_object_id_t objectId,
         _In_ const sai_attribute_t *attr)
 {
-    std::unique_lock<std::mutex> _lock(m_apimutex);
+    std::unique_lock<std::shared_mutex> _lock(m_apimutex);
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
@@ -313,7 +314,7 @@ sai_status_t VendorSai::getStats(
         _In_ const sai_stat_id_t *counter_ids,
         _Out_ uint64_t *counters)
 {
-    MUTEX();
+    SHARED_MUTEX();
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
@@ -351,7 +352,7 @@ sai_status_t VendorSai::getStatsExt(
         _In_ sai_stats_mode_t mode,
         _Out_ uint64_t *counters)
 {
-    MUTEX();
+    SHARED_MUTEX();
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
@@ -366,7 +367,7 @@ sai_status_t VendorSai::clearStats(
         _In_ uint32_t number_of_counters,
         _In_ const sai_stat_id_t *counter_ids)
 {
-    MUTEX();
+    SHARED_MUTEX();
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
@@ -386,7 +387,7 @@ sai_status_t VendorSai::bulkGetStats(
         _Inout_ sai_status_t *object_statuses,
         _Out_ uint64_t *counters)
 {
-    MUTEX();
+    SHARED_MUTEX();
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
@@ -414,7 +415,7 @@ sai_status_t VendorSai::bulkClearStats(
         _In_ sai_stats_mode_t mode,
         _Inout_ sai_status_t *object_statuses)
 {
-    MUTEX();
+    SHARED_MUTEX();
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
