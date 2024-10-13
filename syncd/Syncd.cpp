@@ -3819,9 +3819,15 @@ sai_status_t Syncd::processNotifySyncd(
             m_veryFirstRun = false;
 
             m_asicInitViewMode = false;
-
-            if (m_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT ||
-                m_commandLineOptions->m_startType == SAI_START_TYPE_EXPRESS_BOOT)
+#ifdef MELLANOX
+            bool applyViewInFastFastBoot = m_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT ||
+                                           m_commandLineOptions->m_startType == SAI_START_TYPE_EXPRESS_BOOT ||
+                                           m_commandLineOptions->m_startType == SAI_START_TYPE_FAST_BOOT;
+#else
+            bool applyViewInFastFastBoot = m_commandLineOptions->m_startType == SAI_START_TYPE_FASTFAST_BOOT ||
+                                           m_commandLineOptions->m_startType == SAI_START_TYPE_EXPRESS_BOOT;
+#endif
+            if (applyViewInFastFastBoot)
             {
                 // express/fastfast boot configuration end
 

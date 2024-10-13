@@ -2,7 +2,7 @@ AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/syncd -I$(top_srcdir)/lib -I$(top_srcdir
 
 bin_PROGRAMS = tests
 
-LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
+LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main -lgmock
 
 tests_SOURCES = main.cpp \
                 MockableSaiInterface.cpp \
@@ -17,7 +17,8 @@ tests_SOURCES = main.cpp \
 				TestMdioIpcServer.cpp \
 				TestPortStateChangeHandler.cpp \
 				TestWorkaround.cpp \
-				TestVendorSai.cpp
+				TestVendorSai.cpp \
+				TestSyncd.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs
