@@ -210,6 +210,9 @@ namespace syncd
                     _In_ const std::vector<swss::FieldValueTuple> &values,
                     _In_ bool fromAsicChannel=true);
 
+            sai_status_t processDbgGenerateDump(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
         private: // process quad oid
 
             sai_status_t processOidCreate(

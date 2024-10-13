@@ -317,6 +317,9 @@ namespace sairedis
             void recordFlushFdbEntriesResponse(
                     _In_ sai_status_t status);
 
+            void recordDbgGenDumpResponse(
+                    _In_ sai_status_t status);        
+
         public: // SAI global interface API
 
             void recordObjectTypeGetAvailability(

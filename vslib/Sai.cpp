@@ -853,6 +853,17 @@ sai_status_t Sai::queryApiVersion(
     return m_meta->queryApiVersion(version);
 }
 
+sai_status_t Sai::dbgGenerateDump(
+        _In_ const char *dump_file_name)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VS_CHECK_API_INITIALIZED();
+
+    return m_meta->dbgGenerateDump(dump_file_name);
+}
+
+
 std::shared_ptr<Context> Sai::getContext(
         _In_ uint32_t globalContext) const
 {

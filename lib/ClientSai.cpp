@@ -1549,3 +1549,23 @@ sai_status_t ClientSai::queryApiVersion(
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
+
+sai_status_t ClientSai::dbgGenerateDump(
+        _In_ const char *dump_file_name)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    const std::vector<swss::FieldValueTuple> entry =
+    {
+        swss::FieldValueTuple("DBG_GENERATE_DUMP", dump_file_name),
+    };
+
+    std::string key = "DBG_GEN_DUMP:01";
+    
+    m_communicationChannel->set(key, entry, REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMP);
+ 
+    swss::KeyOpFieldsValuesTuple kco;
+    return m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE, kco);
+}
