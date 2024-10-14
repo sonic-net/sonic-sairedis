@@ -184,11 +184,12 @@ namespace syncd
              *
              * Performs actions needed after port creation. Will discover new
              * queues, ipgs and scheduler groups that belong to new created port,
-             * and updated ASIC DB accordingly.
+             * and updated ASIC DB accordingly when discoverPortObjects is true.
              */
             virtual void onPostPortCreate(
                     _In_ sai_object_id_t port_rid,
-                    _In_ sai_object_id_t port_vid) override;
+                    _In_ sai_object_id_t port_vid,
+                    _In_ bool discoverPortObjects = true) override;
 
             /**
              * @brief Post port remove.

@@ -948,46 +948,50 @@ void SaiSwitch::redisUpdatePortLaneMap(
 
 void SaiSwitch::onPostPortCreate(
         _In_ sai_object_id_t port_rid,
-        _In_ sai_object_id_t port_vid)
+        _In_ sai_object_id_t port_vid,
+        _In_ bool discoverPortObjects)
 {
     SWSS_LOG_ENTER();
 
-    SaiDiscovery sd(m_vendorSai);
-
-    auto discovered = sd.discover(port_rid);
-
-    auto defaultOidMap = sd.getDefaultOidMap();
-
-    // we need to merge default oid maps
-
-    for (auto& kvp: defaultOidMap)
+    if (discoverPortObjects)
     {
-        for (auto& it: kvp.second)
+        SaiDiscovery sd(m_vendorSai);
+
+        auto discovered = sd.discover(port_rid);
+
+        auto defaultOidMap = sd.getDefaultOidMap();
+
+        // we need to merge default oid maps
+
+        for (auto& kvp: defaultOidMap)
         {
-            m_defaultOidMap[kvp.first][it.first] = it.second;
+            for (auto& it: kvp.second)
+            {
+                m_defaultOidMap[kvp.first][it.first] = it.second;
+            }
         }
-    }
 
-    SWSS_LOG_NOTICE("discovered %zu new objects (including port) after creating port VID: %s",
-            discovered.size(),
-            sai_serialize_object_id(port_vid).c_str());
+        SWSS_LOG_NOTICE("discovered %zu new objects (including port) after creating port VID: %s",
+                discovered.size(),
+                sai_serialize_object_id(port_vid).c_str());
 
-    m_discovered_rids.insert(discovered.begin(), discovered.end());
+        m_discovered_rids.insert(discovered.begin(), discovered.end());
 
-    SWSS_LOG_NOTICE("putting ALL new discovered objects to redis for port %s",
-            sai_serialize_object_id(port_vid).c_str());
+        SWSS_LOG_NOTICE("putting ALL new discovered objects to redis for port %s",
+                sai_serialize_object_id(port_vid).c_str());
 
-    for (sai_object_id_t rid: discovered)
-    {
-        /*
-         * We also could thing of optimizing this since it's one call to redis
-         * per rid, and probably this should be ATOMIC.
-         *
-         * NOTE: We are also storing read only object's here, like default
-         * virtual router, CPU, default trap group, etc.
-         */
+        for (sai_object_id_t rid: discovered)
+        {
+            /*
+            * We also could thing of optimizing this since it's one call to redis
+            * per rid, and probably this should be ATOMIC.
+            *
+            * NOTE: We are also storing read only object's here, like default
+            * virtual router, CPU, default trap group, etc.
+            */
 
-        redisSetDummyAsicStateForRealObjectId(rid);
+            redisSetDummyAsicStateForRealObjectId(rid);
+        }
     }
 
     redisUpdatePortLaneMap(port_rid);
