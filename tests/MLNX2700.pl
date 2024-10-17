@@ -59,8 +59,16 @@ sub test_mlnx_full_to_full
     play "full_no_hostif_entry_second.rec";
 }
 
+sub test_inspect_asic
+{
+    fresh_start;
+
+    play "inspect_asic.rec"
+}
+
 # RUN
 
+test_inspect_asic();
 test_mlnx_nhg_member;
 test_mlnx_full_to_empty;
 test_mlnx_empty_to_full_to_empty;

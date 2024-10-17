@@ -3707,6 +3707,12 @@ void Syncd::inspectAsic()
             continue;
         }
 
+        SaiAttributeList redis_list(metaKey.objecttype, values, false);
+
+        sai_attribute_t *redis_attr_list = redis_list.get_attr_list();
+
+        m_translator->translateVidToRid(metaKey.objecttype, attr_count, redis_attr_list);
+
         // compare fields and values from ASIC_DB and SAI response and log the difference
 
         for (uint32_t index = 0; index < attr_count; ++index)
@@ -3725,7 +3731,7 @@ void Syncd::inspectAsic()
 
             std::string strSaiAttrValue = sai_serialize_attr_value(*meta, attr, false);
 
-            std::string strRedisAttrValue = hash[meta->attridname];
+            std::string strRedisAttrValue = sai_serialize_attr_value(*meta, redis_attr_list[index], false);
 
             if (strRedisAttrValue == strSaiAttrValue)
             {
