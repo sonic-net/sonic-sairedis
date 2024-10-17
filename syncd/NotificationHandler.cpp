@@ -1,4 +1,5 @@
 #include "NotificationHandler.h"
+#include "Workaround.h"
 #include "sairediscommon.h"
 
 #include "swss/logger.h"
@@ -10,8 +11,10 @@
 using namespace syncd;
 
 NotificationHandler::NotificationHandler(
-        _In_ std::shared_ptr<NotificationProcessor> processor):
-    m_processor(processor)
+        _In_ std::shared_ptr<NotificationProcessor> processor,
+        _In_ sai_api_version_t apiVersion):
+    m_processor(processor),
+    m_apiVersion(apiVersion)
 {
     SWSS_LOG_ENTER();
 
@@ -25,6 +28,21 @@ NotificationHandler::~NotificationHandler()
     SWSS_LOG_ENTER();
 
     // empty
+}
+
+void NotificationHandler::setApiVersion(
+        _In_ sai_api_version_t apiVersion)
+{
+    SWSS_LOG_ENTER();
+
+    m_apiVersion = apiVersion;
+}
+
+sai_api_version_t NotificationHandler::getApiVersion() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_apiVersion;
 }
 
 void NotificationHandler::setSwitchNotifications(
@@ -93,7 +111,9 @@ void NotificationHandler::onPortStateChange(
 {
     SWSS_LOG_ENTER();
 
-    auto s = sai_serialize_port_oper_status_ntf(count, data);
+    auto ntfdata = Workaround::convertPortOperStatusNotification(count, data, m_apiVersion);
+
+    auto s = sai_serialize_port_oper_status_ntf((uint32_t)ntfdata.size(), ntfdata.data());
 
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, s);
 }

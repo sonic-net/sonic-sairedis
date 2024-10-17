@@ -9,6 +9,7 @@
 #include "meta/ZeroMQSelectableChannel.h"
 
 #include "syncd/ZeroMQNotificationProducer.h"
+#include "syncd/Workaround.h"
 
 #include <inttypes.h>
 
@@ -35,7 +36,8 @@ Proxy::Proxy(
     m_vendorSai(vendorSai),
     m_options(options),
     m_apiInitialized(false),
-    m_notificationsSentCount(0)
+    m_notificationsSentCount(0),
+    m_apiVersion(SAI_VERSION(0,0,0))
 {
     SWSS_LOG_ENTER();
 
@@ -78,6 +80,17 @@ Proxy::Proxy(
         m_apiInitialized = true;
 
         SWSS_LOG_NOTICE("api initialized success");
+    }
+
+    auto st = m_vendorSai->queryApiVersion(&m_apiVersion);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_WARN("failed to obtain libsai api version: %s", sai_serialize_status(st).c_str());
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("libsai api version: %lu", m_apiVersion);
     }
 }
 
@@ -1113,7 +1126,9 @@ void Proxy::onPortStateChange(
 {
     SWSS_LOG_ENTER();
 
-    auto s = sai_serialize_port_oper_status_ntf(count, data);
+    auto ntfdata = syncd::Workaround::convertPortOperStatusNotification(count, data, m_apiVersion);
+
+    auto s = sai_serialize_port_oper_status_ntf((uint32_t)ntfdata.size(), ntfdata.data());
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE, s);
 }

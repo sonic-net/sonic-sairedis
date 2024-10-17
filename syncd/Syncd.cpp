@@ -206,6 +206,21 @@ Syncd::Syncd(
         abort();
     }
 
+    sai_api_version_t apiVersion = SAI_VERSION(0,0,0); // invalid version
+
+    status = m_vendorSai->queryApiVersion(&apiVersion);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_WARN("failed to obtain libsai api version: %s", sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("libsai api version: %lu", apiVersion);
+    }
+
+    m_handler->setApiVersion(apiVersion);
+
     m_breakConfig = BreakConfigParser::parseBreakConfig(m_commandLineOptions->m_breakConfig);
 
     SWSS_LOG_NOTICE("syncd started");
