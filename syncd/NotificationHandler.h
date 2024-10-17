@@ -39,6 +39,8 @@ namespace syncd
             void setApiVersion(
                     _In_ sai_api_version_t apiVersion);
 
+            sai_api_version_t getApiVersion() const;
+
         public: // members reflecting SAI callbacks
 
             void onFdbEvent(

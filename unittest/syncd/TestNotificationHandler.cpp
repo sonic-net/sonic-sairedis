@@ -74,5 +74,9 @@ TEST(NotificationHandler, setApiVersion)
 
     auto nh = std::make_shared<NotificationHandler>(np);
 
+    EXPECT_EQ(SAI_VERSION(0,0,0), nh->getApiVersion());
+
     nh->setApiVersion(SAI_VERSION(1,15,0));
+
+    EXPECT_EQ(SAI_VERSION(1,15,0), nh->getApiVersion());
 }

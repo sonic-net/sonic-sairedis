@@ -38,6 +38,13 @@ void NotificationHandler::setApiVersion(
     m_apiVersion = apiVersion;
 }
 
+sai_api_version_t NotificationHandler::getApiVersion() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_apiVersion;
+}
+
 void NotificationHandler::setSwitchNotifications(
         _In_ const sai_switch_notifications_t& switchNotifications)
 {
