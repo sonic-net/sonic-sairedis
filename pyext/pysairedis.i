@@ -10,6 +10,7 @@
 extern "C"{
 #include "sai.h"
 #include "saiextensions.h"
+#include "saimetadata.h"
 }
 
 #include "sairedis.h"

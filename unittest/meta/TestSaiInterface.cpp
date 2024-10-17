@@ -104,3 +104,16 @@ TEST(SaiInterface, get)
     mk.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
     EXPECT_EQ(SAI_STATUS_FAILURE, sai->get(mk, 0, nullptr));
 }
+
+TEST(SaiInterface, stats_meter_bucket_entry)
+{
+    DummySaiInterface ds;
+
+    SaiInterface *s = &ds;
+
+    const sai_meter_bucket_entry_t *m = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, s->getStats(m, 0, 0, 0));
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, s->getStatsExt(m, 0, nullptr, SAI_STATS_MODE_READ, nullptr));
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, s->clearStats(m, 0, nullptr));
+}

@@ -1428,7 +1428,7 @@ TEST(VendorSai, bulk_dash_outbound_ca_to_pa_entry)
     remove_counter(sai, counter1);
 }
 
-TEST(VendorSie, bulkGet)
+TEST(VendorSai, bulkGet)
 {
     VendorSai sai;
 
@@ -1448,3 +1448,33 @@ TEST(VendorSie, bulkGet)
                 statuses));
 }
 
+TEST_F(VendorSaiTest, bulk_flow_entry)
+{
+    sai_flow_entry_t *e = nullptr;
+
+    // metadata will fail
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    // metadata will fail
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkRemove(0, e, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED,
+            m_vsai->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+}
+
+TEST_F(VendorSaiTest, bulk_meter_bucket_entry)
+{
+    sai_meter_bucket_entry_t *e = nullptr;
+
+    // metadata will fail
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkRemove(0, e, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED,
+            m_vsai->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+}
