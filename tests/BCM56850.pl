@@ -835,8 +835,36 @@ sub test_acl_pre_match_999
     for (1..8) { play "acl_pre_match_999.rec", 0; }
 }
 
+sub test_neighbor_next_hop
+{
+    fresh_start;
+
+    play "neighbor_next_hop.rec";
+
+    open (my $H, "<", "applyview.log") or die "failed to open applyview.log $!";
+
+    my @lines = <$H>;
+
+    close ($H);
+
+    my $order = "";
+
+    for(@lines)
+    {
+        $order .= "E" if /create.+NEIGHBOR_ENTRY:/;
+        $order .= "N" if /create.+NEXT_HOP:/;
+    }
+
+    if (not $order =~ /^E+N+$/)
+    {
+        print color('red') . "Invalid order, expected neighbor created first, then next hop" . color('reset') . "\n";
+        exit 1;
+    }
+}
+
 # RUN TESTS
 
+test_neighbor_next_hop;
 test_acl_pre_match_999;
 test_relaxed;
 test_acl_counter_match;
