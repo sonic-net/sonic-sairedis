@@ -3836,6 +3836,14 @@ sai_status_t Syncd::processNotifySyncd(
 
             SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", key.c_str());
         }
+        else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC)
+        {
+            SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
+
+            inspectAsic();
+
+            sendNotifyResponse(SAI_STATUS_SUCCESS);
+        }
         else
         {
             SWSS_LOG_THROW("unknown operation: %s", key.c_str());
