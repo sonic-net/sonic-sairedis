@@ -176,7 +176,7 @@ TEST(Syncd, inspectAsic)
     attr.value.s32 = SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC;
 
     // inspect asic on cold boot
-    
+
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai->set(SAI_OBJECT_TYPE_SWITCH, switchId, &attr));
 
     // request shutdown
