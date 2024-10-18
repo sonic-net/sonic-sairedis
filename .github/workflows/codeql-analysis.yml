@@ -54,7 +54,7 @@ jobs:
             libyang-dev \
             libzmq3-dev \
             libzmq5 \
-            swig3.0 \
+            swig4.0 \
             libpython2.7-dev \
             libgtest-dev \
             libgmock-dev \
