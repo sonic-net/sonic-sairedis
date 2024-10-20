@@ -36,7 +36,7 @@ SaiDiscovery::~SaiDiscovery()
 
 void SaiDiscovery::discover(
         _In_ sai_object_id_t rid,
-        _Inout_ std::set<sai_object_id_t> &discovered)
+        _Inout_ std::map<sai_object_id_t,std::map<std::string,std::string>>& discovered)
 {
     SWSS_LOG_ENTER();
 
@@ -84,7 +84,7 @@ void SaiDiscovery::discover(
 
     if (ot != SAI_OBJECT_TYPE_STP_PORT)
     {
-        discovered.insert(rid);
+        discovered[rid] = {};
     }
 
     const sai_object_type_info_t *info = sai_metadata_get_object_type_info(ot);
@@ -164,6 +164,8 @@ void SaiDiscovery::discover(
                 continue;
             }
 
+            discovered[rid][md->attridname] = sai_serialize_attr_value(*md, attr);
+
             m_defaultOidMap[rid][attr.id] = attr.value.oid;
 
             if (!md->allownullobjectid && attr.value.oid == SAI_NULL_OBJECT_ID)
@@ -224,6 +226,8 @@ void SaiDiscovery::discover(
                 continue;
             }
 
+            discovered[rid][md->attridname] = sai_serialize_attr_value(*md, attr);
+
             SWSS_LOG_DEBUG("list count %s %u", md->attridname, attr.value.objlist.count);
 
             for (uint32_t i = 0; i < attr.value.objlist.count; ++i)
@@ -259,7 +263,7 @@ std::set<sai_object_id_t> SaiDiscovery::discover(
 
     m_defaultOidMap.clear();
 
-    std::set<sai_object_id_t> discovered_rids;
+    std::map<sai_object_id_t, std::map<std::string,std::string>> discovered_rids_map;
 
     {
         SWSS_LOG_TIMER("discover");
@@ -268,9 +272,16 @@ std::set<sai_object_id_t> SaiDiscovery::discover(
 
         setApiLogLevel(SAI_LOG_LEVEL_CRITICAL);
 
-        discover(startRid, discovered_rids);
+        discover(startRid, discovered_rids_map);
 
         setApiLogLevel(levels);
+    }
+
+    std::set<sai_object_id_t> discovered_rids;
+
+    for (const auto& kvp: discovered_rids_map)
+    {
+        discovered_rids.insert(kvp.first);
     }
 
     SWSS_LOG_NOTICE("discovered objects count: %zu", discovered_rids.size());
@@ -290,6 +301,28 @@ std::set<sai_object_id_t> SaiDiscovery::discover(
     for (const auto &p: map)
     {
         SWSS_LOG_NOTICE("%s: %d", sai_serialize_object_type(p.first).c_str(), p.second);
+    }
+
+    SWSS_LOG_NOTICE("discovered map:");
+
+    for (const auto& kvp: discovered_rids_map)
+    {
+        sai_object_type_t ot = m_sai->objectTypeQuery(kvp.first);
+
+        // log object itself
+
+        SWSS_LOG_NOTICE("%s: %s",
+                sai_serialize_object_type(ot).c_str(),
+                sai_serialize_object_id(kvp.first).c_str());
+
+        // log object attributes
+
+        for (const auto& m: kvp.second)
+        {
+            SWSS_LOG_NOTICE("  - %s: %s",
+                    m.first.c_str(),
+                    m.second.c_str());
+        }
     }
 
     return discovered_rids;
