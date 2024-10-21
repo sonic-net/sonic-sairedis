@@ -3116,6 +3116,44 @@ sai_status_t Meta::meta_sai_validate_outbound_ca_to_pa_entry(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t Meta::meta_sai_validate_flow_entry(
+        _In_ const sai_flow_entry_t* flow_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (flow_entry == NULL)
+    {
+        SWSS_LOG_ERROR("flow_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // TODO FIX ME
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t Meta::meta_sai_validate_meter_bucket_entry(
+        _In_ const sai_meter_bucket_entry_t* meter_bucket_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (meter_bucket_entry == NULL)
+    {
+        SWSS_LOG_ERROR("meter_bucket_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // TODO FIX ME
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t Meta::meta_generic_validation_create(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
