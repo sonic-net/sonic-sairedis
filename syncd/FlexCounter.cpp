@@ -31,6 +31,14 @@ static const std::string ATTR_TYPE_QUEUE = "Queue Attribute";
 static const std::string ATTR_TYPE_PG = "Priority Group Attribute";
 static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
+const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
+    {QUEUE_PLUGIN_FIELD, COUNTER_TYPE_QUEUE},
+    {PG_PLUGIN_FIELD, COUNTER_TYPE_PG},
+    {PORT_PLUGIN_FIELD, COUNTER_TYPE_PORT},
+    {RIF_PLUGIN_FIELD, COUNTER_TYPE_RIF},
+    {BUFFER_POOL_PLUGIN_FIELD, COUNTER_TYPE_BUFFER_POOL},
+    {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
+    {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW}};
 
 BaseCounterContext::BaseCounterContext(const std::string &name):
 m_name(name)
@@ -57,7 +65,8 @@ void BaseCounterContext::addPlugins(
     }
 }
 
-void BaseCounterContext::setNoDoubleCheckBulkCapability(bool noDoubleCheckBulkCapability)
+void BaseCounterContext::setNoDoubleCheckBulkCapability(
+    _In_ bool noDoubleCheckBulkCapability)
 {
     SWSS_LOG_ENTER();
     no_double_check_bulk_capability = noDoubleCheckBulkCapability;
@@ -1163,23 +1172,16 @@ void FlexCounter::addCounterPlugin(
         }
         else
         {
-            std::map<std::string, std::string> plugIn2CounterType = {
-                {QUEUE_PLUGIN_FIELD, COUNTER_TYPE_QUEUE},
-                {PG_PLUGIN_FIELD, COUNTER_TYPE_PG},
-                {PORT_PLUGIN_FIELD, COUNTER_TYPE_PORT},
-                {RIF_PLUGIN_FIELD, COUNTER_TYPE_RIF},
-                {BUFFER_POOL_PLUGIN_FIELD, COUNTER_TYPE_BUFFER_POOL},
-                {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
-                {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW}};
+            auto counterTypeRef = m_plugIn2CounterType.find(field);
 
-            auto counterTypeRef = plugIn2CounterType.find(field);
-            if (counterTypeRef != plugIn2CounterType.end())
+            if (counterTypeRef != m_plugIn2CounterType.end())
             {
                 getCounterContext(counterTypeRef->second)->addPlugins(shaStrings);
 
                 if (m_noDoubleCheckBulkCapability)
                 {
                     getCounterContext(counterTypeRef->second)->setNoDoubleCheckBulkCapability(true);
+
                     SWSS_LOG_NOTICE("Do not double check bulk capability counter context %s %s", m_instanceId.c_str(), counterTypeRef->second.c_str());
                 }
             }

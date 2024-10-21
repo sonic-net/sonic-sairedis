@@ -24,7 +24,8 @@ namespace syncd
         void addPlugins(
             _In_ const std::vector<std::string>& shaStrings);
 
-        void setNoDoubleCheckBulkCapability(bool);
+        void setNoDoubleCheckBulkCapability(
+            _In_ bool);
 
         bool hasPlugin() const {return !m_plugins.empty();}
 
@@ -45,8 +46,6 @@ namespace syncd
         virtual void runPlugin(
                 _In_ swss::DBConnector& counters_db,
                 _In_ const std::vector<std::string>& argv) = 0;
-
-
 
         virtual bool hasObject() const = 0;
 
@@ -71,7 +70,7 @@ namespace syncd
                     _In_ const std::string& instanceId,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
                     _In_ const std::string& dbCounters,
-                    _In_ const bool noDoubleCheckBulkCapability);
+                    _In_ const bool noDoubleCheckBulkCapability=false);
 
             virtual ~FlexCounter();
 
@@ -176,5 +175,7 @@ namespace syncd
             std::map<std::string, std::shared_ptr<BaseCounterContext>> m_counterContext;
 
             bool m_noDoubleCheckBulkCapability;
+
+            static const std::map<std::string, std::string> m_plugIn2CounterType;
     };
 }
