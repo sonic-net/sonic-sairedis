@@ -89,6 +89,7 @@ jobs:
     - if: matrix.language == 'cpp'
       name: Build repository
       run: |
+        gcc -v
         ./autogen.sh
         DEB_BUILD_OPTIONS=nocheck \
         SWSS_COMMON_INC="$(dirname $GITHUB_WORKSPACE)/usr/include" \
