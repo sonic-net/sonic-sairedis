@@ -42,7 +42,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "contextContig",           required_argument, 0, 'x' },
             { "breakConfig",             required_argument, 0, 'b' },
             { "watchdogWarnTimeSpan",    optional_argument, 0, 'w' },
-            { "SupportingBulkCounters",  required_argument, 0, 'B' },
+            { "supportingBulkCounters",  required_argument, 0, 'B' },
 #ifdef SAITHRIFT
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
