@@ -90,6 +90,7 @@ jobs:
       name: Build repository
       run: |
         gcc -v
+        git --no-pager log --graph --oneline --ancestry-path  origin/master^..HEAD
         ./autogen.sh
         DEB_BUILD_OPTIONS=nocheck \
         SWSS_COMMON_INC="$(dirname $GITHUB_WORKSPACE)/usr/include" \
