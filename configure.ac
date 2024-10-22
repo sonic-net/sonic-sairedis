@@ -144,7 +144,7 @@ fi
 AM_CONDITIONAL(ASAN_ENABLED, test x$asan_enabled = xtrue)
 AM_CONDITIONAL(PYTHON2, test x$python2 = xtrue)
 
-AC_PATH_PROGS(SWIG, [swig3.0 swig])
+AC_PATH_PROGS(SWIG, [swig4.0 swig3.0 swig])
 
 CXXFLAGS_COMMON=""
 CXXFLAGS_COMMON+=" -ansi"
