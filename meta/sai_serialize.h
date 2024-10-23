@@ -69,6 +69,12 @@ std::string sai_serialize_mcast_fdb_entry(
 std::string sai_serialize_fdb_entry(
         _In_ const sai_fdb_entry_t &fdb_entry);
 
+std::string sai_serialize_meter_bucket_entry(
+        _In_ const sai_meter_bucket_entry_t &meter_bucket_entry);
+
+std::string sai_serialize_flow_entry(
+        _In_ const sai_flow_entry_t &flow_entry);
+
 std::string sai_serialize_vlan_id(
         _In_ const sai_vlan_id_t vlan_id);
 
@@ -252,6 +258,9 @@ std::string sai_serialize_mac(
 std::string sai_serialize_port_oper_status(
         _In_ sai_port_oper_status_t status);
 
+std::string sai_serialize_port_error_status(
+        _In_ sai_port_error_status_t status);
+
 std::string sai_serialize_port_host_tx_ready(
         _In_ sai_port_host_tx_ready_status_t host_tx_ready_status);
 
@@ -426,6 +435,14 @@ void sai_deserialize_ipmc_entry(
 void sai_deserialize_mcast_fdb_entry(
         _In_ const std::string& s,
         _In_ sai_mcast_fdb_entry_t &mcast_fdb_entry);
+
+void sai_deserialize_meter_bucket_entry(
+        _In_ const std::string& s,
+        _Out_ sai_meter_bucket_entry_t& meter_bucket_entry);
+
+void sai_deserialize_flow_entry(
+        _In_ const std::string& s,
+        _Out_ sai_flow_entry_t &flow_entry);
 
 void sai_deserialize_vlan_id(
         _In_ const std::string& s,

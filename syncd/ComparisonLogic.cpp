@@ -3131,6 +3131,21 @@ void ComparisonLogic::applyViewTransition(
 
     for (auto &obj: temp.m_soAll)
     {
+        /*
+         * Make sure we will create all neighbor entries before next hop that
+         * have the same IP address as neighbor entry. In Broadcom platform
+         * neighbor entry needs to be created before next hop with the same ip
+         * address otherwise create next hop will fail (hardware limitation?).
+         */
+
+        if (obj.second->getObjectType() == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY)
+        {
+            processObjectForViewTransition(current, temp, obj.second);
+        }
+    }
+
+    for (auto &obj: temp.m_soAll)
+    {
         if (obj.second->getObjectType() != SAI_OBJECT_TYPE_ROUTE_ENTRY)
         {
             processObjectForViewTransition(current, temp, obj.second);

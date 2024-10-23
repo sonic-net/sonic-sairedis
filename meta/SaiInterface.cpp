@@ -339,3 +339,42 @@ sai_log_level_t SaiInterface::logGet(
 
     return SAI_LOG_LEVEL_NOTICE;
 }
+
+sai_status_t SaiInterface::getStats(
+        _In_ const sai_meter_bucket_entry_t* entry,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _Out_ uint64_t *counters)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t SaiInterface::getStatsExt(
+        _In_ const sai_meter_bucket_entry_t* entry,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids,
+        _In_ sai_stats_mode_t mode,
+        _Out_ uint64_t *counters)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+sai_status_t SaiInterface::clearStats(
+        _In_ const sai_meter_bucket_entry_t* entry,
+        _In_ uint32_t number_of_counters,
+        _In_ const sai_stat_id_t *counter_ids)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}

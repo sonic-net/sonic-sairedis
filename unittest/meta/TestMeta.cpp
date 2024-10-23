@@ -1823,3 +1823,21 @@ TEST(Meta, bulkGet)
                 SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
                 statuses));
 }
+
+TEST(Meta, remove_flow_entry)
+{
+    Meta sai(std::make_shared<MetaTestSaiInterface>());
+
+    sai_flow_entry_t* e = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai.remove(e));
+}
+
+TEST(Meta, remove_meter_bucket_entry)
+{
+    Meta sai(std::make_shared<MetaTestSaiInterface>());
+
+    sai_meter_bucket_entry_t* e = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai.remove(e));
+}
