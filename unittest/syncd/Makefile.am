@@ -2,7 +2,7 @@ AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/syncd -I$(top_srcdir)/lib -I$(top_srcdir
 
 bin_PROGRAMS = tests
 
-LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
+LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main -lgmock
 
 tests_SOURCES = main.cpp \
                 MockableSaiInterface.cpp \
