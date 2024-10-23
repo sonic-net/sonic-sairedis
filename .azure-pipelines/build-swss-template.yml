@@ -12,6 +12,7 @@ parameters:
   values:
   - sonicbld
   - default
+  - sonic-common
   default: default
 
 - name: timeout

@@ -150,6 +150,7 @@ stages:
       syslog_artifact_name: sonic-swss.syslog
       artifact_name: sonic-swss
       debian_version: ${{ parameters.debian_version }}
+      pool: sonic-common
 
 - stage: BuildDocker
   dependsOn: BuildSwss
