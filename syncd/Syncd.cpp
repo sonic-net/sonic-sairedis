@@ -109,7 +109,7 @@ Syncd::Syncd(
         m_enableSyncMode = true;
     }
 
-    m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters);
+    m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters, m_commandLineOptions->m_supportingBulkCounterGroups);
 
     loadProfileMap();
 

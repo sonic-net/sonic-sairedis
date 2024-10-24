@@ -19,9 +19,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:w:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:B:w:uSUCsz:lrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:w:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:B:w:uSUCsz:lh";
 #endif // SAITHRIFT
 
     while (true)
@@ -42,6 +42,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "contextContig",           required_argument, 0, 'x' },
             { "breakConfig",             required_argument, 0, 'b' },
             { "watchdogWarnTimeSpan",    optional_argument, 0, 'w' },
+            { "supportingBulkCounters",  required_argument, 0, 'B' },
 #ifdef SAITHRIFT
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
@@ -133,6 +134,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 break;
 #endif // SAITHRIFT
 
+            case 'B':
+                options->m_supportingBulkCounterGroups = std::string(optarg);
+                break;
+
             case 'h':
                 printUsage();
                 exit(EXIT_SUCCESS);
@@ -156,9 +161,9 @@ void CommandLineOptionsParser::printUsage()
     SWSS_LOG_ENTER();
 
 #ifdef SAITHRIFT
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-r] [-m portmap] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-r] [-m portmap] [-h]" << std::endl;
 #else
-    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-h]" << std::endl;
+    std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-h]" << std::endl;
 #endif // SAITHRIFT
 
     std::cout << "    -d --diag" << std::endl;
@@ -189,6 +194,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Comparison logic 'break before make' configuration file" << std::endl;
     std::cout << "    -w --watchdogWarnTimeSpan" << std::endl;
     std::cout << "        Watchdog time span (in microseconds) to watch for execution" << std::endl;
+    std::cout << "    -B --supportingBulkCounters" << std::endl;
+    std::cout << "        Counter groups those support bulk polling" << std::endl;
 
 #ifdef SAITHRIFT
 

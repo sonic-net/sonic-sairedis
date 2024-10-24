@@ -8,9 +8,11 @@ using namespace syncd;
 
 FlexCounterManager::FlexCounterManager(
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
-        _In_ const std::string& dbCounters):
+        _In_ const std::string& dbCounters,
+        _In_ const std::string& supportingBulkInstances):
     m_vendorSai(vendorSai),
-    m_dbCounters(dbCounters)
+    m_dbCounters(dbCounters),
+    m_supportingBulkGroups(supportingBulkInstances)
 {
     SWSS_LOG_ENTER();
 
@@ -26,7 +28,8 @@ std::shared_ptr<FlexCounter> FlexCounterManager::getInstance(
 
     if (m_flexCounters.count(instanceId) == 0)
     {
-        auto counter = std::make_shared<FlexCounter>(instanceId, m_vendorSai, m_dbCounters);
+        bool supportingBulk = (m_supportingBulkGroups.find(instanceId) != std::string::npos);
+        auto counter = std::make_shared<FlexCounter>(instanceId, m_vendorSai, m_dbCounters, supportingBulk);
 
         m_flexCounters[instanceId] = counter;
     }

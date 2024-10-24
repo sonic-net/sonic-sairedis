@@ -7,7 +7,7 @@
 using namespace syncd;
 
 const std::string expected_usage =
-R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-h]
+R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-h]
     -d --diag
         Enable diagnostic shell
     -p --profile profile
@@ -36,6 +36,8 @@ R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [
         Comparison logic 'break before make' configuration file
     -w --watchdogWarnTimeSpan
         Watchdog time span (in microseconds) to watch for execution
+    -B --supportingBulkCounters
+        Counter groups those support bulk polling
     -h --help
         Print out this message
 )";
@@ -49,7 +51,7 @@ TEST(CommandLineOptions, getCommandLineString)
     EXPECT_EQ(str, " EnableDiagShell=NO EnableTempView=NO DisableExitSleep=NO EnableUnittests=NO"
             " EnableConsistencyCheck=NO EnableSyncMode=NO RedisCommunicationMode=redis_async"
             " EnableSaiBulkSuport=NO StartType=cold ProfileMapFile= GlobalContext=0 ContextConfig= BreakConfig="
-            " WatchdogWarnTimeSpan=30000000");
+            " WatchdogWarnTimeSpan=30000000 SupportingBulkCounters=");
 }
 
 TEST(CommandLineOptions, startTypeStringToStartType)

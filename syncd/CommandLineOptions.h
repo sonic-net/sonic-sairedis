@@ -98,5 +98,7 @@ namespace syncd
             std::string m_portMapFile;
 #endif // SAITHRIFT
 
+            std::string m_supportingBulkCounterGroups;
+
     };
 }
