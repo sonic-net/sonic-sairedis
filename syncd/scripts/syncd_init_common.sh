@@ -337,6 +337,24 @@ config_syncd_vs()
     CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
 }
 
+vpp_api_check()
+{
+   VPP_API_SOCK=$1
+   while true
+   do
+      [ -S "$VPP_API_SOCK" ] && vpp_api_test socket-name $VPP_API_SOCK <<< "show_version" 2>/dev/null | grep "version:" && break
+      sleep 1
+   done
+}
+
+config_syncd_vpp()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    vpp_api_check "/run/vpp/api.sock"
+    source /etc/sonic/vpp/syncd_vpp_env
+    export NO_LINUX_NL
+}
+
 config_syncd_soda()
 {
     # Add support for SAI bulk operations
@@ -471,6 +489,8 @@ config_syncd()
         config_syncd_nephos
     elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
         config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "vpp" ]; then
+        config_syncd_vpp
     elif [ "$SONIC_ASIC_TYPE" == "innovium" ]; then
         config_syncd_innovium
     elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
