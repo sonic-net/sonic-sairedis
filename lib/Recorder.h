@@ -179,6 +179,10 @@ namespace sairedis
 
         public: // SAI stats API
 
+            void recordGenericCounterPolling(
+                    _In_ const std::string& key,
+                    _In_ const std::vector<swss::FieldValueTuple>& arguments);
+
             void recordGenericGetStats(
                     _In_ sai_object_type_t object_type,
                     _In_ sai_object_id_t object_id,

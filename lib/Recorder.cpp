@@ -535,6 +535,17 @@ void Recorder::recordGenericSet(
     recordLine("s|" + key + "|" + Globals::joinFieldValues(arguments));
 }
 
+void Recorder::recordGenericCounterPolling(
+        _In_ const std::string& key,
+        _In_ const std::vector<swss::FieldValueTuple>& arguments)
+{
+    SWSS_LOG_ENTER();
+
+    // lower case 'p' stands for counter Polling
+
+    recordLine("p|" + key + "|" + Globals::joinFieldValues(arguments));
+}
+
 void Recorder::recordGenericSetResponse(
         _In_ sai_status_t status)
 {
