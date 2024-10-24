@@ -572,7 +572,7 @@ sai_status_t RedisRemoteSaiInterface::notifyCounterGroupOperations(
     emplaceStrings(flexCounterGroupParam->plugin_name, flexCounterGroupParam->plugins, entries);
     emplaceStrings(FLEX_COUNTER_STATUS_FIELD, flexCounterGroupParam->operation, entries);
 
-    m_recorder->recordGenericSet(key, entries);
+    m_recorder->recordGenericCounterPolling(key, entries);
 
     m_communicationChannel->set(key,
                                 entries,
@@ -607,7 +607,7 @@ sai_status_t RedisRemoteSaiInterface::notifyCounterOperations(
         command = REDIS_FLEX_COUNTER_COMMAND_STOP_POLL;
     }
 
-    m_recorder->recordGenericSet(key, entries);
+    m_recorder->recordGenericCounterPolling(key, entries);
     m_communicationChannel->set(key, entries, command);
 
     return waitForResponse(SAI_COMMON_API_SET);
