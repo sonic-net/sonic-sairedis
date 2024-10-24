@@ -57,6 +57,10 @@
 #define REDIS_FLEX_COUNTER_COMMAND_SET_GROUP        "set_counter_group"
 #define REDIS_FLEX_COUNTER_COMMAND_DEL_GROUP        "del_counter_group"
 #define REDIS_FLEX_COUNTER_COMMAND_RESPONSE         "counter_response"
+
+#define REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_QUERY      "stats_capability_query"
+#define REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_RESPONSE   "stats_capability_response"
+
 /**
  * @brief Redis virtual object id counter key name.
  *
