@@ -77,8 +77,11 @@ TEST(CommandLineOptionsParser, parseCommandLine)
     char arg1[] = "test";
     char arg2[] = "-w";
     char arg3[] = "1000";
-    std::vector<char *> args = {arg1, arg2, arg3};
+    char arg4[] = "-B";
+    char arg5[] = "WATERMARK";
+    std::vector<char *> args = {arg1, arg2, arg3, arg4, arg5};
 
     auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
     EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 1000);
+    EXPECT_EQ(opt->m_supportingBulkCounterGroups, "WATERMARK");
 }
