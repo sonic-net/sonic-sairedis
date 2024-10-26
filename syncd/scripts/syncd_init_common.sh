@@ -133,7 +133,10 @@ function merge_config_bcm_files()
         if [ ! -z "$line" ];then
             if [ "${line::1}" == '#' ];then
                 echo $line >> $to_file
-            elif [ "$line" == "[Overwrite Section]" ];then
+            elif [ "$line" == "[Low Inheritance Precedence]" ];then
+                override=false
+                echo $line >> $to_file
+            elif [ "$line" == "[High Inheritance Precedence]" ];then
                 override=true
                 echo "# $line" >> $to_file
                 echo "Merge properties with override $override"
@@ -178,9 +181,10 @@ function merge_config_yml_files()
         if [ ! -z "$line" ];then
             if [ "${line::1}" == '#' ];then
                 echo "        $line" >> $to_file
-            elif [ "$line" == "[Overwrite Section]"];then
-                #Overwrite section in common config should
-                #be located after normal section
+            elif [ "$line" == "[Low Inheritance Precedence]" ];then
+                override=false
+                echo "        $line" >> $to_file
+            elif [ "$line" == "[High Inheritance Precedence]"];then
                 override=true
                 echo "        # $line" >> $to_file
                 echo "Merge properties with override $override"
