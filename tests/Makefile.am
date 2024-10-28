@@ -21,7 +21,7 @@ tests_LDADD = -lhiredis -lswsscommon -lpthread \
 			  $(top_srcdir)/lib/libsairedis.la $(top_srcdir)/syncd/libSyncd.a \
 			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
 
-testclient_SOURCES = TestClient.cpp testclient.cpp
+testclient_SOURCES = TestClient.cpp testclient_main.cpp
 testclient_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 testclient_LDADD = -lhiredis -lswsscommon -lpthread \
 				   $(top_srcdir)/lib/libsairedis.la $(top_srcdir)/syncd/libSyncd.a \
