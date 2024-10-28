@@ -10,7 +10,6 @@ extern "C" {
 #include <vector>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
 #include <map>
 
 namespace syncd
@@ -224,7 +223,7 @@ namespace syncd
 
             bool m_apiInitialized;
 
-            std::shared_mutex m_apimutex;
+            std::mutex m_apimutex;
 
             sai_service_method_table_t m_service_method_table;
 
