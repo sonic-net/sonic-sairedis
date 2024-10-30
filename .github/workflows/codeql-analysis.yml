@@ -7,7 +7,7 @@ on:
     branches:
       - 'master'
       - '202[0-9][0-9][0-9]'
-  pull_request_target:
+  pull_request:
     branches:
       - 'master'
       - '202[0-9][0-9][0-9]'
@@ -54,7 +54,7 @@ jobs:
             libyang-dev \
             libzmq3-dev \
             libzmq5 \
-            swig3.0 \
+            swig4.0 \
             libpython2.7-dev \
             libgtest-dev \
             libgmock-dev \

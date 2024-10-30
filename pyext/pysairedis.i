@@ -2,6 +2,10 @@
 %include "cpointer.i"
 %include "carrays.i"
 
+// These objects cause issues on Buster because of the function pointers
+%ignore _sai_struct_member_info_t;
+%ignore _sai_object_type_info_t;
+
 %{
 #pragma GCC optimize("no-var-tracking-assignments")
 
