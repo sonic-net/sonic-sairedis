@@ -2607,6 +2607,9 @@ int SaiPlayer::replay()
             case 'q':
                 // TODO: implement SAI player support for query commands
                 continue;
+            case 'p':
+                // TODO: implement SAI player support for counter polling commands
+                continue;
             case 'Q':
                 continue; // skip over query responses
             case '#':
