@@ -231,8 +231,8 @@ function merge_config_yml_files()
 config_syncd_bcm()
 {
     PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
-    #PLT_CONFIG_BCM=$(find $HWSKU_DIR -name '*.bcm' -not -path "*/phy/*")
-    #PLT_CONFIG_YML=$(find $HWSKU_DIR -name '*.yml')
+    PLT_CONFIG_BCM=""
+    PLT_CONFIG_YML=""
     PLT_SAI_PROFILE=$(find $HWSKU_DIR -name 'sai.profile')
     readline=$(grep SAI_INIT_CONFIG_FILE $PLT_SAI_PROFILE)
     if [ ${readline: -3} == "bcm" ]; then

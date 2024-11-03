@@ -1,9 +1,18 @@
 #!/bin/bash 
 ###BRCM Common config UT####
+HWSKU_DIR=/usr/share/sonic/hwsku
 PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
-PLT_CONFIG_BCM=$(find $HWSKU_DIR -name '*.bcm' -not -path "*/phy/*")
-PLT_CONFIG_YML=$(find $HWSKU_DIR -name '*.yml')
+PLT_SAI_PROFILE=$(find $HWSKU_DIR -name 'sai.profile')
+readline=$(grep SAI_INIT_CONFIG_FILE $PLT_SAI_PROFILE)
 PLATFORM_DIR=/usr/share/sonic/platform
+PLT_CONFIG_BCM=""
+PLT_CONFIG_YML=""
+    
+if [ ${readline: -3} == "bcm" ]; then
+    PLT_CONFIG_BCM=${readline#*=}
+elif [ ${readline: -3} == "yml" ]; then
+    PLT_CONFIG_YML=${readline#*=}
+fi
 
 if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; then
     CONFIG_BCM=$(find /tmp -name '*.bcm')
@@ -31,7 +40,7 @@ if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; th
                 check_override=false
             else
                 if $check_override ;then
-                   if grep -q $line $CONFIG_BCM ;then
+                   if grep -q "$line" $CONFIG_BCM ;then
                       check_pass=true
                    else
                       echo "Fail: Checking overwite properties not existing.."
@@ -80,29 +89,29 @@ if [ ! -z "$PLT_CONFIG_YML" ] && [ -f $PLATFORM_DIR/common_config_support ]; the
                 check_override=true
             else
                 if $check_override ;then
-                   if grep -q $line $CONFIG_BCM ;then
+                   if grep -q "$line" $CONFIG_YML ;then
                       check_pass=true
                    else
                       echo "Fail: Checking overwite properties not existing.."
+                      check_pass=false
                       return
                    fi
                 else
-                   sedline=${line%=*}
-                   if grep -q $sedline $CONFIG_BCM ;then
+                   sedline=${line%:*}
+                   if grep -q $sedline $CONFIG_YML ;then
                       check_pass=true
                    else
                       echo "Fail: Checking properties not existing.."
+                      check_pass=false
                       return
                    fi
                 fi
             fi
         fi
-    
+    done < $COMMON_CONFIG_BCM
+
     if $check_pass ;then
        echo "PASS: Checking Common config merged Success"
     fi
-    
-    done < $COMMON_CONFIG_BCM
 
 fi
-    
