@@ -135,7 +135,7 @@ function merge_config_bcm_files()
                 echo $line >> $to_file
             elif [ "$line" == "[Low Inheritance Precedence]" ];then
                 override=false
-                echo $line >> $to_file
+                echo "# $line" >> $to_file
             elif [ "$line" == "[High Inheritance Precedence]" ];then
                 override=true
                 echo "# $line" >> $to_file
