@@ -183,8 +183,8 @@ function merge_config_yml_files()
                 echo "        $line" >> $to_file
             elif [ "$line" == "[Low Inheritance Precedence]" ];then
                 override=false
-                echo "        $line" >> $to_file
-            elif [ "$line" == "[High Inheritance Precedence]"];then
+                echo "        # $line" >> $to_file
+            elif [ "$line" == "[High Inheritance Precedence]" ];then
                 override=true
                 echo "        # $line" >> $to_file
                 echo "Merge properties with override $override"
