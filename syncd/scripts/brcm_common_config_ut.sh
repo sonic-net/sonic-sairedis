@@ -86,7 +86,7 @@ if [ ! -z "$PLT_CONFIG_YML" ] && [ -f $PLATFORM_DIR/common_config_support ]; the
                 check_override=true
             elif [ "$line" == "[Low Inheritance Precedence]" ];then
                 echo "Checking Low Inheritance property..."
-                check_override=true
+                check_override=false
             else
                 if $check_override ;then
                    if grep -q "$line" $CONFIG_YML ;then
