@@ -71,7 +71,7 @@ stages:
       artifact_name: sonic-sairedis-asan
       syslog_artifact_name: sonic-sairedis-asan.syslog
       asan: true
-      run_unit_test: false
+      run_unit_test: true
       archive_gcov: false
       debian_version: ${{ parameters.debian_version }}
 
