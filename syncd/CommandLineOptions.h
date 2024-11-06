@@ -75,8 +75,6 @@ namespace syncd
              */
             bool m_enableConsistencyCheck;
 
-            bool m_enableSyncMode;
-
             bool m_enableSaiBulkSupport;
 
             sai_redis_communication_mode_t m_redisCommunicationMode;

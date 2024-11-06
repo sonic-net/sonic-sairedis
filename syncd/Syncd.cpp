@@ -80,26 +80,6 @@ Syncd::Syncd(
         SWSS_LOG_THROW("no context config defined at global context %u", m_commandLineOptions->m_globalContext);
     }
 
-    if (m_contextConfig->m_zmqEnable && m_commandLineOptions->m_enableSyncMode)
-    {
-        SWSS_LOG_NOTICE("disabling command line sync mode, since context zmq enabled");
-
-        m_commandLineOptions->m_enableSyncMode = false;
-
-        m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
-    }
-
-    if (m_commandLineOptions->m_enableSyncMode)
-    {
-        SWSS_LOG_WARN("enable sync mode is deprecated, please use communication mode, FORCING redis sync mode");
-
-        m_enableSyncMode = true;
-
-        m_contextConfig->m_zmqEnable = false;
-
-        m_commandLineOptions->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
-    }
-
     if (m_commandLineOptions->m_redisCommunicationMode == SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC)
     {
         SWSS_LOG_NOTICE("zmq sync mode enabled via cmd line");
