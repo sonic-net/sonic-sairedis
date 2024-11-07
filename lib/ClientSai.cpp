@@ -1563,9 +1563,9 @@ sai_status_t ClientSai::dbgGenerateDump(
     };
 
     std::string key = "DBG_GEN_DUMP:01";
-    
+
     m_communicationChannel->set(key, entry, REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMP);
- 
+
     swss::KeyOpFieldsValuesTuple kco;
     return m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE, kco);
 }

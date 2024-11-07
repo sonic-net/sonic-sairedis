@@ -1920,20 +1920,20 @@ sai_status_t RedisRemoteSaiInterface::dbgGenerateDump(
     {
         swss::FieldValueTuple("DBG_GENERATE_DUMP", dump_file_name),
     };
-    
+
     std::string key = "DBG_GEN_DUMP:01";
     m_communicationChannel->set(key, entry, REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMP);
- 
+
     if (m_syncMode)
     {
 	SWSS_LOG_DEBUG("wait for generate dump response");
         swss::KeyOpFieldsValuesTuple kco;
         auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE, kco);
-        m_recorder->recordDbgGenDumpResponse(status);        
+        m_recorder->recordDbgGenDumpResponse(status);
         return status;
     }
 
-    return SAI_STATUS_SUCCESS;  
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(

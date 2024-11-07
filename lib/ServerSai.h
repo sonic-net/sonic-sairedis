@@ -185,7 +185,7 @@ namespace sairedis
                     _Out_ sai_api_version_t *version) override;
 
             virtual sai_status_t dbgGenerateDump(
-                    _In_ const char *dump_file_name) override;       
+                    _In_ const char *dump_file_name) override;
 
         private:
 
@@ -298,7 +298,7 @@ namespace sairedis
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
            sai_status_t processDbgGenerateDump(
-                    _In_ const swss::KeyOpFieldsValuesTuple &kco); 
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
         private:
 

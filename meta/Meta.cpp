@@ -1424,7 +1424,7 @@ sai_status_t Meta::dbgGenerateDump(
         _In_ const char *dump_file_name)
 {
     SWSS_LOG_ENTER();
-    
+
     return m_implementation->dbgGenerateDump(dump_file_name);
 }
 

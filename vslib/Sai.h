@@ -195,7 +195,7 @@ namespace saivs
 
             virtual sai_status_t dbgGenerateDump(
                     _In_ const char *dump_file_name) override;
-                    
+
         private: // QUAD pre
 
             sai_status_t preSet(

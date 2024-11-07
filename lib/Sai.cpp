@@ -785,7 +785,7 @@ sai_status_t Sai::dbgGenerateDump(
 
     SWSS_LOG_ERROR("context map is empty");
 
-    return SAI_STATUS_FAILURE; 
+    return SAI_STATUS_FAILURE;
 }
 
 /*

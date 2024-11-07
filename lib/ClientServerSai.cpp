@@ -645,6 +645,6 @@ sai_status_t ClientServerSai::dbgGenerateDump(
     MUTEX();
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
-     
+
     return m_sai->dbgGenerateDump(dump_file_name);
 }

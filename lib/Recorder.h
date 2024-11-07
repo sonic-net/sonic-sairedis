@@ -263,7 +263,7 @@ namespace sairedis
                     _In_ sai_status_t status);
 
             void recordDbgGenDumpResponse(
-                    _In_ sai_status_t status);        
+                    _In_ sai_status_t status);
 
         public: // SAI global interface API
 

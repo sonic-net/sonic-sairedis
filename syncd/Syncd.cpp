@@ -409,7 +409,7 @@ sai_status_t Syncd::processSingleEvent(
 
     if (op == REDIS_FLEX_COUNTER_COMMAND_DEL_GROUP)
         return processFlexCounterGroupEvent(key, DEL_COMMAND, kfvFieldsValues(kco));
-    
+
     if (op == REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMP)
         return processDbgGenerateDump(kco);
 
@@ -431,7 +431,7 @@ sai_status_t Syncd::processDbgGenerateDump(
     }
 
     auto& fieldValues = kfvFieldsValues(kco);
-        
+
     auto value = fvValue(fieldValues[0]);
     const char* value_cstr = value.c_str();
 
