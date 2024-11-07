@@ -42,6 +42,11 @@ if [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
 fi
 
+SUPPORTING_BULK_COUNTER_GROUPS=$(echo $SYNCD_VARS | jq -r '.supporting_bulk_counter_groups')
+if [ "$SUPPORTING_BULK_COUNTER_GROUPS" != "" ]; then
+    CMD_ARGS+=" -B $SUPPORTING_BULK_COUNTER_GROUPS"
+fi
+
 case "$(cat /proc/cmdline)" in
   *SONIC_BOOT_TYPE=fastfast*)
     if [ -e /var/warmboot/warm-starting ]; then

@@ -66,6 +66,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " ContextConfig=" << m_contextConfig;
     ss << " BreakConfig=" << m_breakConfig;
     ss << " WatchdogWarnTimeSpan=" << m_watchdogWarnTimeSpan;
+    ss << " SupportingBulkCounters=" << m_supportingBulkCounterGroups;
 
 #ifdef SAITHRIFT
 

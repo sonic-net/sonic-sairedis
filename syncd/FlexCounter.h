@@ -24,6 +24,9 @@ namespace syncd
         void addPlugins(
             _In_ const std::vector<std::string>& shaStrings);
 
+        void setNoDoubleCheckBulkCapability(
+            _In_ bool);
+
         bool hasPlugin() const {return !m_plugins.empty();}
 
         void removePlugins() {m_plugins.clear();}
@@ -55,6 +58,7 @@ namespace syncd
         bool use_sai_stats_capa_query = true;
         bool use_sai_stats_ext = false;
         bool double_confirm_supported_counters = false;
+        bool no_double_check_bulk_capability = false;
     };
     class FlexCounter
     {
@@ -65,7 +69,8 @@ namespace syncd
             FlexCounter(
                     _In_ const std::string& instanceId,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
-                    _In_ const std::string& dbCounters);
+                    _In_ const std::string& dbCounters,
+                    _In_ const bool noDoubleCheckBulkCapability=false);
 
             virtual ~FlexCounter();
 
@@ -168,5 +173,9 @@ namespace syncd
             bool m_isDiscarded;
 
             std::map<std::string, std::shared_ptr<BaseCounterContext>> m_counterContext;
+
+            bool m_noDoubleCheckBulkCapability;
+
+            static const std::map<std::string, std::string> m_plugIn2CounterType;
     };
 }

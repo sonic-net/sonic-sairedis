@@ -407,7 +407,7 @@ void testAddRemovePlugin(const std::string& pluginFieldName)
 {
     SWSS_LOG_ENTER();
 
-    FlexCounter fc("test", sai, "COUNTERS_DB");
+    FlexCounter fc("test", sai, "COUNTERS_DB", true);
 
     std::vector<swss::FieldValueTuple> values;
     values.emplace_back(pluginFieldName, "dummy_sha_strings");
