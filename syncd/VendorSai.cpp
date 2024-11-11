@@ -493,6 +493,10 @@ sai_status_t VendorSai::bulkCreate(
             ptr = m_apis.dash_acl_api->create_dash_acl_rules;
             break;
 
+        case SAI_OBJECT_TYPE_METER_RULE:
+            ptr = m_apis.dash_meter_api->create_meter_rules;
+            break;
+
         default:
             SWSS_LOG_ERROR("not implemented %s, FIXME", sai_serialize_object_type(object_type).c_str());
             return SAI_STATUS_NOT_IMPLEMENTED;
@@ -570,6 +574,10 @@ sai_status_t VendorSai::bulkRemove(
 
         case SAI_OBJECT_TYPE_DASH_ACL_RULE:
             ptr = m_apis.dash_acl_api->remove_dash_acl_rules;
+            break;
+
+        case SAI_OBJECT_TYPE_METER_RULE:
+            ptr = m_apis.dash_meter_api->remove_meter_rules;
             break;
 
         default:
