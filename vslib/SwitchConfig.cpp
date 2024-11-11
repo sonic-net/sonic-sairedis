@@ -141,14 +141,14 @@ bool SwitchConfig::parseBootType(
     return true;
 }
 
-bool SwitchConfig::parseUseTapDevice(
-        _In_ const char* useTapDeviceStr)
+bool SwitchConfig::parseBool(
+        _In_ const char* str)
 {
     SWSS_LOG_ENTER();
 
-    if (useTapDeviceStr)
+    if (str)
     {
-        return strcmp(useTapDeviceStr, "true") == 0;
+        return strcmp(str, "true") == 0;
     }
 
     return false;
