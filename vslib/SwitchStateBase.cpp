@@ -2339,7 +2339,12 @@ sai_status_t SwitchStateBase::refresh_port_oper_speed(
     }
     else
     {
-        if (!vs_get_oper_speed(port_id, attr.value.u32))
+        if (m_switchConfig->m_useConfiguredSpeedAsOperSpeed)
+        {
+            attr.id = SAI_PORT_ATTR_SPEED;
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+        }
+        else if (!vs_get_oper_speed(port_id, attr.value.u32))
         {
             return SAI_STATUS_FAILURE;
         }
