@@ -247,7 +247,7 @@ config_syncd_bcm()
     fi
     
     if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; then
-       cp -f $HWSKU_DIR/*.config.bcm /tmp
+       cp -f $PLT_CONFIG_BCM /tmp
        cp -f /etc/sai.d/sai.profile /tmp
        CONFIG_BCM=$(find /tmp -name '*.bcm')
        SAI_PROFILE=$(find /tmp -name 'sai.profile')
@@ -274,7 +274,7 @@ config_syncd_bcm()
     fi
 
     if [ ! -z "$PLT_CONFIG_YML" ] && [ -f $PLATFORM_DIR/common_config_support ]; then
-       cp -f $HWSKU_DIR/*.config.yml /tmp
+       cp -f $PLT_CONFIG_YML /tmp
        cp -f /etc/sai.d/sai.profile /tmp
        CONFIG_YML=$(find /tmp -name '*.yml')
        SAI_PROFILE=$(find /tmp -name 'sai.profile')
