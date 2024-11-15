@@ -265,7 +265,7 @@ config_syncd_bcm()
           done
           echo "Merging $PLT_CONFIG_BCM with $COMMON_CONFIG_BCM, merge files stored in $CONFIG_BCM"
        fi
-       #sync the file system 
+       #sync the file system
        sync
 
        # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
