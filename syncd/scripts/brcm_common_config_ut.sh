@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 ###BRCM Common config UT####
 HWSKU_DIR=/usr/share/sonic/hwsku
 PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
