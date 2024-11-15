@@ -245,7 +245,7 @@ config_syncd_bcm()
     elif [ ${readline: -3} == "yml" ]; then
        PLT_CONFIG_YML=${readline#*=}
     fi
-    
+
     if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; then
        cp -f $PLT_CONFIG_BCM /tmp
        cp -f /etc/sai.d/sai.profile /tmp
@@ -633,4 +633,3 @@ config_syncd()
 
     [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf
 }
-
