@@ -7,7 +7,7 @@ readline=$(grep SAI_INIT_CONFIG_FILE $PLT_SAI_PROFILE)
 PLATFORM_DIR=/usr/share/sonic/platform
 PLT_CONFIG_BCM=""
 PLT_CONFIG_YML=""
-    
+
 if [ ${readline: -3} == "bcm" ]; then
     PLT_CONFIG_BCM=${readline#*=}
 elif [ ${readline: -3} == "yml" ]; then
@@ -16,7 +16,7 @@ fi
 
 if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; then
     CONFIG_BCM=$(find /tmp -name '*.bcm')
-    
+
     #Get first three characters of chip id
     readline=$(grep '0x14e4' /proc/linux-kernel-bde)
     chip_id=${readline#*0x14e4:0x}
@@ -24,7 +24,7 @@ if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; th
     COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -maxdepth 1 -name '*.bcm')
     check_override=false
     check_pass=false
-    
+
     #Check if common config does apply to config bcm correctly
     while read line
     do
@@ -65,7 +65,7 @@ fi
 
 if [ ! -z "$PLT_CONFIG_YML" ] && [ -f $PLATFORM_DIR/common_config_support ]; then
     CONFIG_YML=$(find /tmp -name '*.yml')
-    
+
     #Get first three characters of chip id
     readline=$(grep '0:14e4' /proc/linux_ngbde)
     chip_id=${readline#*0:14e4:}
@@ -73,7 +73,7 @@ if [ ! -z "$PLT_CONFIG_YML" ] && [ -f $PLATFORM_DIR/common_config_support ]; the
     COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -maxdepth 1 -name '*.bcm')
     check_override=false
     check_pass=false
-    
+
     #Check if common config does apply to config bcm correctly
     while read line
     do
