@@ -6702,6 +6702,7 @@ void Meta::meta_sai_on_port_state_change_single(
         case SAI_OBJECT_TYPE_PORT:
         case SAI_OBJECT_TYPE_BRIDGE_PORT:
         case SAI_OBJECT_TYPE_LAG:
+	case SAI_OBJECT_TYPE_TUNNEL:
 
             valid = true;
             break;
