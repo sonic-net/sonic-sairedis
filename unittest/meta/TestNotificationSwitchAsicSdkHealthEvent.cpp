@@ -98,16 +98,13 @@ TEST(NotificationSwitchAsicSdkHealthEvent, executeCallback)
 
 typedef struct _sai_switch_health_data_t_v14
 {
-    /** Type of switch health data */
     sai_health_data_type_t data_type;
 
-    /** @passparam data_type */
     sai_health_data_t data;
 } sai_switch_health_data_t_v14;
 
 typedef struct _sai_switch_health_data_t_v13
 {
-    /** Type of switch health data */
     sai_health_data_type_t data_type;
 } sai_switch_health_data_t_v13;
 
