@@ -5,6 +5,8 @@
 #include "sairediscommon.h"
 #include "sai_serialize.h"
 
+#include <inttypes.h>
+
 #include <gtest/gtest.h>
 #include <memory>
 
@@ -65,12 +67,18 @@ static void on_switch_asic_sdk_health_event(
 {
     SWSS_LOG_ENTER();
 
-    printf("swtch: %lx %ld %d\n", switch_id, timestamp.tv_sec, timestamp.tv_nsec);
+    printf("swtch: %" PRIx64 " %" PRIu64 " %d\n", switch_id, timestamp.tv_sec, timestamp.tv_nsec);
 
     // this code is from swss and it crashes on put_time because of tv_sec == 172479515853275099
 
     // 67767710400000001
-    timestamp.tv_sec %= (1000L*365L*24L*60L*60L);
+    uint64_t y1000 = 1000;
+    y1000 *= 365;
+    y1000 *= 24;
+    y1000 *= 60;
+    y1000 *= 60;
+
+    timestamp.tv_sec %= y1000;
 
     std::stringstream ss;
     const std::time_t t = (std::time_t)timestamp.tv_sec;
@@ -126,7 +134,7 @@ static void on_switch_asic_sdk_health_event_v13(
 {
     SWSS_LOG_ENTER();
 
-    printf("swtch v13: %lx %ld %d, count = %d\n", switch_id, timestamp.tv_sec,timestamp.tv_nsec,
+    printf("switch v13: 0x%" PRIx64 " %" PRIu64 " %d, count = %d\n", switch_id, timestamp.tv_sec,timestamp.tv_nsec,
             description.count);
 
     EXPECT_TRUE(timestamp.tv_sec == 1731848814);
@@ -154,7 +162,7 @@ static void on_switch_asic_sdk_health_event_v14(
 {
     SWSS_LOG_ENTER();
 
-    printf("swtch v14: %lx %ld %d, count = %d\n", switch_id, timestamp.tv_sec,timestamp.tv_nsec,
+    printf("switch v14: 0x%" PRIx64 " %" PRIu64 " %d, count = %d\n", switch_id, timestamp.tv_sec, timestamp.tv_nsec,
             description.count);
 
     EXPECT_TRUE(timestamp.tv_sec == 1731848814);
