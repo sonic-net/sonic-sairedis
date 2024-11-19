@@ -563,6 +563,11 @@ namespace saimeta
                      _In_ bool create,
                      _In_ bool get = false);
 
+             sai_status_t meta_sai_validate_prefix_compression_entry(
+                     _In_ const sai_prefix_compression_entry_t* prefix_compression_entry,
+                     _In_ bool create,
+                     _In_ bool get = false);
+
         public:
 
             /*

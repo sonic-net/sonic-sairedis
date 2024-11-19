@@ -1841,3 +1841,12 @@ TEST(Meta, remove_meter_bucket_entry)
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai.remove(e));
 }
+
+TEST(Meta, remove_prefix_compression_entry)
+{
+    Meta sai(std::make_shared<MetaTestSaiInterface>());
+
+    sai_prefix_compression_entry_t* e = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai.remove(e));
+}
