@@ -315,6 +315,11 @@ namespace saimeta
             static bool is_ipv6_mask_valid(
                     _In_ const uint8_t* mask);
 
+            static bool isPortObjectIdValid(
+                    _In_ sai_object_type_t object_type);
+
+            static std::vector<std::string> getValidPortObjectTypes();
+
         private: // unit tests helpers
 
             bool meta_unittests_get_and_erase_set_readonly_flag(

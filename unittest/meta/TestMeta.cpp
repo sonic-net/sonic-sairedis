@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+#include <boost/algorithm/string/join.hpp>
+
 #include <memory>
 
 #define VLAN_ID 2
@@ -1849,4 +1851,26 @@ TEST(Meta, remove_prefix_compression_entry)
     sai_prefix_compression_entry_t* e = nullptr;
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai.remove(e));
+}
+
+TEST(Meta, isPortObjectIdValid)
+{
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_PORT), true);
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_BRIDGE_PORT), true);
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_LAG), true);
+
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_TUNNEL),false);
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_NULL), false);
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_VLAN), false);
+}
+
+TEST(Meta, getValidPortObjectTypes)
+{
+    auto v = Meta::getValidPortObjectTypes();
+
+    EXPECT_EQ(v.size(), 3);
+
+    auto s = boost::algorithm::join(v, ",");
+
+    EXPECT_EQ(s, "PORT,LAG,BRIDGE_PORT");
 }

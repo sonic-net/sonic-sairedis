@@ -8,6 +8,8 @@
 
 #include <inttypes.h>
 
+#include <boost/algorithm/string/join.hpp>
+
 #include <set>
 
 // TODO add validation for all oids belong to the same switch
@@ -6694,24 +6696,14 @@ void Meta::meta_sai_on_port_state_change_single(
 
     auto ot = objectTypeQuery(data.port_id);
 
-    bool valid = false;
+    bool valid = isPortObjectIdValid(ot);
 
-    switch (ot)
+    if (!valid)
     {
-        // TODO hardcoded types, must advance SAI repository commit to get metadata for this
-        case SAI_OBJECT_TYPE_PORT:
-        case SAI_OBJECT_TYPE_BRIDGE_PORT:
-        case SAI_OBJECT_TYPE_LAG:
-
-            valid = true;
-            break;
-
-        default:
-
-            SWSS_LOG_ERROR("data.port_id %s has unexpected type: %s, expected PORT, BRIDGE_PORT or LAG",
-                    sai_serialize_object_id(data.port_id).c_str(),
-                    sai_serialize_object_type(ot).c_str());
-            break;
+        SWSS_LOG_ERROR("data.port_id %s has unexpected type: %s, expected: %s",
+                sai_serialize_object_id(data.port_id).c_str(),
+                sai_serialize_object_type(ot).c_str(),
+                boost::algorithm::join(getValidPortObjectTypes(), ",").c_str());
     }
 
     if (valid && !m_oids.objectReferenceExists(data.port_id))
@@ -7130,4 +7122,47 @@ void Meta::populate(
             m_attrKeys.insert(mKey, attrKey);
         }
     }
+}
+
+bool Meta::isPortObjectIdValid(
+        _In_ sai_object_type_t object_type)
+{
+    SWSS_LOG_ENTER();
+
+    auto members = sai_metadata_struct_members_sai_port_oper_status_notification_t;
+
+    for (size_t i = 0; members[i]; i++)
+    {
+        auto* mb = members[i];
+
+        if (mb->membername != std::string("port_id"))
+            continue;
+
+        for (size_t idx = 0; idx < mb->allowedobjecttypeslength; idx++)
+        {
+            if (mb->allowedobjecttypes[idx] == object_type)
+                return true;
+        }
+
+        return false;
+    }
+
+    SWSS_LOG_THROW("port_id member not found on sai_port_oper_status_notification");
+}
+
+std::vector<std::string> Meta::getValidPortObjectTypes()
+{
+    SWSS_LOG_ENTER();
+
+    auto md = sai_metadata_enum_sai_object_type_t;
+
+    std::vector<std::string> v;
+
+    for (size_t i = 0; i < md.valuescount; i++)
+    {
+        if (isPortObjectIdValid((sai_object_type_t)md.values[i]))
+            v.push_back(md.valuesshortnames[i]);
+    }
+
+    return v;
 }
