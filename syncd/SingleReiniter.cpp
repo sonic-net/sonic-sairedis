@@ -22,16 +22,14 @@ SingleReiniter::SingleReiniter(
         _In_ std::shared_ptr<NotificationHandler> handler,
         _In_ const ObjectIdMap& vidToRidMap,
         _In_ const ObjectIdMap& ridToVidMap,
-        _In_ const std::vector<std::string>& asicKeys,
-        _In_ bool checkAttrVersion):
+        _In_ const std::vector<std::string>& asicKeys):
     m_vendorSai(sai),
     m_vidToRidMap(vidToRidMap),
     m_ridToVidMap(ridToVidMap),
     m_asicKeys(asicKeys),
     m_translator(translator),
     m_client(client),
-    m_handler(handler),
-    m_checkAttrVersion(checkAttrVersion)
+    m_handler(handler)
 {
     SWSS_LOG_ENTER();
 
@@ -319,7 +317,7 @@ void SingleReiniter::processSwitches()
          * object, so when doing discover we will get full default ASIC view.
          */
 
-        m_sw = std::make_shared<SaiSwitch>(m_switch_vid, m_switch_rid, m_client, m_translator, m_vendorSai, false, m_checkAttrVersion);
+        m_sw = std::make_shared<SaiSwitch>(m_switch_vid, m_switch_rid, m_client, m_translator, m_vendorSai, false);
 
         /*
          * We processed switch. We have switch vid/rid so we can process all
