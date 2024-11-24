@@ -1478,3 +1478,68 @@ TEST_F(VendorSaiTest, bulk_meter_bucket_entry)
     EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED,
             m_vsai->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
 }
+
+TEST(VendorSai, bulk_meter_rules)
+{
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+
+    sai_object_id_t switchid = create_switch(sai);
+
+    sai_attribute_t attr;
+    sai_object_id_t meter_policy0, meter_policy1;
+    attr.id = SAI_METER_POLICY_ATTR_IP_ADDR_FAMILY;
+    attr.value.s32 = SAI_IP_ADDR_FAMILY_IPV4;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.create((sai_object_type_t)SAI_OBJECT_TYPE_METER_POLICY, &meter_policy0, switchid, 1, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.create((sai_object_type_t)SAI_OBJECT_TYPE_METER_POLICY, &meter_policy1, switchid, 1, &attr));
+
+    sai_ip_address_t dst0 = {};
+    sai_ip_address_t mask0 = {};
+    sai_ip_address_t dst1 = {};
+    sai_ip_address_t mask1 = {};
+    dst0.addr_family = dst1.addr_family = mask0.addr_family = mask1.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "192.1.1.0", &dst0.addr.ip4);
+    inet_pton(AF_INET, "255.255.255.0", &mask0.addr.ip4);
+    inet_pton(AF_INET, "192.15.0.0", &dst1.addr.ip4);
+    inet_pton(AF_INET, "255.255.0.0", &mask1.addr.ip4);
+
+    sai_attribute_t attrs0[] = {
+        {.id = SAI_METER_RULE_ATTR_METER_POLICY_ID, .value = (sai_attribute_value_t){.oid = meter_policy0}},
+        {.id = SAI_METER_RULE_ATTR_DIP, .value = (sai_attribute_value_t){.ipaddr = dst0}},
+        {.id = SAI_METER_RULE_ATTR_DIP_MASK, .value = (sai_attribute_value_t){.ipaddr = mask0}},
+        {.id = SAI_METER_RULE_ATTR_METER_CLASS, .value = (sai_attribute_value_t){.u32 = 100}},
+        {.id = SAI_METER_RULE_ATTR_PRIORITY, .value = (sai_attribute_value_t){.u32 = 1}},
+    };
+
+     sai_attribute_t attrs1[] = {
+        {.id = SAI_METER_RULE_ATTR_METER_POLICY_ID, .value = (sai_attribute_value_t){.oid = meter_policy1}},
+        {.id = SAI_METER_RULE_ATTR_DIP, .value = (sai_attribute_value_t){.ipaddr = dst1}},
+        {.id = SAI_METER_RULE_ATTR_DIP_MASK, .value = (sai_attribute_value_t){.ipaddr = mask1}},
+        {.id = SAI_METER_RULE_ATTR_METER_CLASS, .value = (sai_attribute_value_t){.u32 = 200}},
+        {.id = SAI_METER_RULE_ATTR_PRIORITY, .value = (sai_attribute_value_t){.u32 = 2}},
+    };
+
+    const sai_attribute_t *attr_list[] = {
+        attrs0,
+        attrs1,
+    };
+    constexpr uint32_t meter_rules_count = sizeof(attr_list) / sizeof(sai_attribute_t*);
+    constexpr uint32_t meter_rule_attrs_count = sizeof(attrs0) / sizeof(sai_attribute_t);
+
+    uint32_t attr_count[meter_rules_count] = {meter_rule_attrs_count, meter_rule_attrs_count};
+    sai_object_id_t meter_rules[meter_rules_count];
+    sai_status_t statuses[meter_rules_count] = {};
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_METER_RULE, switchid, meter_rules_count, attr_count, attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, meter_rules, statuses));
+    for (uint32_t i = 0; i < meter_rules_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
+    }
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_METER_RULE, meter_rules_count, meter_rules, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    for (uint32_t i = 0; i < meter_rules_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
+    }
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.remove((sai_object_type_t)SAI_OBJECT_TYPE_METER_POLICY, meter_policy0));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.remove((sai_object_type_t)SAI_OBJECT_TYPE_METER_POLICY, meter_policy1));
+}
