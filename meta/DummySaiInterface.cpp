@@ -535,9 +535,7 @@ sai_status_t DummySaiInterface::dbgGenerateDump(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_status;
 }
 
 void DummySaiInterface::updateNotificationPointers(

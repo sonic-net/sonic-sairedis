@@ -220,6 +220,10 @@ class MockableSaiInterface: public saimeta::DummySaiInterface
 
         std::function<sai_status_t(sai_object_id_t, sai_object_type_t, sai_attr_id_t, sai_attr_capability_t *)> mock_queryAttributeCapability;
 
+        virtual sai_status_t dbgGenerateDump(
+                _In_ const char *dump_file_name) override;
+
+        std::function<sai_status_t(const char *)> mock_dbgGenerateDump;
 
         virtual sai_status_t queryAttributeEnumValuesCapability(
                 _In_ sai_object_id_t switch_id,
