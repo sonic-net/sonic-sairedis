@@ -902,7 +902,7 @@ TEST(Meta, queryAttributeCapability)
 
 TEST(Meta, dbgGenerateDump)
 {
-    const std::string filePath = "/var/log/dbgGenerateDumpTest/testDump.log";
+    const std::string filePath = "/var/log/testDump.log";
 
     Meta m(std::make_shared<MetaTestSaiInterface>());
 

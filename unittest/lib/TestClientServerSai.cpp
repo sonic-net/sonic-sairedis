@@ -109,20 +109,11 @@ TEST(ClientServerSai, dbgGenerateDump)
 {
     auto css = std::make_shared<ClientServerSai>();
 
+    const std::string filePath = "/var/log/testDump.log";
+
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
 
-    const std::string dirPath = "/var/log/dbgGenerateDumpTest";
-    const std::string filePath = dirPath + "/testDump.log";
-
-    struct stat st;
-    if (stat(dirPath.c_str(), &st) != 0) {
-        EXPECT_EQ(0, mkdir(dirPath.c_str(), 0755)) << "Failed to create directory: " << dirPath;
-    }
-
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->dbgGenerateDump(filePath.c_str()));
-
-    EXPECT_EQ(0, std::remove(filePath.c_str())) << "Failed to remove file: " << filePath;
-    EXPECT_EQ(0, rmdir(dirPath.c_str())) << "Failed to remove directory: " << dirPath;
 }
 
 TEST(ClientServerSai, bulkGetClearStats)
