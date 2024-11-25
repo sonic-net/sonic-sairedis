@@ -382,7 +382,9 @@ TEST(Sai, dbgGenerateDump)
 
     const std::string filePath = "/var/log/testDump.log";
 
-    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.dbgGenerateDump(filePath.c_str()));
+    auto status = sai.dbgGenerateDump(filePath.c_str());
+
+    EXPECT_EQ(status, SAI_STATUS_SUCCESS);
 
     proxy->stop();
 
