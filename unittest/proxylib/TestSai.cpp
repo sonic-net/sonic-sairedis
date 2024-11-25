@@ -380,7 +380,7 @@ TEST(Sai, dbgGenerateDump)
 
     auto thread = std::make_shared<std::thread>(fun,proxy);
 
-    const std::string dirPath = "/var/log/dbgGenerateDumpTest/testDump.log";
+    const std::string filePath = "/var/log/dbgGenerateDumpTest/testDump.log";
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai.dbgGenerateDump(filePath.c_str()));
 
