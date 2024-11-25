@@ -3166,7 +3166,7 @@ sai_status_t Syncd::processOidCreate(
              * constructor, like getting all queues, ports, etc.
              */
 
-            m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai);
+            m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai, false, m_commandLineOptions->m_enableAttrVersionCheck);
 
             m_mdioIpcServer->setSwitchId(objectRid);
 
@@ -4383,7 +4383,7 @@ void Syncd::onSyncdStart(
         SWSS_LOG_THROW("performing hard reinit, but there are %zu switches defined, bug!", m_switches.size());
     }
 
-    HardReiniter hr(m_client, m_translator, m_vendorSai, m_handler);
+    HardReiniter hr(m_client, m_translator, m_vendorSai, m_handler, m_commandLineOptions->m_enableAttrVersionCheck);
 
     m_switches = hr.hardReinit();
 
@@ -4485,7 +4485,7 @@ void Syncd::onSwitchCreateInInitViewMode(
 
         // make switch initialization and get all default data
 
-        m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai);
+        m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai, false, m_commandLineOptions->m_enableAttrVersionCheck);
 
         m_mdioIpcServer->setSwitchId(switchRid);
 
@@ -4669,7 +4669,7 @@ void Syncd::performWarmRestartSingleSwitch(
 
     // perform all get operations on existing switch
 
-    auto sw = m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai, true);
+    auto sw = m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai, true, m_commandLineOptions->m_enableAttrVersionCheck);
 
     startDiagShell(switchRid);
 }

@@ -19,12 +19,31 @@ using namespace syncd;
 #define SAI_DISCOVERY_LIST_MAX_ELEMENTS 1024
 
 SaiDiscovery::SaiDiscovery(
-        _In_ std::shared_ptr<sairedis::SaiInterface> sai):
+        _In_ std::shared_ptr<sairedis::SaiInterface> sai,
+        _In_ bool checkAttrVersion):
     m_sai(sai)
 {
     SWSS_LOG_ENTER();
 
-    // empty
+    sai_api_version_t version = SAI_VERSION(0,0,0);
+
+    sai_status_t status = m_sai->queryApiVersion(&version);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        m_attrVersionChecker.enable(checkAttrVersion);
+        m_attrVersionChecker.setSaiApiVersion(version);
+
+        SWSS_LOG_NOTICE("check attr version ENABLED, libsai api version: %lu", version);
+    }
+    else
+    {
+        m_attrVersionChecker.enable(false);
+        m_attrVersionChecker.setSaiApiVersion(SAI_API_VERSION);
+
+        SWSS_LOG_WARN("failed to obtain libsai api version: %s, will discover all attributes",
+                sai_serialize_status(status).c_str());
+    }
 }
 
 SaiDiscovery::~SaiDiscovery()
@@ -109,6 +128,11 @@ void SaiDiscovery::discover(
         sai_attribute_t attr;
 
         attr.id = md->attrid;
+
+        if (!m_attrVersionChecker.isSufficientVersion(md))
+        {
+            continue;
+        }
 
         if (md->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
         {
@@ -258,6 +282,8 @@ std::set<sai_object_id_t> SaiDiscovery::discover(
      */
 
     m_defaultOidMap.clear();
+
+    m_attrVersionChecker.reset();
 
     std::set<sai_object_id_t> discovered_rids;
 
