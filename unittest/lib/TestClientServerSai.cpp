@@ -108,9 +108,9 @@ TEST(ClientServerSai, logSet)
 TEST(ClientServerSai, dbgGenerateDump)
 {
     auto css = std::make_shared<ClientServerSai>();
-    
+
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
-    
+
     const std::string dirPath = "/var/log/dbgGenerateDumpTest";
     const std::string filePath = dirPath + "/testDump.log";
 
