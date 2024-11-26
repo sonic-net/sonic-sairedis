@@ -134,6 +134,9 @@ std::string sai_serialize_buffer_pool_stat(
 std::string sai_serialize_eni_stat(
         _In_ const sai_eni_stat_t counter);
 
+std::string sai_serialize_meter_bucket_entry_stat(
+        _In_ const sai_meter_bucket_entry_stat_t counter);
+
 std::string sai_serialize_tunnel_stat(
         _In_ const sai_tunnel_stat_t counter);
 

@@ -27,6 +27,7 @@ static const std::string COUNTER_TYPE_FLOW = "Flow Counter";
 static const std::string COUNTER_TYPE_TUNNEL = "Tunnel Counter";
 static const std::string COUNTER_TYPE_BUFFER_POOL = "Buffer Pool Counter";
 static const std::string COUNTER_TYPE_ENI = "DASH ENI Counter";
+static const std::string COUNTER_TYPE_METER_BUCKET = "DASH Meter Bucket Counter";
 static const std::string ATTR_TYPE_QUEUE = "Queue Attribute";
 static const std::string ATTR_TYPE_PG = "Priority Group Attribute";
 static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
@@ -243,6 +244,14 @@ std::string serializeStat(
     return sai_serialize_eni_stat(stat);
 }
 
+template <>
+std::string serializeStat(
+        _In_ const sai_meter_bucket_entry_stat_t stat)
+{
+    SWSS_LOG_ENTER();
+    return sai_serialize_meter_bucket_entry_stat(stat);
+}
+
 template <typename StatType>
 void deserializeStat(
         _In_ const char* name,
@@ -349,6 +358,15 @@ void deserializeStat(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_eni_stat(name, stat);
+}
+
+template <>
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_meter_bucket_entry_stat_t *stat)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_meter_bucket_entry_stat(name, stat);
 }
 
 template <typename AttrType>
@@ -1032,6 +1050,354 @@ public:
     }
 };
 
+class DashMeterCounterContext : public BaseCounterContext
+{
+public:
+    DashMeterCounterContext(
+            _In_ const std::string &name,
+            _In_ sairedis::SaiInterface *vendor_sai,
+            _In_ std::string dbCounters):
+    BaseCounterContext(name), m_dbCounters(dbCounters), m_vendorSai(vendor_sai)
+    {
+        SWSS_LOG_ENTER();
+    }
+
+    void addObject(
+            _In_ sai_object_id_t vid,
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<std::string> &idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        SWSS_LOG_ENTER();
+
+        if (m_switchId == 0UL)
+        {
+            m_switchId = m_vendorSai->switchIdQuery(rid);
+        }
+
+        if (m_meterBucketsPerEni == 0)
+        {
+            if (m_initalized) {
+                // need not repeat these global checks for each object
+                return;
+            }
+            sai_attribute_t attr;
+            attr.id = SAI_SWITCH_ATTR_DASH_CAPS_MAX_METER_BUCKET_COUNT_PER_ENI;
+            auto status = m_vendorSai->get(SAI_OBJECT_TYPE_SWITCH, m_switchId,
+                                           1, &attr);
+            if ((status != SAI_STATUS_SUCCESS) ||
+                (attr.value.u32 == 0))
+            {
+                m_initalized = true;
+                SWSS_LOG_NOTICE("No meter buckets supported per ENI for %s %s",
+                                m_name.c_str(), sai_serialize_object_id(rid).c_str());
+                return;
+            }
+            m_meterBucketsPerEni = attr.value.u32;
+        }
+
+        if (m_supportedMeterCounters.empty())
+        {
+            if (m_initalized) {
+                // need not repeat these global checks for each object
+                return;
+            }
+            getSupportedMeterCounters(rid, idStrings);
+            if (m_supportedMeterCounters.empty())
+            {
+                m_initalized = true;
+                SWSS_LOG_NOTICE("%s %s does not have supported counters",
+                                m_name.c_str(), sai_serialize_object_id(rid).c_str());
+                return;
+            }
+            if (!checkBulkCapability(vid, rid, m_supportedMeterCounters, m_groupStatsMode)) {
+                m_initalized = true;
+                SWSS_LOG_NOTICE("%s %s does not have bulk get support for Dash meter counters",
+                                m_name.c_str(), sai_serialize_object_id(rid).c_str());
+                return;
+            }
+        }
+        // add object to flex counter poll
+        addBulkMeterContext(vid, rid);
+        m_initalized = true;
+    }
+
+    void removeObject(_In_ sai_object_id_t vid) override
+    {
+        SWSS_LOG_ENTER();
+        auto it = m_bulkMeterContexts.find(vid);
+        if (it == m_bulkMeterContexts.end()) {
+            return;
+        }
+        // delete all meter bucket stats for this object from counters DB
+        swss::DBConnector db(m_dbCounters, 0);
+        swss::RedisPipeline pipeline(&db);
+        swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
+        for (const auto& object_key: it->second.object_keys) {
+           countersTable.del(sai_serialize_meter_bucket_entry(object_key.key.meter_bucket_entry));
+        }
+        // remove from flex counter poll
+        m_bulkMeterContexts.erase(it);
+    }
+
+    void collectData(_In_ swss::Table &countersTable) override
+    {
+        SWSS_LOG_ENTER();
+        for (auto &kv : m_bulkMeterContexts)
+        {
+            bulkCollectData(countersTable, kv.second);
+        }
+    }
+
+    void runPlugin(
+            _In_ swss::DBConnector& counters_db,
+            _In_ const std::vector<std::string>& argv) override
+    {
+        SWSS_LOG_ENTER();
+
+        if (!hasObject())
+        {
+            return;
+        }
+
+        for (auto &kv : m_bulkMeterContexts)
+        {
+            auto& ctx = kv.second;
+            std::vector<std::string> idStrings;
+            idStrings.reserve(m_meterBucketsPerEni);
+
+            for (uint32_t i = 0; i < m_meterBucketsPerEni; ++i) {
+                idStrings.push_back(sai_serialize_meter_bucket_entry(ctx.object_keys[i].key.meter_bucket_entry));
+            }
+            std::for_each(m_plugins.begin(),
+                          m_plugins.end(),
+                          [&] (auto &sha) { runRedisScript(counters_db, sha, idStrings, argv); });
+        }
+    }
+
+    bool hasObject() const override
+    {
+        SWSS_LOG_ENTER();
+        return !m_bulkMeterContexts.empty();
+    }
+
+private:
+    struct BulkMeterStatsContext
+    {
+        sai_object_id_t eni_vid;
+        std::vector<sai_object_key_t> object_keys;
+        std::vector<sai_status_t> object_statuses;
+        std::vector<sai_meter_bucket_entry_stat_t> counter_ids;
+        std::vector<uint64_t> counters;
+    };
+    bool bulkCollectData(
+        _In_ swss::Table &countersTable,
+        _Inout_ BulkMeterStatsContext &ctx)
+    {
+        SWSS_LOG_ENTER();
+
+        if (ctx.object_keys.size() == 0)
+        {
+            return false;
+        }
+
+        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+
+        sai_status_t status = m_vendorSai->bulkGetStats(
+            SAI_NULL_OBJECT_ID,
+            m_objectType,
+            static_cast<uint32_t>(ctx.object_keys.size()),
+            ctx.object_keys.data(),
+            static_cast<uint32_t>(ctx.counter_ids.size()),
+            reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
+            statsMode,
+            ctx.object_statuses.data(),
+            ctx.counters.data());
+
+        if (SAI_STATUS_SUCCESS != status)
+        {
+            SWSS_LOG_WARN("Failed to get meter bulk stats for %s: ENI 0x% " PRIx64 ": %u", m_name.c_str(), ctx.eni_vid, status);
+            return false;
+        }
+
+        bool meter_class_hit = false;
+        std::vector<swss::FieldValueTuple> values;
+        for (size_t i = 0; i < ctx.object_keys.size(); i++)
+        {
+            if (SAI_STATUS_SUCCESS != ctx.object_statuses[i])
+            {
+                SWSS_LOG_ERROR("Failed to get meter bulk stats of %s for ENI 0x%" PRIx64 " meter-class %d : %d",
+                               m_name.c_str(), ctx.object_keys[i].key.meter_bucket_entry.eni_id,
+                               ctx.object_keys[i].key.meter_bucket_entry.meter_class,
+                               ctx.object_statuses[i]);
+                continue;
+            }
+            for (size_t j = 0; j < ctx.counter_ids.size(); ++j) {
+                if (ctx.counters[i * ctx.counter_ids.size() + j] != 0UL) {
+                    meter_class_hit = true;
+                    break;
+                }
+            }
+            // write only non-zero meter classes to COUNTERS_DB
+            if (!meter_class_hit) {
+                continue;
+            }
+            meter_class_hit = false;
+            for (size_t j = 0; j < ctx.counter_ids.size(); j++)
+            {
+                values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
+            }
+            countersTable.set(sai_serialize_meter_bucket_entry(ctx.object_keys[i].key.meter_bucket_entry), values, "");
+            values.clear();
+        }
+        return true;
+    }
+
+    bool checkBulkCapability(
+            _In_ sai_object_id_t vid,
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<sai_meter_bucket_entry_stat_t>& counter_ids,
+            _In_ sai_stats_mode_t stats_mode)
+    {
+        SWSS_LOG_ENTER();
+
+        auto ctx = makeBulkMeterContext(vid, rid);
+        auto statsMode = stats_mode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        sai_status_t status = m_vendorSai->bulkGetStats(
+                            SAI_NULL_OBJECT_ID,
+                            m_objectType,
+                            static_cast<uint32_t>(ctx.object_keys.size()),
+                            ctx.object_keys.data(),
+                            static_cast<uint32_t>(ctx.counter_ids.size()),
+                            reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
+                            statsMode,
+                            ctx.object_statuses.data(),
+                            ctx.counters.data());
+        return status == SAI_STATUS_SUCCESS;
+    }
+
+    void updateSupportedMeterCounters(
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<sai_meter_bucket_entry_stat_t>& counter_ids,
+            _In_ sai_stats_mode_t stats_mode)
+    {
+        SWSS_LOG_ENTER();
+
+        if (!m_supportedMeterCounters.empty() && !always_check_supported_counters)
+        {
+            SWSS_LOG_NOTICE("Ignore checking of supported counters");
+            return;
+        }
+        querySupportedMeterCounters(rid, counter_ids, stats_mode);
+    }
+
+    sai_status_t querySupportedMeterCounters(
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<sai_meter_bucket_entry_stat_t>& counter_ids,
+            _In_ sai_stats_mode_t stats_mode)
+    {
+        SWSS_LOG_ENTER();
+        sai_stat_capability_list_t stats_capability;
+        stats_capability.count = 0;
+        stats_capability.list = nullptr;
+
+        /* First call is to check the size needed to allocate */
+        sai_status_t status = m_vendorSai->queryStatsCapability(m_switchId,
+                                                                m_objectType,
+                                                                &stats_capability);
+
+        /* Second call is for query statistics capability */
+        if (status == SAI_STATUS_BUFFER_OVERFLOW)
+        {
+            std::vector<sai_stat_capability_t> statCapabilityList(stats_capability.count);
+            stats_capability.list = statCapabilityList.data();
+            status = m_vendorSai->queryStatsCapability(m_switchId,
+                                                       m_objectType,
+                                                       &stats_capability);
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_INFO("Unable to get %s supported meter counters for %s",
+                    m_name.c_str(),
+                    sai_serialize_object_id(rid).c_str());
+            }
+            else
+            {
+                for (auto counter: counter_ids) {
+                    for (auto statCapability: statCapabilityList)
+                    {
+                        auto currentStatModes = statCapability.stat_modes;
+                        if (!(currentStatModes & stats_mode))
+                        {
+                            continue;
+                        }
+
+                        if (counter == static_cast<sai_meter_bucket_entry_stat_t>(statCapability.stat_enum)) {
+                            m_supportedMeterCounters.push_back(counter);
+                        }
+                    }
+                }
+            }
+        }
+        return status;
+    }
+
+    void getSupportedMeterCounters(sai_object_id_t rid,
+                                   const std::vector<std::string> &idStrings)
+    {
+        SWSS_LOG_ENTER();
+        std::vector<sai_meter_bucket_entry_stat_t> counter_ids;
+
+        for (const auto &str : idStrings)
+        {
+            SWSS_LOG_INFO("id string %s", str.c_str());
+            sai_meter_bucket_entry_stat_t stat;
+            deserializeStat(str.c_str(), &stat);
+            counter_ids.push_back(stat);
+        }
+        updateSupportedMeterCounters(rid, counter_ids, m_groupStatsMode);
+    }
+
+    BulkMeterStatsContext makeBulkMeterContext(sai_object_id_t vid, sai_object_id_t rid)
+    {
+        SWSS_LOG_ENTER();
+        BulkMeterStatsContext ctx;
+
+        ctx.eni_vid = vid;
+        sai_object_key_t object_key;
+        object_key.key.meter_bucket_entry.eni_id = rid;
+        object_key.key.meter_bucket_entry.switch_id = m_switchId;
+        for (uint32_t i = 0; i < m_meterBucketsPerEni; ++i) {
+            object_key.key.meter_bucket_entry.meter_class = i;
+            ctx.object_keys.push_back(object_key);
+        }
+        ctx.object_statuses.resize(ctx.object_keys.size());
+        ctx.counter_ids = m_supportedMeterCounters;
+        ctx.counters.resize(m_supportedMeterCounters.size() * ctx.object_keys.size());
+
+        return ctx;
+    }
+    void addBulkMeterContext(sai_object_id_t vid, sai_object_id_t rid)
+    {
+        SWSS_LOG_ENTER();
+        auto it = m_bulkMeterContexts.find(vid);
+        if (it != m_bulkMeterContexts.end()) {
+            return;
+        }
+        m_bulkMeterContexts.emplace(vid, makeBulkMeterContext(vid, rid));
+    }
+
+    std::map<sai_object_id_t, BulkMeterStatsContext> m_bulkMeterContexts;
+    std::vector<sai_meter_bucket_entry_stat_t> m_supportedMeterCounters;
+    sai_object_type_t m_objectType = (sai_object_type_t) SAI_OBJECT_TYPE_METER_BUCKET_ENTRY;
+    std::string m_dbCounters;
+    sairedis::SaiInterface *m_vendorSai;
+    sai_stats_mode_t m_groupStatsMode = SAI_STATS_MODE_READ;
+    sai_object_id_t m_switchId = 0UL;
+    uint32_t m_meterBucketsPerEni = 0;
+    bool m_initalized = false;
+};
+
 FlexCounter::FlexCounter(
         _In_ const std::string& instanceId,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
@@ -1326,6 +1692,10 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->always_check_supported_counters = true;
         return context;
     }
+    else if (context_name == COUNTER_TYPE_METER_BUCKET)
+    {
+        return std::make_shared<DashMeterCounterContext>(context_name, m_vendorSai.get(), m_dbCounters);
+    }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
         return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
@@ -1607,6 +1977,10 @@ void FlexCounter::removeCounter(
         {
             getCounterContext(COUNTER_TYPE_ENI)->removeObject(vid);
         }
+        if (hasCounterContext(COUNTER_TYPE_METER_BUCKET))
+        {
+            getCounterContext(COUNTER_TYPE_METER_BUCKET)->removeObject(vid);
+        }
     }
     else if (objectType == SAI_OBJECT_TYPE_COUNTER)
     {
@@ -1769,6 +2143,14 @@ void FlexCounter::addCounter(
         else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI && field == ENI_COUNTER_ID_LIST)
         {
             getCounterContext(COUNTER_TYPE_ENI)->addObject(
+                    vid,
+                    rid,
+                    idStrings,
+                    "");
+        }
+        else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI && field == DASH_METER_COUNTER_ID_LIST)
+        {
+            getCounterContext(COUNTER_TYPE_METER_BUCKET)->addObject(
                     vid,
                     rid,
                     idStrings,
