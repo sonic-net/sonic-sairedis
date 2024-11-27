@@ -29,6 +29,10 @@ fi
 # Use temporary view between init view and apply view
 CMD_ARGS+=" -u"
 
+# Enable SAI attribute version checking, required currently for Broadcom
+# as per https://github.com/sonic-net/sonic-buildimage/issues/20725
+CMD_ARGS+=" -a"
+
 # Create a folder for SAI failure dump files
 mkdir -p /var/log/sai_failure_dump/
 
