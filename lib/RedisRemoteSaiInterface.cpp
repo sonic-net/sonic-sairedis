@@ -1926,7 +1926,7 @@ sai_status_t RedisRemoteSaiInterface::dbgGenerateDump(
 
     if (m_syncMode)
     {
-        SWSS_LOG_DEBUG("wait for generate dump response");
+	SWSS_LOG_DEBUG("wait for generate dump response");
         swss::KeyOpFieldsValuesTuple kco;
         auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE, kco);
         m_recorder->recordDbgGenDumpResponse(status);

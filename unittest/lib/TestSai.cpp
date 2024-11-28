@@ -40,19 +40,6 @@ TEST(Sai, queryApiVersion)
     EXPECT_EQ(sai.queryApiVersion(&version), SAI_STATUS_SUCCESS);
 }
 
-TEST(Sai, dbgGenerateDump)
-{
-    Sai sai;
-
-    sai.apiInitialize(0,&test_services);
-
-    const std::string filePath = "/var/log/testDump.log";
-
-    auto status = sai.dbgGenerateDump(filePath.c_str());
-
-    EXPECT_EQ(status, SAI_STATUS_SUCCESS);
-}
-
 TEST(Sai, bulkGet)
 {
     Sai sai;

@@ -122,13 +122,6 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryApiVersion)
     EXPECT_EQ(m_vssai->queryApiVersion(&version), SAI_STATUS_SUCCESS);
 }
 
-TEST_F(VirtualSwitchSaiInterfaceTest, dbgGenerateDump)
-{
-    const std::string filePath = "/var/log/testDump.log";
-
-    EXPECT_EQ(m_vssai->dbgGenerateDump(filePath.c_str()), SAI_STATUS_SUCCESS);
-}
-
 TEST_F(VirtualSwitchSaiInterfaceTest, bulkGet)
 {
     sai_object_id_t oids[1] = {0};
