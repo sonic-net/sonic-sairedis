@@ -207,7 +207,7 @@ jobs:
           set -ex
           # Install .NET CORE
           curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-          sudo apt-add-repository https://packages.microsoft.com/debian/11/prod
+          sudo apt-add-repository https://packages.microsoft.com/debian/12/prod
           sudo apt-get update
           sudo apt-get install -y dotnet-sdk-7.0
         displayName: "Install .NET CORE"
