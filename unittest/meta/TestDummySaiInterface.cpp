@@ -20,6 +20,17 @@ TEST(DummySaiInterface, queryApiVersion)
     EXPECT_EQ(sai.queryApiVersion(&version), SAI_STATUS_SUCCESS);
 }
 
+TEST(DummySaiInterface, dbgGenerateDump)
+{
+    DummySaiInterface sai;
+
+    sai.apiInitialize(0,0);
+
+    const std::string filePath = "/var/log/testDump.log";
+
+    EXPECT_EQ(sai.dbgGenerateDump(filePath.c_str()), SAI_STATUS_SUCCESS);
+}
+
 TEST(DummySaiInterface, bulkGet)
 {
     DummySaiInterface sai;
