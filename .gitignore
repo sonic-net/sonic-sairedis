@@ -116,8 +116,6 @@ unittest/meta/tests
 unittest/syncd/tests
 unittest/vslib/tests
 unittest/vslib/testslibsaivs
-unittest/proxylib/tests
-unittest/proxylib/testslibsaiproxy
 unittest/saidump/tests
 vslib/tests
 stub/tests

@@ -300,7 +300,6 @@ AC_OUTPUT(Makefile
           unittest/lib/Makefile
           unittest/vslib/Makefile
           unittest/syncd/Makefile
-          unittest/proxylib/Makefile
           unittest/saidump/Makefile
           pyext/Makefile
           pyext/py2/Makefile
