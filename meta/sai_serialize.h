@@ -72,6 +72,9 @@ std::string sai_serialize_fdb_entry(
 std::string sai_serialize_meter_bucket_entry(
         _In_ const sai_meter_bucket_entry_t &meter_bucket_entry);
 
+std::string sai_serialize_prefix_compression_entry(
+        _In_ const sai_prefix_compression_entry_t &prefix_compression_entry);
+
 std::string sai_serialize_flow_entry(
         _In_ const sai_flow_entry_t &flow_entry);
 
@@ -130,6 +133,9 @@ std::string sai_serialize_buffer_pool_stat(
 
 std::string sai_serialize_eni_stat(
         _In_ const sai_eni_stat_t counter);
+
+std::string sai_serialize_meter_bucket_entry_stat(
+        _In_ const sai_meter_bucket_entry_stat_t counter);
 
 std::string sai_serialize_tunnel_stat(
         _In_ const sai_tunnel_stat_t counter);
@@ -439,6 +445,10 @@ void sai_deserialize_mcast_fdb_entry(
 void sai_deserialize_meter_bucket_entry(
         _In_ const std::string& s,
         _Out_ sai_meter_bucket_entry_t& meter_bucket_entry);
+
+void sai_deserialize_prefix_compression_entry(
+        _In_ const std::string& s,
+        _Out_ sai_prefix_compression_entry_t& prefix_compression_entry);
 
 void sai_deserialize_flow_entry(
         _In_ const std::string& s,
