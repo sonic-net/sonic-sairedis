@@ -422,6 +422,11 @@ sai_status_t Syncd::processDbgGenerateDump(
     SWSS_LOG_ENTER();
 
     const auto& values = kfvFieldsValues(kco);
+    auto& fieldValues = kfvFieldsValues(kco);
+    auto value = fvValue(fieldValues[0]);
+    const char* value_cstr = value.c_str();
+    sai_status_t status = m_vendorSai->dbgGenerateDump(value_cstr);
+    
     if (values.size() != 1)
     {
         SWSS_LOG_ERROR("Invalid input: expected 1 arguments, received %zu", values.size());
@@ -429,13 +434,6 @@ sai_status_t Syncd::processDbgGenerateDump(
 
         return SAI_STATUS_INVALID_PARAMETER;
     }
-
-    auto& fieldValues = kfvFieldsValues(kco);
-
-    auto value = fvValue(fieldValues[0]);
-    const char* value_cstr = value.c_str();
-
-    sai_status_t status = m_vendorSai->dbgGenerateDump(value_cstr);
 
     m_selectableChannel->set(sai_serialize_status(status), {} , REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE);
 

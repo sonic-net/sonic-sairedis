@@ -1133,11 +1133,9 @@ sai_status_t Sai::dbgGenerateDump(
 
     m_communicationChannel->set(key, entry, "dbg_gen_dump");
 
-    /*swss::KeyOpFieldsValuesTuple kco;
+    swss::KeyOpFieldsValuesTuple kco;
 
-    return m_communicationChannel->wait("dbg_gen_dumpresponse", kco);*/
-
-    return SAI_STATUS_SUCCESS;
+    return m_communicationChannel->wait("dbg_gen_dumpresponse", kco);
 }
 
 void Sai::updateNotifications(

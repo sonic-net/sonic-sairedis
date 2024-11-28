@@ -386,7 +386,9 @@ void Proxy::processDbgGenerateDump(
 
     sai_status_t status = m_vendorSai->dbgGenerateDump(value_cstr);
 
-    m_selectableChannel->set(sai_serialize_status(status), {} , "dbg_gen_dumpresponse");
+    auto strStatus = sai_serialize_status(status);
+
+    m_selectableChannel->set(strStatus, {} , "dbg_gen_dumpresponse");
 }
 
 void Proxy::processCreate(

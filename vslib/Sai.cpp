@@ -856,11 +856,11 @@ sai_status_t Sai::queryApiVersion(
 sai_status_t Sai::dbgGenerateDump(
         _In_ const char *dump_file_name)
 {
-    MUTEX();
     SWSS_LOG_ENTER();
-    VS_CHECK_API_INITIALIZED();
 
-    return  m_meta->dbgGenerateDump(dump_file_name);
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
 

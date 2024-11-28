@@ -1915,6 +1915,8 @@ sai_status_t RedisRemoteSaiInterface::dbgGenerateDump(
         _In_ const char *dump_file_name)
 {
     SWSS_LOG_ENTER();
+    swss::KeyOpFieldsValuesTuple kco;
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     const std::vector<swss::FieldValueTuple> entry =
     {
@@ -1926,14 +1928,12 @@ sai_status_t RedisRemoteSaiInterface::dbgGenerateDump(
 
     if (m_syncMode)
     {
-        SWSS_LOG_DEBUG("wait for generate dump response");
-        swss::KeyOpFieldsValuesTuple kco;
-        auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE, kco);
-        m_recorder->recordDbgGenDumpResponse(status);
-        return status;
+        status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE, kco);
     }
 
-    return SAI_STATUS_SUCCESS;
+    m_recorder->recordDbgGenDumpResponse(status);
+
+    return status;
 }
 
 sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(

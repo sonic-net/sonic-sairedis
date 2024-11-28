@@ -25,3 +25,12 @@ TEST(Sai, bulkGet)
                 SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
                 statuses));
 }
+
+TEST(Sai, dbgGenerateDump)
+{
+    Sai sai;
+
+    const std::string filePath = "/var/log/testDump.log";
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai.dbgGenerateDump(filePath.c_str()));
+}
