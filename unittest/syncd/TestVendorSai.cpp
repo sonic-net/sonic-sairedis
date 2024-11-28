@@ -1558,3 +1558,10 @@ TEST_F(VendorSaiTest, bulk_prefix_compression_entry)
     EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED,
             m_vsai->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
 }
+
+TEST_F(VendorSaiTest, dbgGenerateDump)
+{
+    const std::string filePath = "/var/log/testDump.log";
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_vsai->dbgGenerateDump(filePath.c_str()));
+}

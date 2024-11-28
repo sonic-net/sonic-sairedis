@@ -371,7 +371,8 @@ void Proxy::processSingleEvent(
 void Proxy::processDbgGenerateDump(
         _In_ const swss::KeyOpFieldsValuesTuple &kco)
 {
-    SWSS_LOG_ENTER();
+    return SAI_STATUS_SUCCESS;
+    /*SWSS_LOG_ENTER();
 
     const auto& values = kfvFieldsValues(kco);
     if (values.size() != 1)
@@ -386,7 +387,7 @@ void Proxy::processDbgGenerateDump(
 
     sai_status_t status = m_vendorSai->dbgGenerateDump(value_cstr);
 
-    m_selectableChannel->set(sai_serialize_status(status), {} , "dbg_gen_dumpresponse");
+    m_selectableChannel->set(sai_serialize_status(status), {} , "dbg_gen_dumpresponse");*/
 }
 
 void Proxy::processCreate(
