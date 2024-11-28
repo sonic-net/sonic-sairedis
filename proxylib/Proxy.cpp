@@ -362,7 +362,31 @@ void Proxy::processSingleEvent(
     if (op == "clear_stats")
         return processClearStats(kco);
 
+    if (op == "dbg_gen_dump")
+        return processDbgGenerateDump(kco);
+
     SWSS_LOG_THROW("event op '%s' is not implemented, FIXME", op.c_str());
+}
+
+void Proxy::processDbgGenerateDump(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const auto& values = kfvFieldsValues(kco);
+    if (values.size() != 1)
+    {
+        SWSS_LOG_THROW("Invalid input: expected 1 arguments, received %zu", values.size());
+    }
+
+    auto& fieldValues = kfvFieldsValues(kco);
+
+    auto value = fvValue(fieldValues[0]);
+    const char* value_cstr = value.c_str();
+
+    sai_status_t status = m_vendorSai->dbgGenerateDump(value_cstr);
+
+    m_selectableChannel->set(sai_serialize_status(status), {} , "dbg_gen_dumpresponse");
 }
 
 void Proxy::processCreate(

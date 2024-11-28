@@ -25,4 +25,3 @@ TEST(Sai, bulkGet)
                 SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
                 statuses));
 }
-

@@ -50,3 +50,13 @@ TEST(ClientSai, bulkGet)
                 statuses));
 }
 
+TEST(ClientSai, dbgGenerateDump)
+{
+    ClientSai sai;
+
+    sai.apiInitialize(0,&test_services);
+
+    const std::string filePath = "/var/log/dbgGenerateDump.log";
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai.dbgGenerateDump(filePath.c_str()));
+}

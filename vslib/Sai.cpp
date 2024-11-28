@@ -860,7 +860,7 @@ sai_status_t Sai::dbgGenerateDump(
     SWSS_LOG_ENTER();
     VS_CHECK_API_INITIALIZED();
 
-    return m_meta->dbgGenerateDump(dump_file_name);
+    return  m_meta->dbgGenerateDump(dump_file_name);
 }
 
 

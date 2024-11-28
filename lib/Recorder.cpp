@@ -321,7 +321,7 @@ void Recorder::recordDbgGenDumpResponse(
 {
     SWSS_LOG_ENTER();
 
-    recordLine("F|" + sai_serialize_status(status));
+    recordLine("G|" + sai_serialize_status(status));
 }
 
 void Recorder::recordQueryAttributeCapability(
