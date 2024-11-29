@@ -11,6 +11,7 @@ ENABLE_SAITHRIFT=0
 TEMPLATES_DIR=/usr/share/sonic/templates
 PLATFORM_DIR=/usr/share/sonic/platform
 HWSKU_DIR=/usr/share/sonic/hwsku
+SAI_PROFILE_DIR=/etc/sai.d
 
 VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
 
@@ -236,7 +237,7 @@ config_syncd_bcm()
     PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
     PLT_CONFIG_BCM=""
     PLT_CONFIG_YML=""
-    PLT_SAI_PROFILE=$(find $HWSKU_DIR -name 'sai.profile')
+    PLT_SAI_PROFILE=$(find $SAI_PROFILE_DIR -name 'sai.profile')
     readline=$(grep SAI_INIT_CONFIG_FILE $PLT_SAI_PROFILE)
     if [ ${readline: -3} == "bcm" ]; then
        PLT_CONFIG_BCM=${readline#*=}
