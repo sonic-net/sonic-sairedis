@@ -365,6 +365,8 @@ namespace sairedis
             void recordStats(
                     _In_ bool enable);
 
+            void flush();
+
         private: // recording helpers
 
             void recordCreate(
