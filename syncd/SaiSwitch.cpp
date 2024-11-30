@@ -988,6 +988,20 @@ void SaiSwitch::onPostPortCreate(
          */
 
         redisSetDummyAsicStateForRealObjectId(rid);
+
+	/*
+         * The ports which is without QUEUE related configurations still created
+         * related SCHEDULER_GROUPs in the onPostPortCreate() during the syncd
+         * startup in some platform - e.g. montara. But these created objects
+	 * did NOT be recorded in the `COLDVIDS` and `m_warmBootDiscoveredVids`
+         * set. While swss is perform warmstart, the `compareViews()` would be
+         * called before apply the view, and it would detect the differences
+         * between the current view and temp view. Then syncd would remove these
+         * schedulers groups in the finalize. Therefore, add to record these
+         * object into the m_warmBootDiscoveredVids
+         */
+        sai_object_id_t vid = m_translator->translateRidToVid(rid, m_switch_vid);
+        m_warmBootDiscoveredVids.insert(vid);
     }
 
     redisUpdatePortLaneMap(port_rid);
