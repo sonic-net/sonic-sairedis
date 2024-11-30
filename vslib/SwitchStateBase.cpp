@@ -2982,6 +2982,7 @@ bool SwitchStateBase::check_object_default_state(
         }
         else if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_LIST)
         {
+            objlist.resize(attr.value.objlist.count);
             if (objlist.size())
             {
                 SWSS_LOG_ERROR("expected empty list on %s on %s, contents:",
