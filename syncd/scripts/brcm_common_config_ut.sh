@@ -1,10 +1,12 @@
 #!/bin/bash
 ###BRCM Common config UT####
 HWSKU_DIR=/usr/share/sonic/hwsku
+SAI_PROFILE_DIR=/etc/sai.d
 PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
-PLT_SAI_PROFILE=$(find $HWSKU_DIR -name 'sai.profile')
+PLT_SAI_PROFILE=$(find $SAI_PROFILE_DIR -name 'sai.profile')
 readline=$(grep SAI_INIT_CONFIG_FILE $PLT_SAI_PROFILE)
 PLATFORM_DIR=/usr/share/sonic/platform
+
 PLT_CONFIG_BCM=""
 PLT_CONFIG_YML=""
 
