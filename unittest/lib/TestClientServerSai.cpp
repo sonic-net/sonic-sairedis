@@ -105,6 +105,17 @@ TEST(ClientServerSai, logSet)
     EXPECT_EQ(SAI_STATUS_SUCCESS, css->logSet(SAI_API_PORT, SAI_LOG_LEVEL_NOTICE));
 }
 
+TEST(ClientServerSai, dbgGenerateDump)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    const std::string filePath = "/var/log/dbgGenerateDump.log";
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->apiInitialize(0, &test_services));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, css->dbgGenerateDump(filePath.c_str()));
+}
+
 TEST(ClientServerSai, bulkGetClearStats)
 {
     auto css = std::make_shared<ClientServerSai>();

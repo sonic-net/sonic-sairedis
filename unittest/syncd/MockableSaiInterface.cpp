@@ -363,6 +363,18 @@ sai_status_t MockableSaiInterface::queryAttributeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t MockableSaiInterface::dbgGenerateDump(
+    _In_ const char *dump_file_name)
+{
+    SWSS_LOG_ENTER();
+    if (mock_dbgGenerateDump)
+    {
+        return mock_dbgGenerateDump(dump_file_name);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t MockableSaiInterface::queryAttributeEnumValuesCapability(
     _In_ sai_object_id_t switch_id,
     _In_ sai_object_type_t object_type,

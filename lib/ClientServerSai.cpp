@@ -638,3 +638,13 @@ sai_status_t ClientServerSai::queryApiVersion(
 
     return m_sai->queryApiVersion(version);
 }
+
+sai_status_t ClientServerSai::dbgGenerateDump(
+        _In_ const char *dump_file_name)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    return m_sai->dbgGenerateDump(dump_file_name);
+}

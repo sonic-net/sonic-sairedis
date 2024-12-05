@@ -853,6 +853,17 @@ sai_status_t Sai::queryApiVersion(
     return m_meta->queryApiVersion(version);
 }
 
+sai_status_t Sai::dbgGenerateDump(
+        _In_ const char *dump_file_name)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("not implemented, FIXME");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+
 std::shared_ptr<Context> Sai::getContext(
         _In_ uint32_t globalContext) const
 {
