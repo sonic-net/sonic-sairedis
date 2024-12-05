@@ -53,8 +53,8 @@ stages:
     parameters:
       arch: amd64
       sonic_slave: sonic-slave-${{ parameters.debian_version }}
-      swss_common_artifact_name: sonic-swss-common
-      artifact_name: sonic-sairedis
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-sairedis.syslog
       run_unit_test: true
       archive_gcov: true
@@ -67,8 +67,8 @@ stages:
     parameters:
       arch: amd64
       sonic_slave: sonic-slave-${{ parameters.debian_version }}
-      swss_common_artifact_name: sonic-swss-common
-      artifact_name: sonic-sairedis-asan
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-sairedis-asan.syslog
       asan: true
       run_unit_test: true
@@ -85,8 +85,8 @@ stages:
       timeout: 180
       pool: sonicbld-armhf
       sonic_slave: sonic-slave-${{ parameters.debian_version }}-armhf
-      swss_common_artifact_name: sonic-swss-common.armhf
-      artifact_name: sonic-sairedis.armhf
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}.armhf
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}.armhf
       syslog_artifact_name: sonic-sairedis.syslog.armhf
       debian_version: ${{ parameters.debian_version }}
 
@@ -96,8 +96,8 @@ stages:
       timeout: 180
       pool: sonicbld-arm64
       sonic_slave: sonic-slave-${{ parameters.debian_version }}-arm64
-      swss_common_artifact_name: sonic-swss-common.arm64
-      artifact_name: sonic-sairedis.arm64
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}.arm64
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}.arm64
       syslog_artifact_name: sonic-sairedis.syslog.arm64
       debian_version: ${{ parameters.debian_version }}
 
@@ -109,10 +109,10 @@ stages:
     parameters:
       arch: amd64
       sonic_slave: sonic-slave-${{ parameters.debian_version }}
-      swss_common_artifact_name: sonic-swss-common
-      sairedis_artifact_name: sonic-sairedis
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      sairedis_artifact_name: sonic-sairedis-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-swss.syslog
-      artifact_name: sonic-swss
+      artifact_name: sonic-swss-${{ parameters.debian_version }}
       debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildDocker
@@ -121,9 +121,9 @@ stages:
   jobs:
   - template: .azure-pipelines/build-docker-sonic-vs-template.yml
     parameters:
-      swss_common_artifact_name: sonic-swss-common
-      sairedis_artifact_name: sonic-sairedis
-      swss_artifact_name: sonic-swss
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      sairedis_artifact_name: sonic-sairedis-${{ parameters.debian_version }}
+      swss_artifact_name: sonic-swss-${{ parameters.debian_version }}
       artifact_name: docker-sonic-vs
 
 - stage: BuildDockerAsan
@@ -134,9 +134,9 @@ stages:
   jobs:
   - template: .azure-pipelines/build-docker-sonic-vs-template.yml
     parameters:
-      swss_common_artifact_name: sonic-swss-common
-      sairedis_artifact_name: sonic-sairedis-asan
-      swss_artifact_name: sonic-swss
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      sairedis_artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
+      swss_artifact_name: sonic-swss-${{ parameters.debian_version }}
       artifact_name: docker-sonic-vs-asan
       asan: true
 
