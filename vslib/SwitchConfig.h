@@ -26,7 +26,7 @@ namespace saivs
 
         SAI_VS_SWITCH_TYPE_MLNX2700,
 
-        SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C,
+        SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C
 
     } sai_vs_switch_type_t;
 
