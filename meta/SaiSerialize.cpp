@@ -784,6 +784,14 @@ std::string sai_serialize_object_type(
     return sai_serialize_enum(object_type, &sai_metadata_enum_sai_object_type_t);
 }
 
+std::string sai_serialize_switch_type(
+        _In_ const sai_switch_type_t switch_type)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(switch_type, &sai_metadata_enum_sai_switch_type_t);
+}
+
 std::string sai_serialize_log_level(
         _In_ sai_log_level_t log_level)
 {

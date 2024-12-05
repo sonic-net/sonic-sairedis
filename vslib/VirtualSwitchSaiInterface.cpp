@@ -10,6 +10,7 @@
 #include "meta/Globals.h"
 
 #include "SwitchStateBase.h"
+#include "SwitchPoE.h"
 #include "SwitchBCM81724.h"
 #include "SwitchBCM56850.h"
 #include "SwitchBCM56971B0.h"
@@ -599,6 +600,11 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
         case SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C:
 
             m_switchStateMap[switch_id] = std::make_shared<SwitchNvdaMBF2H536C>(switch_id, m_realObjectIdManager, config, warmBootState);
+            break;
+
+        case SAI_VS_SWITCH_TYPE_POE:
+
+            m_switchStateMap[switch_id] = std::make_shared<SwitchPoE>(switch_id, m_realObjectIdManager, config, warmBootState);
             break;
 
         default:
