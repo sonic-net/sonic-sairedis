@@ -74,7 +74,7 @@ jobs:
       sudo perl -i.bk -ne 'print if not /SONiCFileFormat|ActionFileDefaultTemplate/' /etc/rsyslog.conf
       sudo sed -ie '/GLOBAL DIRECTIVES/{s/$/\n\$template SONiCFileFormat,"%TIMESTAMP%.%timestamp:::date-subseconds% %HOSTNAME% %syslogseverity-text:::uppercase% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-lst-lf%\\n"\n\$ActionFileDefaultTemplate SONiCFileFormat/}' /etc/rsyslog.conf
 
-      sudo service rsyslog start
+      sudo rsyslogd
 
     displayName: "Install dependencies"
   - task: DownloadPipelineArtifact@2
