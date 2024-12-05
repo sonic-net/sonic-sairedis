@@ -378,20 +378,3 @@ sai_status_t SaiInterface::clearStats(
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
-
-std::shared_ptr<SaiOptions> SaiInterface::getOptions(
-        _In_ const std::string& key)
-{
-    SWSS_LOG_ENTER();
-
-    return m_optionsMap[key];
-}
-
-void SaiInterface::setOptions(
-        _In_ const std::string& key,
-        _In_ std::shared_ptr<SaiOptions> options)
-{
-    SWSS_LOG_ENTER();
-
-    m_optionsMap[key] = options;
-}
