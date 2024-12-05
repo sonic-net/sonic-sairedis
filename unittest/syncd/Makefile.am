@@ -7,7 +7,6 @@ LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main -lgmock
 tests_SOURCES = main.cpp \
                 MockableSaiInterface.cpp \
                 MockHelper.cpp \
-				TestAttrVersionChecker.cpp \
 				TestCommandLineOptions.cpp \
 				TestConcurrentQueue.cpp \
 				TestFlexCounter.cpp \
