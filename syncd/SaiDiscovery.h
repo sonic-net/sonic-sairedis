@@ -20,8 +20,7 @@ namespace syncd
         public:
 
             SaiDiscovery(
-                    _In_ std::shared_ptr<sairedis::SaiInterface> sai,
-                    _In_ bool checkAttrVersion);
+                    _In_ std::shared_ptr<sairedis::SaiInterface> sai);
 
             virtual ~SaiDiscovery();
 

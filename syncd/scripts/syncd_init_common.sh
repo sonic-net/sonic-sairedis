@@ -11,6 +11,7 @@ ENABLE_SAITHRIFT=0
 TEMPLATES_DIR=/usr/share/sonic/templates
 PLATFORM_DIR=/usr/share/sonic/platform
 HWSKU_DIR=/usr/share/sonic/hwsku
+SAI_PROFILE_DIR=/etc/sai.d
 
 VARS_FILE=$TEMPLATES_DIR/swss_vars.j2
 
@@ -26,10 +27,8 @@ else
     CMD_ARGS=
 fi
 
-# Use temporary view between init and apply except when in fast-reboot
-if [[ "$(cat /proc/cmdline)" != *"SONIC_BOOT_TYPE=fast-reboot"* ]]; then
-    CMD_ARGS+=" -u"
-fi
+# Use temporary view between init view and apply view
+CMD_ARGS+=" -u"
 
 # Create a folder for SAI failure dump files
 mkdir -p /var/log/sai_failure_dump/
@@ -124,74 +123,188 @@ config_syncd_cisco_8000()
     fi
 }
 
+function merge_config_bcm_files()
+{
+    to_file=$1
+    from_file=$2
+    message=$3
+    override=false
+    echo "" >> $to_file
+    echo "# Start of $message" >> $to_file
+    while read line
+    do
+        line=$( echo $line | xargs )
+        if [ ! -z "$line" ];then
+            if [ "${line::1}" == '#' ];then
+                echo $line >> $to_file
+            elif [ "$line" == "[Low Inheritance Precedence]" ];then
+                override=false
+                echo "# $line" >> $to_file
+            elif [ "$line" == "[High Inheritance Precedence]" ];then
+                override=true
+                echo "# $line" >> $to_file
+                echo "Merge properties with override $override"
+            else
+                sedline=${line%=*}
+                if grep -q $sedline $to_file ;then
+                   if $override ;then
+                      echo "Override the config $(grep $sedline $to_file) with $line in $to_file"
+                      prop=${line:0:`expr index $line =`}
+                      sed -i "/$prop/d" $to_file
+                      echo $line >> $to_file
+                   else
+                      grepline=$(grep $sedline $to_file)
+                      if [ "${grepline::1}" == '#' ];then
+                         echo $line >> $to_file
+                      else
+                         echo "Keep the config $(grep $sedline $to_file) in $to_file"
+                      fi
+                   fi
+                else
+                   echo $line >> $to_file
+                fi
+            fi
+        fi
+    done < $from_file
+    echo "# End of $message" >> $to_file
+    echo "Merged $from_file to $to_file"
+}
+
+function merge_config_yml_files()
+{
+    to_file=$1
+    from_file=$2
+    message=$3
+    override=false
+    merged_cnt=0
+    echo "" >> $to_file
+    echo "# Start of $message" >> $to_file
+    while read line
+    do
+        line=$( echo $line | xargs )
+        if [ ! -z "$line" ];then
+            if [ "${line::1}" == '#' ];then
+                echo "        $line" >> $to_file
+            elif [ "$line" == "[Low Inheritance Precedence]" ];then
+                override=false
+                echo "        # $line" >> $to_file
+            elif [ "$line" == "[High Inheritance Precedence]" ];then
+                override=true
+                echo "        # $line" >> $to_file
+                echo "Merge properties with override $override"
+            else
+                sedline=${line%:*}
+                if grep -q $sedline $to_file ;then
+                   if $override ;then
+                      echo "Override the config $(grep $sedline $to_file) with $line in $to_file"
+                      prop=${line:0:`expr index "$line" :`}
+                      sed -i "/$prop/d" $to_file
+                      echo "        $line" >> $to_file
+                      merged_cnt+=1
+                   else
+                      grepline=$(grep $sedline $to_file)
+                      grepline="${grepline#"${grepline%%[![:space:]]*}"}"
+                      if [ "${grepline::1}" == '#' ];then
+                         echo "        $line" >> $to_file
+                         merged_cnt+=1
+                      else
+                         echo "Keep the config $(grep $sedline $to_file) in $to_file"
+                      fi
+                   fi
+                else
+                   echo "        $line" >> $to_file
+                   merged_cnt+=1
+                fi
+            fi
+        fi
+    done < $from_file
+
+    if [ $merged_cnt -gt 0 ]; then
+         sed -i "/# Start of/a \    global:" $to_file
+         sed -i "/# Start of/a \  0:" $to_file
+         sed -i "/# Start of/a \bcm_device:" $to_file
+         sed -i "/# Start of/a \---" $to_file
+    fi
+    echo "# End of $message" >> $to_file
+    if [ $merged_cnt -gt 0 ]; then
+       sed -i "/# End of/i \..." $to_file
+    fi
+    echo "Merged $from_file to $to_file"
+}
+
 config_syncd_bcm()
 {
+    PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
+    PLT_CONFIG_BCM=""
+    PLT_CONFIG_YML=""
+    PLT_SAI_PROFILE=$(find $SAI_PROFILE_DIR -name 'sai.profile')
+    readline=$(grep SAI_INIT_CONFIG_FILE $PLT_SAI_PROFILE)
+    if [ ${readline: -3} == "bcm" ]; then
+       PLT_CONFIG_BCM=${readline#*=}
+    elif [ ${readline: -3} == "yml" ]; then
+       PLT_CONFIG_YML=${readline#*=}
+    fi
 
-    if [ -f $PLATFORM_DIR/common_config_support ];then
+    if [ ! -z "$PLT_CONFIG_BCM" ] && [ -f $PLATFORM_DIR/common_config_support ] ; then
+       cp -f $PLT_CONFIG_BCM /tmp
+       cp -f /etc/sai.d/sai.profile /tmp
+       CONFIG_BCM=$(find /tmp -name '*.bcm')
+       SAI_PROFILE=$(find /tmp -name 'sai.profile')
+       sed -i 's+/usr/share/sonic/hwsku+/tmp+g' $SAI_PROFILE
 
-      PLATFORM_COMMON_DIR=/usr/share/sonic/device/x86_64-broadcom_common
+       #Get first three characters of chip id
+       readline=$(grep '0x14e4' /proc/linux-kernel-bde)
+       chip_id=${readline#*0x14e4:0x}
+       chip_id=${chip_id::3}
+       COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -maxdepth 1 -name '*.bcm')
 
-      cp -f $HWSKU_DIR/*.config.bcm /tmp
-      cp -f /etc/sai.d/sai.profile /tmp
-      CONFIG_BCM=$(find /tmp -name '*.bcm')
-      PLT_CONFIG_BCM=$(find $HWSKU_DIR -name '*.bcm')
-      SAI_PROFILE=$(find /tmp -name 'sai.profile')
-      sed -i 's+/usr/share/sonic/hwsku+/tmp+g' $SAI_PROFILE
+       if [ -f $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/*.bcm ]; then
+          for file in $CONFIG_BCM; do
+             merge_config_bcm_files $file $COMMON_CONFIG_BCM "chip common properties"
+          done
+          echo "Merging $PLT_CONFIG_BCM with $COMMON_CONFIG_BCM, merge files stored in $CONFIG_BCM"
+       fi
+       #sync the file system
+       sync
 
-      #Get first three characters of chip id
-      readline=$(grep '0x14e4' /proc/linux-kernel-bde)
-      chip_id=${readline#*0x14e4:0x}
-      chip_id=${chip_id::3}
-      COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -name '*.bcm')
+       # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
+       cp -f /tmp/sai.profile /var/run/sswsyncd/
+       cp -f /tmp/*.bcm /var/run/sswsyncd/
+    fi
 
-      if [ -f $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/*.bcm ]; then
-         for file in $CONFIG_BCM; do
-             echo "" >> $file
-             echo "# Start of chip common properties" >> $file
-             while read line
-             do
-               line=$( echo $line | xargs )
-               if [ ! -z "$line" ];then
-                   if [ "${line::1}" == '#' ];then
-                       echo $line >> $file
-                   else
-                       sedline=${line%=*}
-                       if grep -q $sedline $file ;then
-                          echo "Keep the config $(grep $sedline $file) in $file"
-                       else
-                          echo $line >> $file
-                       fi
-                   fi
-               fi
-             done < $COMMON_CONFIG_BCM
-             echo "# End of chip common properties" >> $file
-         done
-         echo "Merging $PLT_CONFIG_BCM with $COMMON_CONFIG_BCM, merge files stored in $CONFIG_BCM"
-      fi
+    if [ ! -z "$PLT_CONFIG_YML" ] && [ -f $PLATFORM_DIR/common_config_support ]; then
+       cp -f $PLT_CONFIG_YML /tmp
+       cp -f /etc/sai.d/sai.profile /tmp
+       CONFIG_YML=$(find /tmp -name '*.yml')
+       SAI_PROFILE=$(find /tmp -name 'sai.profile')
+       sed -i 's+/usr/share/sonic/hwsku+/tmp+g' $SAI_PROFILE
 
-      #sync the file system
-      sync
+       #Get first three characters of chip id
+       readline=$(grep '0:14e4' /proc/linux_ngbde)
+       chip_id=${readline#*0:14e4:}
+       chip_id=${chip_id::3}
+       COMMON_CONFIG_BCM=$(find $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id} -maxdepth 1 -name '*.bcm')
 
-      # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
-      cp -f /tmp/sai.profile /var/run/sswsyncd/
-      cp -f /tmp/*.bcm /var/run/sswsyncd/
+       if [ -f $PLATFORM_COMMON_DIR/x86_64-broadcom_${chip_id}/*.bcm ]; then
+          for file in $CONFIG_YML; do
+             merge_config_yml_files $file $COMMON_CONFIG_BCM "chip common properties"
+          done
+          echo "Merging $PLT_CONFIG_YML with $COMMON_CONFIG_BCM, merge files stored in $CONFIG_YML "
+       fi
+       #sync the file system
+       sync
 
-      if [ -f "/tmp/sai.profile" ]; then
-          CMD_ARGS+=" -p /tmp/sai.profile"
-      elif [ -f "/etc/sai.d/sai.profile" ]; then
-          CMD_ARGS+=" -p /etc/sai.d/sai.profile"
-      else
-          CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
-      fi
+       # copy the final config.bcm and sai.profile to the shared folder for 'show tech'
+       cp -f /tmp/sai.profile /var/run/sswsyncd/
+       cp -f /tmp/*.yml /var/run/sswsyncd/
+    fi
 
+    if [ -f "/tmp/sai.profile" ]; then
+        CMD_ARGS+=" -p /tmp/sai.profile"
+	elif [ -f "/etc/sai.d/sai.profile" ]; then
+        CMD_ARGS+=" -p /etc/sai.d/sai.profile"
     else
-
-      if [ -f "/etc/sai.d/sai.profile" ]; then
-          CMD_ARGS+=" -p /etc/sai.d/sai.profile"
-      else
-          CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
-      fi
-
+        CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
     fi
 
     if [ -f "$HWSKU_DIR/context_config.json" ]; then
@@ -519,4 +632,3 @@ config_syncd()
 
     [ -r $PLATFORM_DIR/syncd.conf ] && . $PLATFORM_DIR/syncd.conf
 }
-

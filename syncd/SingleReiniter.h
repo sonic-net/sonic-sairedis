@@ -32,8 +32,7 @@ namespace syncd
                     _In_ std::shared_ptr<NotificationHandler> handler,
                     _In_ const ObjectIdMap& vidToRidMap,
                     _In_ const ObjectIdMap& ridToVidMap,
-                    _In_ const std::vector<std::string>& asicKeys,
-                    _In_ bool checkAttrVersion);
+                    _In_ const std::vector<std::string>& asicKeys);
 
             virtual ~SingleReiniter();
 
@@ -137,7 +136,5 @@ namespace syncd
             std::shared_ptr<RedisClient> m_client;
 
             std::shared_ptr<NotificationHandler> m_handler;
-
-            bool m_checkAttrVersion;
     };
 }

@@ -27,8 +27,7 @@ namespace syncd
                     _In_ std::shared_ptr<RedisClient> client,
                     _In_ std::shared_ptr<VirtualOidTranslator> translator,
                     _In_ std::shared_ptr<sairedis::SaiInterface> sai,
-                    _In_ std::shared_ptr<NotificationHandler> handler,
-                    _In_ bool checkAttrVersion);
+                    _In_ std::shared_ptr<NotificationHandler> handler);
 
             virtual ~HardReiniter();
 
@@ -60,7 +59,5 @@ namespace syncd
             std::shared_ptr<RedisClient> m_client;
 
             std::shared_ptr<NotificationHandler> m_handler;
-
-            bool m_checkAttrVersion;
     };
 }

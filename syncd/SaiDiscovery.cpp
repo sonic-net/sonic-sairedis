@@ -1,4 +1,5 @@
 #include "SaiDiscovery.h"
+#include "VendorSaiOptions.h"
 
 #include "swss/logger.h"
 
@@ -19,8 +20,7 @@ using namespace syncd;
 #define SAI_DISCOVERY_LIST_MAX_ELEMENTS 1024
 
 SaiDiscovery::SaiDiscovery(
-        _In_ std::shared_ptr<sairedis::SaiInterface> sai,
-        _In_ bool checkAttrVersion):
+        _In_ std::shared_ptr<sairedis::SaiInterface> sai):
     m_sai(sai)
 {
     SWSS_LOG_ENTER();
@@ -31,10 +31,16 @@ SaiDiscovery::SaiDiscovery(
 
     if (status == SAI_STATUS_SUCCESS)
     {
-        m_attrVersionChecker.enable(checkAttrVersion);
+        auto vso = std::dynamic_pointer_cast<VendorSaiOptions>(sai->getOptions(VendorSaiOptions::OPTIONS_KEY));
+
+        // TODO check vso for null
+
+        m_attrVersionChecker.enable(vso->m_checkAttrVersion);
         m_attrVersionChecker.setSaiApiVersion(version);
 
-        SWSS_LOG_NOTICE("check attr version ENABLED, libsai api version: %lu", version);
+        SWSS_LOG_NOTICE("check attr version %s, libsai api version: %lu",
+                (vso->m_checkAttrVersion ? "ENABLED" : "DISABLED"),
+                version);
     }
     else
     {
