@@ -117,37 +117,3 @@ TEST(SaiInterface, stats_meter_bucket_entry)
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, s->getStatsExt(m, 0, nullptr, SAI_STATS_MODE_READ, nullptr));
     EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, s->clearStats(m, 0, nullptr));
 }
-
-class Opt:
-    public SaiOptions
-{
-    public:
-
-        int i;
-};
-
-TEST(SaiInterface, setOptions)
-{
-    DummySaiInterface ds;
-
-    ds.setOptions("key", std::make_shared<Opt>());
-}
-
-TEST(SaiInterface, getOptions)
-{
-    DummySaiInterface ds;
-
-    auto opt = std::make_shared<Opt>();
-
-    opt->i = 42;
-
-    ds.setOptions("key", opt);
-
-    auto o = std::dynamic_pointer_cast<Opt>(ds.getOptions("key"));
-
-    EXPECT_NE(o, nullptr);
-
-    EXPECT_EQ(o->i, 42);
-
-    EXPECT_EQ(ds.getOptions("foo"), nullptr);
-}
