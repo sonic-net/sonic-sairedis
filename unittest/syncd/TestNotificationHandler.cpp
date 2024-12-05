@@ -67,3 +67,16 @@ TEST(NotificationHandler, NotificationHandlerTest)
                                                     data,
                                                     description);
 }
+
+TEST(NotificationHandler, setApiVersion)
+{
+    auto np = std::make_shared<NotificationProcessor>(nullptr, nullptr, nullptr);
+
+    auto nh = std::make_shared<NotificationHandler>(np);
+
+    EXPECT_EQ(SAI_VERSION(0,0,0), nh->getApiVersion());
+
+    nh->setApiVersion(SAI_VERSION(1,15,0));
+
+    EXPECT_EQ(SAI_VERSION(1,15,0), nh->getApiVersion());
+}

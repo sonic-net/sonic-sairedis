@@ -34,7 +34,7 @@ namespace syncd
                     _In_ std::shared_ptr<RedisClient> client,
                     _In_ std::shared_ptr<VirtualOidTranslator> translator,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
-                    _In_ bool warmBoot = false);
+                    _In_ bool warmBoot);
 
             virtual ~SaiSwitch() = default;
 

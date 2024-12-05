@@ -20,7 +20,8 @@ namespace syncd
         public:
 
             NotificationHandler(
-                    _In_ std::shared_ptr<NotificationProcessor> processor);
+                    _In_ std::shared_ptr<NotificationProcessor> processor,
+                    _In_ sai_api_version_t apiVersion = SAI_VERSION(0,0,0));
 
             virtual ~NotificationHandler();
 
@@ -34,6 +35,11 @@ namespace syncd
             void updateNotificationsPointers(
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list) const;
+
+            void setApiVersion(
+                    _In_ sai_api_version_t apiVersion);
+
+            sai_api_version_t getApiVersion() const;
 
         public: // members reflecting SAI callbacks
 
@@ -99,5 +105,7 @@ namespace syncd
             std::shared_ptr<NotificationQueue> m_notificationQueue;
 
             std::shared_ptr<NotificationProcessor> m_processor;
+
+            sai_api_version_t m_apiVersion;
     };
 }

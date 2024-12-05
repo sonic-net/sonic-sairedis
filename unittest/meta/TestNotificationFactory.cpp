@@ -41,7 +41,7 @@ TEST(NotificationFactory, deserialize_port_state_change)
 {
     auto ntf = NotificationFactory::deserialize(
             SAI_SWITCH_NOTIFICATION_NAME_PORT_STATE_CHANGE,
-            "[{\"port_id\":\"oid:0x100000000001a\",\"port_state\":\"SAI_PORT_OPER_STATUS_UP\"}]");
+            "[{\"port_id\":\"oid:0x100000000001a\",\"port_state\":\"SAI_PORT_OPER_STATUS_UP\",\"port_error_status\":\"0\"}]");
 
     EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_PORT_STATE_CHANGE);
 }

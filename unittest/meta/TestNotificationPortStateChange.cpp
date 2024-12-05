@@ -12,8 +12,8 @@
 using namespace sairedis;
 using namespace saimeta;
 
-static std::string s = "[{\"port_id\":\"oid:0x100000000001a\",\"port_state\":\"SAI_PORT_OPER_STATUS_UP\"}]";
-static std::string null =  "[{\"port_id\":\"oid:0x0\",\"port_state\":\"SAI_PORT_OPER_STATUS_UP\"}]";
+static std::string s = "[{\"port_id\":\"oid:0x100000000001a\",\"port_state\":\"SAI_PORT_OPER_STATUS_UP\",\"port_error_status\":\"0\"}]";
+static std::string null =  "[{\"port_id\":\"oid:0x0\",\"port_state\":\"SAI_PORT_OPER_STATUS_UP\",\"port_error_status\":\"0\"}]";
 static std::string fullnull = "[]";
 
 TEST(NotificationPortStateChange, ctr)

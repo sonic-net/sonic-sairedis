@@ -48,19 +48,19 @@ sub flush_redis
 sub start_syncd
 {
     print color('bright_blue') . "Starting syncd" . color('reset') . "\n";
-    `./vssyncd -SUu -p "$DIR/vsprofile.ini" @_ >/dev/null 2>/dev/null &`;
+    `./vssyncd -aSUu -p "$DIR/vsprofile.ini" @_ >/dev/null 2>/dev/null &`;
 }
 
 sub start_syncd_bulk
 {
     print color('bright_blue') . "Starting syncd bulk" . color('reset') . "\n";
-    `./vssyncd -SUul -p "$DIR/vsprofile.ini" @_ >/dev/null 2>/dev/null &`;
+    `./vssyncd -aSUul -p "$DIR/vsprofile.ini" @_ >/dev/null 2>/dev/null &`;
 }
 
 sub start_syncd_warm
 {
     print color('bright_blue') . "Starting syncd warm" . color('reset') . "\n";
-    `./vssyncd -SUu -t warm -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+    `./vssyncd -aSUu -t warm -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
 
     sleep 1;
 }
@@ -68,13 +68,13 @@ sub start_syncd_warm
 sub sync_start_syncd
 {
     print color('bright_blue') . "Starting syncd" . color('reset') . "\n";
-    `./vssyncd -s -SUu -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+    `./vssyncd -s -aSUu -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
 }
 
 sub sync_start_syncd_warm
 {
     print color('bright_blue') . "Starting syncd warm" . color('reset') . "\n";
-    `./vssyncd -s -SUu -t warm -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
+    `./vssyncd -s -aSUu -t warm -p "$DIR/vsprofile.ini" >/dev/null 2>/dev/null &`;
 
     sleep 1;
 }

@@ -572,7 +572,7 @@ sai_status_t RedisRemoteSaiInterface::notifyCounterGroupOperations(
     emplaceStrings(flexCounterGroupParam->plugin_name, flexCounterGroupParam->plugins, entries);
     emplaceStrings(FLEX_COUNTER_STATUS_FIELD, flexCounterGroupParam->operation, entries);
 
-    m_recorder->recordGenericSet(key, entries);
+    m_recorder->recordGenericCounterPolling(key, entries);
 
     m_communicationChannel->set(key,
                                 entries,
@@ -607,7 +607,7 @@ sai_status_t RedisRemoteSaiInterface::notifyCounterOperations(
         command = REDIS_FLEX_COUNTER_COMMAND_STOP_POLL;
     }
 
-    m_recorder->recordGenericSet(key, entries);
+    m_recorder->recordGenericCounterPolling(key, entries);
     m_communicationChannel->set(key, entries, command);
 
     return waitForResponse(SAI_COMMON_API_SET);
@@ -2047,6 +2047,21 @@ sai_switch_notifications_t RedisRemoteSaiInterface::syncProcessNotification(
             sai_serialize_object_id(switchId).c_str());
 
     return { };
+}
+
+bool RedisRemoteSaiInterface::containsSwitch(
+        _In_ sai_object_id_t switchId) const
+{
+    SWSS_LOG_ENTER();
+
+    if (!m_switchContainer->contains(switchId))
+    {
+        SWSS_LOG_INFO("context %s failed to find switch %s",
+                m_contextConfig->m_name.c_str(), sai_serialize_object_id(switchId).c_str());
+        return false;
+    }
+
+    return true;
 }
 
 const std::map<sai_object_id_t, swss::TableDump>& RedisRemoteSaiInterface::getTableDump() const
