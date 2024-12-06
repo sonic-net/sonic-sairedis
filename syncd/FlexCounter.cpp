@@ -41,8 +41,9 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
     {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW}};
 
-BaseCounterContext::BaseCounterContext(const std::string &name):
-m_name(name)
+BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
+m_name(name),
+m_instanceId(instance)
 {
     SWSS_LOG_ENTER();
 }
@@ -71,6 +72,13 @@ void BaseCounterContext::setNoDoubleCheckBulkCapability(
 {
     SWSS_LOG_ENTER();
     no_double_check_bulk_capability = noDoubleCheckBulkCapability;
+}
+
+void BaseCounterContext::setBulkSize(
+    _In_ uint32_t bulkSize)
+{
+    SWSS_LOG_ENTER();
+    default_bulk_size = bulkSize;
 }
 
 template <typename StatType,
@@ -423,10 +431,11 @@ public:
 
     CounterContext(
             _In_ const std::string &name,
+            _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
             _In_ sai_stats_mode_t &stats_mode):
-    BaseCounterContext(name), m_objectType(object_type), m_vendorSai(vendor_sai), m_groupStatsMode(stats_mode)
+    BaseCounterContext(name, instance), m_objectType(object_type), m_vendorSai(vendor_sai), m_groupStatsMode(stats_mode)
     {
         SWSS_LOG_ENTER();
     }
@@ -610,6 +619,9 @@ public:
         {
             return;
         }
+
+        SWSS_LOG_INFO("Before running plugin %s %s", m_instanceId.c_str(), m_name.c_str());
+
         std::vector<std::string> idStrings;
         idStrings.reserve(m_objectIdsMap.size());
         std::transform(m_objectIdsMap.begin(),
@@ -628,6 +640,8 @@ public:
         std::for_each(m_plugins.begin(),
                       m_plugins.end(),
                       [&] (auto &sha) { runRedisScript(counters_db, sha, idStrings, argv); });
+
+        SWSS_LOG_INFO("After running plugin %s %s", m_instanceId.c_str(), m_name.c_str());
     }
 
     bool hasObject() const override
@@ -730,20 +744,43 @@ private:
     {
         SWSS_LOG_ENTER();
         auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
-        sai_status_t status = m_vendorSai->bulkGetStats(
-                            SAI_NULL_OBJECT_ID,
-                            m_objectType,
-                            static_cast<uint32_t>(ctx.object_keys.size()),
-                            ctx.object_keys.data(),
-                            static_cast<uint32_t>(ctx.counter_ids.size()),
-                            reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
-                            statsMode,
-                            ctx.object_statuses.data(),
-                            ctx.counters.data());
-        if (SAI_STATUS_SUCCESS != status)
+        uint32_t bulk_size = default_bulk_size;
+        uint32_t size = static_cast<uint32_t>(ctx.object_keys.size());
+        if (bulk_size > size || bulk_size == 0)
         {
-            SWSS_LOG_WARN("Failed to bulk get stats for %s: %u", m_name.c_str(), status);
+            bulk_size = size;
         }
+        uint32_t current = 0;
+
+        SWSS_LOG_INFO("Before getting bulk %s %s size %u bulk_size %u current %u", m_instanceId.c_str(), m_name.c_str(), size, bulk_size, current);
+
+        while (current < size)
+        {
+            sai_status_t status = m_vendorSai->bulkGetStats(
+                SAI_NULL_OBJECT_ID,
+                m_objectType,
+                bulk_size,
+                ctx.object_keys.data() + current,
+                static_cast<uint32_t>(ctx.counter_ids.size()),
+                reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
+                statsMode,
+                ctx.object_statuses.data() + current,
+                ctx.counters.data() + current * ctx.counter_ids.size());
+            if (SAI_STATUS_SUCCESS != status)
+            {
+                SWSS_LOG_WARN("Failed to bulk get stats for %s: %u", m_name.c_str(), status);
+            }
+            current += bulk_size;
+
+            SWSS_LOG_INFO("After getting bulk %s %s index %u(advanced to %u) bulk_size %u", m_instanceId.c_str(), m_name.c_str(), current - bulk_size, current, bulk_size);
+
+            if (size - current < bulk_size)
+            {
+                bulk_size = size - current;
+            }
+        }
+
+        auto time_stamp = std::chrono::steady_clock::now().time_since_epoch().count();
 
         std::vector<swss::FieldValueTuple> values;
         for (size_t i = 0; i < ctx.object_keys.size(); i++)
@@ -759,9 +796,12 @@ private:
             {
                 values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
             }
+            values.emplace_back(m_instanceId + "_time_stamp", std::to_string(time_stamp));
             countersTable.set(sai_serialize_object_id(vid), values, "");
             values.clear();
         }
+
+        SWSS_LOG_INFO("After pushing db %s %s", m_instanceId.c_str(), m_name.c_str());
     }
 
     auto getBulkStatsContext(
@@ -968,10 +1008,11 @@ public:
     typedef CounterContext<AttrType> Base;
     AttrContext(
             _In_ const std::string &name,
+            _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
             _In_ sai_stats_mode_t &stats_mode):
-    CounterContext<AttrType>(name, object_type, vendor_sai, stats_mode)
+    CounterContext<AttrType>(name, instance, object_type, vendor_sai, stats_mode)
     {
         SWSS_LOG_ENTER();
     }
@@ -1516,6 +1557,7 @@ void FlexCounter::addCounterPlugin(
     SWSS_LOG_ENTER();
 
     m_isDiscarded = false;
+    uint32_t bulkSize = 0;
 
     for (auto& fvt: values)
     {
@@ -1527,6 +1569,15 @@ void FlexCounter::addCounterPlugin(
         if (field == POLL_INTERVAL_FIELD)
         {
             setPollInterval(stoi(value));
+        }
+        else if (field == BULK_SIZE_FIELD)
+        {
+            bulkSize = stoi(value);
+            for (auto &context : m_counterContext)
+            {
+                context.second->setBulkSize(bulkSize);
+                SWSS_LOG_NOTICE("Set counter context %s %s bulk size %u", m_instanceId.c_str(), COUNTER_TYPE_PORT.c_str(), bulkSize);
+            }
         }
         else if (field == FLEX_COUNTER_STATUS_FIELD)
         {
@@ -1549,6 +1600,12 @@ void FlexCounter::addCounterPlugin(
                     getCounterContext(counterTypeRef->second)->setNoDoubleCheckBulkCapability(true);
 
                     SWSS_LOG_NOTICE("Do not double check bulk capability counter context %s %s", m_instanceId.c_str(), counterTypeRef->second.c_str());
+                }
+
+                if (bulkSize > 0)
+                {
+                    getCounterContext(counterTypeRef->second)->setBulkSize(bulkSize);
+                    SWSS_LOG_NOTICE("Create counter context %s %s with bulk size %u", m_instanceId.c_str(), counterTypeRef->second.c_str(), bulkSize);
                 }
             }
             else
@@ -1609,18 +1666,19 @@ bool FlexCounter::allPluginsEmpty() const
 }
 
 std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
-        _In_ const std::string& context_name)
+        _In_ const std::string& context_name,
+        _In_ const std::string& instance)
 {
     SWSS_LOG_ENTER();
     if (context_name == COUNTER_TYPE_PORT)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_PORT_DEBUG)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
@@ -1629,25 +1687,25 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_QUEUE)
     {
-        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_PG)
     {
-        auto context = std::make_shared<CounterContext<sai_ingress_priority_group_stat_t>>(context_name, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_ingress_priority_group_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_RIF)
     {
-        return std::make_shared<CounterContext<sai_router_interface_stat_t>>(context_name, SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_router_interface_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == COUNTER_TYPE_SWITCH_DEBUG)
     {
-        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
@@ -1656,19 +1714,19 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_MACSEC_FLOW)
     {
-        auto context = std::make_shared<CounterContext<sai_macsec_flow_stat_t>>(context_name, SAI_OBJECT_TYPE_MACSEC_FLOW, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_macsec_flow_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_FLOW, m_vendorSai.get(), m_statsMode);
         context->use_sai_stats_capa_query = false;
         return context;
     }
     else if (context_name == COUNTER_TYPE_MACSEC_SA)
     {
-        auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
         context->use_sai_stats_capa_query = false;
         return context;
     }
     else if (context_name == COUNTER_TYPE_FLOW)
     {
-        auto context = std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
 
@@ -1676,19 +1734,19 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_TUNNEL)
     {
-        auto context = std::make_shared<CounterContext<sai_tunnel_stat_t>>(context_name, SAI_OBJECT_TYPE_TUNNEL, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_tunnel_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_TUNNEL, m_vendorSai.get(), m_statsMode);
         context->use_sai_stats_capa_query = false;
         return context;
     }
     else if (context_name == COUNTER_TYPE_BUFFER_POOL)
     {
-        auto context = std::make_shared<CounterContext<sai_buffer_pool_stat_t>>(context_name, SAI_OBJECT_TYPE_BUFFER_POOL, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_buffer_pool_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_BUFFER_POOL, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_ENI)
     {
-        auto context = std::make_shared<CounterContext<sai_eni_stat_t>>(context_name, (sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_eni_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         return context;
     }
@@ -1698,19 +1756,19 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
-        return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == ATTR_TYPE_PG)
     {
-        return std::make_shared<AttrContext<sai_ingress_priority_group_attr_t>>(context_name, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_ingress_priority_group_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == ATTR_TYPE_MACSEC_SA)
     {
-        return std::make_shared<AttrContext<sai_macsec_sa_attr_t>>(context_name, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_macsec_sa_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == ATTR_TYPE_ACL_COUNTER)
     {
-        return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_statsMode);
     }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
@@ -1729,7 +1787,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
         return iter->second;
     }
 
-    auto ret = m_counterContext.emplace(name, createCounterContext(name));
+    auto ret = m_counterContext.emplace(name, createCounterContext(name, m_instanceId));
     return ret.first->second;
 }
 
