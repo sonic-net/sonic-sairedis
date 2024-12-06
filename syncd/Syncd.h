@@ -334,6 +334,8 @@ namespace syncd
             syncd_restart_type_t handleRestartQuery(
                     _In_ swss::NotificationConsumer &restartQuery);
 
+            bool shouldDiscoverPortObjects() const;
+
         private:
 
             /**
