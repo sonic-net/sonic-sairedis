@@ -478,5 +478,3 @@ saiproxy
 submodule
 Enqueue
 deque
-apiversion
-vso

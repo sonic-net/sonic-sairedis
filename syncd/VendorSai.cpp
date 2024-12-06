@@ -1055,33 +1055,6 @@ sai_status_t VendorSai::bulkCreate(
             object_statuses);
 }
 
-sai_status_t VendorSai::bulkCreate(
-        _In_ uint32_t object_count,
-        _In_ const sai_prefix_compression_entry_t* entries,
-        _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    MUTEX();
-    SWSS_LOG_ENTER();
-    VENDOR_CHECK_API_INITIALIZED();
-
-    if (!m_apis.prefix_compression_api->create_prefix_compression_entries)
-    {
-        SWSS_LOG_INFO("create_prefix_compression_entries is not supported");
-        return SAI_STATUS_NOT_SUPPORTED;
-    }
-
-    return m_apis.prefix_compression_api->create_prefix_compression_entries(
-            object_count,
-            entries,
-            attr_count,
-            attr_list,
-            mode,
-            object_statuses);
-}
-
 // BULK REMOVE
 
 sai_status_t VendorSai::bulkRemove(
@@ -1430,29 +1403,6 @@ sai_status_t VendorSai::bulkRemove(
             object_statuses);
 }
 
-sai_status_t VendorSai::bulkRemove(
-        _In_ uint32_t object_count,
-        _In_ const sai_prefix_compression_entry_t *entries,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    MUTEX();
-    SWSS_LOG_ENTER();
-    VENDOR_CHECK_API_INITIALIZED();
-
-    if (!m_apis.prefix_compression_api->remove_prefix_compression_entries)
-    {
-        SWSS_LOG_INFO("remove_prefix_compression_entries is not supported");
-        return SAI_STATUS_NOT_SUPPORTED;
-    }
-
-    return m_apis.prefix_compression_api->remove_prefix_compression_entries(
-            object_count,
-            entries,
-            mode,
-            object_statuses);
-}
-
 // BULK SET
 
 sai_status_t VendorSai::bulkSet(
@@ -1720,20 +1670,6 @@ sai_status_t VendorSai::bulkSet(
 sai_status_t VendorSai::bulkSet(
         _In_ uint32_t object_count,
         _In_ const sai_meter_bucket_entry_t *entries,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
-{
-    MUTEX();
-    SWSS_LOG_ENTER();
-    VENDOR_CHECK_API_INITIALIZED();
-
-    return SAI_STATUS_NOT_SUPPORTED;
-}
-
-sai_status_t VendorSai::bulkSet(
-        _In_ uint32_t object_count,
-        _In_ const sai_prefix_compression_entry_t *entries,
         _In_ const sai_attribute_t *attr_list,
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)

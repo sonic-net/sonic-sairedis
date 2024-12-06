@@ -12,7 +12,6 @@
 #include "RedisNotificationProducer.h"
 #include "ZeroMQNotificationProducer.h"
 #include "WatchdogScope.h"
-#include "VendorSaiOptions.h"
 
 #include "sairediscommon.h"
 
@@ -109,12 +108,6 @@ Syncd::Syncd(
 
         m_enableSyncMode = true;
     }
-
-    auto vso = std::make_shared<VendorSaiOptions>();
-
-    vso->m_checkAttrVersion = m_commandLineOptions->m_enableAttrVersionCheck;
-
-    m_vendorSai->setOptions(VendorSaiOptions::OPTIONS_KEY, vso);
 
     m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters, m_commandLineOptions->m_supportingBulkCounterGroups);
 
@@ -3143,7 +3136,7 @@ sai_status_t Syncd::processOidCreate(
              * constructor, like getting all queues, ports, etc.
              */
 
-            m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai, false);
+            m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai);
 
             m_mdioIpcServer->setSwitchId(objectRid);
 
@@ -4462,7 +4455,7 @@ void Syncd::onSwitchCreateInInitViewMode(
 
         // make switch initialization and get all default data
 
-        m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai, false);
+        m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai);
 
         m_mdioIpcServer->setSwitchId(switchRid);
 
