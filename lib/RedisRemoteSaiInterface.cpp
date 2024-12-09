@@ -568,6 +568,7 @@ sai_status_t RedisRemoteSaiInterface::notifyCounterGroupOperations(
     std::string key((const char*)flexCounterGroupParam->counter_group_name.list, flexCounterGroupParam->counter_group_name.count);
 
     emplaceStrings(POLL_INTERVAL_FIELD, flexCounterGroupParam->poll_interval, entries);
+    emplaceStrings(BULK_SIZE_FIELD, flexCounterGroupParam->bulk_size, entries);
     emplaceStrings(STATS_MODE_FIELD, flexCounterGroupParam->stats_mode, entries);
     emplaceStrings(flexCounterGroupParam->plugin_name, flexCounterGroupParam->plugins, entries);
     emplaceStrings(FLEX_COUNTER_STATUS_FIELD, flexCounterGroupParam->operation, entries);
