@@ -49,6 +49,7 @@ libSaiVS_a_SOURCES = \
 					  SwitchContainer.cpp \
 					  Switch.cpp \
 					  SwitchMLNX2700.cpp \
+					  SwitchPoE.cpp \
 					  SwitchNvdaMBF2H536C.cpp \
 					  SwitchStateBase.cpp \
 					  SwitchStateBaseFdb.cpp \
