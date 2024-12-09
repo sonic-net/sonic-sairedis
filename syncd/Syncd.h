@@ -242,6 +242,13 @@ namespace syncd
                     _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
                     _Out_ std::vector<sai_status_t>& statuses);
 
+            sai_status_t processBulkOidSet(
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _In_ const std::vector<std::string>& objectIds,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+                    _Out_ std::vector<sai_status_t>& statuses);
+
             sai_status_t processBulkOidRemove(
                     _In_ sai_object_type_t objectType,
                     _In_ sai_bulk_op_error_mode_t mode,
