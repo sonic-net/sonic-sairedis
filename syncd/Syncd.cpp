@@ -2024,6 +2024,60 @@ sai_status_t Syncd::processBulkOidCreate(
     return status;
 }
 
+sai_status_t Syncd::processBulkOidSet(
+        _In_ sai_object_type_t objectType,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _In_ const std::vector<std::string>& objectIds,
+        _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    uint32_t object_count = static_cast<uint32_t>(objectIds.size());
+
+    if (!object_count)
+    {
+        SWSS_LOG_ERROR("container with objectIds is empty in processBulkOidSet");
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::vector<sai_object_id_t> objectVids(object_count);
+    std::vector<sai_object_id_t> objectRids(object_count);
+
+    std::vector<sai_attribute_t> attr_list(object_count);
+
+    for (size_t idx = 0; idx < object_count; idx++)
+    {
+        sai_deserialize_object_id(objectIds[idx], objectVids[idx]);
+        objectRids[idx] = m_translator->translateVidToRid(objectVids[idx]);
+
+        const auto attr_count = attributes[idx]->get_attr_count();
+        if (attr_count != 1)
+        {
+            SWSS_LOG_THROW("bulkSet api requires one attribute per object");
+        }
+
+        attr_list[idx] = *attributes[idx]->get_attr_list();
+    }
+
+    status = m_vendorSai->bulkSet(
+                                objectType,
+                                object_count,
+                                objectRids.data(),
+                                attr_list.data(),
+                                mode,
+                                statuses.data());
+
+    if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
+    {
+        SWSS_LOG_ERROR("bulkSet api is not implemented or not supported, object_type = %s",
+                sai_serialize_object_type(objectType).c_str());
+    }
+
+    return status;
+}
+
 sai_status_t Syncd::processBulkOidRemove(
         _In_ sai_object_type_t objectType,
         _In_ sai_bulk_op_error_mode_t mode,
@@ -2126,6 +2180,10 @@ sai_status_t Syncd::processBulkOid(
         {
             case SAI_COMMON_API_BULK_CREATE:
                 all = processBulkOidCreate(objectType, mode, objectIds, attributes, statuses);
+                break;
+
+            case SAI_COMMON_API_BULK_SET:
+                all = processBulkOidSet(objectType, mode, objectIds, attributes, statuses);
                 break;
 
             case SAI_COMMON_API_BULK_REMOVE:
