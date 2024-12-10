@@ -1,8 +1,10 @@
 #include "VirtualSwitchSaiInterface.h"
 #include "SwitchStateBase.h"
+#include "SwitchVpp.h"
+
+#include "meta/sai_serialize.h"
 
 #include "swss/logger.h"
-#include "meta/sai_serialize.h"
 
 using namespace saivs;
 
@@ -277,6 +279,13 @@ sai_status_t VirtualSwitchSaiInterface::flushFdbEntries(
     if (vlanid != NULL)
     {
         data.fdb_entry.bv_id = vlanid->value.oid;
+    }
+
+    auto vpp = std::dynamic_pointer_cast<saivs::SwitchVpp>(ss);
+
+    if (vpp)
+    {
+        vpp->vpp_fdbentry_flush(switch_id, attr_count, attr_list);
     }
 
     if (static_fdbs.size())
