@@ -5239,7 +5239,16 @@ void Syncd::performWarmRestartSingleSwitch(
     sai_attribute_t *attrList = list.get_attr_list();
 
     uint32_t attrCount = list.get_attr_count();
-
+    bool isPhy = false;
+    for (uint32_t idx = 0; idx < attrCount; idx++)
+    {
+        auto id = attrList[idx].id;
+        if (id == SAI_SWITCH_ATTR_TYPE && attrList[idx].value.s32 == SAI_SWITCH_TYPE_PHY)
+        {
+            isPhy = true;
+            break;
+        }
+    }
     for (uint32_t idx = 0; idx < attrCount; idx++)
     {
         auto id = attrList[idx].id;
@@ -5256,7 +5265,7 @@ void Syncd::performWarmRestartSingleSwitch(
          * new process could be loaded at different address space.
          */
 
-        if (id == SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO || meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
+        if (isPhy || id == SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO || meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
         {
             attrs.push_back(attrList[idx]);
             continue;
