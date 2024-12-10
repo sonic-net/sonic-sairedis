@@ -11,6 +11,7 @@
 
 using namespace syncd;
 
+#ifdef MOCK_METHOD
 class MockSelectableChannel : public sairedis::SelectableChannel {
 public:
     MOCK_METHOD(bool, empty, (), (override));
@@ -59,3 +60,5 @@ TEST_F(SyncdTest, processNotifySyncd)
     }));
     syncd_object.processEvent(consumer);
 }
+
+#endif
