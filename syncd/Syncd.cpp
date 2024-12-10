@@ -5706,7 +5706,7 @@ bool Syncd::isVeryFirstRun()
      * this is first run, let's query HIDDEN ?
      */
 
-    bool firstRun = m_client->hasNoHiddenKeysDefined();
+    bool firstRun = m_client->hasNoHiddenKeysDefined() && m_client->hasNoSwitchDefined();
 
     SWSS_LOG_NOTICE("First Run: %s", firstRun ? "True" : "False");
 
