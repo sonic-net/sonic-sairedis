@@ -78,7 +78,6 @@ public:
     MOCK_METHOD(uint64_t, readData, (), (override));
 };
 
-void clearDB()
 
 class ServerSaiTest : public ::testing::Test
 {

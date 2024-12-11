@@ -1,10 +1,10 @@
-#ifndef MOCK_SAI_INTERFACE_H
-#define MOCK_SAI_INTERFACE_H
+#pragma once
 
+#include <functional>
 #include "DummySaiInterface.h"
 #include <gmock/gmock.h>
 
-class MockSaiInterface : public SaiInterface
+class MockSaiInterface: public saimeta::DummySaiInterface
 {
     public:
 
@@ -24,4 +24,3 @@ public:
         (override));
 };
 
-#endif
