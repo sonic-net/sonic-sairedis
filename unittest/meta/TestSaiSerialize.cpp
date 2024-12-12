@@ -1347,3 +1347,71 @@ TEST(SaiSerialize, serialize_number)
     EXPECT_EQ(sn, -0x12345678);
     EXPECT_EQ(u,   0x12345678);
 }
+TEST(SaiSerialize, serialize_stat_capability_list)
+{
+    SWSS_LOG_ENTER();
+
+    extern const sai_enum_metadata_t sai_metadata_enum_sai_stats_mode_t;
+    sai_stat_capability_list_t queue_stats_capability;
+    sai_stat_capability_t stat_initializer;
+    stat_initializer.stat_enum = 0;
+    stat_initializer.stat_modes = 0;
+    std::vector<sai_stat_capability_t> qstat_cap_list(2, stat_initializer);
+    queue_stats_capability.count = 2;
+    queue_stats_capability.list = qstat_cap_list.data();
+    queue_stats_capability.list[0].stat_enum = SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS;
+    queue_stats_capability.list[0].stat_modes = SAI_STATS_MODE_READ;
+    queue_stats_capability.list[1].stat_enum = SAI_QUEUE_STAT_PACKETS;
+    queue_stats_capability.list[1].stat_modes = SAI_STATS_MODE_READ;
+
+    std::string capab_count = sai_serialize_stats_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, true);
+    std::string capab_str = sai_serialize_stats_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, false);
+
+    std::string exp_count_str = "{\"count\":2,\"list\":null}";
+    EXPECT_EQ(capab_count, exp_count_str);
+
+    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"stat_enum\":\"34\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"stat_enum\":\"0\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
+    EXPECT_EQ(capab_str, exp_capab_str);
+
+    std::vector<std::string> vec_stat_enum;
+    std::vector<std::string> vec_stat_modes;
+
+    for (uint32_t it = 0; it < queue_stats_capability.count; it++)
+    {
+        vec_stat_enum.push_back(std::to_string(queue_stats_capability.list[it].stat_enum));
+        vec_stat_modes.push_back(std::to_string(queue_stats_capability.list[it].stat_modes));
+    }
+
+    std::ostringstream join_stat_enum;
+    std::copy(vec_stat_enum.begin(), vec_stat_enum.end(), std::ostream_iterator<std::string>(join_stat_enum, ","));
+    auto strCapEnum = join_stat_enum.str();
+
+    std::ostringstream join_stat_modes;
+    std::copy(vec_stat_modes.begin(), vec_stat_modes.end(), std::ostream_iterator<std::string>(join_stat_modes, ","));
+    auto strCapModes = join_stat_modes.str();
+
+    sai_stat_capability_list_t stats_capability;
+    std::vector<sai_stat_capability_t> stat_cap_list(queue_stats_capability.count, stat_initializer);
+    stats_capability.count = queue_stats_capability.count;
+    stats_capability.list = stat_cap_list.data();
+
+    // deserialize
+    EXPECT_THROW(sai_deserialize_stats_capability_list(NULL, strCapEnum, strCapModes), std::runtime_error);
+
+    sai_deserialize_stats_capability_list(&stats_capability, strCapEnum, strCapModes);
+
+    EXPECT_EQ(stats_capability.count, queue_stats_capability.count);
+    EXPECT_EQ(stats_capability.list[0].stat_modes, SAI_STATS_MODE_READ);
+    EXPECT_EQ(stats_capability.list[1].stat_modes, SAI_STATS_MODE_READ);
+    int is_expected_enum = false;
+
+    if ((stats_capability.list[0].stat_enum == SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS)||(stats_capability.list[1].stat_enum == SAI_QUEUE_STAT_PACKETS))
+    {
+        is_expected_enum = true;
+    }
+    if ((stats_capability.list[1].stat_enum == SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS)||(stats_capability.list[0].stat_enum == SAI_QUEUE_STAT_PACKETS))
+    {
+        is_expected_enum = true;
+    }
+    EXPECT_EQ(is_expected_enum, true);
+}
