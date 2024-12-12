@@ -2019,7 +2019,6 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(COUNTER_TYPE_POLICER))
         {
             getCounterContext(COUNTER_TYPE_POLICER)->removeObject(vid);
-            // removeDataFromCountersDB(vid, ":POLICER");
         }
     }
     else
