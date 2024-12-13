@@ -941,7 +941,7 @@ public:
             else
             {
                 std::sort(supportedIds.begin(), supportedIds.end());
-                auto bulkContext = getBulkStatsContext(supportedIds);
+                auto bulkContext = getBulkStatsContext(supportedIds, "default", default_bulk_chunk_size);
                 addBulkStatsContext(vid, rid, supportedIds, *bulkContext.get());
             }
         }      
@@ -1690,6 +1690,15 @@ public:
                           m_plugins.end(),
                           [&] (auto &sha) { runRedisScript(counters_db, sha, idStrings, argv); });
         }
+    }
+
+    void bulkAddObject(
+            _In_ const std::vector<sai_object_id_t>& vids,
+            _In_ const std::vector<sai_object_id_t>& rids,
+            _In_ const std::vector<std::string>& idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        SWSS_LOG_ENTER();
     }
 
     bool hasObject() const override
