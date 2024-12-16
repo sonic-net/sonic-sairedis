@@ -286,7 +286,7 @@ sai_status_t SwitchVpp::acl_rule_range_get(
 
         oid = range_list->list[idx];
 
-        if (SAI_OBJECT_TYPE_ACL_RANGE == sai_object_type_query(oid)) {
+        if (SAI_OBJECT_TYPE_ACL_RANGE == RealObjectIdManager::objectTypeQuery(oid)) {
             sai_attribute_t attr;
 
             attr.id = SAI_ACL_RANGE_ATTR_TYPE;

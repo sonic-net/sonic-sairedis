@@ -90,9 +90,6 @@ sai_vs.cpp: ../stub.pl $(top_srcdir)/SAI/meta/saimetadata.c
 clean-local:
 	rm -f sai_vs.cpp
 
-# TODO move to configure?
-VPP_LIBS = -lvlibapi -lvapiclient -lvppapiclient -lvlibmemoryclient -lsvm -lvppinfra -lvlib -lvatplugin
-
 libsaivs_la_SOURCES = sai_vs.cpp
 
 libSaiVS_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
@@ -100,7 +97,7 @@ libSaiVS_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 
 libsaivs_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaivs_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a $(CODE_COVERAGE_LIBS)
+libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 bin_PROGRAMS = tests
 

@@ -123,11 +123,11 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
     nexthop_grp_config_t *nxthop_group = NULL;
 
-    if (SAI_OBJECT_TYPE_ROUTER_INTERFACE == sai_object_type_query(next_hop_oid))
+    if (SAI_OBJECT_TYPE_ROUTER_INTERFACE == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
         // vpp_add_del_intf_ip_addr(route_entry.destination, next_hop_oid, is_add);
     }
-    else if (SAI_OBJECT_TYPE_PORT == sai_object_type_query(next_hop_oid))
+    else if (SAI_OBJECT_TYPE_PORT == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
         attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
         status = route_obj->get_attr(attr);
@@ -136,14 +136,14 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
             vpp_add_del_intf_ip_addr_norif(serializedObjectId, route_entry, is_add);
         }
     }
-    else if (SAI_OBJECT_TYPE_NEXT_HOP == sai_object_type_query(next_hop_oid))
+    else if (SAI_OBJECT_TYPE_NEXT_HOP == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
         if (IpRouteNexthopEntry(next_hop_oid, &nxthop_group) == SAI_STATUS_SUCCESS)
         {
             config_ip_route = true;
         }
     }
-    else if (SAI_OBJECT_TYPE_NEXT_HOP_GROUP == sai_object_type_query(next_hop_oid))
+    else if (SAI_OBJECT_TYPE_NEXT_HOP_GROUP == RealObjectIdManager::objectTypeQuery(next_hop_oid))
     {
         if (IpRouteNexthopGroupEntry(next_hop_oid, &nxthop_group) == SAI_STATUS_SUCCESS)
         {
@@ -187,7 +187,7 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
         SWSS_LOG_NOTICE("%s ip route in VS %s status %d table %u", (is_add ? "Add" : "Remove"),
                         serializedObjectId.c_str(), ret, vrf_id);
         SWSS_LOG_NOTICE("%s route nexthop type %s count %u", (is_add ? "Add" : "Remove"),
-                        sai_serialize_object_type(sai_object_type_query(next_hop_oid)).c_str(),
+                        sai_serialize_object_type(RealObjectIdManager::objectTypeQuery(next_hop_oid)).c_str(),
                         nxthop_group->nmembers);
 
         free(ip_route);

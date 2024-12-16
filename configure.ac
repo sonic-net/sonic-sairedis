@@ -217,6 +217,9 @@ CXXFLAGS="$SAVED_FLAGS"
 
 AC_SUBST(CXXFLAGS_COMMON)
 
+VPP_LIBS="-lvlibapi -lvapiclient -lvppapiclient -lvlibmemoryclient -lsvm -lvppinfra -lvlib -lvatplugin"
+AC_SUBST(VPP_LIBS)
+
 AC_ARG_WITH(extra-libsai-ldflags,
 [  --with-extra-libsai-ldflags=FLAGS
                           extra libsai.so flags for vendor library],

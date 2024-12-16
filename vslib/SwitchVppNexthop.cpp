@@ -154,7 +154,7 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
     sai_attribute_t attr;
     auto nh_soid = sai_serialize_object_id(next_hop_oid);
 
-    if (SAI_OBJECT_TYPE_NEXT_HOP != sai_object_type_query(next_hop_oid)) {
+    if (SAI_OBJECT_TYPE_NEXT_HOP != RealObjectIdManager::objectTypeQuery(next_hop_oid)) {
         SWSS_LOG_ERROR("Not a SAI_OBJECT_TYPE_NEXT_HOP: %s", nh_soid.c_str());
         return SAI_STATUS_FAILURE;
     }
