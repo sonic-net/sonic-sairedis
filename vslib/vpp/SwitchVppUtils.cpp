@@ -13,9 +13,9 @@ sai_status_t saivs::find_attrib_in_list(
         _Out_ const sai_attribute_value_t **attr_value,
         _Out_ uint32_t                     *index)
 {
-    uint32_t ii;
-
     SWSS_LOG_ENTER();
+
+    uint32_t ii;
 
     if ((attr_count) && (NULL == attr_list)) {
         SWSS_LOG_ERROR("NULL value attr list\n");
@@ -47,6 +47,8 @@ sai_status_t saivs::find_attrib_in_list(
 
 int saivs::getPrefixLenFromAddrMask(const uint8_t *addr, int len)
 {
+    SWSS_LOG_ENTER();
+
     // Iterate over each byte from left to right
     for (int i = 0; i < len; ++i)
     {
@@ -82,6 +84,8 @@ int saivs::getPrefixLenFromAddrMask(const uint8_t *addr, int len)
 
 swss::IpPrefix saivs::getIpPrefixFromSaiPrefix(const sai_ip_prefix_t& src)
 {
+    SWSS_LOG_ENTER();
+
     swss::ip_addr_t ip;
     switch(src.addr_family)
     {
@@ -100,6 +104,8 @@ swss::IpPrefix saivs::getIpPrefixFromSaiPrefix(const sai_ip_prefix_t& src)
 
 sai_ip_prefix_t& saivs::subnet(sai_ip_prefix_t& dst, const sai_ip_prefix_t& src)
 {
+    SWSS_LOG_ENTER();
+
     dst.addr_family = src.addr_family;
     switch(src.addr_family)
     {
@@ -122,6 +128,8 @@ sai_ip_prefix_t& saivs::subnet(sai_ip_prefix_t& dst, const sai_ip_prefix_t& src)
 
 sai_ip_prefix_t& saivs::copy(sai_ip_prefix_t& dst, const swss::IpPrefix& src)
 {
+    SWSS_LOG_ENTER();
+
     auto ia = src.getIp().getIp();
     auto ma = src.getMask().getIp();
     switch(ia.family)
@@ -144,6 +152,8 @@ sai_ip_prefix_t& saivs::copy(sai_ip_prefix_t& dst, const swss::IpPrefix& src)
 
 void saivs::sai_ip_address_t_to_vpp_ip_addr_t(sai_ip_address_t& src, vpp_ip_addr_t& dst)
 {
+    SWSS_LOG_ENTER();
+
     if (SAI_IP_ADDR_FAMILY_IPV4 == src.addr_family) {
         struct sockaddr_in *sin =  &dst.addr.ip4;
 
@@ -162,6 +172,8 @@ void saivs::sai_ip_address_t_to_vpp_ip_addr_t(sai_ip_address_t& src, vpp_ip_addr
 /* Utility function for IP addr translation from VS to SAI */
 void saivs::vpp_ip_addr_t_to_sai_ip_address_t(vpp_ip_addr_t& src, sai_ip_address_t& dst)
 {
+    SWSS_LOG_ENTER();
+
     if (src.sa_family == AF_INET)
     {
         dst.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
@@ -176,4 +188,3 @@ void saivs::vpp_ip_addr_t_to_sai_ip_address_t(vpp_ip_addr_t& src, sai_ip_address
                 sizeof(sin6->sin6_addr.s6_addr));
     }
 }
-

@@ -37,9 +37,9 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
-    sai_object_id_t br_port_id;
-
     SWSS_LOG_ENTER();
+
+    sai_object_id_t br_port_id;
 
     //find sw_if_index for given l2 interface
     auto attr_type = sai_metadata_get_attr_by_id(SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID, attr_count, attr_list);
@@ -415,9 +415,9 @@ sai_status_t SwitchVpp::vpp_create_bvi_interface(
 sai_status_t SwitchVpp::vpp_delete_bvi_interface(
         _In_ sai_object_id_t bvi_obj_id)
 {
-    sai_attribute_t attr;
-
     SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
 
     attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
     sai_status_t status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, bvi_obj_id, 1, &attr);

@@ -18,6 +18,7 @@ namespace saivs
             }
             ~BitResourcePool() = default;
             int alloc() {
+                SWSS_LOG_ENTER();
                 for (uint16_t i = 0; i < resource_size; i++) {
                     if ((resource_bitmap[i / 8] & (1 << (i % 8))) == 0) {
                         resource_bitmap[i / 8] |= (uint8_t)(1 << (i % 8));
@@ -27,6 +28,7 @@ namespace saivs
                 return -1;
             }
             void free(uint32_t index) {
+                SWSS_LOG_ENTER();
                 if (index >= resource_size + base_index || index < base_index) {
                     throw std::invalid_argument("Invalid index");
                 }

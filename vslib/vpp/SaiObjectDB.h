@@ -145,6 +145,7 @@ namespace saivs
          * @return A pointer to the map of child objects, or nullptr if no child objects of the specified type exist.
          */
         const std::unordered_map<std::string, std::shared_ptr<SaiObject>>* get_child_objs(sai_object_type_t child_type) const {
+            SWSS_LOG_ENTER();
             auto it = m_child_map.find(child_type);
             if (it != m_child_map.end()) {
                 return &(it->second);
@@ -160,6 +161,7 @@ namespace saivs
          * @param entry The child object to be added.
          */
         void add_child(const std::shared_ptr<SaiObject> entry) {
+            SWSS_LOG_ENTER();
             if (entry) {
                 m_child_map[entry->get_type()][entry->get_id()] = entry;
             }
@@ -174,6 +176,7 @@ namespace saivs
          * @param id The ID of the child object.
          */
         void remove_child(sai_object_type_t child_type, const std::string& id) {
+            SWSS_LOG_ENTER();
             auto child_map_it = m_child_map.find(child_type);
             if (child_map_it != m_child_map.end()) {
                 auto child_map_per_type_it = child_map_it->second.find(id);
@@ -206,10 +209,12 @@ namespace saivs
         sai_status_t get_attr(_Inout_ sai_attribute_t &attr) const override;
 
         std::shared_ptr<SaiDBObject> get_db_obj() const {
+            SWSS_LOG_ENTER();
             return m_sai_db_obj;
         }
 
         const std::unordered_map<std::string, std::shared_ptr<SaiObject>>* get_child_objs(sai_object_type_t child_type) const {
+            SWSS_LOG_ENTER();
             if (m_sai_db_obj) {
                 return m_sai_db_obj->get_child_objs(child_type);
             } else {

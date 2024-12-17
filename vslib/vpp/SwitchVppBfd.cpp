@@ -20,7 +20,6 @@ sai_status_t SwitchVpp::bfd_session_add(
     _In_ uint32_t attr_count,
     _In_ const sai_attribute_t *attr_list)
 {
-
     SWSS_LOG_ENTER();
 
     CHECK_STATUS(vpp_bfd_session_add(serializedObjectId, switch_id, attr_count, attr_list));
@@ -36,8 +35,9 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
     _In_ uint32_t attr_count,
     _In_ const sai_attribute_t *attr_list)
 {
-    int ret = 0;
     SWSS_LOG_ENTER();
+
+    int ret = 0;
 
     sai_object_id_t bfd_oid;
     sai_deserialize_object_id(serializedObjectId, bfd_oid);
@@ -173,8 +173,9 @@ sai_status_t SwitchVpp::bfd_session_del(
 sai_status_t SwitchVpp::vpp_bfd_session_del(
     _In_ const std::string &serializedObjectId)
 {
-    int ret = 0;
     SWSS_LOG_ENTER();
+
+    int ret = 0;
 
     sai_object_id_t bfd_oid;
     sai_deserialize_object_id(serializedObjectId, bfd_oid);

@@ -27,6 +27,8 @@ static sai_status_t acl_ip_field_to_vpp_acl(
     _In_ const sai_attribute_value_t *value,
     _Out_ vpp_acl_rule_t *rule)
 {
+    SWSS_LOG_ENTER();
+
     sai_ip_addr_family_t                    addr_family;
 
     assert((SAI_ACL_ENTRY_ATTR_FIELD_SRC_IPV6 == attr_id) ||
@@ -104,6 +106,8 @@ static sai_status_t acl_ip_field_to_vpp_acl(
 
 static void set_ipv4any_addr_mask (vpp_ip_addr_t *ip_addr)
 {
+    SWSS_LOG_ENTER();
+
     struct sockaddr_in *sin =  &ip_addr->addr.ip4;
 
     ip_addr->sa_family = AF_INET;
@@ -112,6 +116,8 @@ static void set_ipv4any_addr_mask (vpp_ip_addr_t *ip_addr)
 
 static void set_ipv6any_addr_mask (vpp_ip_addr_t *ip_addr)
 {
+    SWSS_LOG_ENTER();
+
     struct sockaddr_in6 *sin6 =  &ip_addr->addr.ip6;
 
     ip_addr->sa_family = AF_INET6;
@@ -127,6 +133,9 @@ static sai_status_t acl_ip_type_field_to_vpp_acl_rule(
     _In_ const sai_attribute_value_t *value,
     _Out_ vpp_acl_rule_t *rule)
 {
+    SWSS_LOG_ENTER();
+
+
     sai_acl_ip_type_t ip_type;
 
     assert(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE == attr_id);
@@ -174,6 +183,8 @@ static sai_status_t acl_icmp_field_to_vpp_acl_rule(
     _In_ const sai_attribute_value_t  *value,
     _Out_ vpp_acl_rule_t *rule)
 {
+    SWSS_LOG_ENTER();
+
     uint16_t                                data = 0, mask = 0;
     uint16_t                                new_data, new_mask;
 
@@ -220,6 +231,8 @@ static sai_status_t acl_entry_port_to_vpp_acl_rule(
     _In_ const sai_attribute_value_t  *value,
     _Out_ vpp_acl_rule_t      *rule)
 {
+    SWSS_LOG_ENTER();
+
     if (!value->aclfield.enable) {
         SWSS_LOG_INFO("aclfield disabled for port configuration");
         return SAI_STATUS_SUCCESS;
@@ -247,6 +260,8 @@ static sai_status_t acl_rule_port_range_vpp_acl_set(
     _In_ const sai_u32_range_t   *range,
     _Out_ vpp_acl_rule_t *rule)
 {
+    SWSS_LOG_ENTER();
+
     assert(range);
 
     switch (type) {
@@ -276,6 +291,8 @@ sai_status_t SwitchVpp::acl_rule_range_get(
     _Out_ sai_acl_range_type_t *range_type_list,
     _Out_ uint32_t *range_count)
 {
+    SWSS_LOG_ENTER();
+
     uint32_t idx, count = 0;
 
     sai_u32_range_t   *range = range_limit_list;
@@ -323,6 +340,8 @@ static void acl_rule_set_action(
     _Out_ vpp_acl_rule_t      *rule)
 
 {
+    SWSS_LOG_ENTER();
+
             switch (value->aclaction.parameter.s32) {
         case SAI_PACKET_ACTION_FORWARD:
             rule->action = VPP_ACL_ACTION_API_PERMIT_STFULL;
@@ -339,6 +358,8 @@ sai_status_t acl_rule_field_update(
     _In_ const sai_attribute_value_t  *value,
     _Out_ vpp_acl_rule_t      *rule)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status;
 
     assert(NULL != value);
@@ -395,6 +416,8 @@ sai_status_t SwitchVpp::tunterm_set_action_redirect(
     _In_ const sai_attribute_value_t  *value,
     _Out_ vpp_tunterm_acl_rule_t      *rule)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t                 status = SAI_STATUS_SUCCESS;
     sai_object_id_t              next_hop_oid;
     sai_object_id_t              rif_oid;
@@ -485,6 +508,8 @@ sai_status_t SwitchVpp::tunterm_acl_rule_field_update(
     _In_ const sai_attribute_value_t  *value,
     _Out_ vpp_tunterm_acl_rule_t      *rule)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status;
     char         dst_ip_str[INET6_ADDRSTRLEN];
 
@@ -535,6 +560,8 @@ sai_status_t SwitchVpp::tunterm_acl_rule_field_update(
 sai_status_t SwitchVpp::getAclTableId(
     _In_ sai_object_id_t entry_id, sai_object_id_t *tbl_oid)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t attr;
 
     attr.id = SAI_ACL_ENTRY_ATTR_TABLE_ID;
@@ -556,6 +583,8 @@ sai_status_t SwitchVpp::acl_range_attr_get (
     _In_ const sai_attribute_t *attr_list,
     _Out_ sai_attribute_t *attr_range)
 {
+    SWSS_LOG_ENTER();
+
     const sai_attribute_t *attr;
 
     for (uint32_t i = 0; i < attr_count; i++) {
@@ -575,6 +604,8 @@ sai_status_t acl_priority_attr_get (
     _In_ const sai_attribute_t *attr_list,
     uint32_t *priority)
 {
+    SWSS_LOG_ENTER();
+
     const sai_attribute_t *attr;
 
     for (uint32_t i = 0; i < attr_count; i++) {
@@ -592,6 +623,8 @@ static bool cmp_priority (
     const ordered_ace_list_t& f,
     const ordered_ace_list_t& s)
 {
+    SWSS_LOG_ENTER();
+
     return (f.priority > s.priority);
 }
 
@@ -601,6 +634,8 @@ sai_status_t SwitchVpp::get_sorted_aces(
     acl_tbl_entries_t *&aces,
     std::list<ordered_ace_list_t> &ordered_aces)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t                status = SAI_STATUS_SUCCESS;
     auto                        it = m_acl_tbl_rules_map.find(tbl_oid);
 
@@ -678,6 +713,8 @@ void SwitchVpp::count_tunterm_acl_rules(
     size_t &n_entries,
     size_t &n_tunterm_entries)
 {
+    SWSS_LOG_ENTER();
+
     acl_tbl_entries_t     *p_ace = NULL;
     const sai_attribute_t *attr = NULL;
     bool                   tunterm_flag_set = false;
@@ -709,6 +746,8 @@ sai_status_t SwitchVpp::allocate_acl(
     char (&acl_name)[64],
     vpp_acl_t *&acl)
 {
+    SWSS_LOG_ENTER();
+
     auto tbl_sid = sai_serialize_object_id(tbl_oid);
 
     if(n_entries == 0) {
@@ -733,6 +772,8 @@ sai_status_t SwitchVpp::allocate_tunterm_acl(
     char (&acl_name)[64],
     vpp_tunterm_acl_t *&tunterm_acl)
 {
+    SWSS_LOG_ENTER();
+
     auto tbl_sid = sai_serialize_object_id(tbl_oid);
 
     if(n_tunterm_entries == 0) {
@@ -757,6 +798,8 @@ sai_status_t SwitchVpp::fill_acl_rules(
     vpp_acl_t *acl,
     vpp_tunterm_acl_t *tunterm_acl)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t       status = SAI_STATUS_SUCCESS;
     acl_tbl_entries_t  *p_ace = NULL;
     vpp_acl_rule_t     *rule = NULL;
@@ -814,6 +857,8 @@ void SwitchVpp::cleanup_acl_tbl_config(
     vpp_acl_t *&acl,
     vpp_tunterm_acl_t *&tunterm_acl)
 {
+    SWSS_LOG_ENTER();
+
     if(aces != NULL) {
         free(aces);
         aces = NULL;
@@ -835,6 +880,8 @@ sai_status_t SwitchVpp::acl_add_replace(
     acl_tbl_entries_t *aces,
     std::list<ordered_ace_list_t> &ordered_aces)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t        status = SAI_STATUS_SUCCESS;
     bool                acl_replace;
     uint32_t            acl_swindex;
@@ -888,6 +935,8 @@ sai_status_t SwitchVpp::acl_add_replace(
 
 sai_status_t SwitchVpp::tunterm_acl_bindunbind(sai_object_id_t tbl_oid, bool is_add, std::string hwif_name)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     auto tunterm_idx_it = m_tunterm_acl_swindex_map.find(tbl_oid);
     if (tunterm_idx_it != m_tunterm_acl_swindex_map.end()) {
@@ -903,6 +952,8 @@ sai_status_t SwitchVpp::tunterm_acl_bindunbind(sai_object_id_t tbl_oid, bool is_
 
 sai_status_t SwitchVpp::tunterm_acl_add_replace(vpp_tunterm_acl_t *acl, sai_object_id_t tbl_oid)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     uint32_t     tunterm_acl_swindex = 0;
     bool         do_port_bind = false;
@@ -964,6 +1015,8 @@ sai_status_t SwitchVpp::tunterm_acl_add_replace(vpp_tunterm_acl_t *acl, sai_obje
 
 sai_status_t SwitchVpp::tbl_hw_ports_map_delete(sai_object_id_t tbl_oid)
 {
+    SWSS_LOG_ENTER();
+
     auto hw_ports_it = m_acl_tbl_hw_ports_map.find(tbl_oid);
     if (hw_ports_it == m_acl_tbl_hw_ports_map.end()) {
         return SAI_STATUS_SUCCESS;
@@ -974,6 +1027,8 @@ sai_status_t SwitchVpp::tbl_hw_ports_map_delete(sai_object_id_t tbl_oid)
 
 sai_status_t SwitchVpp::tunterm_acl_delete(sai_object_id_t tbl_oid, bool table_delete)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     auto         tunterm_idx_it = m_tunterm_acl_swindex_map.find(tbl_oid);
 
@@ -1016,6 +1071,8 @@ sai_status_t SwitchVpp::tunterm_acl_delete(sai_object_id_t tbl_oid, bool table_d
 sai_status_t SwitchVpp::AclTblConfig(
     _In_ sai_object_id_t tbl_oid)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t                        status = SAI_STATUS_SUCCESS;
     size_t                              n_entries = 0;
     size_t                              n_tunterm_entries = 0;
@@ -1069,6 +1126,8 @@ sai_status_t SwitchVpp::aclGetVppIndices(
     _Out_ uint32_t *acl_index,
     _Out_ uint32_t *ace_index)
 {
+    SWSS_LOG_ENTER();
+
     auto vpp_ace_it = m_ace_cntr_info_map.find(ace_cntr_oid);
     if (vpp_ace_it == m_ace_cntr_info_map.end()) {
         SWSS_LOG_WARN("VS ace entry %s not found in vpp_ace_cntr_info_map",
@@ -1094,6 +1153,8 @@ sai_status_t SwitchVpp::aclTableCreate(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     auto sid = sai_serialize_object_id(object_id);
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_ACL_TABLE, sid, switch_id, attr_count, attr_list));
@@ -1106,6 +1167,8 @@ sai_status_t SwitchVpp::aclTableCreate(
 sai_status_t SwitchVpp::aclTableRemove(
     _In_ const std::string &serializedObjectId)
 {
+    SWSS_LOG_ENTER();
+
     sai_object_id_t tbl_oid;
 
     sai_deserialize_object_id(serializedObjectId, tbl_oid);
@@ -1118,6 +1181,8 @@ sai_status_t SwitchVpp::aclTableRemove(
 sai_status_t SwitchVpp::aclDefaultAllowConfigure (
     _In_ sai_object_id_t tbl_oid)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t attr[2];
     uint32_t        acl_swindex = 0;
     bool            acl_replace = false;
@@ -1175,6 +1240,8 @@ sai_status_t SwitchVpp::aclDefaultAllowConfigure (
 sai_status_t SwitchVpp::AclTblRemove(
     _In_ sai_object_id_t tbl_oid)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status;
 
     auto it = m_acl_tbl_rules_map.find(tbl_oid);
@@ -1247,6 +1314,8 @@ sai_status_t SwitchVpp::addRemoveAclEntrytoMap(
 sai_status_t SwitchVpp::AclAddRemoveCheck(
     _In_ sai_object_id_t tbl_oid)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     auto it = m_acl_tbl_rules_map.find(tbl_oid);
 
@@ -1319,6 +1388,8 @@ sai_status_t SwitchVpp::getAclTableGroupId(
     _In_ sai_object_id_t member_oid,
     _Out_ sai_object_id_t *tbl_grp_oid)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t attr;
 
     attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_GROUP_ID;
@@ -1506,6 +1577,8 @@ sai_status_t SwitchVpp::addRemovePortTblGrp(
     _In_ sai_object_id_t tbl_grp_oid,
     _In_ bool is_add)
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_acl_tbl_grp_ports_map.find(tbl_grp_oid);
 
     if (it == m_acl_tbl_grp_ports_map.end()) {

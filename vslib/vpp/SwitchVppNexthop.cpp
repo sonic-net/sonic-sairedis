@@ -30,6 +30,8 @@ sai_status_t SwitchVpp::IpRouteNexthopGroupEntry(
     _In_ sai_object_id_t next_hop_grp_oid,
     _Out_ nexthop_grp_config_t **nxthop_group)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t attr;
     int32_t group_type;
     auto nhg_soid = sai_serialize_object_id(next_hop_grp_oid);
@@ -117,6 +119,8 @@ sai_status_t SwitchVpp::IpRouteNexthopEntry(
         _In_ sai_object_id_t next_hop_oid,
         _Out_ nexthop_grp_config_t **nxthop_group_cfg)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t                 status;
     nexthop_grp_config_t        *nxthop_group;
 
@@ -151,6 +155,8 @@ sai_status_t SwitchVpp::IpRouteNexthopEntry(
 sai_status_t
 SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t next_hop_oid, uint32_t next_hop_weight, uint32_t next_hop_sequence)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t attr;
     auto nh_soid = sai_serialize_object_id(next_hop_oid);
 
@@ -216,9 +222,11 @@ SwitchVpp::createNexthop(
                 _In_ uint32_t attr_count,
                 _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     const sai_attribute_value_t     *next_hop_type;
     uint32_t                        attr_index;
-    SWSS_LOG_ENTER();
+
     CHECK_STATUS(find_attrib_in_list(attr_count, attr_list, SAI_NEXT_HOP_ATTR_TYPE,
                                  &next_hop_type, &attr_index));
     if (next_hop_type->s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
@@ -231,9 +239,11 @@ SwitchVpp::createNexthop(
 sai_status_t SwitchVpp::removeNexthop(
         _In_ const std::string &serializedObjectId)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t                 attr;
     sai_status_t                    status;
-    SWSS_LOG_ENTER();
+
     auto nh_obj = get_sai_object(SAI_OBJECT_TYPE_NEXT_HOP, serializedObjectId);
 
     if (!nh_obj) {
@@ -259,9 +269,10 @@ SwitchVpp::createNexthopGroupMember(
                 _In_ uint32_t attr_count,
                 _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t        status;
     sai_attribute_t     attr;
-    SWSS_LOG_ENTER();
 
     SaiCachedObject nhg_mbr_obj(this, SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, serializedObjectId, attr_count, attr_list);
     attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_GROUP_ID;
@@ -296,9 +307,10 @@ sai_status_t
 SwitchVpp::removeNexthopGroupMember(
         _In_ const std::string &serializedObjectId)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t        status;
     sai_attribute_t     attr;
-    SWSS_LOG_ENTER();
 
     auto nhg_mbr_obj = get_sai_object(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, serializedObjectId);
     if (!nhg_mbr_obj) {

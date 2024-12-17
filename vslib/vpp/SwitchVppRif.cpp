@@ -47,12 +47,15 @@ IpVrfInfo::IpVrfInfo(
 
 IpVrfInfo::~IpVrfInfo()
 {
+    SWSS_LOG_ENTER();
 }
 
 bool vpp_get_intf_all_ip_prefixes (
     const std::string& linux_ifname,
     std::vector<swss::IpPrefix>& ip_prefixes)
 {
+    SWSS_LOG_ENTER();
+
     std::stringstream cmd;
     std::string res;
 
@@ -80,6 +83,8 @@ bool vpp_get_intf_ip_address (
     bool is_v6,
     std::string& res)
 {
+    SWSS_LOG_ENTER();
+
     std::stringstream cmd;
 
     swss::IpPrefix prefix = getIpPrefixFromSaiPrefix(ip_prefix);
@@ -111,6 +116,8 @@ bool vpp_get_intf_name_for_prefix (
     bool is_v6,
     std::string& ifname)
 {
+    SWSS_LOG_ENTER();
+
     std::stringstream cmd;
 
     swss::IpPrefix prefix = getIpPrefixFromSaiPrefix(ip_prefix);
@@ -143,6 +150,8 @@ bool vpp_get_intf_name_for_prefix (
 std::string get_intf_name_for_prefix (
     _In_ sai_route_entry_t& route_entry)
 {
+    SWSS_LOG_ENTER();
+
     bool is_v6 = false;
     is_v6 = (route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6) ? true : false;
 
@@ -161,6 +170,8 @@ std::string get_intf_name_for_prefix (
 std::string SwitchVpp::convertIPToString (
         _In_ const sai_ip_addr_t &ipAddress)
 {
+    SWSS_LOG_ENTER();
+
     char ipStr[INET6_ADDRSTRLEN];
 
     if (inet_ntop(AF_INET, &(ipAddress.ip4), ipStr, INET_ADDRSTRLEN) != nullptr) {
@@ -237,6 +248,8 @@ void create_route_prefix (
     sai_route_entry_t *route_entry,
     vpp_ip_route_t *ip_route)
 {
+    SWSS_LOG_ENTER();
+
     const sai_ip_prefix_t *ip_address = &route_entry->destination;
 
     switch (ip_address->addr_family) {
@@ -270,6 +283,7 @@ int configureLoopbackInterface (
     int prefixLen)
 {
     SWSS_LOG_ENTER();
+
     std::stringstream cmd;
     std::string res;
 
@@ -311,11 +325,15 @@ int SwitchVpp::getNextLoopbackInstance ()
 
 void SwitchVpp::markLoopbackInstanceDeleted (int instance)
 {
+    SWSS_LOG_ENTER();
+
     availableInstances.insert(instance);
 }
 
 bool SwitchVpp::vpp_intf_get_prefix_entry (const std::string &intf_name, std::string &ip_prefix)
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_intf_prefix_map.find(intf_name);
 
     if (it == m_intf_prefix_map.end())
@@ -333,6 +351,7 @@ bool SwitchVpp::vpp_intf_get_prefix_entry (const std::string &intf_name, std::st
 
 void SwitchVpp::vpp_intf_remove_prefix_entry (const std::string& intf_name)
 {
+    SWSS_LOG_ENTER();
 
     auto it = m_intf_prefix_map.find(intf_name);
 
@@ -352,6 +371,8 @@ bool SwitchVpp::vpp_get_hwif_name (
       _In_ uint32_t vlan_id,
       _Out_ std::string& ifname)
 {
+    SWSS_LOG_ENTER();
+
     std::string if_name;
     bool found = getTapNameFromPortId(object_id, if_name);
 
@@ -378,6 +399,8 @@ bool SwitchVpp::vpp_get_hwif_name (
 
 void SwitchVpp::vppProcessEvents ()
 {
+    SWSS_LOG_ENTER();
+
     const struct timespec req = {2, 0};
     vpp_event_info_t *evp;
     int ret;
@@ -408,6 +431,8 @@ void SwitchVpp::vppProcessEvents ()
 
 sai_status_t SwitchVpp::asyncBfdStateUpdate(vpp_bfd_state_notif_t *bfd_notif)
 {
+    SWSS_LOG_ENTER();
+
     sai_bfd_session_state_t sai_state;
     vpp_bfd_info_t bfd_info;
     memset(&bfd_info, 0, sizeof(bfd_info));
@@ -457,6 +482,8 @@ sai_status_t SwitchVpp::asyncBfdStateUpdate(vpp_bfd_state_notif_t *bfd_notif)
 
 sai_status_t SwitchVpp::vpp_dp_initialize()
 {
+    SWSS_LOG_ENTER();
+
     init_vpp_client();
     m_vpp_thread = std::make_shared<std::thread>(&SwitchVpp::vppProcessEvents, this);
 
@@ -469,6 +496,8 @@ sai_status_t SwitchVpp::vpp_dp_initialize()
 
 sai_status_t SwitchVpp::asyncIntfStateUpdate(const char *hwif_name, bool link_up)
 {
+    SWSS_LOG_ENTER();
+
     std::string tap_str;
     const char *tap;
 
@@ -492,6 +521,8 @@ sai_status_t SwitchVpp::vpp_set_interface_state (
         _In_ uint32_t vlan_id,
         _In_ bool is_up)
 {
+    SWSS_LOG_ENTER();
+
     if (is_ip_nbr_active() == false) {
         return SAI_STATUS_SUCCESS;
     }
@@ -513,6 +544,8 @@ sai_status_t SwitchVpp::vpp_set_port_mtu (
         _In_ uint32_t vlan_id,
         _In_ uint32_t mtu)
 {
+    SWSS_LOG_ENTER();
+
     if (is_ip_nbr_active() == false) {
         return SAI_STATUS_SUCCESS;
     }
@@ -535,6 +568,8 @@ sai_status_t SwitchVpp::vpp_set_interface_mtu (
         _In_ uint32_t mtu,
         int type)
 {
+    SWSS_LOG_ENTER();
+
     if (is_ip_nbr_active() == false) {
         return SAI_STATUS_SUCCESS;
     }
@@ -616,6 +651,8 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
     _In_ sai_object_id_t rif_id,
     _In_ bool is_add)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t attr;
     int32_t rif_type;
 
@@ -792,6 +829,8 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr (
 
 static void get_intf_vlanid (std::string& sub_ifname, int *vlan_id, std::string& if_name)
 {
+    SWSS_LOG_ENTER();
+
     std::size_t pos = sub_ifname.find(".");
 
     if (pos == std::string::npos)
@@ -806,6 +845,8 @@ static void get_intf_vlanid (std::string& sub_ifname, int *vlan_id, std::string&
 }
 static void get_vlan_intf_vlanid(std::string& if_name, std::string& vlan_prefix, int* vlan_id)
 {
+    SWSS_LOG_ENTER();
+
     // Check if the if_name starts with vlan_prefix
     if (if_name.compare(0, vlan_prefix.length(), vlan_prefix) != 0) {
         // If it doesn't start with vlan_prefix, set vlan_id to 0
@@ -831,6 +872,8 @@ static void get_vlan_intf_vlanid(std::string& if_name, std::string& vlan_prefix,
 }
 static void vpp_serialize_intf_data (std::string& k1, std::string& k2, std::string &serializedData)
 {
+    SWSS_LOG_ENTER();
+
     serializedData.append(k1);
     serializedData.append("@");
     serializedData.append(k2);
@@ -838,6 +881,8 @@ static void vpp_serialize_intf_data (std::string& k1, std::string& k2, std::stri
 
 static void vpp_deserialize_intf_data (std::string &serializedData, std::string& k1, std::string& k2)
 {
+    SWSS_LOG_ENTER();
+
     std::size_t pos = serializedData.find("@");
 
     if (pos != std::string::npos)
@@ -854,6 +899,8 @@ sai_status_t SwitchVpp::vpp_add_del_intf_ip_addr_norif (
     _In_ sai_route_entry_t& route_entry,
     _In_ bool is_add)
 {
+    SWSS_LOG_ENTER();
+
     bool is_v6 = false;
 
     is_v6 = (route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6) ? true : false;
@@ -1007,6 +1054,8 @@ LpbOpType getLoopbackOperationType (
     _In_ sai_route_entry_t route_entr,
     _In_ const std::unordered_map<std::string, std::string>& lpbIpToIfMap)
 {
+    SWSS_LOG_ENTER();
+
     if (is_add) {
         if ((!vppIfName.empty()) && (vppIfName.find("loop") != std::string::npos)) {
             return LpbOpType::ADD_IP_LPB_IF;
@@ -1271,6 +1320,8 @@ sai_status_t SwitchVpp::vpp_get_router_intf_name (
     _In_ sai_object_id_t rif_id,
     std::string& nexthop_ifname)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t attr;
     int32_t rif_type;
 
@@ -1358,6 +1409,8 @@ sai_status_t SwitchVpp::vpp_get_router_intf_name (
 
 int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
 {
+    SWSS_LOG_ENTER();
+
     auto it = vrf_objMap.find(objectId);
 
     if (it != vrf_objMap.end()) {
@@ -1390,6 +1443,8 @@ int SwitchVpp::vpp_add_ip_vrf (_In_ sai_object_id_t objectId, uint32_t vrf_id)
 
 int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
 {
+    SWSS_LOG_ENTER();
+
     auto it = vrf_objMap.find(objectId);
 
     if (it != vrf_objMap.end()) {
@@ -1405,6 +1460,8 @@ int SwitchVpp::vpp_del_ip_vrf (_In_ sai_object_id_t objectId)
 
 std::shared_ptr<IpVrfInfo> SwitchVpp::vpp_get_ip_vrf (_In_ sai_object_id_t objectId)
 {
+    SWSS_LOG_ENTER();
+
     auto it = vrf_objMap.find(objectId);
 
     if (it != vrf_objMap.end()) {
@@ -1422,6 +1479,8 @@ std::shared_ptr<IpVrfInfo> SwitchVpp::vpp_get_ip_vrf (_In_ sai_object_id_t objec
  */
 int SwitchVpp::vpp_get_vrf_id (const char *linux_ifname, uint32_t *vrf_id)
 {
+    SWSS_LOG_ENTER();
+
     std::stringstream cmd;
     std::string res;
 
@@ -1604,6 +1663,7 @@ sai_status_t SwitchVpp::vpp_update_router_interface(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
     sai_attribute_t attr;
     int32_t rif_type;
 

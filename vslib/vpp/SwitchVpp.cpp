@@ -88,6 +88,8 @@ bool SwitchVpp::port_to_hwifname(
 void SwitchVpp::setPortStats(
         _In_ sai_object_id_t oid)
 {
+    SWSS_LOG_ENTER();
+
     std::map<sai_stat_id_t, uint64_t> stats;
 
     std::string if_name;

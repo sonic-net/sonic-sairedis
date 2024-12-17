@@ -18,7 +18,6 @@
 
 using namespace saivs;
 
-
 sai_status_t SwitchVpp::addRemoveIpNbr(
         _In_ const std::string &serializedObjectId,
         _In_ uint32_t attr_count,
@@ -144,6 +143,8 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
 
 bool SwitchVpp::is_ip_nbr_active()
 {
+    SWSS_LOG_ENTER();
+
     if (nbr_env_read == false)
     {
         const char *val;

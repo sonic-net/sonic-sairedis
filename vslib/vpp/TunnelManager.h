@@ -74,7 +74,10 @@ namespace saivs
          */
         sai_status_t get_tunnel_if(
             _In_  sai_object_id_t nexthop_oid,
-            _Out_ u_int32_t &sw_if_index) {
+            _Out_ u_int32_t &sw_if_index)
+        {
+            SWSS_LOG_ENTER();
+
             auto it = m_tunnel_encap_nexthop_map.find(nexthop_oid);
             if (it != m_tunnel_encap_nexthop_map.end()) {
                 sw_if_index = it->second.sw_if_index;

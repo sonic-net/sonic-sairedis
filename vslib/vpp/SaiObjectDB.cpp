@@ -35,6 +35,8 @@ std::map<sai_object_type_t, std::vector<SaiChildRelation>> sai_child_relation_de
 static std::vector<std::string>
 get_parent_oids(const sai_attribute_value_t *attr_val, const SaiChildRelation& child_def)
 {
+    SWSS_LOG_ENTER();
+
     std::vector<std::string> parent_ids;
 
     switch (child_def.child_link_attr_type) {
@@ -58,6 +60,8 @@ get_parent_oids(const sai_attribute_value_t *attr_val, const SaiChildRelation& c
 static std::vector<std::string>
 get_parent_oids(SwitchVpp* switch_db, sai_object_type_t child_type, const std::string& child_oid, const SaiChildRelation& child_def)
 {
+    SWSS_LOG_ENTER();
+
     std::vector<std::string> parent_ids;
     sai_status_t status;
     sai_attribute_t attr;
@@ -99,6 +103,8 @@ SaiObjectDB::create_or_update(
                 _In_ const sai_attribute_t *attr_list,
                 _In_ bool is_create)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status;
     auto child_def_it = sai_child_relation_defs.find(object_type);
     if (child_def_it == sai_child_relation_defs.end()) {
@@ -190,6 +196,8 @@ SaiObjectDB::remove_child_from_parent(
                 _In_ const std::string& id,
                 _In_ const SaiChildRelation& child_def)
 {
+    SWSS_LOG_ENTER();
+
     std::vector<std::string> parent_ids = get_parent_oids(m_switch_db, object_type, id, child_def);
     auto sai_parents = m_sai_parent_objs[child_def.parent_type];
     for (auto parent_id: parent_ids) {
@@ -225,6 +233,8 @@ SaiObjectDB::remove(
                 _In_ sai_object_type_t object_type,
                 _In_ const std::string& id)
 {
+    SWSS_LOG_ENTER();
+
     //remove parent object
     auto sai_parent_type_it = m_sai_parent_objs.find(object_type);
     if (sai_parent_type_it != m_sai_parent_objs.end()) {
@@ -257,6 +267,8 @@ SaiObjectDB::get(
                 _In_ sai_object_type_t object_type,
                 _In_ const std::string& id)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status;
     sai_attribute_t attr;
     //first check if the object is a stored SaiDBObject
@@ -285,6 +297,8 @@ SaiObject::get_linked_object(
             _In_ sai_object_type_t linked_object_type,
             _In_ sai_attr_id_t link_attr_id) const
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status;
     sai_attribute_t attr;
     std::string linked_obj_id;
@@ -305,6 +319,8 @@ SaiObject::get_linked_objects(
             _In_ sai_object_type_t linked_object_type,
             _In_ sai_attr_id_t link_attr_id) const
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status;
     sai_attribute_t attr;
     std::string linked_obj_id;
@@ -331,6 +347,8 @@ SaiObject::get_linked_objects(
 const char*
 SaiObject::get_attr_name(_In_ sai_attr_id_t attr_id) const
 {
+    SWSS_LOG_ENTER();
+
     auto meta = sai_metadata_get_attr_metadata(m_type, attr_id);
     if (meta == NULL) {
         return "unknown";
@@ -342,6 +360,8 @@ SaiObject::get_attr_name(_In_ sai_attr_id_t attr_id) const
 sai_status_t
 SaiObject::get_mandatory_attr(sai_attribute_t &attr) const
 {
+    SWSS_LOG_ENTER();
+
     auto status = get_attr(attr);
     if (SAI_STATUS_SUCCESS != status) {
         SWSS_LOG_ERROR("Failed to get attribute %s from object %s", get_attr_name(attr.id), m_id.c_str());
@@ -352,6 +372,8 @@ SaiObject::get_mandatory_attr(sai_attribute_t &attr) const
 sai_status_t
 SaiCachedObject::get_attr(sai_attribute_t &attr) const
 {
+    SWSS_LOG_ENTER();
+
     for (uint32_t ii = 0; ii < m_attr_count; ii++) {
         if (m_attr_list[ii].id == attr.id) {
             return transfer_attributes(m_type, 1, &(m_attr_list[ii]), &attr, false);
@@ -363,6 +385,8 @@ SaiCachedObject::get_attr(sai_attribute_t &attr) const
 sai_status_t
 SaiDBObject::get_attr(sai_attribute_t &attr) const
 {
+    SWSS_LOG_ENTER();
+
     /* we could make a copy of all the attributes and cache in this object*/
     return m_switch_db->get(m_type, m_id, 1, &attr);
 }
@@ -371,6 +395,8 @@ SaiModDBObject::SaiModDBObject(SwitchVpp* switch_db, sai_object_type_t type, con
                               uint32_t attr_count, const sai_attribute_t *attr_list) :
              SaiObject(switch_db, type, id), m_attr_count(attr_count), m_attr_list(attr_list)
 {
+    SWSS_LOG_ENTER();
+
     m_sai_db_obj = switch_db->get_sai_object(type, id);
     if (!m_sai_db_obj) {
         SWSS_LOG_ERROR("SaiModDBObject: the object is not found in switch_db %s", id.c_str());
@@ -380,6 +406,8 @@ SaiModDBObject::SaiModDBObject(SwitchVpp* switch_db, sai_object_type_t type, con
 sai_status_t
 SaiModDBObject::get_attr(sai_attribute_t &attr) const
 {
+    SWSS_LOG_ENTER();
+
     for (uint32_t ii = 0; ii < m_attr_count; ii++) {
         if (m_attr_list[ii].id == attr.id) {
             return transfer_attributes(m_type, 1, &(m_attr_list[ii]), &attr, false);

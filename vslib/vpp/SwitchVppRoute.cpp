@@ -36,6 +36,7 @@ static void create_route_prefix_entry (
        sai_route_entry_t *route_entry,
        vpp_ip_route_t *ip_route)
 {
+    SWSS_LOG_ENTER();
 
     const sai_ip_prefix_t *ip_address = &route_entry->destination;
 
@@ -69,6 +70,8 @@ void create_vpp_nexthop_entry (
     vpp_nexthop_type_e type,
     vpp_ip_nexthop_t *vpp_nexthop)
 {
+    SWSS_LOG_ENTER();
+
     sai_ip_address_t *ip_address = &nxt_grp_member->addr;
 
     switch (ip_address->addr_family) {
@@ -206,9 +209,10 @@ sai_status_t SwitchVpp::addIpRoute(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     bool isLoopback = false;
     bool isTunnelNh = false;
-    SWSS_LOG_ENTER();
 
     SaiCachedObject ip_route_obj(this, SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr_count, attr_list);
     auto nh_obj = ip_route_obj.get_linked_object(SAI_OBJECT_TYPE_NEXT_HOP, SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
@@ -264,6 +268,7 @@ sai_status_t SwitchVpp::removeIpRoute(
         _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
+
     bool isLoopback = false;
     process_interface_loopback(serializedObjectId, isLoopback, false);
 
@@ -280,4 +285,3 @@ sai_status_t SwitchVpp::removeIpRoute(
 
     return SAI_STATUS_SUCCESS;
 }
-

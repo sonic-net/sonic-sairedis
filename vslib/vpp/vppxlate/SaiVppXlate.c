@@ -288,10 +288,10 @@ void os_exit(int code) {}
 
 /**
  * Wait for result and retry if necessary. The retry is necessary because there could be unsolicited
- * events causing vl_socket_client_read to return before the expected result is received. If 
+ * events causing vl_socket_client_read to return before the expected result is received. If
  * vam->result_ready is not set, which should be set when API callback function is called, then
  * it means we get some unsolicited events and we need to retry.
- */ 
+ */
 #define WR(ret)                                                 \
 do {                                                            \
     f64 timeout = vat_time_now (vam) + 1.0;                     \
@@ -578,7 +578,7 @@ vl_api_sw_interface_event_t_handler (vl_api_sw_interface_event_t *mp)
     } else {
 	link_up = false;
     }
-    SAIVPP_WARN("Sending vpp link %s event for interface %s index %u", 
+    SAIVPP_WARN("Sending vpp link %s event for interface %s index %u",
 		link_up ? "UP" : "DOWN", hw_ifname, sw_if_index);
 
     vpp_event_info_t *evinfo;
@@ -903,7 +903,7 @@ vl_api_bfd_udp_session_event_t_handler (vl_api_bfd_udp_session_event_t *msg)
             SAIVPP_WARN("Invalid IP address passed from vpp for bfd event");
             return;
         }
-        
+
        vpp_ev_enqueue(evinfo);
     }
 
@@ -1496,7 +1496,7 @@ static __thread int vpp_client_init;
 int init_vpp_client()
 {
     if (vpp_client_init) return 0;
-    
+
     vat_main_t *vam = &vat_main;
 
     vpp_mutex_lock_init();
@@ -1511,7 +1511,7 @@ int init_vpp_client()
     vam->socket_name = format (0, "%s%c", API_SOCKET_FILE, 0);
     vam->sw_if_index_by_interface_name = hash_create_string (0, sizeof (uword));
     interface_name_by_sw_index = hash_create (0, sizeof (uword));
-    
+
     if (vsc_socket_connect(vam, "sonic_vpp_api_client") == 0) {
         int rc;
 
@@ -1528,7 +1528,7 @@ int init_vpp_client()
 
 	vpp_acl_counters_enable_disable(true);
 
-	/* 
+	/*
 	 * SONiC periodically polls the port status so currently there is no need for
 	 * async notification. This also simplifies the synchronous design of saivpp.
 	 * Revisit the async mechanism if there is greater reason.
@@ -1568,7 +1568,7 @@ int configure_lcp_interface (const char *hwif_name, const char *hostif_name, boo
 {
     u32 idx;
     vat_main_t *vam = &vat_main;
-    
+
     idx = get_swif_idx(vam, hwif_name);
     SAIVPP_DEBUG("swif index of interface %s is %u\n", hwif_name, idx);
 
@@ -1591,7 +1591,7 @@ int create_sub_interface (const char *hwif_name, u32 sub_id, u16 vlan_id)
 {
     u32 idx;
     vat_main_t *vam = &vat_main;
-    
+
     idx = get_swif_idx(vam, hwif_name);
     SAIVPP_DEBUG("swif index of interface %s is %u\n", hwif_name, idx);
 
@@ -1724,9 +1724,9 @@ static int __ip_nbr_add_del (vat_main_t *vam, vl_api_address_t *nbr_addr, u32 if
     mp->neighbor.flags = IP_API_NEIGHBOR_FLAG_NONE;
     if (is_static) {
         mp->neighbor.flags |= IP_API_NEIGHBOR_FLAG_STATIC;
-    }   
+    }
     if (no_fib_entry) {
-        mp->neighbor.flags |= IP_API_NEIGHBOR_FLAG_NO_FIB_ENTRY;        
+        mp->neighbor.flags |= IP_API_NEIGHBOR_FLAG_NO_FIB_ENTRY;
     }
     mp->neighbor.sw_if_index = htonl(if_idx);
     mp->neighbor.ip_address = *nbr_addr;
@@ -1759,8 +1759,8 @@ static int ip_nbr_add_del (const char *hwif_name, uint32_t sw_if_index, struct s
     }
     if (sw_if_index == ~0) {
         sw_if_index = get_swif_idx(vam, hwif_name);
-    } 
-    
+    }
+
 
     return __ip_nbr_add_del(vam, &api_addr, sw_if_index, mac, is_static, no_fib_entry, is_add);
 }
@@ -2119,7 +2119,7 @@ int vpp_tunterm_acl_add_replace (uint32_t *tunterm_index, uint32_t count, vpp_tu
 
         if (in_rule->ip_protocol == 1) {
             vpp_rule->path.proto = htonl(FIB_API_PATH_NH_PROTO_IP4);
-            memcpy(vpp_rule->path.nh.address.ip4, &in_rule->next_hop_ip.addr.ip4.sin_addr.s_addr, sizeof(vpp_rule->path.nh.address.ip4)); 
+            memcpy(vpp_rule->path.nh.address.ip4, &in_rule->next_hop_ip.addr.ip4.sin_addr.s_addr, sizeof(vpp_rule->path.nh.address.ip4));
         } else if (in_rule->ip_protocol == 2) {
             vpp_rule->path.proto  = htonl(FIB_API_PATH_NH_PROTO_IP6);
             memcpy(vpp_rule->path.nh.address.ip6, &in_rule->next_hop_ip.addr.ip6.sin6_addr.s6_addr, sizeof(vpp_rule->path.nh.address.ip6));
@@ -2467,7 +2467,7 @@ int sw_interface_set_mac (const char *hwif_name, uint8_t *mac_address)
     __plugin_msg_base = interface_msg_id_base;
 
     M (SW_INTERFACE_SET_MAC_ADDRESS, mp);
-    
+
     if (hwif_name) {
         u32 idx;
         idx = get_swif_idx(vam, hwif_name);
@@ -2483,7 +2483,7 @@ int sw_interface_set_mac (const char *hwif_name, uint8_t *mac_address)
         VPP_UNLOCK();
         return -EINVAL;
     }
-    
+
     if (mac_address == NULL) {
         SAIVPP_ERROR("mac address can't be NULL");
         VPP_UNLOCK();
@@ -2839,7 +2839,7 @@ int vpp_vxlan_tunnel_add_del(vpp_vxlan_tunnel_t *tunnel, bool is_add, u32 *sw_if
     mp->decap_next_index = htonl(tunnel->decap_next_index);
 
     S (mp);
-    WR (ret); 
+    WR (ret);
     //reply handler needs to set vam->sw_if_index from reply msg
     *sw_if_index = vam->sw_if_index;
     SAIVPP_DEBUG("vxlan_add_del done: if_idx,%d",vam->sw_if_index);
@@ -2886,24 +2886,24 @@ int l2fib_add_del(const char *hwif_name, const uint8_t *mac, uint32_t bd_id, boo
         u32 idx;
 
         idx = get_swif_idx(vam, hwif_name);
-        if (idx != (u32) -1) 
+        if (idx != (u32) -1)
         {
             mp->sw_if_index = htonl(idx);
-        } 
-        else 
+        }
+        else
         {
             SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
             VPP_UNLOCK();
             return -EINVAL;
         }
-    } 
+    }
     else
     {
         VPP_UNLOCK();
         return -EINVAL;
     }
 
-    if (bd_id == 0 || bd_id == ~0) 
+    if (bd_id == 0 || bd_id == ~0)
     {
         SAIVPP_ERROR("Invalid bridge id for add/del\n");
         VPP_UNLOCK();
@@ -2968,7 +2968,7 @@ int l2fib_flush_int(const char *hwif_name)
         {
             mp->sw_if_index = htonl(idx);
         }
-        else 
+        else
         {
             SAIVPP_ERROR("Unable to get sw_index for %s\n", hwif_name);
             VPP_UNLOCK();
@@ -3003,7 +3003,7 @@ int l2fib_flush_bd(uint32_t bd_id)
 
     M (L2FIB_FLUSH_BD, mp);
 
-    if (bd_id == 0 || bd_id == ~0) 
+    if (bd_id == 0 || bd_id == ~0)
     {
         SAIVPP_ERROR("Invalid bridge id for Flush FDB Entry\n");
         VPP_UNLOCK();
@@ -3054,7 +3054,7 @@ int bfd_udp_add(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
     }
     else if (multihop)
     {
-        /* use special sw_if_index value of ~0 to indicate multihop */ 
+        /* use special sw_if_index value of ~0 to indicate multihop */
         mp->sw_if_index = ~0;
     }
     else
@@ -3123,7 +3123,7 @@ int bfd_udp_del(bool multihop, const char *hwif_name, vpp_ip_addr_t *local_addr,
     }
     else if (multihop)
     {
-        /* use special sw_if_index value of ~0 to indicate multihop */ 
+        /* use special sw_if_index value of ~0 to indicate multihop */
         mp->sw_if_index = ~0;
     }
     else

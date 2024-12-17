@@ -22,6 +22,8 @@ using namespace saivs;
 
 TunnelManager::TunnelManager(SwitchVpp* switch_db): m_switch_db(switch_db)
 {
+    SWSS_LOG_ENTER();
+
     m_router_mac = {0, 0, 0, 0, 0, 1};
     m_vxlan_port = 4789;
 }
@@ -29,12 +31,16 @@ TunnelManager::TunnelManager(SwitchVpp* switch_db): m_switch_db(switch_db)
 const std::array<uint8_t, 6>&
 TunnelManager::get_router_mac() const
 {
+    SWSS_LOG_ENTER();
+
     return m_router_mac;
 }
 
 void
 TunnelManager::set_router_mac(const sai_attribute_t* attr)
 {
+    SWSS_LOG_ENTER();
+
     for (int i = 0; i < 6; ++i) {
         m_router_mac[i] = attr->value.mac[i];
     }
@@ -43,6 +49,8 @@ TunnelManager::set_router_mac(const sai_attribute_t* attr)
 void
 TunnelManager::set_vxlan_port(const sai_attribute_t* attr)
 {
+    SWSS_LOG_ENTER();
+
     m_vxlan_port = attr->value.u16;
 }
 /**
@@ -86,14 +94,14 @@ TunnelManager::tunnel_encap_nexthop_action(
                     _In_ const SaiObject* tunnel_nh_obj,
                     _In_ Action action)
 {
+    SWSS_LOG_ENTER();
+
     sai_attribute_t              attr;
     sai_ip_address_t             src_ip;
     sai_ip_address_t             dst_ip;
     std::unordered_map<u_int32_t, std::shared_ptr<IpVrfInfo>> vni_to_vrf_map;
     sai_object_id_t              object_id;
 
-
-    SWSS_LOG_ENTER();
     SWSS_LOG_DEBUG("tunnel_encap_nexthop_action %s %s",
         action == Action::CREATE ? "CREATE" : "DELETE", tunnel_nh_obj->get_id().c_str());
     sai_deserialize_object_id(tunnel_nh_obj->get_id(), object_id);
@@ -222,6 +230,7 @@ TunnelManager::remove_tunnel_encap_nexthop(
                 _In_ const std::string& serializedObjectId)
 {
     SWSS_LOG_ENTER();
+
     auto tunnel_nh_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_NEXT_HOP, serializedObjectId);
 
     if (!tunnel_nh_obj) {
@@ -236,6 +245,8 @@ TunnelManager::create_vpp_vxlan_encap(
                     _In_  vpp_vxlan_tunnel_t& req,
                     _Out_ TunnelVSData& tunnel_data)
 {
+    SWSS_LOG_ENTER();
+
     int                         vpp_status;
     u_int32_t                   sw_if_index;
     char                        src_ip_str[INET6_ADDRSTRLEN];
@@ -269,6 +280,8 @@ TunnelManager::remove_vpp_vxlan_encap(
                     _In_  vpp_vxlan_tunnel_t& req,
                     _In_ TunnelVSData& tunnel_data)
 {
+    SWSS_LOG_ENTER();
+
     int                         vpp_status;
     u_int32_t                   sw_if_index = tunnel_data.sw_if_index;
     char                        src_ip_str[INET6_ADDRSTRLEN];
@@ -298,13 +311,15 @@ sai_status_t
 TunnelManager::create_vpp_vxlan_decap(
                     _Out_ TunnelVSData& tunnel_data)
 {
+    SWSS_LOG_ENTER();
+
     int                         vpp_status;
     char                        hw_bvi_ifname[32];
     auto                        router_mac = get_router_mac();
     auto                        bvi_mac = router_mac.data();
     vpp_ip_route_t              bvi_ip_prefix;
     uint32_t                    tunnel_if_index = tunnel_data.sw_if_index;
-    SWSS_LOG_ENTER();
+
     //allocate bridge domain ID
     int bd_id = m_switch_db->dynamic_bd_id_pool.alloc();
     if (bd_id == -1) {
@@ -380,9 +395,10 @@ sai_status_t
 TunnelManager::remove_vpp_vxlan_decap(
                     _In_ TunnelVSData& tunnel_data)
 {
+    SWSS_LOG_ENTER();
+
     char                        hw_bvi_ifname[32];
 
-    SWSS_LOG_ENTER();
     snprintf(hw_bvi_ifname, sizeof(hw_bvi_ifname), "bvi%u", tunnel_data.bd_id);
 
     delete_bvi_interface(hw_bvi_ifname);
