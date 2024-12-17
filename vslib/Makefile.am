@@ -1,4 +1,8 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/libnl3 -Ivpp
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/libnl3
+
+if USE_VPP
+AM_CXXFLAGS += -Ivpp -DUSE_VPP
+endif
 
 CFLAGS_COMMON= -fPIC -pipe -Wall -Wcast-align -Wcast-qual -Wconversion -Wdisabled-optimization -Werror -Wextra -Wfloat-equal -Wformat=2 -Wformat-nonliteral -Wformat-security -Wformat-y2k -Wimport -Winit-self -Wno-inline -Winvalid-pch -Wmissing-field-initializers -Wmissing-format-attribute -Wmissing-include-dirs -Wmissing-noreturn -Wno-aggregate-return -Wno-padded -Wno-switch-enum -Wno-unused-parameter -Wpacked -Wpointer-arith -Wredundant-decls -Wshadow -Wstack-protector -Wstrict-aliasing=3 -Wswitch -Wswitch-default -Wunreachable-code -Wunused -Wvariadic-macros -Wwrite-strings -Wno-switch-default -Wconversion -Wno-psabi -Wcast-align=strict
 
@@ -79,6 +83,12 @@ libSaiVS_a_SOURCES = \
 					  SwitchState.cpp \
 					  TrafficFilterPipes.cpp \
 					  TrafficForwarder.cpp \
+					  VirtualSwitchSaiInterface.cpp \
+					  VirtualSwitchSaiInterfaceFdb.cpp \
+					  VirtualSwitchSaiInterfacePort.cpp
+
+if USE_VPP
+libSaiVS_a_SOURCES +=\
 					  vpp/SaiObjectDB.cpp \
 					  vpp/SwitchVpp.cpp \
 					  vpp/SwitchVppAcl.cpp \
@@ -94,10 +104,8 @@ libSaiVS_a_SOURCES = \
 					  vpp/vppxlate/SaiVppXlate.c \
 					  vpp/vppxlate/SaiVppStats.c \
 					  vpp/vppxlate/SaiAclStats.c \
-					  vpp/vppxlate/SaiIntfStats.c \
-					  VirtualSwitchSaiInterface.cpp \
-					  VirtualSwitchSaiInterfaceFdb.cpp \
-					  VirtualSwitchSaiInterfacePort.cpp
+					  vpp/vppxlate/SaiIntfStats.c
+endif
 
 BUILT_SOURCES = sai_vs.cpp
 

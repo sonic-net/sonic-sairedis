@@ -15,7 +15,9 @@
 #include "SwitchBCM56971B0.h"
 #include "SwitchMLNX2700.h"
 #include "SwitchNvdaMBF2H536C.h"
+#ifdef USE_VPP
 #include "SwitchVpp.h"
+#endif
 
 #include <inttypes.h>
 
@@ -604,8 +606,13 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
 
         case SAI_VS_SWITCH_TYPE_VPP:
 
+#ifdef USE_VPP
             m_switchStateMap[switch_id] = std::make_shared<SwitchVpp>(switch_id, m_realObjectIdManager, config, warmBootState);
             break;
+#else
+            SWSS_LOG_WARN("vslib not compiled with vpp");
+            return nullptr;
+#endif
 
         default:
 
