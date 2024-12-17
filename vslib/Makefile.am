@@ -1,7 +1,24 @@
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/libnl3
+AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib -I/usr/include/libnl3 -Ivpp
+
+CFLAGS_COMMON= -fPIC -pipe -Wall -Wcast-align -Wcast-qual -Wconversion -Wdisabled-optimization -Werror -Wextra -Wfloat-equal -Wformat=2 -Wformat-nonliteral -Wformat-security -Wformat-y2k -Wimport -Winit-self -Wno-inline -Winvalid-pch -Wmissing-field-initializers -Wmissing-format-attribute -Wmissing-include-dirs -Wmissing-noreturn -Wno-aggregate-return -Wno-padded -Wno-switch-enum -Wno-unused-parameter -Wpacked -Wpointer-arith -Wredundant-decls -Wshadow -Wstack-protector -Wstrict-aliasing=3 -Wswitch -Wswitch-default -Wunreachable-code -Wunused -Wvariadic-macros -Wwrite-strings -Wno-switch-default -Wconversion -Wno-psabi -Wcast-align=strict
+
+# TODO those are currently disabled flags from C files untill all warnings will be fixed
+DISABLED_FLAGS= \
+			   -Wno-unused-function \
+			   -Wno-sign-conversion \
+			   -Wno-conversion \
+			   -Wno-unused-variable \
+			   -Wno-sign-compare \
+			   -Wno-shadow \
+			   -Wno-discarded-qualifiers \
+			   -Wno-redundant-decls \
+			   -Wno-cast-align \
+			   -Wno-pointer-sign \
+			   -Wno-stringop-truncation \
+			   -Wno-cast-qual
 
 # TODO fix multiple paths
-AM_CFLAGS = -I/usr/include/vpp_plugins -fPIC -I. #-I.. -I../../ -I../../../
+AM_CFLAGS = -I/usr/include/vpp_plugins -fPIC $(CFLAGS_COMMON) $(DISABLED_FLAGS) -I. #-I.. -I../../ -I../../../
 
 lib_LTLIBRARIES = libsaivs.la
 
@@ -10,10 +27,6 @@ noinst_LIBRARIES = libSaiVS.a
 # TODO: move vppxlate to proper lib and namespaces
 
 libSaiVS_a_SOURCES = \
-					  vppxlate/SaiVppXlate.c \
-					  vppxlate/SaiVppStats.c \
-					  vppxlate/SaiAclStats.c \
-					  vppxlate/SaiIntfStats.c \
 					  Buffer.cpp \
 					  ContextConfigContainer.cpp \
 					  ContextConfig.cpp \
@@ -66,18 +79,22 @@ libSaiVS_a_SOURCES = \
 					  SwitchState.cpp \
 					  TrafficFilterPipes.cpp \
 					  TrafficForwarder.cpp \
-					  SaiObjectDB.cpp \
-					  SwitchVpp.cpp \
-					  SwitchVppAcl.cpp \
-					  SwitchVppNexthop.cpp \
-					  SwitchVppUtils.cpp \
-					  SwitchVppFdb.cpp \
-					  SwitchVppRif.cpp \
-					  SwitchVppBfd.cpp \
-					  SwitchVppHostif.cpp \
-					  SwitchVppRoute.cpp \
-					  SwitchVppNbr.cpp \
-					  TunnelManager.cpp \
+					  vpp/SaiObjectDB.cpp \
+					  vpp/SwitchVpp.cpp \
+					  vpp/SwitchVppAcl.cpp \
+					  vpp/SwitchVppNexthop.cpp \
+					  vpp/SwitchVppUtils.cpp \
+					  vpp/SwitchVppFdb.cpp \
+					  vpp/SwitchVppRif.cpp \
+					  vpp/SwitchVppBfd.cpp \
+					  vpp/SwitchVppHostif.cpp \
+					  vpp/SwitchVppRoute.cpp \
+					  vpp/SwitchVppNbr.cpp \
+					  vpp/TunnelManager.cpp \
+					  vpp/vppxlate/SaiVppXlate.c \
+					  vpp/vppxlate/SaiVppStats.c \
+					  vpp/vppxlate/SaiAclStats.c \
+					  vpp/vppxlate/SaiIntfStats.c \
 					  VirtualSwitchSaiInterface.cpp \
 					  VirtualSwitchSaiInterfaceFdb.cpp \
 					  VirtualSwitchSaiInterfacePort.cpp

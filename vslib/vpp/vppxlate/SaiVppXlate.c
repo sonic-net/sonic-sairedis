@@ -1025,7 +1025,7 @@ static void vpp_base_vpe_init(void)
     _(INTERFACE_MSG_ID(SW_INTERFACE_ADD_DEL_ADDRESS_REPLY), sw_interface_add_del_address_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_FLAGS_REPLY), sw_interface_set_flags_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MTU_REPLY), sw_interface_set_mtu_reply) \
-    _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MAC_ADDRESS_REPLY), sw_interface_set_mac_address_reply) \ 
+    _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MAC_ADDRESS_REPLY), sw_interface_set_mac_address_reply) \
     _(INTERFACE_MSG_ID(HW_INTERFACE_SET_MTU_REPLY), hw_interface_set_mtu_reply) \
     _(INTERFACE_MSG_ID(WANT_INTERFACE_EVENTS), want_interface_events_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_EVENT), sw_interface_event) \
@@ -2208,13 +2208,13 @@ int __vpp_acl_interface_bind_unbind (const char *hwif_name, uint32_t acl_index,
 int vpp_acl_interface_bind (const char *hwif_name, uint32_t acl_index,
 			    bool is_input)
 {
-    __vpp_acl_interface_bind_unbind(hwif_name, acl_index, is_input, true);
+    return __vpp_acl_interface_bind_unbind(hwif_name, acl_index, is_input, true);
 }
 
 int vpp_acl_interface_unbind (const char *hwif_name, uint32_t acl_index,
 			      bool is_input)
 {
-    __vpp_acl_interface_bind_unbind(hwif_name, acl_index, is_input, false);
+    return __vpp_acl_interface_bind_unbind(hwif_name, acl_index, is_input, false);
 }
 
 int vpp_ip_flow_hash_set (uint32_t vrf_id, uint32_t hash_mask, int addr_family)
