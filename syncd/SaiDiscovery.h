@@ -2,8 +2,6 @@
 
 #include "meta/SaiInterface.h"
 
-#include "AttrVersionChecker.h"
-
 #include <memory>
 #include <set>
 #include <map>
@@ -20,8 +18,7 @@ namespace syncd
         public:
 
             SaiDiscovery(
-                    _In_ std::shared_ptr<sairedis::SaiInterface> sai,
-                    _In_ bool checkAttrVersion);
+                    _In_ std::shared_ptr<sairedis::SaiInterface> sai);
 
             virtual ~SaiDiscovery();
 
@@ -64,7 +61,5 @@ namespace syncd
             std::shared_ptr<sairedis::SaiInterface> m_sai;
 
             DefaultOidMap m_defaultOidMap;
-
-            AttrVersionChecker m_attrVersionChecker;
     };
 }

@@ -73,7 +73,6 @@ jobs:
       set -ex
       sudo apt-get update
       sudo apt-get install -qq -y \
-        qtbase5-dev \
         libdbus-glib-1-dev \
         libpcsclite-dev \
         docbook-to-man \
@@ -86,7 +85,6 @@ jobs:
         libnl-nf-3-dev \
         libnl-cli-3-dev \
         swig4.0 \
-        libzmq5 \
         libzmq3-dev \
         autoconf-archive
 
@@ -167,20 +165,10 @@ jobs:
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
       sudo cp azsyslog.conf /etc/rsyslog.conf
-      sudo killall rsyslogd
+      sudo pkill -F /run/rsyslogd.pid
       sudo rsyslogd
     displayName: "Update rsyslog.conf"
   - ${{ if eq(parameters.run_unit_test, true) }}:
-    - script: |
-        set -ex
-        git clone https://github.com/gcovr/gcovr.git
-        cd gcovr/
-        git checkout 5.0
-        sudo pip3 install setuptools
-        sudo python3 setup.py install
-        cd ..
-        sudo rm -rf gcovr
-      displayName: "Install gcovr 5.0"
     - script: |
         set -ex
         # Add SYS_TIME capability for settimeofday ok in syncd test
@@ -207,9 +195,9 @@ jobs:
           set -ex
           # Install .NET CORE
           curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-          sudo apt-add-repository https://packages.microsoft.com/debian/11/prod
+          sudo apt-add-repository https://packages.microsoft.com/debian/12/prod
           sudo apt-get update
-          sudo apt-get install -y dotnet-sdk-7.0
+          sudo apt-get install -y dotnet-sdk-8.0
         displayName: "Install .NET CORE"
       - task: PublishCodeCoverageResults@1
         inputs:

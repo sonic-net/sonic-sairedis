@@ -594,9 +594,16 @@ sub test_bulk_fdb
     play "bulk_fdb.rec"
 }
 
-sub test_bulk_object
+sub test_emulated_bulk_object
 {
     fresh_start;
+
+    play "bulk_object.rec"
+}
+
+sub test_bulk_object
+{
+    fresh_start_bulk;
 
     play "bulk_object.rec"
 }
@@ -899,6 +906,7 @@ test_empty_lag_buffer_acl;
 test_bulk_route;
 test_bulk_neighbor;
 test_bulk_fdb;
+test_emulated_bulk_object;
 test_bulk_object;
 test_brcm_config_acl;
 test_brcm_warm_wred_queue;
