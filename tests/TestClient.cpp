@@ -403,4 +403,3 @@ void TestClient::test_stats()
 
     teardown();
 }
-
