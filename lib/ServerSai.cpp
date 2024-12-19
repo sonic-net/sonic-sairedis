@@ -661,6 +661,16 @@ sai_status_t ServerSai::queryApiVersion(
     return m_sai->queryApiVersion(version);
 }
 
+sai_status_t ServerSai::dbgGenerateDump(
+        _In_ const char *dump_file_name)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    return m_sai->dbgGenerateDump(dump_file_name);
+}
+
 void ServerSai::serverThreadFunction()
 {
     SWSS_LOG_ENTER();
@@ -777,7 +787,26 @@ sai_status_t ServerSai::processSingleEvent(
     if (op == REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_QUERY)
         return processObjectTypeGetAvailabilityQuery(kco);
 
+    if (op == REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMP)
+        return processDbgGenerateDump(kco);
+
     SWSS_LOG_THROW("event op '%s' is not implemented, FIXME", op.c_str());
+}
+
+sai_status_t ServerSai::processDbgGenerateDump(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto& fieldValues = kfvFieldsValues(kco);
+    auto value = fvValue(fieldValues[0]);
+    const char* value_cstr = value.c_str();
+
+    sai_status_t status = m_sai->dbgGenerateDump(value_cstr);
+
+    m_selectableChannel->set(sai_serialize_status(status), {} , REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE);
+
+    return status;
 }
 
 sai_status_t ServerSai::processQuadEvent(
