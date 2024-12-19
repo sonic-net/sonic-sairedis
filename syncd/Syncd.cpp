@@ -426,7 +426,7 @@ sai_status_t Syncd::processDbgGenerateDump(
     auto value = fvValue(fieldValues[0]);
     const char* value_cstr = value.c_str();
     sai_status_t status = m_vendorSai->dbgGenerateDump(value_cstr);
-    
+
     if (values.size() != 1)
     {
         SWSS_LOG_ERROR("Invalid input: expected 1 arguments, received %zu", values.size());
