@@ -898,7 +898,7 @@ public:
 
         if (fallback)
         {
-            SWSS_LOG_NOTICE("BULKCOUNTER Fallback to single init");
+            SWSS_LOG_NOTICE("All objects do not support bulk. Fallback to single call");
 
             // Fall back to old way
             for (size_t i = 0; i < vids.size(); i++)
@@ -920,15 +920,15 @@ public:
             }
         }
 
-        for (size_t i = 0; i < vids.size(); i++)
+        if (!supportBulk)
         {
-            auto &vid = vids[i];
-            auto &rid = rids[i];
-            // Perform a remove and re-add to simplify the logic here
-            removeObject(vid, false);
-
-            if (!supportBulk)
+            for (size_t i = 0; i < vids.size(); i++)
             {
+                auto &vid = vids[i];
+                auto &rid = rids[i];
+                // Perform a remove and re-add to simplify the logic here
+                removeObject(vid, false);
+
                 // Unlikely
                 auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
                 // TODO: use if const expression when cpp17 is supported
@@ -938,13 +938,52 @@ public:
                 }
                 m_objectIdsMap.emplace(vid, counter_data);
             }
-            else
+        }
+        else if (m_counterChunkSizeMapFromPrefix.empty())
+        {
+            std::sort(supportedIds.begin(), supportedIds.end());
+            auto bulkContext = getBulkStatsContext(supportedIds, "default", default_bulk_chunk_size);
+
+            for (size_t i = 0; i < vids.size(); i++)
             {
-                std::sort(supportedIds.begin(), supportedIds.end());
-                auto bulkContext = getBulkStatsContext(supportedIds, "default", default_bulk_chunk_size);
+                auto &vid = vids[i];
+                auto &rid = rids[i];
+                // Perform a remove and re-add to simplify the logic here
+                removeObject(vid, false);
+
                 addBulkStatsContext(vid, rid, supportedIds, *bulkContext.get());
             }
         }      
+        else
+        {
+            std::map<std::string, vector<StatType>> counter_prefix_map;
+            std::vector<StatType> default_partition;
+            mapCountersByPrefix(supportedIds, counter_prefix_map, default_partition);
+
+            for (auto &counterPrefix : counter_prefix_map)
+            {
+                std::sort(counterPrefix.second.begin(), counterPrefix.second.end());
+            }
+
+            std::sort(default_partition.begin(), default_partition.end());
+
+            for (size_t i = 0; i < vids.size(); i++)
+            {
+                auto &vid = vids[i];
+                auto &rid = rids[i];
+                // Perform a remove and re-add to simplify the logic here
+                removeObject(vid, false);
+
+                for (auto &counterPrefix : counter_prefix_map)
+                {
+                    auto bulkContext = getBulkStatsContext(counterPrefix.second, counterPrefix.first, m_counterChunkSizeMapFromPrefix[counterPrefix.first]);
+                    addBulkStatsContext(vid, rid, counterPrefix.second, *bulkContext.get());
+                }
+
+                auto bulkContext = getBulkStatsContext(default_partition, "default", default_bulk_chunk_size);
+                addBulkStatsContext(vid, rid, supportedIds, *bulkContext.get());
+            }
+        }
     }
 
     void removeObject(
