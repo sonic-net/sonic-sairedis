@@ -939,49 +939,42 @@ public:
                 m_objectIdsMap.emplace(vid, counter_data);
             }
         }
-        else if (m_counterChunkSizeMapFromPrefix.empty())
-        {
-            std::sort(supportedIds.begin(), supportedIds.end());
-            auto bulkContext = getBulkStatsContext(supportedIds, "default", default_bulk_chunk_size);
-
-            for (size_t i = 0; i < vids.size(); i++)
-            {
-                auto &vid = vids[i];
-                auto &rid = rids[i];
-                // Perform a remove and re-add to simplify the logic here
-                removeObject(vid, false);
-
-                addBulkStatsContext(vid, rid, supportedIds, *bulkContext.get());
-            }
-        }      
         else
         {
-            std::map<std::string, vector<StatType>> counter_prefix_map;
-            std::vector<StatType> default_partition;
-            mapCountersByPrefix(supportedIds, counter_prefix_map, default_partition);
-
-            for (auto &counterPrefix : counter_prefix_map)
+            // Perform a remove and re-add to simplify the logic here
+            for (auto vid: vids)
             {
-                std::sort(counterPrefix.second.begin(), counterPrefix.second.end());
+                removeObject(vid, false);
             }
 
-            std::sort(default_partition.begin(), default_partition.end());
-
-            for (size_t i = 0; i < vids.size(); i++)
+            if (m_counterChunkSizeMapFromPrefix.empty())
             {
-                auto &vid = vids[i];
-                auto &rid = rids[i];
-                // Perform a remove and re-add to simplify the logic here
-                removeObject(vid, false);
+                std::sort(supportedIds.begin(), supportedIds.end());
+                auto bulkContext = getBulkStatsContext(supportedIds, "default", default_bulk_chunk_size);
+
+                addBulkStatsContext(vids, rids, supportedIds, *bulkContext.get());
+            }      
+            else
+            {
+                std::map<std::string, vector<StatType>> counter_prefix_map;
+                std::vector<StatType> default_partition;
+                mapCountersByPrefix(supportedIds, counter_prefix_map, default_partition);
+
+                for (auto &counterPrefix : counter_prefix_map)
+                {
+                    std::sort(counterPrefix.second.begin(), counterPrefix.second.end());
+                }
+
+                std::sort(default_partition.begin(), default_partition.end());
 
                 for (auto &counterPrefix : counter_prefix_map)
                 {
                     auto bulkContext = getBulkStatsContext(counterPrefix.second, counterPrefix.first, m_counterChunkSizeMapFromPrefix[counterPrefix.first]);
-                    addBulkStatsContext(vid, rid, counterPrefix.second, *bulkContext.get());
+                    addBulkStatsContext(vids, rids, counterPrefix.second, *bulkContext.get());
                 }
 
                 auto bulkContext = getBulkStatsContext(default_partition, "default", default_bulk_chunk_size);
-                addBulkStatsContext(vid, rid, supportedIds, *bulkContext.get());
+                addBulkStatsContext(vids, rids, default_partition, *bulkContext.get());
             }
         }
     }
@@ -1292,6 +1285,28 @@ private:
         object_key.key.object_id = rid;
         ctx.object_keys.push_back(object_key);
         ctx.object_statuses.push_back(SAI_STATUS_SUCCESS);
+        ctx.counters.resize(counterIds.size() * ctx.object_keys.size());
+    }
+
+    void addBulkStatsContext(
+            _In_    const std::vector<sai_object_id_t> &vids,
+            _In_    const std::vector<sai_object_id_t> &rids,
+            _In_    const std::vector<StatType>& counterIds,
+            _Inout_ BulkContextType &ctx)
+    {
+        SWSS_LOG_ENTER();
+        ctx.object_vids.insert(ctx.object_vids.end(), vids.begin(), vids.end());
+
+        ctx.object_keys.reserve(ctx.object_keys.size() + vids.size());
+        ctx.object_statuses.reserve(ctx.object_statuses.size() + vids.size());
+        for (auto rid : rids)
+        {
+            sai_object_key_t object_key;
+            object_key.key.object_id = rid;
+            ctx.object_keys.push_back(object_key);
+            ctx.object_statuses.push_back(SAI_STATUS_SUCCESS);
+        }
+
         ctx.counters.resize(counterIds.size() * ctx.object_keys.size());
     }
 
