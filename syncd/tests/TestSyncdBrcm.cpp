@@ -448,8 +448,6 @@ TEST_F(SyncdBrcmTest, nexthopBulkTest)
     status = m_sairedis->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, &rif, switchId, 3, attrs);
     EXPECT_EQ(SAI_STATUS_SUCCESS, status);
 
-    // create bulk nexthops in init view mode
-
     std::vector<std::vector<sai_attribute_t>> nh_attrs;
     std::vector<const sai_attribute_t *> nh_attrs_array;
     std::vector<uint32_t> nh_attrs_count;
@@ -481,7 +479,7 @@ TEST_F(SyncdBrcmTest, nexthopBulkTest)
     std::vector<sai_status_t> statuses(count);
     std::vector<sai_object_id_t> object_id(count);
     status = m_sairedis->bulkCreate(
-        (sai_object_type_t) SAI_NEXT_HOP_ATTR_TYPE, switchId,
+        (sai_object_type_t) SAI_OBJECT_TYPE_NEXT_HOP, switchId,
         count, nh_attrs_count.data(), nh_attrs_array.data(),
         SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
         object_id.data(), statuses.data());
@@ -497,7 +495,7 @@ TEST_F(SyncdBrcmTest, nexthopBulkTest)
     statuses.clear();
 
     status = m_sairedis->bulkRemove(
-        (sai_object_type_t) SAI_NEXT_HOP_ATTR_TYPE,
+        (sai_object_type_t) SAI_OBJECT_TYPE_NEXT_HOP,
         count, object_id.data(),
         SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
         statuses.data());
