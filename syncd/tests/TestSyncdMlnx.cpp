@@ -226,18 +226,11 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     const std::uint32_t laneCount = 4;
 
     // Generate port config
-    std::array<std::vector<std::uint32_t>, portCount> laneLists/* = {
-        { 1000, 1001, 1002, 1003 },
-        { 1004, 1005, 1006, 1007 },
-        { 1008, 1009, 1010, 1011 },
-        { 1012, 1013, 1014, 1015 }
-        }*/;
-
     sai_attribute_t attr;
+    std::array<std::vector<std::uint32_t>, portCount> laneLists;
     std::array<std::vector<sai_attribute_t>, portCount> attrLists;
-
-    std::array<std::uint32_t, portCount> attrCountList;// = { static_cast<std::uint32_t>(attrList.size()) };
-    std::array<const sai_attribute_t*, portCount> attrPtrList;// = { attrList.data() };
+    std::array<std::uint32_t, portCount> attrCountList;
+    std::array<const sai_attribute_t*, portCount> attrPtrList;
 
     uint32_t lane = 1000;
     for (auto i = 0u; i < portCount; i++)
