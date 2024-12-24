@@ -1402,45 +1402,6 @@ private:
         }
     }
 
-    sai_status_t queryObjectSupportedCounters(
-            _In_ sai_object_id_t rid,
-            _Out_ sai_stat_capability_list_t &stats_capability)
-    {
-        SWSS_LOG_ENTER();
-        stats_capability.count = 0;
-        stats_capability.list = nullptr;
-
-        sai_object_key_t key;
-        key.key.object_id = rid;
-
-        /* First call is to check the size needed to allocate */
-        sai_status_t status = reinterpret_cast<class VendorSai*>(m_vendorSai)->queryObjectStatsCapability(
-            rid,
-            key,
-            m_objectType,
-            &stats_capability);
-
-        /* Second call is for query statistics capability */
-        if (status == SAI_STATUS_BUFFER_OVERFLOW)
-        {
-            std::vector<sai_stat_capability_t> statCapabilityList(stats_capability.count);
-            stats_capability.list = statCapabilityList.data();
-            status = reinterpret_cast<class VendorSai*>(m_vendorSai)->queryObjectStatsCapability(
-                rid,
-                key,
-                m_objectType,
-                &stats_capability);
-
-            if (status != SAI_STATUS_SUCCESS)
-            {
-                SWSS_LOG_INFO("Unable to get %s supported counters for %s",
-                    m_name.c_str(),
-                    sai_serialize_object_id(rid).c_str());
-            }
-        }
-        return status;
-    }
-
     sai_status_t querySupportedCounters(
             _In_ sai_object_id_t rid,
             _In_ sai_stats_mode_t stats_mode)
