@@ -1296,17 +1296,12 @@ private:
     {
         SWSS_LOG_ENTER();
         ctx.object_vids.insert(ctx.object_vids.end(), vids.begin(), vids.end());
-
-        ctx.object_keys.reserve(ctx.object_keys.size() + vids.size());
-        ctx.object_statuses.reserve(ctx.object_statuses.size() + vids.size());
-        for (auto rid : rids)
-        {
-            sai_object_key_t object_key;
-            object_key.key.object_id = rid;
-            ctx.object_keys.push_back(object_key);
-            ctx.object_statuses.push_back(SAI_STATUS_SUCCESS);
-        }
-
+        transform(rids.begin(), rids.end(), back_inserter(ctx.object_keys), [](sai_object_id_t rid) {
+            sai_object_key_t key;
+            key.key.object_id = rid;
+            return key;
+        });
+        ctx.object_statuses.insert(ctx.object_statuses.end(), vids.size(), SAI_STATUS_SUCCESS);
         ctx.counters.resize(counterIds.size() * ctx.object_keys.size());
     }
 
