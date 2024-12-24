@@ -2796,8 +2796,9 @@ sai_status_t Syncd::processFlexCounterEvent(
 
     if (fromAsicChannel && op == SET_COMMAND && vidStringVector.size() > 1)
     {
-        std::vector<sai_object_id_t> vids;
-        std::vector<sai_object_id_t> rids;
+        std::vector<sai_object_id_t> vids(vidStringVector.size());
+        std::vector<sai_object_id_t> rids(vidStringVector.size());
+        std::vector<std::string> keys(vidStringVector.size());
 
         for (auto &strVid: vidStringVector)
         {
@@ -2812,11 +2813,15 @@ sai_status_t Syncd::processFlexCounterEvent(
             }
 
             rids.emplace_back(rid);
+            keys.emplace_back(groupName + ":" + strVid);
         }
 
         m_manager->bulkAddCounter(vids, rids, groupName, values);
 
-        m_flexCounterTable->set(key, values);
+        for (auto &singleKey: keys)
+        {
+            m_flexCounterTable->set(singleKey, values);
+        }
 
         if (fromAsicChannel)
         {
