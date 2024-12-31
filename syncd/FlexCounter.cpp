@@ -958,7 +958,7 @@ public:
             {
                 std::map<std::string, vector<StatType>> counter_prefix_map;
                 std::vector<StatType> default_partition;
-                mapCountersByPrefix(supportedIds, counter_prefix_map, default_partition);
+                createCounterBulkChunkSizePerPrefixPartition(supportedIds, counter_prefix_map, default_partition);
 
                 for (auto &counterPrefix : counter_prefix_map)
                 {
@@ -1190,7 +1190,7 @@ private:
         }
         uint32_t current = 0;
 
-        SWSS_LOG_INFO("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), size, bulk_chunk_size, current);
+        SWSS_LOG_DEBUG("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), size, bulk_chunk_size, current);
 
         while (current < size)
         {
