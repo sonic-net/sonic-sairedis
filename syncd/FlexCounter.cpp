@@ -1199,7 +1199,8 @@ private:
                 ctx.counters.data() + current * ctx.counter_ids.size());
             if (SAI_STATUS_SUCCESS != status)
             {
-                SWSS_LOG_WARN("Failed to bulk get stats for %s: %u", m_name.c_str(), status);
+                SWSS_LOG_WARN("Failed to bulk get stats for %s %s %s %s starting object %u bulk chunk size %u: %d",
+                              m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), sai_serialize_object_type(m_objectType).c_str(), current, bulk_chunk_size, status);
             }
             current += bulk_chunk_size;
 

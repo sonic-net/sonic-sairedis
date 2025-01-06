@@ -2796,9 +2796,13 @@ sai_status_t Syncd::processFlexCounterEvent(
 
     if (fromAsicChannel && op == SET_COMMAND && vidStringVector.size() > 1)
     {
-        std::vector<sai_object_id_t> vids(vidStringVector.size());
-        std::vector<sai_object_id_t> rids(vidStringVector.size());
-        std::vector<std::string> keys(vidStringVector.size());
+        std::vector<sai_object_id_t> vids;
+        std::vector<sai_object_id_t> rids;
+        std::vector<std::string> keys;
+
+        vids.reserve(vidStringVector.size());
+        rids.reserve(vidStringVector.size());
+        keys.reserve(vidStringVector.size());
 
         for (auto &strVid: vidStringVector)
         {
