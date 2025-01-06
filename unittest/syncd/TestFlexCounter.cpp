@@ -904,7 +904,7 @@ TEST(FlexCounter, bulkChunksize)
                 {
                     if (object_count != unifiedBulkChunkSize)
                     {
-                    EXPECT_EQ(object_count, unifiedBulkChunkSize);
+                        EXPECT_EQ(object_count, unifiedBulkChunkSize);
                     }
                     continue;
                 }
