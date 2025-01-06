@@ -373,6 +373,113 @@ void test_bulk_next_hop_group_member_create()
     ASSERT_SUCCESS("Failed to bulk remove nhgm");
 }
 
+void test_bulk_next_hop_create()
+{
+    SWSS_LOG_ENTER();
+
+
+    sai_reinit();
+
+    sai_status_t    status;
+
+    sai_next_hop_api_t  *sai_next_hop_api = NULL;
+    sai_switch_api_t *sai_switch_api = NULL;
+    sai_lag_api_t *sai_lag_api = NULL;
+    sai_router_interface_api_t *sai_rif_api = NULL;
+    sai_virtual_router_api_t * sai_virtual_router_api = NULL;
+
+    sai_api_query(SAI_API_NEXT_HOP, (void**)&sai_next_hop_api);
+    sai_api_query(SAI_API_SWITCH, (void**)&sai_switch_api);
+    sai_api_query(SAI_API_ROUTER_INTERFACE, (void **)&sai_rif_api);
+    sai_api_query(SAI_API_LAG, (void**)&sai_lag_api);
+    sai_api_query(SAI_API_VIRTUAL_ROUTER, (void**)&sai_virtual_router_api);
+
+    uint32_t count = 3;
+
+    std::vector<sai_attribute_t> attrs;
+
+    sai_attribute_t swattr;
+
+    swattr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    swattr.value.booldata = true;
+
+    sai_object_id_t switch_id;
+    status = sai_switch_api->create_switch(&switch_id, 1, &swattr);
+
+    ASSERT_SUCCESS("Failed to create switch");
+
+    // virtual router
+    sai_object_id_t vr;
+
+    status = sai_virtual_router_api->create_virtual_router(&vr, switch_id, 0, NULL);
+
+    ASSERT_SUCCESS("failed to create virtual router");
+
+    // create lag
+    sai_object_id_t lag;
+    status = sai_lag_api->create_lag(&lag, switch_id, 0, NULL);
+
+    // create router interface
+    sai_object_id_t rif;
+    sai_attribute_t rifattr[3];
+    rifattr[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+    rifattr[0].value.oid = vr;
+    rifattr[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    rifattr[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+    rifattr[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+    rifattr[2].value.oid = lag;
+    status = sai_rif_api->create_router_interface(&rif, switch_id, 3, rifattr);
+    ASSERT_SUCCESS("Failed to create router interface");
+
+    std::vector<std::vector<sai_attribute_t>> nh_attrs;
+    std::vector<const sai_attribute_t *> nh_attrs_array;
+    std::vector<uint32_t> nh_attrs_count;
+    for (uint32_t i = 0; i <  count; ++i)
+    {
+        std::vector<sai_attribute_t> list(3);
+        sai_attribute_t &nhattr0 = list[0];
+        sai_attribute_t &nhattr1 = list[1];
+        sai_attribute_t &nhattr2 = list[2];
+
+        nhattr0.id = SAI_NEXT_HOP_ATTR_TYPE;
+        nhattr0.value.s32 = SAI_NEXT_HOP_TYPE_IP;
+        nhattr1.id = SAI_NEXT_HOP_ATTR_IP;
+        nhattr1.value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+        nhattr1.value.ipaddr.addr.ip4 = 0x10000001;
+        nhattr2.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
+        nhattr2.value.oid = rif;
+
+        nh_attrs.push_back(list);
+        nh_attrs_count.push_back(3);
+    }
+
+    for (size_t j = 0; j < nh_attrs.size(); j++)
+    {
+        nh_attrs_array.push_back(nh_attrs[j].data());
+    }
+
+    std::vector<sai_status_t> statuses(count);
+    std::vector<sai_object_id_t> object_id(count);
+    sai_next_hop_api->create_next_hops(switch_id, count, nh_attrs_count.data(), nh_attrs_array.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, object_id.data(), statuses.data());
+    ASSERT_SUCCESS("Failed to bulk create nh");
+
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_SUCCESS("Failed to create nh # %zu", j);
+    }
+
+    statuses.clear();
+
+    status = sai_next_hop_api->remove_next_hops(count, object_id.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses.data());
+    ASSERT_SUCCESS("Failed to bulk remove nh");
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_SUCCESS("Failed to remove nh # %zu", j);
+    }
+}
+
 void test_bulk_fdb_create()
 {
     SWSS_LOG_ENTER();
@@ -906,6 +1013,8 @@ int main()
         test_enable_recording();
 
         test_bulk_next_hop_group_member_create();
+
+        test_bulk_next_hop_create();
 
         test_bulk_fdb_create();
 
