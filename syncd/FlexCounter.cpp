@@ -859,12 +859,6 @@ private:
             _In_ sai_stats_mode_t stats_mode)
     {
         SWSS_LOG_ENTER();
-        if (!m_supportedCounters.empty() && !always_check_supported_counters)
-        {
-            SWSS_LOG_NOTICE("Ignore checking of supported counters");
-            return;
-        }
-
         if (always_check_supported_counters)
         {
             m_supportedCounters.clear();
