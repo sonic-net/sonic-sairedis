@@ -859,6 +859,12 @@ private:
             _In_ sai_stats_mode_t stats_mode)
     {
         SWSS_LOG_ENTER();
+        if (!m_supportedCounters.empty() && !always_check_supported_counters && !dont_clear_support_counter)
+        {
+            SWSS_LOG_NOTICE("Ignore checking of supported counters");
+            return;
+        }
+
         if (always_check_supported_counters)
         {
             m_supportedCounters.clear();
@@ -1658,6 +1664,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     {
         auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
         context->use_sai_stats_capa_query = false;
+        context->dont_clear_support_counter = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_FLOW)
