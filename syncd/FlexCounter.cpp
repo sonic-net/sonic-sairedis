@@ -859,13 +859,13 @@ private:
             _In_ sai_stats_mode_t stats_mode)
     {
         SWSS_LOG_ENTER();
-        if (!m_supportedCounters.empty() && !always_check_supported_counters && !dont_clear_support_counter)
+        if (!m_supportedCounters.empty() && !always_check_supported_counters)
         {
             SWSS_LOG_NOTICE("Ignore checking of supported counters");
             return;
         }
 
-        if (always_check_supported_counters)
+        if (always_check_supported_counters && !dont_clear_support_counter)
         {
             m_supportedCounters.clear();
         }
@@ -1663,6 +1663,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     else if (context_name == COUNTER_TYPE_MACSEC_SA)
     {
         auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->dont_clear_support_counter = true;
         return context;
