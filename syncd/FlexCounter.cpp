@@ -895,8 +895,9 @@ public:
         auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
         auto checkAndUpdateBulkCapability = [&](const std::vector<StatType> &counter_ids, const std::string &prefix, uint32_t bulk_chunk_size)
         {
-            auto bulkContext = getBulkStatsContext(counter_ids, prefix, bulk_chunk_size);
-            auto &ctx = *bulkContext.get();
+            BulkContextType ctx;
+            ctx.counter_ids = counter_ids;
+            addBulkStatsContext(vids, rids, counter_ids, ctx);
             auto status = m_vendorSai->bulkGetStats(
                 SAI_NULL_OBJECT_ID,
                 m_objectType,
@@ -909,7 +910,8 @@ public:
                 ctx.counters.data());
             if (status == SAI_STATUS_SUCCESS)
             {
-                addBulkStatsContext(vids, rids, counter_ids, ctx);
+                auto bulkContext = getBulkStatsContext(counter_ids, prefix, bulk_chunk_size);
+                addBulkStatsContext(vids, rids, counter_ids, *bulkContext.get());
             }
             else
             {
@@ -1221,7 +1223,7 @@ private:
         {
             if (SAI_STATUS_SUCCESS != ctx.object_statuses[i])
             {
-                SWSS_LOG_ERROR("Failed to get stats of %s 0x%" PRIx64 ": %d", m_name.c_str(), ctx.object_keys[i].key.object_id, ctx.object_statuses[i]);
+                SWSS_LOG_ERROR("Failed to get stats of %s 0x%" PRIx64 " 0x%" PRIx64 ": %d", m_name.c_str(), ctx.object_vids[i], ctx.object_keys[i].key.object_id, ctx.object_statuses[i]);
                 continue;
             }
             const auto &vid = ctx.object_vids[i];
