@@ -1185,7 +1185,7 @@ private:
         }
         uint32_t current = 0;
 
-        SWSS_LOG_DEBUG("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), size, bulk_chunk_size, current);
+        SWSS_LOG_INFO("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), size, bulk_chunk_size, current);
 
         while (current < size)
         {
