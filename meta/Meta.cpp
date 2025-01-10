@@ -3817,6 +3817,7 @@ sai_status_t Meta::meta_generic_validation_create(
         // this is conditional attribute, check if it's required
 
         bool any = false;
+        bool all = true;
 
         for (size_t index = 0; md.conditions[index] != NULL; index++)
         {
@@ -3838,13 +3839,25 @@ sai_status_t Meta::meta_generic_validation_create(
 
             if (cmd.attrvaluetype == SAI_ATTR_VALUE_TYPE_BOOL)
             {
-                if (c.condition.booldata == cvalue->booldata)
+                if (md.conditiontype == SAI_ATTR_CONDITION_TYPE_AND)
                 {
-                    META_LOG_DEBUG(md, "bool condition was met on attr %d = %d", cmd.attrid, c.condition.booldata);
-
-                    any = true;
-                    break;
+                    if (c.condition.booldata != cvalue->booldata)
+                    {
+                        META_LOG_DEBUG(md, "bool condition was not met on attr %d = %d", cmd.attrid, c.condition.booldata);
+                        all = false;
+                        break;
+                    }
                 }
+                else
+                {
+                    if (c.condition.booldata == cvalue->booldata)
+                    {
+                        META_LOG_DEBUG(md, "bool condition was met on attr %d = %d", cmd.attrid, c.condition.booldata);
+                        any = true;
+                        break;
+                    }
+                }
+
             }
             else // enum condition
             {
@@ -3875,7 +3888,7 @@ sai_status_t Meta::meta_generic_validation_create(
             }
         }
 
-        if (!any)
+        if (((md.conditiontype == SAI_ATTR_CONDITION_TYPE_AND) && !all) || ((md.conditiontype != SAI_ATTR_CONDITION_TYPE_AND) && !any))
         {
             // maybe we can let it go here?
             if (attrs.find(md.attrid) != attrs.end())
