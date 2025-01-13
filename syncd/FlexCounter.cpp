@@ -1136,6 +1136,7 @@ private:
         _In_  sai_object_id_t vid)
     {
         SWSS_LOG_ENTER();
+        std::set<std::vector<StatType>> bulkContextsToBeRemoved;
         bool found = false;
         for (auto iter = m_bulkContexts.begin(); iter != m_bulkContexts.end(); iter++)
         {
@@ -1150,7 +1151,9 @@ private:
             ctx.object_vids.erase(vid_iter);
             if (ctx.object_vids.empty())
             {
-                m_bulkContexts.erase(iter);
+                // It can change the order of the map to erase an element in a loop iterating the map
+                // which can cause some elements to be skipped or iterated for multiple times
+                bulkContextsToBeRemoved.insert(iter->first);
             }
             else
             {
@@ -1169,6 +1172,11 @@ private:
                 // There can be more than one bulk context containing the VID when the per counter ID bulk chunk size is configured
                 continue;
             }
+        }
+
+        for (auto iter : bulkContextsToBeRemoved)
+        {
+            m_bulkContexts.erase(iter);
         }
 
         return found;
