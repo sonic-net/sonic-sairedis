@@ -891,7 +891,7 @@ public:
             }
         }
 
-        std::vector<StatType> bulkUnsupportedCounters;
+        std::map<std::vector<StatType>, std::tuple<const std::string, uint32_t>> bulkUnsupportedCounters;
         auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
         auto checkAndUpdateBulkCapability = [&](const std::vector<StatType> &counter_ids, const std::string &prefix, uint32_t bulk_chunk_size)
         {
@@ -917,16 +917,11 @@ public:
             {
                 // Bulk is not supported for this counter prefix
                 // Append it to bulkUnsupportedCounters
-                bulkUnsupportedCounters.insert(bulkUnsupportedCounters.end(), counter_ids.begin(), counter_ids.end());
+                std::tuple<const std::string, uint32_t> value(prefix, bulk_chunk_size);
+                bulkUnsupportedCounters.emplace(counter_ids, value);
                 SWSS_LOG_NOTICE("Counters starting with %s do not support bulk. Fallback to single call for these counters", prefix.c_str());
             }
         };
-
-        // Perform a remove and re-add to simplify the logic here
-        for (auto vid: vids)
-        {
-            removeObject(vid, false);
-        }
 
         if (m_counterChunkSizeMapFromPrefix.empty())
         {
@@ -956,20 +951,40 @@ public:
 
         if (!bulkUnsupportedCounters.empty())
         {
-            SWSS_LOG_NOTICE("Partial counters do not support bulk. Fallback to single call");
+            SWSS_LOG_NOTICE("Partial counters do not support bulk. Re-check bulk capability for each object");
 
-            // Fall back to old way
-            std::vector<std::string> bulkUnsupportedidCounterStrings;
-            bulkUnsupportedidCounterStrings.reserve(bulkUnsupportedCounters.size());
-            transform(bulkUnsupportedCounters.begin(),
-                      bulkUnsupportedCounters.end(),
-                      std::back_inserter(bulkUnsupportedidCounterStrings),
-                      [] (auto &counterId) { return serializeStat(counterId); });
-            for (size_t i = 0; i < vids.size(); i++)
+            for (auto &it : bulkUnsupportedCounters)
             {
-                auto rid = rids[i];
-                auto vid = vids[i];
-                addObject(vid, rid, idStrings, per_object_stats_mode);
+                std::vector<sai_object_id_t> bulkSupportedRIDs;
+                std::vector<sai_object_id_t> bulkSupportedVIDs;
+                for (size_t i = 0; i < vids.size(); i++)
+                {
+                    auto rid = rids[i];
+                    auto vid = vids[i];
+
+                    if (checkBulkCapability(vid, rid, it.first))
+                    {
+                        bulkSupportedVIDs.push_back(vid);
+                        bulkSupportedRIDs.push_back(rid);
+                    }
+                    else
+                    {
+                        SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
+                        auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
+                        // TODO: use if const expression when cpp17 is supported
+                        if (HasStatsMode<CounterIdsType>::value)
+                        {
+                            counter_data->setStatsMode(instance_stats_mode);
+                        }
+                        m_objectIdsMap.emplace(vid, counter_data);
+                    }
+                }
+
+                if (!bulkSupportedVIDs.empty() && !bulkSupportedRIDs.empty())
+                {
+                    auto bulkContext = getBulkStatsContext(it.first, get<0>(it.second), get<1>(it.second));
+                    addBulkStatsContext(bulkSupportedVIDs, bulkSupportedRIDs, it.first, *bulkContext.get());
+                }
             }
         }
     }
@@ -993,14 +1008,14 @@ public:
         {
             m_objectIdsMap.erase(iter);
         }
-        else
+
+        // An object can be in both m_objectIdsMap and the bulk context
+        // when bulk polling is supported by some counter prefixes but unsupported by some others
+        if (!removeBulkStatsContext(vid) && log)
         {
-            if (!removeBulkStatsContext(vid) && log)
-            {
-                SWSS_LOG_NOTICE("Trying to remove nonexisting %s %s",
-                    sai_serialize_object_type(m_objectType).c_str(),
-                    sai_serialize_object_id(vid).c_str());
-            }
+            SWSS_LOG_NOTICE("Trying to remove nonexisting %s %s",
+                            sai_serialize_object_type(m_objectType).c_str(),
+                            sai_serialize_object_id(vid).c_str());
         }
     }
 
