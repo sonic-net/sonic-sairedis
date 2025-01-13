@@ -178,7 +178,7 @@ void testAddRemoveCounter(
     countersTable.getKeys(keys);
     ASSERT_TRUE(keys.empty());
 }
-#if 0
+
 TEST(FlexCounter, addRemoveCounter)
 {
     sai->mock_getStatsExt = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
@@ -801,7 +801,7 @@ TEST(FlexCounter, bulkCounter)
     // buffer pool stats does not support bulk
     EXPECT_EQ(false, clearCalled);
 }
-#endif
+
 TEST(FlexCounter, bulkChunksize)
 {
     /*
@@ -879,13 +879,15 @@ TEST(FlexCounter, bulkChunksize)
 
     // Bulk-unsupported counter IDs should be polled using single call (getStatExt)
     std::set<sai_stat_id_t> bulkUnsupportedCounters;
+    std::set<sai_object_id_t> bulkUnsupportedObjectIds;
     bool forceSingleCall = false;
     // <oid, <counter id, counter value>>
-//    std::map<std::string, std::map<std::string, std::string>> bulkUnsupportedCounterExpectedValues;
     auto _getStatsExt = [&](sai_object_type_t, sai_object_id_t oid, uint32_t number_of_counters, const sai_stat_id_t *counter_ids, sai_stats_mode_t, uint64_t *counters) {
         for (auto i = 0u; i < number_of_counters; i++)
         {
-            if (forceSingleCall || bulkUnsupportedCounters.find(counter_ids[i]) != bulkUnsupportedCounters.end())
+            if (forceSingleCall
+                || (bulkUnsupportedCounters.find(counter_ids[i]) != bulkUnsupportedCounters.end()
+                    && (bulkUnsupportedObjectIds.empty() || bulkUnsupportedObjectIds.find(oid) != bulkUnsupportedObjectIds.end())))
             {
                 // avoid counter_id == 0 which causes the same counter value (0) for all objects
                 counters[i] = (1 + counter_ids[i]) * (uint64_t)oid;
@@ -913,6 +915,7 @@ TEST(FlexCounter, bulkChunksize)
     // non zero unifiedBulkChunkSize indicates all counter IDs share the same bulk chunk size
     uint32_t unifiedBulkChunkSize = 0;
     int32_t initialCheckCount;
+    int32_t partialSupportingBulkObjectFactor;
     sai->mock_bulkGetStats = [&](sai_object_id_t,
                                 sai_object_type_t,
                                 uint32_t object_count,
@@ -937,6 +940,16 @@ TEST(FlexCounter, bulkChunksize)
                 {
                     if (bulkUnsupportedCounters.find(counter_ids[i]) != bulkUnsupportedCounters.end())
                     {
+                        if (partialSupportingBulkObjectFactor != 0)
+                        {
+                            for(auto j = 0u; j < object_count; j++)
+                            {
+                                if (j % partialSupportingBulkObjectFactor == 0)
+                                {
+                                    bulkUnsupportedObjectIds.insert(object_keys[j].key.object_id);
+                                }
+                            }
+                        }
                         return SAI_STATUS_FAILURE;
                     }
                 }
@@ -1014,7 +1027,7 @@ TEST(FlexCounter, bulkChunksize)
 
         allObjectIds.erase(key);
     };
-#if 1
+
     // create ports first and then set bulk chunk size + per counter bulk chunk size
     initialCheckCount = 6;
     testAddRemoveCounter(
@@ -1105,12 +1118,9 @@ TEST(FlexCounter, bulkChunksize)
         false,
         PORT_PLUGIN_FIELD);
     EXPECT_TRUE(allObjectIds.empty());
-#endif
 
-//PROBLEMATIC CASE
     // add ports counters in bulk mode with some bulk-unsupported counters first and then set bulk chunk size + per counter bulk chunk size
     // all counters will be polled using single call in runtime
-    #if 1
     forceSingleCall = true;
     initialCheckCount = 1; // check bulk for all counter IDs altogether
     initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
@@ -1129,20 +1139,15 @@ TEST(FlexCounter, bulkChunksize)
         STATS_MODE_READ,
         true,
         "3",
-        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2"/*,
-        false,
-        PORT_PLUGIN_FIELD*/);
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
     EXPECT_TRUE(allObjectIds.empty());
     forceSingleCall = false;
-    #endif
-    #if 1
+
     // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode with some bulk-unsupported counters
+    // All bulk-unsupported counters are polled using single call and all the rest counters are polled using bulk call
+    // For each OID, it will be in both m_bulkContexts and m_objectIdsMap
     initialCheckCount = 3; // check bulk for 3 prefixes
     initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
-/*    bulkUnsupportedCounters = {
-        {SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES, 3},
-        {SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES, 5}
-        };*/
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -1158,9 +1163,30 @@ TEST(FlexCounter, bulkChunksize)
         false,
         PORT_PLUGIN_FIELD);
     EXPECT_TRUE(allObjectIds.empty());
-    #endif
+
+    // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode with some bulk-unsupported counters
+    // All bulk-unsupported counters are polled using single call and all the rest counters are polled using bulk call
+    // For each OID, it will be in both m_bulkContexts and m_objectIdsMap
+    initialCheckCount = 3; // check bulk for 3 prefixes
+    initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
+    partialSupportingBulkObjectFactor = 2;
+    testAddRemoveCounter(
+        6,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_OUT_QLEN", "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES", "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"},
+        {},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true,
+        "3",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        false,
+        PORT_PLUGIN_FIELD);
+    EXPECT_TRUE(allObjectIds.empty());
 }
-#if 0
+
 TEST(FlexCounter, counterIdChange)
 {
     sai->mock_getStats = [&](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
@@ -1552,4 +1578,3 @@ TEST(FlexCounter, noEniDashMeterCounter)
         counterVerifyFunc,
         false);
 }
-#endif
