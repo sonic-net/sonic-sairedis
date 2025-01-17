@@ -166,6 +166,7 @@ jobs:
   - script: |
       sudo cp azsyslog.conf /etc/rsyslog.conf
       sudo pkill -F /run/rsyslogd.pid
+      if [[ -e /var/run/rsyslogd.pid ]] ; then cat /proc/$(cat /var/run/rsyslogd.pid)/status ; fi
       sudo rsyslogd
     displayName: "Update rsyslog.conf"
   - ${{ if eq(parameters.run_unit_test, true) }}:
