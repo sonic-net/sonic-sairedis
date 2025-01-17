@@ -165,7 +165,7 @@ jobs:
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
       sudo cp azsyslog.conf /etc/rsyslog.conf
-      sudo pkill -F /run/rsyslogd.pid
+      sudo pkill --signal SIGHUP -F /run/rsyslogd.pid
       sudo rsyslogd
     displayName: "Update rsyslog.conf"
   - ${{ if eq(parameters.run_unit_test, true) }}:
