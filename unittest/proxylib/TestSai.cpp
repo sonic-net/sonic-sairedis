@@ -368,6 +368,29 @@ TEST(Sai, processQueryAttributeCapability)
     thread->join();
 }
 
+TEST(Sai, dbgGenerateDump)
+{
+    Sai sai;
+
+    EXPECT_EQ(sai.apiInitialize(0, &test_services), SAI_STATUS_SUCCESS);
+
+    std::shared_ptr<sairedis::SaiInterface> dummy = std::make_shared<saimeta::DummySaiInterface>();
+
+    auto proxy = std::make_shared<Proxy>(dummy);
+
+    auto thread = std::make_shared<std::thread>(fun,proxy);
+
+    const std::string filePath = "/var/log/testDump.log";
+
+    auto status = sai.dbgGenerateDump(filePath.c_str());
+
+    EXPECT_EQ(status, SAI_STATUS_SUCCESS);
+
+    proxy->stop();
+
+    thread->join();
+}
+
 TEST(Sai, queryAttributeEnumValuesCapability)
 {
     Sai sai;

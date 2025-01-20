@@ -106,6 +106,9 @@ namespace saiproxy
             void processClearStats(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
+            void processDbgGenerateDump(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
         private: // notifications
 
             void onFdbEvent(

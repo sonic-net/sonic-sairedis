@@ -410,8 +410,36 @@ sai_status_t Syncd::processSingleEvent(
     if (op == REDIS_FLEX_COUNTER_COMMAND_DEL_GROUP)
         return processFlexCounterGroupEvent(key, DEL_COMMAND, kfvFieldsValues(kco));
 
+    if (op == REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMP)
+        return processDbgGenerateDump(kco);
+
     SWSS_LOG_THROW("event op '%s' is not implemented, FIXME", op.c_str());
 }
+
+sai_status_t Syncd::processDbgGenerateDump(
+        _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    const auto& values = kfvFieldsValues(kco);
+    auto& fieldValues = kfvFieldsValues(kco);
+    auto value = fvValue(fieldValues[0]);
+    const char* value_cstr = value.c_str();
+    sai_status_t status = m_vendorSai->dbgGenerateDump(value_cstr);
+
+    if (values.size() != 1)
+    {
+        SWSS_LOG_ERROR("Invalid input: expected 1 arguments, received %zu", values.size());
+        m_selectableChannel->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {} , REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    m_selectableChannel->set(sai_serialize_status(status), {} , REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE);
+
+    return status;
+}
+
 
 sai_status_t Syncd::processAttrCapabilityQuery(
         _In_ const swss::KeyOpFieldsValuesTuple &kco)

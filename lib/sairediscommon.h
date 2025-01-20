@@ -52,6 +52,9 @@
 #define REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_QUERY     "object_type_get_availability_query"
 #define REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE  "object_type_get_availability_response"
 
+#define REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMP            "dbg_gen_dump"
+#define REDIS_ASIC_STATE_COMMAND_DBG_GEN_DUMPRESPONSE    "dbg_gen_dumpresponse"
+
 #define REDIS_FLEX_COUNTER_COMMAND_START_POLL       "start_poll"
 #define REDIS_FLEX_COUNTER_COMMAND_STOP_POLL        "stop_poll"
 #define REDIS_FLEX_COUNTER_COMMAND_SET_GROUP        "set_counter_group"

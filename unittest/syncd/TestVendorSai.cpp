@@ -1543,3 +1543,10 @@ TEST(VendorSai, bulk_meter_rules)
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai.remove((sai_object_type_t)SAI_OBJECT_TYPE_METER_POLICY, meter_policy0));
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai.remove((sai_object_type_t)SAI_OBJECT_TYPE_METER_POLICY, meter_policy1));
 }
+
+TEST_F(VendorSaiTest, dbgGenerateDump)
+{
+    const std::string filePath = "/var/log/testDump.log";
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m_vsai->dbgGenerateDump(filePath.c_str()));
+}
