@@ -1679,6 +1679,7 @@ sai_status_t VendorSai::logSet(
         _In_ sai_api_t api,
         _In_ sai_log_level_t log_level)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
 
     m_logLevelMap[api] = log_level;
@@ -1689,6 +1690,7 @@ sai_status_t VendorSai::logSet(
 sai_log_level_t VendorSai::logGet(
         _In_ sai_api_t api)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
 
     auto it = m_logLevelMap.find(api);
