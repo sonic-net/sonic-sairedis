@@ -27,7 +27,7 @@ function build_and_install_kmodule()
 
     # Install the required debian packages to build the kernel modules
     apt-get update
-    apt-get install -y build-essential linux-headers-${KERNEL_RELEASE} autoconf pkg-config fakeroot
+    apt-get install -y build-essential pahole linux-headers-${KERNEL_RELEASE} autoconf pkg-config fakeroot
     apt-get install -y flex bison libssl-dev libelf-dev
     apt-get install -y libnl-route-3-200 libnl-route-3-dev libnl-cli-3-200 libnl-cli-3-dev libnl-3-dev
 
@@ -53,6 +53,7 @@ function build_and_install_kmodule()
     echo CONFIG_MICROSOFT_MANA=m >> .config
     echo CONFIG_SYSTEM_REVOCATION_LIST=n >> .config
     make VERSION=$VERSION PATCHLEVEL=$PATCHLEVEL SUBLEVEL=$SUBLEVEL EXTRAVERSION=-${EXTRAVERSION} LOCALVERSION=-${LOCALVERSION} modules_prepare
+    cp /lib/modules/$(uname -r)/build/Module.symvers .
     make M=drivers/net/team
     mv drivers/net/Makefile drivers/net/Makefile.bak
     echo 'obj-$(CONFIG_NET_VRF) += vrf.o' > drivers/net/Makefile
