@@ -72,7 +72,8 @@ jobs:
       sudo sonic-sairedis/.azure-pipelines/build_and_install_module.sh
 
       sudo apt-get update
-      sudo apt-get install -y libhiredis0.14 libyang0.16
+      ip addr
+      sudo apt-get install -y libhiredis0.14 libyang0.16 || sleep 7200
       sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/libprotobuf*_amd64.deb $(Build.ArtifactStagingDirectory)/download/libprotobuf-lite*_amd64.deb $(Build.ArtifactStagingDirectory)/download/python3-protobuf*_amd64.deb
       sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/libdashapi*.deb
       sudo dpkg -i --force-confask,confnew $(Build.ArtifactStagingDirectory)/download/libswsscommon_1.0.0_amd64.deb || apt-get install -f
