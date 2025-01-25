@@ -1,58 +1,48 @@
-AM_CFLAGS = $(SAIINC)
-AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/lib
+AM_CFLAGS = $(OTAIINC)
+AM_CXXFLAGS = $(OTAIINC) -I$(top_srcdir)/lib
 
-lib_LTLIBRARIES = libsaimetadata.la libsaimeta.la
+lib_LTLIBRARIES = libotaimetadata.la libotaimeta.la
 
-BUILT_SOURCES = $(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h
+BUILT_SOURCES = $(top_srcdir)/OTAI/meta/otaimetadata.c $(top_srcdir)/OTAI/meta/otaimetadata.h
 
-$(top_srcdir)/SAI/meta/saimetadata.c $(top_srcdir)/SAI/meta/saimetadata.h: saimeta-gen
+$(top_srcdir)/OTAI/meta/otaimetadata.c $(top_srcdir)/OTAI/meta/otaimetadata.h: otaimeta-gen
 
-saimeta-gen:
-	$(MAKE) -C $(top_srcdir)/SAI/meta saimetadata.c
+otaimeta-gen:
+	$(MAKE) -C $(top_srcdir)/OTAI/meta otaimetadata.c
 
 clean-local:
-	$(MAKE) -C $(top_srcdir)/SAI/meta clean
+	$(MAKE) -C $(top_srcdir)/OTAI/meta clean
 
-libsaimetadata_la_SOURCES =  \
-				$(top_srcdir)/SAI/meta/saimetadata.c \
-				$(top_srcdir)/SAI/meta/saimetadatautils.c \
-				$(top_srcdir)/SAI/meta/saiserialize.c
+libotaimetadata_la_SOURCES =  \
+				$(top_srcdir)/OTAI/meta/otaimetadata.c \
+				$(top_srcdir)/OTAI/meta/otaimetadatautils.c \
+				$(top_srcdir)/OTAI/meta/otaiserialize.c
 
-libsaimetadata_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-libsaimetadata_la_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) -ansi $(CODE_COVERAGE_CFLAGS)
+libotaimetadata_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libotaimetadata_la_CFLAGS = $(DBGFLAGS) $(AM_CFLAGS) -ansi $(CODE_COVERAGE_CFLAGS)
 
-libsaimeta_la_SOURCES = \
+libotaimeta_la_SOURCES = \
 				AttrKeyMap.cpp \
 				Globals.cpp \
 				Meta.cpp \
 				MetaKeyHasher.cpp \
 				Notification.cpp \
 				NotificationFactory.cpp \
-				NotificationFdbEvent.cpp \
-				NotificationNatEvent.cpp \
-				NotificationPortStateChange.cpp \
-				NotificationQueuePfcDeadlock.cpp \
-				NotificationSwitchAsicSdkHealthEvent.cpp \
-				NotificationSwitchShutdownRequest.cpp \
-				NotificationSwitchStateChange.cpp \
-				NotificationBfdSessionStateChange.cpp \
-				NotificationTwampSessionEvent.cpp \
-				NotificationPortHostTxReadyEvent.cpp \
 				NumberOidIndexGenerator.cpp \
 				OidRefCounter.cpp \
 				PerformanceIntervalTimer.cpp \
 				PortRelatedSet.cpp \
 				RedisSelectableChannel.cpp \
-				SaiAttrWrapper.cpp \
-				SaiAttributeList.cpp \
-				SaiInterface.cpp \
-				SaiObject.cpp \
-				SaiObjectCollection.cpp \
-				SaiSerialize.cpp \
+				OtaiAttrWrapper.cpp \
+				OtaiAttributeList.cpp \
+				OtaiInterface.cpp \
+				OtaiObject.cpp \
+				OtaiObjectCollection.cpp \
+				OtaiSerialize.cpp \
 				SelectableChannel.cpp \
-				DummySaiInterface.cpp \
+				DummyOtaiInterface.cpp \
 				ZeroMQSelectableChannel.cpp
 
-libsaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-libsaimeta_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsaimeta_la_LIBADD = -lhiredis -lswsscommon libsaimetadata.la $(CODE_COVERAGE_LIBS)
+libotaimeta_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libotaimeta_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+libotaimeta_la_LIBADD = -lhiredis -lswsscommon libotaimetadata.la $(CODE_COVERAGE_LIBS)

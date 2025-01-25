@@ -1,8 +1,8 @@
 #include "AttrKeyMap.h"
 
-#include "sai_serialize.h"
+#include "otai_serialize.h"
 
-using namespace saimeta;
+using namespace otaimeta;
 
 void AttrKeyMap::clear()
 {
@@ -53,17 +53,17 @@ bool AttrKeyMap::attrKeyExists(
 }
 
 std::string AttrKeyMap::constructKey(
-        _In_ sai_object_id_t switchId,
-        _In_ const sai_object_meta_key_t& metaKey,
+        _In_ otai_object_id_t switchId,
+        _In_ const otai_object_meta_key_t& metaKey,
         _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t* attrList)
+        _In_ const otai_attribute_t* attrList)
 {
     SWSS_LOG_ENTER();
 
-    if (switchId == SAI_NULL_OBJECT_ID)
+    if (switchId == OTAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_THROW("switchId is NULL for %s",
-                sai_serialize_object_meta_key(metaKey).c_str());
+                otai_serialize_object_meta_key(metaKey).c_str());
     }
 
     // Use map to make sure that keys will be always sorted by attr id.
@@ -74,18 +74,18 @@ std::string AttrKeyMap::constructKey(
     {
         const auto& attr = attrList[idx];
 
-        auto* md = sai_metadata_get_attr_metadata(metaKey.objecttype, attr.id);
+        auto* md = otai_metadata_get_attr_metadata(metaKey.objecttype, attr.id);
 
         if (!md)
         {
             SWSS_LOG_THROW("failed to get metadata for object type: %s and attr id: %d",
-                    sai_serialize_object_id(metaKey.objecttype).c_str(),
+                    otai_serialize_object_id(metaKey.objecttype).c_str(),
                     attr.id);
         }
 
         const auto& value = attr.value;
 
-        if (!SAI_HAS_FLAG_KEY(md->flags))
+        if (!OTAI_HAS_FLAG_KEY(md->flags))
         {
             continue;
         }
@@ -94,7 +94,7 @@ std::string AttrKeyMap::constructKey(
 
         switch (md->attrvaluetype)
         {
-            case SAI_ATTR_VALUE_TYPE_UINT32_LIST: // only for port lanes
+            case OTAI_ATTR_VALUE_TYPE_UINT32_LIST: // only for port lanes
 
                 // NOTE: this list should be sorted
 
@@ -110,24 +110,24 @@ std::string AttrKeyMap::constructKey(
 
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_INT32:
+            case OTAI_ATTR_VALUE_TYPE_INT32:
                 name += std::to_string(value.s32); // if enum then get enum name?
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_UINT32:
+            case OTAI_ATTR_VALUE_TYPE_UINT32:
                 name += std::to_string(value.u32);
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_UINT8:
+            case OTAI_ATTR_VALUE_TYPE_UINT8:
                 name += std::to_string(value.u8);
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_UINT16:
+            case OTAI_ATTR_VALUE_TYPE_UINT16:
                 name += std::to_string(value.u16);
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_OBJECT_ID:
-                name += sai_serialize_object_id(value.oid);
+            case OTAI_ATTR_VALUE_TYPE_OBJECT_ID:
+                name += otai_serialize_object_id(value.oid);
                 break;
 
             default:
@@ -142,7 +142,7 @@ std::string AttrKeyMap::constructKey(
 
     // switch ID is added, since same key pattern is allowed on different switch objects
 
-    std::string key = sai_serialize_object_id(switchId) + ";";
+    std::string key = otai_serialize_object_id(switchId) + ";";
 
     for (auto& k: keys)
     {

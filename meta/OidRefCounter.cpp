@@ -4,7 +4,7 @@
 
 #include <inttypes.h>
 
-using namespace saimeta;
+using namespace otaimeta;
 
 void OidRefCounter::clear()
 {
@@ -14,7 +14,7 @@ void OidRefCounter::clear()
 }
 
 bool OidRefCounter::objectReferenceExists(
-        _In_ sai_object_id_t oid) const
+        _In_ otai_object_id_t oid) const
 {
     SWSS_LOG_ENTER();
 
@@ -26,11 +26,11 @@ bool OidRefCounter::objectReferenceExists(
 }
 
 void OidRefCounter::objectReferenceIncrement(
-        _In_ sai_object_id_t oid)
+        _In_ otai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
 
-    if (oid == SAI_NULL_OBJECT_ID)
+    if (oid == OTAI_NULL_OBJECT_ID)
     {
         // We don't keep track of NULL object id's.
         return;
@@ -47,7 +47,7 @@ void OidRefCounter::objectReferenceIncrement(
 }
 
 void OidRefCounter::objectReferenceIncrement(
-        _In_ const sai_object_list_t& list)
+        _In_ const otai_object_list_t& list)
 {
     SWSS_LOG_ENTER();
 
@@ -58,11 +58,11 @@ void OidRefCounter::objectReferenceIncrement(
 }
 
 void OidRefCounter::objectReferenceDecrement(
-        _In_ sai_object_id_t oid)
+        _In_ otai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
 
-    if (oid == SAI_NULL_OBJECT_ID)
+    if (oid == OTAI_NULL_OBJECT_ID)
     {
         // We don't keep track of NULL object id's.
         return;
@@ -84,7 +84,7 @@ void OidRefCounter::objectReferenceDecrement(
 }
 
 void OidRefCounter::objectReferenceDecrement(
-        _In_ const sai_object_list_t& list)
+        _In_ const otai_object_list_t& list)
 {
     SWSS_LOG_ENTER();
 
@@ -95,7 +95,7 @@ void OidRefCounter::objectReferenceDecrement(
 }
 
 void OidRefCounter::objectReferenceInsert(
-        _In_ sai_object_id_t oid)
+        _In_ otai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
 
@@ -110,7 +110,7 @@ void OidRefCounter::objectReferenceInsert(
 }
 
 void OidRefCounter::objectReferenceRemove(
-        _In_ sai_object_id_t oid)
+        _In_ otai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
 
@@ -134,7 +134,7 @@ void OidRefCounter::objectReferenceRemove(
 }
 
 int32_t OidRefCounter::getObjectReferenceCount(
-        _In_ sai_object_id_t oid) const
+        _In_ otai_object_id_t oid) const
 {
     SWSS_LOG_ENTER();
 
@@ -151,25 +151,25 @@ int32_t OidRefCounter::getObjectReferenceCount(
 }
 
 bool OidRefCounter::isObjectInUse(
-        _In_ sai_object_id_t oid) const
+        _In_ otai_object_id_t oid) const
 {
     SWSS_LOG_ENTER();
 
     return getObjectReferenceCount(oid) > 0;
 }
 
-std::unordered_map<sai_object_id_t, int32_t> OidRefCounter::getAllReferences() const
+std::unordered_map<otai_object_id_t, int32_t> OidRefCounter::getAllReferences() const
 {
     SWSS_LOG_ENTER();
 
     return m_hash; // copy
 }
 
-std::vector<sai_object_id_t> OidRefCounter::getAllOids() const
+std::vector<otai_object_id_t> OidRefCounter::getAllOids() const
 {
     SWSS_LOG_ENTER();
 
-    std::vector<sai_object_id_t> vec;
+    std::vector<otai_object_id_t> vec;
 
     for (auto& it: m_hash)
     {
@@ -180,7 +180,7 @@ std::vector<sai_object_id_t> OidRefCounter::getAllOids() const
 }
 
 void OidRefCounter::objectReferenceClear(
-        _In_ sai_object_id_t oid)
+        _In_ otai_object_id_t oid)
 {
     SWSS_LOG_ENTER();
 

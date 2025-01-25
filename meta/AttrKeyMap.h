@@ -1,14 +1,14 @@
 #pragma once
 
 extern "C" {
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
 #include <string>
 #include <vector>
 #include <unordered_map>
 
-namespace saimeta
+namespace otaimeta
 {
     class AttrKeyMap
     {
@@ -36,10 +36,10 @@ namespace saimeta
              * @brief Construct key based on attributes marked as keys.
              */
             static std::string constructKey(
-                    _In_ sai_object_id_t switchId,
-                    _In_ const sai_object_meta_key_t& metaKey,
+                    _In_ otai_object_id_t switchId,
+                    _In_ const otai_object_meta_key_t& metaKey,
                     _In_ uint32_t attrCount,
-                    _In_ const sai_attribute_t* attrList);
+                    _In_ const otai_attribute_t* attrList);
 
             std::vector<std::string> getAllKeys() const;
 

@@ -1,14 +1,14 @@
-#include "SaiAttrWrapper.h"
+#include "OtaiAttrWrapper.h"
 
 #include "swss/logger.h"
 
-#include "sai_serialize.h"
+#include "otai_serialize.h"
 
-using namespace saimeta;
+using namespace otaimeta;
 
-SaiAttrWrapper::SaiAttrWrapper(
-        _In_ const sai_attr_metadata_t* meta,
-        _In_ const sai_attribute_t& attr):
+OtaiAttrWrapper::OtaiAttrWrapper(
+        _In_ const otai_attr_metadata_t* meta,
+        _In_ const otai_attribute_t& attr):
     m_meta(meta),
     m_attr(attr)
 {
@@ -30,12 +30,12 @@ SaiAttrWrapper::SaiAttrWrapper(
      * need to release object reference count.
      */
 
-    std::string str = sai_serialize_attr_value(*meta, attr, false);
+    std::string str = otai_serialize_attr_value(*meta, attr, false);
 
-    sai_deserialize_attr_value(str, *meta, m_attr, false);
+    otai_deserialize_attr_value(str, *meta, m_attr, false);
 }
 
-SaiAttrWrapper::~SaiAttrWrapper()
+OtaiAttrWrapper::~OtaiAttrWrapper()
 {
     SWSS_LOG_ENTER();
 
@@ -44,24 +44,24 @@ SaiAttrWrapper::~SaiAttrWrapper()
      * memory on attribute value.
      */
 
-    sai_deserialize_free_attribute_value(m_meta->attrvaluetype, m_attr);
+    otai_deserialize_free_attribute_value(m_meta->attrvaluetype, m_attr);
 }
 
-const sai_attribute_t* SaiAttrWrapper::getSaiAttr() const
+const otai_attribute_t* OtaiAttrWrapper::getOtaiAttr() const
 {
     SWSS_LOG_ENTER();
 
     return &m_attr;
 }
 
-const sai_attr_metadata_t* SaiAttrWrapper::getSaiAttrMetadata() const
+const otai_attr_metadata_t* OtaiAttrWrapper::getOtaiAttrMetadata() const
 {
     SWSS_LOG_ENTER();
 
     return m_meta;
 }
 
-sai_attr_id_t SaiAttrWrapper::getAttrId() const
+otai_attr_id_t OtaiAttrWrapper::getAttrId() const
 {
     SWSS_LOG_ENTER();
 

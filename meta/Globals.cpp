@@ -1,11 +1,11 @@
 #include "Globals.h"
 
-#include "sai_serialize.h"
+#include "otai_serialize.h"
 
-using namespace saimeta;
+using namespace otaimeta;
 
 std::string Globals::getAttrInfo(
-        _In_ const sai_attr_metadata_t& md)
+        _In_ const otai_attr_metadata_t& md)
 {
     SWSS_LOG_ENTER();
 
@@ -14,17 +14,17 @@ std::string Globals::getAttrInfo(
      * serialize object type separately.
      */
 
-    return std::string(md.attridname) + ":" + sai_serialize_attr_value_type(md.attrvaluetype);
+    return std::string(md.attridname) + ":" + otai_serialize_attr_value_type(md.attrvaluetype);
 }
 
 std::string Globals::getHardwareInfo(
         _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList)
+        _In_ const otai_attribute_t *attrList)
 {
     SWSS_LOG_ENTER();
 
-    auto *attr = sai_metadata_get_attr_by_id(
-            SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO,
+    auto *attr = otai_metadata_get_attr_by_id(
+            -1,// OTAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO, // NO OTAI attribute
             attrCount,
             attrList);
 
@@ -42,20 +42,22 @@ std::string Globals::getHardwareInfo(
 
     if (s8list.list == NULL)
     {
-        SWSS_LOG_WARN("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.list is NULL! but count is %u", s8list.count);
+        SWSS_LOG_WARN("OTAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.list is NULL! but count is %u", s8list.count);
 
         return "";
     }
 
     uint32_t count = s8list.count;
 
-    if (count > SAI_MAX_HARDWARE_ID_LEN)
-    {
-        SWSS_LOG_WARN("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.count (%u) > SAI_MAX_HARDWARE_ID_LEN (%d), LIMITING !!",
-                count,
-                SAI_MAX_HARDWARE_ID_LEN);
+#define OTAI_MAX_HARDWARE_ID_LEN 0 // not exists in OTAI
 
-        count = SAI_MAX_HARDWARE_ID_LEN;
+    if (count > OTAI_MAX_HARDWARE_ID_LEN)
+    {
+        SWSS_LOG_WARN("OTAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.count (%u) > OTAI_MAX_HARDWARE_ID_LEN (%d), LIMITING !!",
+                count,
+                OTAI_MAX_HARDWARE_ID_LEN);
+
+        count = OTAI_MAX_HARDWARE_ID_LEN;
     }
 
     // check actual length, since buffer may contain nulls
@@ -63,7 +65,7 @@ std::string Globals::getHardwareInfo(
 
     if (actualLength != count)
     {
-        SWSS_LOG_WARN("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.list is null padded");
+        SWSS_LOG_WARN("OTAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO s8list.list is null padded");
     }
 
     return std::string((const char*)s8list.list, actualLength);

@@ -1,7 +1,7 @@
 #pragma once
 
 extern "C" {
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
 #include "Meta.h"
@@ -9,14 +9,14 @@ extern "C" {
 #include <string>
 #include <memory>
 
-namespace sairedis
+namespace otairedis
 {
     class Notification
     {
         public:
 
             Notification(
-                    _In_ sai_switch_notification_type_t switchNotificationType,
+                    _In_ otai_linecard_notification_type_t switchNotificationType,
                     _In_ const std::string& serializedNotification);
 
             virtual ~Notification() = default;
@@ -33,7 +33,7 @@ namespace sairedis
              * If notification don't contain switch id field, return value is
              * SAI_NULL_OBJECT_ID.
              */
-            virtual sai_object_id_t getSwitchId() const = 0;
+            virtual otai_object_id_t getSwitchId() const = 0;
 
             /**
              * @brief Get any object id.
@@ -46,12 +46,12 @@ namespace sairedis
              * should be returned.
              *
              * This object id will be used to determine switch id using
-             * sai_switch_id_query() API.
+             * otai_switch_id_query() API.
              *
              * If no other object besides switch id is defined, then this
              * function returns switch id.
              */
-            virtual sai_object_id_t getAnyObjectId() const = 0;
+            virtual otai_object_id_t getAnyObjectId() const = 0;
 
             /**
              * @brief Process metadata for notification.
@@ -60,10 +60,10 @@ namespace sairedis
              * arrive, this will pass notification data to notification
              * function.
              *
-             * This function must be executed under sairedis API mutex.
+             * This function must be executed under otairedis API mutex.
              */
             virtual void processMetadata(
-                    std::shared_ptr<saimeta::Meta> meta) const = 0;
+                    std::shared_ptr<otaimeta::Meta> meta) const = 0;
 
             /**
              * @brief Execute callback notification.
@@ -72,14 +72,14 @@ namespace sairedis
              * deserialized data.
              */
             virtual void executeCallback(
-                    _In_ const sai_switch_notifications_t& switchNotifications) const = 0;
+                    _In_ const otai_linecard_notifications_t& switchNotifications) const = 0;
 
         public:
 
             /**
              * @brief Get notification type.
              */
-            sai_switch_notification_type_t getNotificationType() const;
+            otai_linecard_notification_type_t getNotificationType() const;
 
             /**
              * @brief Get serialized notification.
@@ -90,7 +90,7 @@ namespace sairedis
 
         private:
 
-            const sai_switch_notification_type_t m_switchNotificationType;
+            const otai_linecard_notification_type_t m_switchNotificationType;
 
             const std::string m_serializedNotification;
     };

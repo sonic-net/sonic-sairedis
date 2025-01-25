@@ -174,7 +174,7 @@ CXXFLAGS_COMMON+=" -Winvalid-pch"
 CXXFLAGS_COMMON+=" -Wmissing-field-initializers"
 CXXFLAGS_COMMON+=" -Wmissing-format-attribute"
 CXXFLAGS_COMMON+=" -Wmissing-include-dirs"
-CXXFLAGS_COMMON+=" -Wmissing-noreturn"
+CXXFLAGS_COMMON+=" -Wno-missing-noreturn"
 CXXFLAGS_COMMON+=" -Wno-aggregate-return"
 CXXFLAGS_COMMON+=" -Wno-padded"
 CXXFLAGS_COMMON+=" -Wno-switch-enum"
@@ -223,6 +223,7 @@ AC_ARG_WITH(extra-libsai-ldflags,
 [AC_SUBST(EXTRA_LIBSAI_LDFLAGS, "${withval}")])
 
 AC_SUBST(SAIINC, "-I\$(top_srcdir)/SAI/inc -I\$(top_srcdir)/SAI/experimental -I\$(top_srcdir)/SAI/meta")
+AC_SUBST(OTAIINC, "-I\$(top_srcdir)/OTAI/inc -I\$(top_srcdir)/OTAI/meta")
 
 AM_COND_IF([SYNCD], [
 AM_COND_IF([SAIVS], [], [
