@@ -2338,7 +2338,15 @@ std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
         return iter->second;
     }
 
-    auto ret = m_counterContext.emplace(name, createCounterContext(name, m_instanceId));
+    auto counterContext = createCounterContext(name, m_instanceId);
+
+    if (m_noDoubleCheckBulkCapability)
+    {
+        counterContext->setNoDoubleCheckBulkCapability(true);
+        SWSS_LOG_NOTICE("Do not double check bulk capability counter context %s %s", m_instanceId.c_str(), name.c_str());
+    }
+
+    auto ret = m_counterContext.emplace(name, counterContext);
     return ret.first->second;
 }
 
