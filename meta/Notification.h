@@ -31,7 +31,7 @@ namespace otairedis
              * first one is returned.
              *
              * If notification don't contain switch id field, return value is
-             * SAI_NULL_OBJECT_ID.
+             * OTAI_NULL_OBJECT_ID.
              */
             virtual otai_object_id_t getSwitchId() const = 0;
 

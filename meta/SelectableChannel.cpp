@@ -2,7 +2,7 @@
 
 #include "swss/logger.h"
 
-using namespace sairedis;
+using namespace otairedis;
 
 SelectableChannel::SelectableChannel(
         _In_ int pri):

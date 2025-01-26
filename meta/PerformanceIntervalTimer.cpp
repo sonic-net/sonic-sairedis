@@ -4,7 +4,7 @@
 
 #include <inttypes.h>
 
-using namespace sairediscommon;
+using namespace otairediscommon;
 
 bool PerformanceIntervalTimer::m_enable = true;
 

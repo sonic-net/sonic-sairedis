@@ -5,7 +5,7 @@
 #include "swss/consumertable.h"
 #include "swss/producertable.h"
 
-namespace sairedis
+namespace otairedis
 {
     class RedisSelectableChannel:
         public SelectableChannel

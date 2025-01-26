@@ -5,7 +5,7 @@
 #include <chrono>
 #include <string>
 
-namespace sairediscommon
+namespace otairediscommon
 {
     class PerformanceIntervalTimer
     {
