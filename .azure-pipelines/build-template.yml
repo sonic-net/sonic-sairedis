@@ -164,9 +164,14 @@ jobs:
       mv ../*.deb .
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
+      set -ex
+
       sudo cp azsyslog.conf /etc/rsyslog.conf
+      pid1=$(cat /run/rsyslogd.pid)
       sudo pkill -F /run/rsyslogd.pid
-      sudo rsyslogd
+      pid2=$(cat /run/rsyslogd.pid || true)
+      [ -z "$pid2" ] && sudo rsyslogd
+      echo "$pid1 $pid2"
     displayName: "Update rsyslog.conf"
   - ${{ if eq(parameters.run_unit_test, true) }}:
     - script: |
