@@ -1,8 +1,8 @@
 #include "AsicView.h"
 #include "VidManager.h"
 
-#include "meta/sai_serialize.h"
-#include "meta/SaiAttributeList.h"
+#include "meta/otai_serialize.h"
+#include "meta/OtaiAttributeList.h"
 
 #include "swss/logger.h"
 
@@ -11,7 +11,7 @@
 #include <algorithm>
 
 using namespace syncd;
-using namespace saimeta;
+using namespace otaimeta;
 
 AsicView::AsicView():
     m_asicOperationId(0)
@@ -67,16 +67,16 @@ void AsicView::fromDump(
             SWSS_LOG_THROW("failed to find colon in %s", key.first.c_str());
         }
 
-        std::shared_ptr<SaiObj> o = std::make_shared<SaiObj>();
+        std::shared_ptr<OtaiObj> o = std::make_shared<SaiObj>();
 
-        // TODO we could use sai deserialize object meta key
+        // TODO we could use otai deserialize object meta key
 
         o->m_str_object_type  = key.first.substr(0, start);
         o->m_str_object_id    = key.first.substr(start + 1);
 
-        sai_deserialize_object_type(o->m_str_object_type, o->m_meta_key.objecttype);
+        otai_deserialize_object_type(o->m_str_object_type, o->m_meta_key.objecttype);
 
-        o->m_info = sai_metadata_get_object_type_info(o->m_meta_key.objecttype);
+        o->m_info = otai_metadata_get_object_type_info(o->m_meta_key.objecttype);
 
         /*
          * Since neighbor/route/fdb structs objects contains OIDs, we
@@ -87,33 +87,33 @@ void AsicView::fromDump(
         switch (o->m_meta_key.objecttype)
         {
             case SAI_OBJECT_TYPE_FDB_ENTRY:
-                sai_deserialize_fdb_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.fdb_entry);
+                otai_deserialize_fdb_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.fdb_entry);
                 m_soFdbs[o->m_str_object_id] = o;
                 break;
 
             case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
-                sai_deserialize_neighbor_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.neighbor_entry);
+                otai_deserialize_neighbor_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.neighbor_entry);
                 m_soNeighbors[o->m_str_object_id] = o;
 
-                m_neighborsByIp[sai_serialize_ip_address(o->m_meta_key.objectkey.key.neighbor_entry.ip_address)].push_back(o->m_str_object_id);
+                m_neighborsByIp[otai_serialize_ip_address(o->m_meta_key.objectkey.key.neighbor_entry.ip_address)].push_back(o->m_str_object_id);
 
                 break;
 
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
-                sai_deserialize_route_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.route_entry);
+                otai_deserialize_route_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.route_entry);
                 m_soRoutes[o->m_str_object_id] = o;
 
-                m_routesByPrefix[sai_serialize_ip_prefix(o->m_meta_key.objectkey.key.route_entry.destination)].push_back(o->m_str_object_id);
+                m_routesByPrefix[otai_serialize_ip_prefix(o->m_meta_key.objectkey.key.route_entry.destination)].push_back(o->m_str_object_id);
 
                 break;
 
             case SAI_OBJECT_TYPE_NAT_ENTRY:
-                sai_deserialize_nat_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.nat_entry);
+                otai_deserialize_nat_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.nat_entry);
                 m_soNatEntries[o->m_str_object_id] = o;
                 break;
 
             case SAI_OBJECT_TYPE_INSEG_ENTRY:
-                sai_deserialize_inseg_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.inseg_entry);
+                otai_deserialize_inseg_entry(o->m_str_object_id, o->m_meta_key.objectkey.key.inseg_entry);
                 m_soInsegs[o->m_str_object_id] = o;
                 break;
 
@@ -124,7 +124,7 @@ void AsicView::fromDump(
                     SWSS_LOG_THROW("object %s is non object id, not handled, FIXME", key.first.c_str());
                 }
 
-                sai_deserialize_object_id(o->m_str_object_id, o->m_meta_key.objectkey.key.object_id);
+                otai_deserialize_object_id(o->m_str_object_id, o->m_meta_key.objectkey.key.object_id);
 
                 m_soOids[o->m_str_object_id] = o;
                 m_oOids[o->m_meta_key.objectkey.key.object_id] = o;
@@ -175,7 +175,7 @@ void AsicView::fromDump(
  * @param[in] attr Attribute which will be used to obtain oids.
  */
 void AsicView::releaseExisgingLinks(
-        _In_ const std::shared_ptr<const SaiAttr> &attr)
+        _In_ const std::shared_ptr<const OtaiAttr> &attr)
 {
     SWSS_LOG_ENTER();
 
@@ -204,7 +204,7 @@ void AsicView::releaseExisgingLinks(
  * @param[in] obj Object which will be used to obtain attributes and oids
  */
 void AsicView::releaseExisgingLinks(
-        _In_ const std::shared_ptr<const SaiObj> &obj)
+        _In_ const std::shared_ptr<const OtaiObj> &obj)
 {
     SWSS_LOG_ENTER();
 
@@ -224,7 +224,7 @@ void AsicView::releaseExisgingLinks(
  * @param[in] vid Virtual ID to be released.
  */
 void AsicView::releaseVidReference(
-        _In_ sai_object_id_t vid)
+        _In_ otai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
 
@@ -238,7 +238,7 @@ void AsicView::releaseVidReference(
     if (it == m_vidReference.end())
     {
         SWSS_LOG_THROW("vid %s doesn't exist in reference map",
-                sai_serialize_object_id(vid).c_str());
+                otai_serialize_object_id(vid).c_str());
     }
 
     int referenceCount = --(it->second);
@@ -246,12 +246,12 @@ void AsicView::releaseVidReference(
     if (referenceCount < 0)
     {
         SWSS_LOG_THROW("vid %s decreased reference count too many times: %d, BUG",
-                sai_serialize_object_id(vid).c_str(),
+                otai_serialize_object_id(vid).c_str(),
                 referenceCount);
     }
 
     SWSS_LOG_INFO("decreased vid %s refrence to %d",
-            sai_serialize_object_id(vid).c_str(),
+            otai_serialize_object_id(vid).c_str(),
             referenceCount);
 
     if (referenceCount == 0)
@@ -266,7 +266,7 @@ void AsicView::releaseVidReference(
  * @param[in] attr Attribute to obtain oids to bind references
  */
 void AsicView::bindNewLinks(
-        _In_ const std::shared_ptr<const SaiAttr> &attr)
+        _In_ const std::shared_ptr<const OtaiAttr> &attr)
 {
     SWSS_LOG_ENTER();
 
@@ -298,7 +298,7 @@ void AsicView::bindNewLinks(
  * @param[in] obj Object which will be used to obtain attributes and oids
  */
 void AsicView::bindNewLinks(
-        _In_ const std::shared_ptr<const SaiObj> &obj)
+        _In_ const std::shared_ptr<const OtaiObj> &obj)
 {
     SWSS_LOG_ENTER();
 
@@ -317,7 +317,7 @@ void AsicView::bindNewLinks(
  * @param[in] vid Virtual ID reference to be bind
  */
 void AsicView::bindNewVidReference(
-        _In_ sai_object_id_t vid)
+        _In_ otai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
 
@@ -342,13 +342,13 @@ void AsicView::bindNewVidReference(
     if (it == m_vidReference.end())
     {
         SWSS_LOG_THROW("vid %s doesn't exist in reference map",
-                sai_serialize_object_id(vid).c_str());
+                otai_serialize_object_id(vid).c_str());
     }
 
     int referenceCount = ++(it->second);
 
     SWSS_LOG_INFO("increased vid %s reference to %d",
-            sai_serialize_object_id(vid).c_str(),
+            otai_serialize_object_id(vid).c_str(),
             referenceCount);
 }
 
@@ -360,7 +360,7 @@ void AsicView::bindNewVidReference(
  * @return Reference count or -1 if VID was not found.
  */
 int AsicView::getVidReferenceCount(
-        _In_ sai_object_id_t vid) const
+        _In_ otai_object_id_t vid) const
 {
     SWSS_LOG_ENTER();
 
@@ -384,7 +384,7 @@ int AsicView::getVidReferenceCount(
  * @param[in] vid Virtual ID reference to be inserted.
  */
 void AsicView::insertNewVidReference(
-        _In_ sai_object_id_t vid)
+        _In_ otai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
 
@@ -393,13 +393,13 @@ void AsicView::insertNewVidReference(
     if (it != m_vidReference.end())
     {
         SWSS_LOG_THROW("vid %s already exist in reference map, BUG",
-                sai_serialize_object_id(vid).c_str());
+                otai_serialize_object_id(vid).c_str());
     }
 
     m_vidReference[vid] = 0;
 
     SWSS_LOG_INFO("inserted vid %s as reference",
-            sai_serialize_object_id(vid).c_str());
+            otai_serialize_object_id(vid).c_str());
 }
 
 /**
@@ -410,12 +410,12 @@ void AsicView::insertNewVidReference(
  * @return List of objects with requested object type.
  * Order on list is random.
  */
-std::vector<std::shared_ptr<SaiObj>> AsicView::getObjectsByObjectType(
-        _In_ sai_object_type_t object_type) const
+std::vector<std::shared_ptr<OtaiObj>> AsicView::getObjectsByObjectType(
+        _In_ otai_object_type_t object_type) const
 {
     SWSS_LOG_ENTER();
 
-    std::vector<std::shared_ptr<SaiObj>> list;
+    std::vector<std::shared_ptr<OtaiObj>> list;
 
     /*
      * We need to use find, since object type may not exist.
@@ -448,12 +448,12 @@ std::vector<std::shared_ptr<SaiObj>> AsicView::getObjectsByObjectType(
  * @return List of objects with requested object type and marked
  * as not processed. Order on list is random.
  */
-std::vector<std::shared_ptr<SaiObj>> AsicView::getNotProcessedObjectsByObjectType(
-        _In_ sai_object_type_t object_type) const
+std::vector<std::shared_ptr<OtaiObj>> AsicView::getNotProcessedObjectsByObjectType(
+        _In_ otai_object_type_t object_type) const
 {
     SWSS_LOG_ENTER();
 
-    std::vector<std::shared_ptr<SaiObj>> list;
+    std::vector<std::shared_ptr<OtaiObj>> list;
 
     /*
      * We need to use find, since object type may not exist.
@@ -482,11 +482,11 @@ std::vector<std::shared_ptr<SaiObj>> AsicView::getNotProcessedObjectsByObjectTyp
  *
  * @return List of all not processed objects. Order on list is random.
  */
-std::vector<std::shared_ptr<SaiObj>> AsicView::getAllNotProcessedObjects() const
+std::vector<std::shared_ptr<OtaiObj>> AsicView::getAllNotProcessedObjects() const
 {
     SWSS_LOG_ENTER();
 
-    std::vector<std::shared_ptr<SaiObj>> list;
+    std::vector<std::shared_ptr<OtaiObj>> list;
 
     for (const auto &p: m_soAll)
     {
@@ -509,29 +509,29 @@ std::vector<std::shared_ptr<SaiObj>> AsicView::getAllNotProcessedObjects() const
  * @param[in] rid Real ID
  * @param[in] vid Virtual ID
  */
-std::shared_ptr<SaiObj> AsicView::createDummyExistingObject(
-        _In_ sai_object_id_t rid,
-        _In_ sai_object_id_t vid)
+std::shared_ptr<OtaiObj> AsicView::createDummyExistingObject(
+        _In_ otai_object_id_t rid,
+        _In_ otai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
 
-    sai_object_type_t object_type = VidManager::objectTypeQuery(vid);
+    otai_object_type_t object_type = VidManager::objectTypeQuery(vid);
 
     if (object_type == SAI_OBJECT_TYPE_NULL)
     {
         SWSS_LOG_THROW("got null object type from VID %s",
-                sai_serialize_object_id(vid).c_str());
+                otai_serialize_object_id(vid).c_str());
     }
 
-    std::shared_ptr<SaiObj> o = std::make_shared<SaiObj>();
+    std::shared_ptr<OtaiObj> o = std::make_shared<SaiObj>();
 
-    o->m_str_object_type = sai_serialize_object_type(object_type);
-    o->m_str_object_id   = sai_serialize_object_id(vid);
+    o->m_str_object_type = otai_serialize_object_type(object_type);
+    o->m_str_object_id   = otai_serialize_object_id(vid);
 
     o->m_meta_key.objecttype = object_type;
     o->m_meta_key.objectkey.key.object_id = vid;
 
-    o->m_info = sai_metadata_get_object_type_info(object_type);
+    o->m_info = otai_metadata_get_object_type_info(object_type);
 
     m_soOids[o->m_str_object_id] = o;
     m_oOids[vid] = o;
@@ -561,8 +561,8 @@ std::shared_ptr<SaiObj> AsicView::createDummyExistingObject(
  * @param attr Attribute to be set on current object.
  */
 void AsicView::asicSetAttribute(
-        _In_ const std::shared_ptr<SaiObj> &currentObj,
-        _In_ const std::shared_ptr<SaiAttr> &attr)
+        _In_ const std::shared_ptr<OtaiObj> &currentObj,
+        _In_ const std::shared_ptr<OtaiAttr> &attr)
 {
     SWSS_LOG_ENTER();
 
@@ -578,7 +578,7 @@ void AsicView::asicSetAttribute(
 
     auto meta = attr->getAttrMetadata();
 
-    auto currentAttr = currentObj->tryGetSaiAttr(meta->attrid);
+    auto currentAttr = currentObj->tryGetOtaiAttr(meta->attrid);
 
     if (attr->isObjectIdAttr())
     {
@@ -589,12 +589,12 @@ void AsicView::asicSetAttribute(
              * they are not NULL.
              */
 
-            releaseExisgingLinks(currentObj->getSaiAttr(meta->attrid));
+            releaseExisgingLinks(currentObj->getOtaiAttr(meta->attrid));
         }
 
         currentObj->setAttr(attr);
 
-        bindNewLinks(currentObj->getSaiAttr(meta->attrid));
+        bindNewLinks(currentObj->getOtaiAttr(meta->attrid));
     }
     else
     {
@@ -614,17 +614,17 @@ void AsicView::asicSetAttribute(
         currentObj->setAttr(attr);
     }
 
-    auto entry = SaiAttributeList::serialize_attr_list(
+    auto entry = OtaiAttributeList::serialize_attr_list(
             currentObj->getObjectType(),
             1,
-            attr->getSaiAttr(),
+            attr->getOtaiAttr(),
             false);
 
     std::string key = currentObj->m_str_object_type + ":" + currentObj->m_str_object_id;
 
     auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, "set", entry);
 
-    sai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
+    otai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
 
     m_asicOperations.push_back(AsicOperation(m_asicOperationId, vid, false, kco));
 
@@ -651,7 +651,7 @@ void AsicView::asicSetAttribute(
  * @param currentObject Current object to be created.
  */
 void AsicView::asicCreateObject(
-        _In_ const std::shared_ptr<SaiObj> &currentObj)
+        _In_ const std::shared_ptr<OtaiObj> &currentObj)
 {
     SWSS_LOG_ENTER();
 
@@ -688,17 +688,17 @@ void AsicView::asicCreateObject(
         switch (currentObj->getObjectType())
         {
             case SAI_OBJECT_TYPE_FDB_ENTRY:
-                //sai_deserialize_fdb_entry(currentObj->m_str_object_id, currentObj->m_meta_key.objectkey.key.fdb_entry);
+                //otai_deserialize_fdb_entry(currentObj->m_str_object_id, currentObj->m_meta_key.objectkey.key.fdb_entry);
                 m_soFdbs[currentObj->m_str_object_id] = currentObj;
                 break;
 
             case SAI_OBJECT_TYPE_NEIGHBOR_ENTRY:
-                //sai_deserialize_neighbor_entry(currentObj->m_str_object_id, currentObj->m_meta_key.objectkey.key.neighbor_entry);
+                //otai_deserialize_neighbor_entry(currentObj->m_str_object_id, currentObj->m_meta_key.objectkey.key.neighbor_entry);
                 m_soNeighbors[currentObj->m_str_object_id] = currentObj;
                 break;
 
             case SAI_OBJECT_TYPE_ROUTE_ENTRY:
-                //sai_deserialize_route_entry(currentObj->m_str_object_id, currentObj->m_meta_key.objectkey.key.route_entry);
+                //otai_deserialize_route_entry(currentObj->m_str_object_id, currentObj->m_meta_key.objectkey.key.route_entry);
                 m_soRoutes[currentObj->m_str_object_id] = currentObj;
                 break;
 
@@ -713,7 +713,7 @@ void AsicView::asicCreateObject(
             default:
 
                 SWSS_LOG_THROW("unsupported object type: %s",
-                        sai_serialize_object_type(currentObj->getObjectType()).c_str());
+                        otai_serialize_object_type(currentObj->getObjectType()).c_str());
         }
 
         m_soAll[currentObj->m_str_object_id] = currentObj;
@@ -755,7 +755,7 @@ void AsicView::asicCreateObject(
 
     auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, "create", entry);
 
-    sai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
+    otai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
 
     m_asicOperations.push_back(AsicOperation(m_asicOperationId, vid, false, kco));
 
@@ -768,7 +768,7 @@ void AsicView::asicCreateObject(
  * @param currentObj Current existing object to be removed.
  */
 void AsicView::asicRemoveObject(
-        _In_ const std::shared_ptr<SaiObj> &currentObj)
+        _In_ const std::shared_ptr<OtaiObj> &currentObj)
 {
     SWSS_LOG_ENTER();
 
@@ -810,8 +810,8 @@ void AsicView::asicRemoveObject(
          * Clear object also from rid/vid maps.
          */
 
-        sai_object_id_t vid = currentObj->getVid();
-        sai_object_id_t rid = m_vidToRid.at(vid);
+        otai_object_id_t vid = currentObj->getVid();
+        otai_object_id_t rid = m_vidToRid.at(vid);
 
         /*
          * This will have impact on translate_vid_to_rid, we need to put
@@ -861,7 +861,7 @@ void AsicView::asicRemoveObject(
             default:
 
                 SWSS_LOG_THROW("unsupported object type: %s",
-                        sai_serialize_object_type(currentObj->getObjectType()).c_str());
+                        otai_serialize_object_type(currentObj->getObjectType()).c_str());
         }
 
         m_soAll.erase(currentObj->m_str_object_id);
@@ -882,7 +882,7 @@ void AsicView::asicRemoveObject(
 
     auto kco = std::make_shared<swss::KeyOpFieldsValuesTuple>(key, "remove", entry);
 
-    sai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
+    otai_object_id_t vid = (currentObj->isOidObject()) ? currentObj->getVid() : SAI_NULL_OBJECT_ID;
 
     if (currentObj->isOidObject())
     {
@@ -992,8 +992,8 @@ std::vector<AsicOperation> AsicView::asicGetWithOptimizedRemoveOperations() cons
             auto ot = VidManager::objectTypeQuery(op.m_vid);
 
             SWSS_LOG_INFO("move %s all way up (not in map): %s to index: %zu",
-                    sai_serialize_object_id(op.m_vid).c_str(),
-                    sai_serialize_object_type(ot).c_str(),
+                    otai_serialize_object_id(op.m_vid).c_str(),
+                    otai_serialize_object_type(ot).c_str(),
                     index);
 
             index++;
@@ -1027,13 +1027,13 @@ std::vector<AsicOperation> AsicView::asicGetWithOptimizedRemoveOperations() cons
         if (itr == v.end())
         {
             SWSS_LOG_THROW("something wrong, vid %s in map, but not found on list!",
-                    sai_serialize_object_id(op.m_vid).c_str());
+                    otai_serialize_object_id(op.m_vid).c_str());
         }
 
         if (itr->m_isRemove)
         {
             SWSS_LOG_INFO("previous operation to release reference %s was also REMOVE, we push current REMOVE op at the list end",
-                    sai_serialize_object_id(mit->first).c_str());
+                    otai_serialize_object_id(mit->first).c_str());
 
             /*
              * If previous operation was REMOVE (it could be pushed to
@@ -1066,7 +1066,7 @@ std::vector<AsicOperation> AsicView::asicGetWithOptimizedRemoveOperations() cons
 
         SWSS_LOG_INFO("move 0x%" PRIx64 " in the middle up: %s (last: %zu curr: %zu)",
                 op.m_vid,
-                sai_serialize_object_type(ot).c_str(),
+                otai_serialize_object_type(ot).c_str(),
                 lastOpIdDecRefIndex,
                 index);
 
@@ -1107,7 +1107,7 @@ size_t AsicView::asicGetOperationsCount() const
 }
 
 bool AsicView::hasRid(
-        _In_ sai_object_id_t rid) const
+        _In_ otai_object_id_t rid) const
 {
     SWSS_LOG_ENTER();
 
@@ -1115,7 +1115,7 @@ bool AsicView::hasRid(
 }
 
 bool AsicView::hasVid(
-        _In_ sai_object_id_t vid) const
+        _In_ otai_object_id_t vid) const
 {
     SWSS_LOG_ENTER();
 
@@ -1133,7 +1133,7 @@ void AsicView::dumpRef(const std::string & asicName)
 
     for (auto& kvp: m_vidReference)
     {
-        sai_object_id_t oid = kvp.first;
+        otai_object_id_t oid = kvp.first;
 
         auto ot = VidManager::objectTypeQuery(oid);
 
@@ -1153,8 +1153,8 @@ void AsicView::dumpRef(const std::string & asicName)
         }
 
         SWSS_LOG_NOTICE("ref %s: %s: %d",
-                sai_serialize_object_type(ot).c_str(),
-                sai_serialize_object_id(oid).c_str(),
+                otai_serialize_object_type(ot).c_str(),
+                otai_serialize_object_id(oid).c_str(),
                 kvp.second);
     }
 }
@@ -1168,20 +1168,20 @@ void AsicView::dumpVidToAsicOperatioId() const
         auto ot = VidManager::objectTypeQuery(a.first);
 
         SWSS_LOG_WARN("%d: %s:%s", a.second,
-                sai_serialize_object_type(ot).c_str(),
-                sai_serialize_object_id(a.first).c_str());
+                otai_serialize_object_type(ot).c_str(),
+                otai_serialize_object_id(a.first).c_str());
     }
 }
 
 void AsicView::populateAttributes(
-        _In_ std::shared_ptr<SaiObj> &obj,
+        _In_ std::shared_ptr<OtaiObj> &obj,
         _In_ const swss::TableMap &map)
 {
     SWSS_LOG_ENTER();
 
     for (const auto& field: map)
     {
-        std::shared_ptr<SaiAttr> attr = std::make_shared<SaiAttr>(field.first, field.second);
+        std::shared_ptr<OtaiAttr> attr = std::make_shared<SaiAttr>(field.first, field.second);
 
         if (obj->getObjectType() == SAI_OBJECT_TYPE_ACL_COUNTER)
         {
@@ -1252,25 +1252,25 @@ void AsicView::populateAttributes(
  * @param value Value by which reference will be updated. Can be negative.
  */
 void AsicView::updateNonObjectIdVidReferenceCountByValue(
-        _In_ const std::shared_ptr<SaiObj> &currentObj,
+        _In_ const std::shared_ptr<OtaiObj> &currentObj,
         _In_ int value)
 {
     SWSS_LOG_ENTER();
 
     for (size_t j = 0; j < currentObj->m_info->structmemberscount; ++j)
     {
-        const sai_struct_member_info_t *m = currentObj->m_info->structmembers[j];
+        const otai_struct_member_info_t *m = currentObj->m_info->structmembers[j];
 
         if (m->membervaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
         {
-            sai_object_id_t vid = m->getoid(&currentObj->m_meta_key);
+            otai_object_id_t vid = m->getoid(&currentObj->m_meta_key);
 
             m_vidReference[vid] += value;
 
             if (m_enableRefernceCountLogs)
             {
                 SWSS_LOG_WARN("updated vid %s reference to %d",
-                        sai_serialize_object_id(vid).c_str(),
+                        otai_serialize_object_id(vid).c_str(),
                         m_vidReference[vid]);
             }
 
@@ -1297,7 +1297,7 @@ void AsicView::checkObjectsStatus() const
             SWSS_LOG_ERROR("object was not processed: %s %s, status: %s (ref: %d)",
                     o.m_str_object_type.c_str(),
                     o.m_str_object_id.c_str(),
-                    ObjectStatus::sai_serialize_object_status(o.getObjectStatus()).c_str(),
+                    ObjectStatus::otai_serialize_object_status(o.getObjectStatus()).c_str(),
                     o.isOidObject() ? getVidReferenceCount(o.getVid()): -1);
 
             count++;
@@ -1310,7 +1310,7 @@ void AsicView::checkObjectsStatus() const
     }
 }
 
-sai_object_id_t AsicView::getSwitchVid() const
+otai_object_id_t AsicView::getSwitchVid() const
 {
     SWSS_LOG_ENTER();
 

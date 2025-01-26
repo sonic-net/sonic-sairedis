@@ -1,4 +1,4 @@
-#include "sairediscommon.h"
+#include "otairediscommon.h"
 
 #include "CommandLineOptionsParser.h"
 #include "Syncd.h"
@@ -7,15 +7,15 @@
 
 #include "swss/warm_restart.h"
 
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
 #include <utility>
 #include <algorithm>
-#include <switch_sai_rpc_server.h>
-#endif // SAITHRIFT
+#include <switch_otai_rpc_server.h>
+#endif // OTAITHRIFT
 
-#ifdef SAITHRIFT
-#define SWITCH_SAI_THRIFT_RPC_SERVER_PORT 9092
-#endif // SAITHRIFT
+#ifdef OTAITHRIFT
+#define SWITCH_OTAI_THRIFT_RPC_SERVER_PORT 9092
+#endif // OTAITHRIFT
 
 using namespace syncd;
 
@@ -46,7 +46,7 @@ int syncd_main(int argc, char **argv)
 
     auto commandLineOptions = CommandLineOptionsParser::parseCommandLine(argc, argv);
 
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
 
     if (commandLineOptions->m_portMapFile.size() > 0)
     {
@@ -57,16 +57,16 @@ int syncd_main(int argc, char **argv)
 
     if (commandLineOptions->m_runRPCServer)
     {
-        start_sai_thrift_rpc_server(SWITCH_SAI_THRIFT_RPC_SERVER_PORT);
+        start_otai_thrift_rpc_server(SWITCH_OTAI_THRIFT_RPC_SERVER_PORT);
 
         SWSS_LOG_NOTICE("rpcserver started");
     }
 
-#endif // SAITHRIFT
+#endif // OTAITHRIFT
 
-    auto vendorSai = std::make_shared<VendorSai>();
+    auto vendorOtai = std::make_shared<VendorOtai>();
 
-    auto syncd = std::make_shared<Syncd>(vendorSai, commandLineOptions, isWarmStart);
+    auto syncd = std::make_shared<Syncd>(vendorOtai, commandLineOptions, isWarmStart);
 
     syncd->run();
 

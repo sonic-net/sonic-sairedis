@@ -1,13 +1,13 @@
 #pragma once
 
 extern "C" {
-#include "sai.h"
+#include "otai.h"
 }
 
-#include "meta/SaiInterface.h"
+#include "meta/OtaiInterface.h"
 #include "VirtualOidTranslator.h"
 #include "RedisClient.h"
-#include "SaiSwitchInterface.h"
+#include "OtaiSwitchInterface.h"
 
 #include <set>
 #include <string>
@@ -18,33 +18,33 @@ extern "C" {
 
 namespace syncd
 {
-    class SaiSwitch:
-        public SaiSwitchInterface
+    class OtaiSwitch:
+        public OtaiSwitchInterface
     {
         private:
 
-            SaiSwitch(const SaiSwitch&);
-            SaiSwitch& operator=(const SaiSwitch&);
+            OtaiSwitch(const SaiSwitch&);
+            OtaiSwitch& operator=(const SaiSwitch&);
 
         public:
 
-            SaiSwitch(
-                    _In_ sai_object_id_t switch_vid,
-                    _In_ sai_object_id_t switch_rid,
+            OtaiSwitch(
+                    _In_ otai_object_id_t switch_vid,
+                    _In_ otai_object_id_t switch_rid,
                     _In_ std::shared_ptr<RedisClient> client,
                     _In_ std::shared_ptr<VirtualOidTranslator> translator,
-                    _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
+                    _In_ std::shared_ptr<otairedis::OtaiInterface> vendorSai,
                     _In_ bool warmBoot = false);
 
-            virtual ~SaiSwitch() = default;
+            virtual ~OtaiSwitch() = default;
 
         public:
 
             std::string getHardwareInfo() const;
 
-            virtual std::unordered_map<sai_object_id_t, sai_object_id_t> getVidToRidMap() const override;
+            virtual std::unordered_map<otai_object_id_t, otai_object_id_t> getVidToRidMap() const override;
 
-            virtual std::unordered_map<sai_object_id_t, sai_object_id_t> getRidToVidMap() const override;
+            virtual std::unordered_map<otai_object_id_t, otai_object_id_t> getRidToVidMap() const override;
 
             /**
              * @brief Indicates whether RID was discovered on switch init.
@@ -61,7 +61,7 @@ namespace syncd
              * @return True if RID was discovered during init.
              */
             virtual bool isDiscoveredRid(
-                    _In_ sai_object_id_t rid) const override;
+                    _In_ otai_object_id_t rid) const override;
 
             /**
              * @brief Indicates whether RID was discovered on switch init at cold boot.
@@ -75,7 +75,7 @@ namespace syncd
              * @return True if RID was discovered during cold boot init.
              */
             virtual bool isColdBootDiscoveredRid(
-                    _In_ sai_object_id_t rid) const override;
+                    _In_ otai_object_id_t rid) const override;
 
             /**
              * @brief Indicates whether RID is one of default switch objects
@@ -86,7 +86,7 @@ namespace syncd
              * @return True if object is default switch object.
              */
             virtual bool isSwitchObjectDefaultRid(
-                    _In_ sai_object_id_t rid) const override;
+                    _In_ otai_object_id_t rid) const override;
 
             /**
              * @brief Indicates whether object can't be removed.
@@ -103,7 +103,7 @@ namespace syncd
              * @return True if object can't be removed from switch.
              */
             virtual bool isNonRemovableRid(
-                    _In_ sai_object_id_t rid) const override;
+                    _In_ otai_object_id_t rid) const override;
 
             /*
              * Redis Static Methods.
@@ -121,7 +121,7 @@ namespace syncd
              *
              * @returns Discovered objects during switch init.
              */
-            virtual std::set<sai_object_id_t> getDiscoveredRids() const override;
+            virtual std::set<otai_object_id_t> getDiscoveredRids() const override;
 
             /**
              * @brief Remove existing object from the switch.
@@ -132,7 +132,7 @@ namespace syncd
              * @param rid Real object ID.
              */
             virtual void removeExistingObject(
-                    _In_ sai_object_id_t rid) override;
+                    _In_ otai_object_id_t rid) override;
 
             /**
              * @brief Remove existing object reference only from discovery map.
@@ -143,7 +143,7 @@ namespace syncd
              * @param rid Real object ID.
              */
             virtual void removeExistingObjectReference(
-                    _In_ sai_object_id_t rid) override;
+                    _In_ otai_object_id_t rid) override;
 
             /**
              * @brief Gets switch default MAC address.
@@ -151,7 +151,7 @@ namespace syncd
              * @param[out] mac MAC address to be obtained.
              */
             virtual void getDefaultMacAddress(
-                    _Out_ sai_mac_t& mac) const override;
+                    _Out_ otai_mac_t& mac) const override;
 
             /**
              * @brief Gets default value of attribute for given object.
@@ -161,23 +161,23 @@ namespace syncd
              *
              * If object or attribute is not found, SAI_NULL_OBJECT_ID is returned.
              */
-            virtual sai_object_id_t getDefaultValueForOidAttr(
-                    _In_ sai_object_id_t rid,
-                    _In_ sai_attr_id_t attr_id) override;
+            virtual otai_object_id_t getDefaultValueForOidAttr(
+                    _In_ otai_object_id_t rid,
+                    _In_ otai_attr_id_t attr_id) override;
 
             /**
              * @brief Get cold boot discovered VIDs.
              *
              * @return Set of cold boot discovered VIDs after cold boot.
              */
-            virtual std::set<sai_object_id_t> getColdBootDiscoveredVids() const override;
+            virtual std::set<otai_object_id_t> getColdBootDiscoveredVids() const override;
 
             /**
              * @brief Get warm boot discovered VIDs.
              *
              * @return Set of warm boot discovered VIDs after warm boot.
              */
-            virtual std::set<sai_object_id_t> getWarmBootDiscoveredVids() const override;
+            virtual std::set<otai_object_id_t> getWarmBootDiscoveredVids() const override;
 
             /**
              * @brief On post port create.
@@ -187,8 +187,8 @@ namespace syncd
              * and updated ASIC DB accordingly.
              */
             virtual void onPostPortCreate(
-                    _In_ sai_object_id_t port_rid,
-                    _In_ sai_object_id_t port_vid) override;
+                    _In_ otai_object_id_t port_rid,
+                    _In_ otai_object_id_t port_vid) override;
 
             /**
              * @brief Post port remove.
@@ -197,10 +197,10 @@ namespace syncd
              * with port from redis lane map.
              */
             virtual void postPortRemove(
-                    _In_ sai_object_id_t portRid) override;
+                    _In_ otai_object_id_t portRid) override;
 
             virtual void collectPortRelatedObjects(
-                    _In_ sai_object_id_t portRid) override;
+                    _In_ otai_object_id_t portRid) override;
 
         private:
 
@@ -208,13 +208,13 @@ namespace syncd
              * SAI Methods.
              */
 
-            sai_uint32_t saiGetPortCount() const;
+            otai_uint32_t otaiGetPortCount() const;
 
-            std::string saiGetHardwareInfo() const;
+            std::string otaiGetHardwareInfo() const;
 
-            std::vector<sai_object_id_t> saiGetPortList() const;
+            std::vector<otai_object_id_t> otaiGetPortList() const;
 
-            std::unordered_map<sai_uint32_t, sai_object_id_t> saiGetHardwareLaneMap() const;
+            std::unordered_map<otai_uint32_t, otai_object_id_t> otaiGetHardwareLaneMap() const;
 
             /**
              * @brief Get port lanes for specific port.
@@ -223,8 +223,8 @@ namespace syncd
              *
              * @returns Lanes vector.
              */
-            std::vector<uint32_t> saiGetPortLanes(
-                    _In_ sai_object_id_t port_rid);
+            std::vector<uint32_t> otaiGetPortLanes(
+                    _In_ otai_object_id_t port_rid);
 
             /**
              * @brief Get MAC address.
@@ -235,13 +235,13 @@ namespace syncd
              *
              * @param[out] mac Obtained MAC address.
              */
-            void saiGetMacAddress(
-                    _Out_ sai_mac_t &mac) const;
+            void otaiGetMacAddress(
+                    _Out_ otai_mac_t &mac) const;
 
         private:
 
             void redisSetDummyAsicStateForRealObjectId(
-                    _In_ sai_object_id_t rid) const;
+                    _In_ otai_object_id_t rid) const;
 
             /**
              * @brief Put cold boot discovered VIDs to redis DB.
@@ -259,7 +259,7 @@ namespace syncd
              * @param port_rid Port RID for which lane map should be updated
              */
             void redisUpdatePortLaneMap(
-                    _In_ sai_object_id_t port_rid);
+                    _In_ otai_object_id_t port_rid);
 
             /*
              * Helper Methods.
@@ -267,13 +267,13 @@ namespace syncd
 
             void helperCheckLaneMap();
 
-            sai_object_id_t helperGetSwitchAttrOid(
-                    _In_ sai_attr_id_t attr_id);
+            otai_object_id_t helperGetSwitchAttrOid(
+                    _In_ otai_attr_id_t attr_id);
 
             /**
              * @brief Discover helper.
              *
-             * Method will call saiDiscovery and collect all discovered objects.
+             * Method will call otaiDiscovery and collect all discovered objects.
              */
             void helperDiscover();
 
@@ -282,7 +282,7 @@ namespace syncd
             void helperInternalOids();
 
             void redisSaveInternalOids(
-                     _In_ sai_object_id_t rid) const;
+                     _In_ otai_object_id_t rid) const;
 
             void helperLoadColdVids();
 
@@ -294,13 +294,13 @@ namespace syncd
 
             void checkWarmBootDiscoveredRids();
 
-            sai_switch_type_t getSwitchType() const;
+            otai_switch_type_t getSwitchType() const;
 
         private:
 
             std::string m_hardware_info;
 
-            sai_mac_t m_default_mac_address;
+            otai_mac_t m_default_mac_address;
 
             /*
              * NOTE: Those default value will make sense only when we will do hard
@@ -315,7 +315,7 @@ namespace syncd
             /**
              * @brief Discovered objects.
              *
-             * Set of object IDs discovered after calling saiDiscovery method.
+             * Set of object IDs discovered after calling otaiDiscovery method.
              * This set will contain all objects present on the switch right after
              * switch init.
              *
@@ -323,7 +323,7 @@ namespace syncd
              * switch was in WARM boot mode. This set can also change if user
              * decides to remove some objects like VLAN_MEMBER.
              */
-            std::set<sai_object_id_t> m_discovered_rids;
+            std::set<otai_object_id_t> m_discovered_rids;
 
             /**
              * @brief Default oid map.
@@ -342,13 +342,13 @@ namespace syncd
              *
              * m_defaultOidMap[0x17][SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID] == 0x16
              */
-            std::unordered_map<sai_object_id_t, std::unordered_map<sai_attr_id_t, sai_object_id_t>> m_defaultOidMap;
+            std::unordered_map<otai_object_id_t, std::unordered_map<otai_attr_id_t, otai_object_id_t>> m_defaultOidMap;
 
-            std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
+            std::shared_ptr<otairedis::OtaiInterface> m_vendorSai;
 
             bool m_warmBoot;
 
-            std::map<sai_object_id_t, std::set<sai_object_id_t>> m_portRelatedObjects;
+            std::map<otai_object_id_t, std::set<otai_object_id_t>> m_portRelatedObjects;
 
             std::shared_ptr<VirtualOidTranslator> m_translator;
 

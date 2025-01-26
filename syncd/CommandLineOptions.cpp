@@ -1,6 +1,6 @@
 #include "CommandLineOptions.h"
 
-#include "meta/sai_serialize.h"
+#include "meta/otai_serialize.h"
 
 #include "swss/logger.h"
 
@@ -20,11 +20,11 @@ CommandLineOptions::CommandLineOptions()
     m_enableUnittests = false;
     m_enableConsistencyCheck = false;
     m_enableSyncMode = false;
-    m_enableSaiBulkSupport = false;
+    m_enableOtaiBulkSupport = false;
 
-    m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC;
+    m_redisCommunicationMode = OTAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC;
 
-    m_startType = SAI_START_TYPE_COLD_BOOT;
+    m_startType = OTAI_START_TYPE_COLD_BOOT;
 
     m_profileMapFile = "";
 
@@ -36,13 +36,13 @@ CommandLineOptions::CommandLineOptions()
 
     m_watchdogWarnTimeSpan = 30 * 1000000;
 
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
 
     m_runRPCServer = false;
 
     m_portMapFile = "";
 
-#endif // SAITHRIFT
+#endif // OTAITHRIFT
 
 }
 
@@ -58,8 +58,8 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " EnableUnittests=" << (m_enableUnittests ? "YES" : "NO");
     ss << " EnableConsistencyCheck=" << (m_enableConsistencyCheck ? "YES" : "NO");
     ss << " EnableSyncMode=" << (m_enableSyncMode ? "YES" : "NO");
-    ss << " RedisCommunicationMode=" << sai_serialize_redis_communication_mode(m_redisCommunicationMode);
-    ss << " EnableSaiBulkSuport=" << (m_enableSaiBulkSupport ? "YES" : "NO");
+    ss << " RedisCommunicationMode=" << otai_serialize_redis_communication_mode(m_redisCommunicationMode);
+    ss << " EnableOtaiBulkSuport=" << (m_enableOtaiBulkSupport ? "YES" : "NO");
     ss << " StartType=" << startTypeToString(m_startType);
     ss << " ProfileMapFile=" << m_profileMapFile;
     ss << " GlobalContext=" << m_globalContext;
@@ -68,73 +68,73 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " WatchdogWarnTimeSpan=" << m_watchdogWarnTimeSpan;
     ss << " SupportingBulkCounters=" << m_supportingBulkCounterGroups;
 
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
 
     ss << " RunRPCServer=" << (m_runRPCServer ? "YES" : "NO");
     ss << " PortMapFile=" << m_portMapFile;
 
-#endif // SAITHRIFT
+#endif // OTAITHRIFT
 
     return ss.str();
 }
 
-sai_start_type_t CommandLineOptions::startTypeStringToStartType(
+otai_start_type_t CommandLineOptions::startTypeStringToStartType(
         _In_ const std::string& startType)
 {
     SWSS_LOG_ENTER();
 
-    if (startType == STRING_SAI_START_TYPE_COLD_BOOT)
-        return SAI_START_TYPE_COLD_BOOT;
+    if (startType == STRING_OTAI_START_TYPE_COLD_BOOT)
+        return OTAI_START_TYPE_COLD_BOOT;
 
-    if (startType == STRING_SAI_START_TYPE_WARM_BOOT)
-        return SAI_START_TYPE_WARM_BOOT;
+    if (startType == STRING_OTAI_START_TYPE_WARM_BOOT)
+        return OTAI_START_TYPE_WARM_BOOT;
 
-    if (startType == STRING_SAI_START_TYPE_FAST_BOOT)
-        return SAI_START_TYPE_FAST_BOOT;
+    if (startType == STRING_OTAI_START_TYPE_FAST_BOOT)
+        return OTAI_START_TYPE_FAST_BOOT;
 
-    if (startType == STRING_SAI_START_TYPE_FASTFAST_BOOT)
-        return SAI_START_TYPE_FASTFAST_BOOT;
+    if (startType == STRING_OTAI_START_TYPE_FASTFAST_BOOT)
+        return OTAI_START_TYPE_FASTFAST_BOOT;
 
-    if (startType == STRING_SAI_START_TYPE_EXPRESS_BOOT)
-        return SAI_START_TYPE_EXPRESS_BOOT;
+    if (startType == STRING_OTAI_START_TYPE_EXPRESS_BOOT)
+        return OTAI_START_TYPE_EXPRESS_BOOT;
 
-    if (startType == STRING_SAI_START_TYPE_UNKNOWN)
-        return SAI_START_TYPE_UNKNOWN;
+    if (startType == STRING_OTAI_START_TYPE_UNKNOWN)
+        return OTAI_START_TYPE_UNKNOWN;
 
     SWSS_LOG_WARN("unknown startType: '%s'", startType.c_str());
 
-    return SAI_START_TYPE_UNKNOWN;
+    return OTAI_START_TYPE_UNKNOWN;
 }
 
 std::string CommandLineOptions::startTypeToString(
-        _In_ sai_start_type_t startType)
+        _In_ otai_start_type_t startType)
 {
     SWSS_LOG_ENTER();
 
     switch (startType)
     {
-        case SAI_START_TYPE_COLD_BOOT:
-            return  STRING_SAI_START_TYPE_COLD_BOOT;
+        case OTAI_START_TYPE_COLD_BOOT:
+            return  STRING_OTAI_START_TYPE_COLD_BOOT;
 
-        case SAI_START_TYPE_WARM_BOOT:
-            return STRING_SAI_START_TYPE_WARM_BOOT;
+        case OTAI_START_TYPE_WARM_BOOT:
+            return STRING_OTAI_START_TYPE_WARM_BOOT;
 
-        case SAI_START_TYPE_FAST_BOOT:
-            return STRING_SAI_START_TYPE_FAST_BOOT;
+        case OTAI_START_TYPE_FAST_BOOT:
+            return STRING_OTAI_START_TYPE_FAST_BOOT;
 
-        case SAI_START_TYPE_FASTFAST_BOOT:
-            return STRING_SAI_START_TYPE_FASTFAST_BOOT;
+        case OTAI_START_TYPE_FASTFAST_BOOT:
+            return STRING_OTAI_START_TYPE_FASTFAST_BOOT;
 
-        case SAI_START_TYPE_EXPRESS_BOOT:
-            return STRING_SAI_START_TYPE_EXPRESS_BOOT;
+        case OTAI_START_TYPE_EXPRESS_BOOT:
+            return STRING_OTAI_START_TYPE_EXPRESS_BOOT;
 
-        case SAI_START_TYPE_UNKNOWN:
-            return STRING_SAI_START_TYPE_UNKNOWN;
+        case OTAI_START_TYPE_UNKNOWN:
+            return STRING_OTAI_START_TYPE_UNKNOWN;
 
         default:
 
             SWSS_LOG_WARN("unknown startType '%d'", startType);
 
-            return STRING_SAI_START_TYPE_UNKNOWN;
+            return STRING_OTAI_START_TYPE_UNKNOWN;
     }
 }

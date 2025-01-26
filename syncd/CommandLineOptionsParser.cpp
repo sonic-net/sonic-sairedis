@@ -1,6 +1,6 @@
 #include "CommandLineOptionsParser.h"
 
-#include "meta/sai_serialize.h"
+#include "meta/otai_serialize.h"
 
 #include "swss/logger.h"
 
@@ -18,11 +18,11 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     auto options = std::make_shared<CommandLineOptions>();
 
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
     const char* const optstring = "dp:t:g:x:b:B:w:uSUCsz:lrm:h";
 #else
     const char* const optstring = "dp:t:g:x:b:B:w:uSUCsz:lh";
-#endif // SAITHRIFT
+#endif // OTAITHRIFT
 
     while (true)
     {
@@ -37,16 +37,16 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "enableConsistencyCheck",  no_argument,       0, 'C' },
             { "syncMode",                no_argument,       0, 's' },
             { "redisCommunicationMode",  required_argument, 0, 'z' },
-            { "enableSaiBulkSupport",    no_argument,       0, 'l' },
+            { "enableOtaiBulkSupport",    no_argument,       0, 'l' },
             { "globalContext",           required_argument, 0, 'g' },
             { "contextContig",           required_argument, 0, 'x' },
             { "breakConfig",             required_argument, 0, 'b' },
             { "watchdogWarnTimeSpan",    optional_argument, 0, 'w' },
             { "supportingBulkCounters",  required_argument, 0, 'B' },
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
-#endif // SAITHRIFT
+#endif // OTAITHRIFT
             { "help",                    no_argument,       0, 'h' },
             { 0,                         0,                 0,  0  }
         };
@@ -73,7 +73,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             case 't':
                 options->m_startType = CommandLineOptions::startTypeStringToStartType(optarg);
 
-                if (options->m_startType == SAI_START_TYPE_UNKNOWN)
+                if (options->m_startType == OTAI_START_TYPE_UNKNOWN)
                 {
                     SWSS_LOG_ERROR("unknown start type '%s'", optarg);
                     exit(EXIT_FAILURE);
@@ -102,11 +102,11 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 break;
 
             case 'z':
-                sai_deserialize_redis_communication_mode(optarg, options->m_redisCommunicationMode);
+                otai_deserialize_redis_communication_mode(optarg, options->m_redisCommunicationMode);
                 break;
 
             case 'l':
-                options->m_enableSaiBulkSupport = true;
+                options->m_enableOtaiBulkSupport = true;
                 break;
 
             case 'g':
@@ -125,14 +125,14 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 options->m_watchdogWarnTimeSpan = (int64_t)std::stoll(optarg);
                 break;
 
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
             case 'r':
                 options->m_runRPCServer = true;
                 break;
             case 'm':
                 options->m_portMapFile = std::string(optarg);
                 break;
-#endif // SAITHRIFT
+#endif // OTAITHRIFT
 
             case 'B':
                 options->m_supportingBulkCounterGroups = std::string(optarg);
@@ -160,11 +160,11 @@ void CommandLineOptionsParser::printUsage()
 {
     SWSS_LOG_ENTER();
 
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
     std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-r] [-m portmap] [-h]" << std::endl;
 #else
     std::cout << "Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [-l] [-g idx] [-x contextConfig] [-b breakConfig] [-B supportingBulkCounters] [-h]" << std::endl;
-#endif // SAITHRIFT
+#endif // OTAITHRIFT
 
     std::cout << "    -d --diag" << std::endl;
     std::cout << "        Enable diagnostic shell" << std::endl;
@@ -185,7 +185,7 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "    -z --redisCommunicationMode" << std::endl;
     std::cout << "        Redis communication mode (redis_async|redis_sync|zmq_sync), default: redis_async" << std::endl;
     std::cout << "    -l --enableBulk" << std::endl;
-    std::cout << "        Enable SAI Bulk support" << std::endl;
+    std::cout << "        Enable OTAI Bulk support" << std::endl;
     std::cout << "    -g --globalContext" << std::endl;
     std::cout << "        Global context index to load from context config file" << std::endl;
     std::cout << "    -x --contextConfig" << std::endl;
@@ -197,14 +197,14 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "    -B --supportingBulkCounters" << std::endl;
     std::cout << "        Counter groups those support bulk polling" << std::endl;
 
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
 
     std::cout << "    -r --rpcserver" << std::endl;
     std::cout << "        Enable rpcserver" << std::endl;
     std::cout << "    -m --portmap portmap" << std::endl;
     std::cout << "        Specify port map file" << std::endl;
 
-#endif // SAITHRIFT
+#endif // OTAITHRIFT
 
     std::cout << "    -h --help" << std::endl;
     std::cout << "        Print out this message" << std::endl;

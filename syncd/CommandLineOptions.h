@@ -1,46 +1,46 @@
 #pragma once
 
-#include "sairedis.h"
+#include "otairedis.h"
 
 #include "swss/sal.h"
 
 #include <string>
 
-#define STRING_SAI_START_TYPE_COLD_BOOT         "cold"
-#define STRING_SAI_START_TYPE_WARM_BOOT         "warm"
-#define STRING_SAI_START_TYPE_FAST_BOOT         "fast"
-#define STRING_SAI_START_TYPE_FASTFAST_BOOT     "fastfast"
-#define STRING_SAI_START_TYPE_EXPRESS_BOOT      "express"
-#define STRING_SAI_START_TYPE_UNKNOWN           "unknown"
+#define STRING_OTAI_START_TYPE_COLD_BOOT         "cold"
+#define STRING_OTAI_START_TYPE_WARM_BOOT         "warm"
+#define STRING_OTAI_START_TYPE_FAST_BOOT         "fast"
+#define STRING_OTAI_START_TYPE_FASTFAST_BOOT     "fastfast"
+#define STRING_OTAI_START_TYPE_EXPRESS_BOOT      "express"
+#define STRING_OTAI_START_TYPE_UNKNOWN           "unknown"
 
 namespace syncd
 {
-    typedef enum _sai_start_type_t
+    typedef enum _otai_start_type_t
     {
-        SAI_START_TYPE_COLD_BOOT = 0,
+        OTAI_START_TYPE_COLD_BOOT = 0,
 
-        SAI_START_TYPE_WARM_BOOT = 1,
+        OTAI_START_TYPE_WARM_BOOT = 1,
 
-        SAI_START_TYPE_FAST_BOOT = 2,
+        OTAI_START_TYPE_FAST_BOOT = 2,
 
         /**
          * A special type of boot used by Mellanox platforms to start in 'fastfast'
          * boot mode
          */
-        SAI_START_TYPE_FASTFAST_BOOT = 3,
+        OTAI_START_TYPE_FASTFAST_BOOT = 3,
 
         /**
          * A special type of boot used by Cisco platforms to start in 'express'
          * boot mode
          */
-        SAI_START_TYPE_EXPRESS_BOOT = 4,
+        OTAI_START_TYPE_EXPRESS_BOOT = 4,
 
         /**
          * Set at last, just for error purpose.
          */
-        SAI_START_TYPE_UNKNOWN
+        OTAI_START_TYPE_UNKNOWN
 
-    } sai_start_type_t;
+    } otai_start_type_t;
 
     class CommandLineOptions
     {
@@ -56,11 +56,11 @@ namespace syncd
 
         public:
 
-            static sai_start_type_t startTypeStringToStartType(
+            static otai_start_type_t startTypeStringToStartType(
                     _In_ const std::string& startType);
 
             static std::string startTypeToString(
-                    _In_ sai_start_type_t startType);
+                    _In_ otai_start_type_t startType);
 
         public:
 
@@ -77,11 +77,11 @@ namespace syncd
 
             bool m_enableSyncMode;
 
-            bool m_enableSaiBulkSupport;
+            bool m_enableOtaiBulkSupport;
 
-            sai_redis_communication_mode_t m_redisCommunicationMode;
+            otai_redis_communication_mode_t m_redisCommunicationMode;
 
-            sai_start_type_t m_startType;
+            otai_start_type_t m_startType;
 
             std::string m_profileMapFile;
 
@@ -93,10 +93,10 @@ namespace syncd
 
             int64_t m_watchdogWarnTimeSpan;
 
-#ifdef SAITHRIFT
+#ifdef OTAITHRIFT
             bool m_runRPCServer;
             std::string m_portMapFile;
-#endif // SAITHRIFT
+#endif // OTAITHRIFT
 
             std::string m_supportingBulkCounterGroups;
 

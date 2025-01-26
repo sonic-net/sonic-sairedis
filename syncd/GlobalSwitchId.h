@@ -1,7 +1,7 @@
 #pragma once
 
 extern "C" {
-#include "sai.h"
+#include "otai.h"
 }
 
 namespace syncd
@@ -16,6 +16,6 @@ namespace syncd
         public:
 
             static void setSwitchId(
-                    _In_ sai_object_id_t switchRid);
+                    _In_ otai_object_id_t switchRid);
     };
 }

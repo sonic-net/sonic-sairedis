@@ -6,7 +6,7 @@ using namespace syncd;
 
 AsicOperation::AsicOperation(
         _In_ int id,
-        _In_ sai_object_id_t vid,
+        _In_ otai_object_id_t vid,
         _In_ bool remove,
         _In_ std::shared_ptr<swss::KeyOpFieldsValuesTuple>& operation):
     m_opId(id),
