@@ -12,7 +12,7 @@ use Term::ANSIColor;
 my %options = ();
 getopts("d:c:n:f:s:", \%options);
 
-my $optionSaiDir        = $options{d} if defined $options{d};
+my $optionOtaiDir        = $options{d} if defined $options{d};
 my $optionClass         = $options{c} if defined $options{c};
 my $optionNamespace     = $options{n} if defined $options{n};
 my $optionFileName      = $options{f} if defined $options{f};
@@ -82,7 +82,7 @@ sub GetFunctionCamelCaseName
 {
     my $fun = shift;
 
-    $fun =~ s/^sai_//;
+    $fun =~ s/^otai_//;
 
     my @tokens = split/_/,$fun;
 
@@ -99,46 +99,46 @@ sub GetFunctionCamelCaseName
 
 sub GetData
 {
-    $DATA = `cat $optionSaiDir/inc/sai*.h $optionSaiDir/experimental/sai*.h`;
+    $DATA = `cat $optionOtaiDir/inc/otai*.h $optionOtaiDir/experimental/otai*.h`;
 }
 
 sub SanitizeData
 {
-    $DATA =~ s/SAI_OBJECT_TYPE_\w*(START|END|NULL|MAX)//gms;
-    $DATA =~ s/SAI_API_\w*(START|END|UNSPECIFIED|MAX|EXTENSIONS_RANGE_BASE)//gms;
+    $DATA =~ s/OTAI_OBJECT_TYPE_\w*(START|END|NULL|MAX)//gms;
+    $DATA =~ s/OTAI_API_\w*(START|END|UNSPECIFIED|MAX|EXTENSIONS_RANGE_BASE)//gms;
 }
 
 sub ExtractData
 {
-    @OBJECT_TYPES = $DATA =~ /^\s+SAI_OBJECT_TYPE\_(\w+)/gms;
-    @APIS = $DATA =~ /^\s+SAI_API\_(\w+)/gms;
+    @OBJECT_TYPES = $DATA =~ /^\s+OTAI_OBJECT_TYPE\_(\w+)/gms;
+    @APIS = $DATA =~ /^\s+OTAI_API\_(\w+)/gms;
 
     for my $ot (@OBJECT_TYPES)
     {
         $objectTypes{lc$ot} = $ot;
     }
 
-    @FUNCTIONS = $DATA =~ /(typedef sai_status_t \(\*(?:sai_\w+_fn)\).*?\))/gms;
+    @FUNCTIONS = $DATA =~ /(typedef otai_status_t \(\*(?:otai_\w+_fn)\).*?\))/gms;
 
-    @globalApis = $DATA =~ /^((?:sai_\w+)\s+(?:sai_\w+).+?\))/gms;
+    @globalApis = $DATA =~ /^((?:otai_\w+)\s+(?:otai_\w+).+?\))/gms;
 
     for my $fun (@FUNCTIONS)
     {
-        next if not $fun =~ /sai_\w+\s+.*?(sai_\w+)/gms;
+        next if not $fun =~ /otai_\w+\s+.*?(otai_\w+)/gms;
 
         $FUNCTIONS{$1} = $fun;
     }
 
-    @apiStructs = $DATA =~ /(_sai_\w+_api_t.+?sai_\w+_api_t)/gms;
+    @apiStructs = $DATA =~ /(_otai_\w+_api_t.+?otai_\w+_api_t)/gms;
 
     for my $struct (@apiStructs)
     {
-        next if not $struct =~ /sai_(\w+)_api_t/;
+        next if not $struct =~ /otai_(\w+)_api_t/;
 
         $apiStructs{$1} = $struct;
     }
 
-    my @entries = $DATA =~ /\bsai_(\w+_entry)_t\b/gms;
+    my @entries = $DATA =~ /\botai_(\w+_entry)_t\b/gms;
 
     for my $e (@entries)
     {
@@ -222,14 +222,14 @@ sub CreateApiStricts()
         my $api = lc $API;
 
         Write "";
-        Write "/* SAI APIS for $API */";
+        Write "/* OTAI APIS for $API */";
         Write "";
 
         my $struct = $apiStructs{$api};
 
         LogError "api $api not found" if not defined $struct;
 
-        while ($struct =~ /(sai_\w+_fn)\s+(\w+)/gms)
+        while ($struct =~ /(otai_\w+_fn)\s+(\w+)/gms)
         {
             my $type = $1;
             my $funname = $2;
@@ -238,7 +238,7 @@ sub CreateApiStricts()
 
             LogError "function $fun not found" if not defined $fun;
 
-            next if not $fun =~ /(sai_\w+).+\((.+?)\)/gms;
+            next if not $fun =~ /(otai_\w+).+\((.+?)\)/gms;
 
             my $rettype = $1;
             my $params = $2;
@@ -246,7 +246,8 @@ sub CreateApiStricts()
 
             my ($OT, $fname, $entry, $bulk) = GetFunctionName($funname);
 
-            $par[0] = "switch_id,SAI_NULL_OBJECT_ID," if $OT eq "SWITCH" and $bulk == 0 and $fname eq "create";
+            #$par[0] = "switch_id,OTAI_NULL_OBJECT_ID," if $OT eq "SWITCH" and $bulk == 0 and $fname eq "create";
+            $par[0] = "linecard_id,OTAI_NULL_OBJECT_ID," if $OT eq "LINECARD" and $bulk == 0 and $fname eq "create";
 
             Write "static $rettype ${STUB}_$funname($params)";
             Write "{";
@@ -256,23 +257,26 @@ sub CreateApiStricts()
             if ($fname =~ /(clearPortAllStats|removeAllNeighborEntries|recvHostifPacket|sendHostifPacket|allocateHostifPacket|freeHostifPacket)/)
             {
                 Write "    SWSS_LOG_ERROR(\"FIXME, no implementation for $fname!\");";
-                Write "    return SAI_STATUS_NOT_IMPLEMENTED;";
+                Write "    return OTAI_STATUS_NOT_IMPLEMENTED;";
                 Write "}";
                 next;
             }
 
+            $params =~ s/\bcounters\b/(uint64_t*)counters/g;
+            my @par = $params =~ /(\w+,|\w+$)/gms;
+
             Write "    return $STUB" . "->$fname(@par);" if $OT eq "";
             Write "    return $STUB" . "->$fname(@par);" if $OT ne "" and $bulk == 1 and $entry == 1;
             Write "    return $STUB" . "->$fname(@par);" if $OT ne "" and $bulk == 0 and $entry == 1;
-            Write "    return $STUB" . "->$fname((sai_object_type_t)(SAI_OBJECT_TYPE_$OT),@par);" if $OT ne "" and $bulk == 0 and $entry == 0;
-            Write "    return $STUB" . "->$fname((sai_object_type_t)(SAI_OBJECT_TYPE_$OT),@par);" if $OT ne "" and $bulk == 1 and $entry == 0;
+            Write "    return $STUB" . "->$fname((otai_object_type_t)(OTAI_OBJECT_TYPE_$OT),@par);" if $OT ne "" and $bulk == 0 and $entry == 0;
+            Write "    return $STUB" . "->$fname((otai_object_type_t)(OTAI_OBJECT_TYPE_$OT),@par);" if $OT ne "" and $bulk == 1 and $entry == 0;
             Write "}";
             Write "";
         }
 
-        Write "static sai_${api}_api_t ${STUB}_${api} = {";
+        Write "static otai_${api}_api_t ${STUB}_${api} = {";
 
-        while ($struct =~ /(sai_\w+_fn)\s+(\w+)/gms)
+        while ($struct =~ /(otai_\w+_fn)\s+(\w+)/gms)
         {
             my $type = $1;
             my $funname = $2;
@@ -291,15 +295,15 @@ sub CreateHeader
     Write "/* DO NOT MODIFY, FILE AUTO GENERATED */";
     Write "";
     Write "extern \"C\" {";
-    Write "#include \"sai.h\"";
-    Write "#include \"saiextensions.h\"";
+    Write "#include \"otai.h\"";
+#Write "#include \"otaiextensions.h\"";
     Write "}";
-    Write "#include \"meta/SaiInterface.h\"";
+    Write "#include \"meta/OtaiInterface.h\"";
     Write "#include \"$optionClass.h\"";
     Write "#include \"swss/logger.h\"";
     Write "#include <memory>";
     Write "";
-    Write "static std::shared_ptr<sairedis::SaiInterface> $STUB = std::make_shared<$optionNamespace" . "::$optionClass>();";
+    Write "static std::shared_ptr<otairedis::OtaiInterface> $STUB = std::make_shared<$optionNamespace" . "::$optionClass>();";
     Write ""
 }
 
@@ -308,24 +312,24 @@ sub CreateApiQuery
     Write "";
     Write "/* ==== API QUERY === */";
     Write "";
-    Write "sai_status_t sai_api_query(";
-    Write "        _In_ sai_api_t api,";
+    Write "otai_status_t otai_api_query(";
+    Write "        _In_ otai_api_t api,";
     Write "        _Out_ void** api_method_table)";
     Write "{";
     Write "    SWSS_LOG_ENTER();";
     Write "";
     Write "    if (api_method_table == NULL)";
     Write "    {";
-    Write "        SWSS_LOG_ERROR(\"NULL method table passed to SAI API initialize\");";
+    Write "        SWSS_LOG_ERROR(\"NULL method table passed to OTAI API initialize\");";
     Write "";
-    Write "        return SAI_STATUS_INVALID_PARAMETER;";
+    Write "        return OTAI_STATUS_INVALID_PARAMETER;";
     Write "    }";
     Write "";
-    Write "    if (api == SAI_API_UNSPECIFIED)";
+    Write "    if (api == OTAI_API_UNSPECIFIED)";
     Write "    {";
     Write "        SWSS_LOG_ERROR(\"api ID is unspecified api\");";
     Write "";
-    Write "        return SAI_STATUS_INVALID_PARAMETER;";
+    Write "        return OTAI_STATUS_INVALID_PARAMETER;";
     Write "    }";
     Write "";
     Write "    switch((int)api)";
@@ -335,9 +339,9 @@ sub CreateApiQuery
     {
         my $api = lc $API;
 
-        Write "        case SAI_API_$API:";
+        Write "        case OTAI_API_$API:";
         Write "            *api_method_table = (void**)&${STUB}_${api};";
-        Write "            return SAI_STATUS_SUCCESS;";
+        Write "            return OTAI_STATUS_SUCCESS;";
     }
 
     Write "        default:";
@@ -346,7 +350,7 @@ sub CreateApiQuery
     Write "";
     Write "    SWSS_LOG_ERROR(\"Invalid API type %d\", api);";
     Write "";
-    Write "    return SAI_STATUS_INVALID_PARAMETER;";
+    Write "    return OTAI_STATUS_INVALID_PARAMETER;";
     Write "}";
     Write "";
 }
@@ -359,13 +363,13 @@ sub CreateGlobalApis
 
     for my $api (sort @globalApis)
     {
-        next if not $api =~ /(sai_\w+)\s+(sai_\w+).*\((.+?)\)/gms;
+        next if not $api =~ /(otai_\w+)\s+(otai_\w+).*\((.+?)\)/gms;
 
         my $rettype = $1;
         my $funname = $2;
         my $params = $3;
 
-        next if $funname eq "sai_api_query";
+        next if $funname eq "otai_api_query";
 
         my @par = $params =~ /(\w+,|\w+$)/gms;
 
@@ -381,7 +385,7 @@ sub CreateGlobalApis
         if ($fun =~ /(bulkObjectClearStats|bulkObjectGetStats|dbgGenerateDump|getMaximumAttributeCount|getObjectKey|bulkGetAttribute|dbgGenerateDump|tamTelemetryGetData|getObjectCount|queryObjectStage)/)
         {
             Write "    SWSS_LOG_ERROR(\"FIXME, no implementation for $fun!\");";
-            Write "    return SAI_STATUS_NOT_IMPLEMENTED;";
+            Write "    return OTAI_STATUS_NOT_IMPLEMENTED;";
             Write "}";
             next;
         }
@@ -397,13 +401,13 @@ sub CreateGlobalApis
 #
 
 
-LogError "Option SaiDir not specifird (-d)" if not defined $optionSaiDir;
+LogError "Option OtaiDir not specifird (-d)" if not defined $optionOtaiDir;
 LogError "Option Class not specifird (-c)" if not defined $optionClass;
 LogError "Option Namespace not specifird (-n)" if not defined $optionNamespace;
 LogError "Option FileName not specifird (-f)" if not defined $optionFileName;
 LogError "Option Stub not specifird (-s)" if not defined $optionStub;
 
-LogInfo "optionSaiDir     = $optionSaiDir   ";
+LogInfo "optionOtaiDir     = $optionOtaiDir   ";
 LogInfo "optionClass      = $optionClass    ";
 LogInfo "optionNamespace  = $optionNamespace";
 LogInfo "optionFileName   = $optionFileName ";

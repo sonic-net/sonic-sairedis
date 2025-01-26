@@ -5,7 +5,7 @@
 #include <memory>
 #include <map>
 
-namespace sairedis
+namespace otairedis
 {
     class SwitchContainer
     {
@@ -31,7 +31,7 @@ namespace sairedis
              * Throws when switch is not present in container.
              */
             void removeSwitch(
-                    _In_ sai_object_id_t switchId);
+                    _In_ otai_object_id_t switchId);
 
             /**
              * @brief Remove switch from container.
@@ -47,7 +47,7 @@ namespace sairedis
              * If switch is not present in container returns NULL pointer.
              */
             std::shared_ptr<Switch> getSwitch(
-                    _In_ sai_object_id_t switchId) const;
+                    _In_ otai_object_id_t switchId) const;
 
             /**
              * @brief Removes all switches from container.
@@ -58,7 +58,7 @@ namespace sairedis
              * @brief Check whether switch is in the container.
              */
             bool contains(
-                    _In_ sai_object_id_t switchId) const;
+                    _In_ otai_object_id_t switchId) const;
 
             /**
              * @brief Get switch by hardware info.
@@ -70,7 +70,7 @@ namespace sairedis
 
         private:
 
-            std::map<sai_object_id_t, std::shared_ptr<Switch>> m_switchMap;
+            std::map<otai_object_id_t, std::shared_ptr<Switch>> m_switchMap;
 
     };
 }

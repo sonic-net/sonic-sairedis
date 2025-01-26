@@ -5,7 +5,7 @@
 #include <string>
 #include <memory>
 
-namespace sairedis
+namespace otairedis
 {
     class SwitchConfig
     {

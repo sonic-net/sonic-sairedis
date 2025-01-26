@@ -6,15 +6,15 @@
 
 #include <cstring>
 
-using namespace sairedis;
+using namespace otairedis;
 
 Switch::Switch(
-        _In_ sai_object_id_t switchId):
+        _In_ otai_object_id_t switchId):
     m_switchId(switchId)
 {
     SWSS_LOG_ENTER();
 
-    if (switchId == SAI_NULL_OBJECT_ID)
+    if (switchId == OTAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_THROW("switch id can't be NULL");
     }
@@ -23,18 +23,18 @@ Switch::Switch(
 }
 
 Switch::Switch(
-        _In_ sai_object_id_t switchId,
+        _In_ otai_object_id_t switchId,
         _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList):
+        _In_ const otai_attribute_t *attrList):
     Switch(switchId)
 {
     SWSS_LOG_ENTER();
 
     updateNotifications(attrCount, attrList);
 
-    // SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO is create only attribute
+    // OTAI_LINECARD_ATTR_LINECARD_HARDWARE_INFO is create only attribute
 
-    m_hardwareInfo = saimeta::Globals::getHardwareInfo(attrCount, attrList);
+    m_hardwareInfo = otaimeta::Globals::getHardwareInfo(attrCount, attrList);
 
     SWSS_LOG_NOTICE("created switch with hwinfo = '%s'", m_hardwareInfo.c_str());
 }
@@ -46,7 +46,7 @@ void Switch::clearNotificationsPointers()
     memset(&m_switchNotifications, 0, sizeof(m_switchNotifications));
 }
 
-sai_object_id_t Switch::getSwitchId() const
+otai_object_id_t Switch::getSwitchId() const
 {
     SWSS_LOG_ENTER();
 
@@ -55,14 +55,15 @@ sai_object_id_t Switch::getSwitchId() const
 
 void Switch::updateNotifications(
         _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList)
+        _In_ const otai_attribute_t *attrList)
 {
     SWSS_LOG_ENTER();
 
-    sai_metadata_update_switch_notification_pointers(&m_switchNotifications, attrCount, attrList);
+    throw;
+    //otai_metadata_update_linecard_notification_pointers(&m_switchNotifications, attrCount, attrList);
 }
 
-const sai_switch_notifications_t& Switch::getSwitchNotifications() const
+const otai_linecard_notifications_t& Switch::getSwitchNotifications() const
 {
     SWSS_LOG_ENTER();
 

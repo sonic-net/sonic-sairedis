@@ -1,12 +1,12 @@
 #pragma once
 
-#include "RedisRemoteSaiInterface.h"
+#include "RedisRemoteOtaiInterface.h"
 #include "ContextConfig.h"
 
 #include "meta/Notification.h"
 #include "meta/Meta.h"
 
-namespace sairedis
+namespace otairedis
 {
     class Context
     {
@@ -15,18 +15,18 @@ namespace sairedis
             Context(
                     _In_ std::shared_ptr<ContextConfig> contextConfig,
                     _In_ std::shared_ptr<Recorder> recorder,
-                    _In_ std::function<sai_switch_notifications_t(std::shared_ptr<Notification>, Context*)> notificationCallback);
+                    _In_ std::function<otai_linecard_notifications_t(std::shared_ptr<Notification>, Context*)> notificationCallback);
 
             virtual ~Context();
 
         public:
 
             void populateMetadata(
-                    _In_ sai_object_id_t switchId);
+                    _In_ otai_object_id_t switchId);
 
         private:
 
-            sai_switch_notifications_t handle_notification(
+            otai_linecard_notifications_t handle_notification(
                     _In_ std::shared_ptr<Notification> notification);
 
         private:
@@ -37,10 +37,10 @@ namespace sairedis
 
         public:
 
-            std::shared_ptr<saimeta::Meta> m_meta;
+            std::shared_ptr<otaimeta::Meta> m_meta;
 
-            std::shared_ptr<RedisRemoteSaiInterface> m_redisSai;
+            std::shared_ptr<RedisRemoteOtaiInterface> m_redisOtai;
 
-            std::function<sai_switch_notifications_t(std::shared_ptr<Notification>, Context*)> m_notificationCallback;
+            std::function<otai_linecard_notifications_t(std::shared_ptr<Notification>, Context*)> m_notificationCallback;
     };
 }

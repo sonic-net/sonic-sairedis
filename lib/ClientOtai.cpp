@@ -1,16 +1,16 @@
-#include "ClientSai.h"
-#include "SaiInternal.h"
-#include "RedisRemoteSaiInterface.h"
+#include "ClientOtai.h"
+#include "OtaiInternal.h"
+#include "RedisRemoteOtaiInterface.h"
 #include "ZeroMQChannel.h"
 #include "Utils.h"
-#include "sairediscommon.h"
+#include "otairediscommon.h"
 #include "ClientConfig.h"
 
 #include "swss/logger.h"
 
-#include "meta/sai_serialize.h"
+#include "meta/otai_serialize.h"
 #include "meta/NotificationFactory.h"
-#include "meta/SaiAttributeList.h"
+#include "meta/OtaiAttributeList.h"
 #include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
 
@@ -19,28 +19,28 @@
 #define REDIS_CHECK_API_INITIALIZED()                                       \
     if (!m_apiInitialized) {                                                \
         SWSS_LOG_ERROR("%s: api not initialized", __PRETTY_FUNCTION__);     \
-        return SAI_STATUS_FAILURE; }
+        return OTAI_STATUS_FAILURE; }
 
-using namespace sairedis;
-using namespace sairediscommon;
-using namespace saimeta;
+using namespace otairedis;
+using namespace otairediscommon;
+using namespace otaimeta;
 using namespace std::placeholders;
 
-// TODO how to tell if current SAI is in init view or apply view ?
+// TODO how to tell if current OTAI is in init view or apply view ?
 
 std::vector<swss::FieldValueTuple> serialize_counter_id_list(
-        _In_ const sai_enum_metadata_t *stats_enum,
+        _In_ const otai_enum_metadata_t *stats_enum,
         _In_ uint32_t count,
-        _In_ const sai_stat_id_t *counter_id_list);
+        _In_ const otai_stat_id_t *counter_id_list);
 
-ClientSai::ClientSai()
+ClientOtai::ClientOtai()
 {
     SWSS_LOG_ENTER();
 
     m_apiInitialized = false;
 }
 
-ClientSai::~ClientSai()
+ClientOtai::~ClientOtai()
 {
     SWSS_LOG_ENTER();
 
@@ -50,9 +50,9 @@ ClientSai::~ClientSai()
     }
 }
 
-sai_status_t ClientSai::apiInitialize(
+otai_status_t ClientOtai::apiInitialize(
         _In_ uint64_t flags,
-        _In_ const sai_service_method_table_t *service_method_table)
+        _In_ const otai_service_method_table_t *service_method_table)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -61,37 +61,37 @@ sai_status_t ClientSai::apiInitialize(
     {
         SWSS_LOG_ERROR("already initialized");
 
-        return SAI_STATUS_FAILURE;
+        return OTAI_STATUS_FAILURE;
     }
 
     if ((service_method_table == NULL) ||
             (service_method_table->profile_get_next_value == NULL) ||
             (service_method_table->profile_get_value == NULL))
     {
-        SWSS_LOG_ERROR("invalid service_method_table handle passed to SAI API initialize");
+        SWSS_LOG_ERROR("invalid service_method_table handle passed to OTAI API initialize");
 
-        return SAI_STATUS_INVALID_PARAMETER;
+        return OTAI_STATUS_INVALID_PARAMETER;
     }
 
     // TODO support context config
 
     m_switchContainer = std::make_shared<SwitchContainer>();
 
-    auto clientConfig = service_method_table->profile_get_value(0, SAI_REDIS_KEY_CLIENT_CONFIG);
+    auto clientConfig = service_method_table->profile_get_value(0, OTAI_REDIS_KEY_CLIENT_CONFIG);
 
     auto cc = ClientConfig::loadFromFile(clientConfig);
 
     m_communicationChannel = std::make_shared<ZeroMQChannel>(
             cc->m_zmqEndpoint,
             cc->m_zmqNtfEndpoint,
-            std::bind(&ClientSai::handleNotification, this, _1, _2, _3));
+            std::bind(&ClientOtai::handleNotification, this, _1, _2, _3));
 
     m_apiInitialized = true;
 
-    return SAI_STATUS_SUCCESS;
+    return OTAI_STATUS_SUCCESS;
 }
 
-sai_status_t ClientSai::apiUninitialize(void)
+otai_status_t ClientOtai::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
@@ -104,17 +104,17 @@ sai_status_t ClientSai::apiUninitialize(void)
 
     SWSS_LOG_NOTICE("end");
 
-    return SAI_STATUS_SUCCESS;
+    return OTAI_STATUS_SUCCESS;
 }
 
 // QUAD API
 
-sai_status_t ClientSai::create(
-        _In_ sai_object_type_t objectType,
-        _Out_ sai_object_id_t* objectId,
-        _In_ sai_object_id_t switchId,
+otai_status_t ClientOtai::create(
+        _In_ otai_object_type_t objectType,
+        _Out_ otai_object_id_t* objectId,
+        _In_ otai_object_id_t switchId,
         _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ const otai_attribute_t *attr_list)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -124,11 +124,11 @@ sai_status_t ClientSai::create(
     // server is actually creating new oid, and it's value must be transferred
     // over communication channel
 
-    *objectId = SAI_NULL_OBJECT_ID;
+    *objectId = OTAI_NULL_OBJECT_ID;
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH && attr_count > 0 && attr_list)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD && attr_count > 0 && attr_list)
     {
-        auto initSwitchAttr = sai_metadata_get_attr_by_id(SAI_SWITCH_ATTR_INIT_SWITCH, attr_count, attr_list);
+        auto initSwitchAttr = otai_metadata_get_attr_by_id(OTAI_LINECARD_ATTR_INIT_LINECARD, attr_count, attr_list);
 
         if (initSwitchAttr && initSwitchAttr->value.booldata == false)
         {
@@ -143,46 +143,46 @@ sai_status_t ClientSai::create(
 
             for (uint32_t i = 0; i < attr_count; ++i)
             {
-                auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr_list[i].id);
+                auto meta = otai_metadata_get_attr_metadata(OTAI_OBJECT_TYPE_LINECARD, attr_list[i].id);
 
                 if (meta == NULL)
                 {
                     SWSS_LOG_THROW("failed to find metadata for switch attribute %d", attr_list[i].id);
                 }
 
-                if (meta->attrid == SAI_SWITCH_ATTR_INIT_SWITCH)
+                if (meta->attrid == OTAI_LINECARD_ATTR_INIT_LINECARD)
                     continue;
 
-                if (meta->attrid == SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO)
-                    continue;
+                //if (meta->attrid == OTAI_LINECARD_ATTR_LINECARD_HARDWARE_INFO)
+                //    continue;
 
-                if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_POINTER)
+                if (meta->attrvaluetype == OTAI_ATTR_VALUE_TYPE_POINTER)
                 {
                     SWSS_LOG_ERROR("notifications not supported yet, FIXME");
 
-                    return SAI_STATUS_FAILURE;
+                    return OTAI_STATUS_FAILURE;
                 }
 
-                SWSS_LOG_ERROR("attribute %s not supported during INIT_SWITCH=false, expected HARDWARE_INFO or notification pointer", meta->attridname);
+                SWSS_LOG_ERROR("attribute %s not supported during INIT_LINECARD=false, expected HARDWARE_INFO or notification pointer", meta->attridname);
 
-                return SAI_STATUS_FAILURE;
+                return OTAI_STATUS_FAILURE;
             }
         }
         else
         {
-            SWSS_LOG_ERROR("creating new switch not supported yet, use SAI_SWITCH_ATTR_INIT_SWITCH=false");
+            SWSS_LOG_ERROR("creating new switch not supported yet, use OTAI_LINECARD_ATTR_INIT_LINECARD=false");
 
-            return SAI_STATUS_FAILURE;
+            return OTAI_STATUS_FAILURE;
         }
     }
 
     auto status = create(
             objectType,
-            sai_serialize_object_id(switchId), // using switch ID instead of oid to transfer to server
+            otai_serialize_object_id(switchId), // using switch ID instead of oid to transfer to server
             attr_count,
             attr_list);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         // since user requested create, OID value was created remotely and it
         // was returned in m_lastCreateOids
@@ -190,7 +190,7 @@ sai_status_t ClientSai::create(
         *objectId = m_lastCreateOids.at(0);
     }
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH && status == SAI_STATUS_SUCCESS)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD && status == OTAI_STATUS_SUCCESS)
     {
         /*
          * When doing CREATE operation user may want to update notification
@@ -198,7 +198,7 @@ sai_status_t ClientSai::create(
          * update them.
          */
 
-        SWSS_LOG_NOTICE("create switch OID = %s", sai_serialize_object_id(*objectId).c_str());
+        SWSS_LOG_NOTICE("create switch OID = %s", otai_serialize_object_id(*objectId).c_str());
 
         auto sw = std::make_shared<Switch>(*objectId, attr_count, attr_list);
 
@@ -208,9 +208,9 @@ sai_status_t ClientSai::create(
     return status;
 }
 
-sai_status_t ClientSai::remove(
-        _In_ sai_object_type_t objectType,
-        _In_ sai_object_id_t objectId)
+otai_status_t ClientOtai::remove(
+        _In_ otai_object_type_t objectType,
+        _In_ otai_object_id_t objectId)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -218,11 +218,11 @@ sai_status_t ClientSai::remove(
 
     auto status = remove(
             objectType,
-            sai_serialize_object_id(objectId));
+            otai_serialize_object_id(objectId));
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH && status == SAI_STATUS_SUCCESS)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD && status == OTAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_NOTICE("removing switch id %s", sai_serialize_object_id(objectId).c_str());
+        SWSS_LOG_NOTICE("removing switch id %s", otai_serialize_object_id(objectId).c_str());
 
         // remove switch from container
         m_switchContainer->removeSwitch(objectId);
@@ -231,35 +231,35 @@ sai_status_t ClientSai::remove(
     return status;
 }
 
-sai_status_t ClientSai::set(
-        _In_ sai_object_type_t objectType,
-        _In_ sai_object_id_t objectId,
-        _In_ const sai_attribute_t *attr)
+otai_status_t ClientOtai::set(
+        _In_ otai_object_type_t objectType,
+        _In_ otai_object_id_t objectId,
+        _In_ const otai_attribute_t *attr)
 {
     MUTEX();
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    if (RedisRemoteSaiInterface::isRedisAttribute(objectType, attr))
+    if (RedisRemoteOtaiInterface::isRedisAttribute(objectType, attr))
     {
-        SWSS_LOG_ERROR("sairedis extension attributes are not supported in CLIENT mode");
+        SWSS_LOG_ERROR("otairedis extension attributes are not supported in CLIENT mode");
 
-        return SAI_STATUS_FAILURE;
+        return OTAI_STATUS_FAILURE;
     }
 
     auto status = set(
             objectType,
-            sai_serialize_object_id(objectId),
+            otai_serialize_object_id(objectId),
             attr);
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH && status == SAI_STATUS_SUCCESS)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD && status == OTAI_STATUS_SUCCESS)
     {
         auto sw = m_switchContainer->getSwitch(objectId);
 
         if (!sw)
         {
             SWSS_LOG_THROW("failed to find switch %s in container",
-                    sai_serialize_object_id(objectId).c_str());
+                    otai_serialize_object_id(objectId).c_str());
         }
 
         /*
@@ -273,11 +273,11 @@ sai_status_t ClientSai::set(
     return status;
 }
 
-sai_status_t ClientSai::get(
-        _In_ sai_object_type_t objectType,
-        _In_ sai_object_id_t objectId,
+otai_status_t ClientOtai::get(
+        _In_ otai_object_type_t objectType,
+        _In_ otai_object_id_t objectId,
         _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list)
+        _Inout_ otai_attribute_t *attr_list)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -285,7 +285,7 @@ sai_status_t ClientSai::get(
 
     return get(
             objectType,
-            sai_serialize_object_id(objectId),
+            otai_serialize_object_id(objectId),
             attr_count,
             attr_list);
 }
@@ -293,93 +293,93 @@ sai_status_t ClientSai::get(
 // QUAD ENTRY API
 
 #define DECLARE_CREATE_ENTRY(OT,ot)                             \
-sai_status_t ClientSai::create(                                 \
-        _In_ const sai_ ## ot ## _t* ot,                        \
+otai_status_t ClientOtai::create(                                 \
+        _In_ const otai_ ## ot ## _t* ot,                        \
         _In_ uint32_t attr_count,                               \
-        _In_ const sai_attribute_t *attr_list)                  \
+        _In_ const otai_attribute_t *attr_list)                  \
 {                                                               \
     MUTEX();                                                    \
     SWSS_LOG_ENTER();                                           \
     REDIS_CHECK_API_INITIALIZED();                              \
     return create(                                              \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
-            sai_serialize_ ## ot(*ot),                          \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,          \
+            otai_serialize_ ## ot(*ot),                          \
             attr_count,                                         \
             attr_list);                                         \
 }
 
-SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
+OTAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
 
 #define DECLARE_REMOVE_ENTRY(OT,ot)                             \
-sai_status_t ClientSai::remove(                                 \
-        _In_ const sai_ ## ot ## _t* ot)                        \
+otai_status_t ClientOtai::remove(                                 \
+        _In_ const otai_ ## ot ## _t* ot)                        \
 {                                                               \
     MUTEX();                                                    \
     SWSS_LOG_ENTER();                                           \
     REDIS_CHECK_API_INITIALIZED();                              \
     return remove(                                              \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
-            sai_serialize_ ## ot(*ot));                         \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,          \
+            otai_serialize_ ## ot(*ot));                         \
 }
 
-SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
+OTAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
 
 #define DECLARE_SET_ENTRY(OT,ot)                                \
-sai_status_t ClientSai::set(                                    \
-        _In_ const sai_ ## ot ## _t* ot,                        \
-        _In_ const sai_attribute_t *attr)                       \
+otai_status_t ClientOtai::set(                                    \
+        _In_ const otai_ ## ot ## _t* ot,                        \
+        _In_ const otai_attribute_t *attr)                       \
 {                                                               \
     MUTEX();                                                    \
     SWSS_LOG_ENTER();                                           \
     REDIS_CHECK_API_INITIALIZED();                              \
     return set(                                                 \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
-            sai_serialize_ ## ot(*ot),                          \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,          \
+            otai_serialize_ ## ot(*ot),                          \
             attr);                                              \
 }
 
-SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
+OTAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
 
 #define DECLARE_GET_ENTRY(OT,ot)                                \
-sai_status_t ClientSai::get(                                    \
-        _In_ const sai_ ## ot ## _t* ot,                        \
+otai_status_t ClientOtai::get(                                    \
+        _In_ const otai_ ## ot ## _t* ot,                        \
         _In_ uint32_t attr_count,                               \
-        _Inout_ sai_attribute_t *attr_list)                     \
+        _Inout_ otai_attribute_t *attr_list)                     \
 {                                                               \
     MUTEX();                                                    \
     SWSS_LOG_ENTER();                                           \
     REDIS_CHECK_API_INITIALIZED();                              \
     return get(                                                 \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
-            sai_serialize_ ## ot(*ot),                          \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,          \
+            otai_serialize_ ## ot(*ot),                          \
             attr_count,                                         \
             attr_list);                                         \
 }
 
-SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
+OTAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
 
 #define DECLARE_BULK_CREATE_ENTRY(OT,ot)                                       \
-sai_status_t ClientSai::bulkCreate(                                            \
+otai_status_t ClientOtai::bulkCreate(                                            \
         _In_ uint32_t object_count,                                            \
-        _In_ const sai_ ## ot ## _t *ot,                                       \
+        _In_ const otai_ ## ot ## _t *ot,                                       \
         _In_ const uint32_t *attr_count,                                       \
-        _In_ const sai_attribute_t **attr_list,                                \
-        _In_ sai_bulk_op_error_mode_t mode,                                    \
-        _Out_ sai_status_t *object_statuses)                                   \
+        _In_ const otai_attribute_t **attr_list,                                \
+        _In_ otai_bulk_op_error_mode_t mode,                                    \
+        _Out_ otai_status_t *object_statuses)                                   \
 {                                                                              \
     MUTEX();                                                                   \
     SWSS_LOG_ENTER();                                                          \
     REDIS_CHECK_API_INITIALIZED();                                             \
-    static PerformanceIntervalTimer timer("ClientSai::bulkCreate(" #ot ")");   \
+    static PerformanceIntervalTimer timer("ClientOtai::bulkCreate(" #ot ")");   \
     timer.start();                                                             \
     std::vector<std::string> serialized_object_ids;                            \
     for (uint32_t idx = 0; idx < object_count; idx++)                          \
     {                                                                          \
-        std::string str_object_id = sai_serialize_ ##ot (ot[idx]);             \
+        std::string str_object_id = otai_serialize_ ##ot (ot[idx]);             \
         serialized_object_ids.push_back(str_object_id);                        \
     }                                                                          \
     auto status = bulkCreate(                                                  \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                         \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,                         \
             serialized_object_ids,                                             \
             attr_count,                                                        \
             attr_list,                                                         \
@@ -390,14 +390,14 @@ sai_status_t ClientSai::bulkCreate(                                            \
     return status;                                                             \
 }
 
-SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY)
+OTAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY)
 
 #define DECLARE_BULK_REMOVE_ENTRY(OT,ot)                                                                        \
-sai_status_t ClientSai::bulkRemove(                                                                             \
+otai_status_t ClientOtai::bulkRemove(                                                                             \
         _In_ uint32_t object_count,                                                                             \
-        _In_ const sai_ ## ot ## _t *ot,                                                                        \
-        _In_ sai_bulk_op_error_mode_t mode,                                                                     \
-        _Out_ sai_status_t *object_statuses)                                                                    \
+        _In_ const otai_ ## ot ## _t *ot,                                                                        \
+        _In_ otai_bulk_op_error_mode_t mode,                                                                     \
+        _Out_ otai_status_t *object_statuses)                                                                    \
 {                                                                                                               \
     MUTEX();                                                                                                    \
     SWSS_LOG_ENTER();                                                                                           \
@@ -405,20 +405,20 @@ sai_status_t ClientSai::bulkRemove(                                             
     std::vector<std::string> serializedObjectIds;                                                               \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                           \
     {                                                                                                           \
-        serializedObjectIds.emplace_back(sai_serialize_ ##ot (ot[idx]));                                        \
+        serializedObjectIds.emplace_back(otai_serialize_ ##ot (ot[idx]));                                        \
     }                                                                                                           \
-    return bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, serializedObjectIds, mode, object_statuses);   \
+    return bulkRemove((otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT, serializedObjectIds, mode, object_statuses);   \
 }
 
-SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY)
+OTAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY)
 
 #define DECLARE_BULK_SET_ENTRY(OT,ot)                                                                     \
-sai_status_t ClientSai::bulkSet(                                                                          \
+otai_status_t ClientOtai::bulkSet(                                                                          \
         _In_ uint32_t object_count,                                                                       \
-        _In_ const sai_ ## ot ## _t *ot,                                                                  \
-        _In_ const sai_attribute_t *attr_list,                                                            \
-        _In_ sai_bulk_op_error_mode_t mode,                                                               \
-        _Out_ sai_status_t *object_statuses)                                                              \
+        _In_ const otai_ ## ot ## _t *ot,                                                                  \
+        _In_ const otai_attribute_t *attr_list,                                                            \
+        _In_ otai_bulk_op_error_mode_t mode,                                                               \
+        _Out_ otai_status_t *object_statuses)                                                              \
 {                                                                                                         \
     MUTEX();                                                                                              \
     SWSS_LOG_ENTER();                                                                                     \
@@ -426,44 +426,44 @@ sai_status_t ClientSai::bulkSet(                                                
     std::vector<std::string> serializedObjectIds;                                                         \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                     \
     {                                                                                                     \
-        serializedObjectIds.emplace_back(sai_serialize_ ##ot (ot[idx]));                                  \
+        serializedObjectIds.emplace_back(otai_serialize_ ##ot (ot[idx]));                                  \
     }                                                                                                     \
-    return bulkSet(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);   \
+    return bulkSet(OTAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);   \
 }
 
-SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY)
+OTAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY)
 
 // BULK GET
 
 #define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
-sai_status_t ClientSai::bulkGet(                            \
+otai_status_t ClientOtai::bulkGet(                            \
         _In_ uint32_t object_count,                         \
-        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const otai_ ## ot ## _t *ot,                    \
         _In_ const uint32_t *attr_count,                    \
-        _Inout_ sai_attribute_t **attr_list,                \
-        _In_ sai_bulk_op_error_mode_t mode,                 \
-        _Out_ sai_status_t *object_statuses)                \
+        _Inout_ otai_attribute_t **attr_list,                \
+        _In_ otai_bulk_op_error_mode_t mode,                 \
+        _Out_ otai_status_t *object_statuses)                \
 {                                                           \
     MUTEX();                                                \
     SWSS_LOG_ENTER();                                       \
     REDIS_CHECK_API_INITIALIZED();                          \
     SWSS_LOG_ERROR("FIXME not implemented");                \
-    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+    return OTAI_STATUS_NOT_IMPLEMENTED;                      \
 }
 
-SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY)
+OTAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY)
 
 // QUAD API HELPERS
 
-sai_status_t ClientSai::create(
-        _In_ sai_object_type_t object_type,
+otai_status_t ClientOtai::create(
+        _In_ otai_object_type_t object_type,
         _In_ const std::string& serializedObjectId,
         _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ const otai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    auto entry = SaiAttributeList::serialize_attr_list(
+    auto entry = OtaiAttributeList::serialize_attr_list(
             object_type,
             attr_count,
             attr_list,
@@ -478,7 +478,7 @@ sai_status_t ClientSai::create(
         entry.push_back(null);
     }
 
-    auto serializedObjectType = sai_serialize_object_type(object_type);
+    auto serializedObjectType = otai_serialize_object_type(object_type);
 
     const std::string key = serializedObjectType + ":" + serializedObjectId;
 
@@ -486,18 +486,18 @@ sai_status_t ClientSai::create(
 
     m_communicationChannel->set(key, entry, REDIS_ASIC_STATE_COMMAND_CREATE);
 
-    auto status = waitForResponse(SAI_COMMON_API_CREATE);
+    auto status = waitForResponse(OTAI_COMMON_API_CREATE);
 
     return status;
 }
 
-sai_status_t ClientSai::remove(
-        _In_ sai_object_type_t objectType,
+otai_status_t ClientOtai::remove(
+        _In_ otai_object_type_t objectType,
         _In_ const std::string& serializedObjectId)
 {
     SWSS_LOG_ENTER();
 
-    auto serializedObjectType = sai_serialize_object_type(objectType);
+    auto serializedObjectType = otai_serialize_object_type(objectType);
 
     const std::string key = serializedObjectType + ":" + serializedObjectId;
 
@@ -505,25 +505,25 @@ sai_status_t ClientSai::remove(
 
     m_communicationChannel->set(key, {}, REDIS_ASIC_STATE_COMMAND_REMOVE);
 
-    auto status = waitForResponse(SAI_COMMON_API_REMOVE);
+    auto status = waitForResponse(OTAI_COMMON_API_REMOVE);
 
     return status;
 }
 
-sai_status_t ClientSai::set(
-        _In_ sai_object_type_t objectType,
+otai_status_t ClientOtai::set(
+        _In_ otai_object_type_t objectType,
         _In_ const std::string &serializedObjectId,
-        _In_ const sai_attribute_t *attr)
+        _In_ const otai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
-    auto entry = SaiAttributeList::serialize_attr_list(
+    auto entry = OtaiAttributeList::serialize_attr_list(
             objectType,
             1,
             attr,
             false);
 
-    auto serializedObjectType = sai_serialize_object_type(objectType);
+    auto serializedObjectType = otai_serialize_object_type(objectType);
 
     std::string key = serializedObjectType + ":" + serializedObjectId;
 
@@ -531,16 +531,16 @@ sai_status_t ClientSai::set(
 
     m_communicationChannel->set(key, entry, REDIS_ASIC_STATE_COMMAND_SET);
 
-    auto status = waitForResponse(SAI_COMMON_API_SET);
+    auto status = waitForResponse(OTAI_COMMON_API_SET);
 
     return status;
 }
 
-sai_status_t ClientSai::get(
-        _In_ sai_object_type_t objectType,
+otai_status_t ClientOtai::get(
+        _In_ otai_object_type_t objectType,
         _In_ const std::string& serializedObjectId,
         _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list)
+        _Inout_ otai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -552,9 +552,9 @@ sai_status_t ClientSai::get(
 
     Utils::clearOidValues(objectType, attr_count, attr_list);
 
-    auto entry = SaiAttributeList::serialize_attr_list(objectType, attr_count, attr_list, false);
+    auto entry = OtaiAttributeList::serialize_attr_list(objectType, attr_count, attr_list, false);
 
-    std::string serializedObjectType = sai_serialize_object_type(objectType);
+    std::string serializedObjectType = otai_serialize_object_type(objectType);
 
     std::string key = serializedObjectType + ":" + serializedObjectId;
 
@@ -571,8 +571,8 @@ sai_status_t ClientSai::get(
 
 // QUAD API RESPONSE HELPERS
 
-sai_status_t ClientSai::waitForResponse(
-        _In_ sai_common_api_t api)
+otai_status_t ClientOtai::waitForResponse(
+        _In_ otai_common_api_t api)
 {
     SWSS_LOG_ENTER();
 
@@ -580,7 +580,7 @@ sai_status_t ClientSai::waitForResponse(
 
     auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
 
-    if (api == SAI_COMMON_API_CREATE && status == SAI_STATUS_SUCCESS)
+    if (api == OTAI_COMMON_API_CREATE && status == OTAI_STATUS_SUCCESS)
     {
         m_lastCreateOids.clear();
 
@@ -596,8 +596,8 @@ sai_status_t ClientSai::waitForResponse(
 
         if (field == "oid")
         {
-            sai_object_id_t oid;
-            sai_deserialize_object_id(value, oid);
+            otai_object_id_t oid;
+            otai_deserialize_object_id(value, oid);
 
             m_lastCreateOids.push_back(oid);
         }
@@ -606,10 +606,10 @@ sai_status_t ClientSai::waitForResponse(
     return status;
 }
 
-sai_status_t ClientSai::waitForGetResponse(
-        _In_ sai_object_type_t objectType,
+otai_status_t ClientOtai::waitForGetResponse(
+        _In_ otai_object_type_t objectType,
         _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list)
+        _Inout_ otai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -619,25 +619,25 @@ sai_status_t ClientSai::waitForGetResponse(
 
     auto &values = kfvFieldsValues(kco);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         if (values.size() == 0)
         {
             SWSS_LOG_THROW("logic error, get response returned 0 values!, send api response or sync/async issue?");
         }
 
-        SaiAttributeList list(objectType, values, false);
+        OtaiAttributeList list(objectType, values, false);
 
         transfer_attributes(objectType, attr_count, list.get_attr_list(), attr_list, false);
     }
-    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    else if (status == OTAI_STATUS_BUFFER_OVERFLOW)
     {
         if (values.size() == 0)
         {
             SWSS_LOG_THROW("logic error, get response returned 0 values!, send api response or sync/async issue?");
         }
 
-        SaiAttributeList list(objectType, values, true);
+        OtaiAttributeList list(objectType, values, true);
 
         // no need for id fix since this is overflow
         transfer_attributes(objectType, attr_count, list.get_attr_list(), attr_list, true);
@@ -648,64 +648,24 @@ sai_status_t ClientSai::waitForGetResponse(
 
 // FLUSH FDB ENTRIES
 
-sai_status_t ClientSai::flushFdbEntries(
-        _In_ sai_object_id_t switchId,
-        _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList)
-{
-    MUTEX();
-    SWSS_LOG_ENTER();
-    REDIS_CHECK_API_INITIALIZED();
-
-    auto entry = SaiAttributeList::serialize_attr_list(
-            SAI_OBJECT_TYPE_FDB_FLUSH,
-            attrCount,
-            attrList,
-            false);
-
-    std::string serializedObjectId = sai_serialize_object_type(SAI_OBJECT_TYPE_FDB_FLUSH);
-
-    // NOTE ! we actually give switch ID since FLUSH is not real object
-    std::string key = serializedObjectId + ":" + sai_serialize_object_id(switchId);
-
-    SWSS_LOG_NOTICE("flush key: %s, fields: %lu", key.c_str(), entry.size());
-
-    m_communicationChannel->set(key, entry, REDIS_ASIC_STATE_COMMAND_FLUSH);
-
-    auto status = waitForFlushFdbEntriesResponse();
-
-    return status;
-}
-
-sai_status_t ClientSai::waitForFlushFdbEntriesResponse()
-{
-    SWSS_LOG_ENTER();
-
-    swss::KeyOpFieldsValuesTuple kco;
-
-    auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_FLUSHRESPONSE, kco);
-
-    return status;
-}
-
 // OBJECT TYPE GET AVAILABILITY
 
-sai_status_t ClientSai::objectTypeGetAvailability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
+otai_status_t ClientOtai::objectTypeGetAvailability(
+        _In_ otai_object_id_t switchId,
+        _In_ otai_object_type_t objectType,
         _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList,
+        _In_ const otai_attribute_t *attrList,
         _Out_ uint64_t *count)
 {
     MUTEX();
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    auto strSwitchId = sai_serialize_object_id(switchId);
+    auto strSwitchId = otai_serialize_object_id(switchId);
 
-    auto entry = SaiAttributeList::serialize_attr_list(objectType, attrCount, attrList, false);
+    auto entry = OtaiAttributeList::serialize_attr_list(objectType, attrCount, attrList, false);
 
-    entry.push_back(swss::FieldValueTuple("OBJECT_TYPE", sai_serialize_object_type(objectType)));
+    entry.push_back(swss::FieldValueTuple("OBJECT_TYPE", otai_serialize_object_type(objectType)));
 
     SWSS_LOG_DEBUG(
             "Query arguments: switch: %s, attributes: %s",
@@ -723,7 +683,7 @@ sai_status_t ClientSai::objectTypeGetAvailability(
     return status;
 }
 
-sai_status_t ClientSai::waitForObjectTypeGetAvailabilityResponse(
+otai_status_t ClientOtai::waitForObjectTypeGetAvailabilityResponse(
         _Inout_ uint64_t *count)
 {
     SWSS_LOG_ENTER();
@@ -732,7 +692,7 @@ sai_status_t ClientSai::waitForObjectTypeGetAvailabilityResponse(
 
     auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE, kco);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         auto &values = kfvFieldsValues(kco);
 
@@ -753,92 +713,13 @@ sai_status_t ClientSai::waitForObjectTypeGetAvailabilityResponse(
 
 // QUERY ATTRIBUTE CAPABILITY
 
-sai_status_t ClientSai::queryAttributeCapability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
-        _In_ sai_attr_id_t attrId,
-        _Out_ sai_attr_capability_t *capability)
-{
-    MUTEX();
-    SWSS_LOG_ENTER();
-    REDIS_CHECK_API_INITIALIZED();
-
-    auto switchIdStr = sai_serialize_object_id(switchId);
-    auto objectTypeStr = sai_serialize_object_type(objectType);
-
-    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
-
-    if (meta == NULL)
-    {
-        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", objectTypeStr.c_str(), attrId);
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    const std::string attrIdStr = meta->attridname;
-
-    const std::vector<swss::FieldValueTuple> entry =
-    {
-        swss::FieldValueTuple("OBJECT_TYPE", objectTypeStr),
-        swss::FieldValueTuple("ATTR_ID", attrIdStr)
-    };
-
-    SWSS_LOG_DEBUG(
-            "Query arguments: switch %s, object type: %s, attribute: %s",
-            switchIdStr.c_str(),
-            objectTypeStr.c_str(),
-            attrIdStr.c_str()
-    );
-
-    // This query will not put any data into the ASIC view, just into the
-    // message queue
-
-    m_communicationChannel->set(switchIdStr, entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY);
-
-    auto status = waitForQueryAttributeCapabilityResponse(capability);
-
-    return status;
-}
-
-sai_status_t ClientSai::waitForQueryAttributeCapabilityResponse(
-        _Out_ sai_attr_capability_t* capability)
-{
-    SWSS_LOG_ENTER();
-
-    swss::KeyOpFieldsValuesTuple kco;
-
-    auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE, kco);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
-
-        if (values.size() != 3)
-        {
-            SWSS_LOG_ERROR("Invalid response from syncd: expected 3 values, received %zu", values.size());
-
-            return SAI_STATUS_FAILURE;
-        }
-
-        capability->create_implemented = (fvValue(values[0]) == "true" ? true : false);
-        capability->set_implemented    = (fvValue(values[1]) == "true" ? true : false);
-        capability->get_implemented    = (fvValue(values[2]) == "true" ? true : false);
-
-        SWSS_LOG_DEBUG("Received payload: create_implemented:%s, set_implemented:%s, get_implemented:%s",
-            (capability->create_implemented ? "true" : "false"),
-            (capability->set_implemented ? "true" : "false"),
-            (capability->get_implemented ? "true" : "false"));
-    }
-
-    return status;
-}
-
 // QUERY ATTRIBUTE ENUM CAPABILITY
 
-sai_status_t ClientSai::queryAttributeEnumValuesCapability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
-        _In_ sai_attr_id_t attrId,
-        _Inout_ sai_s32_list_t *enumValuesCapability)
+otai_status_t ClientOtai::queryAttributeEnumValuesCapability(
+        _In_ otai_object_id_t switchId,
+        _In_ otai_object_type_t objectType,
+        _In_ otai_attr_id_t attrId,
+        _Inout_ otai_s32_list_t *enumValuesCapability)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -851,15 +732,15 @@ sai_status_t ClientSai::queryAttributeEnumValuesCapability(
             enumValuesCapability->list[idx] = 0;
     }
 
-    auto switch_id_str = sai_serialize_object_id(switchId);
-    auto object_type_str = sai_serialize_object_type(objectType);
+    auto switch_id_str = otai_serialize_object_id(switchId);
+    auto object_type_str = otai_serialize_object_type(objectType);
 
-    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+    auto meta = otai_metadata_get_attr_metadata(objectType, attrId);
 
     if (meta == NULL)
     {
         SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", object_type_str.c_str(), attrId);
-        return SAI_STATUS_INVALID_PARAMETER;
+        return OTAI_STATUS_INVALID_PARAMETER;
     }
 
     const std::string attr_id_str = meta->attridname;
@@ -890,8 +771,8 @@ sai_status_t ClientSai::queryAttributeEnumValuesCapability(
     return status;
 }
 
-sai_status_t ClientSai::waitForQueryAattributeEnumValuesCapabilityResponse(
-        _Inout_ sai_s32_list_t* enumValuesCapability)
+otai_status_t ClientOtai::waitForQueryAattributeEnumValuesCapabilityResponse(
+        _Inout_ otai_s32_list_t* enumValuesCapability)
 {
     SWSS_LOG_ENTER();
 
@@ -899,7 +780,7 @@ sai_status_t ClientSai::waitForQueryAattributeEnumValuesCapabilityResponse(
 
     auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE, kco);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
 
@@ -907,7 +788,7 @@ sai_status_t ClientSai::waitForQueryAattributeEnumValuesCapabilityResponse(
         {
             SWSS_LOG_ERROR("Invalid response from syncd: expected 2 values, received %zu", values.size());
 
-            return SAI_STATUS_FAILURE;
+            return OTAI_STATUS_FAILURE;
         }
 
         const std::string &capability_str = fvValue(values[0]);
@@ -940,11 +821,11 @@ sai_status_t ClientSai::waitForQueryAattributeEnumValuesCapabilityResponse(
             position++;
         }
     }
-    else if (status ==  SAI_STATUS_BUFFER_OVERFLOW)
+    else if (status ==  OTAI_STATUS_BUFFER_OVERFLOW)
     {
-        // TODO on sai status overflow we should populate correct count on the list
+        // TODO on otai status overflow we should populate correct count on the list
 
-        SWSS_LOG_ERROR("TODO need to handle SAI_STATUS_BUFFER_OVERFLOW, FIXME");
+        SWSS_LOG_ERROR("TODO need to handle OTAI_STATUS_BUFFER_OVERFLOW, FIXME");
     }
 
     return status;
@@ -953,24 +834,24 @@ sai_status_t ClientSai::waitForQueryAattributeEnumValuesCapabilityResponse(
 
 // STATS API
 
-sai_status_t ClientSai::getStats(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
+otai_status_t ClientOtai::getStats(
+        _In_ otai_object_type_t object_type,
+        _In_ otai_object_id_t object_id,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids,
+        _In_ const otai_stat_id_t *counter_ids,
         _Out_ uint64_t *counters)
 {
     MUTEX();
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    auto stats_enum = sai_metadata_get_object_type_info(object_type)->statenum;
+    auto stats_enum = otai_metadata_get_object_type_info(object_type)->statenum;
 
     auto entry = serialize_counter_id_list(stats_enum, number_of_counters, counter_ids);
 
-    std::string str_object_type = sai_serialize_object_type(object_type);
+    std::string str_object_type = otai_serialize_object_type(object_type);
 
-    std::string key = str_object_type + ":" + sai_serialize_object_id(object_id);
+    std::string key = str_object_type + ":" + otai_serialize_object_id(object_id);
 
     SWSS_LOG_DEBUG("generic get stats key: %s, fields: %lu", key.c_str(), entry.size());
 
@@ -981,17 +862,7 @@ sai_status_t ClientSai::getStats(
     return waitForGetStatsResponse(number_of_counters, counters);
 }
 
-sai_status_t ClientSai::queryStatsCapability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
-        _Inout_ sai_stat_capability_list_t *stats_capability)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t ClientSai::waitForGetStatsResponse(
+otai_status_t ClientOtai::waitForGetStatsResponse(
         _In_ uint32_t number_of_counters,
         _Out_ uint64_t *counters)
 {
@@ -1001,7 +872,7 @@ sai_status_t ClientSai::waitForGetStatsResponse(
 
     auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         auto &values = kfvFieldsValues(kco);
 
@@ -1019,12 +890,12 @@ sai_status_t ClientSai::waitForGetStatsResponse(
     return status;
 }
 
-sai_status_t ClientSai::getStatsExt(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
+otai_status_t ClientOtai::getStatsExt(
+        _In_ otai_object_type_t object_type,
+        _In_ otai_object_id_t object_id,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids,
-        _In_ sai_stats_mode_t mode,
+        _In_ const otai_stat_id_t *counter_ids,
+        _In_ otai_stats_mode_t mode,
         _Out_ uint64_t *counters)
 {
     MUTEX();
@@ -1035,26 +906,26 @@ sai_status_t ClientSai::getStatsExt(
 
     // TODO could be the same as getStats but put mode at first argument
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return OTAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t ClientSai::clearStats(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
+otai_status_t ClientOtai::clearStats(
+        _In_ otai_object_type_t object_type,
+        _In_ otai_object_id_t object_id,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids)
+        _In_ const otai_stat_id_t *counter_ids)
 {
     MUTEX();
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    auto stats_enum = sai_metadata_get_object_type_info(object_type)->statenum;
+    auto stats_enum = otai_metadata_get_object_type_info(object_type)->statenum;
 
     auto values = serialize_counter_id_list(stats_enum, number_of_counters, counter_ids);
 
-    auto str_object_type = sai_serialize_object_type(object_type);
+    auto str_object_type = otai_serialize_object_type(object_type);
 
-    auto key = str_object_type + ":" + sai_serialize_object_id(object_id);
+    auto key = str_object_type + ":" + otai_serialize_object_id(object_id);
 
     SWSS_LOG_DEBUG("generic clear stats key: %s, fields: %lu", key.c_str(), values.size());
 
@@ -1067,7 +938,7 @@ sai_status_t ClientSai::clearStats(
     return status;
 }
 
-sai_status_t ClientSai::waitForClearStatsResponse()
+otai_status_t ClientOtai::waitForClearStatsResponse()
 {
     SWSS_LOG_ENTER();
 
@@ -1078,15 +949,15 @@ sai_status_t ClientSai::waitForClearStatsResponse()
     return status;
 }
 
-sai_status_t ClientSai::bulkGetStats(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t object_type,
+otai_status_t ClientOtai::bulkGetStats(
+        _In_ otai_object_id_t switchId,
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_key_t *object_key,
+        _In_ const otai_object_key_t *object_key,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids,
-        _In_ sai_stats_mode_t mode,
-        _Inout_ sai_status_t *object_statuses,
+        _In_ const otai_stat_id_t *counter_ids,
+        _In_ otai_stats_mode_t mode,
+        _Inout_ otai_status_t *object_statuses,
         _Out_ uint64_t *counters)
 {
     MUTEX();
@@ -1095,18 +966,18 @@ sai_status_t ClientSai::bulkGetStats(
 
     SWSS_LOG_ERROR("not implemented");
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return OTAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t ClientSai::bulkClearStats(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t object_type,
+otai_status_t ClientOtai::bulkClearStats(
+        _In_ otai_object_id_t switchId,
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_key_t *object_key,
+        _In_ const otai_object_key_t *object_key,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids,
-        _In_ sai_stats_mode_t mode,
-        _Inout_ sai_status_t *object_statuses)
+        _In_ const otai_stat_id_t *counter_ids,
+        _In_ otai_stats_mode_t mode,
+        _Inout_ otai_status_t *object_statuses)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -1114,20 +985,20 @@ sai_status_t ClientSai::bulkClearStats(
 
     SWSS_LOG_ERROR("not implemented");
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return OTAI_STATUS_NOT_IMPLEMENTED;
 }
 
 // BULK CREATE
 
-sai_status_t ClientSai::bulkCreate(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t switch_id,
+otai_status_t ClientOtai::bulkCreate(
+        _In_ otai_object_type_t object_type,
+        _In_ otai_object_id_t switch_id,
         _In_ uint32_t object_count,
         _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_object_id_t *object_id,
-        _Out_ sai_status_t *object_statuses)
+        _In_ const otai_attribute_t **attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_object_id_t *object_id,
+        _Out_ otai_status_t *object_statuses)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -1146,7 +1017,7 @@ sai_status_t ClientSai::bulkCreate(
     // send switch IDs
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
-        serialized_object_ids.emplace_back(sai_serialize_object_id(switch_id));
+        serialized_object_ids.emplace_back(otai_serialize_object_id(switch_id));
     }
 
     auto status = bulkCreate(
@@ -1162,38 +1033,38 @@ sai_status_t ClientSai::bulkCreate(
         // since user requested create, OID value was created remotely and it
         // was returned in m_lastCreateOids
 
-        if (object_statuses[idx] == SAI_STATUS_SUCCESS)
+        if (object_statuses[idx] == OTAI_STATUS_SUCCESS)
         {
             object_id[idx] = m_lastCreateOids.at(idx);
         }
         else
         {
-            object_id[idx] = SAI_NULL_OBJECT_ID;
+            object_id[idx] = OTAI_NULL_OBJECT_ID;
         }
     }
 
     return status;
 }
 
-sai_status_t ClientSai::bulkCreate(
-        _In_ sai_object_type_t object_type,
+otai_status_t ClientOtai::bulkCreate(
+        _In_ otai_object_type_t object_type,
         _In_ const std::vector<std::string> &serialized_object_ids,
         _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Inout_ sai_status_t *object_statuses)
+        _In_ const otai_attribute_t **attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Inout_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
     // TODO support mode
 
-    std::string str_object_type = sai_serialize_object_type(object_type);
+    std::string str_object_type = otai_serialize_object_type(object_type);
 
     std::vector<swss::FieldValueTuple> entries;
 
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
-        auto entry = SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
+        auto entry = OtaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
 
         if (entry.empty())
         {
@@ -1223,17 +1094,17 @@ sai_status_t ClientSai::bulkCreate(
 
     m_communicationChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_CREATE);
 
-    return waitForBulkResponse(SAI_COMMON_API_BULK_CREATE, (uint32_t)serialized_object_ids.size(), object_statuses);
+    return waitForBulkResponse(OTAI_COMMON_API_BULK_CREATE, (uint32_t)serialized_object_ids.size(), object_statuses);
 }
 
 // BULK REMOVE
 
-sai_status_t ClientSai::bulkRemove(
-        _In_ sai_object_type_t object_type,
+otai_status_t ClientOtai::bulkRemove(
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_id_t *object_id,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _In_ const otai_object_id_t *object_id,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -1243,7 +1114,7 @@ sai_status_t ClientSai::bulkRemove(
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
-        serializedObjectIds.emplace_back(sai_serialize_object_id(object_id[idx]));
+        serializedObjectIds.emplace_back(otai_serialize_object_id(object_id[idx]));
     }
 
     return bulkRemove(object_type, serializedObjectIds, mode, object_statuses);
@@ -1251,11 +1122,11 @@ sai_status_t ClientSai::bulkRemove(
 
 // BULK REMOVE HELPERS
 
-sai_status_t ClientSai::bulkRemove(
-        _In_ sai_object_type_t object_type,
+otai_status_t ClientOtai::bulkRemove(
+        _In_ otai_object_type_t object_type,
         _In_ const std::vector<std::string> &serialized_object_ids,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -1263,7 +1134,7 @@ sai_status_t ClientSai::bulkRemove(
     // be supported by LUA script passed as first or last entry in values,
     // currently mode is ignored
 
-    std::string serializedObjectType = sai_serialize_object_type(object_type);
+    std::string serializedObjectType = otai_serialize_object_type(object_type);
 
     std::vector<swss::FieldValueTuple> entries;
 
@@ -1288,18 +1159,18 @@ sai_status_t ClientSai::bulkRemove(
 
     m_communicationChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_REMOVE);
 
-    return waitForBulkResponse(SAI_COMMON_API_BULK_REMOVE, (uint32_t)serialized_object_ids.size(), object_statuses);
+    return waitForBulkResponse(OTAI_COMMON_API_BULK_REMOVE, (uint32_t)serialized_object_ids.size(), object_statuses);
 }
 
 // BULK SET
 
-sai_status_t ClientSai::bulkSet(
-        _In_ sai_object_type_t object_type,
+otai_status_t ClientOtai::bulkSet(
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_id_t *object_id,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _In_ const otai_object_id_t *object_id,
+        _In_ const otai_attribute_t *attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -1309,7 +1180,7 @@ sai_status_t ClientSai::bulkSet(
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
-        serializedObjectIds.emplace_back(sai_serialize_object_id(object_id[idx]));
+        serializedObjectIds.emplace_back(otai_serialize_object_id(object_id[idx]));
     }
 
     return bulkSet(object_type, serializedObjectIds, attr_list, mode, object_statuses);
@@ -1317,12 +1188,12 @@ sai_status_t ClientSai::bulkSet(
 
 // BULK SET HELPERS
 
-sai_status_t ClientSai::bulkSet(
-        _In_ sai_object_type_t object_type,
+otai_status_t ClientOtai::bulkSet(
+        _In_ otai_object_type_t object_type,
         _In_ const std::vector<std::string> &serialized_object_ids,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _In_ const otai_attribute_t *attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -1334,7 +1205,7 @@ sai_status_t ClientSai::bulkSet(
 
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
-        auto entry = SaiAttributeList::serialize_attr_list(object_type, 1, &attr_list[idx], false);
+        auto entry = OtaiAttributeList::serialize_attr_list(object_type, 1, &attr_list[idx], false);
 
         std::string str_attr = Globals::joinFieldValues(entry);
 
@@ -1348,25 +1219,25 @@ sai_status_t ClientSai::bulkSet(
      * with previous
      */
 
-    auto serializedObjectType = sai_serialize_object_type(object_type);
+    auto serializedObjectType = otai_serialize_object_type(object_type);
 
     std::string key = serializedObjectType + ":" + std::to_string(entries.size());
 
     m_communicationChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_SET);
 
-    return waitForBulkResponse(SAI_COMMON_API_BULK_SET, (uint32_t)serialized_object_ids.size(), object_statuses);
+    return waitForBulkResponse(OTAI_COMMON_API_BULK_SET, (uint32_t)serialized_object_ids.size(), object_statuses);
 }
 
 // BULK GET
 
-sai_status_t ClientSai::bulkGet(
-        _In_ sai_object_type_t object_type,
+otai_status_t ClientOtai::bulkGet(
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_id_t *object_id,
+        _In_ const otai_object_id_t *object_id,
         _In_ const uint32_t *attr_count,
-        _Inout_ sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _Inout_ otai_attribute_t **attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     MUTEX();
     SWSS_LOG_ENTER();
@@ -1374,15 +1245,15 @@ sai_status_t ClientSai::bulkGet(
 
     SWSS_LOG_ERROR("not implemented, FIXME");
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return OTAI_STATUS_NOT_IMPLEMENTED;
 }
 
 // BULK RESPONSE HELPERS
 
-sai_status_t ClientSai::waitForBulkResponse(
-        _In_ sai_common_api_t api,
+otai_status_t ClientOtai::waitForBulkResponse(
+        _In_ otai_common_api_t api,
         _In_ uint32_t object_count,
-        _Out_ sai_status_t *object_statuses)
+        _Out_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -1403,10 +1274,10 @@ sai_status_t ClientSai::waitForBulkResponse(
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
-        sai_deserialize_status(fvField(values[idx]), object_statuses[idx]);
+        otai_deserialize_status(fvField(values[idx]), object_statuses[idx]);
     }
 
-    if (api == SAI_COMMON_API_BULK_CREATE)
+    if (api == OTAI_COMMON_API_BULK_CREATE)
     {
         m_lastCreateOids.clear();
 
@@ -1420,8 +1291,8 @@ sai_status_t ClientSai::waitForBulkResponse(
 
             if (field == "oid")
             {
-                sai_object_id_t oid;
-                sai_deserialize_object_id(value, oid);
+                otai_object_id_t oid;
+                otai_deserialize_object_id(value, oid);
 
                 m_lastCreateOids.push_back(oid);
             }
@@ -1431,7 +1302,7 @@ sai_status_t ClientSai::waitForBulkResponse(
     return status;
 }
 
-void ClientSai::handleNotification(
+void ClientOtai::handleNotification(
         _In_ const std::string &name,
         _In_ const std::string &serializedNotification,
         _In_ const std::vector<swss::FieldValueTuple> &values)
@@ -1473,12 +1344,12 @@ void ClientSai::handleNotification(
     }
 }
 
-sai_switch_notifications_t ClientSai::syncProcessNotification(
+otai_linecard_notifications_t ClientOtai::syncProcessNotification(
         _In_ std::shared_ptr<Notification> notification)
 {
     SWSS_LOG_ENTER();
 
-    // NOTE: process metadata must be executed under sairedis API mutex since
+    // NOTE: process metadata must be executed under otairedis API mutex since
     // it will access meta database and notification comes from different
     // thread, and this method is executed from notifications thread
 
@@ -1494,58 +1365,47 @@ sai_switch_notifications_t ClientSai::syncProcessNotification(
     }
 
     SWSS_LOG_WARN("switch %s not present in container, returning empty switch notifications",
-            sai_serialize_object_id(switchId).c_str());
+            otai_serialize_object_id(switchId).c_str());
 
     return { };
 }
 
-sai_object_type_t ClientSai::objectTypeQuery(
-        _In_ sai_object_id_t objectId)
+otai_object_type_t ClientOtai::objectTypeQuery(
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
     if (!m_apiInitialized)
     {
-        SWSS_LOG_ERROR("%s: SAI API not initialized", __PRETTY_FUNCTION__);
+        SWSS_LOG_ERROR("%s: OTAI API not initialized", __PRETTY_FUNCTION__);
 
-        return SAI_OBJECT_TYPE_NULL;
+        return OTAI_OBJECT_TYPE_NULL;
     }
 
     return VirtualObjectIdManager::objectTypeQuery(objectId);
 }
 
-sai_object_id_t ClientSai::switchIdQuery(
-        _In_ sai_object_id_t objectId)
+otai_object_id_t ClientOtai::switchIdQuery(
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
     if (!m_apiInitialized)
     {
-        SWSS_LOG_ERROR("%s: SAI API not initialized", __PRETTY_FUNCTION__);
+        SWSS_LOG_ERROR("%s: OTAI API not initialized", __PRETTY_FUNCTION__);
 
-        return SAI_OBJECT_TYPE_NULL;
+        return OTAI_OBJECT_TYPE_NULL;
     }
 
     return VirtualObjectIdManager::switchIdQuery(objectId);
 }
 
-sai_status_t ClientSai::logSet(
-        _In_ sai_api_t api,
-        _In_ sai_log_level_t log_level)
+otai_status_t ClientOtai::logSet(
+        _In_ otai_api_t api,
+        _In_ otai_log_level_t log_level)
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_SUCCESS;
+    return OTAI_STATUS_SUCCESS;
 }
 
-sai_status_t ClientSai::queryApiVersion(
-        _Out_ sai_api_version_t *version)
-{
-    MUTEX();
-    SWSS_LOG_ENTER();
-    REDIS_CHECK_API_INITIALIZED();
-
-    SWSS_LOG_ERROR("queryApiVersion not implemented, FIXME");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}

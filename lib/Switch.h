@@ -1,24 +1,24 @@
 #pragma once
 
 extern "C" {
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
 #include <string>
 
-namespace sairedis
+namespace otairedis
 {
     class Switch
     {
         public:
 
             Switch(
-                    _In_ sai_object_id_t switchId);
+                    _In_ otai_object_id_t switchId);
 
             Switch(
-                    _In_ sai_object_id_t switchId,
+                    _In_ otai_object_id_t switchId,
                     _In_ uint32_t attrCount,
-                    _In_ const sai_attribute_t *attrList);
+                    _In_ const otai_attribute_t *attrList);
 
             virtual ~Switch() = default;
 
@@ -33,24 +33,24 @@ namespace sairedis
              */
             void updateNotifications(
                     _In_ uint32_t attrCount,
-                    _In_ const sai_attribute_t *attrList);
+                    _In_ const otai_attribute_t *attrList);
 
-            const sai_switch_notifications_t& getSwitchNotifications() const;
+            const otai_linecard_notifications_t& getSwitchNotifications() const;
 
-            sai_object_id_t getSwitchId() const;
+            otai_object_id_t getSwitchId() const;
 
             const std::string& getHardwareInfo() const;
 
         private:
 
-            sai_object_id_t m_switchId;
+            otai_object_id_t m_switchId;
 
             /**
              * @brief Notifications pointers holder.
              *
              * Each switch instance can have it's own notifications defined.
              */
-            sai_switch_notifications_t m_switchNotifications;
+            otai_linecard_notifications_t m_switchNotifications;
 
             std::string m_hardwareInfo;
     };

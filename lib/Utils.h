@@ -1,10 +1,10 @@
 #pragma once
 
 extern "C" {
-#include "sai.h"
+#include "otai.h"
 }
 
-namespace sairedis
+namespace otairedis
 {
     class Utils
     {
@@ -27,12 +27,12 @@ namespace sairedis
              * create serialize and deserialize special for GET operation.
              */
             static void clearOidValues(
-                    _In_ sai_object_type_t objectType,
+                    _In_ otai_object_type_t objectType,
                     _In_ uint32_t attrCount,
-                    _Out_ sai_attribute_t *attrList);
+                    _Out_ otai_attribute_t *attrList);
 
             static void clearOidList(
-                    _Out_ sai_object_list_t& list);
+                    _Out_ otai_object_list_t& list);
 
             static uint64_t timeToReachTargetValueUsingHalfLife(
                     _In_ uint64_t halfLifeUsec,

@@ -2,7 +2,7 @@
 
 #include "swss/logger.h"
 
-using namespace sairedis;
+using namespace otairedis;
 
 SwitchConfig::SwitchConfig():
     m_switchIndex(0),

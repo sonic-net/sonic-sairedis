@@ -10,7 +10,7 @@
 #include <memory>
 #include <functional>
 
-namespace sairedis
+namespace otairedis
 {
     class ZeroMQChannel:
         public Channel
@@ -40,7 +40,7 @@ namespace sairedis
                     _In_ const std::string& key,
                     _In_ const std::string& command) override;
 
-            virtual sai_status_t wait(
+            virtual otai_status_t wait(
                     _In_ const std::string& command,
                     _Out_ swss::KeyOpFieldsValuesTuple& kco) override;
 

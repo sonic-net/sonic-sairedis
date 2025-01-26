@@ -2,7 +2,7 @@
 
 #include "SwitchConfigContainer.h"
 
-namespace sairedis
+namespace otairedis
 {
     class ContextConfig
     {
