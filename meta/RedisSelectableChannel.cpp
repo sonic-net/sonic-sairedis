@@ -2,7 +2,7 @@
 
 #include "swss/logger.h"
 
-using namespace sairedis;
+using namespace otairedis;
 
 RedisSelectableChannel::RedisSelectableChannel(
         _In_ std::shared_ptr<swss::DBConnector> dbAsic,

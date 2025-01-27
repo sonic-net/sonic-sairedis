@@ -1,10 +1,10 @@
 #pragma once
 
 extern "C" {
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
-#include "SaiAttr.h"
+#include "OtaiAttr.h"
 
 #include <string>
 #include <memory>
@@ -13,16 +13,16 @@ extern "C" {
 namespace syncd
 {
     /**
-     * @brief Represents SAI object status during comparison
+     * @brief Represents OTAI object status during comparison
      */
-    typedef enum _sai_object_status_t
+    typedef enum _otai_object_status_t
     {
         /**
          * @brief Object was not processed at all
          *
          * This enum must be declared first.
          */
-        SAI_OBJECT_STATUS_NOT_PROCESSED = 0,
+        OTAI_OBJECT_STATUS_NOT_PROCESSED = 0,
 
         /**
          * @brief Object was matched in previous view
@@ -36,14 +36,14 @@ namespace syncd
          * Since only attributes can be updated then this object may not be removed
          * at all, it must be possible to update only attribute values.
          */
-        SAI_OBJECT_STATUS_MATCHED,
+        OTAI_OBJECT_STATUS_MATCHED,
 
         /**
          * @brief Object was removed during child processing
          *
          * Only current view objects can be set to this status.
          */
-        SAI_OBJECT_STATUS_REMOVED,
+        OTAI_OBJECT_STATUS_REMOVED,
 
         /**
          * @brief Object is in final stage
@@ -51,9 +51,9 @@ namespace syncd
          * This means object was matched/set/created and proper actions were
          * generated as diff data to be executed on ASIC.
          */
-        SAI_OBJECT_STATUS_FINAL,
+        OTAI_OBJECT_STATUS_FINAL,
 
-    } sai_object_status_t;
+    } otai_object_status_t;
 
     class ObjectStatus
     {
@@ -64,34 +64,34 @@ namespace syncd
 
         public:
 
-            static std::string sai_serialize_object_status(
-                    _In_ sai_object_status_t os);
+            static std::string otai_serialize_object_status(
+                    _In_ otai_object_status_t os);
     };
 
-    class SaiObj
+    class OtaiObj
     {
         private:
 
-            SaiObj(const SaiObj&) = delete;
-            SaiObj& operator=(const SaiObj&) = delete;
+            OtaiObj(const OtaiObj&) = delete;
+            OtaiObj& operator=(const OtaiObj&) = delete;
 
         public:
 
-            SaiObj();
+            OtaiObj();
 
-            virtual ~SaiObj() = default;
+            virtual ~OtaiObj() = default;
 
         public:
 
             bool isOidObject() const;
 
-            const std::unordered_map<sai_attr_id_t, std::shared_ptr<SaiAttr>>& getAllAttributes() const;
+            const std::unordered_map<otai_attr_id_t, std::shared_ptr<OtaiAttr>>& getAllAttributes() const;
 
-            std::shared_ptr<const SaiAttr> getSaiAttr(
-                    _In_ sai_attr_id_t id) const;
+            std::shared_ptr<const OtaiAttr> getOtaiAttr(
+                    _In_ otai_attr_id_t id) const;
 
-            std::shared_ptr<const SaiAttr> tryGetSaiAttr(
-                    _In_ sai_attr_id_t id) const;
+            std::shared_ptr<const OtaiAttr> tryGetOtaiAttr(
+                    _In_ otai_attr_id_t id) const;
 
             /**
              * @brief Sets object status
@@ -99,31 +99,31 @@ namespace syncd
              * @param[in] objectStatus New object status
              */
             void setObjectStatus(
-                    _In_ sai_object_status_t objectStatus);
+                    _In_ otai_object_status_t objectStatus);
 
             /**
              * @brief Gets current object status
              *
              * @return Current object status
              */
-            sai_object_status_t getObjectStatus() const;
+            otai_object_status_t getObjectStatus() const;
 
             /**
              * @brief Gets object type
              *
              * @return Object type
              */
-            sai_object_type_t getObjectType() const;
+            otai_object_type_t getObjectType() const;
 
             // TODO should be private, and we should have some friends from AsicView class
 
             void setAttr(
-                    _In_ const std::shared_ptr<SaiAttr> &attr);
+                    _In_ const std::shared_ptr<OtaiAttr> &attr);
 
             bool hasAttr(
-                    _In_ sai_attr_id_t id) const;
+                    _In_ otai_attr_id_t id) const;
 
-            sai_object_id_t getVid() const;
+            otai_object_id_t getVid() const;
 
             /*
              * NOTE: We need dependency tree if we want to remove objects which
@@ -136,9 +136,9 @@ namespace syncd
             std::string m_str_object_type;
             std::string m_str_object_id;
 
-            sai_object_meta_key_t m_meta_key;
+            otai_object_meta_key_t m_meta_key;
 
-            const sai_object_type_info_t *m_info;
+            const otai_object_type_info_t *m_info;
 
             /**
              * @brief This will indicate whether object was created and it will
@@ -148,8 +148,8 @@ namespace syncd
 
         private:
 
-            sai_object_status_t m_objectStatus;
+            otai_object_status_t m_objectStatus;
 
-            std::unordered_map<sai_attr_id_t, std::shared_ptr<SaiAttr>> m_attrs;
+            std::unordered_map<otai_attr_id_t, std::shared_ptr<OtaiAttr>> m_attrs;
     };
 }

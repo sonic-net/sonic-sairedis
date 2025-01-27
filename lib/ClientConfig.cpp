@@ -8,11 +8,11 @@
 
 using json = nlohmann::json;
 
-using namespace sairedis;
+using namespace otairedis;
 
 ClientConfig::ClientConfig():
-    m_zmqEndpoint("ipc:///tmp/saiServer"),
-    m_zmqNtfEndpoint("ipc:///tmp/saiServerNtf")
+    m_zmqEndpoint("ipc:///tmp/otaiServer"),
+    m_zmqNtfEndpoint("ipc:///tmp/otaiServerNtf")
 {
     SWSS_LOG_ENTER();
 

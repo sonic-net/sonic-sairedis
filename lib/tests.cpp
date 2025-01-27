@@ -1,5 +1,5 @@
 extern "C" {
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
 #include "ContextConfigContainer.h"
@@ -10,7 +10,7 @@ extern "C" {
 
 #include "Recorder.h"
 
-#include "meta/sai_serialize.h"
+#include "meta/otai_serialize.h"
 #include "meta/SaiAttributeList.h"
 #include "meta/Globals.h"
 
@@ -22,32 +22,32 @@ extern "C" {
 
 #define ASSERT_EQ(a,b) if ((a) != (b)) { SWSS_LOG_THROW("ASSERT EQ FAILED: " #a " != " #b); }
 
-using namespace saimeta;
-using namespace sairedis;
+using namespace otaimeta;
+using namespace otairedis;
 
-const std::string SairedisRecFilename = "sairedis.rec";
+const std::string SairedisRecFilename = "otairedis.rec";
 
-sai_object_type_t sai_object_type_query(
-        _In_ sai_object_id_t objectId)
+otai_object_type_t otai_object_type_query(
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
-    return SAI_OBJECT_TYPE_NULL;
+    return OTAI_OBJECT_TYPE_NULL;
 }
 
-sai_object_id_t sai_switch_id_query(
-        _In_ sai_object_id_t objectId)
+otai_object_id_t otai_switch_id_query(
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
-    return SAI_NULL_OBJECT_ID;
+    return OTAI_NULL_OBJECT_ID;
 }
 
-sai_route_entry_t get_route_entry()
+otai_route_entry_t get_route_entry()
 {
     SWSS_LOG_ENTER();
 
-    sai_route_entry_t route_entry = { };
+    otai_route_entry_t route_entry = { };
 
     route_entry.vr_id = 0x123456789abcdef;
     route_entry.switch_id = 0x123456789abcdef;
@@ -63,8 +63,8 @@ std::string serialize_route_entry()
 
     static auto route_entry = get_route_entry();
 
-    return sai_serialize_object_type(SAI_OBJECT_TYPE_ROUTE_ENTRY) + ":" +
-        sai_serialize_route_entry(route_entry);
+    return otai_serialize_object_type(OTAI_OBJECT_TYPE_ROUTE_ENTRY) + ":" +
+        otai_serialize_route_entry(route_entry);
 }
 
 std::string serialize_route_entry2()
@@ -75,10 +75,10 @@ std::string serialize_route_entry2()
 
     char buffer[1000];
 
-    int n = sai_serialize_object_type(buffer, SAI_OBJECT_TYPE_ROUTE_ENTRY);
+    int n = otai_serialize_object_type(buffer, OTAI_OBJECT_TYPE_ROUTE_ENTRY);
     buffer[n] = ':';
 
-    sai_serialize_route_entry(buffer+n+1, &route_entry);
+    otai_serialize_route_entry(buffer+n+1, &route_entry);
 
     return  std::string(buffer);
 }
@@ -87,10 +87,10 @@ std::string serialize_vlan()
 {
     SWSS_LOG_ENTER();
 
-    sai_object_id_t oid = 0x123456789abcdef;
+    otai_object_id_t oid = 0x123456789abcdef;
 
-    return sai_serialize_object_type(SAI_OBJECT_TYPE_VLAN) + ":" +
-        sai_serialize_object_id(oid);
+    return otai_serialize_object_type(OTAI_OBJECT_TYPE_VLAN) + ":" +
+        otai_serialize_object_id(oid);
 }
 
 void test_serialize_remove_route_entry(int n)
@@ -118,7 +118,7 @@ void test_deserialize_route_entry_meta(int n)
 
     // meta key 123ms/10k
     auto s = serialize_route_entry();
-    // auto s = sai_serialize_route_entry(get_route_entry());
+    // auto s = otai_serialize_route_entry(get_route_entry());
 
     std::cout << s << std::endl;
 
@@ -126,11 +126,11 @@ void test_deserialize_route_entry_meta(int n)
 
     for (int i = 0; i < n; i++)
     {
-        sai_object_meta_key_t mk;
-        sai_deserialize_object_meta_key(s, mk);
+        otai_object_meta_key_t mk;
+        otai_deserialize_object_meta_key(s, mk);
 
-        //sai_route_entry_t route_entry;
-        //sai_deserialize_route_entry(s, route_entry);
+        //otai_route_entry_t route_entry;
+        //otai_deserialize_route_entry(s, route_entry);
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -149,8 +149,8 @@ void test_deserialize_route_entry(int n)
 
     char buffer[1000];
 
-    sai_route_entry_t route_entry = get_route_entry();
-    sai_serialize_route_entry(buffer, &route_entry);
+    otai_route_entry_t route_entry = get_route_entry();
+    otai_serialize_route_entry(buffer, &route_entry);
 
     auto s = std::string(buffer);
 
@@ -160,7 +160,7 @@ void test_deserialize_route_entry(int n)
 
     for (int i = 0; i < n; i++)
     {
-        sai_deserialize_route_entry(s.c_str(), &route_entry);
+        otai_deserialize_route_entry(s.c_str(), &route_entry);
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -188,14 +188,14 @@ void test_serialize_remove_oid(int n)
     std::cout << "ms: " << (double)us.count()/1000 << " / " << n << std::endl;
 }
 
-sai_fdb_entry_t get_fdb_entry()
+otai_fdb_entry_t get_fdb_entry()
 {
     SWSS_LOG_ENTER();
 
     std::string str = "{\"bvid\":\"oid:0x123456789abcdef\",\"mac\":\"52:54:00:79:16:93\",\"switch_id\":\"oid:0x123456789abcdef\"}";
 
-    sai_fdb_entry_t fdb_entry;
-    sai_deserialize_fdb_entry(str, fdb_entry);
+    otai_fdb_entry_t fdb_entry;
+    otai_deserialize_fdb_entry(str, fdb_entry);
 
     return fdb_entry;
 }
@@ -206,8 +206,8 @@ std::string serialize_fdb_entry()
 
     static auto fdb_entry = get_fdb_entry();
 
-    return sai_serialize_object_type(SAI_OBJECT_TYPE_FDB_ENTRY) + ":" +
-        sai_serialize_fdb_entry(fdb_entry);
+    return otai_serialize_object_type(OTAI_OBJECT_TYPE_FDB_ENTRY) + ":" +
+        otai_serialize_fdb_entry(fdb_entry);
 }
 
 void test_serialize_remove_fdb_entry(int n)
@@ -233,11 +233,11 @@ std::string serialize_bulk_vlan(int per)
 {
     SWSS_LOG_ENTER();
 
-    sai_object_id_t oid = 0x123456789abcdef;
+    otai_object_id_t oid = 0x123456789abcdef;
 
     int n = per;
 
-    std::string str_object_type = sai_serialize_object_type(SAI_OBJECT_TYPE_VLAN);
+    std::string str_object_type = otai_serialize_object_type(OTAI_OBJECT_TYPE_VLAN);
 
     std::vector<swss::FieldValueTuple> entries;
 
@@ -245,7 +245,7 @@ std::string serialize_bulk_vlan(int per)
     {
         std::string str_attr = "";
 
-        swss::FieldValueTuple fvtNoStatus(sai_serialize_object_id(oid), str_attr);
+        swss::FieldValueTuple fvtNoStatus(otai_serialize_object_id(oid), str_attr);
 
         entries.push_back(fvtNoStatus);
     }
@@ -289,7 +289,7 @@ std::string serialize_bulk_route_entry(int per)
 
     int n = per;
 
-    std::string str_object_type = sai_serialize_object_type(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+    std::string str_object_type = otai_serialize_object_type(OTAI_OBJECT_TYPE_ROUTE_ENTRY);
 
     std::vector<swss::FieldValueTuple> entries;
 
@@ -297,7 +297,7 @@ std::string serialize_bulk_route_entry(int per)
     {
         std::string str_attr = "";
 
-        swss::FieldValueTuple fvtNoStatus(sai_serialize_route_entry(route_entry), str_attr);
+        swss::FieldValueTuple fvtNoStatus(otai_serialize_route_entry(route_entry), str_attr);
 
         entries.push_back(fvtNoStatus);
     }
@@ -342,7 +342,7 @@ std::string serialize_bulk_fdb_entry(int per)
 
     int n = per;
 
-    std::string str_object_type = sai_serialize_object_type(SAI_OBJECT_TYPE_FDB_ENTRY);
+    std::string str_object_type = otai_serialize_object_type(OTAI_OBJECT_TYPE_FDB_ENTRY);
 
     std::vector<swss::FieldValueTuple> entries;
 
@@ -350,7 +350,7 @@ std::string serialize_bulk_fdb_entry(int per)
     {
         std::string str_attr = "";
 
-        swss::FieldValueTuple fvtNoStatus(sai_serialize_fdb_entry(fdb_entry), str_attr);
+        swss::FieldValueTuple fvtNoStatus(otai_serialize_fdb_entry(fdb_entry), str_attr);
 
         entries.push_back(fvtNoStatus);
     }
@@ -417,10 +417,10 @@ SaiAttributeList* get_route_entry_list()
 
     std::vector<swss::FieldValueTuple> values;
 
-    values.push_back(swss::FieldValueTuple("SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION","SAI_PACKET_ACTION_FORWARD"));
-    values.push_back(swss::FieldValueTuple("SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID","oid:0x1000000000001"));
+    values.push_back(swss::FieldValueTuple("OTAI_ROUTE_ENTRY_ATTR_PACKET_ACTION","OTAI_PACKET_ACTION_FORWARD"));
+    values.push_back(swss::FieldValueTuple("OTAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID","oid:0x1000000000001"));
 
-    return new SaiAttributeList(SAI_OBJECT_TYPE_ROUTE_ENTRY, values, false);
+    return new SaiAttributeList(OTAI_OBJECT_TYPE_ROUTE_ENTRY, values, false);
 }
 
 std::string serialize_create_route_entry()
@@ -432,7 +432,7 @@ std::string serialize_create_route_entry()
     static SaiAttributeList *list = get_route_entry_list();
 
     std::vector<swss::FieldValueTuple> entry = SaiAttributeList::serialize_attr_list(
-            SAI_OBJECT_TYPE_ROUTE_ENTRY,
+            OTAI_OBJECT_TYPE_ROUTE_ENTRY,
             list->get_attr_count(),
             list->get_attr_list(),
             false);
@@ -444,8 +444,8 @@ std::string serialize_create_route_entry()
         joined += "||" + fvField(e) + "|" + fvValue(e);
     }
 
-    return sai_serialize_object_type(SAI_OBJECT_TYPE_ROUTE_ENTRY) + ":" +
-        sai_serialize_route_entry(route_entry) + ":" + joined;
+    return otai_serialize_object_type(OTAI_OBJECT_TYPE_ROUTE_ENTRY) + ":" +
+        otai_serialize_route_entry(route_entry) + ":" + joined;
 }
 
 void test_serialize_create_route_entry(int n)
@@ -473,11 +473,11 @@ SaiAttributeList* get_fdb_entry_list()
 
     std::vector<swss::FieldValueTuple> values;
 
-    values.push_back(swss::FieldValueTuple("SAI_FDB_ENTRY_ATTR_TYPE","SAI_FDB_ENTRY_TYPE_DYNAMIC"));
-    values.push_back(swss::FieldValueTuple("SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID","oid:0x3a000000000fb"));
-    values.push_back(swss::FieldValueTuple("SAI_FDB_ENTRY_ATTR_PACKET_ACTION","SAI_PACKET_ACTION_FORWARD"));
+    values.push_back(swss::FieldValueTuple("OTAI_FDB_ENTRY_ATTR_TYPE","OTAI_FDB_ENTRY_TYPE_DYNAMIC"));
+    values.push_back(swss::FieldValueTuple("OTAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID","oid:0x3a000000000fb"));
+    values.push_back(swss::FieldValueTuple("OTAI_FDB_ENTRY_ATTR_PACKET_ACTION","OTAI_PACKET_ACTION_FORWARD"));
 
-    return new SaiAttributeList(SAI_OBJECT_TYPE_FDB_ENTRY, values, false);
+    return new SaiAttributeList(OTAI_OBJECT_TYPE_FDB_ENTRY, values, false);
 }
 
 std::string serialize_create_fdb_entry()
@@ -489,7 +489,7 @@ std::string serialize_create_fdb_entry()
     static SaiAttributeList *list = get_fdb_entry_list();
 
     std::vector<swss::FieldValueTuple> entry = SaiAttributeList::serialize_attr_list(
-            SAI_OBJECT_TYPE_FDB_ENTRY,
+            OTAI_OBJECT_TYPE_FDB_ENTRY,
             list->get_attr_count(),
             list->get_attr_list(),
             false);
@@ -501,8 +501,8 @@ std::string serialize_create_fdb_entry()
         joined += "||" + fvField(e) + "|" + fvValue(e);
     }
 
-    return sai_serialize_object_type(SAI_OBJECT_TYPE_FDB_ENTRY) + ":" +
-        sai_serialize_fdb_entry(fdb_entry) + ":" + joined;
+    return otai_serialize_object_type(OTAI_OBJECT_TYPE_FDB_ENTRY) + ":" +
+        otai_serialize_fdb_entry(fdb_entry) + ":" + joined;
 }
 
 void test_serialize_create_fdb_entry(int n)
@@ -530,21 +530,21 @@ SaiAttributeList* get_oid_list()
 
     std::vector<swss::FieldValueTuple> values;
 
-    values.push_back(swss::FieldValueTuple("SAI_VLAN_ATTR_VLAN_ID","2"));
+    values.push_back(swss::FieldValueTuple("OTAI_VLAN_ATTR_VLAN_ID","2"));
 
-    return new SaiAttributeList(SAI_OBJECT_TYPE_VLAN, values, false);
+    return new SaiAttributeList(OTAI_OBJECT_TYPE_VLAN, values, false);
 }
 
 std::string serialize_create_oid()
 {
     SWSS_LOG_ENTER();
 
-    static sai_object_id_t oid = 0x123456789abcdef;
+    static otai_object_id_t oid = 0x123456789abcdef;
 
     static SaiAttributeList *list = get_oid_list();
 
     std::vector<swss::FieldValueTuple> entry = SaiAttributeList::serialize_attr_list(
-            SAI_OBJECT_TYPE_VLAN,
+            OTAI_OBJECT_TYPE_VLAN,
             list->get_attr_count(),
             list->get_attr_list(),
             false);
@@ -556,8 +556,8 @@ std::string serialize_create_oid()
         joined += "||" + fvField(e) + "|" + fvValue(e);
     }
 
-    return sai_serialize_object_type(SAI_OBJECT_TYPE_VLAN) + ":" +
-        sai_serialize_object_id(oid) + "|" + joined;
+    return otai_serialize_object_type(OTAI_OBJECT_TYPE_VLAN) + ":" +
+        otai_serialize_object_id(oid) + "|" + joined;
 }
 
 void test_serialize_create_oid(int n)
@@ -587,22 +587,22 @@ std::string serialize_bulk_create_route_entry(int per)
 
     static SaiAttributeList *list = get_route_entry_list();
 
-    std::string str_object_type = sai_serialize_object_type(SAI_OBJECT_TYPE_ROUTE_ENTRY);
+    std::string str_object_type = otai_serialize_object_type(OTAI_OBJECT_TYPE_ROUTE_ENTRY);
 
     std::vector<swss::FieldValueTuple> entries;
 
     for (int idx = 0; idx < per; ++idx)
     {
         std::vector<swss::FieldValueTuple> entry =
-            SaiAttributeList::serialize_attr_list(SAI_OBJECT_TYPE_ROUTE_ENTRY, list->get_attr_count(), list->get_attr_list(), false);
+            SaiAttributeList::serialize_attr_list(OTAI_OBJECT_TYPE_ROUTE_ENTRY, list->get_attr_count(), list->get_attr_list(), false);
 
         std::string str_attr = Globals::joinFieldValues(entry);
 
-        std::string str_status = sai_serialize_status(SAI_STATUS_NOT_EXECUTED);
+        std::string str_status = otai_serialize_status(OTAI_STATUS_NOT_EXECUTED);
 
         std::string joined = str_attr + "|" + str_status;
 
-        swss::FieldValueTuple fvt(sai_serialize_route_entry(route_entry) , joined);
+        swss::FieldValueTuple fvt(otai_serialize_route_entry(route_entry) , joined);
 
         entries.push_back(fvt);
     }
@@ -643,26 +643,26 @@ std::string serialize_bulk_create_oid(int per)
 {
     SWSS_LOG_ENTER();
 
-    static sai_object_id_t oid = 0x123456789abcdef;
+    static otai_object_id_t oid = 0x123456789abcdef;
 
     static SaiAttributeList *list = get_oid_list();
 
-    std::string str_object_type = sai_serialize_object_type(SAI_OBJECT_TYPE_VLAN);
+    std::string str_object_type = otai_serialize_object_type(OTAI_OBJECT_TYPE_VLAN);
 
     std::vector<swss::FieldValueTuple> entries;
 
     for (int idx = 0; idx < per; ++idx)
     {
         std::vector<swss::FieldValueTuple> entry =
-            SaiAttributeList::serialize_attr_list(SAI_OBJECT_TYPE_VLAN, list->get_attr_count(), list->get_attr_list(), false);
+            SaiAttributeList::serialize_attr_list(OTAI_OBJECT_TYPE_VLAN, list->get_attr_count(), list->get_attr_list(), false);
 
         std::string str_attr = Globals::joinFieldValues(entry);
 
-        std::string str_status = sai_serialize_status(SAI_STATUS_NOT_EXECUTED);
+        std::string str_status = otai_serialize_status(OTAI_STATUS_NOT_EXECUTED);
 
         std::string joined = str_attr + "|" + str_status;
 
-        swss::FieldValueTuple fvt(sai_serialize_object_id(oid) , joined);
+        swss::FieldValueTuple fvt(otai_serialize_object_id(oid) , joined);
 
         entries.push_back(fvt);
     }
@@ -733,14 +733,14 @@ static std::vector<std::string> tokenize(
     return tokens;
 }
 
-static sai_object_type_t deserialize_object_type(
+static otai_object_type_t deserialize_object_type(
         _In_ const std::string& s)
 {
     SWSS_LOG_ENTER();
 
-    sai_object_type_t object_type;
+    otai_object_type_t object_type;
 
-    sai_deserialize_object_type(s, object_type);
+    otai_deserialize_object_type(s, object_type);
 
     return object_type;
 }
@@ -774,9 +774,9 @@ static std::vector<std::string> parseFirstRecordedAPI()
 }
 
 static void test_recorder_enum_value_capability_query_request(
-    _In_ sai_object_id_t switch_id,
-    _In_ sai_object_type_t object_type,
-    _In_ sai_attr_id_t attr_id,
+    _In_ otai_object_id_t switch_id,
+    _In_ otai_object_type_t object_type,
+    _In_ otai_attr_id_t attr_id,
     _In_ const std::vector<std::string>& expectedOutput)
 {
     SWSS_LOG_ENTER();
@@ -787,7 +787,7 @@ static void test_recorder_enum_value_capability_query_request(
 
     recorder.enableRecording(true);
 
-    sai_s32_list_t enum_values_capability { .count = 0, .list = nullptr };
+    otai_s32_list_t enum_values_capability { .count = 0, .list = nullptr };
 
     recorder.recordQueryAttributeEnumValuesCapability(
         switch_id,
@@ -802,9 +802,9 @@ static void test_recorder_enum_value_capability_query_request(
 }
 
 static void test_recorder_enum_value_capability_query_response(
-    _In_ sai_status_t status,
-    _In_ sai_object_type_t object_type,
-    _In_ sai_attr_id_t attr_id,
+    _In_ otai_status_t status,
+    _In_ otai_object_type_t object_type,
+    _In_ otai_attr_id_t attr_id,
     _In_ std::vector<int32_t> enumList,
     _In_ const std::vector<std::string>& expectedOutput)
 {
@@ -816,7 +816,7 @@ static void test_recorder_enum_value_capability_query_response(
 
     recorder.enableRecording(true);
 
-    sai_s32_list_t enum_values_capability;
+    otai_s32_list_t enum_values_capability;
 
     enum_values_capability.count = static_cast<int32_t>(enumList.size());
     enum_values_capability.list = enumList.data();
@@ -839,60 +839,60 @@ static void test_recorder_enum_value_capability_query()
 
     test_recorder_enum_value_capability_query_request(
         1,
-        SAI_OBJECT_TYPE_DEBUG_COUNTER,
-        SAI_DEBUG_COUNTER_ATTR_TYPE,
+        OTAI_OBJECT_TYPE_DEBUG_COUNTER,
+        OTAI_DEBUG_COUNTER_ATTR_TYPE,
         {
             "q",
             "attribute_enum_values_capability",
-            "SAI_OBJECT_TYPE_SWITCH:oid:0x1",
-            "SAI_DEBUG_COUNTER_ATTR_TYPE=0",
+            "OTAI_OBJECT_TYPE_SWITCH:oid:0x1",
+            "OTAI_DEBUG_COUNTER_ATTR_TYPE=0",
         }
     );
 
     test_recorder_enum_value_capability_query_response(
-        SAI_STATUS_SUCCESS,
-        SAI_OBJECT_TYPE_DEBUG_COUNTER,
-        SAI_DEBUG_COUNTER_ATTR_TYPE,
+        OTAI_STATUS_SUCCESS,
+        OTAI_OBJECT_TYPE_DEBUG_COUNTER,
+        OTAI_DEBUG_COUNTER_ATTR_TYPE,
         {
-            SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,
-            SAI_DEBUG_COUNTER_TYPE_PORT_OUT_DROP_REASONS,
-            SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS,
-            SAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS,
+            OTAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,
+            OTAI_DEBUG_COUNTER_TYPE_PORT_OUT_DROP_REASONS,
+            OTAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS,
+            OTAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS,
         },
         {
             "Q",
             "attribute_enum_values_capability",
-            "SAI_STATUS_SUCCESS",
-            "SAI_DEBUG_COUNTER_ATTR_TYPE=4:SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,SAI_DEBUG_COUNTER_TYPE_PORT_OUT_DROP_REASONS,"
-            "SAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS,SAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS",
+            "OTAI_STATUS_SUCCESS",
+            "OTAI_DEBUG_COUNTER_ATTR_TYPE=4:OTAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,OTAI_DEBUG_COUNTER_TYPE_PORT_OUT_DROP_REASONS,"
+            "OTAI_DEBUG_COUNTER_TYPE_SWITCH_IN_DROP_REASONS,OTAI_DEBUG_COUNTER_TYPE_SWITCH_OUT_DROP_REASONS",
         }
     );
 
     test_recorder_enum_value_capability_query_request(
         1,
-        SAI_OBJECT_TYPE_DEBUG_COUNTER,
-        SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST,
+        OTAI_OBJECT_TYPE_DEBUG_COUNTER,
+        OTAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST,
         {
             "q",
             "attribute_enum_values_capability",
-            "SAI_OBJECT_TYPE_SWITCH:oid:0x1",
-            "SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST=0",
+            "OTAI_OBJECT_TYPE_SWITCH:oid:0x1",
+            "OTAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST=0",
         }
     );
 
     test_recorder_enum_value_capability_query_response(
-        SAI_STATUS_SUCCESS,
-        SAI_OBJECT_TYPE_DEBUG_COUNTER,
-        SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST,
+        OTAI_STATUS_SUCCESS,
+        OTAI_OBJECT_TYPE_DEBUG_COUNTER,
+        OTAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST,
         {
-            SAI_IN_DROP_REASON_L2_ANY,
-            SAI_IN_DROP_REASON_L3_ANY
+            OTAI_IN_DROP_REASON_L2_ANY,
+            OTAI_IN_DROP_REASON_L3_ANY
         },
         {
             "Q",
             "attribute_enum_values_capability",
-            "SAI_STATUS_SUCCESS",
-            "SAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST=2:SAI_IN_DROP_REASON_L2_ANY,SAI_IN_DROP_REASON_L3_ANY"
+            "OTAI_STATUS_SUCCESS",
+            "OTAI_DEBUG_COUNTER_ATTR_IN_DROP_REASON_LIST=2:OTAI_IN_DROP_REASON_L2_ANY,OTAI_IN_DROP_REASON_L3_ANY"
         }
     );
 }
@@ -901,8 +901,8 @@ void test_tokenize_bulk_route_entry()
 {
     SWSS_LOG_ENTER();
 
-    auto header = "2020-09-24.21:06:54.045505|C|SAI_OBJECT_TYPE_ROUTE_ENTRY";
-    auto route = "||{\"dest\":\"20c1:bb0:0:80::/64\",\"switch_id\":\"oid:0x21000000000000\",\"vr\":\"oid:0x3000000000022\"}|SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID=oid:0x500000000066c";
+    auto header = "2020-09-24.21:06:54.045505|C|OTAI_OBJECT_TYPE_ROUTE_ENTRY";
+    auto route = "||{\"dest\":\"20c1:bb0:0:80::/64\",\"switch_id\":\"oid:0x21000000000000\",\"vr\":\"oid:0x3000000000022\"}|OTAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID=oid:0x500000000066c";
 
     std::string line = header;
 
@@ -925,7 +925,7 @@ void test_tokenize_bulk_route_entry()
 
         std::string str_object_type = swss::tokenize(first, '|').at(2);
 
-        sai_object_type_t object_type = deserialize_object_type(str_object_type);
+        otai_object_type_t object_type = deserialize_object_type(str_object_type);
 
         std::vector<std::string> object_ids;
 

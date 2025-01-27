@@ -1,11 +1,11 @@
 #pragma once
 
 extern "C" {
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
-#include "SaiObj.h"
-#include "SaiAttr.h"
+#include "OtaiObj.h"
+#include "OtaiAttr.h"
 #include "AsicOperation.h"
 
 #include "swss/table.h"
@@ -19,9 +19,9 @@ namespace syncd
     {
         public:
 
-            typedef std::unordered_map<sai_object_id_t, sai_object_id_t> ObjectIdMap;
-            typedef std::map<std::string, std::shared_ptr<SaiObj>> StrObjectIdToSaiObjectHash;
-            typedef std::map<sai_object_id_t, std::shared_ptr<SaiObj>> ObjectIdToSaiObjectHash;
+            typedef std::unordered_map<otai_object_id_t, otai_object_id_t> ObjectIdMap;
+            typedef std::map<std::string, std::shared_ptr<OtaiObj>> StrObjectIdToOtaiObjectHash;
+            typedef std::map<otai_object_id_t, std::shared_ptr<OtaiObj>> ObjectIdToOtaiObjectHash;
 
         private:
 
@@ -31,7 +31,7 @@ namespace syncd
              */
 
             AsicView(const AsicView&) = delete;
-            AsicView& operator=(const SaiAttr&) = delete;
+            AsicView& operator=(const OtaiAttr&) = delete;
 
         public:
 
@@ -56,7 +56,7 @@ namespace syncd
 
             void checkObjectsStatus() const;
 
-            sai_object_id_t getSwitchVid() const;
+            otai_object_id_t getSwitchVid() const;
 
         private:
 
@@ -66,7 +66,7 @@ namespace syncd
              * @param[in] attr Attribute which will be used to obtain oids.
              */
             void releaseExisgingLinks(
-                    _In_ const std::shared_ptr<const SaiAttr> &attr);
+                    _In_ const std::shared_ptr<const OtaiAttr> &attr);
 
             /**
              * @brief Release existing VID links (references) based on given object.
@@ -76,7 +76,7 @@ namespace syncd
              * @param[in] obj Object which will be used to obtain attributes and oids
              */
             void releaseExisgingLinks(
-                    _In_ const std::shared_ptr<const SaiObj> &obj);
+                    _In_ const std::shared_ptr<const OtaiObj> &obj);
 
             /**
              * @brief Release VID reference.
@@ -88,7 +88,7 @@ namespace syncd
              * @param[in] vid Virtual ID to be released.
              */
             void releaseVidReference(
-                    _In_ sai_object_id_t vid);
+                    _In_ otai_object_id_t vid);
 
             /**
              * @brief Bind new links (references) based on attribute
@@ -96,7 +96,7 @@ namespace syncd
              * @param[in] attr Attribute to obtain oids to bind references
              */
             void bindNewLinks(
-                    _In_ const std::shared_ptr<const SaiAttr> &attr);
+                    _In_ const std::shared_ptr<const OtaiAttr> &attr);
 
             /**
              * @brief Bind existing VID links (references) based on given object.
@@ -106,7 +106,7 @@ namespace syncd
              * @param[in] obj Object which will be used to obtain attributes and oids
              */
             void bindNewLinks(
-                    _In_ const std::shared_ptr<const SaiObj> &obj);
+                    _In_ const std::shared_ptr<const OtaiObj> &obj);
 
             /**
              * @brief Bind new VID reference
@@ -117,7 +117,7 @@ namespace syncd
              * @param[in] vid Virtual ID reference to be bind
              */
             void bindNewVidReference(
-                    _In_ sai_object_id_t vid);
+                    _In_ otai_object_id_t vid);
 
         public:
 
@@ -129,7 +129,7 @@ namespace syncd
              * @return Reference count or -1 if VID was not found.
              */
             int getVidReferenceCount(
-                    _In_ sai_object_id_t vid) const;
+                    _In_ otai_object_id_t vid) const;
 
             /**
              * @brief Insert new VID reference.
@@ -141,7 +141,7 @@ namespace syncd
              * @param[in] vid Virtual ID reference to be inserted.
              */
             void insertNewVidReference(
-                    _In_ sai_object_id_t vid);
+                    _In_ otai_object_id_t vid);
 
         public:
 
@@ -153,8 +153,8 @@ namespace syncd
              * @return List of objects with requested object type.
              * Order on list is random.
              */
-            std::vector<std::shared_ptr<SaiObj>> getObjectsByObjectType(
-                    _In_ sai_object_type_t object_type) const;
+            std::vector<std::shared_ptr<OtaiObj>> getObjectsByObjectType(
+                    _In_ otai_object_type_t object_type) const;
 
             /**
              * @brief Gets not processed objects by object type.
@@ -168,15 +168,15 @@ namespace syncd
              * @return List of objects with requested object type and marked
              * as not processed. Order on list is random.
              */
-            std::vector<std::shared_ptr<SaiObj>> getNotProcessedObjectsByObjectType(
-                    _In_ sai_object_type_t object_type) const;
+            std::vector<std::shared_ptr<OtaiObj>> getNotProcessedObjectsByObjectType(
+                    _In_ otai_object_type_t object_type) const;
 
             /**
              * @brief Gets all not processed objects
              *
              * @return List of all not processed objects. Order on list is random.
              */
-            std::vector<std::shared_ptr<SaiObj>> getAllNotProcessedObjects() const;
+            std::vector<std::shared_ptr<OtaiObj>> getAllNotProcessedObjects() const;
 
             /**
              * @brief Create dummy existing object
@@ -188,9 +188,9 @@ namespace syncd
              * @param[in] rid Real ID
              * @param[in] vid Virtual ID
              */
-            std::shared_ptr<SaiObj> createDummyExistingObject(
-                    _In_ sai_object_id_t rid,
-                    _In_ sai_object_id_t vid);
+            std::shared_ptr<OtaiObj> createDummyExistingObject(
+                    _In_ otai_object_id_t rid,
+                    _In_ otai_object_id_t vid);
 
             /**
              * @brief Generate ASIC set operation on current existing object.
@@ -206,8 +206,8 @@ namespace syncd
              * @param attr Attribute to be set on current object.
              */
             void asicSetAttribute(
-                    _In_ const std::shared_ptr<SaiObj> &currentObj,
-                    _In_ const std::shared_ptr<SaiAttr> &attr);
+                    _In_ const std::shared_ptr<OtaiObj> &currentObj,
+                    _In_ const std::shared_ptr<OtaiAttr> &attr);
 
             /**
              * @brief Generate ASIC create operation for current object.
@@ -223,7 +223,7 @@ namespace syncd
              * @param currentObject Current object to be created.
              */
             void asicCreateObject(
-                    _In_ const std::shared_ptr<SaiObj> &currentObj);
+                    _In_ const std::shared_ptr<OtaiObj> &currentObj);
 
             /**
              * @brief Generate ASIC remove operation for current existing object.
@@ -231,7 +231,7 @@ namespace syncd
              * @param currentObj Current existing object to be removed.
              */
             void asicRemoveObject(
-                    _In_ const std::shared_ptr<SaiObj> &currentObj);
+                    _In_ const std::shared_ptr<OtaiObj> &currentObj);
 
             std::vector<AsicOperation> asicGetWithOptimizedRemoveOperations() const;
 
@@ -240,10 +240,10 @@ namespace syncd
             size_t asicGetOperationsCount() const;
 
             bool hasRid(
-                    _In_ sai_object_id_t rid) const;
+                    _In_ otai_object_id_t rid) const;
 
             bool hasVid(
-                    _In_ sai_object_id_t vid) const;
+                    _In_ otai_object_id_t vid) const;
 
             void dumpRef(const std::string & asicName);
 
@@ -252,7 +252,7 @@ namespace syncd
         private:
 
             void populateAttributes(
-                    _In_ std::shared_ptr<SaiObj> &obj,
+                    _In_ std::shared_ptr<OtaiObj> &obj,
                     _In_ const swss::TableMap &map);
 
             /**
@@ -265,27 +265,27 @@ namespace syncd
              * @param value Value by which reference will be updated. Can be negative.
              */
             void updateNonObjectIdVidReferenceCountByValue(
-                    _In_ const std::shared_ptr<SaiObj> &currentObj,
+                    _In_ const std::shared_ptr<OtaiObj> &currentObj,
                     _In_ int value);
 
         public:
 
             // TODO convert to something like nonObjectIdMap
 
-            StrObjectIdToSaiObjectHash m_soFdbs;
-            StrObjectIdToSaiObjectHash m_soNeighbors;
-            StrObjectIdToSaiObjectHash m_soRoutes;
-            StrObjectIdToSaiObjectHash m_soNatEntries;
-            StrObjectIdToSaiObjectHash m_soInsegs;
-            StrObjectIdToSaiObjectHash m_soOids;
-            StrObjectIdToSaiObjectHash m_soAll;
+            StrObjectIdToOtaiObjectHash m_soFdbs;
+            StrObjectIdToOtaiObjectHash m_soNeighbors;
+            StrObjectIdToOtaiObjectHash m_soRoutes;
+            StrObjectIdToOtaiObjectHash m_soNatEntries;
+            StrObjectIdToOtaiObjectHash m_soInsegs;
+            StrObjectIdToOtaiObjectHash m_soOids;
+            StrObjectIdToOtaiObjectHash m_soAll;
 
             std::unordered_map<std::string,std::vector<std::string>> m_routesByPrefix;
             std::unordered_map<std::string,std::vector<std::string>> m_neighborsByIp;
 
-            ObjectIdToSaiObjectHash m_oOids;
+            ObjectIdToOtaiObjectHash m_oOids;
 
-            std::unordered_map<sai_object_id_t, sai_object_id_t> m_preMatchMap;
+            std::unordered_map<otai_object_id_t, otai_object_id_t> m_preMatchMap;
 
             /*
              * On temp view this needs to be used for actual NEW rids created and
@@ -296,9 +296,9 @@ namespace syncd
             ObjectIdMap m_vidToRid;
             ObjectIdMap m_removedVidToRid;
 
-            std::map<sai_object_type_t, std::unordered_map<std::string,std::string>> m_nonObjectIdMap;
+            std::map<otai_object_type_t, std::unordered_map<std::string,std::string>> m_nonObjectIdMap;
 
-            sai_object_id_t m_defaultTrapGroupRid;
+            otai_object_id_t m_defaultTrapGroupRid;
 
         private:
 
@@ -309,7 +309,7 @@ namespace syncd
              *
              * VID is key, reference count is value.
              */
-            std::map<sai_object_id_t, int> m_vidReference;
+            std::map<otai_object_id_t, int> m_vidReference;
 
             /**
              * @brief Asic operation ID.
@@ -339,12 +339,12 @@ namespace syncd
              * with that VID will be removed, we can move remove operation right
              * after asic operation id pointed by this VID.
              */
-            std::map<sai_object_id_t, int> m_vidToAsicOperationId;
+            std::map<otai_object_id_t, int> m_vidToAsicOperationId;
 
             /**
              * @brief ASIC operation list.
              *
-             * List contains ASIC operation generated in the same way as SAIREDIS.
+             * List contains ASIC operation generated in the same way as OTAIREDIS.
              *
              * KeyOpFieldsValuesTuple is shared to prevent expensive copy when
              * adding to vector.
@@ -353,6 +353,6 @@ namespace syncd
 
             std::vector<AsicOperation> m_asicRemoveOperationsNonObjectId;
 
-            std::map<sai_object_type_t, StrObjectIdToSaiObjectHash> m_sotAll;
+            std::map<otai_object_type_t, StrObjectIdToOtaiObjectHash> m_sotAll;
     };
 }

@@ -1,18 +1,18 @@
-#include "SaiObjectCollection.h"
+#include "OtaiObjectCollection.h"
 
-#include "sai_serialize.h"
+#include "otai_serialize.h"
 
-using namespace saimeta;
+using namespace otaimeta;
 
-void SaiObjectCollection::clear()
+void OtaiObjectCollection::clear()
 {
     SWSS_LOG_ENTER();
 
     m_objects.clear();
 }
 
-bool SaiObjectCollection::objectExists(
-        _In_ const sai_object_meta_key_t& metaKey) const
+bool OtaiObjectCollection::objectExists(
+        _In_ const otai_object_meta_key_t& metaKey) const
 {
     SWSS_LOG_ENTER();
 
@@ -21,55 +21,55 @@ bool SaiObjectCollection::objectExists(
     return exists;
 }
 
-void SaiObjectCollection::createObject(
-        _In_ const sai_object_meta_key_t& metaKey)
+void OtaiObjectCollection::createObject(
+        _In_ const otai_object_meta_key_t& metaKey)
 {
     SWSS_LOG_ENTER();
 
-    auto obj = std::make_shared<SaiObject>(metaKey);
+    auto obj = std::make_shared<OtaiObject>(metaKey);
 
     if (objectExists(metaKey))
     {
         SWSS_LOG_THROW("FATAL: object %s already exists",
-                sai_serialize_object_meta_key(metaKey).c_str());
+                otai_serialize_object_meta_key(metaKey).c_str());
     }
 
     m_objects[metaKey] = obj;
 }
 
-void SaiObjectCollection::removeObject(
-        _In_ const sai_object_meta_key_t& metaKey)
+void OtaiObjectCollection::removeObject(
+        _In_ const otai_object_meta_key_t& metaKey)
 {
     SWSS_LOG_ENTER();
 
     if (!objectExists(metaKey))
     {
         SWSS_LOG_THROW("FATAL: object %s doesn't exist",
-                sai_serialize_object_meta_key(metaKey).c_str());
+                otai_serialize_object_meta_key(metaKey).c_str());
     }
 
     m_objects.erase(metaKey);
 }
 
-void SaiObjectCollection::setObjectAttr(
-        _In_ const sai_object_meta_key_t& metaKey,
-        _In_ const sai_attr_metadata_t& md,
-        _In_ const sai_attribute_t *attr)
+void OtaiObjectCollection::setObjectAttr(
+        _In_ const otai_object_meta_key_t& metaKey,
+        _In_ const otai_attr_metadata_t& md,
+        _In_ const otai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
     if (!objectExists(metaKey))
     {
         SWSS_LOG_THROW("FATAL: object %s doesn't exist",
-                sai_serialize_object_meta_key(metaKey).c_str());
+                otai_serialize_object_meta_key(metaKey).c_str());
     }
 
     m_objects[metaKey]->setAttr(&md, attr);
 }
 
-std::shared_ptr<SaiAttrWrapper> SaiObjectCollection::getObjectAttr(
-        _In_ const sai_object_meta_key_t& metaKey,
-        _In_ sai_attr_id_t id)
+std::shared_ptr<OtaiAttrWrapper> OtaiObjectCollection::getObjectAttr(
+        _In_ const otai_object_meta_key_t& metaKey,
+        _In_ otai_attr_id_t id)
 {
     SWSS_LOG_ENTER();
 
@@ -84,7 +84,7 @@ std::shared_ptr<SaiAttrWrapper> SaiObjectCollection::getObjectAttr(
     if (it == m_objects.end())
     {
         SWSS_LOG_ERROR("object key %s not found",
-                sai_serialize_object_meta_key(metaKey).c_str());
+                otai_serialize_object_meta_key(metaKey).c_str());
 
         return nullptr;
     }
@@ -92,12 +92,12 @@ std::shared_ptr<SaiAttrWrapper> SaiObjectCollection::getObjectAttr(
     return it->second->getAttr(id);
 }
 
-std::vector<std::shared_ptr<SaiObject>> SaiObjectCollection::getObjectsByObjectType(
-        _In_ sai_object_type_t objectType)
+std::vector<std::shared_ptr<OtaiObject>> OtaiObjectCollection::getObjectsByObjectType(
+        _In_ otai_object_type_t objectType)
 {
     SWSS_LOG_ENTER();
 
-    std::vector<std::shared_ptr<SaiObject>> vec;
+    std::vector<std::shared_ptr<OtaiObject>> vec;
 
     for (auto& kvp: m_objects)
     {
@@ -108,25 +108,25 @@ std::vector<std::shared_ptr<SaiObject>> SaiObjectCollection::getObjectsByObjectT
     return vec;
 }
 
-std::shared_ptr<SaiObject> SaiObjectCollection::getObject(
-        _In_ const sai_object_meta_key_t& metaKey) const
+std::shared_ptr<OtaiObject> OtaiObjectCollection::getObject(
+        _In_ const otai_object_meta_key_t& metaKey) const
 {
     SWSS_LOG_ENTER();
 
     if (!objectExists(metaKey))
     {
         SWSS_LOG_THROW("FATAL: object %s doesn't exist",
-                sai_serialize_object_meta_key(metaKey).c_str());
+                otai_serialize_object_meta_key(metaKey).c_str());
     }
 
     return m_objects.at(metaKey);
 }
 
-std::vector<sai_object_meta_key_t> SaiObjectCollection::getAllKeys() const
+std::vector<otai_object_meta_key_t> OtaiObjectCollection::getAllKeys() const
 {
     SWSS_LOG_ENTER();
 
-    std::vector<sai_object_meta_key_t> vec;
+    std::vector<otai_object_meta_key_t> vec;
 
     for (auto& it: m_objects)
     {

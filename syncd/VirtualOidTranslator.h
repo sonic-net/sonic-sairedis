@@ -1,13 +1,13 @@
 #pragma once
 
 extern "C"{
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
 #include "VirtualObjectIdManager.h"
 #include "RedisClient.h"
 
-#include "meta/SaiInterface.h"
+#include "meta/OtaiInterface.h"
 
 #include <mutex>
 #include <unordered_map>
@@ -23,8 +23,8 @@ namespace syncd
 
             VirtualOidTranslator(
                     _In_ std::shared_ptr<RedisClient> client,
-                    _In_ std::shared_ptr<sairedis::VirtualObjectIdManager> virtualObjectIdManager,
-                    _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai);
+                    _In_ std::shared_ptr<otairedis::VirtualObjectIdManager> virtualObjectIdManager,
+                    _In_ std::shared_ptr<otairedis::OtaiInterface> vendorSai);
 
 
             virtual ~VirtualOidTranslator() = default;
@@ -38,9 +38,9 @@ namespace syncd
              * This function should not be used to create VID for SWITCH object
              * type.
              */
-            sai_object_id_t translateRidToVid(
-                    _In_ sai_object_id_t rid,
-                    _In_ sai_object_id_t switchVid,
+            otai_object_id_t translateRidToVid(
+                    _In_ otai_object_id_t rid,
+                    _In_ otai_object_id_t switchVid,
                     _In_ bool translateRemoved = false);
 
             /*
@@ -50,12 +50,12 @@ namespace syncd
              * Returns false if not able to find RID and out VID is null object.
              */
             bool tryTranslateRidToVid(
-                    _In_ sai_object_id_t rid,
-                    _Out_ sai_object_id_t &vid);
+                    _In_ otai_object_id_t rid,
+                    _Out_ otai_object_id_t &vid);
 
             void translateRidToVid(
-                    _Inout_ sai_object_list_t& objectList,
-                    _In_ sai_object_id_t switchVid,
+                    _Inout_ otai_object_list_t& objectList,
+                    _In_ otai_object_id_t switchVid,
                     _In_ bool translateRemoved = false);
 
             /*
@@ -65,10 +65,10 @@ namespace syncd
              * create new VIDs for those objects and we will put them to redis db.
              */
             void translateRidToVid(
-                    _In_ sai_object_type_t objectType,
-                    _In_ sai_object_id_t switchVid,
+                    _In_ otai_object_type_t objectType,
+                    _In_ otai_object_id_t switchVid,
                     _In_ uint32_t attrCount,
-                    _Inout_ sai_attribute_t *attrList,
+                    _Inout_ otai_attribute_t *attrList,
                     _In_ bool translateRemoved = false);
 
             /**
@@ -79,53 +79,53 @@ namespace syncd
              * @return True if exists or SAI_NULL_OBJECT_ID, otherwise false.
              */
             bool checkRidExists(
-                    _In_ sai_object_id_t rid,
+                    _In_ otai_object_id_t rid,
                     _In_ bool checkRemoved = false);
 
-            sai_object_id_t translateVidToRid(
-                    _In_ sai_object_id_t vid);
+            otai_object_id_t translateVidToRid(
+                    _In_ otai_object_id_t vid);
 
             void translateVidToRid(
-                    _Inout_ sai_object_list_t &element);
+                    _Inout_ otai_object_list_t &element);
 
             void translateVidToRid(
-                    _In_ sai_object_type_t objectType,
+                    _In_ otai_object_type_t objectType,
                     _In_ uint32_t attrCount,
-                    _Inout_ sai_attribute_t *attrList);
+                    _Inout_ otai_attribute_t *attrList);
 
             bool tryTranslateVidToRid(
-                    _In_ sai_object_id_t vid,
-                    _Out_ sai_object_id_t& rid);
+                    _In_ otai_object_id_t vid,
+                    _Out_ otai_object_id_t& rid);
 
             void translateVidToRid(
-                    _Inout_ sai_object_meta_key_t &metaKey);
+                    _Inout_ otai_object_meta_key_t &metaKey);
 
             bool tryTranslateVidToRid(
-                    _Inout_ sai_object_meta_key_t &metaKey);
+                    _Inout_ otai_object_meta_key_t &metaKey);
 
             void eraseRidAndVid(
-                    _In_ sai_object_id_t rid,
-                    _In_ sai_object_id_t vid);
+                    _In_ otai_object_id_t rid,
+                    _In_ otai_object_id_t vid);
 
             void insertRidAndVid(
-                    _In_ sai_object_id_t rid,
-                    _In_ sai_object_id_t vid);
+                    _In_ otai_object_id_t rid,
+                    _In_ otai_object_id_t vid);
 
             void clearLocalCache();
 
         private:
 
-            std::shared_ptr<sairedis::VirtualObjectIdManager> m_virtualObjectIdManager;
+            std::shared_ptr<otairedis::VirtualObjectIdManager> m_virtualObjectIdManager;
 
-            std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
+            std::shared_ptr<otairedis::OtaiInterface> m_vendorSai;
 
             std::mutex m_mutex;
 
             // those hashes keep mapping from all switches
 
-            std::unordered_map<sai_object_id_t, sai_object_id_t> m_rid2vid;
-            std::unordered_map<sai_object_id_t, sai_object_id_t> m_vid2rid;
-            std::unordered_map<sai_object_id_t, sai_object_id_t> m_removedRid2vid;
+            std::unordered_map<otai_object_id_t, otai_object_id_t> m_rid2vid;
+            std::unordered_map<otai_object_id_t, otai_object_id_t> m_vid2rid;
+            std::unordered_map<otai_object_id_t, otai_object_id_t> m_removedRid2vid;
 
             std::shared_ptr<RedisClient> m_client;
     };

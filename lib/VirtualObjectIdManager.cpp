@@ -1,60 +1,60 @@
 #include "VirtualObjectIdManager.h"
 
-#include "meta/sai_serialize.h"
+#include "meta/otai_serialize.h"
 #include "swss/logger.h"
 #include <inttypes.h>
 
 extern "C" {
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
-#define SAI_OBJECT_ID_BITS_SIZE (8 * sizeof(sai_object_id_t))
+#define OTAI_OBJECT_ID_BITS_SIZE (8 * sizeof(otai_object_id_t))
 
-static_assert(SAI_OBJECT_ID_BITS_SIZE == 64, "sai_object_id_t must have 64 bits");
-static_assert(sizeof(sai_object_id_t) == sizeof(uint64_t), "SAI object ID size should be uint64_t");
+static_assert(OTAI_OBJECT_ID_BITS_SIZE == 64, "otai_object_id_t must have 64 bits");
+static_assert(sizeof(otai_object_id_t) == sizeof(uint64_t), "OTAI object ID size should be uint64_t");
 
-#define SAI_REDIS_SWITCH_INDEX_BITS_SIZE ( 8 )
-#define SAI_REDIS_SWITCH_INDEX_MAX ( (1ULL << SAI_REDIS_SWITCH_INDEX_BITS_SIZE) - 1 )
-#define SAI_REDIS_SWITCH_INDEX_MASK (SAI_REDIS_SWITCH_INDEX_MAX)
+#define OTAI_REDIS_LINECARD_INDEX_BITS_SIZE ( 8 )
+#define OTAI_REDIS_LINECARD_INDEX_MAX ( (1ULL << OTAI_REDIS_LINECARD_INDEX_BITS_SIZE) - 1 )
+#define OTAI_REDIS_LINECARD_INDEX_MASK (OTAI_REDIS_LINECARD_INDEX_MAX)
 
-#define SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE ( 8 )
-#define SAI_REDIS_GLOBAL_CONTEXT_MAX ( (1ULL << SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE) - 1 )
-#define SAI_REDIS_GLOBAL_CONTEXT_MASK (SAI_REDIS_GLOBAL_CONTEXT_MAX)
+#define OTAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE ( 8 )
+#define OTAI_REDIS_GLOBAL_CONTEXT_MAX ( (1ULL << OTAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE) - 1 )
+#define OTAI_REDIS_GLOBAL_CONTEXT_MASK (OTAI_REDIS_GLOBAL_CONTEXT_MAX)
 
-#define SAI_REDIS_OBJECT_TYPE_BITS_SIZE ( 8 )
-#define SAI_REDIS_OBJECT_TYPE_MAX ( (1ULL << SAI_REDIS_OBJECT_TYPE_BITS_SIZE) - 1 )
-#define SAI_REDIS_OBJECT_TYPE_MASK (SAI_REDIS_OBJECT_TYPE_MAX)
+#define OTAI_REDIS_OBJECT_TYPE_BITS_SIZE ( 8 )
+#define OTAI_REDIS_OBJECT_TYPE_MAX ( (1ULL << OTAI_REDIS_OBJECT_TYPE_BITS_SIZE) - 1 )
+#define OTAI_REDIS_OBJECT_TYPE_MASK (OTAI_REDIS_OBJECT_TYPE_MAX)
 
-#define SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE ( 1 )
-#define SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ( (1ULL << SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE) - 1 )
-#define SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MASK (SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX)
+#define OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE ( 1 )
+#define OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ( (1ULL << OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE) - 1 )
+#define OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MASK (OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX)
 
-#define SAI_REDIS_OBJECT_INDEX_BITS_SIZE ( 39 )
-#define SAI_REDIS_OBJECT_INDEX_MAX ( (1ULL << SAI_REDIS_OBJECT_INDEX_BITS_SIZE) - 1 )
-#define SAI_REDIS_OBJECT_INDEX_MASK (SAI_REDIS_OBJECT_INDEX_MAX)
+#define OTAI_REDIS_OBJECT_INDEX_BITS_SIZE ( 39 )
+#define OTAI_REDIS_OBJECT_INDEX_MAX ( (1ULL << OTAI_REDIS_OBJECT_INDEX_BITS_SIZE) - 1 )
+#define OTAI_REDIS_OBJECT_INDEX_MASK (OTAI_REDIS_OBJECT_INDEX_MAX)
 
-#define SAI_REDIS_OBJECT_ID_BITS_SIZE (      \
-        SAI_REDIS_SWITCH_INDEX_BITS_SIZE +   \
-        SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + \
-        SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + \
-        SAI_REDIS_OBJECT_TYPE_BITS_SIZE +    \
-        SAI_REDIS_OBJECT_INDEX_BITS_SIZE )
+#define OTAI_REDIS_OBJECT_ID_BITS_SIZE (      \
+        OTAI_REDIS_LINECARD_INDEX_BITS_SIZE +   \
+        OTAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + \
+        OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + \
+        OTAI_REDIS_OBJECT_TYPE_BITS_SIZE +    \
+        OTAI_REDIS_OBJECT_INDEX_BITS_SIZE )
 
-static_assert(SAI_REDIS_OBJECT_ID_BITS_SIZE == SAI_OBJECT_ID_BITS_SIZE, "redis object id size must be equal to SAI object id size");
+static_assert(OTAI_REDIS_OBJECT_ID_BITS_SIZE == OTAI_OBJECT_ID_BITS_SIZE, "redis object id size must be equal to OTAI object id size");
 
 /*
- * This condition must be met, since we need to be able to encode SAI object
+ * This condition must be met, since we need to be able to encode OTAI object
  * type in object id on defined number of bits.
  */
-static_assert(SAI_OBJECT_TYPE_MAX < 256, "object type must be possible to encode on 1 byte");
-static_assert((SAI_OBJECT_TYPE_EXTENSIONS_RANGE_END - SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START) < 256,
-        "extensions object type must be possible to encode on 1 byte");
+static_assert(OTAI_OBJECT_TYPE_MAX < 256, "object type must be possible to encode on 1 byte");
+//static_assert((OTAI_OBJECT_TYPE_EXTENSIONS_RANGE_END - OTAI_OBJECT_TYPE_EXTENSIONS_RANGE_START) < 256,
+//        "extensions object type must be possible to encode on 1 byte");
 
 /*
  * Current OBJECT ID format:
  *
  * bits 63..56 - switch index
- * bits 55..48 - SAI object type
+ * bits 55..48 - OTAI object type
  * bits 47..40 - global context
  * bits 39..39 - object type extensions flag
  * bits 38..0  - object index
@@ -63,38 +63,38 @@ static_assert((SAI_OBJECT_TYPE_EXTENSIONS_RANGE_END - SAI_OBJECT_TYPE_EXTENSIONS
  * OID to some struct that will have all those values.  But having all this
  * information in OID itself is more convenient.
  *
- * To be backward compatible with previous sairedis, we will still encode base
+ * To be backward compatible with previous otairedis, we will still encode base
  * object type on bit's 55..48, and extensions which will now start from range
  * 0x20000000, will be encoded from 0x0, but extensions flag will be set to 1.
  *
- * For example SAI_OBJECT_TYPE_VIRTUAL_ROUTER oid will be encoded as 0x0003000000000001,
- * SAI_OBJECT_TYPE_DASH_ACL_GROUP oid will be encoded as 0x0003008000000001.
+ * For example OTAI_OBJECT_TYPE_VIRTUAL_ROUTER oid will be encoded as 0x0003000000000001,
+ * OTAI_OBJECT_TYPE_DASH_ACL_GROUP oid will be encoded as 0x0003008000000001.
  */
 
-#define SAI_REDIS_GET_OBJECT_INDEX(oid) \
-    ( ((uint64_t)oid) & ( SAI_REDIS_OBJECT_INDEX_MASK ) )
+#define OTAI_REDIS_GET_OBJECT_INDEX(oid) \
+    ( ((uint64_t)oid) & ( OTAI_REDIS_OBJECT_INDEX_MASK ) )
 
-#define SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(oid) \
-    ( (((uint64_t)oid) >> (SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ) )
+#define OTAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(oid) \
+    ( (((uint64_t)oid) >> (OTAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ) )
 
-#define SAI_REDIS_GET_GLOBAL_CONTEXT(oid) \
-    ( (((uint64_t)oid) >> (SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_GLOBAL_CONTEXT_MASK ) )
+#define OTAI_REDIS_GET_GLOBAL_CONTEXT(oid) \
+    ( (((uint64_t)oid) >> (OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + OTAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( OTAI_REDIS_GLOBAL_CONTEXT_MASK ) )
 
-#define SAI_REDIS_GET_OBJECT_TYPE(oid) \
-    ( (((uint64_t)oid) >> ( SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_OBJECT_TYPE_MASK ) )
+#define OTAI_REDIS_GET_OBJECT_TYPE(oid) \
+    ( (((uint64_t)oid) >> ( OTAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + OTAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( OTAI_REDIS_OBJECT_TYPE_MASK ) )
 
-#define SAI_REDIS_GET_SWITCH_INDEX(oid) \
-    ( (((uint64_t)oid) >> ( SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_SWITCH_INDEX_MASK ) )
+#define OTAI_REDIS_GET_LINECARD_INDEX(oid) \
+    ( (((uint64_t)oid) >> ( OTAI_REDIS_OBJECT_TYPE_BITS_SIZE + OTAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + OTAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( OTAI_REDIS_LINECARD_INDEX_MASK ) )
 
-#define SAI_REDIS_TEST_OID (0x012345e789abcdef)
+#define OTAI_REDIS_TEST_OID (0x012345e789abcdef)
 
-static_assert(SAI_REDIS_GET_SWITCH_INDEX(SAI_REDIS_TEST_OID) == 0x01, "test switch index");
-static_assert(SAI_REDIS_GET_OBJECT_TYPE(SAI_REDIS_TEST_OID) == 0x23, "test object type");
-static_assert(SAI_REDIS_GET_GLOBAL_CONTEXT(SAI_REDIS_TEST_OID) == 0x45, "test global context");
-static_assert(SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(SAI_REDIS_TEST_OID) == 0x1, "test object type extensions flag");
-static_assert(SAI_REDIS_GET_OBJECT_INDEX(SAI_REDIS_TEST_OID) == 0x6789abcdef, "test object index");
+static_assert(OTAI_REDIS_GET_LINECARD_INDEX(OTAI_REDIS_TEST_OID) == 0x01, "test switch index");
+static_assert(OTAI_REDIS_GET_OBJECT_TYPE(OTAI_REDIS_TEST_OID) == 0x23, "test object type");
+static_assert(OTAI_REDIS_GET_GLOBAL_CONTEXT(OTAI_REDIS_TEST_OID) == 0x45, "test global context");
+static_assert(OTAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(OTAI_REDIS_TEST_OID) == 0x1, "test object type extensions flag");
+static_assert(OTAI_REDIS_GET_OBJECT_INDEX(OTAI_REDIS_TEST_OID) == 0x6789abcdef, "test object index");
 
-using namespace sairedis;
+using namespace otairedis;
 
 VirtualObjectIdManager::VirtualObjectIdManager(
         _In_ uint32_t globalContext,
@@ -106,36 +106,36 @@ VirtualObjectIdManager::VirtualObjectIdManager(
 {
     SWSS_LOG_ENTER();
 
-    if (globalContext > SAI_REDIS_GLOBAL_CONTEXT_MAX)
+    if (globalContext > OTAI_REDIS_GLOBAL_CONTEXT_MAX)
     {
         SWSS_LOG_THROW("specified globalContext(0x%x) > maximum global context 0x%llx",
                 globalContext,
-                SAI_REDIS_GLOBAL_CONTEXT_MAX);
+                OTAI_REDIS_GLOBAL_CONTEXT_MAX);
     }
 }
 
-sai_object_id_t VirtualObjectIdManager::saiSwitchIdQuery(
-        _In_ sai_object_id_t objectId) const
+otai_object_id_t VirtualObjectIdManager::otaiSwitchIdQuery(
+        _In_ otai_object_id_t objectId) const
 {
     SWSS_LOG_ENTER();
 
-    if (objectId == SAI_NULL_OBJECT_ID)
+    if (objectId == OTAI_NULL_OBJECT_ID)
     {
-        return SAI_NULL_OBJECT_ID;
+        return OTAI_NULL_OBJECT_ID;
     }
 
-    sai_object_type_t objectType = saiObjectTypeQuery(objectId);
+    otai_object_type_t objectType = otaiObjectTypeQuery(objectId);
 
-    if (objectType == SAI_OBJECT_TYPE_NULL)
+    if (objectType == OTAI_OBJECT_TYPE_NULL)
     {
         // TODO don't throw, those 2 functions should never throw
         // it doesn't matter whether oid is correct, that will be validated
         // in metadata
         SWSS_LOG_THROW("invalid object type of oid %s",
-                sai_serialize_object_id(objectId).c_str());
+                otai_serialize_object_id(objectId).c_str());
     }
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD)
     {
         return objectId;
     }
@@ -145,38 +145,37 @@ sai_object_id_t VirtualObjectIdManager::saiSwitchIdQuery(
     // - if object id has existing switch index
     // but then this method can't be made static
 
-    uint32_t switchIndex = (uint32_t)SAI_REDIS_GET_SWITCH_INDEX(objectId);
+    uint32_t switchIndex = (uint32_t)OTAI_REDIS_GET_LINECARD_INDEX(objectId);
 
-    uint32_t globalContext = (uint32_t)SAI_REDIS_GET_GLOBAL_CONTEXT(objectId);
+    uint32_t globalContext = (uint32_t)OTAI_REDIS_GET_GLOBAL_CONTEXT(objectId);
 
-    return constructObjectId(SAI_OBJECT_TYPE_SWITCH, switchIndex, switchIndex, globalContext);
+    return constructObjectId(OTAI_OBJECT_TYPE_LINECARD, switchIndex, switchIndex, globalContext);
 }
 
-sai_object_type_t VirtualObjectIdManager::saiObjectTypeQuery(
-        _In_ sai_object_id_t objectId) const
+otai_object_type_t VirtualObjectIdManager::otaiObjectTypeQuery(
+        _In_ otai_object_id_t objectId) const
 {
     SWSS_LOG_ENTER();
 
-    if (objectId == SAI_NULL_OBJECT_ID)
+    if (objectId == OTAI_NULL_OBJECT_ID)
     {
-        return SAI_OBJECT_TYPE_NULL;
+        return OTAI_OBJECT_TYPE_NULL;
     }
 
-    sai_object_type_t objectType = SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId)
-        ? (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
-        : (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId));
+    otai_object_type_t objectType = 
+         (otai_object_type_t)(OTAI_REDIS_GET_OBJECT_TYPE(objectId));
 
-    if (sai_metadata_is_object_type_valid(objectType) == false)
+    if (otai_metadata_is_object_type_valid(objectType) == false)
     {
         SWSS_LOG_ERROR("invalid object id %s",
-                sai_serialize_object_id(objectId).c_str());
+                otai_serialize_object_id(objectId).c_str());
 
         /*
          * We can't throw here, since it would give no meaningful message.
          * Throwing at one level up is better.
          */
 
-        return SAI_OBJECT_TYPE_NULL;
+        return OTAI_OBJECT_TYPE_NULL;
     }
 
     // NOTE: we could also check:
@@ -213,53 +212,53 @@ void VirtualObjectIdManager::releaseSwitchIndex(
     SWSS_LOG_DEBUG("released switch index 0x%x", index);
 }
 
-sai_object_id_t VirtualObjectIdManager::allocateNewObjectId(
-        _In_ sai_object_type_t objectType,
-        _In_ sai_object_id_t switchId)
+otai_object_id_t VirtualObjectIdManager::allocateNewObjectId(
+        _In_ otai_object_type_t objectType,
+        _In_ otai_object_id_t switchId)
 {
     SWSS_LOG_ENTER();
 
-    if (sai_metadata_is_object_type_valid(objectType) == false)
+    if (otai_metadata_is_object_type_valid(objectType) == false)
     {
         SWSS_LOG_THROW("invalid object type: %d", objectType);
     }
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD)
     {
         SWSS_LOG_THROW("this function can't be used to allocate switch id");
     }
 
-    sai_object_type_t switchObjectType = saiObjectTypeQuery(switchId);
+    otai_object_type_t switchObjectType = otaiObjectTypeQuery(switchId);
 
-    if (switchObjectType != SAI_OBJECT_TYPE_SWITCH)
+    if (switchObjectType != OTAI_OBJECT_TYPE_LINECARD)
     {
         SWSS_LOG_THROW("object type of switch %s is %s, should be SWITCH",
-                sai_serialize_object_id(switchId).c_str(),
-                sai_serialize_object_type(switchObjectType).c_str());
+                otai_serialize_object_id(switchId).c_str(),
+                otai_serialize_object_type(switchObjectType).c_str());
     }
 
-    uint32_t switchIndex = (uint32_t)SAI_REDIS_GET_SWITCH_INDEX(switchId);
+    uint32_t switchIndex = (uint32_t)OTAI_REDIS_GET_LINECARD_INDEX(switchId);
 
     uint64_t objectIndex = m_oidIndexGenerator->increment(); // get new object index
 
-    const uint64_t indexMax = SAI_REDIS_OBJECT_INDEX_MAX;
+    const uint64_t indexMax = OTAI_REDIS_OBJECT_INDEX_MAX;
 
-    if (objectIndex > SAI_REDIS_OBJECT_INDEX_MAX)
+    if (objectIndex > OTAI_REDIS_OBJECT_INDEX_MAX)
     {
         SWSS_LOG_THROW("no more object indexes available, given: 0x%" PRIx64 " but limit is 0x%" PRIx64 " ",
                 objectIndex,
                 indexMax);
     }
 
-    sai_object_id_t objectId = constructObjectId(objectType, switchIndex, objectIndex, m_globalContext);
+    otai_object_id_t objectId = constructObjectId(objectType, switchIndex, objectIndex, m_globalContext);
 
     SWSS_LOG_DEBUG("created VID %s",
-            sai_serialize_object_id(objectId).c_str());
+            otai_serialize_object_id(objectId).c_str());
 
     return objectId;
 }
 
-sai_object_id_t VirtualObjectIdManager::allocateNewSwitchObjectId(
+otai_object_id_t VirtualObjectIdManager::allocateNewSwitchObjectId(
         _In_ const std::string& hardwareInfo)
 {
     SWSS_LOG_ENTER();
@@ -270,14 +269,14 @@ sai_object_id_t VirtualObjectIdManager::allocateNewSwitchObjectId(
     {
         SWSS_LOG_ERROR("no switch config for hardware info: '%s'", hardwareInfo.c_str());
 
-        return SAI_NULL_OBJECT_ID;
+        return OTAI_NULL_OBJECT_ID;
     }
 
     uint32_t switchIndex = config->m_switchIndex;
 
-    if (switchIndex > SAI_REDIS_SWITCH_INDEX_MAX)
+    if (switchIndex > OTAI_REDIS_LINECARD_INDEX_MAX)
     {
-        SWSS_LOG_THROW("switch index %u > %llu (max)", switchIndex, SAI_REDIS_SWITCH_INDEX_MAX);
+        SWSS_LOG_THROW("switch index %u > %llu (max)", switchIndex, OTAI_REDIS_LINECARD_INDEX_MAX);
     }
 
     if (m_switchIndexes.find(switchIndex) != m_switchIndexes.end())
@@ -291,10 +290,10 @@ sai_object_id_t VirtualObjectIdManager::allocateNewSwitchObjectId(
 
     m_switchIndexes.insert(switchIndex);
 
-    sai_object_id_t objectId = constructObjectId(SAI_OBJECT_TYPE_SWITCH, switchIndex, switchIndex, m_globalContext);
+    otai_object_id_t objectId = constructObjectId(OTAI_OBJECT_TYPE_LINECARD, switchIndex, switchIndex, m_globalContext);
 
     SWSS_LOG_NOTICE("created SWITCH VID %s for hwinfo: '%s'",
-            sai_serialize_object_id(objectId).c_str(),
+            otai_serialize_object_id(objectId).c_str(),
             hardwareInfo.c_str());
 
     return objectId;
@@ -302,153 +301,148 @@ sai_object_id_t VirtualObjectIdManager::allocateNewSwitchObjectId(
 
 
 void VirtualObjectIdManager::releaseObjectId(
-        _In_ sai_object_id_t objectId)
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
-    if (saiObjectTypeQuery(objectId) == SAI_OBJECT_TYPE_SWITCH)
+    if (otaiObjectTypeQuery(objectId) == OTAI_OBJECT_TYPE_LINECARD)
     {
-        releaseSwitchIndex((uint32_t)SAI_REDIS_GET_SWITCH_INDEX(objectId));
+        releaseSwitchIndex((uint32_t)OTAI_REDIS_GET_LINECARD_INDEX(objectId));
     }
 }
 
-sai_object_id_t VirtualObjectIdManager::constructObjectId(
-        _In_ sai_object_type_t objectType,
+otai_object_id_t VirtualObjectIdManager::constructObjectId(
+        _In_ otai_object_type_t objectType,
         _In_ uint32_t switchIndex,
         _In_ uint64_t objectIndex,
         _In_ uint32_t globalContext)
 {
     SWSS_LOG_ENTER();
 
-    if (sai_metadata_is_object_type_valid(objectType) == false)
+    if (otai_metadata_is_object_type_valid(objectType) == false)
     {
         SWSS_LOG_THROW("FATAL: invalid object type (0x%x), logic error, this is a bug!", objectType);
     }
 
-    uint64_t extensionsFlag = (uint64_t)objectType >= SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START;
+    uint64_t extensionsFlag = 0;
 
-    objectType = extensionsFlag
-        ? (sai_object_type_t)(objectType - SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
-        : objectType;
-
-    return (sai_object_id_t)(
-            ((uint64_t)switchIndex << (SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
-            ((uint64_t)objectType << (SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
-            ((uint64_t)globalContext << (SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
-            ((uint64_t)extensionsFlag << (SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+    return (otai_object_id_t)(
+            ((uint64_t)switchIndex << (OTAI_REDIS_OBJECT_TYPE_BITS_SIZE + OTAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + OTAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+            ((uint64_t)objectType << (OTAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + OTAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+            ((uint64_t)globalContext << (OTAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + OTAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+            ((uint64_t)extensionsFlag << (OTAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
             objectIndex);
 }
 
-sai_object_id_t VirtualObjectIdManager::switchIdQuery(
-        _In_ sai_object_id_t objectId)
+otai_object_id_t VirtualObjectIdManager::switchIdQuery(
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
-    if (objectId == SAI_NULL_OBJECT_ID)
+    if (objectId == OTAI_NULL_OBJECT_ID)
     {
-        return SAI_NULL_OBJECT_ID;
+        return OTAI_NULL_OBJECT_ID;
     }
 
-    sai_object_type_t objectType = objectTypeQuery(objectId);
+    otai_object_type_t objectType = objectTypeQuery(objectId);
 
-    if (objectType == SAI_OBJECT_TYPE_NULL)
+    if (objectType == OTAI_OBJECT_TYPE_NULL)
     {
         SWSS_LOG_ERROR("invalid object type of oid %s",
-                sai_serialize_object_id(objectId).c_str());
+                otai_serialize_object_id(objectId).c_str());
 
-        return SAI_NULL_OBJECT_ID;
+        return OTAI_NULL_OBJECT_ID;
     }
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD)
     {
         return objectId;
     }
 
-    uint32_t switchIndex = (uint32_t)SAI_REDIS_GET_SWITCH_INDEX(objectId);
-    uint32_t globalContext = (uint32_t)SAI_REDIS_GET_GLOBAL_CONTEXT(objectId);
+    uint32_t switchIndex = (uint32_t)OTAI_REDIS_GET_LINECARD_INDEX(objectId);
+    uint32_t globalContext = (uint32_t)OTAI_REDIS_GET_GLOBAL_CONTEXT(objectId);
 
-    return constructObjectId(SAI_OBJECT_TYPE_SWITCH, switchIndex, switchIndex, globalContext);
+    return constructObjectId(OTAI_OBJECT_TYPE_LINECARD, switchIndex, switchIndex, globalContext);
 }
 
-sai_object_type_t VirtualObjectIdManager::objectTypeQuery(
-        _In_ sai_object_id_t objectId)
+otai_object_type_t VirtualObjectIdManager::objectTypeQuery(
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
-    if (objectId == SAI_NULL_OBJECT_ID)
+    if (objectId == OTAI_NULL_OBJECT_ID)
     {
-        return SAI_OBJECT_TYPE_NULL;
+        return OTAI_OBJECT_TYPE_NULL;
     }
 
-    sai_object_type_t objectType = SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId)
-        ? (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
-        : (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId));
+    otai_object_type_t objectType = 
+         (otai_object_type_t)(OTAI_REDIS_GET_OBJECT_TYPE(objectId));
 
-    if (!sai_metadata_is_object_type_valid(objectType))
+    if (!otai_metadata_is_object_type_valid(objectType))
     {
         SWSS_LOG_ERROR("invalid object id %s",
-                sai_serialize_object_id(objectId).c_str());
+                otai_serialize_object_id(objectId).c_str());
 
-        return SAI_OBJECT_TYPE_NULL;
+        return OTAI_OBJECT_TYPE_NULL;
     }
 
     return objectType;
 }
 
 uint32_t VirtualObjectIdManager::getSwitchIndex(
-        _In_ sai_object_id_t objectId)
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
     auto switchId = switchIdQuery(objectId);
 
-    return (uint32_t)SAI_REDIS_GET_SWITCH_INDEX(switchId);
+    return (uint32_t)OTAI_REDIS_GET_LINECARD_INDEX(switchId);
 }
 
 uint32_t VirtualObjectIdManager::getGlobalContext(
-        _In_ sai_object_id_t objectId)
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
     auto switchId = switchIdQuery(objectId);
 
-    return (uint32_t)SAI_REDIS_GET_GLOBAL_CONTEXT(switchId);
+    return (uint32_t)OTAI_REDIS_GET_GLOBAL_CONTEXT(switchId);
 }
 
 uint64_t VirtualObjectIdManager::getObjectIndex(
-        _In_ sai_object_id_t objectId)
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
-    return (uint32_t)SAI_REDIS_GET_OBJECT_INDEX(objectId);
+    return (uint32_t)OTAI_REDIS_GET_OBJECT_INDEX(objectId);
 }
 
-sai_object_id_t VirtualObjectIdManager::updateObjectIndex(
-        _In_ sai_object_id_t objectId,
+otai_object_id_t VirtualObjectIdManager::updateObjectIndex(
+        _In_ otai_object_id_t objectId,
         _In_ uint64_t objectIndex)
 {
     SWSS_LOG_ENTER();
 
-    if (objectId == SAI_NULL_OBJECT_ID)
+    if (objectId == OTAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_THROW("can't update object index on NULL_OBJECT_ID");
     }
 
-    if (objectIndex > SAI_REDIS_OBJECT_INDEX_MAX)
+    if (objectIndex > OTAI_REDIS_OBJECT_INDEX_MAX)
     {
-        SWSS_LOG_THROW("object index %lu over maximum %llu", objectIndex, SAI_REDIS_OBJECT_INDEX_MAX);
+        SWSS_LOG_THROW("object index %lu over maximum %llu", objectIndex, OTAI_REDIS_OBJECT_INDEX_MAX);
     }
 
-    sai_object_type_t objectType = objectTypeQuery(objectId);
+    otai_object_type_t objectType = objectTypeQuery(objectId);
 
-    if (objectType == SAI_OBJECT_TYPE_NULL)
+    if (objectType == OTAI_OBJECT_TYPE_NULL)
     {
         SWSS_LOG_THROW("invalid object type of oid %s",
-                sai_serialize_object_id(objectId).c_str());
+                otai_serialize_object_id(objectId).c_str());
     }
 
-    uint32_t switchIndex = (uint32_t)SAI_REDIS_GET_SWITCH_INDEX(objectId);
-    uint32_t globalContext = (uint32_t)SAI_REDIS_GET_GLOBAL_CONTEXT(objectId);
+    uint32_t switchIndex = (uint32_t)OTAI_REDIS_GET_LINECARD_INDEX(objectId);
+    uint32_t globalContext = (uint32_t)OTAI_REDIS_GET_GLOBAL_CONTEXT(objectId);
 
     return constructObjectId(objectType, switchIndex, objectIndex, globalContext);
 }

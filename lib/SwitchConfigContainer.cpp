@@ -2,7 +2,7 @@
 
 #include "swss/logger.h"
 
-using namespace sairedis;
+using namespace otairedis;
 
 void SwitchConfigContainer::insert(
         _In_ std::shared_ptr<SwitchConfig> config)

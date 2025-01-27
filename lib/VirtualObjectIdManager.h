@@ -1,7 +1,7 @@
 #pragma once
 
 extern "C" {
-#include "sai.h"
+#include "otai.h"
 }
 
 #include "OidIndexGenerator.h"
@@ -10,7 +10,7 @@ extern "C" {
 #include <set>
 #include <memory>
 
-namespace sairedis
+namespace otairedis
 {
     class VirtualObjectIdManager
     {
@@ -36,8 +36,8 @@ namespace sairedis
              *
              * For SAI_NULL_OBJECT_ID input will return SAI_NULL_OBJECT_ID.
              */
-            sai_object_id_t saiSwitchIdQuery(
-                    _In_ sai_object_id_t objectId) const;
+            otai_object_id_t otaiSwitchIdQuery(
+                    _In_ otai_object_id_t objectId) const;
 
             /**
              * @brief Object type query.
@@ -45,8 +45,8 @@ namespace sairedis
              * Returns object type for input object id. If object id is invalid
              * then returns SAI_OBJECT_TYPE_NULL.
              */
-            sai_object_type_t saiObjectTypeQuery(
-                    _In_ sai_object_id_t objectId) const;
+            otai_object_type_t otaiObjectTypeQuery(
+                    _In_ otai_object_id_t objectId) const;
 
             /**
              * @brief Clear switch index set.
@@ -63,14 +63,14 @@ namespace sairedis
              * Throws when object type is switch and there are no more
              * available switch indexes.
              */
-            sai_object_id_t allocateNewObjectId(
-                    _In_ sai_object_type_t objectType,
-                    _In_ sai_object_id_t switchId);
+            otai_object_id_t allocateNewObjectId(
+                    _In_ otai_object_type_t objectType,
+                    _In_ otai_object_id_t switchId);
 
             /**
              * @brief Allocate new switch object id.
              */
-            sai_object_id_t allocateNewSwitchObjectId(
+            otai_object_id_t allocateNewSwitchObjectId(
                     _In_ const std::string& hardwareInfo);
 
             /**
@@ -79,7 +79,7 @@ namespace sairedis
              * If object type is switch, then switch index will be released.
              */
             void releaseObjectId(
-                    _In_ sai_object_id_t objectId);
+                    _In_ otai_object_id_t objectId);
 
         private:
 
@@ -96,8 +96,8 @@ namespace sairedis
              *
              * Using all input parameters to construct object id.
              */
-            static sai_object_id_t constructObjectId(
-                    _In_ sai_object_type_t objectType,
+            static otai_object_id_t constructObjectId(
+                    _In_ otai_object_type_t objectType,
                     _In_ uint32_t switchIndex,
                     _In_ uint64_t objectIndex,
                     _In_ uint32_t globalContext);
@@ -112,8 +112,8 @@ namespace sairedis
              *
              * Return SAI_NULL_OBJECT_ID if given object id has invalid object type.
              */
-            static sai_object_id_t switchIdQuery(
-                    _In_ sai_object_id_t objectId);
+            static otai_object_id_t switchIdQuery(
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Object type query.
@@ -121,8 +121,8 @@ namespace sairedis
              * Returns object type for input object id. If object id is invalid
              * then returns SAI_OBJECT_TYPE_NULL.
              */
-            static sai_object_type_t objectTypeQuery(
-                    _In_ sai_object_id_t objectId);
+            static otai_object_type_t objectTypeQuery(
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Get switch index.
@@ -132,7 +132,7 @@ namespace sairedis
              * Returns switch index for given oid. If oid is invalid, returns 0.
              */
             static uint32_t getSwitchIndex(
-                    _In_ sai_object_id_t objectId);
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Get global context.
@@ -142,7 +142,7 @@ namespace sairedis
              * Returns global context for given oid. If oid is invalid, returns 0.
              */
             static uint32_t getGlobalContext(
-                    _In_ sai_object_id_t objectId);
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Get object index.
@@ -150,15 +150,15 @@ namespace sairedis
              * Returns object index.
              */
             static uint64_t getObjectIndex(
-                    _In_ sai_object_id_t objectId);
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Update object index.
              *
              * Returns objects with updated object index.
              */
-            static sai_object_id_t updateObjectIndex(
-                    _In_ sai_object_id_t objectId,
+            static otai_object_id_t updateObjectIndex(
+                    _In_ otai_object_id_t objectId,
                     _In_ uint64_t objectIndex);
 
         private:

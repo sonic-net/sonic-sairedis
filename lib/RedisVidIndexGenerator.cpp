@@ -2,7 +2,7 @@
 
 #include "swss/logger.h"
 
-using namespace sairedis;
+using namespace otairedis;
 
 RedisVidIndexGenerator::RedisVidIndexGenerator(
         _In_ std::shared_ptr<swss::DBConnector> dbConnector,
@@ -20,7 +20,7 @@ uint64_t RedisVidIndexGenerator::increment()
     SWSS_LOG_ENTER();
 
     // this counter must be atomic since it can be independently accessed by
-    // sairedis and syncd
+    // otairedis and syncd
 
     return m_dbConnector->incr(m_vidCounterName); // "VIDCOUNTER"
 }

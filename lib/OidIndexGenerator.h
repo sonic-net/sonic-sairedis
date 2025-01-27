@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-namespace sairedis
+namespace otairedis
 {
     class OidIndexGenerator
     {

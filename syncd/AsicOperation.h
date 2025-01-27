@@ -1,7 +1,7 @@
 #pragma once
 
 extern "C"{
-#include "sai.h"
+#include "otai.h"
 }
 
 #include "swss/table.h"
@@ -17,7 +17,7 @@ namespace syncd
 
             AsicOperation(
                     _In_ int id,
-                    _In_ sai_object_id_t vid,
+                    _In_ otai_object_id_t vid,
                     _In_ bool remove,
                     _In_ std::shared_ptr<swss::KeyOpFieldsValuesTuple>& operation);
 
@@ -27,7 +27,7 @@ namespace syncd
 
             int m_opId;
 
-            sai_object_id_t m_vid;
+            otai_object_id_t m_vid;
 
             bool m_isRemove;
 

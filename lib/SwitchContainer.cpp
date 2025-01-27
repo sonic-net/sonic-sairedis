@@ -1,9 +1,9 @@
 #include "SwitchContainer.h"
 
 #include "swss/logger.h"
-#include "meta/sai_serialize.h"
+#include "meta/otai_serialize.h"
 
-using namespace sairedis;
+using namespace otairedis;
 
 void SwitchContainer::insert(
         _In_ std::shared_ptr<Switch> sw)
@@ -15,7 +15,7 @@ void SwitchContainer::insert(
     if (m_switchMap.find(switchId) != m_switchMap.end())
     {
         SWSS_LOG_THROW("switch %s already exist in container",
-                sai_serialize_object_id(switchId).c_str());
+                otai_serialize_object_id(switchId).c_str());
     }
 
     // NOTE: this check should be also checked by metadata and return SAI
@@ -30,7 +30,7 @@ void SwitchContainer::insert(
 }
 
 void SwitchContainer::removeSwitch(
-        _In_ sai_object_id_t switchId)
+        _In_ otai_object_id_t switchId)
 {
     SWSS_LOG_ENTER();
 
@@ -39,7 +39,7 @@ void SwitchContainer::removeSwitch(
     if (it == m_switchMap.end())
     {
         SWSS_LOG_THROW("switch %s not present in container",
-                sai_serialize_object_id(switchId).c_str());
+                otai_serialize_object_id(switchId).c_str());
     }
 
     m_switchMap.erase(it);
@@ -54,7 +54,7 @@ void SwitchContainer::removeSwitch(
 }
 
 std::shared_ptr<Switch> SwitchContainer::getSwitch(
-        _In_ sai_object_id_t switchId) const
+        _In_ otai_object_id_t switchId) const
 {
     SWSS_LOG_ENTER();
 
@@ -74,7 +74,7 @@ void SwitchContainer::clear()
 }
 
 bool SwitchContainer::contains(
-        _In_ sai_object_id_t switchId) const
+        _In_ otai_object_id_t switchId) const
 {
     SWSS_LOG_ENTER();
 

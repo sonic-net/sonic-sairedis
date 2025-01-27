@@ -1,7 +1,7 @@
 #pragma once
 
-#include "meta/SaiInterface.h"
-#include "SaiSwitch.h"
+#include "meta/OtaiInterface.h"
+#include "OtaiSwitch.h"
 #include "VirtualOidTranslator.h"
 #include "RedisClient.h"
 #include "NotificationHandler.h"
@@ -19,40 +19,40 @@ namespace syncd
         public:
 
             typedef std::unordered_map<std::string, std::string> StringHash;
-            typedef std::unordered_map<sai_object_id_t, sai_object_id_t> ObjectIdMap;
+            typedef std::unordered_map<otai_object_id_t, otai_object_id_t> ObjectIdMap;
 
         public:
 
             HardReiniter(
                     _In_ std::shared_ptr<RedisClient> client,
                     _In_ std::shared_ptr<VirtualOidTranslator> translator,
-                    _In_ std::shared_ptr<sairedis::SaiInterface> sai,
+                    _In_ std::shared_ptr<otairedis::OtaiInterface> otai,
                     _In_ std::shared_ptr<NotificationHandler> handler);
 
             virtual ~HardReiniter();
 
         public:
 
-            std::map<sai_object_id_t, std::shared_ptr<syncd::SaiSwitch>> hardReinit();
+            std::map<otai_object_id_t, std::shared_ptr<syncd::OtaiSwitch>> hardReinit();
 
         private:
 
             void readAsicState();
 
             void redisSetVidAndRidMap(
-                    _In_ const std::unordered_map<sai_object_id_t, sai_object_id_t> &map);
+                    _In_ const std::unordered_map<otai_object_id_t, otai_object_id_t> &map);
 
         private:
 
             ObjectIdMap m_vidToRidMap;
             ObjectIdMap m_ridToVidMap;
 
-            std::map<sai_object_id_t, ObjectIdMap> m_switchVidToRid;
-            std::map<sai_object_id_t, ObjectIdMap> m_switchRidToVid;
+            std::map<otai_object_id_t, ObjectIdMap> m_switchVidToRid;
+            std::map<otai_object_id_t, ObjectIdMap> m_switchRidToVid;
 
-            std::map<sai_object_id_t, std::vector<std::string>> m_switchMap;
+            std::map<otai_object_id_t, std::vector<std::string>> m_switchMap;
 
-            std::shared_ptr<sairedis::SaiInterface> m_vendorSai;
+            std::shared_ptr<otairedis::OtaiInterface> m_vendorSai;
 
             std::shared_ptr<VirtualOidTranslator> m_translator;
 
