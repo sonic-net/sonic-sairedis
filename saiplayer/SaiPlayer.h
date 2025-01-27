@@ -7,6 +7,7 @@
 #include "syncd/ServiceMethodTable.h"
 #include "syncd/SwitchNotifications.h"
 
+#include <fstream>
 #include <memory>
 #include <map>
 
@@ -258,6 +259,8 @@ namespace saiplayer
             std::shared_ptr<sairedis::SaiInterface> m_sai;
 
             std::shared_ptr<CommandLineOptions> m_commandLineOptions;
+
+            std::ifstream m_infile;
 
             std::map<sai_object_id_t,sai_object_id_t> m_local_to_redis;
             std::map<sai_object_id_t,sai_object_id_t> m_redis_to_local;

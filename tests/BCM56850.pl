@@ -869,8 +869,16 @@ sub test_neighbor_next_hop
     }
 }
 
+sub test_port_bulk_get
+{
+    fresh_start;
+
+    play "port_bulk_get.rec";
+}
+
 # RUN TESTS
 
+test_port_bulk_get
 test_neighbor_next_hop;
 test_acl_pre_match_999;
 test_relaxed;
