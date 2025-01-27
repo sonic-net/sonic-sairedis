@@ -46,6 +46,10 @@ parameters:
 - name: debian_version
   type: string
 
+- name: buildVpp
+  type: boolean
+  default: false
+
 jobs:
 - job:
   displayName: ${{ parameters.arch }}
@@ -152,6 +156,19 @@ jobs:
       rm -rf download
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install sonic swss Common"
+  - script: |
+      set -ex
+      git clone https://github.com/sonic-net/sonic-platform-vpp.git
+      mkdir repo
+      git clone https://gerrit.fd.io/r/vpp repo
+      cp -vr sonic-platform-vpp/vppbld/plugins/* repo/src/packages
+      cd repo
+      git apply ../sonic-platform-vpp/vppbld/vpp.patch
+      make UNATTENDED=y PLATFORM=vpp install-deps install-ext-deps
+      make UNATTENDED=y PLATFORM=vpp -j4 pkg-deb
+      sudo dpkg -i build-root/*.deb
+    condition: eq('${{ parameters.buildVpp }}', true )
+    displayName: "Build VPP packages from source"
   - script: |
       set -ex
       rm ../*.deb || true

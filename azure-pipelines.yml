@@ -75,6 +75,22 @@ stages:
       archive_gcov: false
       debian_version: ${{ parameters.debian_version }}
 
+- stage: BuildVpp
+  dependsOn: []
+  jobs:
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: amd64
+      timeout: 300
+      sonic_slave: sonic-slave-${{ parameters.debian_version }}
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}
+      syslog_artifact_name: sonic-sairedis.syslog
+      run_unit_test: true
+      archive_gcov: true
+      debian_version: ${{ parameters.debian_version }}
+      buildVpp: true
+
 - stage: BuildArm
   dependsOn: Build
   condition: succeeded('Build')
