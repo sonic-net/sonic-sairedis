@@ -297,6 +297,9 @@ namespace sairedis
             sai_status_t waitForObjectTypeGetAvailabilityResponse(
                     _In_ uint64_t *count);
 
+            sai_status_t waitForQueryStatsCapabilityResponse(
+                    _Inout_ sai_stat_capability_list_t* stats_capability);
+
         private:
 
             void handleNotification(

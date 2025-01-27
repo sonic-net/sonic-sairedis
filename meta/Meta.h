@@ -459,10 +459,6 @@ namespace saimeta
                     _Out_ uint64_t *counters,
                     _In_ sai_stats_mode_t mode);
 
-            sai_status_t meta_validate_query_stats_capability(
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_object_id_t object_id);
-
         private: // validate OID
 
             sai_status_t meta_sai_validate_oid(
