@@ -46,7 +46,7 @@ namespace syncd
              */
             void discover(
                     _In_ sai_object_id_t rid,
-                    _Inout_ std::set<sai_object_id_t> &processed);
+                    _Inout_ std::map<sai_object_id_t,std::map<std::string,std::string>> &processed);
 
             void setApiLogLevel(
                     _In_ sai_log_level_t logLevel);
