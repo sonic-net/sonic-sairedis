@@ -168,8 +168,8 @@ jobs:
       sudo cp azsyslog.conf /etc/rsyslog.conf
       cat /run/rsyslogd.pid
       sudo pkill -F /run/rsyslogd.pid
-      ps -ef
-      sleep 5
+      # Looks like arm64 (and sometimes amd64) rsyslogd needs some time to exit
+      sleep 2
       ps -ef
       sudo rsyslogd
     displayName: "Update rsyslog.conf"
