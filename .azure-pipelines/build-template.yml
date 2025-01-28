@@ -166,7 +166,10 @@ jobs:
   - script: |
       set -ex
       sudo cp azsyslog.conf /etc/rsyslog.conf
+      cat /run/rsyslogd.pid
       sudo pkill -F /run/rsyslogd.pid
+      ps -ef
+      sleep 5
       ps -ef
       sudo rsyslogd
     displayName: "Update rsyslog.conf"
