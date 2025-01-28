@@ -28,3 +28,14 @@ TEST(RedisRemoteSaiInterface, bulkGet)
                 statuses));
 }
 
+TEST(RedisRemoteSaiInterface, dbgGenerateDump)
+{
+    auto ctx = ContextConfigContainer::loadFromFile("foo");
+    auto rec = std::make_shared<Recorder>();
+
+    RedisRemoteSaiInterface sai(ctx->get(0), nullptr, rec);
+
+    const std::string filePath = "/var/log/testDump.log";
+
+    EXPECT_EQ(sai.dbgGenerateDump(filePath.c_str()), SAI_STATUS_SUCCESS);
+}

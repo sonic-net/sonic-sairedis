@@ -530,6 +530,14 @@ sai_status_t DummySaiInterface::queryApiVersion(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::dbgGenerateDump(
+         _In_ const char *dump_file_name)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
 void DummySaiInterface::updateNotificationPointers(
         _In_ uint32_t count,
         _In_ const sai_attribute_t* attrs)

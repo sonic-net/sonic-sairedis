@@ -898,6 +898,15 @@ TEST(Meta, queryAttributeCapability)
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAttributeCapability(switchId, SAI_OBJECT_TYPE_ACL_ENTRY, 100000, &cap));
 }
 
+TEST(Meta, dbgGenerateDump)
+{
+    const std::string filePath = "/var/log/testDump.log";
+
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.dbgGenerateDump(filePath.c_str()));
+}
+
 TEST(Meta, queryAttributeEnumValuesCapability)
 {
     Meta m(std::make_shared<MetaTestSaiInterface>());

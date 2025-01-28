@@ -316,6 +316,14 @@ void Recorder::recordFlushFdbEntriesResponse(
     recordLine("F|" + sai_serialize_status(status));
 }
 
+void Recorder::recordDbgGenDumpResponse(
+        _In_ sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    recordLine("G|" + sai_serialize_status(status));
+}
+
 void Recorder::recordQueryAttributeCapability(
         _In_ const std::string& key,
         _In_ const std::vector<swss::FieldValueTuple>& arguments)

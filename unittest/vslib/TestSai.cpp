@@ -26,3 +26,11 @@ TEST(Sai, bulkGet)
                 statuses));
 }
 
+TEST(Sai, dbgGenerateDump)
+{
+    Sai sai;
+
+    const std::string filePath = "/var/log/testDump.log";
+
+    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai.dbgGenerateDump(filePath.c_str()));
+}

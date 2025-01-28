@@ -771,6 +771,23 @@ sai_status_t Sai::queryApiVersion(
     return SAI_STATUS_FAILURE;
 }
 
+sai_status_t Sai::dbgGenerateDump(
+        _In_ const char *dump_file_name)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    for (auto&kvp: m_contextMap)
+    {
+        return kvp.second->m_meta->dbgGenerateDump(dump_file_name);
+    }
+
+    SWSS_LOG_ERROR("context map is empty");
+
+    return SAI_STATUS_FAILURE;
+}
+
 /*
  * NOTE: Notifications during switch create and switch remove.
  *

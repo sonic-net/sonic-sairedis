@@ -1549,3 +1549,13 @@ sai_status_t ClientSai::queryApiVersion(
 
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
+
+sai_status_t ClientSai::dbgGenerateDump(
+        _In_ const char *dump_file_name)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
