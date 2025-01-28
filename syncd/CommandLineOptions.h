@@ -100,5 +100,6 @@ namespace syncd
 
             std::string m_supportingBulkCounterGroups;
 
+            bool m_enableAttrVersionCheck;
     };
 }
