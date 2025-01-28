@@ -67,13 +67,13 @@ TEST(SwitchConfig, parseBootType)
     EXPECT_EQ(type, SAI_VS_BOOT_TYPE_FAST);
 }
 
-TEST(SwitchConfig, parseUseTapDevice)
+TEST(SwitchConfig, parseBool)
 {
-    EXPECT_FALSE(SwitchConfig::parseUseTapDevice(nullptr));
+    EXPECT_FALSE(SwitchConfig::parseBool(nullptr));
 
-    EXPECT_FALSE(SwitchConfig::parseUseTapDevice("foo"));
+    EXPECT_FALSE(SwitchConfig::parseBool("foo"));
 
-    EXPECT_FALSE(SwitchConfig::parseUseTapDevice("false"));
+    EXPECT_FALSE(SwitchConfig::parseBool("false"));
 
-    EXPECT_TRUE(SwitchConfig::parseUseTapDevice("true"));
+    EXPECT_TRUE(SwitchConfig::parseBool("true"));
 }
