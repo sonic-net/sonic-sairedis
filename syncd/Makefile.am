@@ -82,6 +82,10 @@ if SONIC_ASIC_PLATFORM_BROADCOM
 libSyncd_a_CXXFLAGS += -DMDIO_ACCESS_USE_NPU
 endif
 
+if SONIC_ASIC_PLATFORM_MELLANOX
+libSyncd_a_CPPFLAGS += -DSKIP_SAI_PORT_DISCOVERY
+endif
+
 libSyncdRequestShutdown_a_SOURCES = \
 									RequestShutdown.cpp \
 									RequestShutdownCommandLineOptions.cpp \
