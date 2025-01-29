@@ -29,7 +29,7 @@ jobs:
   - script: |
       set -ex
       ls -A1 | xargs -I{} sudo rm -rf {}
-      sudo apt-get purge libswsscommon python3-swsscommon
+      sudo apt-get purge libswsscommon python3-swsscommon || true
     displayName: "Clean workspace"
   - checkout: self
     clean: true
