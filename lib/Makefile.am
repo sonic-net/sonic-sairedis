@@ -1,24 +1,24 @@
-AM_CXXFLAGS = $(SAIINC)
+AM_CXXFLAGS = $(OTAIINC)
 
-lib_LTLIBRARIES = libsairedis.la
+#lib_LTLIBRARIES = libotairedis.la
 
-noinst_LIBRARIES = libSaiRedis.a
+noinst_LIBRARIES = libOtaiRedis.a
 
-libSaiRedis_a_SOURCES = \
+libOtaiRedis_a_SOURCES = \
 						 Channel.cpp \
 						 ClientConfig.cpp \
-						 ClientSai.cpp \
-						 ClientServerSai.cpp \
+						 ClientOtai.cpp \
+						 ClientServerOtai.cpp \
 						 Context.cpp \
 						 ContextConfig.cpp \
 						 ContextConfigContainer.cpp \
 						 Recorder.cpp \
 						 RedisChannel.cpp \
-						 RedisRemoteSaiInterface.cpp \
+						 RedisRemoteOtaiInterface.cpp \
 						 RedisVidIndexGenerator.cpp \
-						 Sai.cpp \
+						 Otai.cpp \
 						 ServerConfig.cpp \
-						 ServerSai.cpp \
+						 ServerOtai.cpp \
 						 SkipRecordAttrContainer.cpp \
 						 Switch.cpp \
 						 SwitchConfig.cpp \
@@ -28,27 +28,27 @@ libSaiRedis_a_SOURCES = \
 						 VirtualObjectIdManager.cpp \
 						 ZeroMQChannel.cpp
 
-BUILT_SOURCES = sai_redis.cpp
+BUILT_SOURCES = otai_redis.cpp
 
-sai_redis.cpp: ../stub.pl $(top_srcdir)/SAI/meta/saimetadata.c
-	../stub.pl -d ../SAI/ -c ClientServerSai -n sairedis -f sai_redis.cpp -s stub
+otai_redis.cpp: ../stub.pl $(top_srcdir)/OTAI/meta/otaimetadata.c
+	../stub.pl -d ../OTAI/ -c ClientServerOtai -n otairedis -f otai_redis.cpp -s stub
 
 clean-local:
-	rm -f sai_redis.cpp
+	rm -f otai_redis.cpp
 
-libsairedis_la_SOURCES = sai_redis.cpp
+#libotairedis_la_SOURCES = otai_redis.cpp
 
-libSaiRedis_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-libSaiRedis_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+libOtaiRedis_a_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+libOtaiRedis_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
 
-libsairedis_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
-libsairedis_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsairedis_la_LIBADD = -lhiredis -lswsscommon libSaiRedis.a $(CODE_COVERAGE_LIBS)
+#libotairedis_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
+#libotairedis_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
+#libotairedis_la_LIBADD = -lhiredis -lswsscommon libOtaiRedis.a $(CODE_COVERAGE_LIBS)
 
-bin_PROGRAMS = tests
+#bin_PROGRAMS = tests
 
-tests_SOURCES = tests.cpp
-tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta libsairedis.la -lzmq
-
-TESTS = tests
+#tests_SOURCES = tests.cpp
+#tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
+#tests_LDADD = -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/meta/.libs -lotaimetadata -lotaimeta libotairedis.la -lzmq
+#
+#TESTS = tests

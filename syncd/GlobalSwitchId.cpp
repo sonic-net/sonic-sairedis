@@ -1,6 +1,6 @@
 #include "GlobalSwitchId.h"
 
-#include "meta/sai_serialize.h"
+#include "meta/otai_serialize.h"
 
 #include "swss/logger.h"
 
@@ -11,12 +11,12 @@ using namespace syncd;
 /**
  * @brief Global switch RID used by thrift RPC server.
  */
-sai_object_id_t gSwitchId = SAI_NULL_OBJECT_ID;
+otai_object_id_t gSwitchId = SAI_NULL_OBJECT_ID;
 
 #endif
 
 void GlobalSwitchId::setSwitchId(
-        _In_ sai_object_id_t switchRid)
+        _In_ otai_object_id_t switchRid)
 {
     SWSS_LOG_ENTER();
 
@@ -30,7 +30,7 @@ void GlobalSwitchId::setSwitchId(
     gSwitchId = switchRid;
 
     SWSS_LOG_NOTICE("Initialize gSwitchId with ID = %s",
-            sai_serialize_object_id(gSwitchId).c_str());
+            otai_serialize_object_id(gSwitchId).c_str());
 #endif
 
 }

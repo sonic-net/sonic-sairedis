@@ -1,13 +1,13 @@
 #include "RedisChannel.h"
 
-#include "sairediscommon.h"
+#include "otairediscommon.h"
 
-#include "meta/sai_serialize.h"
+#include "meta/otai_serialize.h"
 
 #include "swss/logger.h"
 #include "swss/select.h"
 
-using namespace sairedis;
+using namespace otairedis;
 
 RedisChannel::RedisChannel(
         _In_ const std::string& dbAsic,
@@ -133,7 +133,7 @@ void RedisChannel::del(
     m_asicState->del(key, command);
 }
 
-sai_status_t RedisChannel::wait(
+otai_status_t RedisChannel::wait(
         _In_ const std::string& command,
         _Out_ swss::KeyOpFieldsValuesTuple& kco)
 {
@@ -168,8 +168,8 @@ sai_status_t RedisChannel::wait(
                 continue;
             }
 
-            sai_status_t status;
-            sai_deserialize_status(opkey, status);
+            otai_status_t status;
+            otai_deserialize_status(opkey, status);
 
             SWSS_LOG_DEBUG("%s status: %s", command.c_str(), opkey.c_str());
 
@@ -182,5 +182,5 @@ sai_status_t RedisChannel::wait(
 
     SWSS_LOG_ERROR("failed to get response for %s", command.c_str());
 
-    return SAI_STATUS_FAILURE;
+    return OTAI_STATUS_FAILURE;
 }

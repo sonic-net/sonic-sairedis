@@ -2,20 +2,20 @@
 
 #include "swss/logger.h"
 
-using namespace saimeta;
+using namespace otaimeta;
 
 void PortRelatedSet::insert(
-        _In_ sai_object_id_t portId,
-        _In_ sai_object_id_t relatedObjectId)
+        _In_ otai_object_id_t portId,
+        _In_ otai_object_id_t relatedObjectId)
 {
     SWSS_LOG_ENTER();
 
-    if (relatedObjectId == SAI_NULL_OBJECT_ID)
+    if (relatedObjectId == OTAI_NULL_OBJECT_ID)
     {
         return;
     }
 
-    if (portId == SAI_NULL_OBJECT_ID)
+    if (portId == OTAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_THROW("portId is NULL");
     }
@@ -23,8 +23,8 @@ void PortRelatedSet::insert(
     m_mapset[portId].insert(relatedObjectId);
 }
 
-const std::set<sai_object_id_t> PortRelatedSet::getPortRelatedObjects(
-        _In_ sai_object_id_t portId) const
+const std::set<otai_object_id_t> PortRelatedSet::getPortRelatedObjects(
+        _In_ otai_object_id_t portId) const
 {
     SWSS_LOG_ENTER();
 
@@ -46,7 +46,7 @@ void PortRelatedSet::clear()
 }
 
 void PortRelatedSet::removePort(
-        _In_ sai_object_id_t portId)
+        _In_ otai_object_id_t portId)
 {
     SWSS_LOG_ENTER();
 
@@ -58,11 +58,11 @@ void PortRelatedSet::removePort(
     }
 }
 
-std::vector<sai_object_id_t> PortRelatedSet::getAllPorts() const
+std::vector<otai_object_id_t> PortRelatedSet::getAllPorts() const
 {
     SWSS_LOG_ENTER();
 
-    std::vector<sai_object_id_t> vec;
+    std::vector<otai_object_id_t> vec;
 
     for (auto& it: m_mapset)
     {

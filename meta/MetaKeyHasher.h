@@ -1,20 +1,20 @@
 #pragma once
 
 extern "C" {
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
 #include <string>
 
-namespace saimeta
+namespace otaimeta
 {
     struct MetaKeyHasher
     {
         std::size_t operator()(
-                _In_ const sai_object_meta_key_t& k) const;
+                _In_ const otai_object_meta_key_t& k) const;
 
         bool operator()(
-                _In_ const sai_object_meta_key_t& a,
-                _In_ const sai_object_meta_key_t& b) const;
+                _In_ const otai_object_meta_key_t& a,
+                _In_ const otai_object_meta_key_t& b) const;
     };
 }

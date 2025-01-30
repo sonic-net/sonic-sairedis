@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-namespace sairedis
+namespace otairedis
 {
     class ServerConfig
     {

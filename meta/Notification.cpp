@@ -2,10 +2,10 @@
 
 #include "swss/logger.h"
 
-using namespace sairedis;
+using namespace otairedis;
 
 Notification::Notification(
-        _In_ sai_switch_notification_type_t switchNotificationType,
+        _In_ otai_linecard_notification_type_t switchNotificationType,
         _In_ const std::string& serializedNotification):
     m_switchNotificationType(switchNotificationType),
     m_serializedNotification(serializedNotification)
@@ -15,7 +15,7 @@ Notification::Notification(
     // empty
 }
 
-sai_switch_notification_type_t Notification::getNotificationType() const
+otai_linecard_notification_type_t Notification::getNotificationType() const
 {
     SWSS_LOG_ENTER();
 

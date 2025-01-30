@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace sairedis
+namespace otairedis
 {
     class SelectableChannel:
         public swss::Selectable

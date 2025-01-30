@@ -1,7 +1,7 @@
 #pragma once
 
 extern "C" {
-#include "saimetadata.h"
+#include "otaimetadata.h"
 }
 
 #include <string>
@@ -15,7 +15,7 @@ namespace syncd
      * Some attributes are lists, and have allocated memory, this class will help to
      * handle memory management and also will keep metadata for attribute.
      */
-    class SaiAttr
+    class OtaiAttr
     {
         private:
 
@@ -28,8 +28,8 @@ namespace syncd
              * methods, currently this is not required.
              */
 
-            SaiAttr(const SaiAttr&) = delete;
-            SaiAttr& operator=(const SaiAttr&) = delete;
+            OtaiAttr(const OtaiAttr&) = delete;
+            OtaiAttr& operator=(const OtaiAttr&) = delete;
 
         public:
 
@@ -39,17 +39,17 @@ namespace syncd
              * @param[in] str_attr_id Attribute is as string
              * @param[in] str_attr_value Attribute value as string
              */
-            SaiAttr(
+            OtaiAttr(
                     _In_ const std::string &str_attr_id,
                     _In_ const std::string &str_attr_value);
 
-            virtual ~SaiAttr();
+            virtual ~OtaiAttr();
 
         public:
 
-            sai_attribute_t* getRWSaiAttr();
+            otai_attribute_t* getRWOtaiAttr();
 
-            const sai_attribute_t* getSaiAttr() const;
+            const otai_attribute_t* getOtaiAttr() const;
 
             /**
              * @brief Gets value.oid of attribute value.
@@ -58,7 +58,7 @@ namespace syncd
              *
              * @return Oid field of attribute value.
              */
-            sai_object_id_t getOid() const;
+            otai_object_id_t getOid() const;
 
             /**
              * @brief Tells whether attribute contains OIDs
@@ -71,7 +71,7 @@ namespace syncd
 
             const std::string& getStrAttrValue() const;
 
-            const sai_attr_metadata_t* getAttrMetadata() const;
+            const otai_attr_metadata_t* getAttrMetadata() const;
 
             void updateValue();
 
@@ -85,7 +85,7 @@ namespace syncd
              *
              * @return Object list used in attribute
              */
-            std::vector<sai_object_id_t> getOidListFromAttribute() const;
+            std::vector<otai_object_id_t> getOidListFromAttribute() const;
 
         private:
 
@@ -93,8 +93,8 @@ namespace syncd
 
             std::string m_str_attr_value;
 
-            const sai_attr_metadata_t* m_meta;
+            const otai_attr_metadata_t* m_meta;
 
-            sai_attribute_t m_attr;
+            otai_attribute_t m_attr;
     };
 }

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "SaiInterface.h"
+#include "OtaiInterface.h"
 
-#include "SaiAttrWrapper.h"
-#include "SaiObjectCollection.h"
+#include "OtaiAttrWrapper.h"
+#include "OtaiObjectCollection.h"
 #include "PortRelatedSet.h"
 #include "AttrKeyMap.h"
 #include "OidRefCounter.h"
@@ -18,182 +18,182 @@
 #define MINIMUM_VLAN_NUMBER 1
 #define MAXIMUM_VLAN_NUMBER 4094
 
-namespace saimeta
+namespace otaimeta
 {
     class Meta:
-        public sairedis::SaiInterface
+        public otairedis::OtaiInterface
     {
         public:
 
-            using sairedis::SaiInterface::set; // name hiding
+            using otairedis::OtaiInterface::set; // name hiding
 
             Meta(
-                    _In_ std::shared_ptr<SaiInterface> impl);
+                    _In_ std::shared_ptr<OtaiInterface> impl);
 
             virtual ~Meta() = default;
 
         public:
 
-            virtual sai_status_t apiInitialize(
+            virtual otai_status_t apiInitialize(
                     _In_ uint64_t flags,
-                    _In_ const sai_service_method_table_t *service_method_table) override;
+                    _In_ const otai_service_method_table_t *service_method_table) override;
 
-            virtual sai_status_t apiUninitialize(void) override;
+            virtual otai_status_t apiUninitialize(void) override;
 
-        public: // SAI interface overrides
+        public: // OTAI interface overrides
 
-            virtual sai_status_t create(
-                    _In_ sai_object_type_t objectType,
-                    _Out_ sai_object_id_t* objectId,
-                    _In_ sai_object_id_t switchId,
+            virtual otai_status_t create(
+                    _In_ otai_object_type_t objectType,
+                    _Out_ otai_object_id_t* objectId,
+                    _In_ otai_object_id_t switchId,
                     _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list) override;
+                    _In_ const otai_attribute_t *attr_list) override;
 
-            virtual sai_status_t remove(
-                    _In_ sai_object_type_t objectType,
-                    _In_ sai_object_id_t objectId) override;
+            virtual otai_status_t remove(
+                    _In_ otai_object_type_t objectType,
+                    _In_ otai_object_id_t objectId) override;
 
-            virtual sai_status_t set(
-                    _In_ sai_object_type_t objectType,
-                    _In_ sai_object_id_t objectId,
-                    _In_ const sai_attribute_t *attr) override;
+            virtual otai_status_t set(
+                    _In_ otai_object_type_t objectType,
+                    _In_ otai_object_id_t objectId,
+                    _In_ const otai_attribute_t *attr) override;
 
-            virtual sai_status_t get(
-                    _In_ sai_object_type_t objectType,
-                    _In_ sai_object_id_t objectId,
+            virtual otai_status_t get(
+                    _In_ otai_object_type_t objectType,
+                    _In_ otai_object_id_t objectId,
                     _In_ uint32_t attr_count,
-                    _Inout_ sai_attribute_t *attr_list) override;
+                    _Inout_ otai_attribute_t *attr_list) override;
 
         public: // QUAD ENTRY and BULK QUAD ENTRY
 
-            SAIREDIS_DECLARE_EVERY_ENTRY(SAIREDIS_SAIINTERFACE_DECLARE_QUAD_ENTRY_OVERRIDE);
-            SAIREDIS_DECLARE_EVERY_BULK_ENTRY(SAIREDIS_SAIINTERFACE_DECLARE_BULK_ENTRY_OVERRIDE);
+            OTAIREDIS_DECLARE_EVERY_ENTRY(OTAIREDIS_OTAIINTERFACE_DECLARE_QUAD_ENTRY_OVERRIDE);
+            OTAIREDIS_DECLARE_EVERY_BULK_ENTRY(OTAIREDIS_OTAIINTERFACE_DECLARE_BULK_ENTRY_OVERRIDE);
 
         public: // bulk QUAD oid
 
-            virtual sai_status_t bulkCreate(
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_object_id_t switch_id,
+            virtual otai_status_t bulkCreate(
+                    _In_ otai_object_type_t object_type,
+                    _In_ otai_object_id_t switch_id,
                     _In_ uint32_t object_count,
                     _In_ const uint32_t *attr_count,
-                    _In_ const sai_attribute_t **attr_list,
-                    _In_ sai_bulk_op_error_mode_t mode,
-                    _Out_ sai_object_id_t *object_id,
-                    _Out_ sai_status_t *object_statuses) override;
+                    _In_ const otai_attribute_t **attr_list,
+                    _In_ otai_bulk_op_error_mode_t mode,
+                    _Out_ otai_object_id_t *object_id,
+                    _Out_ otai_status_t *object_statuses) override;
 
-            virtual sai_status_t bulkRemove(
-                    _In_ sai_object_type_t object_type,
+            virtual otai_status_t bulkRemove(
+                    _In_ otai_object_type_t object_type,
                     _In_ uint32_t object_count,
-                    _In_ const sai_object_id_t *object_id,
-                    _In_ sai_bulk_op_error_mode_t mode,
-                    _Out_ sai_status_t *object_statuses) override;
+                    _In_ const otai_object_id_t *object_id,
+                    _In_ otai_bulk_op_error_mode_t mode,
+                    _Out_ otai_status_t *object_statuses) override;
 
-            virtual sai_status_t bulkSet(
-                    _In_ sai_object_type_t object_type,
+            virtual otai_status_t bulkSet(
+                    _In_ otai_object_type_t object_type,
                     _In_ uint32_t object_count,
-                    _In_ const sai_object_id_t *object_id,
-                    _In_ const sai_attribute_t *attr_list,
-                    _In_ sai_bulk_op_error_mode_t mode,
-                    _Out_ sai_status_t *object_statuses) override;
+                    _In_ const otai_object_id_t *object_id,
+                    _In_ const otai_attribute_t *attr_list,
+                    _In_ otai_bulk_op_error_mode_t mode,
+                    _Out_ otai_status_t *object_statuses) override;
 
-            virtual sai_status_t bulkGet(
-                    _In_ sai_object_type_t object_type,
+            virtual otai_status_t bulkGet(
+                    _In_ otai_object_type_t object_type,
                     _In_ uint32_t object_count,
-                    _In_ const sai_object_id_t *object_id,
+                    _In_ const otai_object_id_t *object_id,
                     _In_ const uint32_t *attr_count,
-                    _Inout_ sai_attribute_t **attr_list,
-                    _In_ sai_bulk_op_error_mode_t mode,
-                    _Out_ sai_status_t *object_statuses) override;
+                    _Inout_ otai_attribute_t **attr_list,
+                    _In_ otai_bulk_op_error_mode_t mode,
+                    _Out_ otai_status_t *object_statuses) override;
 
         public: // stats API
 
-            virtual sai_status_t getStats(
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_object_id_t object_id,
+            virtual otai_status_t getStats(
+                    _In_ otai_object_type_t object_type,
+                    _In_ otai_object_id_t object_id,
                     _In_ uint32_t number_of_counters,
-                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ const otai_stat_id_t *counter_ids,
                     _Out_ uint64_t *counters) override;
 
-            virtual sai_status_t queryStatsCapability(
-                    _In_ sai_object_id_t switch_id,
-                    _In_ sai_object_type_t object_type,
-                    _Inout_ sai_stat_capability_list_t *stats_capability) override;
+            //virtual otai_status_t queryStatsCapability(
+            //        _In_ otai_object_id_t switch_id,
+            //        _In_ otai_object_type_t object_type,
+            //        _Inout_ otai_stat_capability_list_t *stats_capability) override;
 
-            virtual sai_status_t getStatsExt(
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_object_id_t object_id,
+            virtual otai_status_t getStatsExt(
+                    _In_ otai_object_type_t object_type,
+                    _In_ otai_object_id_t object_id,
                     _In_ uint32_t number_of_counters,
-                    _In_ const sai_stat_id_t *counter_ids,
-                    _In_ sai_stats_mode_t mode,
+                    _In_ const otai_stat_id_t *counter_ids,
+                    _In_ otai_stats_mode_t mode,
                     _Out_ uint64_t *counters) override;
 
-            virtual sai_status_t clearStats(
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_object_id_t object_id,
+            virtual otai_status_t clearStats(
+                    _In_ otai_object_type_t object_type,
+                    _In_ otai_object_id_t object_id,
                     _In_ uint32_t number_of_counters,
-                    _In_ const sai_stat_id_t *counter_ids) override;
+                    _In_ const otai_stat_id_t *counter_ids) override;
 
-            virtual sai_status_t bulkGetStats(
-                    _In_ sai_object_id_t switchId,
-                    _In_ sai_object_type_t object_type,
+            virtual otai_status_t bulkGetStats(
+                    _In_ otai_object_id_t switchId,
+                    _In_ otai_object_type_t object_type,
                     _In_ uint32_t object_count,
-                    _In_ const sai_object_key_t *object_key,
+                    _In_ const otai_object_key_t *object_key,
                     _In_ uint32_t number_of_counters,
-                    _In_ const sai_stat_id_t *counter_ids,
-                    _In_ sai_stats_mode_t mode,
-                    _Inout_ sai_status_t *object_statuses,
+                    _In_ const otai_stat_id_t *counter_ids,
+                    _In_ otai_stats_mode_t mode,
+                    _Inout_ otai_status_t *object_statuses,
                     _Out_ uint64_t *counters) override;
 
-            virtual sai_status_t bulkClearStats(
-                    _In_ sai_object_id_t switchId,
-                    _In_ sai_object_type_t object_type,
+            virtual otai_status_t bulkClearStats(
+                    _In_ otai_object_id_t switchId,
+                    _In_ otai_object_type_t object_type,
                     _In_ uint32_t object_count,
-                    _In_ const sai_object_key_t *object_key,
+                    _In_ const otai_object_key_t *object_key,
                     _In_ uint32_t number_of_counters,
-                    _In_ const sai_stat_id_t *counter_ids,
-                    _In_ sai_stats_mode_t mode,
-                    _Inout_ sai_status_t *object_statuses) override;
+                    _In_ const otai_stat_id_t *counter_ids,
+                    _In_ otai_stats_mode_t mode,
+                    _Inout_ otai_status_t *object_statuses) override;
 
         public: // non QUAD API
 
-            virtual sai_status_t flushFdbEntries(
-                    _In_ sai_object_id_t switchId,
+            virtual otai_status_t flushFdbEntries(
+                    _In_ otai_object_id_t switchId,
                     _In_ uint32_t attrCount,
-                    _In_ const sai_attribute_t *attrList) override;
+                    _In_ const otai_attribute_t *attrList) override;
 
-        public: // SAI API
+        public: // OTAI API
 
-            virtual sai_status_t objectTypeGetAvailability(
-                    _In_ sai_object_id_t switchId,
-                    _In_ sai_object_type_t objectType,
+            virtual otai_status_t objectTypeGetAvailability(
+                    _In_ otai_object_id_t switchId,
+                    _In_ otai_object_type_t objectType,
                     _In_ uint32_t attrCount,
-                    _In_ const sai_attribute_t *attrList,
+                    _In_ const otai_attribute_t *attrList,
                     _Out_ uint64_t *count) override;
 
-            virtual sai_status_t queryAttributeCapability(
-                    _In_ sai_object_id_t switch_id,
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_attr_id_t attr_id,
-                    _Out_ sai_attr_capability_t *capability) override;
+            //virtual otai_status_t queryAttributeCapability(
+            //        _In_ otai_object_id_t switch_id,
+            //        _In_ otai_object_type_t object_type,
+            //        _In_ otai_attr_id_t attr_id,
+            //        _Out_ otai_attr_capability_t *capability) override;
 
-            virtual sai_status_t queryAttributeEnumValuesCapability(
-                    _In_ sai_object_id_t switch_id,
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_attr_id_t attr_id,
-                    _Inout_ sai_s32_list_t *enum_values_capability) override;
+            virtual otai_status_t queryAttributeEnumValuesCapability(
+                    _In_ otai_object_id_t switch_id,
+                    _In_ otai_object_type_t object_type,
+                    _In_ otai_attr_id_t attr_id,
+                    _Inout_ otai_s32_list_t *enum_values_capability) override;
 
-            virtual sai_object_type_t objectTypeQuery(
-                    _In_ sai_object_id_t objectId) override;
+            virtual otai_object_type_t objectTypeQuery(
+                    _In_ otai_object_id_t objectId) override;
 
-            virtual sai_object_id_t switchIdQuery(
-                    _In_ sai_object_id_t objectId) override;
+            virtual otai_object_id_t switchIdQuery(
+                    _In_ otai_object_id_t objectId) override;
 
-            virtual sai_status_t logSet(
-                    _In_ sai_api_t api,
-                    _In_ sai_log_level_t log_level) override;
+            virtual otai_status_t logSet(
+                    _In_ otai_api_t api,
+                    _In_ otai_log_level_t log_level) override;
 
-            virtual sai_status_t queryApiVersion(
-                    _Out_ sai_api_version_t *version) override;
+            //virtual otai_status_t queryApiVersion(
+            //        _Out_ otai_api_version_t *version) override;
 
         public:
 
@@ -205,110 +205,110 @@ namespace saimeta
 
         public: // notifications
 
-            void meta_sai_on_fdb_event(
-                    _In_ uint32_t count,
-                    _In_ const sai_fdb_event_notification_data_t *data);
+            //void meta_otai_on_fdb_event(
+            //        _In_ uint32_t count,
+            //        _In_ const otai_fdb_event_notification_data_t *data);
 
-            void meta_sai_on_nat_event(
-                    _In_ uint32_t count,
-                    _In_ const sai_nat_event_notification_data_t *data);
+            //void meta_otai_on_nat_event(
+            //        _In_ uint32_t count,
+            //        _In_ const otai_nat_event_notification_data_t *data);
 
-            void meta_sai_on_switch_state_change(
-                    _In_ sai_object_id_t switch_id,
-                    _In_ sai_switch_oper_status_t switch_oper_status);
+            //void meta_otai_on_switch_state_change(
+            //        _In_ otai_object_id_t switch_id,
+            //        _In_ otai_switch_oper_status_t switch_oper_status);
 
-            void meta_sai_on_switch_asic_sdk_health_event(
-                    _In_ sai_object_id_t switch_id,
-                    _In_ sai_switch_asic_sdk_health_severity_t severity,
-                    _In_ sai_timespec_t timestamp,
-                    _In_ sai_switch_asic_sdk_health_category_t category,
-                    _In_ sai_switch_health_data_t data,
-                    _In_ const sai_u8_list_t description);
+            //void meta_otai_on_switch_asic_sdk_health_event(
+            //        _In_ otai_object_id_t switch_id,
+            //        _In_ otai_switch_asic_sdk_health_severity_t severity,
+            //        _In_ otai_timespec_t timestamp,
+            //        _In_ otai_switch_asic_sdk_health_category_t category,
+            //        _In_ otai_switch_health_data_t data,
+            //        _In_ const otai_u8_list_t description);
 
-            void meta_sai_on_switch_shutdown_request(
-                    _In_ sai_object_id_t switch_id);
+            void meta_otai_on_switch_shutdown_request(
+                    _In_ otai_object_id_t switch_id);
 
-            void meta_sai_on_port_state_change(
-                    _In_ uint32_t count,
-                    _In_ const sai_port_oper_status_notification_t *data);
+            //void meta_otai_on_port_state_change(
+            //        _In_ uint32_t count,
+            //        _In_ const otai_port_oper_status_notification_t *data);
 
-            void meta_sai_on_queue_pfc_deadlock_notification(
-                    _In_ uint32_t count,
-                    _In_ const sai_queue_deadlock_notification_data_t *data);
+            //void meta_otai_on_queue_pfc_deadlock_notification(
+            //        _In_ uint32_t count,
+            //        _In_ const otai_queue_deadlock_notification_data_t *data);
 
-            void meta_sai_on_bfd_session_state_change(
-                    _In_ uint32_t count,
-                    _In_ const sai_bfd_session_state_notification_t *data);
+            //void meta_otai_on_bfd_session_state_change(
+            //        _In_ uint32_t count,
+            //        _In_ const otai_bfd_session_state_notification_t *data);
 
-            void meta_sai_on_port_host_tx_ready_change(
-                    _In_ sai_object_id_t port_id,
-                    _In_ sai_object_id_t switch_id,
-                    _In_ sai_port_host_tx_ready_status_t host_tx_ready_status);
+            //void meta_otai_on_port_host_tx_ready_change(
+            //        _In_ otai_object_id_t port_id,
+            //        _In_ otai_object_id_t switch_id,
+            //        _In_ otai_port_host_tx_ready_status_t host_tx_ready_status);
 
-            void meta_sai_on_twamp_session_event(
-                    _In_ uint32_t count,
-                    _In_ const sai_twamp_session_event_notification_data_t *data);
+            //void meta_otai_on_twamp_session_event(
+            //        _In_ uint32_t count,
+            //        _In_ const otai_twamp_session_event_notification_data_t *data);
 
         private: // notifications helpers
 
-            void meta_sai_on_fdb_flush_event_consolidated(
-                    _In_ const sai_fdb_event_notification_data_t& data);
+            //void meta_otai_on_fdb_flush_event_consolidated(
+            //        _In_ const otai_fdb_event_notification_data_t& data);
 
             void meta_fdb_event_snoop_oid(
-                    _In_ sai_object_id_t oid);
+                    _In_ otai_object_id_t oid);
 
-            void meta_sai_on_fdb_event_single(
-                    _In_ const sai_fdb_event_notification_data_t& data);
+            //void meta_otai_on_fdb_event_single(
+            //        _In_ const otai_fdb_event_notification_data_t& data);
 
-            void meta_sai_on_nat_event_single(
-                    _In_ const sai_nat_event_notification_data_t& data);
+            //void meta_otai_on_nat_event_single(
+            //        _In_ const otai_nat_event_notification_data_t& data);
 
-            void meta_sai_on_port_state_change_single(
-                    _In_ const sai_port_oper_status_notification_t& data);
+            //void meta_otai_on_port_state_change_single(
+            //        _In_ const otai_port_oper_status_notification_t& data);
 
-            void meta_sai_on_queue_pfc_deadlock_notification_single(
-                    _In_ const sai_queue_deadlock_notification_data_t& data);
+            //void meta_otai_on_queue_pfc_deadlock_notification_single(
+            //        _In_ const otai_queue_deadlock_notification_data_t& data);
 
-            void meta_sai_on_bfd_session_state_change_single(
-                    _In_ const sai_bfd_session_state_notification_t& data);
+            //void meta_otai_on_bfd_session_state_change_single(
+            //        _In_ const otai_bfd_session_state_notification_t& data);
 
-            void meta_sai_on_twamp_session_event_single(
-                    _In_ const sai_twamp_session_event_notification_data_t& data);
+            //void meta_otai_on_twamp_session_event_single(
+            //        _In_ const otai_twamp_session_event_notification_data_t& data);
 
         private: // validation helpers
 
-            sai_status_t meta_generic_validation_objlist(
-                    _In_ const sai_attr_metadata_t& md,
-                    _In_ sai_object_id_t switch_id,
+            otai_status_t meta_generic_validation_objlist(
+                    _In_ const otai_attr_metadata_t& md,
+                    _In_ otai_object_id_t switch_id,
                     _In_ uint32_t count,
-                    _In_ const sai_object_id_t* list);
+                    _In_ const otai_object_id_t* list);
 
-            sai_status_t meta_genetic_validation_list(
-                    _In_ const sai_attr_metadata_t& md,
+            otai_status_t meta_genetic_validation_list(
+                    _In_ const otai_attr_metadata_t& md,
                     _In_ uint32_t count,
                     _In_ const void* list);
 
-            sai_status_t meta_generic_validate_non_object_on_create(
-                    _In_ const sai_object_meta_key_t& meta_key,
-                    _In_ sai_object_id_t switch_id);
+            otai_status_t meta_generic_validate_non_object_on_create(
+                    _In_ const otai_object_meta_key_t& meta_key,
+                    _In_ otai_object_id_t switch_id);
 
-            sai_object_id_t meta_extract_switch_id(
-                    _In_ const sai_object_meta_key_t& meta_key,
-                    _In_ sai_object_id_t switch_id);
+            otai_object_id_t meta_extract_switch_id(
+                    _In_ const otai_object_meta_key_t& meta_key,
+                    _In_ otai_object_id_t switch_id);
 
-            std::shared_ptr<SaiAttrWrapper> get_object_previous_attr(
-                    _In_ const sai_object_meta_key_t& metaKey,
-                    _In_ const sai_attr_metadata_t& md);
+            std::shared_ptr<OtaiAttrWrapper> get_object_previous_attr(
+                    _In_ const otai_object_meta_key_t& metaKey,
+                    _In_ const otai_attr_metadata_t& md);
 
-            std::vector<const sai_attr_metadata_t*> get_attributes_metadata(
-                    _In_ sai_object_type_t objecttype);
+            std::vector<const otai_attr_metadata_t*> get_attributes_metadata(
+                    _In_ otai_object_type_t objecttype);
 
             void meta_generic_validation_post_get_objlist(
-                    _In_ const sai_object_meta_key_t& meta_key,
-                    _In_ const sai_attr_metadata_t& md,
-                    _In_ sai_object_id_t switch_id,
+                    _In_ const otai_object_meta_key_t& meta_key,
+                    _In_ const otai_attr_metadata_t& md,
+                    _In_ otai_object_id_t switch_id,
                     _In_ uint32_t count,
-                    _In_ const sai_object_id_t* list);
+                    _In_ const otai_object_id_t* list);
 
         public:
 
@@ -318,7 +318,7 @@ namespace saimeta
         private: // unit tests helpers
 
             bool meta_unittests_get_and_erase_set_readonly_flag(
-                    _In_ const sai_attr_metadata_t& md);
+                    _In_ const otai_attr_metadata_t& md);
 
         public:
 
@@ -373,195 +373,195 @@ namespace saimeta
              * @param[in] object_type Object type on which SET will be possible.
              * @param[in] attr_id Attribute ID on which SET will be possible.
              *
-             * @return #SAI_STATUS_SUCCESS on success Failure status code on error
+             * @return #OTAI_STATUS_SUCCESS on success Failure status code on error
              */
-            sai_status_t meta_unittests_allow_readonly_set_once(
-                    _In_ sai_object_type_t object_type,
+            otai_status_t meta_unittests_allow_readonly_set_once(
+                    _In_ otai_object_type_t object_type,
                     _In_ int32_t attr_id);
 
         public: // unittests method helpers
 
             int32_t getObjectReferenceCount(
-                    _In_ sai_object_id_t oid) const;
+                    _In_ otai_object_id_t oid) const;
 
             bool objectExists(
-                    _In_ const sai_object_meta_key_t& mk) const;
+                    _In_ const otai_object_meta_key_t& mk) const;
 
         private: // port helpers
 
-            sai_status_t meta_port_remove_validation(
-                    _In_ const sai_object_meta_key_t& meta_key);
+            otai_status_t meta_port_remove_validation(
+                    _In_ const otai_object_meta_key_t& meta_key);
 
             bool meta_is_object_in_default_state(
-                    _In_ sai_object_id_t oid);
+                    _In_ otai_object_id_t oid);
 
             void post_port_remove(
-                    _In_ const sai_object_meta_key_t& meta_key);
+                    _In_ const otai_object_meta_key_t& meta_key);
 
             void meta_post_port_get(
-                    _In_ const sai_object_meta_key_t& meta_key,
-                    _In_ sai_object_id_t switch_id,
+                    _In_ const otai_object_meta_key_t& meta_key,
+                    _In_ otai_object_id_t switch_id,
                     _In_ const uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list);
+                    _In_ const otai_attribute_t *attr_list);
 
             void meta_add_port_to_related_map(
-                    _In_ sai_object_id_t port_id,
-                    _In_ const sai_object_list_t& list);
+                    _In_ otai_object_id_t port_id,
+                    _In_ const otai_object_list_t& list);
 
         public: // validation post QUAD
 
             void meta_generic_validation_post_create(
-                    _In_ const sai_object_meta_key_t& meta_key,
-                    _In_ sai_object_id_t switch_id,
+                    _In_ const otai_object_meta_key_t& meta_key,
+                    _In_ otai_object_id_t switch_id,
                     _In_ const uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list);
+                    _In_ const otai_attribute_t *attr_list);
 
             void meta_generic_validation_post_remove(
-                    _In_ const sai_object_meta_key_t& meta_key);
+                    _In_ const otai_object_meta_key_t& meta_key);
 
             void meta_generic_validation_post_set(
-                    _In_ const sai_object_meta_key_t& meta_key,
-                    _In_ const sai_attribute_t *attr);
+                    _In_ const otai_object_meta_key_t& meta_key,
+                    _In_ const otai_attribute_t *attr);
 
             void meta_generic_validation_post_get(
-                    _In_ const sai_object_meta_key_t& meta_key,
-                    _In_ sai_object_id_t switch_id,
+                    _In_ const otai_object_meta_key_t& meta_key,
+                    _In_ otai_object_id_t switch_id,
                     _In_ const uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list);
+                    _In_ const otai_attribute_t *attr_list);
 
         private: // validation QUAD
 
-            sai_status_t meta_generic_validation_create(
-                    _In_ const sai_object_meta_key_t& meta_key,
-                    _In_ sai_object_id_t switch_id,
+            otai_status_t meta_generic_validation_create(
+                    _In_ const otai_object_meta_key_t& meta_key,
+                    _In_ otai_object_id_t switch_id,
                     _In_ const uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list);
+                    _In_ const otai_attribute_t *attr_list);
 
-            sai_status_t meta_generic_validation_remove(
-                    _In_ const sai_object_meta_key_t& meta_key);
+            otai_status_t meta_generic_validation_remove(
+                    _In_ const otai_object_meta_key_t& meta_key);
 
-            sai_status_t meta_generic_validation_set(
-                    _In_ const sai_object_meta_key_t& meta_key,
-                    _In_ const sai_attribute_t *attr);
+            otai_status_t meta_generic_validation_set(
+                    _In_ const otai_object_meta_key_t& meta_key,
+                    _In_ const otai_attribute_t *attr);
 
-            sai_status_t meta_generic_validation_get(
-                    _In_ const sai_object_meta_key_t& meta_key,
+            otai_status_t meta_generic_validation_get(
+                    _In_ const otai_object_meta_key_t& meta_key,
                     _In_ const uint32_t attr_count,
-                    _In_ sai_attribute_t *attr_list);
+                    _In_ otai_attribute_t *attr_list);
 
         protected: // stats
 
-            sai_status_t meta_validate_stats(
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_object_id_t object_id,
+            otai_status_t meta_validate_stats(
+                    _In_ otai_object_type_t object_type,
+                    _In_ otai_object_id_t object_id,
                     _In_ uint32_t number_of_counters,
-                    _In_ const sai_stat_id_t *counter_ids,
+                    _In_ const otai_stat_id_t *counter_ids,
                     _Out_ uint64_t *counters,
-                    _In_ sai_stats_mode_t mode);
+                    _In_ otai_stats_mode_t mode);
 
-            sai_status_t meta_validate_query_stats_capability(
-                    _In_ sai_object_type_t object_type,
-                    _In_ sai_object_id_t object_id);
+            otai_status_t meta_validate_query_stats_capability(
+                    _In_ otai_object_type_t object_type,
+                    _In_ otai_object_id_t object_id);
 
         private: // validate OID
 
-            sai_status_t meta_sai_validate_oid(
-                    _In_ sai_object_type_t object_type,
-                    _In_ const sai_object_id_t* object_id,
-                    _In_ sai_object_id_t switch_id,
+            otai_status_t meta_otai_validate_oid(
+                    _In_ otai_object_type_t object_type,
+                    _In_ const otai_object_id_t* object_id,
+                    _In_ otai_object_id_t switch_id,
                     _In_ bool create);
 
         private: // validate ENTRY
 
-            sai_status_t meta_sai_validate_fdb_entry(
-                    _In_ const sai_fdb_entry_t* fdb_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+            //otai_status_t meta_otai_validate_fdb_entry(
+            //        _In_ const otai_fdb_entry_t* fdb_entry,
+            //        _In_ bool create,
+            //        _In_ bool get = false);
 
-            sai_status_t meta_sai_validate_mcast_fdb_entry(
-                    _In_ const sai_mcast_fdb_entry_t* mcast_fdb_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+            //otai_status_t meta_otai_validate_mcast_fdb_entry(
+            //        _In_ const otai_mcast_fdb_entry_t* mcast_fdb_entry,
+            //        _In_ bool create,
+            //        _In_ bool get = false);
 
-            sai_status_t meta_sai_validate_neighbor_entry(
-                    _In_ const sai_neighbor_entry_t* neighbor_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+            //otai_status_t meta_otai_validate_neighbor_entry(
+            //        _In_ const otai_neighbor_entry_t* neighbor_entry,
+            //        _In_ bool create,
+            //        _In_ bool get = false);
 
-            sai_status_t meta_sai_validate_route_entry(
-                    _In_ const sai_route_entry_t* route_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+            //otai_status_t meta_otai_validate_route_entry(
+            //        _In_ const otai_route_entry_t* route_entry,
+            //        _In_ bool create,
+            //        _In_ bool get = false);
 
-            sai_status_t meta_sai_validate_l2mc_entry(
-                    _In_ const sai_l2mc_entry_t* l2mc_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+            //otai_status_t meta_otai_validate_l2mc_entry(
+            //        _In_ const otai_l2mc_entry_t* l2mc_entry,
+            //        _In_ bool create,
+            //        _In_ bool get = false);
 
-            sai_status_t meta_sai_validate_ipmc_entry(
-                    _In_ const sai_ipmc_entry_t* ipmc_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+            //otai_status_t meta_otai_validate_ipmc_entry(
+            //        _In_ const otai_ipmc_entry_t* ipmc_entry,
+            //        _In_ bool create,
+            //        _In_ bool get = false);
 
-            sai_status_t meta_sai_validate_nat_entry(
-                    _In_ const sai_nat_entry_t* nat_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+            //otai_status_t meta_otai_validate_nat_entry(
+            //        _In_ const otai_nat_entry_t* nat_entry,
+            //        _In_ bool create,
+            //        _In_ bool get = false);
 
-            sai_status_t meta_sai_validate_inseg_entry(
-                    _In_ const sai_inseg_entry_t* inseg_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+            //otai_status_t meta_otai_validate_inseg_entry(
+            //        _In_ const otai_inseg_entry_t* inseg_entry,
+            //        _In_ bool create,
+            //        _In_ bool get = false);
 
-            sai_status_t meta_sai_validate_my_sid_entry(
-                    _In_ const sai_my_sid_entry_t* my_sid_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+            //otai_status_t meta_otai_validate_my_sid_entry(
+            //        _In_ const otai_my_sid_entry_t* my_sid_entry,
+            //        _In_ bool create,
+            //        _In_ bool get = false);
 
-             sai_status_t meta_sai_validate_direction_lookup_entry(
-                    _In_ const sai_direction_lookup_entry_t* direction_lookup_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+             //otai_status_t meta_otai_validate_direction_lookup_entry(
+             //       _In_ const otai_direction_lookup_entry_t* direction_lookup_entry,
+             //       _In_ bool create,
+             //       _In_ bool get = false);
 
-             sai_status_t meta_sai_validate_eni_ether_address_map_entry(
-                    _In_ const sai_eni_ether_address_map_entry_t* eni_ether_address_map_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+             //otai_status_t meta_otai_validate_eni_ether_address_map_entry(
+             //       _In_ const otai_eni_ether_address_map_entry_t* eni_ether_address_map_entry,
+             //       _In_ bool create,
+             //       _In_ bool get = false);
 
-             sai_status_t meta_sai_validate_vip_entry(
-                    _In_ const sai_vip_entry_t* vip_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+             //otai_status_t meta_otai_validate_vip_entry(
+             //       _In_ const otai_vip_entry_t* vip_entry,
+             //       _In_ bool create,
+             //       _In_ bool get = false);
 
-             sai_status_t meta_sai_validate_inbound_routing_entry(
-                    _In_ const sai_inbound_routing_entry_t* inbound_routing_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+             //otai_status_t meta_otai_validate_inbound_routing_entry(
+             //       _In_ const otai_inbound_routing_entry_t* inbound_routing_entry,
+             //       _In_ bool create,
+             //       _In_ bool get = false);
 
-             sai_status_t meta_sai_validate_pa_validation_entry(
-                    _In_ const sai_pa_validation_entry_t* pa_validation_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+             //otai_status_t meta_otai_validate_pa_validation_entry(
+             //       _In_ const otai_pa_validation_entry_t* pa_validation_entry,
+             //       _In_ bool create,
+             //       _In_ bool get = false);
 
-             sai_status_t meta_sai_validate_outbound_routing_entry(
-                    _In_ const sai_outbound_routing_entry_t* outbound_routing_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+             //otai_status_t meta_otai_validate_outbound_routing_entry(
+             //       _In_ const otai_outbound_routing_entry_t* outbound_routing_entry,
+             //       _In_ bool create,
+             //       _In_ bool get = false);
 
-             sai_status_t meta_sai_validate_outbound_ca_to_pa_entry(
-                    _In_ const sai_outbound_ca_to_pa_entry_t* outbound_ca_to_pa_entry,
-                    _In_ bool create,
-                    _In_ bool get = false);
+             //otai_status_t meta_otai_validate_outbound_ca_to_pa_entry(
+             //       _In_ const otai_outbound_ca_to_pa_entry_t* outbound_ca_to_pa_entry,
+             //       _In_ bool create,
+             //       _In_ bool get = false);
 
-             sai_status_t meta_sai_validate_flow_entry(
-                     _In_ const sai_flow_entry_t* flow_entry,
-                     _In_ bool create,
-                     _In_ bool get = false);
+             //otai_status_t meta_otai_validate_flow_entry(
+             //        _In_ const otai_flow_entry_t* flow_entry,
+             //        _In_ bool create,
+             //        _In_ bool get = false);
 
-             sai_status_t meta_sai_validate_meter_bucket_entry(
-                     _In_ const sai_meter_bucket_entry_t* meter_bucket_entry,
-                     _In_ bool create,
-                     _In_ bool get = false);
+             //otai_status_t meta_otai_validate_meter_bucket_entry(
+             //        _In_ const otai_meter_bucket_entry_t* meter_bucket_entry,
+             //        _In_ bool create,
+             //        _In_ bool get = false);
 
         public:
 
@@ -578,11 +578,11 @@ namespace saimeta
         private:
 
             void clean_after_switch_remove(
-                    _In_ sai_object_id_t switchId);
+                    _In_ otai_object_id_t switchId);
 
         private:
 
-            std::shared_ptr<sairedis::SaiInterface> m_implementation;
+            std::shared_ptr<otairedis::OtaiInterface> m_implementation;
 
         private: // database objects
 
@@ -605,7 +605,7 @@ namespace saimeta
 
             OidRefCounter m_oids;
 
-            SaiObjectCollection m_saiObjectCollection;
+            OtaiObjectCollection m_otaiObjectCollection;
 
             AttrKeyMap m_attrKeys;
 

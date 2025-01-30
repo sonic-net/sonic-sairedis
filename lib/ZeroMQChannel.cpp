@@ -1,8 +1,8 @@
 #include "ZeroMQChannel.h"
 
-#include "sairediscommon.h"
+#include "otairediscommon.h"
 
-#include "meta/sai_serialize.h"
+#include "meta/otai_serialize.h"
 
 #include "swss/logger.h"
 #include "swss/select.h"
@@ -10,7 +10,7 @@
 #include <zmq.h>
 #include <unistd.h>
 
-using namespace sairedis;
+using namespace otairedis;
 
 #define ZMQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
 #define ZMQ_MAX_RETRY 10
@@ -250,7 +250,7 @@ void ZeroMQChannel::del(
     set(key, values, command);
 }
 
-sai_status_t ZeroMQChannel::wait(
+otai_status_t ZeroMQChannel::wait(
         _In_ const std::string& command,
         _Out_ swss::KeyOpFieldsValuesTuple& kco)
 {
@@ -276,7 +276,7 @@ sai_status_t ZeroMQChannel::wait(
             // notice, at this point we could throw, since in REP/REQ pattern
             // we are forced to use send/recv in that specific order
 
-            return SAI_STATUS_FAILURE;
+            return OTAI_STATUS_FAILURE;
         }
         if (rc < 0 && zmq_errno() == EINTR && i < ZMQ_MAX_RETRY)
         {
@@ -340,8 +340,8 @@ sai_status_t ZeroMQChannel::wait(
         SWSS_LOG_THROW("got not expected response: %s:%s, expected: %s", opkey.c_str(), op.c_str(), command.c_str());
     }
 
-    sai_status_t status;
-    sai_deserialize_status(opkey, status);
+    otai_status_t status;
+    otai_deserialize_status(opkey, status);
 
     SWSS_LOG_DEBUG("%s status: %s", command.c_str(), opkey.c_str());
 

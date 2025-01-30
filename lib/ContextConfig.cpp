@@ -2,7 +2,7 @@
 
 #include "swss/logger.h"
 
-using namespace sairedis;
+using namespace otairedis;
 
 ContextConfig::ContextConfig(
         _In_ uint32_t guid,

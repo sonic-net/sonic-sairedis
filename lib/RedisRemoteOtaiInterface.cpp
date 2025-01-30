@@ -1,4 +1,4 @@
-#include "RedisRemoteSaiInterface.h"
+#include "RedisRemoteOtaiInterface.h"
 #include "Utils.h"
 #include "Recorder.h"
 #include "VirtualObjectIdManager.h"
@@ -6,11 +6,11 @@
 #include "SwitchContainer.h"
 #include "ZeroMQChannel.h"
 
-#include "sairediscommon.h"
+#include "otairediscommon.h"
 
 #include "meta/NotificationFactory.h"
-#include "meta/sai_serialize.h"
-#include "meta/SaiAttributeList.h"
+#include "meta/otai_serialize.h"
+#include "meta/OtaiAttributeList.h"
 #include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
 
@@ -18,35 +18,35 @@
 
 #include <inttypes.h>
 
-using namespace sairedis;
-using namespace saimeta;
-using namespace sairediscommon;
+using namespace otairedis;
+using namespace otaimeta;
+using namespace otairediscommon;
 using namespace std::placeholders;
 
 std::vector<swss::FieldValueTuple> serialize_counter_id_list(
-        _In_ const sai_enum_metadata_t *stats_enum,
+        _In_ const otai_enum_metadata_t *stats_enum,
         _In_ uint32_t count,
-        _In_ const sai_stat_id_t *counter_id_list);
+        _In_ const otai_stat_id_t *counter_id_list);
 
-RedisRemoteSaiInterface::RedisRemoteSaiInterface(
+RedisRemoteOtaiInterface::RedisRemoteOtaiInterface(
         _In_ std::shared_ptr<ContextConfig> contextConfig,
-        _In_ std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> notificationCallback,
+        _In_ std::function<otai_linecard_notifications_t(std::shared_ptr<Notification>)> notificationCallback,
         _In_ std::shared_ptr<Recorder> recorder):
     m_contextConfig(contextConfig),
-    m_redisCommunicationMode(SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC),
+    m_redisCommunicationMode(OTAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC),
     m_recorder(recorder),
     m_notificationCallback(notificationCallback)
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_NOTICE("sairedis git revision %s, SAI git revision: %s", SAIREDIS_GIT_REVISION, SAI_GIT_REVISION);
+    SWSS_LOG_NOTICE("otairedis git revision %s, OTAI git revision: %s", OTAIREDIS_GIT_REVISION, OTAI_GIT_REVISION);
 
     m_initialized = false;
 
     apiInitialize(0, nullptr);
 }
 
-RedisRemoteSaiInterface::~RedisRemoteSaiInterface()
+RedisRemoteOtaiInterface::~RedisRemoteOtaiInterface()
 {
     SWSS_LOG_ENTER();
 
@@ -56,9 +56,9 @@ RedisRemoteSaiInterface::~RedisRemoteSaiInterface()
     }
 }
 
-sai_status_t RedisRemoteSaiInterface::apiInitialize(
+otai_status_t RedisRemoteOtaiInterface::apiInitialize(
         _In_ uint64_t flags,
-        _In_ const sai_service_method_table_t *service_method_table)
+        _In_ const otai_service_method_table_t *service_method_table)
 {
     SWSS_LOG_ENTER();
 
@@ -66,7 +66,7 @@ sai_status_t RedisRemoteSaiInterface::apiInitialize(
     {
         SWSS_LOG_ERROR("already initialized");
 
-        return SAI_STATUS_FAILURE;
+        return OTAI_STATUS_FAILURE;
     }
 
     m_skipRecordAttrContainer = std::make_shared<SkipRecordAttrContainer>();
@@ -74,14 +74,14 @@ sai_status_t RedisRemoteSaiInterface::apiInitialize(
     m_asicInitViewMode = false; // default mode is apply mode
     m_useTempView = false;
     m_syncMode = false;
-    m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC;
+    m_redisCommunicationMode = OTAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC;
 
     if (m_contextConfig->m_zmqEnable)
     {
         m_communicationChannel = std::make_shared<ZeroMQChannel>(
                 m_contextConfig->m_zmqEndpoint,
                 m_contextConfig->m_zmqNtfEndpoint,
-                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                std::bind(&RedisRemoteOtaiInterface::handleNotification, this, _1, _2, _3));
 
         SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
 
@@ -91,7 +91,7 @@ sai_status_t RedisRemoteSaiInterface::apiInitialize(
     {
         m_communicationChannel = std::make_shared<RedisChannel>(
                 m_contextConfig->m_dbAsic,
-                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                std::bind(&RedisRemoteOtaiInterface::handleNotification, this, _1, _2, _3));
     }
 
     m_responseTimeoutMs = m_communicationChannel->getResponseTimeout();
@@ -106,10 +106,10 @@ sai_status_t RedisRemoteSaiInterface::apiInitialize(
 
     m_initialized = true;
 
-    return SAI_STATUS_SUCCESS;
+    return OTAI_STATUS_SUCCESS;
 }
 
-sai_status_t RedisRemoteSaiInterface::apiUninitialize(void)
+otai_status_t RedisRemoteOtaiInterface::apiUninitialize(void)
 {
     SWSS_LOG_ENTER();
 
@@ -119,7 +119,7 @@ sai_status_t RedisRemoteSaiInterface::apiUninitialize(void)
     {
         SWSS_LOG_ERROR("not initialized");
 
-        return SAI_STATUS_FAILURE;
+        return OTAI_STATUS_FAILURE;
     }
 
     m_communicationChannel = nullptr; // will stop thread
@@ -132,21 +132,21 @@ sai_status_t RedisRemoteSaiInterface::apiUninitialize(void)
 
     SWSS_LOG_NOTICE("end");
 
-    return SAI_STATUS_SUCCESS;
+    return OTAI_STATUS_SUCCESS;
 }
 
-sai_status_t RedisRemoteSaiInterface::create(
-        _In_ sai_object_type_t objectType,
-        _Out_ sai_object_id_t* objectId,
-        _In_ sai_object_id_t switchId,
+otai_status_t RedisRemoteOtaiInterface::create(
+        _In_ otai_object_type_t objectType,
+        _Out_ otai_object_id_t* objectId,
+        _In_ otai_object_id_t switchId,
         _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ const otai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    *objectId = SAI_NULL_OBJECT_ID;
+    *objectId = OTAI_NULL_OBJECT_ID;
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD)
     {
         // for given hardware info we always return same switch id,
         // this is required since we could be performing warm boot here
@@ -155,22 +155,22 @@ sai_status_t RedisRemoteSaiInterface::create(
 
         if (hwinfo.size())
         {
-            m_recorder->recordComment("SAI_SWITCH_ATTR_SWITCH_HARDWARE_INFO=" + hwinfo);
+            m_recorder->recordComment("OTAI_LINECARD_ATTR_LINECARD_HARDWARE_INFO=" + hwinfo);
         }
 
         switchId = m_virtualObjectIdManager->allocateNewSwitchObjectId(hwinfo);
 
         *objectId = switchId;
 
-        if (switchId == SAI_NULL_OBJECT_ID)
+        if (switchId == OTAI_NULL_OBJECT_ID)
         {
             SWSS_LOG_ERROR("switch ID allocation failed");
 
-            return SAI_STATUS_FAILURE;
+            return OTAI_STATUS_FAILURE;
         }
 
-        auto *attr = sai_metadata_get_attr_by_id(
-                SAI_SWITCH_ATTR_INIT_SWITCH,
+        auto *attr = otai_metadata_get_attr_by_id(
+                OTAI_LINECARD_ATTR_INIT_LINECARD,
                 attr_count,
                 attr_list);
 
@@ -179,9 +179,9 @@ sai_status_t RedisRemoteSaiInterface::create(
             if (m_switchContainer->contains(*objectId))
             {
                 SWSS_LOG_NOTICE("switch container already contains switch %s",
-                        sai_serialize_object_id(*objectId).c_str());
+                        otai_serialize_object_id(*objectId).c_str());
 
-                return SAI_STATUS_SUCCESS;
+                return OTAI_STATUS_SUCCESS;
             }
 
             refreshTableDump();
@@ -189,11 +189,11 @@ sai_status_t RedisRemoteSaiInterface::create(
             if (m_tableDump.find(switchId) == m_tableDump.end())
             {
                 SWSS_LOG_ERROR("failed to find switch %s to connect (init=false)",
-                        sai_serialize_object_id(switchId).c_str());
+                        otai_serialize_object_id(switchId).c_str());
 
                 m_virtualObjectIdManager->releaseObjectId(switchId);
 
-                return SAI_STATUS_FAILURE;
+                return OTAI_STATUS_FAILURE;
             }
 
             // when init is false, don't send query to syncd, just return success
@@ -203,7 +203,7 @@ sai_status_t RedisRemoteSaiInterface::create(
 
             m_switchContainer->insert(sw);
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
         }
     }
     else
@@ -211,24 +211,24 @@ sai_status_t RedisRemoteSaiInterface::create(
         *objectId = m_virtualObjectIdManager->allocateNewObjectId(objectType, switchId);
     }
 
-    if (*objectId == SAI_NULL_OBJECT_ID)
+    if (*objectId == OTAI_NULL_OBJECT_ID)
     {
         SWSS_LOG_ERROR("failed to create %s, with switch id: %s",
-                sai_serialize_object_type(objectType).c_str(),
-                sai_serialize_object_id(switchId).c_str());
+                otai_serialize_object_type(objectType).c_str(),
+                otai_serialize_object_id(switchId).c_str());
 
-        return SAI_STATUS_INSUFFICIENT_RESOURCES;
+        return OTAI_STATUS_INSUFFICIENT_RESOURCES;
     }
 
     // NOTE: objectId was allocated by the caller
 
     auto status = create(
             objectType,
-            sai_serialize_object_id(*objectId),
+            otai_serialize_object_id(*objectId),
             attr_count,
             attr_list);
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH && status == SAI_STATUS_SUCCESS)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD && status == OTAI_STATUS_SUCCESS)
     {
         /*
          * When doing CREATE operation user may want to update notification
@@ -242,7 +242,7 @@ sai_status_t RedisRemoteSaiInterface::create(
 
         m_switchContainer->insert(sw);
     }
-    else if (status != SAI_STATUS_SUCCESS)
+    else if (status != OTAI_STATUS_SUCCESS)
     {
         // if create failed, then release allocated object
         m_virtualObjectIdManager->releaseObjectId(*objectId);
@@ -251,19 +251,19 @@ sai_status_t RedisRemoteSaiInterface::create(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::remove(
-        _In_ sai_object_type_t objectType,
-        _In_ sai_object_id_t objectId)
+otai_status_t RedisRemoteOtaiInterface::remove(
+        _In_ otai_object_type_t objectType,
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
     auto status = remove(
             objectType,
-            sai_serialize_object_id(objectId));
+            otai_serialize_object_id(objectId));
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH && status == SAI_STATUS_SUCCESS)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD && status == OTAI_STATUS_SUCCESS)
     {
-        SWSS_LOG_NOTICE("removing switch id %s", sai_serialize_object_id(objectId).c_str());
+        SWSS_LOG_NOTICE("removing switch id %s", otai_serialize_object_id(objectId).c_str());
 
         m_virtualObjectIdManager->releaseObjectId(objectId);
 
@@ -274,10 +274,10 @@ sai_status_t RedisRemoteSaiInterface::remove(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
-        _In_ sai_object_type_t objectType,
-        _In_ sai_object_id_t objectId,
-        _In_ const sai_attribute_t *attr)
+otai_status_t RedisRemoteOtaiInterface::setRedisExtensionAttribute(
+        _In_ otai_object_type_t objectType,
+        _In_ otai_object_id_t objectId,
+        _In_ const otai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
@@ -285,7 +285,7 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
     {
         SWSS_LOG_ERROR("attr pointer is null");
 
-        return SAI_STATUS_FAILURE;
+        return OTAI_STATUS_FAILURE;
     }
 
     /*
@@ -295,41 +295,41 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
     switch (attr->id)
     {
-        case SAI_REDIS_SWITCH_ATTR_PERFORM_LOG_ROTATE:
+        case OTAI_REDIS_LINECARD_ATTR_PERFORM_LOG_ROTATE:
 
             if (m_recorder)
             {
                 m_recorder->requestLogRotate();
             }
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_RECORD:
+        case OTAI_REDIS_LINECARD_ATTR_RECORD:
 
             if (m_recorder)
             {
                 m_recorder->enableRecording(attr->value.booldata);
             }
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD:
+        case OTAI_REDIS_LINECARD_ATTR_NOTIFY_SYNCD:
 
-            return sai_redis_notify_syncd(objectId, attr);
+            return otai_redis_notify_syncd(objectId, attr);
 
-        case SAI_REDIS_SWITCH_ATTR_USE_TEMP_VIEW:
+        case OTAI_REDIS_LINECARD_ATTR_USE_TEMP_VIEW:
 
             m_useTempView = attr->value.booldata;
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_RECORD_STATS:
+        case OTAI_REDIS_LINECARD_ATTR_RECORD_STATS:
 
             m_recorder->recordStats(attr->value.booldata);
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT:
+        case OTAI_REDIS_LINECARD_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT:
 
             m_responseTimeoutMs = attr->value.u64;
 
@@ -337,9 +337,9 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
             SWSS_LOG_NOTICE("set response timeout to %lu ms", m_responseTimeoutMs);
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_SYNC_MODE:
+        case OTAI_REDIS_LINECARD_ATTR_SYNC_MODE:
 
             SWSS_LOG_WARN("sync mode is depreacated, use communication mode");
 
@@ -359,24 +359,24 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                 m_communicationChannel->setBuffered(false);
             }
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE:
+        case OTAI_REDIS_LINECARD_ATTR_REDIS_COMMUNICATION_MODE:
 
-            m_redisCommunicationMode = (sai_redis_communication_mode_t)attr->value.s32;
+            m_redisCommunicationMode = (otai_redis_communication_mode_t)attr->value.s32;
 
             if (m_contextConfig->m_zmqEnable)
             {
                 SWSS_LOG_NOTICE("zmq enabled via context config");
 
-                m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
+                m_redisCommunicationMode = OTAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC;
             }
 
             m_communicationChannel = nullptr;
 
             switch (m_redisCommunicationMode)
             {
-                case SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC:
+                case OTAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC:
 
                     SWSS_LOG_NOTICE("enabling redis async mode");
 
@@ -384,15 +384,15 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
                     m_communicationChannel = std::make_shared<RedisChannel>(
                             m_contextConfig->m_dbAsic,
-                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                            std::bind(&RedisRemoteOtaiInterface::handleNotification, this, _1, _2, _3));
 
                     m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
                     m_communicationChannel->setBuffered(true);
 
-                    return SAI_STATUS_SUCCESS;
+                    return OTAI_STATUS_SUCCESS;
 
-                case SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC:
+                case OTAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC:
 
                     SWSS_LOG_NOTICE("enabling redis sync mode");
 
@@ -400,15 +400,15 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
                     m_communicationChannel = std::make_shared<RedisChannel>(
                             m_contextConfig->m_dbAsic,
-                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                            std::bind(&RedisRemoteOtaiInterface::handleNotification, this, _1, _2, _3));
 
                     m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
                     m_communicationChannel->setBuffered(false);
 
-                    return SAI_STATUS_SUCCESS;
+                    return OTAI_STATUS_SUCCESS;
 
-                case SAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC:
+                case OTAI_REDIS_COMMUNICATION_MODE_ZMQ_SYNC:
 
                     m_contextConfig->m_zmqEnable = true;
 
@@ -418,7 +418,7 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                     m_communicationChannel = std::make_shared<ZeroMQChannel>(
                             m_contextConfig->m_zmqEndpoint,
                             m_contextConfig->m_zmqNtfEndpoint,
-                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                            std::bind(&RedisRemoteOtaiInterface::handleNotification, this, _1, _2, _3));
 
                     m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
@@ -430,59 +430,59 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
                     m_communicationChannel->setBuffered(false);
 
-                    return SAI_STATUS_SUCCESS;
+                    return OTAI_STATUS_SUCCESS;
 
                 default:
 
                     SWSS_LOG_ERROR("invalid communication mode value: %d", m_redisCommunicationMode);
 
-                    return SAI_STATUS_NOT_SUPPORTED;
+                    return OTAI_STATUS_NOT_SUPPORTED;
             }
 
-        case SAI_REDIS_SWITCH_ATTR_USE_PIPELINE:
+        case OTAI_REDIS_LINECARD_ATTR_USE_PIPELINE:
 
             if (m_syncMode)
             {
                 SWSS_LOG_WARN("use pipeline is not supported in sync mode");
 
-                return SAI_STATUS_NOT_SUPPORTED;
+                return OTAI_STATUS_NOT_SUPPORTED;
             }
 
             m_communicationChannel->setBuffered(attr->value.booldata);
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_FLUSH:
+        case OTAI_REDIS_LINECARD_ATTR_FLUSH:
 
             m_communicationChannel->flush();
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_RECORDING_OUTPUT_DIR:
+        case OTAI_REDIS_LINECARD_ATTR_RECORDING_OUTPUT_DIR:
 
             if (m_recorder)
             {
                 m_recorder->setRecordingOutputDirectory(*attr);
             }
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_RECORDING_FILENAME:
+        case OTAI_REDIS_LINECARD_ATTR_RECORDING_FILENAME:
 
             if (m_recorder)
             {
                 m_recorder->setRecordingFilename(*attr);
             }
 
-            return SAI_STATUS_SUCCESS;
+            return OTAI_STATUS_SUCCESS;
 
-        case SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP:
+        case OTAI_REDIS_LINECARD_ATTR_FLEX_COUNTER_GROUP:
             return notifyCounterGroupOperations(objectId,
-                                                reinterpret_cast<sai_redis_flex_counter_group_parameter_t*>(attr->value.ptr));
+                                                reinterpret_cast<otai_redis_flex_counter_group_parameter_t*>(attr->value.ptr));
 
-        case SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER:
+        case OTAI_REDIS_LINECARD_ATTR_FLEX_COUNTER:
             return notifyCounterOperations(objectId,
-                                           reinterpret_cast<sai_redis_flex_counter_parameter_t*>(attr->value.ptr));
+                                           reinterpret_cast<otai_redis_flex_counter_parameter_t*>(attr->value.ptr));
 
         default:
             break;
@@ -490,11 +490,11 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
 
     SWSS_LOG_ERROR("unknown redis extension attribute: %d", attr->id);
 
-    return SAI_STATUS_FAILURE;
+    return OTAI_STATUS_FAILURE;
 }
 
-bool RedisRemoteSaiInterface::isSaiS8ListValidString(
-        _In_ const sai_s8_list_t &s8list)
+bool RedisRemoteOtaiInterface::isOtaiS8ListValidString(
+        _In_ const otai_s8_list_t &s8list)
 {
     SWSS_LOG_ENTER();
 
@@ -515,16 +515,16 @@ bool RedisRemoteSaiInterface::isSaiS8ListValidString(
     return false;
 }
 
-bool RedisRemoteSaiInterface::emplaceStrings(
-        _In_ const sai_s8_list_t &field,
-        _In_ const sai_s8_list_t &value,
+bool RedisRemoteOtaiInterface::emplaceStrings(
+        _In_ const otai_s8_list_t &field,
+        _In_ const otai_s8_list_t &value,
         _Out_ std::vector<swss::FieldValueTuple> &entries)
 {
     SWSS_LOG_ENTER();
 
     bool result = false;
 
-    if (isSaiS8ListValidString(field) && isSaiS8ListValidString(value))
+    if (isOtaiS8ListValidString(field) && isOtaiS8ListValidString(value))
     {
         entries.emplace_back(std::string((const char*)field.list, field.count), std::string((const char*)value.list, value.count));
         result = true;
@@ -533,16 +533,16 @@ bool RedisRemoteSaiInterface::emplaceStrings(
     return result;
 }
 
-bool RedisRemoteSaiInterface::emplaceStrings(
+bool RedisRemoteOtaiInterface::emplaceStrings(
         _In_ const char *field,
-        _In_ const sai_s8_list_t &value,
+        _In_ const otai_s8_list_t &value,
         _Out_ std::vector<swss::FieldValueTuple> &entries)
 {
     SWSS_LOG_ENTER();
 
     bool result = false;
 
-    if (isSaiS8ListValidString(value))
+    if (isOtaiS8ListValidString(value))
     {
         entries.emplace_back(field, std::string((const char*)value.list, value.count));
         result = true;
@@ -551,18 +551,18 @@ bool RedisRemoteSaiInterface::emplaceStrings(
     return result;
 }
 
-sai_status_t RedisRemoteSaiInterface::notifyCounterGroupOperations(
-        _In_ sai_object_id_t objectId,
-        _In_ const sai_redis_flex_counter_group_parameter_t *flexCounterGroupParam)
+otai_status_t RedisRemoteOtaiInterface::notifyCounterGroupOperations(
+        _In_ otai_object_id_t objectId,
+        _In_ const otai_redis_flex_counter_group_parameter_t *flexCounterGroupParam)
 {
     SWSS_LOG_ENTER();
 
     std::vector<swss::FieldValueTuple> entries;
 
-    if (flexCounterGroupParam == nullptr || !isSaiS8ListValidString(flexCounterGroupParam->counter_group_name))
+    if (flexCounterGroupParam == nullptr || !isOtaiS8ListValidString(flexCounterGroupParam->counter_group_name))
     {
         SWSS_LOG_ERROR("Invalid parameters when handling counter group operation");
-        return SAI_STATUS_FAILURE;
+        return OTAI_STATUS_FAILURE;
     }
 
     std::string key((const char*)flexCounterGroupParam->counter_group_name.list, flexCounterGroupParam->counter_group_name.count);
@@ -578,19 +578,19 @@ sai_status_t RedisRemoteSaiInterface::notifyCounterGroupOperations(
                                 entries,
                                 (entries.size() != 0) ? REDIS_FLEX_COUNTER_COMMAND_SET_GROUP : REDIS_FLEX_COUNTER_COMMAND_DEL_GROUP);
 
-    return waitForResponse(SAI_COMMON_API_SET);
+    return waitForResponse(OTAI_COMMON_API_SET);
 }
 
-sai_status_t RedisRemoteSaiInterface::notifyCounterOperations(
-        _In_ sai_object_id_t objectId,
-        _In_ const sai_redis_flex_counter_parameter_t *flexCounterParam)
+otai_status_t RedisRemoteOtaiInterface::notifyCounterOperations(
+        _In_ otai_object_id_t objectId,
+        _In_ const otai_redis_flex_counter_parameter_t *flexCounterParam)
 {
     SWSS_LOG_ENTER();
 
-    if (flexCounterParam == nullptr || !isSaiS8ListValidString(flexCounterParam->counter_key))
+    if (flexCounterParam == nullptr || !isOtaiS8ListValidString(flexCounterParam->counter_key))
     {
         SWSS_LOG_ERROR("Invalid parameters when handling counter operation");
-        return SAI_STATUS_FAILURE;
+        return OTAI_STATUS_FAILURE;
     }
 
     std::vector<swss::FieldValueTuple> entries;
@@ -610,34 +610,34 @@ sai_status_t RedisRemoteSaiInterface::notifyCounterOperations(
     m_recorder->recordGenericCounterPolling(key, entries);
     m_communicationChannel->set(key, entries, command);
 
-    return waitForResponse(SAI_COMMON_API_SET);
+    return waitForResponse(OTAI_COMMON_API_SET);
 }
 
-sai_status_t RedisRemoteSaiInterface::set(
-        _In_ sai_object_type_t objectType,
-        _In_ sai_object_id_t objectId,
-        _In_ const sai_attribute_t *attr)
+otai_status_t RedisRemoteOtaiInterface::set(
+        _In_ otai_object_type_t objectType,
+        _In_ otai_object_id_t objectId,
+        _In_ const otai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
-    if (RedisRemoteSaiInterface::isRedisAttribute(objectType, attr))
+    if (RedisRemoteOtaiInterface::isRedisAttribute(objectType, attr))
     {
         return setRedisExtensionAttribute(objectType, objectId, attr);
     }
 
     auto status = set(
             objectType,
-            sai_serialize_object_id(objectId),
+            otai_serialize_object_id(objectId),
             attr);
 
-    if (objectType == SAI_OBJECT_TYPE_SWITCH && status == SAI_STATUS_SUCCESS)
+    if (objectType == OTAI_OBJECT_TYPE_LINECARD && status == OTAI_STATUS_SUCCESS)
     {
         auto sw = m_switchContainer->getSwitch(objectId);
 
         if (!sw)
         {
             SWSS_LOG_THROW("failed to find switch %s in container",
-                    sai_serialize_object_id(objectId).c_str());
+                    otai_serialize_object_id(objectId).c_str());
         }
 
         /*
@@ -651,84 +651,84 @@ sai_status_t RedisRemoteSaiInterface::set(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::get(
-        _In_ sai_object_type_t objectType,
-        _In_ sai_object_id_t objectId,
+otai_status_t RedisRemoteOtaiInterface::get(
+        _In_ otai_object_type_t objectType,
+        _In_ otai_object_id_t objectId,
         _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list)
+        _Inout_ otai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
     return get(
             objectType,
-            sai_serialize_object_id(objectId),
+            otai_serialize_object_id(objectId),
             attr_count,
             attr_list);
 }
 
 
 #define DECLARE_REMOVE_ENTRY(OT,ot)                             \
-sai_status_t RedisRemoteSaiInterface::remove(                   \
-        _In_ const sai_ ## ot ## _t* ot)                        \
+otai_status_t RedisRemoteOtaiInterface::remove(                   \
+        _In_ const otai_ ## ot ## _t* ot)                        \
 {                                                               \
     SWSS_LOG_ENTER();                                           \
     return remove(                                              \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
-            sai_serialize_ ## ot(*ot));                         \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,          \
+            otai_serialize_ ## ot(*ot));                         \
 }
 
-SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
+OTAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_REMOVE_ENTRY);
 
 #define DECLARE_CREATE_ENTRY(OT,ot)                             \
-sai_status_t RedisRemoteSaiInterface::create(                   \
-        _In_ const sai_ ## ot ## _t* ot,                        \
+otai_status_t RedisRemoteOtaiInterface::create(                   \
+        _In_ const otai_ ## ot ## _t* ot,                        \
         _In_ uint32_t attr_count,                               \
-        _In_ const sai_attribute_t *attr_list)                  \
+        _In_ const otai_attribute_t *attr_list)                  \
 {                                                               \
     SWSS_LOG_ENTER();                                           \
     return create(                                              \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
-            sai_serialize_ ## ot(*ot),                          \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,          \
+            otai_serialize_ ## ot(*ot),                          \
             attr_count,                                         \
             attr_list);                                         \
 }
 
-SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
+OTAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_CREATE_ENTRY);
 
 #define DECLARE_SET_ENTRY(OT,ot)                                \
-sai_status_t RedisRemoteSaiInterface::set(                      \
-        _In_ const sai_ ## ot ## _t* ot,                        \
-        _In_ const sai_attribute_t *attr)                       \
+otai_status_t RedisRemoteOtaiInterface::set(                      \
+        _In_ const otai_ ## ot ## _t* ot,                        \
+        _In_ const otai_attribute_t *attr)                       \
 {                                                               \
     SWSS_LOG_ENTER();                                           \
     return set(                                                 \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
-            sai_serialize_ ## ot(*ot),                          \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,          \
+            otai_serialize_ ## ot(*ot),                          \
             attr);                                              \
 }
 
-SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
+OTAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_SET_ENTRY);
 
 #define DECLARE_BULK_CREATE_ENTRY(OT,ot)                                                     \
-sai_status_t RedisRemoteSaiInterface::bulkCreate(                                            \
+otai_status_t RedisRemoteOtaiInterface::bulkCreate(                                            \
         _In_ uint32_t object_count,                                                          \
-        _In_ const sai_ ## ot ## _t *ot,                                                     \
+        _In_ const otai_ ## ot ## _t *ot,                                                     \
         _In_ const uint32_t *attr_count,                                                     \
-        _In_ const sai_attribute_t **attr_list,                                              \
-        _In_ sai_bulk_op_error_mode_t mode,                                                  \
-        _Out_ sai_status_t *object_statuses)                                                 \
+        _In_ const otai_attribute_t **attr_list,                                              \
+        _In_ otai_bulk_op_error_mode_t mode,                                                  \
+        _Out_ otai_status_t *object_statuses)                                                 \
 {                                                                                            \
     SWSS_LOG_ENTER();                                                                        \
-    static PerformanceIntervalTimer timer("RedisRemoteSaiInterface::bulkCreate(" #ot ")");   \
+    static PerformanceIntervalTimer timer("RedisRemoteOtaiInterface::bulkCreate(" #ot ")");   \
     timer.start();                                                                           \
     std::vector<std::string> serialized_object_ids;                                          \
     for (uint32_t idx = 0; idx < object_count; idx++)                                        \
     {                                                                                        \
-        std::string str_object_id = sai_serialize_ ##ot (ot[idx]);                           \
+        std::string str_object_id = otai_serialize_ ##ot (ot[idx]);                           \
         serialized_object_ids.push_back(str_object_id);                                      \
     }                                                                                        \
     auto status = bulkCreate(                                                                \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                       \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,                                       \
             serialized_object_ids,                                                           \
             attr_count,                                                                      \
             attr_list,                                                                       \
@@ -739,73 +739,73 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(                               
     return status;                                                                           \
 }
 
-SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY);
+OTAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_CREATE_ENTRY);
 
 #define DECLARE_BULK_REMOVE_ENTRY(OT,ot)                                                                        \
-sai_status_t RedisRemoteSaiInterface::bulkRemove(                                                               \
+otai_status_t RedisRemoteOtaiInterface::bulkRemove(                                                               \
         _In_ uint32_t object_count,                                                                             \
-        _In_ const sai_ ## ot ## _t *ot,                                                                        \
-        _In_ sai_bulk_op_error_mode_t mode,                                                                     \
-        _Out_ sai_status_t *object_statuses)                                                                    \
+        _In_ const otai_ ## ot ## _t *ot,                                                                        \
+        _In_ otai_bulk_op_error_mode_t mode,                                                                     \
+        _Out_ otai_status_t *object_statuses)                                                                    \
 {                                                                                                               \
     SWSS_LOG_ENTER();                                                                                           \
     std::vector<std::string> serializedObjectIds;                                                               \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                           \
     {                                                                                                           \
-        serializedObjectIds.emplace_back(sai_serialize_ ##ot (ot[idx]));                                        \
+        serializedObjectIds.emplace_back(otai_serialize_ ##ot (ot[idx]));                                        \
     }                                                                                                           \
-    return bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, serializedObjectIds, mode, object_statuses);   \
+    return bulkRemove((otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT, serializedObjectIds, mode, object_statuses);   \
 }
 
-SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY);
+OTAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_REMOVE_ENTRY);
 
 #define DECLARE_BULK_SET_ENTRY(OT,ot)                                                                                   \
-sai_status_t RedisRemoteSaiInterface::bulkSet(                                                                          \
+otai_status_t RedisRemoteOtaiInterface::bulkSet(                                                                          \
         _In_ uint32_t object_count,                                                                                     \
-        _In_ const sai_ ## ot ## _t *ot,                                                                                \
-        _In_ const sai_attribute_t *attr_list,                                                                          \
-        _In_ sai_bulk_op_error_mode_t mode,                                                                             \
-        _Out_ sai_status_t *object_statuses)                                                                            \
+        _In_ const otai_ ## ot ## _t *ot,                                                                                \
+        _In_ const otai_attribute_t *attr_list,                                                                          \
+        _In_ otai_bulk_op_error_mode_t mode,                                                                             \
+        _Out_ otai_status_t *object_statuses)                                                                            \
 {                                                                                                                       \
     SWSS_LOG_ENTER();                                                                                                   \
     std::vector<std::string> serializedObjectIds;                                                                       \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
-        serializedObjectIds.emplace_back(sai_serialize_ ##ot (ot[idx]));                                                \
+        serializedObjectIds.emplace_back(otai_serialize_ ##ot (ot[idx]));                                                \
     }                                                                                                                   \
-    return bulkSet((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, serializedObjectIds, attr_list, mode, object_statuses);   \
+    return bulkSet((otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT, serializedObjectIds, attr_list, mode, object_statuses);   \
 }
 
-SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
+OTAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY);
 
 // BULK GET
 
 #define DECLARE_BULK_GET_ENTRY(OT,ot)                       \
-sai_status_t RedisRemoteSaiInterface::bulkGet(              \
+otai_status_t RedisRemoteOtaiInterface::bulkGet(              \
         _In_ uint32_t object_count,                         \
-        _In_ const sai_ ## ot ## _t *ot,                    \
+        _In_ const otai_ ## ot ## _t *ot,                    \
         _In_ const uint32_t *attr_count,                    \
-        _Inout_ sai_attribute_t **attr_list,                \
-        _In_ sai_bulk_op_error_mode_t mode,                 \
-        _Out_ sai_status_t *object_statuses)                \
+        _Inout_ otai_attribute_t **attr_list,                \
+        _In_ otai_bulk_op_error_mode_t mode,                 \
+        _Out_ otai_status_t *object_statuses)                \
 {                                                           \
     SWSS_LOG_ENTER();                                       \
     SWSS_LOG_ERROR("FIXME not implemented");                \
-    return SAI_STATUS_NOT_IMPLEMENTED;                      \
+    return OTAI_STATUS_NOT_IMPLEMENTED;                      \
 }
 
-SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY);
+OTAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_GET_ENTRY);
 
 
-sai_status_t RedisRemoteSaiInterface::create(
-        _In_ sai_object_type_t object_type,
+otai_status_t RedisRemoteOtaiInterface::create(
+        _In_ otai_object_type_t object_type,
         _In_ const std::string& serializedObjectId,
         _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list)
+        _In_ const otai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
-    auto entry = SaiAttributeList::serialize_attr_list(
+    auto entry = OtaiAttributeList::serialize_attr_list(
             object_type,
             attr_count,
             attr_list,
@@ -820,7 +820,7 @@ sai_status_t RedisRemoteSaiInterface::create(
         entry.push_back(null);
     }
 
-    auto serializedObjectType = sai_serialize_object_type(object_type);
+    auto serializedObjectType = otai_serialize_object_type(object_type);
 
     const std::string key = serializedObjectType + ":" + serializedObjectId;
 
@@ -830,20 +830,20 @@ sai_status_t RedisRemoteSaiInterface::create(
 
     m_communicationChannel->set(key, entry, REDIS_ASIC_STATE_COMMAND_CREATE);
 
-    auto status = waitForResponse(SAI_COMMON_API_CREATE);
+    auto status = waitForResponse(OTAI_COMMON_API_CREATE);
 
     m_recorder->recordGenericCreateResponse(status);
 
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::remove(
-        _In_ sai_object_type_t objectType,
+otai_status_t RedisRemoteOtaiInterface::remove(
+        _In_ otai_object_type_t objectType,
         _In_ const std::string& serializedObjectId)
 {
     SWSS_LOG_ENTER();
 
-    auto serializedObjectType = sai_serialize_object_type(objectType);
+    auto serializedObjectType = otai_serialize_object_type(objectType);
 
     const std::string key = serializedObjectType + ":" + serializedObjectId;
 
@@ -853,27 +853,27 @@ sai_status_t RedisRemoteSaiInterface::remove(
 
     m_communicationChannel->del(key, REDIS_ASIC_STATE_COMMAND_REMOVE);
 
-    auto status = waitForResponse(SAI_COMMON_API_REMOVE);
+    auto status = waitForResponse(OTAI_COMMON_API_REMOVE);
 
     m_recorder->recordGenericRemoveResponse(status);
 
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::set(
-        _In_ sai_object_type_t objectType,
+otai_status_t RedisRemoteOtaiInterface::set(
+        _In_ otai_object_type_t objectType,
         _In_ const std::string &serializedObjectId,
-        _In_ const sai_attribute_t *attr)
+        _In_ const otai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
-    auto entry = SaiAttributeList::serialize_attr_list(
+    auto entry = OtaiAttributeList::serialize_attr_list(
             objectType,
             1,
             attr,
             false);
 
-    auto serializedObjectType = sai_serialize_object_type(objectType);
+    auto serializedObjectType = otai_serialize_object_type(objectType);
 
     std::string key = serializedObjectType + ":" + serializedObjectId;
 
@@ -883,15 +883,15 @@ sai_status_t RedisRemoteSaiInterface::set(
 
     m_communicationChannel->set(key, entry, REDIS_ASIC_STATE_COMMAND_SET);
 
-    auto status = waitForResponse(SAI_COMMON_API_SET);
+    auto status = waitForResponse(OTAI_COMMON_API_SET);
 
     m_recorder->recordGenericSetResponse(status);
 
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::waitForResponse(
-        _In_ sai_common_api_t api)
+otai_status_t RedisRemoteOtaiInterface::waitForResponse(
+        _In_ otai_common_api_t api)
 {
     SWSS_LOG_ENTER();
 
@@ -911,13 +911,13 @@ sai_status_t RedisRemoteSaiInterface::waitForResponse(
      * considered success operations.
      */
 
-    return SAI_STATUS_SUCCESS;
+    return OTAI_STATUS_SUCCESS;
 }
 
-sai_status_t RedisRemoteSaiInterface::waitForGetResponse(
-        _In_ sai_object_type_t objectType,
+otai_status_t RedisRemoteOtaiInterface::waitForGetResponse(
+        _In_ otai_object_type_t objectType,
         _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list)
+        _Inout_ otai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -927,25 +927,25 @@ sai_status_t RedisRemoteSaiInterface::waitForGetResponse(
 
     auto &values = kfvFieldsValues(kco);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         if (values.size() == 0)
         {
             SWSS_LOG_THROW("logic error, get response returned 0 values!, send api response or sync/async issue?");
         }
 
-        SaiAttributeList list(objectType, values, false);
+        OtaiAttributeList list(objectType, values, false);
 
         transfer_attributes(objectType, attr_count, list.get_attr_list(), attr_list, false);
     }
-    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    else if (status == OTAI_STATUS_BUFFER_OVERFLOW)
     {
         if (values.size() == 0)
         {
             SWSS_LOG_THROW("logic error, get response returned 0 values!, send api response or sync/async issue?");
         }
 
-        SaiAttributeList list(objectType, values, true);
+        OtaiAttributeList list(objectType, values, true);
 
         // no need for id fix since this is overflow
         transfer_attributes(objectType, attr_count, list.get_attr_list(), attr_list, true);
@@ -954,11 +954,11 @@ sai_status_t RedisRemoteSaiInterface::waitForGetResponse(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::get(
-        _In_ sai_object_type_t objectType,
+otai_status_t RedisRemoteOtaiInterface::get(
+        _In_ otai_object_type_t objectType,
         _In_ const std::string& serializedObjectId,
         _In_ uint32_t attr_count,
-        _Inout_ sai_attribute_t *attr_list)
+        _Inout_ otai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
 
@@ -970,9 +970,9 @@ sai_status_t RedisRemoteSaiInterface::get(
 
     Utils::clearOidValues(objectType, attr_count, attr_list);
 
-    auto entry = SaiAttributeList::serialize_attr_list(objectType, attr_count, attr_list, false);
+    auto entry = OtaiAttributeList::serialize_attr_list(objectType, attr_count, attr_list, false);
 
-    std::string serializedObjectType = sai_serialize_object_type(objectType);
+    std::string serializedObjectType = otai_serialize_object_type(objectType);
 
     std::string key = serializedObjectType + ":" + serializedObjectId;
 
@@ -1000,22 +1000,22 @@ sai_status_t RedisRemoteSaiInterface::get(
 }
 
 #define DECLARE_GET_ENTRY(OT,ot)                                \
-sai_status_t RedisRemoteSaiInterface::get(                      \
-        _In_ const sai_ ## ot ## _t* ot,                        \
+otai_status_t RedisRemoteOtaiInterface::get(                      \
+        _In_ const otai_ ## ot ## _t* ot,                        \
         _In_ uint32_t attr_count,                               \
-        _Inout_ sai_attribute_t *attr_list)                     \
+        _Inout_ otai_attribute_t *attr_list)                     \
 {                                                               \
     SWSS_LOG_ENTER();                                           \
     return get(                                                 \
-            (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,          \
-            sai_serialize_ ## ot(*ot),                          \
+            (otai_object_type_t)OTAI_OBJECT_TYPE_ ## OT,          \
+            otai_serialize_ ## ot(*ot),                          \
             attr_count,                                         \
             attr_list);                                         \
 }
 
-SAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
+OTAIREDIS_DECLARE_EVERY_ENTRY(DECLARE_GET_ENTRY);
 
-sai_status_t RedisRemoteSaiInterface::waitForFlushFdbEntriesResponse()
+otai_status_t RedisRemoteOtaiInterface::waitForFlushFdbEntriesResponse()
 {
     SWSS_LOG_ENTER();
 
@@ -1026,52 +1026,20 @@ sai_status_t RedisRemoteSaiInterface::waitForFlushFdbEntriesResponse()
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::flushFdbEntries(
-        _In_ sai_object_id_t switchId,
+otai_status_t RedisRemoteOtaiInterface::objectTypeGetAvailability(
+        _In_ otai_object_id_t switchId,
+        _In_ otai_object_type_t objectType,
         _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList)
-{
-    SWSS_LOG_ENTER();
-
-    auto entry = SaiAttributeList::serialize_attr_list(
-            SAI_OBJECT_TYPE_FDB_FLUSH,
-            attrCount,
-            attrList,
-            false);
-
-    std::string serializedObjectId = sai_serialize_object_type(SAI_OBJECT_TYPE_FDB_FLUSH);
-
-    // NOTE ! we actually give switch ID since FLUSH is not real object
-    std::string key = serializedObjectId + ":" + sai_serialize_object_id(switchId);
-
-    SWSS_LOG_NOTICE("flush key: %s, fields: %lu", key.c_str(), entry.size());
-
-    m_recorder->recordFlushFdbEntries(switchId, attrCount, attrList);
-   // TODO m_recorder->recordFlushFdbEntries(key, entry)
-
-    m_communicationChannel->set(key, entry, REDIS_ASIC_STATE_COMMAND_FLUSH);
-
-    auto status = waitForFlushFdbEntriesResponse();
-
-    m_recorder->recordFlushFdbEntriesResponse(status);
-
-    return status;
-}
-
-sai_status_t RedisRemoteSaiInterface::objectTypeGetAvailability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
-        _In_ uint32_t attrCount,
-        _In_ const sai_attribute_t *attrList,
+        _In_ const otai_attribute_t *attrList,
         _Out_ uint64_t *count)
 {
     SWSS_LOG_ENTER();
 
-    auto strSwitchId = sai_serialize_object_id(switchId);
+    auto strSwitchId = otai_serialize_object_id(switchId);
 
-    auto entry = SaiAttributeList::serialize_attr_list(objectType, attrCount, attrList, false);
+    auto entry = OtaiAttributeList::serialize_attr_list(objectType, attrCount, attrList, false);
 
-    entry.push_back(swss::FieldValueTuple("OBJECT_TYPE", sai_serialize_object_type(objectType)));
+    entry.push_back(swss::FieldValueTuple("OBJECT_TYPE", otai_serialize_object_type(objectType)));
 
     SWSS_LOG_DEBUG(
             "Query arguments: switch: %s, attributes: %s",
@@ -1094,7 +1062,7 @@ sai_status_t RedisRemoteSaiInterface::objectTypeGetAvailability(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::waitForObjectTypeGetAvailabilityResponse(
+otai_status_t RedisRemoteOtaiInterface::waitForObjectTypeGetAvailabilityResponse(
         _Inout_ uint64_t *count)
 {
     SWSS_LOG_ENTER();
@@ -1103,7 +1071,7 @@ sai_status_t RedisRemoteSaiInterface::waitForObjectTypeGetAvailabilityResponse(
 
     auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_OBJECT_TYPE_GET_AVAILABILITY_RESPONSE, kco);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         auto &values = kfvFieldsValues(kco);
 
@@ -1122,90 +1090,12 @@ sai_status_t RedisRemoteSaiInterface::waitForObjectTypeGetAvailabilityResponse(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::queryAttributeCapability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
-        _In_ sai_attr_id_t attrId,
-        _Out_ sai_attr_capability_t *capability)
-{
-    SWSS_LOG_ENTER();
 
-    auto switchIdStr = sai_serialize_object_id(switchId);
-    auto objectTypeStr = sai_serialize_object_type(objectType);
-
-    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
-
-    if (meta == NULL)
-    {
-        SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", objectTypeStr.c_str(), attrId);
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    const std::string attrIdStr = meta->attridname;
-
-    const std::vector<swss::FieldValueTuple> entry =
-    {
-        swss::FieldValueTuple("OBJECT_TYPE", objectTypeStr),
-        swss::FieldValueTuple("ATTR_ID", attrIdStr)
-    };
-
-    SWSS_LOG_DEBUG(
-            "Query arguments: switch %s, object type: %s, attribute: %s",
-            switchIdStr.c_str(),
-            objectTypeStr.c_str(),
-            attrIdStr.c_str()
-    );
-
-    // This query will not put any data into the ASIC view, just into the
-    // message queue
-
-    m_recorder->recordQueryAttributeCapability(switchId, objectType, attrId, capability);
-
-    m_communicationChannel->set(switchIdStr, entry, REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_QUERY);
-
-    auto status = waitForQueryAttributeCapabilityResponse(capability);
-
-    m_recorder->recordQueryAttributeCapabilityResponse(status, objectType, attrId, capability);
-
-    return status;
-}
-
-sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeCapabilityResponse(
-        _Out_ sai_attr_capability_t* capability)
-{
-    SWSS_LOG_ENTER();
-
-    swss::KeyOpFieldsValuesTuple kco;
-
-    auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_ATTR_CAPABILITY_RESPONSE, kco);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
-
-        if (values.size() != 3)
-        {
-            SWSS_LOG_ERROR("Invalid response from syncd: expected 3 values, received %zu", values.size());
-
-            return SAI_STATUS_FAILURE;
-        }
-
-        capability->create_implemented = (fvValue(values[0]) == "true" ? true : false);
-        capability->set_implemented    = (fvValue(values[1]) == "true" ? true : false);
-        capability->get_implemented    = (fvValue(values[2]) == "true" ? true : false);
-
-        SWSS_LOG_DEBUG("Received payload: create_implemented:%s, set_implemented:%s, get_implemented:%s",
-            (capability->create_implemented? "true":"false"), (capability->set_implemented? "true":"false"), (capability->get_implemented? "true":"false"));
-    }
-
-    return status;
-}
-
-sai_status_t RedisRemoteSaiInterface::queryAttributeEnumValuesCapability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
-        _In_ sai_attr_id_t attrId,
-        _Inout_ sai_s32_list_t *enumValuesCapability)
+otai_status_t RedisRemoteOtaiInterface::queryAttributeEnumValuesCapability(
+        _In_ otai_object_id_t switchId,
+        _In_ otai_object_type_t objectType,
+        _In_ otai_attr_id_t attrId,
+        _Inout_ otai_s32_list_t *enumValuesCapability)
 {
     SWSS_LOG_ENTER();
 
@@ -1216,15 +1106,15 @@ sai_status_t RedisRemoteSaiInterface::queryAttributeEnumValuesCapability(
             enumValuesCapability->list[idx] = 0;
     }
 
-    auto switch_id_str = sai_serialize_object_id(switchId);
-    auto object_type_str = sai_serialize_object_type(objectType);
+    auto switch_id_str = otai_serialize_object_id(switchId);
+    auto object_type_str = otai_serialize_object_type(objectType);
 
-    auto meta = sai_metadata_get_attr_metadata(objectType, attrId);
+    auto meta = otai_metadata_get_attr_metadata(objectType, attrId);
 
     if (meta == NULL)
     {
         SWSS_LOG_ERROR("Failed to find attribute metadata: object type %s, attr id %d", object_type_str.c_str(), attrId);
-        return SAI_STATUS_INVALID_PARAMETER;
+        return OTAI_STATUS_INVALID_PARAMETER;
     }
 
     const std::string attr_id_str = meta->attridname;
@@ -1259,8 +1149,8 @@ sai_status_t RedisRemoteSaiInterface::queryAttributeEnumValuesCapability(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeEnumValuesCapabilityResponse(
-        _Inout_ sai_s32_list_t* enumValuesCapability)
+otai_status_t RedisRemoteOtaiInterface::waitForQueryAttributeEnumValuesCapabilityResponse(
+        _Inout_ otai_s32_list_t* enumValuesCapability)
 {
     SWSS_LOG_ENTER();
 
@@ -1268,7 +1158,7 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeEnumValuesCapabilityR
 
     auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_ATTR_ENUM_VALUES_CAPABILITY_RESPONSE, kco);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
 
@@ -1276,7 +1166,7 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeEnumValuesCapabilityR
         {
             SWSS_LOG_ERROR("Invalid response from syncd: expected 2 values, received %zu", values.size());
 
-            return SAI_STATUS_FAILURE;
+            return OTAI_STATUS_FAILURE;
         }
 
         const std::string &capability_str = fvValue(values[0]);
@@ -1309,7 +1199,7 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeEnumValuesCapabilityR
             position++;
         }
     }
-    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    else if (status == OTAI_STATUS_BUFFER_OVERFLOW)
     {
         const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
 
@@ -1317,7 +1207,7 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeEnumValuesCapabilityR
         {
             SWSS_LOG_ERROR("Invalid response from syncd: expected 1 value, received %zu", values.size());
 
-            return SAI_STATUS_FAILURE;
+            return OTAI_STATUS_FAILURE;
         }
 
         const uint32_t num_capabilities = std::stoi(fvValue(values[0]));
@@ -1330,22 +1220,22 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryAttributeEnumValuesCapabilityR
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::getStats(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
+otai_status_t RedisRemoteOtaiInterface::getStats(
+        _In_ otai_object_type_t object_type,
+        _In_ otai_object_id_t object_id,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids,
+        _In_ const otai_stat_id_t *counter_ids,
         _Out_ uint64_t *counters)
 {
     SWSS_LOG_ENTER();
 
-    auto stats_enum = sai_metadata_get_object_type_info(object_type)->statenum;
+    auto stats_enum = otai_metadata_get_object_type_info(object_type)->statenum;
 
     auto entry = serialize_counter_id_list(stats_enum, number_of_counters, counter_ids);
 
-    std::string str_object_type = sai_serialize_object_type(object_type);
+    std::string str_object_type = otai_serialize_object_type(object_type);
 
-    std::string key = str_object_type + ":" + sai_serialize_object_id(object_id);
+    std::string key = str_object_type + ":" + otai_serialize_object_id(object_id);
 
     SWSS_LOG_DEBUG("generic get stats key: %s, fields: %lu", key.c_str(), entry.size());
 
@@ -1356,17 +1246,7 @@ sai_status_t RedisRemoteSaiInterface::getStats(
     return waitForGetStatsResponse(number_of_counters, counters);
 }
 
-sai_status_t RedisRemoteSaiInterface::queryStatsCapability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
-        _Inout_ sai_stat_capability_list_t *stats_capability)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
-sai_status_t RedisRemoteSaiInterface::waitForGetStatsResponse(
+otai_status_t RedisRemoteOtaiInterface::waitForGetStatsResponse(
         _In_ uint32_t number_of_counters,
         _Out_ uint64_t *counters)
 {
@@ -1376,7 +1256,7 @@ sai_status_t RedisRemoteSaiInterface::waitForGetStatsResponse(
 
     auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         auto &values = kfvFieldsValues(kco);
 
@@ -1394,12 +1274,12 @@ sai_status_t RedisRemoteSaiInterface::waitForGetStatsResponse(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::getStatsExt(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
+otai_status_t RedisRemoteOtaiInterface::getStatsExt(
+        _In_ otai_object_type_t object_type,
+        _In_ otai_object_id_t object_id,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids,
-        _In_ sai_stats_mode_t mode,
+        _In_ const otai_stat_id_t *counter_ids,
+        _In_ otai_stats_mode_t mode,
         _Out_ uint64_t *counters)
 {
     SWSS_LOG_ENTER();
@@ -1408,24 +1288,24 @@ sai_status_t RedisRemoteSaiInterface::getStatsExt(
 
     // TODO could be the same as getStats but put mode at first argument
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return OTAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t RedisRemoteSaiInterface::clearStats(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id,
+otai_status_t RedisRemoteOtaiInterface::clearStats(
+        _In_ otai_object_type_t object_type,
+        _In_ otai_object_id_t object_id,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids)
+        _In_ const otai_stat_id_t *counter_ids)
 {
     SWSS_LOG_ENTER();
 
-    auto stats_enum = sai_metadata_get_object_type_info(object_type)->statenum;
+    auto stats_enum = otai_metadata_get_object_type_info(object_type)->statenum;
 
     auto values = serialize_counter_id_list(stats_enum, number_of_counters, counter_ids);
 
-    auto str_object_type = sai_serialize_object_type(object_type);
+    auto str_object_type = otai_serialize_object_type(object_type);
 
-    auto key = str_object_type + ":" + sai_serialize_object_id(object_id);
+    auto key = str_object_type + ":" + otai_serialize_object_id(object_id);
 
     SWSS_LOG_DEBUG("generic clear stats key: %s, fields: %lu", key.c_str(), values.size());
 
@@ -1442,42 +1322,42 @@ sai_status_t RedisRemoteSaiInterface::clearStats(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkGetStats(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t object_type,
+otai_status_t RedisRemoteOtaiInterface::bulkGetStats(
+        _In_ otai_object_id_t switchId,
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_key_t *object_key,
+        _In_ const otai_object_key_t *object_key,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids,
-        _In_ sai_stats_mode_t mode,
-        _Inout_ sai_status_t *object_statuses,
+        _In_ const otai_stat_id_t *counter_ids,
+        _In_ otai_stats_mode_t mode,
+        _Inout_ otai_status_t *object_statuses,
         _Out_ uint64_t *counters)
 {
     SWSS_LOG_ENTER();
 
     SWSS_LOG_ERROR("not implemented");
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return OTAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkClearStats(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t object_type,
+otai_status_t RedisRemoteOtaiInterface::bulkClearStats(
+        _In_ otai_object_id_t switchId,
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_key_t *object_key,
+        _In_ const otai_object_key_t *object_key,
         _In_ uint32_t number_of_counters,
-        _In_ const sai_stat_id_t *counter_ids,
-        _In_ sai_stats_mode_t mode,
-        _Inout_ sai_status_t *object_statuses)
+        _In_ const otai_stat_id_t *counter_ids,
+        _In_ otai_stats_mode_t mode,
+        _Inout_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
     SWSS_LOG_ERROR("not implemented");
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return OTAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t RedisRemoteSaiInterface::waitForClearStatsResponse()
+otai_status_t RedisRemoteOtaiInterface::waitForClearStatsResponse()
 {
     SWSS_LOG_ENTER();
 
@@ -1488,11 +1368,11 @@ sai_status_t RedisRemoteSaiInterface::waitForClearStatsResponse()
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkRemove(
-        _In_ sai_object_type_t object_type,
+otai_status_t RedisRemoteOtaiInterface::bulkRemove(
+        _In_ otai_object_type_t object_type,
         _In_ const std::vector<std::string> &serialized_object_ids,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -1500,7 +1380,7 @@ sai_status_t RedisRemoteSaiInterface::bulkRemove(
     // be supported by LUA script passed as first or last entry in values,
     // currently mode is ignored
 
-    std::string serializedObjectType = sai_serialize_object_type(object_type);
+    std::string serializedObjectType = otai_serialize_object_type(object_type);
 
     std::vector<swss::FieldValueTuple> entries;
 
@@ -1527,13 +1407,13 @@ sai_status_t RedisRemoteSaiInterface::bulkRemove(
 
     m_communicationChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_REMOVE);
 
-    return waitForBulkResponse(SAI_COMMON_API_BULK_REMOVE, (uint32_t)serialized_object_ids.size(), object_statuses);
+    return waitForBulkResponse(OTAI_COMMON_API_BULK_REMOVE, (uint32_t)serialized_object_ids.size(), object_statuses);
 }
 
-sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
-        _In_ sai_common_api_t api,
+otai_status_t RedisRemoteOtaiInterface::waitForBulkResponse(
+        _In_ otai_common_api_t api,
         _In_ uint32_t object_count,
-        _Out_ sai_status_t *object_statuses)
+        _Out_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -1554,7 +1434,7 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
 
         for (uint32_t idx = 0; idx < object_count; idx++)
         {
-            sai_deserialize_status(fvField(values[idx]), object_statuses[idx]);
+            otai_deserialize_status(fvField(values[idx]), object_statuses[idx]);
         }
 
         m_recorder->recordBulkGenericResponse(status, object_count, object_statuses);
@@ -1569,18 +1449,18 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
-        object_statuses[idx] = SAI_STATUS_SUCCESS;
+        object_statuses[idx] = OTAI_STATUS_SUCCESS;
     }
 
-    return SAI_STATUS_SUCCESS;
+    return OTAI_STATUS_SUCCESS;
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkRemove(
-        _In_ sai_object_type_t object_type,
+otai_status_t RedisRemoteOtaiInterface::bulkRemove(
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_id_t *object_id,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _In_ const otai_object_id_t *object_id,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -1588,19 +1468,19 @@ sai_status_t RedisRemoteSaiInterface::bulkRemove(
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
-        serializedObjectIds.emplace_back(sai_serialize_object_id(object_id[idx]));
+        serializedObjectIds.emplace_back(otai_serialize_object_id(object_id[idx]));
     }
 
     return bulkRemove(object_type, serializedObjectIds, mode, object_statuses);
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkSet(
-        _In_ sai_object_type_t object_type,
+otai_status_t RedisRemoteOtaiInterface::bulkSet(
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_id_t *object_id,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _In_ const otai_object_id_t *object_id,
+        _In_ const otai_attribute_t *attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -1608,18 +1488,18 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
-        serializedObjectIds.emplace_back(sai_serialize_object_id(object_id[idx]));
+        serializedObjectIds.emplace_back(otai_serialize_object_id(object_id[idx]));
     }
 
     return bulkSet(object_type, serializedObjectIds, attr_list, mode, object_statuses);
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkSet(
-        _In_ sai_object_type_t object_type,
+otai_status_t RedisRemoteOtaiInterface::bulkSet(
+        _In_ otai_object_type_t object_type,
         _In_ const std::vector<std::string> &serialized_object_ids,
-        _In_ const sai_attribute_t *attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _In_ const otai_attribute_t *attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -1629,7 +1509,7 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
 
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
-        auto entry = SaiAttributeList::serialize_attr_list(object_type, 1, &attr_list[idx], false);
+        auto entry = OtaiAttributeList::serialize_attr_list(object_type, 1, &attr_list[idx], false);
 
         std::string str_attr = Globals::joinFieldValues(entry);
 
@@ -1643,7 +1523,7 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
      * with previous
      */
 
-    auto serializedObjectType = sai_serialize_object_type(object_type);
+    auto serializedObjectType = otai_serialize_object_type(object_type);
 
     std::string key = serializedObjectType + ":" + std::to_string(entries.size());
 
@@ -1651,34 +1531,34 @@ sai_status_t RedisRemoteSaiInterface::bulkSet(
 
     m_communicationChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_SET);
 
-    return waitForBulkResponse(SAI_COMMON_API_BULK_SET, (uint32_t)serialized_object_ids.size(), object_statuses);
+    return waitForBulkResponse(OTAI_COMMON_API_BULK_SET, (uint32_t)serialized_object_ids.size(), object_statuses);
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkGet(
-        _In_ sai_object_type_t object_type,
+otai_status_t RedisRemoteOtaiInterface::bulkGet(
+        _In_ otai_object_type_t object_type,
         _In_ uint32_t object_count,
-        _In_ const sai_object_id_t *object_id,
+        _In_ const otai_object_id_t *object_id,
         _In_ const uint32_t *attr_count,
-        _Inout_ sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_status_t *object_statuses)
+        _Inout_ otai_attribute_t **attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
     SWSS_LOG_ERROR("not implemented, FIXME");
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return OTAI_STATUS_NOT_IMPLEMENTED;
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkCreate(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t switch_id,
+otai_status_t RedisRemoteOtaiInterface::bulkCreate(
+        _In_ otai_object_type_t object_type,
+        _In_ otai_object_id_t switch_id,
         _In_ uint32_t object_count,
         _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Out_ sai_object_id_t *object_id,
-        _Out_ sai_status_t *object_statuses)
+        _In_ const otai_attribute_t **attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Out_ otai_object_id_t *object_id,
+        _Out_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
@@ -1688,13 +1568,13 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     {
         object_id[idx] = m_virtualObjectIdManager->allocateNewObjectId(object_type, switch_id);
 
-        if (object_id[idx] == SAI_NULL_OBJECT_ID)
+        if (object_id[idx] == OTAI_NULL_OBJECT_ID)
         {
             SWSS_LOG_ERROR("failed to create %s, with switch id: %s",
-                    sai_serialize_object_type(object_type).c_str(),
-                    sai_serialize_object_id(switch_id).c_str());
+                    otai_serialize_object_type(object_type).c_str(),
+                    otai_serialize_object_id(switch_id).c_str());
 
-            return SAI_STATUS_INSUFFICIENT_RESOURCES;
+            return OTAI_STATUS_INSUFFICIENT_RESOURCES;
         }
     }
 
@@ -1703,7 +1583,7 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
     // on create vid is put in db by syncd
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
-        std::string str_object_id = sai_serialize_object_id(object_id[idx]);
+        std::string str_object_id = otai_serialize_object_id(object_id[idx]);
         serialized_object_ids.push_back(str_object_id);
     }
 
@@ -1716,25 +1596,25 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
             object_statuses);
 }
 
-sai_status_t RedisRemoteSaiInterface::bulkCreate(
-        _In_ sai_object_type_t object_type,
+otai_status_t RedisRemoteOtaiInterface::bulkCreate(
+        _In_ otai_object_type_t object_type,
         _In_ const std::vector<std::string> &serialized_object_ids,
         _In_ const uint32_t *attr_count,
-        _In_ const sai_attribute_t **attr_list,
-        _In_ sai_bulk_op_error_mode_t mode,
-        _Inout_ sai_status_t *object_statuses)
+        _In_ const otai_attribute_t **attr_list,
+        _In_ otai_bulk_op_error_mode_t mode,
+        _Inout_ otai_status_t *object_statuses)
 {
     SWSS_LOG_ENTER();
 
     // TODO support mode
 
-    std::string str_object_type = sai_serialize_object_type(object_type);
+    std::string str_object_type = otai_serialize_object_type(object_type);
 
     std::vector<swss::FieldValueTuple> entries;
 
     for (size_t idx = 0; idx < serialized_object_ids.size(); ++idx)
     {
-        auto entry = SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
+        auto entry = OtaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
 
         if (entry.empty())
         {
@@ -1766,18 +1646,18 @@ sai_status_t RedisRemoteSaiInterface::bulkCreate(
 
     m_communicationChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_CREATE);
 
-    return waitForBulkResponse(SAI_COMMON_API_BULK_CREATE, (uint32_t)serialized_object_ids.size(), object_statuses);
+    return waitForBulkResponse(OTAI_COMMON_API_BULK_CREATE, (uint32_t)serialized_object_ids.size(), object_statuses);
 }
 
-sai_status_t RedisRemoteSaiInterface::notifySyncd(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_redis_notify_syncd_t redisNotifySyncd)
+otai_status_t RedisRemoteOtaiInterface::notifySyncd(
+        _In_ otai_object_id_t switchId,
+        _In_ otai_redis_notify_syncd_t redisNotifySyncd)
 {
     SWSS_LOG_ENTER();
 
     std::vector<swss::FieldValueTuple> entry;
 
-    auto key = sai_serialize(redisNotifySyncd);
+    auto key = otai_serialize(redisNotifySyncd);
 
     SWSS_LOG_NOTICE("sending syncd: %s", key.c_str());
 
@@ -1802,7 +1682,7 @@ sai_status_t RedisRemoteSaiInterface::notifySyncd(
     return status;
 }
 
-sai_status_t RedisRemoteSaiInterface::waitForNotifySyncdResponse()
+otai_status_t RedisRemoteOtaiInterface::waitForNotifySyncdResponse()
 {
     SWSS_LOG_ENTER();
 
@@ -1813,13 +1693,13 @@ sai_status_t RedisRemoteSaiInterface::waitForNotifySyncdResponse()
     return status;
 }
 
-bool RedisRemoteSaiInterface::isRedisAttribute(
-        _In_ sai_object_id_t objectType,
-        _In_ const sai_attribute_t* attr)
+bool RedisRemoteOtaiInterface::isRedisAttribute(
+        _In_ otai_object_id_t objectType,
+        _In_ const otai_attribute_t* attr)
 {
     SWSS_LOG_ENTER();
 
-    if ((objectType != SAI_OBJECT_TYPE_SWITCH) || (attr == nullptr) || (attr->id < SAI_SWITCH_ATTR_CUSTOM_RANGE_START))
+    if ((objectType != OTAI_OBJECT_TYPE_LINECARD) || (attr == nullptr) || (attr->id < OTAI_LINECARD_ATTR_CUSTOM_RANGE_START))
     {
         return false;
     }
@@ -1827,7 +1707,7 @@ bool RedisRemoteSaiInterface::isRedisAttribute(
     return true;
 }
 
-void RedisRemoteSaiInterface::handleNotification(
+void RedisRemoteOtaiInterface::handleNotification(
         _In_ const std::string &name,
         _In_ const std::string &serializedNotification,
         _In_ const std::vector<swss::FieldValueTuple> &values)
@@ -1864,82 +1744,62 @@ void RedisRemoteSaiInterface::handleNotification(
     }
 }
 
-sai_object_type_t RedisRemoteSaiInterface::objectTypeQuery(
-        _In_ sai_object_id_t objectId)
+otai_object_type_t RedisRemoteOtaiInterface::objectTypeQuery(
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
-    return m_virtualObjectIdManager->saiObjectTypeQuery(objectId);
+    return m_virtualObjectIdManager->otaiObjectTypeQuery(objectId);
 }
 
-sai_object_id_t RedisRemoteSaiInterface::switchIdQuery(
-        _In_ sai_object_id_t objectId)
+otai_object_id_t RedisRemoteOtaiInterface::switchIdQuery(
+        _In_ otai_object_id_t objectId)
 {
     SWSS_LOG_ENTER();
 
-    return m_virtualObjectIdManager->saiSwitchIdQuery(objectId);
+    return m_virtualObjectIdManager->otaiSwitchIdQuery(objectId);
 }
 
-sai_status_t RedisRemoteSaiInterface::logSet(
-        _In_ sai_api_t api,
-        _In_ sai_log_level_t log_level)
+otai_status_t RedisRemoteOtaiInterface::logSet(
+        _In_ otai_api_t api,
+        _In_ otai_log_level_t log_level)
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_SUCCESS;
+    return OTAI_STATUS_SUCCESS;
 }
 
-sai_status_t RedisRemoteSaiInterface::queryApiVersion(
-        _Out_ sai_api_version_t *version)
+
+otai_status_t RedisRemoteOtaiInterface::otai_redis_notify_syncd(
+        _In_ otai_object_id_t switchId,
+        _In_ const otai_attribute_t *attr)
 {
     SWSS_LOG_ENTER();
 
-    if (version)
-    {
-        *version = SAI_API_VERSION;
-
-        // TODO FIXME implement proper query for syncd, currently this is not an issue since swss is not using this API
-
-        SWSS_LOG_WARN("retruning SAI API version %d with sairedis compiled SAI headers, not actual libsai.so", SAI_API_VERSION);
-
-        return SAI_STATUS_SUCCESS;
-    }
-
-    SWSS_LOG_ERROR("version parameter is NULL");
-
-    return SAI_STATUS_INVALID_PARAMETER;
-}
-
-sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
-        _In_ sai_object_id_t switchId,
-        _In_ const sai_attribute_t *attr)
-{
-    SWSS_LOG_ENTER();
-
-    auto redisNotifySyncd = (sai_redis_notify_syncd_t)attr->value.s32;
+    auto redisNotifySyncd = (otai_redis_notify_syncd_t)attr->value.s32;
 
     switch (redisNotifySyncd)
     {
-        case SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW:
-        case SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW:
-        case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
-        case SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP:
+        case OTAI_REDIS_NOTIFY_SYNCD_INIT_VIEW:
+        case OTAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW:
+        case OTAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
+        case OTAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP:
             break;
 
         default:
 
-            SWSS_LOG_ERROR("invalid notify syncd attr value %s", sai_serialize(redisNotifySyncd).c_str());
+            SWSS_LOG_ERROR("invalid notify syncd attr value %s", otai_serialize(redisNotifySyncd).c_str());
 
-            return SAI_STATUS_FAILURE;
+            return OTAI_STATUS_FAILURE;
     }
 
     auto status = notifySyncd(switchId, redisNotifySyncd);
 
-    if (status == SAI_STATUS_SUCCESS)
+    if (status == OTAI_STATUS_SUCCESS)
     {
         switch (redisNotifySyncd)
         {
-            case SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW:
+            case OTAI_REDIS_NOTIFY_SYNCD_INIT_VIEW:
 
                 SWSS_LOG_NOTICE("switched ASIC to INIT VIEW");
 
@@ -1951,7 +1811,7 @@ sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
 
                 break;
 
-            case SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW:
+            case OTAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW:
 
                 SWSS_LOG_NOTICE("switched ASIC to APPLY VIEW");
 
@@ -1959,13 +1819,13 @@ sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
 
                 break;
 
-            case SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
+            case OTAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC:
 
                 SWSS_LOG_NOTICE("inspect ASIC SUCCEEDED");
 
                 break;
 
-            case SAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP:
+            case OTAI_REDIS_NOTIFY_SYNCD_INVOKE_DUMP:
 
                 SWSS_LOG_NOTICE("invoked DUMP succeeded");
 
@@ -1979,7 +1839,7 @@ sai_status_t RedisRemoteSaiInterface::sai_redis_notify_syncd(
     return status;
 }
 
-void RedisRemoteSaiInterface::clear_local_state()
+void RedisRemoteOtaiInterface::clear_local_state()
 {
     SWSS_LOG_ENTER();
 
@@ -2004,20 +1864,20 @@ void RedisRemoteSaiInterface::clear_local_state()
     }
 }
 
-void RedisRemoteSaiInterface::setMeta(
-        _In_ std::weak_ptr<saimeta::Meta> meta)
+void RedisRemoteOtaiInterface::setMeta(
+        _In_ std::weak_ptr<otaimeta::Meta> meta)
 {
     SWSS_LOG_ENTER();
 
     m_meta = meta;
 }
 
-sai_switch_notifications_t RedisRemoteSaiInterface::syncProcessNotification(
+otai_linecard_notifications_t RedisRemoteOtaiInterface::syncProcessNotification(
         _In_ std::shared_ptr<Notification> notification)
 {
     SWSS_LOG_ENTER();
 
-    // NOTE: process metadata must be executed under sairedis API mutex since
+    // NOTE: process metadata must be executed under otairedis API mutex since
     // it will access meta database and notification comes from different
     // thread, and this method is executed from notifications thread
 
@@ -2034,7 +1894,7 @@ sai_switch_notifications_t RedisRemoteSaiInterface::syncProcessNotification(
 
     auto objectId = notification->getAnyObjectId();
 
-    auto switchId = m_virtualObjectIdManager->saiSwitchIdQuery(objectId);
+    auto switchId = m_virtualObjectIdManager->otaiSwitchIdQuery(objectId);
 
     auto sw = m_switchContainer->getSwitch(switchId);
 
@@ -2044,34 +1904,34 @@ sai_switch_notifications_t RedisRemoteSaiInterface::syncProcessNotification(
     }
 
     SWSS_LOG_WARN("switch %s not present in container, returning empty switch notifications",
-            sai_serialize_object_id(switchId).c_str());
+            otai_serialize_object_id(switchId).c_str());
 
     return { };
 }
 
-bool RedisRemoteSaiInterface::containsSwitch(
-        _In_ sai_object_id_t switchId) const
+bool RedisRemoteOtaiInterface::containsSwitch(
+        _In_ otai_object_id_t switchId) const
 {
     SWSS_LOG_ENTER();
 
     if (!m_switchContainer->contains(switchId))
     {
         SWSS_LOG_INFO("context %s failed to find switch %s",
-                m_contextConfig->m_name.c_str(), sai_serialize_object_id(switchId).c_str());
+                m_contextConfig->m_name.c_str(), otai_serialize_object_id(switchId).c_str());
         return false;
     }
 
     return true;
 }
 
-const std::map<sai_object_id_t, swss::TableDump>& RedisRemoteSaiInterface::getTableDump() const
+const std::map<otai_object_id_t, swss::TableDump>& RedisRemoteOtaiInterface::getTableDump() const
 {
     SWSS_LOG_ENTER();
 
     return m_tableDump;
 }
 
-void RedisRemoteSaiInterface::refreshTableDump()
+void RedisRemoteOtaiInterface::refreshTableDump()
 {
     SWSS_LOG_ENTER();
 
@@ -2089,8 +1949,8 @@ void RedisRemoteSaiInterface::refreshTableDump()
 
     for (auto& key: dump)
     {
-        sai_object_meta_key_t mk;
-        sai_deserialize_object_meta_key(key.first, mk);
+        otai_object_meta_key_t mk;
+        otai_deserialize_object_meta_key(key.first, mk);
 
         auto switchVID = switchIdQuery(mk.objectkey.key.object_id);
 
@@ -2102,7 +1962,7 @@ void RedisRemoteSaiInterface::refreshTableDump()
     for (auto& kvp: map)
     {
         SWSS_LOG_NOTICE("%s: objects count: %zu",
-                sai_serialize_object_id(kvp.first).c_str(),
+                otai_serialize_object_id(kvp.first).c_str(),
                 kvp.second.size());
     }
 }

@@ -1,11 +1,11 @@
-#include "SaiAttributeList.h"
+#include "OtaiAttributeList.h"
 
-#include "sai_serialize.h"
+#include "otai_serialize.h"
 
-using namespace saimeta;
+using namespace otaimeta;
 
-SaiAttributeList::SaiAttributeList(
-        _In_ const sai_object_type_t objectType,
+OtaiAttributeList::OtaiAttributeList(
+        _In_ const otai_object_type_t objectType,
         _In_ const std::vector<swss::FieldValueTuple> &values,
         _In_ bool countOnly)
 {
@@ -23,28 +23,28 @@ SaiAttributeList::SaiAttributeList(
             continue;
         }
 
-        sai_attribute_t attr;
-        memset(&attr, 0, sizeof(sai_attribute_t));
+        otai_attribute_t attr;
+        memset(&attr, 0, sizeof(otai_attribute_t));
 
-        sai_deserialize_attr_id(str_attr_id, attr.id);
+        otai_deserialize_attr_id(str_attr_id, attr.id);
 
         // TODO object type is not necessary, we can use get attr metadata from attr id name
-        auto meta = sai_metadata_get_attr_metadata(objectType, attr.id);
+        auto meta = otai_metadata_get_attr_metadata(objectType, attr.id);
 
         if (meta == NULL)
         {
             SWSS_LOG_THROW("FATAL: failed to find metadata for object type %d and attr id %d", objectType, attr.id);
         }
 
-        sai_deserialize_attr_value(str_attr_value, *meta, attr, countOnly);
+        otai_deserialize_attr_value(str_attr_value, *meta, attr, countOnly);
 
         m_attr_list.push_back(attr);
         m_attr_value_type_list.push_back(meta->attrvaluetype);
     }
 }
 
-SaiAttributeList::SaiAttributeList(
-        _In_ const sai_object_type_t objectType,
+OtaiAttributeList::OtaiAttributeList(
+        _In_ const otai_object_type_t objectType,
         _In_ const std::unordered_map<std::string, std::string>& hash,
         _In_ bool countOnly)
 {
@@ -60,27 +60,27 @@ SaiAttributeList::SaiAttributeList(
             continue;
         }
 
-        sai_attribute_t attr;
-        memset(&attr, 0, sizeof(sai_attribute_t));
+        otai_attribute_t attr;
+        memset(&attr, 0, sizeof(otai_attribute_t));
 
-        sai_deserialize_attr_id(str_attr_id, attr.id);
+        otai_deserialize_attr_id(str_attr_id, attr.id);
 
         // TODO object type is not necessary, we can use get attr metadata from attr id name
-        auto meta = sai_metadata_get_attr_metadata(objectType, attr.id);
+        auto meta = otai_metadata_get_attr_metadata(objectType, attr.id);
 
         if (meta == NULL)
         {
             SWSS_LOG_THROW("FATAL: failed to find metadata for object type %d and attr id %d", objectType, attr.id);
         }
 
-        sai_deserialize_attr_value(str_attr_value, *meta, attr, countOnly);
+        otai_deserialize_attr_value(str_attr_value, *meta, attr, countOnly);
 
         m_attr_list.push_back(attr);
         m_attr_value_type_list.push_back(meta->attrvaluetype);
     }
 }
 
-SaiAttributeList::~SaiAttributeList()
+OtaiAttributeList::~OtaiAttributeList()
 {
     SWSS_LOG_ENTER();
 
@@ -88,18 +88,18 @@ SaiAttributeList::~SaiAttributeList()
 
     for (size_t i = 0; i < attr_count; ++i)
     {
-        sai_attribute_t &attr = m_attr_list[i];
+        otai_attribute_t &attr = m_attr_list[i];
 
-        sai_attr_value_type_t serialization_type = m_attr_value_type_list[i];
+        otai_attr_value_type_t serialization_type = m_attr_value_type_list[i];
 
-        sai_deserialize_free_attribute_value(serialization_type, attr);
+        otai_deserialize_free_attribute_value(serialization_type, attr);
     }
 }
 
-std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
-        _In_ sai_object_type_t objectType,
+std::vector<swss::FieldValueTuple> OtaiAttributeList::serialize_attr_list(
+        _In_ otai_object_type_t objectType,
         _In_ uint32_t attr_count,
-        _In_ const sai_attribute_t *attr_list,
+        _In_ const otai_attribute_t *attr_list,
         _In_ bool countOnly)
 {
     SWSS_LOG_ENTER();
@@ -108,18 +108,18 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
 
     for (uint32_t index = 0; index < attr_count; ++index)
     {
-        const sai_attribute_t *attr = &attr_list[index];
+        const otai_attribute_t *attr = &attr_list[index];
 
-        auto meta = sai_metadata_get_attr_metadata(objectType, attr->id);
+        auto meta = otai_metadata_get_attr_metadata(objectType, attr->id);
 
         if (meta == NULL)
         {
             SWSS_LOG_THROW("FATAL: failed to find metadata for object type %d and attr id %d", objectType, attr->id);
         }
 
-        std::string str_attr_id = sai_serialize_attr_id(*meta);
+        std::string str_attr_id = otai_serialize_attr_id(*meta);
 
-        std::string str_attr_value = sai_serialize_attr_value(*meta, *attr, countOnly);
+        std::string str_attr_value = otai_serialize_attr_value(*meta, *attr, countOnly);
 
         swss::FieldValueTuple fvt(str_attr_id, str_attr_value);
 
@@ -129,14 +129,14 @@ std::vector<swss::FieldValueTuple> SaiAttributeList::serialize_attr_list(
     return entry;
 }
 
-sai_attribute_t* SaiAttributeList::get_attr_list()
+otai_attribute_t* OtaiAttributeList::get_attr_list()
 {
     SWSS_LOG_ENTER();
 
     return m_attr_list.data();
 }
 
-uint32_t SaiAttributeList::get_attr_count()
+uint32_t OtaiAttributeList::get_attr_count()
 {
     SWSS_LOG_ENTER();
 

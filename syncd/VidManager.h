@@ -1,7 +1,7 @@
 #pragma once
 
 extern "C" {
-#include "sai.h"
+#include "otai.h"
 }
 
 namespace syncd
@@ -27,8 +27,8 @@ namespace syncd
              *
              * Throws for invalid object ID.
              */
-            static sai_object_id_t switchIdQuery(
-                    _In_ sai_object_id_t objectId);
+            static otai_object_id_t switchIdQuery(
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Object type query.
@@ -40,8 +40,8 @@ namespace syncd
              *
              * Throws for invalid object ID.
              */
-            static sai_object_type_t objectTypeQuery(
-                    _In_ sai_object_id_t objectId);
+            static otai_object_type_t objectTypeQuery(
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Get switch index.
@@ -55,7 +55,7 @@ namespace syncd
              * Throws for invalid object ID.
              */
             static uint32_t getSwitchIndex(
-                    _In_ sai_object_id_t objectId);
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Get global context ID.
@@ -69,7 +69,7 @@ namespace syncd
              * Throws for invalid object ID.
              */
             static uint32_t getGlobalContext(
-                    _In_ sai_object_id_t objectId);
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Get object index.
@@ -77,15 +77,15 @@ namespace syncd
              * Returns object index.
              */
             static uint64_t getObjectIndex(
-                    _In_ sai_object_id_t objectId);
+                    _In_ otai_object_id_t objectId);
 
             /**
              * @brief Update object index.
              *
              * Returns objects with updated object index.
              */
-            static sai_object_id_t updateObjectIndex(
-                    _In_ sai_object_id_t objectId,
+            static otai_object_id_t updateObjectIndex(
+                    _In_ otai_object_id_t objectId,
                     _In_ uint64_t objectIndex);
     };
 }
