@@ -146,6 +146,7 @@ stages:
   jobs:
   - template: .azure-pipelines/test-docker-sonic-vs-template.yml
     parameters:
+      pool: sonic-ubuntu-1c
       log_artifact_name: log
 
 - stage: TestAsan
@@ -154,6 +155,7 @@ stages:
   jobs:
   - template: .azure-pipelines/test-docker-sonic-vs-template.yml
     parameters:
+      pool: sonic-ubuntu-1c
       docker_sonic_vs_name: docker-sonic-vs-asan
       log_artifact_name: log-asan
       asan: true

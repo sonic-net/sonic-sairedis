@@ -18,12 +18,16 @@ parameters:
   type: boolean
   default: false
 
+- name: pool
+  type: string
+  default: sonic-ubuntu-1c
+
 jobs:
 - job:
   displayName: vstest
   timeoutInMinutes: ${{ parameters.timeout }}
 
-  pool: sonic-common
+  pool: ${{ parameters.pool }}
 
   steps:
   - script: |
