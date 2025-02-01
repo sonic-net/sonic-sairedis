@@ -12,6 +12,7 @@
 #include "RedisNotificationProducer.h"
 #include "ZeroMQNotificationProducer.h"
 #include "WatchdogScope.h"
+#include "VendorSaiOptions.h"
 
 #include "sairediscommon.h"
 
@@ -108,6 +109,12 @@ Syncd::Syncd(
 
         m_enableSyncMode = true;
     }
+
+    auto vso = std::make_shared<VendorSaiOptions>();
+
+    vso->m_checkAttrVersion = m_commandLineOptions->m_enableAttrVersionCheck;
+
+    m_vendorSai->setOptions(VendorSaiOptions::OPTIONS_KEY, vso);
 
     m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters, m_commandLineOptions->m_supportingBulkCounterGroups);
 
@@ -921,7 +928,6 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
     {
         case SAI_COMMON_API_BULK_CREATE:
         case SAI_COMMON_API_BULK_REMOVE:
-        case SAI_COMMON_API_BULK_SET:
 
             if (info->isnonobjectid)
             {
@@ -960,6 +966,27 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
 
                     return SAI_STATUS_SUCCESS;
             }
+
+        case SAI_COMMON_API_BULK_SET:
+
+            switch (objectType)
+            {
+                case SAI_OBJECT_TYPE_SWITCH:
+                case SAI_OBJECT_TYPE_SCHEDULER_GROUP:
+
+                    SWSS_LOG_THROW("%s is not supported in init view mode",
+                            sai_serialize_object_type(objectType).c_str());
+
+                default:
+
+                    break;
+            }
+
+            sendApiResponse(api, SAI_STATUS_SUCCESS, (uint32_t)statuses.size(), statuses.data());
+
+            syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+
+            return SAI_STATUS_SUCCESS;
 
         case SAI_COMMON_API_BULK_GET:
             SWSS_LOG_THROW("GET bulk api is not implemented in init view mode, FIXME");
@@ -3194,7 +3221,7 @@ sai_status_t Syncd::processOidCreate(
              * constructor, like getting all queues, ports, etc.
              */
 
-            m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai);
+            m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai, false);
 
             m_mdioIpcServer->setSwitchId(objectRid);
 
@@ -4513,7 +4540,7 @@ void Syncd::onSwitchCreateInInitViewMode(
 
         // make switch initialization and get all default data
 
-        m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai);
+        m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai, false);
 
         m_mdioIpcServer->setSwitchId(switchRid);
 

@@ -27,7 +27,9 @@ jobs:
 
   steps:
   - script: |
+      set -ex
       ls -A1 | xargs -I{} sudo rm -rf {}
+      sudo apt-get purge libswsscommon python3-swsscommon || true
     displayName: "Clean workspace"
   - checkout: self
     clean: true
@@ -73,10 +75,8 @@ jobs:
 
       sudo apt-get update
       sudo apt-get install -y libhiredis0.14 libyang0.16
-      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/libprotobuf*_amd64.deb $(Build.ArtifactStagingDirectory)/download/libprotobuf-lite*_amd64.deb $(Build.ArtifactStagingDirectory)/download/python3-protobuf*_amd64.deb
-      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/libdashapi*.deb
-      sudo dpkg -i --force-confask,confnew $(Build.ArtifactStagingDirectory)/download/libswsscommon_1.0.0_amd64.deb || apt-get install -f
-      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/python3-swsscommon_1.0.0_amd64.deb
+      sudo apt install -y $(Build.ArtifactStagingDirectory)/download/libprotobuf*_amd64.deb $(Build.ArtifactStagingDirectory)/download/libprotobuf-lite*_amd64.deb $(Build.ArtifactStagingDirectory)/download/python3-protobuf*_amd64.deb
+      sudo apt install -y $(Build.ArtifactStagingDirectory)/download/libdashapi*.deb $(Build.ArtifactStagingDirectory)/download/libswsscommon_1.0.0_amd64.deb $(Build.ArtifactStagingDirectory)/download/python3-swsscommon_1.0.0_amd64.deb
 
       # install packages for vs test
       sudo apt-get install -y net-tools bridge-utils vlan
