@@ -2017,7 +2017,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_WRED_ECN_PORT)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         return context;
     }
@@ -2039,7 +2039,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_WRED_ECN_QUEUE)
     {
-        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
