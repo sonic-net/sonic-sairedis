@@ -1120,6 +1120,14 @@ std::string sai_serialize_counter_stat(
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_counter_stat_t);
 }
 
+std::string sai_serialize_policer_stat(
+        _In_ const sai_policer_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_policer_stat_t);
+}
+
 std::string sai_serialize_queue_attr(
         _In_ const sai_queue_attr_t attr)
 {

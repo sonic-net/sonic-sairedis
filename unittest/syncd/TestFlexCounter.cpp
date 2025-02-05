@@ -747,6 +747,18 @@ TEST(FlexCounter, bulkCounter)
         {"10", "20"},
         counterVerifyFunc,
         false);
+
+    testAddRemoveCounter(
+        2,
+        SAI_OBJECT_TYPE_POLICER,
+        POLICER_COUNTER_ID_LIST,
+        {"SAI_POLICER_STAT_PACKETS", "SAI_POLICER_STAT_ATTR_BYTES",
+        "SAI_POLICER_STAT_GREEN_PACKETS", "SAI_POLICER_STAT_GREEN_BYTES",
+        "SAI_POLICER_STAT_YELLOW_PACKETS", "SAI_POLICER_STAT_YELLOW_BYTES",
+        "SAI_POLICER_STAT_RED_PACKETS", "SAI_POLICER_STAT_RED_BYTES"},
+        {"100", "200", "300", "400", "500", "600", "700", "800"},
+        counterVerifyFunc,
+        false);
     // buffer pool stats does not support bulk
     EXPECT_EQ(false, clearCalled);
 }

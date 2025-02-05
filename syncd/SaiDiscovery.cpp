@@ -112,6 +112,13 @@ void SaiDiscovery::discover(
         discovered.insert(rid);
     }
 
+#ifdef SKIP_SAI_PORT_DISCOVERY
+    if (ot == SAI_OBJECT_TYPE_PORT)
+    {
+        return;
+    }
+#endif
+
     const sai_object_type_info_t *info = sai_metadata_get_object_type_info(ot);
 
     /*
