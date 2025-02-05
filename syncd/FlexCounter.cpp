@@ -32,6 +32,9 @@ static const std::string ATTR_TYPE_QUEUE = "Queue Attribute";
 static const std::string ATTR_TYPE_PG = "Priority Group Attribute";
 static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
+static const std::string COUNTER_TYPE_WRED_ECN_QUEUE = "WRED Queue Counter";
+static const std::string COUNTER_TYPE_WRED_ECN_PORT = "WRED Port Counter";
+
 const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {QUEUE_PLUGIN_FIELD, COUNTER_TYPE_QUEUE},
     {PG_PLUGIN_FIELD, COUNTER_TYPE_PG},
@@ -39,7 +42,9 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {RIF_PLUGIN_FIELD, COUNTER_TYPE_RIF},
     {BUFFER_POOL_PLUGIN_FIELD, COUNTER_TYPE_BUFFER_POOL},
     {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
-    {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW}};
+    {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW},
+    {WRED_QUEUE_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_QUEUE},
+    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT}};
 
 BaseCounterContext::BaseCounterContext(const std::string &name):
 m_name(name)
@@ -1618,6 +1623,12 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->always_check_supported_counters = true;
         return context;
     }
+    else if (context_name == COUNTER_TYPE_WRED_ECN_PORT)
+    {
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        return context;
+    }
     else if (context_name == COUNTER_TYPE_PORT_DEBUG)
     {
         auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
@@ -1628,6 +1639,13 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         return context;
     }
     else if (context_name == COUNTER_TYPE_QUEUE)
+    {
+        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        context->double_confirm_supported_counters = true;
+        return context;
+    }
+    else if (context_name == COUNTER_TYPE_WRED_ECN_QUEUE)
     {
         auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
@@ -1895,12 +1913,20 @@ void FlexCounter::removeCounter(
         {
             getCounterContext(COUNTER_TYPE_PORT_DEBUG)->removeObject(vid);
         }
+        if (hasCounterContext(COUNTER_TYPE_WRED_ECN_PORT))
+        {
+            getCounterContext(COUNTER_TYPE_WRED_ECN_PORT)->removeObject(vid);
+        }
     }
     else if (objectType == SAI_OBJECT_TYPE_QUEUE)
     {
         if (hasCounterContext(COUNTER_TYPE_QUEUE))
         {
             getCounterContext(COUNTER_TYPE_QUEUE)->removeObject(vid);
+        }
+        if (hasCounterContext(COUNTER_TYPE_WRED_ECN_QUEUE))
+        {
+            getCounterContext(COUNTER_TYPE_WRED_ECN_QUEUE)->removeObject(vid);
         }
         if (hasCounterContext(ATTR_TYPE_QUEUE))
         {
