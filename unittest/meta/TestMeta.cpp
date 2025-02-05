@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+#include <boost/algorithm/string/join.hpp>
+
 #include <memory>
 
 #define VLAN_ID 2
@@ -938,6 +940,36 @@ TEST(Meta, queryAttributeEnumValuesCapability)
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryAttributeEnumValuesCapability(switchId, SAI_OBJECT_TYPE_SWITCH, 10000, &list));
 }
 
+TEST(Meta, queryStatsCapability)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_stat_capability_list_t queue_stats_capability;
+    sai_stat_capability_t stat_initializer;
+    stat_initializer.stat_enum = 0;
+    stat_initializer.stat_modes = 0;
+    std::vector<sai_stat_capability_t> qstat_cap_list(20, stat_initializer);
+    queue_stats_capability.count = 15;
+    queue_stats_capability.list = qstat_cap_list.data();
+
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.queryStatsCapability(switchId, SAI_OBJECT_TYPE_QUEUE, &queue_stats_capability));
+
+    queue_stats_capability.list = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryStatsCapability(switchId, SAI_OBJECT_TYPE_QUEUE, &queue_stats_capability));
+
+}
+
 TEST(Meta, meta_validate_stats)
 {
     MockMeta m(std::make_shared<MetaTestSaiInterface>());
@@ -1840,4 +1872,35 @@ TEST(Meta, remove_meter_bucket_entry)
     sai_meter_bucket_entry_t* e = nullptr;
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai.remove(e));
+}
+
+TEST(Meta, remove_prefix_compression_entry)
+{
+    Meta sai(std::make_shared<MetaTestSaiInterface>());
+
+    sai_prefix_compression_entry_t* e = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, sai.remove(e));
+}
+
+TEST(Meta, isPortObjectIdValid)
+{
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_PORT), true);
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_BRIDGE_PORT), true);
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_LAG), true);
+
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_TUNNEL),false);
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_NULL), false);
+    EXPECT_EQ(Meta::isPortObjectIdValid(SAI_OBJECT_TYPE_VLAN), false);
+}
+
+TEST(Meta, getValidPortObjectTypes)
+{
+    auto v = Meta::getValidPortObjectTypes();
+
+    EXPECT_EQ(v.size(), 3);
+
+    auto s = boost::algorithm::join(v, ",");
+
+    EXPECT_EQ(s, "PORT,LAG,BRIDGE_PORT");
 }
