@@ -1405,3 +1405,15 @@ TEST(VendorSai, bulk_dash_outbound_ca_to_pa_entry)
     remove_counter(sai, counter0);
     remove_counter(sai, counter1);
 }
+
+TEST(VendorSai, logSet_logGet)
+{
+    VendorSai sai;
+    sai.initialize(0, &test_services);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.logSet(SAI_API_PORT, SAI_LOG_LEVEL_DEBUG));
+
+    EXPECT_EQ(SAI_LOG_LEVEL_DEBUG, sai.logGet(SAI_API_PORT));
+    EXPECT_EQ(SAI_LOG_LEVEL_NOTICE, sai.logGet(SAI_API_SWITCH));
+}
+
