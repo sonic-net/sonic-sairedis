@@ -1409,11 +1409,11 @@ TEST(VendorSai, bulk_dash_outbound_ca_to_pa_entry)
 TEST(VendorSai, logSet_logGet)
 {
     VendorSai sai;
-    sai.apiInitialize(0, &test_services);
+    sai.initialize(0, &test_services);
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai.logSet(SAI_API_PORT, SAI_LOG_LEVEL_DEBUG));
 
-    EXPECT(SAI_LOG_LEVEL_DEBUG, sai.logGet(SAI_API_PORT));
-    EXPECT(SAI_LOG_LEVEL_NOTICE, sai.logGet(SAI_API_SWITCH));
+    EXPECT_EQ(SAI_LOG_LEVEL_DEBUG, sai.logGet(SAI_API_PORT));
+    EXPECT_EQ(SAI_LOG_LEVEL_NOTICE, sai.logGet(SAI_API_SWITCH));
 }
 
