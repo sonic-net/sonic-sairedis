@@ -921,7 +921,6 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
     {
         case SAI_COMMON_API_BULK_CREATE:
         case SAI_COMMON_API_BULK_REMOVE:
-        case SAI_COMMON_API_BULK_SET:
 
             if (info->isnonobjectid)
             {
@@ -960,6 +959,27 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
 
                     return SAI_STATUS_SUCCESS;
             }
+
+        case SAI_COMMON_API_BULK_SET:
+
+            switch (objectType)
+            {
+                case SAI_OBJECT_TYPE_SWITCH:
+                case SAI_OBJECT_TYPE_SCHEDULER_GROUP:
+
+                    SWSS_LOG_THROW("%s is not supported in init view mode",
+                            sai_serialize_object_type(objectType).c_str());
+
+                default:
+
+                    break;
+            }
+
+            sendApiResponse(api, SAI_STATUS_SUCCESS, (uint32_t)statuses.size(), statuses.data());
+
+            syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+
+            return SAI_STATUS_SUCCESS;
 
         case SAI_COMMON_API_BULK_GET:
             SWSS_LOG_THROW("GET bulk api is not implemented in init view mode, FIXME");
