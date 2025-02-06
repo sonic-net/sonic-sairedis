@@ -296,4 +296,159 @@ TEST_F(SyncdTest, processStatsCapabilityQuery)
     }));
     syncd_object.processEvent(consumer);
 }
+
+
+TEST_F(SyncdTest, processBulkCreateEntryNotImplemented)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto opt = std::make_shared<syncd::CommandLineOptions>();
+    opt->m_enableTempView = true;
+    opt->m_startType = SAI_START_TYPE_FASTFAST_BOOT;
+    opt->m_enableSaiBulkSupport = true;
+    syncd::Syncd syncd_object(sai, opt, false);
+
+    // Mock bulk create to return NOT_IMPLEMENTED
+    sai->mock_bulkCreate = [](sai_object_type_t, sai_object_id_t, uint32_t, const uint32_t *, const sai_attribute_t **,
+                              sai_bulk_op_error_mode_t, sai_object_id_t *, sai_status_t *) {
+        return SAI_STATUS_NOT_IMPLEMENTED;
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+        kfvKey(kco) = "SAI_OBJECT_TYPE_PORT:10";
+        kfvOp(kco) = "bulkcreate";
+        std::vector<swss::FieldValueTuple> fvs;
+        fvs.emplace_back("oid:0x1", "SAI_PORT_ATTR_SPEED=10000");
+        kfvFieldsValues(kco) = fvs;
+    }));
+
+    syncd_object.processEvent(consumer);
+}
+
+TEST_F(SyncdTest, processBulkSetNotImplemented)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto opt = std::make_shared<syncd::CommandLineOptions>();
+    opt->m_enableTempView = true;
+    opt->m_startType = SAI_START_TYPE_FASTFAST_BOOT;
+    opt->m_enableSaiBulkSupport = true;
+    syncd::Syncd syncd_object(sai, opt, false);
+
+    // Mock bulk set to return NOT_IMPLEMENTED
+    sai->mock_bulkSet = [](sai_object_type_t, uint32_t, const sai_object_id_t *, const sai_attribute_t *, sai_bulk_op_error_mode_t, sai_status_t *) {
+        return SAI_STATUS_NOT_IMPLEMENTED;
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+        kfvKey(kco) = "SAI_OBJECT_TYPE_PORT:2"; // object_type:count
+        kfvOp(kco) = "bulkset";
+        std::vector<swss::FieldValueTuple> fvs;
+        // Add attributes for bulk set
+        fvs.emplace_back("oid:0x1", "SAI_PORT_ATTR_ADMIN_STATE=true");
+        fvs.emplace_back("oid:0x2", "SAI_PORT_ATTR_ADMIN_STATE=false");
+        kfvFieldsValues(kco) = fvs;
+    }));
+
+    syncd_object.processEvent(consumer);
+}
+
+TEST_F(SyncdTest, processBulkRemoveNotImplemented)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto opt = std::make_shared<syncd::CommandLineOptions>();
+    opt->m_enableTempView = true;
+    opt->m_startType = SAI_START_TYPE_FASTFAST_BOOT;
+    opt->m_enableSaiBulkSupport = true;
+    syncd::Syncd syncd_object(sai, opt, false);
+
+    // Mock bulk remove to return NOT_IMPLEMENTED
+    sai->mock_bulkRemove = [](sai_object_type_t, uint32_t, const sai_object_id_t *, sai_bulk_op_error_mode_t, sai_status_t *) {
+        return SAI_STATUS_NOT_IMPLEMENTED;
+    };
+
+    MockSelectableChannel consumer;
+    EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+    EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+        kfvKey(kco) = "SAI_OBJECT_TYPE_PORT:2";
+        kfvOp(kco) = "bulkremove";
+        std::vector<swss::FieldValueTuple> fvs;
+        // Add object IDs for bulk remove
+        fvs.emplace_back("oid:0x1", "");
+        fvs.emplace_back("oid:0x2", "");
+        kfvFieldsValues(kco) = fvs;
+    }));
+
+    syncd_object.processEvent(consumer);
+}
+
+TEST_F(SyncdTest, processBulkOperationsSuccess)
+{
+    auto sai = std::make_shared<MockableSaiInterface>();
+    auto opt = std::make_shared<syncd::CommandLineOptions>();
+    opt->m_enableTempView = true;
+    opt->m_startType = SAI_START_TYPE_FASTFAST_BOOT;
+    opt->m_enableSaiBulkSupport = true;
+    syncd::Syncd syncd_object(sai, opt, false);
+
+    // Mock bulk operations to return SUCCESS
+    sai->mock_bulkCreate = [](sai_object_type_t, sai_object_id_t, uint32_t, const uint32_t *, const sai_attribute_t **, sai_bulk_op_error_mode_t, sai_object_id_t *, sai_status_t *) {
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_bulkSet = [](sai_object_type_t, uint32_t, const sai_object_id_t *, const sai_attribute_t *, sai_bulk_op_error_mode_t, sai_status_t *) {
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_bulkRemove = [](sai_object_type_t, uint32_t, const sai_object_id_t *, sai_bulk_op_error_mode_t, sai_status_t *) {
+        return SAI_STATUS_SUCCESS;
+    };
+
+    // bulk create
+    {
+        MockSelectableChannel consumer;
+        EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+        EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+            kfvKey(kco) = "SAI_OBJECT_TYPE_PORT:2";
+            kfvOp(kco) = "bulkcreate";
+            std::vector<swss::FieldValueTuple> fvs;
+            fvs.emplace_back("oid:0x1", "SAI_PORT_ATTR_SPEED=10000");
+            fvs.emplace_back("oid:0x2", "SAI_PORT_ATTR_SPEED=25000");
+            kfvFieldsValues(kco) = fvs;
+        }));
+        syncd_object.processEvent(consumer);
+    }
+
+    // bulk set
+    {
+        MockSelectableChannel consumer;
+        EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+        EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+            kfvKey(kco) = "SAI_OBJECT_TYPE_PORT:2";
+            kfvOp(kco) = "bulkset";
+            std::vector<swss::FieldValueTuple> fvs;
+            fvs.emplace_back("oid:0x1", "SAI_PORT_ATTR_ADMIN_STATE=true");
+            fvs.emplace_back("oid:0x2", "SAI_PORT_ATTR_ADMIN_STATE=true");
+            kfvFieldsValues(kco) = fvs;
+        }));
+        syncd_object.processEvent(consumer);
+    }
+
+    // bulk remove
+    {
+        MockSelectableChannel consumer;
+        EXPECT_CALL(consumer, empty()).WillOnce(testing::Return(true));
+        EXPECT_CALL(consumer, pop(testing::_, testing::_)).WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+            kfvKey(kco) = "SAI_OBJECT_TYPE_PORT:2";
+            kfvOp(kco) = "bulkremove";
+            std::vector<swss::FieldValueTuple> fvs;
+            fvs.emplace_back("oid:0x1", "");
+            fvs.emplace_back("oid:0x2", "");
+            kfvFieldsValues(kco) = fvs;
+        }));
+        syncd_object.processEvent(consumer);
+    }
+}
 #endif
