@@ -27,7 +27,7 @@ sai_status_t sai_log_set(
 {
     SWSS_LOG_ENTER();
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return redis_sai->logSet(sai_api_id, log_level);
 }
 
 #define API(api) .api ## _api = const_cast<sai_ ## api ## _api_t*>(&redis_ ## api ## _api)
