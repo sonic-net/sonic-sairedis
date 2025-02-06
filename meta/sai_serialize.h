@@ -143,6 +143,9 @@ std::string sai_serialize_tunnel_stat(
 std::string sai_serialize_counter_stat(
         _In_ const sai_counter_stat_t counter);
 
+std::string sai_serialize_policer_stat(
+        _In_ const sai_policer_stat_t counter);
+
 std::string sai_serialize_queue_attr(
         _In_ const sai_queue_attr_t attr);
 
