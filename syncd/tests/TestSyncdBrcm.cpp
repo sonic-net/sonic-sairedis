@@ -390,6 +390,122 @@ TEST_F(SyncdBrcmTest, neighborBulkTest)
     }
 }
 
+TEST_F(SyncdBrcmTest, nexthopBulkTest)
+{
+    sai_object_id_t switchId;
+    sai_object_id_t rif;
+    sai_object_id_t port;
+    sai_attribute_t attrs[3];
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    auto status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_SWITCH_ATTR_DEFAULT_VIRTUAL_ROUTER_ID;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    sai_object_id_t vr = attrs[0].value.oid;
+
+    // create port
+    static uint32_t id = 1;
+    id++;
+
+    uint32_t hw_lane_list[1] = { id };
+
+    attrs[0].id = SAI_PORT_ATTR_HW_LANE_LIST;
+    attrs[0].value.u32list.count = 1;
+    attrs[0].value.u32list.list = hw_lane_list;
+
+    attrs[1].id = SAI_PORT_ATTR_SPEED;
+    attrs[1].value.u32 = 10000;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_PORT, &port, switchId, 2, attrs);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    // create rif
+    attrs[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
+    attrs[0].value.oid = vr;
+
+    attrs[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
+    attrs[1].value.s32 = SAI_ROUTER_INTERFACE_TYPE_PORT;
+
+    attrs[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
+    attrs[2].value.oid = port;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_ROUTER_INTERFACE, &rif, switchId, 3, attrs);
+    EXPECT_EQ(SAI_STATUS_SUCCESS, status);
+
+    std::vector<std::vector<sai_attribute_t>> nh_attrs;
+    std::vector<const sai_attribute_t *> nh_attrs_array;
+    std::vector<uint32_t> nh_attrs_count;
+    uint32_t count = 3;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        std::vector<sai_attribute_t> list(3);
+        sai_attribute_t &nhattr0 = list[0];
+        sai_attribute_t &nhattr1 = list[1];
+        sai_attribute_t &nhattr2 = list[2];
+
+        nhattr0.id = SAI_NEXT_HOP_ATTR_TYPE;
+        nhattr0.value.s32 = SAI_NEXT_HOP_TYPE_IP;
+        nhattr1.id = SAI_NEXT_HOP_ATTR_IP;
+        nhattr1.value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+        nhattr1.value.ipaddr.addr.ip4 = 0x10000001;
+        nhattr2.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
+        nhattr2.value.oid = rif;
+
+        nh_attrs.push_back(list);
+        nh_attrs_count.push_back(3);
+    }
+
+    for (size_t j = 0; j < nh_attrs.size(); j++)
+    {
+        nh_attrs_array.push_back(nh_attrs[j].data());
+    }
+
+    std::vector<sai_status_t> statuses(count);
+    std::vector<sai_object_id_t> object_id(count);
+    status = m_sairedis->bulkCreate(
+        (sai_object_type_t) SAI_OBJECT_TYPE_NEXT_HOP, switchId,
+        count, nh_attrs_count.data(), nh_attrs_array.data(),
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+        object_id.data(), statuses.data());
+
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    }
+
+    statuses.clear();
+
+    status = m_sairedis->bulkRemove(
+        (sai_object_type_t) SAI_OBJECT_TYPE_NEXT_HOP,
+        count, object_id.data(),
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR,
+        statuses.data());
+    for (size_t j = 0; j < statuses.size(); j++)
+    {
+        status = statuses[j];
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+    }
+}
+
 TEST_F(SyncdBrcmTest, portBufferBulkSet)
 {
     sai_object_id_t switchId;
@@ -567,4 +683,308 @@ TEST_F(SyncdBrcmTest, portBufferBulkSet)
 
     status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
     ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+}
+
+TEST_F(SyncdBrcmTest, portBulkSetInInitView)
+{
+    sai_object_id_t switchId;
+    sai_attribute_t attrs[1];
+
+    struct
+    {
+        std::vector<sai_object_id_t> oids;
+        std::vector<sai_attribute_t> attrs;
+        std::vector<sai_status_t> statuses;
+
+        void resize(size_t size)
+        {
+            SWSS_LOG_ENTER();
+
+            oids.resize(size);
+            attrs.resize(size);
+            statuses.resize(size, SAI_STATUS_NOT_EXECUTED);
+        }
+    } ports;
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    auto status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // apply view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    ports.resize(attrs[0].value.u32);
+
+    ASSERT_TRUE(ports.oids.size() > 1);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_LIST;
+    attrs[0].value.objlist.count = static_cast<uint32_t>(ports.oids.size());
+    attrs[0].value.objlist.list = ports.oids.data();
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // Set port admin status in bulk
+
+    for (size_t i = 0; i < ports.oids.size(); i++)
+    {
+        ports.attrs[i].id = SAI_PORT_ATTR_ADMIN_STATE;
+        ports.attrs[i].value.booldata = true;
+    }
+
+    status = m_sairedis->bulkSet(SAI_OBJECT_TYPE_PORT, static_cast<uint32_t>(ports.oids.size()), ports.oids.data(),
+        ports.attrs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, ports.statuses.data());
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (size_t i = 0; i < ports.oids.size(); i++)
+    {
+        ASSERT_EQ(ports.statuses[i], SAI_STATUS_SUCCESS);
+    }
+}
+
+TEST_F(SyncdBrcmTest, pgBulkSetInInitView)
+{
+    sai_object_id_t switchId;
+    sai_attribute_t attrs[1];
+
+    std::vector<sai_object_id_t> portOids;
+
+    struct
+    {
+        std::vector<sai_object_id_t> oids;
+        std::vector<sai_attribute_t> attrs;
+        std::vector<sai_status_t> statuses;
+
+        void resize(size_t size)
+        {
+            SWSS_LOG_ENTER();
+
+            oids.resize(size);
+            attrs.resize(size);
+            statuses.resize(size, SAI_STATUS_NOT_EXECUTED);
+        }
+    } pgs;
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    auto status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // apply view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    portOids.resize(attrs[0].value.u32);
+
+    ASSERT_TRUE(portOids.size() > 1);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_LIST;
+    attrs[0].value.objlist.count = static_cast<uint32_t>(portOids.size());
+    attrs[0].value.objlist.list = portOids.data();
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_LIST;
+    attrs[0].value.objlist.count = static_cast<uint32_t>(portOids.size());
+    attrs[0].value.objlist.list = portOids.data();
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // Create buffer pool
+
+    std::array<sai_attribute_t, 4> buffer_pool_attrs;
+    sai_object_id_t buffer_pool;
+
+    buffer_pool_attrs[0].id = SAI_BUFFER_POOL_ATTR_THRESHOLD_MODE;
+    buffer_pool_attrs[0].value.u32 = SAI_BUFFER_POOL_THRESHOLD_MODE_DYNAMIC;
+
+    buffer_pool_attrs[1].id = SAI_BUFFER_POOL_ATTR_SIZE;
+    buffer_pool_attrs[1].value.u32 = 47218432;
+
+    buffer_pool_attrs[2].id = SAI_BUFFER_POOL_ATTR_TYPE;
+    buffer_pool_attrs[2].value.u32 = SAI_BUFFER_POOL_TYPE_INGRESS;
+
+    buffer_pool_attrs[3].id = SAI_BUFFER_POOL_ATTR_XOFF_SIZE;
+    buffer_pool_attrs[3].value.u32 = 17708800;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_BUFFER_POOL, &buffer_pool, switchId,
+        static_cast<uint32_t>(buffer_pool_attrs.size()), buffer_pool_attrs.data());
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // Create buffer profile
+
+    std::array<sai_attribute_t, 4> buffer_profile_attrs;
+    sai_object_id_t buffer_profile;
+
+    buffer_profile_attrs[0].id = SAI_BUFFER_PROFILE_ATTR_POOL_ID;
+    buffer_profile_attrs[0].value.oid = buffer_pool;
+
+    buffer_profile_attrs[1].id = SAI_BUFFER_PROFILE_ATTR_THRESHOLD_MODE;
+    buffer_profile_attrs[1].value.u32 = SAI_BUFFER_PROFILE_THRESHOLD_MODE_DYNAMIC;
+
+    buffer_profile_attrs[2].id = SAI_BUFFER_PROFILE_ATTR_SHARED_DYNAMIC_TH;
+    buffer_profile_attrs[2].value.s8 = -8;
+
+    buffer_profile_attrs[3].id = SAI_BUFFER_PROFILE_ATTR_RESERVED_BUFFER_SIZE;
+    buffer_profile_attrs[3].value.u64 = 6755399441055744;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_BUFFER_PROFILE, &buffer_profile, switchId,
+        static_cast<uint32_t>(buffer_profile_attrs.size()), buffer_profile_attrs.data());
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // Priority group configuration
+
+    attrs[0].id = SAI_PORT_ATTR_NUMBER_OF_INGRESS_PRIORITY_GROUPS;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_PORT, portOids[0], 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    pgs.resize(attrs[0].value.u32);
+
+    attrs[0].id = SAI_PORT_ATTR_INGRESS_PRIORITY_GROUP_LIST;
+    attrs[0].value.objlist.count = static_cast<uint32_t>(pgs.oids.size());
+    attrs[0].value.objlist.list = pgs.oids.data();
+
+    status = m_sairedis->get(SAI_OBJECT_TYPE_PORT, portOids[0], 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (size_t i = 0; i < pgs.oids.size(); i++)
+    {
+        pgs.attrs[i].id = SAI_INGRESS_PRIORITY_GROUP_ATTR_BUFFER_PROFILE;
+        pgs.attrs[i].value.oid = buffer_profile;
+    }
+
+    status = m_sairedis->bulkSet(SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, static_cast<uint32_t>(pgs.oids.size()), pgs.oids.data(),
+        pgs.attrs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, pgs.statuses.data());
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (size_t i = 0; i < pgs.oids.size(); i++)
+    {
+        ASSERT_EQ(pgs.statuses[i], SAI_STATUS_SUCCESS);
+    }
+}
+
+TEST_F(SyncdBrcmTest, bulkSetInInitViewForUnsupportedObjects)
+{
+    sai_object_id_t switchId;
+    sai_attribute_t attrs[1];
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    auto status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // apply view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_SWITCH_ATTR_UNINIT_DATA_PLANE_ON_REMOVAL;
+    attrs[0].value.booldata = true;
+
+    sai_object_id_t oids[1] = {switchId};
+    sai_status_t statuses[1] = {SAI_STATUS_NOT_EXECUTED};
+
+    ASSERT_THROW(m_sairedis->bulkSet(SAI_OBJECT_TYPE_SWITCH, 1, oids, attrs,
+        SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses), std::runtime_error);
 }
