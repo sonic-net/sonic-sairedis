@@ -136,6 +136,9 @@ namespace syncd
             sai_status_t processObjectTypeGetAvailabilityQuery(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
+            sai_status_t processStatsCapabilityQuery(
+                    _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
             sai_status_t processFdbFlush(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
@@ -236,6 +239,13 @@ namespace syncd
         private: // process bulk oid
 
             sai_status_t processBulkOidCreate(
+                    _In_ sai_object_type_t objectType,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _In_ const std::vector<std::string>& objectIds,
+                    _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+                    _Out_ std::vector<sai_status_t>& statuses);
+
+            sai_status_t processBulkOidSet(
                     _In_ sai_object_type_t objectType,
                     _In_ sai_bulk_op_error_mode_t mode,
                     _In_ const std::vector<std::string>& objectIds,

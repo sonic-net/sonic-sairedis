@@ -59,6 +59,7 @@ namespace syncd
         bool use_sai_stats_ext = false;
         bool double_confirm_supported_counters = false;
         bool no_double_check_bulk_capability = false;
+        bool dont_clear_support_counter  = false;
     };
     class FlexCounter
     {

@@ -977,6 +977,101 @@ void test_tokenize_bulk_route_entry()
     std::cout << "s: " << (double)us.count()/1000000.0 << " for total routes: " <<( n * per) << std::endl;
 }
 
+static void test_recorder_stats_capability_query_request(
+    _In_ sai_object_id_t switch_id,
+    _In_ sai_object_type_t object_type,
+    _In_ const std::vector<std::string>& expectedOutput)
+{
+    SWSS_LOG_ENTER();
+
+    remove(SairedisRecFilename.c_str());
+
+    Recorder recorder;
+
+    recorder.enableRecording(true);
+
+    sai_stat_capability_list_t stats_capability;
+    sai_stat_capability_t cap_list;
+
+    cap_list.stat_enum = SAI_QUEUE_STAT_WRED_ECN_MARKED_BYTES;
+    cap_list.stat_modes = SAI_STATS_MODE_READ;
+
+    stats_capability.count = 1;
+    stats_capability.list = &cap_list;
+
+    recorder.recordQueryStatsCapability(1, SAI_OBJECT_TYPE_QUEUE, &stats_capability);
+
+    auto tokens = parseFirstRecordedAPI();
+
+    ASSERT_EQ(tokens, expectedOutput);
+}
+
+static void test_recorder_stats_capability_query_response(
+    _In_ sai_object_id_t switch_id,
+    _In_ sai_object_type_t object_type,
+    _In_ const std::vector<std::string>& expectedOutput)
+{
+    SWSS_LOG_ENTER();
+
+    remove(SairedisRecFilename.c_str());
+
+    Recorder recorder;
+
+    recorder.enableRecording(true);
+
+    sai_stat_capability_list_t stats_capability;
+    sai_stat_capability_t cap_list;
+
+    cap_list.stat_enum = SAI_QUEUE_STAT_WRED_ECN_MARKED_BYTES;
+    cap_list.stat_modes = SAI_STATS_MODE_READ;
+
+    stats_capability.count = 1;
+    stats_capability.list = &cap_list;
+
+    recorder.recordQueryStatsCapabilityResponse(SAI_STATUS_SUCCESS , SAI_OBJECT_TYPE_QUEUE, &stats_capability);
+
+    auto tokens = parseFirstRecordedAPI();
+
+    recorder.recordQueryStatsCapabilityResponse(SAI_STATUS_SUCCESS , SAI_OBJECT_TYPE_MAX, &stats_capability);
+    recorder.recordQueryStatsCapabilityResponse(SAI_STATUS_SUCCESS , SAI_OBJECT_TYPE_BRIDGE_PORT , &stats_capability);
+
+    ASSERT_EQ(tokens, expectedOutput);
+}
+
+static void test_recorder_stats_capability_query()
+{
+    SWSS_LOG_ENTER();
+
+    Recorder recorder;
+    remove(SairedisRecFilename.c_str());
+    recorder.enableRecording(true);
+
+    const std::vector<std::string> expectedOutputQuery =
+        {
+            "q",
+            "stats_capability",
+            "SAI_OBJECT_TYPE_SWITCH:oid:0x1",
+            "OBJECT_TYPE=SAI_OBJECT_TYPE_QUEUE",
+            "LIST_SIZE=1",
+        };
+    const std::vector<std::string> expectedOutputResponse =
+        {
+            "Q",
+            "stats_capability",
+            "SAI_STATUS_SUCCESS",
+            "{\"count\":1,\"list\":[{\"stat_enum\":\"SAI_QUEUE_STAT_WRED_ECN_MARKED_BYTES\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}",
+        };
+
+    test_recorder_stats_capability_query_request(1,
+                    SAI_OBJECT_TYPE_QUEUE,
+                    expectedOutputQuery
+    );
+    test_recorder_stats_capability_query_response(1,
+                    SAI_OBJECT_TYPE_QUEUE,
+                    expectedOutputResponse
+    );
+}
+
 int main()
 {
     SWSS_LOG_ENTER();
@@ -1020,6 +1115,7 @@ int main()
     std::cout << " * test recorder" << std::endl;
 
     test_recorder_enum_value_capability_query();
+    test_recorder_stats_capability_query();
 
     return 0;
 }

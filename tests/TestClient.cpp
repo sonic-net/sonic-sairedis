@@ -362,6 +362,33 @@ void TestClient::test_query_api()
                 NULL,
                 &count));
 
+    /* Test queue stats capability get */
+    sai_stat_capability_list_t queue_stats_capability;
+
+    queue_stats_capability.count = 1;
+    queue_stats_capability.list = nullptr;
+
+    SWSS_LOG_NOTICE(" * sai_query_stats_capability");
+
+    auto rc = sai_query_stats_capability(
+                m_switch_id,
+                SAI_OBJECT_TYPE_QUEUE,
+                &queue_stats_capability);
+    ASSERT_TRUE(rc == SAI_STATUS_BUFFER_OVERFLOW);
+
+    sai_stat_capability_t stat_initializer;
+    stat_initializer.stat_enum = 0;
+    stat_initializer.stat_modes = 0;
+    std::vector<sai_stat_capability_t> qstat_cap_list(queue_stats_capability.count, stat_initializer);
+    queue_stats_capability.list = qstat_cap_list.data();
+
+    SWSS_LOG_NOTICE(" * sai_query_stats_capability");
+
+    ASSERT_SUCCESS(sai_query_stats_capability(
+                m_switch_id,
+                SAI_OBJECT_TYPE_QUEUE,
+                &queue_stats_capability));
+
     teardown();
 }
 

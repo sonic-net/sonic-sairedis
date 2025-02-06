@@ -28,10 +28,14 @@ static const std::string COUNTER_TYPE_TUNNEL = "Tunnel Counter";
 static const std::string COUNTER_TYPE_BUFFER_POOL = "Buffer Pool Counter";
 static const std::string COUNTER_TYPE_ENI = "DASH ENI Counter";
 static const std::string COUNTER_TYPE_METER_BUCKET = "DASH Meter Bucket Counter";
+static const std::string COUNTER_TYPE_POLICER = "Policer Counter";
 static const std::string ATTR_TYPE_QUEUE = "Queue Attribute";
 static const std::string ATTR_TYPE_PG = "Priority Group Attribute";
 static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
+static const std::string COUNTER_TYPE_WRED_ECN_QUEUE = "WRED Queue Counter";
+static const std::string COUNTER_TYPE_WRED_ECN_PORT = "WRED Port Counter";
+
 const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {QUEUE_PLUGIN_FIELD, COUNTER_TYPE_QUEUE},
     {PG_PLUGIN_FIELD, COUNTER_TYPE_PG},
@@ -39,7 +43,9 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {RIF_PLUGIN_FIELD, COUNTER_TYPE_RIF},
     {BUFFER_POOL_PLUGIN_FIELD, COUNTER_TYPE_BUFFER_POOL},
     {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
-    {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW}};
+    {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW},
+    {WRED_QUEUE_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_QUEUE},
+    {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT}};
 
 BaseCounterContext::BaseCounterContext(const std::string &name):
 m_name(name)
@@ -166,6 +172,14 @@ std::string serializeStat(
 
 template <>
 std::string serializeStat(
+        _In_ const sai_policer_stat_t stat)
+{
+    SWSS_LOG_ENTER();
+    return sai_serialize_policer_stat(stat);
+}
+
+template <>
+std::string serializeStat(
         _In_ const sai_queue_stat_t stat)
 {
     SWSS_LOG_ENTER();
@@ -268,6 +282,15 @@ void deserializeStat(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_port_stat(name, stat);
+}
+
+template <>
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_policer_stat_t *stat)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_policer_stat(name, stat);
 }
 
 template <>
@@ -865,7 +888,7 @@ private:
             return;
         }
 
-        if (always_check_supported_counters)
+        if (always_check_supported_counters && !dont_clear_support_counter)
         {
             m_supportedCounters.clear();
         }
@@ -1618,6 +1641,12 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->always_check_supported_counters = true;
         return context;
     }
+    else if (context_name == COUNTER_TYPE_WRED_ECN_PORT)
+    {
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        return context;
+    }
     else if (context_name == COUNTER_TYPE_PORT_DEBUG)
     {
         auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
@@ -1628,6 +1657,13 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         return context;
     }
     else if (context_name == COUNTER_TYPE_QUEUE)
+    {
+        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        context->double_confirm_supported_counters = true;
+        return context;
+    }
+    else if (context_name == COUNTER_TYPE_WRED_ECN_QUEUE)
     {
         auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
@@ -1663,7 +1699,9 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     else if (context_name == COUNTER_TYPE_MACSEC_SA)
     {
         auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
+        context->dont_clear_support_counter = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_FLOW)
@@ -1711,6 +1749,10 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     else if (context_name == ATTR_TYPE_ACL_COUNTER)
     {
         return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_statsMode);
+    }
+    else if (context_name == COUNTER_TYPE_POLICER)
+    {
+        return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
     }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
@@ -1893,12 +1935,20 @@ void FlexCounter::removeCounter(
         {
             getCounterContext(COUNTER_TYPE_PORT_DEBUG)->removeObject(vid);
         }
+        if (hasCounterContext(COUNTER_TYPE_WRED_ECN_PORT))
+        {
+            getCounterContext(COUNTER_TYPE_WRED_ECN_PORT)->removeObject(vid);
+        }
     }
     else if (objectType == SAI_OBJECT_TYPE_QUEUE)
     {
         if (hasCounterContext(COUNTER_TYPE_QUEUE))
         {
             getCounterContext(COUNTER_TYPE_QUEUE)->removeObject(vid);
+        }
+        if (hasCounterContext(COUNTER_TYPE_WRED_ECN_QUEUE))
+        {
+            getCounterContext(COUNTER_TYPE_WRED_ECN_QUEUE)->removeObject(vid);
         }
         if (hasCounterContext(ATTR_TYPE_QUEUE))
         {
@@ -1988,6 +2038,13 @@ void FlexCounter::removeCounter(
         {
             getCounterContext(COUNTER_TYPE_FLOW)->removeObject(vid);
             removeDataFromCountersDB(vid, ":TRAP");
+        }
+    }
+    else if (objectType == SAI_OBJECT_TYPE_POLICER)
+    {
+        if (hasCounterContext(COUNTER_TYPE_POLICER))
+        {
+            getCounterContext(COUNTER_TYPE_POLICER)->removeObject(vid);
         }
     }
     else
@@ -2119,6 +2176,14 @@ void FlexCounter::addCounter(
         else if (objectType == SAI_OBJECT_TYPE_COUNTER && field == FLOW_COUNTER_ID_LIST)
         {
             getCounterContext(COUNTER_TYPE_FLOW)->addObject(
+                    vid,
+                    rid,
+                    idStrings,
+                    "");
+        }
+        else if (objectType == SAI_OBJECT_TYPE_POLICER && field == POLICER_COUNTER_ID_LIST)
+        {
+            getCounterContext(COUNTER_TYPE_POLICER)->addObject(
                     vid,
                     rid,
                     idStrings,

@@ -465,6 +465,10 @@ sai_status_t VendorSai::bulkCreate(
             ptr = m_apis.next_hop_group_api->create_next_hop_group_members;
             break;
 
+        case SAI_OBJECT_TYPE_NEXT_HOP:
+            ptr = m_apis.next_hop_api->create_next_hops;
+            break;
+
         case SAI_OBJECT_TYPE_SRV6_SIDLIST:
             ptr = m_apis.srv6_api->create_srv6_sidlists;
             break;
@@ -548,6 +552,10 @@ sai_status_t VendorSai::bulkRemove(
             ptr = m_apis.next_hop_group_api->remove_next_hop_group_members;
             break;
 
+        case SAI_OBJECT_TYPE_NEXT_HOP:
+            ptr = m_apis.next_hop_api->remove_next_hops;
+            break;
+
         case SAI_OBJECT_TYPE_SRV6_SIDLIST:
             ptr = m_apis.srv6_api->remove_srv6_sidlists;
             break;
@@ -606,9 +614,38 @@ sai_status_t VendorSai::bulkSet(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not supported by SAI");
+    sai_bulk_object_set_attribute_fn ptr;
 
-    return SAI_STATUS_NOT_SUPPORTED;
+    switch (object_type)
+    {
+        case SAI_OBJECT_TYPE_PORT:
+            ptr = m_apis.port_api->set_ports_attribute;
+            break;
+
+        case SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP:
+            ptr = m_apis.buffer_api->set_ingress_priority_groups_attribute;
+            break;
+
+        case SAI_OBJECT_TYPE_QUEUE:
+            ptr = m_apis.queue_api->set_queues_attribute;
+            break;
+
+        default:
+            SWSS_LOG_ERROR("not implemented %s, FIXME", sai_serialize_object_type(object_type).c_str());
+            return SAI_STATUS_NOT_IMPLEMENTED;
+    }
+
+    if (!ptr)
+    {
+        SWSS_LOG_INFO("create bulk not supported from SAI, object_type = %s",  sai_serialize_object_type(object_type).c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return ptr(object_count,
+            object_id,
+            attr_list,
+            mode,
+            object_statuses);
 }
 
 sai_status_t VendorSai::bulkGet(
@@ -1912,6 +1949,7 @@ sai_status_t VendorSai::logSet(
         _In_ sai_api_t api,
         _In_ sai_log_level_t log_level)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
 
     m_logLevelMap[api] = log_level;
@@ -1930,6 +1968,7 @@ sai_status_t VendorSai::queryApiVersion(
 sai_log_level_t VendorSai::logGet(
         _In_ sai_api_t api)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
 
     auto it = m_logLevelMap.find(api);
