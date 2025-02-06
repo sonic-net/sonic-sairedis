@@ -8,7 +8,7 @@ extern "C" {
 
 TEST(libsaivs, sai_log_set)
 {
-    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED, sai_log_set(SAI_API_VLAN, SAI_LOG_LEVEL_NOTICE));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai_log_set(SAI_API_VLAN, SAI_LOG_LEVEL_NOTICE));
 }
 
 TEST(libsaivs, sai_api_query)
