@@ -223,6 +223,10 @@ Syncd::Syncd(
 
     m_breakConfig = BreakConfigParser::parseBreakConfig(m_commandLineOptions->m_breakConfig);
 
+#ifdef SKIP_SAI_PORT_DISCOVERY
+    SWSS_LOG_WARN("SAI discovery is skipped on ports");
+#endif
+
     SWSS_LOG_NOTICE("syncd started");
 }
 
