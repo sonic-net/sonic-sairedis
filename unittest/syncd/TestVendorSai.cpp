@@ -1544,6 +1544,17 @@ TEST(VendorSai, bulk_meter_rules)
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai.remove((sai_object_type_t)SAI_OBJECT_TYPE_METER_POLICY, meter_policy1));
 }
 
+TEST(VendorSai, logSet_logGet)
+{
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.logSet(SAI_API_PORT, SAI_LOG_LEVEL_DEBUG));
+
+    EXPECT_EQ(SAI_LOG_LEVEL_DEBUG, sai.logGet(SAI_API_PORT));
+    EXPECT_EQ(SAI_LOG_LEVEL_NOTICE, sai.logGet(SAI_API_SWITCH));
+}
+
 TEST_F(VendorSaiTest, bulk_prefix_compression_entry)
 {
     sai_prefix_compression_entry_t *e = nullptr;
