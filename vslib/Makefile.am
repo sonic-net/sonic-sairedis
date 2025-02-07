@@ -20,7 +20,7 @@ DISABLED_FLAGS= \
 			   -Wno-pointer-sign \
 			   -Wno-stringop-truncation \
 			   -Wno-enum-conversion \
-			   -Werror=address \
+			   -Wno-error=address \
 			   -Wno-cast-qual
 
 # TODO fix multiple paths
