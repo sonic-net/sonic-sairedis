@@ -19,6 +19,8 @@ DISABLED_FLAGS= \
 			   -Wno-cast-align \
 			   -Wno-pointer-sign \
 			   -Wno-stringop-truncation \
+			   -Wno-enum-conversion \
+			   -Werror=address \
 			   -Wno-cast-qual
 
 # TODO fix multiple paths
