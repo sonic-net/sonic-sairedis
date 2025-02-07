@@ -2126,7 +2126,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_POLICER)
     {
-        return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
     }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
