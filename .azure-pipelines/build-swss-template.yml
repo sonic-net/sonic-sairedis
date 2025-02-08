@@ -93,7 +93,6 @@ jobs:
         libzmq3-dev \
         swig4.0 \
         libdbus-1-dev \
-        libteam-dev \
         rsyslog
 
       sudo perl -i.bk -ne 'print if not /SONiCFileFormat|ActionFileDefaultTemplate/' /etc/rsyslog.conf
