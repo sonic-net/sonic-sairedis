@@ -60,6 +60,31 @@ jobs:
       git submodule update
       git status
     displayName: Set up sonic-swss branch
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libnl-3*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-genl*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-route*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-nf*.deb
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libprotobuf*.deb
+        target/debs/${{ parameters.debian_version }}/libprotoc*.deb
+        target/debs/${{ parameters.debian_version }}/protobuf-compiler*.deb
+    displayName: "Download libnl libs"
+  - script: |
+      set -ex
+      sudo dpkg -i $(find ./download -name libnl-*_${{ parameters.arch }}.deb)
+    condition: eq('${{ parameters.arch }}', 'amd64')
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install sonic libnl"
   - script: |
       set -ex
       sudo apt-get update
@@ -104,25 +129,6 @@ jobs:
         libsaimetadata-dev_*.deb
         syncd-vs_*.deb
     displayName: "Download pre-stage built ${{ parameters.sairedis_artifact_name }}"
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      source: specific
-      project: build
-      pipeline: Azure.sonic-buildimage.common_libs
-      runVersion: 'latestFromBranch'
-      runBranch: 'refs/heads/$(BUILD_BRANCH)'
-      path: $(Build.ArtifactStagingDirectory)/download
-      artifact: common-lib
-      patterns: |
-        target/debs/${{ parameters.debian_version }}/libnl-3*.deb
-        target/debs/${{ parameters.debian_version }}/libnl-genl*.deb
-        target/debs/${{ parameters.debian_version }}/libnl-route*.deb
-        target/debs/${{ parameters.debian_version }}/libnl-nf*.deb
-        target/debs/${{ parameters.debian_version }}/libyang_*.deb
-        target/debs/${{ parameters.debian_version }}/libprotobuf*.deb
-        target/debs/${{ parameters.debian_version }}/libprotoc*.deb
-        target/debs/${{ parameters.debian_version }}/protobuf-compiler*.deb
-    displayName: "Download common libs"
   - task: DownloadPipelineArtifact@2
     inputs:
       source: specific
