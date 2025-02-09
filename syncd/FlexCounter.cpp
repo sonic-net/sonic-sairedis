@@ -2819,7 +2819,7 @@ void FlexCounter::addCounter(
     notifyPoll();
 }
 
-void FlexCounter::bulkAddCounter( 
+void FlexCounter::bulkAddCounter(
         _In_ sai_object_type_t objectType,
         _In_ const std::vector<sai_object_id_t>& vids,
         _In_ const std::vector<sai_object_id_t>& rids,

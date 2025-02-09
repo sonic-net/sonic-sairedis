@@ -816,16 +816,16 @@ TEST(FlexCounter, bulkChunksize)
      *
      * A counter can be polled in initialization phase and runtime
      * For each test, it is expected to call bulk for "initialCheckCount" times during initialization.
-     * In this stage, the mock function just return succeed for failure to indicate whehter bulk poll is supported
+     * In this stage, the mock function just return succeed for failure to indicate whether bulk poll is supported
      * but it does not provide a counter value for further check
      *
-     * The calls to bulk starting from "initialCheckCount+1"-th are treated as runtime calls.
+     * The calls to bulk starting from "initialCheckCount+1" are treated as runtime calls.
      * The counter values objects are generated as following:
      *   - a counterSeed maintains the current counter value to return
      *   - If the counterValuesMap[object_id][counter_id] exists, returns it as the counter's value
      *   - Otherwise, it's the first time the (object, counter ID) is polled
      *     - return the current value of counterSeed as the counter's value
-     *     - store the couter's value into counterValuesMap
+     *     - store the counter's value into counterValuesMap
      *     - increase the counterSeed
      * When the test finishes, the counterSeed should equal (number_of_objects * number_of_bulk_supported_counters)
      * And all integer < counterSeed should be returned to one and only one (object, counter ID) tuple,
