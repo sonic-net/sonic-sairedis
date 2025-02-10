@@ -156,6 +156,28 @@ TEST(VendorSai, bulkGetStats)
                                                              nullptr));
 }
 
+TEST(VendorSai, getStatsExt)
+{
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+    ASSERT_EQ(SAI_STATUS_NOT_SUPPORTED, sai.getStatsExt(SAI_OBJECT_TYPE_NULL,
+                                                          SAI_NULL_OBJECT_ID,
+                                                          0,
+                                                          nullptr,
+                                                          SAI_STATS_MODE_READ,
+                                                          nullptr));
+}
+
+TEST(VendorSai, clearStats)
+{
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+    ASSERT_EQ(SAI_STATUS_NOT_SUPPORTED, sai.clearStats(SAI_OBJECT_TYPE_NULL,
+                                                       SAI_NULL_OBJECT_ID,
+                                                       0,
+                                                       nullptr));
+}
+
 sai_object_id_t create_port(
         _In_ VendorSai& sai,
         _In_ sai_object_id_t switch_id)
@@ -1542,6 +1564,17 @@ TEST(VendorSai, bulk_meter_rules)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai.remove((sai_object_type_t)SAI_OBJECT_TYPE_METER_POLICY, meter_policy0));
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai.remove((sai_object_type_t)SAI_OBJECT_TYPE_METER_POLICY, meter_policy1));
+}
+
+TEST(VendorSai, logSet_logGet)
+{
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.logSet(SAI_API_PORT, SAI_LOG_LEVEL_DEBUG));
+
+    EXPECT_EQ(SAI_LOG_LEVEL_DEBUG, sai.logGet(SAI_API_PORT));
+    EXPECT_EQ(SAI_LOG_LEVEL_NOTICE, sai.logGet(SAI_API_SWITCH));
 }
 
 TEST_F(VendorSaiTest, bulk_prefix_compression_entry)
