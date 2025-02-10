@@ -26,12 +26,14 @@ SaiSwitch::SaiSwitch(
         _In_ std::shared_ptr<RedisClient> client,
         _In_ std::shared_ptr<VirtualOidTranslator> translator,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
-        _In_ bool warmBoot):
+        _In_ bool warmBoot,
+        _In_ bool checkAttrVersion):
     SaiSwitchInterface(switch_vid, switch_rid),
     m_vendorSai(vendorSai),
     m_warmBoot(warmBoot),
     m_translator(translator),
-    m_client(client)
+    m_client(client),
+    m_checkAttrVersion(checkAttrVersion)
 {
     SWSS_LOG_ENTER();
 
@@ -661,7 +663,7 @@ void SaiSwitch::helperDiscover()
 {
     SWSS_LOG_ENTER();
 
-    SaiDiscovery sd(m_vendorSai);
+    SaiDiscovery sd(m_vendorSai, m_checkAttrVersion);
 
     m_discovered_rids = sd.discover(m_switch_rid);
 
@@ -952,7 +954,7 @@ void SaiSwitch::onPostPortCreate(
 {
     SWSS_LOG_ENTER();
 
-    SaiDiscovery sd(m_vendorSai);
+    SaiDiscovery sd(m_vendorSai, m_checkAttrVersion);
 
     auto discovered = sd.discover(port_rid);
 

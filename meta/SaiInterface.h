@@ -5,12 +5,6 @@ extern "C" {
 #include "saimetadata.h"
 }
 
-#include "SaiOptions.h"
-
-#include <map>
-#include <memory>
-#include <string>
-
 #define SAIREDIS_DECLARE_EVERY_ENTRY(_X)                                     \
     SAI_METADATA_DECLARE_EVERY_ENTRY(_X)
 
@@ -346,18 +340,5 @@ namespace sairedis
 
             virtual sai_log_level_t logGet(
                     _In_ sai_api_t api);
-
-        public: // non SAI API - options helper
-
-            std::shared_ptr<SaiOptions> getOptions(
-                    _In_ const std::string& key);
-
-            void setOptions(
-                    _In_ const std::string& key,
-                    _In_ std::shared_ptr<SaiOptions> options);
-
-        private:
-
-            std::map<std::string, std::shared_ptr<SaiOptions>> m_optionsMap;
     };
 }
