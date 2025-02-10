@@ -47,6 +47,26 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {WRED_QUEUE_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_QUEUE},
     {WRED_PORT_PLUGIN_FIELD, COUNTER_TYPE_WRED_ECN_PORT}};
 
+const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
+    {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
+    {{SAI_OBJECT_TYPE_PORT, PORT_DEBUG_COUNTER_ID_LIST}, COUNTER_TYPE_PORT_DEBUG},
+    {{SAI_OBJECT_TYPE_QUEUE, QUEUE_COUNTER_ID_LIST}, COUNTER_TYPE_QUEUE},
+    {{SAI_OBJECT_TYPE_QUEUE, QUEUE_ATTR_ID_LIST}, ATTR_TYPE_QUEUE},
+    {{SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, PG_COUNTER_ID_LIST}, COUNTER_TYPE_PG},
+    {{SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, PG_ATTR_ID_LIST}, ATTR_TYPE_PG},
+    {{SAI_OBJECT_TYPE_ROUTER_INTERFACE, RIF_COUNTER_ID_LIST}, COUNTER_TYPE_RIF},
+    {{SAI_OBJECT_TYPE_SWITCH, SWITCH_DEBUG_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH_DEBUG},
+    {{SAI_OBJECT_TYPE_MACSEC_FLOW, MACSEC_FLOW_COUNTER_ID_LIST}, COUNTER_TYPE_MACSEC_FLOW},
+    {{SAI_OBJECT_TYPE_MACSEC_SA, MACSEC_SA_COUNTER_ID_LIST}, COUNTER_TYPE_MACSEC_SA},
+    {{SAI_OBJECT_TYPE_MACSEC_SA, MACSEC_SA_ATTR_ID_LIST}, ATTR_TYPE_MACSEC_SA},
+    {{SAI_OBJECT_TYPE_ACL_COUNTER, ACL_COUNTER_ATTR_ID_LIST}, ATTR_TYPE_ACL_COUNTER},
+    {{SAI_OBJECT_TYPE_COUNTER, FLOW_COUNTER_ID_LIST}, COUNTER_TYPE_FLOW},
+    {{SAI_OBJECT_TYPE_POLICER, POLICER_COUNTER_ID_LIST}, COUNTER_TYPE_POLICER},
+    {{SAI_OBJECT_TYPE_TUNNEL, TUNNEL_COUNTER_ID_LIST}, COUNTER_TYPE_TUNNEL},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, ENI_COUNTER_ID_LIST}, COUNTER_TYPE_ENI},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET}
+};
+
 BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
 m_name(name),
 m_instanceId(instance)
@@ -1541,6 +1561,20 @@ public:
         Base::m_objectIdsMap.emplace(vid, attr_ids);
     }
 
+    void bulkAddObject(
+            _In_ const std::vector<sai_object_id_t>& vids,
+            _In_ const std::vector<sai_object_id_t>& rids,
+            _In_ const std::vector<std::string>& idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        SWSS_LOG_ENTER();
+
+        for (auto i = 0uL; i < vids.size(); i++)
+        {
+            addObject(vids[i], rids[i], idStrings, per_object_stats_mode);
+        }
+    }
+
     void collectData(
             _In_ swss::Table &countersTable) override
     {
@@ -1720,6 +1754,7 @@ public:
             _In_ const std::string &per_object_stats_mode) override
     {
         SWSS_LOG_ENTER();
+        SWSS_LOG_ERROR("It does not support to add counter in bulk mode for DashMeterCounterContext");
     }
 
     bool hasObject() const override
@@ -2651,114 +2686,10 @@ void FlexCounter::addCounter(
 
         auto idStrings = swss::tokenize(value, ',');
 
-        if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_COUNTER_ID_LIST)
+        const auto &counterGroupRef = m_objectTypeField2CounterType.find({objectType, field});
+        if (counterGroupRef != m_objectTypeField2CounterType.end())
         {
-            getCounterContext(COUNTER_TYPE_PORT)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_DEBUG_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_PORT_DEBUG)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_QUEUE)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-
-        }
-        else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_ATTR_ID_LIST)
-        {
-            getCounterContext(ATTR_TYPE_QUEUE)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP && field == PG_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_PG)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP && field == PG_ATTR_ID_LIST)
-        {
-            getCounterContext(ATTR_TYPE_PG)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE && field == RIF_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_RIF)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_SWITCH && field == SWITCH_DEBUG_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_SWITCH_DEBUG)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_MACSEC_FLOW && field == MACSEC_FLOW_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_MACSEC_FLOW)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_MACSEC_SA)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_ATTR_ID_LIST)
-        {
-            getCounterContext(ATTR_TYPE_MACSEC_SA)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_ACL_COUNTER && field == ACL_COUNTER_ATTR_ID_LIST)
-        {
-            getCounterContext(ATTR_TYPE_ACL_COUNTER)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_COUNTER && field == FLOW_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_FLOW)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_POLICER && field == POLICER_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_POLICER)->addObject(
+            getCounterContext(counterGroupRef->second)->addObject(
                     vid,
                     rid,
                     idStrings,
@@ -2771,30 +2702,6 @@ void FlexCounter::addCounter(
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == STATS_MODE_FIELD)
         {
             statsMode = value;
-        }
-        else if (objectType == SAI_OBJECT_TYPE_TUNNEL && field == TUNNEL_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_TUNNEL)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI && field == ENI_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_ENI)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI && field == DASH_METER_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_METER_BUCKET)->addObject(
-                    vid,
-                    rid,
-                    idStrings,
-                    "");
         }
         else
         {
@@ -2840,122 +2747,10 @@ void FlexCounter::bulkAddCounter(
 
         auto idStrings = swss::tokenize(value, ',');
 
-        if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_COUNTER_ID_LIST)
+        const auto &counterGroupRef = m_objectTypeField2CounterType.find({objectType, field});
+        if (counterGroupRef != m_objectTypeField2CounterType.end())
         {
-            getCounterContext(COUNTER_TYPE_PORT)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_PORT && field == PORT_DEBUG_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_PORT_DEBUG)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_QUEUE)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-
-        }
-        else if (objectType == SAI_OBJECT_TYPE_QUEUE && field == QUEUE_ATTR_ID_LIST)
-        {
-            getCounterContext(ATTR_TYPE_QUEUE)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP && field == PG_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_PG)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP && field == PG_ATTR_ID_LIST)
-        {
-            getCounterContext(ATTR_TYPE_PG)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_ROUTER_INTERFACE && field == RIF_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_RIF)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_SWITCH && field == SWITCH_DEBUG_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_SWITCH_DEBUG)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_MACSEC_FLOW && field == MACSEC_FLOW_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_MACSEC_FLOW)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_MACSEC_SA)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_MACSEC_SA && field == MACSEC_SA_ATTR_ID_LIST)
-        {
-            getCounterContext(ATTR_TYPE_MACSEC_SA)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_ACL_COUNTER && field == ACL_COUNTER_ATTR_ID_LIST)
-        {
-            getCounterContext(ATTR_TYPE_ACL_COUNTER)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_COUNTER && field == FLOW_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_FLOW)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
-        }
-        else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
-        {
-            counterIds = idStrings;
-        }
-        else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == STATS_MODE_FIELD)
-        {
-            statsMode = value;
-        }
-        else if (objectType == SAI_OBJECT_TYPE_TUNNEL && field == TUNNEL_COUNTER_ID_LIST)
-        {
-            getCounterContext(COUNTER_TYPE_TUNNEL)->bulkAddObject(
+            getCounterContext(counterGroupRef->second)->bulkAddObject(
                     vids,
                     rids,
                     idStrings,

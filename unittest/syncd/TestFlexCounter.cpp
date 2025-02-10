@@ -127,7 +127,7 @@ void testAddRemoveCounter(
 
     if (bulkAdd)
     {
-        fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, object_ids, object_ids, values);
+        fc.bulkAddCounter(object_type, object_ids, object_ids, values);
     }
     else
     {
@@ -224,6 +224,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         true);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_COUNTER,
+        FLOW_COUNTER_ID_LIST,
+        {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        true,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_MACSEC_FLOW,
@@ -233,6 +245,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_MACSEC_FLOW,
+        MACSEC_FLOW_COUNTER_ID_LIST,
+        {"SAI_MACSEC_FLOW_STAT_CONTROL_PKTS", "SAI_MACSEC_FLOW_STAT_PKTS_UNTAGGED"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_MACSEC_SA,
@@ -241,6 +265,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"100", "200"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_MACSEC_SA,
+        MACSEC_SA_COUNTER_ID_LIST,
+        {"SAI_MACSEC_SA_STAT_OCTETS_ENCRYPTED", "SAI_MACSEC_SA_STAT_OCTETS_PROTECTED"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 
     testAddRemoveCounter(
         1,
@@ -260,6 +296,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_DEBUG_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IN_CONFIGURED_DROP_REASONS_0_DROPPED_PKTS", "SAI_PORT_STAT_IN_CONFIGURED_DROP_REASONS_1_DROPPED_PKTS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     bool clearCalled = false;
     sai->mock_clearStats = [&] (sai_object_type_t object_type, sai_object_id_t object_id, uint32_t number_of_counters, const sai_stat_id_t *counter_ids) {
         clearCalled = true;
@@ -277,6 +325,19 @@ TEST(FlexCounter, addRemoveCounter)
         STATS_MODE_READ_AND_CLEAR);
     EXPECT_EQ(true, clearCalled);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_QUEUE,
+        QUEUE_COUNTER_ID_LIST,
+        {"SAI_QUEUE_STAT_PACKETS", "SAI_QUEUE_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ_AND_CLEAR,
+        true);
+    EXPECT_EQ(true, clearCalled);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP,
@@ -285,6 +346,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"100", "200"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP,
+        PG_COUNTER_ID_LIST,
+        {"SAI_INGRESS_PRIORITY_GROUP_STAT_PACKETS", "SAI_INGRESS_PRIORITY_GROUP_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 
     testAddRemoveCounter(
         1,
@@ -295,6 +368,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+        RIF_COUNTER_ID_LIST,
+        {"SAI_ROUTER_INTERFACE_STAT_IN_OCTETS", "SAI_ROUTER_INTERFACE_STAT_IN_PACKETS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_SWITCH,
@@ -304,6 +389,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_SWITCH,
+        SWITCH_DEBUG_COUNTER_ID_LIST,
+        {"SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_0_DROPPED_PKTS", "SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_1_DROPPED_PKTS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_TUNNEL,
@@ -312,6 +409,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"100", "200"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_TUNNEL,
+        TUNNEL_COUNTER_ID_LIST,
+        {"SAI_TUNNEL_STAT_IN_OCTETS", "SAI_TUNNEL_STAT_IN_PACKETS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 
     testAddRemoveCounter(
         1,
@@ -353,6 +462,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_QUEUE,
+        QUEUE_ATTR_ID_LIST,
+        {"SAI_QUEUE_ATTR_PAUSE_STATUS"},
+        {"false"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
         for (uint32_t i = 0; i < attr_count; i++)
         {
@@ -372,6 +493,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"oid:0x1"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP,
+        PG_ATTR_ID_LIST,
+        {"SAI_INGRESS_PRIORITY_GROUP_ATTR_PORT"},
+        {"oid:0x1"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 
     sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
         for (uint32_t i = 0; i < attr_count; i++)
@@ -397,6 +530,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_MACSEC_SA,
+        MACSEC_SA_ATTR_ID_LIST,
+        {"SAI_MACSEC_SA_ATTR_CONFIGURED_EGRESS_XPN", "SAI_MACSEC_SA_ATTR_AN"},
+        {"0", "1"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
         for (uint32_t i = 0; i < attr_count; i++)
         {
@@ -416,6 +561,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"1000"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_ACL_COUNTER,
+        ACL_COUNTER_ATTR_ID_LIST,
+        {"SAI_ACL_COUNTER_ATTR_PACKETS"},
+        {"1000"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 }
 
 TEST(FlexCounter, queryCounterCapability)
