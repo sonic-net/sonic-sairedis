@@ -50,6 +50,16 @@ bool Workaround::isSetAttributeWorkaround(
         return true;
     }
 
+    if (objectType == SAI_OBJECT_TYPE_SWITCH &&
+            attrId == SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC)
+    {
+        SWSS_LOG_WARN("setting %s failed: %s, not all platforms support this attribute",
+                sai_metadata_get_attr_metadata(objectType, attrId)->attridname,
+                sai_serialize_status(status).c_str());
+
+        return true;
+    }
+
     if (objectType == SAI_OBJECT_TYPE_HOSTIF &&
             attrId == SAI_HOSTIF_ATTR_QUEUE)
     {

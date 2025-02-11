@@ -869,8 +869,17 @@ sub test_neighbor_next_hop
     }
 }
 
+sub test_vxlan_default_router_mac
+{
+    fresh_start;
+
+    play "vxlan_default_router_mac.rec";
+
+}
+
 # RUN TESTS
 
+test_vxlan_default_router_mac;
 test_neighbor_next_hop;
 test_acl_pre_match_999;
 test_relaxed;
