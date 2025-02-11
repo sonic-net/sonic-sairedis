@@ -156,6 +156,28 @@ TEST(VendorSai, bulkGetStats)
                                                              nullptr));
 }
 
+TEST(VendorSai, getStatsExt)
+{
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+    ASSERT_EQ(SAI_STATUS_NOT_SUPPORTED, sai.getStatsExt(SAI_OBJECT_TYPE_NULL,
+                                                          SAI_NULL_OBJECT_ID,
+                                                          0,
+                                                          nullptr,
+                                                          SAI_STATS_MODE_READ,
+                                                          nullptr));
+}
+
+TEST(VendorSai, clearStats)
+{
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+    ASSERT_EQ(SAI_STATUS_NOT_SUPPORTED, sai.clearStats(SAI_OBJECT_TYPE_NULL,
+                                                       SAI_NULL_OBJECT_ID,
+                                                       0,
+                                                       nullptr));
+}
+
 sai_object_id_t create_port(
         _In_ VendorSai& sai,
         _In_ sai_object_id_t switch_id)
