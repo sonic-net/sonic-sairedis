@@ -154,6 +154,14 @@ namespace syncd
                     _Out_ sai_mac_t& mac) const override;
 
             /**
+             * @brief Gets VxLAN default router MAC address.
+             *
+             * @param[out] mac MAC address to be obtained.
+             */
+            virtual void getVxlanDefaultRouterMacAddress(
+                    _Out_ sai_mac_t& mac) const override;
+
+            /**
              * @brief Gets default value of attribute for given object.
              *
              * This applies to objects discovered after switch init like
@@ -238,6 +246,18 @@ namespace syncd
             void saiGetMacAddress(
                     _Out_ sai_mac_t &mac) const;
 
+            /**
+             * @brief Get VxLAN default router MAC address.
+             *
+             * Intended use is to get switch VxLAN default route MAC address,
+             * for comparison logic, when we will try to bring it's default
+             * value, in case user changed original MAC address.
+             *
+             * @param[out] mac Obtained MAC address.
+             */
+            void saiGetVxlanDefaultRouterMacAddress(
+                    _Out_ sai_mac_t &mac) const;
+
         private:
 
             void redisSetDummyAsicStateForRealObjectId(
@@ -301,6 +321,7 @@ namespace syncd
             std::string m_hardware_info;
 
             sai_mac_t m_default_mac_address;
+            sai_mac_t m_vxlan_default_router_mac_address;
 
             /*
              * NOTE: Those default value will make sense only when we will do hard
