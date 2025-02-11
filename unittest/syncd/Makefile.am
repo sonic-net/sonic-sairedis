@@ -17,6 +17,7 @@ tests_SOURCES = main.cpp \
 				TestNotificationHandler.cpp \
 				TestMdioIpcServer.cpp \
 				TestPortStateChangeHandler.cpp \
+				TestWorkaround.cpp \
 				TestSyncd.cpp \
 				TestVendorSai.cpp
 
