@@ -52,11 +52,13 @@ TEST(NotificationPortStateChange, getAnyObjectId)
 TEST(NotificationPortStateChange, processMetadata)
 {
     NotificationPortStateChange n(s);
+    NotificationPortStateChange n2(null);
 
     auto sai = std::make_shared<MetaTestSaiInterface>();
     auto meta = std::make_shared<Meta>(sai);
 
     n.processMetadata(meta);
+    n2.processMetadata(meta);
 }
 
 static void on_port_state_change_notification(
