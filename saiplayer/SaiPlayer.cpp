@@ -2354,6 +2354,39 @@ sai_status_t SaiPlayer::handle_bulk_object(
         }
         break;
 
+        case SAI_COMMON_API_BULK_GET:
+
+        {
+            std::vector<sai_object_id_t> ids(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                ids[it] = translate_local_to_redis(local_ids[it]);
+            }
+
+            std::vector<uint32_t> attr_counts(object_count);
+
+            std::vector<sai_attribute_t*> attr_lists(object_count);
+
+            for (uint32_t idx = 0; idx < object_count; idx++)
+            {
+                attr_counts[idx] = attributes[idx]->get_attr_count();
+                attr_lists[idx] = attributes[idx]->get_attr_list();
+            }
+
+            status = m_sai->bulkGet(object_type,
+                                            object_count,
+                                            ids.data(),
+                                            attr_counts.data(),
+                                            attr_lists.data(),
+                                            mode,
+                                            statuses.data());
+
+            return status;
+        }
+        break;
+
+
         default:
             SWSS_LOG_THROW("generic other apis not implemented");
     }
@@ -2374,6 +2407,7 @@ void SaiPlayer::processBulk(
 
     if (api != SAI_COMMON_API_BULK_SET &&
             api != SAI_COMMON_API_BULK_CREATE &&
+            api != SAI_COMMON_API_BULK_GET &&
             api != SAI_COMMON_API_BULK_REMOVE)
     {
         SWSS_LOG_THROW("bulk common api %d is not supported yet, FIXME", api);
@@ -2398,7 +2432,7 @@ void SaiPlayer::processBulk(
 
     std::vector<sai_status_t> statuses(fields.size());
 
-    // TODO currently we expect all bulk API will always succeed in sync mode
+    // TODO currently we expect bulk API except BULK_GET will always succeed in sync mode
     // we will need to update that, needs to be obtained from recording file
     std::vector<sai_status_t> expectedStatuses(fields.size(), SAI_STATUS_SUCCESS);
 
@@ -2482,6 +2516,79 @@ void SaiPlayer::processBulk(
             break;
     }
 
+    if (api == SAI_COMMON_API_BULK_GET)
+    {
+        std::string response;
+
+        do
+        {
+            // this line may be notification, we need to skip
+            std::getline(m_infile, response);
+        }
+        while (response[response.find_first_of("|") + 1] == 'n');
+
+        const auto tokens = tokenize(response, "||");
+        const auto opAndStatus = tokenize(tokens.at(0), "|");
+
+        sai_status_t expectedStatus;
+        sai_deserialize_status(opAndStatus.at(2), expectedStatus);
+
+        if (status != expectedStatus)
+        {
+            SWSS_LOG_WARN("status is: %s but expected: %s",
+                    sai_serialize_status(status).c_str(),
+                    sai_serialize_status(expectedStatus).c_str());
+            return;
+        }
+
+        auto valuesIter = tokens.begin() + 1; // Skip operation and status
+        for (size_t idx = 0; idx < object_ids.size(); idx++, valuesIter++)
+        {
+            auto attrValues = tokenize(*valuesIter, "|");
+
+            sai_status_t expectedObjectStatus;
+            sai_deserialize_status(attrValues.at(0), expectedObjectStatus);
+
+            if (statuses[idx] != expectedObjectStatus)
+            {
+                SWSS_LOG_WARN("object status is: %s but expected: %s",
+                        sai_serialize_status(statuses[idx]).c_str(),
+                        sai_serialize_status(expectedObjectStatus).c_str());
+                continue;
+            }
+
+            std::vector<swss::FieldValueTuple> values;
+
+            for (size_t attrIdx = 1; attrIdx < attrValues.size(); attrIdx++) // skip status
+            {
+                auto& attrStr = attrValues[attrIdx];
+                auto start = attrStr.find_first_of("=");
+
+                auto field = attrStr.substr(0, start);
+                auto value = attrStr.substr(start + 1);
+
+                swss::FieldValueTuple entry(field, value);
+
+                values.push_back(entry);
+            }
+
+            SaiAttributeList list(object_type, values, false);
+
+            sai_attribute_t *attr_list = list.get_attr_list();
+            uint32_t attr_count = list.get_attr_count();
+
+            match_list_lengths(object_type, attributes[idx]->get_attr_count(),
+                attributes[idx]->get_attr_list(), attr_count, attr_list);
+
+            SWSS_LOG_DEBUG("list match");
+
+            match_redis_with_rec(object_type, attributes[idx]->get_attr_count(),
+                attributes[idx]->get_attr_list(), attr_count, attr_list);
+
+            // NOTE: Primitive values are not matched (recording vs switch/vs), we can add that check
+        }
+    }
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("handle bulk executed with failure, status = %s", sai_serialize_status(status).c_str());
@@ -2522,9 +2629,9 @@ int SaiPlayer::replay()
 
     SWSS_LOG_NOTICE("using file: %s", filename.c_str());
 
-    std::ifstream infile(filename);
+    m_infile = std::ifstream{filename};
 
-    if (!infile.is_open())
+    if (!m_infile.is_open())
     {
         SWSS_LOG_ERROR("failed to open file %s", filename.c_str());
         return -1;
@@ -2532,7 +2639,7 @@ int SaiPlayer::replay()
 
     std::string line;
 
-    while (std::getline(infile, line))
+    while (std::getline(m_infile, line))
     {
         // std::cout << "processing " << line << std::endl;
 
@@ -2551,7 +2658,7 @@ int SaiPlayer::replay()
                     do
                     {
                         // this line may be notification, we need to skip
-                        if (!std::getline(infile, response))
+                        if (!std::getline(m_infile, response))
                         {
                             SWSS_LOG_THROW("failed to read next file from file, previous: %s", line.c_str());
                         }
@@ -2569,7 +2676,7 @@ int SaiPlayer::replay()
                     do
                     {
                         // this line may be notification, we need to skip
-                        if (!std::getline(infile, response))
+                        if (!std::getline(m_infile, response))
                         {
                             SWSS_LOG_THROW("failed to read next file from file, previous: %s", line.c_str());
                         }
@@ -2592,6 +2699,9 @@ int SaiPlayer::replay()
             case 's':
                 api = SAI_COMMON_API_SET;
                 break;
+            case 'B':
+                processBulk(SAI_COMMON_API_BULK_GET, line);
+                continue;
             case 'S':
                 processBulk(SAI_COMMON_API_BULK_SET, line);
                 continue;
@@ -2727,7 +2837,7 @@ int SaiPlayer::replay()
             do
             {
                 // this line may be notification, we need to skip
-                std::getline(infile, response);
+                std::getline(m_infile, response);
             }
             while (response[response.find_first_of("|") + 1] == 'n');
 
@@ -2772,7 +2882,7 @@ int SaiPlayer::replay()
         }
     }
 
-    infile.close();
+    m_infile.close();
 
     SWSS_LOG_NOTICE("finished replaying %s with SUCCESS", filename.c_str());
 

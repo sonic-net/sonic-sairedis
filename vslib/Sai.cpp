@@ -630,11 +630,18 @@ sai_status_t Sai::bulkGet(
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
+    VS_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_meta->bulkGet(
+            object_type,
+            object_count,
+            object_id,
+            attr_count,
+            attr_list,
+            mode,
+            object_statuses);
 }
 
 // BULK QUAD ENTRY

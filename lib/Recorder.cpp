@@ -641,6 +641,40 @@ void Recorder::recordGenericGetResponse(
     recordLine("G|" + sai_serialize_status(status) + "|" + Globals::joinFieldValues(arguments));
 }
 
+void Recorder::recordBulkGenericGet(
+        _In_ const std::string& key,
+        _In_ const std::vector<swss::FieldValueTuple>& arguments)
+{
+    SWSS_LOG_ENTER();
+
+    std::string joined;
+
+    for (const auto &e: arguments)
+    {
+        joined += "||" + fvField(e) + "|" + fvValue(e);
+    }
+
+    // capital 'B' stands for Bulk GET operation. Note: 'G' already used for get response.
+
+    recordLine("B|" + key + joined);
+}
+
+void Recorder::recordBulkGenericGetResponse(
+        _In_ sai_status_t status,
+        _In_ const std::vector<swss::FieldValueTuple>& arguments)
+{
+    SWSS_LOG_ENTER();
+
+    std::string joined;
+
+    for (const auto &e: arguments)
+    {
+        joined += "||" + fvField(e) + "|" + fvValue(e);
+    }
+
+    recordLine("G|" + sai_serialize_status(status) + "|" + joined);
+}
+
 void Recorder::recordGenericGetStats(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
