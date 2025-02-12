@@ -70,6 +70,7 @@ jobs:
       path: $(Build.ArtifactStagingDirectory)/download
       artifact: common-lib
       patterns: |
+        target/debs/${{ parameters.debian_version }}/libnl-cli*.deb
         target/debs/${{ parameters.debian_version }}/libnl-3*.deb
         target/debs/${{ parameters.debian_version }}/libnl-genl*.deb
         target/debs/${{ parameters.debian_version }}/libnl-route*.deb
