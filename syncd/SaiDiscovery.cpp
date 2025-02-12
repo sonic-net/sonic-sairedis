@@ -1,5 +1,4 @@
 #include "SaiDiscovery.h"
-#include "VendorSaiOptions.h"
 
 #include "swss/logger.h"
 
@@ -25,31 +24,7 @@ SaiDiscovery::SaiDiscovery(
 {
     SWSS_LOG_ENTER();
 
-    sai_api_version_t version = SAI_VERSION(0,0,0);
-
-    sai_status_t status = m_sai->queryApiVersion(&version);
-
-    if (status == SAI_STATUS_SUCCESS)
-    {
-        auto vso = std::dynamic_pointer_cast<VendorSaiOptions>(sai->getOptions(VendorSaiOptions::OPTIONS_KEY));
-
-        // TODO check vso for null
-
-        m_attrVersionChecker.enable(vso->m_checkAttrVersion);
-        m_attrVersionChecker.setSaiApiVersion(version);
-
-        SWSS_LOG_NOTICE("check attr version %s, libsai api version: %lu",
-                (vso->m_checkAttrVersion ? "ENABLED" : "DISABLED"),
-                version);
-    }
-    else
-    {
-        m_attrVersionChecker.enable(false);
-        m_attrVersionChecker.setSaiApiVersion(SAI_API_VERSION);
-
-        SWSS_LOG_WARN("failed to obtain libsai api version: %s, will discover all attributes",
-                sai_serialize_status(status).c_str());
-    }
+    // empty
 }
 
 SaiDiscovery::~SaiDiscovery()
@@ -141,11 +116,6 @@ void SaiDiscovery::discover(
         sai_attribute_t attr;
 
         attr.id = md->attrid;
-
-        if (!m_attrVersionChecker.isSufficientVersion(md))
-        {
-            continue;
-        }
 
         if (md->attrvaluetype == SAI_ATTR_VALUE_TYPE_OBJECT_ID)
         {
@@ -295,8 +265,6 @@ std::set<sai_object_id_t> SaiDiscovery::discover(
      */
 
     m_defaultOidMap.clear();
-
-    m_attrVersionChecker.reset();
 
     std::set<sai_object_id_t> discovered_rids;
 

@@ -975,20 +975,6 @@ std::string sai_serialize_meter_bucket_entry(
     return j.dump();
 }
 
-std::string sai_serialize_prefix_compression_entry(
-        _In_ const sai_prefix_compression_entry_t &prefix_compression_entry)
-{
-    SWSS_LOG_ENTER();
-
-    json j;
-
-    j["switch_id"] = sai_serialize_object_id(prefix_compression_entry.switch_id);
-    j["prefix_table_id"] = sai_serialize_object_id(prefix_compression_entry.prefix_table_id);
-    j["prefix"] = sai_serialize_ip_prefix(prefix_compression_entry.prefix);
-
-    return j.dump();
-}
-
 std::string sai_serialize_flow_entry(
         _In_ const sai_flow_entry_t &flow_entry)
 {
@@ -2690,10 +2676,6 @@ static bool sai_serialize_object_entry(
 
         case SAI_OBJECT_TYPE_MCAST_FDB_ENTRY:
             key = sai_serialize_mcast_fdb_entry(key_entry.mcast_fdb_entry);
-            return true;
-
-        case SAI_OBJECT_TYPE_PREFIX_COMPRESSION_ENTRY:
-            key = sai_serialize_prefix_compression_entry(key_entry.prefix_compression_entry);
             return true;
 
         default:
@@ -4545,19 +4527,6 @@ void sai_deserialize_meter_bucket_entry(
     sai_deserialize_number(j["meter_class"], meter_bucket_entry.meter_class);
 }
 
-void sai_deserialize_prefix_compression_entry(
-        _In_ const std::string& s,
-        _Out_ sai_prefix_compression_entry_t& prefix_compression_entry)
-{
-    SWSS_LOG_ENTER();
-
-    json j = json::parse(s);
-
-    sai_deserialize_object_id(j["switch_id"], prefix_compression_entry.switch_id);
-    sai_deserialize_object_id(j["prefix_table_id"], prefix_compression_entry.prefix_table_id);
-    sai_deserialize_ip_prefix(j["prefix"], prefix_compression_entry.prefix);
-}
-
 void sai_deserialize_flow_entry(
         _In_ const std::string& s,
         _Out_ sai_flow_entry_t &flow_entry)
@@ -5007,10 +4976,6 @@ bool sai_deserialize_object_entry(
 
         case SAI_OBJECT_TYPE_MCAST_FDB_ENTRY:
             sai_deserialize_mcast_fdb_entry(object_id, meta_key.objectkey.key.mcast_fdb_entry);
-            return true;
-
-        case SAI_OBJECT_TYPE_PREFIX_COMPRESSION_ENTRY:
-            sai_deserialize_prefix_compression_entry(object_id, meta_key.objectkey.key.prefix_compression_entry);
             return true;
 
         default:

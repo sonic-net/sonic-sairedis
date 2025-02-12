@@ -17,7 +17,6 @@ noinst_LIBRARIES = libSyncd.a libSyncdRequestShutdown.a libMdioIpcClient.a
 libSyncd_a_SOURCES = \
 				AsicOperation.cpp \
 				AsicView.cpp \
-				AttrVersionChecker.cpp \
 				BestCandidateFinder.cpp \
 				BreakConfig.cpp \
 				BreakConfigParser.cpp \
