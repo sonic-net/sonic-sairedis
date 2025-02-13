@@ -1,31 +1,27 @@
 #pragma once
 
-#include "syncd/SaiSwitchInterface.h"
+#include "SaiSwitchInterface.h"
 
 #include <map>
 #include <string>
 
-namespace saiasiccmp
+namespace unittests
 {
-    class SaiSwitchAsic:
+    class MockableSaiSwitchInterface:
         public syncd::SaiSwitchInterface
     {
         private:
 
-            SaiSwitchAsic(const SaiSwitchAsic&);
-            SaiSwitchAsic& operator=(const SaiSwitchAsic&);
+            MockableSaiSwitchInterface(const MockableSaiSwitchInterface&);
+            MockableSaiSwitchInterface& operator=(const MockableSaiSwitchInterface&);
 
         public:
 
-            SaiSwitchAsic(
+            MockableSaiSwitchInterface(
                     _In_ sai_object_id_t switchVid,
-                    _In_ sai_object_id_t switchRid,
-                    _In_ const std::map<sai_object_id_t, sai_object_id_t> vid2rid,
-                    _In_ const std::map<sai_object_id_t, sai_object_id_t> rid2vid,
-                    _In_ const std::map<std::string, sai_object_id_t>& hidden,
-                    _In_ const std::map<sai_object_id_t, sai_object_type_t>& coldVids);
+                    _In_ sai_object_id_t switchRid);
 
-            virtual ~SaiSwitchAsic() = default;
+            virtual ~MockableSaiSwitchInterface() = default;
 
         public:
 
