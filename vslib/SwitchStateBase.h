@@ -51,6 +51,8 @@ namespace saivs
 
             virtual sai_status_t set_switch_mac_address();
 
+            virtual sai_status_t set_vxlan_default_router_mac();
+
             virtual sai_status_t set_switch_supported_object_types();
 
             virtual sai_status_t set_switch_default_attributes();

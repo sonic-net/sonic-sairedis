@@ -77,6 +77,9 @@ namespace syncd
             virtual void getDefaultMacAddress(
                     _Out_ sai_mac_t& mac) const = 0;
 
+            virtual void getVxlanDefaultRouterMacAddress(
+                    _Out_ sai_mac_t& mac) const = 0;
+
             virtual sai_object_id_t getDefaultValueForOidAttr(
                     _In_ sai_object_id_t rid,
                     _In_ sai_attr_id_t attr_id) = 0;

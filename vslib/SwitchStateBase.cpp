@@ -911,6 +911,30 @@ sai_status_t SwitchStateBase::set_switch_mac_address()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+sai_status_t SwitchStateBase::set_vxlan_default_router_mac()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create switch vxlan default router mac address");
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC;
+
+    // NOTE if there is default vxlan mac present like in case of get_default_gw_mac_address
+    // then that mac should be used
+    {
+        attr.value.mac[0] = 0x12;
+        attr.value.mac[1] = 0x23;
+        attr.value.mac[2] = 0x34;
+        attr.value.mac[3] = 0x45;
+        attr.value.mac[4] = 0x56;
+        attr.value.mac[5] = 0x67;
+    }
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+}
+
 sai_status_t SwitchStateBase::set_switch_supported_object_types()
 {
     SWSS_LOG_ENTER();
@@ -1649,6 +1673,7 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     SWSS_LOG_ENTER();
 
     CHECK_STATUS(set_switch_mac_address());
+    CHECK_STATUS(set_vxlan_default_router_mac());
     CHECK_STATUS(create_cpu_port());
     CHECK_STATUS(create_default_hash());
     CHECK_STATUS(create_default_vlan());
