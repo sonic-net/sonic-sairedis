@@ -209,6 +209,72 @@ TEST(Syncd, inspectAsic)
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai->apiUninitialize());
 }
 
+TEST(Syncd, hardSingleReinit)
+{
+    auto db = std::make_shared<swss::DBConnector>("ASIC_DB", 0, true);
+
+    swss::RedisReply r(db.get(), "FLUSHALL", REDIS_REPLY_STATUS);
+
+    r.checkStatusOK();
+
+    sai_service_method_table_t smt;
+
+    smt.profile_get_value = &profileGetValue;
+    smt.profile_get_next_value = &profileGetNextValue;
+
+    auto vssai = std::make_shared<saivs::Sai>();
+
+    auto cmd = std::make_shared<CommandLineOptions>();
+
+    cmd->m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+    cmd->m_enableTempView = true;
+    cmd->m_profileMapFile = "profile.ini";
+
+    auto syncd = std::make_shared<Syncd>(vssai, cmd, false);
+
+    auto sai = std::make_shared<sairedis::Sai>();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->apiInitialize(0, &smt));
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_REDIS_SWITCH_ATTR_REDIS_COMMUNICATION_MODE;
+    attr.value.s32 = SAI_REDIS_COMMUNICATION_MODE_REDIS_SYNC;
+
+    // set syncd mode on sairedis
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = false;
+
+    sai_object_id_t switchId;
+
+    // create switch
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    // start syncd to do hard reinit
+
+    std::thread thread(syncd_thread, syncd);
+
+    // request shutdown
+
+    auto opt = std::make_shared<RequestShutdownCommandLineOptions>();
+
+    opt->setRestartType(SYNCD_RESTART_TYPE_COLD);
+
+    RequestShutdown rs(opt);
+
+    rs.send();
+
+    // join thread for syncd to exit
+
+    thread.join();
+
+    syncd = nullptr;
+}
+
 using namespace syncd;
 
 #ifdef MOCK_METHOD
