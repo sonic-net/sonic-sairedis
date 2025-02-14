@@ -222,29 +222,40 @@ TEST_F(SyncdMlnxTest, queryAttrEnumValuesCapability)
 
 TEST_F(SyncdMlnxTest, portBulkAddRemove)
 {
-    const std::uint32_t portCount = 1;
+    const std::uint32_t portCount = 4;
     const std::uint32_t laneCount = 4;
 
     // Generate port config
-    std::array<std::uint32_t, laneCount> laneList = { 1000, 1001, 1002, 1003 };
-
     sai_attribute_t attr;
-    std::vector<sai_attribute_t> attrList;
+    std::array<std::vector<std::uint32_t>, portCount> laneLists;
+    std::array<std::vector<sai_attribute_t>, portCount> attrLists;
+    std::array<std::uint32_t, portCount> attrCountList;
+    std::array<const sai_attribute_t*, portCount> attrPtrList;
 
-    attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
-    attr.value.u32list.count = static_cast<std::uint32_t>(laneList.size());
-    attr.value.u32list.list = laneList.data();
-    attrList.push_back(attr);
+    uint32_t lane = 1000;
+    for (auto i = 0u; i < portCount; i++)
+    {
+        auto &laneList = laneLists[i];
+        auto &attrList = attrLists[i];
+        for (auto j = 0u; j < laneCount; j++)
+        {
+            laneList.push_back(lane++);
+        }
+        attr.id = SAI_PORT_ATTR_HW_LANE_LIST;
+        attr.value.u32list.count = static_cast<std::uint32_t>(laneList.size());
+        attr.value.u32list.list = laneList.data();
+        attrList.push_back(attr);
 
-    attr.id = SAI_PORT_ATTR_SPEED;
-    attr.value.u32 = 1000;
-    attrList.push_back(attr);
+        attr.id = SAI_PORT_ATTR_SPEED;
+        attr.value.u32 = 1000;
+        attrList.push_back(attr);
 
-    std::array<std::uint32_t, portCount> attrCountList = { static_cast<std::uint32_t>(attrList.size()) };
-    std::array<const sai_attribute_t*, portCount> attrPtrList = { attrList.data() };
+        attrPtrList[i] = attrList.data();
+        attrCountList[i] = static_cast<std::uint32_t>(attrList.size());
+    }
 
-    std::array<sai_object_id_t, portCount> oidList = { SAI_NULL_OBJECT_ID };
-    std::array<sai_status_t, portCount> statusList = { SAI_STATUS_SUCCESS };
+    std::vector<sai_object_id_t> oidList(portCount, SAI_NULL_OBJECT_ID);
+    std::vector<sai_status_t> statusList(portCount, SAI_STATUS_SUCCESS);
 
     // Validate port bulk add
     auto status = m_sairedis->bulkCreate(
@@ -334,15 +345,41 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     fvVectorExpected.emplace_back(counter_field_name, counters);
     ASSERT_EQ(fvVectorExpected, fvVector);
 
+    // Try with bulk initialization
+    key = "PORT_STAT_COUNTER:";
+    for (auto i = 1u; i < portCount; i++)
+    {
+        key += sai_serialize_object_id(oidList[i]) + ",";
+    }
+    key.pop_back();
+
+    flexCounterParam.counter_key.list = (int8_t*)const_cast<char *>(key.c_str());
+    flexCounterParam.counter_key.count = (uint32_t)key.length();
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, m_switchId, &attr);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (auto i = 1u; i < portCount; i++)
+    {
+        key = "PORT_STAT_COUNTER:" + sai_serialize_object_id(oidList[i]);
+        ASSERT_TRUE(m_flexCounterTable->get(key, fvVector));
+        ASSERT_EQ(fvVectorExpected, fvVector);
+    }
+
     flexCounterParam.counter_ids.list = nullptr;
     flexCounterParam.counter_ids.count = 0;
     flexCounterParam.counter_field_name.list = nullptr;
     flexCounterParam.counter_field_name.count = 0;
 
     // 3. Stop counter polling for the port
-    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, m_switchId, &attr);
-    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
-    ASSERT_FALSE(m_flexCounterTable->get(key, fvVector));
+    for (auto i = 0u; i < portCount; i++)
+    {
+        key = "PORT_STAT_COUNTER:" + sai_serialize_object_id(oidList[i]);
+        flexCounterParam.counter_key.list = (int8_t*)const_cast<char *>(key.c_str());
+        flexCounterParam.counter_key.count = (uint32_t)key.length();
+        status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, m_switchId, &attr);
+        ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+        ASSERT_FALSE(m_flexCounterTable->get(key, fvVector));
+    }
 
     // 4. Disable counter polling for the group
     flexCounterGroupParam.poll_interval.list = nullptr;
