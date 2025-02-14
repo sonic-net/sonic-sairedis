@@ -252,7 +252,7 @@ TEST(Syncd, hardSingleReinit)
 
     // create switch
 
-    EXPECT_EQ(SAI_STATUS_FAILURE, sai->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
 
     // start syncd to do hard reinit
 
