@@ -19,9 +19,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:B:w:uSUCsz:lrm:h";
 #else
-    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:B:w:uSUCsz:lh";
 #endif // SAITHRIFT
 
     while (true)
@@ -43,7 +43,6 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "breakConfig",             required_argument, 0, 'b' },
             { "watchdogWarnTimeSpan",    optional_argument, 0, 'w' },
             { "supportingBulkCounters",  required_argument, 0, 'B' },
-            { "enableAttrVersionCheck",  no_argument,       0, 'a' },
 #ifdef SAITHRIFT
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
@@ -139,10 +138,6 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
                 options->m_supportingBulkCounterGroups = std::string(optarg);
                 break;
 
-            case 'a':
-                options->m_enableAttrVersionCheck = true;
-                break;
-
             case 'h':
                 printUsage();
                 exit(EXIT_SUCCESS);
@@ -201,8 +196,6 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Watchdog time span (in microseconds) to watch for execution" << std::endl;
     std::cout << "    -B --supportingBulkCounters" << std::endl;
     std::cout << "        Counter groups those support bulk polling" << std::endl;
-    std::cout << "    -a --enableAttrVersionCheck" << std::endl;
-    std::cout << "        Enable attribute SAI version check when performing SAI discovery" << std::endl;
 
 #ifdef SAITHRIFT
 

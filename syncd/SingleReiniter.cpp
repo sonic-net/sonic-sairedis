@@ -317,7 +317,7 @@ void SingleReiniter::processSwitches()
          * object, so when doing discover we will get full default ASIC view.
          */
 
-        m_sw = std::make_shared<SaiSwitch>(m_switch_vid, m_switch_rid, m_client, m_translator, m_vendorSai, false);
+        m_sw = std::make_shared<SaiSwitch>(m_switch_vid, m_switch_rid, m_client, m_translator, m_vendorSai);
 
         /*
          * We processed switch. We have switch vid/rid so we can process all
