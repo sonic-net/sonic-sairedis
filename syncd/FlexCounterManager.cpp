@@ -110,7 +110,8 @@ void FlexCounterManager::bulkAddCounter(
     SWSS_LOG_ENTER();
 
     auto fc = getInstance(instanceId);
-    sai_object_type_t objectType = VidManager::objectTypeQuery(vids[0]); // VID and RID will have the same object type
+
+    sai_object_type_t objectType = VidManager::objectTypeQuery(vids.at(0)); // VID and RID will have the same object type
 
     fc->bulkAddCounter(objectType, vids, rids, values);
 

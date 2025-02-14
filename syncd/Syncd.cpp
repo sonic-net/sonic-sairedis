@@ -2794,7 +2794,7 @@ sai_status_t Syncd::processFlexCounterEvent(
     auto strVids = key.substr(delimiter + 1);
     auto vidStringVector = swss::tokenize(strVids, ',');
 
-    if (fromAsicChannel && op == SET_COMMAND && vidStringVector.size() > 1)
+    if (fromAsicChannel && op == SET_COMMAND && (!vidStringVector.empty()))
     {
         std::vector<sai_object_id_t> vids;
         std::vector<sai_object_id_t> rids;
