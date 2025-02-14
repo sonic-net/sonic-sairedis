@@ -55,6 +55,8 @@ namespace saivs
             bool uninstallTap2EthFilter(
                     _In_ std::shared_ptr<TrafficFilter> filter);
 
+            void runThreads();
+
         private:
 
             void veth2tap_fun();
