@@ -3301,7 +3301,7 @@ sai_status_t Syncd::processOidCreate(
              * constructor, like getting all queues, ports, etc.
              */
 
-            m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai);
+            m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, objectRid, m_client, m_translator, m_vendorSai, false);
 
             m_mdioIpcServer->setSwitchId(objectRid);
 
@@ -4620,7 +4620,7 @@ void Syncd::onSwitchCreateInInitViewMode(
 
         // make switch initialization and get all default data
 
-        m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai);
+        m_switches[switchVid] = std::make_shared<SaiSwitch>(switchVid, switchRid, m_client, m_translator, m_vendorSai, false);
 
         m_mdioIpcServer->setSwitchId(switchRid);
 
