@@ -175,6 +175,68 @@ TEST_F(SwitchStateBaseTest, switchHashAlgorithmCapabilitiesGet)
     ASSERT_EQ(haSet1, haSet2);
 }
 
+TEST_F(SwitchStateBaseTest, switchPacketTrimmingQueueModeCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+
+    std::vector<sai_int32_t> qmList(data.count);
+    data.list = qmList.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const std::set<sai_packet_trim_queue_resolution_mode_t> qmSet1 = {
+        SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC,
+        SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_DYNAMIC
+    };
+
+    std::set<sai_packet_trim_queue_resolution_mode_t> qmSet2;
+
+    std::transform(
+        qmList.cbegin(), qmList.cend(), std::inserter(qmSet2, qmSet2.begin()),
+        [](sai_int32_t value) { return static_cast<sai_packet_trim_queue_resolution_mode_t>(value); }
+    );
+    ASSERT_EQ(qmSet1, qmSet2);
+}
+
+TEST_F(SwitchStateBaseTest, bufferProfilePacketAdmissionFailActionCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_BUFFER_PROFILE, SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+
+    std::vector<sai_int32_t> paList(data.count);
+    data.list = paList.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_BUFFER_PROFILE, SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const std::set<sai_buffer_profile_packet_admission_fail_action_t> paSet1 = {
+        SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP,
+        SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP_AND_TRIM
+    };
+
+    std::set<sai_buffer_profile_packet_admission_fail_action_t> paSet2;
+
+    std::transform(
+        paList.cbegin(), paList.cend(), std::inserter(paSet2, paSet2.begin()),
+        [](sai_int32_t value) { return static_cast<sai_buffer_profile_packet_admission_fail_action_t>(value); }
+    );
+    ASSERT_EQ(paSet1, paSet2);
+}
+
 //Test the following function:
 //sai_status_t initialize_voq_switch_objects(
 //             _In_ uint32_t attr_count,
