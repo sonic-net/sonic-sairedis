@@ -1754,7 +1754,11 @@ public:
             _In_ const std::string &per_object_stats_mode) override
     {
         SWSS_LOG_ENTER();
-        SWSS_LOG_ERROR("It does not support to add counter in bulk mode for DashMeterCounterContext");
+
+        for (auto i = 0uL; i < vids.size(); i++)
+        {
+            addObject(vids[i], rids[i], idStrings, per_object_stats_mode);
+        }
     }
 
     bool hasObject() const override
@@ -2755,6 +2759,14 @@ void FlexCounter::bulkAddCounter(
                     rids,
                     idStrings,
                     "");
+        }
+        else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
+        {
+            counterIds = idStrings;
+        }
+        else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == STATS_MODE_FIELD)
+        {
+            statsMode = value;
         }
         else
         {
