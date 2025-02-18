@@ -91,7 +91,8 @@ void testAddRemoveCounter(
         const std::string bulkChunkSizePerCounter = "",
         bool bulkChunkSizeAfterPort = true,
         const std::string pluginName = "",
-        bool immediatelyRemoveBulkChunkSizePerCounter = false)
+        bool immediatelyRemoveBulkChunkSizePerCounter = false,
+        bool forceSingleCreate = false)
 {
     SWSS_LOG_ENTER();
 
@@ -129,11 +130,19 @@ void testAddRemoveCounter(
     {
         fc.bulkAddCounter(object_type, object_ids, object_ids, values);
     }
-    else
+    else if (forceSingleCreate)
     {
         for (auto object_id : object_ids)
         {
             fc.addCounter(object_id, object_id, values);
+        }
+    }
+    else
+    {
+        for (auto object_id : object_ids)
+        {
+            std::vector<sai_object_id_t> tmp_object_ids = {object_id};
+            fc.bulkAddCounter(object_type, tmp_object_ids, tmp_object_ids, values);
         }
     }
 
@@ -1216,7 +1225,9 @@ TEST(FlexCounter, bulkChunksize)
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         false,
-        PORT_PLUGIN_FIELD);
+        PORT_PLUGIN_FIELD,
+        false,
+        true);
     EXPECT_TRUE(allObjectIds.empty());
 
     // Remove per counter bulk chunk size after initializing it
