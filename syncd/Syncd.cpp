@@ -2019,7 +2019,7 @@ sai_status_t Syncd::processBulkOidCreate(
 
     if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
     {
-        SWSS_LOG_ERROR("bulkCreate api is not implemented or not supported, object_type = %s",
+        SWSS_LOG_WARN("bulkCreate api is not implemented or not supported, object_type = %s",
                 sai_serialize_object_type(objectType).c_str());
         return status;
     }
@@ -2095,7 +2095,7 @@ sai_status_t Syncd::processBulkOidSet(
 
     if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
     {
-        SWSS_LOG_ERROR("bulkSet api is not implemented or not supported, object_type = %s",
+        SWSS_LOG_WARN("bulkSet api is not implemented or not supported, object_type = %s",
                 sai_serialize_object_type(objectType).c_str());
     }
 
@@ -2143,7 +2143,7 @@ sai_status_t Syncd::processBulkOidRemove(
 
     if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
     {
-        SWSS_LOG_ERROR("bulkRemove api is not implemented or not supported, object_type = %s",
+        SWSS_LOG_WARN("bulkRemove api is not implemented or not supported, object_type = %s",
                 sai_serialize_object_type(objectType).c_str());
         return status;
     }
