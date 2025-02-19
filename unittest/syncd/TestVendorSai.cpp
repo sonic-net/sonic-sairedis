@@ -1547,7 +1547,7 @@ TEST(VendorSai, bulk_meter_rules)
 TEST(VendorSai, logSet_logGet)
 {
     VendorSai sai;
-    sai.initialize(0, &test_services);
+    sai.apiInitialize(0, &test_services);
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, sai.logSet(SAI_API_PORT, SAI_LOG_LEVEL_DEBUG));
 
