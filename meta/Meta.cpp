@@ -1549,9 +1549,9 @@ sai_status_t Meta::meta_generic_validation_remove(
             return SAI_STATUS_SUCCESS;
         }
 
-        if (object_type == SAI_OBJECT_TYPE_VNET || 
-            object_type == SAI_OBJECT_TYPE_OUTBOUND_ROUTING_GROUP ||
-            object_type == SAI_OBJECT_TYPE_DASH_ACL_GROUP)
+        if (object_type == (sai_object_type_t) SAI_OBJECT_TYPE_VNET || 
+            object_type == (sai_object_type_t) SAI_OBJECT_TYPE_OUTBOUND_ROUTING_GROUP ||
+            object_type == (sai_object_type_t) SAI_OBJECT_TYPE_DASH_ACL_GROUP)
         {
             /*
              * Allow removing DASH VNET, DASH outbound routing group, and DASH ACL group regardless of reference count
