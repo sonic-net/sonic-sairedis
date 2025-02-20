@@ -43,6 +43,12 @@ namespace syncd
                 _In_ const std::vector<std::string> &idStrings,
                 _In_ const std::string &per_object_stats_mode) = 0;
 
+        virtual void bulkAddObject(
+                _In_ const std::vector<sai_object_id_t>& vids,
+                _In_ const std::vector<sai_object_id_t>& rids,
+                _In_ const std::vector<std::string>& idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
         virtual void removeObject(
                 _In_ sai_object_id_t vid) = 0;
 
@@ -93,6 +99,12 @@ namespace syncd
             void addCounter(
                     _In_ sai_object_id_t vid,
                     _In_ sai_object_id_t rid,
+                    _In_ const std::vector<swss::FieldValueTuple>& values);
+
+            void bulkAddCounter(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::vector<sai_object_id_t>& vids,
+                    _In_ const std::vector<sai_object_id_t>& rids,
                     _In_ const std::vector<swss::FieldValueTuple>& values);
 
             void removeCounter(
@@ -188,5 +200,7 @@ namespace syncd
             bool m_noDoubleCheckBulkCapability;
 
             static const std::map<std::string, std::string> m_plugIn2CounterType;
+
+            static const std::map<std::tuple<sai_object_type_t, std::string>, std::string> m_objectTypeField2CounterType;
     };
 }

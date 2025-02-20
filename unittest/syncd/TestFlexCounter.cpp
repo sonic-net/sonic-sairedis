@@ -86,11 +86,13 @@ void testAddRemoveCounter(
         VerifyStatsFunc verifyFunc,
         bool autoRemoveDbEntry,
         const std::string statsMode = STATS_MODE_READ,
+        bool bulkAdd = false,
         const std::string bulkChunkSize = "",
         const std::string bulkChunkSizePerCounter = "",
         bool bulkChunkSizeAfterPort = true,
         const std::string pluginName = "",
-        bool immediatelyRemoveBulkChunkSizePerCounter = false)
+        bool immediatelyRemoveBulkChunkSizePerCounter = false,
+        bool forceSingleCreate = false)
 {
     SWSS_LOG_ENTER();
 
@@ -123,9 +125,25 @@ void testAddRemoveCounter(
 
     values.clear();
     values.emplace_back(counterIdFieldName, join(counterIdNames));
-    for (auto object_id : object_ids)
+
+    if (bulkAdd)
     {
-        fc.addCounter(object_id, object_id, values);
+        fc.bulkAddCounter(object_type, object_ids, object_ids, values);
+    }
+    else if (forceSingleCreate)
+    {
+        for (auto object_id : object_ids)
+        {
+            fc.addCounter(object_id, object_id, values);
+        }
+    }
+    else
+    {
+        for (auto object_id : object_ids)
+        {
+            std::vector<sai_object_id_t> tmp_object_ids = {object_id};
+            fc.bulkAddCounter(object_type, tmp_object_ids, tmp_object_ids, values);
+        }
     }
 
     if (bulkChunkSizeAfterPort)
@@ -215,6 +233,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         true);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_COUNTER,
+        FLOW_COUNTER_ID_LIST,
+        {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        true,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_MACSEC_FLOW,
@@ -224,6 +254,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_MACSEC_FLOW,
+        MACSEC_FLOW_COUNTER_ID_LIST,
+        {"SAI_MACSEC_FLOW_STAT_CONTROL_PKTS", "SAI_MACSEC_FLOW_STAT_PKTS_UNTAGGED"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_MACSEC_SA,
@@ -232,6 +274,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"100", "200"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_MACSEC_SA,
+        MACSEC_SA_COUNTER_ID_LIST,
+        {"SAI_MACSEC_SA_STAT_OCTETS_ENCRYPTED", "SAI_MACSEC_SA_STAT_OCTETS_PROTECTED"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 
     testAddRemoveCounter(
         1,
@@ -251,6 +305,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_DEBUG_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IN_CONFIGURED_DROP_REASONS_0_DROPPED_PKTS", "SAI_PORT_STAT_IN_CONFIGURED_DROP_REASONS_1_DROPPED_PKTS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     bool clearCalled = false;
     sai->mock_clearStats = [&] (sai_object_type_t object_type, sai_object_id_t object_id, uint32_t number_of_counters, const sai_stat_id_t *counter_ids) {
         clearCalled = true;
@@ -268,6 +334,19 @@ TEST(FlexCounter, addRemoveCounter)
         STATS_MODE_READ_AND_CLEAR);
     EXPECT_EQ(true, clearCalled);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_QUEUE,
+        QUEUE_COUNTER_ID_LIST,
+        {"SAI_QUEUE_STAT_PACKETS", "SAI_QUEUE_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ_AND_CLEAR,
+        true);
+    EXPECT_EQ(true, clearCalled);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP,
@@ -276,6 +355,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"100", "200"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP,
+        PG_COUNTER_ID_LIST,
+        {"SAI_INGRESS_PRIORITY_GROUP_STAT_PACKETS", "SAI_INGRESS_PRIORITY_GROUP_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 
     testAddRemoveCounter(
         1,
@@ -286,6 +377,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_ROUTER_INTERFACE,
+        RIF_COUNTER_ID_LIST,
+        {"SAI_ROUTER_INTERFACE_STAT_IN_OCTETS", "SAI_ROUTER_INTERFACE_STAT_IN_PACKETS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_SWITCH,
@@ -295,6 +398,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_SWITCH,
+        SWITCH_DEBUG_COUNTER_ID_LIST,
+        {"SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_0_DROPPED_PKTS", "SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_1_DROPPED_PKTS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     testAddRemoveCounter(
         1,
         SAI_OBJECT_TYPE_TUNNEL,
@@ -303,6 +418,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"100", "200"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_TUNNEL,
+        TUNNEL_COUNTER_ID_LIST,
+        {"SAI_TUNNEL_STAT_IN_OCTETS", "SAI_TUNNEL_STAT_IN_PACKETS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 
     testAddRemoveCounter(
         1,
@@ -344,6 +471,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_QUEUE,
+        QUEUE_ATTR_ID_LIST,
+        {"SAI_QUEUE_ATTR_PAUSE_STATUS"},
+        {"false"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
         for (uint32_t i = 0; i < attr_count; i++)
         {
@@ -363,6 +502,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"oid:0x1"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP,
+        PG_ATTR_ID_LIST,
+        {"SAI_INGRESS_PRIORITY_GROUP_ATTR_PORT"},
+        {"oid:0x1"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 
     sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
         for (uint32_t i = 0; i < attr_count; i++)
@@ -388,6 +539,18 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_MACSEC_SA,
+        MACSEC_SA_ATTR_ID_LIST,
+        {"SAI_MACSEC_SA_ATTR_CONFIGURED_EGRESS_XPN", "SAI_MACSEC_SA_ATTR_AN"},
+        {"0", "1"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
     sai->mock_get = [] (sai_object_type_t objectType, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attr_list) {
         for (uint32_t i = 0; i < attr_count; i++)
         {
@@ -407,6 +570,18 @@ TEST(FlexCounter, addRemoveCounter)
         {"1000"},
         counterVerifyFunc,
         false);
+
+    // Bulk create mode to satisfy the coverage requirement
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_ACL_COUNTER,
+        ACL_COUNTER_ATTR_ID_LIST,
+        {"SAI_ACL_COUNTER_ATTR_PACKETS"},
+        {"1000"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 }
 
 TEST(FlexCounter, queryCounterCapability)
@@ -802,13 +977,28 @@ TEST(FlexCounter, bulkChunksize)
      *    and verify whether the database content aligns with the stored values
      * 3. Verify whether values of all counter IDs of all objects have been generated
      * 4. Verify whether the bulk chunk size is correct
+     * 5. Simulate bulk-unsupported counter IDs which should be fetched by single call
+     *    with both per counter bulk size supported or not
+     *
+     * A counter can be polled in initialization phase and runtime
+     * For each test, it is expected to call bulk for "initialCheckCount" times during initialization.
+     * In this stage, the mock function just return succeed for failure to indicate whether bulk poll is supported
+     * but it does not provide a counter value for further check
+     *
+     * The calls to bulk starting from "initialCheckCount+1" are treated as runtime calls.
+     * The counter values objects are generated as following:
+     *   - a counterSeed maintains the current counter value to return
+     *   - If the counterValuesMap[object_id][counter_id] exists, returns it as the counter's value
+     *   - Otherwise, it's the first time the (object, counter ID) is polled
+     *     - return the current value of counterSeed as the counter's value
+     *     - store the counter's value into counterValuesMap
+     *     - increase the counterSeed
+     * When the test finishes, the counterSeed should equal (number_of_objects * number_of_bulk_supported_counters)
+     * And all integer < counterSeed should be returned to one and only one (object, counter ID) tuple,
+     * which can be verified by the verify function.
+     *
+     * For the bulk-unsupported counters, getStatExt will be called to poll counters, and return counter_id * OID as the counter's value
      */
-    sai->mock_getStatsExt = [&](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
-        return SAI_STATUS_SUCCESS;
-    };
-    sai->mock_getStats = [&](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
-        return SAI_STATUS_SUCCESS;
-    };
     sai->mock_queryStatsCapability = [&](sai_object_id_t switch_id, sai_object_type_t object_type, sai_stat_capability_list_t *stats_capability) {
         // For now, just return failure to make test simple, will write a singe test to cover querySupportedCounters
         return SAI_STATUS_FAILURE;
@@ -853,10 +1043,45 @@ TEST(FlexCounter, bulkChunksize)
         }
     };
 
+    // Bulk-unsupported counter IDs should be polled using single call (getStatExt)
+    std::set<sai_stat_id_t> bulkUnsupportedCounters;
+    std::set<sai_object_id_t> bulkUnsupportedObjectIds;
+    bool forceSingleCall = false;
+    // <oid, <counter id, counter value>>
+    auto _getStatsExt = [&](sai_object_type_t, sai_object_id_t oid, uint32_t number_of_counters, const sai_stat_id_t *counter_ids, sai_stats_mode_t, uint64_t *counters) {
+        for (auto i = 0u; i < number_of_counters; i++)
+        {
+            if (forceSingleCall
+                || (bulkUnsupportedCounters.find(counter_ids[i]) != bulkUnsupportedCounters.end()
+                    && (bulkUnsupportedObjectIds.empty() || bulkUnsupportedObjectIds.find(oid) != bulkUnsupportedObjectIds.end())))
+            {
+                // avoid counter_id == 0 which causes the same counter value (0) for all objects
+                counters[i] = (1 + counter_ids[i]) * (uint64_t)oid;
+                if (counterValuesMap.find(oid) == counterValuesMap.end())
+                {
+                    counterValuesMap[oid] = {};
+                }
+                counterValuesMap[oid][counter_ids[i]] = counters[i];
+            }
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    sai->mock_getStats = [&](sai_object_type_t type, sai_object_id_t oid, uint32_t number_of_counters, const sai_stat_id_t *counter_ids, uint64_t *counters) {
+        return _getStatsExt(type, oid, number_of_counters, counter_ids, SAI_STATS_MODE_READ, counters);
+    };
+
+    sai->mock_getStatsExt = [&](sai_object_type_t type, sai_object_id_t oid, uint32_t number_of_counters, const sai_stat_id_t *counter_ids, sai_stats_mode_t mode, uint64_t *counters) {
+        return _getStatsExt(type, oid, number_of_counters, counter_ids, mode, counters);
+    };
+
     std::vector<std::vector<sai_stat_id_t>> counterRecord;
     std::vector<std::vector<uint64_t>> valueRecord;
     sai_uint64_t counterSeed = 0;
+    // non zero unifiedBulkChunkSize indicates all counter IDs share the same bulk chunk size
     uint32_t unifiedBulkChunkSize = 0;
+    int32_t initialCheckCount;
+    int32_t partialSupportingBulkObjectFactor;
     sai->mock_bulkGetStats = [&](sai_object_id_t,
                                 sai_object_type_t,
                                 uint32_t object_count,
@@ -870,12 +1095,36 @@ TEST(FlexCounter, bulkChunksize)
         EXPECT_TRUE(mode == SAI_STATS_MODE_BULK_READ);
         std::vector<sai_stat_id_t> record;
         std::vector<uint64_t> value;
-        if (number_of_counters >= 5 && object_count == 1)
+        if (initialCheckCount-- > 0)
         {
             allObjectIds.insert(toOid(object_keys[0].key.object_id));
             // This call is to check whether bulk counter polling is supported during initialization
+            if (!bulkUnsupportedCounters.empty())
+            {
+                // Simulate counters that are not supported being polled in bulk mode
+                for (auto i = 0u; i < number_of_counters; i++)
+                {
+                    if (bulkUnsupportedCounters.find(counter_ids[i]) != bulkUnsupportedCounters.end())
+                    {
+                        if (partialSupportingBulkObjectFactor != 0)
+                        {
+                            for(auto j = 0u; j < object_count; j++)
+                            {
+                                if (j % partialSupportingBulkObjectFactor == 0)
+                                {
+                                    bulkUnsupportedObjectIds.insert(object_keys[j].key.object_id);
+                                }
+                            }
+                        }
+                        return SAI_STATUS_FAILURE;
+                    }
+                }
+            }
             return SAI_STATUS_SUCCESS;
         }
+
+        EXPECT_TRUE(!forceSingleCall);
+
         for (uint32_t i = 0; i < object_count; i++)
         {
             object_status[i] = SAI_STATUS_SUCCESS;
@@ -894,7 +1143,7 @@ TEST(FlexCounter, bulkChunksize)
                 {
                     if (object_count != unifiedBulkChunkSize)
                     {
-                    EXPECT_EQ(object_count, unifiedBulkChunkSize);
+                        EXPECT_EQ(object_count, unifiedBulkChunkSize);
                     }
                     continue;
                 }
@@ -945,6 +1194,8 @@ TEST(FlexCounter, bulkChunksize)
         allObjectIds.erase(key);
     };
 
+    // create ports first and then set bulk chunk size + per counter bulk chunk size
+    initialCheckCount = 6;
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -954,10 +1205,13 @@ TEST(FlexCounter, bulkChunksize)
         counterVerifyFunc,
         false,
         STATS_MODE_READ,
+        false,
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
     EXPECT_TRUE(allObjectIds.empty());
 
+    // set bulk chunk size + per counter bulk chunk size first and then create ports
+    initialCheckCount = 6;
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -967,13 +1221,81 @@ TEST(FlexCounter, bulkChunksize)
         counterVerifyFunc,
         false,
         STATS_MODE_READ,
+        false,
+        "3",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        false,
+        PORT_PLUGIN_FIELD,
+        false,
+        true);
+    EXPECT_TRUE(allObjectIds.empty());
+
+    // Remove per counter bulk chunk size after initializing it
+    // This is to cover the scenario of removing per counter bulk chunk size filed
+    // All counters share a unified bulk chunk size
+    unifiedBulkChunkSize = 3;
+    initialCheckCount = 6;
+    testAddRemoveCounter(
+        6,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_OUT_QLEN", "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES", "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"},
+        {},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        false,
+        "3",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true,
+        "",
+        true);
+    EXPECT_TRUE(allObjectIds.empty());
+    unifiedBulkChunkSize = 0;
+
+    // add ports counters in bulk mode first and then set bulk chunk size + per counter bulk chunk size
+    initialCheckCount = 3;
+    testAddRemoveCounter(
+        6,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_OUT_QLEN", "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES", "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"},
+        {},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true,
+        "3",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+    EXPECT_TRUE(allObjectIds.empty());
+
+    // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode
+    initialCheckCount = 3;
+    testAddRemoveCounter(
+        6,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_OUT_QLEN", "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES", "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"},
+        {},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true,
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         false,
         PORT_PLUGIN_FIELD);
     EXPECT_TRUE(allObjectIds.empty());
 
-    unifiedBulkChunkSize = 3;
+    // add ports counters in bulk mode with some bulk-unsupported counters first and then set bulk chunk size + per counter bulk chunk size
+    // all counters will be polled using single call in runtime
+    forceSingleCall = true;
+    initialCheckCount = 1; // check bulk for all counter IDs altogether
+    initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
+    bulkUnsupportedCounters = {
+        SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES,
+        SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES
+    };
     testAddRemoveCounter(
         6,
         SAI_OBJECT_TYPE_PORT,
@@ -983,11 +1305,53 @@ TEST(FlexCounter, bulkChunksize)
         counterVerifyFunc,
         false,
         STATS_MODE_READ,
+        true,
+        "3",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+    EXPECT_TRUE(allObjectIds.empty());
+    forceSingleCall = false;
+
+    // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode with some bulk-unsupported counters
+    // All bulk-unsupported counters are polled using single call and all the rest counters are polled using bulk call
+    // For each OID, it will be in both m_bulkContexts and m_objectIdsMap
+    initialCheckCount = 3; // check bulk for 3 prefixes
+    initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
+    testAddRemoveCounter(
+        6,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_OUT_QLEN", "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES", "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"},
+        {},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true,
         "3",
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        false,
+        PORT_PLUGIN_FIELD);
+    EXPECT_TRUE(allObjectIds.empty());
+
+    // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode with some bulk-unsupported counters
+    // All bulk-unsupported counters are polled using single call and all the rest counters are polled using bulk call
+    // For each OID, it will be in both m_bulkContexts and m_objectIdsMap
+    initialCheckCount = 3; // check bulk for 3 prefixes
+    initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
+    partialSupportingBulkObjectFactor = 2;
+    testAddRemoveCounter(
+        6,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_IF_IN_OCTETS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS", "SAI_PORT_STAT_IF_OUT_QLEN", "SAI_PORT_STAT_IF_IN_FEC_CORRECTABLE_FRAMES", "SAI_PORT_STAT_IF_IN_FEC_NOT_CORRECTABLE_FRAMES"},
+        {},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
         true,
-        "",
-        true);
+        "3",
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        false,
+        PORT_PLUGIN_FIELD);
     EXPECT_TRUE(allObjectIds.empty());
 }
 
