@@ -893,17 +893,46 @@ void RedisClient::processFlushEvent(
             SWSS_LOG_THROW("unknown fdb flush entry type: %d", type);
     }
 
-    for (int flush_static: vals)
+    // If has a lot of macs(example:217600) and use lua scripts, will cause REDIS BUSY.
+    // Change to this without atomicity operation.
+    const auto &keys = m_dbAsic->keys(pattern);
+    size_t countFlushed = 0;
+    if (vals.size() == 2 && portStr.empty())
     {
-        swss::RedisCommand command;
-
-        command.format(
-                "EVALSHA %s 3 %s %s %s",
-                m_fdbFlushSha.c_str(),
-                pattern.c_str(),
-                portStr.c_str(),
-                std::to_string(flush_static).c_str());
-
-        swss::RedisReply r(m_dbAsic.get(), command);
+        for (const auto &it: keys)
+        {
+            m_dbAsic->del(it);
+            countFlushed++;
+        }
     }
+    else if (vals.size() == 2 && !portStr.empty())
+    {
+        for (const auto &it: keys)
+        {
+            auto bridgePortIdFromDb = m_dbAsic->hget(it, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
+            if (bridgePortIdFromDb && *bridgePortIdFromDb == portStr)
+            {
+                m_dbAsic->del(it);
+                countFlushed++;
+            }
+        }
+    }
+    else if (vals.size() == 1)
+    {
+        auto typeWants = vals.front() == 0 ?
+            "SAI_FDB_ENTRY_TYPE_DYNAMIC" : "SAI_FDB_ENTRY_TYPE_STATIC";
+        for (const auto &it: keys)
+        {
+            auto bridgePortIdFromDb = m_dbAsic->hget(it, "SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID");
+            auto typeFromDb = m_dbAsic->hget(it, "SAI_FDB_ENTRY_ATTR_TYPE");
+            if ((typeFromDb && *typeFromDb == typeWants) &&
+                (portStr.empty() || (!portStr.empty() && bridgePortIdFromDb &&
+                    *bridgePortIdFromDb == portStr)))
+            {
+                m_dbAsic->del(it);
+                countFlushed++;
+            }
+        }
+    }
+    SWSS_LOG_NOTICE("RedisClient have flushed %lu fdb entries.", countFlushed);
 }
