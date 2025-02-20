@@ -64,8 +64,8 @@ namespace saivs
                     _In_ const char* bootTypeStr,
                     _Out_ sai_vs_boot_type_t& bootType);
 
-            static bool parseUseTapDevice(
-                    _In_ const char* useTapDeviceStr);
+            static bool parseBool(
+                    _In_ const char* boolStr);
 
         public:
 
@@ -80,6 +80,8 @@ namespace saivs
             std::string m_hardwareInfo;
 
             bool m_useTapDevice;
+
+            bool m_useConfiguredSpeedAsOperSpeed;
 
             std::shared_ptr<LaneMap> m_laneMap;
 
