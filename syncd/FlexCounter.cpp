@@ -42,8 +42,9 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {TUNNEL_PLUGIN_FIELD, COUNTER_TYPE_TUNNEL},
     {FLOW_COUNTER_PLUGIN_FIELD, COUNTER_TYPE_FLOW}};
 
-BaseCounterContext::BaseCounterContext(const std::string &name):
-m_name(name)
+BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
+m_name(name),
+m_instanceId(instance)
 {
     SWSS_LOG_ENTER();
 }
@@ -72,6 +73,20 @@ void BaseCounterContext::setNoDoubleCheckBulkCapability(
 {
     SWSS_LOG_ENTER();
     no_double_check_bulk_capability = noDoubleCheckBulkCapability;
+}
+
+void BaseCounterContext::setBulkChunkSize(
+    _In_ uint32_t bulkChunkSize)
+{
+    SWSS_LOG_ENTER();
+    default_bulk_chunk_size = bulkChunkSize;
+}
+
+void BaseCounterContext::setBulkChunkSizePerPrefix(
+    _In_ const std::string& bulkChunkSizePerPrefix)
+{
+    SWSS_LOG_ENTER();
+    m_bulkChunkSizePerPrefix = bulkChunkSizePerPrefix;
 }
 
 template <typename StatType,
@@ -144,6 +159,8 @@ struct BulkStatsContext
     std::vector<StatType> counter_ids;
     std::vector<sai_status_t> object_statuses;
     std::vector<uint64_t> counters;
+    std::string name;
+    uint32_t default_bulk_chunk_size;
 };
 
 // TODO: use if const expression when cpp17 is supported
@@ -435,16 +452,19 @@ void deserializeAttr(
 template <typename StatType>
 class CounterContext : public BaseCounterContext
 {
+    std::map<std::string, uint32_t> m_counterChunkSizeMapFromPrefix;
+
 public:
     typedef CounterIds<StatType> CounterIdsType;
     typedef BulkStatsContext<StatType> BulkContextType;
 
     CounterContext(
             _In_ const std::string &name,
+            _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
             _In_ sai_stats_mode_t &stats_mode):
-    BaseCounterContext(name), m_objectType(object_type), m_vendorSai(vendor_sai), m_groupStatsMode(stats_mode)
+    BaseCounterContext(name, instance), m_objectType(object_type), m_vendorSai(vendor_sai), m_groupStatsMode(stats_mode)
     {
         SWSS_LOG_ENTER();
     }
@@ -542,11 +562,259 @@ public:
             }
             m_objectIdsMap.emplace(vid, counter_data);
         }
-        else
+        else if (m_counterChunkSizeMapFromPrefix.empty())
         {
             std::sort(supportedIds.begin(), supportedIds.end());
-            auto bulkContext = getBulkStatsContext(supportedIds);
+            auto bulkContext = getBulkStatsContext(supportedIds, "default", default_bulk_chunk_size);
             addBulkStatsContext(vid, rid, supportedIds, *bulkContext.get());
+        }
+        else
+        {
+            std::map<std::string, vector<StatType>> counter_prefix_map;
+            std::vector<StatType> default_partition;
+            createCounterBulkChunkSizePerPrefixPartition(supportedIds, counter_prefix_map, default_partition);
+
+            for (auto &counterPrefix : counter_prefix_map)
+            {
+                std::sort(counterPrefix.second.begin(), counterPrefix.second.end());
+                auto bulkContext = getBulkStatsContext(counterPrefix.second, counterPrefix.first, m_counterChunkSizeMapFromPrefix[counterPrefix.first]);
+                addBulkStatsContext(vid, rid, counterPrefix.second, *bulkContext.get());
+            }
+
+            std::sort(default_partition.begin(), default_partition.end());
+            auto bulkContext = getBulkStatsContext(default_partition, "default", default_bulk_chunk_size);
+            addBulkStatsContext(vid, rid, default_partition, *bulkContext.get());
+        }
+    }
+
+    bool parseBulkChunkSizePerPrefixConfigString(
+        _In_ const std::string& prefixConfigString)
+    {
+        SWSS_LOG_ENTER();
+
+        m_counterChunkSizeMapFromPrefix.clear();
+
+        if (!prefixConfigString.empty() && prefixConfigString != "NULL")
+        {
+            try
+            {
+                auto tokens = swss::tokenize(prefixConfigString, ';');
+
+                for (auto &token: tokens)
+                {
+                    auto counter_name_bulk_size = swss::tokenize(token, ':');
+                    SWSS_LOG_INFO("New partition %s bulk chunk size %s", counter_name_bulk_size[0].c_str(), counter_name_bulk_size[1].c_str());
+                    m_counterChunkSizeMapFromPrefix[counter_name_bulk_size[0]] = stoi(counter_name_bulk_size[1]);
+                }
+            }
+            catch (...)
+            {
+                SWSS_LOG_ERROR("Invalid bulk chunk size per counter ID field %s", prefixConfigString.c_str());
+                m_counterChunkSizeMapFromPrefix.clear();
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    void createCounterBulkChunkSizePerPrefixPartition(
+        _In_ const std::vector<StatType>& supportedIds,
+        _Out_ std::map<std::string, std::vector<StatType>> &counter_prefix_map,
+        _Out_ std::vector<StatType> &default_partition,
+        _In_ bool log=false)
+    {
+        SWSS_LOG_ENTER();
+
+        default_partition.clear();
+        for (auto &counter : supportedIds)
+        {
+            std::string counterStr = serializeStat(counter);
+            bool found = false;
+            for (auto searchRef: m_counterChunkSizeMapFromPrefix)
+            {
+                if (!searchRef.first.empty() && counterStr.find(searchRef.first) != std::string::npos)
+                {
+                    found = true;
+                    counter_prefix_map[searchRef.first].push_back(counter);
+                    if (log)
+                    {
+                        SWSS_LOG_INFO("Put counter %s to partition %s", counterStr.c_str(), searchRef.first.c_str());
+                    }
+                    break;
+                }
+            }
+            if (!found)
+            {
+                default_partition.push_back(counter);
+
+                if (log)
+                {
+                    SWSS_LOG_INFO("Put counter %s to the default partition", counterStr.c_str());
+                }
+            }
+        }
+    }
+
+    void setBulkChunkSize(
+        _In_ uint32_t bulkChunkSize) override
+    {
+        SWSS_LOG_ENTER();
+        default_bulk_chunk_size = bulkChunkSize;
+        SWSS_LOG_INFO("Bulk chunk size updated to %u", bulkChunkSize);
+
+        for (auto &bulkStatsContext : m_bulkContexts)
+        {
+            auto const &name = (*bulkStatsContext.second.get()).name;
+            if (name == "default")
+            {
+                SWSS_LOG_INFO("Bulk chunk size of default updated to %u", bulkChunkSize);
+                (*bulkStatsContext.second.get()).default_bulk_chunk_size = default_bulk_chunk_size;
+                break;
+            }
+        }
+    }
+
+    void setBulkChunkSizePerPrefix(
+        _In_ const std::string& bulkChunkSizePerPrefix) override
+    {
+        SWSS_LOG_ENTER();
+
+        m_bulkChunkSizePerPrefix = bulkChunkSizePerPrefix;
+
+        // No operation if the input string is invalid or no bulk context has been created
+        if (!parseBulkChunkSizePerPrefixConfigString(bulkChunkSizePerPrefix) || m_bulkContexts.empty())
+        {
+            return;
+        }
+
+        if (m_bulkContexts.size() == 1)
+        {
+            // Only one bulk context exists which means
+            // it is the first time per counter chunk size is configured and a unified counter ID set is polled for all objects
+            auto it = m_bulkContexts.begin();
+            std::shared_ptr<BulkContextType> singleBulkContext = it->second;
+            const std::vector<StatType> &allCounterIds = singleBulkContext.get()->counter_ids;
+            std::map<std::string, vector<StatType>> counterChunkSizePerPrefix;
+            std::vector<StatType> defaultPartition;
+
+            if (m_counterChunkSizeMapFromPrefix.empty())
+            {
+                // There is still no per counter prefix chunk size configured as the chunk size map is still empty.
+                singleBulkContext.get()->default_bulk_chunk_size = default_bulk_chunk_size;
+            }
+            else
+            {
+                // Split the counter IDs according to the counter ID prefix mapping and store them into m_bulkContexts
+                SWSS_LOG_NOTICE("Split counter IDs set by prefix for the first time %s", bulkChunkSizePerPrefix.c_str());
+                createCounterBulkChunkSizePerPrefixPartition(allCounterIds, counterChunkSizePerPrefix, defaultPartition, true);
+
+                for (auto &counterPrefix : counterChunkSizePerPrefix)
+                {
+                    std::sort(counterPrefix.second.begin(), counterPrefix.second.end());
+                    auto bulkContext = getBulkStatsContext(counterPrefix.second, counterPrefix.first, m_counterChunkSizeMapFromPrefix[counterPrefix.first]);
+
+                    bulkContext.get()->counter_ids = move(counterPrefix.second);
+                    bulkContext.get()->object_statuses.resize(singleBulkContext.get()->object_statuses.size());
+                    bulkContext.get()->object_vids = singleBulkContext.get()->object_vids;
+                    bulkContext.get()->object_keys = singleBulkContext.get()->object_keys;
+                    bulkContext.get()->counters.resize(bulkContext.get()->counter_ids.size() * bulkContext.get()->object_vids.size());
+
+                    SWSS_LOG_INFO("Re-initializing counter partition %s", counterPrefix.first.c_str());
+                }
+
+                std::sort(defaultPartition.begin(), defaultPartition.end());
+                setBulkStatsContext(defaultPartition, singleBulkContext);
+                singleBulkContext.get()->counters.resize(singleBulkContext.get()->counter_ids.size() * singleBulkContext.get()->object_vids.size());
+                m_bulkContexts.erase(it);
+                SWSS_LOG_INFO("Removed the previous default counter partition");
+            }
+        }
+        else if (m_counterChunkSizeMapFromPrefix.empty())
+        {
+            // There have been multiple bulk contexts which can result from
+            // 1. per counter prefix chunk size configuration
+            // 2. different objects support different counter ID set
+            // And there is no per counter prefix chunk size configured any more
+            // Multiple bulk contexts will be merged into one if they share the same object IDs set, which means case (1).
+            std::set<sai_object_id_t> oid_set;
+            std::vector<StatType> counter_ids;
+            std::shared_ptr<BulkContextType> defaultBulkContext;
+            for (auto &context : m_bulkContexts)
+            {
+                if (oid_set.empty())
+                {
+                    oid_set.insert(context.second.get()->object_vids.begin(), context.second.get()->object_vids.end());
+                }
+                else
+                {
+                    std::set<sai_object_id_t> tmp_oid_set(context.second.get()->object_vids.begin(), context.second.get()->object_vids.end());
+                    if (tmp_oid_set != oid_set)
+                    {
+                        SWSS_LOG_ERROR("Can not merge partition because they contains different objects");
+                        return;
+                    }
+                }
+                if (context.second.get()->name == "default")
+                {
+                    defaultBulkContext = context.second;
+                }
+                counter_ids.insert(counter_ids.end(), context.second.get()->counter_ids.begin(), context.second.get()->counter_ids.end());
+            }
+
+            m_bulkContexts.clear();
+
+            std::sort(counter_ids.begin(), counter_ids.end());
+            setBulkStatsContext(counter_ids, defaultBulkContext);
+            defaultBulkContext.get()->counters.resize(defaultBulkContext.get()->counter_ids.size() * defaultBulkContext.get()->object_vids.size());
+        }
+        else
+        {
+            // Multiple bulk contexts and per counter prefix chunk size
+            // Update the chunk size only in this case.
+            SWSS_LOG_NOTICE("Update bulk chunk size only %s", bulkChunkSizePerPrefix.c_str());
+
+            auto counterChunkSizeMapFromPrefix = m_counterChunkSizeMapFromPrefix;
+            for (auto &bulkStatsContext : m_bulkContexts)
+            {
+                auto const &name = (*bulkStatsContext.second.get()).name;
+
+                if (name == "default")
+                {
+                    continue;
+                }
+
+                auto const &searchRef = counterChunkSizeMapFromPrefix.find(name);
+                if (searchRef != counterChunkSizeMapFromPrefix.end())
+                {
+                    auto const &chunkSize = searchRef->second;
+
+                    SWSS_LOG_INFO("Reset counter prefix %s chunk size %d", name.c_str(), chunkSize);
+                    (*bulkStatsContext.second.get()).default_bulk_chunk_size = chunkSize;
+                    counterChunkSizeMapFromPrefix.erase(searchRef);
+                }
+                else
+                {
+                    SWSS_LOG_WARN("Update bulk chunk size: bulk chunk size for prefix %s is not provided", name.c_str());
+                }
+            }
+
+            for (auto &it : counterChunkSizeMapFromPrefix)
+            {
+                SWSS_LOG_WARN("Update bulk chunk size: prefix %s does not exist", it.first.c_str());
+            }
+        }
+
+        for (auto &it : m_bulkContexts)
+        {
+            auto &context = *it.second.get();
+            SWSS_LOG_INFO("%s %s partition %s number of OIDs %d number of counter IDs %d number of counters %d",
+                          m_name.c_str(),
+                          m_instanceId.c_str(),
+                          context.name.c_str(),
+                          context.object_keys.size(),
+                          context.counter_ids.size(),
+                          context.counters.size());
         }
     }
 
@@ -628,6 +896,9 @@ public:
         {
             return;
         }
+
+        SWSS_LOG_DEBUG("Before running plugin %s %s", m_instanceId.c_str(), m_name.c_str());
+
         std::vector<std::string> idStrings;
         idStrings.reserve(m_objectIdsMap.size());
         std::transform(m_objectIdsMap.begin(),
@@ -646,6 +917,8 @@ public:
         std::for_each(m_plugins.begin(),
                       m_plugins.end(),
                       [&] (auto &sha) { runRedisScript(counters_db, sha, idStrings, argv); });
+
+        SWSS_LOG_DEBUG("After running plugin %s %s", m_instanceId.c_str(), m_name.c_str());
     }
 
     bool hasObject() const override
@@ -748,20 +1021,45 @@ private:
     {
         SWSS_LOG_ENTER();
         auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
-        sai_status_t status = m_vendorSai->bulkGetStats(
-                            SAI_NULL_OBJECT_ID,
-                            m_objectType,
-                            static_cast<uint32_t>(ctx.object_keys.size()),
-                            ctx.object_keys.data(),
-                            static_cast<uint32_t>(ctx.counter_ids.size()),
-                            reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
-                            statsMode,
-                            ctx.object_statuses.data(),
-                            ctx.counters.data());
-        if (SAI_STATUS_SUCCESS != status)
+        uint32_t bulk_chunk_size = ctx.default_bulk_chunk_size;
+        uint32_t size = static_cast<uint32_t>(ctx.object_keys.size());
+        if (bulk_chunk_size > size || bulk_chunk_size == 0)
         {
-            SWSS_LOG_WARN("Failed to bulk get stats for %s: %u", m_name.c_str(), status);
+            bulk_chunk_size = size;
         }
+        uint32_t current = 0;
+
+        SWSS_LOG_INFO("Before getting bulk %s %s %s size %u bulk chunk size %u current %u", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), size, bulk_chunk_size, current);
+
+        while (current < size)
+        {
+            sai_status_t status = m_vendorSai->bulkGetStats(
+                SAI_NULL_OBJECT_ID,
+                m_objectType,
+                bulk_chunk_size,
+                ctx.object_keys.data() + current,
+                static_cast<uint32_t>(ctx.counter_ids.size()),
+                reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
+                statsMode,
+                ctx.object_statuses.data() + current,
+                ctx.counters.data() + current * ctx.counter_ids.size());
+            if (SAI_STATUS_SUCCESS != status)
+            {
+                SWSS_LOG_WARN("Failed to bulk get stats for %s: %u", m_name.c_str(), status);
+            }
+            current += bulk_chunk_size;
+
+            SWSS_LOG_DEBUG("After getting bulk %s %s %s index %u(advanced to %u) bulk chunk size %u", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), current - bulk_chunk_size, current, bulk_chunk_size);
+
+            if (size - current < bulk_chunk_size)
+            {
+                bulk_chunk_size = size - current;
+            }
+        }
+
+        SWSS_LOG_INFO("After getting bulk %s %s %s total %u objects", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str(), size);
+
+        auto time_stamp = std::chrono::steady_clock::now().time_since_epoch().count();
 
         std::vector<swss::FieldValueTuple> values;
         for (size_t i = 0; i < ctx.object_keys.size(); i++)
@@ -777,13 +1075,18 @@ private:
             {
                 values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
             }
+            values.emplace_back(m_instanceId + "_time_stamp", std::to_string(time_stamp));
             countersTable.set(sai_serialize_object_id(vid), values, "");
             values.clear();
         }
+
+        SWSS_LOG_DEBUG("After pushing db %s %s %s", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str());
     }
 
     auto getBulkStatsContext(
-        _In_ const std::vector<StatType>& counterIds)
+        _In_ const std::vector<StatType>& counterIds,
+        _In_ const std::string& name,
+        _In_ uint32_t bulk_chunk_size=0)
     {
         SWSS_LOG_ENTER();
         auto iter = m_bulkContexts.find(counterIds);
@@ -792,8 +1095,21 @@ private:
             return iter->second;
         }
 
+        SWSS_LOG_NOTICE("Create bulk stat context %s %s %s", m_instanceId.c_str(), m_name.c_str(), name.c_str());
         auto ret = m_bulkContexts.emplace(counterIds, std::make_shared<BulkContextType>());
+        ret.first->second.get()->name = name;
+        ret.first->second.get()->default_bulk_chunk_size = bulk_chunk_size;
+        ret.first->second.get()->counter_ids = counterIds;
         return ret.first->second;
+    }
+
+    void setBulkStatsContext(
+        _In_ const std::vector<StatType>& counterIds,
+        _In_ const std::shared_ptr<BulkContextType> ptr)
+    {
+        SWSS_LOG_ENTER();
+        m_bulkContexts.emplace(counterIds, ptr);
+        ptr.get()->counter_ids = counterIds;
     }
 
     void addBulkStatsContext(
@@ -807,10 +1123,6 @@ private:
         sai_object_key_t object_key;
         object_key.key.object_id = rid;
         ctx.object_keys.push_back(object_key);
-        if (ctx.counter_ids.empty())
-        {
-            ctx.counter_ids = counterIds;
-        }
         ctx.object_statuses.push_back(SAI_STATUS_SUCCESS);
         ctx.counters.resize(counterIds.size() * ctx.object_keys.size());
     }
@@ -819,6 +1131,7 @@ private:
         _In_  sai_object_id_t vid)
     {
         SWSS_LOG_ENTER();
+        std::set<std::vector<StatType>> bulkContextsToBeRemoved;
         bool found = false;
         for (auto iter = m_bulkContexts.begin(); iter != m_bulkContexts.end(); iter++)
         {
@@ -833,7 +1146,9 @@ private:
             ctx.object_vids.erase(vid_iter);
             if (ctx.object_vids.empty())
             {
-                m_bulkContexts.erase(iter);
+                // It can change the order of the map to erase an element in a loop iterating the map
+                // which can cause some elements to be skipped or iterated for multiple times
+                bulkContextsToBeRemoved.insert(iter->first);
             }
             else
             {
@@ -843,7 +1158,20 @@ private:
                 ctx.counters.resize(ctx.counter_ids.size() * ctx.object_keys.size());
                 ctx.object_statuses.pop_back();
             }
-            break;
+            if (m_counterChunkSizeMapFromPrefix.empty())
+            {
+                break;
+            }
+            else
+            {
+                // There can be more than one bulk context containing the VID when the per counter ID bulk chunk size is configured
+                continue;
+            }
+        }
+
+        for (auto iter : bulkContextsToBeRemoved)
+        {
+            m_bulkContexts.erase(iter);
         }
 
         return found;
@@ -856,6 +1184,7 @@ private:
     {
         SWSS_LOG_ENTER();
         BulkContextType ctx;
+        ctx.counter_ids = counter_ids;
         addBulkStatsContext(vid, rid, counter_ids, ctx);
         auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
         sai_status_t status = m_vendorSai->bulkGetStats(
@@ -986,10 +1315,11 @@ public:
     typedef CounterContext<AttrType> Base;
     AttrContext(
             _In_ const std::string &name,
+            _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
             _In_ sairedis::SaiInterface *vendor_sai,
             _In_ sai_stats_mode_t &stats_mode):
-    CounterContext<AttrType>(name, object_type, vendor_sai, stats_mode)
+    CounterContext<AttrType>(name, instance, object_type, vendor_sai, stats_mode)
     {
         SWSS_LOG_ENTER();
     }
@@ -1073,9 +1403,10 @@ class DashMeterCounterContext : public BaseCounterContext
 public:
     DashMeterCounterContext(
             _In_ const std::string &name,
+            _In_ const std::string &instance,
             _In_ sairedis::SaiInterface *vendor_sai,
             _In_ std::string dbCounters):
-    BaseCounterContext(name), m_dbCounters(dbCounters), m_vendorSai(vendor_sai)
+    BaseCounterContext(name, instance), m_dbCounters(dbCounters), m_vendorSai(vendor_sai)
     {
         SWSS_LOG_ENTER();
     }
@@ -1534,6 +1865,8 @@ void FlexCounter::addCounterPlugin(
     SWSS_LOG_ENTER();
 
     m_isDiscarded = false;
+    uint32_t bulkChunkSize = 0;
+    std::string bulkChunkSizePerPrefix;
 
     for (auto& fvt: values)
     {
@@ -1545,6 +1878,34 @@ void FlexCounter::addCounterPlugin(
         if (field == POLL_INTERVAL_FIELD)
         {
             setPollInterval(stoi(value));
+        }
+        else if (field == BULK_CHUNK_SIZE_FIELD)
+        {
+            if (value != "NULL")
+            {
+                try
+                {
+                    bulkChunkSize = stoi(value);
+                }
+                catch (...)
+                {
+                    SWSS_LOG_ERROR("Invalid bulk chunk size %s", value.c_str());
+                }
+            }
+            for (auto &context : m_counterContext)
+            {
+                SWSS_LOG_NOTICE("Set counter context %s %s bulk size %u", m_instanceId.c_str(), COUNTER_TYPE_PORT.c_str(), bulkChunkSize);
+                context.second->setBulkChunkSize(bulkChunkSize);
+            }
+        }
+        else if (field == BULK_CHUNK_SIZE_PER_PREFIX_FIELD)
+        {
+            bulkChunkSizePerPrefix = value;
+            for (auto &context : m_counterContext)
+            {
+                SWSS_LOG_NOTICE("Set counter context %s %s bulk chunk prefix map %s", m_instanceId.c_str(), COUNTER_TYPE_PORT.c_str(), bulkChunkSizePerPrefix.c_str());
+                context.second->setBulkChunkSizePerPrefix(bulkChunkSizePerPrefix);
+            }
         }
         else if (field == FLEX_COUNTER_STATUS_FIELD)
         {
@@ -1567,6 +1928,18 @@ void FlexCounter::addCounterPlugin(
                     getCounterContext(counterTypeRef->second)->setNoDoubleCheckBulkCapability(true);
 
                     SWSS_LOG_NOTICE("Do not double check bulk capability counter context %s %s", m_instanceId.c_str(), counterTypeRef->second.c_str());
+                }
+
+                if (bulkChunkSize > 0)
+                {
+                    getCounterContext(counterTypeRef->second)->setBulkChunkSize(bulkChunkSize);
+                    SWSS_LOG_NOTICE("Create counter context %s %s with bulk size %u", m_instanceId.c_str(), counterTypeRef->second.c_str(), bulkChunkSize);
+                }
+
+                if (!bulkChunkSizePerPrefix.empty())
+                {
+                    getCounterContext(counterTypeRef->second)->setBulkChunkSizePerPrefix(bulkChunkSizePerPrefix);
+                    SWSS_LOG_NOTICE("Create counter context %s %s with bulk prefix map %s", m_instanceId.c_str(), counterTypeRef->second.c_str(), bulkChunkSizePerPrefix.c_str());
                 }
             }
             else
@@ -1627,18 +2000,19 @@ bool FlexCounter::allPluginsEmpty() const
 }
 
 std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
-        _In_ const std::string& context_name)
+        _In_ const std::string& context_name,
+        _In_ const std::string& instance)
 {
     SWSS_LOG_ENTER();
     if (context_name == COUNTER_TYPE_PORT)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_PORT_DEBUG)
     {
-        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_port_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
@@ -1647,25 +2021,25 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_QUEUE)
     {
-        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_queue_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_PG)
     {
-        auto context = std::make_shared<CounterContext<sai_ingress_priority_group_stat_t>>(context_name, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_ingress_priority_group_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->double_confirm_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_RIF)
     {
-        return std::make_shared<CounterContext<sai_router_interface_stat_t>>(context_name, SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_router_interface_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_ROUTER_INTERFACE, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == COUNTER_TYPE_SWITCH_DEBUG)
     {
-        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
@@ -1674,13 +2048,13 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_MACSEC_FLOW)
     {
-        auto context = std::make_shared<CounterContext<sai_macsec_flow_stat_t>>(context_name, SAI_OBJECT_TYPE_MACSEC_FLOW, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_macsec_flow_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_FLOW, m_vendorSai.get(), m_statsMode);
         context->use_sai_stats_capa_query = false;
         return context;
     }
     else if (context_name == COUNTER_TYPE_MACSEC_SA)
     {
-        auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_macsec_sa_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = false;
         context->dont_clear_support_counter = true;
@@ -1688,7 +2062,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_FLOW)
     {
-        auto context = std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
         context->use_sai_stats_capa_query = false;
         context->use_sai_stats_ext = true;
 
@@ -1696,45 +2070,45 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == COUNTER_TYPE_TUNNEL)
     {
-        auto context = std::make_shared<CounterContext<sai_tunnel_stat_t>>(context_name, SAI_OBJECT_TYPE_TUNNEL, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_tunnel_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_TUNNEL, m_vendorSai.get(), m_statsMode);
         context->use_sai_stats_capa_query = false;
         return context;
     }
     else if (context_name == COUNTER_TYPE_BUFFER_POOL)
     {
-        auto context = std::make_shared<CounterContext<sai_buffer_pool_stat_t>>(context_name, SAI_OBJECT_TYPE_BUFFER_POOL, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_buffer_pool_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_BUFFER_POOL, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_ENI)
     {
-        auto context = std::make_shared<CounterContext<sai_eni_stat_t>>(context_name, (sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_vendorSai.get(), m_statsMode);
+        auto context = std::make_shared<CounterContext<sai_eni_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_ENI, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         return context;
     }
     else if (context_name == COUNTER_TYPE_METER_BUCKET)
     {
-        return std::make_shared<DashMeterCounterContext>(context_name, m_vendorSai.get(), m_dbCounters);
+        return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters);
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
-        return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == ATTR_TYPE_PG)
     {
-        return std::make_shared<AttrContext<sai_ingress_priority_group_attr_t>>(context_name, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_ingress_priority_group_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == ATTR_TYPE_MACSEC_SA)
     {
-        return std::make_shared<AttrContext<sai_macsec_sa_attr_t>>(context_name, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_macsec_sa_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_MACSEC_SA, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == ATTR_TYPE_ACL_COUNTER)
     {
-        return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<AttrContext<sai_acl_counter_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_ACL_COUNTER, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == COUNTER_TYPE_POLICER)
     {
-        return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
+        return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
     }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
@@ -1753,7 +2127,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
         return iter->second;
     }
 
-    auto ret = m_counterContext.emplace(name, createCounterContext(name));
+    auto ret = m_counterContext.emplace(name, createCounterContext(name, m_instanceId));
     return ret.first->second;
 }
 
