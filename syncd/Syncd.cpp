@@ -12,7 +12,6 @@
 #include "RedisNotificationProducer.h"
 #include "ZeroMQNotificationProducer.h"
 #include "WatchdogScope.h"
-#include "VendorSaiOptions.h"
 
 #include "sairediscommon.h"
 
@@ -109,12 +108,6 @@ Syncd::Syncd(
 
         m_enableSyncMode = true;
     }
-
-    auto vso = std::make_shared<VendorSaiOptions>();
-
-    vso->m_checkAttrVersion = m_commandLineOptions->m_enableAttrVersionCheck;
-
-    m_vendorSai->setOptions(VendorSaiOptions::OPTIONS_KEY, vso);
 
     m_manager = std::make_shared<FlexCounterManager>(m_vendorSai, m_contextConfig->m_dbCounters, m_commandLineOptions->m_supportingBulkCounterGroups);
 
