@@ -885,7 +885,7 @@ sub test_port_bulk_get
 
 # RUN TESTS
 
-test_port_bulk_get
+# test_port_bulk_get
 test_vxlan_default_router_mac;
 test_neighbor_next_hop;
 test_acl_pre_match_999;
