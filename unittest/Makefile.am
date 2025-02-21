@@ -1,1 +1,1 @@
-SUBDIRS = meta lib vslib syncd
+SUBDIRS = lib
