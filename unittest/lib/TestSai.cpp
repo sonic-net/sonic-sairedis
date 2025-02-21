@@ -49,7 +49,7 @@ TEST(Sai, bulkGet)
     sai_attribute_t* attrs[1] = {0};
     sai_status_t statuses[1] = {0};
 
-    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED,
+    EXPECT_NE(SAI_STATUS_SUCCESS,
             sai.bulkGet(
                 SAI_OBJECT_TYPE_PORT,
                 1,

@@ -988,3 +988,320 @@ TEST_F(SyncdBrcmTest, bulkSetInInitViewForUnsupportedObjects)
     ASSERT_THROW(m_sairedis->bulkSet(SAI_OBJECT_TYPE_SWITCH, 1, oids, attrs,
         SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, statuses), std::runtime_error);
 }
+
+struct GetBulk
+{
+    std::vector<sai_object_id_t> oids;
+    std::vector<uint32_t> attr_counts;
+    std::vector<sai_attribute_t*> attrs;
+    std::vector<sai_status_t> statuses;
+
+    std::vector<std::vector<sai_attribute_t>> attrsContainer;
+
+    void resize(size_t size, uint32_t attr_count)
+    {
+        SWSS_LOG_ENTER();
+
+        oids.resize(size);
+        attr_counts.resize(size);
+        attrs.resize(size);
+        attrsContainer.resize(size);
+        for (uint32_t i = 0; i < size; i++)
+        {
+            attrsContainer[i].resize(attr_count);
+            attr_counts[i] = attr_count;
+        }
+        statuses.resize(size, SAI_STATUS_NOT_EXECUTED);
+    }
+};
+
+TEST_F(SyncdBrcmTest, portBulkGet)
+{
+    sai_object_id_t switchId;
+    sai_attribute_t attrs[1];
+
+    GetBulk portGetBulk;
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    auto status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // Get port number
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const auto portNumber = attrs[0].value.u32;
+    ASSERT_TRUE(attrs[0].value.u32 > 1);
+
+    portGetBulk.resize(portNumber, 2);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_LIST;
+    attrs[0].value.objlist.count = static_cast<uint32_t>(portGetBulk.oids.size());
+    attrs[0].value.objlist.list = portGetBulk.oids.data();
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // Get port attributes in bulk
+
+    for (size_t i = 0; i < portGetBulk.oids.size(); i++)
+    {
+        portGetBulk.attrsContainer[i][0].id = SAI_PORT_ATTR_ADMIN_STATE;
+        portGetBulk.attrsContainer[i][1].id = SAI_PORT_ATTR_SPEED;
+
+        portGetBulk.attrs[i] = portGetBulk.attrsContainer[i].data();
+    }
+
+    status = m_sairedis->bulkGet(SAI_OBJECT_TYPE_PORT, static_cast<uint32_t>(portGetBulk.oids.size()), portGetBulk.oids.data(),
+        portGetBulk.attr_counts.data(), portGetBulk.attrs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, portGetBulk.statuses.data());
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (size_t i = 0; i < portGetBulk.oids.size(); i++)
+    {
+        ASSERT_EQ(portGetBulk.statuses[i], SAI_STATUS_SUCCESS);
+        ASSERT_EQ(portGetBulk.attrs[i][0].value.booldata, false);
+        ASSERT_EQ(portGetBulk.attrs[i][1].value.u32, 40000);
+    }
+}
+
+TEST_F(SyncdBrcmTest, portBulkGetInInitView)
+{
+    sai_object_id_t switchId;
+    sai_attribute_t attrs[1];
+
+    GetBulk portGetBulk;
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    auto status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // apply view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // Get port number
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const auto portNumber = attrs[0].value.u32;
+    ASSERT_TRUE(attrs[0].value.u32 > 1);
+
+    portGetBulk.resize(portNumber, 2);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_LIST;
+    attrs[0].value.objlist.count = static_cast<uint32_t>(portGetBulk.oids.size());
+    attrs[0].value.objlist.list = portGetBulk.oids.data();
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // Get port attributes in bulk
+
+    for (size_t i = 0; i < portGetBulk.oids.size(); i++)
+    {
+        portGetBulk.attrsContainer[i][0].id = SAI_PORT_ATTR_ADMIN_STATE;
+        portGetBulk.attrsContainer[i][1].id = SAI_PORT_ATTR_SPEED;
+
+        portGetBulk.attrs[i] = portGetBulk.attrsContainer[i].data();
+    }
+
+    status = m_sairedis->bulkGet(SAI_OBJECT_TYPE_PORT, static_cast<uint32_t>(portGetBulk.oids.size()), portGetBulk.oids.data(),
+        portGetBulk.attr_counts.data(), portGetBulk.attrs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, portGetBulk.statuses.data());
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (size_t i = 0; i < portGetBulk.oids.size(); i++)
+    {
+        ASSERT_EQ(portGetBulk.statuses[i], SAI_STATUS_SUCCESS);
+        ASSERT_EQ(portGetBulk.attrs[i][0].value.booldata, false);
+        ASSERT_EQ(portGetBulk.attrs[i][1].value.u32, 40000);
+    }
+}
+
+TEST_F(SyncdBrcmTest, portBulkGetObjectList)
+{
+    sai_object_id_t switchId;
+    sai_attribute_t attrs[1];
+
+    GetBulk portGetBulk;
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    auto status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const auto portNumber = attrs[0].value.u32;
+    ASSERT_TRUE(attrs[0].value.u32 > 1);
+
+    portGetBulk.resize(portNumber, 2);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_LIST;
+    attrs[0].value.objlist.count = static_cast<uint32_t>(portGetBulk.oids.size());
+    attrs[0].value.objlist.list = portGetBulk.oids.data();
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // Query number of queues
+
+    attrs[0].id = SAI_PORT_ATTR_QOS_NUMBER_OF_QUEUES;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_PORT, portGetBulk.oids[0], 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    std::vector<std::vector<sai_object_id_t>> queues;
+    queues.resize(portGetBulk.oids.size());
+
+    for (size_t i = 0; i < queues.size(); i++)
+    {
+        queues[i].resize(attrs[0].value.u32);
+    }
+
+    // Get port attributes in bulk
+
+    portGetBulk.resize(portNumber, 1);
+    for (size_t i = 0; i < portGetBulk.oids.size(); i++)
+    {
+        // Query QUEUE_LIST to test object list get
+        portGetBulk.attrsContainer[i][0].id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+        portGetBulk.attrsContainer[i][0].value.objlist.count = static_cast<uint32_t>(queues[i].size());
+        portGetBulk.attrsContainer[i][0].value.objlist.list = queues[i].data();
+
+        portGetBulk.attrs[i] = portGetBulk.attrsContainer[i].data();
+    }
+
+    status = m_sairedis->bulkGet(SAI_OBJECT_TYPE_PORT, static_cast<uint32_t>(portGetBulk.oids.size()), portGetBulk.oids.data(),
+        portGetBulk.attr_counts.data(), portGetBulk.attrs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, portGetBulk.statuses.data());
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    for (size_t i = 0; i < portGetBulk.oids.size(); i++)
+    {
+        ASSERT_EQ(portGetBulk.statuses[i], SAI_STATUS_SUCCESS);
+    }
+}
+
+TEST_F(SyncdBrcmTest, portBulkGetObjectListInsufficientBuffer)
+{
+    sai_object_id_t switchId;
+    sai_attribute_t attrs[1];
+
+    GetBulk portGetBulk;
+
+    // init view
+
+    attrs[0].id = SAI_REDIS_SWITCH_ATTR_NOTIFY_SYNCD;
+    attrs[0].value.s32 = SAI_REDIS_NOTIFY_SYNCD_INIT_VIEW;
+
+    auto status = m_sairedis->set(SAI_OBJECT_TYPE_SWITCH, SAI_NULL_OBJECT_ID, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    // create switch
+
+    attrs[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[0].value.booldata = true;
+
+    status = m_sairedis->create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const auto portNumber = attrs[0].value.u32;
+    ASSERT_TRUE(attrs[0].value.u32 > 1);
+
+    portGetBulk.resize(portNumber, 1);
+
+    attrs[0].id = SAI_SWITCH_ATTR_PORT_LIST;
+    attrs[0].value.objlist.count = static_cast<uint32_t>(portGetBulk.oids.size());
+    attrs[0].value.objlist.list = portGetBulk.oids.data();
+    status = m_sairedis->get(SAI_OBJECT_TYPE_SWITCH, switchId, 1, attrs);
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    std::vector<std::vector<sai_object_id_t>> queues;
+    queues.resize(portGetBulk.oids.size());
+
+    for (size_t i = 0; i < queues.size(); i++)
+    {
+        queues[i].resize(1); // Insufficient size
+    }
+
+    // Get port attributes in bulk
+
+    portGetBulk.resize(portNumber, 1);
+    for (size_t i = 0; i < portGetBulk.oids.size(); i++)
+    {
+        // Query QUEUE_LIST to test object list get
+        portGetBulk.attrsContainer[i][0].id = SAI_PORT_ATTR_QOS_QUEUE_LIST;
+        portGetBulk.attrsContainer[i][0].value.objlist.count = static_cast<uint32_t>(queues[i].size());
+        portGetBulk.attrsContainer[i][0].value.objlist.list = queues[i].data();
+
+        portGetBulk.attrs[i] = portGetBulk.attrsContainer[i].data();
+    }
+
+    m_sairedis->bulkGet(SAI_OBJECT_TYPE_PORT, static_cast<uint32_t>(portGetBulk.oids.size()), portGetBulk.oids.data(),
+        portGetBulk.attr_counts.data(), portGetBulk.attrs.data(), SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR, portGetBulk.statuses.data());
+
+    for (size_t i = 0; i < portGetBulk.oids.size(); i++)
+    {
+        ASSERT_EQ(portGetBulk.statuses[i], SAI_STATUS_BUFFER_OVERFLOW);
+    }
+}

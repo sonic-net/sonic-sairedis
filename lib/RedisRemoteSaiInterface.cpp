@@ -14,6 +14,8 @@
 #include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
 
+#include "swss/tokenize.h"
+
 #include "config.h"
 
 #include <inttypes.h>
@@ -1674,6 +1676,77 @@ sai_status_t RedisRemoteSaiInterface::waitForBulkResponse(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t RedisRemoteSaiInterface::waitForBulkGetResponse(
+        _In_ sai_object_type_t objectType,
+        _In_ uint32_t object_count,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    const auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_GETRESPONSE, kco);
+
+    const auto &values = kfvFieldsValues(kco);
+
+    if (values.size() != object_count)
+    {
+        SWSS_LOG_THROW("wrong number of statuses, got %zu, expected %u", values.size(), object_count);
+    }
+
+    for (size_t idx = 0; idx < values.size(); idx++)
+    {
+        // field = status
+        // value = attrid=attrvalue|...
+
+        const auto& statusStr = fvField(values[idx]);
+        const auto& joined = fvValue(values[idx]);
+
+        const auto v = swss::tokenize(joined, '|');
+
+        std::vector<swss::FieldValueTuple> entries; // attributes per object id
+        entries.reserve(v.size());
+
+        for (size_t i = 0; i < v.size(); i++)
+        {
+            const std::string item = v.at(i);
+
+            auto start = item.find_first_of("=");
+
+            auto field = item.substr(0, start);
+            auto value = item.substr(start + 1);
+
+            entries.emplace_back(field, value);
+        }
+
+        // deserialize statuses for all objects
+        sai_deserialize_status(statusStr, object_statuses[idx]);
+
+        const auto objectStatus = object_statuses[idx];
+
+        if (objectStatus == SAI_STATUS_SUCCESS || objectStatus == SAI_STATUS_BUFFER_OVERFLOW)
+        {
+            const auto countOnly = (objectStatus == SAI_STATUS_BUFFER_OVERFLOW);
+
+            if (values.size() == 0)
+            {
+                SWSS_LOG_THROW("logic error, get response returned 0 values!, send api response or sync/async issue?");
+            }
+
+            SaiAttributeList list(objectType, entries, countOnly);
+
+            // no need for id fix since this is overflow
+            transfer_attributes(objectType, attr_count[idx], list.get_attr_list(), attr_list[idx], countOnly);
+        }
+    }
+
+    m_recorder->recordBulkGenericGetResponse(status, values);
+
+    return status;
+}
+
 sai_status_t RedisRemoteSaiInterface::bulkRemove(
         _In_ sai_object_type_t object_type,
         _In_ uint32_t object_count,
@@ -1764,9 +1837,67 @@ sai_status_t RedisRemoteSaiInterface::bulkGet(
 {
     SWSS_LOG_ENTER();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    std::vector<std::string> serializedObjectIds;
+    serializedObjectIds.reserve(object_count);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    for (uint32_t idx = 0; idx < object_count; idx++)
+    {
+        serializedObjectIds.emplace_back(sai_serialize_object_id(object_id[idx]));
+    }
+
+    return bulkGet(object_type, serializedObjectIds, attr_count, attr_list, mode, object_statuses);
+}
+
+sai_status_t RedisRemoteSaiInterface::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Inout_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    const auto serializedObjectType = sai_serialize_object_type(object_type);
+
+    std::vector<swss::FieldValueTuple> entries;
+    entries.reserve(serialized_object_ids.size());
+
+    for (size_t idx = 0; idx < serialized_object_ids.size(); idx++)
+    {
+        /*
+        * Since user may reuse buffers, then oid list buffers maybe not cleared
+        * and contain some garbage, let's clean them so we send all oids as null to
+        * syncd.
+        */
+
+        Utils::clearOidValues(object_type, attr_count[idx], attr_list[idx]);
+
+        const auto entry = SaiAttributeList::serialize_attr_list(object_type, attr_count[idx], attr_list[idx], false);
+
+        const auto strAttr = Globals::joinFieldValues(entry);
+
+        swss::FieldValueTuple fvt(serialized_object_ids[idx] , strAttr);
+
+        entries.push_back(fvt);
+    }
+
+    /*
+     * We are adding number of entries to actually add ':' to be compatible
+     * with previous
+     */
+
+    const auto key = serializedObjectType + ":" + std::to_string(entries.size());
+
+    m_communicationChannel->set(key, entries, REDIS_ASIC_STATE_COMMAND_BULK_GET);
+
+    m_recorder->recordBulkGenericGet(serializedObjectType, entries);
+
+    const auto object_count = static_cast<uint32_t>(serialized_object_ids.size());
+
+    const auto status = waitForBulkGetResponse(object_type, object_count, attr_count, attr_list, object_statuses);
+
+    return status;
 }
 
 sai_status_t RedisRemoteSaiInterface::bulkCreate(
