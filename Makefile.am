@@ -1,7 +1,7 @@
-SUBDIRS = meta lib vslib proxylib pyext
+SUBDIRS = meta lib vslib
 
 if SYNCD
-SUBDIRS += syncd saiplayer saidump saidiscovery saisdkdump saiasiccmp tests unittest
+SUBDIRS += syncd saiplayer unittest
 endif
 
 ACLOCAL_AMFLAGS = -I m4

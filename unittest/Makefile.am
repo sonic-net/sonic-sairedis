@@ -1,1 +1,1 @@
-SUBDIRS = meta lib vslib syncd proxylib saidump
+SUBDIRS = meta lib vslib syncd
