@@ -656,6 +656,10 @@ TEST(FlexCounter, noSupportedCounters)
     fc.addCounter(sai_object_id_t(0x1000000000000), sai_object_id_t(0x1000000000000), values);
     // No supported counter, this object shall not be queried
     EXPECT_EQ(fc.isEmpty(), true);
+
+    std::vector<sai_object_id_t> oids = {0x1000000000000};
+    fc.bulkAddCounter(SAI_OBJECT_TYPE_PORT, oids, oids, values);
+    EXPECT_EQ(fc.isEmpty(), true);
 }
 
 void testAddRemovePlugin(const std::string& pluginFieldName)

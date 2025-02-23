@@ -142,7 +142,7 @@ TEST_F(VirtualSwitchSaiInterfaceTest, bulkGet)
 
 TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
 {
-    sai_stat_capability_t capability_list[51];
+    sai_stat_capability_t capability_list[83];
     sai_stat_capability_list_t stats_capability;
     stats_capability.list = capability_list;
 
@@ -170,7 +170,7 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
                 SAI_OBJECT_TYPE_PORT,
                 &stats_capability));
 
-    stats_capability.count = 51;
+    stats_capability.count = 83;
     EXPECT_EQ(SAI_STATUS_SUCCESS,
             m_vssai->queryStatsCapability(
                 m_swid,

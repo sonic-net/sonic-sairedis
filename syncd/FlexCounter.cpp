@@ -479,6 +479,9 @@ class CounterContext : public BaseCounterContext
 {
     std::map<std::string, uint32_t> m_counterChunkSizeMapFromPrefix;
 
+protected:
+    sai_object_id_t m_switchId = SAI_NULL_OBJECT_ID;
+
 public:
     typedef CounterIds<StatType> CounterIdsType;
     typedef BulkStatsContext<StatType> BulkContextType;
@@ -909,6 +912,12 @@ public:
             {
                 supportedIds.push_back(stat);
             }
+        }
+
+        if (supportedIds.empty())
+        {
+            SWSS_LOG_NOTICE("%s %s does not have supported counters", m_name.c_str(), m_instanceId.c_str());
+            return;
         }
 
         std::map<std::vector<StatType>, std::tuple<const std::string, uint32_t>> bulkUnsupportedCounters;
@@ -1442,9 +1451,14 @@ private:
         stats_capability.count = 0;
         stats_capability.list = nullptr;
 
+        if (m_switchId == SAI_NULL_OBJECT_ID)
+        {
+            m_switchId = m_vendorSai->switchIdQuery(rid);
+        }
+
         /* First call is to check the size needed to allocate */
         sai_status_t status = m_vendorSai->queryStatsCapability(
-            rid,
+            m_switchId,
             m_objectType,
             &stats_capability);
 
@@ -1454,7 +1468,7 @@ private:
             std::vector<sai_stat_capability_t> statCapabilityList(stats_capability.count);
             stats_capability.list = statCapabilityList.data();
             status = m_vendorSai->queryStatsCapability(
-                rid,
+                m_switchId,
                 m_objectType,
                 &stats_capability);
 
