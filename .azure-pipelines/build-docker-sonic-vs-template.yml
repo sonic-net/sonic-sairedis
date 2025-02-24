@@ -99,6 +99,8 @@ jobs:
     condition: eq('${{ parameters.arch }}', 'amd64')
   - script: |
       set -ex
+      sudo apt update
+      sudo apt install libc6
       sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/libvppinfra-dev_*_${{ parameters.arch }}.deb
       sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/libvppinfra_*_${{ parameters.arch }}.deb
       sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/vpp_*_${{ parameters.arch }}.deb
