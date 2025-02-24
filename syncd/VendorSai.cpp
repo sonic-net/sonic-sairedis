@@ -662,11 +662,35 @@ sai_status_t VendorSai::bulkGet(
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
+    sai_bulk_object_get_attribute_fn ptr;
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    switch (object_type)
+    {
+        case SAI_OBJECT_TYPE_PORT:
+            ptr = m_apis.port_api->get_ports_attribute;
+            break;
+
+        default:
+            SWSS_LOG_ERROR("not implemented %s, FIXME", sai_serialize_object_type(object_type).c_str());
+            return SAI_STATUS_NOT_IMPLEMENTED;
+    }
+
+    if (!ptr)
+    {
+        SWSS_LOG_INFO("get bulk not supported in SAI, object_type = %s",  sai_serialize_object_type(object_type).c_str());
+        return SAI_STATUS_NOT_SUPPORTED;
+    }
+
+    return ptr(object_count,
+            object_id,
+            attr_count,
+            attr_list,
+            mode,
+            object_statuses);
 }
 
 // BULK GET
