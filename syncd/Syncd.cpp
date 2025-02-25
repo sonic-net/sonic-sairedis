@@ -26,6 +26,7 @@
 #include "meta/ZeroMQSelectableChannel.h"
 #include "meta/RedisSelectableChannel.h"
 #include "meta/PerformanceIntervalTimer.h"
+#include "meta/Globals.h"
 
 #include "vslib/saivs.h"
 
@@ -387,6 +388,9 @@ sai_status_t Syncd::processSingleEvent(
 
     if (op == REDIS_ASIC_STATE_COMMAND_BULK_SET)
         return processBulkQuadEvent(SAI_COMMON_API_BULK_SET, kco);
+
+    if (op == REDIS_ASIC_STATE_COMMAND_BULK_GET)
+        return processBulkQuadEvent(SAI_COMMON_API_BULK_GET, kco);
 
     if (op == REDIS_ASIC_STATE_COMMAND_NOTIFY)
         return processNotifySyncd(kco);
@@ -1002,12 +1006,12 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
 {
     SWSS_LOG_ENTER();
 
+    const auto objectCount = static_cast<uint32_t>(objectIds.size());
+
     std::vector<sai_status_t> statuses(objectIds.size());
 
-    for (auto &a: statuses)
-    {
-        a = SAI_STATUS_SUCCESS;
-    }
+    const sai_status_t initialObjectStatus = api != SAI_COMMON_API_BULK_GET ? SAI_STATUS_SUCCESS : SAI_STATUS_NOT_EXECUTED;
+    statuses.assign(statuses.size(), initialObjectStatus);
 
     auto info = sai_metadata_get_object_type_info(objectType);
 
@@ -1076,7 +1080,47 @@ sai_status_t Syncd::processBulkQuadEventInInitViewMode(
             return SAI_STATUS_SUCCESS;
 
         case SAI_COMMON_API_BULK_GET:
-            SWSS_LOG_THROW("GET bulk api is not implemented in init view mode, FIXME");
+            if (info->isnonobjectid)
+            {
+                /*
+                * Those objects are user created, so if user created ROUTE he
+                * passed some attributes, there is no sense to support GET
+                * since user explicitly know what attributes were set, similar
+                * for other non object id types.
+                */
+
+                SWSS_LOG_ERROR("get is not supported on %s in init view mode", sai_serialize_object_type(objectType).c_str());
+
+                const sai_status_t status = SAI_STATUS_NOT_SUPPORTED;
+                sendBulkGetResponse(objectType, objectIds, status, attributes, statuses);
+
+                return status;
+            }
+            else
+            {
+                for (size_t idx = 0; idx < objectCount; idx++)
+                {
+                    const auto& strObjectId = objectIds[idx];
+
+                    sai_object_id_t objectVid;
+                    sai_deserialize_object_id(strObjectId, objectVid);
+
+                    if (isInitViewMode() && m_createdInInitView.find(objectVid) != m_createdInInitView.end())
+                    {
+                        SWSS_LOG_WARN("GET api can't be used on %s (%s) since it's created in INIT_VIEW mode",
+                                strObjectId.c_str(),
+                                sai_serialize_object_type(objectType).c_str());
+
+                        const sai_status_t status = SAI_STATUS_INVALID_OBJECT_ID;
+                        sendBulkGetResponse(objectType, objectIds, status, attributes, statuses);
+
+                        return status;
+                    }
+
+                }
+
+                return processBulkOid(objectType, objectIds, SAI_COMMON_API_BULK_GET, attributes, strAttributes);
+            }
 
         default:
 
@@ -2192,6 +2236,56 @@ sai_status_t Syncd::processBulkOidSet(
     return status;
 }
 
+sai_status_t Syncd::processBulkOidGet(
+        _In_ sai_object_type_t objectType,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _In_ const std::vector<std::string>& objectIds,
+        _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+        _Out_ std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    const auto object_count = static_cast<uint32_t>(objectIds.size());
+
+    if (!object_count)
+    {
+        SWSS_LOG_ERROR("container with objectIds is empty in processBulkOidGet");
+        return SAI_STATUS_FAILURE;
+    }
+
+    std::vector<sai_object_id_t> objectVids(object_count);
+    std::vector<sai_object_id_t> objectRids(object_count);
+
+    std::vector<uint32_t> attr_counts(object_count);
+    std::vector<sai_attribute_t*> attr_lists(object_count);
+
+    for (size_t idx = 0; idx < object_count; idx++)
+    {
+        sai_deserialize_object_id(objectIds[idx], objectVids[idx]);
+        objectRids[idx] = m_translator->translateVidToRid(objectVids[idx]);
+
+        attr_counts[idx] = attributes[idx]->get_attr_count();
+        attr_lists[idx] = attributes[idx]->get_attr_list();
+    }
+
+    const auto status = m_vendorSai->bulkGet(objectType,
+                                             object_count,
+                                             objectRids.data(),
+                                             attr_counts.data(),
+                                             attr_lists.data(),
+                                             mode,
+                                             statuses.data());
+
+    if (status == SAI_STATUS_NOT_IMPLEMENTED || status == SAI_STATUS_NOT_SUPPORTED)
+    {
+        SWSS_LOG_WARN("bulkGet api is not implemented or not supported, object_type = %s",
+                sai_serialize_object_type(objectType).c_str());
+        return status;
+    }
+
+    return status;
+}
+
 sai_status_t Syncd::processBulkOidRemove(
         _In_ sai_object_type_t objectType,
         _In_ sai_bulk_op_error_mode_t mode,
@@ -2300,6 +2394,10 @@ sai_status_t Syncd::processBulkOid(
                 all = processBulkOidSet(objectType, mode, objectIds, attributes, statuses);
                 break;
 
+            case SAI_COMMON_API_BULK_GET:
+                all = processBulkOidGet(objectType, mode, objectIds, attributes, statuses);
+                break;
+
             case SAI_COMMON_API_BULK_REMOVE:
                 all = processBulkOidRemove(objectType, mode, objectIds, statuses);
                 break;
@@ -2311,9 +2409,17 @@ sai_status_t Syncd::processBulkOid(
 
         if (all != SAI_STATUS_NOT_SUPPORTED && all != SAI_STATUS_NOT_IMPLEMENTED)
         {
-            sendApiResponse(api, all, (uint32_t)objectIds.size(), statuses.data());
-            syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
+            switch (api)
+            {
+            case SAI_COMMON_API_BULK_GET:
+                sendBulkGetResponse(objectType, objectIds, all, attributes, statuses);
+                break;
+            default:
+                sendApiResponse(api, all, (uint32_t)objectIds.size(), statuses.data());
+                break;
+            }
 
+            syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
             return all;
         }
     }
@@ -2343,6 +2449,10 @@ sai_status_t Syncd::processBulkOid(
         {
             status = processOid(objectType, objectIds[idx], SAI_COMMON_API_SET, attr_count, attr_list);
         }
+        else if (api == SAI_COMMON_API_BULK_GET)
+        {
+            status = processOid(objectType, objectIds[idx], SAI_COMMON_API_GET, attr_count, attr_list);
+        }
         else
         {
             SWSS_LOG_THROW("api %s is not supported in bulk mode",
@@ -2364,7 +2474,15 @@ sai_status_t Syncd::processBulkOid(
         statuses[idx] = status;
     }
 
-    sendApiResponse(api, all, (uint32_t)objectIds.size(), statuses.data());
+    switch (api)
+    {
+    case SAI_COMMON_API_BULK_GET:
+        sendBulkGetResponse(objectType, objectIds, all, attributes, statuses);
+        break;
+    default:
+        sendApiResponse(api, all, (uint32_t)objectIds.size(), statuses.data());
+        break;
+    }
 
     syncUpdateRedisBulkQuadEvent(api, statuses, objectType, objectIds, strAttributes);
 
@@ -3074,7 +3192,7 @@ void Syncd::syncUpdateRedisBulkQuadEvent(
                 break;
             }
 
-        case SAI_COMMON_API_GET:
+        case SAI_COMMON_API_BULK_GET:
             break; // ignore get since get is not modifying db
 
         default:
@@ -3685,6 +3803,76 @@ void Syncd::sendGetResponse(
     m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
 
     SWSS_LOG_INFO("response for GET api was send");
+}
+
+void Syncd::sendBulkGetResponse(
+        _In_ sai_object_type_t objectType,
+        _In_ const std::vector<std::string>& strObjectIds,
+        _In_ sai_status_t status,
+        _In_ const std::vector<std::shared_ptr<saimeta::SaiAttributeList>>& attributes,
+        _In_ const std::vector<sai_status_t>& statuses)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<swss::FieldValueTuple> entries;
+    entries.reserve(strObjectIds.size());
+
+    for (uint32_t idx = 0; idx < strObjectIds.size(); idx++)
+    {
+        const auto objectStatus = statuses[idx];
+        const auto objectStatusStr = sai_serialize_status(statuses[idx]);
+
+        if (objectStatus == SAI_STATUS_SUCCESS)
+        {
+            sai_object_id_t objectId{};
+            sai_deserialize_object_id(strObjectIds[idx], objectId);
+            const auto switchVid = VidManager::switchIdQuery(objectId);
+            m_translator->translateRidToVid(objectType, switchVid, attributes[idx]->get_attr_count(), attributes[idx]->get_attr_list());
+
+            const auto entry = SaiAttributeList::serialize_attr_list(objectType, attributes[idx]->get_attr_count(), attributes[idx]->get_attr_list(), false);
+            const auto joined = Globals::joinFieldValues(entry);
+
+            // Object IDs are not serialized. The attributes are assumed to be in order the object IDs were passed.
+            // Essentially, only status and attribute list is needed to be serialized and sent.
+            swss::FieldValueTuple fvt(objectStatusStr, joined);
+
+            entries.push_back(fvt);
+
+            /*
+            * All oid values here are VIDs.
+            */
+
+            snoopGetResponse(objectType, strObjectIds[idx], attributes[idx]->get_attr_count(), attributes[idx]->get_attr_list());
+        }
+        else if (objectStatus == SAI_STATUS_BUFFER_OVERFLOW)
+        {
+            const auto entry = SaiAttributeList::serialize_attr_list(objectType, attributes[idx]->get_attr_count(), attributes[idx]->get_attr_list(), true);
+            const auto joined = Globals::joinFieldValues(entry);
+
+            swss::FieldValueTuple fvt(objectStatusStr, joined);
+
+            entries.push_back(fvt);
+        }
+        else
+        {
+            swss::FieldValueTuple fvt(objectStatusStr, Globals::joinFieldValues({}));
+
+            entries.push_back(fvt);
+        }
+    }
+
+    for (const auto &e: entries)
+    {
+        SWSS_LOG_DEBUG("attr: %s: %s", fvField(e).c_str(), fvValue(e).c_str());
+    }
+
+    const auto strStatus = sai_serialize_status(status);
+
+    SWSS_LOG_INFO("sending response for bulk GET api with status: %s", strStatus.c_str());
+
+    m_selectableChannel->set(strStatus, entries, REDIS_ASIC_STATE_COMMAND_GETRESPONSE);
+
+    SWSS_LOG_INFO("response for bulk GET api was send");
 }
 
 void Syncd::snoopGetResponse(
