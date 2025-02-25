@@ -3920,13 +3920,13 @@ sai_status_t SwitchStateBase::queryStatsCapability(
     }
     else if (objectType == SAI_OBJECT_TYPE_PORT)
     {
-        if (stats_capability->count < 83)
+        if (stats_capability->count < 91)
         {
-            stats_capability->count = 83;
+            stats_capability->count = 91;
             return SAI_STATUS_BUFFER_OVERFLOW;
         }
 
-        stats_capability->count = 83;
+        stats_capability->count = 91;
         stats_capability->list[0].stat_enum = SAI_PORT_STAT_IF_IN_OCTETS;
         stats_capability->list[1].stat_enum = SAI_PORT_STAT_IF_IN_UCAST_PKTS;
         stats_capability->list[2].stat_enum = SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS;
@@ -4010,6 +4010,14 @@ sai_status_t SwitchStateBase::queryStatsCapability(
         stats_capability->list[80].stat_enum = SAI_PORT_STAT_PFC_6_TX_PAUSE_DURATION_US;
         stats_capability->list[81].stat_enum = SAI_PORT_STAT_PFC_7_RX_PAUSE_DURATION_US;
         stats_capability->list[82].stat_enum = SAI_PORT_STAT_PFC_7_TX_PAUSE_DURATION_US;
+        stats_capability->list[83].stat_enum = SAI_PORT_STAT_PFC_0_ON2OFF_RX_PKTS;
+        stats_capability->list[84].stat_enum = SAI_PORT_STAT_PFC_1_ON2OFF_RX_PKTS;
+        stats_capability->list[85].stat_enum = SAI_PORT_STAT_PFC_2_ON2OFF_RX_PKTS;
+        stats_capability->list[86].stat_enum = SAI_PORT_STAT_PFC_3_ON2OFF_RX_PKTS;
+        stats_capability->list[87].stat_enum = SAI_PORT_STAT_PFC_4_ON2OFF_RX_PKTS;
+        stats_capability->list[88].stat_enum = SAI_PORT_STAT_PFC_5_ON2OFF_RX_PKTS;
+        stats_capability->list[89].stat_enum = SAI_PORT_STAT_PFC_6_ON2OFF_RX_PKTS;
+        stats_capability->list[90].stat_enum = SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS;
 
         for(i = 0; i < stats_capability->count; i++)
         {
