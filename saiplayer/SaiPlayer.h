@@ -249,6 +249,10 @@ namespace saiplayer
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
 
+            void onIcmpEchoSessionStateChange(
+                    _In_ uint32_t count,
+                    _In_ const sai_icmp_echo_session_state_notification_t *data);
+
             void onPortHostTxReady(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_id_t port_id,

@@ -324,6 +324,10 @@ std::string sai_serialize_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ const sai_bfd_session_state_notification_t* bfd_session_state);
 
+std::string sai_serialize_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t* icmp_echo_session_state);
+
 std::string sai_serialize_port_host_tx_ready_ntf(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_id_t port_id,
@@ -571,6 +575,11 @@ void sai_deserialize_bfd_session_state_ntf(
         _Out_ uint32_t &count,
         _Out_ sai_bfd_session_state_notification_t** bfdsession);
 
+void sai_deserialize_icmp_echo_session_state_ntf(
+       _In_ const std::string& s,
+       _Out_ uint32_t &count,
+       _Out_ sai_icmp_echo_session_state_notification_t** icmp_echo_session);
+
 void sai_deserialize_port_host_tx_ready_ntf(
         _In_ const std::string& s,
         _Out_ sai_object_id_t& switch_id,
@@ -610,6 +619,10 @@ void sai_deserialize_free_queue_deadlock_ntf(
 void sai_deserialize_free_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ sai_bfd_session_state_notification_t* bfdsessionstate);
+
+void sai_deserialize_free_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ sai_icmp_echo_session_state_notification_t* icmp_echo_session_state);
 
 void sai_deserialize_free_switch_asic_sdk_health_event(
         _In_ sai_u8_list_t &description);
