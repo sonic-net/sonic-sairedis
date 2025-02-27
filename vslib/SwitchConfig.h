@@ -67,6 +67,9 @@ namespace saivs
             static bool parseUseTapDevice(
                     _In_ const char* useTapDeviceStr);
 
+            static bool parseBfdOffloadSupported(
+                    _In_ const char* bfdOffloadSupportedStr);
+
         public:
 
             sai_switch_type_t m_saiSwitchType;
@@ -80,6 +83,8 @@ namespace saivs
             std::string m_hardwareInfo;
 
             bool m_useTapDevice;
+
+            bool m_bfdOffload;
 
             std::shared_ptr<LaneMap> m_laneMap;
 
