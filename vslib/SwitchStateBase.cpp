@@ -1057,16 +1057,20 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     attr.id = SAI_SWITCH_ATTR_SUPPORTED_IPV4_BFD_SESSION_OFFLOAD_TYPE;
     uint32_t list[1] = { SAI_BFD_SESSION_OFFLOAD_TYPE_FULL };
+
     if(!m_switchConfig->m_bfdOffload) {
         list[0] = SAI_BFD_SESSION_OFFLOAD_TYPE_NONE;
     }
+
     attr.value.u32list.count = 1;
     attr.value.u32list.list = list;
+
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     attr.id = SAI_SWITCH_ATTR_SUPPORTED_IPV6_BFD_SESSION_OFFLOAD_TYPE;
     attr.value.u32list.count = 1;
     attr.value.u32list.list = list;
+
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     return set_switch_supported_object_types();
