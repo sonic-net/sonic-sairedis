@@ -17,7 +17,8 @@ SwitchConfig::SwitchConfig(
     m_bootType(SAI_VS_BOOT_TYPE_COLD),
     m_switchIndex(switchIndex),
     m_hardwareInfo(hwinfo),
-    m_useTapDevice(false)
+    m_useTapDevice(false),
+    m_bfdOffload(true)
 {
     SWSS_LOG_ENTER();
 
@@ -152,4 +153,17 @@ bool SwitchConfig::parseUseTapDevice(
     }
 
     return false;
+}
+
+bool SwitchConfig::parseBfdOffloadSupported(
+    _In_ const char* bfdOffloadSupportedStr)
+{
+    SWSS_LOG_ENTER();
+
+    if (bfdOffloadSupportedStr)
+    {
+        return strcmp(bfdOffloadSupportedStr, "true") == 0;
+    }
+
+    return true;
 }

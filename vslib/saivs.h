@@ -57,6 +57,19 @@ extern "C" {
 #define SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE      "SAI_VS_HOSTIF_USE_TAP_DEVICE"
 
 /**
+ * @def SAI_KEY_VS_BFD_OFFLOAD_SUPPORTED
+ *
+ * Bool flag, (true/false). If set to false, then platform will be configured
+ * to return SAI_BFD_SESSION_OFFLOAD_TYPE_NONE for
+ * SAI_SWITCH_ATTR_SUPPORTED_IPV4_BFD_SESSION_OFFLOAD_TYPE and
+ * SAI_SWITCH_ATTR_SUPPORTED_IPV6_BFD_SESSION_OFFLOAD_TYPE calls; otherwise
+ * SAI_BFD_SESSION_OFFLOAD_TYPE_FULL will be set.
+ *
+ * By default this flag is set to true.
+ */
+ #define SAI_KEY_VS_BFD_OFFLOAD_SUPPORTED     "SAI_VS_BFD_OFFLOAD_SUPPORTED"
+
+/**
  * @def SAI_KEY_VS_CORE_PORT_INDEX_MAP_FILE
  *
  * For VOQ systems if specified in profile.ini it should point to eth interface to
