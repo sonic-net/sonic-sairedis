@@ -24,6 +24,14 @@
         return _status;                                                         \
     }                                                                           \
 }
+#define VALIDATION_STATS_LIST(cnt,lst)                                                          \
+{                                                                                               \
+    if ((cnt > MAX_LIST_COUNT) || ((cnt == 0) && (lst != NULL)) || ((cnt > 0) && (lst == NULL)))\
+    {                                                                                           \
+        SWSS_LOG_ERROR("Invalid list and list-count");                                          \
+        return SAI_STATUS_INVALID_PARAMETER;                                                    \
+    }                                                                                           \
+}
 
 #define VALIDATION_LIST_GET(md, list)                                                       \
 {                                                                                           \
@@ -1003,37 +1011,6 @@ sai_status_t Meta::meta_validate_stats(
     return SAI_STATUS_SUCCESS;
 }
 
-sai_status_t Meta::meta_validate_query_stats_capability(
-        _In_ sai_object_type_t object_type,
-        _In_ sai_object_id_t object_id)
-{
-    SWSS_LOG_ENTER();
-
-    PARAMETER_CHECK_OBJECT_TYPE_VALID(object_type);
-    PARAMETER_CHECK_OID_OBJECT_TYPE(object_id, object_type);
-    PARAMETER_CHECK_OID_EXISTS(object_id, object_type);
-
-    sai_object_id_t switch_id = switchIdQuery(object_id);
-
-    // checks also if object type is OID
-    sai_status_t status = meta_sai_validate_oid(object_type, &object_id, switch_id, false);
-
-    CHECK_STATUS_SUCCESS(status);
-
-    auto info = sai_metadata_get_object_type_info(object_type);
-
-    PARAMETER_CHECK_IF_NOT_NULL(info);
-
-    if (info->statenum == nullptr)
-    {
-        SWSS_LOG_ERROR("%s does not support stats", info->objecttypename);
-
-        return SAI_STATUS_INVALID_PARAMETER;
-    }
-
-    return SAI_STATUS_SUCCESS;
-}
-
 sai_status_t Meta::getStats(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -1061,11 +1038,24 @@ sai_status_t Meta::queryStatsCapability(
 {
     SWSS_LOG_ENTER();
 
-    auto status = meta_validate_query_stats_capability(objectType, switchId);
+    PARAMETER_CHECK_OID_OBJECT_TYPE(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OID_EXISTS(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OBJECT_TYPE_VALID(objectType);
+    PARAMETER_CHECK_IF_NOT_NULL(stats_capability);
+    VALIDATION_STATS_LIST(stats_capability->count, stats_capability->list);
 
-    CHECK_STATUS_SUCCESS(status);
+    auto info = sai_metadata_get_object_type_info(objectType);
 
-    status = m_implementation->queryStatsCapability(switchId, objectType, stats_capability);
+    PARAMETER_CHECK_IF_NOT_NULL(info);
+
+    if (info->statenum == nullptr)
+    {
+        SWSS_LOG_ERROR("%s does not support stats", info->objecttypename);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto status = m_implementation->queryStatsCapability(switchId, objectType, stats_capability);
 
     // no post validation required
 
