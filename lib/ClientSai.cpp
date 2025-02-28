@@ -981,16 +981,6 @@ sai_status_t ClientSai::getStats(
     return waitForGetStatsResponse(number_of_counters, counters);
 }
 
-sai_status_t ClientSai::queryStatsCapability(
-        _In_ sai_object_id_t switchId,
-        _In_ sai_object_type_t objectType,
-        _Inout_ sai_stat_capability_list_t *stats_capability)
-{
-    SWSS_LOG_ENTER();
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
-}
-
 sai_status_t ClientSai::waitForGetStatsResponse(
         _In_ uint32_t number_of_counters,
         _Out_ uint64_t *counters)
@@ -1014,6 +1004,109 @@ sai_status_t ClientSai::waitForGetStatsResponse(
         {
             counters[idx] = stoull(fvValue(values[idx]));
         }
+    }
+
+    return status;
+}
+
+sai_status_t ClientSai::queryStatsCapability(
+        _In_ sai_object_id_t switchId,
+        _In_ sai_object_type_t objectType,
+        _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    auto switchIdStr = sai_serialize_object_id(switchId);
+    auto objectTypeStr = sai_serialize_object_type(objectType);
+
+    if (stats_capability == NULL)
+    {
+        SWSS_LOG_ERROR("Failed to find stats-capability: switch %s object type %s", switchIdStr.c_str(), objectTypeStr.c_str());
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    if (stats_capability && stats_capability->list && (stats_capability->count))
+    {
+        // clear input list, since we use serialize to transfer values
+        for (uint32_t idx = 0; idx < stats_capability->count; idx++)
+	{
+            stats_capability->list[idx].stat_enum = 0;
+            stats_capability->list[idx].stat_modes = 0;
+	}
+    }
+
+    const std::string listSize = std::to_string(stats_capability->count);
+
+    const std::vector<swss::FieldValueTuple> entry =
+    {
+        swss::FieldValueTuple("OBJECT_TYPE", objectTypeStr),
+	swss::FieldValueTuple("LIST_SIZE", listSize)
+    };
+
+    SWSS_LOG_DEBUG(
+            "Query arguments: switch %s, object type: %s, count: %s",
+            switchIdStr.c_str(),
+            objectTypeStr.c_str(),
+            listSize.c_str()
+    );
+
+    // This query will not put any data into the ASIC view, just into the
+    // message queue
+
+    m_communicationChannel->set(switchIdStr, entry, REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_QUERY);
+
+    return waitForQueryStatsCapabilityResponse(stats_capability);
+}
+
+sai_status_t ClientSai::waitForQueryStatsCapabilityResponse(
+        _Inout_ sai_stat_capability_list_t* stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    swss::KeyOpFieldsValuesTuple kco;
+
+    auto status = m_communicationChannel->wait(REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_RESPONSE, kco);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+        if (values.size() != 3)
+        {
+            SWSS_LOG_ERROR("Invalid response from syncd: expected 3 value, received %zu", values.size());
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        const std::string &stat_enum_str = fvValue(values[0]);
+        const std::string &stat_modes_str = fvValue(values[1]);
+        const uint32_t num_capabilities = std::stoi(fvValue(values[2]));
+
+        SWSS_LOG_DEBUG("Received payload: stat_enums = '%s', stat_modes = '%s', count = %d",
+                       stat_enum_str.c_str(), stat_modes_str.c_str(), num_capabilities);
+
+        stats_capability->count = num_capabilities;
+
+        sai_deserialize_stats_capability_list(stats_capability, stat_enum_str, stat_modes_str);
+    }
+    else if (status ==  SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
+
+        if (values.size() != 1)
+        {
+            SWSS_LOG_ERROR("Invalid response from syncd: expected 1 value, received %zu", values.size());
+
+            return SAI_STATUS_FAILURE;
+        }
+
+        const uint32_t num_capabilities = std::stoi(fvValue(values[0]));
+
+        SWSS_LOG_DEBUG("Received payload: count = %u", num_capabilities);
+
+        stats_capability->count = num_capabilities;
     }
 
     return status;
