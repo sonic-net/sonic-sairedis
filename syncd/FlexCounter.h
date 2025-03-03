@@ -20,12 +20,18 @@ namespace syncd
     class BaseCounterContext
     {
     public:
-        BaseCounterContext(const std::string &name);
+        BaseCounterContext(const std::string &name, const std::string &instance);
         void addPlugins(
             _In_ const std::vector<std::string>& shaStrings);
 
         void setNoDoubleCheckBulkCapability(
             _In_ bool);
+
+        virtual void setBulkChunkSize(
+            _In_ uint32_t bulkChunkSize);
+
+        virtual void setBulkChunkSizePerPrefix(
+            _In_ const std::string& bulkChunkSizePerPrefix);
 
         bool hasPlugin() const {return !m_plugins.empty();}
 
@@ -35,6 +41,12 @@ namespace syncd
                 _In_ sai_object_id_t vid,
                 _In_ sai_object_id_t rid,
                 _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
+        virtual void bulkAddObject(
+                _In_ const std::vector<sai_object_id_t>& vids,
+                _In_ const std::vector<sai_object_id_t>& rids,
+                _In_ const std::vector<std::string>& idStrings,
                 _In_ const std::string &per_object_stats_mode) = 0;
 
         virtual void removeObject(
@@ -51,7 +63,9 @@ namespace syncd
 
     protected:
         std::string m_name;
+        std::string m_instanceId;
         std::set<std::string> m_plugins;
+        std::string m_bulkChunkSizePerPrefix;
 
     public:
         bool always_check_supported_counters = false;
@@ -60,6 +74,7 @@ namespace syncd
         bool double_confirm_supported_counters = false;
         bool no_double_check_bulk_capability = false;
         bool dont_clear_support_counter  = false;
+        uint32_t default_bulk_chunk_size;
     };
     class FlexCounter
     {
@@ -84,6 +99,12 @@ namespace syncd
             void addCounter(
                     _In_ sai_object_id_t vid,
                     _In_ sai_object_id_t rid,
+                    _In_ const std::vector<swss::FieldValueTuple>& values);
+
+            void bulkAddCounter(
+                    _In_ sai_object_type_t objectType,
+                    _In_ const std::vector<sai_object_id_t>& vids,
+                    _In_ const std::vector<sai_object_id_t>& rids,
                     _In_ const std::vector<swss::FieldValueTuple>& values);
 
             void removeCounter(
@@ -119,7 +140,8 @@ namespace syncd
                     _In_ const std::string &name);
 
             std::shared_ptr<BaseCounterContext> createCounterContext(
-                    _In_ const std::string &name);
+                    _In_ const std::string &name,
+                    _In_ const std::string &instance);
 
             void removeCounterContext(
                     _In_ const std::string &name);
@@ -178,5 +200,7 @@ namespace syncd
             bool m_noDoubleCheckBulkCapability;
 
             static const std::map<std::string, std::string> m_plugIn2CounterType;
+
+            static const std::map<std::tuple<sai_object_type_t, std::string>, std::string> m_objectTypeField2CounterType;
     };
 }

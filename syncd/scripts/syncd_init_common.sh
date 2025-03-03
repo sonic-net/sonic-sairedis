@@ -452,6 +452,13 @@ config_syncd_nephos()
 
 config_syncd_vs()
 {
+    if [[ $(sonic-db-cli CONFIG_DB hget 'DEVICE_METADATA|localhost' switch_type) == 'dpu' ]]; then
+        if [[ -f /usr/bin/syncd_dash ]]; then
+            CMD_SYNCD=/usr/bin/syncd_dash
+            CMD=$CMD_SYNCD
+        fi
+    fi
+
     CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
 }
 

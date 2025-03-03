@@ -847,6 +847,60 @@ sai_status_t SwitchStateBase::bulkSet(
     return status;
 }
 
+sai_status_t SwitchStateBase::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t it;
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    if (!object_count || !attr_list || !attr_count || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        if (!attr_list[it] || !attr_count[it])
+        {
+            SWSS_LOG_ERROR("Invalid arguments");
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = get(object_type, serialized_object_ids[it], attr_count[it], attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get attribute for object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
 int SwitchStateBase::get_default_gw_mac_address(
         _Out_ sai_mac_t& mac)
 {
@@ -906,6 +960,30 @@ sai_status_t SwitchStateBase::set_switch_mac_address()
         attr.value.mac[3] = 0x55;
         attr.value.mac[4] = 0x66;
         attr.value.mac[5] = 0x77;
+    }
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+}
+
+sai_status_t SwitchStateBase::set_vxlan_default_router_mac()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create switch vxlan default router mac address");
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC;
+
+    // NOTE if there is default vxlan mac present like in case of get_default_gw_mac_address
+    // then that mac should be used
+    {
+        attr.value.mac[0] = 0x12;
+        attr.value.mac[1] = 0x23;
+        attr.value.mac[2] = 0x34;
+        attr.value.mac[3] = 0x45;
+        attr.value.mac[4] = 0x56;
+        attr.value.mac[5] = 0x67;
     }
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
@@ -1233,6 +1311,11 @@ sai_status_t SwitchStateBase::create_ports()
 
         attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
         attr.value.u32 = DEFAULT_VLAN_NUMBER;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
+        attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
     }
@@ -1649,6 +1732,7 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     SWSS_LOG_ENTER();
 
     CHECK_STATUS(set_switch_mac_address());
+    CHECK_STATUS(set_vxlan_default_router_mac());
     CHECK_STATUS(create_cpu_port());
     CHECK_STATUS(create_default_hash());
     CHECK_STATUS(create_default_vlan());
@@ -1696,6 +1780,11 @@ sai_status_t SwitchStateBase::create_port_dependencies(
 
     attr.id = SAI_PORT_ATTR_ADMIN_STATE;
     attr.value.booldata = false;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
+    attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
@@ -2260,7 +2349,12 @@ sai_status_t SwitchStateBase::refresh_port_oper_speed(
     }
     else
     {
-        if (!vs_get_oper_speed(port_id, attr.value.u32))
+        if (m_switchConfig->m_useConfiguredSpeedAsOperSpeed)
+        {
+            attr.id = SAI_PORT_ATTR_SPEED;
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+        }
+        else if (!vs_get_oper_speed(port_id, attr.value.u32))
         {
             return SAI_STATUS_FAILURE;
         }
@@ -2420,6 +2514,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
                  */
 
             case SAI_PORT_ATTR_OPER_STATUS:
+            case SAI_PORT_ATTR_HOST_TX_READY_STATUS:
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_FABRIC_ATTACHED:
@@ -3758,13 +3853,13 @@ sai_status_t SwitchStateBase::queryHashNativeHashFieldListCapability(
 {
     SWSS_LOG_ENTER();
 
-    if (enum_values_capability->count < 18)
+    if (enum_values_capability->count < 19)
     {
-        enum_values_capability->count = 18;
+        enum_values_capability->count = 19;
         return SAI_STATUS_BUFFER_OVERFLOW;
     }
 
-    enum_values_capability->count = 18;
+    enum_values_capability->count = 19;
     enum_values_capability->list[0] = SAI_NATIVE_HASH_FIELD_IN_PORT;
     enum_values_capability->list[1] = SAI_NATIVE_HASH_FIELD_DST_MAC;
     enum_values_capability->list[2] = SAI_NATIVE_HASH_FIELD_SRC_MAC;
@@ -3783,6 +3878,7 @@ sai_status_t SwitchStateBase::queryHashNativeHashFieldListCapability(
     enum_values_capability->list[15] = SAI_NATIVE_HASH_FIELD_INNER_SRC_IP;
     enum_values_capability->list[16] = SAI_NATIVE_HASH_FIELD_INNER_L4_DST_PORT;
     enum_values_capability->list[17] = SAI_NATIVE_HASH_FIELD_INNER_L4_SRC_PORT;
+    enum_values_capability->list[18] = SAI_NATIVE_HASH_FIELD_IPV6_FLOW_LABEL;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -3894,13 +3990,13 @@ sai_status_t SwitchStateBase::queryStatsCapability(
     }
     else if (objectType == SAI_OBJECT_TYPE_PORT)
     {
-        if (stats_capability->count < 51)
+        if (stats_capability->count < 91)
         {
-            stats_capability->count = 51;
+            stats_capability->count = 91;
             return SAI_STATUS_BUFFER_OVERFLOW;
         }
 
-        stats_capability->count = 51;
+        stats_capability->count = 91;
         stats_capability->list[0].stat_enum = SAI_PORT_STAT_IF_IN_OCTETS;
         stats_capability->list[1].stat_enum = SAI_PORT_STAT_IF_IN_UCAST_PKTS;
         stats_capability->list[2].stat_enum = SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS;
@@ -3952,6 +4048,46 @@ sai_status_t SwitchStateBase::queryStatsCapability(
         stats_capability->list[48].stat_enum = SAI_PORT_STAT_WRED_DROPPED_PACKETS;
         stats_capability->list[49].stat_enum = SAI_PORT_STAT_WRED_DROPPED_BYTES;
         stats_capability->list[50].stat_enum = SAI_PORT_STAT_ECN_MARKED_PACKETS;
+        stats_capability->list[51].stat_enum = SAI_PORT_STAT_PFC_0_RX_PKTS;
+        stats_capability->list[52].stat_enum = SAI_PORT_STAT_PFC_0_TX_PKTS;
+        stats_capability->list[53].stat_enum = SAI_PORT_STAT_PFC_1_RX_PKTS;
+        stats_capability->list[54].stat_enum = SAI_PORT_STAT_PFC_1_TX_PKTS;
+        stats_capability->list[55].stat_enum = SAI_PORT_STAT_PFC_2_RX_PKTS;
+        stats_capability->list[56].stat_enum = SAI_PORT_STAT_PFC_2_TX_PKTS;
+        stats_capability->list[57].stat_enum = SAI_PORT_STAT_PFC_3_RX_PKTS;
+        stats_capability->list[58].stat_enum = SAI_PORT_STAT_PFC_3_TX_PKTS;
+        stats_capability->list[59].stat_enum = SAI_PORT_STAT_PFC_4_RX_PKTS;
+        stats_capability->list[60].stat_enum = SAI_PORT_STAT_PFC_4_TX_PKTS;
+        stats_capability->list[61].stat_enum = SAI_PORT_STAT_PFC_5_RX_PKTS;
+        stats_capability->list[62].stat_enum = SAI_PORT_STAT_PFC_5_TX_PKTS;
+        stats_capability->list[63].stat_enum = SAI_PORT_STAT_PFC_6_RX_PKTS;
+        stats_capability->list[64].stat_enum = SAI_PORT_STAT_PFC_6_TX_PKTS;
+        stats_capability->list[65].stat_enum = SAI_PORT_STAT_PFC_7_RX_PKTS;
+        stats_capability->list[66].stat_enum = SAI_PORT_STAT_PFC_7_TX_PKTS;
+        stats_capability->list[67].stat_enum = SAI_PORT_STAT_PFC_0_RX_PAUSE_DURATION_US;
+        stats_capability->list[68].stat_enum = SAI_PORT_STAT_PFC_0_TX_PAUSE_DURATION_US;
+        stats_capability->list[69].stat_enum = SAI_PORT_STAT_PFC_1_RX_PAUSE_DURATION_US;
+        stats_capability->list[70].stat_enum = SAI_PORT_STAT_PFC_1_TX_PAUSE_DURATION_US;
+        stats_capability->list[71].stat_enum = SAI_PORT_STAT_PFC_2_RX_PAUSE_DURATION_US;
+        stats_capability->list[72].stat_enum = SAI_PORT_STAT_PFC_2_TX_PAUSE_DURATION_US;
+        stats_capability->list[73].stat_enum = SAI_PORT_STAT_PFC_3_RX_PAUSE_DURATION_US;
+        stats_capability->list[74].stat_enum = SAI_PORT_STAT_PFC_3_TX_PAUSE_DURATION_US;
+        stats_capability->list[75].stat_enum = SAI_PORT_STAT_PFC_4_RX_PAUSE_DURATION_US;
+        stats_capability->list[76].stat_enum = SAI_PORT_STAT_PFC_4_TX_PAUSE_DURATION_US;
+        stats_capability->list[77].stat_enum = SAI_PORT_STAT_PFC_5_RX_PAUSE_DURATION_US;
+        stats_capability->list[78].stat_enum = SAI_PORT_STAT_PFC_5_TX_PAUSE_DURATION_US;
+        stats_capability->list[79].stat_enum = SAI_PORT_STAT_PFC_6_RX_PAUSE_DURATION_US;
+        stats_capability->list[80].stat_enum = SAI_PORT_STAT_PFC_6_TX_PAUSE_DURATION_US;
+        stats_capability->list[81].stat_enum = SAI_PORT_STAT_PFC_7_RX_PAUSE_DURATION_US;
+        stats_capability->list[82].stat_enum = SAI_PORT_STAT_PFC_7_TX_PAUSE_DURATION_US;
+        stats_capability->list[83].stat_enum = SAI_PORT_STAT_PFC_0_ON2OFF_RX_PKTS;
+        stats_capability->list[84].stat_enum = SAI_PORT_STAT_PFC_1_ON2OFF_RX_PKTS;
+        stats_capability->list[85].stat_enum = SAI_PORT_STAT_PFC_2_ON2OFF_RX_PKTS;
+        stats_capability->list[86].stat_enum = SAI_PORT_STAT_PFC_3_ON2OFF_RX_PKTS;
+        stats_capability->list[87].stat_enum = SAI_PORT_STAT_PFC_4_ON2OFF_RX_PKTS;
+        stats_capability->list[88].stat_enum = SAI_PORT_STAT_PFC_5_ON2OFF_RX_PKTS;
+        stats_capability->list[89].stat_enum = SAI_PORT_STAT_PFC_6_ON2OFF_RX_PKTS;
+        stats_capability->list[90].stat_enum = SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS;
 
         for(i = 0; i < stats_capability->count; i++)
         {

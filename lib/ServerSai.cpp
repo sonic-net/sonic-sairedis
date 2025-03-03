@@ -452,9 +452,14 @@ sai_status_t ServerSai::bulkGet(
     SWSS_LOG_ENTER();
     REDIS_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_sai->bulkGet(
+            object_type,
+            object_count,
+            object_id,
+            attr_count,
+            attr_list,
+            mode,
+            object_statuses);
 }
 
 // BULK QUAD ENTRY

@@ -72,6 +72,7 @@ SaiSwitch::SaiSwitch(
     if (getSwitchType() == SAI_SWITCH_TYPE_NPU)
     {
         saiGetMacAddress(m_default_mac_address);
+        saiGetVxlanDefaultRouterMacAddress(m_vxlan_default_router_mac_address);
     }
 }
 
@@ -124,12 +125,45 @@ void SaiSwitch::saiGetMacAddress(
     memcpy(mac, attr.value.mac, sizeof(sai_mac_t));
 }
 
+void SaiSwitch::saiGetVxlanDefaultRouterMacAddress(
+        _Out_ sai_mac_t &mac) const
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC;
+
+    sai_status_t status = m_vendorSai->get(SAI_OBJECT_TYPE_SWITCH, m_switch_rid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        // not all devices may support this
+        SWSS_LOG_WARN("failed to obtain SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC, setting to 00:00:00:00:00:00");
+
+        memset(attr.value.mac, 0, sizeof(sai_mac_t));
+    }
+
+    SWSS_LOG_DEBUG("mac address is: %s",
+            sai_serialize_mac(attr.value.mac).c_str());
+
+    memcpy(mac, attr.value.mac, sizeof(sai_mac_t));
+}
+
 void SaiSwitch::getDefaultMacAddress(
         _Out_ sai_mac_t& mac) const
 {
     SWSS_LOG_ENTER();
 
     memcpy(mac, m_default_mac_address, sizeof(sai_mac_t));
+}
+
+void SaiSwitch::getVxlanDefaultRouterMacAddress(
+        _Out_ sai_mac_t& mac) const
+{
+    SWSS_LOG_ENTER();
+
+    memcpy(mac, m_vxlan_default_router_mac_address, sizeof(sai_mac_t));
 }
 
 sai_switch_type_t SaiSwitch::getSwitchType() const

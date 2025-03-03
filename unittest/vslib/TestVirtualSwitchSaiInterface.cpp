@@ -124,25 +124,44 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryApiVersion)
 
 TEST_F(VirtualSwitchSaiInterfaceTest, bulkGet)
 {
-    sai_object_id_t oids[1] = {0};
-    uint32_t attrcount[1] = {0};
-    sai_attribute_t* attrs[1] = {0};
-    sai_status_t statuses[1] = {0};
+    sai_attribute_t attr;
 
-    EXPECT_EQ(SAI_STATUS_NOT_IMPLEMENTED,
+    attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
+    EXPECT_EQ(m_vssai->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+
+    auto portNum = attr.value.u32;
+
+    std::vector<sai_object_id_t> oids(portNum);
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = portNum;
+    attr.value.objlist.list = oids.data();
+    EXPECT_EQ(m_vssai->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+
+    std::vector<sai_attribute_t> attrs(portNum);
+    std::vector<uint32_t> attrCounts(portNum, 1);
+    std::vector<sai_status_t> statuses(portNum);
+    std::vector<sai_attribute_t*> pattrs(portNum);
+    for (size_t i = 0; i < portNum; i++)
+    {
+        attrs[i].id = SAI_PORT_ATTR_ADMIN_STATE;
+        pattrs[i] = &attrs[i];
+    }
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
             m_vssai->bulkGet(
                 SAI_OBJECT_TYPE_PORT,
-                1,
-                oids,
-                attrcount,
-                attrs,
+                portNum,
+                oids.data(),
+                attrCounts.data(),
+                pattrs.data(),
                 SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR,
-                statuses));
+                statuses.data()));
 }
 
 TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
 {
-    sai_stat_capability_t capability_list[51];
+    sai_stat_capability_t capability_list[91];
     sai_stat_capability_list_t stats_capability;
     stats_capability.list = capability_list;
 
@@ -170,7 +189,7 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
                 SAI_OBJECT_TYPE_PORT,
                 &stats_capability));
 
-    stats_capability.count = 51;
+    stats_capability.count = 91;
     EXPECT_EQ(SAI_STATUS_SUCCESS,
             m_vssai->queryStatsCapability(
                 m_swid,

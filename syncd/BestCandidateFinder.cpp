@@ -2941,6 +2941,38 @@ std::shared_ptr<SaiAttr> BestCandidateFinder::getSaiAttrFromDefaultValue(
         return std::make_shared<SaiAttr>(meta.attridname, str_attr_value);
     }
 
+    if (meta.objecttype == SAI_OBJECT_TYPE_SWITCH &&
+            meta.attrid == SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC)
+    {
+        /*
+         * Same will apply for default values which are pointing to
+         * different attributes.
+         *
+         * Default value is stored in SaiSwitch class.
+         */
+
+        // XXX we have only 1 switch, so we can get away with this
+
+        sai_attribute_t attr;
+
+        memset(&attr, 0, sizeof(sai_attribute_t));
+
+        attr.id = meta.attrid;
+
+        sw->getVxlanDefaultRouterMacAddress(attr.value.mac);
+
+        // NOTE: default router mac can be zero if GET operation failed at
+        // switch create, we will still return that value here, but later on
+        // SET operation can fail, so that's why this attribute is added to
+        // workaround
+
+        std::string str_attr_value = sai_serialize_attr_value(meta, attr, false);
+
+        SWSS_LOG_NOTICE("bringing default %s", meta.attridname);
+
+        return std::make_shared<SaiAttr>(meta.attridname, str_attr_value);
+    }
+
     /*
      * Move this method to asicview class.
      */

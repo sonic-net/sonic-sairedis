@@ -150,9 +150,15 @@ sai_status_t Sai::apiInitialize(
 
     const char *use_tap_dev = service_method_table->profile_get_value(0, SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE);
 
-    auto useTapDevice = SwitchConfig::parseUseTapDevice(use_tap_dev);
+    auto useTapDevice = SwitchConfig::parseBool(use_tap_dev);
 
     SWSS_LOG_NOTICE("hostif use TAP device: %s", (useTapDevice ? "true" : "false"));
+
+    const char *use_configured_speed_as_oper_speed = service_method_table->profile_get_value(0, SAI_KEY_VS_USE_CONFIGURED_SPEED_AS_OPER_SPEED);
+
+    auto useConfiguredSpeedAsOperSpeed = SwitchConfig::parseBool(use_configured_speed_as_oper_speed);
+
+    SWSS_LOG_NOTICE("use configured speed as oper speed: %s", (useConfiguredSpeedAsOperSpeed ? "true" : "false"));
 
     auto cstrGlobalContext = service_method_table->profile_get_value(0, SAI_KEY_VS_GLOBAL_CONTEXT);
 
@@ -218,6 +224,7 @@ sai_status_t Sai::apiInitialize(
         sc->m_switchType = switchType;
         sc->m_bootType = bootType;
         sc->m_useTapDevice = useTapDevice;
+        sc->m_useConfiguredSpeedAsOperSpeed = useConfiguredSpeedAsOperSpeed;
         sc->m_laneMap = m_laneMapContainer->getLaneMap(sc->m_switchIndex);
 
         if (sc->m_laneMap == nullptr)
@@ -630,11 +637,18 @@ sai_status_t Sai::bulkGet(
         _In_ sai_bulk_op_error_mode_t mode,
         _Out_ sai_status_t *object_statuses)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
+    VS_CHECK_API_INITIALIZED();
 
-    SWSS_LOG_ERROR("not implemented, FIXME");
-
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return m_meta->bulkGet(
+            object_type,
+            object_count,
+            object_id,
+            attr_count,
+            attr_list,
+            mode,
+            object_statuses);
 }
 
 // BULK QUAD ENTRY
