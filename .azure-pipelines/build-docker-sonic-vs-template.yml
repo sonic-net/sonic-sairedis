@@ -85,6 +85,35 @@ jobs:
       patterns: |
         libdashapi*.deb
     displayName: "Download dash api"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: sonic-net.sonic-platform-vpp
+      artifact: vpp
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/main'
+      allowPartiallySucceededBuilds: true
+      path: $(Build.ArtifactStagingDirectory)/download
+    displayName: "Download sonic platform-vpp deb packages"
+    condition: eq('${{ parameters.arch }}', 'amd64')
+  - script: |
+      set -ex
+      sudo apt update
+      sudo apt install libc6 -y
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/libvppinfra-dev_*_${{ parameters.arch }}.deb
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/libvppinfra_*_${{ parameters.arch }}.deb
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/vpp_*_${{ parameters.arch }}.deb
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/vpp-crypto-engines_*_${{ parameters.arch }}.deb
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/vpp-dbg_*_${{ parameters.arch }}.deb
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/vpp-dev_*_${{ parameters.arch }}.deb
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/vpp-plugin-core_*_${{ parameters.arch }}.deb
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/vpp-plugin-devtools_*_${{ parameters.arch }}.deb
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/vpp-plugin-dpdk_*_${{ parameters.arch }}.deb
+      sudo dpkg -i $(Build.ArtifactStagingDirectory)/download/python3-vpp-api_*_${{ parameters.arch }}.deb
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install sonic platform-vpp packages"
+    condition: eq('${{ parameters.arch }}', 'amd64')
   - script: |
       set -ex
       echo $(Build.DefinitionName).$(Build.BuildNumber)
