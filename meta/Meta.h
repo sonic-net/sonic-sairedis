@@ -240,6 +240,10 @@ namespace saimeta
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
 
+            void meta_sai_on_icmp_echo_session_state_change(
+                    _In_ uint32_t count,
+                    _In_ const sai_icmp_echo_session_state_notification_t *data);
+
             void meta_sai_on_port_host_tx_ready_change(
                     _In_ sai_object_id_t port_id,
                     _In_ sai_object_id_t switch_id,
@@ -271,6 +275,9 @@ namespace saimeta
 
             void meta_sai_on_bfd_session_state_change_single(
                     _In_ const sai_bfd_session_state_notification_t& data);
+
+            void meta_sai_on_icmp_echo_session_state_change_single(
+                    _In_ const sai_icmp_echo_session_state_notification_t& data);
 
             void meta_sai_on_twamp_session_event_single(
                     _In_ const sai_twamp_session_event_notification_data_t& data);
