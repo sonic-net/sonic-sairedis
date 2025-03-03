@@ -70,6 +70,16 @@ extern "C" {
  #define SAI_KEY_VS_BFD_OFFLOAD_SUPPORTED     "SAI_VS_BFD_OFFLOAD_SUPPORTED"
 
 /**
+ * @def SAI_KEY_VS_USE_CONFIGURED_SPEED_AS_OPER_SPEED
+ *
+ * Bool flag, (true/false). If set to true, SAI_PORT_ATTR_OPER_SPEED returns
+ * the SAI_PORT_ATTR_SPEED instead of querying the speed of veth
+ *
+ * By default this flag is set to false.
+ */
+#define SAI_KEY_VS_USE_CONFIGURED_SPEED_AS_OPER_SPEED "SAI_VS_USE_CONFIGURED_SPEED_AS_OPER_SPEED"
+
+/**
  * @def SAI_KEY_VS_CORE_PORT_INDEX_MAP_FILE
  *
  * For VOQ systems if specified in profile.ini it should point to eth interface to
