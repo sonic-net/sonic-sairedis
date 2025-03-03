@@ -67,6 +67,9 @@ namespace saivs
             static bool parseBool(
                     _In_ const char* boolStr);
 
+            static bool parseBfdOffloadSupported(
+                    _In_ const char* bfdOffloadSupportedStr);
+
         public:
 
             sai_switch_type_t m_saiSwitchType;
@@ -80,6 +83,8 @@ namespace saivs
             std::string m_hardwareInfo;
 
             bool m_useTapDevice;
+
+            bool m_bfdOffload;
 
             bool m_useConfiguredSpeedAsOperSpeed;
 

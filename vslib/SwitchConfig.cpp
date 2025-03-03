@@ -18,6 +18,7 @@ SwitchConfig::SwitchConfig(
     m_switchIndex(switchIndex),
     m_hardwareInfo(hwinfo),
     m_useTapDevice(false),
+    m_bfdOffload(true),
     m_useConfiguredSpeedAsOperSpeed(false)
 {
     SWSS_LOG_ENTER();
@@ -153,4 +154,17 @@ bool SwitchConfig::parseBool(
     }
 
     return false;
+}
+
+bool SwitchConfig::parseBfdOffloadSupported(
+    _In_ const char* bfdOffloadSupportedStr)
+{
+    SWSS_LOG_ENTER();
+
+    if (bfdOffloadSupportedStr)
+    {
+        return strcmp(bfdOffloadSupportedStr, "true") == 0;
+    }
+
+    return true;
 }
