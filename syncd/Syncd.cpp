@@ -69,8 +69,6 @@ Syncd::Syncd(
 
     SWSS_LOG_NOTICE("sairedis git revision %s, SAI git revision: %s", SAIREDIS_GIT_REVISION, SAI_GIT_REVISION);
 
-    setSaiApiLogLevel();
-
     SWSS_LOG_NOTICE("command line: %s", m_commandLineOptions->getCommandLineString().c_str());
 
     auto ccc = sairedis::ContextConfigContainer::loadFromFile(m_commandLineOptions->m_contextConfig.c_str());
@@ -213,6 +211,8 @@ Syncd::Syncd(
 
         abort();
     }
+
+    setSaiApiLogLevel();
 
     sai_api_version_t apiVersion = SAI_VERSION(0,0,0); // invalid version
 
