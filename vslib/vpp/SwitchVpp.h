@@ -24,6 +24,7 @@ namespace saivs
 
             // name hidding
 
+            using saivs::SwitchStateBase::create;
             using saivs::SwitchStateBase::get;
             using saivs::SwitchStateBase::set;
 
@@ -41,6 +42,36 @@ namespace saivs
                     _In_ std::shared_ptr<WarmBootState> warmBootState);
 
             virtual ~SwitchVpp() = default;
+
+        protected:
+
+            virtual sai_status_t create_cpu_qos_queues(
+                    _In_ sai_object_id_t port_id) override;
+
+            virtual sai_status_t create_qos_queues_per_port(
+                    _In_ sai_object_id_t port_id) override;
+
+            virtual sai_status_t create_qos_queues() override;
+
+            virtual sai_status_t create_scheduler_group_tree(
+                    _In_ const std::vector<sai_object_id_t>& sgs,
+                    _In_ sai_object_id_t port_id) override;
+
+            virtual sai_status_t create_scheduler_groups_per_port(
+                    _In_ sai_object_id_t port_id) override;
+
+            virtual sai_status_t set_maximum_number_of_childs_per_scheduler_group() override;
+
+            virtual sai_status_t refresh_bridge_port_list(
+                    _In_ const sai_attr_metadata_t *meta,
+                    _In_ sai_object_id_t bridge_id) override;
+
+            virtual sai_status_t warm_update_queues() override;
+
+            virtual sai_status_t create_port_serdes() override;
+
+            virtual sai_status_t create_port_serdes_per_port(
+                    _In_ sai_object_id_t port_id) override;
 
         private: // from vpp VirtualSwitchSaiInterface
 
@@ -835,6 +866,12 @@ namespace saivs
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
                     _Out_ std::string& ifname);
+
+        public:
+
+            virtual sai_status_t initialize_default_objects(
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list) override;
 
         protected: // VPP
 
