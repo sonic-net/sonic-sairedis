@@ -6906,6 +6906,65 @@ void Meta::meta_sai_on_bfd_session_state_change(
     }
 }
 
+void Meta::meta_sai_on_icmp_echo_session_state_change_single(
+        _In_ const sai_icmp_echo_session_state_notification_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    auto ot = objectTypeQuery(data.icmp_echo_session_id);
+
+    bool valid = false;
+
+    switch (ot)
+    {
+        // TODO hardcoded types, must advance SAI repository commit to get metadata for this
+        case SAI_OBJECT_TYPE_ICMP_ECHO_SESSION:
+
+            valid = true;
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("data.icmp_echo_session_id %s has unexpected type: %s, expected ICMP_ECHO_SESSION",
+                    sai_serialize_object_id(data.icmp_echo_session_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+            break;
+    }
+
+    if (valid && !m_oids.objectReferenceExists(data.icmp_echo_session_id))
+    {
+        SWSS_LOG_NOTICE("data.icmp_echo_session_id new object spotted %s not present in local DB (snoop!)",
+                sai_serialize_object_id(data.icmp_echo_session_id).c_str());
+
+        sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = data.icmp_echo_session_id } } };
+
+        m_oids.objectReferenceInsert(data.icmp_echo_session_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
+    }
+}
+
+void Meta::meta_sai_on_icmp_echo_session_state_change(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("sai_icmp_echo_session_state_notification_t pointer is NULL but count is %u", count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meta_sai_on_icmp_echo_session_state_change_single(data[i]);
+    }
+}
+
 void Meta::meta_sai_on_twamp_session_event_single(
         _In_ const sai_twamp_session_event_notification_data_t& data)
 {
