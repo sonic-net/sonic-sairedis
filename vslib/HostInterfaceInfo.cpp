@@ -40,10 +40,7 @@ HostInterfaceInfo::HostInterfaceInfo(
 {
     SWSS_LOG_ENTER();
 
-    m_run_thread = true;
-
-    m_e2t = std::make_shared<std::thread>(&HostInterfaceInfo::veth2tap_fun, this);
-    m_t2e = std::make_shared<std::thread>(&HostInterfaceInfo::tap2veth_fun, this);
+    m_run_thread = false;
 }
 
 HostInterfaceInfo::~HostInterfaceInfo()
@@ -75,6 +72,21 @@ HostInterfaceInfo::~HostInterfaceInfo()
     }
 
     SWSS_LOG_NOTICE("joined threads for hostif: %s", m_name.c_str());
+}
+
+void HostInterfaceInfo::runThreads()
+{
+    SWSS_LOG_ENTER();
+
+    if (m_run_thread)
+    {
+        return;
+    }
+
+    m_run_thread = true;
+
+    m_e2t = std::make_shared<std::thread>(&HostInterfaceInfo::veth2tap_fun, this);
+    m_t2e = std::make_shared<std::thread>(&HostInterfaceInfo::tap2veth_fun, this);
 }
 
 void HostInterfaceInfo::async_process_packet_for_fdb_event(
