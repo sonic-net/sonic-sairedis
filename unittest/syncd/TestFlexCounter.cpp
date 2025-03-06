@@ -597,6 +597,26 @@ TEST(FlexCounter, addRemoveCounter)
         false,
         STATS_MODE_READ,
         true);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_COUNTER,
+        SRV6_COUNTER_ID_LIST,
+        {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_COUNTER,
+        SRV6_COUNTER_ID_LIST,
+        {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 }
 
 TEST(FlexCounter, UpdateExistingCounterAddBulk)
@@ -1051,6 +1071,8 @@ TEST(FlexCounter, bulkCounter)
         {"10", "20"},
         counterVerifyFunc,
         false);
+    // buffer pool stats does not support bulk
+    EXPECT_EQ(false, clearCalled);
 
     capabilities = (SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_READ);
     testAddRemoveCounter(
@@ -1064,8 +1086,15 @@ TEST(FlexCounter, bulkCounter)
         {"100", "200", "300", "400", "500", "600", "700", "800"},
         counterVerifyFunc,
         false);
-    // buffer pool stats does not support bulk
-    EXPECT_EQ(false, clearCalled);
+
+    testAddRemoveCounter(
+        2,
+        SAI_OBJECT_TYPE_COUNTER,
+        SRV6_COUNTER_ID_LIST,
+        {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false);
 }
 
 TEST(FlexCounter, bulkChunksize)
