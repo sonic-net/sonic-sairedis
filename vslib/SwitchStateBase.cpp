@@ -1336,6 +1336,11 @@ sai_status_t SwitchStateBase::create_ports()
         attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_AUTO_NEG_MODE;
+        attr.value.booldata = true;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1803,6 +1808,11 @@ sai_status_t SwitchStateBase::create_port_dependencies(
 
     attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
     attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_AUTO_NEG_MODE;
+    attr.value.booldata = true;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
