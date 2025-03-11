@@ -23,7 +23,7 @@ jobs:
   displayName: vstest
   timeoutInMinutes: ${{ parameters.timeout }}
 
-  pool: sonictest
+  pool: test-os-upgrade
 
   steps:
   - script: |
