@@ -2159,24 +2159,28 @@ sai_status_t Syncd::processBulkOidCreate(
     }
 
     /*
-     * Object was created so new object id was generated we need to save
-     * virtual id's to redis db.
+     * Create vectors for successfully created objects only, since objectRids/Vids
+     * contain both successful and failed entries. Only store successful mappings
+     * in Redis.
      */
+    std::vector<sai_object_id_t> createdRids, createdVids;
+    createdRids.reserve(object_count);
+    createdVids.reserve(object_count);
+
     for (size_t idx = 0; idx < object_count; idx++)
     {
         if (statuses[idx] == SAI_STATUS_SUCCESS)
         {
-            m_translator->insertRidAndVid(objectRids[idx], objectVids[idx]);
-
-            SWSS_LOG_INFO("saved VID %s to RID %s",
-                    sai_serialize_object_id(objectVids[idx]).c_str(),
-                    sai_serialize_object_id(objectRids[idx]).c_str());
-
-            if (objectType == SAI_OBJECT_TYPE_PORT)
-            {
-                m_switches.at(switchVid)->onPostPortCreate(objectRids[idx], objectVids[idx]);
-            }
+            createdRids.push_back(objectRids[idx]);
+            createdVids.push_back(objectVids[idx]);
         }
+    }
+
+    m_translator->insertRidAndVid(createdRids.data(), createdVids.data(), createdRids.size());
+
+    if (objectType == SAI_OBJECT_TYPE_PORT)
+    {
+        m_switches.at(switchVid)->onPostPortCreate(createdRids.data(), createdRids.size());
     }
 
     return status;
@@ -3481,7 +3485,7 @@ sai_status_t Syncd::processOidCreate(
 
         if (objectType == SAI_OBJECT_TYPE_PORT)
         {
-            m_switches.at(switchVid)->onPostPortCreate(objectRid, objectVid);
+            m_switches.at(switchVid)->onPostPortCreate(&objectRid, 1);
         }
     }
 
@@ -4021,6 +4025,20 @@ void Syncd::snoopGetOid(
     {
         // if snooped oid is NULL then we don't need take any action
         return;
+    }
+
+    /*
+     * Check if object was previously discovered on this switch, then no need to update ASIC_DB.
+     */
+    sai_object_id_t rid = SAI_NULL_OBJECT_ID;
+    if (m_translator->tryTranslateVidToRid(vid, rid))
+    {
+        const auto switchVid = VidManager::switchIdQuery(vid);
+        if (m_switches[switchVid]->isDiscoveredRid(rid))
+        {
+            // Already discovered object.
+            return;
+        }
     }
 
     /*

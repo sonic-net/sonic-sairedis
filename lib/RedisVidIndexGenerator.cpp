@@ -2,6 +2,8 @@
 
 #include "swss/logger.h"
 
+#include <inttypes.h>
+
 using namespace sairedis;
 
 RedisVidIndexGenerator::RedisVidIndexGenerator(
@@ -23,6 +25,16 @@ uint64_t RedisVidIndexGenerator::increment()
     // sairedis and syncd
 
     return m_dbConnector->incr(m_vidCounterName); // "VIDCOUNTER"
+}
+
+uint64_t RedisVidIndexGenerator::incrementBy(uint64_t count)
+{
+    SWSS_LOG_ENTER();
+
+    swss::RedisCommand sincr;
+    sincr.format("INCRBY %s %" PRIu64, m_vidCounterName.c_str(), count);
+    swss::RedisReply r(m_dbConnector.get(), sincr, REDIS_REPLY_INTEGER);
+    return r.getContext()->integer;
 }
 
 void RedisVidIndexGenerator::reset()

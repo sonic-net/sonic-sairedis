@@ -68,8 +68,8 @@ namespace saiasiccmp
             virtual std::set<sai_object_id_t> getWarmBootDiscoveredVids() const override;
 
             virtual void onPostPortCreate(
-                    _In_ sai_object_id_t port_rid,
-                    _In_ sai_object_id_t port_vid) override;
+                    _In_ sai_object_id_t* port_rids,
+                    _In_ size_t count) override;
 
             virtual void postPortRemove(
                     _In_ sai_object_id_t portRid) override;

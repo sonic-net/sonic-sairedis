@@ -59,6 +59,16 @@ namespace syncd
                     _In_ bool translateRemoved = false);
 
             /*
+             * Translate RIDs to VIDs in batch, prefer this overload when doing bulk operations,
+             * initial object discovery or when many objects need to be mapped to virtual IDs.
+             */
+            void translateRidToVid(
+                    _In_ sai_object_id_t switchVid,
+                    _In_ sai_object_id_t* rids,
+                    _Out_ sai_object_id_t* vids,
+                    _In_ size_t count);
+
+            /*
              * This method is required to translate RID to VIDs when we are doing
              * snoop for new ID's in init view mode, on in apply view mode when we
              * are executing GET api, and new object RIDs were spotted the we will
@@ -110,6 +120,11 @@ namespace syncd
             void insertRidAndVid(
                     _In_ sai_object_id_t rid,
                     _In_ sai_object_id_t vid);
+
+            void insertRidAndVid(
+                    _In_ sai_object_id_t* rids,
+                    _In_ sai_object_id_t* vids,
+                    _In_ size_t count);
 
             void clearLocalCache();
 
