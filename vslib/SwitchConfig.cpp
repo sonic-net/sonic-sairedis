@@ -17,7 +17,8 @@ SwitchConfig::SwitchConfig(
     m_bootType(SAI_VS_BOOT_TYPE_COLD),
     m_switchIndex(switchIndex),
     m_hardwareInfo(hwinfo),
-    m_useTapDevice(false)
+    m_useTapDevice(false),
+    m_useConfiguredSpeedAsOperSpeed(false)
 {
     SWSS_LOG_ENTER();
 
@@ -141,14 +142,14 @@ bool SwitchConfig::parseBootType(
     return true;
 }
 
-bool SwitchConfig::parseUseTapDevice(
-        _In_ const char* useTapDeviceStr)
+bool SwitchConfig::parseBool(
+        _In_ const char* str)
 {
     SWSS_LOG_ENTER();
 
-    if (useTapDeviceStr)
+    if (str)
     {
-        return strcmp(useTapDeviceStr, "true") == 0;
+        return strcmp(str, "true") == 0;
     }
 
     return false;

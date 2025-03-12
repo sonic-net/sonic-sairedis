@@ -1235,6 +1235,11 @@ sai_status_t SwitchStateBase::create_ports()
         attr.value.u32 = DEFAULT_VLAN_NUMBER;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
+        attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1696,6 +1701,11 @@ sai_status_t SwitchStateBase::create_port_dependencies(
 
     attr.id = SAI_PORT_ATTR_ADMIN_STATE;
     attr.value.booldata = false;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
+    attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
@@ -2260,7 +2270,12 @@ sai_status_t SwitchStateBase::refresh_port_oper_speed(
     }
     else
     {
-        if (!vs_get_oper_speed(port_id, attr.value.u32))
+        if (m_switchConfig->m_useConfiguredSpeedAsOperSpeed)
+        {
+            attr.id = SAI_PORT_ATTR_SPEED;
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+        }
+        else if (!vs_get_oper_speed(port_id, attr.value.u32))
         {
             return SAI_STATUS_FAILURE;
         }
@@ -2420,6 +2435,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
                  */
 
             case SAI_PORT_ATTR_OPER_STATUS:
+            case SAI_PORT_ATTR_HOST_TX_READY_STATUS:
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_FABRIC_ATTACHED:
