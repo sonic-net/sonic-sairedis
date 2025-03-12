@@ -53,6 +53,7 @@ VendorSai::VendorSai()
         .query_attribute_enum_values_capability = &sai_query_attribute_enum_values_capability,
         .query_object_stage = nullptr,
         .query_stats_capability = &sai_query_stats_capability,
+        .query_stats_st_capability = &sai_query_stats_st_capability,
         .switch_id_query = &sai_switch_id_query,
         .tam_telemetry_get_data = nullptr,
     };
@@ -338,6 +339,21 @@ sai_status_t VendorSai::queryStatsCapability(
     VENDOR_CHECK_API_INITIALIZED();
 
     return m_globalApis.query_stats_capability(
+            switchId,
+            objectType,
+            stats_capability);
+}
+
+sai_status_t VendorSai::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    VENDOR_CHECK_API_INITIALIZED();
+
+    return m_globalApis.query_stats_st_capability(
             switchId,
             objectType,
             stats_capability);

@@ -315,6 +315,11 @@ namespace saivs
                               _In_ sai_object_type_t objectType,
                               _Inout_ sai_stat_capability_list_t *stats_capability);
 
+           virtual sai_status_t queryStatsStCapability(
+                              _In_ sai_object_id_t switchId,
+                              _In_ sai_object_type_t objectType,
+                              _Inout_ sai_stat_st_capability_list_t *stats_capability);
+
            virtual sai_status_t queryAttributeCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
