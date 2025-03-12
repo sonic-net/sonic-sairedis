@@ -853,36 +853,12 @@ public:
                 _In_ const std::string &per_object_stats_mode)
     {
         SWSS_LOG_ENTER();
-        sai_stats_mode_t instance_stats_mode = SAI_STATS_MODE_READ_AND_CLEAR;
         sai_stats_mode_t effective_stats_mode;
         // TODO: use if const expression when c++17 is supported
         if (HasStatsMode<CounterIdsType>::value)
         {
-            if (per_object_stats_mode == STATS_MODE_READ_AND_CLEAR)
-            {
-                instance_stats_mode = SAI_STATS_MODE_READ_AND_CLEAR;
-            }
-            else if (per_object_stats_mode == STATS_MODE_READ)
-            {
-                instance_stats_mode = SAI_STATS_MODE_READ;
-            }
-            else
-            {
-                SWSS_LOG_WARN("Stats mode %s not supported for flex counter. Using STATS_MODE_READ_AND_CLEAR", per_object_stats_mode.c_str());
-            }
-
-            effective_stats_mode = (m_groupStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
-                                    instance_stats_mode == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
-        }
-        else
-        {
-            effective_stats_mode = m_groupStatsMode;
-        }
-
-        if (HasStatsMode<CounterIdsType>::value)
-        {
             // Bulk operation is not supported by the counter group.
-            SWSS_LOG_NOTICE("Counter group %s does not support bulk. Fallback to single call", m_name.c_str());
+            SWSS_LOG_NOTICE("Counter group %s %s does not support bulk. Fallback to single call", m_name.c_str(), m_instanceId.c_str());
 
             // Fall back to old way
             for (size_t i = 0; i < vids.size(); i++)
@@ -893,6 +869,10 @@ public:
             }
 
             return;
+        }
+        else
+        {
+            effective_stats_mode = m_groupStatsMode;
         }
 
         std::vector<StatType> allCounterIds, supportedIds;
@@ -925,6 +905,24 @@ public:
         auto checkAndUpdateBulkCapability = [&](const std::vector<StatType> &counter_ids, const std::string &prefix, uint32_t bulk_chunk_size)
         {
             BulkContextType ctx;
+            // Check bulk capabilities again
+            std::vector<StatType> bulk_counter_ids = counter_ids;
+            updateSupportedCounters(rids[0], bulk_counter_ids, statsMode);
+            if (bulk_counter_ids.size() == 0)
+            {
+                // Bulk polling is unsupported for the whole group but single polling is supported
+                // Add all objects to m_objectIdsMap so that they will be polled using single API
+                for (size_t i = 0; i < vids.size(); i++)
+                {
+                    auto counter_data = std::make_shared<CounterIds<StatType>>(rids[i], counter_ids);
+                    m_objectIdsMap.emplace(vids[i], counter_data);
+                }
+
+                SWSS_LOG_INFO("Counters do not support bulk, fallback to single call %s", m_name.c_str());
+
+                return;
+            }
+
             ctx.counter_ids = counter_ids;
             addBulkStatsContext(vids, rids, counter_ids, ctx);
             auto status = m_vendorSai->bulkGetStats(
@@ -948,7 +946,7 @@ public:
                 // Append it to bulkUnsupportedCounters
                 std::tuple<const std::string, uint32_t> value(prefix, bulk_chunk_size);
                 bulkUnsupportedCounters.emplace(counter_ids, value);
-                SWSS_LOG_NOTICE("Counters starting with %s do not support bulk. Fallback to single call for these counters", prefix.c_str());
+                SWSS_LOG_INFO("Counters starting with %s do not support bulk. Fallback to single call for these counters", prefix.c_str());
             }
         };
 
@@ -990,22 +988,21 @@ public:
                 {
                     auto rid = rids[i];
                     auto vid = vids[i];
-
+                    std::vector<uint64_t> stats(it.first.size());
                     if (checkBulkCapability(vid, rid, it.first))
                     {
                         bulkSupportedVIDs.push_back(vid);
                         bulkSupportedRIDs.push_back(rid);
                     }
-                    else
+                    else if (!double_confirm_supported_counters || collectData(rid, it.first, effective_stats_mode, false, stats))
                     {
                         SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
                         auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
-                        // TODO: use if const expression when cpp17 is supported
-                        if (HasStatsMode<CounterIdsType>::value)
-                        {
-                            counter_data->setStatsMode(instance_stats_mode);
-                        }
                         m_objectIdsMap.emplace(vid, counter_data);
+                    }
+                    else
+                    {
+                        SWSS_LOG_WARN("%s RID %s can't provide the statistic",  m_name.c_str(), sai_serialize_object_id(rid).c_str());
                     }
                 }
 
