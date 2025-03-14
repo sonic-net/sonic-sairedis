@@ -906,9 +906,23 @@ public:
         {
             BulkContextType ctx;
             // Check bulk capabilities again
-            std::vector<StatType> bulk_counter_ids = counter_ids;
-            updateSupportedCounters(rids[0], bulk_counter_ids, statsMode);
-            if (bulk_counter_ids.size() == 0)
+            std::vector<StatType> supportedBulkIds;
+            if (m_supportedBulkCounters.empty())
+            {
+                querySupportedCounters(rids[0], statsMode, m_supportedBulkCounters);
+            }
+            if (!m_supportedBulkCounters.empty())
+            {
+                for (auto stat : counter_ids)
+                {
+                    if (m_supportedBulkCounters.count(stat) != 0)
+                    {
+                        supportedBulkIds.push_back(stat);
+                    }
+                }
+            }
+
+            if (supportedBulkIds.size() == 0)
             {
                 // Bulk polling is unsupported for the whole group but single polling is supported
                 // Add all objects to m_objectIdsMap so that they will be polled using single API
@@ -1432,7 +1446,7 @@ private:
             m_supportedCounters.clear();
         }
 
-        if (!use_sai_stats_capa_query || querySupportedCounters(rid, stats_mode) != SAI_STATUS_SUCCESS)
+        if (!use_sai_stats_capa_query || querySupportedCounters(rid, stats_mode, m_supportedCounters) != SAI_STATUS_SUCCESS)
         {
             /* Fallback to legacy approach */
             getSupportedCounters(rid, counter_ids, stats_mode);
@@ -1441,7 +1455,8 @@ private:
 
     sai_status_t querySupportedCounters(
             _In_ sai_object_id_t rid,
-            _In_ sai_stats_mode_t stats_mode)
+            _In_ sai_stats_mode_t stats_mode,
+            _Out_ std::set<StatType> &supportedCounters)
     {
         SWSS_LOG_ENTER();
         sai_stat_capability_list_t stats_capability;
@@ -1486,7 +1501,7 @@ private:
                     }
 
                     StatType counter = static_cast<StatType>(statCapability.stat_enum);
-                    m_supportedCounters.insert(counter);
+                    supportedCounters.insert(counter);
                 }
             }
         }
@@ -1523,6 +1538,7 @@ protected:
     sairedis::SaiInterface *m_vendorSai;
     sai_stats_mode_t& m_groupStatsMode;
     std::set<StatType> m_supportedCounters;
+    std::set<StatType> m_supportedBulkCounters;
     std::map<sai_object_id_t, std::shared_ptr<CounterIdsType>> m_objectIdsMap;
     std::map<std::vector<StatType>, std::shared_ptr<BulkContextType>> m_bulkContexts;
 };
