@@ -1005,6 +1005,12 @@ public:
                         {
                             counter_data->setStatsMode(instance_stats_mode);
                         }
+                        auto it_vid = m_objectIdsMap.find(vid);
+                        if (it_vid != m_objectIdsMap.end())
+                        {
+                            // Remove and re-add if vid already exists
+                            m_objectIdsMap.erase(it_vid);
+                        }
                         m_objectIdsMap.emplace(vid, counter_data);
                     }
                 }

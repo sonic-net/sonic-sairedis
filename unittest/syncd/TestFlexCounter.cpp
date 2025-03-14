@@ -584,6 +584,59 @@ TEST(FlexCounter, addRemoveCounter)
         true);
 }
 
+TEST(FlexCounter, UpdateExistingCounterAddBulk)
+{
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *, uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *)
+    {
+        return SAI_STATUS_NOT_SUPPORTED;
+    };
+
+    std::string value;
+    // Create test data for multiple objects
+    std::vector<sai_object_id_t> vids = generateOids(1, SAI_OBJECT_TYPE_SWITCH);  // Virtual IDs
+    std::vector<sai_object_id_t> rids = generateOids(1, SAI_OBJECT_TYPE_SWITCH);  // Real IDs
+    std::vector<swss::FieldValueTuple> values;
+
+    auto fc = std::make_shared<FlexCounter>("TEST_FLEX_COUNTER", sai, "COUNTERS_DB", false);
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table countersTable(&db, COUNTERS_TABLE);
+    std::vector<std::string> keys;
+
+    values.clear();
+    values.emplace_back(POLL_INTERVAL_FIELD, "50");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    fc->addCounterPlugin(values);
+
+    // Add some counter IDs
+    std::vector<std::string> counterIds = {"SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_2_DROPPED_PKTS"};
+    values.clear();
+    values.emplace_back("SWITCH_DEBUG_COUNTER_ID_LIST", join(counterIds));
+    fc->bulkAddCounter(SAI_OBJECT_TYPE_SWITCH, vids, rids, values);
+
+    usleep(60*1000);
+    countersTable.getKeys(keys);
+    EXPECT_EQ(keys.size(), size_t(1));
+    ASSERT_TRUE(countersTable.hget(keys[0], "SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_2_DROPPED_PKTS", value));
+
+    // Update the counter IDs
+    values.clear();
+    counterIds.push_back("SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_3_DROPPED_PKTS");
+    values.emplace_back("SWITCH_DEBUG_COUNTER_ID_LIST", join(counterIds));
+    fc->bulkAddCounter(SAI_OBJECT_TYPE_SWITCH, vids, rids, values);
+
+    usleep(60*1000);
+    keys.clear();
+    countersTable.getKeys(keys);
+    EXPECT_EQ(keys.size(), size_t(1));
+    ASSERT_TRUE(countersTable.hget(keys[0], "SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_2_DROPPED_PKTS", value));
+    ASSERT_TRUE(countersTable.hget(keys[0], "SAI_SWITCH_STAT_IN_CONFIGURED_DROP_REASONS_3_DROPPED_PKTS", value));
+
+    /* Cleanup */
+    fc->removeCounterPlugins();
+    countersTable.del(toOid(vids[0]));
+    fc->removeCounter(vids[0]);
+}
+
 TEST(FlexCounter, queryCounterCapability)
 {
     sai->mock_queryStatsCapability = [](sai_object_id_t switch_id, sai_object_type_t object_type, sai_stat_capability_list_t *stats_capability) {
