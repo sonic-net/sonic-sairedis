@@ -858,7 +858,7 @@ public:
         if (HasStatsMode<CounterIdsType>::value)
         {
             // Bulk operation is not supported by the counter group.
-            SWSS_LOG_NOTICE("Counter group %s %s does not support bulk. Fallback to single call", m_name.c_str(), m_instanceId.c_str());
+            SWSS_LOG_INFO("Counter group %s %s does not support bulk. Fallback to single call", m_name.c_str(), m_instanceId.c_str());
 
             // Fall back to old way
             for (size_t i = 0; i < vids.size(); i++)
