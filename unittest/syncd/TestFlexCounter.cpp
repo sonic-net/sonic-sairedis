@@ -95,7 +95,6 @@ void testAddRemoveCounter(
         bool forceSingleCreate = false)
 {
     SWSS_LOG_ENTER();
-
     FlexCounter fc("test", sai, "COUNTERS_DB");
 
     test_syncd::mockVidManagerObjectTypeQuery(object_type);
@@ -787,7 +786,7 @@ TEST(FlexCounter, addRemoveCounterForPort)
     countersTable.getKeys(keys);
     ASSERT_TRUE(keys.empty());
 }
-#if 0
+
 TEST(FlexCounter, bulkCounter)
 {
     sai->mock_getStatsExt = [&](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
@@ -805,23 +804,30 @@ TEST(FlexCounter, bulkCounter)
         return SAI_STATUS_SUCCESS;
     };
     int counterOffset = 0;
+    int capabilities = 0;
     sai->mock_queryStatsCapability = [&](sai_object_id_t switch_id, sai_object_type_t object_type, sai_stat_capability_list_t *stats_capability) {
-	      // Support all counters in bulk mode
-	  if (stats_capability->count == 0)//[0].stat_modes == 
+        // Assume all counters are in range [currentOffset, currentOffset + 100]
+        if (stats_capability->count == 0)
+        {
+            stats_capability->count = 100;
+            return SAI_STATUS_BUFFER_OVERFLOW;
+        }
+        else
+        {
+            for (int i = 0; i < 100; i++)
 	    {
-	      stats_capability->count = 100;
-                return SAI_STATUS_BUFFER_OVERFLOW;
-	    }
-	  else
-	    {
-	      for (int i = 0; i < 100; i++)
-		{
-		  stats_capability->list[i].stat_enum = i + counterOffset;
-		  stats_capability->list[i].stat_modes = (SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_READ|SAI_STATS_MODE_READ_AND_CLEAR|SAI_STATS_MODE_BULK_READ_AND_CLEAR|SAI_STATS_MODE_BULK_CLEAR);
-		  i++;
-		}
-	      return SAI_STATUS_SUCCESS;
-	    }
+                stats_capability->list[i].stat_enum = i + counterOffset;
+                if (capabilities == 0)
+                {
+                    stats_capability->list[i].stat_modes = (SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_READ|SAI_STATS_MODE_READ_AND_CLEAR|SAI_STATS_MODE_BULK_READ_AND_CLEAR|SAI_STATS_MODE_BULK_CLEAR);
+                }
+                else
+                {
+                    stats_capability->list[i].stat_modes = capabilities;
+                }
+            }
+            return SAI_STATUS_SUCCESS;
+        }
     };
 
     bool clearCalled = false;
@@ -887,7 +893,7 @@ TEST(FlexCounter, bulkCounter)
         {"100", "200"},
         counterVerifyFunc,
         false);
-#if 0
+
     testAddRemoveCounter(
         2,
         SAI_OBJECT_TYPE_PORT,
@@ -947,7 +953,7 @@ TEST(FlexCounter, bulkCounter)
         counterVerifyFunc,
         false);
     counterOffset = 0;
-#endif
+
     testAddRemoveCounter(
         2,
         SAI_OBJECT_TYPE_TUNNEL,
@@ -967,6 +973,7 @@ TEST(FlexCounter, bulkCounter)
         false);
 
     clearCalled = false;
+    capabilities = (SAI_STATS_MODE_READ|SAI_STATS_MODE_READ_AND_CLEAR);//|SAI_STATS_MODE_BULK_READ||SAI_STATS_MODE_BULK_READ_AND_CLEAR|SAI_STATS_MODE_BULK_CLEAR);
     testAddRemoveCounter(
         2,
         SAI_OBJECT_TYPE_BUFFER_POOL,
@@ -976,6 +983,7 @@ TEST(FlexCounter, bulkCounter)
         counterVerifyFunc,
         false);
 
+    capabilities = (SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_READ);
     testAddRemoveCounter(
         2,
         SAI_OBJECT_TYPE_POLICER,
@@ -990,7 +998,7 @@ TEST(FlexCounter, bulkCounter)
     // buffer pool stats does not support bulk
     EXPECT_EQ(false, clearCalled);
 }
-#endif
+
 TEST(FlexCounter, bulkChunksize)
 {
     /*
