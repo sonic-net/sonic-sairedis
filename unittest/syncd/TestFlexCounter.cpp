@@ -95,6 +95,7 @@ void testAddRemoveCounter(
         bool forceSingleCreate = false)
 {
     SWSS_LOG_ENTER();
+
     FlexCounter fc("test", sai, "COUNTERS_DB");
 
     test_syncd::mockVidManagerObjectTypeQuery(object_type);
@@ -973,7 +974,7 @@ TEST(FlexCounter, bulkCounter)
         false);
 
     clearCalled = false;
-    capabilities = (SAI_STATS_MODE_READ|SAI_STATS_MODE_READ_AND_CLEAR);//|SAI_STATS_MODE_BULK_READ||SAI_STATS_MODE_BULK_READ_AND_CLEAR|SAI_STATS_MODE_BULK_CLEAR);
+    capabilities = (SAI_STATS_MODE_READ|SAI_STATS_MODE_READ_AND_CLEAR);
     testAddRemoveCounter(
         2,
         SAI_OBJECT_TYPE_BUFFER_POOL,
@@ -1368,7 +1369,6 @@ TEST(FlexCounter, bulkChunksize)
     forceSingleCall = true;
     noBulkCapabilityOnly = true;
     initialCheckCount = 0; // check bulk for all counter IDs altogether
-    //    initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
     bulkUnsupportedCounters = {
 	SAI_PORT_STAT_IF_IN_OCTETS,
 	SAI_PORT_STAT_IF_IN_UCAST_PKTS,
