@@ -922,7 +922,7 @@ public:
                 }
             }
 
-            if (supportedBulkIds.size() == 0)
+            if (supportedBulkIds.size() < counter_ids.size())
             {
                 // Bulk polling is unsupported for the whole group but single polling is supported
                 // Add all objects to m_objectIdsMap so that they will be polled using single API
