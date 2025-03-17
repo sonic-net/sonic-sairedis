@@ -183,6 +183,20 @@ sai_status_t MockableSaiInterface::queryStatsCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t MockableSaiInterface::queryStatsStCapability(
+    _In_ sai_object_id_t switch_id,
+    _In_ sai_object_type_t object_type,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+    if (mock_queryStatsStCapability)
+    {
+        return mock_queryStatsStCapability(switch_id, object_type, stats_capability);
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t MockableSaiInterface::getStatsExt(
     _In_ sai_object_type_t object_type,
     _In_ sai_object_id_t object_id,

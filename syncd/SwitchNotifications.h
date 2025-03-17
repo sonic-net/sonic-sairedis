@@ -119,6 +119,8 @@ namespace syncd
                             .on_port_host_tx_ready = &Slot<context>::onPortHostTxReady,
                             .on_twamp_session_event = &Slot<context>::onTwampSessionEvent,
                             .on_icmp_echo_session_state_change = nullptr,
+                            .on_extended_port_state_change = nullptr,
+                            .on_tam_tel_type_config_change = nullptr,
                             .on_ha_set_event = nullptr,
                             .on_ha_scope_event = nullptr,
                             }) { }

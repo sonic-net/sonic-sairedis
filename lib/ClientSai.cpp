@@ -1060,6 +1060,27 @@ sai_status_t ClientSai::queryStatsCapability(
     return waitForQueryStatsCapabilityResponse(stats_capability);
 }
 
+sai_status_t ClientSai::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+
+    auto switchIdStr = sai_serialize_object_id(switchId);
+    auto objectTypeStr = sai_serialize_object_type(objectType);
+
+    if (stats_capability == NULL)
+    {
+        SWSS_LOG_ERROR("Failed to find stats-capability: switch %s object type %s", switchIdStr.c_str(), objectTypeStr.c_str());
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t ClientSai::waitForQueryStatsCapabilityResponse(
         _Inout_ sai_stat_capability_list_t* stats_capability)
 {
