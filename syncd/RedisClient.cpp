@@ -832,7 +832,7 @@ void RedisClient::getVidForRid(
     {
         SWSS_LOG_THROW("expected %zu elements, got %zu", count, ctx->elements);
     }
-    
+
     for (size_t idx = 0; idx < ctx->elements; idx++)
     {
         auto element = ctx->element[idx];
