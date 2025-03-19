@@ -169,7 +169,7 @@ void VirtualOidTranslator::translateRidToVid(
     newVids.reserve(count);
 
     /*
-     * Get unmapped (new) RIDs into newRids array.
+     * Get unknown (new) RIDs into newRids array.
      */
     for (size_t idx = 0; idx < count; idx++)
     {
