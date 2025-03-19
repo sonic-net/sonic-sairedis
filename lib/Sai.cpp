@@ -362,9 +362,31 @@ sai_status_t Sai::queryStatsCapability(
         _In_ sai_object_type_t objectType,
         _Inout_ sai_stat_capability_list_t *stats_capability)
 {
+    MUTEX();
     SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+    REDIS_CHECK_CONTEXT(switchId);
 
-    return SAI_STATUS_NOT_IMPLEMENTED;
+    return context->m_meta->queryStatsCapability(
+            switchId,
+            objectType,
+            stats_capability);
+}
+
+sai_status_t Sai::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    MUTEX();
+    SWSS_LOG_ENTER();
+    REDIS_CHECK_API_INITIALIZED();
+    REDIS_CHECK_CONTEXT(switchId);
+
+    return context->m_meta->queryStatsStCapability(
+        switchId,
+        objectType,
+        stats_capability);
 }
 
 sai_status_t Sai::getStatsExt(
