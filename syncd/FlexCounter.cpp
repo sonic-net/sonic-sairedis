@@ -1011,6 +1011,14 @@ public:
                     else if (!double_confirm_supported_counters || collectData(rid, it.first, effective_stats_mode, false, stats))
                     {
                         SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
+
+                        auto it_vid = m_objectIdsMap.find(vid);
+                        if (it_vid != m_objectIdsMap.end())
+                        {
+                            // Remove and re-add if vid already exists
+                            m_objectIdsMap.erase(it_vid);
+                        }
+
                         auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
                         m_objectIdsMap.emplace(vid, counter_data);
                     }
