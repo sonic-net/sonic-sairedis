@@ -4028,16 +4028,19 @@ void Syncd::snoopGetOid(
     }
 
     /*
-     * Check if object was previously discovered on this switch, then no need to update ASIC_DB.
-     */
-    sai_object_id_t rid = SAI_NULL_OBJECT_ID;
-    if (m_translator->tryTranslateVidToRid(vid, rid))
+    * Check if object was previously discovered on this switch, then no need to update ASIC_STATE.
+    */
+    if (!isInitViewMode())
     {
-        const auto switchVid = VidManager::switchIdQuery(vid);
-        if (m_switches[switchVid]->isDiscoveredRid(rid))
+        sai_object_id_t rid = SAI_NULL_OBJECT_ID;
+        if (m_translator->tryTranslateVidToRid(vid, rid))
         {
-            // Already discovered object.
-            return;
+            const auto switchVid = VidManager::switchIdQuery(vid);
+            if (m_switches[switchVid]->isDiscoveredRid(rid))
+            {
+                // Already discovered object.
+                return;
+            }
         }
     }
 
