@@ -48,7 +48,7 @@ namespace syncd
             void setDummyAsicStateObject(
                     _In_ sai_object_id_t objectVid);
 
-            void setDummyAsicStateObject(
+            void setDummyAsicStateObjects(
                     _In_ sai_object_id_t* objectVid,
                     _In_ size_t count);
 

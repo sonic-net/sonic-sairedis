@@ -381,7 +381,7 @@ void SaiSwitch::redisSetDummyAsicStateForRealObjectIds(
 
     m_translator->translateRidToVid(m_switch_vid, rids, vids.data(), count);
 
-    m_client->setDummyAsicStateObject(vids.data(), count);
+    m_client->setDummyAsicStateObjects(vids.data(), count);
 }
 
 std::string SaiSwitch::getHardwareInfo() const
