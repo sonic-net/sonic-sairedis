@@ -379,7 +379,7 @@ void SaiSwitch::redisSetDummyAsicStateForRealObjectIds(
 
     std::vector<sai_object_id_t> vids(count);
 
-    m_translator->translateRidToVid(m_switch_vid, rids, vids.data(), count);
+    m_translator->translateRidsToVids(m_switch_vid, rids, vids.data(), count);
 
     m_client->setDummyAsicStateObjects(vids.data(), count);
 }

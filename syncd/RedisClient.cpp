@@ -797,7 +797,7 @@ sai_object_id_t RedisClient::getVidForRid(
     return vid;
 }
 
-void RedisClient::getVidForRid(
+void RedisClient::getVidsForRids(
         _In_ const sai_object_id_t* rids,
         _Out_ sai_object_id_t* vids,
         _In_ size_t count)

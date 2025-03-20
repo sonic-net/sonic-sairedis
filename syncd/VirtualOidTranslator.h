@@ -62,7 +62,7 @@ namespace syncd
              * Translate RIDs to VIDs in batch, prefer this method when doing bulk operations,
              * initial object discovery or when many objects need to be mapped to virtual IDs.
              */
-            void translateRidToVid(
+            void translateRidsToVids(
                     _In_ sai_object_id_t switchVid,
                     _In_ const sai_object_id_t* rids,
                     _Out_ sai_object_id_t* vids,

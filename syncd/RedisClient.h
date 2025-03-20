@@ -143,7 +143,7 @@ namespace syncd
             sai_object_id_t getRidForVid(
                     _In_ sai_object_id_t vid);
 
-            void getVidForRid(
+            void getVidsForRids(
                     _In_ const sai_object_id_t* rids,
                     _Out_ sai_object_id_t* vids,
                     _In_ size_t count);

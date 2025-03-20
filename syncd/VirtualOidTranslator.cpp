@@ -147,7 +147,7 @@ sai_object_id_t VirtualOidTranslator::translateRidToVid(
     return vid;
 }
 
-void VirtualOidTranslator::translateRidToVid(
+void VirtualOidTranslator::translateRidsToVids(
         _In_ sai_object_id_t switchVid,
         _In_ const sai_object_id_t* rids,
         _Out_ sai_object_id_t* vids,
@@ -161,7 +161,7 @@ void VirtualOidTranslator::translateRidToVid(
      * Fetch VIDs for given RIDs from database.
      * Unknown RID's will be mapped to SAI_NULL_OBJECT_ID in vids array.
      */
-    m_client->getVidForRid(rids, vids, count);
+    m_client->getVidsForRids(rids, vids, count);
 
     std::vector<sai_object_id_t> newRids;
     std::vector<sai_object_id_t> newVids;
