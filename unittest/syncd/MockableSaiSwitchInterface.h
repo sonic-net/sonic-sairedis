@@ -63,7 +63,7 @@ namespace unittests
 
             virtual std::set<sai_object_id_t> getWarmBootDiscoveredVids() const override;
 
-            virtual void onPostPortCreate(
+            virtual void onPostPortsCreate(
                     _In_ sai_object_id_t* port_rids,
                     _In_ size_t count) override;
 

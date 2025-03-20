@@ -194,8 +194,8 @@ namespace syncd
              * queues, ipgs and scheduler groups that belong to new created ports,
              * and updated ASIC DB accordingly.
              */
-            virtual void onPostPortCreate(
-                    _In_ sai_object_id_t* port_rid,
+            virtual void onPostPortsCreate(
+                    _In_ sai_object_id_t* port_rids,
                     _Out_ size_t count) override;
 
             /**

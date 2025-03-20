@@ -90,8 +90,8 @@ namespace syncd
 
             virtual std::set<sai_object_id_t> getWarmBootNewDiscoveredVids();
 
-            virtual void onPostPortCreate(
-                    _In_ sai_object_id_t* port_rid,
+            virtual void onPostPortsCreate(
+                    _In_ sai_object_id_t* port_rids,
                     _Out_ size_t count) = 0;
 
             virtual void postPortRemove(

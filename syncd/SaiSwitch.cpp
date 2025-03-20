@@ -993,7 +993,7 @@ void SaiSwitch::redisUpdatePortLaneMap(
             sai_serialize_object_id(port_rid).c_str());
 }
 
-void SaiSwitch::onPostPortCreate(
+void SaiSwitch::onPostPortsCreate(
         _In_ sai_object_id_t* port_rids,
         _Out_ size_t count)
 {
