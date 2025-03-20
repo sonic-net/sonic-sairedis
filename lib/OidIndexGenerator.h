@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include <saitypes.h> // For SAL annotations
+
 namespace sairedis
 {
     class OidIndexGenerator
@@ -15,7 +17,8 @@ namespace sairedis
         public:
 
             virtual uint64_t increment() = 0;
-            virtual uint64_t incrementBy(uint64_t count) = 0;
+            virtual uint64_t incrementBy(
+                _In_ uint64_t count) = 0;
 
             virtual void reset() = 0;
     };

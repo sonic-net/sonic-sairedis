@@ -27,7 +27,8 @@ uint64_t RedisVidIndexGenerator::increment()
     return m_dbConnector->incr(m_vidCounterName); // "VIDCOUNTER"
 }
 
-uint64_t RedisVidIndexGenerator::incrementBy(uint64_t count)
+uint64_t RedisVidIndexGenerator::incrementBy(
+    _In_ uint64_t count)
 {
     SWSS_LOG_ENTER();
 

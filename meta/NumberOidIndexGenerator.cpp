@@ -18,7 +18,8 @@ uint64_t NumberOidIndexGenerator::increment()
     return ++m_index;
 }
 
-uint64_t NumberOidIndexGenerator::incrementBy(uint64_t count)
+uint64_t NumberOidIndexGenerator::incrementBy(
+    _In_ uint64_t count)
 {
     SWSS_LOG_ENTER();
 
