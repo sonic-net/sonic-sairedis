@@ -1123,6 +1123,28 @@ sai_status_t VirtualSwitchSaiInterface::queryStatsCapability(
             stats_capability);
 }
 
+sai_status_t VirtualSwitchSaiInterface::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_switchStateMap.find(switchId) == m_switchStateMap.end())
+    {
+        SWSS_LOG_ERROR("failed to find switch %s in switch state map", sai_serialize_object_id(switchId).c_str());
+
+        return SAI_STATUS_FAILURE;
+    }
+
+    auto ss = m_switchStateMap.at(switchId);
+
+    return ss->queryStatsStCapability(
+            switchId,
+            objectType,
+            stats_capability);
+}
+
 sai_status_t VirtualSwitchSaiInterface::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
