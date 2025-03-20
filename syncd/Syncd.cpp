@@ -2176,7 +2176,7 @@ sai_status_t Syncd::processBulkOidCreate(
         }
     }
 
-    m_translator->insertRidAndVid(createdRids.data(), createdVids.data(), createdRids.size());
+    m_translator->insertRidsAndVids(createdRids.data(), createdVids.data(), createdRids.size());
 
     if (objectType == SAI_OBJECT_TYPE_PORT)
     {

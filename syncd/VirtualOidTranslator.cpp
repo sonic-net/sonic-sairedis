@@ -197,7 +197,7 @@ void VirtualOidTranslator::translateRidToVid(
     /*
      * Insert VID and RID mappings into local and redis db.
      */
-    m_client->insertVidAndRid(newVids.data(), newRids.data(), newOidsCount);
+    m_client->insertVidsAndRids(newVids.data(), newRids.data(), newOidsCount);
 
     /*
      * Replace VID's for new RIDs in output vids array and update local cache.
@@ -616,7 +616,7 @@ void VirtualOidTranslator::insertRidAndVid(
     m_client->insertVidAndRid(vid, rid);
 }
 
-void VirtualOidTranslator::insertRidAndVid(
+void VirtualOidTranslator::insertRidsAndVids(
         _In_ sai_object_id_t* rids,
         _In_ sai_object_id_t* vids,
         _In_ size_t count)
@@ -631,7 +631,7 @@ void VirtualOidTranslator::insertRidAndVid(
         m_vid2rid[vids[idx]] = rids[idx];
     }
 
-    m_client->insertVidAndRid(vids, rids, count);
+    m_client->insertVidsAndRids(vids, rids, count);
 }
 
 void VirtualOidTranslator::eraseRidAndVid(

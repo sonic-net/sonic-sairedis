@@ -121,7 +121,7 @@ namespace syncd
                     _In_ sai_object_id_t rid,
                     _In_ sai_object_id_t vid);
 
-            void insertRidAndVid(
+            void insertRidsAndVids(
                     _In_ sai_object_id_t* rids,
                     _In_ sai_object_id_t* vids,
                     _In_ size_t count);
