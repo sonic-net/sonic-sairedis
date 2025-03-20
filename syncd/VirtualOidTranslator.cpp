@@ -149,7 +149,7 @@ sai_object_id_t VirtualOidTranslator::translateRidToVid(
 
 void VirtualOidTranslator::translateRidToVid(
         _In_ sai_object_id_t switchVid,
-        _In_ sai_object_id_t* rids,
+        _In_ const sai_object_id_t* rids,
         _Out_ sai_object_id_t* vids,
         _In_ size_t count)
 {
@@ -617,8 +617,8 @@ void VirtualOidTranslator::insertRidAndVid(
 }
 
 void VirtualOidTranslator::insertRidsAndVids(
-        _In_ sai_object_id_t* rids,
-        _In_ sai_object_id_t* vids,
+        _In_ const sai_object_id_t* rids,
+        _In_ const sai_object_id_t* vids,
         _In_ size_t count)
 {
     SWSS_LOG_ENTER();

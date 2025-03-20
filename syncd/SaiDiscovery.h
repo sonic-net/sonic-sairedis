@@ -47,7 +47,7 @@ namespace syncd
                     _In_ sai_object_id_t rid);
 
             std::set<sai_object_id_t> discover(
-                    _In_ sai_object_id_t* rids,
+                    _In_ const sai_object_id_t* rids,
                     _In_ size_t count);
 
             const DefaultOidMap& getDefaultOidMap() const;

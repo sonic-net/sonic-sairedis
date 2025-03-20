@@ -744,8 +744,8 @@ void RedisClient::insertVidAndRid(
 }
 
 void RedisClient::insertVidsAndRids(
-        _In_ sai_object_id_t* vids,
-        _In_ sai_object_id_t* rids,
+        _In_ const sai_object_id_t* vids,
+        _In_ const sai_object_id_t* rids,
         _In_ size_t count)
 {
     SWSS_LOG_ENTER();
