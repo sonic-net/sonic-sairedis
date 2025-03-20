@@ -279,7 +279,7 @@ std::set<sai_object_id_t> SaiSwitchAsic::getWarmBootDiscoveredVids() const
 }
 
 void SaiSwitchAsic::onPostPortsCreate(
-        _In_ sai_object_id_t* port_rids,
+        _In_ const sai_object_id_t* port_rids,
         _In_ size_t count)
 {
     SWSS_LOG_ENTER();

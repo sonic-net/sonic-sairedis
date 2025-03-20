@@ -994,7 +994,7 @@ void SaiSwitch::redisUpdatePortLaneMap(
 }
 
 void SaiSwitch::onPostPortsCreate(
-        _In_ sai_object_id_t* port_rids,
+        _In_ const sai_object_id_t* port_rids,
         _Out_ size_t count)
 {
     SWSS_LOG_ENTER();

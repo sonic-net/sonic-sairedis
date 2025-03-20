@@ -195,7 +195,7 @@ namespace syncd
              * and updated ASIC DB accordingly.
              */
             virtual void onPostPortsCreate(
-                    _In_ sai_object_id_t* port_rids,
+                    _In_ const sai_object_id_t* port_rids,
                     _Out_ size_t count) override;
 
             /**
