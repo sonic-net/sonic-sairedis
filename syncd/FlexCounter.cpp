@@ -928,6 +928,13 @@ public:
                 // Add all objects to m_objectIdsMap so that they will be polled using single API
                 for (size_t i = 0; i < vids.size(); i++)
                 {
+                    auto it_vid = m_objectIdsMap.find(vids[i]);
+                    if (it_vid != m_objectIdsMap.end())
+                    {
+                        // Remove and re-add if vid already exists
+                        m_objectIdsMap.erase(it_vid);
+                    }
+
                     auto counter_data = std::make_shared<CounterIds<StatType>>(rids[i], counter_ids);
                     m_objectIdsMap.emplace(vids[i], counter_data);
                 }
