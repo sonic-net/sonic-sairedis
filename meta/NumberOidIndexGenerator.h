@@ -17,6 +17,7 @@ namespace saimeta
         public:
 
             virtual uint64_t increment() override;
+            virtual uint64_t incrementBy(uint64_t count) override;
 
             virtual void reset() override;
 
