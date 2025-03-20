@@ -841,9 +841,13 @@ void RedisClient::getVidsForRids(
         {
             sai_deserialize_object_id(element->str, vids[idx]);
         }
-        else
+        else if (element->type == REDIS_REPLY_NIL)
         {
             vids[idx] = SAI_NULL_OBJECT_ID;
+        }
+        else
+        {
+            SWSS_LOG_THROW("expected string or nil reply, got %d", element->type);
         }
     }
 }
