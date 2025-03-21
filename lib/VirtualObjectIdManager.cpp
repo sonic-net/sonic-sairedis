@@ -291,21 +291,20 @@ void VirtualObjectIdManager::allocateNewObjectIds(
 
     uint32_t switchIndex = static_cast<uint32_t>(SAI_REDIS_GET_SWITCH_INDEX(switchId));
 
-    uint64_t lastObjectIndex = m_oidIndexGenerator->incrementBy(count);
-    uint64_t firstObjectIndex = lastObjectIndex - count + 1;
+    std::vector<uint64_t> objectIndexes = m_oidIndexGenerator->incrementBy(count);
 
     const uint64_t indexMax = SAI_REDIS_OBJECT_INDEX_MAX;
 
-    if (lastObjectIndex > indexMax)
+    if (objectIndexes.back() > indexMax)
     {
         SWSS_LOG_THROW("no more object indexes available, given: 0x%" PRIx64 " but limit is 0x%" PRIx64 " ",
-                lastObjectIndex,
+                objectIndexes.back(),
                 indexMax);
     }
 
     for (size_t idx = 0; idx < count; idx++)
     {
-        oids[idx] = constructObjectId(objectTypes[idx], switchIndex, firstObjectIndex + idx, m_globalContext);
+        oids[idx] = constructObjectId(objectTypes[idx], switchIndex, objectIndexes[idx], m_globalContext);
     }
 }
 

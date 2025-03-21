@@ -23,7 +23,7 @@ namespace sairedis
         public:
 
             virtual uint64_t increment() override;
-            virtual uint64_t incrementBy(
+            virtual std::vector<uint64_t> incrementBy(
                 _In_ uint64_t count) override;
 
             virtual void reset() override;

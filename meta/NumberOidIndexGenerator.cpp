@@ -18,12 +18,20 @@ uint64_t NumberOidIndexGenerator::increment()
     return ++m_index;
 }
 
-uint64_t NumberOidIndexGenerator::incrementBy(
+std::vector<uint64_t> NumberOidIndexGenerator::incrementBy(
     _In_ uint64_t count)
 {
     SWSS_LOG_ENTER();
 
-    return (m_index += count);
+    std::vector<uint64_t> result;
+    result.reserve(count);
+
+    for (uint64_t i = 0; i < count; ++i)
+    {
+        result.push_back(++m_index);
+    }
+
+    return result;
 }
 
 void NumberOidIndexGenerator::reset()

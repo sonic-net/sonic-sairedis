@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include <saitypes.h> // For SAL annotations
+#include <vector>
 
 namespace sairedis
 {
@@ -17,7 +18,8 @@ namespace sairedis
         public:
 
             virtual uint64_t increment() = 0;
-            virtual uint64_t incrementBy(
+
+            virtual std::vector<uint64_t> incrementBy(
                 _In_ uint64_t count) = 0;
 
             virtual void reset() = 0;

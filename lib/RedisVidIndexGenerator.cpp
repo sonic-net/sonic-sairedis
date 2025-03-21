@@ -27,7 +27,7 @@ uint64_t RedisVidIndexGenerator::increment()
     return m_dbConnector->incr(m_vidCounterName); // "VIDCOUNTER"
 }
 
-uint64_t RedisVidIndexGenerator::incrementBy(
+std::vector<uint64_t> RedisVidIndexGenerator::incrementBy(
     _In_ uint64_t count)
 {
     SWSS_LOG_ENTER();
@@ -35,7 +35,18 @@ uint64_t RedisVidIndexGenerator::incrementBy(
     swss::RedisCommand sincr;
     sincr.format("INCRBY %s %" PRIu64, m_vidCounterName.c_str(), count);
     swss::RedisReply r(m_dbConnector.get(), sincr, REDIS_REPLY_INTEGER);
-    return r.getContext()->integer;
+    uint64_t lastObjectIndex = r.getContext()->integer;
+    uint64_t firstObjectIndex = lastObjectIndex - count + 1;
+
+    std::vector<uint64_t> result;
+    result.reserve(count);
+
+    for (uint64_t i = firstObjectIndex; i <= lastObjectIndex; ++i)
+    {
+        result.push_back(i);
+    }
+
+    return result;
 }
 
 void RedisVidIndexGenerator::reset()
