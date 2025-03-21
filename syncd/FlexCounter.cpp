@@ -947,7 +947,7 @@ public:
 
             ctx.counter_ids = counter_ids;
             addBulkStatsContext(vids, rids, counter_ids, ctx);
-            auto status = m_vendorSai->bulkGetStats(
+            status = m_vendorSai->bulkGetStats(
                 SAI_NULL_OBJECT_ID,
                 m_objectType,
                 static_cast<uint32_t>(ctx.object_keys.size()),
