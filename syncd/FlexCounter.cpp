@@ -907,11 +907,12 @@ public:
             BulkContextType ctx;
             // Check bulk capabilities again
             std::vector<StatType> supportedBulkIds;
+            sai_status_t status = SAI_STATUS_SUCCESS;
             if (m_supportedBulkCounters.empty())
             {
-                querySupportedCounters(rids[0], statsMode, m_supportedBulkCounters);
+                status = querySupportedCounters(rids[0], statsMode, m_supportedBulkCounters);
             }
-            if (!m_supportedBulkCounters.empty())
+            if (status == SAI_STATUS_SUCCESS && !m_supportedBulkCounters.empty())
             {
                 for (auto stat : counter_ids)
                 {
