@@ -28,8 +28,8 @@ static void handle_stat_two (const char *stat_name, uint32_t ace_index,
     vpp_ace_stats_t *st_p = (vpp_ace_stats_t *) data;
 
     if (st_p->ace_index == ace_index) {
-	st_p->packets = count1;
-	st_p->bytes = count2;
+        st_p->packets += count1;
+        st_p->bytes += count2;
     }
 }
 

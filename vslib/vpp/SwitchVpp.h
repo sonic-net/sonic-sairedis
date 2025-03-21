@@ -235,6 +235,31 @@ namespace saivs
 
             sai_status_t vpp_delete_bvi_interface(
                     _In_ sai_object_id_t bvi_obj_id);
+            sai_status_t createLag(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+            sai_status_t vpp_create_lag(
+                    _In_ sai_object_id_t lag_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+            sai_status_t removeLag(
+                    _In_ sai_object_id_t lag_oid);
+            sai_status_t vpp_remove_lag(
+                    _In_ sai_object_id_t lag_oid);
+	    sai_status_t createLagMember(
+                    _In_ sai_object_id_t object_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+	    sai_status_t vpp_create_lag_member(
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+	    sai_status_t removeLagMember(
+                    _In_ sai_object_id_t lag_member_oid);
+	    sai_status_t vpp_remove_lag_member(
+                    _In_ sai_object_id_t lag_member_oid);
 
             /* FDB Entry and Flush SAI Objects */
             sai_status_t FdbEntryadd(
@@ -284,8 +309,7 @@ namespace saivs
             typedef struct _vpp_bfd_info_t // TODO to separate file
             {
                 //uint32_t sw_if_index;
-                bool multihop;
-                sai_ip_address_t local_addr;
+                bool multihop; sai_ip_address_t local_addr;
                 sai_ip_address_t peer_addr;
 
                 // Define the < operator for comparison
@@ -481,15 +505,16 @@ namespace saivs
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
                     _In_ bool is_up);
+            // set ethernet interface mtu including L2 header
             sai_status_t vpp_set_port_mtu (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
                     _In_ uint32_t mtu);
+            // set sw interface mtu excluding L2 header
             sai_status_t vpp_set_interface_mtu (
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t vlan_id,
-                    _In_ uint32_t mtu,
-                    _In_ int type);
+                    _In_ uint32_t mtu);
 
             sai_status_t UpdatePort(
                     _In_ sai_object_id_t object_id,
@@ -874,12 +899,21 @@ namespace saivs
                     _In_ const sai_attribute_t *attr_list) override;
 
         protected: // VPP
-
+            typedef struct platform_bond_info_ {
+                uint32_t sw_if_index;
+                uint32_t id;
+                bool lcp_created;
+            } platform_bond_info_t;
+            
             void populate_if_mapping();
 
             const char *tap_to_hwif_name(const char *name);
 
             const char *hwif_to_tap_name(const char *name);
+
+            uint32_t find_new_bond_id();
+            sai_status_t get_lag_bond_info(const sai_object_id_t lag_id, platform_bond_info_t &bond_info);
+            int remove_lag_to_bond_entry (const sai_object_id_t lag_id);
 
             void vppProcessEvents ();
 
@@ -895,6 +929,8 @@ namespace saivs
             std::shared_ptr<std::thread> m_vpp_thread;
 
         private: // VPP
+	    std::map<sai_object_id_t, platform_bond_info_t> m_lag_bond_map;
+	    std::mutex LagMapMutex;
 
             static int currentMaxInstance;
 
@@ -906,6 +942,15 @@ namespace saivs
 
             BitResourcePool dynamic_bd_id_pool = BitResourcePool(dynamic_bd_id_pool_size, dynamic_bd_id_base);
 
-            // bool m_vpp; // TODO to be removed
+            std::set<FdbInfo> m_fdb_info_set;
+
+            std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
+
+            std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
+            
+            friend class TunnelManagerSRv6;
+
+            TunnelManagerSRv6 m_tunnel_mgr_srv6;
+        
     };
 }

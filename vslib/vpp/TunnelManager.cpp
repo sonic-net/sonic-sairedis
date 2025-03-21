@@ -150,7 +150,7 @@ TunnelManager::tunnel_encap_nexthop_action(
             auto tunnel_encap_mapper_entry = pair.second;
             vpp_vxlan_tunnel_t req;
             u_int32_t tunnel_vni;
-            TunnelVSData tunnel_data;
+            TunnelVPPData tunnel_data;
 
             memset(&req, 0, sizeof(req));
             req.dst_port = m_vxlan_port;
@@ -243,7 +243,7 @@ TunnelManager::remove_tunnel_encap_nexthop(
 sai_status_t
 TunnelManager::create_vpp_vxlan_encap(
                     _In_  vpp_vxlan_tunnel_t& req,
-                    _Out_ TunnelVSData& tunnel_data)
+                    _Out_ TunnelVPPData& tunnel_data)
 {
     SWSS_LOG_ENTER();
 
@@ -278,7 +278,7 @@ TunnelManager::create_vpp_vxlan_encap(
 sai_status_t
 TunnelManager::remove_vpp_vxlan_encap(
                     _In_  vpp_vxlan_tunnel_t& req,
-                    _In_ TunnelVSData& tunnel_data)
+                    _In_ TunnelVPPData& tunnel_data)
 {
     SWSS_LOG_ENTER();
 
@@ -309,7 +309,7 @@ TunnelManager::remove_vpp_vxlan_encap(
 }
 sai_status_t
 TunnelManager::create_vpp_vxlan_decap(
-                    _Out_ TunnelVSData& tunnel_data)
+                    _Out_ TunnelVPPData& tunnel_data)
 {
     SWSS_LOG_ENTER();
 
@@ -331,6 +331,7 @@ TunnelManager::create_vpp_vxlan_decap(
     vpp_status = create_bvi_interface(bvi_mac, bd_id);
     if (vpp_status != 0) {
         SWSS_LOG_ERROR("Failed to create bvi interface");
+        m_switch_db->dynamic_bd_id_pool.free(bd_id);
         return SAI_STATUS_FAILURE;
     }
     // Get new list of physical interfaces from VS
@@ -393,7 +394,7 @@ TunnelManager::create_vpp_vxlan_decap(
 
 sai_status_t
 TunnelManager::remove_vpp_vxlan_decap(
-                    _In_ TunnelVSData& tunnel_data)
+                    _In_ TunnelVPPData& tunnel_data)
 {
     SWSS_LOG_ENTER();
 
@@ -403,6 +404,7 @@ TunnelManager::remove_vpp_vxlan_decap(
 
     delete_bvi_interface(hw_bvi_ifname);
 
+    m_switch_db->dynamic_bd_id_pool.free(tunnel_data.bd_id);
     refresh_interfaces_list();
     //bd is create automatically when the fist interface is add to it but requires manual deletion
     vpp_bridge_domain_add_del(tunnel_data.bd_id, false);

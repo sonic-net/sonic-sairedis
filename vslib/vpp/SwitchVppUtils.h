@@ -9,6 +9,24 @@ extern "C" {
 
 #include "vppxlate/SaiVppXlate.h"
 
+#define IP_CMD "/sbin/ip"
+
+#define PORTCHANNEL_PREFIX "PortChannel"
+
+#define BONDETHERNET_PREFIX "BondEthernet"
+
+#define CHECK_STATUS_W_MSG(status, msg, ...) {                                  \
+    sai_status_t _status = (status);                            \
+    if (_status != SAI_STATUS_SUCCESS) { \
+        char buffer[512]; \
+        snprintf(buffer, 512, msg, ##__VA_ARGS__); \
+        SWSS_LOG_ERROR("%s: status %d", buffer, status); \
+        return _status; } }
+
+#define CHECK_STATUS_QUIET(status) {                                  \
+    sai_status_t _status = (status);                            \
+    if (_status != SAI_STATUS_SUCCESS) { return _status; } }
+
 namespace saivs
 {
     sai_status_t find_attrib_in_list(

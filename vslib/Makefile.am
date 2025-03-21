@@ -24,7 +24,7 @@ DISABLED_FLAGS= \
 			   -Wno-cast-qual
 
 # TODO fix multiple paths
-AM_CFLAGS = -I/usr/include/vpp_plugins -fPIC $(CFLAGS_COMMON) $(DISABLED_FLAGS) -I.
+AM_CFLAGS = -I/usr/include/vpp_plugins $(SAIINC) -fPIC $(CFLAGS_COMMON) $(DISABLED_FLAGS) -I.
 
 lib_LTLIBRARIES = libsaivs.la
 
@@ -102,6 +102,7 @@ libSaiVS_a_SOURCES +=\
 					  vpp/SwitchVppHostif.cpp \
 					  vpp/SwitchVppRoute.cpp \
 					  vpp/SwitchVppNbr.cpp \
+					  vpp/SwitchVppSRv6.cpp \
 					  vpp/TunnelManager.cpp \
 					  vpp/vppxlate/SaiVppXlate.c \
 					  vpp/vppxlate/SaiVppStats.c \

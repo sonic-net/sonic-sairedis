@@ -213,14 +213,16 @@ sai_status_t SwitchVpp::addIpRoute(
 
     bool isLoopback = false;
     bool isTunnelNh = false;
+    bool isSRv6Nh = false;
 
     SaiCachedObject ip_route_obj(this, SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr_count, attr_list);
     auto nh_obj = ip_route_obj.get_linked_object(SAI_OBJECT_TYPE_NEXT_HOP, SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
     if (nh_obj != nullptr) {
         sai_attribute_t attr;
         attr.id = SAI_NEXT_HOP_ATTR_TYPE;
-        CHECK_STATUS_W_MSG(nh_obj->get_attr(attr), "Missing SAI_NEXT_HOP_ATTR_TYPE in tunnel obj");
+        CHECK_STATUS_W_MSG(nh_obj->get_attr(attr), "Missing SAI_NEXT_HOP_ATTR_TYPE in tunnel obj");       
         isTunnelNh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP);
+        isSRv6Nh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_SRV6_SIDLIST);
     }
 
     if (isTunnelNh) {
@@ -229,7 +231,11 @@ sai_status_t SwitchVpp::addIpRoute(
         process_interface_loopback(serializedObjectId, isLoopback, true);
         if (isLoopback == false && is_ip_nbr_active() == true)
         {
-            IpRouteAddRemove(&ip_route_obj, true);
+            if (isSRv6Nh) {
+                m_tunnel_mgr_srv6.create_sidlist_route_entry(serializedObjectId, switch_id, attr_count, attr_list);
+            } else {
+                IpRouteAddRemove(&ip_route_obj, true);
+            }
         }
     }
 
@@ -270,15 +276,29 @@ sai_status_t SwitchVpp::removeIpRoute(
     SWSS_LOG_ENTER();
 
     bool isLoopback = false;
+    bool isSRv6Nh = false;
+    sai_attribute_t attr;
+    sai_object_id_t nh_oid;
     process_interface_loopback(serializedObjectId, isLoopback, false);
 
-    if (isLoopback == false && is_ip_nbr_active() == true)
-    {
+    if (isLoopback == false && is_ip_nbr_active() == true) {
         auto route_obj = get_sai_object(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId);
-
-            if (route_obj) {
-                IpRouteAddRemove(route_obj.get(), false);
+	    if (route_obj) {
+            attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+            if(route_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                nh_oid = attr.value.oid;
+                attr.id = SAI_NEXT_HOP_ATTR_TYPE;
+                if(get(SAI_OBJECT_TYPE_NEXT_HOP, nh_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
+                    isSRv6Nh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_SRV6_SIDLIST);
+                }
             }
+
+            if (isSRv6Nh) {
+                m_tunnel_mgr_srv6.remove_sidlist_route_entry(serializedObjectId, nh_oid);
+            } else {
+	            IpRouteAddRemove(route_obj.get(), false);
+            }
+	    }
     }
 
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId));
