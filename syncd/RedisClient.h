@@ -49,7 +49,7 @@ namespace syncd
                     _In_ sai_object_id_t objectVid);
 
             void setDummyAsicStateObjects(
-                    _In_ const sai_object_id_t* objectVid,
+                    _In_ const sai_object_id_t* objectVids,
                     _In_ size_t count);
 
             void saveColdBootDiscoveredVids(

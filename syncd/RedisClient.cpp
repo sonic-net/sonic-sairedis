@@ -232,7 +232,7 @@ void RedisClient::setDummyAsicStateObject(
 }
 
 void RedisClient::setDummyAsicStateObjects(
-        _In_ const sai_object_id_t* objectVid,
+        _In_ const sai_object_id_t* objectVids,
         _In_ size_t count)
 {
     SWSS_LOG_ENTER();
@@ -241,11 +241,11 @@ void RedisClient::setDummyAsicStateObjects(
 
     for (size_t idx = 0; idx < count; idx++)
     {
-        sai_object_type_t objectType = VidManager::objectTypeQuery(objectVid[idx]);
+        sai_object_type_t objectType = VidManager::objectTypeQuery(objectVids[idx]);
 
         std::string strObjectType = sai_serialize_object_type(objectType);
 
-        std::string strVid = sai_serialize_object_id(objectVid[idx]);
+        std::string strVid = sai_serialize_object_id(objectVids[idx]);
 
         std::string strKey = ASIC_STATE_TABLE + (":" + strObjectType + ":" + strVid);
 
