@@ -4131,3 +4131,15 @@ sai_status_t SwitchStateBase::queryStatsCapability(
 
     return SAI_STATUS_NOT_SUPPORTED;
 }
+
+sai_status_t SwitchStateBase::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("implement in child class");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}

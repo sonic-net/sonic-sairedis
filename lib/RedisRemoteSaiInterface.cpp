@@ -1443,6 +1443,17 @@ sai_status_t RedisRemoteSaiInterface::queryStatsCapability(
     return status;
 }
 
+
+sai_status_t RedisRemoteSaiInterface::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t RedisRemoteSaiInterface::waitForQueryStatsCapabilityResponse(
         _Inout_ sai_stat_capability_list_t* stats_capability)
 {
