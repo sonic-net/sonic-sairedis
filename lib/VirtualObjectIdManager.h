@@ -76,7 +76,7 @@ namespace sairedis
                     _In_ sai_object_id_t switchId,
                     _In_ sai_object_type_t* objectType,
                     _Out_ sai_object_id_t* oids,
-                    _In_ size_t count);
+                    _In_ size_t count) const;
 
             /**
              * @brief Allocate new switch object id.
