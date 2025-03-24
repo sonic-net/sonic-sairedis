@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#include <saitypes.h> // For SAL annotations
+#include <swss/sal.h>
 #include <vector>
 
 namespace sairedis
