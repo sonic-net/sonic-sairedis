@@ -1001,7 +1001,7 @@ void SaiSwitch::onPostPortsCreate(
 
     SWSS_LOG_TIMER("discovering objects after creating ports");
 
-    SaiDiscovery sd(m_vendorSai, SaiDiscoveryFlags::SkipDefaultEmptyAttributes);
+    SaiDiscovery sd(m_vendorSai, SaiDiscovery::Flags::SkipDefaultEmptyAttributes);
 
     auto discovered = sd.discover(port_rids, count);
 

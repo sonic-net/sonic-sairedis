@@ -14,19 +14,6 @@
 namespace syncd
 {
 
-    enum SaiDiscoveryFlags
-    {
-        None = 0,
-        SkipDefaultEmptyAttributes = 1 << 0,
-    };
-
-    inline SaiDiscoveryFlags operator|(SaiDiscoveryFlags a, SaiDiscoveryFlags b)
-    {
-        SWSS_LOG_ENTER();
-
-        return static_cast<SaiDiscoveryFlags>(static_cast<int>(a) | static_cast<int>(b));
-    }
-
     class SaiDiscovery
     {
         public:
@@ -35,9 +22,22 @@ namespace syncd
 
         public:
 
+            enum Flags
+            {
+                None = 0,
+                SkipDefaultEmptyAttributes = 1 << 0,
+            };
+
+            friend inline Flags operator|(Flags a, Flags b)
+            {
+                SWSS_LOG_ENTER();
+
+                return static_cast<Flags>(static_cast<std::underlying_type_t<Flags>>(a) | static_cast<std::underlying_type_t<Flags>>(b));
+            }
+
             SaiDiscovery(
                     _In_ std::shared_ptr<sairedis::SaiInterface> sai,
-                    _In_ SaiDiscoveryFlags flags = SaiDiscoveryFlags::None);
+                    _In_ Flags flags = Flags::None);
 
             virtual ~SaiDiscovery();
 
@@ -83,7 +83,7 @@ namespace syncd
 
             std::shared_ptr<sairedis::SaiInterface> m_sai;
 
-            SaiDiscoveryFlags m_flags;
+            Flags m_flags;
 
             DefaultOidMap m_defaultOidMap;
 

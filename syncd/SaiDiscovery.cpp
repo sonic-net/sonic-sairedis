@@ -21,7 +21,7 @@ using namespace syncd;
 
 SaiDiscovery::SaiDiscovery(
         _In_ std::shared_ptr<sairedis::SaiInterface> sai,
-        _In_ SaiDiscoveryFlags flags):
+        _In_ Flags flags):
     m_sai(sai),
     m_flags(flags)
 {
@@ -159,7 +159,7 @@ void SaiDiscovery::discover(
                  * create, we don't need to query this attribute.
                  */
 
-                if (m_flags & SaiDiscoveryFlags::SkipDefaultEmptyAttributes)
+                if (m_flags & Flags::SkipDefaultEmptyAttributes)
                 {
                     continue;
                 }
@@ -239,7 +239,7 @@ void SaiDiscovery::discover(
                  * create, we don't need to query this attribute.
                  */
 
-                if (m_flags & SaiDiscoveryFlags::SkipDefaultEmptyAttributes)
+                if (m_flags & Flags::SkipDefaultEmptyAttributes)
                 {
                     continue;
                 }
