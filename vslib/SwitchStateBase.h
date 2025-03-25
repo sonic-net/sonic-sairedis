@@ -113,8 +113,10 @@ namespace saivs
                     _In_ const sai_system_port_config_t *sys_port_cfg_list);
 
             sai_status_t create_voqs();
+
             sai_status_t create_voq_per_sysport(
                     _In_ sai_object_id_t sys_port_id);
+
             sai_status_t set_system_port_list();
 
         public:
@@ -339,7 +341,7 @@ namespace saivs
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t* attr);
 
-        private:
+        protected:
 
             sai_object_type_t objectTypeQuery(
                     _In_ sai_object_id_t objectId);
@@ -349,7 +351,7 @@ namespace saivs
 
         public:
 
-            void processFdbEntriesForAging();
+            virtual void processFdbEntriesForAging();
 
         private: // fdb related
 
@@ -388,16 +390,16 @@ namespace saivs
 
         protected: // custom port
 
-            sai_status_t createPort(
+            virtual sai_status_t createPort(
                     _In_ sai_object_id_t object_id,
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
-            sai_status_t removePort(
+            virtual sai_status_t removePort(
                     _In_ sai_object_id_t objectId);
 
-            sai_status_t setPort(
+            virtual sai_status_t setPort(
                     _In_ sai_object_id_t objectId,
                     _In_ const sai_attribute_t* attr);
 
@@ -475,14 +477,14 @@ namespace saivs
             sai_status_t removeHostif(
                     _In_ sai_object_id_t objectId);
 
-            sai_status_t vs_remove_hostif_tap_interface(
+            virtual sai_status_t vs_remove_hostif_tap_interface(
                     _In_ sai_object_id_t hostif_id);
 
-            sai_status_t vs_create_hostif_tap_interface(
+            virtual sai_status_t vs_create_hostif_tap_interface(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
-            bool hostif_create_tap_veth_forwarding(
+            virtual bool hostif_create_tap_veth_forwarding(
                     _In_ const std::string &tapname,
                     _In_ int tapfd,
                     _In_ sai_object_id_t port_id);
@@ -517,7 +519,7 @@ namespace saivs
                     _In_ sai_port_oper_status_t status,
                     _In_ bool force);
 
-            bool hasIfIndex(
+            virtual bool hasIfIndex(
                     _In_ int ifIndex) const;
 
             bool vs_get_oper_speed(
@@ -553,7 +555,7 @@ namespace saivs
 
         protected:
 
-            sai_status_t setAclEntry(
+            virtual sai_status_t setAclEntry(
                     _In_ sai_object_id_t entry_id,
                     _In_ const sai_attribute_t* attr);
 
