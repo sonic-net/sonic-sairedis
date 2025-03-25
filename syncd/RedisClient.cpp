@@ -232,8 +232,8 @@ void RedisClient::setDummyAsicStateObject(
 }
 
 void RedisClient::setDummyAsicStateObjects(
-        _In_ const sai_object_id_t* objectVids,
-        _In_ size_t count)
+        _In_ size_t count,
+        _In_ const sai_object_id_t* objectVids)
 {
     SWSS_LOG_ENTER();
 
@@ -744,9 +744,9 @@ void RedisClient::insertVidAndRid(
 }
 
 void RedisClient::insertVidsAndRids(
+        _In_ size_t count,
         _In_ const sai_object_id_t* vids,
-        _In_ const sai_object_id_t* rids,
-        _In_ size_t count)
+        _In_ const sai_object_id_t* rids)
 {
     SWSS_LOG_ENTER();
 
@@ -798,9 +798,9 @@ sai_object_id_t RedisClient::getVidForRid(
 }
 
 void RedisClient::getVidsForRids(
+        _In_ size_t count,
         _In_ const sai_object_id_t* rids,
-        _Out_ sai_object_id_t* vids,
-        _In_ size_t count)
+        _Out_ sai_object_id_t* vids)
 {
     SWSS_LOG_ENTER();
 

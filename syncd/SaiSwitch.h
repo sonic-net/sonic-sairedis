@@ -195,8 +195,8 @@ namespace syncd
              * and updated ASIC DB accordingly.
              */
             virtual void onPostPortsCreate(
-                    _In_ const sai_object_id_t* port_rids,
-                    _Out_ size_t count) override;
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* port_rids) override;
 
             /**
              * @brief Post port remove.
@@ -264,8 +264,8 @@ namespace syncd
                     _In_ sai_object_id_t rid) const;
 
             void redisSetDummyAsicStateForRealObjectIds(
-                    _In_ sai_object_id_t* rids,
-                    _In_ size_t count) const;
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* rids) const;
 
             /**
              * @brief Put cold boot discovered VIDs to redis DB.

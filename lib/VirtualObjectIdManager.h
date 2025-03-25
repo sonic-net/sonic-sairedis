@@ -74,9 +74,9 @@ namespace sairedis
              */
             void allocateNewObjectIds(
                     _In_ sai_object_id_t switchId,
+                    _In_ size_t count,
                     _In_ sai_object_type_t* objectType,
-                    _Out_ sai_object_id_t* oids,
-                    _In_ size_t count) const;
+                    _Out_ sai_object_id_t* oids) const;
 
             /**
              * @brief Allocate new switch object id.

@@ -64,9 +64,9 @@ namespace syncd
              */
             void translateRidsToVids(
                     _In_ sai_object_id_t switchVid,
+                    _In_ size_t count,
                     _In_ const sai_object_id_t* rids,
-                    _Out_ sai_object_id_t* vids,
-                    _In_ size_t count);
+                    _Out_ sai_object_id_t* vids);
 
             /*
              * This method is required to translate RID to VIDs when we are doing
@@ -122,9 +122,9 @@ namespace syncd
                     _In_ const sai_object_id_t vid);
 
             void insertRidsAndVids(
+                    _In_ size_t count,
                     _In_ const sai_object_id_t* rids,
-                    _In_ const sai_object_id_t* vids,
-                    _In_ size_t count);
+                    _In_ const sai_object_id_t* vids);
 
             void clearLocalCache();
 

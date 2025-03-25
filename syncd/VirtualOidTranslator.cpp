@@ -149,9 +149,9 @@ sai_object_id_t VirtualOidTranslator::translateRidToVid(
 
 void VirtualOidTranslator::translateRidsToVids(
         _In_ sai_object_id_t switchVid,
+        _In_ size_t count,
         _In_ const sai_object_id_t* rids,
-        _Out_ sai_object_id_t* vids,
-        _In_ size_t count)
+        _Out_ sai_object_id_t* vids)
 {
     SWSS_LOG_ENTER();
 
@@ -161,7 +161,7 @@ void VirtualOidTranslator::translateRidsToVids(
      * Fetch VIDs for given RIDs from database.
      * Unknown RID's will be mapped to SAI_NULL_OBJECT_ID in vids array.
      */
-    m_client->getVidsForRids(rids, vids, count);
+    m_client->getVidsForRids(count, rids, vids);
 
     std::vector<sai_object_id_t> newRids;
     std::vector<sai_object_id_t> newVids;
@@ -192,12 +192,12 @@ void VirtualOidTranslator::translateRidsToVids(
     /*
      * Allocate VIDs for new RIDs.
      */
-    m_virtualObjectIdManager->allocateNewObjectIds(switchVid, newObjectTypes.data(), newVids.data(), newOidsCount);
+    m_virtualObjectIdManager->allocateNewObjectIds(switchVid, newOidsCount, newObjectTypes.data(), newVids.data());
 
     /*
      * Insert VID and RID mappings into local and redis db.
      */
-    m_client->insertVidsAndRids(newVids.data(), newRids.data(), newOidsCount);
+    m_client->insertVidsAndRids(newOidsCount, newVids.data(), newRids.data());
 
     /*
      * Replace VID's for new RIDs in output vids array and update local cache.
@@ -617,9 +617,9 @@ void VirtualOidTranslator::insertRidAndVid(
 }
 
 void VirtualOidTranslator::insertRidsAndVids(
+        _In_ size_t count,
         _In_ const sai_object_id_t* rids,
-        _In_ const sai_object_id_t* vids,
-        _In_ size_t count)
+        _In_ const sai_object_id_t* vids)
 {
     SWSS_LOG_ENTER();
 
@@ -631,7 +631,7 @@ void VirtualOidTranslator::insertRidsAndVids(
         m_vid2rid[vids[idx]] = rids[idx];
     }
 
-    m_client->insertVidsAndRids(vids, rids, count);
+    m_client->insertVidsAndRids(count, vids, rids);
 }
 
 void VirtualOidTranslator::eraseRidAndVid(

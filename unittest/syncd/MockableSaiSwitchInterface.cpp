@@ -131,8 +131,8 @@ std::set<sai_object_id_t> MockableSaiSwitchInterface::getWarmBootDiscoveredVids(
 }
 
 void MockableSaiSwitchInterface::onPostPortsCreate(
-        _In_ const sai_object_id_t* port_rids,
-        _In_ size_t count)
+        _In_ size_t count,
+        _In_ const sai_object_id_t* port_rids)
 {
     SWSS_LOG_ENTER();
 

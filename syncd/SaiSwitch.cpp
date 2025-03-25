@@ -372,16 +372,16 @@ void SaiSwitch::redisSetDummyAsicStateForRealObjectId(
 }
 
 void SaiSwitch::redisSetDummyAsicStateForRealObjectIds(
-        _In_ sai_object_id_t* rids,
-        _In_ size_t count) const
+        _In_ size_t count,
+        _In_ const sai_object_id_t* rids) const
 {
     SWSS_LOG_ENTER();
 
     std::vector<sai_object_id_t> vids(count);
 
-    m_translator->translateRidsToVids(m_switch_vid, rids, vids.data(), count);
+    m_translator->translateRidsToVids(m_switch_vid, count, rids, vids.data());
 
-    m_client->setDummyAsicStateObjects(vids.data(), count);
+    m_client->setDummyAsicStateObjects(count, vids.data());
 }
 
 std::string SaiSwitch::getHardwareInfo() const
@@ -994,8 +994,8 @@ void SaiSwitch::redisUpdatePortLaneMap(
 }
 
 void SaiSwitch::onPostPortsCreate(
-        _In_ const sai_object_id_t* port_rids,
-        _Out_ size_t count)
+        _In_ size_t count,
+        _In_ const sai_object_id_t* port_rids)
 {
     SWSS_LOG_ENTER();
 
@@ -1024,7 +1024,7 @@ void SaiSwitch::onPostPortsCreate(
 
     std::vector<sai_object_id_t> rids{discovered.begin(), discovered.end()};
 
-    redisSetDummyAsicStateForRealObjectIds(rids.data(), rids.size());
+    redisSetDummyAsicStateForRealObjectIds(rids.size(), rids.data());
 
     for (size_t idx = 0; idx < count; idx++)
     {

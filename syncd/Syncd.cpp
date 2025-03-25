@@ -2176,11 +2176,11 @@ sai_status_t Syncd::processBulkOidCreate(
         }
     }
 
-    m_translator->insertRidsAndVids(createdRids.data(), createdVids.data(), createdRids.size());
+    m_translator->insertRidsAndVids(createdRids.size(), createdRids.data(), createdVids.data());
 
     if (objectType == SAI_OBJECT_TYPE_PORT)
     {
-        m_switches.at(switchVid)->onPostPortsCreate(createdRids.data(), createdRids.size());
+        m_switches.at(switchVid)->onPostPortsCreate(createdRids.size(), createdRids.data());
     }
 
     return status;
@@ -3485,7 +3485,7 @@ sai_status_t Syncd::processOidCreate(
 
         if (objectType == SAI_OBJECT_TYPE_PORT)
         {
-            m_switches.at(switchVid)->onPostPortsCreate(&objectRid, 1);
+            m_switches.at(switchVid)->onPostPortsCreate(1, &objectRid);
         }
     }
 

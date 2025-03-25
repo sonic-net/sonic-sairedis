@@ -49,8 +49,8 @@ namespace syncd
                     _In_ sai_object_id_t objectVid);
 
             void setDummyAsicStateObjects(
-                    _In_ const sai_object_id_t* objectVids,
-                    _In_ size_t count);
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* objectVids);
 
             void saveColdBootDiscoveredVids(
                     _In_ sai_object_id_t switchVid,
@@ -133,9 +133,9 @@ namespace syncd
                     _In_ sai_object_id_t rid);
 
             void insertVidsAndRids(
+                    _In_ size_t count,
                     _In_ const sai_object_id_t* vids,
-                    _In_ const sai_object_id_t* rids,
-                    _In_ size_t count);
+                    _In_ const sai_object_id_t* rids);
 
             sai_object_id_t getVidForRid(
                     _In_ sai_object_id_t rid);
@@ -144,9 +144,9 @@ namespace syncd
                     _In_ sai_object_id_t vid);
 
             void getVidsForRids(
+                    _In_ size_t count,
                     _In_ const sai_object_id_t* rids,
-                    _Out_ sai_object_id_t* vids,
-                    _In_ size_t count);
+                    _Out_ sai_object_id_t* vids);
 
             void removeAsicStateTable();
 
