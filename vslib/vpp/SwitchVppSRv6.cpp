@@ -521,7 +521,6 @@ sai_status_t TunnelManagerSRv6::create_sidlist_route_entry(
 
     sai_status_t status = SAI_STATUS_SUCCESS;
     sai_object_id_t nh_oid = SAI_NULL_OBJECT_ID;
-    SWSS_LOG_ENTER();
 
     for(uint32_t i = 0; i<attr_count; i++) {
         if(attr_list[i].id == SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID) {

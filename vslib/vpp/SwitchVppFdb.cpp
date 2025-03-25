@@ -622,7 +622,6 @@ sai_status_t SwitchVpp::vpp_create_lag(
     uint32_t bond_id = ~0;
     uint32_t swif_idx = ~0;
     const char *hw_ifname;
-    SWSS_LOG_ENTER();
 
     // Extract bond_id from PortChannel name
     bond_id = find_new_bond_id();
@@ -725,7 +724,6 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
     uint32_t bond_if_idx;
     uint32_t bond_id;
     sai_object_id_t lag_oid, lag_port_oid;
-    SWSS_LOG_ENTER();
 
     //Get the bond interface index from attr SAI_LAG_MEMBER_ATTR_LAG_ID
     auto attr_type = sai_metadata_get_attr_by_id(SAI_LAG_MEMBER_ATTR_LAG_ID, attr_count, attr_list);
