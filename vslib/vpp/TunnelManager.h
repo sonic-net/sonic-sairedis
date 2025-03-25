@@ -142,7 +142,7 @@ namespace saivs
             _In_ sai_object_id_t switch_id,
             _In_ uint32_t attr_count,
             _In_ const sai_attribute_t *attr_list);
-        
+
         /**
          * @brief Removes a MySID (Segment Identifier) entry.
          *
@@ -166,7 +166,7 @@ namespace saivs
             _In_ sai_object_id_t switch_id,
             _In_ uint32_t attr_count,
             _In_ const sai_attribute_t *attr_list);
-        
+
         /**
          * @brief Removes a SID list based on the serialized object ID.
          *
@@ -175,7 +175,7 @@ namespace saivs
          */
         sai_status_t remove_sidlist(
             _In_ const std::string &serializedObjectId);
-        
+
         /**
          * @brief Creates a SID list route entry.
          *
@@ -190,7 +190,7 @@ namespace saivs
             _In_ sai_object_id_t switch_id,
             _In_ uint32_t attr_count,
             _In_ const sai_attribute_t *attr_list);
-        
+
         /**
          * @brief Removes a SID list route entry.
          *
@@ -208,11 +208,11 @@ namespace saivs
         sai_status_t add_remove_my_sid_entry(
                         _In_ const SaiObject* my_sid_obj,
                         _In_ bool is_del);
-        
+
         sai_status_t fill_my_sid_entry(
                         _In_ const SaiObject* my_sid_obj,
                         _Out_ vpp_my_sid_entry_t &my_sid);
-        
+
         sai_status_t fill_next_hop(
                         _In_ sai_object_id_t next_hop_oid,
                         _Out_ vpp_ip_addr_t &nh_ip,
@@ -235,17 +235,17 @@ namespace saivs
 
         sai_status_t remove_sidlist_internal(
                         _In_ const std::string &serializedObjectId);
-        
+
         sai_status_t sr_steer_add_remove(
                         _In_ const std::string &serializedObjectId,
                         _In_ sai_object_id_t next_hop_oid,
                         _In_ bool is_del);
-        
+
         sai_status_t fill_sr_steer(
                         _In_ const std::string &serializedObjectId,
                         _In_ sai_object_id_t next_hop_oid,
                         _Out_ vpp_sr_steer_t  &sr_steer);
-        
+
         sai_status_t fill_bsid_set_src_addr(
                         _In_ sai_object_id_t nexthop_oid,
                         _Out_ vpp_ip_addr_t &bsid);

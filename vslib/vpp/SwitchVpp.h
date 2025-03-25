@@ -904,7 +904,7 @@ namespace saivs
                 uint32_t id;
                 bool lcp_created;
             } platform_bond_info_t;
-            
+
             void populate_if_mapping();
 
             const char *tap_to_hwif_name(const char *name);
@@ -947,10 +947,10 @@ namespace saivs
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
-            
+
             friend class TunnelManagerSRv6;
 
             TunnelManagerSRv6 m_tunnel_mgr_srv6;
-        
+
     };
 }

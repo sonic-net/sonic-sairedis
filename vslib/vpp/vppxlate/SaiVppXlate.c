@@ -1089,7 +1089,7 @@ vl_api_bond_detach_member_reply_t_handler (vl_api_bond_detach_member_reply_t *ms
 }
 
 static void
-vl_api_sr_localsid_add_del_reply_t_handler(vl_api_sr_localsid_add_del_reply_t *msg) 
+vl_api_sr_localsid_add_del_reply_t_handler(vl_api_sr_localsid_add_del_reply_t *msg)
 {
     set_reply_status(ntohl(msg->retval));
 
@@ -1098,7 +1098,7 @@ vl_api_sr_localsid_add_del_reply_t_handler(vl_api_sr_localsid_add_del_reply_t *m
 }
 
 static void
-vl_api_sr_policy_add_v2_reply_t_handler(vl_api_sr_policy_add_v2_reply_t *msg) 
+vl_api_sr_policy_add_v2_reply_t_handler(vl_api_sr_policy_add_v2_reply_t *msg)
 {
     set_reply_status(ntohl(msg->retval));
 
@@ -1107,7 +1107,7 @@ vl_api_sr_policy_add_v2_reply_t_handler(vl_api_sr_policy_add_v2_reply_t *msg)
 }
 
 static void
-vl_api_sr_policy_del_reply_t_handler(vl_api_sr_policy_del_reply_t *msg) 
+vl_api_sr_policy_del_reply_t_handler(vl_api_sr_policy_del_reply_t *msg)
 {
     set_reply_status(ntohl(msg->retval));
 
@@ -1116,7 +1116,7 @@ vl_api_sr_policy_del_reply_t_handler(vl_api_sr_policy_del_reply_t *msg)
 }
 
 static void
-vl_api_sr_steering_add_del_reply_t_handler(vl_api_sr_steering_add_del_reply_t *msg) 
+vl_api_sr_steering_add_del_reply_t_handler(vl_api_sr_steering_add_del_reply_t *msg)
 {
     set_reply_status(ntohl(msg->retval));
 
@@ -1125,7 +1125,7 @@ vl_api_sr_steering_add_del_reply_t_handler(vl_api_sr_steering_add_del_reply_t *m
 }
 
 static void
-vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *msg) 
+vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *msg)
 {
     set_reply_status(ntohl(msg->retval));
 
@@ -1744,7 +1744,7 @@ int init_vpp_client()
         /* Enable LACP punt/xc in linux-cp */
         vpp_lcp_ethertype_enable(0x8809);
 
-        /* 
+        /*
          * SONiC periodically polls the port status so currently there is no need for
          * async notification. This also simplifies the synchronous design of saivpp.
          * Revisit the async mechanism if there is greater reason.
@@ -2742,7 +2742,7 @@ int hw_interface_set_mtu (const char *hwif_name, uint32_t mtu)
     return ret;
 }
 
-int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable) 
+int sw_interface_ip6_enable_disable(const char *hwif_name, bool enable)
 {
     vat_main_t *vam = &vat_main;
     vl_api_sw_interface_ip6_enable_disable_t *mp;
@@ -3694,7 +3694,7 @@ int vpp_my_sid_entry_add_del (vpp_my_sid_entry_t *my_sid, bool is_del)
             VPP_UNLOCK();
             return -EINVAL;
         }
-    }    
+    }
 
     mp->is_del =  is_del;
     mp->end_psp = my_sid->end_psp;
@@ -3854,7 +3854,7 @@ int vpp_sr_set_encap_source(vpp_ip_addr_t *encap_src)
         VPP_UNLOCK();
         return -EINVAL;
     }
-    
+
     S (mp);
 
     WR (ret);

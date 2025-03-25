@@ -38,6 +38,8 @@ using namespace saivs;
 
 TunnelManagerSRv6::TunnelManagerSRv6(SwitchVpp* switch_db): m_switch_db(switch_db)
 {
+    SWSS_LOG_ENTER();
+
     return;
 }
 
@@ -48,6 +50,8 @@ sai_status_t TunnelManagerSRv6::fill_next_hop(
         _Out_ uint32_t &vlan_idx,
         _Out_ char (&if_name)[64])
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t    status = SAI_STATUS_SUCCESS;
     sai_attribute_t attr;
     sai_object_id_t port_oid;
@@ -87,7 +91,7 @@ sai_status_t TunnelManagerSRv6::fill_next_hop(
     } else {
         vlan_idx = 0;
     }
-    
+
     if(!m_switch_db->vpp_get_hwif_name(port_oid, vlan_idx, hwif_name)) {
         SWSS_LOG_WARN("VPP hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
         return SAI_STATUS_FAILURE;
@@ -101,6 +105,8 @@ sai_status_t TunnelManagerSRv6::fill_my_sid_entry(
         _In_ const SaiObject* my_sid_obj,
         _Out_ vpp_my_sid_entry_t &my_sid)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t    status = SAI_STATUS_SUCCESS;
     sai_attribute_t attr;
     sai_my_sid_entry_t my_sid_entry;
@@ -147,6 +153,8 @@ sai_status_t TunnelManagerSRv6::add_remove_my_sid_entry(
         _In_ const SaiObject* my_sid_obj,
         _In_ bool is_del)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t          status = SAI_STATUS_SUCCESS;
     vpp_my_sid_entry_t    my_sid;
     memset(&my_sid, 0, sizeof(my_sid));
@@ -174,10 +182,10 @@ sai_status_t TunnelManagerSRv6::create_my_sid_entry(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
 
-    SWSS_LOG_ENTER();
-    
     SaiCachedObject my_sid_obj(m_switch_db, SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectId, attr_count, attr_list);
     status = add_remove_my_sid_entry(&my_sid_obj, false);
 
@@ -193,13 +201,13 @@ sai_status_t TunnelManagerSRv6::create_my_sid_entry(
 sai_status_t TunnelManagerSRv6::remove_my_sid_entry(
         _In_ const std::string &serializedObjectId)
 {
-    sai_status_t status = SAI_STATUS_SUCCESS;
-
     SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     SaiDBObject my_sid_obj(m_switch_db, SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectId);
     status = add_remove_my_sid_entry(&my_sid_obj, true);
-    
+
     if(status == SAI_STATUS_SUCCESS) {
         CHECK_STATUS(m_switch_db->remove_internal(SAI_OBJECT_TYPE_MY_SID_ENTRY, serializedObjectId));
     }
@@ -213,6 +221,8 @@ static sai_status_t fill_segment_list(
         _In_ const sai_segment_list_t &sai_list,
         _Out_ vpp_sids_t &sidlist)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     if(sai_list.count > 16) {
         SWSS_LOG_ERROR("VPP max sid list size is 16, received %u", sai_list.count);
@@ -223,13 +233,15 @@ static sai_status_t fill_segment_list(
         sidlist.sids[i].sa_family = AF_INET6;
         sidlist.sids[i].addr.ip6.sin6_family = AF_INET6;
         memcpy(sidlist.sids[i].addr.ip6.sin6_addr.s6_addr, sai_list.list[i], sizeof(uint8_t[16]));
-    }   
+    }
     return status;
 }
 
 vpp_ip_addr_t TunnelManagerSRv6::generate_bsid(
-        _In_ sai_object_id_t sid_list_oid) 
+        _In_ sai_object_id_t sid_list_oid)
 {
+    SWSS_LOG_ENTER();
+
     vpp_ip_addr_t bsid;
     memset(&bsid, 0, sizeof(bsid));
     bsid.sa_family = AF_INET6;
@@ -252,6 +264,8 @@ sai_status_t TunnelManagerSRv6::fill_sidlist(
         _In_ const sai_attribute_t *attr_list,
         _Out_ vpp_sidlist_t &sidlist)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t    status = SAI_STATUS_SUCCESS;
     sai_object_id_t object_id;
     sai_deserialize_object_id(sidlist_id, object_id);
@@ -292,6 +306,8 @@ sai_status_t TunnelManagerSRv6::create_sidlist_internal(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t          status = SAI_STATUS_SUCCESS;
     vpp_sidlist_t         sidlist;
     memset(&sidlist, 0, sizeof(sidlist));
@@ -319,9 +335,9 @@ sai_status_t TunnelManagerSRv6::create_sidlist(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
-    sai_status_t status = SAI_STATUS_SUCCESS;
-
     SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     status = create_sidlist_internal(serializedObjectId, attr_count, attr_list);
 
@@ -337,6 +353,8 @@ sai_status_t TunnelManagerSRv6::create_sidlist(
 sai_status_t TunnelManagerSRv6::remove_sidlist_internal(
         _In_ const std::string &serializedObjectId)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     sai_object_id_t object_id;
 
@@ -356,9 +374,9 @@ sai_status_t TunnelManagerSRv6::remove_sidlist_internal(
 sai_status_t TunnelManagerSRv6::remove_sidlist(
         _In_ const std::string &serializedObjectId)
 {
-    sai_status_t status = SAI_STATUS_SUCCESS;
-
     SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     status = remove_sidlist_internal(serializedObjectId);
 
@@ -375,6 +393,8 @@ sai_status_t TunnelManagerSRv6::fill_bsid_set_src_addr(
         _In_ sai_object_id_t next_hop_oid,
         _Out_ vpp_ip_addr_t &bsid)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     sai_attribute_t attr;
     sai_object_id_t sr_list_oid;
@@ -416,6 +436,8 @@ sai_status_t TunnelManagerSRv6::fill_bsid_set_src_addr(
 static uint8_t get_prefix_length(
         _In_ const sai_ip_prefix_t &addr)
 {
+    SWSS_LOG_ENTER();
+
     uint8_t prefix_len = 0;
     if(addr.addr_family == SAI_IP_ADDR_FAMILY_IPV4) {
         prefix_len = static_cast<uint8_t>(__builtin_popcount(addr.mask.ip4));
@@ -435,6 +457,8 @@ sai_status_t TunnelManagerSRv6::fill_sr_steer(
         _In_ sai_object_id_t next_hop_oid,
         _Out_ vpp_sr_steer_t  &sr_steer)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     sai_route_entry_t route_entry;
     sai_deserialize_route_entry(serializedObjectId, route_entry);
@@ -464,6 +488,8 @@ sai_status_t TunnelManagerSRv6::sr_steer_add_remove(
         _In_ sai_object_id_t next_hop_oid,
         _In_ bool is_del)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     vpp_sr_steer_t sr_steer;
     memset(&sr_steer, 0, sizeof(sr_steer));
@@ -491,6 +517,8 @@ sai_status_t TunnelManagerSRv6::create_sidlist_route_entry(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     sai_status_t status = SAI_STATUS_SUCCESS;
     sai_object_id_t nh_oid = SAI_NULL_OBJECT_ID;
     SWSS_LOG_ENTER();
@@ -516,8 +544,9 @@ sai_status_t TunnelManagerSRv6::remove_sidlist_route_entry(
         _In_ const std::string &serializedObjectId,
         _In_ sai_object_id_t next_hop_oid)
 {
-    sai_status_t status = SAI_STATUS_SUCCESS;
     SWSS_LOG_ENTER();
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
 
     status = sr_steer_add_remove(serializedObjectId, next_hop_oid, true);
     SWSS_LOG_NOTICE("Remove route entry sidlist status: %d", status);

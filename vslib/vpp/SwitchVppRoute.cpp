@@ -220,7 +220,7 @@ sai_status_t SwitchVpp::addIpRoute(
     if (nh_obj != nullptr) {
         sai_attribute_t attr;
         attr.id = SAI_NEXT_HOP_ATTR_TYPE;
-        CHECK_STATUS_W_MSG(nh_obj->get_attr(attr), "Missing SAI_NEXT_HOP_ATTR_TYPE in tunnel obj");       
+        CHECK_STATUS_W_MSG(nh_obj->get_attr(attr), "Missing SAI_NEXT_HOP_ATTR_TYPE in tunnel obj");
         isTunnelNh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP);
         isSRv6Nh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_SRV6_SIDLIST);
     }

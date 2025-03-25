@@ -1063,7 +1063,7 @@ sai_status_t SwitchVpp::remove(
     {
         return  m_tunnel_mgr_srv6.remove_sidlist(serializedObjectId);
     }
-    
+
     if (object_type == SAI_OBJECT_TYPE_NEXT_HOP)
     {
         return removeNexthop(serializedObjectId);

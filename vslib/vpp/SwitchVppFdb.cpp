@@ -43,19 +43,19 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         _In_ const sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
-    
+
     sai_object_id_t br_port_id;
 
     //find sw_if_index for given l2 interface
     auto attr_type = sai_metadata_get_attr_by_id(SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID, attr_count, attr_list);
-    
+
     if (attr_type == NULL)
     {
         SWSS_LOG_ERROR("attr SAI_VLAN_MEMBER_ATTR_BRIDGE_PORT_ID was not passed");
 
         return SAI_STATUS_FAILURE;
     }
-    
+
     br_port_id = attr_type->value.oid;
     sai_object_type_t obj_type = objectTypeQuery(br_port_id);
 
@@ -165,7 +165,7 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         //Set interface state up
         interface_set_state(hw_ifname, true);
     }
-    else if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED) 
+    else if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED)
     {
         hw_ifname = hwifname;
 
@@ -313,7 +313,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
 
     uint32_t tagging_mode = attr.value.s32;
     char host_subifname[32];
-    if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED) 
+    if (tagging_mode == SAI_VLAN_TAGGING_MODE_UNTAGGED)
     {
 
         //First disable tag-rewrite.
@@ -326,7 +326,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         //Remove interface from bridge, interface type should be changed to others types like l3.
         set_sw_interface_l2_bridge(hw_ifname, bridge_id, false, VPP_API_PORT_TYPE_NORMAL);
     }
-    else if (tagging_mode == SAI_VLAN_TAGGING_MODE_TAGGED) 
+    else if (tagging_mode == SAI_VLAN_TAGGING_MODE_TAGGED)
     {
 
         // set interface l2 tag-rewrite GigabitEthernet0/8/0.200 disable
@@ -350,7 +350,7 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
     //Check if the bridge has zero ports left, if so remove the bridge as well
     uint32_t member_count = 0;
     bridge_domain_get_member_count (bridge_id, &member_count);
-    if (member_count == 0) 
+    if (member_count == 0)
     {
         vpp_bridge_domain_add_del(bridge_id, false);
     }
@@ -441,7 +441,7 @@ sai_status_t SwitchVpp::vpp_delete_bvi_interface(
 
     attr.id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
     sai_status_t status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, bvi_obj_id, 1, &attr);
-    
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("attr SAI_ROUTER_INTERFACE_ATTR_TYPE is not present");
@@ -456,7 +456,7 @@ sai_status_t SwitchVpp::vpp_delete_bvi_interface(
 
     attr.id = SAI_ROUTER_INTERFACE_ATTR_VLAN_ID;
     status = get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, bvi_obj_id, 1, &attr);
-    
+
     if (status != SAI_STATUS_SUCCESS)
     {
         SWSS_LOG_ERROR("attr SAI_ROUTER_INTERFACE_ATTR_VLAN_ID is not present");
@@ -511,6 +511,8 @@ sai_status_t SwitchVpp::vpp_delete_bvi_interface(
 
 sai_status_t SwitchVpp::get_lag_bond_info(const sai_object_id_t lag_id, platform_bond_info_t &bond_info)
 {
+    SWSS_LOG_ENTER();
+
     auto it = m_lag_bond_map.find(lag_id);
     if (it == m_lag_bond_map.end())
     {
@@ -523,7 +525,9 @@ sai_status_t SwitchVpp::get_lag_bond_info(const sai_object_id_t lag_id, platform
 
 int SwitchVpp::remove_lag_to_bond_entry(const sai_object_id_t lag_oid)
 {
-   auto it = m_lag_bond_map.find(lag_oid);
+    SWSS_LOG_ENTER();
+
+    auto it = m_lag_bond_map.find(lag_oid);
 
     if (it == m_lag_bond_map.end())
     {
@@ -563,6 +567,8 @@ sai_status_t SwitchVpp::createLag(
  */
 uint32_t SwitchVpp::find_new_bond_id()
 {
+    SWSS_LOG_ENTER();
+
     std::stringstream cmd;
     std::string res;
     uint32_t bond_id = ~0;
@@ -610,6 +616,8 @@ sai_status_t SwitchVpp::vpp_create_lag(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     uint32_t mode, lb;
     uint32_t bond_id = ~0;
     uint32_t swif_idx = ~0;
@@ -662,10 +670,11 @@ sai_status_t SwitchVpp::removeLag(
 sai_status_t SwitchVpp::vpp_remove_lag(
         _In_ sai_object_id_t lag_oid)
 {
-    int ret;
     SWSS_LOG_ENTER();
 
+    int ret;
     platform_bond_info_t bond_info;
+
     CHECK_STATUS(get_lag_bond_info(lag_oid, bond_info));
     uint32_t lag_swif_idx = bond_info.sw_if_index;
     auto lag_ifname =  vpp_get_swif_name(lag_swif_idx);
@@ -708,6 +717,8 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
 {
+    SWSS_LOG_ENTER();
+
     bool is_long_timeout = false;
     bool is_passive = false;
     int ret;
@@ -831,8 +842,9 @@ sai_status_t SwitchVpp::removeLagMember(
 sai_status_t SwitchVpp::vpp_remove_lag_member(
         _In_ sai_object_id_t lag_member_oid)
 {
-    int ret;
     SWSS_LOG_ENTER();
+
+    int ret;
 
     sai_attribute_t attr;
 
@@ -907,7 +919,7 @@ sai_status_t SwitchVpp::FdbEntryadd(
     SWSS_LOG_ENTER();
 
     CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId, switch_id, attr_count, attr_list));
-    
+
     vpp_fdbentry_add(serializedObjectId, switch_id, attr_count, attr_list);
 
     return SAI_STATUS_SUCCESS;
@@ -919,8 +931,8 @@ sai_status_t SwitchVpp::FdbEntrydel(
 {
     SWSS_LOG_ENTER();
 
-    vpp_fdbentry_del(serializedObjectId);  
-    
+    vpp_fdbentry_del(serializedObjectId);
+
     CHECK_STATUS(remove_internal(SAI_OBJECT_TYPE_FDB_ENTRY, serializedObjectId));
 
     return SAI_STATUS_SUCCESS;
@@ -935,29 +947,29 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
 {
 
     SWSS_LOG_ENTER();
-             
+
     sai_fdb_entry_t fdb_entry;
     sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
 
     /* Attribute#1 */
     auto attr_type = sai_metadata_get_attr_by_id(SAI_FDB_ENTRY_ATTR_TYPE, attr_count, attr_list);
-    
+
     if (attr_type == NULL)
     {
         SWSS_LOG_ERROR("attr SAI_FDB_ENTRY_ATTR_TYPE was not passed");
 
         return SAI_STATUS_FAILURE;
     }
-    
+
     bool is_static = (attr_type->value.s32 == SAI_FDB_ENTRY_TYPE_STATIC ? true : false);
     bool is_add = true; /* Adding the entry in FDB*/
 
-    /* Attribute#2 */  
+    /* Attribute#2 */
     sai_object_id_t br_port_id;
     sai_object_id_t port_id;
 
     attr_type = sai_metadata_get_attr_by_id(SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID, attr_count, attr_list);
-    
+
     if (attr_type == NULL)
     {
         SWSS_LOG_ERROR("attr SAI_FDB_ENTRY_ATTR_BRIDGE_PORT_ID was not passed");
@@ -1007,7 +1019,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
     uint32_t bd_id = attr.value.u16; /* bd_id is same as VLAN ID for .1Q bridge */
 
     std::string ifname;
-    if (vpp_get_hwif_name(port_id, 0, ifname) == true) 
+    if (vpp_get_hwif_name(port_id, 0, ifname) == true)
     {
         const char *hwif_name = ifname.c_str();
         auto ret = l2fib_add_del(hwif_name, fdb_entry.mac_address, bd_id, is_add, is_static);
@@ -1028,10 +1040,10 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
         _In_ const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
-           
+
     sai_fdb_entry_t fdb_entry;
     sai_deserialize_fdb_entry(serializedObjectId, fdb_entry);
-    
+
     sai_object_id_t br_port_id;
     sai_object_id_t port_id;
     bool is_static = false;
@@ -1115,7 +1127,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
 
     std::string ifname;
 
-    if (vpp_get_hwif_name(port_id, 0, ifname) == true) 
+    if (vpp_get_hwif_name(port_id, 0, ifname) == true)
     {
         const char *hwif_name = ifname.c_str();
         auto ret = l2fib_add_del(hwif_name, fdb_entry.mac_address, bd_id, is_add, is_static);
@@ -1141,14 +1153,14 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
     sai_attribute_t attribute;
     sai_object_id_t br_port_id = 0;
     sai_object_id_t port_id;
-    uint32_t bd_id = 0; 
+    uint32_t bd_id = 0;
     uint8_t mode = 0;
     bool is_static_entry = false;
 
-    for (uint32_t i = 0; i < attr_count; i++) 
+    for (uint32_t i = 0; i < attr_count; i++)
     {
         attribute = attr_list[i];
-        switch (attribute.id) 
+        switch (attribute.id)
         {
             case SAI_FDB_FLUSH_ATTR_BRIDGE_PORT_ID:
                 {
@@ -1218,7 +1230,7 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
                     return SAI_STATUS_FAILURE;
                 }
                 std::string ifname = "";
-                if (vpp_get_hwif_name(port_id, 0, ifname) == true) 
+                if (vpp_get_hwif_name(port_id, 0, ifname) == true)
                 {
                     const char *hwif_name = ifname.c_str();
                     auto ret = l2fib_flush_int(hwif_name);
