@@ -781,6 +781,16 @@ void NotificationProcessor::handle_twamp_session_event(
     sai_deserialize_free_twamp_session_event_ntf(count, twampsessionevent);
 }
 
+void NotificationProcessor::handle_tam_tel_type_config_change(
+    _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("TAM telemesai_serialize_object_id(tam_type_id)try type config change on TAM id %s", data.c_str());
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, data);
+}
+
 void NotificationProcessor::processNotification(
         _In_ const swss::KeyOpFieldsValuesTuple& item)
 {
@@ -836,6 +846,10 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT)
     {
         handle_twamp_session_event(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE)
+    {
+        handle_tam_tel_type_config_change(data);
     }
     else
     {

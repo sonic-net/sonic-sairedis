@@ -805,6 +805,9 @@ sai_status_t ServerSai::processSingleEvent(
     if (op == REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_QUERY)
         return processStatsCapabilityQuery(kco);
 
+    if (op == REDIS_ASIC_STATE_COMMAND_STATS_ST_CAPABILITY_QUERY)
+        return processStatsStCapabilityQuery(kco);
+
     SWSS_LOG_THROW("event op '%s' is not implemented, FIXME", op.c_str());
 }
 
@@ -2180,6 +2183,90 @@ sai_status_t ServerSai::processStatsCapabilityQuery(
     }
 
     m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_RESPONSE);
+
+    return status;
+}
+
+sai_status_t ServerSai::processStatsStCapabilityQuery(
+    _In_ const swss::KeyOpFieldsValuesTuple &kco)
+{
+    SWSS_LOG_ENTER();
+
+    auto &strSwitchOid = kfvKey(kco);
+
+    sai_object_id_t switchOid;
+    sai_deserialize_object_id(strSwitchOid, switchOid);
+
+    auto &values = kfvFieldsValues(kco);
+
+    if (values.size() != 2)
+    {
+        SWSS_LOG_ERROR("Invalid input: expected 2 arguments, received %zu", values.size());
+
+        m_selectableChannel->set(sai_serialize_status(SAI_STATUS_INVALID_PARAMETER), {}, REDIS_ASIC_STATE_COMMAND_STATS_ST_CAPABILITY_RESPONSE);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    sai_object_type_t objectType;
+    sai_deserialize_object_type(fvValue(values[0]), objectType);
+
+    uint32_t list_size = std::stoi(fvValue(values[1]));
+
+    std::vector<sai_stat_st_capability_t> stat_capability_list(list_size);
+
+    sai_stat_st_capability_list_t statCapList;
+
+    statCapList.count = list_size;
+    statCapList.list = stat_capability_list.data();
+
+    sai_status_t status = m_sai->queryStatsStCapability(switchOid, objectType, &statCapList);
+
+    std::vector<swss::FieldValueTuple> entry;
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        std::vector<std::string> vec_stat_enum;
+        std::vector<std::string> vec_stat_modes;
+        std::vector<std::string> vec_minimal_polling_intervals;
+
+        for (uint32_t it = 0; it < statCapList.count; it++)
+        {
+            vec_stat_enum.push_back(std::to_string(statCapList.list[it].capability.stat_enum));
+            vec_stat_modes.push_back(std::to_string(statCapList.list[it].capability.stat_modes));
+            vec_minimal_polling_intervals.push_back(std::to_string(statCapList.list[it].minimal_polling_interval));
+        }
+
+        std::ostringstream join_stat_enum;
+        std::copy(vec_stat_enum.begin(), vec_stat_enum.end(), std::ostream_iterator<std::string>(join_stat_enum, ","));
+        auto strCapEnum = join_stat_enum.str();
+
+        std::ostringstream join_stat_modes;
+        std::copy(vec_stat_modes.begin(), vec_stat_modes.end(), std::ostream_iterator<std::string>(join_stat_modes, ","));
+        auto strCapModes = join_stat_modes.str();
+
+        std::ostringstream join_minimal_polling_intervals;
+        std::copy(vec_minimal_polling_intervals.begin(), vec_minimal_polling_intervals.end(), std::ostream_iterator<std::string>(join_minimal_polling_intervals, ","));
+        auto strCapMinPollInt = join_minimal_polling_intervals.str();
+
+        entry =
+            {
+                swss::FieldValueTuple("STAT_ENUM", strCapEnum),
+                swss::FieldValueTuple("STAT_MODES", strCapModes),
+                swss::FieldValueTuple("MINIMAL_POLLING_INTERVALS", strCapMinPollInt),
+                swss::FieldValueTuple("STAT_COUNT", std::to_string(statCapList.count))};
+
+        SWSS_LOG_DEBUG("Sending response: stat_enums = '%s', stat_modes = '%s', minimal_polling_intervals = '%s' count = %d",
+                       strCapEnum.c_str(), strCapModes.c_str(), strCapMinPollInt.c_str(), statCapList.count);
+    }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        entry = {swss::FieldValueTuple("STAT_COUNT", std::to_string(statCapList.count))};
+
+        SWSS_LOG_DEBUG("Sending response: count = %u", statCapList.count);
+    }
+
+    m_selectableChannel->set(sai_serialize_status(status), entry, REDIS_ASIC_STATE_COMMAND_STATS_ST_CAPABILITY_RESPONSE);
 
     return status;
 }

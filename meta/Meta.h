@@ -254,7 +254,9 @@ namespace saimeta
                     _In_ uint32_t count,
                     _In_ const sai_twamp_session_event_notification_data_t *data);
 
-        private: // notifications helpers
+            void meta_sai_on_tam_tel_type_config_change(_In_ sai_object_id_t m_tam_id);
+
+    private: // notifications helpers
 
             void meta_sai_on_fdb_flush_event_consolidated(
                     _In_ const sai_fdb_event_notification_data_t& data);
@@ -280,7 +282,7 @@ namespace saimeta
             void meta_sai_on_twamp_session_event_single(
                     _In_ const sai_twamp_session_event_notification_data_t& data);
 
-        private: // validation helpers
+    private: // validation helpers
 
             sai_status_t meta_generic_validation_objlist(
                     _In_ const sai_attr_metadata_t& md,
