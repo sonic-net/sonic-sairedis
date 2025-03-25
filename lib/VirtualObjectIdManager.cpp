@@ -267,6 +267,11 @@ void VirtualObjectIdManager::allocateNewObjectIds(
 {
     SWSS_LOG_ENTER();
 
+    if (count == 0)
+    {
+        return;
+    }
+
     for (size_t idx = 0; idx < count; idx++)
     {
         if (sai_metadata_is_object_type_valid(objectTypes[idx]) == false)
