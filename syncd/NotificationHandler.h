@@ -87,6 +87,9 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ const sai_twamp_session_event_notification_data_t *data);
 
+            void onTamTelTypeConfigChange(
+                    _In_ sai_object_id_t tam_tel_id);
+
         private:
 
             void enqueueNotification(

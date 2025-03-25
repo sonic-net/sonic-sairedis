@@ -113,6 +113,28 @@ TEST(ClientServerSai, queryStatsCapability)
     EXPECT_EQ(SAI_STATUS_FAILURE, css->queryStatsCapability(SAI_NULL_OBJECT_ID, SAI_OBJECT_TYPE_QUEUE, &queue_stats_capability));
 }
 
+TEST(ClientServerSai, queryStatsStCapability)
+{
+    auto css = std::make_shared<ClientServerSai>();
+
+    sai_stat_st_capability_list_t queue_stats_capability;
+    sai_stat_st_capability_t stat_initializer;
+    stat_initializer.capability.stat_enum = 0;
+    stat_initializer.capability.stat_modes = 0;
+    stat_initializer.minimal_polling_interval = 0;
+    std::vector<sai_stat_st_capability_t> qstat_cap_list(2, stat_initializer);
+    queue_stats_capability.count = 2;
+    queue_stats_capability.list = qstat_cap_list.data();
+    queue_stats_capability.list[0].capability.stat_enum = SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS;
+    queue_stats_capability.list[0].capability.stat_modes = SAI_STATS_MODE_READ;
+    queue_stats_capability.list[0].minimal_polling_interval = 1000;
+    queue_stats_capability.list[1].capability.stat_enum = SAI_QUEUE_STAT_PACKETS;
+    queue_stats_capability.list[1].capability.stat_modes = SAI_STATS_MODE_READ;
+    queue_stats_capability.list[1].minimal_polling_interval = 1000;
+
+    EXPECT_EQ(SAI_STATUS_FAILURE, css->queryStatsStCapability(SAI_NULL_OBJECT_ID, SAI_OBJECT_TYPE_QUEUE, &queue_stats_capability));
+}
+
 TEST(ClientServerSai, logSet)
 {
     auto css = std::make_shared<ClientServerSai>();
