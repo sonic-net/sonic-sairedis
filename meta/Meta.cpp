@@ -7015,6 +7015,51 @@ void Meta::meta_sai_on_twamp_session_event(
     }
 }
 
+void Meta::meta_sai_on_tam_tel_type_config_change(_In_ sai_object_id_t m_tam_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_tam_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("m_tam_id is NULL");
+        return;
+    }
+
+    auto ot = objectTypeQuery(m_tam_id);
+
+    bool valid = false;
+
+    switch (ot)
+    {
+    case SAI_OBJECT_TYPE_TAM_TEL_TYPE:
+
+        valid = true;
+        break;
+
+    default:
+
+        SWSS_LOG_ERROR("m_tam_id %s has unexpected type: %s, expected TAM_TEL_TYPE",
+                sai_serialize_object_id(m_tam_id).c_str(),
+                sai_serialize_object_type(ot).c_str());
+        return;
+    }
+
+    if (valid && !m_oids.objectReferenceExists(m_tam_id))
+    {
+        SWSS_LOG_NOTICE("m_tam_id %s is not present in local DB (snoop!)",
+                sai_serialize_object_id(m_tam_id).c_str());
+
+        sai_object_meta_key_t key = {.objecttype = (sai_object_type_t)ot, .objectkey = {.key = {.object_id = m_tam_id}}};
+
+        m_oids.objectReferenceInsert(m_tam_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
+    }
+}
+
 int32_t Meta::getObjectReferenceCount(
         _In_ sai_object_id_t oid) const
 {

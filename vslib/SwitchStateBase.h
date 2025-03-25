@@ -545,6 +545,11 @@ namespace saivs
             void send_fdb_event_notification(
                     _In_ const sai_fdb_event_notification_data_t& data);
 
+        public: // Telemetry and Monitor
+
+            void send_tam_tel_type_config_change(
+                _In_ sai_object_id_t tam_tel_type_id);
+
         protected:
 
             void findObjects(
@@ -570,11 +575,15 @@ namespace saivs
                     _In_ sai_object_id_t macsec_sa_id,
                     _In_ const sai_attribute_t* attr);
 
+            sai_status_t setTamTelType(
+                _In_ sai_object_id_t tam_tel_type_id,
+                _In_ const sai_attribute_t *attr);
+
             sai_status_t createMACsecPort(
-                    _In_ sai_object_id_t macsec_sa_id,
-                    _In_ sai_object_id_t switch_id,
-                    _In_ uint32_t attr_count,
-                    _In_ const sai_attribute_t *attr_list);
+                _In_ sai_object_id_t macsec_sa_id,
+                _In_ sai_object_id_t switch_id,
+                _In_ uint32_t attr_count,
+                _In_ const sai_attribute_t *attr_list);
 
             sai_status_t createMACsecSA(
                     _In_ sai_object_id_t macsec_sa_id,

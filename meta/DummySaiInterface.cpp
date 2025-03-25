@@ -878,6 +878,22 @@ void DummySaiInterface::sendNotification(
             }
             break;
 
+        case SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY:
+
+            if (sn.on_tam_tel_type_config_change)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_tam_tel_type_config_change");
+
+                sai_object_id_t oid = 0x1;
+
+                sn.on_tam_tel_type_config_change(oid);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_tam_tel_type_config_change");
+            }
+            break;
+
         default:
 
             SWSS_LOG_WARN("notification for SWITCH attr id: %d (%s) is not supported, FIXME", id, (m ? m->attridname : "UNKNOWN"));

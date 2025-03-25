@@ -373,7 +373,10 @@ namespace sairedis
             sai_status_t waitForQueryStatsCapabilityResponse(
                     _Inout_ sai_stat_capability_list_t* stats_capability);
 
-        private: // notify syncd response
+            sai_status_t waitForQueryStatsStCapabilityResponse(
+                    _Inout_ sai_stat_st_capability_list_t *stats_capability);
+
+    private: // notify syncd response
 
             sai_status_t waitForNotifySyncdResponse();
 

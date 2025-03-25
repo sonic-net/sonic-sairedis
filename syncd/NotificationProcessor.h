@@ -144,6 +144,9 @@ namespace syncd
             void handle_twamp_session_event(
                     _In_ const std::string &data);
 
+            void handle_tam_tel_type_config_change(
+                    _In_ const std::string &data);
+
             void processNotification(
                     _In_ const swss::KeyOpFieldsValuesTuple& item);
 

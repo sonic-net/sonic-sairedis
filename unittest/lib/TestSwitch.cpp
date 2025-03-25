@@ -22,7 +22,7 @@ TEST(Switch, updateNotifications)
 {
     auto s = std::make_shared<Switch>(7);
 
-    sai_attribute_t attrs[11];
+    sai_attribute_t attrs[12];
 
     attrs[0].id = 10000;
 
@@ -39,6 +39,7 @@ TEST(Switch, updateNotifications)
     attrs[8].value.ptr = (void*)1;
     attrs[9].value.ptr = (void*)1;
     attrs[10].value.ptr = (void*)1;
+    attrs[11].value.ptr = (void *)1;
 
     attrs[0].id = SAI_SWITCH_ATTR_SWITCH_STATE_CHANGE_NOTIFY;
     attrs[1].id = SAI_SWITCH_ATTR_SHUTDOWN_REQUEST_NOTIFY;
@@ -51,8 +52,9 @@ TEST(Switch, updateNotifications)
     attrs[8].id = SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY;
     attrs[9].id = SAI_SWITCH_ATTR_SWITCH_ASIC_SDK_HEALTH_EVENT_NOTIFY;
     attrs[10].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attrs[11].id = SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY;
 
-    s->updateNotifications(10, attrs);
+    s->updateNotifications(12, attrs);
 
     auto sn = s->getSwitchNotifications();
 
@@ -66,4 +68,5 @@ TEST(Switch, updateNotifications)
     EXPECT_EQ((void*)1, sn.on_nat_event);
     EXPECT_EQ((void*)1, sn.on_port_host_tx_ready);
     EXPECT_EQ((void*)1, sn.on_switch_asic_sdk_health_event);
+    EXPECT_EQ((void*)1, sn.on_tam_tel_type_config_change);
 }

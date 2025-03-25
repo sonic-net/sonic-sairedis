@@ -320,6 +320,9 @@ namespace sairedis
             sai_status_t processStatsCapabilityQuery(
                     _In_ const swss::KeyOpFieldsValuesTuple &kco);
 
+            sai_status_t processStatsStCapabilityQuery(
+                _In_ const swss::KeyOpFieldsValuesTuple &kco);
+
             std::shared_ptr<SelectableChannel> m_selectableChannel;
 
             std::shared_ptr<SaiInterface> m_sai;
