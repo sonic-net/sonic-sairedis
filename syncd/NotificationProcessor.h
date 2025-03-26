@@ -92,6 +92,10 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ sai_bfd_session_state_notification_t *data);
 
+            void process_on_icmp_echo_session_state_change(
+                    _In_ uint32_t count,
+                    _In_ sai_icmp_echo_session_state_notification_t *data);
+
             void process_on_port_host_tx_ready_change(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_id_t port_id,
@@ -130,6 +134,9 @@ namespace syncd
                     _In_ const std::string &data);
 
             void handle_bfd_session_state_change(
+                    _In_ const std::string &data);
+
+            void handle_icmp_echo_session_state_change(
                     _In_ const std::string &data);
 
             void handle_switch_asic_sdk_health_event(

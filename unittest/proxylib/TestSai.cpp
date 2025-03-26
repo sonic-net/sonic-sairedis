@@ -705,6 +705,17 @@ static void onBfdSessionStateChange(
     ntfCounter++;
 }
 
+static void onIcmpEchoSessionStateChange(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("received: onIcmpEchoSessionStateChange");
+
+    ntfCounter++;
+}
+
 static void onTwampSessionEvent(
         _In_ uint32_t count,
         _In_ const sai_twamp_session_event_notification_data_t *data)
@@ -793,6 +804,10 @@ TEST(Sai, handleNotification)
 
     attr.id = SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY;
     attr.value.ptr = (void*)&onBfdSessionStateChange;
+    sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+
+    attr.id = SAI_SWITCH_ATTR_ICMP_ECHO_SESSION_STATE_CHANGE_NOTIFY;
+    attr.value.ptr = (void*)&onIcmpEchoSessionStateChange;
     sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
 
     attr.id = SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY;
