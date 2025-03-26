@@ -24,7 +24,7 @@ std::vector<uint64_t> NumberOidIndexGenerator::incrementBy(
     SWSS_LOG_ENTER();
 
     std::vector<uint64_t> result;
-    result.reserve(count);
+    result.reserve(static_cast<size_t>(count));
 
     for (uint64_t i = 0; i < count; ++i)
     {

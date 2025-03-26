@@ -39,7 +39,7 @@ std::vector<uint64_t> RedisVidIndexGenerator::incrementBy(
     uint64_t firstObjectIndex = lastObjectIndex - count + 1;
 
     std::vector<uint64_t> result;
-    result.reserve(count);
+    result.reserve(static_cast<size_t>(count));
 
     for (uint64_t i = firstObjectIndex; i <= lastObjectIndex; ++i)
     {
