@@ -360,6 +360,16 @@ sai_status_t DummySaiInterface::queryStatsCapability(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
 sai_status_t DummySaiInterface::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,

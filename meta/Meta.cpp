@@ -1062,6 +1062,37 @@ sai_status_t Meta::queryStatsCapability(
     return status;
 }
 
+sai_status_t Meta::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    PARAMETER_CHECK_OID_OBJECT_TYPE(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OID_EXISTS(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OBJECT_TYPE_VALID(objectType);
+    PARAMETER_CHECK_IF_NOT_NULL(stats_capability);
+    VALIDATION_STATS_LIST(stats_capability->count, stats_capability->list);
+
+    auto info = sai_metadata_get_object_type_info(objectType);
+
+    PARAMETER_CHECK_IF_NOT_NULL(info);
+
+    if (info->statenum == nullptr)
+    {
+        SWSS_LOG_ERROR("%s does not support stats", info->objecttypename);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto status = m_implementation->queryStatsStCapability(switchId, objectType, stats_capability);
+
+    // no post validation required
+
+    return status;
+}
+
 sai_status_t Meta::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
