@@ -33,29 +33,26 @@ static int vpp_stats_init()
 }
 
 int
-vpp_stats_dump (const char *query_path, vpp_stat_one one, vpp_stat_two two, void *data)
+vpp_stats_dump (char *query_path, vpp_stat_one one, vpp_stat_two two, void *data)
 {
-  u8 *stat_segment_name, *pattern, **patterns = 0;
+  u8 **patterns = 0;
   int rv;
   const char *sname;
 
   vpp_stats_init();
 
-  stat_segment_name = (u8 *) STAT_SEGMENT_SOCKET_FILE;
+  vec_add1 (patterns, (u8*)query_path);
 
-  pattern = (u8 *) query_path;
-  vec_add1 (patterns, pattern);
-
-  rv = stat_segment_connect_r ((char *) stat_segment_name, &vpp_stat_client_main);
+  rv = stat_segment_connect_r (STAT_SEGMENT_SOCKET_FILE, &vpp_stat_client_main);
   if (rv)
     {
       SAIVPP_STAT_ERR("Couldn't connect to vpp, does %s exist?\n",
-		      stat_segment_name);
+		      STAT_SEGMENT_SOCKET_FILE);
       return -1;
     }
 
   u32 *dir;
-  int i, j, k;
+  uint i, j, k;
   stat_segment_data_t *res;
 
   dir = stat_segment_ls_r (patterns, &vpp_stat_client_main);

@@ -1682,3 +1682,41 @@ sai_status_t SwitchVpp::initialize_default_objects(
 
     return SAI_STATUS_SUCCESS;
 }
+
+sai_status_t SwitchVpp::queryHashNativeHashFieldListCapability(
+    _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 5)
+    {
+        enum_values_capability->count = 5;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 5;
+    enum_values_capability->list[0] = SAI_NATIVE_HASH_FIELD_IP_PROTOCOL;
+    enum_values_capability->list[1] = SAI_NATIVE_HASH_FIELD_DST_IP;
+    enum_values_capability->list[2] = SAI_NATIVE_HASH_FIELD_SRC_IP;
+    enum_values_capability->list[3] = SAI_NATIVE_HASH_FIELD_L4_DST_PORT;
+    enum_values_capability->list[4] = SAI_NATIVE_HASH_FIELD_L4_SRC_PORT;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::querySwitchHashAlgorithmCapability(
+    _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 1)
+    {
+        enum_values_capability->count = 1;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 1;
+    enum_values_capability->list[0] = SAI_HASH_ALGORITHM_CRC;
+
+    return SAI_STATUS_SUCCESS;
+}

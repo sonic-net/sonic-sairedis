@@ -6,25 +6,8 @@ endif
 
 CFLAGS_COMMON= -fPIC -pipe -Wall -Wcast-align -Wcast-qual -Wconversion -Wdisabled-optimization -Werror -Wextra -Wfloat-equal -Wformat=2 -Wformat-nonliteral -Wformat-security -Wformat-y2k -Wimport -Winit-self -Wno-inline -Winvalid-pch -Wmissing-field-initializers -Wmissing-format-attribute -Wmissing-include-dirs -Wmissing-noreturn -Wno-aggregate-return -Wno-padded -Wno-switch-enum -Wno-unused-parameter -Wpacked -Wpointer-arith -Wredundant-decls -Wshadow -Wstack-protector -Wstrict-aliasing=3 -Wswitch -Wswitch-default -Wunreachable-code -Wunused -Wvariadic-macros -Wwrite-strings -Wno-switch-default -Wconversion -Wno-psabi -Wcast-align=strict
 
-# TODO those are currently disabled flags from C files untill all warnings will be fixed
-DISABLED_FLAGS= \
-			   -Wno-unused-function \
-			   -Wno-sign-conversion \
-			   -Wno-conversion \
-			   -Wno-unused-variable \
-			   -Wno-sign-compare \
-			   -Wno-shadow \
-			   -Wno-discarded-qualifiers \
-			   -Wno-redundant-decls \
-			   -Wno-cast-align \
-			   -Wno-pointer-sign \
-			   -Wno-stringop-truncation \
-			   -Wno-enum-conversion \
-			   -Wno-error=address \
-			   -Wno-cast-qual
-
 # TODO fix multiple paths
-AM_CFLAGS = -I/usr/include/vpp_plugins $(SAIINC) -fPIC $(CFLAGS_COMMON) $(DISABLED_FLAGS) -I.
+AM_CFLAGS = -I/usr/include/vpp_plugins $(SAIINC) -fPIC $(CFLAGS_COMMON) -I.
 
 lib_LTLIBRARIES = libsaivs.la
 
