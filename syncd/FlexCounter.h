@@ -20,18 +20,12 @@ namespace syncd
     class BaseCounterContext
     {
     public:
-        BaseCounterContext(const std::string &name, const std::string &instance);
+        BaseCounterContext(const std::string &name);
         void addPlugins(
             _In_ const std::vector<std::string>& shaStrings);
 
         void setNoDoubleCheckBulkCapability(
             _In_ bool);
-
-        virtual void setBulkChunkSize(
-            _In_ uint32_t bulkChunkSize);
-
-        virtual void setBulkChunkSizePerPrefix(
-            _In_ const std::string& bulkChunkSizePerPrefix);
 
         bool hasPlugin() const {return !m_plugins.empty();}
 
@@ -57,9 +51,7 @@ namespace syncd
 
     protected:
         std::string m_name;
-        std::string m_instanceId;
         std::set<std::string> m_plugins;
-        std::string m_bulkChunkSizePerPrefix;
 
     public:
         bool always_check_supported_counters = false;
@@ -68,7 +60,6 @@ namespace syncd
         bool double_confirm_supported_counters = false;
         bool no_double_check_bulk_capability = false;
         bool dont_clear_support_counter  = false;
-        uint32_t default_bulk_chunk_size;
     };
     class FlexCounter
     {
@@ -128,8 +119,7 @@ namespace syncd
                     _In_ const std::string &name);
 
             std::shared_ptr<BaseCounterContext> createCounterContext(
-                    _In_ const std::string &name,
-                    _In_ const std::string &instance);
+                    _In_ const std::string &name);
 
             void removeCounterContext(
                     _In_ const std::string &name);
