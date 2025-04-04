@@ -79,6 +79,8 @@ std::vector<sai_object_id_t> generateOids(
 
 void removeTimeStamp(std::vector<std::string>& keys, swss::Table& countersTable)
 {
+    SWSS_LOG_ENTER();
+
     auto it = std::find(keys.begin(), keys.end(), "TIME_STAMP");
     if (it != keys.end())
     {
