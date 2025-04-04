@@ -1317,7 +1317,7 @@ private:
         }
 
         // First generate the key, then replace spaces with underscores to avoid issues when Lua plugins handle the timestamp
-        std::string timestamp_key = "PFC_WD_" + m_name + "_time_stamp";
+        std::string timestamp_key = m_instanceId + "_" + m_name + "_time_stamp";
         std::replace(timestamp_key.begin(), timestamp_key.end(), ' ', '_');
 
         values.emplace_back(timestamp_key, std::to_string(time_stamp));
