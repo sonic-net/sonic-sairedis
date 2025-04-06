@@ -1562,9 +1562,9 @@ sai_status_t RedisRemoteSaiInterface::waitForQueryStatsStCapabilityResponse(
     {
         const std::vector<swss::FieldValueTuple> &values = kfvFieldsValues(kco);
 
-        if (values.size() != 3)
+        if (values.size() != 4)
         {
-            SWSS_LOG_ERROR("Invalid response from syncd: expected 3 value, received %zu", values.size());
+            SWSS_LOG_ERROR("Invalid response from syncd: expected 4 value, received %zu", values.size());
 
             return SAI_STATUS_FAILURE;
         }
