@@ -4184,7 +4184,8 @@ sai_status_t SwitchStateBase::queryStatsStCapability(
         {
             stats_st_capability->list[i].capability.stat_enum = stats_capability.list[i].stat_enum;
             stats_st_capability->list[i].capability.stat_modes = stats_capability.list[i].stat_modes;
-            stats_st_capability->list[i].minimal_polling_interval = 1e6 * 100; // 100ms
+            stats_st_capability->list[i].minimal_polling_interval = static_cast<uint64_t>(1e6 * 100);
+            ; // 100ms
         }
     }
     else
