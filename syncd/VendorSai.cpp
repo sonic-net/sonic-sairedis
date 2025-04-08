@@ -1984,11 +1984,14 @@ sai_status_t VendorSai::logSet(
     m_logLevelMap[api] = log_level;
 
     void *api_method_table = nullptr;
+
     sai_status_t status = m_globalApis.api_query(api, &api_method_table);
+
     if (status != SAI_STATUS_SUCCESS)
     {
         return status;
     }
+
     return m_globalApis.log_set(api, log_level);
 }
 
