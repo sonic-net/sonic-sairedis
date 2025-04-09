@@ -12,6 +12,8 @@ RUN dpkg --purge --force-all libswsscommon python3-swsscommon sonic-db-cli libsa
 
 RUN apt-get update
 
+RUN apt --fix-broken install
+
 RUN apt install -y $(ls /debs/*.deb | grep vpp)
 
 RUN apt install -y /debs/libdashapi_1.0.0_amd64.deb \
