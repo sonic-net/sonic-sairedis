@@ -31,7 +31,8 @@ RUN apt --fix-broken install -y
 RUN cp /usr/sbin/sysctl /usr/sbin/sysctl.org
 RUN cp /usr/bin/true /usr/sbin/sysctl
 
-RUN apt install -y $(ls /debs/*.deb | grep vpp)
+# temp test disable
+#RUN apt install -y $(ls /debs/*.deb | grep vpp)
 
 RUN mv /usr/sbin/sysctl.org /usr/sbin/sysctl
 
