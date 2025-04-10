@@ -175,8 +175,8 @@ jobs:
   - script: |
       set -ex
       # install libyang before install libswsscommon
-      sudo dpkg -i $(find ./download -name libyang_*.deb)
-      sudo dpkg -i $(find ./download -name *.deb)
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i $(find ./download -name libyang_*.deb)
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i $(find ./download -name *.deb)
       rm -rf download || true
       cat /etc/apt/sources.list
       dpkg --list |grep libnl
