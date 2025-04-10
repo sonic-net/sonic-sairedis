@@ -360,6 +360,16 @@ sai_status_t DummySaiInterface::queryStatsCapability(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
 sai_status_t DummySaiInterface::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -865,6 +875,22 @@ void DummySaiInterface::sendNotification(
             else
             {
                 SWSS_LOG_WARN("pointer sn.on_twamp_session_event");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY:
+
+            if (sn.on_tam_tel_type_config_change)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_tam_tel_type_config_change");
+
+                sai_object_id_t oid = 0x1;
+
+                sn.on_tam_tel_type_config_change(oid);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_tam_tel_type_config_change");
             }
             break;
 

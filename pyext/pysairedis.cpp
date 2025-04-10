@@ -104,6 +104,7 @@ static PyObject * py_queue_pfc_deadlock_notification = NULL;
 static PyObject * py_switch_shutdown_request_notification = NULL;
 static PyObject * py_switch_state_change_notification = NULL;
 static PyObject * py_bfd_session_state_change_notification = NULL;
+static PyObject * py_tam_tel_type_config_change_notification = NULL;
 
 void call_python(PyObject* callObject, PyObject* arglist)
 {
@@ -206,6 +207,16 @@ static void sai_bfd_session_state_change_notification(
     Py_DECREF(arglist);
 }
 
+static void sai_tam_tel_type_config_change_notification(
+    _In_ sai_object_id_t tam_tel_type_id)
+{
+    PyObject *arglist = Py_BuildValue("(l)", tam_tel_type_id);
+
+    call_python(py_tam_tel_type_config_change_notification, arglist);
+
+    Py_DECREF(arglist);
+}
+
 sai_pointer_t sai_get_notification_pointer(
         sai_attr_id_t id,
         PyObject*callback)
@@ -248,6 +259,11 @@ sai_pointer_t sai_get_notification_pointer(
             Py_XDECREF(py_bfd_session_state_change_notification);
             py_bfd_session_state_change_notification = callback;
             return (void*)&sai_bfd_session_state_change_notification;
+
+        case SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY:
+            Py_XDECREF(py_tam_tel_type_config_change_notification);
+            py_tam_tel_type_config_change_notification = callback;
+            return (void*)&sai_tam_tel_type_config_change_notification;
 
         default:
             Py_XDECREF(callback);
