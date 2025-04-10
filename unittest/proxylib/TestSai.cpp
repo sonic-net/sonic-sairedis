@@ -716,6 +716,16 @@ static void onTwampSessionEvent(
     ntfCounter++;
 }
 
+static void onTamTelTypeConfigChange(
+        _In_ sai_object_id_t tam_tel_id)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("received: onTamTelTypeConfigChange");
+
+    ntfCounter++;
+}
+
 TEST(Sai, handleNotification)
 {
     Sai sai;
@@ -736,6 +746,7 @@ TEST(Sai, handleNotification)
     EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY), SAI_STATUS_SUCCESS);
     EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
     EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
 
     auto thread = std::make_shared<std::thread>(fun, proxy);
 
@@ -799,6 +810,10 @@ TEST(Sai, handleNotification)
     attr.value.ptr = (void*)&onTwampSessionEvent;
     sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
 
+    attr.id = SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY;
+    attr.value.ptr = (void*)&onTamTelTypeConfigChange;
+    sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+
     // dummy start sending notifications
     EXPECT_EQ(dummy->start(), SAI_STATUS_SUCCESS);
 
@@ -807,10 +822,10 @@ TEST(Sai, handleNotification)
     // dummy stop sending notifications
     EXPECT_EQ(dummy->stop(), SAI_STATUS_SUCCESS);
 
-    EXPECT_EQ(proxy->getNotificationsSentCount(), 10);
+    EXPECT_EQ(proxy->getNotificationsSentCount(), 11);
 
     // important check, whether Sai class processed notifications correctly
-    EXPECT_EQ(ntfCounter, 10);
+    EXPECT_EQ(ntfCounter, 11);
 
     proxy->stop();
 

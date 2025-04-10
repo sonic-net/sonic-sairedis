@@ -216,6 +216,16 @@ void NotificationHandler::onTwampSessionEvent(
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT, s);
 }
 
+void NotificationHandler::onTamTelTypeConfigChange(
+    _In_ sai_object_id_t tam_tel_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_object_id(tam_tel_id);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, s);
+}
+
 void NotificationHandler::enqueueNotification(
         _In_ const std::string& op,
         _In_ const std::string& data)

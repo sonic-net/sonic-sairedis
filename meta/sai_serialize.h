@@ -302,6 +302,11 @@ std::string sai_serialize_stats_capability_list(
         _In_ const sai_enum_metadata_t* meta,
         _In_ bool countOnly);
 
+std::string sai_serialize_stats_st_capability_list(
+        _In_ const sai_stat_st_capability_list_t &stat_capability_list,
+        _In_ const sai_enum_metadata_t *meta,
+        _In_ bool countOnly);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -665,3 +670,9 @@ void sai_deserialize_stats_capability_list(
         _Inout_ sai_stat_capability_list_t *stats_capability,
         _In_    const std::string& stat_enum_str,
         _In_    const std::string& stat_modes_str);
+
+void sai_deserialize_stats_st_capability_list(
+        _Inout_ sai_stat_st_capability_list_t *stats_capability,
+        _In_ const std::string &stat_enum_str,
+        _In_ const std::string &stat_modes_str,
+        _In_ const std::string &minimal_polling_interval_str);
