@@ -29,6 +29,7 @@ static const std::string COUNTER_TYPE_BUFFER_POOL = "Buffer Pool Counter";
 static const std::string COUNTER_TYPE_ENI = "DASH ENI Counter";
 static const std::string COUNTER_TYPE_METER_BUCKET = "DASH Meter Bucket Counter";
 static const std::string COUNTER_TYPE_POLICER = "Policer Counter";
+static const std::string COUNTER_TYPE_SRV6 = "SRv6 Counter";
 static const std::string ATTR_TYPE_QUEUE = "Queue Attribute";
 static const std::string ATTR_TYPE_PG = "Priority Group Attribute";
 static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
@@ -64,7 +65,8 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{SAI_OBJECT_TYPE_POLICER, POLICER_COUNTER_ID_LIST}, COUNTER_TYPE_POLICER},
     {{SAI_OBJECT_TYPE_TUNNEL, TUNNEL_COUNTER_ID_LIST}, COUNTER_TYPE_TUNNEL},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, ENI_COUNTER_ID_LIST}, COUNTER_TYPE_ENI},
-    {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET}
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
+    {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
 };
 
 BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
@@ -2403,6 +2405,10 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     {
         return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
     }
+    else if (context_name == COUNTER_TYPE_SRV6)
+    {
+        return std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
+    }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
     // GCC 8.3 requires a return value here
@@ -2695,6 +2701,11 @@ void FlexCounter::removeCounter(
         {
             getCounterContext(COUNTER_TYPE_FLOW)->removeObject(vid);
             removeDataFromCountersDB(vid, ":TRAP");
+        }
+
+        if (hasCounterContext(COUNTER_TYPE_SRV6))
+        {
+            getCounterContext(COUNTER_TYPE_SRV6)->removeObject(vid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_POLICER)
