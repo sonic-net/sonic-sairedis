@@ -12,6 +12,9 @@ RUN dpkg --purge --force-all libswsscommon python3-swsscommon sonic-db-cli libsa
 
 RUN apt-get update
 
+RUN cat /etc/apt/sources.list.d/debian.sources ||  true
+RUN cat /etc/apt/sources.list || true
+
 RUN apt --fix-broken install -y
 
 RUN apt install -y $(ls /debs/*.deb | grep vpp)
