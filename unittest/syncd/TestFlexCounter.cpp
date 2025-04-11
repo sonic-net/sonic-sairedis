@@ -77,6 +77,18 @@ std::vector<sai_object_id_t> generateOids(
     return object_ids;
 }
 
+void removeTimeStamp(std::vector<std::string>& keys, swss::Table& countersTable)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = std::find(keys.begin(), keys.end(), "TIME_STAMP");
+    if (it != keys.end())
+    {
+        countersTable.del("TIME_STAMP");
+        keys.erase(it);
+    }
+}
+
 void testAddRemoveCounter(
         unsigned int numOid,
         sai_object_type_t object_type,
@@ -166,6 +178,8 @@ void testAddRemoveCounter(
 
     std::vector<std::string> keys;
     countersTable.getKeys(keys);
+    // We have a dedicated item for all timestamps for counters using bulk counter polling
+    removeTimeStamp(keys, countersTable);
     EXPECT_EQ(keys.size(), object_ids.size());
 
     for (size_t i = 0; i < object_ids.size(); i++)
@@ -185,6 +199,7 @@ void testAddRemoveCounter(
     EXPECT_EQ(fc.isEmpty(), true);
 
     countersTable.getKeys(keys);
+    removeTimeStamp(keys, countersTable);
     ASSERT_TRUE(keys.empty());
 }
 
@@ -1708,6 +1723,7 @@ void testDashMeterAddRemoveCounter(
 
     std::vector<std::string> keys;
     countersTable.getKeys(keys);
+    removeTimeStamp(keys, countersTable);
     ASSERT_TRUE(keys.empty());
 }
 
