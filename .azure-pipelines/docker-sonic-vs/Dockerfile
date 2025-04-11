@@ -5,17 +5,18 @@ ARG need_dbg
 
 COPY ["debs", "/debs"]
 
-# Remove existing packages first before installing the new/current packages. This is to overcome limitations with
+# Remove the libswsscommon package first with force all option.
+# Remove the other existing packages before installing the new/current packages. This is to overcome limitations with
 # Docker's diff detection mechanism, where only the file size and the modification timestamp (which will remain the
 # same, even though contents have changed) are checked between the previous and current layer.
-RUN dpkg --purge --force-all libswsscommon python3-swsscommon sonic-db-cli libsaimetadata libsairedis libsaivs syncd-vs swss sonic-eventd libdashapi
+RUN dpkg --remove --force-all libswsscommon
+RUN apt --fix-broken install -y
+RUN dpkg --purge python3-swsscommon sonic-db-cli libsaimetadata libsairedis libsaivs syncd-vs swss sonic-eventd libdashapi
 
 RUN apt-get update
 
 RUN cat /etc/apt/sources.list.d/debian.sources ||  true
 RUN cat /etc/apt/sources.list || true
-
-RUN apt --fix-broken install -y
 
 # vpp package configure requires to set:
 # permission denied on key "vm.nr_hugepages"
