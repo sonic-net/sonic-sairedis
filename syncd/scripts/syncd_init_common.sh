@@ -363,6 +363,7 @@ config_syncd_mlnx()
 
     if [[ "$DUAL_TOR" == "enable" ]]; then
        echo "SAI_ADDITIONAL_MAC_ENABLED=1" >> /tmp/sai.profile
+       echo "SAI_ACL_MULTI_BINDING_ENABLED=1" >> /tmp/sai.profile
     fi
 
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
