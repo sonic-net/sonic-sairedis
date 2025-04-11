@@ -48,7 +48,7 @@ namespace saivs
 
         public:
 
-            sai_status_t getStatsExt(
+            virtual sai_status_t getStatsExt(
                     _In_ sai_object_type_t obejct_type,
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t number_of_counters,

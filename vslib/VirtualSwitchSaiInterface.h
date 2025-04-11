@@ -276,7 +276,7 @@ namespace saivs
             std::shared_ptr<WarmBootState> extractWarmBootState(
                     _In_ sai_object_id_t switch_id);
 
-            bool validate_switch_warm_boot_atributes(
+            bool validate_switch_warm_boot_attributes(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) const;
 

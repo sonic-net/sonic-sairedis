@@ -85,6 +85,18 @@ jobs:
       patterns: |
         libdashapi*.deb
     displayName: "Download dash api"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: sonic-net.sonic-platform-vpp
+      artifact: vpp
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/main'
+      allowPartiallySucceededBuilds: true
+      path: $(Build.ArtifactStagingDirectory)/download
+    displayName: "Download sonic platform-vpp deb packages"
+    condition: eq('${{ parameters.arch }}', 'amd64')
   - script: |
       set -ex
       echo $(Build.DefinitionName).$(Build.BuildNumber)

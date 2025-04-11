@@ -3,7 +3,7 @@ AM_CXXFLAGS = $(SAIINC) -I$(top_srcdir)/meta -I$(top_srcdir)/lib
 bin_PROGRAMS = saidiscovery
 
 if SAIVS
-SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs
+SAILIB=-L$(top_srcdir)/vslib/.libs -lsaivs $(VPP_LIBS)
 else
 SAILIB=-lsai
 endif
