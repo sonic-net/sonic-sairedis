@@ -130,9 +130,9 @@ std::set<sai_object_id_t> MockableSaiSwitchInterface::getWarmBootDiscoveredVids(
     SWSS_LOG_THROW("not implemented");
 }
 
-void MockableSaiSwitchInterface::onPostPortCreate(
-        _In_ sai_object_id_t port_rid,
-        _In_ sai_object_id_t port_vid)
+void MockableSaiSwitchInterface::onPostPortsCreate(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* port_rids)
 {
     SWSS_LOG_ENTER();
 
