@@ -560,8 +560,6 @@ sai_status_t Sai::queryStatsStCapability(
 
     SWSS_LOG_ERROR("not implemented, FIXME");
 
-    // TODO: Fix me
-
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 

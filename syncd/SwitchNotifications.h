@@ -86,9 +86,9 @@ namespace syncd
                             _In_ const sai_bfd_session_state_notification_t *data);
 
                     static void onTwampSessionEvent(
-                        _In_ int context,
-                        _In_ uint32_t count,
-                        _In_ const sai_twamp_session_event_notification_data_t *data);
+                            _In_ int context,
+                            _In_ uint32_t count,
+                            _In_ const sai_twamp_session_event_notification_data_t *data);
 
                     static void onTamTelTypeConfigChange(
                         _In_ int context,

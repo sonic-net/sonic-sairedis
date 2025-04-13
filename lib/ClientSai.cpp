@@ -1130,8 +1130,6 @@ sai_status_t ClientSai::queryStatsStCapability(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
-    // TODO: Fix me
-
     if (stats_capability && stats_capability->list && (stats_capability->count))
     {
         // clear input list, since we use serialize to transfer values
