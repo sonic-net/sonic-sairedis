@@ -7027,24 +7027,15 @@ void Meta::meta_sai_on_tam_tel_type_config_change(_In_ sai_object_id_t m_tam_id)
 
     auto ot = objectTypeQuery(m_tam_id);
 
-    bool valid = false;
-
-    switch (ot)
+    if (ot != SAI_OBJECT_TYPE_NULL)
     {
-    case SAI_OBJECT_TYPE_TAM_TEL_TYPE:
-
-        valid = true;
-        break;
-
-    default:
-
         SWSS_LOG_ERROR("m_tam_id %s has unexpected type: %s, expected TAM_TEL_TYPE",
                 sai_serialize_object_id(m_tam_id).c_str(),
                 sai_serialize_object_type(ot).c_str());
         return;
     }
 
-    if (valid && !m_oids.objectReferenceExists(m_tam_id))
+    if (!m_oids.objectReferenceExists(m_tam_id))
     {
         SWSS_LOG_NOTICE("m_tam_id %s is not present in local DB (snoop!)",
                 sai_serialize_object_id(m_tam_id).c_str());
