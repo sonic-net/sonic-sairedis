@@ -970,6 +970,35 @@ TEST(Meta, queryStatsCapability)
 
 }
 
+TEST(Meta, queryStatsStCapability)
+{
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switchId = 0;
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switchId, SAI_NULL_OBJECT_ID, 1, &attr));
+
+    sai_stat_st_capability_list_t queue_stats_capability;
+    sai_stat_st_capability_t stat_initializer;
+    stat_initializer.capability.stat_enum = 0;
+    stat_initializer.capability.stat_modes = 0;
+    stat_initializer.minimal_polling_interval = 0;
+    std::vector<sai_stat_st_capability_t> qstat_cap_list(20, stat_initializer);
+    queue_stats_capability.count = 15;
+    queue_stats_capability.list = qstat_cap_list.data();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.queryStatsStCapability(switchId, SAI_OBJECT_TYPE_QUEUE, &queue_stats_capability));
+
+    queue_stats_capability.list = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.queryStatsStCapability(switchId, SAI_OBJECT_TYPE_QUEUE, &queue_stats_capability));
+}
+
 TEST(Meta, meta_validate_stats)
 {
     MockMeta m(std::make_shared<MetaTestSaiInterface>());

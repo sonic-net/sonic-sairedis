@@ -38,6 +38,7 @@ libsaimeta_la_SOURCES = \
 				NotificationBfdSessionStateChange.cpp \
 				NotificationTwampSessionEvent.cpp \
 				NotificationPortHostTxReadyEvent.cpp \
+				NotificationTamTelTypeConfigChange.cpp \
 				NumberOidIndexGenerator.cpp \
 				OidRefCounter.cpp \
 				PerformanceIntervalTimer.cpp \

@@ -508,6 +508,8 @@ bool SwitchStateBase::hostif_create_tap_veth_forwarding(
                 port_id,
                 m_switchConfig->m_eventQueue);
 
+    m_hostif_info_map[tapname]->runThreads();
+
     SWSS_LOG_NOTICE("setup forward rule for %s succeeded", tapname.c_str());
 
     return true;

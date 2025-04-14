@@ -48,7 +48,7 @@ namespace saivs
 
         public:
 
-            sai_status_t getStatsExt(
+            virtual sai_status_t getStatsExt(
                     _In_ sai_object_type_t obejct_type,
                     _In_ sai_object_id_t object_id,
                     _In_ uint32_t number_of_counters,
@@ -60,6 +60,11 @@ namespace saivs
                     _In_ sai_object_id_t switchId,
                     _In_ sai_object_type_t objectType,
                     _Inout_ sai_stat_capability_list_t *stats_capability);
+
+            sai_status_t queryStatsStCapability(
+                _In_ sai_object_id_t switch_id,
+                _In_ sai_object_type_t object_type,
+                _Inout_ sai_stat_st_capability_list_t *stats_capability);
 
         public:
 
