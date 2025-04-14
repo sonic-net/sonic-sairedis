@@ -297,12 +297,12 @@ std::set<sai_object_id_t> SaiDiscovery::discover(
 {
     SWSS_LOG_ENTER();
 
-    return discover(&startRid, 1);
+    return discover(1, &startRid);
 }
 
 std::set<sai_object_id_t> SaiDiscovery::discover(
-        _In_ const sai_object_id_t* rids,
-        _In_ size_t count)
+        _In_ size_t count,
+        _In_ const sai_object_id_t* rids)
 {
     SWSS_LOG_ENTER();
 

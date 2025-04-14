@@ -1003,7 +1003,7 @@ void SaiSwitch::onPostPortsCreate(
 
     SaiDiscovery sd(m_vendorSai, SaiDiscovery::Flags::SkipDefaultEmptyAttributes);
 
-    auto discovered = sd.discover(port_rids, count);
+    auto discovered = sd.discover(count, port_rids);
 
     auto defaultOidMap = sd.getDefaultOidMap();
 
