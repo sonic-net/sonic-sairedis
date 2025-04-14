@@ -15,6 +15,9 @@
 #include "SwitchBCM56971B0.h"
 #include "SwitchMLNX2700.h"
 #include "SwitchNvdaMBF2H536C.h"
+#ifdef USE_VPP
+#include "SwitchVpp.h"
+#endif
 
 #include <inttypes.h>
 
@@ -95,7 +98,7 @@ std::shared_ptr<WarmBootState> VirtualSwitchSaiInterface::extractWarmBootState(
     return state;
 }
 
-bool VirtualSwitchSaiInterface::validate_switch_warm_boot_atributes(
+bool VirtualSwitchSaiInterface::validate_switch_warm_boot_attributes(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list) const
 {
@@ -601,6 +604,16 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
             m_switchStateMap[switch_id] = std::make_shared<SwitchNvdaMBF2H536C>(switch_id, m_realObjectIdManager, config, warmBootState);
             break;
 
+        case SAI_VS_SWITCH_TYPE_VPP:
+
+#ifdef USE_VPP
+            m_switchStateMap[switch_id] = std::make_shared<SwitchVpp>(switch_id, m_realObjectIdManager, config, warmBootState);
+            break;
+#else
+            SWSS_LOG_WARN("vslib not compiled with vpp");
+            return nullptr;
+#endif
+
         default:
 
             SWSS_LOG_WARN("unknown switch type: %d", config->m_switchType);
@@ -668,7 +681,7 @@ sai_status_t VirtualSwitchSaiInterface::create(
 
         if (config->m_bootType == SAI_VS_BOOT_TYPE_WARM)
         {
-            if (!validate_switch_warm_boot_atributes(attr_count, attr_list))
+            if (!validate_switch_warm_boot_attributes(attr_count, attr_list))
             {
                 SWSS_LOG_ERROR("invalid attribute passed during warm boot");
 
