@@ -1024,6 +1024,13 @@ void SaiSwitch::onPostPortsCreate(
 
     std::vector<sai_object_id_t> rids{discovered.begin(), discovered.end()};
 
+    /*
+     * We also could think of optimizing this since it's one command
+     * per rid in a redis pipeline, and probably this should be ATOMIC.
+     *
+     * NOTE: We are also storing read only object's here, like default
+     * virtual router, CPU, default trap group, etc.
+     */
     redisSetDummyAsicStateForRealObjectIds(rids.size(), rids.data());
 
     for (size_t idx = 0; idx < count; idx++)
