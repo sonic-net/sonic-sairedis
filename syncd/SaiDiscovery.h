@@ -9,8 +9,11 @@
 #include <map>
 #include <unordered_map>
 
+#include "swss/logger.h"
+
 namespace syncd
 {
+
     class SaiDiscovery
     {
         public:
@@ -19,8 +22,22 @@ namespace syncd
 
         public:
 
+            enum Flags
+            {
+                None = 0,
+                SkipDefaultEmptyAttributes = 1 << 0,
+            };
+
+            friend inline Flags operator|(Flags a, Flags b)
+            {
+                SWSS_LOG_ENTER();
+
+                return static_cast<Flags>(static_cast<std::underlying_type_t<Flags>>(a) | static_cast<std::underlying_type_t<Flags>>(b));
+            }
+
             SaiDiscovery(
-                    _In_ std::shared_ptr<sairedis::SaiInterface> sai);
+                    _In_ std::shared_ptr<sairedis::SaiInterface> sai,
+                    _In_ Flags flags = Flags::None);
 
             virtual ~SaiDiscovery();
 
@@ -28,6 +45,10 @@ namespace syncd
 
             std::set<sai_object_id_t> discover(
                     _In_ sai_object_id_t rid);
+
+            std::set<sai_object_id_t> discover(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* rids);
 
             const DefaultOidMap& getDefaultOidMap() const;
 
@@ -61,6 +82,8 @@ namespace syncd
         private:
 
             std::shared_ptr<sairedis::SaiInterface> m_sai;
+
+            Flags m_flags;
 
             DefaultOidMap m_defaultOidMap;
 

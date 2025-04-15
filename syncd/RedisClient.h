@@ -48,6 +48,10 @@ namespace syncd
             void setDummyAsicStateObject(
                     _In_ sai_object_id_t objectVid);
 
+            void setDummyAsicStateObjects(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* objectVids);
+
             void saveColdBootDiscoveredVids(
                     _In_ sai_object_id_t switchVid,
                     _In_ const std::set<sai_object_id_t>& coldVids);
@@ -128,11 +132,21 @@ namespace syncd
                     _In_ sai_object_id_t vid,
                     _In_ sai_object_id_t rid);
 
+            void insertVidsAndRids(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* vids,
+                    _In_ const sai_object_id_t* rids);
+
             sai_object_id_t getVidForRid(
                     _In_ sai_object_id_t rid);
 
             sai_object_id_t getRidForVid(
                     _In_ sai_object_id_t vid);
+
+            void getVidsForRids(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* rids,
+                    _Out_ sai_object_id_t* vids);
 
             void removeAsicStateTable();
 

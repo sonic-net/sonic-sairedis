@@ -259,6 +259,60 @@ sai_object_id_t VirtualObjectIdManager::allocateNewObjectId(
     return objectId;
 }
 
+void VirtualObjectIdManager::allocateNewObjectIds(
+        _In_ sai_object_id_t switchId,
+        _In_ size_t count,
+        _In_ const sai_object_type_t* objectTypes,
+        _Out_ sai_object_id_t* oids) const
+{
+    SWSS_LOG_ENTER();
+
+    if (count == 0)
+    {
+        return;
+    }
+
+    for (size_t idx = 0; idx < count; idx++)
+    {
+        if (sai_metadata_is_object_type_valid(objectTypes[idx]) == false)
+        {
+            SWSS_LOG_THROW("invalid object type: %d", objectTypes[idx]);
+        }
+
+        if (objectTypes[idx] == SAI_OBJECT_TYPE_SWITCH)
+        {
+            SWSS_LOG_THROW("this function can't be used to allocate switch id");
+        }
+    }
+
+    sai_object_type_t switchObjectType = saiObjectTypeQuery(switchId);
+
+    if (switchObjectType != SAI_OBJECT_TYPE_SWITCH)
+    {
+        SWSS_LOG_THROW("object type of switch %s is %s, should be SWITCH",
+                sai_serialize_object_id(switchId).c_str(),
+                sai_serialize_object_type(switchObjectType).c_str());
+    }
+
+    uint32_t switchIndex = static_cast<uint32_t>(SAI_REDIS_GET_SWITCH_INDEX(switchId));
+
+    std::vector<uint64_t> objectIndexes = m_oidIndexGenerator->incrementBy(count);
+
+    const uint64_t indexMax = SAI_REDIS_OBJECT_INDEX_MAX;
+
+    if (objectIndexes.back() > indexMax)
+    {
+        SWSS_LOG_THROW("no more object indexes available, given: 0x%" PRIx64 " but limit is 0x%" PRIx64 " ",
+                objectIndexes.back(),
+                indexMax);
+    }
+
+    for (size_t idx = 0; idx < count; idx++)
+    {
+        oids[idx] = constructObjectId(objectTypes[idx], switchIndex, objectIndexes[idx], m_globalContext);
+    }
+}
+
 sai_object_id_t VirtualObjectIdManager::allocateNewSwitchObjectId(
         _In_ const std::string& hardwareInfo)
 {

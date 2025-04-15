@@ -190,13 +190,13 @@ namespace syncd
             /**
              * @brief On post port create.
              *
-             * Performs actions needed after port creation. Will discover new
-             * queues, ipgs and scheduler groups that belong to new created port,
+             * Performs actions needed after ports creation. Will discover new
+             * queues, ipgs and scheduler groups that belong to new created ports,
              * and updated ASIC DB accordingly.
              */
-            virtual void onPostPortCreate(
-                    _In_ sai_object_id_t port_rid,
-                    _In_ sai_object_id_t port_vid) override;
+            virtual void onPostPortsCreate(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* port_rids) override;
 
             /**
              * @brief Post port remove.
@@ -262,6 +262,10 @@ namespace syncd
 
             void redisSetDummyAsicStateForRealObjectId(
                     _In_ sai_object_id_t rid) const;
+
+            void redisSetDummyAsicStateForRealObjectIds(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* rids) const;
 
             /**
              * @brief Put cold boot discovered VIDs to redis DB.
