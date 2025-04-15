@@ -3967,6 +3967,42 @@ sai_status_t SwitchStateBase::querySwitchHashAlgorithmCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::querySwitchPacketTrimmingQueueResolutionModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 2)
+    {
+        enum_values_capability->count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC;
+    enum_values_capability->list[1] = SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_DYNAMIC;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryBufferProfilePacketAdmissionFailActionCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 2)
+    {
+        enum_values_capability->count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP;
+    enum_values_capability->list[1] = SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP_AND_TRIM;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -3997,6 +4033,14 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                                                        attr_id == SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_ALGORITHM))
     {
         return querySwitchHashAlgorithmCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_SWITCH && attr_id == SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE)
+    {
+        return querySwitchPacketTrimmingQueueResolutionModeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_BUFFER_PROFILE && attr_id == SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION)
+    {
+        return queryBufferProfilePacketAdmissionFailActionCapability(enum_values_capability);
     }
 
     return SAI_STATUS_NOT_SUPPORTED;

@@ -736,6 +736,12 @@ namespace saivs
             virtual sai_status_t querySwitchHashAlgorithmCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
+            virtual sai_status_t querySwitchPacketTrimmingQueueResolutionModeCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
+            virtual sai_status_t queryBufferProfilePacketAdmissionFailActionCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
             virtual sai_status_t queryPortAutonegFecOverrideSupportCapability(
                                       _Out_ sai_attr_capability_t *attr_capability);
 
