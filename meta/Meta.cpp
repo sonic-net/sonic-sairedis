@@ -1628,6 +1628,22 @@ sai_status_t Meta::meta_generic_validation_remove(
             return SAI_STATUS_SUCCESS;
         }
 
+        if (object_type == (sai_object_type_t) SAI_OBJECT_TYPE_VNET || 
+            object_type == (sai_object_type_t) SAI_OBJECT_TYPE_OUTBOUND_ROUTING_GROUP ||
+            object_type == (sai_object_type_t) SAI_OBJECT_TYPE_DASH_ACL_GROUP)
+        {
+            /*
+             * Allow removing DASH VNET, DASH outbound routing group, and DASH ACL group regardless of reference count
+             * See section '1.8 Implicit deletion of SAI objects' in the SONiC DASH HLD for details
+             */
+
+            SWSS_LOG_DEBUG("removing %s object 0x%" PRIx64 " reference count is %d, removing all objects from meta DB",
+                    sai_serialize_object_type(object_type).c_str(),
+                    oid,
+                    count);
+
+            return SAI_STATUS_SUCCESS;
+        }
         SWSS_LOG_ERROR("object 0x%" PRIx64 " reference count is %d, can't remove", oid, count);
 
         return SAI_STATUS_OBJECT_IN_USE;
