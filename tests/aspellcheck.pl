@@ -152,6 +152,7 @@ for my $file (@files)
     next if $file =~ m!/python/.+wrap.cpp!;
     next if $file =~ m!/pyext/.+wrap.cpp!;
     next if $file =~ m!sai_(redis|proxy|vs|stub).cpp!;
+    next if $file =~ m!vslib/vpp/!;
 
     my $data = ReadFile $file;
 

@@ -65,6 +65,7 @@ Proxy::Proxy(
     m_swNtf.onBfdSessionStateChange = std::bind(&Proxy::onBfdSessionStateChange, this, _1, _2);
     m_swNtf.onPortHostTxReady = std::bind(&Proxy::onPortHostTxReady, this, _1, _2, _3);
     m_swNtf.onTwampSessionEvent = std::bind(&Proxy::onTwampSessionEvent, this, _1, _2);
+    m_swNtf.onTamTelTypeConfigChange = std::bind(&Proxy::onTamTelTypeConfigChange, this, _1);
 
     m_sn = m_swNtf.getSwitchNotifications();
 
@@ -1212,6 +1213,16 @@ void Proxy::onTwampSessionEvent(
     std::string s = sai_serialize_twamp_session_event_ntf(count, data);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT, s);
+}
+
+void Proxy::onTamTelTypeConfigChange(
+    _In_ sai_object_id_t tam_tel_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_object_id(tam_tel_id);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, s);
 }
 
 void Proxy::sendNotification(

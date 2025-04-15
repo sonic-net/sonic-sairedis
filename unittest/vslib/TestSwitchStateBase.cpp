@@ -244,3 +244,30 @@ TEST(SwitchStateBase, initialize_voq_switch)
     EXPECT_EQ(SAI_STATUS_SUCCESS,
               ss.initialize_voq_switch_objects((uint32_t)attrs.size(), attrs.data()));
 }
+
+TEST(SwitchStateBase, query_stats_st_capability)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    SwitchStateBase ss(
+        0x2100000000,
+        std::make_shared<RealObjectIdManager>(0, scc),
+        sc);
+
+    sai_stat_st_capability_list_t stats_capability;
+    std::vector<sai_stat_st_capability_t> buffer;
+    buffer.resize(96);
+    stats_capability.count = static_cast<uint32_t>(buffer.size());
+    stats_capability.list = buffer.data();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              ss.queryStatsStCapability(0,
+                                        SAI_OBJECT_TYPE_PORT,
+                                        &stats_capability));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              static_cast<SwitchState&>(ss).queryStatsStCapability(0,
+                                        SAI_OBJECT_TYPE_PORT,
+                                        &stats_capability));
+}

@@ -392,6 +392,36 @@ sai_status_t SwitchState::queryStatsCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchState::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    auto info = sai_metadata_get_object_type_info(objectType);
+
+    if (stats_capability->count == 0 || stats_capability->list == nullptr)
+    {
+        stats_capability->count = (uint32_t)info->statenum->valuescount;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    SWSS_LOG_NOTICE("query counter st capability for object ID %s of counter type %s",
+                    sai_serialize_object_id(switchId).c_str(),
+                    info->statenum->name);
+
+    auto statenumlist = info->statenum->values;
+
+    for (uint32_t i = 0; i < stats_capability->count; i++)
+    {
+        stats_capability->list[i].capability.stat_enum = statenumlist[i];
+        stats_capability->list[i].capability.stat_modes = SAI_STATS_MODE_READ_AND_CLEAR;
+        stats_capability->list[i].minimal_polling_interval = static_cast<uint64_t>(1e6 * 100);
+    }
+    return SAI_STATUS_SUCCESS;
+}
+
 std::shared_ptr<saimeta::Meta> SwitchState::getMeta()
 {
     SWSS_LOG_ENTER();
