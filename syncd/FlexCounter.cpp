@@ -929,18 +929,26 @@ public:
                 // Add all objects to m_objectIdsMap so that they will be polled using single API
                 for (size_t i = 0; i < vids.size(); i++)
                 {
-                    auto it_vid = m_objectIdsMap.find(vids[i]);
-                    if (it_vid != m_objectIdsMap.end())
-                    {
-                        // Remove and re-add if vid already exists
-                        m_objectIdsMap.erase(it_vid);
+                    auto rid = rids[i];
+                    auto vid = vids[i];
+                    std::vector<uint64_t> stats(counter_ids.size());
+                    if (collectData(rid, counter_ids, effective_stats_mode, false, stats)) {
+
+                        auto it_vid = m_objectIdsMap.find(vid);
+                        if (it_vid != m_objectIdsMap.end())
+                        {
+                            // Remove and re-add if vid already exists
+                            m_objectIdsMap.erase(it_vid);
+                        }
+
+                        auto counter_data = std::make_shared<CounterIds<StatType>>(rid, counter_ids);
+                        m_objectIdsMap.emplace(vid, counter_data);
+
+                        SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
+                    } else {
+                        SWSS_LOG_WARN("%s RID %s can't provide the statistic",  m_name.c_str(), sai_serialize_object_id(rid).c_str());
                     }
-
-                    auto counter_data = std::make_shared<CounterIds<StatType>>(rids[i], counter_ids);
-                    m_objectIdsMap.emplace(vids[i], counter_data);
                 }
-
-                SWSS_LOG_INFO("Counters do not support bulk, fallback to single call %s", m_name.c_str());
 
                 return;
             }
