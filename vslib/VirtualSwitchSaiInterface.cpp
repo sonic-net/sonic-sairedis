@@ -15,6 +15,9 @@
 #include "SwitchBCM56971B0.h"
 #include "SwitchMLNX2700.h"
 #include "SwitchNvdaMBF2H536C.h"
+#ifdef USE_VPP
+#include "SwitchVpp.h"
+#endif
 
 #include <inttypes.h>
 
@@ -95,7 +98,7 @@ std::shared_ptr<WarmBootState> VirtualSwitchSaiInterface::extractWarmBootState(
     return state;
 }
 
-bool VirtualSwitchSaiInterface::validate_switch_warm_boot_atributes(
+bool VirtualSwitchSaiInterface::validate_switch_warm_boot_attributes(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list) const
 {
@@ -601,6 +604,16 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
             m_switchStateMap[switch_id] = std::make_shared<SwitchNvdaMBF2H536C>(switch_id, m_realObjectIdManager, config, warmBootState);
             break;
 
+        case SAI_VS_SWITCH_TYPE_VPP:
+
+#ifdef USE_VPP
+            m_switchStateMap[switch_id] = std::make_shared<SwitchVpp>(switch_id, m_realObjectIdManager, config, warmBootState);
+            break;
+#else
+            SWSS_LOG_WARN("vslib not compiled with vpp");
+            return nullptr;
+#endif
+
         default:
 
             SWSS_LOG_WARN("unknown switch type: %d", config->m_switchType);
@@ -668,7 +681,7 @@ sai_status_t VirtualSwitchSaiInterface::create(
 
         if (config->m_bootType == SAI_VS_BOOT_TYPE_WARM)
         {
-            if (!validate_switch_warm_boot_atributes(attr_count, attr_list))
+            if (!validate_switch_warm_boot_attributes(attr_count, attr_list))
             {
                 SWSS_LOG_ERROR("invalid attribute passed during warm boot");
 
@@ -1121,6 +1134,50 @@ sai_status_t VirtualSwitchSaiInterface::queryStatsCapability(
             switchId,
             objectType,
             stats_capability);
+}
+
+sai_status_t VirtualSwitchSaiInterface::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_st_capability)
+{
+    SWSS_LOG_ENTER();
+
+    sai_stat_capability_list_t stats_capability;
+    std::vector<sai_stat_capability_t> stats_list(stats_st_capability->count);
+    stats_capability.count = stats_st_capability->count;
+    stats_capability.list = stats_list.data();
+
+    sai_status_t status = queryStatsCapability(
+        switchId,
+        objectType,
+        &stats_capability);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        stats_st_capability->count = stats_capability.count;
+        for (uint32_t i = 0; i < stats_capability.count; i++)
+        {
+            stats_st_capability->list[i].capability.stat_enum = stats_capability.list[i].stat_enum;
+            stats_st_capability->list[i].capability.stat_modes = stats_capability.list[i].stat_modes;
+            stats_st_capability->list[i].minimal_polling_interval = static_cast<uint64_t>(1e6 * 100); // 100ms
+        }
+    }
+    else if (status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        stats_st_capability->count = stats_capability.count;
+        SWSS_LOG_WARN("Buffer overflow for object type %s, count: %u",
+                      sai_serialize_object_type(objectType).c_str(),
+                      stats_st_capability->count);
+    }
+    else
+    {
+        SWSS_LOG_WARN("Failed to query stats capability for object type %s, status: %s",
+                      sai_serialize_object_type(objectType).c_str(),
+                      sai_serialize_status(status).c_str());
+    }
+
+    return status;
 }
 
 sai_status_t VirtualSwitchSaiInterface::getStatsExt(

@@ -1064,6 +1064,37 @@ sai_status_t Meta::queryStatsCapability(
     return status;
 }
 
+sai_status_t Meta::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    PARAMETER_CHECK_OID_OBJECT_TYPE(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OID_EXISTS(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OBJECT_TYPE_VALID(objectType);
+    PARAMETER_CHECK_IF_NOT_NULL(stats_capability);
+    VALIDATION_STATS_LIST(stats_capability->count, stats_capability->list);
+
+    auto info = sai_metadata_get_object_type_info(objectType);
+
+    PARAMETER_CHECK_IF_NOT_NULL(info);
+
+    if (info->statenum == nullptr)
+    {
+        SWSS_LOG_ERROR("%s does not support stats", info->objecttypename);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto status = m_implementation->queryStatsStCapability(switchId, objectType, stats_capability);
+
+    // no post validation required
+
+    return status;
+}
+
 sai_status_t Meta::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -6981,6 +7012,42 @@ void Meta::meta_sai_on_twamp_session_event(
     for (uint32_t i = 0; i < count; ++i)
     {
         meta_sai_on_twamp_session_event_single(data[i]);
+    }
+}
+
+void Meta::meta_sai_on_tam_tel_type_config_change(_In_ sai_object_id_t m_tam_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_tam_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("m_tam_id is NULL");
+        return;
+    }
+
+    auto ot = objectTypeQuery(m_tam_id);
+
+    if (ot != SAI_OBJECT_TYPE_NULL)
+    {
+        SWSS_LOG_ERROR("m_tam_id %s has unexpected type: %s, expected TAM_TEL_TYPE",
+                sai_serialize_object_id(m_tam_id).c_str(),
+                sai_serialize_object_type(ot).c_str());
+        return;
+    }
+
+    if (!m_oids.objectReferenceExists(m_tam_id))
+    {
+        SWSS_LOG_NOTICE("m_tam_id %s is not present in local DB (snoop!)",
+                sai_serialize_object_id(m_tam_id).c_str());
+
+        sai_object_meta_key_t key = {.objecttype = (sai_object_type_t)ot, .objectkey = {.key = {.object_id = m_tam_id}}};
+
+        m_oids.objectReferenceInsert(m_tam_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
     }
 }
 
