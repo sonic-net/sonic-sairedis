@@ -141,6 +141,15 @@ void SwitchNotifications::SlotBase::onTwampSessionEvent(
     return m_slots.at(context)->m_handler->onTwampSessionEvent(count, data);
 }
 
+void SwitchNotifications::SlotBase::onTamTelTypeConfigChange(
+        _In_ int context,
+        _In_ sai_object_id_t tam_tel_id)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onTamTelTypeConfigChange(tam_tel_id);
+}
+
 const sai_switch_notifications_t& SwitchNotifications::SlotBase::getSwitchNotifications() const
 {
     SWSS_LOG_ENTER();

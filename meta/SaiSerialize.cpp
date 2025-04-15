@@ -2938,6 +2938,50 @@ std::string sai_serialize_stats_capability_list(
     return j.dump();
 }
 
+json sai_serialize_stat_st_capability(
+        _In_ const sai_stat_st_capability_t &stat_capability,
+        _In_ const sai_enum_metadata_t *meta)
+{
+    SWSS_LOG_ENTER();
+
+    json j = sai_serialize_stat_capability(stat_capability.capability, meta);
+    j["minimal_polling_interval"] = sai_serialize_number(stat_capability.minimal_polling_interval, false);
+
+    return j;
+}
+
+std::string sai_serialize_stats_st_capability_list(
+        _In_ const sai_stat_st_capability_list_t &stat_capability_list,
+        _In_ const sai_enum_metadata_t *meta,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["count"] = stat_capability_list.count;
+
+    if (stat_capability_list.list == NULL || countOnly)
+    {
+        j["list"] = nullptr;
+
+        return j.dump();
+    }
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < stat_capability_list.count; ++i)
+    {
+        json item = sai_serialize_stat_st_capability(stat_capability_list.list[i], meta);
+
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    return j.dump();
+}
+
 std::string sai_serialize_poe_port_active_channel_type(
         _In_ const sai_poe_port_active_channel_type_t value)
 {
@@ -5839,5 +5883,94 @@ void sai_deserialize_stats_capability_list(
         /* Skip the commas */
         stat_enum_position++;
         stat_modes_position++;
+    }
+}
+
+/**
+ *   @brief deserialize the stats st capability list
+ *
+ *   Iterates thru stat_enum_str and populate
+ *   the stats_capability with respective
+ *   stat_enum (String to Enum conversion).
+ *   Also iterates thru stat_modes_str and populate
+ *   the stats_capability with respective
+ *   stat_modes (String to Enum conversion)
+ *
+ *   @param stats_capability stats stream telemetry capability enum list
+ *   @param stat_enum_str SAI stat enum list as string
+ *   @param stat_modes_str SAI stat mode list as string
+ *  @param minimal_polling_interval_str SAI minimal polling interval list as string
+ *   @return Void
+ */
+void sai_deserialize_stats_st_capability_list(
+    _Inout_ sai_stat_st_capability_list_t *stats_capability,
+    _In_ const std::string &stat_enum_str,
+    _In_ const std::string &stat_modes_str,
+    _In_ const std::string &minimal_polling_interval_str)
+{
+    SWSS_LOG_ENTER();
+
+    if (stats_capability == NULL)
+    {
+        SWSS_LOG_THROW("Stats capability pointer in deserialize is NULL");
+    }
+
+    uint32_t num_capabilities = stats_capability->count;
+    size_t stat_enum_position = 0;
+    size_t stat_modes_position = 0;
+    size_t stat_polling_interval_position = 0;
+
+    for (uint32_t i = 0; i < num_capabilities; i++)
+    {
+        /* 1. Populate stat_enum */
+        size_t old_stat_enum_position = stat_enum_position;
+        stat_enum_position = stat_enum_str.find(",", old_stat_enum_position);
+        std::string stat_enum = stat_enum_str.substr(old_stat_enum_position,
+                                                     stat_enum_position - old_stat_enum_position);
+        stats_capability->list[i].capability.stat_enum = std::stoi(stat_enum);
+
+        /* We have run out of values to add to our list */
+        if (stat_enum_position == std::string::npos)
+        {
+            if (num_capabilities != i + 1)
+            {
+                SWSS_LOG_THROW("Lesser stat_enums than expected: expected %d, received %d",
+                               num_capabilities, i + 1);
+            }
+
+            break;
+        }
+
+        /* 2. Populate stat_modes */
+        size_t old_stat_modes_position = stat_modes_position;
+        stat_modes_position = stat_modes_str.find(",", old_stat_modes_position);
+        std::string stat_modes = stat_modes_str.substr(old_stat_modes_position,
+                                                       stat_modes_position - old_stat_modes_position);
+        stats_capability->list[i].capability.stat_modes = std::stoi(stat_modes);
+
+        /* We have run out of values to add to our list */
+        if (stat_modes_position == std::string::npos)
+        {
+            if (num_capabilities != i + 1)
+            {
+                SWSS_LOG_THROW("Lesser stat_modes than expected: expected %d, received %d",
+                               num_capabilities, i + 1);
+            }
+
+            break;
+        }
+
+        /* 3. Populate minimal polling interval */
+        size_t old_stat_polling_interval_position = stat_polling_interval_position;
+        stat_polling_interval_position = minimal_polling_interval_str.find(",", old_stat_polling_interval_position);
+        std::string minimal_polling_interval = minimal_polling_interval_str.substr(old_stat_polling_interval_position,
+                stat_polling_interval_position - old_stat_polling_interval_position);
+        stats_capability->list[i].minimal_polling_interval = std::stoull(minimal_polling_interval);
+
+
+        /* Skip the commas */
+        stat_enum_position++;
+        stat_modes_position++;
+        stat_polling_interval_position++;
     }
 }

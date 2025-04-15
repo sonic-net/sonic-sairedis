@@ -388,6 +388,24 @@ void Recorder::recordQueryStatsCapabilityResponse(
     recordLine("Q|stats_capability|" + sai_serialize_status(status) + "|" + arguments);
 }
 
+void Recorder::recordQueryStatsStCapability(
+    _In_ const std::string &key,
+    _In_ const std::vector<swss::FieldValueTuple> &arguments)
+{
+    SWSS_LOG_ENTER();
+
+    recordLine("q|stats_st_capability|" + key + "|" + Globals::joinFieldValues(arguments));
+}
+
+void Recorder::recordQueryStatsStCapabilityResponse(
+    _In_ sai_status_t status,
+    _In_ const std::string &arguments)
+{
+    SWSS_LOG_ENTER();
+
+    recordLine("Q|stats_st_capability|" + sai_serialize_status(status) + "|" + arguments);
+}
+
 void Recorder::recordNotifySyncd(
         _In_ const std::string& key)
 {
@@ -1215,6 +1233,66 @@ void Recorder::recordQueryStatsCapabilityResponse(
     }
 
     recordQueryStatsCapabilityResponse(status, str_stats_list);
+}
+
+void Recorder::recordQueryStatsStCapability(
+    _In_ sai_object_id_t switch_id,
+    _In_ sai_object_type_t object_type,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    auto key = sai_serialize_object_type(SAI_OBJECT_TYPE_SWITCH) + ":" + sai_serialize_object_id(switch_id);
+
+    auto object_type_str = sai_serialize_object_type(object_type);
+    const std::string list_size = std::to_string(stats_capability->count);
+    const std::vector<swss::FieldValueTuple> values =
+        {
+            swss::FieldValueTuple("OBJECT_TYPE", object_type_str),
+            swss::FieldValueTuple("LIST_SIZE", list_size)};
+
+    SWSS_LOG_DEBUG("Query arguments: switch %s, object_type: %s, count: %s",
+                   key.c_str(),
+                   object_type_str.c_str(),
+                   list_size.c_str());
+
+    recordQueryStatsStCapability(key, values);
+}
+
+void Recorder::recordQueryStatsStCapabilityResponse(
+    _In_ sai_status_t status,
+    _In_ sai_object_type_t objectType,
+    _In_ const sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    std::string str_stats_list;
+
+    auto meta = sai_metadata_get_object_type_info(objectType);
+
+    if (meta == NULL)
+    {
+        SWSS_LOG_ERROR("Failed to find object metadata: object type %s",
+                       sai_serialize_object_type(objectType).c_str());
+
+        return;
+    }
+
+    if (meta->statenum == NULL)
+    {
+        SWSS_LOG_ERROR("%s does not support stats", meta->objecttypename);
+
+        return;
+    }
+
+    bool countOnly = (status == SAI_STATUS_BUFFER_OVERFLOW);
+
+    if (status == SAI_STATUS_SUCCESS || status == SAI_STATUS_BUFFER_OVERFLOW)
+    {
+        str_stats_list = sai_serialize_stats_st_capability_list(*stats_capability, meta->statenum, countOnly);
+    }
+
+    recordQueryStatsStCapabilityResponse(status, str_stats_list);
 }
 
 void Recorder::recordNotifySyncd(

@@ -90,7 +90,11 @@ namespace syncd
                             _In_ uint32_t count,
                             _In_ const sai_twamp_session_event_notification_data_t *data);
 
-                protected:
+                    static void onTamTelTypeConfigChange(
+                        _In_ int context,
+                        _In_ sai_object_id_t tam_tel_id);
+
+            protected:
 
                     SwitchNotifications* m_handler;
 
@@ -119,6 +123,8 @@ namespace syncd
                             .on_port_host_tx_ready = &Slot<context>::onPortHostTxReady,
                             .on_twamp_session_event = &Slot<context>::onTwampSessionEvent,
                             .on_icmp_echo_session_state_change = nullptr,
+                            .on_extended_port_state_change = nullptr,
+                            .on_tam_tel_type_config_change = &Slot<context>::onTamTelTypeConfigChange,
                             .on_ha_set_event = nullptr,
                             .on_ha_scope_event = nullptr,
                             }) { }
@@ -226,6 +232,14 @@ namespace syncd
 
                     return SlotBase::onTwampSessionEvent(context, count, data);
                 }
+
+                static void onTamTelTypeConfigChange(
+                        _In_ sai_object_id_t tam_tel_id)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onTamTelTypeConfigChange(context, tam_tel_id);
+                }
         };
 
             static std::vector<SwitchNotifications::SlotBase*> m_slots;
@@ -257,8 +271,9 @@ namespace syncd
             std::function<void(sai_object_id_t switch_id, sai_switch_oper_status_t)>                onSwitchStateChange;
             std::function<void(uint32_t, const sai_bfd_session_state_notification_t*)>              onBfdSessionStateChange;
             std::function<void(uint32_t, const sai_twamp_session_event_notification_data_t*)>       onTwampSessionEvent;
+            std::function<void(sai_object_id_t)>                                                    onTamTelTypeConfigChange;
 
-        private:
+    private:
 
             SlotBase*m_slot;
     };
