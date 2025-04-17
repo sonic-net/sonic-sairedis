@@ -2350,6 +2350,30 @@ std::string sai_serialize_ha_set_event(
     return sai_serialize_enum(event, &sai_metadata_enum_sai_ha_set_event_t);
 }
 
+std::string sai_serialize_ha_scope_event(
+        _In_ sai_ha_scope_event_t event)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(event, &sai_metadata_enum_sai_ha_scope_event_t);
+}
+
+std::string sai_serialize_ha_role(
+        _In_ sai_dash_ha_role_t role)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(role, &sai_metadata_enum_sai_dash_ha_role_t);
+}
+
+std::string sai_serialize_ha_state(
+        _In_ sai_dash_ha_state_t state)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(state, &sai_metadata_enum_sai_dash_ha_state_t);
+}
+
 std::string sai_serialize_twamp_session_state(
         _In_ sai_twamp_session_state_t status)
 {
@@ -2564,6 +2588,35 @@ std::string sai_serialize_ha_set_event_ntf(
 
         item["event_type"] = sai_serialize_ha_set_event(ha_set_event[i].event_type);
         item["ha_set_id"] = sai_serialize_object_id(ha_set_event[i].ha_set_id);
+
+        j.push_back(item);
+    }
+
+    return j.dump();
+}
+
+std::string sai_serialize_ha_scope_event_ntf(
+    _In_ uint32_t count,
+    _In_ const sai_ha_scope_event_data_t* ha_scope_event)
+{
+    SWSS_LOG_ENTER();
+
+    if (ha_scope_event == NULL)
+    {
+        SWSS_LOG_THROW("ha_scope_event pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        json item;
+
+        item["event_type"] = sai_serialize_ha_scope_event(ha_scope_event[i].event_type);
+        item["ha_scope_id"] = sai_serialize_object_id(ha_scope_event[i].ha_scope_id);
+        item["ha_role"] = sai_serialize_ha_role(ha_scope_event[i].ha_role);
+        item["flow_version"] = sai_serialize_number(ha_scope_event[i].flow_version);
+        item["ha_state"] = sai_serialize_ha_state(ha_scope_event[i].ha_state);
 
         j.push_back(item);
     }
@@ -4455,6 +4508,33 @@ void sai_deserialize_ha_set_event(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_ha_set_event_t, (int32_t&)event);
 }
 
+void sai_deserialize_ha_scope_event(
+        _In_ const std::string& s,
+        _Out_ sai_ha_scope_event_t& event)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_ha_scope_event_t, (int32_t&)event);
+}
+
+void sai_deserialize_ha_role()
+        _In_ const std::string& s,
+        _Out_ sai_dash_ha_role_t& role)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_dash_ha_role_t, (int32_t&)role);
+}
+
+void sai_deserialize_ha_state()
+        _In_ const std::string& s,
+        _Out_ sai_dash_ha_state_t& state)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_dash_ha_state_t, (int32_t&)state);
+}
+
 void sai_deserialize_twamp_session_state(
         _In_ const std::string& s,
         _Out_ sai_twamp_session_state_t& state)
@@ -5373,6 +5453,31 @@ void sai_deserialize_ha_set_event_ntf(
     *ha_set_event = data;
 }
 
+void sai_deserialize_ha_scope_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_ha_scope_event_data_t** ha_scope_event)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_ha_scope_event_data_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_ha_scope_event(j[i]["event_type"], data[i].event_type);
+        sai_deserialize_object_id(j[i]["ha_scope_id"], data[i].ha_scope_id);
+        sai_deserialize_ha_role(j[i]["ha_role"], data[i].ha_role);
+        sai_deserialize_number(j[i]["flow_version"], data[i].flow_version);
+        sai_deserialize_ha_state(j[i]["ha_state"], data[i].ha_state);
+    }
+
+    *ha_scope_event = data;
+}
+
 void sai_deserialize_twamp_session_event_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
@@ -5713,6 +5818,15 @@ void sai_deserialize_free_ha_set_event_ntf(
     SWSS_LOG_ENTER();
 
     delete[] ha_set_event;
+}
+
+void sai_deserialize_free_ha_scope_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_ha_scope_event_data_t* ha_scope_event)
+{
+    SWSS_LOG_ENTER();
+
+    delete[] ha_scope_event;
 }
 
 void sai_deserialize_free_twamp_session_event_ntf(
