@@ -249,6 +249,14 @@ namespace saiplayer
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
 
+            void onHaSetEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_set_event_data_t *data);
+
+            void onHaScopeEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_scope_event_data_t *data);
+
             void onPortHostTxReady(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_id_t port_id,
