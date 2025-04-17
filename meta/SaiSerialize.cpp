@@ -2342,6 +2342,14 @@ std::string sai_serialize_bfd_session_state(
     return sai_serialize_enum(status, &sai_metadata_enum_sai_bfd_session_state_t);
 }
 
+std::string sai_serialize_ha_set_event(
+        _In_ sai_ha_set_event_t event)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(event, &sai_metadata_enum_sai_ha_set_event_t);
+}
+
 std::string sai_serialize_twamp_session_state(
         _In_ sai_twamp_session_state_t status)
 {
@@ -2534,6 +2542,32 @@ std::string sai_serialize_bfd_session_state_ntf(
     }
 
     // we don't need count since it can be deduced
+    return j.dump();
+}
+
+std::string sai_serialize_ha_set_event_ntf(
+    _In_ uint32_t count,
+    _In_ const sai_ha_set_event_data_t* ha_set_event)
+{
+    SWSS_LOG_ENTER();
+
+    if (ha_set_event == NULL)
+    {
+        SWSS_LOG_THROW("ha_set_event pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        json item;
+
+        item["event_type"] = sai_serialize_ha_set_event(ha_set_event[i].event_type);
+        item["ha_set_id"] = sai_serialize_object_id(ha_set_event[i].ha_set_id);
+
+        j.push_back(item);
+    }
+
     return j.dump();
 }
 
@@ -4412,6 +4446,15 @@ void sai_deserialize_bfd_session_state(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_bfd_session_state_t, (int32_t&)state);
 }
 
+void sai_deserialize_ha_set_event(
+        _In_ const std::string& s,
+        _Out_ sai_ha_set_event_t& event)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_ha_set_event_t, (int32_t&)event);
+}
+
 void sai_deserialize_twamp_session_state(
         _In_ const std::string& s,
         _Out_ sai_twamp_session_state_t& state)
@@ -5308,6 +5351,28 @@ void sai_deserialize_bfd_session_state_ntf(
     *bfd_session_state = data;
 }
 
+void sai_deserialize_ha_set_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_ha_set_event_data_t** ha_set_event)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_ha_set_event_data_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_ha_set_event(j[i]["event_type"], data[i].event_type);
+        sai_deserialize_object_id(j[i]["ha_set_id"], data[i].ha_set_id);
+    }
+
+    *ha_set_event = data;
+}
+
 void sai_deserialize_twamp_session_event_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
@@ -5639,6 +5704,15 @@ void sai_deserialize_free_bfd_session_state_ntf(
     SWSS_LOG_ENTER();
 
     delete[] bfd_session_state;
+}
+
+void sai_deserialize_free_ha_set_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_ha_set_event_data_t* ha_set_event)
+{
+    SWSS_LOG_ENTER();
+
+    delete[] ha_set_event;
 }
 
 void sai_deserialize_free_twamp_session_event_ntf(
