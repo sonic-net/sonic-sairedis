@@ -104,6 +104,8 @@ static PyObject * py_queue_pfc_deadlock_notification = NULL;
 static PyObject * py_switch_shutdown_request_notification = NULL;
 static PyObject * py_switch_state_change_notification = NULL;
 static PyObject * py_bfd_session_state_change_notification = NULL;
+static PyObject * py_ha_set_event_notification = NULL;
+static PyObject * py_ha_scope_event_notification = NULL;
 static PyObject * py_tam_tel_type_config_change_notification = NULL;
 
 void call_python(PyObject* callObject, PyObject* arglist)
@@ -207,6 +209,36 @@ static void sai_bfd_session_state_change_notification(
     Py_DECREF(arglist);
 }
 
+static void sai_ha_set_event_notification(
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t *data)
+{
+    PyObject* obj = py_convert_sai_ha_set_event_data_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(iO)", count, obj);
+
+    call_python(py_ha_set_event_notification, arglist);
+
+    Py_DECREF(obj);
+
+    Py_DECREF(arglist);
+}
+
+static void sai_ha_scope_event_notification(
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t *data)
+{
+    PyObject* obj = py_convert_sai_ha_scope_event_data_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(iO)", count, obj);
+
+    call_python(py_ha_scope_event_notification, arglist);
+
+    Py_DECREF(obj);
+
+    Py_DECREF(arglist);
+}
+
 static void sai_tam_tel_type_config_change_notification(
     _In_ sai_object_id_t tam_tel_type_id)
 {
@@ -259,6 +291,16 @@ sai_pointer_t sai_get_notification_pointer(
             Py_XDECREF(py_bfd_session_state_change_notification);
             py_bfd_session_state_change_notification = callback;
             return (void*)&sai_bfd_session_state_change_notification;
+
+        case SAI_SWITCH_ATTR_HA_SET_EVENT_NOTIFY:
+            Py_XDECREF(py_ha_set_event_notification);
+            py_ha_set_event_notification = callback;
+            return (void*)&sai_ha_set_event_notification;
+
+        case SAI_SWITCH_ATTR_HA_SCOPE_EVENT_NOTIFY:
+            Py_XDECREF(py_ha_scope_event_notification);
+            py_ha_scope_event_notification = callback;
+            return (void*)&sai_ha_scope_event_notification;
 
         case SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY:
             Py_XDECREF(py_tam_tel_type_config_change_notification);
