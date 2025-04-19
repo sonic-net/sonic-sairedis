@@ -37,9 +37,13 @@ mkdir -p /var/log/sai_failure_dump/
 # currently disabled since most vendors don't support that yet
 # CMD_ARGS+=" -l"
 
-# Set synchronous mode if it is enabled in CONFIG_DB
+# Set zmq mode by default for smartswitch DPU
+# Otherwise, set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
-if [ "$SYNC_MODE" == "enable" ]; then
+SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
+if [ "$SWITCH_TYPE" == "dpu" ]; then
+    CMD_ARGS+=" -z zmq_sync -x /usr/share/sonic/hwsku/context_config.json"
+elif [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
 fi
 
