@@ -94,6 +94,16 @@ namespace syncd
                         _In_ int context,
                         _In_ sai_object_id_t tam_tel_id);
 
+                    static void onHaSetEvent(
+                            _In_ int context,
+                            _In_ uint32_t count,
+                            _In_ const sai_ha_set_event_data_t *data);
+
+                    static void onHaScopeEvent(
+                            _In_ int context,
+                            _In_ uint32_t count,
+                            _In_ const sai_ha_scope_event_data_t *data);
+
             protected:
 
                     SwitchNotifications* m_handler;
@@ -125,8 +135,8 @@ namespace syncd
                             .on_icmp_echo_session_state_change = nullptr,
                             .on_extended_port_state_change = nullptr,
                             .on_tam_tel_type_config_change = &Slot<context>::onTamTelTypeConfigChange,
-                            .on_ha_set_event = nullptr,
-                            .on_ha_scope_event = nullptr,
+                            .on_ha_set_event = &Slot<context>::onHaSetEvent,
+                            .on_ha_scope_event = &Slot<context>::onHaScopeEvent,
                             }) { }
 
                 virtual ~Slot() {}
@@ -177,6 +187,24 @@ namespace syncd
                     SWSS_LOG_ENTER();
 
                     return SlotBase::onBfdSessionStateChange(context, count, data);
+                }
+
+                static void onHaSetEvent(
+                        _In_ uint32_t count,
+                        _In_ const sai_ha_set_event_data_t *data)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onHaSetEvent(context, count, data);
+                }
+
+                static void onHaScopeEvent(
+                        _In_ uint32_t count,
+                        _In_ const sai_ha_scope_event_data_t *data)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onHaScopeEvent(context, count, data);
                 }
 
                 static void onQueuePfcDeadlock(
@@ -272,6 +300,8 @@ namespace syncd
             std::function<void(uint32_t, const sai_bfd_session_state_notification_t*)>              onBfdSessionStateChange;
             std::function<void(uint32_t, const sai_twamp_session_event_notification_data_t*)>       onTwampSessionEvent;
             std::function<void(sai_object_id_t)>                                                    onTamTelTypeConfigChange;
+            std::function<void(uint32_t, const sai_ha_set_event_data_t*)>                          onHaSetEvent;
+            std::function<void(uint32_t, const sai_ha_scope_event_data_t*)>                        onHaScopeEvent;
 
     private:
 

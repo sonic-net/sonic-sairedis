@@ -63,6 +63,8 @@ Proxy::Proxy(
     m_swNtf.onSwitchShutdownRequest = std::bind(&Proxy::onSwitchShutdownRequest, this, _1);
     m_swNtf.onSwitchStateChange = std::bind(&Proxy::onSwitchStateChange, this, _1, _2);
     m_swNtf.onBfdSessionStateChange = std::bind(&Proxy::onBfdSessionStateChange, this, _1, _2);
+    m_swNtf.onHaSetEvent = std::bind(&Proxy::onHaSetEvent, this, _1, _2);
+    m_swNtf.onHaScopeEvent = std::bind(&Proxy::onHaScopeEvent, this, _1, _2);
     m_swNtf.onPortHostTxReady = std::bind(&Proxy::onPortHostTxReady, this, _1, _2, _3);
     m_swNtf.onTwampSessionEvent = std::bind(&Proxy::onTwampSessionEvent, this, _1, _2);
     m_swNtf.onTamTelTypeConfigChange = std::bind(&Proxy::onTamTelTypeConfigChange, this, _1);
@@ -1202,6 +1204,28 @@ void Proxy::onBfdSessionStateChange(
     std::string s = sai_serialize_bfd_session_state_ntf(count, data);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
+}
+
+void Proxy::onHaSetEvent(
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_set_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT, s);
+}
+
+void Proxy::onHaScopeEvent(
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_scope_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT, s);
 }
 
 void Proxy::onTwampSessionEvent(

@@ -89,6 +89,26 @@ void SwitchNotifications::SlotBase::onBfdSessionStateChange(
     return m_slots.at(context)->m_handler->onBfdSessionStateChange(count, data);
 }
 
+void SwitchNotifications::SlotBase::onHaSetEvent(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onHaSetEvent(count, data);
+}
+
+void SwitchNotifications::SlotBase::onHaScopeEvent(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onHaScopeEvent(count, data);
+}
+
 void SwitchNotifications::SlotBase::onQueuePfcDeadlock(
         _In_ int context,
         _In_ uint32_t count,

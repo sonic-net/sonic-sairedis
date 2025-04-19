@@ -245,6 +245,14 @@ namespace saimeta
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
 
+            void meta_sai_on_ha_set_event(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_set_event_data_t *data);
+
+            void meta_sai_on_ha_scope_event(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_scope_event_data_t *data);
+
             void meta_sai_on_port_host_tx_ready_change(
                     _In_ sai_object_id_t port_id,
                     _In_ sai_object_id_t switch_id,
@@ -278,6 +286,12 @@ namespace saimeta
 
             void meta_sai_on_bfd_session_state_change_single(
                     _In_ const sai_bfd_session_state_notification_t& data);
+
+            void meta_sai_on_ha_set_event_single(
+                    _In_ const sai_ha_set_event_data_t& data);
+
+            void meta_sai_on_ha_scope_event_single(
+                    _In_ const sai_ha_scope_event_data_t& data);
 
             void meta_sai_on_twamp_session_event_single(
                     _In_ const sai_twamp_session_event_notification_data_t& data);
@@ -319,12 +333,20 @@ namespace saimeta
 
         public:
 
+            static bool isHaSetObjectIdValid(
+                    _In_ sai_object_type_t object_type);
+
+            static bool isHaScopeObjectIdValid(
+                    _In_ sai_object_type_t object_type);
+
             static bool is_ipv6_mask_valid(
                     _In_ const uint8_t* mask);
 
             static bool isPortObjectIdValid(
                     _In_ sai_object_type_t object_type);
 
+            static std::vector<std::string> getValidHaSetObjectTypes();
+            static std::vector<std::string> getValidHaScopeObjectTypes();
             static std::vector<std::string> getValidPortObjectTypes();
 
         private: // unit tests helpers
