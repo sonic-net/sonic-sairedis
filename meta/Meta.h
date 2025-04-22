@@ -333,20 +333,12 @@ namespace saimeta
 
         public:
 
-            static bool isHaSetObjectIdValid(
-                    _In_ sai_object_type_t object_type);
-
-            static bool isHaScopeObjectIdValid(
-                    _In_ sai_object_type_t object_type);
-
             static bool is_ipv6_mask_valid(
                     _In_ const uint8_t* mask);
 
             static bool isPortObjectIdValid(
                     _In_ sai_object_type_t object_type);
 
-            static std::vector<std::string> getValidHaSetObjectTypes();
-            static std::vector<std::string> getValidHaScopeObjectTypes();
             static std::vector<std::string> getValidPortObjectTypes();
 
         private: // unit tests helpers

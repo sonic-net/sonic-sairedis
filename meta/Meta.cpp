@@ -6938,20 +6938,28 @@ void Meta::meta_sai_on_bfd_session_state_change(
 }
 
 void Meta::meta_sai_on_ha_set_event_single(
-        _In_ const sai_ha_set_event_data_t& data)
+    _In_ const sai_ha_set_event_data_t& data)
 {
     SWSS_LOG_ENTER();
 
     auto ot = objectTypeQuery(data.ha_set_id);
 
-    bool valid = isHaSetObjectIdValid(ot);
+    bool valid = false;
 
-    if (!valid)
+    switch (ot)
     {
-        SWSS_LOG_ERROR("data.ha_set_id %s has unexpected type: %s, expected: %s",
-                sai_serialize_object_id(data.ha_set_id).c_str(),
-                sai_serialize_object_type(ot).c_str(),
-                boost::algorithm::join(getValidHaSetObjectTypes(), ",").c_str());
+        // TODO hardcoded types, must advance SAI repository commit to get metadata for this
+        case SAI_OBJECT_TYPE_HA_SET:
+
+            valid = true;
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("data.ha_set_id %s has unexpected type: %s, expected HA_SET",
+                    sai_serialize_object_id(data.ha_set_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+            break;
     }
 
     if (valid && !m_oids.objectReferenceExists(data.ha_set_id))
@@ -6995,14 +7003,22 @@ void Meta::meta_sai_on_ha_scope_event_single(
 
     auto ot = objectTypeQuery(data.ha_scope_id);
 
-    bool valid = isHaScopeObjectIdValid(ot);
+    bool valid = false;
 
-    if (!valid)
+    switch (ot)
     {
-        SWSS_LOG_ERROR("data.ha_scope_id %s has unexpected type: %s, expected: %s",
-                sai_serialize_object_id(data.ha_scope_id).c_str(),
-                sai_serialize_object_type(ot).c_str(),
-                boost::algorithm::join(getValidHaScopeObjectTypes(), ",").c_str());
+        // TODO hardcoded types, must advance SAI repository commit to get metadata for this
+        case SAI_OBJECT_TYPE_HA_SCOPE:
+
+            valid = true;
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("data.ha_scope_id %s has unexpected type: %s, expected HA_SCOPE",
+                    sai_serialize_object_id(data.ha_scope_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+            break;
     }
 
     if (valid && !m_oids.objectReferenceExists(data.ha_scope_id))
@@ -7331,58 +7347,6 @@ void Meta::populate(
     }
 }
 
-bool Meta::isHaSetObjectIdValid(
-        _In_ sai_object_type_t object_type)
-{
-    SWSS_LOG_ENTER();
-
-    auto members = sai_metadata_struct_members_sai_ha_set_event_data_t;
-
-    for (size_t i = 0; members[i]; i++)
-    {
-        auto* mb = members[i];
-
-        if (mb->membername != std::string("ha_set_id"))
-            continue;
-
-        for (size_t idx = 0; idx < mb->allowedobjecttypeslength; idx++)
-        {
-            if (mb->allowedobjecttypes[idx] == object_type)
-                return true;
-        }
-
-        return false;
-    }
-
-    SWSS_LOG_THROW("ha_set_id member not found on sai_ha_set_event_data");
-}
-
-bool Meta::isHaScopeObjectIdValid(
-        _In_ sai_object_type_t object_type)
-{
-    SWSS_LOG_ENTER();
-
-    auto members = sai_metadata_struct_members_sai_ha_scope_event_data_t;
-
-    for (size_t i = 0; members[i]; i++)
-    {
-        auto* mb = members[i];
-
-        if (mb->membername != std::string("ha_scope_id"))
-            continue;
-
-        for (size_t idx = 0; idx < mb->allowedobjecttypeslength; idx++)
-        {
-            if (mb->allowedobjecttypes[idx] == object_type)
-                return true;
-        }
-
-        return false;
-    }
-
-    SWSS_LOG_THROW("ha_scope_id member not found on sai_ha_scope_event_data");
-}
-
 bool Meta::isPortObjectIdValid(
         _In_ sai_object_type_t object_type)
 {
@@ -7407,40 +7371,6 @@ bool Meta::isPortObjectIdValid(
     }
 
     SWSS_LOG_THROW("port_id member not found on sai_port_oper_status_notification");
-}
-
-std::vector<std::string> Meta::getValidHaSetObjectTypes()
-{
-    SWSS_LOG_ENTER();
-
-    auto md = sai_metadata_enum_sai_object_type_t;
-
-    std::vector<std::string> v;
-
-    for (size_t i = 0; i < md.valuescount; i++)
-    {
-        if (isHaSetObjectIdValid((sai_object_type_t)md.values[i]))
-            v.push_back(md.valuesshortnames[i]);
-    }
-
-    return v;
-}
-
-std::vector<std::string> Meta::getValidHaScopeObjectTypes()
-{
-    SWSS_LOG_ENTER();
-
-    auto md = sai_metadata_enum_sai_object_type_t;
-
-    std::vector<std::string> v;
-
-    for (size_t i = 0; i < md.valuescount; i++)
-    {
-        if (isHaScopeObjectIdValid((sai_object_type_t)md.values[i]))
-            v.push_back(md.valuesshortnames[i]);
-    }
-
-    return v;
 }
 
 std::vector<std::string> Meta::getValidPortObjectTypes()
