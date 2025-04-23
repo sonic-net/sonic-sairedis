@@ -4517,7 +4517,7 @@ void sai_deserialize_ha_scope_event(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_ha_scope_event_t, (int32_t&)event);
 }
 
-void sai_deserialize_ha_role()
+void sai_deserialize_ha_role(
         _In_ const std::string& s,
         _Out_ sai_dash_ha_role_t& role)
 {
@@ -4526,7 +4526,7 @@ void sai_deserialize_ha_role()
     sai_deserialize_enum(s, &sai_metadata_enum_sai_dash_ha_role_t, (int32_t&)role);
 }
 
-void sai_deserialize_ha_state()
+void sai_deserialize_ha_state(
         _In_ const std::string& s,
         _Out_ sai_dash_ha_state_t& state)
 {
