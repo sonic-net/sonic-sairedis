@@ -560,7 +560,7 @@ void NotificationProcessor::process_on_bfd_session_state_change(
 
 void NotificationProcessor::process_on_ha_set_event(
         _In_ uint32_t count,
-        _In_ const sai_ha_set_event_data_t *data)
+        _In_ sai_ha_set_event_data_t *data)
 {
     SWSS_LOG_ENTER();
 
@@ -571,7 +571,7 @@ void NotificationProcessor::process_on_ha_set_event(
 
 void NotificationProcessor::process_on_ha_scope_event(
         _In_ uint32_t count,
-        _In_ const sai_ha_scope_event_data_t *data)
+        _In_ sai_ha_scope_event_data_t *data)
 {
     SWSS_LOG_ENTER();
 
@@ -751,7 +751,7 @@ void NotificationProcessor::handle_ha_set_event(
 {
     SWSS_LOG_ENTER();
 
-    uint32_t count,
+    uint32_t count;
     sai_ha_set_event_data_t *ha_set_event = NULL;
 
     sai_deserialize_ha_set_event_ntf(data, count, &ha_set_event);
