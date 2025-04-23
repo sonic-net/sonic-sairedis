@@ -95,6 +95,8 @@ sai_ip_prefix_t* sai_ip_prefix_t_from_string(const std::string& s)
 
 PyObject *py_convert_sai_fdb_event_notification_data_t_to_PyObject(const sai_fdb_event_notification_data_t*ntf);
 PyObject *py_convert_sai_bfd_session_state_notification_t_to_PyObject(const sai_bfd_session_state_notification_t*ntf);
+PyObject *py_convert_sai_ha_set_event_data_t_to_PyObject(const sai_ha_set_event_data_t*ntf);
+PyObject *py_convert_sai_ha_scope_event_data_t_to_PyObject(const sai_ha_scope_event_data_t*ntf);
 PyObject *py_convert_sai_port_oper_status_notification_t_to_PyObject(const sai_port_oper_status_notification_t*ntf);
 PyObject *py_convert_sai_queue_deadlock_notification_data_t_to_PyObject(const sai_queue_deadlock_notification_data_t*ntf);
 
