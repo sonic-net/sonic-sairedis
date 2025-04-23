@@ -1311,10 +1311,17 @@ private:
             {
                 values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
             }
-            values.emplace_back(m_instanceId + "_time_stamp", std::to_string(time_stamp));
+
             countersTable.set(sai_serialize_object_id(vid), values, "");
             values.clear();
         }
+
+        // First generate the key, then replace spaces with underscores to avoid issues when Lua plugins handle the timestamp
+        std::string timestamp_key = m_instanceId + "_" + m_name + "_time_stamp";
+        std::replace(timestamp_key.begin(), timestamp_key.end(), ' ', '_');
+
+        values.emplace_back(timestamp_key, std::to_string(time_stamp));
+        countersTable.set("TIME_STAMP", values, "");
 
         SWSS_LOG_DEBUG("After pushing db %s %s %s", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str());
     }
