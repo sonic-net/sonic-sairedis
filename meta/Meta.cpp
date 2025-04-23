@@ -6946,7 +6946,7 @@ void Meta::meta_sai_on_ha_set_event_single(
 
     bool valid = false;
 
-    switch (ot)
+    switch ((int)ot)
     {
         // TODO hardcoded types, must advance SAI repository commit to get metadata for this
         case SAI_OBJECT_TYPE_HA_SET:
@@ -7005,7 +7005,7 @@ void Meta::meta_sai_on_ha_scope_event_single(
 
     bool valid = false;
 
-    switch (ot)
+    switch ((int)ot)
     {
         // TODO hardcoded types, must advance SAI repository commit to get metadata for this
         case SAI_OBJECT_TYPE_HA_SCOPE:
