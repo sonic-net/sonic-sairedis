@@ -71,7 +71,7 @@ void NotificationHaScopeEvent::executeCallback(
 {
     SWSS_LOG_ENTER();
 
-    if (switchNotifications.on_ha_scope_event) 
+    if (switchNotifications.on_ha_scope_event)
     {
         switchNotifications.on_ha_scope_event(m_count, m_haScopeEventData);
     }
