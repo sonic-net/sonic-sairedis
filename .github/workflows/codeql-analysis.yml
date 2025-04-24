@@ -16,7 +16,7 @@ on:
 jobs:
   analyze:
     name: Analyze
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     permissions:
       actions: read
       contents: read
@@ -55,11 +55,11 @@ jobs:
             libzmq3-dev \
             libzmq5 \
             swig4.0 \
-            libpython2.7-dev \
+            libpython3-dev \
             libgtest-dev \
             libgmock-dev \
-            libboost1.71-dev \
-            libboost-serialization1.71-dev \
+            libboost-dev \
+            libboost-serialization-dev \
             dh-exec \
             doxygen \
             cdbs \
@@ -69,8 +69,7 @@ jobs:
             autoconf-archive \
             uuid-dev \
             libjansson-dev \
-            nlohmann-json3-dev \
-            python
+            nlohmann-json3-dev
 
     - if: matrix.language == 'cpp'
       name: Build sonic-swss-common
@@ -79,7 +78,7 @@ jobs:
         git clone https://github.com/sonic-net/sonic-swss-common
         pushd sonic-swss-common
         ./autogen.sh
-        dpkg-buildpackage -rfakeroot -us -uc -b -j$(nproc)
+        dpkg-buildpackage -rfakeroot -us -uc -b -Pnoyangmod,nopython2 -j$(nproc)
         popd
         dpkg-deb -x libswsscommon_${SWSSCOMMON_VER}_amd64.deb $(dirname $GITHUB_WORKSPACE)
         dpkg-deb -x libswsscommon-dev_${SWSSCOMMON_VER}_amd64.deb $(dirname $GITHUB_WORKSPACE)

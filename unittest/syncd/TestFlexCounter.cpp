@@ -77,6 +77,18 @@ std::vector<sai_object_id_t> generateOids(
     return object_ids;
 }
 
+void removeTimeStamp(std::vector<std::string>& keys, swss::Table& countersTable)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = std::find(keys.begin(), keys.end(), "TIME_STAMP");
+    if (it != keys.end())
+    {
+        countersTable.del("TIME_STAMP");
+        keys.erase(it);
+    }
+}
+
 void testAddRemoveCounter(
         unsigned int numOid,
         sai_object_type_t object_type,
@@ -166,6 +178,8 @@ void testAddRemoveCounter(
 
     std::vector<std::string> keys;
     countersTable.getKeys(keys);
+    // We have a dedicated item for all timestamps for counters using bulk counter polling
+    removeTimeStamp(keys, countersTable);
     EXPECT_EQ(keys.size(), object_ids.size());
 
     for (size_t i = 0; i < object_ids.size(); i++)
@@ -185,6 +199,7 @@ void testAddRemoveCounter(
     EXPECT_EQ(fc.isEmpty(), true);
 
     countersTable.getKeys(keys);
+    removeTimeStamp(keys, countersTable);
     ASSERT_TRUE(keys.empty());
 }
 
@@ -578,6 +593,26 @@ TEST(FlexCounter, addRemoveCounter)
         ACL_COUNTER_ATTR_ID_LIST,
         {"SAI_ACL_COUNTER_ATTR_PACKETS"},
         {"1000"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_COUNTER,
+        SRV6_COUNTER_ID_LIST,
+        {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_COUNTER,
+        SRV6_COUNTER_ID_LIST,
+        {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
         counterVerifyFunc,
         false,
         STATS_MODE_READ,
@@ -1036,6 +1071,8 @@ TEST(FlexCounter, bulkCounter)
         {"10", "20"},
         counterVerifyFunc,
         false);
+    // buffer pool stats does not support bulk
+    EXPECT_EQ(false, clearCalled);
 
     capabilities = (SAI_STATS_MODE_READ|SAI_STATS_MODE_BULK_READ);
     testAddRemoveCounter(
@@ -1049,8 +1086,15 @@ TEST(FlexCounter, bulkCounter)
         {"100", "200", "300", "400", "500", "600", "700", "800"},
         counterVerifyFunc,
         false);
-    // buffer pool stats does not support bulk
-    EXPECT_EQ(false, clearCalled);
+
+    testAddRemoveCounter(
+        2,
+        SAI_OBJECT_TYPE_COUNTER,
+        SRV6_COUNTER_ID_LIST,
+        {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false);
 }
 
 TEST(FlexCounter, bulkChunksize)
@@ -1708,6 +1752,7 @@ void testDashMeterAddRemoveCounter(
 
     std::vector<std::string> keys;
     countersTable.getKeys(keys);
+    removeTimeStamp(keys, countersTable);
     ASSERT_TRUE(keys.empty());
 }
 
