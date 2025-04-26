@@ -1614,3 +1614,117 @@ TEST(VendorSai, queryStatsStCapability)
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, status); // switch is null
 }
+
+TEST(VendorSai, bulk_dash_tunnel)
+{
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+
+    sai_object_id_t switchid = create_switch(sai);
+
+    sai_ip_address_t tunnel_dip1 = {};
+    sai_ip_address_t tunnel_nhop_dip1 = {};
+    sai_ip_address_t tunnel_nhop_dip2 = {};
+    tunnel_dip1.addr_family = tunnel_nhop_dip1.addr_family = tunnel_nhop_dip2.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
+    inet_pton(AF_INET, "192.168.0.1", &tunnel_dip1.addr.ip4);
+    inet_pton(AF_INET, "192.168.0.2", &tunnel_nhop_dip1.addr.ip4);
+    inet_pton(AF_INET, "192.168.0.3", &tunnel_nhop_dip2.addr.ip4);
+
+    // DASH Tunnel
+    sai_attribute_t tunnel_attrs0[] = {
+        {.id = SAI_DASH_TUNNEL_ATTR_DIP, .value = (sai_attribute_value_t){.ipaddr = tunnel_dip1}},
+	{.id = SAI_DASH_TUNNEL_ATTR_DASH_ENCAPSULATION, .value = (sai_attribute_value_t){.s32 = SAI_DASH_ENCAPSULATION_VXLAN}},
+	{.id = SAI_DASH_TUNNEL_ATTR_TUNNEL_KEY, .value = (sai_attribute_value_t){.s32 = 100}},
+    };
+
+     sai_attribute_t tunnel_attrs1[] = {
+        {.id = SAI_DASH_TUNNEL_ATTR_MAX_MEMBER_SIZE, .value = (sai_attribute_value_t){.s32 = 2}},
+	{.id = SAI_DASH_TUNNEL_ATTR_DASH_ENCAPSULATION, .value = (sai_attribute_value_t){.s32 = SAI_DASH_ENCAPSULATION_VXLAN}},
+	{.id = SAI_DASH_TUNNEL_ATTR_TUNNEL_KEY, .value = (sai_attribute_value_t){.s32 = 200}},
+    };
+
+    const sai_attribute_t *tunnel_attr_list[] = {
+        tunnel_attrs0,
+        tunnel_attrs1,
+    };
+
+    constexpr uint32_t tunnels_count = sizeof(tunnel_attr_list) / sizeof(sai_attribute_t*);
+    constexpr uint32_t tunnel_attrs_count = sizeof(tunnel_attrs0) / sizeof(sai_attribute_t);
+
+    uint32_t tunnel_attr_count[tunnels_count] = {tunnel_attrs_count, tunnel_attrs_count};
+    sai_object_id_t tunnels[tunnels_count];
+    sai_status_t statuses[tunnels_count] = {};
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_DASH_TUNNEL, switchid, tunnels_count, tunnel_attr_count, tunnel_attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, tunnels, statuses));
+    for (uint32_t i = 0; i < tunnels_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
+    }
+
+    // DASH Tunnel next hop
+     sai_attribute_t tunnel_nhop_attrs0[] = {
+        {.id = SAI_DASH_TUNNEL_NEXT_HOP_ATTR_DIP, .value = (sai_attribute_value_t){.ipaddr = tunnel_nhop_dip1}},
+     };
+     sai_attribute_t tunnel_nhop_attrs1[] = {
+        {.id = SAI_DASH_TUNNEL_NEXT_HOP_ATTR_DIP, .value = (sai_attribute_value_t){.ipaddr = tunnel_nhop_dip2}},
+     };
+
+    const sai_attribute_t *tunnel_nhop_attr_list[] = {
+        tunnel_nhop_attrs0,
+        tunnel_nhop_attrs1,
+    };
+
+    constexpr uint32_t tunnel_nhop_count = sizeof(tunnel_nhop_attr_list) / sizeof(sai_attribute_t*);
+    constexpr uint32_t tunnel_nhop_attrs_count = sizeof(tunnel_nhop_attrs0) / sizeof(sai_attribute_t);
+
+    uint32_t tunnel_nhop_attr_count[] = {tunnel_nhop_attrs_count, tunnel_nhop_attrs_count};
+    sai_object_id_t tunnel_nhops[tunnel_nhop_count];
+    sai_status_t tunnel_nhop_statuses[tunnel_nhop_count] = {};
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_DASH_TUNNEL_NEXT_HOP, switchid, tunnel_nhop_count, tunnel_nhop_attr_count, tunnel_nhop_attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, tunnel_nhops, tunnel_nhop_statuses));
+    for (uint32_t i = 0; i < tunnel_nhop_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, tunnel_nhop_statuses[i]);
+    }
+
+    // DASH Tunnel member
+     sai_attribute_t tunnel_member_attrs0[] = {
+        {.id = SAI_DASH_TUNNEL_MEMBER_ATTR_DASH_TUNNEL_ID, .value = (sai_attribute_value_t){.oid = tunnels[1]}},
+        {.id = SAI_DASH_TUNNEL_MEMBER_ATTR_DASH_TUNNEL_NEXT_HOP_ID, .value = (sai_attribute_value_t){.oid = tunnel_nhops[0]}},
+     };
+     sai_attribute_t tunnel_member_attrs1[] = {
+        {.id = SAI_DASH_TUNNEL_MEMBER_ATTR_DASH_TUNNEL_ID, .value = (sai_attribute_value_t){.oid = tunnels[1]}},
+        {.id = SAI_DASH_TUNNEL_MEMBER_ATTR_DASH_TUNNEL_NEXT_HOP_ID, .value = (sai_attribute_value_t){.oid = tunnel_nhops[1]}},
+     };
+
+    const sai_attribute_t *tunnel_member_attr_list[] = {
+        tunnel_member_attrs0,
+        tunnel_member_attrs1,
+    };
+
+    constexpr uint32_t tunnel_member_count = sizeof(tunnel_member_attr_list) / sizeof(sai_attribute_t*);
+    constexpr uint32_t tunnel_member_attrs_count = sizeof(tunnel_member_attrs0) / sizeof(sai_attribute_t);
+
+    uint32_t tunnel_member_attr_count[] = {tunnel_member_attrs_count, tunnel_member_attrs_count};
+    sai_object_id_t tunnel_members[tunnel_member_count];
+    sai_status_t tunnel_member_statuses[tunnel_member_count] = {};
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_DASH_TUNNEL_MEMBER, switchid, tunnel_member_count, tunnel_member_attr_count, tunnel_member_attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, tunnel_members, tunnel_member_statuses));
+    for (uint32_t i = 0; i < tunnel_member_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, tunnel_member_statuses[i]);
+    }
+
+    // Remove all
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_TUNNEL_MEMBER, tunnel_member_count, tunnel_members, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, tunnel_member_statuses));
+    for (uint32_t i = 0; i < tunnel_member_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, tunnel_member_statuses[i]);
+    }
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_TUNNEL_NEXT_HOP, tunnel_nhop_count, tunnel_nhops, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, tunnel_nhop_statuses));
+    for (uint32_t i = 0; i < tunnel_nhop_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, tunnel_nhop_statuses[i]);
+    }
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_DASH_TUNNEL, tunnels_count, tunnels, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    for (uint32_t i = 0; i < tunnels_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
+    }
+}

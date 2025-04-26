@@ -532,6 +532,18 @@ sai_status_t VendorSai::bulkCreate(
             ptr = m_apis.dash_meter_api->create_meter_rules;
             break;
 
+        case SAI_OBJECT_TYPE_DASH_TUNNEL:
+            ptr = m_apis.dash_tunnel_api->create_dash_tunnels;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL_MEMBER:
+            ptr = m_apis.dash_tunnel_api->create_dash_tunnel_members;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL_NEXT_HOP:
+            ptr = m_apis.dash_tunnel_api->create_dash_tunnel_next_hops;
+            break;
+
         default:
             SWSS_LOG_ERROR("not implemented %s, FIXME", sai_serialize_object_type(object_type).c_str());
             return SAI_STATUS_NOT_IMPLEMENTED;
@@ -617,6 +629,18 @@ sai_status_t VendorSai::bulkRemove(
 
         case SAI_OBJECT_TYPE_METER_RULE:
             ptr = m_apis.dash_meter_api->remove_meter_rules;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL:
+            ptr = m_apis.dash_tunnel_api->remove_dash_tunnels;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL_MEMBER:
+            ptr = m_apis.dash_tunnel_api->remove_dash_tunnel_members;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL_NEXT_HOP:
+            ptr = m_apis.dash_tunnel_api->remove_dash_tunnel_next_hops;
             break;
 
         default:
