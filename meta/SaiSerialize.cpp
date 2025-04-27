@@ -1913,6 +1913,47 @@ std::string sai_serialize_outbound_ca_to_pa_entry(
     return j.dump();
 }
 
+std::string sai_serialize_outbound_port_map_port_range_entry(
+        _In_ const sai_outbound_port_map_port_range_entry_t &outbound_port_map_port_range_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(outbound_port_map_port_range_entry.switch_id);
+    j["outbound_port_map_id"] = sai_serialize_object_id(outbound_port_map_port_range_entry.outbound_port_map_id);
+    j["dst_port_range"] = sai_serialize_range(outbound_port_map_port_range_entry.dst_port_range);
+
+    return j.dump();
+}
+
+std::string sai_serialize_global_trusted_vni_entry(
+        _In_ const sai_global_trusted_vni_entry_t &global_trusted_vni_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(global_trusted_vni_entry.switch_id);
+    j["vni_range"] = sai_serialize_range(global_trusted_vni_entry.vni_range);
+
+    return j.dump();
+}
+
+std::string sai_serialize_eni_trusted_vni_entry(
+        _In_ const sai_eni_trusted_vni_entry_t &eni_trusted_vni_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(eni_trusted_vni_entry.switch_id);
+    j["eni_id"] = sai_serialize_object_id(eni_trusted_vni_entry.eni_id);
+    j["vni_range"] = sai_serialize_range(eni_trusted_vni_entry.vni_range);
+
+    return j.dump();
+}
+
 std::string sai_serialize_system_port_config(
         _In_ const sai_attr_metadata_t &meta,
         _In_ const sai_system_port_config_t &sysportconfig)
@@ -2864,6 +2905,18 @@ static bool sai_serialize_object_extension_entry(
 
         case SAI_OBJECT_TYPE_METER_BUCKET_ENTRY:
             key = sai_serialize_meter_bucket_entry(key_entry.meter_bucket_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+            key = sai_serialize_outbound_port_map_port_range_entry(key_entry.outbound_port_map_port_range_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+            key = sai_serialize_global_trusted_vni_entry(key_entry.global_trusted_vni_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
+            key = sai_serialize_eni_trusted_vni_entry(key_entry.eni_trusted_vni_entry);
             return true;
 
         default:
@@ -4785,6 +4838,44 @@ void sai_deserialize_flow_entry(
     sai_deserialize_number(j["dst_port"], flow_entry.dst_port);
 }
 
+void sai_deserialize_outbound_port_map_port_range_entry(
+        _In_ const std::string& s,
+        _Out_ sai_outbound_port_map_port_range_entry_t& outbound_port_map_port_range_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], outbound_port_map_port_range_entry.switch_id);
+    sai_deserialize_object_id(j["outbound_port_map_id"], outbound_port_map_port_range_entry.outbound_port_map_id);
+    sai_deserialize_range(j["dst_port_range"], outbound_port_map_port_range_entry.dst_port_range);
+}
+
+void sai_deserialize_global_trusted_vni_entry(
+        _In_ const std::string& s,
+        _Out_ sai_global_trusted_vni_entry_t& global_trusted_vni_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], global_trusted_vni_entry.switch_id);
+    sai_deserialize_range(j["vni_range"], global_trusted_vni_entry.vni_range);
+}
+
+void sai_deserialize_eni_trusted_vni_entry(
+        _In_ const std::string& s,
+        _Out_ sai_eni_trusted_vni_entry_t& eni_trusted_vni_entry)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], eni_trusted_vni_entry.switch_id);
+    sai_deserialize_object_id(j["eni_id"], eni_trusted_vni_entry.eni_id);
+    sai_deserialize_range(j["vni_range"], eni_trusted_vni_entry.vni_range);
+}
+
 void sai_deserialize_twamp_session_stats_data(
         _In_ const std::string& s,
         _Out_ sai_twamp_session_stats_data_t &twamp_session_stats_data)
@@ -5269,6 +5360,18 @@ bool sai_deserialize_object_extension_entry(
 
         case SAI_OBJECT_TYPE_METER_BUCKET_ENTRY:
             sai_deserialize_meter_bucket_entry(object_id, meta_key.objectkey.key.meter_bucket_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+            sai_deserialize_outbound_port_map_port_range_entry(object_id, meta_key.objectkey.key.outbound_port_map_port_range_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+            sai_deserialize_global_trusted_vni_entry(object_id, meta_key.objectkey.key.global_trusted_vni_entry);
+            return true;
+
+        case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
+            sai_deserialize_eni_trusted_vni_entry(object_id, meta_key.objectkey.key.eni_trusted_vni_entry);
             return true;
 
         default:

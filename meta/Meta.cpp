@@ -3244,6 +3244,63 @@ sai_status_t Meta::meta_sai_validate_prefix_compression_entry(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+sai_status_t Meta::meta_sai_validate_outbound_port_map_port_range_entry(
+        _In_ const sai_outbound_port_map_port_range_entry_t* outbound_port_map_port_range_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (outbound_port_map_port_range_entry == NULL)
+    {
+        SWSS_LOG_ERROR("outbound_port_map_port_range_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // TODO FIX ME
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_global_trusted_vni_entry(
+        _In_ const sai_global_trusted_vni_entry_t* global_trusted_vni_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (global_trusted_vni_entry == NULL)
+    {
+        SWSS_LOG_ERROR("global_trusted_vni_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // TODO FIX ME
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_eni_trusted_vni_entry(
+        _In_ const sai_eni_trusted_vni_entry_t* eni_trusted_vni_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (eni_trusted_vni_entry == NULL)
+    {
+        SWSS_LOG_ERROR("eni_trusted_vni_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // TODO FIX ME
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t Meta::meta_generic_validation_create(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
