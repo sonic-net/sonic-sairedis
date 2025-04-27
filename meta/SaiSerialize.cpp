@@ -514,6 +514,10 @@ sai_status_t transfer_attribute(
             transfer_primitive(src_attr.value.portpowerconsumption, dst_attr.value.portpowerconsumption);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.portpam4eyevalues, dst_attr.value.portpam4eyevalues, countOnly));
+            break;
+
         default:
             SWSS_LOG_THROW("sai attr value %s is not implemented, FIXME", sai_serialize_attr_value_type(serialization_type).c_str());
     }
