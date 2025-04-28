@@ -48,17 +48,6 @@ static sai_service_method_table_t test_services = {
     profile_get_next_value
 };
 
-class TestServerSaiMockChannel : public SelectableChannel
-{
-public:
-    MOCK_METHOD(bool, empty, (), (override));
-    MOCK_METHOD(void, pop, (swss::KeyOpFieldsValuesTuple & kco, bool initViewMode), (override));
-    MOCK_METHOD(void, set, (const std::string &key, const std::vector<swss::FieldValueTuple> &values, const std::string &op), (override));
-    MOCK_METHOD(int, getFd, (), (override));
-    MOCK_METHOD(uint64_t, readData, (), (override));
-
-};
-
 
 TEST(ServerSai, bulkGet)
 {
@@ -82,6 +71,19 @@ TEST(ServerSai, bulkGet)
                 statuses));
 }
 
+
+#ifdef MOCK_METHOD
+class TestServerSaiMockChannel : public SelectableChannel
+{
+public:
+    MOCK_METHOD(bool, empty, (), (override));
+    MOCK_METHOD(void, pop, (swss::KeyOpFieldsValuesTuple & kco, bool initViewMode), (override));
+    MOCK_METHOD(void, set, (const std::string &key, const std::vector<swss::FieldValueTuple> &values, const std::string &op), (override));
+    MOCK_METHOD(int, getFd, (), (override));
+    MOCK_METHOD(uint64_t, readData, (), (override));
+
+};
+
 TEST(ServerSai, stats_st_capability_query)
 {
     SWSS_LOG_ENTER();
@@ -100,3 +102,4 @@ TEST(ServerSai, stats_st_capability_query)
     EXPECT_EQ(SAI_STATUS_SUCCESS,
               sai.processStatsStCapabilityQuery(kco));
 }
+#endif
