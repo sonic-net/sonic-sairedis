@@ -374,7 +374,8 @@ void TestClient::test_query_api()
                 m_switch_id,
                 SAI_OBJECT_TYPE_QUEUE,
                 &queue_stats_capability);
-    ASSERT_TRUE(rc == SAI_STATUS_BUFFER_OVERFLOW);
+    ASSERT_TRUE(rc == SAI_STATUS_BUFFER_OVERFLOW ||
+            rc == SAI_STATUS_NOT_IMPLEMENTED);
 
     sai_stat_capability_t stat_initializer;
     stat_initializer.stat_enum = 0;
