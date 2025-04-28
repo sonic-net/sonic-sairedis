@@ -56,13 +56,13 @@ VendorSai::VendorSai()
 #ifdef HAVE_SAI_QUERY_STATS_ST_CAPABILITY
         .query_stats_st_capability = &sai_query_stats_st_capability,
 #else
-        .query_stats_st_capability = nullptr;
+        .query_stats_st_capability = nullptr,
 #endif
         .switch_id_query = &sai_switch_id_query,
 #ifdef HAVE_SAI_TAM_TELEMETRY_GET_DATA
         .tam_telemetry_get_data = &sai_tam_telemetry_get_data,
 #else
-        .tam_telemetry_get_data = nullptr;
+        .tam_telemetry_get_data = nullptr,
 #endif
     };
 
