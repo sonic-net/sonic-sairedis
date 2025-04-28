@@ -402,7 +402,7 @@ void TestClient::test_query_api()
         SAI_OBJECT_TYPE_QUEUE,
         &queue_stats_st_capability);
 
-    printf("rc: %s\n", sai_serialize_status(rc));
+    printf("rc: %s\n", sai_serialize_status(rc).c_str());
 
     ASSERT_TRUE(rc == SAI_STATUS_BUFFER_OVERFLOW);
 
