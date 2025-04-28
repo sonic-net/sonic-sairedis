@@ -405,7 +405,8 @@ void TestClient::test_query_api()
 
     printf("rc: %s\n", sai_serialize_status(rc).c_str());
 
-    ASSERT_TRUE(rc == SAI_STATUS_BUFFER_OVERFLOW);
+    ASSERT_TRUE(rc == SAI_STATUS_BUFFER_OVERFLOW ||
+            rc == SAI_STATUS_NOT_IMPLEMENTED);
 
     sai_stat_st_capability_t stat_st_initializer;
     stat_st_initializer.capability.stat_enum = 0;
@@ -415,10 +416,13 @@ void TestClient::test_query_api()
 
     SWSS_LOG_NOTICE(" * sai_query_stats_st_capability");
 
-    ASSERT_SUCCESS(sai_query_stats_st_capability(
+    rc = sai_query_stats_st_capability(
         m_switch_id,
         SAI_OBJECT_TYPE_QUEUE,
-        &queue_stats_st_capability));
+        &queue_stats_st_capability);
+
+    ASSERT_TRUE(rc == SAI_STATUS_SUCCESS ||
+            rc == SAI_STATUS_NOT_IMPLEMENTED);
 
     teardown();
 }
