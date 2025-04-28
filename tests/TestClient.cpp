@@ -401,6 +401,9 @@ void TestClient::test_query_api()
         m_switch_id,
         SAI_OBJECT_TYPE_QUEUE,
         &queue_stats_st_capability);
+
+    printf("rc: %s\n", sai_serialize_status(rc));
+
     ASSERT_TRUE(rc == SAI_STATUS_BUFFER_OVERFLOW);
 
     sai_stat_st_capability_t stat_st_initializer;
