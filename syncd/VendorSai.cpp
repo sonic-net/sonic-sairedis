@@ -53,9 +53,17 @@ VendorSai::VendorSai()
         .query_attribute_enum_values_capability = &sai_query_attribute_enum_values_capability,
         .query_object_stage = nullptr,
         .query_stats_capability = &sai_query_stats_capability,
+#ifdef HAVE_SAI_QUERY_STATS_ST_CAPABILITY
         .query_stats_st_capability = &sai_query_stats_st_capability,
+#else
+        .query_stats_st_capability = nullptr,
+#endif
         .switch_id_query = &sai_switch_id_query,
+#ifdef HAVE_SAI_TAM_TELEMETRY_GET_DATA
         .tam_telemetry_get_data = &sai_tam_telemetry_get_data,
+#else
+        .tam_telemetry_get_data = nullptr,
+#endif
     };
 
     m_globalApis = ga;
@@ -353,10 +361,12 @@ sai_status_t VendorSai::queryStatsStCapability(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    return m_globalApis.query_stats_st_capability(
-        switchId,
-        objectType,
-        stats_capability);
+    return (m_globalApis.query_stats_st_capability == nullptr)
+        ? SAI_STATUS_NOT_IMPLEMENTED
+        : m_globalApis.query_stats_st_capability(
+                switchId,
+                objectType,
+                stats_capability);
 }
 
 sai_status_t VendorSai::getStatsExt(
