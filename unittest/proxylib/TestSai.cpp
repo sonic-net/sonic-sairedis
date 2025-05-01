@@ -822,10 +822,10 @@ TEST(Sai, handleNotification)
     // dummy stop sending notifications
     EXPECT_EQ(dummy->stop(), SAI_STATUS_SUCCESS);
 
-    EXPECT_EQ(proxy->getNotificationsSentCount(), 11);
+    EXPECT_EQ(proxy->getNotificationsSentCount(), 12);
 
     // important check, whether Sai class processed notifications correctly
-    EXPECT_EQ(ntfCounter, 11);
+    EXPECT_EQ(ntfCounter, 12);
 
     proxy->stop();
 
