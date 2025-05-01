@@ -280,7 +280,7 @@ TEST(Proxy, notifications)
     // dummy stop sending notifications
     EXPECT_EQ(dummy->stop(), SAI_STATUS_SUCCESS);
 
-    EXPECT_EQ(proxy->getNotificationsSentCount(), 4+6+1);
+    EXPECT_EQ(proxy->getNotificationsSentCount(), 4+7+1);
 
     proxy->stop();
 
