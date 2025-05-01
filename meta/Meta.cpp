@@ -7055,6 +7055,56 @@ void Meta::meta_sai_on_ha_scope_event(
     }
 }
 
+void Meta::meta_sai_on_icmp_echo_session_state_change_single(
+        _In_ const sai_icmp_echo_session_state_notification_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    auto ot = objectTypeQuery(data.icmp_echo_session_id);
+
+    bool valid = isIcmpEchoSessionObjectIdValid(ot);
+
+    if(!valid){
+        SWSS_LOG_ERROR("data.icmp_echo_session_id %s has unexpected type: %s, expected %s",
+                sai_serialize_object_id(data.icmp_echo_session_id).c_str(),
+                sai_serialize_object_type(ot).c_str(),
+                boost::algorithm::join(getValidIcmpEchoSessionObjectTypes(), ",").c_str());
+    }
+
+    if (valid && !m_oids.objectReferenceExists(data.icmp_echo_session_id))
+    {
+        SWSS_LOG_NOTICE("data.icmp_echo_session_id new object spotted %s not present in local DB (snoop!)",
+                sai_serialize_object_id(data.icmp_echo_session_id).c_str());
+
+        sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = data.icmp_echo_session_id } } };
+
+        m_oids.objectReferenceInsert(data.icmp_echo_session_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
+    }
+}
+
+void Meta::meta_sai_on_icmp_echo_session_state_change(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("sai_icmp_echo_session_state_notification_t pointer is NULL but count is %u", count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meta_sai_on_icmp_echo_session_state_change_single(data[i]);
+    }
+}
+
 void Meta::meta_sai_on_twamp_session_event_single(
         _In_ const sai_twamp_session_event_notification_data_t& data)
 {
@@ -7384,6 +7434,49 @@ std::vector<std::string> Meta::getValidPortObjectTypes()
     for (size_t i = 0; i < md.valuescount; i++)
     {
         if (isPortObjectIdValid((sai_object_type_t)md.values[i]))
+            v.push_back(md.valuesshortnames[i]);
+    }
+
+    return v;
+}
+
+bool Meta::isIcmpEchoSessionObjectIdValid(
+        _In_ sai_object_type_t object_type)
+{
+    SWSS_LOG_ENTER();
+
+    auto members = sai_metadata_struct_members_sai_icmp_echo_session_state_notification_t;
+
+    for (size_t i = 0; members[i]; i++)
+    {
+        auto* mb = members[i];
+
+        if (mb->membername != std::string("icmp_echo_session_id"))
+            continue;
+
+        for (size_t idx = 0; idx < mb->allowedobjecttypeslength; idx++)
+        {
+            if (mb->allowedobjecttypes[idx] == object_type)
+                return true;
+        }
+
+        return false;
+    }
+
+    SWSS_LOG_THROW("member not found for sai_icmp_echo_session_state_notification_t");
+}
+
+std::vector<std::string> Meta::getValidIcmpEchoSessionObjectTypes()
+{
+    SWSS_LOG_ENTER();
+
+    auto md = sai_metadata_enum_sai_object_type_t;
+
+    std::vector<std::string> v;
+
+    for (size_t i = 0; i < md.valuescount; i++)
+    {
+        if (isIcmpEchoSessionObjectIdValid((sai_object_type_t)md.values[i]))
             v.push_back(md.valuesshortnames[i]);
     }
 

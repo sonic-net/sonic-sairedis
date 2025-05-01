@@ -1060,6 +1060,10 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
+    attr.id = SAI_SWITCH_ATTR_ICMP_ECHO_SESSION_STATE_CHANGE_NOTIFY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
     attr.id = SAI_SWITCH_ATTR_HA_SET_EVENT_NOTIFY;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));

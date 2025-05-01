@@ -7,6 +7,7 @@
 #include "NotificationSwitchStateChange.h"
 #include "NotificationSwitchAsicSdkHealthEvent.h"
 #include "NotificationBfdSessionStateChange.h"
+#include "NotificationIcmpEchoSessionStateChange.h"
 #include "NotificationTwampSessionEvent.h"
 #include "NotificationPortHostTxReadyEvent.h"
 #include "NotificationTamTelTypeConfigChange.h"
@@ -50,6 +51,9 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE)
         return std::make_shared<NotificationBfdSessionStateChange>(serializedNotification);
+
+    if (name == SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE)
+        return std::make_shared<NotificationIcmpEchoSessionStateChange>(serializedNotification);
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT)
         return std::make_shared<NotificationHaSetEvent>(serializedNotification);

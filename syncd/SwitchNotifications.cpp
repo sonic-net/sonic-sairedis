@@ -89,6 +89,16 @@ void SwitchNotifications::SlotBase::onBfdSessionStateChange(
     return m_slots.at(context)->m_handler->onBfdSessionStateChange(count, data);
 }
 
+void SwitchNotifications::SlotBase::onIcmpEchoSessionStateChange(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onIcmpEchoSessionStateChange(count, data);
+}
+
 void SwitchNotifications::SlotBase::onHaSetEvent(
         _In_ int context,
         _In_ uint32_t count,

@@ -92,6 +92,10 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ sai_bfd_session_state_notification_t *data);
 
+            void process_on_icmp_echo_session_state_change(
+                    _In_ uint32_t count,
+                    _In_ sai_icmp_echo_session_state_notification_t *data);
+
             void process_on_ha_set_event(
                     _In_ uint32_t count,
                     _In_ sai_ha_set_event_data_t *data);
@@ -138,6 +142,9 @@ namespace syncd
                     _In_ const std::string &data);
 
             void handle_bfd_session_state_change(
+                    _In_ const std::string &data);
+
+            void handle_icmp_echo_session_state_change(
                     _In_ const std::string &data);
 
             void handle_ha_set_event(

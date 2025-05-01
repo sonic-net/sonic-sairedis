@@ -329,6 +329,10 @@ std::string sai_serialize_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ const sai_bfd_session_state_notification_t* bfd_session_state);
 
+std::string sai_serialize_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t* icmp_echo_session_state);
+
 std::string sai_serialize_ha_set_event_ntf(
         _In_ uint32_t count,
         _In_ const sai_ha_set_event_data_t* ha_set_event);
@@ -584,6 +588,12 @@ void sai_deserialize_bfd_session_state_ntf(
         _Out_ uint32_t &count,
         _Out_ sai_bfd_session_state_notification_t** bfdsession);
 
+
+void sai_deserialize_icmp_echo_session_state_ntf(
+       _In_ const std::string& s,
+       _Out_ uint32_t &count,
+       _Out_ sai_icmp_echo_session_state_notification_t** icmp_echo_session);
+
 void sai_deserialize_ha_set_event_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
@@ -633,6 +643,10 @@ void sai_deserialize_free_queue_deadlock_ntf(
 void sai_deserialize_free_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ sai_bfd_session_state_notification_t* bfdsessionstate);
+
+void sai_deserialize_free_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ sai_icmp_echo_session_state_notification_t* icmp_echo_session_state);
 
 void sai_deserialize_free_ha_set_event_ntf(
         _In_ uint32_t count,

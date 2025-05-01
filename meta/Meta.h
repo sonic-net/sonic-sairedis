@@ -245,6 +245,10 @@ namespace saimeta
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
 
+            void meta_sai_on_icmp_echo_session_state_change(
+                    _In_ uint32_t count,
+                    _In_ const sai_icmp_echo_session_state_notification_t *data);
+
             void meta_sai_on_ha_set_event(
                     _In_ uint32_t count,
                     _In_ const sai_ha_set_event_data_t *data);
@@ -286,6 +290,9 @@ namespace saimeta
 
             void meta_sai_on_bfd_session_state_change_single(
                     _In_ const sai_bfd_session_state_notification_t& data);
+
+            void meta_sai_on_icmp_echo_session_state_change_single(
+                    _In_ const sai_icmp_echo_session_state_notification_t& data);
 
             void meta_sai_on_ha_set_event_single(
                     _In_ const sai_ha_set_event_data_t& data);
@@ -339,7 +346,11 @@ namespace saimeta
             static bool isPortObjectIdValid(
                     _In_ sai_object_type_t object_type);
 
+	    static bool isIcmpEchoSessionObjectIdValid(
+                    _In_ sai_object_type_t object_type);
+
             static std::vector<std::string> getValidPortObjectTypes();
+            static std::vector<std::string> getValidIcmpEchoSessionObjectTypes();
 
         private: // unit tests helpers
 

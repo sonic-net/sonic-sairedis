@@ -188,6 +188,17 @@ void NotificationHandler::onBfdSessionStateChange(
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
+void NotificationHandler::onIcmpEchoSessionStateChange(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_icmp_echo_session_state_ntf(count, data);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE, s);
+}
+
 void NotificationHandler::onHaSetEvent(
         _In_ uint32_t count,
         _In_ const sai_ha_set_event_data_t *data)

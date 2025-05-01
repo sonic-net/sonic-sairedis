@@ -2342,6 +2342,14 @@ std::string sai_serialize_bfd_session_state(
     return sai_serialize_enum(status, &sai_metadata_enum_sai_bfd_session_state_t);
 }
 
+std::string sai_serialize_icmp_echo_session_state(
+        _In_ sai_icmp_echo_session_state_t status)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(status, &sai_metadata_enum_sai_icmp_echo_session_state_t);
+}
+
 std::string sai_serialize_ha_set_event(
         _In_ sai_ha_set_event_t event)
 {
@@ -2566,6 +2574,31 @@ std::string sai_serialize_bfd_session_state_ntf(
     }
 
     // we don't need count since it can be deduced
+    return j.dump();
+}
+
+std::string sai_serialize_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t* icmp_echo_session_state)
+{
+    SWSS_LOG_ENTER();
+
+    if (icmp_echo_session_state == NULL)
+    {
+        SWSS_LOG_THROW("icmp_echo_session _state pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+	json item;
+        item["icmp_echo_session_id"] = sai_serialize_object_id(icmp_echo_session_state[i].icmp_echo_session_id);
+        item["session_state"] = sai_serialize_icmp_echo_session_state(icmp_echo_session_state[i].session_state);
+
+        j.push_back(item);
+    }
+
     return j.dump();
 }
 
@@ -4499,6 +4532,15 @@ void sai_deserialize_bfd_session_state(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_bfd_session_state_t, (int32_t&)state);
 }
 
+void sai_deserialize_icmp_echo_session_state(
+        _In_ const std::string& s,
+        _Out_ sai_icmp_echo_session_state_t& state)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_icmp_echo_session_state_t, (int32_t&)state);
+}
+
 void sai_deserialize_ha_set_event(
         _In_ const std::string& s,
         _Out_ sai_ha_set_event_t& event)
@@ -5431,6 +5473,28 @@ void sai_deserialize_bfd_session_state_ntf(
     *bfd_session_state = data;
 }
 
+void sai_deserialize_icmp_echo_session_state_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_icmp_echo_session_state_notification_t** icmp_echo_session_state)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_icmp_echo_session_state_notification_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_object_id(j[i]["icmp_echo_session_id"], data[i].icmp_echo_session_id);
+        sai_deserialize_icmp_echo_session_state(j[i]["session_state"], data[i].session_state);
+    }
+
+    *icmp_echo_session_state = data;
+}
+
 void sai_deserialize_ha_set_event_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
@@ -5809,6 +5873,15 @@ void sai_deserialize_free_bfd_session_state_ntf(
     SWSS_LOG_ENTER();
 
     delete[] bfd_session_state;
+}
+
+void sai_deserialize_free_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ sai_icmp_echo_session_state_notification_t* icmp_echo_session_state)
+{
+    SWSS_LOG_ENTER();
+
+    delete[] icmp_echo_session_state;
 }
 
 void sai_deserialize_free_ha_set_event_ntf(

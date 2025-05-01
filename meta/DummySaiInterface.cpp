@@ -854,6 +854,25 @@ void DummySaiInterface::sendNotification(
             }
             break;
 
+        case SAI_SWITCH_ATTR_ICMP_ECHO_SESSION_STATE_CHANGE_NOTIFY:
+
+            if (sn.on_icmp_echo_session_state_change)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_icmp_echo_session_state_change");
+
+                sai_icmp_echo_session_state_notification_t data;
+
+                data.icmp_echo_session_id = 0x2;
+                data.session_state = SAI_ICMP_ECHO_SESSION_STATE_DOWN;
+
+                sn.on_icmp_echo_session_state_change(1, &data);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_icmp_echo_session_state_change");
+            }
+            break;
+
         case SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY:
 
             if (sn.on_twamp_session_event)

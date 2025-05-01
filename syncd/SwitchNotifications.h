@@ -85,6 +85,11 @@ namespace syncd
                             _In_ uint32_t count,
                             _In_ const sai_bfd_session_state_notification_t *data);
 
+                    static void onIcmpEchoSessionStateChange(
+                            _In_ int context,
+                            _In_ uint32_t count,
+                            _In_ const sai_icmp_echo_session_state_notification_t *data);
+
                     static void onTwampSessionEvent(
                             _In_ int context,
                             _In_ uint32_t count,
@@ -132,7 +137,7 @@ namespace syncd
                             .on_switch_asic_sdk_health_event = &Slot<context>::onSwitchAsicSdkHealthEvent,
                             .on_port_host_tx_ready = &Slot<context>::onPortHostTxReady,
                             .on_twamp_session_event = &Slot<context>::onTwampSessionEvent,
-                            .on_icmp_echo_session_state_change = nullptr,
+                            .on_icmp_echo_session_state_change = &Slot<context>::onIcmpEchoSessionStateChange,
                             .on_extended_port_state_change = nullptr,
                             .on_tam_tel_type_config_change = &Slot<context>::onTamTelTypeConfigChange,
                             .on_ha_set_event = &Slot<context>::onHaSetEvent,
@@ -189,6 +194,14 @@ namespace syncd
                     return SlotBase::onBfdSessionStateChange(context, count, data);
                 }
 
+                static void onIcmpEchoSessionStateChange(
+                        _In_ uint32_t count,
+                        _In_ const sai_icmp_echo_session_state_notification_t *data)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onIcmpEchoSessionStateChange(context, count, data);
+                }
                 static void onHaSetEvent(
                         _In_ uint32_t count,
                         _In_ const sai_ha_set_event_data_t *data)
@@ -298,6 +311,7 @@ namespace syncd
             std::function<void(sai_object_id_t)>                                                    onSwitchShutdownRequest;
             std::function<void(sai_object_id_t switch_id, sai_switch_oper_status_t)>                onSwitchStateChange;
             std::function<void(uint32_t, const sai_bfd_session_state_notification_t*)>              onBfdSessionStateChange;
+            std::function<void(uint32_t, const sai_icmp_echo_session_state_notification_t*)>        onIcmpEchoSessionStateChange;
             std::function<void(uint32_t, const sai_twamp_session_event_notification_data_t*)>       onTwampSessionEvent;
             std::function<void(sai_object_id_t)>                                                    onTamTelTypeConfigChange;
             std::function<void(uint32_t, const sai_ha_set_event_data_t*)>                          onHaSetEvent;

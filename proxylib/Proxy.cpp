@@ -63,6 +63,7 @@ Proxy::Proxy(
     m_swNtf.onSwitchShutdownRequest = std::bind(&Proxy::onSwitchShutdownRequest, this, _1);
     m_swNtf.onSwitchStateChange = std::bind(&Proxy::onSwitchStateChange, this, _1, _2);
     m_swNtf.onBfdSessionStateChange = std::bind(&Proxy::onBfdSessionStateChange, this, _1, _2);
+    m_swNtf.onIcmpEchoSessionStateChange = std::bind(&Proxy::onIcmpEchoSessionStateChange, this, _1, _2);
     m_swNtf.onHaSetEvent = std::bind(&Proxy::onHaSetEvent, this, _1, _2);
     m_swNtf.onHaScopeEvent = std::bind(&Proxy::onHaScopeEvent, this, _1, _2);
     m_swNtf.onPortHostTxReady = std::bind(&Proxy::onPortHostTxReady, this, _1, _2, _3);
@@ -1206,6 +1207,16 @@ void Proxy::onBfdSessionStateChange(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
+void Proxy::onIcmpEchoSessionStateChange(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_icmp_echo_session_state_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE, s);
+}
 void Proxy::onHaSetEvent(
         _In_ uint32_t count,
         _In_ const sai_ha_set_event_data_t *data)

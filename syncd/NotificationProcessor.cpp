@@ -558,6 +558,35 @@ void NotificationProcessor::process_on_bfd_session_state_change(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
+void NotificationProcessor::process_on_icmp_echo_session_state_change(
+        _In_ uint32_t count,
+        _In_ sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("icmp echo session state notification count: %u", count);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_icmp_echo_session_state_notification_t *icmp_echo_session_state = &data[i];
+
+        /*
+         * We are using switch_rid as null, since ICMP_ECHO should be already
+         * defined inside local db after creation.
+         *
+         * If this will be faster than return from create ICMP_ECHO then we can use
+         * query switch id and extract rid of switch id and then convert it to
+         * switch vid.
+         */
+
+        icmp_echo_session_state->icmp_echo_session_id = m_translator->translateRidToVid(icmp_echo_session_state->icmp_echo_session_id, SAI_NULL_OBJECT_ID, true);
+    }
+
+    std::string s = sai_serialize_icmp_echo_session_state_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE, s);
+}
+
 void NotificationProcessor::process_on_ha_set_event(
         _In_ uint32_t count,
         _In_ sai_ha_set_event_data_t *data)
@@ -746,6 +775,21 @@ void NotificationProcessor::handle_bfd_session_state_change(
     sai_deserialize_free_bfd_session_state_ntf(count, bfdsessionstate);
 }
 
+void NotificationProcessor::handle_icmp_echo_session_state_change(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_icmp_echo_session_state_notification_t *icmp_echo_session_state = NULL;
+
+    sai_deserialize_icmp_echo_session_state_ntf(data, count, &icmp_echo_session_state);
+
+    process_on_icmp_echo_session_state_change(count, icmp_echo_session_state);
+
+    sai_deserialize_free_icmp_echo_session_state_ntf(count, icmp_echo_session_state);
+}
+
 void NotificationProcessor::handle_ha_set_event(
         _In_ const std::string &data)
 {
@@ -893,6 +937,10 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE)
     {
         handle_bfd_session_state_change(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE)
+    {
+        handle_icmp_echo_session_state_change(data);
     }
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT)
     {
