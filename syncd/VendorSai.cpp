@@ -53,9 +53,17 @@ VendorSai::VendorSai()
         .query_attribute_enum_values_capability = &sai_query_attribute_enum_values_capability,
         .query_object_stage = nullptr,
         .query_stats_capability = &sai_query_stats_capability,
+#ifdef HAVE_SAI_QUERY_STATS_ST_CAPABILITY
         .query_stats_st_capability = &sai_query_stats_st_capability,
+#else
+        .query_stats_st_capability = nullptr,
+#endif
         .switch_id_query = &sai_switch_id_query,
+#ifdef HAVE_SAI_TAM_TELEMETRY_GET_DATA
         .tam_telemetry_get_data = &sai_tam_telemetry_get_data,
+#else
+        .tam_telemetry_get_data = nullptr,
+#endif
     };
 
     m_globalApis = ga;
@@ -353,10 +361,12 @@ sai_status_t VendorSai::queryStatsStCapability(
     SWSS_LOG_ENTER();
     VENDOR_CHECK_API_INITIALIZED();
 
-    return m_globalApis.query_stats_st_capability(
-        switchId,
-        objectType,
-        stats_capability);
+    return (m_globalApis.query_stats_st_capability == nullptr)
+        ? SAI_STATUS_NOT_IMPLEMENTED
+        : m_globalApis.query_stats_st_capability(
+                switchId,
+                objectType,
+                stats_capability);
 }
 
 sai_status_t VendorSai::getStatsExt(
@@ -522,6 +532,18 @@ sai_status_t VendorSai::bulkCreate(
             ptr = m_apis.dash_meter_api->create_meter_rules;
             break;
 
+        case SAI_OBJECT_TYPE_DASH_TUNNEL:
+            ptr = m_apis.dash_tunnel_api->create_dash_tunnels;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL_MEMBER:
+            ptr = m_apis.dash_tunnel_api->create_dash_tunnel_members;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL_NEXT_HOP:
+            ptr = m_apis.dash_tunnel_api->create_dash_tunnel_next_hops;
+            break;
+
         default:
             SWSS_LOG_ERROR("not implemented %s, FIXME", sai_serialize_object_type(object_type).c_str());
             return SAI_STATUS_NOT_IMPLEMENTED;
@@ -607,6 +629,18 @@ sai_status_t VendorSai::bulkRemove(
 
         case SAI_OBJECT_TYPE_METER_RULE:
             ptr = m_apis.dash_meter_api->remove_meter_rules;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL:
+            ptr = m_apis.dash_tunnel_api->remove_dash_tunnels;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL_MEMBER:
+            ptr = m_apis.dash_tunnel_api->remove_dash_tunnel_members;
+            break;
+
+        case SAI_OBJECT_TYPE_DASH_TUNNEL_NEXT_HOP:
+            ptr = m_apis.dash_tunnel_api->remove_dash_tunnel_next_hops;
             break;
 
         default:
@@ -1998,6 +2032,15 @@ sai_status_t VendorSai::logSet(
     SWSS_LOG_ENTER();
 
     m_logLevelMap[api] = log_level;
+
+    void *api_method_table = nullptr;
+
+    sai_status_t status = m_globalApis.api_query(api, &api_method_table);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        return status;
+    }
 
     return m_globalApis.log_set(api, log_level);
 }

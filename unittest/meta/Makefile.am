@@ -26,6 +26,8 @@ tests_SOURCES = \
 				TestNotificationSwitchAsicSdkHealthEvent.cpp \
 				TestNotificationSwitchStateChange.cpp \
 				TestNotificationBfdSessionStateChange.cpp \
+				TestNotificationHaScopeEvent.cpp \
+				TestNotificationHaSetEvent.cpp \
 				TestNotificationTam.cpp \
 				TestOidRefCounter.cpp \
 				TestPerformanceIntervalTimer.cpp \

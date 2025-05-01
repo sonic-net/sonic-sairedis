@@ -188,6 +188,28 @@ void NotificationHandler::onBfdSessionStateChange(
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
+void NotificationHandler::onHaSetEvent(
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_set_event_ntf(count, data);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT, s);
+}
+
+void NotificationHandler::onHaScopeEvent(
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_scope_event_ntf(count, data);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT, s);
+}
+
 void NotificationHandler::enqueueNotification(
         _In_ const std::string& op,
         _In_ const std::string& data,
