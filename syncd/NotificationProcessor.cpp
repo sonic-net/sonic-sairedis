@@ -558,6 +558,27 @@ void NotificationProcessor::process_on_bfd_session_state_change(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
+void NotificationProcessor::process_on_ha_set_event(
+        _In_ uint32_t count,
+        _In_ sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_set_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT, s);
+}
+
+void NotificationProcessor::process_on_ha_scope_event(
+        _In_ uint32_t count,
+        _In_ sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_scope_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT, s);
+}
 
 void NotificationProcessor::process_on_switch_asic_sdk_health_event(
         _In_ sai_object_id_t switch_rid,
@@ -723,6 +744,36 @@ void NotificationProcessor::handle_bfd_session_state_change(
     process_on_bfd_session_state_change(count, bfdsessionstate);
 
     sai_deserialize_free_bfd_session_state_ntf(count, bfdsessionstate);
+}
+
+void NotificationProcessor::handle_ha_set_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_ha_set_event_data_t *ha_set_event = NULL;
+
+    sai_deserialize_ha_set_event_ntf(data, count, &ha_set_event);
+
+    process_on_ha_set_event(count, ha_set_event);
+
+    sai_deserialize_free_ha_set_event_ntf(count, ha_set_event);
+}
+
+void NotificationProcessor::handle_ha_scope_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_ha_scope_event_data_t *ha_scope_event = NULL;
+
+    sai_deserialize_ha_scope_event_ntf(data, count, &ha_scope_event);
+
+    process_on_ha_scope_event(count, ha_scope_event);
+
+    sai_deserialize_free_ha_scope_event_ntf(count, ha_scope_event);
 }
 
 void NotificationProcessor::handle_switch_asic_sdk_health_event(

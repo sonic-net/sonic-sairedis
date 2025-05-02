@@ -148,6 +148,14 @@ namespace saiproxy
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
 
+            void onHaSetEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_set_event_data_t *data);
+
+            void onHaScopeEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_scope_event_data_t *data);
+
             void onTwampSessionEvent(
                     _In_ uint32_t count,
                     _In_ const sai_twamp_session_event_notification_data_t *data);
