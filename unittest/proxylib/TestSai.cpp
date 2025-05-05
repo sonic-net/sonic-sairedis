@@ -694,6 +694,28 @@ static void onSwitchAsicSdkHealthEvent(
     ntfCounter++;
 }
 
+static void onHaSetEvent(
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("received: onHaSetEvent");
+
+    ntfCounter++;
+}
+
+static void onHaScopeEvent(
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("received: onHaScopeEvent");
+
+    ntfCounter++;
+}
+
 static void onBfdSessionStateChange(
         _In_ uint32_t count,
         _In_ const sai_bfd_session_state_notification_t *data)
@@ -705,6 +727,17 @@ static void onBfdSessionStateChange(
     ntfCounter++;
 }
 
+static void onIcmpEchoSessionStateChange(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("received: onIcmpEchoSessionStateChange");
+
+    ntfCounter++;
+}
+
 static void onTwampSessionEvent(
         _In_ uint32_t count,
         _In_ const sai_twamp_session_event_notification_data_t *data)
@@ -712,6 +745,16 @@ static void onTwampSessionEvent(
     SWSS_LOG_ENTER();
 
     SWSS_LOG_NOTICE("received: onTwampSessionEvent");
+
+    ntfCounter++;
+}
+
+static void onTamTelTypeConfigChange(
+        _In_ sai_object_id_t tam_tel_id)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_NOTICE("received: onTamTelTypeConfigChange");
 
     ntfCounter++;
 }
@@ -735,7 +778,9 @@ TEST(Sai, handleNotification)
     EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_PORT_HOST_TX_READY_NOTIFY), SAI_STATUS_SUCCESS);
     EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_QUEUE_PFC_DEADLOCK_NOTIFY), SAI_STATUS_SUCCESS);
     EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_ICMP_ECHO_SESSION_STATE_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
     EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(dummy->enqueueNotificationToSend(SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY), SAI_STATUS_SUCCESS);
 
     auto thread = std::make_shared<std::thread>(fun, proxy);
 
@@ -791,12 +836,28 @@ TEST(Sai, handleNotification)
     attr.value.ptr = (void*)&onQueuePfcDeadlock;
     sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
 
+    attr.id = SAI_SWITCH_ATTR_HA_SET_EVENT_NOTIFY;
+    attr.value.ptr = (void*)&onHaSetEvent;
+    sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+
+    attr.id = SAI_SWITCH_ATTR_HA_SCOPE_EVENT_NOTIFY;
+    attr.value.ptr = (void*)&onHaScopeEvent;
+    sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+
     attr.id = SAI_SWITCH_ATTR_BFD_SESSION_STATE_CHANGE_NOTIFY;
     attr.value.ptr = (void*)&onBfdSessionStateChange;
     sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
 
+    attr.id = SAI_SWITCH_ATTR_ICMP_ECHO_SESSION_STATE_CHANGE_NOTIFY;
+    attr.value.ptr = (void*)&onIcmpEchoSessionStateChange;
+    sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+
     attr.id = SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY;
     attr.value.ptr = (void*)&onTwampSessionEvent;
+    sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
+
+    attr.id = SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY;
+    attr.value.ptr = (void*)&onTamTelTypeConfigChange;
     sai.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr);
 
     // dummy start sending notifications
@@ -807,10 +868,10 @@ TEST(Sai, handleNotification)
     // dummy stop sending notifications
     EXPECT_EQ(dummy->stop(), SAI_STATUS_SUCCESS);
 
-    EXPECT_EQ(proxy->getNotificationsSentCount(), 10);
+    EXPECT_EQ(proxy->getNotificationsSentCount(), 12);
 
     // important check, whether Sai class processed notifications correctly
-    EXPECT_EQ(ntfCounter, 10);
+    EXPECT_EQ(ntfCounter, 12);
 
     proxy->stop();
 

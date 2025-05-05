@@ -217,6 +217,11 @@ CXXFLAGS="$SAVED_FLAGS"
 
 AC_SUBST(CXXFLAGS_COMMON)
 
+# -lvlibapi -lvapiclient -lvppapiclient -lvlibmemoryclient -lsvm -lvppinfra -lvlib -lvatplugin
+# -lvapiclient -lsvm -lvatplugin
+AC_CHECK_LIB([vlib], [main], [AC_SUBST(VPP_LIBS, "-lvlib -lvlibapi -lvppapiclient -lvlibmemoryclient -lvppinfra")])
+AM_CONDITIONAL([USE_VPP], [test "x$VPP_LIBS" != "x"])
+
 AC_ARG_WITH(extra-libsai-ldflags,
 [  --with-extra-libsai-ldflags=FLAGS
                           extra libsai.so flags for vendor library],
@@ -267,11 +272,20 @@ AC_MSG_ERROR("SAI headers API version and library version mismatch")])],
 CXXFLAGS="$SAVED_FLAGS"
 ])])
 
-AM_COND_IF([SYNCD], [
-SAVED_FLAGS="$CXXFLAGS"
-CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
-AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats)
-CXXFLAGS="$SAVED_FLAGS"
+AM_COND_IF([SAIVS],
+[
+    AC_DEFINE([HAVE_SAI_BULK_OBJECT_CLEAR_STATS], [1], [])
+    AC_DEFINE([HAVE_SAI_BULK_OBJECT_GET_STATS], [1], [])
+    AC_DEFINE([HAVE_SAI_QUERY_STATS_ST_CAPABILITY], [1], [])
+    AC_DEFINE([HAVE_SAI_TAM_TELEMETRY_GET_DATA], [1], [])
+],
+[
+    AM_COND_IF([SYNCD], [
+    SAVED_FLAGS="$CXXFLAGS"
+    CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
+    AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats sai_query_stats_st_capability sai_tam_telemetry_get_data)
+    CXXFLAGS="$SAVED_FLAGS"
+    ])
 ])
 
 AC_DEFINE([SAIREDIS_GIT_REVISION],

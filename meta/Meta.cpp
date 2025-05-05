@@ -1064,6 +1064,37 @@ sai_status_t Meta::queryStatsCapability(
     return status;
 }
 
+sai_status_t Meta::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    PARAMETER_CHECK_OID_OBJECT_TYPE(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OID_EXISTS(switchId, SAI_OBJECT_TYPE_SWITCH);
+    PARAMETER_CHECK_OBJECT_TYPE_VALID(objectType);
+    PARAMETER_CHECK_IF_NOT_NULL(stats_capability);
+    VALIDATION_STATS_LIST(stats_capability->count, stats_capability->list);
+
+    auto info = sai_metadata_get_object_type_info(objectType);
+
+    PARAMETER_CHECK_IF_NOT_NULL(info);
+
+    if (info->statenum == nullptr)
+    {
+        SWSS_LOG_ERROR("%s does not support stats", info->objecttypename);
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    auto status = m_implementation->queryStatsStCapability(switchId, objectType, stats_capability);
+
+    // no post validation required
+
+    return status;
+}
+
 sai_status_t Meta::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -6906,6 +6937,174 @@ void Meta::meta_sai_on_bfd_session_state_change(
     }
 }
 
+void Meta::meta_sai_on_ha_set_event_single(
+    _In_ const sai_ha_set_event_data_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    auto ot = objectTypeQuery(data.ha_set_id);
+
+    bool valid = false;
+
+    switch ((int)ot)
+    {
+        // TODO hardcoded types, must advance SAI repository commit to get metadata for this
+        case SAI_OBJECT_TYPE_HA_SET:
+
+            valid = true;
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("data.ha_set_id %s has unexpected type: %s, expected HA_SET",
+                    sai_serialize_object_id(data.ha_set_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+            break;
+    }
+
+    if (valid && !m_oids.objectReferenceExists(data.ha_set_id))
+    {
+        SWSS_LOG_NOTICE("data.ha_set_id new object spotted %s not present in local DB (snoop!)",
+                sai_serialize_object_id(data.ha_set_id).c_str());
+
+        sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = data.ha_set_id } } };
+
+        m_oids.objectReferenceInsert(data.ha_set_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
+    }
+}
+
+void Meta::meta_sai_on_ha_set_event(
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("sai_ha_set_event_data_t pointer is NULL but count is %u", count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meta_sai_on_ha_set_event_single(data[i]);
+    }
+}
+
+void Meta::meta_sai_on_ha_scope_event_single(
+        _In_ const sai_ha_scope_event_data_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    auto ot = objectTypeQuery(data.ha_scope_id);
+
+    bool valid = false;
+
+    switch ((int)ot)
+    {
+        // TODO hardcoded types, must advance SAI repository commit to get metadata for this
+        case SAI_OBJECT_TYPE_HA_SCOPE:
+
+            valid = true;
+            break;
+
+        default:
+
+            SWSS_LOG_ERROR("data.ha_scope_id %s has unexpected type: %s, expected HA_SCOPE",
+                    sai_serialize_object_id(data.ha_scope_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+            break;
+    }
+
+    if (valid && !m_oids.objectReferenceExists(data.ha_scope_id))
+    {
+        SWSS_LOG_NOTICE("data.ha_scope_id new object spotted %s not present in local DB (snoop!)",
+                sai_serialize_object_id(data.ha_scope_id).c_str());
+
+        sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = data.ha_scope_id } } };
+
+        m_oids.objectReferenceInsert(data.ha_scope_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
+    }
+}
+
+void Meta::meta_sai_on_ha_scope_event(
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("sai_ha_scope_event_data_t pointer is NULL but count is %u", count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meta_sai_on_ha_scope_event_single(data[i]);
+    }
+}
+
+void Meta::meta_sai_on_icmp_echo_session_state_change_single(
+        _In_ const sai_icmp_echo_session_state_notification_t& data)
+{
+    SWSS_LOG_ENTER();
+
+    auto ot = objectTypeQuery(data.icmp_echo_session_id);
+
+    bool valid = isIcmpEchoSessionObjectIdValid(ot);
+
+    if(!valid){
+        SWSS_LOG_ERROR("data.icmp_echo_session_id %s has unexpected type: %s, expected %s",
+                sai_serialize_object_id(data.icmp_echo_session_id).c_str(),
+                sai_serialize_object_type(ot).c_str(),
+                boost::algorithm::join(getValidIcmpEchoSessionObjectTypes(), ",").c_str());
+    }
+
+    if (valid && !m_oids.objectReferenceExists(data.icmp_echo_session_id))
+    {
+        SWSS_LOG_NOTICE("data.icmp_echo_session_id new object spotted %s not present in local DB (snoop!)",
+                sai_serialize_object_id(data.icmp_echo_session_id).c_str());
+
+        sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = data.icmp_echo_session_id } } };
+
+        m_oids.objectReferenceInsert(data.icmp_echo_session_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
+    }
+}
+
+void Meta::meta_sai_on_icmp_echo_session_state_change(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("sai_icmp_echo_session_state_notification_t pointer is NULL but count is %u", count);
+        return;
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        meta_sai_on_icmp_echo_session_state_change_single(data[i]);
+    }
+}
+
 void Meta::meta_sai_on_twamp_session_event_single(
         _In_ const sai_twamp_session_event_notification_data_t& data)
 {
@@ -6981,6 +7180,42 @@ void Meta::meta_sai_on_twamp_session_event(
     for (uint32_t i = 0; i < count; ++i)
     {
         meta_sai_on_twamp_session_event_single(data[i]);
+    }
+}
+
+void Meta::meta_sai_on_tam_tel_type_config_change(_In_ sai_object_id_t m_tam_id)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_tam_id == SAI_NULL_OBJECT_ID)
+    {
+        SWSS_LOG_ERROR("m_tam_id is NULL");
+        return;
+    }
+
+    auto ot = objectTypeQuery(m_tam_id);
+
+    if (ot != SAI_OBJECT_TYPE_TAM_TEL_TYPE)
+    {
+        SWSS_LOG_ERROR("m_tam_id %s has unexpected type: %s, expected TAM_TEL_TYPE",
+                sai_serialize_object_id(m_tam_id).c_str(),
+                sai_serialize_object_type(ot).c_str());
+        return;
+    }
+
+    if (!m_oids.objectReferenceExists(m_tam_id))
+    {
+        SWSS_LOG_NOTICE("m_tam_id %s is not present in local DB (snoop!)",
+                sai_serialize_object_id(m_tam_id).c_str());
+
+        sai_object_meta_key_t key = {.objecttype = (sai_object_type_t)ot, .objectkey = {.key = {.object_id = m_tam_id}}};
+
+        m_oids.objectReferenceInsert(m_tam_id);
+
+        if (!m_saiObjectCollection.objectExists(key))
+        {
+            m_saiObjectCollection.createObject(key);
+        }
     }
 }
 
@@ -7199,6 +7434,49 @@ std::vector<std::string> Meta::getValidPortObjectTypes()
     for (size_t i = 0; i < md.valuescount; i++)
     {
         if (isPortObjectIdValid((sai_object_type_t)md.values[i]))
+            v.push_back(md.valuesshortnames[i]);
+    }
+
+    return v;
+}
+
+bool Meta::isIcmpEchoSessionObjectIdValid(
+        _In_ sai_object_type_t object_type)
+{
+    SWSS_LOG_ENTER();
+
+    auto members = sai_metadata_struct_members_sai_icmp_echo_session_state_notification_t;
+
+    for (size_t i = 0; members[i]; i++)
+    {
+        auto* mb = members[i];
+
+        if (mb->membername != std::string("icmp_echo_session_id"))
+            continue;
+
+        for (size_t idx = 0; idx < mb->allowedobjecttypeslength; idx++)
+        {
+            if (mb->allowedobjecttypes[idx] == object_type)
+                return true;
+        }
+
+        return false;
+    }
+
+    SWSS_LOG_THROW("member not found for sai_icmp_echo_session_state_notification_t");
+}
+
+std::vector<std::string> Meta::getValidIcmpEchoSessionObjectTypes()
+{
+    SWSS_LOG_ENTER();
+
+    auto md = sai_metadata_enum_sai_object_type_t;
+
+    std::vector<std::string> v;
+
+    for (size_t i = 0; i < md.valuescount; i++)
+    {
+        if (isIcmpEchoSessionObjectIdValid((sai_object_type_t)md.values[i]))
             v.push_back(md.valuesshortnames[i]);
     }
 

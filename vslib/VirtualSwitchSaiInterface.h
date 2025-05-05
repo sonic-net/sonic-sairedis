@@ -116,6 +116,11 @@ namespace saivs
                     _In_ sai_object_type_t object_type,
                     _Inout_ sai_stat_capability_list_t *stats_capability) override;
 
+            virtual sai_status_t queryStatsStCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_st_capability_list_t *stats_capability) override;
+
             virtual sai_status_t getStatsExt(
                     _In_ sai_object_type_t object_type,
                     _In_ sai_object_id_t object_id,
@@ -276,7 +281,7 @@ namespace saivs
             std::shared_ptr<WarmBootState> extractWarmBootState(
                     _In_ sai_object_id_t switch_id);
 
-            bool validate_switch_warm_boot_atributes(
+            bool validate_switch_warm_boot_attributes(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) const;
 

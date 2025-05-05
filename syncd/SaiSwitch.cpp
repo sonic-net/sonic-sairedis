@@ -371,6 +371,19 @@ void SaiSwitch::redisSetDummyAsicStateForRealObjectId(
     m_client->setDummyAsicStateObject(vid);
 }
 
+void SaiSwitch::redisSetDummyAsicStateForRealObjectIds(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* rids) const
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_id_t> vids(count);
+
+    m_translator->translateRidsToVids(m_switch_vid, count, rids, vids.data());
+
+    m_client->setDummyAsicStateObjects(count, vids.data());
+}
+
 std::string SaiSwitch::getHardwareInfo() const
 {
     SWSS_LOG_ENTER();
@@ -980,15 +993,17 @@ void SaiSwitch::redisUpdatePortLaneMap(
             sai_serialize_object_id(port_rid).c_str());
 }
 
-void SaiSwitch::onPostPortCreate(
-        _In_ sai_object_id_t port_rid,
-        _In_ sai_object_id_t port_vid)
+void SaiSwitch::onPostPortsCreate(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* port_rids)
 {
     SWSS_LOG_ENTER();
 
-    SaiDiscovery sd(m_vendorSai);
+    SWSS_LOG_TIMER("discovering objects after creating ports");
 
-    auto discovered = sd.discover(port_rid);
+    SaiDiscovery sd(m_vendorSai, SaiDiscovery::Flags::SkipDefaultEmptyAttributes);
+
+    auto discovered = sd.discover(count, port_rids);
 
     auto defaultOidMap = sd.getDefaultOidMap();
 
@@ -1002,29 +1017,26 @@ void SaiSwitch::onPostPortCreate(
         }
     }
 
-    SWSS_LOG_NOTICE("discovered %zu new objects (including port) after creating port VID: %s",
-            discovered.size(),
-            sai_serialize_object_id(port_vid).c_str());
+    SWSS_LOG_NOTICE("discovered %zu new objects (including port) after creating %zu ports",
+            discovered.size(), count);
 
     m_discovered_rids.insert(discovered.begin(), discovered.end());
 
-    SWSS_LOG_NOTICE("putting ALL new discovered objects to redis for port %s",
-            sai_serialize_object_id(port_vid).c_str());
+    std::vector<sai_object_id_t> rids{discovered.begin(), discovered.end()};
 
-    for (sai_object_id_t rid: discovered)
+    /*
+     * We also could think of optimizing this since it's one command
+     * per rid in a redis pipeline, and probably this should be ATOMIC.
+     *
+     * NOTE: We are also storing read only object's here, like default
+     * virtual router, CPU, default trap group, etc.
+     */
+    redisSetDummyAsicStateForRealObjectIds(rids.size(), rids.data());
+
+    for (size_t idx = 0; idx < count; idx++)
     {
-        /*
-         * We also could thing of optimizing this since it's one call to redis
-         * per rid, and probably this should be ATOMIC.
-         *
-         * NOTE: We are also storing read only object's here, like default
-         * virtual router, CPU, default trap group, etc.
-         */
-
-        redisSetDummyAsicStateForRealObjectId(rid);
+        redisUpdatePortLaneMap(port_rids[idx]);
     }
-
-    redisUpdatePortLaneMap(port_rid);
 }
 
 bool SaiSwitch::isWarmBoot() const

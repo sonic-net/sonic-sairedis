@@ -2342,6 +2342,46 @@ std::string sai_serialize_bfd_session_state(
     return sai_serialize_enum(status, &sai_metadata_enum_sai_bfd_session_state_t);
 }
 
+std::string sai_serialize_icmp_echo_session_state(
+        _In_ sai_icmp_echo_session_state_t status)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(status, &sai_metadata_enum_sai_icmp_echo_session_state_t);
+}
+
+std::string sai_serialize_ha_set_event(
+        _In_ sai_ha_set_event_t event)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(event, &sai_metadata_enum_sai_ha_set_event_t);
+}
+
+std::string sai_serialize_ha_scope_event(
+        _In_ sai_ha_scope_event_t event)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(event, &sai_metadata_enum_sai_ha_scope_event_t);
+}
+
+std::string sai_serialize_ha_role(
+        _In_ sai_dash_ha_role_t role)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(role, &sai_metadata_enum_sai_dash_ha_role_t);
+}
+
+std::string sai_serialize_ha_state(
+        _In_ sai_dash_ha_state_t state)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(state, &sai_metadata_enum_sai_dash_ha_state_t);
+}
+
 std::string sai_serialize_twamp_session_state(
         _In_ sai_twamp_session_state_t status)
 {
@@ -2534,6 +2574,86 @@ std::string sai_serialize_bfd_session_state_ntf(
     }
 
     // we don't need count since it can be deduced
+    return j.dump();
+}
+
+std::string sai_serialize_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t* icmp_echo_session_state)
+{
+    SWSS_LOG_ENTER();
+
+    if (icmp_echo_session_state == NULL)
+    {
+        SWSS_LOG_THROW("icmp_echo_session _state pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+	json item;
+        item["icmp_echo_session_id"] = sai_serialize_object_id(icmp_echo_session_state[i].icmp_echo_session_id);
+        item["session_state"] = sai_serialize_icmp_echo_session_state(icmp_echo_session_state[i].session_state);
+
+        j.push_back(item);
+    }
+
+    return j.dump();
+}
+
+std::string sai_serialize_ha_set_event_ntf(
+    _In_ uint32_t count,
+    _In_ const sai_ha_set_event_data_t* ha_set_event)
+{
+    SWSS_LOG_ENTER();
+
+    if (ha_set_event == NULL)
+    {
+        SWSS_LOG_THROW("ha_set_event pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        json item;
+
+        item["event_type"] = sai_serialize_ha_set_event(ha_set_event[i].event_type);
+        item["ha_set_id"] = sai_serialize_object_id(ha_set_event[i].ha_set_id);
+
+        j.push_back(item);
+    }
+
+    return j.dump();
+}
+
+std::string sai_serialize_ha_scope_event_ntf(
+    _In_ uint32_t count,
+    _In_ const sai_ha_scope_event_data_t* ha_scope_event)
+{
+    SWSS_LOG_ENTER();
+
+    if (ha_scope_event == NULL)
+    {
+        SWSS_LOG_THROW("ha_scope_event pointer is null");
+    }
+
+    json j = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        json item;
+
+        item["event_type"] = sai_serialize_ha_scope_event(ha_scope_event[i].event_type);
+        item["ha_scope_id"] = sai_serialize_object_id(ha_scope_event[i].ha_scope_id);
+        item["ha_role"] = sai_serialize_ha_role(ha_scope_event[i].ha_role);
+        item["flow_version"] = sai_serialize_number(ha_scope_event[i].flow_version);
+        item["ha_state"] = sai_serialize_ha_state(ha_scope_event[i].ha_state);
+
+        j.push_back(item);
+    }
+
     return j.dump();
 }
 
@@ -2929,6 +3049,50 @@ std::string sai_serialize_stats_capability_list(
     for (uint32_t i = 0; i < stat_capability_list.count; ++i)
     {
         json item = sai_serialize_stat_capability(stat_capability_list.list[i], meta);
+
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    return j.dump();
+}
+
+json sai_serialize_stat_st_capability(
+        _In_ const sai_stat_st_capability_t &stat_capability,
+        _In_ const sai_enum_metadata_t *meta)
+{
+    SWSS_LOG_ENTER();
+
+    json j = sai_serialize_stat_capability(stat_capability.capability, meta);
+    j["minimal_polling_interval"] = sai_serialize_number(stat_capability.minimal_polling_interval, false);
+
+    return j;
+}
+
+std::string sai_serialize_stats_st_capability_list(
+        _In_ const sai_stat_st_capability_list_t &stat_capability_list,
+        _In_ const sai_enum_metadata_t *meta,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["count"] = stat_capability_list.count;
+
+    if (stat_capability_list.list == NULL || countOnly)
+    {
+        j["list"] = nullptr;
+
+        return j.dump();
+    }
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < stat_capability_list.count; ++i)
+    {
+        json item = sai_serialize_stat_st_capability(stat_capability_list.list[i], meta);
 
         arr.push_back(item);
     }
@@ -4368,6 +4532,51 @@ void sai_deserialize_bfd_session_state(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_bfd_session_state_t, (int32_t&)state);
 }
 
+void sai_deserialize_icmp_echo_session_state(
+        _In_ const std::string& s,
+        _Out_ sai_icmp_echo_session_state_t& state)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_icmp_echo_session_state_t, (int32_t&)state);
+}
+
+void sai_deserialize_ha_set_event(
+        _In_ const std::string& s,
+        _Out_ sai_ha_set_event_t& event)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_ha_set_event_t, (int32_t&)event);
+}
+
+void sai_deserialize_ha_scope_event(
+        _In_ const std::string& s,
+        _Out_ sai_ha_scope_event_t& event)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_ha_scope_event_t, (int32_t&)event);
+}
+
+void sai_deserialize_ha_role(
+        _In_ const std::string& s,
+        _Out_ sai_dash_ha_role_t& role)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_dash_ha_role_t, (int32_t&)role);
+}
+
+void sai_deserialize_ha_state(
+        _In_ const std::string& s,
+        _Out_ sai_dash_ha_state_t& state)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_dash_ha_state_t, (int32_t&)state);
+}
+
 void sai_deserialize_twamp_session_state(
         _In_ const std::string& s,
         _Out_ sai_twamp_session_state_t& state)
@@ -5264,6 +5473,75 @@ void sai_deserialize_bfd_session_state_ntf(
     *bfd_session_state = data;
 }
 
+void sai_deserialize_icmp_echo_session_state_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_icmp_echo_session_state_notification_t** icmp_echo_session_state)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_icmp_echo_session_state_notification_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_object_id(j[i]["icmp_echo_session_id"], data[i].icmp_echo_session_id);
+        sai_deserialize_icmp_echo_session_state(j[i]["session_state"], data[i].session_state);
+    }
+
+    *icmp_echo_session_state = data;
+}
+
+void sai_deserialize_ha_set_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_ha_set_event_data_t** ha_set_event)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_ha_set_event_data_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_ha_set_event(j[i]["event_type"], data[i].event_type);
+        sai_deserialize_object_id(j[i]["ha_set_id"], data[i].ha_set_id);
+    }
+
+    *ha_set_event = data;
+}
+
+void sai_deserialize_ha_scope_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_ha_scope_event_data_t** ha_scope_event)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    count = (uint32_t)j.size();
+
+    auto data = new sai_ha_scope_event_data_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_ha_scope_event(j[i]["event_type"], data[i].event_type);
+        sai_deserialize_object_id(j[i]["ha_scope_id"], data[i].ha_scope_id);
+        sai_deserialize_ha_role(j[i]["ha_role"], data[i].ha_role);
+        sai_deserialize_number(j[i]["flow_version"], data[i].flow_version);
+        sai_deserialize_ha_state(j[i]["ha_state"], data[i].ha_state);
+    }
+
+    *ha_scope_event = data;
+}
+
 void sai_deserialize_twamp_session_event_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
@@ -5597,6 +5875,33 @@ void sai_deserialize_free_bfd_session_state_ntf(
     delete[] bfd_session_state;
 }
 
+void sai_deserialize_free_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ sai_icmp_echo_session_state_notification_t* icmp_echo_session_state)
+{
+    SWSS_LOG_ENTER();
+
+    delete[] icmp_echo_session_state;
+}
+
+void sai_deserialize_free_ha_set_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_ha_set_event_data_t* ha_set_event)
+{
+    SWSS_LOG_ENTER();
+
+    delete[] ha_set_event;
+}
+
+void sai_deserialize_free_ha_scope_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_ha_scope_event_data_t* ha_scope_event)
+{
+    SWSS_LOG_ENTER();
+
+    delete[] ha_scope_event;
+}
+
 void sai_deserialize_free_twamp_session_event_ntf(
         _In_ uint32_t count,
         _In_ sai_twamp_session_event_notification_data_t* twamp_session_event)
@@ -5839,5 +6144,94 @@ void sai_deserialize_stats_capability_list(
         /* Skip the commas */
         stat_enum_position++;
         stat_modes_position++;
+    }
+}
+
+/**
+ *   @brief deserialize the stats st capability list
+ *
+ *   Iterates thru stat_enum_str and populate
+ *   the stats_capability with respective
+ *   stat_enum (String to Enum conversion).
+ *   Also iterates thru stat_modes_str and populate
+ *   the stats_capability with respective
+ *   stat_modes (String to Enum conversion)
+ *
+ *   @param stats_capability stats stream telemetry capability enum list
+ *   @param stat_enum_str SAI stat enum list as string
+ *   @param stat_modes_str SAI stat mode list as string
+ *  @param minimal_polling_interval_str SAI minimal polling interval list as string
+ *   @return Void
+ */
+void sai_deserialize_stats_st_capability_list(
+    _Inout_ sai_stat_st_capability_list_t *stats_capability,
+    _In_ const std::string &stat_enum_str,
+    _In_ const std::string &stat_modes_str,
+    _In_ const std::string &minimal_polling_interval_str)
+{
+    SWSS_LOG_ENTER();
+
+    if (stats_capability == NULL)
+    {
+        SWSS_LOG_THROW("Stats capability pointer in deserialize is NULL");
+    }
+
+    uint32_t num_capabilities = stats_capability->count;
+    size_t stat_enum_position = 0;
+    size_t stat_modes_position = 0;
+    size_t stat_polling_interval_position = 0;
+
+    for (uint32_t i = 0; i < num_capabilities; i++)
+    {
+        /* 1. Populate stat_enum */
+        size_t old_stat_enum_position = stat_enum_position;
+        stat_enum_position = stat_enum_str.find(",", old_stat_enum_position);
+        std::string stat_enum = stat_enum_str.substr(old_stat_enum_position,
+                                                     stat_enum_position - old_stat_enum_position);
+        stats_capability->list[i].capability.stat_enum = std::stoi(stat_enum);
+
+        /* We have run out of values to add to our list */
+        if (stat_enum_position == std::string::npos)
+        {
+            if (num_capabilities != i + 1)
+            {
+                SWSS_LOG_THROW("Lesser stat_enums than expected: expected %d, received %d",
+                               num_capabilities, i + 1);
+            }
+
+            break;
+        }
+
+        /* 2. Populate stat_modes */
+        size_t old_stat_modes_position = stat_modes_position;
+        stat_modes_position = stat_modes_str.find(",", old_stat_modes_position);
+        std::string stat_modes = stat_modes_str.substr(old_stat_modes_position,
+                                                       stat_modes_position - old_stat_modes_position);
+        stats_capability->list[i].capability.stat_modes = std::stoi(stat_modes);
+
+        /* We have run out of values to add to our list */
+        if (stat_modes_position == std::string::npos)
+        {
+            if (num_capabilities != i + 1)
+            {
+                SWSS_LOG_THROW("Lesser stat_modes than expected: expected %d, received %d",
+                               num_capabilities, i + 1);
+            }
+
+            break;
+        }
+
+        /* 3. Populate minimal polling interval */
+        size_t old_stat_polling_interval_position = stat_polling_interval_position;
+        stat_polling_interval_position = minimal_polling_interval_str.find(",", old_stat_polling_interval_position);
+        std::string minimal_polling_interval = minimal_polling_interval_str.substr(old_stat_polling_interval_position,
+                stat_polling_interval_position - old_stat_polling_interval_position);
+        stats_capability->list[i].minimal_polling_interval = std::stoull(minimal_polling_interval);
+
+
+        /* Skip the commas */
+        stat_enum_position++;
+        stat_modes_position++;
+        stat_polling_interval_position++;
     }
 }

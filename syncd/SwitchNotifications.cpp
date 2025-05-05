@@ -89,6 +89,36 @@ void SwitchNotifications::SlotBase::onBfdSessionStateChange(
     return m_slots.at(context)->m_handler->onBfdSessionStateChange(count, data);
 }
 
+void SwitchNotifications::SlotBase::onIcmpEchoSessionStateChange(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onIcmpEchoSessionStateChange(count, data);
+}
+
+void SwitchNotifications::SlotBase::onHaSetEvent(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onHaSetEvent(count, data);
+}
+
+void SwitchNotifications::SlotBase::onHaScopeEvent(
+        _In_ int context,
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onHaScopeEvent(count, data);
+}
+
 void SwitchNotifications::SlotBase::onQueuePfcDeadlock(
         _In_ int context,
         _In_ uint32_t count,
@@ -139,6 +169,15 @@ void SwitchNotifications::SlotBase::onTwampSessionEvent(
     SWSS_LOG_ENTER();
 
     return m_slots.at(context)->m_handler->onTwampSessionEvent(count, data);
+}
+
+void SwitchNotifications::SlotBase::onTamTelTypeConfigChange(
+        _In_ int context,
+        _In_ sai_object_id_t tam_tel_id)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onTamTelTypeConfigChange(tam_tel_id);
 }
 
 const sai_switch_notifications_t& SwitchNotifications::SlotBase::getSwitchNotifications() const

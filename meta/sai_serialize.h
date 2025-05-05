@@ -302,6 +302,11 @@ std::string sai_serialize_stats_capability_list(
         _In_ const sai_enum_metadata_t* meta,
         _In_ bool countOnly);
 
+std::string sai_serialize_stats_st_capability_list(
+        _In_ const sai_stat_st_capability_list_t &stat_capability_list,
+        _In_ const sai_enum_metadata_t *meta,
+        _In_ bool countOnly);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -323,6 +328,18 @@ std::string sai_serialize_queue_deadlock_ntf(
 std::string sai_serialize_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ const sai_bfd_session_state_notification_t* bfd_session_state);
+
+std::string sai_serialize_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t* icmp_echo_session_state);
+
+std::string sai_serialize_ha_set_event_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t* ha_set_event);
+
+std::string sai_serialize_ha_scope_event_ntf(
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t* ha_scope_event);
 
 std::string sai_serialize_port_host_tx_ready_ntf(
         _In_ sai_object_id_t switch_id,
@@ -571,6 +588,22 @@ void sai_deserialize_bfd_session_state_ntf(
         _Out_ uint32_t &count,
         _Out_ sai_bfd_session_state_notification_t** bfdsession);
 
+
+void sai_deserialize_icmp_echo_session_state_ntf(
+       _In_ const std::string& s,
+       _Out_ uint32_t &count,
+       _Out_ sai_icmp_echo_session_state_notification_t** icmp_echo_session);
+
+void sai_deserialize_ha_set_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_ha_set_event_data_t** ha_set_event);
+
+void sai_deserialize_ha_scope_event_ntf(
+        _In_ const std::string& s,
+        _Out_ uint32_t &count,
+        _Out_ sai_ha_scope_event_data_t** ha_scope_event);
+
 void sai_deserialize_port_host_tx_ready_ntf(
         _In_ const std::string& s,
         _Out_ sai_object_id_t& switch_id,
@@ -610,6 +643,18 @@ void sai_deserialize_free_queue_deadlock_ntf(
 void sai_deserialize_free_bfd_session_state_ntf(
         _In_ uint32_t count,
         _In_ sai_bfd_session_state_notification_t* bfdsessionstate);
+
+void sai_deserialize_free_icmp_echo_session_state_ntf(
+        _In_ uint32_t count,
+        _In_ sai_icmp_echo_session_state_notification_t* icmp_echo_session_state);
+
+void sai_deserialize_free_ha_set_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_ha_set_event_data_t* ha_set_event);
+
+void sai_deserialize_free_ha_scope_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_ha_scope_event_data_t* ha_scope_event);
 
 void sai_deserialize_free_switch_asic_sdk_health_event(
         _In_ sai_u8_list_t &description);
@@ -665,3 +710,9 @@ void sai_deserialize_stats_capability_list(
         _Inout_ sai_stat_capability_list_t *stats_capability,
         _In_    const std::string& stat_enum_str,
         _In_    const std::string& stat_modes_str);
+
+void sai_deserialize_stats_st_capability_list(
+        _Inout_ sai_stat_st_capability_list_t *stats_capability,
+        _In_ const std::string &stat_enum_str,
+        _In_ const std::string &stat_modes_str,
+        _In_ const std::string &minimal_polling_interval_str);

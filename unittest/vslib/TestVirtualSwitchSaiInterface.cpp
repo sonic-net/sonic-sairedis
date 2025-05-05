@@ -197,3 +197,41 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
                 &stats_capability));
 }
 
+TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsStCapability)
+{
+    sai_stat_st_capability_t capability_list[91];
+    sai_stat_st_capability_list_t stats_capability;
+    stats_capability.list = capability_list;
+
+    /* Queue stats capability get */
+    stats_capability.count = 1;
+
+    EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
+              m_vssai->queryStatsStCapability(
+                  m_swid,
+                  SAI_OBJECT_TYPE_QUEUE,
+                  &stats_capability));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              m_vssai->queryStatsStCapability(
+                  m_swid,
+                  SAI_OBJECT_TYPE_QUEUE,
+                  &stats_capability));
+
+    /* Port stats capability get */
+    stats_capability.count = 1;
+
+    EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
+              m_vssai->queryStatsStCapability(
+                  m_swid,
+                  SAI_OBJECT_TYPE_PORT,
+                  &stats_capability));
+
+    stats_capability.count = 91;
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              m_vssai->queryStatsStCapability(
+                  m_swid,
+                  SAI_OBJECT_TYPE_PORT,
+                  &stats_capability));
+    EXPECT_EQ(stats_capability.list[0].minimal_polling_interval, static_cast<uint64_t>(1e6 * 100));
+}
