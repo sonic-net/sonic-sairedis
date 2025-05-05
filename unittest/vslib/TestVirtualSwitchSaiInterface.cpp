@@ -285,6 +285,7 @@ TEST_F(VirtualSwitchSaiInterfaceTest, switchDebugCounterCapabilityGet)
 {
     sai_s32_list_t enum_values_capability = { .count = 0, .list = nullptr };
 
+    // Query the capability for IN_DROP_REASON_LIST with no allocated buffer
     ASSERT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
             m_vssai->queryAttributeEnumValuesCapability(
                 m_swid,
@@ -293,6 +294,7 @@ TEST_F(VirtualSwitchSaiInterfaceTest, switchDebugCounterCapabilityGet)
                 &enum_values_capability));
     ASSERT_EQ(enum_values_capability.count, 3);
 
+    // Allocate the required buffer and query again
     std::vector<sai_int32_t> haList(enum_values_capability.count);
     enum_values_capability.list = haList.data();
 
@@ -310,15 +312,21 @@ TEST_F(VirtualSwitchSaiInterfaceTest, switchDebugCounterCapabilityGet)
         SAI_IN_DROP_REASON_ACL_ANY
     };
 
+    // Transform the returned list into a set for comparison
     std::set<sai_in_drop_reason_t> actualInDropReasons;
     std::transform(
         haList.cbegin(), haList.cend(),
         std::inserter(actualInDropReasons, actualInDropReasons.begin()),
         [](sai_int32_t value) { return static_cast<sai_in_drop_reason_t>(value); }
     );
+
+    // Verify the returned values match the expected values
     ASSERT_EQ(expectedInDropReasons, actualInDropReasons);
 
+    // Set count to a smaller value to trigger SAI_STATUS_BUFFER_OVERFLOW
     enum_values_capability.count = 1;
+
+    // Query the capability for OUT_DROP_REASON_LIST
     ASSERT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
             m_vssai->queryAttributeEnumValuesCapability(
                 m_swid,
@@ -327,6 +335,7 @@ TEST_F(VirtualSwitchSaiInterfaceTest, switchDebugCounterCapabilityGet)
                 &enum_values_capability));
     ASSERT_EQ(enum_values_capability.count, 2);
 
+    // Resize the buffer and query again
     haList.resize(enum_values_capability.count);
     enum_values_capability.list = haList.data();
 
@@ -351,6 +360,7 @@ TEST_F(VirtualSwitchSaiInterfaceTest, switchDebugCounterCapabilityGet)
     );
     ASSERT_EQ(expectedOutDropReasons, actualOutDropReasons);
 
+    // Query the capability for DEBUG_COUNTER_ATTR_TYPE
     enum_values_capability.count = 3;
     ASSERT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
             m_vssai->queryAttributeEnumValuesCapability(
@@ -369,8 +379,11 @@ TEST_F(VirtualSwitchSaiInterfaceTest, switchDebugCounterCapabilityGet)
                 SAI_OBJECT_TYPE_DEBUG_COUNTER,
                 SAI_DEBUG_COUNTER_ATTR_TYPE,
                 &enum_values_capability));
+
+    // Verify the required count is 4
     ASSERT_EQ(enum_values_capability.count, 4);
 
+    // Define the expected DEBUG_COUNTER_ATTR_TYPE values
     const std::set<sai_debug_counter_type_t> expectedDebugCounterTypes = {
         SAI_DEBUG_COUNTER_TYPE_PORT_IN_DROP_REASONS,
         SAI_DEBUG_COUNTER_TYPE_PORT_OUT_DROP_REASONS,
