@@ -61,6 +61,9 @@
 #define REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_QUERY      "stats_capability_query"
 #define REDIS_ASIC_STATE_COMMAND_STATS_CAPABILITY_RESPONSE   "stats_capability_response"
 
+#define REDIS_ASIC_STATE_COMMAND_STATS_ST_CAPABILITY_QUERY "stats_st_capability_query"
+#define REDIS_ASIC_STATE_COMMAND_STATS_ST_CAPABILITY_RESPONSE "stats_st_capability_response"
+
 /**
  * @brief Redis virtual object id counter key name.
  *

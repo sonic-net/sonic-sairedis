@@ -20,8 +20,10 @@ using namespace syncd;
 #define SAI_DISCOVERY_LIST_MAX_ELEMENTS 1024
 
 SaiDiscovery::SaiDiscovery(
-        _In_ std::shared_ptr<sairedis::SaiInterface> sai):
-    m_sai(sai)
+        _In_ std::shared_ptr<sairedis::SaiInterface> sai,
+        _In_ Flags flags):
+    m_sai(sai),
+    m_flags(flags)
 {
     SWSS_LOG_ENTER();
 
@@ -157,7 +159,10 @@ void SaiDiscovery::discover(
                  * create, we don't need to query this attribute.
                  */
 
-                //continue;
+                if (m_flags & Flags::SkipDefaultEmptyAttributes)
+                {
+                    continue;
+                }
             }
 
             if (md->objecttype == SAI_OBJECT_TYPE_STP &&
@@ -234,7 +239,10 @@ void SaiDiscovery::discover(
                  * create, we don't need to query this attribute.
                  */
 
-                //continue;
+                if (m_flags & Flags::SkipDefaultEmptyAttributes)
+                {
+                    continue;
+                }
             }
 
             SWSS_LOG_DEBUG("getting %s for %s", md->attridname,
@@ -289,6 +297,15 @@ std::set<sai_object_id_t> SaiDiscovery::discover(
 {
     SWSS_LOG_ENTER();
 
+    return discover(1, &startRid);
+}
+
+std::set<sai_object_id_t> SaiDiscovery::discover(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* rids)
+{
+    SWSS_LOG_ENTER();
+
     /*
      * Preform discovery on the switch to obtain ASIC view of
      * objects that are created internally.
@@ -307,7 +324,10 @@ std::set<sai_object_id_t> SaiDiscovery::discover(
 
         setApiLogLevel(SAI_LOG_LEVEL_CRITICAL);
 
-        discover(startRid, discovered_rids);
+        for (size_t idx = 0; idx < count; idx++)
+        {
+            discover(rids[idx], discovered_rids);
+        }
 
         setApiLogLevel(levels);
     }

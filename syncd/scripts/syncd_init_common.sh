@@ -37,9 +37,13 @@ mkdir -p /var/log/sai_failure_dump/
 # currently disabled since most vendors don't support that yet
 # CMD_ARGS+=" -l"
 
-# Set synchronous mode if it is enabled in CONFIG_DB
+# Set zmq mode by default for smartswitch DPU
+# Otherwise, set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
-if [ "$SYNC_MODE" == "enable" ]; then
+SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
+if [ "$SWITCH_TYPE" == "dpu" ]; then
+    CMD_ARGS+=" -z zmq_sync -x /usr/share/sonic/hwsku/context_config.json"
+elif [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
 fi
 
@@ -363,6 +367,7 @@ config_syncd_mlnx()
 
     if [[ "$DUAL_TOR" == "enable" ]]; then
        echo "SAI_ADDITIONAL_MAC_ENABLED=1" >> /tmp/sai.profile
+       echo "SAI_ACL_MULTI_BINDING_ENABLED=1" >> /tmp/sai.profile
     fi
 
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
@@ -521,25 +526,7 @@ config_syncd_nvidia_bluefield()
     mkdir -p /mnt/huge
     mount -t hugetlbfs pagesize=1GB /mnt/huge
 
-    devlink dev eswitch set pci/0000:03:00.0 mode legacy
-    devlink dev eswitch set pci/0000:03:00.0 mode switchdev
-
-    if [[ $hwsku != *"-C1" ]] && [[ $single_port == false ]]; then
-        devlink dev param set pci/0000:03:00.0 name esw_multiport value 1 cmode runtime
-        devlink dev param set pci/0000:03:00.1 name esw_multiport value 1 cmode runtime
-    fi
-
     ethtool -A Ethernet0 rx off tx off
-
-    if [[ $single_port == false ]]; then
-        eth4_mac=$(cat /sys/class/net/Ethernet4/address)
-        echo "PORT_2_MAC_ADDRESS=$eth4_mac" >> /tmp/sai.profile
-
-        devlink dev eswitch set pci/0000:03:00.1 mode legacy
-        devlink dev eswitch set pci/0000:03:00.1 mode switchdev
-
-        ethtool -A Ethernet4 rx off tx off
-    fi
 }
 
 config_syncd_xsight()

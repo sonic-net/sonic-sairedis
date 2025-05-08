@@ -558,6 +558,56 @@ void NotificationProcessor::process_on_bfd_session_state_change(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
+void NotificationProcessor::process_on_icmp_echo_session_state_change(
+        _In_ uint32_t count,
+        _In_ sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("icmp echo session state notification count: %u", count);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_icmp_echo_session_state_notification_t *icmp_echo_session_state = &data[i];
+
+        /*
+         * We are using switch_rid as null, since ICMP_ECHO should be already
+         * defined inside local db after creation.
+         *
+         * If this will be faster than return from create ICMP_ECHO then we can use
+         * query switch id and extract rid of switch id and then convert it to
+         * switch vid.
+         */
+
+        icmp_echo_session_state->icmp_echo_session_id = m_translator->translateRidToVid(icmp_echo_session_state->icmp_echo_session_id, SAI_NULL_OBJECT_ID, true);
+    }
+
+    std::string s = sai_serialize_icmp_echo_session_state_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE, s);
+}
+
+void NotificationProcessor::process_on_ha_set_event(
+        _In_ uint32_t count,
+        _In_ sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_set_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT, s);
+}
+
+void NotificationProcessor::process_on_ha_scope_event(
+        _In_ uint32_t count,
+        _In_ sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_scope_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT, s);
+}
 
 void NotificationProcessor::process_on_switch_asic_sdk_health_event(
         _In_ sai_object_id_t switch_rid,
@@ -725,6 +775,51 @@ void NotificationProcessor::handle_bfd_session_state_change(
     sai_deserialize_free_bfd_session_state_ntf(count, bfdsessionstate);
 }
 
+void NotificationProcessor::handle_icmp_echo_session_state_change(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_icmp_echo_session_state_notification_t *icmp_echo_session_state = NULL;
+
+    sai_deserialize_icmp_echo_session_state_ntf(data, count, &icmp_echo_session_state);
+
+    process_on_icmp_echo_session_state_change(count, icmp_echo_session_state);
+
+    sai_deserialize_free_icmp_echo_session_state_ntf(count, icmp_echo_session_state);
+}
+
+void NotificationProcessor::handle_ha_set_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_ha_set_event_data_t *ha_set_event = NULL;
+
+    sai_deserialize_ha_set_event_ntf(data, count, &ha_set_event);
+
+    process_on_ha_set_event(count, ha_set_event);
+
+    sai_deserialize_free_ha_set_event_ntf(count, ha_set_event);
+}
+
+void NotificationProcessor::handle_ha_scope_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_ha_scope_event_data_t *ha_scope_event = NULL;
+
+    sai_deserialize_ha_scope_event_ntf(data, count, &ha_scope_event);
+
+    process_on_ha_scope_event(count, ha_scope_event);
+
+    sai_deserialize_free_ha_scope_event_ntf(count, ha_scope_event);
+}
+
 void NotificationProcessor::handle_switch_asic_sdk_health_event(
         _In_ const std::string &data)
 {
@@ -781,6 +876,16 @@ void NotificationProcessor::handle_twamp_session_event(
     sai_deserialize_free_twamp_session_event_ntf(count, twampsessionevent);
 }
 
+void NotificationProcessor::handle_tam_tel_type_config_change(
+    _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("TAM telemesai_serialize_object_id(tam_type_id)try type config change on TAM id %s", data.c_str());
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, data);
+}
+
 void NotificationProcessor::processNotification(
         _In_ const swss::KeyOpFieldsValuesTuple& item)
 {
@@ -833,9 +938,17 @@ void NotificationProcessor::syncProcessNotification(
     {
         handle_bfd_session_state_change(data);
     }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE)
+    {
+        handle_icmp_echo_session_state_change(data);
+    }
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT)
     {
         handle_twamp_session_event(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE)
+    {
+        handle_tam_tel_type_config_change(data);
     }
     else
     {

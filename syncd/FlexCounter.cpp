@@ -29,6 +29,7 @@ static const std::string COUNTER_TYPE_BUFFER_POOL = "Buffer Pool Counter";
 static const std::string COUNTER_TYPE_ENI = "DASH ENI Counter";
 static const std::string COUNTER_TYPE_METER_BUCKET = "DASH Meter Bucket Counter";
 static const std::string COUNTER_TYPE_POLICER = "Policer Counter";
+static const std::string COUNTER_TYPE_SRV6 = "SRv6 Counter";
 static const std::string ATTR_TYPE_QUEUE = "Queue Attribute";
 static const std::string ATTR_TYPE_PG = "Priority Group Attribute";
 static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
@@ -64,7 +65,8 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{SAI_OBJECT_TYPE_POLICER, POLICER_COUNTER_ID_LIST}, COUNTER_TYPE_POLICER},
     {{SAI_OBJECT_TYPE_TUNNEL, TUNNEL_COUNTER_ID_LIST}, COUNTER_TYPE_TUNNEL},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, ENI_COUNTER_ID_LIST}, COUNTER_TYPE_ENI},
-    {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET}
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
+    {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
 };
 
 BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
@@ -929,18 +931,26 @@ public:
                 // Add all objects to m_objectIdsMap so that they will be polled using single API
                 for (size_t i = 0; i < vids.size(); i++)
                 {
-                    auto it_vid = m_objectIdsMap.find(vids[i]);
-                    if (it_vid != m_objectIdsMap.end())
-                    {
-                        // Remove and re-add if vid already exists
-                        m_objectIdsMap.erase(it_vid);
+                    auto rid = rids[i];
+                    auto vid = vids[i];
+                    std::vector<uint64_t> stats(counter_ids.size());
+                    if (collectData(rid, counter_ids, effective_stats_mode, false, stats)) {
+
+                        auto it_vid = m_objectIdsMap.find(vid);
+                        if (it_vid != m_objectIdsMap.end())
+                        {
+                            // Remove and re-add if vid already exists
+                            m_objectIdsMap.erase(it_vid);
+                        }
+
+                        auto counter_data = std::make_shared<CounterIds<StatType>>(rid, counter_ids);
+                        m_objectIdsMap.emplace(vid, counter_data);
+
+                        SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
+                    } else {
+                        SWSS_LOG_WARN("%s RID %s can't provide the statistic",  m_name.c_str(), sai_serialize_object_id(rid).c_str());
                     }
-
-                    auto counter_data = std::make_shared<CounterIds<StatType>>(rids[i], counter_ids);
-                    m_objectIdsMap.emplace(vids[i], counter_data);
                 }
-
-                SWSS_LOG_INFO("Counters do not support bulk, fallback to single call %s", m_name.c_str());
 
                 return;
             }
@@ -1303,10 +1313,17 @@ private:
             {
                 values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
             }
-            values.emplace_back(m_instanceId + "_time_stamp", std::to_string(time_stamp));
+
             countersTable.set(sai_serialize_object_id(vid), values, "");
             values.clear();
         }
+
+        // First generate the key, then replace spaces with underscores to avoid issues when Lua plugins handle the timestamp
+        std::string timestamp_key = m_instanceId + "_" + m_name + "_time_stamp";
+        std::replace(timestamp_key.begin(), timestamp_key.end(), ' ', '_');
+
+        values.emplace_back(timestamp_key, std::to_string(time_stamp));
+        countersTable.set("TIME_STAMP", values, "");
 
         SWSS_LOG_DEBUG("After pushing db %s %s %s", m_instanceId.c_str(), m_name.c_str(), ctx.name.c_str());
     }
@@ -2403,6 +2420,10 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     {
         return std::make_shared<CounterContext<sai_policer_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_POLICER, m_vendorSai.get(), m_statsMode);
     }
+    else if (context_name == COUNTER_TYPE_SRV6)
+    {
+        return std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
+    }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
     // GCC 8.3 requires a return value here
@@ -2695,6 +2716,11 @@ void FlexCounter::removeCounter(
         {
             getCounterContext(COUNTER_TYPE_FLOW)->removeObject(vid);
             removeDataFromCountersDB(vid, ":TRAP");
+        }
+
+        if (hasCounterContext(COUNTER_TYPE_SRV6))
+        {
+            getCounterContext(COUNTER_TYPE_SRV6)->removeObject(vid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_POLICER)

@@ -8,6 +8,7 @@ using namespace syncd;
 
 static std::string natData =
 "[{\"nat_entry\":\"{\\\"nat_data\\\":{\\\"key\\\":{\\\"dst_ip\\\":\\\"10.10.10.10\\\",\\\"l4_dst_port\\\":\\\"20006\\\",\\\"l4_src_port\\\":\\\"0\\\",\\\"proto\\\":\\\"6\\\",\\\"src_ip\\\":\\\"0.0.0.0\\\"},\\\"mask\\\":{\\\"dst_ip\\\":\\\"255.255.255.255\\\",\\\"l4_dst_port\\\":\\\"65535\\\",\\\"l4_src_port\\\":\\\"0\\\",\\\"proto\\\":\\\"255\\\",\\\"src_ip\\\":\\\"0.0.0.0\\\"}},\\\"nat_type\\\":\\\"SAI_NAT_TYPE_DESTINATION_NAT\\\",\\\"switch_id\\\":\\\"oid:0x21000000000000\\\",\\\"vr\\\":\\\"oid:0x3000000000048\\\"}\",\"nat_event\":\"SAI_NAT_EVENT_AGED\"}]";
+static std::string icmp_echo_sesion_state_str = "[{\"icmp_echo_session_id\":\"oid:0x100000000003a\",\"session_state\":\"SAI_ICMP_ECHO_SESSION_STATE_DOWN\"}]";
 
 // Test ASIC/SDK health event
 std::string asheData = "{"
@@ -43,6 +44,18 @@ TEST(NotificationHandler, NotificationHandlerTest)
 
     sai_deserialize_nat_event_ntf(natData, count, &natevent);
     notificationHandler->onNatEvent(count, natevent);
+
+    attrs.clear();
+    sai_attribute_t icmp_echo_attr;
+    icmp_echo_attr.id = SAI_SWITCH_ATTR_ICMP_ECHO_SESSION_STATE_CHANGE_NOTIFY;
+    icmp_echo_attr.value.ptr = (void *) 1;
+
+    attrs.push_back(icmp_echo_attr);
+    notificationHandler->updateNotificationsPointers(1, attrs.data());
+
+    sai_icmp_echo_session_state_notification_t *icmp_echo_session_state_ntf = NULL;
+    sai_deserialize_icmp_echo_session_state_ntf(icmp_echo_sesion_state_str, count, &icmp_echo_session_state_ntf);
+    notificationHandler->onIcmpEchoSessionStateChange(count, icmp_echo_session_state_ntf);
 
     sai_object_id_t switch_id;
     sai_switch_asic_sdk_health_severity_t severity;

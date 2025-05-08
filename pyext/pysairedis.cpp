@@ -95,6 +95,9 @@ sai_ip_prefix_t* sai_ip_prefix_t_from_string(const std::string& s)
 
 PyObject *py_convert_sai_fdb_event_notification_data_t_to_PyObject(const sai_fdb_event_notification_data_t*ntf);
 PyObject *py_convert_sai_bfd_session_state_notification_t_to_PyObject(const sai_bfd_session_state_notification_t*ntf);
+PyObject *py_convert_sai_icmp_echo_session_state_notification_t_to_PyObject(const sai_icmp_echo_session_state_notification_t*ntf);
+PyObject *py_convert_sai_ha_set_event_data_t_to_PyObject(const sai_ha_set_event_data_t*ntf);
+PyObject *py_convert_sai_ha_scope_event_data_t_to_PyObject(const sai_ha_scope_event_data_t*ntf);
 PyObject *py_convert_sai_port_oper_status_notification_t_to_PyObject(const sai_port_oper_status_notification_t*ntf);
 PyObject *py_convert_sai_queue_deadlock_notification_data_t_to_PyObject(const sai_queue_deadlock_notification_data_t*ntf);
 
@@ -104,6 +107,10 @@ static PyObject * py_queue_pfc_deadlock_notification = NULL;
 static PyObject * py_switch_shutdown_request_notification = NULL;
 static PyObject * py_switch_state_change_notification = NULL;
 static PyObject * py_bfd_session_state_change_notification = NULL;
+static PyObject * py_icmp_echo_session_state_change_notification = NULL;
+static PyObject * py_ha_set_event_notification = NULL;
+static PyObject * py_ha_scope_event_notification = NULL;
+static PyObject * py_tam_tel_type_config_change_notification = NULL;
 
 void call_python(PyObject* callObject, PyObject* arglist)
 {
@@ -206,6 +213,60 @@ static void sai_bfd_session_state_change_notification(
     Py_DECREF(arglist);
 }
 
+static void sai_icmp_echo_session_state_change_notification(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    PyObject* obj = py_convert_sai_icmp_echo_session_state_notification_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(iO)", count, obj);
+
+    call_python(py_icmp_echo_session_state_change_notification, arglist);
+
+    Py_DECREF(obj);
+}
+
+
+static void sai_ha_set_event_notification(
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t *data)
+{
+    PyObject* obj = py_convert_sai_ha_set_event_data_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(iO)", count, obj);
+
+    call_python(py_ha_set_event_notification, arglist);
+
+    Py_DECREF(obj);
+
+    Py_DECREF(arglist);
+}
+
+static void sai_ha_scope_event_notification(
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t *data)
+{
+    PyObject* obj = py_convert_sai_ha_scope_event_data_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(iO)", count, obj);
+
+    call_python(py_ha_scope_event_notification, arglist);
+
+    Py_DECREF(obj);
+
+    Py_DECREF(arglist);
+}
+
+static void sai_tam_tel_type_config_change_notification(
+    _In_ sai_object_id_t tam_tel_type_id)
+{
+    PyObject *arglist = Py_BuildValue("(l)", tam_tel_type_id);
+
+    call_python(py_tam_tel_type_config_change_notification, arglist);
+
+    Py_DECREF(arglist);
+}
+
 sai_pointer_t sai_get_notification_pointer(
         sai_attr_id_t id,
         PyObject*callback)
@@ -248,6 +309,26 @@ sai_pointer_t sai_get_notification_pointer(
             Py_XDECREF(py_bfd_session_state_change_notification);
             py_bfd_session_state_change_notification = callback;
             return (void*)&sai_bfd_session_state_change_notification;
+
+        case SAI_SWITCH_ATTR_ICMP_ECHO_SESSION_STATE_CHANGE_NOTIFY:
+            Py_XDECREF(py_icmp_echo_session_state_change_notification);
+            py_icmp_echo_session_state_change_notification = callback;
+            return (void*)&sai_icmp_echo_session_state_change_notification;
+
+        case SAI_SWITCH_ATTR_HA_SET_EVENT_NOTIFY:
+            Py_XDECREF(py_ha_set_event_notification);
+            py_ha_set_event_notification = callback;
+            return (void*)&sai_ha_set_event_notification;
+
+        case SAI_SWITCH_ATTR_HA_SCOPE_EVENT_NOTIFY:
+            Py_XDECREF(py_ha_scope_event_notification);
+            py_ha_scope_event_notification = callback;
+            return (void*)&sai_ha_scope_event_notification;
+
+        case SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY:
+            Py_XDECREF(py_tam_tel_type_config_change_notification);
+            py_tam_tel_type_config_change_notification = callback;
+            return (void*)&sai_tam_tel_type_config_change_notification;
 
         default:
             Py_XDECREF(callback);
