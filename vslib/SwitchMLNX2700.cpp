@@ -34,7 +34,7 @@ sai_status_t SwitchMLNX2700::create_qos_queues_per_port(
     SWSS_LOG_ENTER();
 
     // 8 in and 8 out queues per port
-    const uint32_t port_qos_queues_count = 16;
+    const uint32_t port_qos_queues_count = m_unicastQueueNumber + m_multicastQueueNumber;
     std::vector<sai_object_id_t> queues;
 
     for (uint32_t i = 0; i < port_qos_queues_count; ++i)
@@ -87,6 +87,36 @@ sai_status_t SwitchMLNX2700::create_qos_queues()
     {
         create_qos_queues_per_port(port_id);
     }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchMLNX2700::set_number_of_queues()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("set number of unicast queues");
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_UNICAST_QUEUES;
+    attr.value.u32 = m_unicastQueueNumber;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    SWSS_LOG_INFO("set number of multicast queues");
+
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_MULTICAST_QUEUES;
+    attr.value.u32 = m_multicastQueueNumber;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    SWSS_LOG_INFO("set number of queues");
+
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_QUEUES;
+    attr.value.u32 = m_unicastQueueNumber + m_multicastQueueNumber;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     return SAI_STATUS_SUCCESS;
 }
