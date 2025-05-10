@@ -963,6 +963,104 @@ sai_status_t SaiPlayer::handle_dash_outbound_ca_to_pa(
     }
 }
 
+sai_status_t SaiPlayer::handle_dash_outbound_port_map_port_range(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_outbound_port_map_port_range_entry_t entry;
+    sai_deserialize_outbound_port_map_port_range_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+    entry.outbound_port_map_id = translate_local_to_redis(entry.outbound_port_map_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH outbound_port_map_port_range other apis not implemented");
+    }
+}
+
+sai_status_t SaiPlayer::handle_dash_global_trusted_vni(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_global_trusted_vni_entry_t entry;
+    sai_deserialize_global_trusted_vni_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH global_trusted_vni other apis not implemented");
+    }
+}
+
+sai_status_t SaiPlayer::handle_dash_eni_trusted_vni(
+        _In_ const std::string &str_object_id,
+        _In_ sai_common_api_t api,
+        _In_ uint32_t attr_count,
+        _In_ sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    sai_eni_trusted_vni_entry_t entry;
+    sai_deserialize_eni_trusted_vni_entry(str_object_id, entry);
+
+    entry.switch_id = translate_local_to_redis(entry.switch_id);
+    entry.eni_id = translate_local_to_redis(entry.eni_id);
+
+    switch (api)
+    {
+        case SAI_COMMON_API_CREATE:
+            return m_sai->create(&entry, attr_count, attr_list);
+
+        case SAI_COMMON_API_REMOVE:
+            return m_sai->remove(&entry);
+
+        case SAI_COMMON_API_SET:
+            return m_sai->set(&entry, attr_list);
+
+        case SAI_COMMON_API_GET:
+            return m_sai->get(&entry, attr_count, attr_list);
+
+        default:
+            SWSS_LOG_THROW("DASH ENI_TRUSTED_VNI_ENTRY other APIs not implemented");
+    }
+}
+
 void SaiPlayer::update_notifications_pointers(
         _In_ uint32_t attr_count,
         _Inout_ sai_attribute_t *attr_list)
@@ -1850,6 +1948,56 @@ sai_status_t SaiPlayer::handle_bulk_entry(
             }
             break;
 
+            case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+            {
+                std::vector<sai_outbound_port_map_port_range_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_outbound_port_map_port_range_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].outbound_port_map_id = translate_local_to_redis(entries[it].outbound_port_map_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("outbound_port_map_port_range_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+            {
+                std::vector<sai_global_trusted_vni_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_global_trusted_vni_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("global_trusted_vni_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
+            {
+                std::vector<sai_eni_trusted_vni_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_eni_trusted_vni_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                }
+
+                CALL_BULK_CREATE_API_WITH_TIMER("eni_trusted_vni_entry");
+
+            }
+            break;
+
             default:
                 SWSS_LOG_THROW("api %s is not supported in bulk", sai_serialize_common_api(api).c_str());
         }
@@ -2041,6 +2189,56 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                 }
 
                 CALL_BULK_REMOVE_API_WITH_TIMER("outbound_ca_to_pa_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+            {
+                std::vector<sai_outbound_port_map_port_range_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_outbound_port_map_port_range_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].outbound_port_map_id = translate_local_to_redis(entries[it].outbound_port_map_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("outbound_port_map_port_range_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+            {
+                std::vector<sai_global_trusted_vni_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_global_trusted_vni_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("global_trusted_vni_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
+            {
+                std::vector<sai_eni_trusted_vni_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_eni_trusted_vni_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                }
+
+                CALL_BULK_REMOVE_API_WITH_TIMER("eni_trusted_vni_entry");
 
             }
             break;
@@ -2243,6 +2441,56 @@ sai_status_t SaiPlayer::handle_bulk_entry(
                 }
 
                 CALL_BULK_SET_API_WITH_TIMER("outbound_ca_to_pa_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+            {
+                std::vector<sai_outbound_port_map_port_range_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_outbound_port_map_port_range_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].outbound_port_map_id = translate_local_to_redis(entries[it].outbound_port_map_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("outbound_port_map_port_range_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+            {
+                std::vector<sai_global_trusted_vni_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_global_trusted_vni_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("global_trusted_vni_entry");
+
+            }
+            break;
+
+            case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
+            {
+                std::vector<sai_eni_trusted_vni_entry_t> entries(object_count);
+
+                for (uint32_t it = 0; it < object_count; it++)
+                {
+                    sai_deserialize_eni_trusted_vni_entry(object_ids[it], entries[it]);
+
+                    entries[it].switch_id = translate_local_to_redis(entries[it].switch_id);
+                    entries[it].eni_id = translate_local_to_redis(entries[it].eni_id);
+                }
+
+                CALL_BULK_SET_API_WITH_TIMER("eni_trusted_vni_entry");
 
             }
             break;
@@ -2530,6 +2778,9 @@ void SaiPlayer::processBulk(
         case SAI_OBJECT_TYPE_PA_VALIDATION_ENTRY:
         case SAI_OBJECT_TYPE_OUTBOUND_ROUTING_ENTRY:
         case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
+        case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+        case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+        case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
             status = handle_bulk_entry(object_ids, object_type, api, attributes, statuses);
             break;
 
@@ -2834,6 +3085,18 @@ int SaiPlayer::replay()
 
             case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
                 status = handle_dash_outbound_ca_to_pa(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+                status = handle_dash_outbound_port_map_port_range(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+                status = handle_dash_global_trusted_vni(str_object_id, api, attr_count, attr_list);
+                break;
+
+            case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
+                status = handle_dash_eni_trusted_vni(str_object_id, api, attr_count, attr_list);
                 break;
 
             default:

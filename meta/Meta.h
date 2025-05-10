@@ -601,6 +601,21 @@ namespace saimeta
                      _In_ bool create,
                      _In_ bool get = false);
 
+             sai_status_t meta_sai_validate_outbound_port_map_port_range_entry(
+                     _In_ const sai_outbound_port_map_port_range_entry_t* outbound_port_map_port_range_entry,
+                     _In_ bool create,
+                     _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_global_trusted_vni_entry(
+                     _In_ const sai_global_trusted_vni_entry_t* global_trusted_vni_entry,
+                     _In_ bool create,
+                     _In_ bool get = false);
+
+             sai_status_t meta_sai_validate_eni_trusted_vni_entry(
+                     _In_ const sai_eni_trusted_vni_entry_t* eni_trusted_vni_entry,
+                     _In_ bool create,
+                     _In_ bool get = false);
+
         public:
 
             /*

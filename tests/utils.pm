@@ -87,6 +87,14 @@ sub request_warm_shutdown
     sleep 2;
 }
 
+sub request_cold_shutdown
+{
+    print color('bright_blue') . "Requesting syncd cold shutdown" . color('reset') . "\n";
+    `../syncd/syncd_request_shutdown -c`;
+
+    sleep 2;
+}
+
 sub play_common
 {
     my @params = @_;
@@ -200,7 +208,8 @@ BEGIN
 {
     our @ISA    = qw(Exporter);
     our @EXPORT = qw/ color
-    kill_syncd flush_redis start_syncd play fresh_start fresh_start_bulk start_syncd_warm request_warm_shutdown
+    kill_syncd flush_redis start_syncd play fresh_start fresh_start_bulk
+    start_syncd_warm request_warm_shutdown request_cold_shutdown
     sync_start_syncd sync_fresh_start sync_start_syncd_warm sync_start_syncd sync_play
     /;
 
