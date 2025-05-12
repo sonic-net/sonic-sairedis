@@ -1063,8 +1063,8 @@ vl_api_tunterm_acl_add_replace_reply_t_handler(vl_api_tunterm_acl_add_replace_re
     uint32_t *tunterm_index = (uint32_t *) get_index_ptr(msg->context);
     *tunterm_index = ntohl(msg->tunterm_acl_index);
 
-    SAIVPP_DEBUG("tunterm acl add_replace %s(%d) tunterm_index index %u", msg->retval ? "failed" : "successful",
-                 msg->retval, *tunterm_index);
+    SAIVPP_DEBUG("tunterm acl add_replace %s(%d) tunterm_index index %u", retval ? "failed" : "successful",
+                 retval, *tunterm_index);
     release_index(msg->context);
 }
 
@@ -1083,8 +1083,8 @@ vl_api_tunterm_acl_interface_add_del_reply_t_handler(vl_api_tunterm_acl_interfac
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    SAIVPP_DEBUG("tunterm acl interface set/reset  %s(%d)", msg->retval ? "failed" : "successful",
-                 msg->retval);
+    SAIVPP_DEBUG("tunterm acl interface set/reset  %s(%d)", retval ? "failed" : "successful",
+                 retval);
 }
 
 static void
@@ -1321,8 +1321,8 @@ static void vl_api_acl_add_replace_reply_t_handler(vl_api_acl_add_replace_reply_
     uint32_t *acl_index = (uint32_t *) get_index_ptr(msg->context);
     *acl_index = ntohl(msg->acl_index);
 
-    SAIVPP_DEBUG("acl add_replace %s(%d) acl index %u", msg->retval ? "failed" : "successful",
-                 msg->retval, *acl_index);
+    SAIVPP_DEBUG("acl add_replace %s(%d) acl index %u", retval ? "failed" : "successful",
+                 retval, *acl_index);
     release_index(msg->context);
 }
 
@@ -1340,7 +1340,7 @@ vl_api_acl_stats_intf_counters_enable_reply_t_handler (vl_api_acl_stats_intf_cou
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    SAIVPP_DEBUG("acl counters enable %s", msg->retval ? "failed" : "successful");
+    SAIVPP_DEBUG("acl counters enable %s", retval ? "failed" : "successful");
 }
 
 static void
@@ -1349,8 +1349,8 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     int retval = (int)ntohl((uint32_t)msg->retval);
     set_reply_status(retval);
 
-    SAIVPP_DEBUG("acl interface set/reset  %s(%d)", msg->retval ? "failed" : "successful",
-                 msg->retval);
+    SAIVPP_DEBUG("acl interface set/reset  %s(%d)", retval ? "failed" : "successful",
+                 retval);
 }
 
 #define LCP_MSG_ID(id) \
