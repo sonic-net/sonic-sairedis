@@ -479,7 +479,7 @@ vpp_api_check()
 
 config_syncd_vpp()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    CMD_ARGS+=" -p $HWSKU_DIR/sai_vpp.profile"
     vpp_api_check "/run/vpp/api.sock"
     source /etc/sonic/vpp/syncd_vpp_env
     export NO_LINUX_NL
