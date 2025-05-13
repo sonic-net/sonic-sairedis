@@ -1607,7 +1607,7 @@ static int __create_loopback_instance (vat_main_t *vam, u32 instance)
     /* create loopback interfaces from vnet/interface_cli.c */
     S (mp);
 
-    W (ret);
+    WR (ret);
 
     VPP_UNLOCK();
 
