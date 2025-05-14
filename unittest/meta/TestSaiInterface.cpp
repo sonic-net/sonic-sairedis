@@ -42,7 +42,10 @@ TEST(SaiInterface, create)
     }
 
     mk.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
-    EXPECT_EQ(SAI_STATUS_FAILURE, sai->create(mk, 0, 0, nullptr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->create(mk, 0, 0, nullptr));
+
+    mk.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->create(mk, 0, 0, nullptr));
 }
 
 TEST(SaiInterface, remove)
@@ -62,7 +65,10 @@ TEST(SaiInterface, remove)
     }
 
     mk.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
-    EXPECT_EQ(SAI_STATUS_FAILURE, sai->remove(mk));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->remove(mk));
+
+    mk.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->remove(mk));
 }
 
 TEST(SaiInterface, set)
@@ -82,7 +88,10 @@ TEST(SaiInterface, set)
     }
 
     mk.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
-    EXPECT_EQ(SAI_STATUS_FAILURE, sai->set(mk, nullptr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->set(mk, nullptr));
+
+    mk.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->set(mk, nullptr));
 }
 
 TEST(SaiInterface, get)
@@ -102,7 +111,10 @@ TEST(SaiInterface, get)
     }
 
     mk.objecttype = SAI_OBJECT_TYPE_L2MC_ENTRY;
-    EXPECT_EQ(SAI_STATUS_FAILURE, sai->get(mk, 0, nullptr));
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->get(mk, 0, nullptr));
+
+    mk.objecttype = SAI_OBJECT_TYPE_IPMC_ENTRY;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai->get(mk, 0, nullptr));
 }
 
 TEST(SaiInterface, stats_meter_bucket_entry)
