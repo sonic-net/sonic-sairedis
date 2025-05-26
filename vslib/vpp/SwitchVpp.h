@@ -188,6 +188,10 @@ namespace saivs
             static int promisc(
                     _In_ const char *dev);
 
+            static sai_status_t add_tc_filter_redirect(
+                    _In_ const std::string& tap,
+                    _In_ const std::string& hostIfname);
+
             virtual bool hostif_create_tap_veth_forwarding(
                     _In_ const std::string &tapname,
                     _In_ int tapfd,
