@@ -48,7 +48,7 @@ jobs:
       source: specific
       project: build
       pipeline: Azure.sonic-swss-common
-      artifact: sonic-swss-common.amd64.ubuntu20_04
+      artifact: sonic-swss-common.amd64.ubuntu22_04
       path: $(Build.ArtifactStagingDirectory)/download
       runVersion: 'latestFromBranch'
       runBranch: 'refs/heads/$(BUILD_BRANCH)'
