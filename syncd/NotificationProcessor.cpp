@@ -883,7 +883,18 @@ void NotificationProcessor::handle_tam_tel_type_config_change(
 
     SWSS_LOG_DEBUG("TAM telemesai_serialize_object_id(tam_type_id)try type config change on TAM id %s", data.c_str());
 
-    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, data);
+    sai_object_id_t rid;
+    sai_object_id_t vid;
+    sai_deserialize_object_id(data, rid);
+
+    if (false == m_translator->tryTranslateRidToVid(rid, vid))
+    {
+        SWSS_LOG_WARN("TAM_TEL_TYPE RID %s transalted to null VID!!!", sai_serialize_object_id(rid).c_str());
+    }
+
+    std::string vid_data = sai_serialize_object_id(vid);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, vid_data);
 }
 
 void NotificationProcessor::processNotification(
