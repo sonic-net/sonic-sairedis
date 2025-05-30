@@ -798,22 +798,9 @@ sai_status_t SwitchVpp::vpp_create_lag_member(
         configure_lcp_interface(hw_ifname, tap.c_str(), true);
 
         // add tc filter to redirect traffic from tap to PortChannel
-        std::stringstream cmd;
-        std::string res;
-
-        cmd << "tc qdisc add dev be" << bond_id << " ingress";
-        ret = swss::exec(cmd.str(), res);
-        if (ret) {
-            SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
-        }
-
-        cmd.str("");
-        cmd.clear();
-        cmd << "tc filter add dev be" << bond_id << " parent ffff: protocol all prio 2 u32 match u32 0 0 flowid 1:1 action mirred ingress redirect dev PortChannel" << bond_id;
-        ret = swss::exec(cmd.str(), res);
-        if (ret) {
-            SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
-        }
+        std::string portchannel = std::string("PortChannel") + std::to_string(bond_id);
+        std::string be = std::string("be") + std::to_string(bond_id);
+        CHECK_STATUS(add_tc_filter_redirect(be, portchannel));
 
         // update the lag to bond map
         bond_info.lcp_created = true;

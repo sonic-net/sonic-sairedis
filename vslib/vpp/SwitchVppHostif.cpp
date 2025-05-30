@@ -5,6 +5,7 @@
 #include "meta/sai_serialize.h"
 #include "meta/NotificationPortStateChange.h"
 
+#include "swss/exec.h"
 #include "swss/logger.h"
 
 #include <sys/types.h>
@@ -101,6 +102,36 @@ int SwitchVpp::promisc(
     SWSS_LOG_ENTER();
 
     return 0;
+}
+
+sai_status_t SwitchVpp::add_tc_filter_redirect(
+        _In_ const std::string& tap,
+        _In_ const std::string& hostIfname)
+{
+    SWSS_LOG_ENTER();
+
+    int ret;
+    std::stringstream cmd;
+    std::string res;
+
+    cmd << "tc qdisc add dev " << tap << " ingress";
+    ret = swss::exec(cmd.str(), res);
+    if (ret) {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        // Not returning here, as qdisc may already exist
+    }
+
+    cmd.str("");
+    cmd.clear();
+    cmd << "tc filter add dev " << tap << " parent ffff: protocol all prio 2 u32 match u32 0 0 flowid 1:1"
+        << " action mirred ingress redirect dev " << hostIfname;
+    ret = swss::exec(cmd.str(), res);
+    if (ret) {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        return SAI_STATUS_FAILURE;
+    }
+
+    return SAI_STATUS_SUCCESS;
 }
 
 bool SwitchVpp::hostif_create_tap_veth_forwarding(

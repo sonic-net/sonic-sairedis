@@ -274,34 +274,6 @@ void create_route_prefix (
     }
 }
 
-int configureLoopbackInterface (
-    bool isAdd,
-    const std::string &hostIfname,
-    const std::string &destinationIp,
-    int prefixLen)
-{
-    SWSS_LOG_ENTER();
-
-    std::stringstream cmd;
-    std::string res;
-
-    // Prepare the command
-    std::string command = "";
-    command += isAdd ? " address add " : " link delete dev ";
-    command += isAdd ?  destinationIp + "/" + std::to_string(prefixLen) + " dev " + hostIfname : hostIfname;
-    cmd << IP_CMD << command;
-
-    // Execute the command
-    int ret = swss::exec(cmd.str(), res);
-    if (ret)
-    {
-        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
-        return -1;
-    }
-
-    return 0;
-}
-
 int SwitchVpp::getNextLoopbackInstance ()
 {
     SWSS_LOG_ENTER();
@@ -1256,32 +1228,20 @@ sai_status_t SwitchVpp::vpp_add_lpb_intf_ip_addr (
         return SAI_STATUS_FAILURE;
     }
 
-    // remove host looback interface before creating lcp tap
-    ret = configureLoopbackInterface(false/*lpb_add*/, hostIfname, "", 0);
-    if (ret != 0)
-    {
-        SWSS_LOG_ERROR("Failed to configure loopback interface remove");
-    }
-
     // create lcp tap between vpp and host
     {
         init_vpp_client();
+
+        std::ostringstream tap_stream;
+        tap_stream << "tap_" << hostIfname;
+        std::string tap = tap_stream.str();
+
         SWSS_LOG_DEBUG("configure_lcp_interface vpp_name:%s sonic_name:%s",
             vppIfName.c_str(), hostIfname.c_str());
-        configure_lcp_interface(vppIfName.c_str(), hostIfname.c_str(), true);
-    }
+        configure_lcp_interface(vppIfName.c_str(), tap.c_str(), true);
 
-    // restore IP addresses previously configured on looback interface after creating lcp tap
-    for (auto prefix: ip_prefixes)
-    {
-        std::string addr = prefix.getIp().to_string();
-        ret = configureLoopbackInterface(true/*lpb_add*/, hostIfname, addr, prefix.getMaskLength());
-        if (ret != 0)
-        {
-            SWSS_LOG_ERROR("Failed to configure loopback interface add");
-        }
-        SWSS_LOG_DEBUG("configure_lcp_interface vpp_name:%s sonic_name:%s prefix:%s",
-            vppIfName.c_str(), hostIfname.c_str(), prefix.to_string().c_str());
+        // add tc filter to redirect traffic from tap to Loopback
+        CHECK_STATUS(add_tc_filter_redirect(tap, hostIfname));
     }
 
     // Store the ip/vppIfName pair
