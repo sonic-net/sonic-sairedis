@@ -600,17 +600,20 @@ TEST(SwitchMLNX2700, test_stats_query_capability)
             std::make_shared<RealObjectIdManager>(0, scc),
             sc);
 
-    sai_stat_capability_t capability_list[91];
+    std::vector<sai_stat_capability_t> capability_list;
     sai_stat_capability_list_t stats_capability;
-    stats_capability.count = 1;
-    stats_capability.list = capability_list;
+
     /* Get queue stats capability */
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
+
     EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
                                           SAI_OBJECT_TYPE_QUEUE,
                                           &stats_capability),
                                           SAI_STATUS_BUFFER_OVERFLOW);
 
-    stats_capability.count = SAI_QUEUE_STAT_DELAY_WATERMARK_NS;
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
 
     EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
                                           SAI_OBJECT_TYPE_QUEUE,
@@ -618,12 +621,16 @@ TEST(SwitchMLNX2700, test_stats_query_capability)
                                           SAI_STATUS_SUCCESS);
 
     /* Get port stats capability */
-    stats_capability.count = 1;
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
+
     EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
                                           SAI_OBJECT_TYPE_PORT,
                                           &stats_capability),
                                           SAI_STATUS_BUFFER_OVERFLOW);
-    stats_capability.count = 91;
+
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
 
     EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
                                           SAI_OBJECT_TYPE_PORT,

@@ -745,6 +745,14 @@ namespace saivs
             virtual sai_status_t queryPortAutonegFecOverrideSupportCapability(
                                       _Out_ sai_attr_capability_t *attr_capability);
 
+        protected:
+
+            virtual sai_status_t queryPortStatsCapability(
+                                      _Inout_ sai_stat_capability_list_t *stats_capability);
+
+            virtual sai_status_t queryQueueStatsCapability(
+                                      _Inout_ sai_stat_capability_list_t *stats_capability);
+
         public: // TODO private
 
             std::set<FdbInfo> m_fdb_info_set;
