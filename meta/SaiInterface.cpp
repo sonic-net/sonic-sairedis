@@ -67,6 +67,12 @@ sai_status_t SaiInterface::create(
         case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
             return create(&metaKey.objectkey.key.outbound_ca_to_pa_entry, attr_count, attr_list);
 
+        case SAI_OBJECT_TYPE_IPMC_ENTRY:
+            return create(&metaKey.objectkey.key.ipmc_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_L2MC_ENTRY:
+            return create(&metaKey.objectkey.key.l2mc_entry, attr_count, attr_list);
+
         default:
 
             SWSS_LOG_ERROR("object type %s not implemented, FIXME", info->objecttypename);
@@ -134,6 +140,12 @@ sai_status_t SaiInterface::remove(
 
         case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
             return remove(&metaKey.objectkey.key.outbound_ca_to_pa_entry);
+
+        case SAI_OBJECT_TYPE_IPMC_ENTRY:
+            return remove(&metaKey.objectkey.key.ipmc_entry);
+
+        case SAI_OBJECT_TYPE_L2MC_ENTRY:
+            return remove(&metaKey.objectkey.key.l2mc_entry);
 
         default:
 
@@ -204,6 +216,12 @@ sai_status_t SaiInterface::set(
         case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
             return set(&metaKey.objectkey.key.outbound_ca_to_pa_entry, attr);
 
+        case SAI_OBJECT_TYPE_IPMC_ENTRY:
+            return set(&metaKey.objectkey.key.ipmc_entry, attr);
+
+        case SAI_OBJECT_TYPE_L2MC_ENTRY:
+            return set(&metaKey.objectkey.key.l2mc_entry, attr);
+
         default:
 
             SWSS_LOG_ERROR("object type %s not implemented, FIXME", info->objecttypename);
@@ -273,6 +291,12 @@ sai_status_t SaiInterface::get(
 
         case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
             return get(&metaKey.objectkey.key.outbound_ca_to_pa_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_IPMC_ENTRY:
+            return get(&metaKey.objectkey.key.ipmc_entry, attr_count, attr_list);
+
+        case SAI_OBJECT_TYPE_L2MC_ENTRY:
+            return get(&metaKey.objectkey.key.l2mc_entry, attr_count, attr_list);
 
         default:
 
