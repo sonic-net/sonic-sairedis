@@ -78,6 +78,15 @@ std::string sai_serialize_prefix_compression_entry(
 std::string sai_serialize_flow_entry(
         _In_ const sai_flow_entry_t &flow_entry);
 
+std::string sai_serialize_outbound_port_map_port_range_entry(
+        _In_ const sai_outbound_port_map_port_range_entry_t &outbound_port_map_port_range_entry);
+
+std::string sai_serialize_global_trusted_vni_entry(
+        _In_ const sai_global_trusted_vni_entry_t &global_trusted_vni_entry);
+
+std::string sai_serialize_eni_trusted_vni_entry(
+        _In_ const sai_eni_trusted_vni_entry_t &eni_trusted_vni_entry);
+
 std::string sai_serialize_vlan_id(
         _In_ const sai_vlan_id_t vlan_id);
 
@@ -478,6 +487,18 @@ void sai_deserialize_prefix_compression_entry(
 void sai_deserialize_flow_entry(
         _In_ const std::string& s,
         _Out_ sai_flow_entry_t &flow_entry);
+
+void sai_deserialize_outbound_port_map_port_range_entry(
+        _In_ const std::string& s,
+        _Out_ sai_outbound_port_map_port_range_entry_t &outbound_port_map_port_range_entry);
+
+void sai_deserialize_global_trusted_vni_entry(
+        _In_ const std::string& s,
+        _Out_ sai_global_trusted_vni_entry_t &global_trusted_vni_entry);
+
+void sai_deserialize_eni_trusted_vni_entry(
+        _In_ const std::string& s,
+        _Out_ sai_eni_trusted_vni_entry_t &eni_trusted_vni_entry);
 
 void sai_deserialize_vlan_id(
         _In_ const std::string& s,
