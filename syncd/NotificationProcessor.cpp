@@ -887,7 +887,7 @@ void NotificationProcessor::handle_tam_tel_type_config_change(
     sai_object_id_t vid;
     sai_deserialize_object_id(data, rid);
 
-    if (false == m_translator->tryTranslateRidToVid(rid, vid))
+    if (!m_translator->tryTranslateRidToVid(rid, vid))
     {
         SWSS_LOG_WARN("TAM_TEL_TYPE RID %s transalted to null VID!!!", sai_serialize_object_id(rid).c_str());
     }
