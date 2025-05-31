@@ -29,5 +29,6 @@ TEST(NotificationTamTelTypeConfigChange, processMetadata)
     ss << "oid:0x" << std::hex << tam_id;
 
     NotificationTamTelTypeConfigChange n(ss.str());
+    ASSERT_EQ(tam_id, n.getAnyObjectId());
     n.processMetadata(meta);
 }
