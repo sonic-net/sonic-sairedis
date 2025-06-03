@@ -26,7 +26,7 @@ sai_object_id_t NotificationTamTelTypeConfigChange::getAnyObjectId() const
 {
     SWSS_LOG_ENTER();
 
-    return SAI_NULL_OBJECT_ID;
+    return m_tam_id;
 }
 
 void NotificationTamTelTypeConfigChange::processMetadata(

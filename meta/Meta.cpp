@@ -14,7 +14,7 @@
 
 // TODO add validation for all oids belong to the same switch
 
-#define MAX_LIST_COUNT 0x1000
+#define MAX_LIST_COUNT (0x1<<24) // 16M
 
 #define CHECK_STATUS_SUCCESS(s) { if ((s) != SAI_STATUS_SUCCESS) return (s); }
 
