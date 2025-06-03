@@ -1210,7 +1210,6 @@ sai_status_t SwitchStateBase::set_initial_tam_objects()
     attr.value.objlist.list = nullptr;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchStateBase::set_static_acl_resource_list(
@@ -2699,8 +2698,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
 
     if (meta->objecttype == SAI_OBJECT_TYPE_TAM_TEL_TYPE && meta->attrid == SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES)
     {
-        generate_ipfix_templates(object_id);
-        return SAI_STATUS_SUCCESS;
+        return refresh_tam_tel_ipfix_templates(object_id);
     }
 
     auto mmeta = m_meta.lock();
@@ -4329,7 +4327,7 @@ void SwitchStateBase::send_tam_tel_type_config_change(
     m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
 }
 
-void SwitchStateBase::generate_ipfix_templates(sai_object_id_t tam_tel_type_id)
+sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t tam_tel_type_id)
 {
     SWSS_LOG_ENTER();
 
@@ -4363,6 +4361,8 @@ void SwitchStateBase::generate_ipfix_templates(sai_object_id_t tam_tel_type_id)
         SWSS_LOG_INFO("Successfully set IPFIX templates for TAM Tel Type %s",
                       sai_serialize_object_id(tam_tel_type_id).c_str());
     }
+
+    return status;
 }
 
 sai_status_t SwitchStateBase::createTamTelemetry(

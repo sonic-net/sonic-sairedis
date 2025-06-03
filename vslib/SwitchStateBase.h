@@ -554,7 +554,7 @@ namespace saivs
             void send_tam_tel_type_config_change(
                 _In_ sai_object_id_t tam_tel_type_id);
 
-            void generate_ipfix_templates(
+            sai_status_t refresh_tam_tel_ipfix_templates(
                 _In_ sai_object_id_t tam_tel_type_id);
 
         protected:
