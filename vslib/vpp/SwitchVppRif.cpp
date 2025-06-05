@@ -1188,7 +1188,6 @@ sai_status_t SwitchVpp::vpp_add_lpb_intf_ip_addr (
     SWSS_LOG_ENTER();
 
     sai_route_entry_t route_entry;
-    std::vector<swss::IpPrefix> ip_prefixes;
     sai_deserialize_route_entry(serializedObjectId, route_entry);
     std::string destinationIP = extractDestinationIP(serializedObjectId);
 
@@ -1222,11 +1221,6 @@ sai_status_t SwitchVpp::vpp_add_lpb_intf_ip_addr (
     const std::string hostIfname = get_intf_name_for_prefix(route_entry);
     SWSS_LOG_NOTICE("get_intf_name_for_prefix:%s", hostIfname.c_str());
     lpbHostIfToVppIfMap[hostIfname] = vppIfName;
-
-    // record the IP addresses on the host interface before destorying it
-    if (!vpp_get_intf_all_ip_prefixes(hostIfname, ip_prefixes)) {
-        return SAI_STATUS_FAILURE;
-    }
 
     // create lcp tap between vpp and host
     {
