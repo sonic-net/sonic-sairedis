@@ -166,18 +166,21 @@ TEST_F(VirtualSwitchSaiInterfaceTest, bulkGet)
 
 TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
 {
-    sai_stat_capability_t capability_list[91];
+    std::vector<sai_stat_capability_t> capability_list;
     sai_stat_capability_list_t stats_capability;
-    stats_capability.list = capability_list;
 
     /* Queue stats capability get */
-    stats_capability.count = 1;
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
 
     EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
             m_vssai->queryStatsCapability(
                 m_swid,
                 SAI_OBJECT_TYPE_QUEUE,
                 &stats_capability));
+
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
 
     EXPECT_EQ(SAI_STATUS_SUCCESS,
             m_vssai->queryStatsCapability(
@@ -186,7 +189,8 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
                 &stats_capability));
 
     /* Port stats capability get */
-    stats_capability.count = 1;
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
 
     EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
             m_vssai->queryStatsCapability(
@@ -194,7 +198,9 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
                 SAI_OBJECT_TYPE_PORT,
                 &stats_capability));
 
-    stats_capability.count = 91;
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
+
     EXPECT_EQ(SAI_STATUS_SUCCESS,
             m_vssai->queryStatsCapability(
                 m_swid,
@@ -204,18 +210,21 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
 
 TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsStCapability)
 {
-    sai_stat_st_capability_t capability_list[91];
+    std::vector<sai_stat_st_capability_t> capability_list;
     sai_stat_st_capability_list_t stats_capability;
-    stats_capability.list = capability_list;
 
     /* Queue stats capability get */
-    stats_capability.count = 1;
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
 
     EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
               m_vssai->queryStatsStCapability(
                   m_swid,
                   SAI_OBJECT_TYPE_QUEUE,
                   &stats_capability));
+
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
 
     EXPECT_EQ(SAI_STATUS_SUCCESS,
               m_vssai->queryStatsStCapability(
@@ -224,7 +233,8 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsStCapability)
                   &stats_capability));
 
     /* Port stats capability get */
-    stats_capability.count = 1;
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
 
     EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
               m_vssai->queryStatsStCapability(
@@ -232,7 +242,9 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsStCapability)
                   SAI_OBJECT_TYPE_PORT,
                   &stats_capability));
 
-    stats_capability.count = 91;
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
+
     EXPECT_EQ(SAI_STATUS_SUCCESS,
               m_vssai->queryStatsStCapability(
                   m_swid,
