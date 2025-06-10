@@ -1538,6 +1538,71 @@ sai_status_t Syncd::processBulkCreateEntry(
         }
         break;
 
+        case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+        {
+            std::vector<sai_outbound_port_map_port_range_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_port_map_port_range_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].outbound_port_map_id = m_translator->translateVidToRid(entries[it].outbound_port_map_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+        {
+            std::vector<sai_global_trusted_vni_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_global_trusted_vni_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
+        {
+            std::vector<sai_eni_trusted_vni_entry_t> entries(object_count);
+
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_eni_trusted_vni_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
+            }
+
+            status = m_vendorSai->bulkCreate(
+                    object_count,
+                    entries.data(),
+                    attr_counts.data(),
+                    attr_lists.data(),
+                    mode,
+                    statuses.data());
+        }
+        break;
+
         default:
             return SAI_STATUS_NOT_SUPPORTED;
     }
@@ -1810,6 +1875,65 @@ sai_status_t Syncd::processBulkRemoveEntry(
 
                 entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
                 entries[it].dst_vnet_id = m_translator->translateVidToRid(entries[it].dst_vnet_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+        {
+            std::vector<sai_outbound_port_map_port_range_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_outbound_port_map_port_range_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].outbound_port_map_id = m_translator->translateVidToRid(entries[it].outbound_port_map_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+        {
+            std::vector<sai_global_trusted_vni_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_global_trusted_vni_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+            }
+
+            status = m_vendorSai->bulkRemove(
+                    object_count,
+                    entries.data(),
+                    mode,
+                    statuses.data());
+
+        }
+        break;
+
+        case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
+        {
+            std::vector<sai_eni_trusted_vni_entry_t> entries(object_count);
+            for (uint32_t it = 0; it < object_count; it++)
+            {
+                sai_deserialize_eni_trusted_vni_entry(objectIds[it], entries[it]);
+
+                entries[it].switch_id = m_translator->translateVidToRid(entries[it].switch_id);
+                entries[it].eni_id = m_translator->translateVidToRid(entries[it].eni_id);
             }
 
             status = m_vendorSai->bulkRemove(
@@ -2096,6 +2220,18 @@ sai_status_t Syncd::processBulkEntry(
 
             case SAI_OBJECT_TYPE_OUTBOUND_CA_TO_PA_ENTRY:
                 sai_deserialize_outbound_ca_to_pa_entry(objectIds[idx], metaKey.objectkey.key.outbound_ca_to_pa_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP_PORT_RANGE_ENTRY:
+                sai_deserialize_outbound_port_map_port_range_entry(objectIds[idx], metaKey.objectkey.key.outbound_port_map_port_range_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_GLOBAL_TRUSTED_VNI_ENTRY:
+                sai_deserialize_global_trusted_vni_entry(objectIds[idx], metaKey.objectkey.key.global_trusted_vni_entry);
+                break;
+
+            case SAI_OBJECT_TYPE_ENI_TRUSTED_VNI_ENTRY:
+                sai_deserialize_eni_trusted_vni_entry(objectIds[idx], metaKey.objectkey.key.eni_trusted_vni_entry);
                 break;
 
             default:
