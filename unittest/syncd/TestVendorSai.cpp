@@ -1728,3 +1728,82 @@ TEST(VendorSai, bulk_dash_tunnel)
         EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
     }
 }
+
+TEST(VendorSai, bulk_outbound_port_map)
+{
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+
+    sai_object_id_t switchid = create_switch(sai);
+
+    sai_attribute_t port_map_attrs[] = {
+        {.id = SAI_OUTBOUND_PORT_MAP_ATTR_COUNTER_ID, .value = (sai_attribute_value_t){.oid = SAI_NULL_OBJECT_ID}},
+    };
+
+    const sai_attribute_t *port_map_attr_list[] = {
+        port_map_attrs,
+        port_map_attrs,
+    };
+    constexpr uint32_t port_map_count = sizeof(port_map_attr_list) / sizeof(sai_attribute_t*);
+
+    uint32_t port_map_attr_count[port_map_count] = {0, 0};
+    sai_object_id_t port_maps[port_map_count];
+    sai_status_t statuses[port_map_count] = {};
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkCreate((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP,
+              switchid, port_map_count, port_map_attr_count, port_map_attr_list, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, port_maps, statuses));
+    for (uint32_t i = 0; i < port_map_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
+    }
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.bulkRemove((sai_object_type_t)SAI_OBJECT_TYPE_OUTBOUND_PORT_MAP,
+              port_map_count, port_maps, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, statuses));
+    for (uint32_t i = 0; i < port_map_count; i++) {
+        EXPECT_EQ(SAI_STATUS_SUCCESS, statuses[i]);
+    }
+}
+
+TEST_F(VendorSaiTest, bulk_outbound_port_map_port_range_entry)
+{
+    sai_outbound_port_map_port_range_entry_t *e = nullptr;
+
+    // metadata will fail
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkRemove(0, e, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED,
+            m_vsai->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+}
+
+TEST_F(VendorSaiTest, bulk_global_trusted_vni_entry)
+{
+    sai_global_trusted_vni_entry_t *e = nullptr;
+
+    // metadata will fail
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkRemove(0, e, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED,
+            m_vsai->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+}
+
+TEST_F(VendorSaiTest, bulk_eni_trusted_vni_entry)
+{
+    sai_eni_trusted_vni_entry_t *e = nullptr;
+
+    // metadata will fail
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkCreate(0, e, nullptr, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER,
+            m_vsai->bulkRemove(0, e, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+
+    EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED,
+            m_vsai->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
+}
