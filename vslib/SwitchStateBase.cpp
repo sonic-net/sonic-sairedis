@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <random>
 
 #define SAI_VS_MAX_PORTS 1024
 
@@ -185,6 +186,13 @@ sai_status_t SwitchStateBase::create(
     {
         // Neighbor entry programming for VOQ systems
         return createVoqSystemNeighborEntry(serializedObjectId, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_TAM_TELEMETRY)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createTamTelemetry(object_id, switch_id, attr_count, attr_list);
     }
 
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
@@ -1192,6 +1200,18 @@ sai_status_t SwitchStateBase::set_static_crm_values()
     return set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP, m_maxAclTableGroups);
 }
 
+sai_status_t SwitchStateBase::set_initial_tam_objects()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
+    attr.value.objlist.count = 0;
+    attr.value.objlist.list = nullptr;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+}
+
 sai_status_t SwitchStateBase::set_static_acl_resource_list(
         _In_ sai_switch_attr_t acl_resource,
         _In_ int max_count)
@@ -1819,6 +1839,7 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     CHECK_STATUS(set_switch_default_attributes());
     CHECK_STATUS(create_scheduler_groups());
     CHECK_STATUS(set_static_crm_values());
+    CHECK_STATUS(set_initial_tam_objects());
 
     // Initialize switch for VOQ attributes
 
@@ -2129,6 +2150,12 @@ sai_status_t SwitchStateBase::warm_update_switch()
     if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
     {
         CHECK_STATUS(set_acl_capabilities());
+    }
+
+    attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
+    if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        CHECK_STATUS(set_initial_tam_objects());
     }
 
     // check for default supported object types
@@ -2667,6 +2694,11 @@ sai_status_t SwitchStateBase::refresh_read_only(
     if (meta->objecttype == SAI_OBJECT_TYPE_ACL_TABLE && meta->attrid == SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_COUNTER)
     {
         return refresh_acl_table_counters(object_id);
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_TAM_TEL_TYPE && meta->attrid == SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES)
+    {
+        return refresh_tam_tel_ipfix_templates(object_id);
     }
 
     auto mmeta = m_meta.lock();
@@ -4328,4 +4360,64 @@ void SwitchStateBase::send_tam_tel_type_config_change(
     auto payload = std::make_shared<EventPayloadNotification>(ntf, sn);
 
     m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
+}
+
+sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t tam_tel_type_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<uint8_t> ipfix_templates;
+
+    // TODO: This is a placeholder for the actual logic to generate IPFIX templates.
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dist(0, 255);
+    ipfix_templates.resize(64 * 1024);
+
+    for (size_t i = 0; i < ipfix_templates.size(); ++i)
+    {
+        ipfix_templates[i] = static_cast<uint8_t>(dist(gen));
+    }
+
+
+    sai_attribute_t attr;
+    attr.id = SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES;
+    attr.value.u8list.count = static_cast<uint32_t>(ipfix_templates.size());
+    attr.value.u8list.list = ipfix_templates.data();
+    sai_status_t status = set(SAI_OBJECT_TYPE_TAM_TEL_TYPE, tam_tel_type_id, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to set IPFIX templates for TAM Tel Type %s, status: %s",
+                       sai_serialize_object_id(tam_tel_type_id).c_str(),
+                       sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_INFO("Successfully set IPFIX templates for TAM Tel Type %s",
+                      sai_serialize_object_id(tam_tel_type_id).c_str());
+    }
+
+    return status;
+}
+
+sai_status_t SwitchStateBase::createTamTelemetry(
+    sai_object_id_t tam_telemetry_id,
+    sai_object_id_t switch_id,
+    uint32_t attr_count,
+    const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
+    sai_attribute_t attr;
+    attr.id = SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST;
+    attr.value.objlist.count = 0;
+    attr.value.objlist.list = nullptr;
+    attrs.push_back(attr);
+
+    return create_internal(SAI_OBJECT_TYPE_TAM_TELEMETRY,
+        sai_serialize_object_id(tam_telemetry_id),
+        switch_id,
+        static_cast<uint32_t>(attrs.size()),
+        attrs.data());
 }

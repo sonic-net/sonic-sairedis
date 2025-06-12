@@ -37,6 +37,9 @@ TEST(TAM, TAMTelTypeConfigNotification)
     sai_object_id_t tam_tel_type_id = 0x4b000000000001;
     string tam_tel_type_id_str = sai_serialize_object_id(tam_tel_type_id);
 
+    sai_object_id_t tam_tel_id = 0x4b000000000002;
+    string tam_tel_id_str = sai_serialize_object_id(tam_tel_id);
+
     attrs.clear();
     attr.id = SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY;
     attr.value.ptr = reinterpret_cast<void *>(notify_tam_tel_type_config_change);
@@ -48,6 +51,10 @@ TEST(TAM, TAMTelTypeConfigNotification)
 
     EXPECT_EQ(
         SAI_STATUS_SUCCESS,
+        ss.create(SAI_OBJECT_TYPE_TAM_TELEMETRY, tam_tel_id_str, switch_id, 0, nullptr));
+
+    EXPECT_EQ(
+        SAI_STATUS_SUCCESS,
         ss.create(SAI_OBJECT_TYPE_TAM_TEL_TYPE, tam_tel_type_id_str, switch_id, 0, nullptr));
 
     attr.id = SAI_TAM_TEL_TYPE_ATTR_STATE;
@@ -56,6 +63,15 @@ TEST(TAM, TAMTelTypeConfigNotification)
     EXPECT_EQ(
         SAI_STATUS_SUCCESS,
         ss.set(SAI_OBJECT_TYPE_TAM_TEL_TYPE, tam_tel_type_id_str, &attr));
+
+
+    std::vector<uint8_t> buffer(1024*1024*1024);
+    attr.id = SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES;
+    attr.value.u8list.count = static_cast<uint32_t>(buffer.size());
+    attr.value.u8list.list = buffer.data();
+    EXPECT_EQ(
+        SAI_STATUS_SUCCESS,
+        ss.get(SAI_OBJECT_TYPE_TAM_TEL_TYPE, tam_tel_type_id_str, 1, &attr));
 
     auto event = eventQueue->dequeue();
     EXPECT_EQ(event->getType(), EventType::EVENT_TYPE_NOTIFICATION);
