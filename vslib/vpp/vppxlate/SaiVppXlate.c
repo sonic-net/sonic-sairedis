@@ -1728,6 +1728,8 @@ int init_vpp_client()
 
         /* Enable LACP punt/xc in linux-cp */
         vpp_lcp_ethertype_enable(0x8809);
+        /* Enable LLDP in linux-cp */
+        vpp_lcp_ethertype_enable(0x88cc);
 
         /*
          * SONiC periodically polls the port status so currently there is no need for
