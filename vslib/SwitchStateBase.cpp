@@ -188,6 +188,13 @@ sai_status_t SwitchStateBase::create(
         return createVoqSystemNeighborEntry(serializedObjectId, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_TAM)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createTam(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_TAM_TELEMETRY)
     {
         sai_object_id_t object_id;
@@ -4398,6 +4405,28 @@ sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t ta
     }
 
     return status;
+}
+
+sai_status_t SwitchStateBase::createTam(
+    sai_object_id_t tam_id,
+    sai_object_id_t switch_id,
+    uint32_t attr_count,
+    const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
+    sai_attribute_t attr;
+    attr.id = SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST;
+    attr.value.objlist.count = 0;
+    attr.value.objlist.list = nullptr;
+    attrs.push_back(attr);
+
+    return create_internal(SAI_OBJECT_TYPE_TAM,
+                           sai_serialize_object_id(tam_id),
+                           switch_id,
+                           static_cast<uint32_t>(attrs.size()),
+                           attrs.data());
 }
 
 sai_status_t SwitchStateBase::createTamTelemetry(
