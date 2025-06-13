@@ -108,6 +108,7 @@ stages:
   - template: .azure-pipelines/build-swss-template.yml
     parameters:
       arch: amd64
+      timeout: 90
       sonic_slave: sonic-slave-${{ parameters.debian_version }}
       swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
       sairedis_artifact_name: sonic-sairedis-${{ parameters.debian_version }}
