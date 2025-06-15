@@ -4415,12 +4415,24 @@ sai_status_t SwitchStateBase::createTam(
 {
     SWSS_LOG_ENTER();
 
+    bool include_telemetry_object_list = false;
     std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
-    sai_attribute_t attr;
-    attr.id = SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST;
-    attr.value.objlist.count = 0;
-    attr.value.objlist.list = nullptr;
-    attrs.push_back(attr);
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST)
+        {
+            include_telemetry_object_list = true;
+            break;
+        }
+    }
+    if (!include_telemetry_object_list)
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST;
+        attr.value.objlist.count = 0;
+        attr.value.objlist.list = nullptr;
+        attrs.push_back(attr);
+    }
 
     return create_internal(SAI_OBJECT_TYPE_TAM,
                            sai_serialize_object_id(tam_id),
@@ -4437,12 +4449,24 @@ sai_status_t SwitchStateBase::createTamTelemetry(
 {
     SWSS_LOG_ENTER();
 
+    bool inlcude_tam_type_list = false;
     std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
-    sai_attribute_t attr;
-    attr.id = SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST;
-    attr.value.objlist.count = 0;
-    attr.value.objlist.list = nullptr;
-    attrs.push_back(attr);
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST)
+        {
+            inlcude_tam_type_list = true;
+            break;
+        }
+    }
+    if (!inlcude_tam_type_list)
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST;
+        attr.value.objlist.count = 0;
+        attr.value.objlist.list = nullptr;
+        attrs.push_back(attr);
+    }
 
     return create_internal(SAI_OBJECT_TYPE_TAM_TELEMETRY,
         sai_serialize_object_id(tam_telemetry_id),
