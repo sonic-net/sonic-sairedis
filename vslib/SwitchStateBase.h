@@ -604,6 +604,12 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
+            sai_status_t createTam(
+                _In_ sai_object_id_t tam_id,
+                _In_ sai_object_id_t switch_id,
+                _In_ uint32_t attr_count,
+                _In_ const sai_attribute_t *attr_list);
+
             sai_status_t createTamTelemetry(
                     _In_ sai_object_id_t tam_telemetry_id,
                     _In_ sai_object_id_t switch_id,
