@@ -34,6 +34,9 @@ TEST(TAM, TAMTelTypeConfigNotification)
         make_shared<RealObjectIdManager>(0, scc),
         sc);
 
+    sai_object_id_t tam_id = 0x3c000000000001;
+    string tam_id_str = sai_serialize_object_id(tam_id);
+
     sai_object_id_t tam_tel_type_id = 0x4b000000000001;
     string tam_tel_type_id_str = sai_serialize_object_id(tam_tel_type_id);
 
@@ -48,6 +51,10 @@ TEST(TAM, TAMTelTypeConfigNotification)
     EXPECT_EQ(
         SAI_STATUS_SUCCESS,
         ss.create(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(switch_id), 0, static_cast<uint32_t>(attrs.size()), attrs.data()));
+
+    EXPECT_EQ(
+        SAI_STATUS_SUCCESS,
+        ss.create(SAI_OBJECT_TYPE_TAM, tam_id_str, switch_id, 0, nullptr));
 
     EXPECT_EQ(
         SAI_STATUS_SUCCESS,

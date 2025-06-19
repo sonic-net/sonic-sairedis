@@ -188,6 +188,13 @@ sai_status_t SwitchStateBase::create(
         return createVoqSystemNeighborEntry(serializedObjectId, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_TAM)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createTam(object_id, switch_id, attr_count, attr_list);
+    }
+
     if (object_type == SAI_OBJECT_TYPE_TAM_TELEMETRY)
     {
         sai_object_id_t object_id;
@@ -4400,6 +4407,40 @@ sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t ta
     return status;
 }
 
+sai_status_t SwitchStateBase::createTam(
+    sai_object_id_t tam_id,
+    sai_object_id_t switch_id,
+    uint32_t attr_count,
+    const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    bool include_telemetry_object_list = false;
+    std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST)
+        {
+            include_telemetry_object_list = true;
+            break;
+        }
+    }
+    if (!include_telemetry_object_list)
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST;
+        attr.value.objlist.count = 0;
+        attr.value.objlist.list = nullptr;
+        attrs.push_back(attr);
+    }
+
+    return create_internal(SAI_OBJECT_TYPE_TAM,
+                           sai_serialize_object_id(tam_id),
+                           switch_id,
+                           static_cast<uint32_t>(attrs.size()),
+                           attrs.data());
+}
+
 sai_status_t SwitchStateBase::createTamTelemetry(
     sai_object_id_t tam_telemetry_id,
     sai_object_id_t switch_id,
@@ -4408,12 +4449,24 @@ sai_status_t SwitchStateBase::createTamTelemetry(
 {
     SWSS_LOG_ENTER();
 
+    bool inlcude_tam_type_list = false;
     std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
-    sai_attribute_t attr;
-    attr.id = SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST;
-    attr.value.objlist.count = 0;
-    attr.value.objlist.list = nullptr;
-    attrs.push_back(attr);
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST)
+        {
+            inlcude_tam_type_list = true;
+            break;
+        }
+    }
+    if (!inlcude_tam_type_list)
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST;
+        attr.value.objlist.count = 0;
+        attr.value.objlist.list = nullptr;
+        attrs.push_back(attr);
+    }
 
     return create_internal(SAI_OBJECT_TYPE_TAM_TELEMETRY,
         sai_serialize_object_id(tam_telemetry_id),
