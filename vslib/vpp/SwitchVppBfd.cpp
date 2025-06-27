@@ -33,12 +33,11 @@ sai_status_t SwitchVpp::bfd_session_add(
 static bool vpp_get_ifname_from_ip_address (
     sai_ip_address_t& ip_addr,
     std::string& ifname) {
+    SWSS_LOG_ENTER();
 
     bool is_v6 = false;
     sai_ip_prefix_t ip_prefix;
     sai_ip6_t ip6mask = {0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
-
-    SWSS_LOG_ENTER();
 
     ip_prefix.addr_family = ip_addr.addr_family;
     switch (ip_addr.addr_family) {
