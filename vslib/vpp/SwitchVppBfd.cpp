@@ -174,6 +174,7 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
         attr = sai_metadata_get_attr_by_id(SAI_BFD_SESSION_ATTR_PORT, attr_count, attr_list);
         if (!attr)
         {
+            SWSS_LOG_NOTICE("Port attribute not passed as parameter: get if name from ip address");
             if (vpp_get_ifname_from_ip_address(local_addr, ifname) == true)
             {
                 hwif_name = tap_to_hwif_name(ifname.c_str());
