@@ -349,6 +349,17 @@ config_syncd_mlnx()
 
     echo >> /tmp/sai-temp.profile
 
+    DEVICE_TYPE="$(mlxfwmanager |  awk -F'Device Type: *' '/Device Type/ {print $2}')"
+    if [ -n "$DEVICE_TYPE" ]; then
+        ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
+
+        ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
+        if [ -f "$ASIC_PROFILE_PATH" ]; then
+            cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
+            echo >> /tmp/sai-temp.profile
+        fi
+    fi
+
     if [[ -f $SAI_COMMON_FILE_PATH ]]; then
         cat $SAI_COMMON_FILE_PATH >> /tmp/sai-temp.profile
     fi
