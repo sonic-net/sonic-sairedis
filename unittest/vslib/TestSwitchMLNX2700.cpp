@@ -139,6 +139,33 @@ TEST_F(SwitchMLNX2700Test, portBulkAddRemove)
     }
 }
 
+TEST_F(SwitchMLNX2700Test, switchQueueNumberGet)
+{
+    // Initialize switch state
+    ASSERT_EQ(m_ss->initialize_default_objects(0, nullptr), SAI_STATUS_SUCCESS);
+
+    const sai_uint32_t uqNum = 8;
+    const sai_uint32_t mqNum = 8;
+    const sai_uint32_t qNum = uqNum + mqNum;
+
+    sai_attribute_t attr;
+
+    // Verify unicast queue number
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_UNICAST_QUEUES;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_EQ(attr.value.u32, uqNum);
+
+    // Verify multicast queue number
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_MULTICAST_QUEUES;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_EQ(attr.value.u32, mqNum);
+
+    // Verify total queue number
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_QUEUES;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_EQ(attr.value.u32, qNum);
+}
+
 TEST(SwitchMLNX2700, ctr)
 {
     auto sc = std::make_shared<SwitchConfig>(0, "");
