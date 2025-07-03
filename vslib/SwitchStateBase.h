@@ -100,6 +100,8 @@ namespace saivs
 
             virtual sai_status_t set_static_crm_values();
 
+            virtual sai_status_t set_initial_tam_objects();
+
             virtual sai_status_t set_static_acl_resource_list(
                     _In_ sai_switch_attr_t acl_resource,
                     _In_ int max_count);
@@ -547,9 +549,12 @@ namespace saivs
             void send_fdb_event_notification(
                     _In_ const sai_fdb_event_notification_data_t& data);
 
-        public: // Telemetry and Monitor
+        protected: // Telemetry and Monitor
 
             void send_tam_tel_type_config_change(
+                _In_ sai_object_id_t tam_tel_type_id);
+
+            sai_status_t refresh_tam_tel_ipfix_templates(
                 _In_ sai_object_id_t tam_tel_type_id);
 
         protected:
@@ -595,6 +600,18 @@ namespace saivs
 
             sai_status_t createMACsecSC(
                     _In_ sai_object_id_t macsec_sa_id,
+                    _In_ sai_object_id_t switch_id,
+                    _In_ uint32_t attr_count,
+                    _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t createTam(
+                _In_ sai_object_id_t tam_id,
+                _In_ sai_object_id_t switch_id,
+                _In_ uint32_t attr_count,
+                _In_ const sai_attribute_t *attr_list);
+
+            sai_status_t createTamTelemetry(
+                    _In_ sai_object_id_t tam_telemetry_id,
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
@@ -744,6 +761,14 @@ namespace saivs
 
             virtual sai_status_t queryPortAutonegFecOverrideSupportCapability(
                                       _Out_ sai_attr_capability_t *attr_capability);
+
+        protected:
+
+            virtual sai_status_t queryPortStatsCapability(
+                                      _Inout_ sai_stat_capability_list_t *stats_capability);
+
+            virtual sai_status_t queryQueueStatsCapability(
+                                      _Inout_ sai_stat_capability_list_t *stats_capability);
 
         public: // TODO private
 

@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <random>
 
 #define SAI_VS_MAX_PORTS 1024
 
@@ -185,6 +186,20 @@ sai_status_t SwitchStateBase::create(
     {
         // Neighbor entry programming for VOQ systems
         return createVoqSystemNeighborEntry(serializedObjectId, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_TAM)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createTam(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_TAM_TELEMETRY)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createTamTelemetry(object_id, switch_id, attr_count, attr_list);
     }
 
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
@@ -1192,6 +1207,18 @@ sai_status_t SwitchStateBase::set_static_crm_values()
     return set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP, m_maxAclTableGroups);
 }
 
+sai_status_t SwitchStateBase::set_initial_tam_objects()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
+    attr.value.objlist.count = 0;
+    attr.value.objlist.list = nullptr;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+}
+
 sai_status_t SwitchStateBase::set_static_acl_resource_list(
         _In_ sai_switch_attr_t acl_resource,
         _In_ int max_count)
@@ -1819,6 +1846,7 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     CHECK_STATUS(set_switch_default_attributes());
     CHECK_STATUS(create_scheduler_groups());
     CHECK_STATUS(set_static_crm_values());
+    CHECK_STATUS(set_initial_tam_objects());
 
     // Initialize switch for VOQ attributes
 
@@ -2129,6 +2157,12 @@ sai_status_t SwitchStateBase::warm_update_switch()
     if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
     {
         CHECK_STATUS(set_acl_capabilities());
+    }
+
+    attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
+    if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        CHECK_STATUS(set_initial_tam_objects());
     }
 
     // check for default supported object types
@@ -2667,6 +2701,11 @@ sai_status_t SwitchStateBase::refresh_read_only(
     if (meta->objecttype == SAI_OBJECT_TYPE_ACL_TABLE && meta->attrid == SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_COUNTER)
     {
         return refresh_acl_table_counters(object_id);
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_TAM_TEL_TYPE && meta->attrid == SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES)
+    {
+        return refresh_tam_tel_ipfix_templates(object_id);
     }
 
     auto mmeta = m_meta.lock();
@@ -4077,141 +4116,176 @@ sai_status_t SwitchStateBase::queryAttributeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryPortStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_port_stat_t> portStatList = {
+        SAI_PORT_STAT_IF_IN_OCTETS,
+        SAI_PORT_STAT_IF_IN_UCAST_PKTS,
+        SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS,
+        SAI_PORT_STAT_IF_IN_DISCARDS,
+        SAI_PORT_STAT_IF_IN_ERRORS,
+        SAI_PORT_STAT_IF_IN_UNKNOWN_PROTOS,
+        SAI_PORT_STAT_IF_IN_BROADCAST_PKTS,
+        SAI_PORT_STAT_IF_IN_MULTICAST_PKTS,
+        SAI_PORT_STAT_IF_IN_VLAN_DISCARDS,
+        SAI_PORT_STAT_IF_OUT_OCTETS,
+        SAI_PORT_STAT_IF_OUT_UCAST_PKTS,
+        SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS,
+        SAI_PORT_STAT_IF_OUT_DISCARDS,
+        SAI_PORT_STAT_IF_OUT_ERRORS,
+        SAI_PORT_STAT_IF_OUT_QLEN,
+        SAI_PORT_STAT_IF_OUT_BROADCAST_PKTS,
+        SAI_PORT_STAT_IF_OUT_MULTICAST_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_DROP_EVENTS,
+        SAI_PORT_STAT_ETHER_STATS_MULTICAST_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_BROADCAST_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_FRAGMENTS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_64_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_65_TO_127_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_128_TO_255_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_256_TO_511_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_512_TO_1023_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_1024_TO_1518_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_1519_TO_2047_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_2048_TO_4095_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_4096_TO_9216_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_9217_TO_16383_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_OVERSIZE_PKTS,
+        SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS,
+        SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_JABBERS,
+        SAI_PORT_STAT_ETHER_STATS_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_COLLISIONS,
+        SAI_PORT_STAT_ETHER_STATS_CRC_ALIGN_ERRORS,
+        SAI_PORT_STAT_ETHER_STATS_TX_NO_ERRORS,
+        SAI_PORT_STAT_ETHER_STATS_RX_NO_ERRORS,
+        SAI_PORT_STAT_GREEN_WRED_DROPPED_PACKETS,
+        SAI_PORT_STAT_GREEN_WRED_DROPPED_BYTES,
+        SAI_PORT_STAT_YELLOW_WRED_DROPPED_PACKETS,
+        SAI_PORT_STAT_YELLOW_WRED_DROPPED_BYTES,
+        SAI_PORT_STAT_RED_WRED_DROPPED_PACKETS,
+        SAI_PORT_STAT_RED_WRED_DROPPED_BYTES,
+        SAI_PORT_STAT_WRED_DROPPED_PACKETS,
+        SAI_PORT_STAT_WRED_DROPPED_BYTES,
+        SAI_PORT_STAT_ECN_MARKED_PACKETS,
+        SAI_PORT_STAT_PFC_0_RX_PKTS,
+        SAI_PORT_STAT_PFC_0_TX_PKTS,
+        SAI_PORT_STAT_PFC_1_RX_PKTS,
+        SAI_PORT_STAT_PFC_1_TX_PKTS,
+        SAI_PORT_STAT_PFC_2_RX_PKTS,
+        SAI_PORT_STAT_PFC_2_TX_PKTS,
+        SAI_PORT_STAT_PFC_3_RX_PKTS,
+        SAI_PORT_STAT_PFC_3_TX_PKTS,
+        SAI_PORT_STAT_PFC_4_RX_PKTS,
+        SAI_PORT_STAT_PFC_4_TX_PKTS,
+        SAI_PORT_STAT_PFC_5_RX_PKTS,
+        SAI_PORT_STAT_PFC_5_TX_PKTS,
+        SAI_PORT_STAT_PFC_6_RX_PKTS,
+        SAI_PORT_STAT_PFC_6_TX_PKTS,
+        SAI_PORT_STAT_PFC_7_RX_PKTS,
+        SAI_PORT_STAT_PFC_7_TX_PKTS,
+        SAI_PORT_STAT_PFC_0_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_0_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_1_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_1_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_2_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_2_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_3_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_3_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_4_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_4_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_5_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_5_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_6_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_6_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_7_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_7_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_0_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_1_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_2_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_3_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_4_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_5_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_6_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_TRIM_PACKETS
+    };
+
+    if (stats_capability->count < portStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(portStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(portStatList.size());
+
+    for (std::uint32_t i = 0; i < portStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(portStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryQueueStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_queue_stat_t> queueStatList = {
+        SAI_QUEUE_STAT_PACKETS,
+        SAI_QUEUE_STAT_BYTES,
+        SAI_QUEUE_STAT_DROPPED_PACKETS,
+        SAI_QUEUE_STAT_DROPPED_BYTES,
+        SAI_QUEUE_STAT_WRED_DROPPED_PACKETS,
+        SAI_QUEUE_STAT_WRED_DROPPED_BYTES,
+        SAI_QUEUE_STAT_CURR_OCCUPANCY_BYTES,
+        SAI_QUEUE_STAT_SHARED_WATERMARK_BYTES,
+        SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS,
+        SAI_QUEUE_STAT_WRED_ECN_MARKED_BYTES,
+        SAI_QUEUE_STAT_CURR_OCCUPANCY_LEVEL,
+        SAI_QUEUE_STAT_WATERMARK_LEVEL,
+        SAI_QUEUE_STAT_CREDIT_WD_DELETED_PACKETS,
+        SAI_QUEUE_STAT_TRIM_PACKETS
+    };
+
+    if (stats_capability->count < queueStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(queueStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(queueStatList.size());
+
+    for (std::uint32_t i = 0; i < queueStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(queueStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryStatsCapability(
                               _In_ sai_object_id_t switchId,
                               _In_ sai_object_type_t objectType,
                               _Inout_ sai_stat_capability_list_t *stats_capability)
 {
     SWSS_LOG_ENTER();
-    uint32_t i = 0;
-    uint32_t stats_count = 0;
 
     if (objectType == SAI_OBJECT_TYPE_QUEUE)
     {
-        stats_count = SAI_QUEUE_STAT_DELAY_WATERMARK_NS;
-        if (stats_capability->count < stats_count )
-        {
-            stats_capability->count = stats_count;
-            return SAI_STATUS_BUFFER_OVERFLOW;
-        }
-
-        stats_capability->count = stats_count;
-
-        for(i = 0; i < stats_capability->count; i++)
-        {
-            stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ ;
-            stats_capability->list[i].stat_enum = i;
-        }
-
-        return SAI_STATUS_SUCCESS;
+        return queryQueueStatsCapability(stats_capability);
     }
     else if (objectType == SAI_OBJECT_TYPE_PORT)
     {
-        if (stats_capability->count < 91)
-        {
-            stats_capability->count = 91;
-            return SAI_STATUS_BUFFER_OVERFLOW;
-        }
-
-        stats_capability->count = 91;
-        stats_capability->list[0].stat_enum = SAI_PORT_STAT_IF_IN_OCTETS;
-        stats_capability->list[1].stat_enum = SAI_PORT_STAT_IF_IN_UCAST_PKTS;
-        stats_capability->list[2].stat_enum = SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS;
-        stats_capability->list[3].stat_enum = SAI_PORT_STAT_IF_IN_DISCARDS;
-        stats_capability->list[4].stat_enum = SAI_PORT_STAT_IF_IN_ERRORS;
-        stats_capability->list[5].stat_enum = SAI_PORT_STAT_IF_IN_UNKNOWN_PROTOS;
-        stats_capability->list[6].stat_enum = SAI_PORT_STAT_IF_IN_BROADCAST_PKTS;
-        stats_capability->list[7].stat_enum = SAI_PORT_STAT_IF_IN_MULTICAST_PKTS;
-        stats_capability->list[8].stat_enum = SAI_PORT_STAT_IF_IN_VLAN_DISCARDS;
-        stats_capability->list[9].stat_enum = SAI_PORT_STAT_IF_OUT_OCTETS;
-        stats_capability->list[10].stat_enum = SAI_PORT_STAT_IF_OUT_UCAST_PKTS;
-        stats_capability->list[11].stat_enum = SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS;
-        stats_capability->list[12].stat_enum = SAI_PORT_STAT_IF_OUT_DISCARDS;
-        stats_capability->list[13].stat_enum = SAI_PORT_STAT_IF_OUT_ERRORS;
-        stats_capability->list[14].stat_enum = SAI_PORT_STAT_IF_OUT_QLEN;
-        stats_capability->list[15].stat_enum = SAI_PORT_STAT_IF_OUT_BROADCAST_PKTS;
-        stats_capability->list[16].stat_enum = SAI_PORT_STAT_IF_OUT_MULTICAST_PKTS;
-        stats_capability->list[17].stat_enum = SAI_PORT_STAT_ETHER_STATS_DROP_EVENTS;
-        stats_capability->list[18].stat_enum = SAI_PORT_STAT_ETHER_STATS_MULTICAST_PKTS;
-        stats_capability->list[19].stat_enum = SAI_PORT_STAT_ETHER_STATS_BROADCAST_PKTS;
-        stats_capability->list[20].stat_enum = SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS;
-        stats_capability->list[21].stat_enum = SAI_PORT_STAT_ETHER_STATS_FRAGMENTS;
-        stats_capability->list[22].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_64_OCTETS;
-        stats_capability->list[23].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_65_TO_127_OCTETS;
-        stats_capability->list[24].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_128_TO_255_OCTETS;
-        stats_capability->list[25].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_256_TO_511_OCTETS;
-        stats_capability->list[26].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_512_TO_1023_OCTETS;
-        stats_capability->list[27].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_1024_TO_1518_OCTETS;
-        stats_capability->list[28].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_1519_TO_2047_OCTETS;
-        stats_capability->list[29].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_2048_TO_4095_OCTETS;
-        stats_capability->list[30].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_4096_TO_9216_OCTETS;
-        stats_capability->list[31].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS_9217_TO_16383_OCTETS;
-        stats_capability->list[32].stat_enum = SAI_PORT_STAT_ETHER_STATS_OVERSIZE_PKTS;
-        stats_capability->list[33].stat_enum = SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS;
-        stats_capability->list[34].stat_enum = SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS;
-        stats_capability->list[35].stat_enum = SAI_PORT_STAT_ETHER_STATS_JABBERS;
-        stats_capability->list[36].stat_enum = SAI_PORT_STAT_ETHER_STATS_OCTETS;
-        stats_capability->list[37].stat_enum = SAI_PORT_STAT_ETHER_STATS_PKTS;
-        stats_capability->list[38].stat_enum = SAI_PORT_STAT_ETHER_STATS_COLLISIONS;
-        stats_capability->list[39].stat_enum = SAI_PORT_STAT_ETHER_STATS_CRC_ALIGN_ERRORS;
-        stats_capability->list[40].stat_enum = SAI_PORT_STAT_ETHER_STATS_TX_NO_ERRORS;
-        stats_capability->list[41].stat_enum = SAI_PORT_STAT_ETHER_STATS_RX_NO_ERRORS;
-        stats_capability->list[42].stat_enum = SAI_PORT_STAT_GREEN_WRED_DROPPED_PACKETS;
-        stats_capability->list[43].stat_enum = SAI_PORT_STAT_GREEN_WRED_DROPPED_BYTES;
-        stats_capability->list[44].stat_enum = SAI_PORT_STAT_YELLOW_WRED_DROPPED_PACKETS;
-        stats_capability->list[45].stat_enum = SAI_PORT_STAT_YELLOW_WRED_DROPPED_BYTES;
-        stats_capability->list[46].stat_enum = SAI_PORT_STAT_RED_WRED_DROPPED_PACKETS;
-        stats_capability->list[47].stat_enum = SAI_PORT_STAT_RED_WRED_DROPPED_BYTES;
-        stats_capability->list[48].stat_enum = SAI_PORT_STAT_WRED_DROPPED_PACKETS;
-        stats_capability->list[49].stat_enum = SAI_PORT_STAT_WRED_DROPPED_BYTES;
-        stats_capability->list[50].stat_enum = SAI_PORT_STAT_ECN_MARKED_PACKETS;
-        stats_capability->list[51].stat_enum = SAI_PORT_STAT_PFC_0_RX_PKTS;
-        stats_capability->list[52].stat_enum = SAI_PORT_STAT_PFC_0_TX_PKTS;
-        stats_capability->list[53].stat_enum = SAI_PORT_STAT_PFC_1_RX_PKTS;
-        stats_capability->list[54].stat_enum = SAI_PORT_STAT_PFC_1_TX_PKTS;
-        stats_capability->list[55].stat_enum = SAI_PORT_STAT_PFC_2_RX_PKTS;
-        stats_capability->list[56].stat_enum = SAI_PORT_STAT_PFC_2_TX_PKTS;
-        stats_capability->list[57].stat_enum = SAI_PORT_STAT_PFC_3_RX_PKTS;
-        stats_capability->list[58].stat_enum = SAI_PORT_STAT_PFC_3_TX_PKTS;
-        stats_capability->list[59].stat_enum = SAI_PORT_STAT_PFC_4_RX_PKTS;
-        stats_capability->list[60].stat_enum = SAI_PORT_STAT_PFC_4_TX_PKTS;
-        stats_capability->list[61].stat_enum = SAI_PORT_STAT_PFC_5_RX_PKTS;
-        stats_capability->list[62].stat_enum = SAI_PORT_STAT_PFC_5_TX_PKTS;
-        stats_capability->list[63].stat_enum = SAI_PORT_STAT_PFC_6_RX_PKTS;
-        stats_capability->list[64].stat_enum = SAI_PORT_STAT_PFC_6_TX_PKTS;
-        stats_capability->list[65].stat_enum = SAI_PORT_STAT_PFC_7_RX_PKTS;
-        stats_capability->list[66].stat_enum = SAI_PORT_STAT_PFC_7_TX_PKTS;
-        stats_capability->list[67].stat_enum = SAI_PORT_STAT_PFC_0_RX_PAUSE_DURATION_US;
-        stats_capability->list[68].stat_enum = SAI_PORT_STAT_PFC_0_TX_PAUSE_DURATION_US;
-        stats_capability->list[69].stat_enum = SAI_PORT_STAT_PFC_1_RX_PAUSE_DURATION_US;
-        stats_capability->list[70].stat_enum = SAI_PORT_STAT_PFC_1_TX_PAUSE_DURATION_US;
-        stats_capability->list[71].stat_enum = SAI_PORT_STAT_PFC_2_RX_PAUSE_DURATION_US;
-        stats_capability->list[72].stat_enum = SAI_PORT_STAT_PFC_2_TX_PAUSE_DURATION_US;
-        stats_capability->list[73].stat_enum = SAI_PORT_STAT_PFC_3_RX_PAUSE_DURATION_US;
-        stats_capability->list[74].stat_enum = SAI_PORT_STAT_PFC_3_TX_PAUSE_DURATION_US;
-        stats_capability->list[75].stat_enum = SAI_PORT_STAT_PFC_4_RX_PAUSE_DURATION_US;
-        stats_capability->list[76].stat_enum = SAI_PORT_STAT_PFC_4_TX_PAUSE_DURATION_US;
-        stats_capability->list[77].stat_enum = SAI_PORT_STAT_PFC_5_RX_PAUSE_DURATION_US;
-        stats_capability->list[78].stat_enum = SAI_PORT_STAT_PFC_5_TX_PAUSE_DURATION_US;
-        stats_capability->list[79].stat_enum = SAI_PORT_STAT_PFC_6_RX_PAUSE_DURATION_US;
-        stats_capability->list[80].stat_enum = SAI_PORT_STAT_PFC_6_TX_PAUSE_DURATION_US;
-        stats_capability->list[81].stat_enum = SAI_PORT_STAT_PFC_7_RX_PAUSE_DURATION_US;
-        stats_capability->list[82].stat_enum = SAI_PORT_STAT_PFC_7_TX_PAUSE_DURATION_US;
-        stats_capability->list[83].stat_enum = SAI_PORT_STAT_PFC_0_ON2OFF_RX_PKTS;
-        stats_capability->list[84].stat_enum = SAI_PORT_STAT_PFC_1_ON2OFF_RX_PKTS;
-        stats_capability->list[85].stat_enum = SAI_PORT_STAT_PFC_2_ON2OFF_RX_PKTS;
-        stats_capability->list[86].stat_enum = SAI_PORT_STAT_PFC_3_ON2OFF_RX_PKTS;
-        stats_capability->list[87].stat_enum = SAI_PORT_STAT_PFC_4_ON2OFF_RX_PKTS;
-        stats_capability->list[88].stat_enum = SAI_PORT_STAT_PFC_5_ON2OFF_RX_PKTS;
-        stats_capability->list[89].stat_enum = SAI_PORT_STAT_PFC_6_ON2OFF_RX_PKTS;
-        stats_capability->list[90].stat_enum = SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS;
-
-        for(i = 0; i < stats_capability->count; i++)
-        {
-            stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ ;
-        }
-
-        return SAI_STATUS_SUCCESS;
+        return queryPortStatsCapability(stats_capability);
     }
 
     return SAI_STATUS_NOT_SUPPORTED;
@@ -4293,4 +4367,110 @@ void SwitchStateBase::send_tam_tel_type_config_change(
     auto payload = std::make_shared<EventPayloadNotification>(ntf, sn);
 
     m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
+}
+
+sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t tam_tel_type_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<uint8_t> ipfix_templates;
+
+    // TODO: This is a placeholder for the actual logic to generate IPFIX templates.
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dist(0, 255);
+    ipfix_templates.resize(64 * 1024);
+
+    for (size_t i = 0; i < ipfix_templates.size(); ++i)
+    {
+        ipfix_templates[i] = static_cast<uint8_t>(dist(gen));
+    }
+
+
+    sai_attribute_t attr;
+    attr.id = SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES;
+    attr.value.u8list.count = static_cast<uint32_t>(ipfix_templates.size());
+    attr.value.u8list.list = ipfix_templates.data();
+    sai_status_t status = set(SAI_OBJECT_TYPE_TAM_TEL_TYPE, tam_tel_type_id, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to set IPFIX templates for TAM Tel Type %s, status: %s",
+                       sai_serialize_object_id(tam_tel_type_id).c_str(),
+                       sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_INFO("Successfully set IPFIX templates for TAM Tel Type %s",
+                      sai_serialize_object_id(tam_tel_type_id).c_str());
+    }
+
+    return status;
+}
+
+sai_status_t SwitchStateBase::createTam(
+    sai_object_id_t tam_id,
+    sai_object_id_t switch_id,
+    uint32_t attr_count,
+    const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    bool include_telemetry_object_list = false;
+    std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST)
+        {
+            include_telemetry_object_list = true;
+            break;
+        }
+    }
+    if (!include_telemetry_object_list)
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST;
+        attr.value.objlist.count = 0;
+        attr.value.objlist.list = nullptr;
+        attrs.push_back(attr);
+    }
+
+    return create_internal(SAI_OBJECT_TYPE_TAM,
+                           sai_serialize_object_id(tam_id),
+                           switch_id,
+                           static_cast<uint32_t>(attrs.size()),
+                           attrs.data());
+}
+
+sai_status_t SwitchStateBase::createTamTelemetry(
+    sai_object_id_t tam_telemetry_id,
+    sai_object_id_t switch_id,
+    uint32_t attr_count,
+    const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    bool inlcude_tam_type_list = false;
+    std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST)
+        {
+            inlcude_tam_type_list = true;
+            break;
+        }
+    }
+    if (!inlcude_tam_type_list)
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST;
+        attr.value.objlist.count = 0;
+        attr.value.objlist.list = nullptr;
+        attrs.push_back(attr);
+    }
+
+    return create_internal(SAI_OBJECT_TYPE_TAM_TELEMETRY,
+        sai_serialize_object_id(tam_telemetry_id),
+        switch_id,
+        static_cast<uint32_t>(attrs.size()),
+        attrs.data());
 }
