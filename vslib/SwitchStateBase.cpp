@@ -1737,6 +1737,15 @@ sai_status_t SwitchStateBase::create_qos_queues()
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+sai_status_t SwitchStateBase::set_number_of_queues()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("implement in child class");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t SwitchStateBase::create_scheduler_group_tree(
         _In_ const std::vector<sai_object_id_t>& sgs,
         _In_ sai_object_id_t port_id)
@@ -1772,6 +1781,20 @@ sai_status_t SwitchStateBase::create_scheduler_groups()
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::set_maximum_number_of_traffic_classes()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("set number of traffic classes");
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_TRAFFIC_CLASSES;
+    attr.value.u8 = 16;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchStateBase::set_maximum_number_of_childs_per_scheduler_group()
@@ -1841,6 +1864,8 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     CHECK_STATUS(set_acl_capabilities());
     CHECK_STATUS(create_ingress_priority_groups());
     CHECK_STATUS(create_qos_queues());
+    CHECK_STATUS(set_number_of_queues());
+    CHECK_STATUS(set_maximum_number_of_traffic_classes());
     CHECK_STATUS(set_maximum_number_of_childs_per_scheduler_group());
     CHECK_STATUS(set_number_of_ecmp_groups());
     CHECK_STATUS(set_switch_default_attributes());
@@ -2559,10 +2584,16 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_NUMBER_OF_ECMP_GROUPS:
                 return SAI_STATUS_SUCCESS;
 
+            case SAI_SWITCH_ATTR_NUMBER_OF_UNICAST_QUEUES:
+            case SAI_SWITCH_ATTR_NUMBER_OF_MULTICAST_QUEUES:
+            case SAI_SWITCH_ATTR_NUMBER_OF_QUEUES:
+                return SAI_STATUS_SUCCESS;
+
             case SAI_SWITCH_ATTR_PORT_NUMBER:
             case SAI_SWITCH_ATTR_PORT_LIST:
                 return refresh_port_list(meta);
 
+            case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_TRAFFIC_CLASSES:
             case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP:
                 return SAI_STATUS_SUCCESS;
 
@@ -4018,6 +4049,24 @@ sai_status_t SwitchStateBase::querySwitchHashAlgorithmCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::querySwitchPacketTrimmingDscpResolutionModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 2)
+    {
+        enum_values_capability->count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE;
+    enum_values_capability->list[1] = SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_FROM_TC;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::querySwitchPacketTrimmingQueueResolutionModeCapability(
                    _Inout_ sai_s32_list_t *enum_values_capability)
 {
@@ -4084,6 +4133,10 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                                                        attr_id == SAI_SWITCH_ATTR_LAG_DEFAULT_HASH_ALGORITHM))
     {
         return querySwitchHashAlgorithmCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_SWITCH && attr_id == SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE)
+    {
+        return querySwitchPacketTrimmingDscpResolutionModeCapability(enum_values_capability);
     }
     else if (object_type == SAI_OBJECT_TYPE_SWITCH && attr_id == SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE)
     {
