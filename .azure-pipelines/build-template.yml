@@ -243,7 +243,7 @@ jobs:
         for dir in ${gcov_dirs}; do
           source_dir=$(dirname $dir)
           output_file=$(echo "coverage-$source_dir.json"| tr '/' '-')
-          gcovr --exclude-unreachable-branches --exclude='vslib/vpp/.*' --json-pretty --verbose -o $output_file --object-directory $source_dir $dir
+          gcovr --exclude-unreachable-branches --json-pretty -o $output_file --object-directory $source_dir $dir
         done
         gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" -e "vslib/vpp/.*" --exclude-unreachable-branches --json-pretty -o coverage-all.json
         gcovr -a "coverage-*.json" -x --xml-pretty -o coverage.xml
