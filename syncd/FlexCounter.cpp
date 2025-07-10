@@ -934,24 +934,21 @@ public:
                     auto rid = rids[i];
                     auto vid = vids[i];
                     std::vector<uint64_t> stats(counter_ids.size());
-                    if (collectData(rid, counter_ids, effective_stats_mode, false, stats)) {
-
-                        auto it_vid = m_objectIdsMap.find(vid);
-                        if (it_vid != m_objectIdsMap.end())
-                        {
-                            // Remove and re-add if vid already exists
-                            m_objectIdsMap.erase(it_vid);
-                        }
-
-                        auto counter_data = std::make_shared<CounterIds<StatType>>(rid, counter_ids);
-                        m_objectIdsMap.emplace(vid, counter_data);
-
-                        SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
-                    } else {
-                        SWSS_LOG_WARN("%s RID %s can't provide the statistic",  m_name.c_str(), sai_serialize_object_id(rid).c_str());
+                    if (!collectData(rid, counter_ids, effective_stats_mode, false, stats))
+                    {
+                        SWSS_LOG_INFO("counter read failed on RID 0x%x on intf 0x%x, adding to objectIdsMap regardless", rid, vid);
                     }
-                }
+                    auto it_vid = m_objectIdsMap.find(vid);
+                    if (it_vid != m_objectIdsMap.end())
+                    {
+                        // Remove and re-add if vid already exists
+                        m_objectIdsMap.erase(it_vid);
+                    }
 
+                    auto counter_data = std::make_shared<CounterIds<StatType>>(rid, counter_ids);
+                    m_objectIdsMap.emplace(vid, counter_data);
+                    SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
+                }
                 return;
             }
 
@@ -1103,10 +1100,10 @@ public:
                                         kv.second->getStatsMode() == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
             }
 
-            std::vector<uint64_t> stats(statIds.size());
-            if (!collectData(rid, statIds, effective_stats_mode, true, stats))
+            std::vector<uint64_t> stats(statIds.size(), 0);
+            if (!collectData(rid, statIds, effective_stats_mode, false, stats))
             {
-                continue;
+                SWSS_LOG_INFO("counter read failed on RID 0x%x on intf 0x%x, filling with '0' value", rid, vid);
             }
 
             std::vector<swss::FieldValueTuple> values;
