@@ -617,6 +617,26 @@ TEST(FlexCounter, addRemoveCounter)
         false,
         STATS_MODE_READ,
         true);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_SWITCH,
+        SWITCH_COUNTER_ID_LIST,
+        {"SAI_SWITCH_STAT_DROPPED_TRIM_PACKETS", "SAI_SWITCH_STAT_TX_TRIM_PACKETS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_SWITCH,
+        SWITCH_COUNTER_ID_LIST,
+        {"SAI_SWITCH_STAT_DROPPED_TRIM_PACKETS", "SAI_SWITCH_STAT_TX_TRIM_PACKETS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 }
 
 TEST(FlexCounter, UpdateExistingCounterAddBulk)
@@ -1092,6 +1112,15 @@ TEST(FlexCounter, bulkCounter)
         SAI_OBJECT_TYPE_COUNTER,
         SRV6_COUNTER_ID_LIST,
         {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        2,
+        SAI_OBJECT_TYPE_SWITCH,
+        SWITCH_COUNTER_ID_LIST,
+        {"SAI_SWITCH_STAT_DROPPED_TRIM_PACKETS", "SAI_SWITCH_STAT_TX_TRIM_PACKETS"},
         {"100", "200"},
         counterVerifyFunc,
         false);
