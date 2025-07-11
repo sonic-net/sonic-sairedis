@@ -771,6 +771,9 @@ namespace saivs
 
         protected:
 
+            virtual sai_status_t querySwitchStatsCapability(
+                                      _Inout_ sai_stat_capability_list_t *stats_capability);
+
             virtual sai_status_t queryPortStatsCapability(
                                       _Inout_ sai_stat_capability_list_t *stats_capability);
 
