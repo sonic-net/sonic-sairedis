@@ -122,6 +122,7 @@ TEST(SaiSerialize, sai_serialize_attr_value)
             case SAI_ATTR_VALUE_TYPE_TIMESPEC:
             case SAI_ATTR_VALUE_TYPE_PORT_ERR_STATUS_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_EYE_VALUES_LIST:
+            case SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST:
             case SAI_ATTR_VALUE_TYPE_FABRIC_PORT_REACHABILITY:
             case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
