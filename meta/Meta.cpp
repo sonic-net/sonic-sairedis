@@ -3244,6 +3244,63 @@ sai_status_t Meta::meta_sai_validate_prefix_compression_entry(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+sai_status_t Meta::meta_sai_validate_outbound_port_map_port_range_entry(
+        _In_ const sai_outbound_port_map_port_range_entry_t* outbound_port_map_port_range_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (outbound_port_map_port_range_entry == NULL)
+    {
+        SWSS_LOG_ERROR("outbound_port_map_port_range_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // TODO FIX ME
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_global_trusted_vni_entry(
+        _In_ const sai_global_trusted_vni_entry_t* global_trusted_vni_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (global_trusted_vni_entry == NULL)
+    {
+        SWSS_LOG_ERROR("global_trusted_vni_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // TODO FIX ME
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t Meta::meta_sai_validate_eni_trusted_vni_entry(
+        _In_ const sai_eni_trusted_vni_entry_t* eni_trusted_vni_entry,
+        _In_ bool create,
+        _In_ bool get)
+{
+    SWSS_LOG_ENTER();
+
+    if (eni_trusted_vni_entry == NULL)
+    {
+        SWSS_LOG_ERROR("eni_trusted_vni_entry pointer is NULL");
+
+        return SAI_STATUS_INVALID_PARAMETER;
+    }
+
+    // TODO FIX ME
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t Meta::meta_generic_validation_create(
         _In_ const sai_object_meta_key_t& meta_key,
         _In_ sai_object_id_t switch_id,
@@ -3906,64 +3963,7 @@ sai_status_t Meta::meta_generic_validation_create(
 
         // this is conditional attribute, check if it's required
 
-        bool any = false;
-
-        for (size_t index = 0; md.conditions[index] != NULL; index++)
-        {
-            const auto& c = *md.conditions[index];
-
-            // conditions may only be on the same object type
-            const auto& cmd = *sai_metadata_get_attr_metadata(meta_key.objecttype, c.attrid);
-
-            const sai_attribute_value_t* cvalue = cmd.defaultvalue;
-
-            const sai_attribute_t *cattr = sai_metadata_get_attr_by_id(c.attrid, attr_count, attr_list);
-
-            if (cattr != NULL)
-            {
-                META_LOG_DEBUG(md, "condition attr %d was passed, using it's value", c.attrid);
-
-                cvalue = &cattr->value;
-            }
-
-            if (cmd.attrvaluetype == SAI_ATTR_VALUE_TYPE_BOOL)
-            {
-                if (c.condition.booldata == cvalue->booldata)
-                {
-                    META_LOG_DEBUG(md, "bool condition was met on attr %d = %d", cmd.attrid, c.condition.booldata);
-
-                    any = true;
-                    break;
-                }
-            }
-            else // enum condition
-            {
-                int32_t val = cvalue->s32;
-
-                switch (cmd.attrvaluetype)
-                {
-                    case SAI_ATTR_VALUE_TYPE_ACL_FIELD_DATA_INT32:
-                        val = cvalue->aclfield.data.s32;
-                        break;
-
-                    case SAI_ATTR_VALUE_TYPE_ACL_ACTION_DATA_INT32:
-                        val = cvalue->aclaction.parameter.s32;
-                        break;
-
-                    default:
-                        val = cvalue->s32;
-                        break;
-                }
-
-                if (c.condition.s32 == val)
-                {
-                    META_LOG_DEBUG(md, "enum condition was met on attr id %d, val = %d", cmd.attrid, val);
-
-                    any = true;
-                    break;
-                }
-            }
-        }
+        bool any = sai_metadata_is_condition_met(mdp, attr_count, attr_list);
 
         if (!any)
         {
