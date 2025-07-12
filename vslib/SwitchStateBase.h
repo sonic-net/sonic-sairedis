@@ -94,6 +94,8 @@ namespace saivs
 
             virtual sai_status_t set_acl_capabilities();
 
+            virtual sai_status_t set_maximum_number_of_traffic_classes();
+
             virtual sai_status_t set_maximum_number_of_childs_per_scheduler_group();
 
             virtual sai_status_t set_number_of_ecmp_groups();
@@ -215,6 +217,8 @@ namespace saivs
                     _In_ sai_object_id_t port_id);
 
             virtual sai_status_t create_qos_queues();
+
+            virtual sai_status_t set_number_of_queues();
 
             virtual sai_status_t create_scheduler_group_tree(
                     _In_ const std::vector<sai_object_id_t>& sgs,
@@ -751,6 +755,9 @@ namespace saivs
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t querySwitchHashAlgorithmCapability(
+                                      _Inout_ sai_s32_list_t *enum_values_capability);
+
+            virtual sai_status_t querySwitchPacketTrimmingDscpResolutionModeCapability(
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t querySwitchPacketTrimmingQueueResolutionModeCapability(

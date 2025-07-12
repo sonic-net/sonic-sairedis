@@ -175,6 +175,37 @@ TEST_F(SwitchStateBaseTest, switchHashAlgorithmCapabilitiesGet)
     ASSERT_EQ(haSet1, haSet2);
 }
 
+TEST_F(SwitchStateBaseTest, switchPacketTrimmingDscpModeCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+
+    std::vector<sai_int32_t> qmList(data.count);
+    data.list = qmList.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const std::set<sai_packet_trim_dscp_resolution_mode_t> qmSet1 = {
+        SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE,
+        SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_FROM_TC
+    };
+
+    std::set<sai_packet_trim_dscp_resolution_mode_t> qmSet2;
+
+    std::transform(
+        qmList.cbegin(), qmList.cend(), std::inserter(qmSet2, qmSet2.begin()),
+        [](sai_int32_t value) { return static_cast<sai_packet_trim_dscp_resolution_mode_t>(value); }
+    );
+    ASSERT_EQ(qmSet1, qmSet2);
+}
+
 TEST_F(SwitchStateBaseTest, switchPacketTrimmingQueueModeCapabilitiesGet)
 {
     sai_s32_list_t data = { .count = 0, .list = nullptr };
@@ -235,6 +266,18 @@ TEST_F(SwitchStateBaseTest, bufferProfilePacketAdmissionFailActionCapabilitiesGe
         [](sai_int32_t value) { return static_cast<sai_buffer_profile_packet_admission_fail_action_t>(value); }
     );
     ASSERT_EQ(paSet1, paSet2);
+}
+
+TEST_F(SwitchStateBaseTest, switchQoSMaxNumOfTrafficClasses)
+{
+    ASSERT_EQ(m_ss->set_maximum_number_of_traffic_classes(), SAI_STATUS_SUCCESS);
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_TRAFFIC_CLASSES;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_swid), 1, &attr), SAI_STATUS_SUCCESS);
+
+    const sai_uint8_t maxTcNum = 16;
+    ASSERT_EQ(attr.value.u8, maxTcNum);
 }
 
 //Test the following function:
