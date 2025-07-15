@@ -630,10 +630,11 @@ vl_api_control_ping_reply_t_handler (vl_api_control_ping_reply_t *mp)
 static void
 vl_api_want_interface_events_reply_t_handler (vl_api_want_interface_events_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
     SAIVPP_DEBUG("sw interface events enable %s(%d)",
-                 msg->retval ? "failed" : "successful", msg->retval);
+                 retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -725,240 +726,269 @@ vl_api_create_loopback_instance_reply_t_handler (
     vl_api_create_loopback_instance_reply_t * msg)
 {
     /*set_reply_sw_if_index(ntohl(msg->sw_if_index));*/
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 }
 
 static void
 vl_api_delete_loopback_reply_t_handler (
     vl_api_delete_loopback_reply_t * msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 }
 
 static void
 vl_api_create_subif_reply_t_handler (vl_api_create_subif_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("subinterface creation %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("subinterface creation %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_delete_subif_reply_t_handler (vl_api_delete_subif_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("subinterface deletion %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("subinterface deletion %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sw_interface_set_table_reply_t_handler (vl_api_sw_interface_set_table_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("sw interface vrf set %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("sw interface vrf set %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sw_interface_add_del_address_reply_t_handler (vl_api_sw_interface_add_del_address_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("sw interface address add/del %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("sw interface address add/del %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sw_interface_set_flags_reply_t_handler (vl_api_sw_interface_set_flags_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("sw interface state set %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("sw interface state set %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sw_interface_set_mtu_reply_t_handler (vl_api_sw_interface_set_mtu_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("sw interface mtu set %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("sw interface mtu set %s(%d)", retval ? "failed" : "successful", retval);
 }
 static void
 vl_api_sw_interface_set_mac_address_reply_t_handler (vl_api_sw_interface_set_mac_address_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("sw interface mac set %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("sw interface mac set %s(%d)", retval ? "failed" : "successful", retval);
 }
 static void
 vl_api_hw_interface_set_mtu_reply_t_handler (vl_api_hw_interface_set_mtu_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("hw interface mtu set %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("hw interface mtu set %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_ip_table_add_del_reply_t_handler (vl_api_ip_table_add_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("ip vrf add %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("ip vrf add %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_ip_route_add_del_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("ip route add %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("ip route add %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sw_interface_ip6_enable_disable_reply_t_handler(
     vl_api_sw_interface_ip6_enable_disable_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("ip6 enable/disable %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("ip6 enable/disable %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_set_ip_flow_hash_v2_reply_t_handler (vl_api_ip_route_add_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("ip flow has set %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("ip flow has set %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_ip_neighbor_add_del_reply_t_handler (vl_api_ip_neighbor_add_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("ip neighbor add/del %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("ip neighbor add/del %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_bridge_domain_add_del_reply_t_handler (vl_api_bridge_domain_add_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("l2 add/del %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
-    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("l2 add/del %s(%d)", retval ? "failed" : "successful", retval);
+    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",retval ? "failed" : "successful", retval);
 
 }
 static void
 vl_api_sw_interface_set_l2_bridge_reply_t_handler (vl_api_sw_interface_set_l2_bridge_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("sw inteface set l2 bridge reply handler %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
-    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("sw inteface set l2 bridge reply handler %s(%d)", retval ? "failed" : "successful", retval);
+    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",retval ? "failed" : "successful", retval);
 
 }
 static void
 vl_api_l2_interface_vlan_tag_rewrite_reply_t_handler (vl_api_l2_interface_vlan_tag_rewrite_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("l2 interface vlan tag rewrite reply handler  %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
-    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("l2 interface vlan tag rewrite reply handler  %s(%d)", retval ? "failed" : "successful", retval);
+    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",retval ? "failed" : "successful", retval);
 
 }
 static void
 vl_api_bvi_create_reply_t_handler (vl_api_bvi_create_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_WARN("bvi create reply handler %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_WARN("bvi create reply handler %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_bvi_delete_reply_t_handler (vl_api_bvi_delete_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_WARN("bvi delete reply handler  %s(%d)",  msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_WARN("bvi delete reply handler  %s(%d)",  retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_bridge_flags_reply_t_handler (vl_api_bridge_flags_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_WARN("bridge flags reply handler  %s(%d)",  msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_WARN("bridge flags reply handler  %s(%d)",  retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_l2fib_add_del_reply_t_handler (vl_api_l2fib_add_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("l2fib add del reply handler  %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
-    //SAIVPP_ERROR("l2fib add del reply handler %s(%d)",msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("l2fib add del reply handler  %s(%d)", retval ? "failed" : "successful", retval);
+    //SAIVPP_ERROR("l2fib add del reply handler %s(%d)",retval ? "failed" : "successful", retval);
 
 }
 static void
 vl_api_l2fib_flush_all_reply_t_handler (vl_api_l2fib_flush_all_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("l2fib flush all reply handler  %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
-    //SAIVPP_ERROR("l2fib flush all reply handler %s(%d)",msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("l2fib flush all reply handler  %s(%d)", retval ? "failed" : "successful", retval);
+    //SAIVPP_ERROR("l2fib flush all reply handler %s(%d)",retval ? "failed" : "successful", retval);
 
 }
 static void
 vl_api_l2fib_flush_int_reply_t_handler (vl_api_l2fib_flush_int_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("l2fib flush int reply handler  %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
-    //SAIVPP_ERROR("l2fib flush int reply handler %s(%d)",msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("l2fib flush int reply handler  %s(%d)", retval ? "failed" : "successful", retval);
+    //SAIVPP_ERROR("l2fib flush int reply handler %s(%d)",retval ? "failed" : "successful", retval);
 
 }
 
 static void
 vl_api_l2fib_flush_bd_reply_t_handler (vl_api_l2fib_flush_bd_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("l2fib flush bd reply handler  %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
-    //SAIVPP_ERROR("l2fib flush bd reply handler %s(%d)",msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("l2fib flush bd reply handler  %s(%d)", retval ? "failed" : "successful", retval);
+    //SAIVPP_ERROR("l2fib flush bd reply handler %s(%d)",retval ? "failed" : "successful", retval);
 
 }
 
 static void
 vl_api_bfd_udp_add_reply_t_handler (vl_api_bfd_udp_add_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("bfd udp add reply handler  %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("bfd udp add reply handler  %s(%d)", retval ? "failed" : "successful", retval);
 
 }
 
 static void
 vl_api_bfd_udp_del_reply_t_handler (vl_api_bfd_udp_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("bfd udp del reply handler  %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("bfd udp del reply handler  %s(%d)", retval ? "failed" : "successful", retval);
 
 }
 
 static void
 vl_api_want_bfd_events_reply_t_handler (vl_api_want_bfd_events_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("bfd events enable %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("bfd events enable %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_bfd_udp_enable_multihop_reply_t_handler (vl_api_bfd_udp_enable_multihop_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("bfd enable multihop %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("bfd enable multihop %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
@@ -1019,127 +1049,140 @@ vl_api_vxlan_add_del_tunnel_v3_reply_t_handler (
 {
     set_reply_sw_if_index(ntohl(msg->sw_if_index));
 
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
     SAIVPP_DEBUG("vxlan_add_del handler: if_idx,%d,status,%d",vam->sw_if_index, vam->retval);
 }
 
 static void
 vl_api_tunterm_acl_add_replace_reply_t_handler(vl_api_tunterm_acl_add_replace_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
     uint32_t *tunterm_index = (uint32_t *) get_index_ptr(msg->context);
     *tunterm_index = ntohl(msg->tunterm_acl_index);
 
-    SAIVPP_DEBUG("tunterm acl add_replace %s(%d) tunterm_index index %u", msg->retval ? "failed" : "successful",
-                 msg->retval, *tunterm_index);
+    SAIVPP_DEBUG("tunterm acl add_replace %s(%d) tunterm_index index %u", retval ? "failed" : "successful",
+                 retval, *tunterm_index);
     release_index(msg->context);
 }
 
 static void
 vl_api_tunterm_acl_del_reply_t_handler(vl_api_tunterm_acl_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("tunterm acl del %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("tunterm acl del %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_tunterm_acl_interface_add_del_reply_t_handler(vl_api_tunterm_acl_interface_add_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("tunterm acl interface set/reset  %s(%d)", msg->retval ? "failed" : "successful",
-                 msg->retval);
+    SAIVPP_DEBUG("tunterm acl interface set/reset  %s(%d)", retval ? "failed" : "successful",
+                 retval);
 }
 
 static void
 vl_api_bond_create_reply_t_handler (vl_api_bond_create_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
     if (msg->context) {
       u32 *swif_idx = (u32 *) get_index_ptr(msg->context);
       *swif_idx = ntohl(msg->sw_if_index);
     }
 
-    SAIVPP_WARN("bond add %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_WARN("bond add %s(%d)", retval ? "failed" : "successful", retval);
     if (!msg->retval)
     {
         uint32_t bond_if_index =  ntohl(msg->sw_if_index);
         SAIVPP_WARN("created bond if index%d", bond_if_index);
     }
-    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",msg->retval ? "failed" : "successful", msg->retval);
+    //SAIVPP_ERROR("l2 add del reply handler called %s(%d)",retval ? "failed" : "successful", retval);
 
 }
 
 static void
 vl_api_bond_delete_reply_t_handler (vl_api_bond_delete_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_WARN("bond delete %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_WARN("bond delete %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_bond_add_member_reply_t_handler (vl_api_bond_add_member_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_WARN("bond add member %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_WARN("bond add member %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_bond_detach_member_reply_t_handler (vl_api_bond_detach_member_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_WARN("bond detach member %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_WARN("bond detach member %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sr_localsid_add_del_reply_t_handler(vl_api_sr_localsid_add_del_reply_t *msg)
 {
-   set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
     SAIVPP_DEBUG("sr local sid add/del %s(%d)",
-                  msg->retval ? "failed" : "successful", msg->retval);
+                  retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sr_policy_add_v2_reply_t_handler(vl_api_sr_policy_add_v2_reply_t *msg)
 {
-   set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
     SAIVPP_DEBUG("sr policy add %s(%d)",
-                  msg->retval ? "failed" : "successful", msg->retval);
+                  retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sr_policy_del_reply_t_handler(vl_api_sr_policy_del_reply_t *msg)
 {
-   set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
     SAIVPP_DEBUG("sr policy del %s(%d)",
-                  msg->retval ? "failed" : "successful", msg->retval);
+                  retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sr_steering_add_del_reply_t_handler(vl_api_sr_steering_add_del_reply_t *msg)
 {
-   set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
     SAIVPP_DEBUG("sr steer add/del %s(%d)",
-                  msg->retval ? "failed" : "successful", msg->retval);
+                  retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_sr_set_encap_source_reply_t_handler(vl_api_sr_set_encap_source_reply_t *msg)
 {
-   set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
     SAIVPP_DEBUG("sr set encap source %s(%d)",
-                  msg->retval ? "failed" : "successful", msg->retval);
+                  retval ? "failed" : "successful", retval);
 }
 
 #define vl_api_get_first_msg_id_reply_t_handler vl_noop_handler
@@ -1256,52 +1299,58 @@ static void vpp_ext_vpe_init(void)
 
 static void vl_api_lcp_itf_pair_add_del_reply_t_handler(vl_api_lcp_itf_pair_add_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("linux_cp hostif creation %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("linux_cp hostif creation %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void vl_api_lcp_ethertype_enable_reply_t_handler(vl_api_lcp_ethertype_enable_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_WARN("linux_cp ethertype enabled %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_WARN("linux_cp ethertype enabled %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void vl_api_acl_add_replace_reply_t_handler(vl_api_acl_add_replace_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
     uint32_t *acl_index = (uint32_t *) get_index_ptr(msg->context);
     *acl_index = ntohl(msg->acl_index);
 
-    SAIVPP_DEBUG("acl add_replace %s(%d) acl index %u", msg->retval ? "failed" : "successful",
-                 msg->retval, *acl_index);
+    SAIVPP_DEBUG("acl add_replace %s(%d) acl index %u", retval ? "failed" : "successful",
+                 retval, *acl_index);
     release_index(msg->context);
 }
 
 static void vl_api_acl_del_reply_t_handler(vl_api_acl_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("acl del %s(%d)", msg->retval ? "failed" : "successful", msg->retval);
+    SAIVPP_DEBUG("acl del %s(%d)", retval ? "failed" : "successful", retval);
 }
 
 static void
 vl_api_acl_stats_intf_counters_enable_reply_t_handler (vl_api_acl_stats_intf_counters_enable_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("acl counters enable %s", msg->retval ? "failed" : "successful");
+    SAIVPP_DEBUG("acl counters enable %s", retval ? "failed" : "successful");
 }
 
 static void
 vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_t *msg)
 {
-    set_reply_status((int)ntohl((uint32_t)msg->retval));
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
 
-    SAIVPP_DEBUG("acl interface set/reset  %s(%d)", msg->retval ? "failed" : "successful",
-                 msg->retval);
+    SAIVPP_DEBUG("acl interface set/reset  %s(%d)", retval ? "failed" : "successful",
+                 retval);
 }
 
 #define LCP_MSG_ID(id) \
@@ -2146,8 +2195,8 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
             memcpy(api_addr->un.ip6, &ip6->sin6_addr.s6_addr, sizeof(api_addr->un.ip6));
             vpp_rule->src_prefix.len = (u8)ipv6_mask_len(in_rule->src_prefix_mask.addr.ip6.sin6_addr.s6_addr);
         } else {
-            SAIVPP_WARN("Unknown protocol in source prefix");
-            /* return -EINVAL; */
+            memset(api_addr, 0, sizeof(*api_addr));
+            vpp_rule->src_prefix.len = 0;
         }
 
         addr = &in_rule->dst_prefix;
@@ -2164,8 +2213,8 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
             memcpy(api_addr->un.ip6, &ip6->sin6_addr.s6_addr, sizeof(api_addr->un.ip6));
             vpp_rule->dst_prefix.len = (u8)ipv6_mask_len(in_rule->dst_prefix_mask.addr.ip6.sin6_addr.s6_addr);
         } else {
-            SAIVPP_WARN("Unknown protocol in destination prefix");
-            /* return -EINVAL; */
+            memset(api_addr, 0, sizeof(*api_addr));
+            vpp_rule->dst_prefix.len = 0;
         }
 
         vpp_rule->proto = in_rule->proto;
@@ -2173,7 +2222,42 @@ int vpp_acl_add_replace (vpp_acl_t *in_acl, uint32_t *acl_index, bool is_replace
         vpp_rule->srcport_or_icmptype_last = htons(in_rule->srcport_or_icmptype_last);
         vpp_rule->dstport_or_icmpcode_first = htons(in_rule->dstport_or_icmpcode_first);
         vpp_rule->dstport_or_icmpcode_last = htons(in_rule->dstport_or_icmpcode_last);
+
+        if (vpp_rule->proto != 0) {
+            if (vpp_rule->srcport_or_icmptype_first == 0 && vpp_rule->srcport_or_icmptype_last == 0) {
+                vpp_rule->srcport_or_icmptype_first = htons(0);
+                vpp_rule->srcport_or_icmptype_last = htons(0xFFFF);
+            }
+            if (vpp_rule->dstport_or_icmpcode_first == 0 && vpp_rule->dstport_or_icmpcode_last == 0) {
+                vpp_rule->dstport_or_icmpcode_first = htons(0);
+                vpp_rule->dstport_or_icmpcode_last = htons(0xFFFF);
+            }
+        }
+
+        vpp_rule->tcp_flags_mask = in_rule->tcp_flags_mask;
+        vpp_rule->tcp_flags_value = in_rule->tcp_flags_value;
         vpp_rule->is_permit = (vl_api_acl_action_t)in_rule->action;
+
+        if (idx != (acl_count - 1) &&
+            vpp_rule->src_prefix.len == 0 &&
+            vpp_rule->dst_prefix.len == 0 &&
+            vpp_rule->proto == 0) {
+            SAIVPP_WARN("WARNING: VPP Rule %u is not last but will match and %s all!",
+                        idx, vpp_rule->is_permit ? "permit" : "deny");
+        }
+
+        SAIVPP_DEBUG("VPP Rule %u: proto: %u, "
+                     "srcport/icmptype: %u-%u, dstport/icmpcode: %u-%u, "
+                     "tcp_flags: mask=0x%x, value=0x%x, action: %s",
+                     idx,
+                     vpp_rule->proto,
+                     ntohs(vpp_rule->srcport_or_icmptype_first),
+                     ntohs(vpp_rule->srcport_or_icmptype_last),
+                     ntohs(vpp_rule->dstport_or_icmpcode_first),
+                     ntohs(vpp_rule->dstport_or_icmpcode_last),
+                     vpp_rule->tcp_flags_mask,
+                     vpp_rule->tcp_flags_value,
+                     vpp_rule->is_permit ? "permit" : "deny");
     }
     mp->context = store_ptr(acl_index);
 
