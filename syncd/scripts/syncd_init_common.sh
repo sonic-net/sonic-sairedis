@@ -350,11 +350,15 @@ config_syncd_mlnx()
     echo >> /tmp/sai-temp.profile
 
     DEVICE_TYPE=$(/usr/bin/asic_detect/asic_detect.sh)
-    ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
-    ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
-    if [ -f "$ASIC_PROFILE_PATH" ]; then
-        cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
-        echo >> /tmp/sai-temp.profile
+    if [[ $? -eq 0 ]]; then
+        ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
+        ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
+        if [ -f "$ASIC_PROFILE_PATH" ]; then
+            cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
+            echo >> /tmp/sai-temp.profile
+        fi
+    else
+        echo "Warning: ASIC is not detected..."
     fi
 
     if [[ -f $SAI_COMMON_FILE_PATH ]]; then
@@ -522,11 +526,15 @@ config_syncd_nvidia_bluefield()
     echo >> /tmp/sai-temp.profile
 
     DEVICE_TYPE=$(/usr/bin/asic_detect/asic_detect.sh)
-    ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
-    ASIC_PROFILE_PATH="/etc/nv-bf/${ASIC_PROFILE_FILE}"
-    if [ -f "$ASIC_PROFILE_PATH" ]; then
-        cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
-        echo >> /tmp/sai-temp.profile
+    if [[ $? -eq 0 ]]; then
+        ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
+        ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
+        if [ -f "$ASIC_PROFILE_PATH" ]; then
+            cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
+            echo >> /tmp/sai-temp.profile
+        fi
+    else
+        echo "Warning: ASIC is not detected..."
     fi
 
     # keep only the first occurence of each prefix with '=' sign, and remove the others.
