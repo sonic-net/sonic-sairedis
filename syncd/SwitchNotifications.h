@@ -140,6 +140,10 @@ namespace syncd
                             .on_icmp_echo_session_state_change = &Slot<context>::onIcmpEchoSessionStateChange,
                             .on_extended_port_state_change = nullptr,
                             .on_tam_tel_type_config_change = &Slot<context>::onTamTelTypeConfigChange,
+                            .on_macsec_post_status = nullptr,
+                            .on_ipsec_post_status = nullptr,
+                            .on_switch_macsec_post_status = nullptr,
+                            .on_switch_ipsec_post_status = nullptr,
                             .on_ha_set_event = &Slot<context>::onHaSetEvent,
                             .on_ha_scope_event = &Slot<context>::onHaScopeEvent,
                             }) { }
