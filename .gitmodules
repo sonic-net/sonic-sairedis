@@ -2,4 +2,4 @@
 	path = SAI
 	url = https://github.com/opencomputeproject/SAI.git
 	ignore = dirty
-	branch = v1.3
+	branch = v1.16
