@@ -8,6 +8,7 @@
 
 #include <inttypes.h>
 #include <vector>
+#include <exception>
 
 using namespace syncd;
 using namespace std;
@@ -501,6 +502,124 @@ public:
         SWSS_LOG_ENTER();
     }
 
+    virtual void addObjectWithCounterGroups(
+            _In_ sai_object_id_t vid,
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<std::string> &idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        SWSS_LOG_ENTER();
+        sai_stats_mode_t instance_stats_mode = SAI_STATS_MODE_READ_AND_CLEAR;
+        sai_stats_mode_t effective_stats_mode;
+        // TODO: use if const expression when c++17 is supported
+        if (HasStatsMode<CounterIdsType>::value)
+        {
+            if (per_object_stats_mode == STATS_MODE_READ_AND_CLEAR)
+            {
+                instance_stats_mode = SAI_STATS_MODE_READ_AND_CLEAR;
+            }
+            else if (per_object_stats_mode == STATS_MODE_READ)
+            {
+                instance_stats_mode = SAI_STATS_MODE_READ;
+            }
+            else
+            {
+                SWSS_LOG_WARN("Stats mode %s not supported for flex counter. Using STATS_MODE_READ_AND_CLEAR", per_object_stats_mode.c_str());
+            }
+
+            effective_stats_mode = (m_groupStatsMode == SAI_STATS_MODE_READ_AND_CLEAR ||
+                                    instance_stats_mode == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
+        }
+        else
+        {
+            effective_stats_mode = m_groupStatsMode;
+        }
+
+        std::vector<StatType> counter_ids;
+        for (const auto &str : idStrings)
+        {
+            StatType stat;
+            deserializeStat(str.c_str(), &stat);
+            counter_ids.push_back(stat);
+        }
+
+        // Create base counter group if not yet instantiated
+        if (m_supportedCounterGroups.empty())
+        {
+            m_supportedCounterGroups.push_back(std::set<StatType>(counter_ids.begin(), counter_ids.end()));
+        }
+
+        updateSupportedCounterGroups(rid, vid, counter_ids, effective_stats_mode);
+
+        size_t groupIndex = m_objectSupportedCountersGroupMap[vid];
+        std::set<StatType>& supportedIdsSet = m_supportedCounterGroups[groupIndex];
+        if (supportedIdsSet.empty())
+        {
+            return;
+        }
+        std::vector<StatType> supportedIds(supportedIdsSet.begin(), supportedIdsSet.end());
+
+        if (double_confirm_supported_counters)
+        {
+            std::vector<uint64_t> stats(supportedIds.size());
+
+            if (!collectData(rid, supportedIds, effective_stats_mode, false, stats))
+            {
+                SWSS_LOG_ERROR("%s RID %s VID %s can't provide the statistic",  m_name.c_str(),
+                               sai_serialize_object_id(rid).c_str(), sai_serialize_object_id(vid).c_str());
+                throw std::runtime_error("Test counter poll failed on populating m_objectIdsMap");
+            }
+        }
+
+         // Perform a remove and re-add to simplify the logic here
+        removeObject(vid, false);
+
+        bool supportBulk;
+        // TODO: use if const expression when cpp17 is supported
+        if (HasStatsMode<CounterIdsType>::value)
+        {
+            supportBulk = false;
+        }
+        else
+        {
+            supportBulk = no_double_check_bulk_capability || checkBulkCapability(vid, rid, supportedIds);
+        }
+
+        if (!supportBulk)
+        {
+            auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
+            // TODO: use if const expression when cpp17 is supported
+            if (HasStatsMode<CounterIdsType>::value)
+            {
+                counter_data->setStatsMode(instance_stats_mode);
+            }
+            m_objectIdsMap.emplace(vid, counter_data);
+        }
+        else if (m_counterChunkSizeMapFromPrefix.empty())
+        {
+            std::sort(supportedIds.begin(), supportedIds.end());
+            auto bulkContext = getBulkStatsContext(supportedIds, "default", default_bulk_chunk_size);
+            addBulkStatsContext(vid, rid, supportedIds, *bulkContext.get());
+        }
+        else
+        {
+            std::map<std::string, vector<StatType>> counter_prefix_map;
+            std::vector<StatType> default_partition;
+            createCounterBulkChunkSizePerPrefixPartition(supportedIds, counter_prefix_map, default_partition);
+
+            for (auto &counterPrefix : counter_prefix_map)
+            {
+                std::sort(counterPrefix.second.begin(), counterPrefix.second.end());
+                auto bulkContext = getBulkStatsContext(counterPrefix.second, counterPrefix.first, m_counterChunkSizeMapFromPrefix[counterPrefix.first]);
+                addBulkStatsContext(vid, rid, counterPrefix.second, *bulkContext.get());
+            }
+
+            std::sort(default_partition.begin(), default_partition.end());
+            auto bulkContext = getBulkStatsContext(default_partition, "default", default_bulk_chunk_size);
+            addBulkStatsContext(vid, rid, default_partition, *bulkContext.get());
+        }
+    }
+
     // For those object type who support per object stats mode, e.g. buffer pool.
     virtual void addObject(
             _In_ sai_object_id_t vid,
@@ -850,8 +969,230 @@ public:
         }
     }
 
+    virtual void bulkAddObjectWithCounterGroups(
+                _In_ const std::vector<sai_object_id_t>& vids,
+                _In_ const std::vector<sai_object_id_t>& rids,
+                _In_ const std::vector<std::string>& idStrings,
+                _In_ const std::string &per_object_stats_mode)
+    {
+        SWSS_LOG_ENTER();
+        sai_stats_mode_t effective_stats_mode;
+        // TODO: use if const expression when c++17 is supported
+        if (HasStatsMode<CounterIdsType>::value)
+        {
+            // Bulk operation is not supported by the counter group.
+            SWSS_LOG_INFO("Counter group %s %s does not support bulk. Fallback to single call", m_name.c_str(), m_instanceId.c_str());
+
+            // Fall back to old way
+            for (size_t i = 0; i < vids.size(); i++)
+            {
+                auto rid = rids[i];
+                auto vid = vids[i];
+                addObjectWithCounterGroups(vid, rid, idStrings, per_object_stats_mode);
+            }
+
+            return;
+        }
+        else
+        {
+            effective_stats_mode = m_groupStatsMode;
+        }
+
+        std::vector<StatType> allCounterIds;
+        for (const auto &str : idStrings)
+        {
+            StatType stat;
+            deserializeStat(str.c_str(), &stat);
+            {
+                allCounterIds.push_back(stat);
+            }
+        }
+
+        for (size_t i = 0; i < vids.size(); i++)
+        {
+            updateSupportedCounterGroups(rids[i], vids[i], allCounterIds, effective_stats_mode);
+        }
+
+        // Check if any counter group exists
+        if (m_supportedCounterGroups.empty())
+        {
+            SWSS_LOG_NOTICE("%s %s does not have supported counters", m_name.c_str(), m_instanceId.c_str());
+            return;
+        }
+
+        std::map<std::vector<StatType>, std::tuple<const std::string, uint32_t>> bulkUnsupportedCounters;
+        auto statsMode = m_groupStatsMode == SAI_STATS_MODE_READ ? SAI_STATS_MODE_BULK_READ : SAI_STATS_MODE_BULK_READ_AND_CLEAR;
+        auto checkAndUpdateBulkCapability = [&](const std::vector<StatType> &counter_ids, const std::string &prefix, uint32_t bulk_chunk_size)
+        {
+            BulkContextType ctx;
+            // Check bulk capabilities again
+            std::vector<StatType> supportedBulkIds;
+            sai_status_t status = SAI_STATUS_SUCCESS;
+            if (m_supportedBulkCounters.empty())
+            {
+                status = querySupportedCounters(rids[0], statsMode, m_supportedBulkCounters);
+            }
+            if (status == SAI_STATUS_SUCCESS && !m_supportedBulkCounters.empty())
+            {
+                for (auto stat : counter_ids)
+                {
+                    if (m_supportedBulkCounters.count(stat) != 0)
+                    {
+                        supportedBulkIds.push_back(stat);
+                    }
+                }
+            }
+            if (supportedBulkIds.size() < counter_ids.size())
+            {
+                // Bulk polling is unsupported for the whole group but single polling is supported
+                // Add all objects to m_objectIdsMap so that they will be polled using single API
+                for (size_t i = 0; i < vids.size(); i++)
+                {
+                    auto rid = rids[i];
+                    auto vid = vids[i];
+
+                    size_t groupIndex = m_objectSupportedCountersGroupMap[vid];
+                    std::vector<StatType> intf_counter_ids(m_supportedCounterGroups[groupIndex].begin(), m_supportedCounterGroups[groupIndex].end());
+                    if (intf_counter_ids.empty())
+                    {
+                        continue;
+                    }
+                    std::vector<uint64_t> stats(intf_counter_ids.size());
+                    if (!collectData(rid, intf_counter_ids, effective_stats_mode, false, stats))
+                    {
+                        SWSS_LOG_ERROR("%s RID %s VID %s can't provide the statistic",  m_name.c_str(),
+                               sai_serialize_object_id(rid).c_str(), sai_serialize_object_id(vid).c_str());
+                        throw std::runtime_error("Test counter poll failed on populating m_objectIdsMap");
+                    }
+                    auto it_vid = m_objectIdsMap.find(vid);
+                    if (it_vid != m_objectIdsMap.end())
+                    {
+                        // Remove and re-add if vid already exists
+                        m_objectIdsMap.erase(it_vid);
+                    }
+
+                    auto counter_data = std::make_shared<CounterIds<StatType>>(rid, intf_counter_ids);
+                    m_objectIdsMap.emplace(vid, counter_data);
+                    SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
+                }
+                return;
+            }
+
+            ctx.counter_ids = counter_ids;
+            addBulkStatsContext(vids, rids, counter_ids, ctx);
+            status = m_vendorSai->bulkGetStats(
+                SAI_NULL_OBJECT_ID,
+                m_objectType,
+                static_cast<uint32_t>(ctx.object_keys.size()),
+                ctx.object_keys.data(),
+                static_cast<uint32_t>(ctx.counter_ids.size()),
+                reinterpret_cast<const sai_stat_id_t *>(ctx.counter_ids.data()),
+                statsMode,
+                ctx.object_statuses.data(),
+                ctx.counters.data());
+            if (status == SAI_STATUS_SUCCESS)
+            {
+                auto bulkContext = getBulkStatsContext(counter_ids, prefix, bulk_chunk_size);
+                addBulkStatsContext(vids, rids, counter_ids, *bulkContext.get());
+            }
+            else
+            {
+                // Bulk is not supported for this counter prefix
+                // Append it to bulkUnsupportedCounters
+                std::tuple<const std::string, uint32_t> value(prefix, bulk_chunk_size);
+                bulkUnsupportedCounters.emplace(counter_ids, value);
+                SWSS_LOG_INFO("Counters starting with %s do not support bulk. Fallback to single call for these counters", prefix.c_str());
+            }
+        };
+
+        // Use counter group with the most counters
+        size_t maxCounterGroupSize = 0;
+        size_t maxCounterGroupInd = 0;
+        for ( size_t i = 0; i < m_supportedCounterGroups.size(); i++)
+        {
+            if (m_supportedCounterGroups[i].size() > maxCounterGroupSize)
+            {
+                maxCounterGroupSize = m_supportedCounterGroups[i].size();
+                maxCounterGroupInd = i;
+            }
+        }
+        std::vector<StatType> supportedIds(m_supportedCounterGroups[maxCounterGroupInd].begin(), m_supportedCounterGroups[maxCounterGroupInd].end());
+
+        if (m_counterChunkSizeMapFromPrefix.empty())
+        {
+            std::sort(supportedIds.begin(), supportedIds.end());
+            checkAndUpdateBulkCapability(supportedIds, "default", default_bulk_chunk_size);
+        }
+        else
+        {
+            std::map<std::string, vector<StatType>> counter_prefix_map;
+            std::vector<StatType> default_partition;
+            createCounterBulkChunkSizePerPrefixPartition(supportedIds, counter_prefix_map, default_partition);
+
+            for (auto &counterPrefix : counter_prefix_map)
+            {
+                std::sort(counterPrefix.second.begin(), counterPrefix.second.end());
+            }
+
+            std::sort(default_partition.begin(), default_partition.end());
+
+            for (auto &counterPrefix : counter_prefix_map)
+            {
+                checkAndUpdateBulkCapability(counterPrefix.second, counterPrefix.first, m_counterChunkSizeMapFromPrefix[counterPrefix.first]);
+            }
+
+            checkAndUpdateBulkCapability(default_partition, "default", default_bulk_chunk_size);
+        }
+
+        if (!bulkUnsupportedCounters.empty())
+        {
+            SWSS_LOG_NOTICE("Partial counters do not support bulk. Re-check bulk capability for each object");
+
+            for (auto &it : bulkUnsupportedCounters)
+            {
+                std::vector<sai_object_id_t> bulkSupportedRIDs;
+                std::vector<sai_object_id_t> bulkSupportedVIDs;
+                for (size_t i = 0; i < vids.size(); i++)
+                {
+                    auto rid = rids[i];
+                    auto vid = vids[i];
+                    std::vector<uint64_t> stats(it.first.size());
+                    if (checkBulkCapability(vid, rid, it.first))
+                    {
+                        bulkSupportedVIDs.push_back(vid);
+                        bulkSupportedRIDs.push_back(rid);
+                    }
+                    else if (!double_confirm_supported_counters || collectData(rid, it.first, effective_stats_mode, false, stats))
+                    {
+                        SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
+
+                        auto it_vid = m_objectIdsMap.find(vid);
+                        if (it_vid != m_objectIdsMap.end())
+                        {
+                            // Remove and re-add if vid already exists
+                            m_objectIdsMap.erase(it_vid);
+                        }
+
+                        auto counter_data = std::make_shared<CounterIds<StatType>>(rid, supportedIds);
+                        m_objectIdsMap.emplace(vid, counter_data);
+                    }
+                    else
+                    {
+                        SWSS_LOG_WARN("%s RID %s can't provide the statistic",  m_name.c_str(), sai_serialize_object_id(rid).c_str());
+                    }
+                }
+
+                if (!bulkSupportedVIDs.empty() && !bulkSupportedRIDs.empty())
+                {
+                    auto bulkContext = getBulkStatsContext(it.first, get<0>(it.second), get<1>(it.second));
+                    addBulkStatsContext(bulkSupportedVIDs, bulkSupportedRIDs, it.first, *bulkContext.get());
+                }
+            }
+        }
+    }
+
     virtual void bulkAddObject(
-            _In_ const std::vector<sai_object_id_t>& vids,
+                _In_ const std::vector<sai_object_id_t>& vids,
                 _In_ const std::vector<sai_object_id_t>& rids,
                 _In_ const std::vector<std::string>& idStrings,
                 _In_ const std::string &per_object_stats_mode)
@@ -1087,6 +1428,7 @@ public:
         }
     }
 
+
     virtual void collectData(
             _In_ swss::Table &countersTable) override
     {
@@ -1105,9 +1447,10 @@ public:
                                         kv.second->getStatsMode() == SAI_STATS_MODE_READ_AND_CLEAR) ? SAI_STATS_MODE_READ_AND_CLEAR : SAI_STATS_MODE_READ;
             }
 
-            std::vector<uint64_t> stats(statIds.size());
+            std::vector<uint64_t> stats(statIds.size(), 0);
             if (!collectData(rid, statIds, effective_stats_mode, true, stats))
             {
+                SWSS_LOG_ERROR("counter read failed on RID 0x%x on intf 0x%x", rid, vid);
                 continue;
             }
 
@@ -1464,6 +1807,51 @@ private:
         return status == SAI_STATUS_SUCCESS;
     }
 
+    void updateSupportedCounterGroups(
+            _In_ sai_object_id_t rid,
+            _In_ sai_object_id_t vid,
+            _In_ const std::vector<StatType>& counter_ids,
+            _In_ sai_stats_mode_t stats_mode)
+    {
+        SWSS_LOG_ENTER();
+        if (m_objectSupportedCountersGroupMap.find(vid) == m_objectSupportedCountersGroupMap.end())
+{
+            // Check counter support individualy
+            std::set<StatType> supportedIds;
+            std::vector<uint64_t> values(1);
+            for (const auto &counter : counter_ids)
+            {
+                std::vector<StatType> tmp_counter_ids {counter};
+                if (collectData(rid, tmp_counter_ids, stats_mode, false, values))
+                {
+                    supportedIds.emplace(counter);
+                }
+            }
+
+            if (supportedIds.empty())
+            {
+                return;
+            }
+
+            // Check if a matching counter group already exists
+            bool groupAssigned = false;
+            for (size_t i = 0; i < m_supportedCounterGroups.size(); i++)
+            {
+                if (m_supportedCounterGroups[i] == supportedIds)
+                {
+                    m_objectSupportedCountersGroupMap.emplace(vid, i);
+                    groupAssigned = true;
+                }
+            }
+            // Make new counter group and assign the index if not assigned
+            if (!groupAssigned)
+            {
+                m_objectSupportedCountersGroupMap.emplace(vid, m_supportedCounterGroups.size());
+                m_supportedCounterGroups.push_back(supportedIds);
+            }
+        }
+    }
+
     void updateSupportedCounters(
             _In_ sai_object_id_t rid,
             _In_ const std::vector<StatType>& counter_ids,
@@ -1574,6 +1962,10 @@ protected:
     sai_stats_mode_t& m_groupStatsMode;
     std::set<StatType> m_supportedCounters;
     std::set<StatType> m_supportedBulkCounters;
+
+    std::map<sai_object_id_t, size_t> m_objectSupportedCountersGroupMap;
+    std::vector<std::set<StatType>> m_supportedCounterGroups;
+
     std::map<sai_object_id_t, std::shared_ptr<CounterIdsType>> m_objectIdsMap;
     std::map<std::vector<StatType>, std::shared_ptr<BulkContextType>> m_bulkContexts;
 };
@@ -1593,6 +1985,16 @@ public:
     CounterContext<AttrType>(name, instance, object_type, vendor_sai, stats_mode)
     {
         SWSS_LOG_ENTER();
+    }
+
+    // Wrapper to addObject
+    void addObjectWithCounterGroups(
+            _In_ sai_object_id_t vid,
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<std::string> &idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        addObject(vid, rid, idStrings, per_object_stats_mode);
     }
 
     void addObject(
@@ -1621,6 +2023,16 @@ public:
 
         auto attr_ids = std::make_shared<AttrIdsType>(rid, attrIds);
         Base::m_objectIdsMap.emplace(vid, attr_ids);
+    }
+
+    // Wrapper to bulkAddObject
+    void bulkAddObjectWithCounterGroups(
+            _In_ const std::vector<sai_object_id_t>& vids,
+            _In_ const std::vector<sai_object_id_t>& rids,
+            _In_ const std::vector<std::string>& idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        bulkAddObject(vids, rids, idStrings, per_object_stats_mode);
     }
 
     void bulkAddObject(
@@ -1696,6 +2108,15 @@ public:
         SWSS_LOG_ENTER();
     }
 
+    // Wrapper to addObject
+    void addObjectWithCounterGroups(
+            _In_ sai_object_id_t vid,
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<std::string> &idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        addObject(vid, rid, idStrings, per_object_stats_mode);
+    }
     void addObject(
             _In_ sai_object_id_t vid,
             _In_ sai_object_id_t rid,
@@ -1807,6 +2228,16 @@ public:
                           m_plugins.end(),
                           [&] (auto &sha) { runRedisScript(counters_db, sha, idStrings, argv); });
         }
+    }
+
+    // Wrapper to bulkAddObject
+    void bulkAddObjectWithCounterGroups(
+            _In_ const std::vector<sai_object_id_t>& vids,
+            _In_ const std::vector<sai_object_id_t>& rids,
+            _In_ const std::vector<std::string>& idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+           bulkAddObject(vids, rids, idStrings, per_object_stats_mode);
     }
 
     void bulkAddObject(
@@ -2836,11 +3267,24 @@ void FlexCounter::bulkAddCounter(
         const auto &counterGroupRef = m_objectTypeField2CounterType.find({objectType, field});
         if (counterGroupRef != m_objectTypeField2CounterType.end())
         {
-            getCounterContext(counterGroupRef->second)->bulkAddObject(
-                    vids,
-                    rids,
-                    idStrings,
-                    "");
+            try
+            {
+                getCounterContext(counterGroupRef->second)->bulkAddObjectWithCounterGroups(
+                        vids,
+                        rids,
+                        idStrings,
+                        "");
+            }
+            catch (...)
+            {
+                SWSS_LOG_WARN("Error occured initlizating SAI objects with counter groups, falling back to global counter list implementation");
+                getCounterContext(counterGroupRef->second)->bulkAddObject(
+                        vids,
+                        rids,
+                        idStrings,
+                        "");
+            }
+
         }
         else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && field == BUFFER_POOL_COUNTER_ID_LIST)
         {
@@ -2862,11 +3306,25 @@ void FlexCounter::bulkAddCounter(
 
     if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL && counterIds.size())
     {
-        getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObject(
-                vids,
-                rids,
-                counterIds,
-                statsMode);
+        try
+        {
+            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObjectWithCounterGroups(
+                    vids,
+                    rids,
+                    counterIds,
+                    statsMode);
+
+        }
+        catch (...)
+        {
+            SWSS_LOG_WARN("Error occured initlizating SAI objects with counter groups, falling back to global counter list implementation");
+            getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObject(
+                    vids,
+                    rids,
+                    counterIds,
+                    statsMode);
+
+        }
     }
 
     // notify thread to start polling
