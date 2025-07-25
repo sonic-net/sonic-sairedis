@@ -169,6 +169,7 @@ void SaiSwitch::getVxlanDefaultRouterMacAddress(
 sai_switch_type_t SaiSwitch::getSwitchType() const
 {
     SWSS_LOG_ENTER();
+    sai_switch_type_t switch_type;
     sai_attribute_t attr;
 
     attr.id = SAI_SWITCH_ATTR_TYPE;
@@ -181,12 +182,16 @@ sai_switch_type_t SaiSwitch::getSwitchType() const
                 sai_serialize_status(status).c_str());
 
         // Set to SAI_SWITCH_TYPE_NPU and move on
-        attr.value.s32 = SAI_SWITCH_TYPE_NPU;
+        switch_type = SAI_SWITCH_TYPE_NPU;
+    }
+    else
+    {
+        switch_type = (sai_switch_type_t) attr.value.s32;
     }
 
-    SWSS_LOG_INFO("switch type: '%s'", (attr.value.s32 == SAI_SWITCH_TYPE_NPU ? "SAI_SWITCH_TYPE_NPU" : "SAI_SWITCH_TYPE_PHY"));
+    SWSS_LOG_INFO("switch type: '%s'", sai_serialize_switch_type(switch_type).c_str());
 
-    return (sai_switch_type_t) attr.value.s32;
+    return switch_type;
 }
 
 #define MAX_HARDWARE_INFO_LENGTH 0x1000
