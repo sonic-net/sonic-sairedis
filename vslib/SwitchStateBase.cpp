@@ -4169,6 +4169,35 @@ sai_status_t SwitchStateBase::queryAttributeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::querySwitchStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_switch_stat_t> switchStatList = {
+        SAI_SWITCH_STAT_ECC_DROP,
+        SAI_SWITCH_STAT_PACKET_INTEGRITY_DROP,
+        SAI_SWITCH_STAT_DROPPED_TRIM_PACKETS,
+        SAI_SWITCH_STAT_TX_TRIM_PACKETS
+    };
+
+    if (stats_capability->count < switchStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(switchStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(switchStatList.size());
+
+    for (std::uint32_t i = 0; i < switchStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(switchStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryPortStatsCapability(
                               _Inout_ sai_stat_capability_list_t *stats_capability)
 {
@@ -4266,7 +4295,9 @@ sai_status_t SwitchStateBase::queryPortStatsCapability(
         SAI_PORT_STAT_PFC_5_ON2OFF_RX_PKTS,
         SAI_PORT_STAT_PFC_6_ON2OFF_RX_PKTS,
         SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS,
-        SAI_PORT_STAT_TRIM_PACKETS
+        SAI_PORT_STAT_TRIM_PACKETS,
+        SAI_PORT_STAT_DROPPED_TRIM_PACKETS,
+        SAI_PORT_STAT_TX_TRIM_PACKETS
     };
 
     if (stats_capability->count < portStatList.size())
@@ -4305,7 +4336,9 @@ sai_status_t SwitchStateBase::queryQueueStatsCapability(
         SAI_QUEUE_STAT_CURR_OCCUPANCY_LEVEL,
         SAI_QUEUE_STAT_WATERMARK_LEVEL,
         SAI_QUEUE_STAT_CREDIT_WD_DELETED_PACKETS,
-        SAI_QUEUE_STAT_TRIM_PACKETS
+        SAI_QUEUE_STAT_TRIM_PACKETS,
+        SAI_QUEUE_STAT_DROPPED_TRIM_PACKETS,
+        SAI_QUEUE_STAT_TX_TRIM_PACKETS
     };
 
     if (stats_capability->count < queueStatList.size())
@@ -4332,7 +4365,11 @@ sai_status_t SwitchStateBase::queryStatsCapability(
 {
     SWSS_LOG_ENTER();
 
-    if (objectType == SAI_OBJECT_TYPE_QUEUE)
+    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    {
+        return querySwitchStatsCapability(stats_capability);
+    }
+    else if (objectType == SAI_OBJECT_TYPE_QUEUE)
     {
         return queryQueueStatsCapability(stats_capability);
     }
