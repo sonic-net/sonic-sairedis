@@ -7,6 +7,7 @@
 
 #include "swss/logger.h"
 #include "swss/select.h"
+#include <swss/exec.h>
 
 #include "vppxlate/SaiVppXlate.h"
 
@@ -27,6 +28,66 @@ sai_status_t SwitchVpp::bfd_session_add(
 
     return SAI_STATUS_SUCCESS;
 
+}
+
+static bool vpp_get_ifname_from_ip_address (
+    sai_ip_address_t& ip_addr,
+    std::string& ifname) {
+    SWSS_LOG_ENTER();
+
+    bool is_v6 = false;
+    sai_ip_prefix_t ip_prefix;
+    sai_ip6_t ip6mask = {0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
+
+    ip_prefix.addr_family = ip_addr.addr_family;
+    switch (ip_addr.addr_family) {
+        case SAI_IP_ADDR_FAMILY_IPV4:
+        {
+            ip_prefix.addr.ip4 = ip_addr.addr.ip4;
+            ip_prefix.mask.ip4 = UINT32_MAX;
+            break;
+        }
+        case SAI_IP_ADDR_FAMILY_IPV6:
+        {
+            is_v6 =  true;
+            memcpy(ip_prefix.addr.ip6, ip_addr.addr.ip6, sizeof(ip_addr.addr.ip6));
+            memcpy(ip_prefix.mask.ip6, ip6mask, sizeof(ip6mask));
+            break;
+        }
+        default:
+            break;
+    }
+
+    std::stringstream cmd;
+
+    swss::IpPrefix prefix = getIpPrefixFromSaiPrefix(ip_prefix);
+
+    if (is_v6)
+    {
+        cmd << IP_CMD << " -6 " << " addr show " << " to " << prefix.to_string();
+        cmd << " scope global | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
+    } else {
+        cmd << IP_CMD << " addr show " << " to " << prefix.to_string();
+        cmd << " scope global | awk -F':' '/[0-9]+: [a-zA-Z]+/ { printf \"%s\", $2 }' | cut -d' ' -f2 -z | sed 's/@[a-zA-Z].*//g'";
+    }
+    int ret = swss::exec(cmd.str(), ifname);
+    if (ret)
+    {
+        SWSS_LOG_ERROR("Command '%s' failed with rc %d", cmd.str().c_str(), ret);
+        return false;
+    }
+
+    if (ifname.length() != 0)
+    {
+        vpp_ip_addr_t  vpp_ip_addr;
+        char           vpp_ip_str[INET6_ADDRSTRLEN];
+        sai_ip_address_t_to_vpp_ip_addr_t(ip_addr, vpp_ip_addr);
+        vpp_ip_addr_t_to_string(&vpp_ip_addr, vpp_ip_str, INET6_ADDRSTRLEN);
+        SWSS_LOG_NOTICE("%s interface name with address %s is %s", (is_v6 ? "IPv6" : "IPv4"), vpp_ip_str, ifname.c_str());
+        return true;
+    } else {
+        return false;
+    }
 }
 
 sai_status_t SwitchVpp::vpp_bfd_session_add(
@@ -109,32 +170,43 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
     const char *hwif_name = NULL;
     if (!multihop) {
         /* Attribute#7 */
+        std::string ifname = "";
         attr = sai_metadata_get_attr_by_id(SAI_BFD_SESSION_ATTR_PORT, attr_count, attr_list);
         if (!attr)
         {
-            SWSS_LOG_ERROR("attr SAI_BFD_SESSION_ATTR_PORT was not passed");
-            return SAI_STATUS_FAILURE;
-        }
-
-        sai_object_id_t port_id = attr->value.oid;
-        sai_object_type_t obj_type = objectTypeQuery(port_id);
-        if (obj_type != SAI_OBJECT_TYPE_PORT)
-        {
-            SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
-                    sai_serialize_object_id(port_id).c_str(),
-                    sai_serialize_object_type(obj_type).c_str());
-            return SAI_STATUS_FAILURE;
-        }
-        std::string ifname = "";
-        if (vpp_get_hwif_name(port_id, 0, ifname) == true)
-        {
-            hwif_name = ifname.c_str();
+            SWSS_LOG_INFO("Port attribute not passed as parameter: get if name from ip address");
+            if (vpp_get_ifname_from_ip_address(local_addr, ifname) == true)
+            {
+                hwif_name = tap_to_hwif_name(ifname.c_str());
+                SWSS_LOG_INFO("interface name for BFD session create is %s", hwif_name);
+            }
+            else
+            {
+                SWSS_LOG_ERROR("BFD session create request FAILED due to if name not found");
+                return SAI_STATUS_FAILURE;
+            }
         }
         else
         {
-            SWSS_LOG_ERROR("BFD session create request FAILED due to invalid hwif name");
+            sai_object_id_t port_id = attr->value.oid;
+            sai_object_type_t obj_type = objectTypeQuery(port_id);
+            if (obj_type != SAI_OBJECT_TYPE_PORT)
+            {
+                SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+                        sai_serialize_object_id(port_id).c_str(),
+                        sai_serialize_object_type(obj_type).c_str());
+                return SAI_STATUS_FAILURE;
+            }
+            if (vpp_get_hwif_name(port_id, 0, ifname) == true)
+            {
+                hwif_name = ifname.c_str();
+            }
+            else
+            {
+                SWSS_LOG_ERROR("BFD session create request FAILED due to invalid hwif name");
 
-            return SAI_STATUS_FAILURE;
+                return SAI_STATUS_FAILURE;
+            }
         }
     }
 
@@ -153,6 +225,8 @@ sai_status_t SwitchVpp::vpp_bfd_session_add(
             memcpy(&bfd_info.peer_addr, &peer_addr, sizeof(peer_addr));
 
             m_bfd_info_map[bfd_info] = bfd_oid;
+        } else {
+            SWSS_LOG_ERROR("BFD session create request FAILED");
         }
     }
 
@@ -183,7 +257,7 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
 
     /* Attribute#1 */
     attr.id = SAI_BFD_SESSION_ATTR_SRC_IP_ADDRESS;
-    CHECK_STATUS(get(SAI_OBJECT_TYPE_BFD_SESSION, bfd_oid, 1, &attr));
+    CHECK_STATUS_W_MSG(get(SAI_OBJECT_TYPE_BFD_SESSION, bfd_oid, 1, &attr), "Cannot get the src IP address attribute");
     sai_ip_address_t local_addr = attr.value.ipaddr;
     vpp_ip_addr_t vpp_local_addr;
     /*local addr */
@@ -191,7 +265,7 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
 
     /* Attribute#2 */
     attr.id = SAI_BFD_SESSION_ATTR_DST_IP_ADDRESS;
-    CHECK_STATUS(get(SAI_OBJECT_TYPE_BFD_SESSION, bfd_oid, 1, &attr));
+    CHECK_STATUS_W_MSG(get(SAI_OBJECT_TYPE_BFD_SESSION, bfd_oid, 1, &attr), "Cannot get the dst IP address attribute");
     sai_ip_address_t peer_addr = attr.value.ipaddr;
     vpp_ip_addr_t vpp_peer_addr;
     /* Peer Addr*/
@@ -209,27 +283,39 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
     if (!multihop) {
         /* Attribute#4 */
         attr.id = SAI_BFD_SESSION_ATTR_PORT;
-        CHECK_STATUS(get(SAI_OBJECT_TYPE_BFD_SESSION, bfd_oid, 1, &attr));
-        sai_object_id_t port_id = attr.value.oid;
-        sai_object_type_t obj_type = objectTypeQuery(port_id);
-        if (obj_type != SAI_OBJECT_TYPE_PORT)
-        {
-            SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
-                    sai_serialize_object_id(port_id).c_str(),
-                    sai_serialize_object_type(obj_type).c_str());
-            return SAI_STATUS_FAILURE;
-        }
-
-        std::string ifname = "";
-        if (vpp_get_hwif_name(port_id, 0, ifname) == true)
-        {
-            hwif_name = ifname.c_str();
-        }
-        else
-        {
-            SWSS_LOG_ERROR("BFD session delete request FAILED due to invalid hwif name");
-
-            return SAI_STATUS_FAILURE;
+        if (get(SAI_OBJECT_TYPE_BFD_SESSION, bfd_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
+            sai_object_id_t port_id = attr.value.oid;
+            sai_object_type_t obj_type = objectTypeQuery(port_id);
+            if (obj_type != SAI_OBJECT_TYPE_PORT)
+            {
+                SWSS_LOG_ERROR("SAI_BRIDGE_PORT_ATTR_PORT_ID=%s expected to be PORT but is: %s",
+                        sai_serialize_object_id(port_id).c_str(),
+                        sai_serialize_object_type(obj_type).c_str());
+                return SAI_STATUS_FAILURE;
+            }
+            std::string ifname = "";
+            if (vpp_get_hwif_name(port_id, 0, ifname) == true) {
+                hwif_name = ifname.c_str();
+            }
+            else
+            {
+                SWSS_LOG_ERROR("BFD session delete request FAILED due to invalid hwif name");
+                return SAI_STATUS_FAILURE;
+            }
+        } else  {
+            /*
+            * if no port id attribute provided we get the if name from local address
+            */
+            std::string ifname = "";
+            if (vpp_get_ifname_from_ip_address(local_addr, ifname) == true) {
+                hwif_name = tap_to_hwif_name(ifname.c_str());
+                SWSS_LOG_NOTICE("interface name for BFD session delete is %s", hwif_name);
+            }
+            else
+            {
+                SWSS_LOG_ERROR("BFD session delete request FAILED due to if name not found");
+                return SAI_STATUS_FAILURE;
+            }
         }
     }
 
@@ -253,6 +339,9 @@ sai_status_t SwitchVpp::vpp_bfd_session_del(
             if (it != m_bfd_info_map.end()) {
                 m_bfd_info_map.erase(it);
             }
+        } else {
+            SWSS_LOG_ERROR("BFD session delete request FAILED due to session not found");
+            return SAI_STATUS_FAILURE;
         }
     }
 

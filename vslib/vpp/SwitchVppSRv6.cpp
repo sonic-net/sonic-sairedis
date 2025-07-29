@@ -130,7 +130,9 @@ sai_status_t TunnelManagerSRv6::fill_my_sid_entry(
     my_sid.behavior = (uint32_t) attr.value.u32;
 
     attr.id = SAI_MY_SID_ENTRY_ATTR_ENDPOINT_BEHAVIOR_FLAVOR;
-    CHECK_STATUS_W_MSG(my_sid_obj->get_attr(attr), "Could not get endpoint behavior flavor.");
+    if(my_sid_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        attr.value.u32 = SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_FLAVOR_NONE;
+    }
     if(attr.value.u32 == SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_FLAVOR_PSP ||
        attr.value.u32 == SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_FLAVOR_PSP_AND_USP ||
        attr.value.u32 == SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_FLAVOR_PSP_AND_USD ||
