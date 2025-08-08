@@ -382,6 +382,10 @@ config_syncd_mlnx()
        echo "SAI_ACL_MULTI_BINDING_ENABLED=1" >> /tmp/sai.profile
     fi
 
+    if [[ $DEV != "" ]]; then
+        echo "SAI_KEY_MULTI_ASIC_DEVICE_ID=$DEV" >> /tmp/sai.profile
+    fi
+
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
     if [ ! -d "$SDK_DUMP_PATH" ]; then
         mkdir -p "$SDK_DUMP_PATH"
