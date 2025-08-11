@@ -31,7 +31,8 @@ using namespace syncd;
 bool Workaround::isSetAttributeWorkaround(
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
-        _In_ sai_status_t status)
+        _In_ sai_status_t status,
+        _In_ bool doingComparisonLogic)
 {
     SWSS_LOG_ENTER();
 
@@ -68,6 +69,15 @@ bool Workaround::isSetAttributeWorkaround(
                 sai_serialize_status(status).c_str());
 
         return true;
+    }
+
+    if (doingComparisonLogic) {
+        if (objectType == SAI_OBJECT_TYPE_TUNNEL && attrId == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE) {
+            SWSS_LOG_WARN("setting %s failed: %s, not all platforms support this attribute when doing comparison logic of 202411->202505 warm upgrade",
+                    sai_metadata_get_attr_metadata(objectType, attrId)->attridname,
+                    sai_serialize_status(status).c_str());
+            return true;
+        }
     }
 
     return false;

@@ -23,16 +23,20 @@ namespace syncd
              * Some attributes are not supported on SET API on different platforms.
              * For example SAI_SWITCH_ATTR_SRC_MAC_ADDRESS.
              *
+             * Some workarounds should only be applied during comparison logic i.e.
+             * warm-boot. At other times like cold boot they should not be applied.
+             *
              * @param[in] objectType Object type.
              * @param[in] attrId Attribute Id.
              * @param[in] status Status from SET API.
-             *
+             * @param[in] doingComparisonLogic Whether doing comparison logic.
              * @return True if error from SET API can be ignored, false otherwise.
              */
             static bool isSetAttributeWorkaround(
                     _In_ sai_object_type_t objectType,
                     _In_ sai_attr_id_t attrId,
-                    _In_ sai_status_t status);
+                    _In_ sai_status_t status,
+                    _In_ bool doingComparisonLogic = false);
 
             /**
              * @brief Convert port status notification from older version.
