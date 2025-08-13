@@ -154,11 +154,11 @@ std::string get_intf_name_for_prefix (
     is_v6 = (route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV6) ? true : false;
 
     std::string full_if_name = "";
-        bool found = vpp_get_intf_name_for_prefix(route_entry.destination, is_v6, full_if_name);
-        if (found == false)
-        {
+    bool found = vpp_get_intf_name_for_prefix(route_entry.destination, is_v6, full_if_name);
+    if (found == false)
+    {
         auto prefix_str = sai_serialize_ip_prefix(route_entry.destination);
-            SWSS_LOG_ERROR("host interface for prefix not found: %s", prefix_str.c_str());
+        SWSS_LOG_INFO("host interface for prefix not found: %s", prefix_str.c_str());
     }
     return full_if_name;
 

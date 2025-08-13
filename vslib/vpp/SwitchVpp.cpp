@@ -1341,7 +1341,7 @@ sai_status_t SwitchVpp::get(
 
     if (it == objectHash.end())
     {
-        SWSS_LOG_ERROR("not found %s:%s",
+        SWSS_LOG_INFO("not found %s:%s",
                 sai_serialize_object_type(objectType).c_str(),
                 serializedObjectId.c_str());
 
