@@ -51,9 +51,9 @@ namespace syncd
              */
             static bool isSetAttributeWorkaroundDuringComparisonLogic(
                     _In_ const AsicView& currentView,
-                    _In_ sai_object_id_t objectId,  // uint64_t
-                    _In_ sai_attr_id_t attrId, // UINT32
-                    _In_ sai_status_t status); // INT32
+                    _In_ sai_object_id_t objectId,
+                    _In_ sai_attr_id_t attrId,
+                    _In_ sai_status_t status);
 
             /**
              * @brief Convert port status notification from older version.
