@@ -3599,8 +3599,12 @@ sai_status_t ComparisonLogic::asic_handle_generic(
 
                 sai_status_t status = m_vendorSai->set(meta_key, attr_list);
 
-                if (Workaround::isSetAttributeWorkaround(meta_key.objecttype, attr_list->id, status, true))
+                if (Workaround::isSetAttributeWorkaround(meta_key.objecttype, attr_list->id, status))
                 {
+                    return SAI_STATUS_SUCCESS;
+                }
+
+                if (Workaround::isSetAttributeWorkaroundDuringComparisonLogic(current, object_id, attr_list->id, status)) {
                     return SAI_STATUS_SUCCESS;
                 }
 

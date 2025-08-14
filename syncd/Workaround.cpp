@@ -31,8 +31,7 @@ using namespace syncd;
 bool Workaround::isSetAttributeWorkaround(
         _In_ sai_object_type_t objectType,
         _In_ sai_attr_id_t attrId,
-        _In_ sai_status_t status,
-        _In_ bool doingComparisonLogic)
+        _In_ sai_status_t status)
 {
     SWSS_LOG_ENTER();
 
@@ -71,13 +70,44 @@ bool Workaround::isSetAttributeWorkaround(
         return true;
     }
 
-    if (doingComparisonLogic) {
-        if (objectType == SAI_OBJECT_TYPE_TUNNEL && attrId == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE) {
+    return false;
+}
+
+bool Workaround::isSetAttributeWorkaroundDuringComparisonLogic(
+        _In_ const AsicView& currentView,
+        _In_ sai_object_id_t objectId,
+        _In_ sai_attr_id_t attrId,
+        _In_ sai_status_t status)
+{
+    SWSS_LOG_ENTER();
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        return false;
+    }
+
+    auto curObject = currentView.m_oOids.at(objectId);
+    auto objectType = curObject->getObjectType();
+
+    if (objectType == SAI_OBJECT_TYPE_TUNNEL) {
+        auto tunnelAttrType = curObject->tryGetSaiAttr(SAI_TUNNEL_ATTR_TYPE);
+        if (tunnelAttrType == nullptr) {
+            SWSS_LOG_WARN("tunnel type attribute not found for SAI_OBJECT_TYPE_TUNNEL object %s, skipping workaround check", sai_serialize_object_id(curObject->getVid()).c_str());
+            return false;
+        }
+        if (tunnelAttrType->getStrAttrValue() != "SAI_TUNNEL_TYPE_VXLAN") {
+            SWSS_LOG_NOTICE("tunnel type is not VXLAN, skipping workaround check. Type is: '%s'", tunnelAttrType->getStrAttrValue().c_str());
+            return false;
+        }
+
+        // At this point we've confirmed that this is a VXLAN tunnel
+
+        if (attrId == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE) {
             SWSS_LOG_WARN("setting %s failed: %s, not all platforms support this attribute when doing comparison logic of 202411->202505 warm upgrade",
                     sai_metadata_get_attr_metadata(objectType, attrId)->attridname,
                     sai_serialize_status(status).c_str());
-            return true;
         }
+        return true;
     }
 
     return false;

@@ -4,6 +4,8 @@ extern "C" {
 #include "saimetadata.h"
 }
 
+#include "AsicView.h"
+
 #include <vector>
 
 namespace syncd
@@ -23,20 +25,35 @@ namespace syncd
              * Some attributes are not supported on SET API on different platforms.
              * For example SAI_SWITCH_ATTR_SRC_MAC_ADDRESS.
              *
-             * Some workarounds should only be applied during comparison logic i.e.
-             * warm-boot. At other times like cold boot they should not be applied.
-             *
              * @param[in] objectType Object type.
              * @param[in] attrId Attribute Id.
              * @param[in] status Status from SET API.
-             * @param[in] doingComparisonLogic Whether doing comparison logic.
              * @return True if error from SET API can be ignored, false otherwise.
              */
             static bool isSetAttributeWorkaround(
                     _In_ sai_object_type_t objectType,
                     _In_ sai_attr_id_t attrId,
-                    _In_ sai_status_t status,
-                    _In_ bool doingComparisonLogic = false);
+                    _In_ sai_status_t status);
+
+            /**
+             * @brief Determines whether attribute is "workaround" attribute for SET API
+             * during comparison logic only.
+             *
+             * Some workarounds should only be applied during comparison logic i.e.
+             * warm-boot. For workaround that should apply at all times see
+             * isSetAttributeWorkaround.
+             *
+             * @param[in] currentView Current ASIC view that the op will apply to.
+             * @param[in] objectId Virtual Object ID.
+             * @param[in] attrId Attribute Id.
+             * @param[in] status Status from SET API.
+             * @return True if error from SET API can be ignored, false otherwise.
+             */
+            static bool isSetAttributeWorkaroundDuringComparisonLogic(
+                    _In_ const AsicView& currentView,
+                    _In_ sai_object_id_t objectId,  // uint64_t
+                    _In_ sai_attr_id_t attrId, // UINT32
+                    _In_ sai_status_t status); // INT32
 
             /**
              * @brief Convert port status notification from older version.
