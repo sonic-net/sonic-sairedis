@@ -58,6 +58,10 @@ override_dh_auto_configure:
 	dh_auto_configure -- ${SWSS_COMMON_CONFIG} $(configure_opts) $(DEB_CONFIGURE_EXTRA_FLAGS)
 
 override_dh_install:
+	# Conditionally comment out SAI/custom/*.h if no files exist
+	if ! ls SAI/custom/sai*.h 1> /dev/null 2>&1; then \
+		sed -i.bak 's|^\(SAI/custom/sai\*\.h.*\)|#\1|' debian/libsaivs-dev.install; \
+	fi
 ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
 	dh_install -N syncd-rpc
 	# This is to build a RPC-enabled version, and package that version into syncd-rpc
@@ -72,6 +76,10 @@ endif
 ifneq ($(filter rpc,$(DEB_BUILD_PROFILES)),)
 	sed -i 's|ENABLE_SAITHRIFT=0|ENABLE_SAITHRIFT=1 # Add a comment to fix https://github.com/Azure/sonic-buildimage/issues/2694 |' debian/syncd-rpc/usr/bin/syncd_init_common.sh
 endif
+	# Restore original .install file if backup exists
+	if [ -f debian/libsaivs-dev.install.bak ]; then \
+		mv debian/libsaivs-dev.install.bak debian/libsaivs-dev.install; \
+	fi
 
 override_dh_installinit:
 	dh_installinit --init-script=syncd
