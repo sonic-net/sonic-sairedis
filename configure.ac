@@ -228,12 +228,12 @@ AC_ARG_WITH(extra-libsai-ldflags,
                           extra libsai.so flags for vendor library],
 [AC_SUBST(EXTRA_LIBSAI_LDFLAGS, "${withval}")])
 
-AC_SUBST(SAIINC, "-I\$(top_srcdir)/SAI/inc -I\$(top_srcdir)/SAI/experimental -I\$(top_srcdir)/SAI/meta")
+AC_SUBST(SAIINC, "-I\$(top_srcdir)/SAI/inc -I\$(top_srcdir)/SAI/experimental -I\$(top_srcdir)/SAI/meta -I\$(top_srcdir)/SAI/custom")
 
 AM_COND_IF([SYNCD], [
 AM_COND_IF([SAIVS], [], [
 SAVED_FLAGS="$CXXFLAGS"
-CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta $EXTRA_LIBSAI_LDFLAGS"
+CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta -I$srcdir/SAI/custom $EXTRA_LIBSAI_LDFLAGS"
 AC_CHECK_FUNCS(sai_query_api_version, [
 AC_MSG_CHECKING([SAI headers API version and library version check])
 AC_TRY_RUN([
@@ -283,7 +283,7 @@ AM_COND_IF([SAIVS],
 [
     AM_COND_IF([SYNCD], [
     SAVED_FLAGS="$CXXFLAGS"
-    CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
+    CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta -I$srcdir/SAI/custom"
     AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats sai_tam_telemetry_get_data)
     AH_TEMPLATE([HAVE_SAI_QUERY_STATS_ST_CAPABILITY], [Force it disabled for SAIs without implementation - REMOVE WHEN NOT NEEDED])
     CXXFLAGS="$SAVED_FLAGS"

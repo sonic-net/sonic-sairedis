@@ -7,6 +7,14 @@ extern "C" {
 #include "saimetadata.h"
 }
 
+#ifndef SAI_OBJECT_TYPE_CUSTOM_RANGE_START
+#define SAI_OBJECT_TYPE_CUSTOM_RANGE_START SAI_OBJECT_TYPE_CUSTOM_RANGE_BASE
+#endif
+
+#ifndef SAI_OBJECT_TYPE_CUSTOM_RANGE_END
+#define SAI_OBJECT_TYPE_CUSTOM_RANGE_END SAI_OBJECT_TYPE_CUSTOM_RANGE_BASE
+#endif
+
 #define SAI_OBJECT_ID_BITS_SIZE (8 * sizeof(sai_object_id_t))
 
 static_assert(SAI_OBJECT_ID_BITS_SIZE == 64, "sai_object_id_t must have 64 bits");
@@ -30,7 +38,11 @@ static_assert(sizeof(sai_object_id_t) == sizeof(uint64_t), "SAI object ID size s
 #define SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ( (1ULL << SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE) - 1 )
 #define SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_MASK (SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX)
 
-#define SAI_VS_OBJECT_INDEX_BITS_SIZE ( 31 )
+#define SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE ( 1 )
+#define SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_MAX ( (1ULL << SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE) - 1 )
+#define SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_MASK (SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_MAX)
+
+#define SAI_VS_OBJECT_INDEX_BITS_SIZE ( 30 )
 #define SAI_VS_OBJECT_INDEX_MAX ( (1ULL << SAI_VS_OBJECT_INDEX_BITS_SIZE) - 1 )
 #define SAI_VS_OBJECT_INDEX_MASK (SAI_VS_OBJECT_INDEX_MAX)
 
@@ -40,6 +52,7 @@ static_assert(sizeof(sai_object_id_t) == sizeof(uint64_t), "SAI object ID size s
         SAI_VS_SWITCH_INDEX_BITS_SIZE +   \
         SAI_VS_OBJECT_TYPE_BITS_SIZE +    \
         SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + \
+        SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + \
         SAI_VS_OBJECT_INDEX_BITS_SIZE )
 
 static_assert(SAI_VS_OBJECT_ID_BITS_SIZE == SAI_OBJECT_ID_BITS_SIZE, "vs object id size must be equal to SAI object id size");
@@ -51,7 +64,8 @@ static_assert(SAI_VS_OBJECT_ID_BITS_SIZE == SAI_OBJECT_ID_BITS_SIZE, "vs object 
 static_assert(SAI_OBJECT_TYPE_MAX < 256, "object type must be possible to encode on 1 byte");
 static_assert((SAI_OBJECT_TYPE_EXTENSIONS_RANGE_END - SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START) < 256,
         "extensions object type must be possible to encode on 1 byte");
-
+static_assert((SAI_OBJECT_TYPE_CUSTOM_RANGE_END - SAI_OBJECT_TYPE_CUSTOM_RANGE_START) < 256,
+        "custom object type must be possible to encode on 1 byte");
 /*
  * Current OBJECT ID format:
  *
@@ -60,7 +74,8 @@ static_assert((SAI_OBJECT_TYPE_EXTENSIONS_RANGE_END - SAI_OBJECT_TYPE_EXTENSIONS
  * bits 47..40 - switch index
  * bits 49..32 - SAI object type
  * bits 31..31 - object type extension flag
- * bits 30..0  - object index
+ * bits 30..30 - object type custom flag
+ * bits 29..0  - object index
  *
  * So large number of bits is required, otherwise we would need to have map of
  * OID to some struct that will have all those values.  But having all this
@@ -69,32 +84,39 @@ static_assert((SAI_OBJECT_TYPE_EXTENSIONS_RANGE_END - SAI_OBJECT_TYPE_EXTENSIONS
  * To be backward compatible with previous sairedis, we will still encode base
  * object type on bit's 49..32, and extensions which will now start from range
  * 0x20000000, will be encoded from 0x0, but extensions flag will be set to 1.
+ * Custom types starting from SAI_OBJECT_TYPE_CUSTOM_RANGE_BASE will be encoded
+ * from 0x0, but custom flag will be set to 1.
  *
  * For example SAI_OBJECT_TYPE_VIRTUAL_ROUTER oid will be encoded as 0x0300000001
  * SAI_OBJECT_TYPE_DASH_ACL_GROUP oid will be encoded as 0x000380000000
+ * SAI_OBJECT_TYPE_CUSTOM_RANGE_BASE + n oid will be encoded as 0x000340000000
  */
 
 #define SAI_VS_GET_OBJECT_INDEX(oid) \
     ( ((uint64_t)oid) & ( SAI_VS_OBJECT_INDEX_MASK ) )
 
+#define SAI_VS_GET_OBJECT_TYPE_CUSTOM_FLAG(oid) \
+    ( (((uint64_t)oid) >> (SAI_VS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_MAX ) )
+
 #define SAI_VS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(oid) \
-    ( (((uint64_t)oid) >> (SAI_VS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ) )
+    ( (((uint64_t)oid) >> (SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ) )
 
 #define SAI_VS_GET_OBJECT_TYPE(oid) \
-    ( (((uint64_t)oid) >> ( SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_VS_OBJECT_TYPE_MASK ) )
+    ( (((uint64_t)oid) >> ( SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_VS_OBJECT_TYPE_MASK ) )
 
 #define SAI_VS_GET_SWITCH_INDEX(oid) \
-    ( (((uint64_t)oid) >> ( SAI_VS_OBJECT_TYPE_BITS_SIZE + SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_VS_SWITCH_INDEX_MASK ) )
+    ( (((uint64_t)oid) >> ( SAI_VS_OBJECT_TYPE_BITS_SIZE + SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_VS_SWITCH_INDEX_MASK ) )
 
 #define SAI_VS_GET_GLOBAL_CONTEXT(oid) \
-    ( (((uint64_t)oid) >> ( SAI_VS_SWITCH_INDEX_BITS_SIZE + SAI_VS_OBJECT_TYPE_BITS_SIZE + SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_VS_GLOBAL_CONTEXT_MASK ) )
+    ( (((uint64_t)oid) >> ( SAI_VS_SWITCH_INDEX_BITS_SIZE + SAI_VS_OBJECT_TYPE_BITS_SIZE + SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_VS_GLOBAL_CONTEXT_MASK ) )
 
 #define SAI_VS_TEST_OID (0x01234567f9abcdef)
 
 static_assert(SAI_VS_GET_GLOBAL_CONTEXT(SAI_VS_TEST_OID) == 0x23, "test global context");
 static_assert(SAI_VS_GET_SWITCH_INDEX(SAI_VS_TEST_OID) == 0x45, "test switch index");
 static_assert(SAI_VS_GET_OBJECT_TYPE(SAI_VS_TEST_OID) == 0x67, "test object type");
-static_assert(SAI_VS_GET_OBJECT_INDEX(SAI_VS_TEST_OID) == 0x79abcdef, "test object index");
+static_assert(SAI_VS_GET_OBJECT_INDEX(SAI_VS_TEST_OID) == 0x39abcdef, "test object index");
+static_assert(SAI_VS_GET_OBJECT_TYPE_CUSTOM_FLAG(SAI_VS_TEST_OID) == 0x1, "test object type custom flag");
 static_assert(SAI_VS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(SAI_VS_TEST_OID) == 0x1, "test object type extensions flag");
 
 using namespace saivs;
@@ -163,9 +185,22 @@ sai_object_type_t RealObjectIdManager::saiObjectTypeQuery(
         return SAI_OBJECT_TYPE_NULL;
     }
 
-    sai_object_type_t objectType = SAI_VS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId)
-        ? (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
-        : (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId));
+    uint64_t customFlag = SAI_VS_GET_OBJECT_TYPE_CUSTOM_FLAG(objectId);
+    uint64_t extensionsFlag = SAI_VS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId);
+
+    sai_object_type_t objectType;
+    if (customFlag)
+    {
+        objectType = (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_CUSTOM_RANGE_START);
+    }
+    else if (extensionsFlag)
+    {
+        objectType = (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START);
+    }
+    else
+    {
+        objectType = (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId));
+    }
 
     if (sai_metadata_is_object_type_valid(objectType) == false)
     {
@@ -224,7 +259,7 @@ sai_object_id_t RealObjectIdManager::allocateNewObjectId(
 
     if (sai_metadata_is_object_type_valid(objectType) == false)
     {
-        SWSS_LOG_THROW("invalid objct type: %d", objectType);
+        SWSS_LOG_THROW("invalid object type: %d", objectType);
     }
 
     if (objectType == SAI_OBJECT_TYPE_SWITCH)
@@ -317,17 +352,24 @@ sai_object_id_t RealObjectIdManager::constructObjectId(
         SWSS_LOG_THROW("FATAL: invalid object type (0x%x), logic error, this is a bug!", objectType);
     }
 
+    uint64_t customFlag = (uint64_t)objectType >= SAI_OBJECT_TYPE_CUSTOM_RANGE_START && (uint64_t)objectType < SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START;
     uint64_t extensionsFlag = (uint64_t)objectType >= SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START;
 
-    objectType = extensionsFlag
-        ? (sai_object_type_t)(objectType - SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
-        : objectType;
+    if (customFlag)
+    {
+        objectType = (sai_object_type_t)(objectType - SAI_OBJECT_TYPE_CUSTOM_RANGE_START);
+    }
+    else if (extensionsFlag)
+    {
+        objectType = (sai_object_type_t)(objectType - SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START);
+    }
 
     return (sai_object_id_t)(
-            ((uint64_t)globalContext << ( SAI_VS_SWITCH_INDEX_BITS_SIZE + SAI_VS_OBJECT_TYPE_BITS_SIZE + SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE )) |
-            ((uint64_t)switchIndex << ( SAI_VS_OBJECT_TYPE_BITS_SIZE + SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE )) |
-            ((uint64_t)objectType << ( SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE)) |
-            ((uint64_t)extensionsFlag << (SAI_VS_OBJECT_INDEX_BITS_SIZE)) |
+            ((uint64_t)globalContext << ( SAI_VS_SWITCH_INDEX_BITS_SIZE + SAI_VS_OBJECT_TYPE_BITS_SIZE + SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE )) |
+            ((uint64_t)switchIndex << ( SAI_VS_OBJECT_TYPE_BITS_SIZE + SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE )) |
+            ((uint64_t)objectType << ( SAI_VS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE)) |
+            ((uint64_t)extensionsFlag << ( SAI_VS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_VS_OBJECT_INDEX_BITS_SIZE )) |
+            ((uint64_t)customFlag << (SAI_VS_OBJECT_INDEX_BITS_SIZE)) |
             objectIndex);
 }
 
@@ -372,9 +414,22 @@ sai_object_type_t RealObjectIdManager::objectTypeQuery(
         return SAI_OBJECT_TYPE_NULL;
     }
 
-    sai_object_type_t objectType = SAI_VS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId)
-        ? (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
-        : (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId));
+    uint64_t customFlag = SAI_VS_GET_OBJECT_TYPE_CUSTOM_FLAG(objectId);
+    uint64_t extensionsFlag = SAI_VS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId);
+
+    sai_object_type_t objectType;
+    if (customFlag)
+    {
+        objectType = (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_CUSTOM_RANGE_START);
+    }
+    else if (extensionsFlag)
+    {
+        objectType = (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START);
+    }
+    else
+    {
+        objectType = (sai_object_type_t)(SAI_VS_GET_OBJECT_TYPE(objectId));
+    }
 
     if (!sai_metadata_is_object_type_valid(objectType))
     {
