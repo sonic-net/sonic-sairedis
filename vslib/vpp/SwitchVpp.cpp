@@ -6,6 +6,10 @@
 
 #include "vppxlate/SaiIntfStats.h"
 
+#include "SwitchVppUtils.h"
+
+#include <vector>
+
 using namespace saivs;
 
 // TODO init vpp
@@ -1002,7 +1006,26 @@ sai_status_t SwitchVpp::createPort(
 
     auto sid = sai_serialize_object_id(object_id);
 
-    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id, attr_count, attr_list));
+    const sai_attribute_value_t     *oper_status;
+    uint32_t                        attr_index;
+    sai_status_t status = find_attrib_in_list(attr_count, attr_list,
+                            SAI_PORT_ATTR_OPER_STATUS, &oper_status, &attr_index);
+
+    if (status == SAI_STATUS_ITEM_NOT_FOUND) {
+        // SAI_PORT_ATTR_OPER_STATUS not found, create a copy of attr_list and add it
+        std::vector<sai_attribute_t> modified_attr_list(attr_list, attr_list + attr_count);
+
+        // Add the missing SAI_PORT_ATTR_OPER_STATUS attribute
+        sai_attribute_t oper_status_attr;
+        oper_status_attr.id = SAI_PORT_ATTR_OPER_STATUS;
+        oper_status_attr.value.s32 = SAI_PORT_OPER_STATUS_UNKNOWN;
+        modified_attr_list.push_back(oper_status_attr);
+
+        CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id,
+                                   static_cast<uint32_t>(modified_attr_list.size()), modified_attr_list.data()));
+    } else {
+        CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id, attr_count, attr_list));
+    }
 
     return create_port_dependencies(object_id);
 }
@@ -1719,4 +1742,29 @@ sai_status_t SwitchVpp::querySwitchHashAlgorithmCapability(
     enum_values_capability->list[0] = SAI_HASH_ALGORITHM_CRC;
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::refresh_read_only(
+        _In_ const sai_attr_metadata_t *meta,
+        _In_ sai_object_id_t object_id)
+{
+    SWSS_LOG_ENTER();
+
+    // Handle VPP-specific refresh read-only logic first
+    if (meta->objecttype == SAI_OBJECT_TYPE_BFD_SESSION)
+    {
+        switch (meta->attrid)
+        {
+            case SAI_BFD_SESSION_ATTR_STATE:
+                // VPP stores BFD session state in m_objectHash and will update it
+                // when BFD state changed. So we don't need to refresh.
+                return SAI_STATUS_SUCCESS;
+
+            default:
+                break;
+        }
+    }
+
+    // For all other cases, delegate to the base class implementation
+    return SwitchStateBase::refresh_read_only(meta, object_id);
 }
