@@ -106,8 +106,8 @@ bool Workaround::isSetAttributeWorkaroundDuringComparisonLogic(
             SWSS_LOG_WARN("setting %s failed: %s, not all platforms support this attribute when doing comparison logic of 202411->202505 warm upgrade",
                     sai_metadata_get_attr_metadata(objectType, attrId)->attridname,
                     sai_serialize_status(status).c_str());
+            return true;
         }
-        return true;
     }
 
     return false;
