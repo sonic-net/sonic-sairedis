@@ -28,6 +28,7 @@ namespace syncd
              * @param[in] objectType Object type.
              * @param[in] attrId Attribute Id.
              * @param[in] status Status from SET API.
+             *
              * @return True if error from SET API can be ignored, false otherwise.
              */
             static bool isSetAttributeWorkaround(
@@ -47,6 +48,7 @@ namespace syncd
              * @param[in] objectId Virtual Object ID.
              * @param[in] attrId Attribute Id.
              * @param[in] status Status from SET API.
+             *
              * @return True if error from SET API can be ignored, false otherwise.
              */
             static bool isSetAttributeWorkaroundDuringComparisonLogic(
