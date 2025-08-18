@@ -1816,7 +1816,7 @@ private:
         SWSS_LOG_ENTER();
         if (m_objectSupportedCountersGroupMap.find(vid) == m_objectSupportedCountersGroupMap.end())
 {
-            // Check counter support individualy
+            // Check counter support individually
             std::set<StatType> supportedIds;
             std::vector<uint64_t> values(1);
             for (const auto &counter : counter_ids)
