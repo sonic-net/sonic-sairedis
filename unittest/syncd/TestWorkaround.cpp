@@ -80,6 +80,9 @@ TEST(Workaround, isSetAttributeWorkaroundDuringComparisonLogic) {
     ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_PEER_MODE, SAI_STATUS_FAILURE), false);
     ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_SUCCESS), false);
     ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_FAILURE), true);
+
+    // Non-existant OID
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, 0x2a0000deadbeef, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_FAILURE), false);
 }
 
 TEST(Workaround,convertPortOperStatusNotification)
