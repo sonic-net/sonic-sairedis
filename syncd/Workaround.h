@@ -38,9 +38,9 @@ namespace syncd
 
             /**
              * @brief Determines whether attribute is "workaround" attribute for SET API
-             * during comparison logic only.
+             * during apply view only.
              *
-             * Some workarounds should only be applied during comparison logic i.e.
+             * Some workarounds should only be applied during apply view i.e.
              * warm-boot. For workaround that should apply at all times see
              * isSetAttributeWorkaround.
              *
@@ -51,7 +51,7 @@ namespace syncd
              *
              * @return True if error from SET API can be ignored, false otherwise.
              */
-            static bool isSetAttributeWorkaroundDuringComparisonLogic(
+            static bool isSetAttributeWorkaroundDuringApplyView(
                     _In_ const AsicView& currentView,
                     _In_ sai_object_id_t objectId,
                     _In_ sai_attr_id_t attrId,

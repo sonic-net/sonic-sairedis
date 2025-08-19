@@ -73,7 +73,7 @@ bool Workaround::isSetAttributeWorkaround(
     return false;
 }
 
-bool Workaround::isSetAttributeWorkaroundDuringComparisonLogic(
+bool Workaround::isSetAttributeWorkaroundDuringApplyView(
         _In_ const AsicView& currentView,
         _In_ sai_object_id_t objectId,
         _In_ sai_attr_id_t attrId,

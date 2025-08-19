@@ -21,7 +21,7 @@ TEST(Workaround, isSetAttributeWorkaround)
     ASSERT_EQ(Workaround::isSetAttributeWorkaround(SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC, SAI_STATUS_FAILURE), true);
 }
 
-TEST(Workaround, isSetAttributeWorkaroundDuringComparisonLogic) {
+TEST(Workaround, isSetAttributeWorkaroundDuringApplyView) {
 
     sai_object_id_t ipInIpTunnelOid = 0x2a000000000001;
     sai_object_id_t vxlanTunnelOid = 0x2a000000000002;
@@ -71,18 +71,18 @@ TEST(Workaround, isSetAttributeWorkaroundDuringComparisonLogic) {
     AsicView currentView;
     currentView.fromDump(dump);
 
-    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, ipInIpTunnelOid, SAI_TUNNEL_ATTR_DECAP_TTL_MODE, SAI_STATUS_SUCCESS), false);
-    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, ipInIpTunnelOid, SAI_TUNNEL_ATTR_DECAP_TTL_MODE, SAI_STATUS_FAILURE), false);
-    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, ipInIpTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_SUCCESS), false);
-    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, ipInIpTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_FAILURE), false);
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringApplyView(currentView, ipInIpTunnelOid, SAI_TUNNEL_ATTR_DECAP_TTL_MODE, SAI_STATUS_SUCCESS), false);
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringApplyView(currentView, ipInIpTunnelOid, SAI_TUNNEL_ATTR_DECAP_TTL_MODE, SAI_STATUS_FAILURE), false);
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringApplyView(currentView, ipInIpTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_SUCCESS), false);
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringApplyView(currentView, ipInIpTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_FAILURE), false);
 
-    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_PEER_MODE, SAI_STATUS_SUCCESS), false);
-    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_PEER_MODE, SAI_STATUS_FAILURE), false);
-    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_SUCCESS), false);
-    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_FAILURE), true);
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringApplyView(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_PEER_MODE, SAI_STATUS_SUCCESS), false);
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringApplyView(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_PEER_MODE, SAI_STATUS_FAILURE), false);
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringApplyView(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_SUCCESS), false);
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringApplyView(currentView, vxlanTunnelOid, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_FAILURE), true);
 
     // Non-existent OID
-    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringComparisonLogic(currentView, 0x2a0000deadbeef, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_FAILURE), false);
+    ASSERT_EQ(Workaround::isSetAttributeWorkaroundDuringApplyView(currentView, 0x2a0000deadbeef, SAI_TUNNEL_ATTR_ENCAP_TTL_MODE, SAI_STATUS_FAILURE), false);
 }
 
 TEST(Workaround,convertPortOperStatusNotification)
