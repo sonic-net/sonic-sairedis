@@ -100,7 +100,7 @@ bool Workaround::isSetAttributeWorkaroundDuringComparisonLogic(
             return false;
         }
 
-        // At this point we've confirmed that this is a VXLAN tunnel
+        // At this point it is confirmed to be a VXLAN tunnel
 
         if (attrId == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE) {
             SWSS_LOG_WARN("setting %s failed: %s, not all platforms support this attribute when doing comparison logic of 202411->202505 warm upgrade",
