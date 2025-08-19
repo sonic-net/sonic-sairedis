@@ -86,23 +86,34 @@ bool Workaround::isSetAttributeWorkaroundDuringComparisonLogic(
         return false;
     }
 
-    auto curObject = currentView.m_oOids.at(objectId);
+    auto it = currentView.m_oOids.find(objectId);
+    if (it == currentView.m_oOids.end())
+    {
+        SWSS_LOG_WARN("object %s not found in current ASIC view, skipping workaround check",
+                sai_serialize_object_id(objectId).c_str());
+        return false;
+    }
+    auto curObject = it->second;
     auto objectType = curObject->getObjectType();
 
-    if (objectType == SAI_OBJECT_TYPE_TUNNEL) {
+    if (objectType == SAI_OBJECT_TYPE_TUNNEL)
+    {
         auto tunnelAttrType = curObject->tryGetSaiAttr(SAI_TUNNEL_ATTR_TYPE);
-        if (tunnelAttrType == nullptr) {
+        if (tunnelAttrType == nullptr)
+        {
             SWSS_LOG_WARN("tunnel type attribute not found for SAI_OBJECT_TYPE_TUNNEL object %s, skipping workaround check", sai_serialize_object_id(curObject->getVid()).c_str());
             return false;
         }
-        if (tunnelAttrType->getStrAttrValue() != "SAI_TUNNEL_TYPE_VXLAN") {
+        if (tunnelAttrType->getStrAttrValue() != "SAI_TUNNEL_TYPE_VXLAN")
+        {
             SWSS_LOG_NOTICE("tunnel type is not VXLAN, skipping workaround check. Type is: '%s'", tunnelAttrType->getStrAttrValue().c_str());
             return false;
         }
 
         // At this point it is confirmed to be a VXLAN tunnel
 
-        if (attrId == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE) {
+        if (attrId == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE)
+        {
             SWSS_LOG_WARN("setting %s failed: %s, not all platforms support this attribute when doing comparison logic of 202411->202505 warm upgrade",
                     sai_metadata_get_attr_metadata(objectType, attrId)->attridname,
                     sai_serialize_status(status).c_str());
