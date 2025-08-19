@@ -3604,7 +3604,7 @@ sai_status_t ComparisonLogic::asic_handle_generic(
                     return SAI_STATUS_SUCCESS;
                 }
 
-                if (Workaround::isSetAttributeWorkaroundDuringComparisonLogic(current, object_id, attr_list->id, status)) {
+                if (Workaround::isSetAttributeWorkaroundDuringApplyView(current, object_id, attr_list->id, status)) {
                     return SAI_STATUS_SUCCESS;
                 }
 
