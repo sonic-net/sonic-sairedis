@@ -114,6 +114,7 @@ bool Workaround::isSetAttributeWorkaroundDuringApplyView(
 
         if (attrId == SAI_TUNNEL_ATTR_ENCAP_TTL_MODE)
         {
+            // CSP: CS00012421251
             SWSS_LOG_WARN("setting %s failed: %s, not all platforms support this attribute when doing comparison logic of 202411->202505 warm upgrade",
                     sai_metadata_get_attr_metadata(objectType, attrId)->attridname,
                     sai_serialize_status(status).c_str());
