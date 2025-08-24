@@ -1,3 +1,10 @@
+#include <inttypes.h>
+#include <unordered_map>
+#include <map>
+#include <vector>
+#include <string>
+#include <mutex>
+
 #include "FlexCounter.h"
 #include "VidManager.h"
 
@@ -5,9 +12,6 @@
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"
-
-#include <inttypes.h>
-#include <vector>
 
 using namespace syncd;
 using namespace std;
@@ -37,6 +41,18 @@ static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
 static const std::string COUNTER_TYPE_WRED_ECN_QUEUE = "WRED Queue Counter";
 static const std::string COUNTER_TYPE_WRED_ECN_PORT = "WRED Port Counter";
+
+static const std::unordered_map<std::string, bool> statusMap =
+{
+    { "enable",  true  },
+    { "disable", false }
+};
+
+static const std::unordered_map<std::string, sai_stats_mode_t> statsModeMap =
+{
+    { STATS_MODE_READ,           SAI_STATS_MODE_READ           },
+    { STATS_MODE_READ_AND_CLEAR, SAI_STATS_MODE_READ_AND_CLEAR }
+};
 
 const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {QUEUE_PLUGIN_FIELD, COUNTER_TYPE_QUEUE},
@@ -2078,7 +2094,13 @@ void FlexCounter::setPollInterval(
 {
     SWSS_LOG_ENTER();
 
-    m_pollInterval = pollInterval;
+    if (m_pollInterval != pollInterval)
+    {
+        m_pollInterval = pollInterval;
+        m_cvSleep.notify_all();
+
+        SWSS_LOG_INFO("Set POLL INTERVAL %d for FC %s", pollInterval, m_instanceId.c_str());
+    }
 }
 
 void FlexCounter::setStatus(
@@ -2086,17 +2108,19 @@ void FlexCounter::setStatus(
 {
     SWSS_LOG_ENTER();
 
-    if (status == "enable")
-    {
-        m_enable = true;
-    }
-    else if (status == "disable")
-    {
-        m_enable = false;
-    }
-    else
+    const auto &cit = statusMap.find(status);
+    if (cit == statusMap.cend())
     {
         SWSS_LOG_WARN("Input value %s is not supported for Flex counter status, enter enable or disable", status.c_str());
+        return;
+    }
+
+    if (m_enable != cit->second)
+    {
+        m_enable = cit->second;
+        m_cvSleep.notify_all();
+
+        SWSS_LOG_INFO("Set STATUS %s for FC %s", status.c_str(), m_instanceId.c_str());
     }
 }
 
@@ -2105,21 +2129,19 @@ void FlexCounter::setStatsMode(
 {
     SWSS_LOG_ENTER();
 
-    if (mode == STATS_MODE_READ)
-    {
-        m_statsMode = SAI_STATS_MODE_READ;
-
-        SWSS_LOG_DEBUG("Set STATS MODE %s for FC %s", mode.c_str(), m_instanceId.c_str());
-    }
-    else if (mode == STATS_MODE_READ_AND_CLEAR)
-    {
-        m_statsMode = SAI_STATS_MODE_READ_AND_CLEAR;
-
-        SWSS_LOG_DEBUG("Set STATS MODE %s for FC %s", mode.c_str(), m_instanceId.c_str());
-    }
-    else
+    const auto &cit = statsModeMap.find(mode);
+    if (cit == statsModeMap.cend())
     {
         SWSS_LOG_WARN("Input value %s is not supported for Flex counter stats mode, enter STATS_MODE_READ or STATS_MODE_READ_AND_CLEAR", mode.c_str());
+        return;
+    }
+
+    if (m_statsMode != cit->second)
+    {
+        m_statsMode = cit->second;
+        m_cvSleep.notify_all();
+
+        SWSS_LOG_INFO("Set STATS MODE %s for FC %s", mode.c_str(), m_instanceId.c_str());
     }
 }
 
