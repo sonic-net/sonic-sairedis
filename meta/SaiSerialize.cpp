@@ -3204,6 +3204,70 @@ std::string sai_serialize_poe_port_power_consumption(
     return j.dump();
 }
 
+std::string sai_serialize_switch_macsec_post_status(
+        _In_ const sai_switch_macsec_post_status_t switch_macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    switch(switch_macsec_post_status)
+    {
+        case SAI_SWITCH_MACSEC_POST_STATUS_UNKNOWN:
+            return "unknown";
+        case SAI_SWITCH_MACSEC_POST_STATUS_PASS:
+            return "pass";
+        case SAI_SWITCH_MACSEC_POST_STATUS_IN_PROGRESS:
+            return "in-progress";
+        default:
+            return "fail";
+    }
+}
+
+std::string sai_serialize_switch_macsec_post_status_ntf(
+        _In_ sai_object_id_t switch_id,
+        _In_ const sai_switch_macsec_post_status_t switch_macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(switch_id);
+    j["macsec_post_status"] = sai_serialize_switch_macsec_post_status(switch_macsec_post_status);
+
+    return j.dump();
+}
+
+std::string sai_serialize_macsec_post_status(
+        _In_ const sai_macsec_post_status_t macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    switch(macsec_post_status)
+    {
+        case SAI_MACSEC_POST_STATUS_UNKNOWN:
+            return "unknown";
+        case SAI_MACSEC_POST_STATUS_PASS:
+            return "pass";
+        case SAI_MACSEC_POST_STATUS_IN_PROGRESS:
+            return "in-progress";
+        default:
+            return "fail";
+    }
+}
+
+std::string sai_serialize_macsec_post_status_ntf(
+        _In_ sai_object_id_t macsec_id,
+        _In_ const sai_macsec_post_status_t macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["macsec_id"] = sai_serialize_object_id(macsec_id);
+    j["macsec_post_status"] = sai_serialize_macsec_post_status(macsec_post_status);
+
+    return j.dump();
+}
+
 // deserialize
 
 void sai_deserialize_bool(
@@ -6341,4 +6405,80 @@ void sai_deserialize_stats_st_capability_list(
         stat_modes_position++;
         stat_polling_interval_position++;
     }
+}
+
+void sai_deserialize_switch_macsec_post_status(
+        _In_ const std::string& s,
+        _Out_ sai_switch_macsec_post_status_t& switch_macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    if (s == "unknown")
+    {
+        switch_macsec_post_status = SAI_SWITCH_MACSEC_POST_STATUS_UNKNOWN;
+    }
+    else if (s == "pass")
+    {
+        switch_macsec_post_status = SAI_SWITCH_MACSEC_POST_STATUS_PASS;
+    }
+    else if (s == "in-progress")
+    {
+        switch_macsec_post_status = SAI_SWITCH_MACSEC_POST_STATUS_IN_PROGRESS;
+    }
+    else if (s == "fail")
+    {
+        switch_macsec_post_status = SAI_SWITCH_MACSEC_POST_STATUS_FAIL;
+    }
+}
+
+void sai_deserialize_switch_macsec_post_status_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& switch_id,
+        _Out_ sai_switch_macsec_post_status_t& switch_macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], switch_id);
+    sai_deserialize_switch_macsec_post_status(j["macsec_post_status"],
+                                              switch_macsec_post_status);
+}
+
+void sai_deserialize_macsec_post_status(
+        _In_ const std::string& s,
+        _Out_ sai_macsec_post_status_t& macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    if (s == "unknown")
+    {
+        macsec_post_status = SAI_MACSEC_POST_STATUS_UNKNOWN;
+    }
+    else if (s == "pass")
+    {
+        macsec_post_status = SAI_MACSEC_POST_STATUS_PASS;
+    }
+    else if (s == "in-progress")
+    {
+        macsec_post_status = SAI_MACSEC_POST_STATUS_IN_PROGRESS;
+    }
+    else if (s == "fail")
+    {
+        macsec_post_status = SAI_MACSEC_POST_STATUS_FAIL;
+    }
+}
+
+void sai_deserialize_macsec_post_status_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& macsec_id,
+        _Out_ sai_macsec_post_status_t& macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["macsec_id"], macsec_id);
+    sai_deserialize_macsec_post_status(j["macsec_post_status"],
+                                       macsec_post_status);
 }

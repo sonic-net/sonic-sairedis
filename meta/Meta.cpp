@@ -7221,6 +7221,12 @@ void Meta::meta_sai_on_tam_tel_type_config_change(_In_ sai_object_id_t m_tam_id)
     }
 }
 
+void Meta::meta_sai_on_switch_macsec_post_status(_In_ sai_object_id_t switch_id,
+                                                 _In_ const sai_switch_macsec_post_status_t status )
+{
+    SWSS_LOG_ENTER();
+}
+
 int32_t Meta::getObjectReferenceCount(
         _In_ sai_object_id_t oid) const
 {

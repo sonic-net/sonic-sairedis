@@ -169,7 +169,9 @@ Syncd::Syncd(
     m_sn.onPortHostTxReady = std::bind(&NotificationHandler::onPortHostTxReady, m_handler.get(), _1, _2, _3);
     m_sn.onTwampSessionEvent = std::bind(&NotificationHandler::onTwampSessionEvent, m_handler.get(), _1, _2);
     m_sn.onTamTelTypeConfigChange = std::bind(&NotificationHandler::onTamTelTypeConfigChange, m_handler.get(), _1);
-
+    m_sn.onSwitchMacsecPostStatus = std::bind(&NotificationHandler::onSwitchMacsecPostStatus, m_handler.get(), _1, _2);
+    m_sn.onMacsecPostStatus = std::bind(&NotificationHandler::onMacsecPostStatus, m_handler.get(), _1, _2);
+    
     m_handler->setSwitchNotifications(m_sn.getSwitchNotifications());
 
     m_restartQuery = std::make_shared<swss::NotificationConsumer>(m_dbAsic.get(), SYNCD_NOTIFICATION_CHANNEL_RESTARTQUERY_PER_DB(m_contextConfig->m_dbAsic));

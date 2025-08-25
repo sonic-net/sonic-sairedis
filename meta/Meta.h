@@ -303,6 +303,10 @@ namespace saimeta
             void meta_sai_on_twamp_session_event_single(
                     _In_ const sai_twamp_session_event_notification_data_t& data);
 
+            void meta_sai_on_switch_macsec_post_status(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ const sai_switch_macsec_post_status_t status);
+
     private: // validation helpers
 
             sai_status_t meta_generic_validation_objlist(
