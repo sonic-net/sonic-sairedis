@@ -4,6 +4,8 @@ extern "C" {
 #include "saimetadata.h"
 }
 
+#include "AsicView.h"
+
 #include <vector>
 
 namespace syncd
@@ -31,6 +33,27 @@ namespace syncd
              */
             static bool isSetAttributeWorkaround(
                     _In_ sai_object_type_t objectType,
+                    _In_ sai_attr_id_t attrId,
+                    _In_ sai_status_t status);
+
+            /**
+             * @brief Determines whether attribute is "workaround" attribute for SET API
+             * during apply view only.
+             *
+             * Some workarounds should only be applied during apply view i.e.
+             * warm-boot. For workaround that should apply at all times see
+             * isSetAttributeWorkaround.
+             *
+             * @param[in] currentView Current ASIC view that the op will apply to.
+             * @param[in] objectId Virtual Object ID.
+             * @param[in] attrId Attribute Id.
+             * @param[in] status Status from SET API.
+             *
+             * @return True if error from SET API can be ignored, false otherwise.
+             */
+            static bool isSetAttributeWorkaroundDuringApplyView(
+                    _In_ const AsicView& currentView,
+                    _In_ sai_object_id_t objectId,
                     _In_ sai_attr_id_t attrId,
                     _In_ sai_status_t status);
 
