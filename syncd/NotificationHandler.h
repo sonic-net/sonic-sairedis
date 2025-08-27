@@ -109,7 +109,7 @@ namespace syncd
             void onMacsecPostStatus(
                     _In_ sai_object_id_t macsec_id,
                     _In_ sai_macsec_post_status_t macsec_post_status);
-       
+
         private:
 
             void enqueueNotification(

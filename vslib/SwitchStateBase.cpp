@@ -242,7 +242,7 @@ sai_status_t SwitchStateBase::create(
             process_fips_post_config(config, macsec_id);
         }
     }
-    
+
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 
@@ -313,7 +313,7 @@ sai_status_t SwitchStateBase::create_internal(
         // Set POST state.
         CHECK_STATUS(process_fips_post_config(VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY));
     }
-    
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -681,15 +681,15 @@ sai_status_t SwitchStateBase::get(
     SWSS_LOG_ENTER();
 
     if (objectType == SAI_OBJECT_TYPE_SWITCH)
-    {   
+    {
         for (uint32_t idx = 0; idx < attr_count; ++idx)
         {
             sai_attr_id_t id = attr_list[idx].id;
             auto meta = sai_metadata_get_attr_metadata(objectType, id);
-            SWSS_LOG_NOTICE("get switch attr: %s", meta->attridname); 
+            SWSS_LOG_NOTICE("get switch attr: %s", meta->attridname);
         }
     }
-    
+
     const auto &objectHash = m_objectHash.at(objectType);
 
     auto it = objectHash.find(serializedObjectId);
@@ -810,7 +810,7 @@ sai_status_t SwitchStateBase::get(
             // Orchagent is retrieving POST status now. Send switch POST status notification.
             process_fips_post_config(VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY);
         }
-        
+
     }
 
     return final_status;
@@ -1159,7 +1159,7 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
     attr.id = SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-    
+
     attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
     attr.value.u32 = 0;
 
@@ -1930,7 +1930,7 @@ sai_status_t SwitchStateBase::process_fips_post_config(std::string config, sai_o
         std::string key;
         std::string value;
         iss >> key >> value;
-        
+
         sai_attribute_t attr;
 
         if (key != config)
@@ -1941,26 +1941,26 @@ sai_status_t SwitchStateBase::process_fips_post_config(std::string config, sai_o
         SWSS_LOG_NOTICE("VS FIPS POST config: %s", line.c_str());
 
         if (config == VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY)
-        {   
+        {
             sai_switch_macsec_post_status_t switch_macsec_post_status;
-            sai_deserialize_switch_macsec_post_status(value, switch_macsec_post_status); 
-            
+            sai_deserialize_switch_macsec_post_status(value, switch_macsec_post_status);
+
             attr.id = SAI_SWITCH_ATTR_MACSEC_POST_STATUS;
             attr.value.s32 = switch_macsec_post_status;
-            status = set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr); 
+            status = set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
             if (status != SAI_STATUS_SUCCESS)
             {
                 SWSS_LOG_ERROR("Failed to Set SAI_SWITCH_ATTR_MACSEC_POST_STATUS to %s (attr value: %d)",
                                value.c_str(), attr.value.u8);
-                break;   
+                break;
             }
             SWSS_LOG_NOTICE("Set SAI_SWITCH_ATTR_MACSEC_POST_STATUS to %s", value.c_str());
         }
         else if (config == VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY)
         {
             sai_switch_macsec_post_status_t switch_macsec_post_status;
-            sai_deserialize_switch_macsec_post_status(value, switch_macsec_post_status); 
-            
+            sai_deserialize_switch_macsec_post_status(value, switch_macsec_post_status);
+
             auto str = sai_serialize_switch_macsec_post_status_ntf(m_switch_id, switch_macsec_post_status);
             auto ntf = std::make_shared<sairedis::NotificationSwitchMacsecPostStatus>(str);
 
