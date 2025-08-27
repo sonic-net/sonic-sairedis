@@ -74,6 +74,6 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS)
         return std::make_shared<NotificationMacsecPostStatus>(serializedNotification);
-    
+
     SWSS_LOG_THROW("unknown notification: '%s', FIXME", name.c_str());
 }

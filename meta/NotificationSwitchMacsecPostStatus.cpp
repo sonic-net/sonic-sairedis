@@ -37,7 +37,7 @@ sai_object_id_t NotificationSwitchMacsecPostStatus::getAnyObjectId() const
     SWSS_LOG_ENTER();
 
     // switch Id is returned in getSwitchId().
-    
+
     return SAI_NULL_OBJECT_ID;
 }
 
