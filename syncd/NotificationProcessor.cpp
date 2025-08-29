@@ -593,6 +593,11 @@ void NotificationProcessor::process_on_ha_set_event(
 {
     SWSS_LOG_ENTER();
 
+    for (uint32_t i = 0; i < count; i++)
+    {
+        data[i].ha_set_id = m_translator->translateRidToVid(data[i].ha_set_id, SAI_NULL_OBJECT_ID);
+    }
+
     std::string s = sai_serialize_ha_set_event_ntf(count, data);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT, s);
@@ -603,6 +608,11 @@ void NotificationProcessor::process_on_ha_scope_event(
         _In_ sai_ha_scope_event_data_t *data)
 {
     SWSS_LOG_ENTER();
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        data[i].ha_scope_id = m_translator->translateRidToVid(data[i].ha_scope_id, SAI_NULL_OBJECT_ID);
+    }
 
     std::string s = sai_serialize_ha_scope_event_ntf(count, data);
 
@@ -961,6 +971,14 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE)
     {
         handle_tam_tel_type_config_change(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT)
+    {
+        handle_ha_set_event(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT)
+    {
+        handle_ha_scope_event(data);
     }
     else
     {
