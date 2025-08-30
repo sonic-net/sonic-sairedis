@@ -171,6 +171,8 @@ Syncd::Syncd(
     m_sn.onTamTelTypeConfigChange = std::bind(&NotificationHandler::onTamTelTypeConfigChange, m_handler.get(), _1);
     m_sn.onSwitchMacsecPostStatus = std::bind(&NotificationHandler::onSwitchMacsecPostStatus, m_handler.get(), _1, _2);
     m_sn.onMacsecPostStatus = std::bind(&NotificationHandler::onMacsecPostStatus, m_handler.get(), _1, _2);
+    m_sn.onHaSetEvent = std::bind(&NotificationHandler::onHaSetEvent, m_handler.get(), _1, _2);
+    m_sn.onHaScopeEvent = std::bind(&NotificationHandler::onHaScopeEvent, m_handler.get(), _1, _2);
 
     m_handler->setSwitchNotifications(m_sn.getSwitchNotifications());
 

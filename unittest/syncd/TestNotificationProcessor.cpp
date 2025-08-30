@@ -102,4 +102,20 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->insertRidAndVid(0x21000000000000,0x210000000000);
     notificationProcessor->syncProcessNotification(asheItem);
     translator->eraseRidAndVid(0x21000000000000,0x210000000000);
+
+    // Test HA_SET_EVENT notification
+    std::string haSetEventData = "[{\"event_type\":\"SAI_HA_SET_EVENT_DP_CHANNEL_UP\",\"ha_set_id\":\"oid:0x100000000001\"}]";
+    std::vector<swss::FieldValueTuple> haSetEventEntry;
+    swss::KeyOpFieldsValuesTuple haSetEventItem(SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT, haSetEventData, haSetEventEntry);
+    translator->insertRidAndVid(0x100000000001, 0x100000000001);
+    notificationProcessor->syncProcessNotification(haSetEventItem);
+    translator->eraseRidAndVid(0x100000000001, 0x100000000001);
+
+    // Test HA_SCOPE_EVENT notification
+    std::string haScopeEventData = "[{\"event_type\":\"SAI_HA_SCOPE_EVENT_STATE_CHANGED\",\"ha_scope_id\":\"oid:0x100000000002\",\"ha_role\":\"1\",\"flow_version\":\"100\",\"ha_state\":\"1\"}]";
+    std::vector<swss::FieldValueTuple> haScopeEventEntry;
+    swss::KeyOpFieldsValuesTuple haScopeEventItem(SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT, haScopeEventData, haScopeEventEntry);
+    translator->insertRidAndVid(0x100000000002, 0x100000000002);
+    notificationProcessor->syncProcessNotification(haScopeEventItem);
+    translator->eraseRidAndVid(0x100000000002, 0x100000000002);
 }
