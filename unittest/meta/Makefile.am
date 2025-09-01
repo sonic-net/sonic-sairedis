@@ -30,6 +30,8 @@ tests_SOURCES = \
 				TestNotificationHaScopeEvent.cpp \
 				TestNotificationHaSetEvent.cpp \
 				TestNotificationTam.cpp \
+                                TestNotificationMacsecPostStatus.cpp \
+                                TestNotificationSwitchMacsecPostStatus.cpp \
 				TestOidRefCounter.cpp \
 				TestPerformanceIntervalTimer.cpp \
 				TestPortRelatedSet.cpp \
