@@ -1,4 +1,4 @@
-#include "NotificationSwitchMacsecPostStatus.h"
+#include "NotificationMacsecPostStatus.h"
 #include "Meta.h"
 #include "MetaTestSaiInterface.h"
 
