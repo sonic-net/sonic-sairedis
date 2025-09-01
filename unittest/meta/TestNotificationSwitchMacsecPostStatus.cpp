@@ -35,11 +35,11 @@ TEST(NotificationSwitchMacsecPostStatus, getAnyObjectId)
 {
     NotificationSwitchMacsecPostStatus n(s);
 
-    EXPECT_EQ(n.getAnyObjectId(), 0x2100000000);
+    EXPECT_EQ(n.getAnyObjectId(), SAI_NULL_OBJECT_ID);
 
     NotificationSwitchMacsecPostStatus n2(null);
 
-    EXPECT_EQ(n2.getAnyObjectId(), 0);
+    EXPECT_EQ(n2.getAnyObjectId(), SAI_NULL_OBJECT_ID);
 }
 
 static void on_switch_macsec_post_status(
