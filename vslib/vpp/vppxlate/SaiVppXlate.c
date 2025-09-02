@@ -3629,7 +3629,7 @@ static u8 translate_sr_behavior(u32 behavior)
             return SR_BEHAVIOR_API_DT4;
             break;
         case SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_UN:
-            return SR_BEHAVIOR_API_END_UN_PERF;
+            return SR_BEHAVIOR_API_END_UN;
             break;
         case SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_UA:
             return SR_BEHAVIOR_API_UA;

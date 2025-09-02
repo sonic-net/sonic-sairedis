@@ -536,18 +536,7 @@ config_syncd_xsight()
     LABEL_REVISION_FILE="/etc/sonic/hw_revision"
     ONIE_MACHINE=`sed -n -e 's/^.*onie_machine=//p' /etc/machine.conf`
 
-    ln -sf /usr/share/sonic/hwsku/xdrv_config.json /etc/xsight/xdrv_config.json
-    ln -sf /usr/share/sonic/hwsku/xlink_cfg.json /etc/xsight/xlink_cfg.json
-    ln -sf /usr/share/sonic/hwsku/lanes_polarity.json /etc/xsight/lanes_polarity.json
-
-    if [ -f  ${LABEL_REVISION_FILE} ]; then
-        LABEL_REVISION=`cat ${LABEL_REVISION_FILE}`
-        if [[ x${LABEL_REVISION} == x"R0B" ]] || [[ x${LABEL_REVISION} == x"R0B2" ]]; then
-            ln -sf /etc/xsight/serdes_config_A0.json /etc/xsight/serdes_config.json
-        else
-            ln -sf /etc/xsight/serdes_config_A1.json /etc/xsight/serdes_config.json
-        fi
-    fi
+    /usr/bin/init_xsai.sh
 
     #export XLOG_DEBUG="XSW SAI SAI-HOST XHAL-TBL XHAL-LKP XHAL-LPM XHAL-TCAM XHAL-DTE XHAL-RNG XHAL-SP XHAL-RPC"
     export XLOG_SYSLOG=ALL
@@ -575,6 +564,11 @@ config_syncd_xsight()
         export XDRV_PLUGIN_SO=libxpci_drv_plugin.so
     fi
 
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
+config_syncd_clounix()
+{
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
@@ -613,6 +607,8 @@ config_syncd()
         config_syncd_xsight
     elif [ "$SONIC_ASIC_TYPE" == "pensando" ]; then
 	config_syncd_pensando
+    elif [ "$SONIC_ASIC_TYPE" == "clounix" ]; then
+        config_syncd_clounix
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
