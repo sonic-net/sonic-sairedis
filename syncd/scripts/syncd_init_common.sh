@@ -398,6 +398,10 @@ config_syncd_mlnx()
 
     # Ensure no redundant newlines
     sed -i '/^$/d' /tmp/sai.profile
+
+    if [ -f "$HWSKU_DIR/context_config.json" ]; then
+        CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
+    fi
 }
 
 config_syncd_centec()
