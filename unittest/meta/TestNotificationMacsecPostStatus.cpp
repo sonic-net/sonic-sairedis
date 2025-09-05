@@ -12,8 +12,8 @@
 using namespace sairedis;
 using namespace saimeta;
 
-static std::string s = "{\"macsec_post_status\":\"pass\",\"macsec_id\":\"oid:0x5800000000\"}";
-static std::string null = "{\"macsec_post_status\":\"pass\",\"macsec_id\":\"oid:0x0\"}";
+static std::string s = "{\"macsec_post_status\":\"SAI_MACSEC_POST_STATUS_PASS\",\"macsec_id\":\"oid:0x5800000000\"}";
+static std::string null = "{\"macsec_post_status\":\"SAI_MACSEC_POST_STATUS_PASS\",\"macsec_id\":\"oid:0x0\"}";
 
 TEST(NotificationMacsecPostStatus, ctr)
 {
