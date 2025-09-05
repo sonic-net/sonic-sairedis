@@ -3209,17 +3209,7 @@ std::string sai_serialize_switch_macsec_post_status(
 {
     SWSS_LOG_ENTER();
 
-    switch(switch_macsec_post_status)
-    {
-        case SAI_SWITCH_MACSEC_POST_STATUS_UNKNOWN:
-            return "unknown";
-        case SAI_SWITCH_MACSEC_POST_STATUS_PASS:
-            return "pass";
-        case SAI_SWITCH_MACSEC_POST_STATUS_IN_PROGRESS:
-            return "in-progress";
-        default:
-            return "fail";
-    }
+    return sai_serialize_enum(switch_macsec_post_status, &sai_metadata_enum_sai_switch_macsec_post_status_t);
 }
 
 std::string sai_serialize_switch_macsec_post_status_ntf(
@@ -3241,17 +3231,7 @@ std::string sai_serialize_macsec_post_status(
 {
     SWSS_LOG_ENTER();
 
-    switch(macsec_post_status)
-    {
-        case SAI_MACSEC_POST_STATUS_UNKNOWN:
-            return "unknown";
-        case SAI_MACSEC_POST_STATUS_PASS:
-            return "pass";
-        case SAI_MACSEC_POST_STATUS_IN_PROGRESS:
-            return "in-progress";
-        default:
-            return "fail";
-    }
+    return sai_serialize_enum(macsec_post_status, &sai_metadata_enum_sai_macsec_post_status_t);
 }
 
 std::string sai_serialize_macsec_post_status_ntf(
@@ -6413,22 +6393,7 @@ void sai_deserialize_switch_macsec_post_status(
 {
     SWSS_LOG_ENTER();
 
-    if (s == "unknown")
-    {
-        switch_macsec_post_status = SAI_SWITCH_MACSEC_POST_STATUS_UNKNOWN;
-    }
-    else if (s == "pass")
-    {
-        switch_macsec_post_status = SAI_SWITCH_MACSEC_POST_STATUS_PASS;
-    }
-    else if (s == "in-progress")
-    {
-        switch_macsec_post_status = SAI_SWITCH_MACSEC_POST_STATUS_IN_PROGRESS;
-    }
-    else if (s == "fail")
-    {
-        switch_macsec_post_status = SAI_SWITCH_MACSEC_POST_STATUS_FAIL;
-    }
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_switch_macsec_post_status_t, (int32_t&)switch_macsec_post_status);
 }
 
 void sai_deserialize_switch_macsec_post_status_ntf(
@@ -6451,22 +6416,7 @@ void sai_deserialize_macsec_post_status(
 {
     SWSS_LOG_ENTER();
 
-    if (s == "unknown")
-    {
-        macsec_post_status = SAI_MACSEC_POST_STATUS_UNKNOWN;
-    }
-    else if (s == "pass")
-    {
-        macsec_post_status = SAI_MACSEC_POST_STATUS_PASS;
-    }
-    else if (s == "in-progress")
-    {
-        macsec_post_status = SAI_MACSEC_POST_STATUS_IN_PROGRESS;
-    }
-    else if (s == "fail")
-    {
-        macsec_post_status = SAI_MACSEC_POST_STATUS_FAIL;
-    }
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_macsec_post_status_t, (int32_t&)macsec_post_status);
 }
 
 void sai_deserialize_macsec_post_status_ntf(
