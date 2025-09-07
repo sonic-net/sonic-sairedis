@@ -124,8 +124,8 @@ namespace saivs
             sai_status_t set_system_port_list();
 
             sai_status_t process_fips_post_config(
-                    std::string config,
-                    sai_object_id_t id=0);
+                    _In_ std::string config,
+                    _In_ sai_object_id_t id=SAI_NULL_OBJECT_ID);
 
         public:
 

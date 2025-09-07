@@ -1909,7 +1909,8 @@ sai_status_t SwitchStateBase::create_port_serdes_per_port(
 }
 
 
-sai_status_t SwitchStateBase::process_fips_post_config(std::string config, sai_object_id_t macsec_id)
+sai_status_t SwitchStateBase::process_fips_post_config(
+        _In_ std::string config, _In_ sai_object_id_t macsec_id)
 {
     SWSS_LOG_ENTER();
 
