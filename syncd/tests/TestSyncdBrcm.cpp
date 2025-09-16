@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <array>
 #include <thread>
 
 #include <arpa/inet.h>
