@@ -123,6 +123,10 @@ namespace saivs
 
             sai_status_t set_system_port_list();
 
+            sai_status_t process_fips_post_config(
+                    _In_ std::string config,
+                    _In_ sai_object_id_t id=SAI_NULL_OBJECT_ID);
+
         public:
 
             virtual sai_status_t initialize_default_objects(
@@ -767,6 +771,10 @@ namespace saivs
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t queryPortAutonegFecOverrideSupportCapability(
+                                      _Out_ sai_attr_capability_t *attr_capability);
+
+            virtual sai_status_t queryMacsecPostCapability(
+                                      _In_ sai_object_type_t object_type,
                                       _Out_ sai_attr_capability_t *attr_capability);
 
         protected:
