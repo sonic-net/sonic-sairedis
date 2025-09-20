@@ -717,6 +717,15 @@ bool RedisClient::hasNoHiddenKeysDefined() const
     return keys.size() == 0;
 }
 
+bool RedisClient::hasNoSwitchDefined() const
+{
+    SWSS_LOG_ENTER();
+
+    auto keys = m_dbAsic->keys("ASIC_STATE:SAI_OBJECT_TYPE_SWITCH:*");
+
+    return keys.size() == 0;
+}
+
 void RedisClient::removeVidAndRid(
         _In_ sai_object_id_t vid,
         _In_ sai_object_id_t rid)
