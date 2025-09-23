@@ -148,6 +148,7 @@ stages:
   - template: .azure-pipelines/test-docker-sonic-vs-template.yml
     parameters:
       log_artifact_name: log
+      debian_version: ${{ parameters.debian_version }}
 
 - stage: TestAsan
   dependsOn: BuildDockerAsan
@@ -158,3 +159,4 @@ stages:
       docker_sonic_vs_name: docker-sonic-vs-asan
       log_artifact_name: log-asan
       asan: true
+      debian_version: ${{ parameters.debian_version }}
