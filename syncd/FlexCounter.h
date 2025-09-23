@@ -74,7 +74,7 @@ namespace syncd
         bool double_confirm_supported_counters = false;
         bool no_double_check_bulk_capability = false;
         bool dont_clear_support_counter  = false;
-        uint32_t default_bulk_chunk_size;
+        uint32_t default_bulk_chunk_size = 0;
     };
     class FlexCounter
     {
