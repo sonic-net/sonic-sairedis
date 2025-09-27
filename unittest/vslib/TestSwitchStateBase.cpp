@@ -379,7 +379,7 @@ TEST(SwitchStateBase, query_stats_st_capability)
                                         &stats_capability));
 }
 
-TEST(SwitchStateBase, process_fips_post_config)
+TEST(SwitchStateBaseTest, process_fips_post_config)
 {
     std::ofstream post_config_file(VS_SAI_FIPS_POST_CONFIG_FILE);
     std::vector<std::string> configs = {
