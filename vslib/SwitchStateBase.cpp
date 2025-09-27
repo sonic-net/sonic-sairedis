@@ -15,12 +15,6 @@
 
 #define SAI_VS_MAX_PORTS 1024
 
-#define VS_SAI_FIPS_POST_CONFIG_FILE "/tmp/vs_fips_post_config"
-#define VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY "switch-macsec-post-status-query"
-#define VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY "switch-macsec-post-status-notify"
-#define VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY "ingress-macsec-post-status-notify"
-#define VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY "egress-macsec-post-status-notify"
-
 using namespace saivs;
 
 SwitchStateBase::SwitchStateBase(

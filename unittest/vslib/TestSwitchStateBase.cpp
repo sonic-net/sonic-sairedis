@@ -4,6 +4,8 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+#include <fstream>
+#include <cstdio>
 
 #include "Globals.h"
 #include "sai_serialize.h"
@@ -375,4 +377,26 @@ TEST(SwitchStateBase, query_stats_st_capability)
               static_cast<SwitchState&>(ss).queryStatsStCapability(0,
                                         SAI_OBJECT_TYPE_PORT,
                                         &stats_capability));
+}
+
+TEST(SwitchStateBase, process_fips_post_config)
+{
+    std::ofstream post_config_file(VS_SAI_FIPS_POST_CONFIG_FILE);
+    std::vector<std::string> configs = {
+        VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY,
+        VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY,
+        VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY,
+        VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY};
+    for(int config : configs)
+    {
+        post_config_file << config << "pass" << std::endl;
+    }
+    post_config_file.close();
+
+    for(int config : configs)
+    {
+        m_ss->process_fips_post_config(config);
+    }
+
+    std::remove(VS_SAI_FIPS_POST_CONFIG_FILE);
 }
