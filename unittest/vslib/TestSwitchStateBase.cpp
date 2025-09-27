@@ -282,6 +282,32 @@ TEST_F(SwitchStateBaseTest, switchQoSMaxNumOfTrafficClasses)
     ASSERT_EQ(attr.value.u8, maxTcNum);
 }
 
+TEST_F(SwitchStateBaseTest, processFipsPostConfig)
+{
+    std::ofstream post_config_file(VS_SAI_FIPS_POST_CONFIG_FILE);
+    std::vector<std::string> configs = {
+        VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY,
+        VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY,
+        VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY,
+        VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY};
+    for(std::string config : configs)
+    {
+        post_config_file << config << " pass" << std::endl;
+    }
+    post_config_file << "macsec-post-capability" << " switch" << std::endl;
+    post_config_file.close();
+
+    for(std::string config : configs)
+    {
+        m_ss->process_fips_post_config(config);
+    }
+
+    sai_attr_capability_t attr_capability;
+    m_ss->queryMacsecPostCapability(SAI_OBJECT_TYPE_SWITCH, &attr_capability);
+
+    std::remove(VS_SAI_FIPS_POST_CONFIG_FILE);
+}
+
 //Test the following function:
 //sai_status_t initialize_voq_switch_objects(
 //             _In_ uint32_t attr_count,
@@ -377,30 +403,4 @@ TEST(SwitchStateBase, query_stats_st_capability)
               static_cast<SwitchState&>(ss).queryStatsStCapability(0,
                                         SAI_OBJECT_TYPE_PORT,
                                         &stats_capability));
-}
-
-TEST(SwitchStateBaseTest, process_fips_post_config)
-{
-    std::ofstream post_config_file(VS_SAI_FIPS_POST_CONFIG_FILE);
-    std::vector<std::string> configs = {
-        VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY,
-        VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY,
-        VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY,
-        VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY};
-    for(std::string config : configs)
-    {
-        post_config_file << config << " pass" << std::endl;
-    }
-    post_config_file << "macsec-post-capability" << " switch" << std::endl;
-    post_config_file.close();
-
-    for(std::string config : configs)
-    {
-        m_ss->process_fips_post_config(config);
-    }
-
-    sai_attr_capability_t attr_capability;
-    m_ss->queryMacsecPostCapability(SAI_OBJECT_TYPE_SWITCH, &attr_capability);
-
-    std::remove(VS_SAI_FIPS_POST_CONFIG_FILE);
 }
