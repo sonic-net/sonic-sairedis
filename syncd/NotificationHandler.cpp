@@ -259,6 +259,28 @@ void NotificationHandler::onTamTelTypeConfigChange(
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, s);
 }
 
+void NotificationHandler::onSwitchMacsecPostStatus(
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_macsec_post_status_t switch_macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_switch_macsec_post_status_ntf(switch_id, switch_macsec_post_status);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS, s);
+}
+
+void NotificationHandler::onMacsecPostStatus(
+        _In_ sai_object_id_t macsec_id,
+        _In_ sai_macsec_post_status_t macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_macsec_post_status_ntf(macsec_id, macsec_post_status);
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS, s);
+}
+
 void NotificationHandler::enqueueNotification(
         _In_ const std::string& op,
         _In_ const std::string& data)
