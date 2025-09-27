@@ -285,21 +285,21 @@ TEST_F(SwitchStateBaseTest, switchQoSMaxNumOfTrafficClasses)
 TEST_F(SwitchStateBaseTest, processFipsPostConfig)
 {
     std::ofstream post_config_file(VS_SAI_FIPS_POST_CONFIG_FILE);
-    std::vector<std::string> configs = {
-        VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY,
-        VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY,
-        VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY,
-        VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY};
-    for(std::string config : configs)
+    std::vector<std::vector<std::string>> configs = {
+        {VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY, "SAI_SWITCH_MACSEC_POST_STATUS_PASS"},
+        {VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY, "SAI_SWITCH_MACSEC_POST_STATUS_PASS"},
+        {VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY, "SAI_MACSEC_POST_STATUS_PASS"},
+        {VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY, "SAI_MACSEC_POST_STATUS_PASS"}};
+    for(const auto &config : configs)
     {
-        post_config_file << config << " pass" << std::endl;
+        post_config_file << config[0] << " " << config[1] << std::endl;
     }
     post_config_file << "macsec-post-capability" << " switch" << std::endl;
     post_config_file.close();
 
-    for(std::string config : configs)
+    for(const auto &config : configs)
     {
-        m_ss->process_fips_post_config(config);
+        m_ss->process_fips_post_config(config[0]);
     }
 
     sai_attr_capability_t attr_capability;
