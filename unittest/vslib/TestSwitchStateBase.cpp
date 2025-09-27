@@ -387,16 +387,20 @@ TEST(SwitchStateBase, process_fips_post_config)
         VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY,
         VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY,
         VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY};
-    for(int config : configs)
+    for(std::string config : configs)
     {
-        post_config_file << config << "pass" << std::endl;
+        post_config_file << config << " pass" << std::endl;
     }
+    post_config_file << "macsec-post-capability" << " switch" << std::endl;
     post_config_file.close();
 
-    for(int config : configs)
+    for(std::string config : configs)
     {
         m_ss->process_fips_post_config(config);
     }
+
+    sai_attr_capability_t attr_capability;
+    m_ss->queryMacsecPostCapability(SAI_OBJECT_TYPE_SWITCH, &attr_capability);
 
     std::remove(VS_SAI_FIPS_POST_CONFIG_FILE);
 }
