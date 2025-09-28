@@ -130,7 +130,7 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     // Test MACSEC_POST_STATUS notification
     std::string macsecPostStatusData = "[{\"macsec_id\":\"oid:0x5800000000\",\"macsec_post_status\":\"SAI_MACSEC_POST_STATUS_PASS\"}]";
     std::vector<swss::FieldValueTuple> macsecPostStatusEntry ;
-    swss::KeyOpFieldsValuesTuple macsecPostStausItem(SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS, macsecPostStatusData, macsecPostStatusEntry);
+    swss::KeyOpFieldsValuesTuple macsecPostStatusItem(SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS, macsecPostStatusData, macsecPostStatusEntry);
     translator->insertRidAndVid(0x5800000000, 0x5800000000);
     notificationProcessor->syncProcessNotification(macsecPostStatusItem);
     translator->eraseRidAndVid(0x5800000000, 0x5800000000);
