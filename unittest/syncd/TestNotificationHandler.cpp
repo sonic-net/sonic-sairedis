@@ -107,7 +107,7 @@ TEST(NotificationHandler, NotificationMacsecPostStatusTest)
     notificationHandler->updateNotificationsPointers(1, &attr);
     sai_object_id_t switch_id;
     sai_switch_macsec_post_status_t switch_macsec_post_status;
-    std::string switchPostStatusData = "[{\"switch_id\":\"oid:0x21000000000000\",\"macsec_post_status\":\"SAI_SWITCH_MACSEC_POST_STATUS_PASS\"}]";
+    std::string switchPostStatusData = "{\"switch_id\":\"oid:0x21000000000000\",\"macsec_post_status\":\"SAI_SWITCH_MACSEC_POST_STATUS_PASS\"}";
     sai_deserialize_switch_macsec_post_status_ntf(switchPostStatusData, switch_id, switch_macsec_post_status);
     notificationHandler->onSwitchMacsecPostStatus(switch_id, switch_macsec_post_status);
 
@@ -116,7 +116,7 @@ TEST(NotificationHandler, NotificationMacsecPostStatusTest)
     notificationHandler->updateNotificationsPointers(1, &attr);
     sai_object_id_t macsec_id;
     sai_macsec_post_status_t macsec_post_status;
-    std::string macsecPostStatusData = "[{\"macsec_id\":\"oid:0x5800000000\",\"macsec_post_status\":\"SAI_MACSEC_POST_STATUS_PASS\"}]";
+    std::string macsecPostStatusData = "{\"macsec_id\":\"oid:0x5800000000\",\"macsec_post_status\":\"SAI_MACSEC_POST_STATUS_PASS\"}";
     sai_deserialize_macsec_post_status_ntf(macsecPostStatusData, macsec_id, macsec_post_status);
     notificationHandler->onMacsecPostStatus(macsec_id, macsec_post_status);
 }
