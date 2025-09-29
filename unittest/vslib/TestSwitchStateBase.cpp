@@ -302,8 +302,30 @@ TEST_F(SwitchStateBaseTest, processFipsPostConfig)
         m_ss->process_fips_post_config(config[0]);
     }
 
+    sai_object_id_t switch_id = m_ss->getSwitchId();
+
+    std::vector<sai_attribute_t> attrs;
+    sai_attribute_t attr;
+    attr.id = SAI_MACSEC_ATTR_ENABLE_POST;
+    attr.value.booldata = true;
+    attrs.push_back(attr);
+    attr.id = SAI_MACSEC_ATTR_DIRECTION;
+    attr.value.s32 = SAI_MACSEC_DIRECTION_INGRESS;
+    attrs.push_back(attr);
+    m_ss->create(SAI_OBJECT_TYPE_MACSEC, "oid:0x5800000000", switch_id, static_cast<uint32_t>(attrs.size()), attrs.data());
+
+    attrs.clear();
+    attr.id = SAI_MACSEC_ATTR_ENABLE_POST;
+    attr.value.booldata = true;
+    attrs.push_back(attr);
+    attr.id = SAI_MACSEC_ATTR_DIRECTION;
+    attr.value.s32 = SAI_MACSEC_DIRECTION_EGRESS;
+    attrs.push_back(attr);
+    m_ss->create(SAI_OBJECT_TYPE_MACSEC, "oid:0x5800000001", switch_id, static_cast<uint32_t>(attrs.size()), attrs.data());
+
     sai_attr_capability_t attr_capability;
-    m_ss->queryMacsecPostCapability(SAI_OBJECT_TYPE_SWITCH, &attr_capability);
+    m_ss->queryAttributeCapability(switch_id, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_MACSEC_ENABLE_POST, &attr_capability);
+    m_ss->queryAttributeCapability(switch_id, SAI_OBJECT_TYPE_MACSEC, SAI_MACSEC_ATTR_ENABLE_POST, &attr_capability);
 
     std::remove(VS_SAI_FIPS_POST_CONFIG_FILE);
 }
