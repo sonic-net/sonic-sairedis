@@ -1205,7 +1205,7 @@ static void vpp_base_vpe_init(void)
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MTU_REPLY), sw_interface_set_mtu_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_SET_MAC_ADDRESS_REPLY), sw_interface_set_mac_address_reply) \
     _(INTERFACE_MSG_ID(HW_INTERFACE_SET_MTU_REPLY), hw_interface_set_mtu_reply) \
-    _(INTERFACE_MSG_ID(WANT_INTERFACE_EVENTS), want_interface_events_reply) \
+    _(INTERFACE_MSG_ID(WANT_INTERFACE_EVENTS_REPLY), want_interface_events_reply) \
     _(INTERFACE_MSG_ID(SW_INTERFACE_EVENT), sw_interface_event) \
     _(IP_MSG_ID(IP_TABLE_ADD_DEL_REPLY), ip_table_add_del_reply) \
     _(IP_MSG_ID(IP_ROUTE_ADD_DEL_REPLY), ip_route_add_del_reply) \
@@ -1230,8 +1230,8 @@ static void vpp_base_vpe_init(void)
     _(BFD_MSG_ID(BFD_UDP_ADD_REPLY), bfd_udp_add_reply) \
     _(BFD_MSG_ID(BFD_UDP_DEL_REPLY), bfd_udp_del_reply) \
     _(BFD_MSG_ID(BFD_UDP_SESSION_EVENT), bfd_udp_session_event) \
-    _(BFD_MSG_ID(WANT_BFD_EVENTS), want_bfd_events_reply) \
-    _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP), bfd_udp_enable_multihop_reply) \
+    _(BFD_MSG_ID(WANT_BFD_EVENTS_REPLY), want_bfd_events_reply) \
+    _(BFD_MSG_ID(BFD_UDP_ENABLE_MULTIHOP_REPLY), bfd_udp_enable_multihop_reply) \
 
 
 static u16 ip_msg_id_base, ip_nbr_msg_id_base, lcp_msg_id_base;
