@@ -7,6 +7,7 @@
 
 #include "FlexCounter.h"
 #include "VidManager.h"
+#include "SaiSwitch.h"
 
 #include "meta/sai_serialize.h"
 
@@ -20,6 +21,7 @@ using namespace std;
 #define MUTEX_UNLOCK _lock.unlock();
 
 static const std::string COUNTER_TYPE_PORT = "Port Counter";
+static const std::string ATTR_TYPE_PORT_SERDES = "Port Physical Link Attributes";
 static const std::string COUNTER_TYPE_PORT_DEBUG = "Port Debug Counter";
 static const std::string COUNTER_TYPE_QUEUE = "Queue Counter";
 static const std::string COUNTER_TYPE_PG = "Priority Group Counter";
@@ -67,6 +69,7 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
 
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
+    {{SAI_OBJECT_TYPE_PORT, PORT_SERDES_ATTR_ID_LIST}, ATTR_TYPE_PORT_SERDES},
     {{SAI_OBJECT_TYPE_PORT, PORT_DEBUG_COUNTER_ID_LIST}, COUNTER_TYPE_PORT_DEBUG},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_COUNTER_ID_LIST}, COUNTER_TYPE_QUEUE},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_ATTR_ID_LIST}, ATTR_TYPE_QUEUE},
@@ -492,6 +495,15 @@ void deserializeAttr(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_acl_counter_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_port_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_port_attr(name, attr);
 }
 
 template <typename StatType>
@@ -1664,40 +1676,144 @@ public:
             const auto &rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-            std::vector<sai_attribute_t> attrs(attrIds.size());
-            for (size_t i = 0; i < attrIds.size(); i++)
-            {
-                attrs[i].id = attrIds[i];
-            }
+            SWSS_LOG_DEBUG("PORT_SERDES_ATTR: Collecting %zu attributes for port 0x%" PRIx64,
+                          attrIds.size(), static_cast<uint64_t>(vid));
 
-            // Get attr
-            sai_status_t status = Base::m_vendorSai->get(
-                    Base::m_objectType,
-                    rid,
-                    static_cast<uint32_t>(attrIds.size()),
-                    attrs.data());
+            std::vector<sai_attribute_t> attrs(attrIds.size());
+            std::vector<SerdesAttributeData> attrDataBuffers(attrIds.size());
+
+            // Allocate memory for attributes
+            allocateMemoryForAttributes(attrs, attrIds, attrDataBuffers);
+
+            // Collect attributes from SAI
+            sai_status_t status = collectAttributes(rid, attrs);
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("Failed to get attr of %s 0x%" PRIx64 ": %d",
-                        sai_serialize_object_type(Base::m_objectType).c_str(), vid, status);
+                SWSS_LOG_ERROR("Failed to collect attributes of %s vid: 0x%" PRIx64 "rid : 0x%" PRIx64 "status: %d",
+                        sai_serialize_object_type(Base::m_objectType).c_str(), vid, rid, status);
                 continue;
             }
 
+            // Process and serialize attributes
             std::vector<swss::FieldValueTuple> values;
-            for (size_t i = 0; i != attrIds.size(); i++)
-            {
-                auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
-                if (!meta)
-                {
-                    SWSS_LOG_THROW("Failed to get metadata for %s", sai_serialize_object_type(Base::m_objectType).c_str());
-                }
-                values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
-            }
+            processAndSerializeAttributes(attrs, attrIds, values);
+
+            // Store in counters table
             countersTable.set(sai_serialize_object_id(vid), values, "");
         }
     }
+
+private:
+
+    void allocateMemoryForSpecificAttribute(
+        sai_attribute_t& attr,
+        const AttrType& attrId,
+        void*)
+    {
+        memset(&attr.value, 0, sizeof(attr.value));
+    }
+
+    /**
+     * Allocate memory for attributes before SAI call
+     */
+    void allocateMemoryForAttributes(
+        std::vector<sai_attribute_t>& attrs,
+        const std::vector<AttrType>& attrIds,
+        std::vector<SerdesAttributeData>& attrDataBuffers)
+    {
+        SWSS_LOG_ENTER();
+
+        for (size_t i = 0; i < attrIds.size(); i++)
+        {
+            attrs[i].id = attrIds[i];
+            allocateMemoryForSpecificAttribute(attrs[i], attrIds[i], &attrDataBuffers[i]);
+        }
+    }
+
+    /**
+     * Collect attributes for a single port from SAI
+     */
+    sai_status_t collectAttributes(sai_object_id_t rid,
+                                     std::vector<sai_attribute_t>& attrs)
+    {
+        SWSS_LOG_ENTER();
+
+        sai_status_t status = Base::m_vendorSai->get(
+            Base::m_objectType,
+            rid,
+            static_cast<uint32_t>(attrs.size()),
+            attrs.data());
+
+        if (status != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get attr of %s 0x%" PRIx64 ": %d",
+                sai_serialize_object_type(Base::m_objectType).c_str(),
+                static_cast<uint64_t>(rid), status);
+        }
+
+        return status;
+    }
+
+    /**
+     * Process and serialize collected attributes
+     */
+    void processAndSerializeAttributes(const std::vector<sai_attribute_t>& attrs,
+                                     const std::vector<AttrType>& attrIds,
+                                     std::vector<swss::FieldValueTuple>& values)
+    {
+        SWSS_LOG_ENTER();
+
+        for (size_t i = 0; i < attrIds.size(); i++)
+        {
+            auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
+            if (!meta)
+            {
+                SWSS_LOG_THROW("Failed to get metadata for %s",
+                              sai_serialize_object_type(Base::m_objectType).c_str());
+            }
+
+            std::string serialized_value = sai_serialize_attr_value(*meta, attrs[i]);
+            values.emplace_back(meta->attridname, serialized_value);
+
+            SWSS_LOG_DEBUG("PORT_SERDES_ATTR: %s = %s", meta->attridname, serialized_value.c_str());
+        }
+    }
 };
+
+// Template specialization for sai_port_attr_t to handle PORT_SERDES_ATTR memory management
+template<>
+void AttrContext<sai_port_attr_t>::allocateMemoryForSpecificAttribute(
+    sai_attribute_t& attr,
+    const sai_port_attr_t& attrId,
+    void* dataPtr)
+{
+    auto* data = static_cast<SerdesAttributeData*>(dataPtr);
+
+    switch (attrId) {
+        case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+            data->rxSignalDetectData.resize(MAX_LANES_PER_PORT);
+            attr.value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+            attr.value.portlanelatchstatuslist.list = data->rxSignalDetectData.data();
+            break;
+
+        case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+            data->fecAlignmentLockData.resize(MAX_LANES_PER_PORT);
+            attr.value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+            attr.value.portlanelatchstatuslist.list = data->fecAlignmentLockData.data();
+            break;
+
+        case SAI_PORT_ATTR_RX_SNR:
+            data->rxSnrData.resize(MAX_LANES_PER_PORT);
+            attr.value.portsnrlist.count = MAX_LANES_PER_PORT;
+            attr.value.portsnrlist.list = data->rxSnrData.data();
+            break;
+
+        default:
+            memset(&attr.value, 0, sizeof(attr.value));
+            break;
+    }
+}
 
 class DashMeterCounterContext : public BaseCounterContext
 {
@@ -2423,6 +2539,10 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     else if (context_name == COUNTER_TYPE_METER_BUCKET)
     {
         return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters);
+    }
+    else if (context_name == ATTR_TYPE_PORT_SERDES)
+    {
+        return std::make_shared<AttrContext<sai_port_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {

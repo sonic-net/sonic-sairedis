@@ -15,6 +15,14 @@ extern "C" {
 #include <memory>
 #include <type_traits>
 
+// Data structure for SERDES attribute memory allocation
+// Holds data buffers for SAI SERDES attribute API calls
+struct SerdesAttributeData {
+    std::vector<sai_port_lane_latch_status_t> rxSignalDetectData;
+    std::vector<sai_port_lane_latch_status_t> fecAlignmentLockData;
+    std::vector<sai_port_snr_values_t> rxSnrData;
+};
+
 namespace syncd
 {
     class BaseCounterContext

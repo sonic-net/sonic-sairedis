@@ -16,6 +16,8 @@ extern "C" {
 #include <map>
 #include <memory>
 
+#define MAX_LANES_PER_PORT 8
+
 namespace syncd
 {
     class SaiSwitch:

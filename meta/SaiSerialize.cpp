@@ -1028,6 +1028,13 @@ std::string sai_serialize_ipmc_entry_type(
     return sai_serialize_enum(type, &sai_metadata_enum_sai_ipmc_entry_type_t);
 }
 
+std::string sai_serialize_port_attr(_In_ const sai_port_attr_t port_attr)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(port_attr, &sai_metadata_enum_sai_port_attr_t);
+}
+
 std::string sai_serialize_port_stat(
         _In_ const sai_port_stat_t counter)
 {
@@ -1640,6 +1647,50 @@ std::string sai_serialize_port_lane_latch_status_list(
     return j.dump();
 }
 
+json sai_serialize_port_snr_values_item(
+        _In_ const sai_port_snr_values_t& snr_values)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["lane"] = sai_serialize_number(snr_values.lane);
+    j["snr"] = sai_serialize_number(snr_values.snr);
+
+    return j;
+}
+
+std::string sai_serialize_port_snr_list(
+        _In_ const sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["count"] = snr_list.count;
+
+    if (snr_list.list == NULL || countOnly)
+    {
+        j["list"] = nullptr;
+
+        return j.dump();
+    }
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < snr_list.count; ++i)
+    {
+        json item = sai_serialize_port_snr_values_item(snr_list.list[i]);
+
+        arr.push_back(item);
+    }
+
+    j["list"] = arr;
+
+    return j.dump();
+}
+
 template <typename T>
 std::string sai_serialize_range(
         _In_ const T& range)
@@ -2147,6 +2198,9 @@ std::string sai_serialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
             return sai_serialize_port_lane_latch_status_list(attr.value.portlanelatchstatuslist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+            return sai_serialize_port_snr_list(attr.value.portsnrlist, countOnly);
 
 //        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
 //            return sai_serialize_number_list(attr.value.u16list, countOnly);
@@ -4299,6 +4353,55 @@ void sai_deserialize_port_lane_latch_status_list(
     }
 }
 
+void sai_deserialize_port_snr_values_item(
+        _In_ const json& j,
+        _Out_ sai_port_snr_values_t& snr_values)
+{
+    SWSS_LOG_ENTER();
+
+    // Parse quoted string values
+    sai_deserialize_number(j["lane"], snr_values.lane, false);
+    sai_deserialize_number(j["snr"], snr_values.snr, false);
+}
+
+void sai_deserialize_port_snr_list(
+        _In_ const std::string& s,
+        _Out_ sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    snr_list.count = j["count"];
+
+    if (countOnly)
+    {
+        return;
+    }
+
+    if (j["list"] == nullptr)
+    {
+        snr_list.list = NULL;
+        return;
+    }
+
+    json arr = j["list"];
+
+    if (arr.size() != (size_t)snr_list.count)
+    {
+        SWSS_LOG_THROW("port SNR count mismatch %lu vs %u", arr.size(), snr_list.count);
+    }
+
+    snr_list.list = sai_alloc_n_of_ptr_type(snr_list.count, snr_list.list);
+
+    for (uint32_t i = 0; i < snr_list.count; ++i)
+    {
+        const json &item = arr[i];
+        sai_deserialize_port_snr_values_item(item, snr_list.list[i]);
+    }
+}
+
 static void sai_deserialize_system_port_cfg_list_item(
         _In_ const json& j,
         _Out_ sai_system_port_config_t& sysportconfig)
@@ -4432,6 +4535,9 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
             return sai_deserialize_port_lane_latch_status_list(s, attr.value.portlanelatchstatuslist, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+            return sai_deserialize_port_snr_list(s, attr.value.portsnrlist, countOnly);
 
 //        case SAI_ATTR_VALUE_TYPE_UINT16_LIST:
 //            return sai_deserialize_number_list(s, attr.value.u16list, countOnly);
@@ -4595,6 +4701,15 @@ void sai_deserialize_ipmc_entry_type(
     SWSS_LOG_ENTER();
 
     return sai_deserialize_enum(s, &sai_metadata_enum_sai_ipmc_entry_type_t, (int32_t&)type);
+}
+
+void sai_deserialize_port_attr(
+    _In_ const std::string& s,
+    _Out_ sai_port_attr_t& port_attr)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_port_attr_t, (int32_t&)port_attr);
 }
 
 void sai_deserialize_l2mc_entry_type(
@@ -5812,6 +5927,10 @@ void sai_deserialize_free_attribute_value(
 
         case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
             sai_free_list(attr.value.portlanelatchstatuslist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+            sai_free_list(attr.value.portsnrlist);
             break;
 
             /* ACL FIELD DATA */
