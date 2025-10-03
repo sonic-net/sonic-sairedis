@@ -19,6 +19,12 @@
 
 #define MAX_OBJLIST_LEN 128
 
+#define VS_SAI_FIPS_POST_CONFIG_FILE "/tmp/vs_fips_post_config"
+#define VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY "switch-macsec-post-status-query"
+#define VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY "switch-macsec-post-status-notify"
+#define VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY "ingress-macsec-post-status-notify"
+#define VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY "egress-macsec-post-status-notify"
+
 #define CHECK_STATUS(status) {                                  \
     sai_status_t _status = (status);                            \
     if (_status != SAI_STATUS_SUCCESS) { return _status; } }
@@ -122,6 +128,10 @@ namespace saivs
                     _In_ sai_object_id_t sys_port_id);
 
             sai_status_t set_system_port_list();
+
+            sai_status_t process_fips_post_config(
+                    _In_ std::string config,
+                    _In_ sai_object_id_t id=SAI_NULL_OBJECT_ID);
 
         public:
 
@@ -767,6 +777,10 @@ namespace saivs
                                       _Inout_ sai_s32_list_t *enum_values_capability);
 
             virtual sai_status_t queryPortAutonegFecOverrideSupportCapability(
+                                      _Out_ sai_attr_capability_t *attr_capability);
+
+            virtual sai_status_t queryMacsecPostCapability(
+                                      _In_ sai_object_type_t object_type,
                                       _Out_ sai_attr_capability_t *attr_capability);
 
         protected:

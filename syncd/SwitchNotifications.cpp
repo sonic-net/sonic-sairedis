@@ -180,6 +180,46 @@ void SwitchNotifications::SlotBase::onTamTelTypeConfigChange(
     return m_slots.at(context)->m_handler->onTamTelTypeConfigChange(tam_tel_id);
 }
 
+void SwitchNotifications::SlotBase::onMacsecPostStatus(
+        _In_ int context,
+        _In_ sai_object_id_t macsec_id,
+        _In_ sai_macsec_post_status_t post_status)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onMacsecPostStatus(macsec_id, post_status);
+}
+
+void SwitchNotifications::SlotBase::onIpsecPostStatus(
+        _In_ int context,
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_ipsec_post_status_t post_status)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onIpsecPostStatus(switch_id, post_status);
+}
+
+void SwitchNotifications::SlotBase::onSwitchMacsecPostStatus(
+        _In_ int context,
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_macsec_post_status_t post_status)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onSwitchMacsecPostStatus(switch_id, post_status);
+}
+
+void SwitchNotifications::SlotBase::onSwitchIpsecPostStatus(
+        _In_ int context,
+        _In_ sai_object_id_t switch_id,
+        _In_ sai_switch_ipsec_post_status_t post_status)
+{
+    SWSS_LOG_ENTER();
+
+    return m_slots.at(context)->m_handler->onSwitchIpsecPostStatus(switch_id, post_status);
+}
+
 const sai_switch_notifications_t& SwitchNotifications::SlotBase::getSwitchNotifications() const
 {
     SWSS_LOG_ENTER();
