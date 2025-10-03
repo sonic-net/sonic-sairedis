@@ -111,7 +111,7 @@ namespace syncd
 
                     static void onMacsecPostStatus(
                           _In_ int context,
-                          _In_ sai_object_id_t switch_id,
+                          _In_ sai_object_id_t macsec_id,
                           _In_ sai_macsec_post_status_t post_status );
 
                     static void onIpsecPostStatus(

@@ -182,12 +182,12 @@ void SwitchNotifications::SlotBase::onTamTelTypeConfigChange(
 
 void SwitchNotifications::SlotBase::onMacsecPostStatus(
         _In_ int context,
-        _In_ sai_object_id_t switch_id,
+        _In_ sai_object_id_t macsec_id,
         _In_ sai_macsec_post_status_t post_status)
 {
     SWSS_LOG_ENTER();
 
-    return m_slots.at(context)->m_handler->onMacsecPostStatus(switch_id, post_status);
+    return m_slots.at(context)->m_handler->onMacsecPostStatus(macsec_id, post_status);
 }
 
 void SwitchNotifications::SlotBase::onIpsecPostStatus(
