@@ -7,6 +7,7 @@
 
 #include "FlexCounter.h"
 #include "VidManager.h"
+#include "SaiSwitch.h"
 
 #include "meta/sai_serialize.h"
 
@@ -20,6 +21,7 @@ using namespace std;
 #define MUTEX_UNLOCK _lock.unlock();
 
 static const std::string COUNTER_TYPE_PORT = "Port Counter";
+static const std::string ATTR_TYPE_PORT_SERDES = "Port SERDES Attributes";
 static const std::string COUNTER_TYPE_PORT_DEBUG = "Port Debug Counter";
 static const std::string COUNTER_TYPE_QUEUE = "Queue Counter";
 static const std::string COUNTER_TYPE_PG = "Priority Group Counter";
@@ -67,6 +69,7 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
 
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
+    {{SAI_OBJECT_TYPE_PORT, PORT_SERDES_ATTR_ID_LIST}, ATTR_TYPE_PORT_SERDES},
     {{SAI_OBJECT_TYPE_PORT, PORT_DEBUG_COUNTER_ID_LIST}, COUNTER_TYPE_PORT_DEBUG},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_COUNTER_ID_LIST}, COUNTER_TYPE_QUEUE},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_ATTR_ID_LIST}, ATTR_TYPE_QUEUE},
@@ -492,6 +495,15 @@ void deserializeAttr(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_acl_counter_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_port_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_port_attr(name, attr);
 }
 
 template <typename StatType>
@@ -1594,7 +1606,14 @@ protected:
     std::map<std::vector<StatType>, std::shared_ptr<BulkContextType>> m_bulkContexts;
 };
 
-template <typename AttrType>
+/**
+ * @brief Generic attribute context supporting both simple and complex attribute types
+ *
+ * @tparam AttrType     SAI attribute enum type (e.g., sai_port_attr_t, sai_queue_attr_t)
+ * @tparam AttrDataType Optional data storage type for attributes requiring memory allocation.
+ *                      Default is NoAttrData for simple attributes not needing special data storage.
+ */
+template <typename AttrType, typename AttrDataType = NoAttrData>
 class AttrContext : public CounterContext<AttrType>
 {
 public:
@@ -1665,12 +1684,20 @@ public:
             const auto &attrIds = kv.second->counter_ids;
 
             std::vector<sai_attribute_t> attrs(attrIds.size());
+            AttrDataType attrData;
+
+            SWSS_LOG_DEBUG("Collecting %zu %s attributes for object 0x%" PRIx64,
+                           attrIds.size(),
+                           sai_serialize_object_type(Base::m_objectType).c_str(),
+                           static_cast<uint64_t>(vid));
+
             for (size_t i = 0; i < attrIds.size(); i++)
             {
                 attrs[i].id = attrIds[i];
+                initAttrData(&attrs[i], &attrData);
             }
 
-            // Get attr
+            // Collect attributes from SAI
             sai_status_t status = Base::m_vendorSai->get(
                     Base::m_objectType,
                     rid,
@@ -1684,6 +1711,7 @@ public:
                 continue;
             }
 
+            // Process and serialize attributes
             std::vector<swss::FieldValueTuple> values;
             for (size_t i = 0; i != attrIds.size(); i++)
             {
@@ -1694,10 +1722,59 @@ public:
                 }
                 values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
             }
+            // Store in counters table
             countersTable.set(sai_serialize_object_id(vid), values, "");
         }
     }
+
+private:
+
+    void initAttrData(
+        sai_attribute_t *attr,
+        void*)
+    {
+        // No init required for primitive data types.
+    }
 };
+
+// Template specialization for sai_port_attr_t with SerdesAttributeData to handle PORT_SERDES_ATTR memory management
+template<>
+void AttrContext<sai_port_attr_t, SerdesAttributeData>::initAttrData(
+    sai_attribute_t *attr,
+    void* dataPtr)
+{
+    if (!attr || !dataPtr)
+    {
+        SWSS_LOG_ERROR("Invalid input params : attr : %p, dataPtr : %p",attr,dataPtr);
+        return;
+    }
+
+    auto* data = static_cast<SerdesAttributeData*>(dataPtr);
+
+    switch (attr->id) {
+        case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+            data->rxSignalDetectData.resize(MAX_LANES_PER_PORT);
+            attr->value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+            attr->value.portlanelatchstatuslist.list = data->rxSignalDetectData.data();
+            break;
+
+        case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+            data->fecAlignmentLockData.resize(MAX_LANES_PER_PORT);
+            attr->value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+            attr->value.portlanelatchstatuslist.list = data->fecAlignmentLockData.data();
+            break;
+
+        case SAI_PORT_ATTR_RX_SNR:
+            data->rxSnrData.resize(MAX_LANES_PER_PORT);
+            attr->value.portsnrlist.count = MAX_LANES_PER_PORT;
+            attr->value.portsnrlist.list = data->rxSnrData.data();
+            break;
+
+        default:
+            SWSS_LOG_ERROR("Attr-id : %d, Not Supported",attr->id);
+            break;
+    }
+}
 
 class DashMeterCounterContext : public BaseCounterContext
 {
@@ -2423,6 +2500,10 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     else if (context_name == COUNTER_TYPE_METER_BUCKET)
     {
         return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters);
+    }
+    else if (context_name == ATTR_TYPE_PORT_SERDES)
+    {
+        return std::make_shared<AttrContext<sai_port_attr_t, SerdesAttributeData>>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode);
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
