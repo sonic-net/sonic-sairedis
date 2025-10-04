@@ -18,7 +18,7 @@ TEST(NotificationProcessor, NotificationProcessorTest)
 {
     auto sai = std::make_shared<saivs::Sai>();
     auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
-    auto client = std::make_shared<RedisClient>(dbAsic);
+    auto client = std::make_shared<RedisClient>(dbAsic, false);
     auto producer = std::make_shared<syncd::RedisNotificationProducer>("ASIC_DB");
 
     auto notificationProcessor = std::make_shared<NotificationProcessor>(producer, client,

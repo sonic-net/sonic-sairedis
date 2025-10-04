@@ -81,7 +81,7 @@ TEST(VirtualOidTranslator, tryTranslateVidToRid)
     profileMap["SAI_VS_SWITCH_TYPE"] = "SAI_VS_SWITCH_TYPE_BCM56850";
 
     auto dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0);
-    auto client = std::make_shared<RedisClient>(dbAsic);
+    auto client = std::make_shared<RedisClient>(dbAsic, false);
     auto sai = std::make_shared<saivs::Sai>();
 
     ServiceMethodTable smt;
