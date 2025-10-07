@@ -2185,6 +2185,13 @@ sai_status_t SwitchStateBase::warm_update_switch()
     }
 
     attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
+
+    std::vector<sai_object_id_t> objlist;
+    objlist.resize(MAX_OBJLIST_LEN);
+
+    attr.value.objlist.count = MAX_OBJLIST_LEN;
+    attr.value.objlist.list = objlist.data();
+
     if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
     {
         CHECK_STATUS(set_initial_tam_objects());
