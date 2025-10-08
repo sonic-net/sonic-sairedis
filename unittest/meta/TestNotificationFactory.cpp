@@ -114,3 +114,19 @@ TEST(NotificationFactory, deserialize_switch_state_change)
 
     EXPECT_EQ(str, ntf->getSerializedNotification());
 }
+
+TEST(NotificationFactory, deserialize_switch_macsec_post_status)
+{
+    auto str = sai_serialize_switch_macsec_post_status_ntf(0x2100000000, SAI_SWITCH_MACSEC_POST_STATUS_PASS);
+    auto ntf = NotificationFactory::deserialize(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS, str);
+    EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_SWITCH_MACSEC_POST_STATUS);
+    EXPECT_EQ(str, ntf->getSerializedNotification());
+}
+
+TEST(NotificationFactory, deserialize_macsec_post_status)
+{
+    auto str = sai_serialize_macsec_post_status_ntf(0x2100000000, SAI_MACSEC_POST_STATUS_PASS);
+    auto ntf = NotificationFactory::deserialize(SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS, str);
+    EXPECT_EQ(ntf->getNotificationType(), SAI_SWITCH_NOTIFICATION_TYPE_MACSEC_POST_STATUS);
+    EXPECT_EQ(str, ntf->getSerializedNotification());
+}

@@ -378,6 +378,20 @@ std::string sai_serialize_redis_link_event_damping_algorithm(
 std::string sai_serialize_redis_link_event_damping_aied_config(
          _In_ const sai_redis_link_event_damping_algo_aied_config_t& value);
 
+std::string sai_serialize_switch_macsec_post_status(
+         _In_ const sai_switch_macsec_post_status_t switch_macsec_post_status);
+
+std::string sai_serialize_switch_macsec_post_status_ntf(
+         _In_ sai_object_id_t switch_id,
+         _In_ const sai_switch_macsec_post_status_t switch_macsec_post_status);
+
+std::string sai_serialize_macsec_post_status(
+         _In_ const sai_macsec_post_status_t macsec_post_status);
+
+std::string sai_serialize_macsec_post_status_ntf(
+         _In_ sai_object_id_t macsec_id,
+         _In_ const sai_macsec_post_status_t macsec_post_status);
+
 // deserialize
 
 void sai_deserialize_enum(
@@ -737,3 +751,21 @@ void sai_deserialize_stats_st_capability_list(
         _In_ const std::string &stat_enum_str,
         _In_ const std::string &stat_modes_str,
         _In_ const std::string &minimal_polling_interval_str);
+
+void sai_deserialize_switch_macsec_post_status(
+        _In_ const std::string& s,
+        _Out_ sai_switch_macsec_post_status_t& switch_macsec_post_status);
+
+void sai_deserialize_switch_macsec_post_status_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& switch_id,
+        _Out_ sai_switch_macsec_post_status_t& switch_macsec_post_status);
+
+void sai_deserialize_macsec_post_status(
+        _In_ const std::string& s,
+        _Out_ sai_macsec_post_status_t& macsec_post_status);
+
+void sai_deserialize_macsec_post_status_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& macsec_id,
+        _Out_ sai_macsec_post_status_t& macsec_post_status);

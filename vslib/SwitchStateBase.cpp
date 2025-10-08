@@ -3,6 +3,8 @@
 #include "swss/logger.h"
 #include "meta/sai_serialize.h"
 #include "meta/NotificationTamTelTypeConfigChange.h"
+#include "meta/NotificationSwitchMacsecPostStatus.h"
+#include "meta/NotificationMacsecPostStatus.h"
 #include "EventPayloadNotification.h"
 
 #include <net/if.h>
@@ -202,6 +204,39 @@ sai_status_t SwitchStateBase::create(
         return createTamTelemetry(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_MACSEC)
+    {
+        bool enable_post = false;
+        std::string direction = "unknown";
+        for (uint32_t idx = 0; idx < attr_count; ++idx)
+        {
+            sai_attribute_t attr = attr_list[idx];
+            if (attr.id == SAI_MACSEC_ATTR_ENABLE_POST && attr.value.booldata)
+            {
+                enable_post = true;
+            }
+            else if(attr.id == SAI_MACSEC_ATTR_DIRECTION &&
+                    attr.value.s32 == SAI_MACSEC_DIRECTION_EGRESS)
+            {
+                direction = "egress";
+            }
+            else if(attr.id == SAI_MACSEC_ATTR_DIRECTION &&
+                    attr.value.s32 == SAI_MACSEC_DIRECTION_INGRESS)
+            {
+                direction = "ingress";
+            }
+        }
+
+        if (enable_post && direction != "unknown")
+        {
+            sai_object_id_t macsec_id;
+            sai_deserialize_object_id(serializedObjectId, macsec_id);
+            std::string config = (direction == "ingress") ? VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY :
+                VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY;
+            process_fips_post_config(config, macsec_id);
+        }
+    }
+
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 
@@ -265,6 +300,12 @@ sai_status_t SwitchStateBase::create_internal(
         auto a = std::make_shared<SaiAttrWrap>(object_type, &attr_list[i]);
 
         objectHash[serializedObjectId][a->getAttrMetadata()->attridname] = a;
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_SWITCH)
+    {
+        // Set POST state.
+        CHECK_STATUS(process_fips_post_config(VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY));
     }
 
     return SAI_STATUS_SUCCESS;
@@ -633,6 +674,16 @@ sai_status_t SwitchStateBase::get(
 {
     SWSS_LOG_ENTER();
 
+    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    {
+        for (uint32_t idx = 0; idx < attr_count; ++idx)
+        {
+            sai_attr_id_t id = attr_list[idx].id;
+            auto meta = sai_metadata_get_attr_metadata(objectType, id);
+            SWSS_LOG_NOTICE("get switch attr: %s", meta->attridname);
+        }
+    }
+
     const auto &objectHash = m_objectHash.at(objectType);
 
     auto it = objectHash.find(serializedObjectId);
@@ -746,6 +797,14 @@ sai_status_t SwitchStateBase::get(
 
             return status;
         }
+
+        if (objectType == SAI_OBJECT_TYPE_SWITCH &&
+            id == SAI_SWITCH_ATTR_MACSEC_POST_STATUS && attr_list[idx].value.booldata)
+        {
+            // Orchagent is retrieving POST status now. Send switch POST status notification.
+            process_fips_post_config(VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY);
+        }
+
     }
 
     return final_status;
@@ -1088,6 +1147,10 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
     attr.id = SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
@@ -1837,6 +1900,107 @@ sai_status_t SwitchStateBase::create_port_serdes_per_port(
     SWSS_LOG_ERROR("implement in child class");
 
     return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
+
+sai_status_t SwitchStateBase::process_fips_post_config(
+        _In_ std::string config, _In_ sai_object_id_t macsec_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::ifstream ifs;
+    ifs.open(VS_SAI_FIPS_POST_CONFIG_FILE);
+    if (!ifs.is_open())
+    {
+        SWSS_LOG_NOTICE("No VS FIPS POST config file found");
+        return SAI_STATUS_SUCCESS;
+    }
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    std::string line;
+    while (std::getline(ifs, line))
+    {
+        // line format: key value
+        std::istringstream iss(line);
+        std::string key;
+        std::string value;
+        iss >> key >> value;
+
+        sai_attribute_t attr;
+
+        if (key != config)
+        {
+            continue;
+        }
+
+        SWSS_LOG_NOTICE("VS FIPS POST config: %s", line.c_str());
+
+        if (config == VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY)
+        {
+            sai_switch_macsec_post_status_t switch_macsec_post_status;
+            sai_deserialize_switch_macsec_post_status(value, switch_macsec_post_status);
+
+            attr.id = SAI_SWITCH_ATTR_MACSEC_POST_STATUS;
+            attr.value.s32 = switch_macsec_post_status;
+            status = set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to Set SAI_SWITCH_ATTR_MACSEC_POST_STATUS to %s (attr value: %d)",
+                               value.c_str(), attr.value.u8);
+                break;
+            }
+            SWSS_LOG_NOTICE("Set SAI_SWITCH_ATTR_MACSEC_POST_STATUS to %s", value.c_str());
+        }
+        else if (config == VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY)
+        {
+            sai_switch_macsec_post_status_t switch_macsec_post_status;
+            sai_deserialize_switch_macsec_post_status(value, switch_macsec_post_status);
+
+            auto str = sai_serialize_switch_macsec_post_status_ntf(m_switch_id, switch_macsec_post_status);
+            auto ntf = std::make_shared<sairedis::NotificationSwitchMacsecPostStatus>(str);
+
+            attr.id = SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY;
+            status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                 SWSS_LOG_ERROR("Unable to get SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY attribute");
+                 break;
+            }
+            sai_switch_notifications_t sn = { };
+            sn.on_switch_macsec_post_status = (sai_switch_macsec_post_status_notification_fn)attr.value.ptr;
+            auto payload = std::make_shared<EventPayloadNotification>(ntf, sn);
+            m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
+            SWSS_LOG_NOTICE("Enqueued switch MACSec POST notification: status %s", value.c_str());
+        }
+        else if (config == VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY ||
+                 config == VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY)
+        {
+            sai_macsec_post_status_t macsec_post_status;
+            sai_deserialize_macsec_post_status(value, macsec_post_status);
+
+            auto str = sai_serialize_macsec_post_status_ntf(macsec_id, macsec_post_status);
+            auto ntf = std::make_shared<sairedis::NotificationMacsecPostStatus>(str);
+
+            attr.id = SAI_SWITCH_ATTR_MACSEC_POST_STATUS_NOTIFY;
+            status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                 SWSS_LOG_ERROR("Unable to get SAI_SWITCH_ATTR_MACSEC_POST_STATUS_NOTIFY attribute for %s",
+                                sai_serialize_object_id(m_switch_id).c_str());
+                 break;
+            }
+            sai_switch_notifications_t sn = { };
+            sn.on_macsec_post_status = (sai_macsec_post_status_notification_fn)attr.value.ptr;
+            auto payload = std::make_shared<EventPayloadNotification>(ntf, sn);
+            m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
+            std::string direction = (config == VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY) ? "ingress" :
+                "egress";
+            SWSS_LOG_NOTICE("Enqueued %s MACSec POST notification: status %s", direction.c_str(),value.c_str());
+        }
+    }
+
+    ifs.close();
+    return status;
 }
 
 sai_status_t SwitchStateBase::initialize_default_objects(
@@ -2634,6 +2798,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
                 return SAI_STATUS_SUCCESS;
 
             case SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST:
+                return SAI_STATUS_SUCCESS;
+
+            case SAI_SWITCH_ATTR_MACSEC_POST_STATUS:
                 return SAI_STATUS_SUCCESS;
         }
     }
@@ -4156,6 +4323,51 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
 
     return SAI_STATUS_NOT_SUPPORTED;
 }
+
+sai_status_t SwitchStateBase::queryMacsecPostCapability(
+                              _In_ sai_object_type_t object_type,
+                              _Out_ sai_attr_capability_t *attr_capability)
+{
+    SWSS_LOG_ENTER();
+
+    attr_capability->create_implemented = false;
+    attr_capability->set_implemented    = false;
+    attr_capability->get_implemented    = false;
+
+    std::ifstream ifs;
+    ifs.open(VS_SAI_FIPS_POST_CONFIG_FILE);
+    if (!ifs.is_open())
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string line;
+    std::string post_capability;
+    while (std::getline(ifs, line))
+    {
+        // line format: key value
+        std::istringstream iss(line);
+        std::string key;
+        std::string value;
+        iss >> key >> value;
+
+        if (key == "macsec-post-capability" )
+        {
+            post_capability = value;
+        }
+    }
+
+    if ((object_type == SAI_OBJECT_TYPE_SWITCH && post_capability == "switch") ||
+        (object_type == SAI_OBJECT_TYPE_MACSEC && post_capability == "macsec"))
+    {
+        SWSS_LOG_NOTICE("MACSEC POST capability: %s", post_capability.c_str());
+        attr_capability->create_implemented = true;
+    }
+
+    ifs.close();
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryAttributeCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -4167,6 +4379,12 @@ sai_status_t SwitchStateBase::queryAttributeCapability(
     if (object_type == SAI_OBJECT_TYPE_PORT && attr_id == SAI_PORT_ATTR_AUTO_NEG_FEC_MODE_OVERRIDE)
     {
         return queryPortAutonegFecOverrideSupportCapability(attr_capability);
+    }
+
+    if ((object_type == SAI_OBJECT_TYPE_SWITCH && attr_id == SAI_SWITCH_ATTR_MACSEC_ENABLE_POST) ||
+        (object_type == SAI_OBJECT_TYPE_MACSEC && attr_id == SAI_MACSEC_ATTR_ENABLE_POST))
+    {
+       return queryMacsecPostCapability(object_type, attr_capability);
     }
 
     attr_capability->create_implemented = true;
