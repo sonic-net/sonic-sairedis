@@ -109,6 +109,25 @@ namespace syncd
                             _In_ uint32_t count,
                             _In_ const sai_ha_scope_event_data_t *data);
 
+                    static void onMacsecPostStatus(
+                          _In_ int context,
+                          _In_ sai_object_id_t macsec_id,
+                          _In_ sai_macsec_post_status_t post_status );
+
+                    static void onIpsecPostStatus(
+                          _In_ int context,
+                          _In_ sai_object_id_t switch_id,
+                          _In_ sai_ipsec_post_status_t post_status );
+
+                    static void onSwitchMacsecPostStatus(
+                          _In_ int context,
+                          _In_ sai_object_id_t switch_id,
+                          _In_ sai_switch_macsec_post_status_t post_status );
+
+                    static void onSwitchIpsecPostStatus(
+                          _In_ int context,
+                          _In_ sai_object_id_t switch_id,
+                          _In_ sai_switch_ipsec_post_status_t post_status );
             protected:
 
                     SwitchNotifications* m_handler;
@@ -140,10 +159,10 @@ namespace syncd
                             .on_icmp_echo_session_state_change = &Slot<context>::onIcmpEchoSessionStateChange,
                             .on_extended_port_state_change = nullptr,
                             .on_tam_tel_type_config_change = &Slot<context>::onTamTelTypeConfigChange,
-                            .on_macsec_post_status = nullptr,
-                            .on_ipsec_post_status = nullptr,
-                            .on_switch_macsec_post_status = nullptr,
-                            .on_switch_ipsec_post_status = nullptr,
+                            .on_macsec_post_status = &Slot<context>::onMacsecPostStatus,
+                            .on_ipsec_post_status = &Slot<context>::onIpsecPostStatus,
+                            .on_switch_macsec_post_status = &Slot<context>::onSwitchMacsecPostStatus,
+                            .on_switch_ipsec_post_status = &Slot<context>::onSwitchIpsecPostStatus,
                             .on_ha_set_event = &Slot<context>::onHaSetEvent,
                             .on_ha_scope_event = &Slot<context>::onHaScopeEvent,
                             }) { }
@@ -285,6 +304,40 @@ namespace syncd
 
                     return SlotBase::onTamTelTypeConfigChange(context, tam_tel_id);
                 }
+
+                static void onMacsecPostStatus(
+                         _In_ sai_object_id_t macsec_id,
+                         sai_macsec_post_status_t post_status)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onMacsecPostStatus(context, macsec_id, post_status);
+                }
+
+                static void onIpsecPostStatus(
+                         _In_ sai_object_id_t switch_id,
+                         sai_ipsec_post_status_t post_status)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onIpsecPostStatus(context, switch_id, post_status);
+                }
+                static void onSwitchMacsecPostStatus(
+                         _In_ sai_object_id_t switch_id,
+                         sai_switch_macsec_post_status_t post_status)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onSwitchMacsecPostStatus(context, switch_id, post_status);
+                }
+                static void onSwitchIpsecPostStatus(
+                         _In_ sai_object_id_t switch_id,
+                         _In_ sai_switch_ipsec_post_status_t post_status)
+                {
+                    SWSS_LOG_ENTER();
+
+                    return SlotBase::onSwitchIpsecPostStatus(context, switch_id, post_status);
+                }
         };
 
             static std::vector<SwitchNotifications::SlotBase*> m_slots;
@@ -320,7 +373,10 @@ namespace syncd
             std::function<void(sai_object_id_t)>                                                    onTamTelTypeConfigChange;
             std::function<void(uint32_t, const sai_ha_set_event_data_t*)>                          onHaSetEvent;
             std::function<void(uint32_t, const sai_ha_scope_event_data_t*)>                        onHaScopeEvent;
-
+            std::function<void(sai_object_id_t, const sai_macsec_post_status_t)>                   onMacsecPostStatus;
+            std::function<void(sai_object_id_t, const sai_ipsec_post_status_t)>                    onIpsecPostStatus;
+            std::function<void(sai_object_id_t, const sai_switch_macsec_post_status_t)>            onSwitchMacsecPostStatus;
+            std::function<void(sai_object_id_t, const sai_switch_ipsec_post_status_t)>             onSwitchIpsecPostStatus;
     private:
 
             SlotBase*m_slot;

@@ -913,6 +913,22 @@ void DummySaiInterface::sendNotification(
             }
             break;
 
+        case SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY:
+
+            if (sn.on_switch_macsec_post_status)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_switch_macsec_post_status");
+
+                sai_object_id_t oid = 0x1;
+                sai_switch_macsec_post_status_t status = SAI_SWITCH_MACSEC_POST_STATUS_UNKNOWN;
+                sn.on_switch_macsec_post_status(oid, status);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_switch_macsec_post_status is NULL");
+            }
+            break;
+
         default:
 
             SWSS_LOG_WARN("notification for SWITCH attr id: %d (%s) is not supported, FIXME", id, (m ? m->attridname : "UNKNOWN"));

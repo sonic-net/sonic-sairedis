@@ -13,6 +13,8 @@
 #include "NotificationTamTelTypeConfigChange.h"
 #include "NotificationHaSetEvent.h"
 #include "NotificationHaScopeEvent.h"
+#include "NotificationSwitchMacsecPostStatus.h"
+#include "NotificationMacsecPostStatus.h"
 #include "sairediscommon.h"
 
 #include "swss/logger.h"
@@ -66,6 +68,12 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE)
         return std::make_shared<NotificationTamTelTypeConfigChange>(serializedNotification);
+
+    if (name == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS)
+        return std::make_shared<NotificationSwitchMacsecPostStatus>(serializedNotification);
+
+    if (name == SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS)
+        return std::make_shared<NotificationMacsecPostStatus>(serializedNotification);
 
     SWSS_LOG_THROW("unknown notification: '%s', FIXME", name.c_str());
 }
