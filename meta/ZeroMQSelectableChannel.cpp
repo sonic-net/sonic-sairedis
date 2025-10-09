@@ -6,7 +6,7 @@
 #include <zmq.h>
 #include <unistd.h>
 
-#define ZMQ_RESPONSE_BUFFER_SIZE (4*1024*1024)
+#define ZMQ_RESPONSE_BUFFER_SIZE (64*1024*1024)
 
 //#define ZMQ_POLL_TIMEOUT (2*60*1000)
 #define ZMQ_POLL_TIMEOUT (1000)
