@@ -428,7 +428,7 @@ sai_status_t ClientSai::bulkSet(                                                
     {                                                                                                     \
         serializedObjectIds.emplace_back(sai_serialize_ ##ot (ot[idx]));                                  \
     }                                                                                                     \
-    return bulkSet(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectIds, attr_list, mode, object_statuses);   \
+    return bulkSet((sai_object_type_t)SAI_OBJECT_TYPE_ ## OT, serializedObjectIds, attr_list, mode, object_statuses);   \
 }
 
 SAIREDIS_DECLARE_EVERY_BULK_ENTRY(DECLARE_BULK_SET_ENTRY)

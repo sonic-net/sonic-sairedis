@@ -168,6 +168,12 @@ namespace syncd
             void handle_tam_tel_type_config_change(
                     _In_ const std::string &data);
 
+            void handle_switch_macsec_post_status(
+                   _In_ const std::string &data);
+
+            void handle_macsec_post_status(
+                   _In_ const std::string &data);
+
             void processNotification(
                     _In_ const swss::KeyOpFieldsValuesTuple& item);
 

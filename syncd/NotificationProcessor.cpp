@@ -908,6 +908,51 @@ void NotificationProcessor::handle_tam_tel_type_config_change(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, vid_data);
 }
 
+void NotificationProcessor::handle_switch_macsec_post_status(
+    _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_id;
+    sai_switch_macsec_post_status_t switch_macsec_post_status;
+    sai_deserialize_switch_macsec_post_status_ntf(data, switch_id, switch_macsec_post_status);
+
+    sai_object_id_t switch_vid;
+    if (!m_translator->tryTranslateRidToVid(switch_id, switch_vid))
+    {
+        SWSS_LOG_ERROR("Failed to translate switch RID %s to VID", sai_serialize_object_id(switch_id).c_str());
+        return;
+    }
+    std::string s = sai_serialize_switch_macsec_post_status_ntf(switch_vid, switch_macsec_post_status);
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS, s);
+
+    SWSS_LOG_NOTICE("Sent switch MACSec POST status notificaiton: %s",
+                    sai_serialize_switch_macsec_post_status(switch_macsec_post_status));
+}
+
+void NotificationProcessor::handle_macsec_post_status(
+    _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t macsec_id;
+    sai_macsec_post_status_t macsec_post_status;
+    sai_deserialize_macsec_post_status_ntf(data, macsec_id, macsec_post_status);
+
+    sai_object_id_t macsec_vid;
+    if (!m_translator->tryTranslateRidToVid(macsec_id, macsec_vid))
+    {
+        SWSS_LOG_ERROR("Failed to translate MACSec RID %s to VID", sai_serialize_object_id(macsec_id).c_str());
+        return;
+    }
+    std::string s = sai_serialize_macsec_post_status_ntf(macsec_vid, macsec_post_status);
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS, s);
+
+    SWSS_LOG_NOTICE("Sent MACSec POST status notification: macsec oid %s, status %s",
+                    sai_serialize_object_id(macsec_id).c_str(),
+                    sai_serialize_macsec_post_status(macsec_post_status));
+}
+
 void NotificationProcessor::processNotification(
         _In_ const swss::KeyOpFieldsValuesTuple& item)
 {
@@ -971,6 +1016,14 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE)
     {
         handle_tam_tel_type_config_change(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS)
+    {
+        handle_switch_macsec_post_status(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS)
+    {
+        handle_macsec_post_status(data);
     }
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT)
     {
