@@ -112,6 +112,10 @@ namespace syncd
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
                     _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
 
+            std::shared_ptr<SaiObj> findCurrentBestMatchForL2mcGroup(
+                _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+                _In_ const std::vector<sai_object_compare_info_t> &candidateObjects);
+
         private:
 
             std::shared_ptr<SaiObj> findCurrentBestMatchForNeighborEntry(
@@ -130,6 +134,9 @@ namespace syncd
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
 
             std::shared_ptr<SaiObj> findCurrentBestMatchForInsegEntry(
+                    _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
+
+            std::shared_ptr<SaiObj> findCurrentBestMatchForL2mcEntry(
                     _In_ const std::shared_ptr<const SaiObj> &temporaryObj);
 
         private:

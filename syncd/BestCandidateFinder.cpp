@@ -1325,6 +1325,75 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForTunnelMap(
     return nullptr;
 }
 
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForL2mcGroup(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
+        _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
+{
+    SWSS_LOG_ENTER();
+
+    std::shared_ptr<SaiObj> matchTmpL2McEntry;
+    sai_object_id_t curGroupRid = SAI_NULL_OBJECT_ID;
+    std::string strTmpL2McEntry;
+
+    const auto curL2McEntries = m_currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_L2MC_ENTRY);
+    const auto tmpL2McEntries = m_temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_L2MC_ENTRY);
+
+    for (auto& tmpL2McEntry : tmpL2McEntries)
+    {
+        auto l2mcgroupIdAttr = tmpL2McEntry->tryGetSaiAttr(SAI_L2MC_ENTRY_ATTR_OUTPUT_GROUP_ID);
+        if (l2mcgroupIdAttr == nullptr)
+            continue;
+
+
+        if (l2mcgroupIdAttr->getOid() == temporaryObj->getVid())
+        {
+            matchTmpL2McEntry = tmpL2McEntry;
+            sai_object_meta_key_t mk = tmpL2McEntry->m_meta_key;
+
+            strTmpL2McEntry = sai_serialize_l2mc_entry(mk.objectkey.key.l2mc_entry);
+            break; 
+        }
+    }
+
+    for (auto& curL2McEntry : curL2McEntries)
+    {
+        auto l2mcgroupIdAttr = curL2McEntry->tryGetSaiAttr(SAI_L2MC_ENTRY_ATTR_OUTPUT_GROUP_ID);
+        if (l2mcgroupIdAttr == nullptr)
+            continue;
+
+        sai_object_meta_key_t mk = curL2McEntry->m_meta_key;
+        std::string strCurL2McEntry = sai_serialize_l2mc_entry(mk.objectkey.key.l2mc_entry);
+
+        if (strTmpL2McEntry == strCurL2McEntry)
+        {
+            SWSS_LOG_NOTICE("Found the current entry matching temp entry");
+
+            curGroupRid = m_currentView.m_vidToRid.at(l2mcgroupIdAttr->getOid());
+            break; 
+        }
+    }
+
+    for (auto c: candidateObjects)
+    {
+        auto candGroupRid = m_currentView.m_vidToRid.at(c.obj->getVid());
+
+        // Skip already processed objects
+        if (c.obj->getObjectStatus() != SAI_OBJECT_STATUS_NOT_PROCESSED)
+            continue;
+
+        //Check that the candidate L2MC group RID matches the retrieved L2MC group RID.
+        if (candGroupRid == curGroupRid)
+        {
+            SWSS_LOG_INFO("found best L2MC group match for group %s based on current entry match",
+                            temporaryObj->m_str_object_id.c_str());
+            return c.obj;
+        }
+    }
+
+    SWSS_LOG_NOTICE("failed to find best candidate for L2MC group");
+    return nullptr;
+}
+
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForWred(
         _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
         _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
@@ -1542,6 +1611,10 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForGenericObjec
 
         case SAI_OBJECT_TYPE_TUNNEL_MAP:
             candidate = findCurrentBestMatchForTunnelMap(temporaryObj, candidateObjects);
+            break;
+
+        case SAI_OBJECT_TYPE_L2MC_GROUP:
+            candidate = findCurrentBestMatchForL2mcGroup(temporaryObj, candidateObjects);
             break;
 
         default:
@@ -2354,6 +2427,68 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForFdbEntry(
             currentFdbObj->getObjectStatus());
 }
 
+std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForL2mcEntry(
+        _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Make a copy here to not destroy object data, later
+     * on this data should be read only.
+     */
+
+    sai_object_meta_key_t mk = temporaryObj->m_meta_key;
+
+    if (!exchangeTemporaryVidToCurrentVid(mk))
+    {
+        /*
+         * Not all oids inside struct object were translated, so there is no
+         * matching object in current view, we need to return null.
+         */
+
+        return nullptr;
+    }
+
+    std::string str_l2mc_entry = sai_serialize_l2mc_entry(mk.objectkey.key.l2mc_entry);
+
+    /*
+     * Now when we have serialized l2mc entry with temporary VIDs
+     * replaced to current VIDs we can do dictionary lookup for l2mc.
+     */
+
+    auto currentL2mcIt = m_currentView.m_soL2mcs.find(str_l2mc_entry);
+
+    if (currentL2mcIt == m_currentView.m_soL2mcs.end())
+    {
+        SWSS_LOG_DEBUG("unable to find l2mc entry %s in current asic view", str_l2mc_entry.c_str());
+
+        return nullptr;
+    }
+
+    /*
+     * We found the same l2mc entry in current view! Just one extra check
+     * of object status if it's not processed yet.
+     */
+
+    auto currentL2mcObj = currentL2mcIt->second;
+
+    if (currentL2mcObj->getObjectStatus() == SAI_OBJECT_STATUS_NOT_PROCESSED)
+    {
+        return currentL2mcObj;
+    }
+
+    /*
+     * If we are here, that means this l2mc was already processed, which
+     * can indicate a bug or somehow duplicated entries.
+     */
+
+    SWSS_LOG_THROW("found l2mc entry %s in current view, but it status is %d, FATAL",
+            str_l2mc_entry.c_str(),
+            currentL2mcObj->getObjectStatus());
+}
+
+
+
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForSwitch(
         _In_ const std::shared_ptr<const SaiObj> &temporaryObj)
 {
@@ -2524,6 +2659,9 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatch(
 
         case SAI_OBJECT_TYPE_SWITCH:
             return findCurrentBestMatchForSwitch(temporaryObj);
+
+        case SAI_OBJECT_TYPE_L2MC_ENTRY:
+            return findCurrentBestMatchForL2mcEntry(temporaryObj);
 
         default:
 
