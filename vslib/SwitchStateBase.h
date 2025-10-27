@@ -750,6 +750,8 @@ namespace saivs
             constexpr static const int m_maxAclTableEntries = 1000;
             constexpr static const int m_maxAclTableCounters = 1000;
 
+            constexpr static const int m_maxMySidEntries = 1000;
+
         protected:
 
             virtual sai_status_t queryTunnelPeerModeCapability(
