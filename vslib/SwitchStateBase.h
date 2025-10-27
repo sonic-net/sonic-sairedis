@@ -344,6 +344,9 @@ namespace saivs
                               _In_ sai_attr_id_t attr_id,
                              _Out_ sai_attr_capability_t *attr_capability);
 
+           virtual uint64_t getObjectTypeAvailability(
+                              _In_ sai_object_type_t object_type);
+
         protected:
 
             virtual sai_status_t remove_internal(

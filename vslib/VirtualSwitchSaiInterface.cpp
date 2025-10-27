@@ -887,14 +887,7 @@ sai_status_t VirtualSwitchSaiInterface::objectTypeGetAvailability(
         }
 
         auto ss = m_switchStateMap.at(switchId);
-        auto vppSwitch = std::dynamic_pointer_cast<SwitchVpp>(ss);
-        if (vppSwitch == nullptr)
-        {
-            SWSS_LOG_ERROR("failed to cast switch to SwitchVpp for switchId: %s", sai_serialize_object_id(switchId).c_str());
-            return SAI_STATUS_FAILURE;
-        }
-
-        *count = vppSwitch->getObjectTypeAvailability(objectType);
+        *count = ss->getObjectTypeAvailability(objectType);
         return SAI_STATUS_SUCCESS;
     }
     else if ((objectType == (sai_object_type_t)SAI_OBJECT_TYPE_VNET) ||

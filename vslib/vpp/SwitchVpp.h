@@ -95,7 +95,7 @@ namespace saivs
                     _Out_ sai_attr_capability_t *capability) override;
 
             virtual uint64_t getObjectTypeAvailability(
-                    _In_ sai_object_type_t object_type) const;
+                    _In_ sai_object_type_t object_type) override;
 
             virtual sai_status_t getStatsExt(
                     _In_ sai_object_type_t object_type,

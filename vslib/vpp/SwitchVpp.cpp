@@ -745,7 +745,7 @@ sai_status_t SwitchVpp::queryAttributeCapability(
 }
 
 uint64_t SwitchVpp::getObjectTypeAvailability(
-        _In_ sai_object_type_t object_type) const
+        _In_ sai_object_type_t object_type)
 {
     SWSS_LOG_ENTER();
 
