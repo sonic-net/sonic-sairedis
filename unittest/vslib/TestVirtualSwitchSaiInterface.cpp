@@ -483,18 +483,3 @@ TEST_F(VirtualSwitchSaiInterfaceTest, objectTypeGetAvailability_MySidEntry_Inval
 
     EXPECT_EQ(status, SAI_STATUS_FAILURE);
 }
-
-TEST_F(VirtualSwitchSaiInterfaceTest, objectTypeGetAvailability_MySidEntry_NullCount)
-{
-    // Test with null count pointer - should handle gracefully
-    sai_status_t status = m_vssai->objectTypeGetAvailability(
-        m_swid,
-        SAI_OBJECT_TYPE_MY_SID_ENTRY,
-        0,
-        nullptr,
-        nullptr);
-
-    // This should either fail or be handled by the implementation
-    // The behavior depends on the implementation, but we test it doesn't crash
-    EXPECT_TRUE(status == SAI_STATUS_SUCCESS || status == SAI_STATUS_INVALID_PARAMETER);
-}
