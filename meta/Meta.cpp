@@ -16,11 +16,6 @@
 
 #define CHECK_STATUS_SUCCESS(s) { if ((s) != SAI_STATUS_SUCCESS) return (s); }
 
-#define CHECK_STATUS_SUCCESS_MODE(s,m)                                                          \
-{                                                                                               \
-    if ((s) != SAI_STATUS_SUCCESS && m != SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR) return (s);      \
-}                                                                                               \
-
 #define VALIDATION_LIST(md,vlist)                                               \
 {                                                                               \
     auto _status = meta_genetic_validation_list(md,vlist.count,vlist.list);     \
@@ -618,14 +613,14 @@ sai_status_t Meta::bulkCreate(                                                  
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], true);                                                 \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
              };                                                                                                         \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_create(meta_key, ot[idx].switch_id, attr_count[idx], attr_list[idx]);          \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
     }                                                                                                                   \
     auto status = m_implementation->bulkCreate(object_count, ot, attr_count, attr_list, mode, object_statuses);         \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -662,14 +657,14 @@ sai_status_t Meta::bulkRemove(                                                  
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
             };                                                                                                          \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_remove(meta_key);                                                              \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
     }                                                                                                                   \
     auto status = m_implementation->bulkRemove(object_count, ot, mode, object_statuses);                                \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -708,14 +703,14 @@ sai_status_t Meta::bulkSet(                                                     
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
              };                                                                                                         \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_set(meta_key, &attr_list[idx]);                                                \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
     }                                                                                                                   \
     auto status = m_implementation->bulkSet(object_count, ot, attr_list, mode, object_statuses);                        \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -1188,7 +1183,7 @@ sai_status_t Meta::bulkRemove(
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], SAI_NULL_OBJECT_ID, false);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
 
         sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id[idx] } } };
 
@@ -1196,7 +1191,7 @@ sai_status_t Meta::bulkRemove(
 
         status = meta_generic_validation_remove(meta_key);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
     }
 
     auto status = m_implementation->bulkRemove(object_type, object_count, object_id, mode, object_statuses);
@@ -1250,7 +1245,7 @@ sai_status_t Meta::bulkSet(
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], SAI_NULL_OBJECT_ID, false);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
 
         sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id[idx] } } };
 
@@ -1258,7 +1253,7 @@ sai_status_t Meta::bulkSet(
 
         status = meta_generic_validation_set(meta_key, &attr_list[idx]);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
     }
 
     auto status = m_implementation->bulkSet(object_type, object_count, object_id, attr_list, mode, object_statuses);
@@ -1348,7 +1343,7 @@ sai_status_t Meta::bulkCreate(
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], switchId, true);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
 
         // this is create, oid's don't exist yet
 
@@ -1358,7 +1353,7 @@ sai_status_t Meta::bulkCreate(
 
         status = meta_generic_validation_create(meta_key, switchId, attr_count[idx], attr_list[idx]);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
     }
 
     auto status = m_implementation->bulkCreate(object_type, switchId, object_count, attr_count, attr_list, mode, object_id, object_statuses);
