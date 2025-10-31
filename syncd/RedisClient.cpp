@@ -899,11 +899,11 @@ void RedisClient::insertVidsAndRids(
         _In_ const sai_object_id_t* rids)
 {
     SWSS_LOG_ENTER();
-    
+
     if (m_zmqEnable){
         return;
     }
-    
+
     swss::RedisPipeline pipe(m_dbAsic.get(), count * 2);
 
     for (size_t idx = 0; idx < count; idx++)
