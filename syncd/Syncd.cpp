@@ -4724,6 +4724,17 @@ sai_status_t Syncd::applyView()
      * sorted.
      */
 
+    /*
+     * When ZMQ is enabled, view comparison is not performed via Redis.
+     * ZMQ mode handles synchronization differently, so we return success
+     * without performing the Redis-based view comparison.
+     */
+    if (m_contextConfig->m_zmqEnable)
+    {
+        SWSS_LOG_NOTICE("ZMQ enabled, skipping Redis-based view comparison");
+        return SAI_STATUS_SUCCESS;
+    }
+
     // Read current and temporary views from REDIS.
 
     auto currentMap = m_client->getAsicView();
