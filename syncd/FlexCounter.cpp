@@ -1384,13 +1384,13 @@ private:
             _Inout_ BulkContextType &ctx)
     {
         SWSS_LOG_ENTER();
-        
+
         if (ctx.object_vids_set.find(vid) != ctx.object_vids_set.end())
         {
             SWSS_LOG_INFO("VID 0x%" PRIx64 " already exists in bulk context, skipping", vid);
             return;
         }
-        
+
         ctx.object_vids.push_back(vid);
         ctx.object_vids_set.insert(vid);
         sai_object_key_t object_key;
@@ -1412,14 +1412,13 @@ private:
         {
             auto vid = vids[i];
             auto rid = rids[i];
-            
+
             if (ctx.object_vids_set.find(vid) != ctx.object_vids_set.end())
             {
                 SWSS_LOG_INFO("VID 0x%" PRIx64 " already exists in bulk context, skipping", vid);
                 continue;
             }
-            
-            // Add the object
+
             ctx.object_vids.push_back(vid);
             ctx.object_vids_set.insert(vid);
             sai_object_key_t key;
