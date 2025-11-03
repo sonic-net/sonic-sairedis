@@ -954,6 +954,7 @@ namespace saivs
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
             // SRv6 object tracking for CRM
+            constexpr static const int m_maxMySidEntries = 1000;
             uint32_t m_srv6_my_sid_count = 0;
 
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
