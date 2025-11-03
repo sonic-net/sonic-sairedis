@@ -254,7 +254,7 @@ SwitchVpp::createNexthop(
 
     CHECK_STATUS(find_attrib_in_list(attr_count, attr_list, SAI_NEXT_HOP_ATTR_TYPE,
                                  &next_hop_type, &attr_index));
-    if (next_hop_type->s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
+    if (next_hop_type->u32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
         //Deligate the creation of tunnel encap nexthop to tunnel manager
         CHECK_STATUS(m_tunnel_mgr.create_tunnel_encap_nexthop(serializedObjectId, switch_id, attr_count, attr_list));
     }
@@ -279,7 +279,7 @@ sai_status_t SwitchVpp::removeNexthop(
         if(status != SAI_STATUS_SUCCESS) {
             SWSS_LOG_ERROR("Missing SAI_NEXT_HOP_ATTR_TYPE in %s", serializedObjectId.c_str());
         }
-        else if (attr.value.s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
+        else if (attr.value.u32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP) {
             CHECK_STATUS(m_tunnel_mgr.remove_tunnel_encap_nexthop(serializedObjectId));
         }
     }

@@ -66,7 +66,6 @@ static void create_route_prefix_entry (
 
 void create_vpp_nexthop_entry (
     nexthop_grp_member_t *nxt_grp_member,
-    const char *hwif_name,
     vpp_nexthop_type_e type,
     vpp_ip_nexthop_t *vpp_nexthop)
 {
