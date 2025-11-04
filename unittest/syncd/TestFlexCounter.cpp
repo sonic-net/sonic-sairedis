@@ -1921,7 +1921,7 @@ TEST(FlexCounter, addRemoveDashMeterCounter)
         EXPECT_EQ(number_of_counters, 2);
         for (uint32_t i = 0; i < object_count; ++i)
         {
-            EXPECT_EQ(object_keys[i].key.meter_bucket_entry.meter_class, i);
+            EXPECT_EQ(object_keys[i].key.meter_bucket_entry.meter_class, i + 1);
             dash_meter_fill_values(i, number_of_counters, &(counters[i * number_of_counters]), nullptr);
             object_status[i] = SAI_STATUS_SUCCESS;
         }
@@ -1933,7 +1933,8 @@ TEST(FlexCounter, addRemoveDashMeterCounter)
         std::string value;
         for (uint32_t i = 0; i < (expectedValues.size()/counterIdNames.size()); i++)
         {
-            auto entry_key = sai_meter_bucket_entry_t {.switch_id = 0, .eni_id = eni_id, .meter_class = i*100};
+            auto entry_key = sai_meter_bucket_entry_t {.switch_id = 0, .eni_id = eni_id,
+                                                       .meter_class = (i*100) + 1};
             auto key = sai_serialize_meter_bucket_entry(entry_key);
             for (size_t j = 0; j < 2; ++j) {
                 countersTable.hget(key, counterIdNames[j], value);
