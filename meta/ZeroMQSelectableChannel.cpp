@@ -6,7 +6,7 @@
 #include <zmq.h>
 #include <unistd.h>
 
-#define ZMQ_RESPONSE_BUFFER_SIZE (64*1024*1024)
+#define ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE (4*1024*1024)
 
 //#define ZMQ_POLL_TIMEOUT (2*60*1000)
 #define ZMQ_POLL_TIMEOUT (1000)
@@ -20,11 +20,21 @@ ZeroMQSelectableChannel::ZeroMQSelectableChannel(
     m_socket(nullptr),
     m_fd(0),
     m_allowZmqPoll(false),
-    m_runThread(true)
+    m_runThread(true),
+    m_zmqResponseBufferSize(ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE)
 {
     SWSS_LOG_ENTER();
 
     SWSS_LOG_NOTICE("binding on %s", endpoint.c_str());
+
+    if (zmqResponseBufferSize != ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE)
+    {
+        SWSS_LOG_NOTICE("setting zmq response buffer size to %zu bytes", zmqResponseBufferSize);
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("using default zmq response buffer size of %zu bytes", ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
+    }
 
     m_buffer.resize(ZMQ_RESPONSE_BUFFER_SIZE);
 

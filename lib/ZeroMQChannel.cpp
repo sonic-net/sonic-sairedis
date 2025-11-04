@@ -12,7 +12,7 @@
 
 using namespace sairedis;
 
-#define ZMQ_RESPONSE_BUFFER_SIZE (64*1024*1024)
+#define ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE (4*1024*1024)
 #define ZMQ_MAX_RETRY 10
 
 ZeroMQChannel::ZeroMQChannel(
@@ -25,11 +25,20 @@ ZeroMQChannel::ZeroMQChannel(
     m_context(nullptr),
     m_socket(nullptr),
     m_ntfContext(nullptr),
-    m_ntfSocket(nullptr)
+    m_ntfSocket(nullptr),
+    m_zmqResponseBufferSize(ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE)
 {
     SWSS_LOG_ENTER();
+    if (zmqResponseBufferSize != ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE)
+    {
+        SWSS_LOG_NOTICE("setting zmq response buffer size to %zu bytes", zmqResponseBufferSize);
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("using default zmq response buffer size of %zu bytes", ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
+    }
 
-    m_buffer.resize(ZMQ_RESPONSE_BUFFER_SIZE);
+    m_buffer.resize(m_zmqResponseBufferSize);
 
     // configure ZMQ for main communication
 

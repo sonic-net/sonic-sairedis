@@ -20,7 +20,8 @@ namespace sairedis
             ZeroMQChannel(
                     _In_ const std::string& endpoint,
                     _In_ const std::string& ntfEndpoint,
-                    _In_ Channel::Callback callback);
+                    _In_ Channel::Callback callback,
+                    _In_ size_t zmqResponseBufferSize);
 
             virtual ~ZeroMQChannel();
 

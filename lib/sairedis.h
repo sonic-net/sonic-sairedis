@@ -41,6 +41,15 @@ extern "C" {
 #define SAI_REDIS_KEY_SERVER_CONFIG               "SAI_REDIS_SERVER_CONFIG"
 
 /**
+ * @brief ZMQ response buffer size.
+ *
+ * Optional. Specifies the buffer size in bytes for ZMQ channels (both ZeroMQChannel
+ * and ZeroMQSelectableChannel).
+ * Default is 4MB.
+ */
+#define SAI_REDIS_KEY_ZMQ_RESPONSE_BUFFER_SIZE    "SAI_REDIS_ZMQ_RESPONSE_BUFFER_SIZE"
+
+/**
  * @brief Default synchronous operation response timeout in milliseconds.
  */
 #define SAI_REDIS_DEFAULT_SYNC_OPERATION_RESPONSE_TIMEOUT (60*1000)

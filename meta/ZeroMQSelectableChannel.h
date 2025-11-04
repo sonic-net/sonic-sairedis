@@ -15,9 +15,9 @@ namespace sairedis
         public SelectableChannel
     {
         public:
-
             ZeroMQSelectableChannel(
-                    _In_ const std::string& endpoint);
+                    _In_ const std::string& endpoint,
+                    _In_ size_t zmqResponseBufferSize);
 
             virtual ~ZeroMQSelectableChannel();
 

@@ -89,7 +89,16 @@ sai_status_t ServerSai::apiInitialize(
 
         auto cc = ServerConfig::loadFromFile(serverConfig);
 
-        m_selectableChannel = std::make_shared<ZeroMQSelectableChannel>(cc->m_zmqEndpoint);
+        auto zmqResponseBufferSize = std::stoi(service_method_table->profile_get_value(0, SAI_REDIS_KEY_ZMQ_RESPONSE_BUFFER_SIZE));
+
+        if(zmqResponseBufferSize != 0)
+        {
+            m_selectableChannel = std::make_shared<ZeroMQSelectableChannel>(cc->m_zmqEndpoint, zmqResponseBufferSize);
+        }
+        else
+        {
+            m_selectableChannel = std::make_shared<ZeroMQSelectableChannel>(cc->m_zmqEndpoint);
+        }
 
         SWSS_LOG_NOTICE("starting server thread");
 
