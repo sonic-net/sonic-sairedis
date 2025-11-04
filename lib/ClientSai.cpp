@@ -82,9 +82,9 @@ sai_status_t ClientSai::apiInitialize(
     auto cc = ClientConfig::loadFromFile(clientConfig);
 
     m_communicationChannel = std::make_shared<ZeroMQChannel>(
-        cc->m_zmqEndpoint,
-        cc->m_zmqNtfEndpoint,
-        std::bind(&ClientSai::handleNotification, this, _1, _2, _3));
+            cc->m_zmqEndpoint,
+            cc->m_zmqNtfEndpoint,
+            std::bind(&ClientSai::handleNotification, this, _1, _2, _3));
 
     m_apiInitialized = true;
 
