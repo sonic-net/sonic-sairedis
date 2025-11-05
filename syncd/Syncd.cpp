@@ -134,7 +134,7 @@ Syncd::Syncd(
 
         m_enableSyncMode = true;
 
-        m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint);
+        m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint, 64*1024*1024);
     }
     else
     {
