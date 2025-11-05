@@ -20,6 +20,8 @@
 
 #include <inttypes.h>
 
+#define SAI_ZMQ_RESPONSE_BUFFER_SIZE (64*1024*1024)
+
 using namespace sairedis;
 using namespace saimeta;
 using namespace sairediscommon;
@@ -83,7 +85,8 @@ sai_status_t RedisRemoteSaiInterface::apiInitialize(
         m_communicationChannel = std::make_shared<ZeroMQChannel>(
                 m_contextConfig->m_zmqEndpoint,
                 m_contextConfig->m_zmqNtfEndpoint,
-                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3),
+                SAI_ZMQ_RESPONSE_BUFFER_SIZE);
 
         SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
 
@@ -420,7 +423,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                     m_communicationChannel = std::make_shared<ZeroMQChannel>(
                             m_contextConfig->m_zmqEndpoint,
                             m_contextConfig->m_zmqNtfEndpoint,
-                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3),
+                            SAI_ZMQ_RESPONSE_BUFFER_SIZE);
 
                     m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
