@@ -12,13 +12,13 @@
 
 using namespace sairedis;
 
-#define ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE (4*1024*1024)
 #define ZMQ_MAX_RETRY 10
 
 ZeroMQChannel::ZeroMQChannel(
         _In_ const std::string& endpoint,
         _In_ const std::string& ntfEndpoint,
-        _In_ Channel::Callback callback):
+        _In_ Channel::Callback callback,
+        _In_ size_t zmqResponseBufferSize):
     Channel(callback),
     m_endpoint(endpoint),
     m_ntfEndpoint(ntfEndpoint),
@@ -26,7 +26,7 @@ ZeroMQChannel::ZeroMQChannel(
     m_socket(nullptr),
     m_ntfContext(nullptr),
     m_ntfSocket(nullptr),
-    m_zmqResponseBufferSize(ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE)
+    m_zmqResponseBufferSize(zmqResponseBufferSize)
 {
     SWSS_LOG_ENTER();
     if (zmqResponseBufferSize != ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE)

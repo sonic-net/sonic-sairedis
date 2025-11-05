@@ -6,22 +6,21 @@
 #include <zmq.h>
 #include <unistd.h>
 
-#define ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE (4*1024*1024)
-
 //#define ZMQ_POLL_TIMEOUT (2*60*1000)
 #define ZMQ_POLL_TIMEOUT (1000)
 
 using namespace sairedis;
 
 ZeroMQSelectableChannel::ZeroMQSelectableChannel(
-        _In_ const std::string& endpoint):
+        _In_ const std::string& endpoint,
+        _In_ size_t zmqResponseBufferSize):
     m_endpoint(endpoint),
     m_context(nullptr),
     m_socket(nullptr),
     m_fd(0),
     m_allowZmqPoll(false),
     m_runThread(true),
-    m_zmqResponseBufferSize(ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE)
+    m_zmqResponseBufferSize(zmqResponseBufferSize)
 {
     SWSS_LOG_ENTER();
 

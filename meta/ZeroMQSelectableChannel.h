@@ -9,6 +9,8 @@
 #include <thread>
 #include <memory>
 
+#define ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE (4*1024*1024)
+
 namespace sairedis
 {
     class ZeroMQSelectableChannel:
@@ -18,7 +20,7 @@ namespace sairedis
 
             ZeroMQSelectableChannel(
                     _In_ const std::string& endpoint,
-                    _In_ size_t zmqResponseBufferSize);
+                    _In_ size_t zmqResponseBufferSize = ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
 
             virtual ~ZeroMQSelectableChannel();
 
