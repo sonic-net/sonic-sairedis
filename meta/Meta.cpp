@@ -1991,7 +1991,7 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
-	    case SAI_ATTR_VALUE_TYPE_JSON:
+            case SAI_ATTR_VALUE_TYPE_JSON:
                 // no special action required
                 break;
 
@@ -3698,7 +3698,7 @@ sai_status_t Meta::meta_generic_validation_create(
                 }
                 break;
 
-	    case SAI_ATTR_VALUE_TYPE_JSON:
+            case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST(md, value.json.json);
                 break;
 
