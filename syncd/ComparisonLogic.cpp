@@ -61,9 +61,26 @@ ComparisonLogic::ComparisonLogic(
 
     // TODO needs to be removed and done in generic
 
-    m_current->m_defaultTrapGroupRid     = m_switch->getSwitchDefaultAttrOid(SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP);
-    m_temp->m_defaultTrapGroupRid        = m_switch->getSwitchDefaultAttrOid(SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP);
+    try
+    {
+        m_current->m_defaultTrapGroupRid     = m_switch->getSwitchDefaultAttrOid(SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP);
+    }
+    catch(const std::exception &e)
+    {
+        SWSS_LOG_WARN("Failed to to obtain SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP in current view");
+        m_current->m_defaultTrapGroupRid = SAI_NULL_OBJECT_ID;
+    }
 
+    try
+    {
+        m_temp->m_defaultTrapGroupRid        = m_switch->getSwitchDefaultAttrOid(SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP);
+    }
+    catch(const std::exception &e)
+    {
+        SWSS_LOG_WARN("Failed to to obtain SAI_SWITCH_ATTR_DEFAULT_TRAP_GROUP in temp view");
+        m_temp->m_defaultTrapGroupRid = SAI_NULL_OBJECT_ID;
+
+    }
     auto seed = (unsigned int)std::time(0);
 
     SWSS_LOG_NOTICE("srand seed for switch %s: %u", sai_serialize_object_id(m_switch->getVid()).c_str(), seed);
@@ -2272,7 +2289,7 @@ void ComparisonLogic::bringDefaultTrapGroupToFinalState(
 
     sai_object_id_t rid = currentView.m_defaultTrapGroupRid;
 
-    if (temporaryView.hasRid(rid))
+    if (rid == SAI_NULL_OBJECT_ID || temporaryView.hasRid(rid))
     {
         /*
          * Default trap group is defined inside temporary view

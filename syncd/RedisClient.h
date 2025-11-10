@@ -123,6 +123,7 @@ namespace syncd
                     _In_ const std::string& key) const;
 
             bool hasNoHiddenKeysDefined() const;
+            bool hasNoSwitchDefined() const;
 
             void removeVidAndRid(
                     _In_ sai_object_id_t vid,
