@@ -938,7 +938,7 @@ sai_status_t Meta::queryAttributeEnumValuesCapability(
 
                 if (!sai_metadata_is_allowed_enum_value(mdp, val))
                 {
-                    SWSS_LOG_ERROR("returned value %d is not allowed on %s", val, mdp->attridname);
+                    SWSS_LOG_WARN("returned value %d is not allowed on %s", val, mdp->attridname);
                 }
             }
         }
