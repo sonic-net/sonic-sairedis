@@ -4394,6 +4394,16 @@ sai_status_t SwitchStateBase::queryAttributeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+uint64_t SwitchStateBase::getObjectTypeAvailability(
+                              _In_ sai_object_type_t object_type)
+{
+    SWSS_LOG_ENTER();
+
+    // Default implementation - return 0 for unsupported types
+    SWSS_LOG_WARN("getObjectTypeAvailability not implemented for object type %d", object_type);
+    return 0;
+}
+
 sai_status_t SwitchStateBase::querySwitchStatsCapability(
                               _Inout_ sai_stat_capability_list_t *stats_capability)
 {
