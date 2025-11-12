@@ -617,6 +617,68 @@ TEST(FlexCounter, addRemoveCounter)
         false,
         STATS_MODE_READ,
         true);
+
+    // Packet Trimming
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_TRIM_PACKETS", "SAI_PORT_STAT_DROPPED_TRIM_PACKETS", "SAI_PORT_STAT_TX_TRIM_PACKETS"},
+        {"100", "200", "300"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_TRIM_PACKETS", "SAI_PORT_STAT_DROPPED_TRIM_PACKETS", "SAI_PORT_STAT_TX_TRIM_PACKETS"},
+        {"100", "200", "300"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_QUEUE,
+        QUEUE_COUNTER_ID_LIST,
+        {"SAI_QUEUE_STAT_TRIM_PACKETS", "SAI_QUEUE_STAT_DROPPED_TRIM_PACKETS", "SAI_QUEUE_STAT_TX_TRIM_PACKETS"},
+        {"100", "200", "300"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_QUEUE,
+        QUEUE_COUNTER_ID_LIST,
+        {"SAI_QUEUE_STAT_TRIM_PACKETS", "SAI_QUEUE_STAT_DROPPED_TRIM_PACKETS", "SAI_QUEUE_STAT_TX_TRIM_PACKETS"},
+        {"100", "200", "300"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_SWITCH,
+        SWITCH_COUNTER_ID_LIST,
+        {"SAI_SWITCH_STAT_DROPPED_TRIM_PACKETS", "SAI_SWITCH_STAT_TX_TRIM_PACKETS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        1,
+        SAI_OBJECT_TYPE_SWITCH,
+        SWITCH_COUNTER_ID_LIST,
+        {"SAI_SWITCH_STAT_DROPPED_TRIM_PACKETS", "SAI_SWITCH_STAT_TX_TRIM_PACKETS"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false,
+        STATS_MODE_READ,
+        true);
 }
 
 TEST(FlexCounter, UpdateExistingCounterAddBulk)
@@ -895,15 +957,15 @@ TEST(FlexCounter, bulkCounter)
     int counterOffset = 0;
     int capabilities = 0;
     sai->mock_queryStatsCapability = [&](sai_object_id_t switch_id, sai_object_type_t object_type, sai_stat_capability_list_t *stats_capability) {
-        // Assume all counters are in range [currentOffset, currentOffset + 100]
+        // Assume all counters are in range [currentOffset, currentOffset + 250]
         if (stats_capability->count == 0)
         {
-            stats_capability->count = 100;
+            stats_capability->count = 250;
             return SAI_STATUS_BUFFER_OVERFLOW;
         }
         else
         {
-            for (int i = 0; i < 100; i++)
+            for (int i = 0; i < 250; i++)
 	    {
                 stats_capability->list[i].stat_enum = i + counterOffset;
                 if (capabilities == 0)
@@ -1092,6 +1154,35 @@ TEST(FlexCounter, bulkCounter)
         SAI_OBJECT_TYPE_COUNTER,
         SRV6_COUNTER_ID_LIST,
         {"SAI_COUNTER_STAT_PACKETS", "SAI_COUNTER_STAT_BYTES"},
+        {"100", "200"},
+        counterVerifyFunc,
+        false);
+
+    // Packet Trimming
+
+    testAddRemoveCounter(
+        2,
+        SAI_OBJECT_TYPE_PORT,
+        PORT_COUNTER_ID_LIST,
+        {"SAI_PORT_STAT_TRIM_PACKETS", "SAI_PORT_STAT_DROPPED_TRIM_PACKETS", "SAI_PORT_STAT_TX_TRIM_PACKETS"},
+        {"100", "200", "300"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        2,
+        SAI_OBJECT_TYPE_QUEUE,
+        QUEUE_COUNTER_ID_LIST,
+        {"SAI_QUEUE_STAT_TRIM_PACKETS", "SAI_QUEUE_STAT_DROPPED_TRIM_PACKETS", "SAI_QUEUE_STAT_TX_TRIM_PACKETS"},
+        {"100", "200", "300"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        2,
+        SAI_OBJECT_TYPE_SWITCH,
+        SWITCH_COUNTER_ID_LIST,
+        {"SAI_SWITCH_STAT_DROPPED_TRIM_PACKETS", "SAI_SWITCH_STAT_TX_TRIM_PACKETS"},
         {"100", "200"},
         counterVerifyFunc,
         false);
@@ -1830,7 +1921,7 @@ TEST(FlexCounter, addRemoveDashMeterCounter)
         EXPECT_EQ(number_of_counters, 2);
         for (uint32_t i = 0; i < object_count; ++i)
         {
-            EXPECT_EQ(object_keys[i].key.meter_bucket_entry.meter_class, i);
+            EXPECT_EQ(object_keys[i].key.meter_bucket_entry.meter_class, i + 1);
             dash_meter_fill_values(i, number_of_counters, &(counters[i * number_of_counters]), nullptr);
             object_status[i] = SAI_STATUS_SUCCESS;
         }
@@ -1842,7 +1933,8 @@ TEST(FlexCounter, addRemoveDashMeterCounter)
         std::string value;
         for (uint32_t i = 0; i < (expectedValues.size()/counterIdNames.size()); i++)
         {
-            auto entry_key = sai_meter_bucket_entry_t {.switch_id = 0, .eni_id = eni_id, .meter_class = i*100};
+            auto entry_key = sai_meter_bucket_entry_t {.switch_id = 0, .eni_id = eni_id,
+                                                       .meter_class = (i*100) + 1};
             auto key = sai_serialize_meter_bucket_entry(entry_key);
             for (size_t j = 0; j < 2; ++j) {
                 countersTable.hget(key, counterIdNames[j], value);

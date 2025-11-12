@@ -593,6 +593,11 @@ void NotificationProcessor::process_on_ha_set_event(
 {
     SWSS_LOG_ENTER();
 
+    for (uint32_t i = 0; i < count; i++)
+    {
+        data[i].ha_set_id = m_translator->translateRidToVid(data[i].ha_set_id, SAI_NULL_OBJECT_ID);
+    }
+
     std::string s = sai_serialize_ha_set_event_ntf(count, data);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT, s);
@@ -603,6 +608,11 @@ void NotificationProcessor::process_on_ha_scope_event(
         _In_ sai_ha_scope_event_data_t *data)
 {
     SWSS_LOG_ENTER();
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        data[i].ha_scope_id = m_translator->translateRidToVid(data[i].ha_scope_id, SAI_NULL_OBJECT_ID);
+    }
 
     std::string s = sai_serialize_ha_scope_event_ntf(count, data);
 
@@ -883,7 +893,64 @@ void NotificationProcessor::handle_tam_tel_type_config_change(
 
     SWSS_LOG_DEBUG("TAM telemesai_serialize_object_id(tam_type_id)try type config change on TAM id %s", data.c_str());
 
-    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, data);
+    sai_object_id_t rid;
+    sai_object_id_t vid;
+    sai_deserialize_object_id(data, rid);
+
+    if (!m_translator->tryTranslateRidToVid(rid, vid))
+    {
+        SWSS_LOG_ERROR("TAM_TEL_TYPE RID %s transalted to null VID!!!", sai_serialize_object_id(rid).c_str());
+        return;
+    }
+
+    std::string vid_data = sai_serialize_object_id(vid);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, vid_data);
+}
+
+void NotificationProcessor::handle_switch_macsec_post_status(
+    _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_id;
+    sai_switch_macsec_post_status_t switch_macsec_post_status;
+    sai_deserialize_switch_macsec_post_status_ntf(data, switch_id, switch_macsec_post_status);
+
+    sai_object_id_t switch_vid;
+    if (!m_translator->tryTranslateRidToVid(switch_id, switch_vid))
+    {
+        SWSS_LOG_ERROR("Failed to translate switch RID %s to VID", sai_serialize_object_id(switch_id).c_str());
+        return;
+    }
+    std::string s = sai_serialize_switch_macsec_post_status_ntf(switch_vid, switch_macsec_post_status);
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS, s);
+
+    SWSS_LOG_NOTICE("Sent switch MACSec POST status notificaiton: %s",
+                    sai_serialize_switch_macsec_post_status(switch_macsec_post_status));
+}
+
+void NotificationProcessor::handle_macsec_post_status(
+    _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t macsec_id;
+    sai_macsec_post_status_t macsec_post_status;
+    sai_deserialize_macsec_post_status_ntf(data, macsec_id, macsec_post_status);
+
+    sai_object_id_t macsec_vid;
+    if (!m_translator->tryTranslateRidToVid(macsec_id, macsec_vid))
+    {
+        SWSS_LOG_ERROR("Failed to translate MACSec RID %s to VID", sai_serialize_object_id(macsec_id).c_str());
+        return;
+    }
+    std::string s = sai_serialize_macsec_post_status_ntf(macsec_vid, macsec_post_status);
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS, s);
+
+    SWSS_LOG_NOTICE("Sent MACSec POST status notification: macsec oid %s, status %s",
+                    sai_serialize_object_id(macsec_id).c_str(),
+                    sai_serialize_macsec_post_status(macsec_post_status));
 }
 
 void NotificationProcessor::processNotification(
@@ -949,6 +1016,22 @@ void NotificationProcessor::syncProcessNotification(
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE)
     {
         handle_tam_tel_type_config_change(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS)
+    {
+        handle_switch_macsec_post_status(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS)
+    {
+        handle_macsec_post_status(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT)
+    {
+        handle_ha_set_event(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT)
+    {
+        handle_ha_scope_event(data);
     }
     else
     {

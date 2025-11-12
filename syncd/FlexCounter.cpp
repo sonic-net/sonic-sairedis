@@ -1,3 +1,10 @@
+#include <inttypes.h>
+#include <unordered_map>
+#include <map>
+#include <vector>
+#include <string>
+#include <mutex>
+
 #include "FlexCounter.h"
 #include "VidManager.h"
 
@@ -5,9 +12,6 @@
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"
-
-#include <inttypes.h>
-#include <vector>
 
 using namespace syncd;
 using namespace std;
@@ -30,12 +34,25 @@ static const std::string COUNTER_TYPE_ENI = "DASH ENI Counter";
 static const std::string COUNTER_TYPE_METER_BUCKET = "DASH Meter Bucket Counter";
 static const std::string COUNTER_TYPE_POLICER = "Policer Counter";
 static const std::string COUNTER_TYPE_SRV6 = "SRv6 Counter";
+static const std::string COUNTER_TYPE_SWITCH = "Switch Counter";
 static const std::string ATTR_TYPE_QUEUE = "Queue Attribute";
 static const std::string ATTR_TYPE_PG = "Priority Group Attribute";
 static const std::string ATTR_TYPE_MACSEC_SA = "MACSEC SA Attribute";
 static const std::string ATTR_TYPE_ACL_COUNTER = "ACL Counter Attribute";
 static const std::string COUNTER_TYPE_WRED_ECN_QUEUE = "WRED Queue Counter";
 static const std::string COUNTER_TYPE_WRED_ECN_PORT = "WRED Port Counter";
+
+static const std::unordered_map<std::string, bool> statusMap =
+{
+    { "enable",  true  },
+    { "disable", false }
+};
+
+static const std::unordered_map<std::string, sai_stats_mode_t> statsModeMap =
+{
+    { STATS_MODE_READ,           SAI_STATS_MODE_READ           },
+    { STATS_MODE_READ_AND_CLEAR, SAI_STATS_MODE_READ_AND_CLEAR }
+};
 
 const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
     {QUEUE_PLUGIN_FIELD, COUNTER_TYPE_QUEUE},
@@ -67,6 +84,7 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, ENI_COUNTER_ID_LIST}, COUNTER_TYPE_ENI},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
     {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
+    {{SAI_OBJECT_TYPE_SWITCH, SWITCH_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH},
 };
 
 BaseCounterContext::BaseCounterContext(const std::string &name, const std::string &instance):
@@ -2013,7 +2031,9 @@ private:
         sai_object_key_t object_key;
         object_key.key.meter_bucket_entry.eni_id = rid;
         object_key.key.meter_bucket_entry.switch_id = m_switchId;
-        for (uint32_t i = 0; i < m_meterBucketsPerEni; ++i) {
+        // Populate object keys for ENI meter classes: 1 - max-capable.
+        // 0 is not a valid meter class since its used to denote traffic that is not metered
+        for (uint32_t i = 1; i <= m_meterBucketsPerEni; ++i) {
             object_key.key.meter_bucket_entry.meter_class = i;
             ctx.object_keys.push_back(object_key);
         }
@@ -2076,7 +2096,13 @@ void FlexCounter::setPollInterval(
 {
     SWSS_LOG_ENTER();
 
-    m_pollInterval = pollInterval;
+    if (m_pollInterval != pollInterval)
+    {
+        m_pollInterval = pollInterval;
+        m_cvSleep.notify_all();
+
+        SWSS_LOG_INFO("Set POLL INTERVAL %d for FC %s", pollInterval, m_instanceId.c_str());
+    }
 }
 
 void FlexCounter::setStatus(
@@ -2084,17 +2110,19 @@ void FlexCounter::setStatus(
 {
     SWSS_LOG_ENTER();
 
-    if (status == "enable")
-    {
-        m_enable = true;
-    }
-    else if (status == "disable")
-    {
-        m_enable = false;
-    }
-    else
+    const auto &cit = statusMap.find(status);
+    if (cit == statusMap.cend())
     {
         SWSS_LOG_WARN("Input value %s is not supported for Flex counter status, enter enable or disable", status.c_str());
+        return;
+    }
+
+    if (m_enable != cit->second)
+    {
+        m_enable = cit->second;
+        m_cvSleep.notify_all();
+
+        SWSS_LOG_INFO("Set STATUS %s for FC %s", status.c_str(), m_instanceId.c_str());
     }
 }
 
@@ -2103,21 +2131,19 @@ void FlexCounter::setStatsMode(
 {
     SWSS_LOG_ENTER();
 
-    if (mode == STATS_MODE_READ)
-    {
-        m_statsMode = SAI_STATS_MODE_READ;
-
-        SWSS_LOG_DEBUG("Set STATS MODE %s for FC %s", mode.c_str(), m_instanceId.c_str());
-    }
-    else if (mode == STATS_MODE_READ_AND_CLEAR)
-    {
-        m_statsMode = SAI_STATS_MODE_READ_AND_CLEAR;
-
-        SWSS_LOG_DEBUG("Set STATS MODE %s for FC %s", mode.c_str(), m_instanceId.c_str());
-    }
-    else
+    const auto &cit = statsModeMap.find(mode);
+    if (cit == statsModeMap.cend())
     {
         SWSS_LOG_WARN("Input value %s is not supported for Flex counter stats mode, enter STATS_MODE_READ or STATS_MODE_READ_AND_CLEAR", mode.c_str());
+        return;
+    }
+
+    if (m_statsMode != cit->second)
+    {
+        m_statsMode = cit->second;
+        m_cvSleep.notify_all();
+
+        SWSS_LOG_INFO("Set STATS MODE %s for FC %s", mode.c_str(), m_instanceId.c_str());
     }
 }
 
@@ -2424,6 +2450,13 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     {
         return std::make_shared<CounterContext<sai_counter_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_COUNTER, m_vendorSai.get(), m_statsMode);
     }
+    else if (context_name == COUNTER_TYPE_SWITCH)
+    {
+        auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        context->use_sai_stats_capa_query = true;
+        return context;
+    }
 
     SWSS_LOG_THROW("Invalid counter type %s", context_name.c_str());
     // GCC 8.3 requires a return value here
@@ -2664,6 +2697,10 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(COUNTER_TYPE_SWITCH_DEBUG))
         {
             getCounterContext(COUNTER_TYPE_SWITCH_DEBUG)->removeObject(vid);
+        }
+        if (hasCounterContext(COUNTER_TYPE_SWITCH))
+        {
+            getCounterContext(COUNTER_TYPE_SWITCH)->removeObject(vid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_MACSEC_FLOW)

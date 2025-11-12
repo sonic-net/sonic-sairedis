@@ -93,3 +93,30 @@ TEST(NotificationHandler, setApiVersion)
 
     EXPECT_EQ(SAI_VERSION(1,15,0), nh->getApiVersion());
 }
+
+TEST(NotificationHandler, NotificationMacsecPostStatusTest)
+{
+    auto notificationProcessor =
+      std::make_shared<NotificationProcessor>(nullptr, nullptr, nullptr);
+    auto notificationHandler =
+      std::make_shared<NotificationHandler>(notificationProcessor);
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY;
+    attr.value.ptr = (void *) 1;
+    notificationHandler->updateNotificationsPointers(1, &attr);
+    sai_object_id_t switch_id;
+    sai_switch_macsec_post_status_t switch_macsec_post_status;
+    std::string switchPostStatusData = "{\"switch_id\":\"oid:0x21000000000000\",\"macsec_post_status\":\"SAI_SWITCH_MACSEC_POST_STATUS_PASS\"}";
+    sai_deserialize_switch_macsec_post_status_ntf(switchPostStatusData, switch_id, switch_macsec_post_status);
+    notificationHandler->onSwitchMacsecPostStatus(switch_id, switch_macsec_post_status);
+
+    attr.id = SAI_SWITCH_ATTR_MACSEC_POST_STATUS_NOTIFY;
+    attr.value.ptr = (void *) 1;
+    notificationHandler->updateNotificationsPointers(1, &attr);
+    sai_object_id_t macsec_id;
+    sai_macsec_post_status_t macsec_post_status;
+    std::string macsecPostStatusData = "{\"macsec_id\":\"oid:0x5800000000\",\"macsec_post_status\":\"SAI_MACSEC_POST_STATUS_PASS\"}";
+    sai_deserialize_macsec_post_status_ntf(macsecPostStatusData, macsec_id, macsec_post_status);
+    notificationHandler->onMacsecPostStatus(macsec_id, macsec_post_status);
+}

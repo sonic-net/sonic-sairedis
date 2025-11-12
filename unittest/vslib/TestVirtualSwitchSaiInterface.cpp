@@ -169,6 +169,25 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsCapability)
     std::vector<sai_stat_capability_t> capability_list;
     sai_stat_capability_list_t stats_capability;
 
+    /* Switch stats capability get */
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
+            m_vssai->queryStatsCapability(
+                m_swid,
+                SAI_OBJECT_TYPE_SWITCH,
+                &stats_capability));
+
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+            m_vssai->queryStatsCapability(
+                m_swid,
+                SAI_OBJECT_TYPE_SWITCH,
+                &stats_capability));
+
     /* Queue stats capability get */
     stats_capability.count = 0;
     stats_capability.list = nullptr;
@@ -212,6 +231,25 @@ TEST_F(VirtualSwitchSaiInterfaceTest, queryStatsStCapability)
 {
     std::vector<sai_stat_st_capability_t> capability_list;
     sai_stat_st_capability_list_t stats_capability;
+
+    /* Switch stats capability get */
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
+
+    EXPECT_EQ(SAI_STATUS_BUFFER_OVERFLOW,
+              m_vssai->queryStatsStCapability(
+                  m_swid,
+                  SAI_OBJECT_TYPE_SWITCH,
+                  &stats_capability));
+
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS,
+              m_vssai->queryStatsStCapability(
+                  m_swid,
+                  SAI_OBJECT_TYPE_SWITCH,
+                  &stats_capability));
 
     /* Queue stats capability get */
     stats_capability.count = 0;
@@ -410,4 +448,38 @@ TEST_F(VirtualSwitchSaiInterfaceTest, switchDebugCounterCapabilityGet)
         [](sai_int32_t value) { return static_cast<sai_debug_counter_type_t>(value); }
     );
     ASSERT_EQ(expectedDebugCounterTypes, actualDebugCounterTypes);
+}
+
+TEST_F(VirtualSwitchSaiInterfaceTest, objectTypeGetAvailability_MySidEntry)
+{
+    uint64_t count = 0;
+
+    // Test objectTypeGetAvailability for SAI_OBJECT_TYPE_MY_SID_ENTRY
+    sai_status_t status = m_vssai->objectTypeGetAvailability(
+        m_swid,
+        SAI_OBJECT_TYPE_MY_SID_ENTRY,
+        0, // attr_count
+        nullptr, // attr_list
+        &count);
+
+    EXPECT_EQ(status, SAI_STATUS_SUCCESS);
+    // The availability should be returned based on the switch state implementation
+    // For base implementation, it should return 0
+    EXPECT_EQ(count, 0);
+}
+
+TEST_F(VirtualSwitchSaiInterfaceTest, objectTypeGetAvailability_MySidEntry_InvalidSwitch)
+{
+    uint64_t count = 0;
+    sai_object_id_t invalid_switch_id = 0x123456789;
+
+    // Test with invalid switch ID - should return failure
+    sai_status_t status = m_vssai->objectTypeGetAvailability(
+        invalid_switch_id,
+        SAI_OBJECT_TYPE_MY_SID_ENTRY,
+        0,
+        nullptr,
+        &count);
+
+    EXPECT_EQ(status, SAI_STATUS_FAILURE);
 }

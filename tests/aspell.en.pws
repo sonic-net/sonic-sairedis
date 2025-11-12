@@ -21,6 +21,7 @@ CHARDATA
 COLDVIDS
 CONST
 CRM
+CSP
 CreateObject
 DEI
 Decrement
@@ -29,6 +30,7 @@ DPU
 EAPOL
 ECN
 EIO
+ENI
 ETERM
 ecmp
 ECMP
@@ -430,6 +432,7 @@ TXSC
 typedef
 uint
 uncomment
+unicast
 uninitialize
 unistd
 unittest
@@ -482,3 +485,6 @@ deque
 apiversion
 vso
 VxLAN
+IPFIX
+IPFix
+ipfix

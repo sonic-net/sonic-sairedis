@@ -349,6 +349,18 @@ config_syncd_mlnx()
 
     echo >> /tmp/sai-temp.profile
 
+    DEVICE_TYPE=$(/usr/bin/asic_detect/asic_detect.sh)
+    if [[ $? -eq 0 ]]; then
+        ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
+        ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
+        if [ -f "$ASIC_PROFILE_PATH" ]; then
+            cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
+            echo >> /tmp/sai-temp.profile
+        fi
+    else
+        echo "Warning: ASIC is not detected..."
+    fi
+
     if [[ -f $SAI_COMMON_FILE_PATH ]]; then
         cat $SAI_COMMON_FILE_PATH >> /tmp/sai-temp.profile
     fi
@@ -509,7 +521,25 @@ config_syncd_nvidia_bluefield()
 
     eth0_mac=$(cat /sys/class/net/Ethernet0/address)
 
-    cp $HWSKU_DIR/sai.profile /tmp/sai.profile
+    cp $HWSKU_DIR/sai.profile /tmp/sai-temp.profile
+
+    echo >> /tmp/sai-temp.profile
+
+    DEVICE_TYPE=$(/usr/bin/asic_detect/asic_detect.sh)
+    if [[ $? -eq 0 ]]; then
+        ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
+        ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
+        if [ -f "$ASIC_PROFILE_PATH" ]; then
+            cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
+            echo >> /tmp/sai-temp.profile
+        fi
+    else
+        echo "Warning: ASIC is not detected..."
+    fi
+
+    # keep only the first occurence of each prefix with '=' sign, and remove the others.
+    awk -F= '!seen[$1]++' /tmp/sai-temp.profile > /tmp/sai.profile
+    rm -f /tmp/sai-temp.profile
 
     # Update sai.profile with MAC_ADDRESS
     echo "DEVICE_MAC_ADDRESS=$base_mac" >> /tmp/sai.profile
@@ -536,18 +566,7 @@ config_syncd_xsight()
     LABEL_REVISION_FILE="/etc/sonic/hw_revision"
     ONIE_MACHINE=`sed -n -e 's/^.*onie_machine=//p' /etc/machine.conf`
 
-    ln -sf /usr/share/sonic/hwsku/xdrv_config.json /etc/xsight/xdrv_config.json
-    ln -sf /usr/share/sonic/hwsku/xlink_cfg.json /etc/xsight/xlink_cfg.json
-    ln -sf /usr/share/sonic/hwsku/lanes_polarity.json /etc/xsight/lanes_polarity.json
-
-    if [ -f  ${LABEL_REVISION_FILE} ]; then
-        LABEL_REVISION=`cat ${LABEL_REVISION_FILE}`
-        if [[ x${LABEL_REVISION} == x"R0B" ]] || [[ x${LABEL_REVISION} == x"R0B2" ]]; then
-            ln -sf /etc/xsight/serdes_config_A0.json /etc/xsight/serdes_config.json
-        else
-            ln -sf /etc/xsight/serdes_config_A1.json /etc/xsight/serdes_config.json
-        fi
-    fi
+    /usr/bin/init_xsai.sh
 
     #export XLOG_DEBUG="XSW SAI SAI-HOST XHAL-TBL XHAL-LKP XHAL-LPM XHAL-TCAM XHAL-DTE XHAL-RNG XHAL-SP XHAL-RPC"
     export XLOG_SYSLOG=ALL
@@ -575,6 +594,11 @@ config_syncd_xsight()
         export XDRV_PLUGIN_SO=libxpci_drv_plugin.so
     fi
 
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
+config_syncd_clounix()
+{
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
@@ -613,6 +637,8 @@ config_syncd()
         config_syncd_xsight
     elif [ "$SONIC_ASIC_TYPE" == "pensando" ]; then
 	config_syncd_pensando
+    elif [ "$SONIC_ASIC_TYPE" == "clounix" ]; then
+        config_syncd_clounix
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1

@@ -4,6 +4,8 @@
 #include <vector>
 #include <set>
 #include <algorithm>
+#include <fstream>
+#include <cstdio>
 
 #include "Globals.h"
 #include "sai_serialize.h"
@@ -175,6 +177,37 @@ TEST_F(SwitchStateBaseTest, switchHashAlgorithmCapabilitiesGet)
     ASSERT_EQ(haSet1, haSet2);
 }
 
+TEST_F(SwitchStateBaseTest, switchPacketTrimmingDscpModeCapabilitiesGet)
+{
+    sai_s32_list_t data = { .count = 0, .list = nullptr };
+
+    auto status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_BUFFER_OVERFLOW);
+
+    std::vector<sai_int32_t> qmList(data.count);
+    data.list = qmList.data();
+
+    status = m_ss->queryAttrEnumValuesCapability(
+        m_swid, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE, &data
+    );
+    ASSERT_EQ(status, SAI_STATUS_SUCCESS);
+
+    const std::set<sai_packet_trim_dscp_resolution_mode_t> qmSet1 = {
+        SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE,
+        SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_FROM_TC
+    };
+
+    std::set<sai_packet_trim_dscp_resolution_mode_t> qmSet2;
+
+    std::transform(
+        qmList.cbegin(), qmList.cend(), std::inserter(qmSet2, qmSet2.begin()),
+        [](sai_int32_t value) { return static_cast<sai_packet_trim_dscp_resolution_mode_t>(value); }
+    );
+    ASSERT_EQ(qmSet1, qmSet2);
+}
+
 TEST_F(SwitchStateBaseTest, switchPacketTrimmingQueueModeCapabilitiesGet)
 {
     sai_s32_list_t data = { .count = 0, .list = nullptr };
@@ -235,6 +268,66 @@ TEST_F(SwitchStateBaseTest, bufferProfilePacketAdmissionFailActionCapabilitiesGe
         [](sai_int32_t value) { return static_cast<sai_buffer_profile_packet_admission_fail_action_t>(value); }
     );
     ASSERT_EQ(paSet1, paSet2);
+}
+
+TEST_F(SwitchStateBaseTest, switchQoSMaxNumOfTrafficClasses)
+{
+    ASSERT_EQ(m_ss->set_maximum_number_of_traffic_classes(), SAI_STATUS_SUCCESS);
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_TRAFFIC_CLASSES;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, sai_serialize_object_id(m_swid), 1, &attr), SAI_STATUS_SUCCESS);
+
+    const sai_uint8_t maxTcNum = 16;
+    ASSERT_EQ(attr.value.u8, maxTcNum);
+}
+
+TEST_F(SwitchStateBaseTest, processFipsPostConfig)
+{
+    std::ofstream post_config_file(VS_SAI_FIPS_POST_CONFIG_FILE);
+    std::vector<std::vector<std::string>> configs = {
+        {VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY, "SAI_SWITCH_MACSEC_POST_STATUS_PASS"},
+        {VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY, "SAI_SWITCH_MACSEC_POST_STATUS_PASS"},
+        {VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY, "SAI_MACSEC_POST_STATUS_PASS"},
+        {VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY, "SAI_MACSEC_POST_STATUS_PASS"}};
+    for(const auto &config : configs)
+    {
+        post_config_file << config[0] << " " << config[1] << std::endl;
+    }
+    post_config_file << "macsec-post-capability" << " switch" << std::endl;
+    post_config_file.close();
+
+    for(const auto &config : configs)
+    {
+        m_ss->process_fips_post_config(config[0]);
+    }
+
+    sai_object_id_t switch_id = m_ss->getSwitchId();
+
+    std::vector<sai_attribute_t> attrs;
+    sai_attribute_t attr;
+    attr.id = SAI_MACSEC_ATTR_ENABLE_POST;
+    attr.value.booldata = true;
+    attrs.push_back(attr);
+    attr.id = SAI_MACSEC_ATTR_DIRECTION;
+    attr.value.s32 = SAI_MACSEC_DIRECTION_INGRESS;
+    attrs.push_back(attr);
+    m_ss->create(SAI_OBJECT_TYPE_MACSEC, "oid:0x5800000000", switch_id, static_cast<uint32_t>(attrs.size()), attrs.data());
+
+    attrs.clear();
+    attr.id = SAI_MACSEC_ATTR_ENABLE_POST;
+    attr.value.booldata = true;
+    attrs.push_back(attr);
+    attr.id = SAI_MACSEC_ATTR_DIRECTION;
+    attr.value.s32 = SAI_MACSEC_DIRECTION_EGRESS;
+    attrs.push_back(attr);
+    m_ss->create(SAI_OBJECT_TYPE_MACSEC, "oid:0x5800000001", switch_id, static_cast<uint32_t>(attrs.size()), attrs.data());
+
+    sai_attr_capability_t attr_capability;
+    m_ss->queryAttributeCapability(switch_id, SAI_OBJECT_TYPE_SWITCH, SAI_SWITCH_ATTR_MACSEC_ENABLE_POST, &attr_capability);
+    m_ss->queryAttributeCapability(switch_id, SAI_OBJECT_TYPE_MACSEC, SAI_MACSEC_ATTR_ENABLE_POST, &attr_capability);
+
+    std::remove(VS_SAI_FIPS_POST_CONFIG_FILE);
 }
 
 //Test the following function:
@@ -332,4 +425,26 @@ TEST(SwitchStateBase, query_stats_st_capability)
               static_cast<SwitchState&>(ss).queryStatsStCapability(0,
                                         SAI_OBJECT_TYPE_PORT,
                                         &stats_capability));
+}
+
+TEST_F(SwitchStateBaseTest, getObjectTypeAvailability)
+{
+    // Test default implementation returns 0 for unsupported types
+    uint64_t availability = m_ss->getObjectTypeAvailability(SAI_OBJECT_TYPE_MY_SID_ENTRY);
+    EXPECT_EQ(availability, 0);
+}
+
+TEST(SwitchStateBase, getObjectTypeAvailability_standalone)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    SwitchStateBase ss(
+        0x2100000000,
+        std::make_shared<RealObjectIdManager>(0, scc),
+        sc);
+
+    // Test that default implementation logs warning and returns 0
+    uint64_t availability = ss.getObjectTypeAvailability(SAI_OBJECT_TYPE_MY_SID_ENTRY);
+    EXPECT_EQ(availability, 0);
 }

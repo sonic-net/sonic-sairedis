@@ -94,6 +94,9 @@ namespace saivs
                     _In_ sai_attr_id_t attr_id,
                     _Out_ sai_attr_capability_t *capability) override;
 
+            virtual uint64_t getObjectTypeAvailability(
+                    _In_ sai_object_type_t object_type) override;
+
             virtual sai_status_t getStatsExt(
                     _In_ sai_object_type_t object_type,
                     _In_ sai_object_id_t object_id,
@@ -187,6 +190,10 @@ namespace saivs
 
             static int promisc(
                     _In_ const char *dev);
+
+            static sai_status_t add_tc_filter_redirect(
+                    _In_ const std::string& tap,
+                    _In_ const std::string& hostIfname);
 
             virtual bool hostif_create_tap_veth_forwarding(
                     _In_ const std::string &tapname,
@@ -945,6 +952,10 @@ namespace saivs
             std::set<FdbInfo> m_fdb_info_set;
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
+
+            // SRv6 object tracking for CRM
+            constexpr static const int m_maxMySidEntries = 1000;
+            uint32_t m_srv6_my_sid_count = 0;
 
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
 

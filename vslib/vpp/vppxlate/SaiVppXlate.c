@@ -1647,16 +1647,16 @@ static int __create_loopback_instance (vat_main_t *vam, u32 instance)
 
     __plugin_msg_base = interface_msg_id_base;
 
-    M (CREATE_LOOPBACK, mp);
+    M (CREATE_LOOPBACK_INSTANCE, mp);
     mp->is_specified = true;
-    mp->user_instance = instance;
+    mp->user_instance = htonl(instance);
     /* Set MAC address */
     memcpy(mp->mac_address, mac_address, sizeof(mac_address));
 
     /* create loopback interfaces from vnet/interface_cli.c */
     S (mp);
 
-    W (ret);
+    WR (ret);
 
     VPP_UNLOCK();
 
@@ -1777,6 +1777,8 @@ int init_vpp_client()
 
         /* Enable LACP punt/xc in linux-cp */
         vpp_lcp_ethertype_enable(0x8809);
+        /* Enable LLDP in linux-cp */
+        vpp_lcp_ethertype_enable(0x88cc);
 
         /*
          * SONiC periodically polls the port status so currently there is no need for
@@ -3711,7 +3713,7 @@ static u8 translate_sr_behavior(u32 behavior)
             return SR_BEHAVIOR_API_DT4;
             break;
         case SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_UN:
-            return SR_BEHAVIOR_API_END_UN_PERF;
+            return SR_BEHAVIOR_API_END_UN;
             break;
         case SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_UA:
             return SR_BEHAVIOR_API_UA;

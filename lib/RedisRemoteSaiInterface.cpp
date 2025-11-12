@@ -2156,7 +2156,7 @@ bool RedisRemoteSaiInterface::isRedisAttribute(
 {
     SWSS_LOG_ENTER();
 
-    if ((objectType != SAI_OBJECT_TYPE_SWITCH) || (attr == nullptr) || (attr->id < SAI_SWITCH_ATTR_CUSTOM_RANGE_START))
+    if ((objectType != SAI_OBJECT_TYPE_SWITCH) || (attr == nullptr) || (attr->id < SAI_SWITCH_ATTR_CUSTOM_RANGE_START) || (attr->id > SAI_SWITCH_ATTR_EXTENSIONS_RANGE_BASE))
     {
         return false;
     }
