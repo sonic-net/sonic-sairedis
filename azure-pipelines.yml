@@ -83,7 +83,7 @@ stages:
     parameters:
       arch: armhf
       timeout: 180
-      pool: sonicbld-armhf
+      pool: sonicso1ES-armhf
       sonic_slave: sonic-slave-${{ parameters.debian_version }}-armhf
       swss_common_artifact_name: sonic-swss-common.armhf
       artifact_name: sonic-sairedis.armhf
@@ -94,7 +94,7 @@ stages:
     parameters:
       arch: arm64
       timeout: 180
-      pool: sonicbld-arm64
+      pool: sonicso1ES-arm64
       sonic_slave: sonic-slave-${{ parameters.debian_version }}-arm64
       swss_common_artifact_name: sonic-swss-common.arm64
       artifact_name: sonic-sairedis.arm64
@@ -119,7 +119,7 @@ stages:
     parameters:
       arch: armhf
       timeout: 180
-      pool: sonicbld-armhf
+      pool: sonicso1ES-armhf
       sonic_slave: sonic-slave-bookworm-armhf
       swss_common_artifact_name: sonic-swss-common-bookworm.armhf
       artifact_name: sonic-sairedis-bookworm.armhf
@@ -130,7 +130,7 @@ stages:
     parameters:
       arch: arm64
       timeout: 180
-      pool: sonicbld-arm64
+      pool: sonicso1ES-arm64
       sonic_slave: sonic-slave-bookworm-arm64
       swss_common_artifact_name: sonic-swss-common-bookworm.arm64
       artifact_name: sonic-sairedis-bookworm.arm64
