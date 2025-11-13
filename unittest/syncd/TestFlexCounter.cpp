@@ -248,6 +248,7 @@ void testAddRemoveCounter(
 
     std::vector<swss::FieldValueTuple> values;
     values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(SECONDARY_POLL_FACTOR_FIELD, "2");
     values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
     values.emplace_back(STATS_MODE_FIELD, statsMode);
     std::vector<swss::FieldValueTuple> fcValues = values;
