@@ -152,7 +152,7 @@ Syncd::Syncd(
                 modifyRedis);
     }
 
-    m_client = std::make_shared<RedisClient>(m_dbAsic, m_contextConfig->m_zmqEnable);
+    m_client = std::make_shared<RedisClient>(m_dbAsic, m_contextConfig->m_zmqEnable, m_commandLineOptions->m_isVirtualSwitch);
 
     m_processor = std::make_shared<NotificationProcessor>(m_notifications, m_client, std::bind(&Syncd::syncProcessNotification, this, _1));
     m_handler = std::make_shared<NotificationHandler>(m_processor);

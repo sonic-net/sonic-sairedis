@@ -203,7 +203,8 @@ void CommandLineOptionsParser::printUsage()
     std::cout << "        Counter groups those support bulk polling" << std::endl;
     std::cout << "    -a --enableAttrVersionCheck" << std::endl;
     std::cout << "        Enable attribute SAI version check when performing SAI discovery" << std::endl;
-
+    std::cout << "    -v --isVirtualSwitch" << std::endl;
+    std::cout << "        Is virtual switch" << std::endl;
 #ifdef SAITHRIFT
 
     std::cout << "    -r --rpcserver" << std::endl;

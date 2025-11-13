@@ -21,9 +21,11 @@ using namespace syncd;
 
 RedisClient::RedisClient(
         _In_ std::shared_ptr<swss::DBConnector> dbAsic,
-        _In_ bool zmqEnable):
+        _In_ bool zmqEnable,
+        _In_ bool isVirtualSwitch):
     m_dbAsic(dbAsic),
-    m_zmqEnable(zmqEnable)
+    m_zmqEnable(zmqEnable),
+    m_isVirtualSwitch(isVirtualSwitch)
 {
     SWSS_LOG_ENTER();
 
@@ -44,7 +46,7 @@ std::string RedisClient::getRedisLanesKey(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return "";
     }
 
@@ -78,7 +80,7 @@ void RedisClient::clearLaneMap(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -92,7 +94,7 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> RedisClient::getLaneMap(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -128,7 +130,7 @@ void RedisClient::saveLaneMap(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -153,7 +155,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getObjectMap(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -184,7 +186,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getVidToRidMap
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -210,7 +212,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getRidToVidMap
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -235,7 +237,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getVidToRidMap
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -246,7 +248,7 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getRidToVidMap
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -258,7 +260,7 @@ void RedisClient::setDummyAsicStateObject(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -279,7 +281,7 @@ void RedisClient::setDummyAsicStateObjects(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -308,7 +310,7 @@ std::string RedisClient::getRedisColdVidsKey(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return "";
     }
 
@@ -342,7 +344,7 @@ void RedisClient::saveColdBootDiscoveredVids(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -365,7 +367,7 @@ std::string RedisClient::getRedisHiddenKey(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return "";
     }
 
@@ -399,7 +401,7 @@ std::shared_ptr<std::string> RedisClient::getSwitchHiddenAttribute(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return nullptr;
     }
 
@@ -415,7 +417,7 @@ void RedisClient::saveSwitchHiddenAttribute(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -431,7 +433,7 @@ std::set<sai_object_id_t> RedisClient::getColdVids(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -477,7 +479,7 @@ void RedisClient::setPortLanes(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -497,7 +499,7 @@ size_t RedisClient::getAsicObjectsSize(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return 0;
     }
 
@@ -536,7 +538,7 @@ int RedisClient::removePortFromLanesMap(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return 0;
     }
 
@@ -567,7 +569,7 @@ void RedisClient::removeAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -587,7 +589,7 @@ void RedisClient::removeAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -601,7 +603,7 @@ void RedisClient::removeTempAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -631,7 +633,7 @@ void RedisClient::removeTempAsicObjects(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -653,7 +655,7 @@ void RedisClient::setAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -669,7 +671,7 @@ void RedisClient::setTempAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -684,7 +686,7 @@ void RedisClient::createAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -708,7 +710,7 @@ void RedisClient::createTempAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -731,7 +733,7 @@ void RedisClient::createAsicObjects(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -756,7 +758,7 @@ void RedisClient::createTempAsicObjects(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -781,7 +783,7 @@ void RedisClient::setVidAndRidMap(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -802,7 +804,7 @@ std::vector<std::string> RedisClient::getAsicStateKeys() const
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -813,7 +815,7 @@ std::vector<std::string> RedisClient::getAsicStateSwitchesKeys() const
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -825,7 +827,7 @@ void RedisClient::removeColdVid(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -841,7 +843,7 @@ std::unordered_map<std::string, std::string> RedisClient::getAttributesFromAsicK
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -865,7 +867,7 @@ void RedisClient::removeVidAndRid(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -882,7 +884,7 @@ void RedisClient::insertVidAndRid(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -900,7 +902,7 @@ void RedisClient::insertVidsAndRids(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -932,7 +934,7 @@ sai_object_id_t RedisClient::getVidForRid(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return SAI_NULL_OBJECT_ID;
     }
 
@@ -962,7 +964,7 @@ void RedisClient::getVidsForRids(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -1019,7 +1021,7 @@ sai_object_id_t RedisClient::getRidForVid(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return SAI_NULL_OBJECT_ID;
     }
 
@@ -1046,7 +1048,7 @@ void RedisClient::removeAsicStateTable()
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -1062,7 +1064,7 @@ void RedisClient::removeTempAsicStateTable()
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
@@ -1078,7 +1080,7 @@ std::map<sai_object_id_t, swss::TableDump> RedisClient::getAsicView()
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -1089,7 +1091,7 @@ std::map<sai_object_id_t, swss::TableDump> RedisClient::getTempAsicView()
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -1101,7 +1103,7 @@ std::map<sai_object_id_t, swss::TableDump> RedisClient::getAsicView(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return {};
     }
 
@@ -1146,7 +1148,7 @@ void RedisClient::processFlushEvent(
 {
     SWSS_LOG_ENTER();
 
-    if (m_zmqEnable){
+    if (m_zmqEnable && !m_isVirtualSwitch){
         return;
     }
 
