@@ -117,6 +117,13 @@ typedef struct _sai_redis_flex_counter_group_parameter_t
     sai_s8_list_t poll_interval;
 
     /**
+     * @brief The secondary poll factor for counter group
+     *
+     * It should be a multiplicative factor of the poll_interval.
+     */
+    sai_s8_list_t secondary_poll_factor;
+
+    /**
      * @brief The operation of the counter group
      *
      * It should be either "enable" or "disable"
