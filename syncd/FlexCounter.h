@@ -132,6 +132,9 @@ namespace syncd
             void setPollInterval(
                     _In_ uint32_t pollInterval);
 
+            void setSecondaryPollFactor(
+                    _In_ uint32_t secondaryPollInterval);
+
             void setStatus(
                     _In_ const std::string& status);
 
@@ -195,6 +198,8 @@ namespace syncd
             bool m_readyToPoll;
 
             uint32_t m_pollInterval;
+
+            uint32_t m_secondaryPollFactor;
 
             std::string m_instanceId;
 
