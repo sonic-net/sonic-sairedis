@@ -1197,7 +1197,7 @@ TEST(SaiSerialize, transfer_prbs_bit_error_rate)
     // memcpy(&dst_attr.value.prbs_ber, &src_attr.value.prbs_ber, sizeof(sai_prbs_bit_error_rate_t));
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attribute(SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE,
-              &src, &dst, 1);
+              &src, &dst, 1));
     EXPECT_EQ(dst_attr.value.prbs_ber.exponent, 12);
     EXPECT_EQ(dst_attr.value.prbs_ber.mantissa, 15);
 }
