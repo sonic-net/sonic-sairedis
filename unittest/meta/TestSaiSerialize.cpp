@@ -1123,6 +1123,85 @@ TEST(SaiSerialize, serialize_oid_list)
     EXPECT_EQ(attr.value.objlist.list[2], 0x77);
 }
 
+TEST(SaiSerialize, serialize_uint16_range)
+{
+    sai_attribute_t attr;
+    const sai_attr_metadata_t* meta;
+    std::string s;
+
+    // Test with SAI_SWITCH_ATTR_FAST_LINKUP_POLLING_TIMEOUT_RANGE
+    attr.id = SAI_SWITCH_ATTR_FAST_LINKUP_POLLING_TIMEOUT_RANGE;
+    attr.value.u16range.min = 10;
+    attr.value.u16range.max = 120;
+
+    meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "10,120");
+
+    // Test with zero values
+    attr.value.u16range.min = 0;
+    attr.value.u16range.max = 0;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "0,0");
+
+    // Test with max values
+    attr.value.u16range.min = 100;
+    attr.value.u16range.max = 65535;
+
+    s = sai_serialize_attr_value(*meta, attr);
+
+    EXPECT_EQ(s, "100,65535");
+
+    // Deserialize
+    memset(&attr, 0, sizeof(attr));
+
+    sai_deserialize_attr_value("50,200", *meta, attr);
+
+    EXPECT_EQ(attr.value.u16range.min, 50);
+    EXPECT_EQ(attr.value.u16range.max, 200);
+
+    // Deserialize zero values
+    sai_deserialize_attr_value("0,0", *meta, attr);
+
+    EXPECT_EQ(attr.value.u16range.min, 0);
+    EXPECT_EQ(attr.value.u16range.max, 0);
+
+    // Test error case - invalid format
+    EXPECT_THROW(sai_deserialize_attr_value("invalid", *meta, attr), std::runtime_error);
+}
+
+TEST(SaiSerialize, transfer_prbs_bit_error_rate)
+{
+    SWSS_LOG_ENTER();
+
+    // Since there's no actual attribute using SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE standalone,
+    // we'll create a mock attribute to test the transfer_primitive path for this type
+
+    sai_attribute_t src_attr;
+    sai_attribute_t dst_attr;
+
+    memset(&src_attr, 0, sizeof(src_attr));
+    memset(&dst_attr, 0, sizeof(dst_attr));
+
+    // Test case 1: Transfer normal BER values
+    src_attr.value.prbs_ber.exponent = 12;
+    src_attr.value.prbs_ber.mantissa = 15;
+
+    // Manually call transfer_primitive through the public transfer_attributes API
+    // We need to use a real attribute ID, but since none exist for this type,
+    // we'll test the structure copy directly
+    // memcpy(&dst_attr.value.prbs_ber, &src_attr.value.prbs_ber, sizeof(sai_prbs_bit_error_rate_t));
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, transfer_attribute(SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE,
+              &src, &dst, 1);
+    EXPECT_EQ(dst_attr.value.prbs_ber.exponent, 12);
+    EXPECT_EQ(dst_attr.value.prbs_ber.mantissa, 15);
+}
+
 TEST(SaiSerialize, serialize_acl_action)
 {
     sai_attribute_t attr;

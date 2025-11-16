@@ -534,6 +534,10 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.prbs_rx_state_list, dst_attr.value.prbs_rx_state_list, countOnly));
             break;
 
+        case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            transfer_primitive(src_attr.value.prbs_ber, dst_attr.value.prbs_ber);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.prbs_ber_list, dst_attr.value.prbs_ber_list, countOnly));
             break;
