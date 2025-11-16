@@ -18,6 +18,12 @@ using namespace saimeta;
 
 using json = nlohmann::json;
 
+extern sai_status_t transfer_attribute(
+   sai_attr_value_type_t serialization_type,
+    const sai_attribute_t &src_attr,
+    sai_attribute_t &dst_attr,
+    bool countOnly);
+
 TEST(SaiSerialize, transfer_attributes)
 {
     SWSS_LOG_ENTER();
