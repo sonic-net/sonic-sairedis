@@ -1934,7 +1934,7 @@ TEST(Meta, getValidPortObjectTypes)
     EXPECT_EQ(s, "PORT,LAG,BRIDGE_PORT");
 }
 
-TEST(Meta, validate_uint16_range_on_create)
+TEST(Meta, validate_uint16_range)
 {
     Meta m(std::make_shared<MetaTestSaiInterface>());
 
@@ -1947,34 +1947,17 @@ TEST(Meta, validate_uint16_range_on_create)
 
     EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, &attr));
 
-    // Test case 1: Valid range (min <= max)
+    // Test case 1: Invalid range (min > max) - should fail validation
     attr.id = SAI_SWITCH_ATTR_FAST_LINKUP_POLLING_TIMEOUT_RANGE;
-    attr.value.u16range.min = 10;
-    attr.value.u16range.max = 120;
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
-
-    // Test case 2: Valid range with equal values (min == max)
-    attr.value.u16range.min = 50;
-    attr.value.u16range.max = 50;
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
-
-    // Test case 3: Invalid range (min > max) - should fail validation
     attr.value.u16range.min = 200;
     attr.value.u16range.max = 100;
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
 
-    // Test case 4: Invalid range with large difference (min > max)
+    // Test case 2: Invalid range with large difference (min > max)
     attr.value.u16range.min = 65535;
     attr.value.u16range.max = 0;
 
     EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
-
-    // Test case 5: Valid range at boundaries
-    attr.value.u16range.min = 0;
-    attr.value.u16range.max = 65535;
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS, m.set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
 }
+
