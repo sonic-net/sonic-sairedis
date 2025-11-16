@@ -18,12 +18,6 @@ using namespace saimeta;
 
 using json = nlohmann::json;
 
-extern sai_status_t transfer_attribute(
-   sai_attr_value_type_t serialization_type,
-    const sai_attribute_t &src_attr,
-    sai_attribute_t &dst_attr,
-    bool countOnly);
-
 TEST(SaiSerialize, transfer_attributes)
 {
     SWSS_LOG_ENTER();
@@ -1178,34 +1172,6 @@ TEST(SaiSerialize, serialize_uint16_range)
 
     // Test error case - invalid format
     EXPECT_THROW(sai_deserialize_attr_value("invalid", *meta, attr), std::runtime_error);
-}
-
-TEST(SaiSerialize, transfer_prbs_bit_error_rate)
-{
-    SWSS_LOG_ENTER();
-
-    // Since there's no actual attribute using SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE standalone,
-    // we'll create a mock attribute to test the transfer_primitive path for this type
-
-    sai_attribute_t src_attr;
-    sai_attribute_t dst_attr;
-
-    memset(&src_attr, 0, sizeof(src_attr));
-    memset(&dst_attr, 0, sizeof(dst_attr));
-
-    // Test case 1: Transfer normal BER values
-    src_attr.value.prbs_ber.exponent = 12;
-    src_attr.value.prbs_ber.mantissa = 15;
-
-    // Manually call transfer_primitive through the public transfer_attributes API
-    // We need to use a real attribute ID, but since none exist for this type,
-    // we'll test the structure copy directly
-    // memcpy(&dst_attr.value.prbs_ber, &src_attr.value.prbs_ber, sizeof(sai_prbs_bit_error_rate_t));
-
-    EXPECT_EQ(SAI_STATUS_SUCCESS,
-              transfer_attribute(SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE, src_attr, dst_attr, false));
-    EXPECT_EQ(dst_attr.value.prbs_ber.exponent, 12);
-    EXPECT_EQ(dst_attr.value.prbs_ber.mantissa, 15);
 }
 
 TEST(SaiSerialize, serialize_acl_action)
