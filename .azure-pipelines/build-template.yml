@@ -9,9 +9,9 @@ parameters:
 - name: pool
   type: string
   values:
-  - sonicbld
-  - sonicbld-arm64
-  - sonicbld-armhf
+  - sonicso1ES-amd64
+  - sonicso1ES-arm64
+  - sonicso1ES-armhf
   - default
   default: default
 
