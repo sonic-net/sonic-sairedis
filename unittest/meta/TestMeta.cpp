@@ -1936,6 +1936,8 @@ TEST(Meta, getValidPortObjectTypes)
 
 TEST(Meta, validate_uint32_range_on_create)
 {
+    SWSS_LOG_ENTER();
+
     Meta m(std::make_shared<MetaTestSaiInterface>());
 
     sai_object_id_t switch_id = 0;
@@ -1987,6 +1989,8 @@ TEST(Meta, validate_uint32_range_on_create)
 // Comprehensive test for all meta validation functions with range types
 TEST(Meta, meta_validation_functions_uint16_range)
 {
+    SWSS_LOG_ENTER();
+
     Meta m(std::make_shared<MetaTestSaiInterface>());
 
     sai_object_id_t switch_id = 0;
@@ -2013,6 +2017,8 @@ TEST(Meta, meta_validation_functions_uint16_range)
 // Test meta_generic_validation_post_create and post_remove with range attributes
 TEST(Meta, meta_validation_post_create_remove_uint16_range)
 {
+    SWSS_LOG_ENTER();
+
     Meta m(std::make_shared<MetaTestSaiInterface>());
 
     sai_object_id_t switch_id = 0;
