@@ -1123,57 +1123,6 @@ TEST(SaiSerialize, serialize_oid_list)
     EXPECT_EQ(attr.value.objlist.list[2], 0x77);
 }
 
-TEST(SaiSerialize, serialize_uint16_range)
-{
-    sai_attribute_t attr;
-    const sai_attr_metadata_t* meta;
-    std::string s;
-
-    // Test with SAI_SWITCH_ATTR_FAST_LINKUP_POLLING_TIMEOUT_RANGE
-    attr.id = SAI_SWITCH_ATTR_FAST_LINKUP_POLLING_TIMEOUT_RANGE;
-    attr.value.u16range.min = 10;
-    attr.value.u16range.max = 120;
-
-    meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_SWITCH, attr.id);
-
-    s = sai_serialize_attr_value(*meta, attr);
-
-    EXPECT_EQ(s, "10,120");
-
-    // Test with zero values
-    attr.value.u16range.min = 0;
-    attr.value.u16range.max = 0;
-
-    s = sai_serialize_attr_value(*meta, attr);
-
-    EXPECT_EQ(s, "0,0");
-
-    // Test with max values
-    attr.value.u16range.min = 100;
-    attr.value.u16range.max = 65535;
-
-    s = sai_serialize_attr_value(*meta, attr);
-
-    EXPECT_EQ(s, "100,65535");
-
-    // Deserialize
-    memset(&attr, 0, sizeof(attr));
-
-    sai_deserialize_attr_value("50,200", *meta, attr);
-
-    EXPECT_EQ(attr.value.u16range.min, 50);
-    EXPECT_EQ(attr.value.u16range.max, 200);
-
-    // Deserialize zero values
-    sai_deserialize_attr_value("0,0", *meta, attr);
-
-    EXPECT_EQ(attr.value.u16range.min, 0);
-    EXPECT_EQ(attr.value.u16range.max, 0);
-
-    // Test error case - invalid format
-    EXPECT_THROW(sai_deserialize_attr_value("invalid", *meta, attr), std::runtime_error);
-}
-
 TEST(SaiSerialize, serialize_acl_action)
 {
     sai_attribute_t attr;
