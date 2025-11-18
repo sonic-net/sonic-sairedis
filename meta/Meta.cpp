@@ -3702,17 +3702,6 @@ sai_status_t Meta::meta_generic_validation_create(
                 VALIDATION_LIST(md, value.json.json);
                 break;
 
-            case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
-
-                if (value.u16range.min > value.u16range.max)
-                {
-                    META_LOG_ERROR(md, "invalid range %u .. %u", value.u16range.min, value.u16range.max);
-
-                    return SAI_STATUS_INVALID_PARAMETER;
-                }
-
-                break;
-
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
 
                 if (value.u32range.min > value.u32range.max)
@@ -4332,17 +4321,6 @@ sai_status_t Meta::meta_generic_validation_set(
 
         case SAI_ATTR_VALUE_TYPE_JSON:
             VALIDATION_LIST(md, value.json.json);
-            break;
-
-        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
-
-            if (value.u16range.min > value.u16range.max)
-            {
-                META_LOG_ERROR(md, "invalid range %u .. %u", value.u16range.min, value.u16range.max);
-
-                return SAI_STATUS_INVALID_PARAMETER;
-            }
-
             break;
 
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
