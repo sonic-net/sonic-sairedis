@@ -247,6 +247,11 @@ namespace saivs
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
+
+            virtual sai_status_t setLag(
+                    _In_ sai_object_id_t lagId,
+                    _In_ const sai_attribute_t* attr);
+
             sai_status_t vpp_create_lag(
                     _In_ sai_object_id_t lag_id,
                     _In_ uint32_t attr_count,
