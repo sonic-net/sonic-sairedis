@@ -22,6 +22,8 @@
 
 using namespace saivs;
 
+#define DEFAULT_PERMIT_RULES 2
+
 static sai_status_t acl_ip_field_to_vpp_acl(
     _In_ sai_acl_entry_attr_t         attr_id,
     _In_ const sai_attribute_value_t *value,
@@ -828,7 +830,7 @@ sai_status_t SwitchVpp::allocate_acl(
     if(n_entries == 0) {
         return SAI_STATUS_SUCCESS;
     }
-
+    n_entries += DEFAULT_PERMIT_RULES;
     acl = (vpp_acl_t *) calloc(1, sizeof(vpp_acl_t) + (n_entries * sizeof(vpp_acl_rule_t)));
     if (!acl) {
         SWSS_LOG_ERROR("Failed to allocate memory for acl.");
@@ -933,6 +935,35 @@ sai_status_t SwitchVpp::fill_acl_rules(
             rule++;
         }
     }
+
+    // Add default permit rules after configured ACEs
+    if (acl != NULL && rule != NULL) {
+        sai_attribute_value_t attr_value;
+
+        // Add IPv4 default permit rule
+        attr_value.aclfield.enable = true;
+        attr_value.aclfield.data.s32 = SAI_ACL_IP_TYPE_IPV4ANY;
+        status = acl_rule_field_update(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE, &attr_value, rule);
+        if (status == SAI_STATUS_SUCCESS) {
+            rule->action = VPP_ACL_ACTION_API_PERMIT;
+            rule++;
+
+            // Add IPv6 default permit rule
+            attr_value.aclfield.data.s32 = SAI_ACL_IP_TYPE_IPV6ANY;
+            status = acl_rule_field_update(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE, &attr_value, rule);
+            if (status == SAI_STATUS_SUCCESS) {
+                rule->action = VPP_ACL_ACTION_API_PERMIT;
+            }
+        }
+
+        if (status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to add default permit rules, status: %d", status);
+            return SAI_STATUS_FAILURE;
+        }
+
+        SWSS_LOG_INFO("Added default permit rules for IPv4 and IPv6");
+    }
+
     return SAI_STATUS_SUCCESS;
 }
 
@@ -1287,11 +1318,11 @@ sai_status_t SwitchVpp::aclDefaultAllowConfigure (
 
     vpp_acl_t *acl;
 
-    acl = (vpp_acl_t *) calloc(1, sizeof(vpp_acl_t) + (2 * sizeof(vpp_acl_rule_t)));
+    acl = (vpp_acl_t *) calloc(1, sizeof(vpp_acl_t) + (DEFAULT_PERMIT_RULES * sizeof(vpp_acl_rule_t)));
     if (!acl) {
         return SAI_STATUS_FAILURE;
     }
-    acl->count = 2;
+    acl->count = DEFAULT_PERMIT_RULES;
     char aclname[64];
 
     auto sid = sai_serialize_object_id(tbl_oid);
