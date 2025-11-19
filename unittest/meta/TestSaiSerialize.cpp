@@ -142,7 +142,6 @@ TEST(SaiSerialize, sai_serialize_attr_value)
                 break;
         }
 
-
         attr.id = meta->attrid;
 
         if (meta->isaclaction)
