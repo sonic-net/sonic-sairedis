@@ -1985,12 +1985,13 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
-	    case SAI_ATTR_VALUE_TYPE_JSON:
+            case SAI_ATTR_VALUE_TYPE_JSON:
                 // no special action required
                 break;
 
@@ -3697,7 +3698,7 @@ sai_status_t Meta::meta_generic_validation_create(
                 }
                 break;
 
-	    case SAI_ATTR_VALUE_TYPE_JSON:
+            case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST(md, value.json.json);
                 break;
 
@@ -4745,6 +4746,7 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.json.json);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
                 // primitives
@@ -5007,6 +5009,15 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST_GET(md, value.json.json);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
+
+                if (value.u16range.min > value.u16range.max)
+                {
+                    META_LOG_ERROR(md, "invalid range %u .. %u", value.u16range.min, value.u16range.max);
+                }
+
                 break;
 
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
@@ -5907,6 +5918,7 @@ void Meta::meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
@@ -6152,6 +6164,7 @@ void Meta::meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
         case SAI_ATTR_VALUE_TYPE_MAP_LIST:
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
