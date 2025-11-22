@@ -19,7 +19,9 @@ namespace syncd
         public:
 
             RedisClient(
-                    _In_ std::shared_ptr<swss::DBConnector> dbAsic);
+                    _In_ std::shared_ptr<swss::DBConnector> dbAsic,
+                    _In_ bool zmqEnable,
+                    _In_ bool isVirtualSwitch);
 
             virtual ~RedisClient();
 
@@ -194,6 +196,10 @@ namespace syncd
             std::shared_ptr<swss::DBConnector> m_dbAsic;
 
             std::string m_fdbFlushSha;
+
+            bool m_zmqEnable;
+
+            bool m_isVirtualSwitch;
 
     };
 }

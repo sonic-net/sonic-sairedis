@@ -71,6 +71,7 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " WatchdogWarnTimeSpan=" << m_watchdogWarnTimeSpan;
     ss << " SupportingBulkCounters=" << m_supportingBulkCounterGroups;
     ss << " EnableAttrVersionCheck=" << (m_enableAttrVersionCheck ? "YES" : "NO");
+    ss << " IsVirtualSwitch=" << (m_isVirtualSwitch ? "YES" : "NO");
 
 #ifdef SAITHRIFT
 
