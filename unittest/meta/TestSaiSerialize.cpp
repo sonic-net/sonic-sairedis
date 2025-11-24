@@ -131,6 +131,11 @@ TEST(SaiSerialize, sai_serialize_attr_value)
             case SAI_ATTR_VALUE_TYPE_PORT_FREQUENCY_OFFSET_PPM_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             case SAI_ATTR_VALUE_TYPE_ACL_CHAIN_LIST:
+            case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
                 continue;
 
             default:
