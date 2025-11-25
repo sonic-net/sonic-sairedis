@@ -426,3 +426,25 @@ TEST(SwitchStateBase, query_stats_st_capability)
                                         SAI_OBJECT_TYPE_PORT,
                                         &stats_capability));
 }
+
+TEST_F(SwitchStateBaseTest, getObjectTypeAvailability)
+{
+    // Test default implementation returns 0 for unsupported types
+    uint64_t availability = m_ss->getObjectTypeAvailability(SAI_OBJECT_TYPE_MY_SID_ENTRY);
+    EXPECT_EQ(availability, 0);
+}
+
+TEST(SwitchStateBase, getObjectTypeAvailability_standalone)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    SwitchStateBase ss(
+        0x2100000000,
+        std::make_shared<RealObjectIdManager>(0, scc),
+        sc);
+
+    // Test that default implementation logs warning and returns 0
+    uint64_t availability = ss.getObjectTypeAvailability(SAI_OBJECT_TYPE_MY_SID_ENTRY);
+    EXPECT_EQ(availability, 0);
+}
