@@ -1,6 +1,6 @@
 /**
- * @file TestPortSerdesAttr.cpp
- * @brief Unit tests for PORT_SERDES_ATTR flex counter functionality
+ * @file TestPortAttr.cpp
+ * @brief Unit tests for PORT_ATTR flex counter functionality
  *
  * Tests implementation according to UT Plan:
  * 1. sai_serialize_port_attr() function
@@ -24,7 +24,7 @@ using namespace sairedis;
 using namespace syncd;
 using namespace std;
 
-static const std::string ATTR_TYPE_PORT_SERDES = "Port Physical Link Attributes";
+static const std::string ATTR_TYPE_PORT_ATTR = "Port Physical Link Attributes";
 
 template <typename T>
 std::string toOid(T value)
@@ -36,7 +36,7 @@ std::string toOid(T value)
 }
 
 
-class TestPortSerdesAttr : public ::testing::Test
+class TestPortAttr : public ::testing::Test
 {
 protected:
     void SetUp() override
@@ -47,7 +47,7 @@ protected:
             return 0x21000000000000;
         };
 
-        flexCounter = std::make_shared<FlexCounter>("TEST_PORT_SERDES_ATTR", sai, "COUNTERS_DB");
+        flexCounter = std::make_shared<FlexCounter>("TEST_PORT_ATTR", sai, "COUNTERS_DB");
 
         // Setup test port OID
         testPortOid = 0x1000000000001;
@@ -66,7 +66,7 @@ protected:
     sai_object_id_t testPortRid;
 };
 
-TEST_F(TestPortSerdesAttr, SerializePortAttr)
+TEST_F(TestPortAttr, SerializePortAttr)
 {
     sai_port_attr_t attr = SAI_PORT_ATTR_RX_SIGNAL_DETECT;
     std::string result = sai_serialize_port_attr(attr);
@@ -81,7 +81,7 @@ TEST_F(TestPortSerdesAttr, SerializePortAttr)
     EXPECT_EQ(result, "SAI_PORT_ATTR_RX_SNR");
 }
 
-TEST_F(TestPortSerdesAttr, DeserializePortAttr)
+TEST_F(TestPortAttr, DeserializePortAttr)
 {
     sai_port_attr_t attr_out;
 
@@ -101,16 +101,16 @@ TEST_F(TestPortSerdesAttr, DeserializePortAttr)
 /**
  * Test collectData() with mocked SAI and COUNTERS_DB validation
  * This test verifies the complete data collection workflow:
- * 1. Mock SAI interface returns realistic SERDES attribute data
+ * 1. Mock SAI interface returns realistic PORT attribute data
  * 2. FlexCounter collects the data via collectData()
  * 3. Verify collected data is properly written to COUNTERS_DB
  *
- * This test validates the complete PORT_SERDES_ATTR collection workflow
+ * This test validates the complete PORT_ATTR collection workflow
  * including RX_SIGNAL_DETECT, FEC_ALIGNMENT_LOCK, and RX_SNR attributes.
  */
-TEST_F(TestPortSerdesAttr, CollectDataAndValidateCountersDB)
+TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
 {
-    // Setup mock for SERDES attributes with realistic data
+    // Setup mock for PORT attributes with realistic data
     sai->mock_get = [](sai_object_type_t object_type,
                       sai_object_id_t object_id,
                       uint32_t attr_count,
@@ -161,15 +161,15 @@ TEST_F(TestPortSerdesAttr, CollectDataAndValidateCountersDB)
         return SAI_STATUS_SUCCESS;
     };
 
-    vector<swss::FieldValueTuple> portSerdesValues;
+    vector<swss::FieldValueTuple> portAttrValues;
 
     std::string attrIds = "SAI_PORT_ATTR_RX_SIGNAL_DETECT,SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,SAI_PORT_ATTR_RX_SNR";
 
-    portSerdesValues.emplace_back(PORT_SERDES_ATTR_ID_LIST, attrIds);
+    portAttrValues.emplace_back(PORT_ATTR_ID_LIST, attrIds);
 
     test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
 
-    flexCounter->addCounter(testPortOid, testPortRid, portSerdesValues);
+    flexCounter->addCounter(testPortOid, testPortRid, portAttrValues);
 
     vector<swss::FieldValueTuple> pluginValues;
     pluginValues.emplace_back(POLL_INTERVAL_FIELD, "1000");
@@ -179,10 +179,10 @@ TEST_F(TestPortSerdesAttr, CollectDataAndValidateCountersDB)
 
     usleep(1000 * 1050); // 1.05 seconds to ensure at least one poll cycle
 
-    // Connect to COUNTERS_DB and verify entries in PORT_SERDES_ATTR_TABLE
+    // Connect to COUNTERS_DB and verify entries in PORT_ATTR_TABLE
     swss::DBConnector db("COUNTERS_DB", 0);
     swss::RedisPipeline pipeline(&db);
-    swss::Table countersTable(&pipeline, PORT_SERDES_ATTR_TABLE, false);
+    swss::Table countersTable(&pipeline, PORT_ATTR_TABLE, false);
 
     std::string expectedKey = toOid(testPortOid);
 

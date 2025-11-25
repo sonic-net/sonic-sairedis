@@ -21,8 +21,8 @@ struct NoAttrData {
     // Empty struct - minimal footprint, compiler optimizes away
 };
 
-// Holds data storage for SAI SERDES attribute API calls
-struct SerdesAttributeData {
+// Holds data storage for SAI PORT attribute API calls
+struct PortAttributeData {
     std::vector<sai_port_lane_latch_status_t> rxSignalDetectData;
     std::vector<sai_port_lane_latch_status_t> fecAlignmentLockData;
     std::vector<sai_port_snr_values_t> rxSnrData;
