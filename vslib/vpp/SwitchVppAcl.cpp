@@ -264,14 +264,13 @@ static sai_status_t acl_rule_port_range_vpp_acl_set(
 
     switch (type) {
     case SAI_ACL_RANGE_TYPE_L4_SRC_PORT_RANGE:
-        if (rule->proto != 0 && rule->proto != IPPROTO_TCP) {
+        if (rule->proto != 0 && rule->proto != IPPROTO_TCP && rule->proto != IPPROTO_UDP) {
             SWSS_LOG_ERROR(
                 "Conflicting protocol settings: "
-                "src port range requires TCP, but proto is already set to %u",
+                "src port range requires TCP/UDP, but proto is already set to %u",
                 rule->proto);
             return SAI_STATUS_FAILURE;
         }
-        rule->proto = IPPROTO_TCP;
         rule->srcport_or_icmptype_first = (uint16_t) range->min;
         rule->srcport_or_icmptype_last = (uint16_t) range->max;
         break;
@@ -280,11 +279,10 @@ static sai_status_t acl_rule_port_range_vpp_acl_set(
         if (rule->proto != 0 && rule->proto != IPPROTO_TCP) {
             SWSS_LOG_ERROR(
                 "Conflicting protocol settings: "
-                "dst port range requires TCP, but proto is already set to %u",
+                "dst port range requires TCP/UDP, but proto is already set to %u",
                 rule->proto);
             return SAI_STATUS_FAILURE;
         }
-        rule->proto = IPPROTO_TCP;
         rule->dstport_or_icmpcode_first = (uint16_t) range->min;
         rule->dstport_or_icmpcode_last = (uint16_t) range->max;
         break;
@@ -421,25 +419,17 @@ sai_status_t acl_rule_field_update(
 
     case SAI_ACL_ENTRY_ATTR_FIELD_L4_SRC_PORT:
     case SAI_ACL_ENTRY_ATTR_FIELD_L4_DST_PORT:
-        if (rule->proto != 0 && rule->proto != IPPROTO_TCP) {
+        if (rule->proto != 0 && rule->proto != IPPROTO_TCP && rule->proto != IPPROTO_UDP) {
             SWSS_LOG_ERROR(
                 "Conflicting protocol settings: "
-                "src/dst port requires TCP, but proto is already set to %u",
+                "src/dst port requires TCP/UDP, but proto is already set to %u",
                 rule->proto);
             return SAI_STATUS_FAILURE;
         }
-        rule->proto = IPPROTO_TCP;
         status = acl_entry_port_to_vpp_acl_rule(attr_id, value, rule);
         break;
 
     case SAI_ACL_ENTRY_ATTR_FIELD_IP_PROTOCOL:
-        if (rule->proto != 0 && rule->proto != (value->aclfield.data.u8 & value->aclfield.mask.u8)) {
-            SWSS_LOG_ERROR(
-                "Conflicting protocol settings: "
-                "IP_PROTOCOL specified but proto is already set to %u",
-                rule->proto);
-            return SAI_STATUS_FAILURE;
-        }
         rule->proto = value->aclfield.data.u8 & value->aclfield.mask.u8;
         status = SAI_STATUS_SUCCESS;
         break;
