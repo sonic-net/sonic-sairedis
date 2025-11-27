@@ -61,9 +61,9 @@ jobs:
     ${{ else }}:
       vmImage: 'ubuntu-22.04'
 
-  container:
-    image: sonicdev-microsoft.azurecr.io:443/${{ parameters.sonic_slave }}:latest
-    options:  "--privileged"
+  # container:
+  #   image: sonicdev-microsoft.azurecr.io:443/${{ parameters.sonic_slave }}:latest
+  #   options:  "--privileged"
 
   steps:
   - checkout: self
@@ -71,6 +71,8 @@ jobs:
     submodules: true
   - script: |
       set -ex
+      df -h
+      docker pull sonicdev-microsoft.azurecr.io:443/${{ parameters.sonic_slave }}:latest
       df -h
       sudo du -xh --max-depth=1 / | sort -h
     displayName: "Disk usage before downloading libnl"
