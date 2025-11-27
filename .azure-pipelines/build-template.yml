@@ -161,6 +161,8 @@ jobs:
   - script: |
       set -ex
       sudo dpkg -i $(find ./download -name *.deb)
+      df -h
+      sudo du -xh --max-depth=1 / | sort -h
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install libyang from common lib"
   - task: DownloadPipelineArtifact@2
