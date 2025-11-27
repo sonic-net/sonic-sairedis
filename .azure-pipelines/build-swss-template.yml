@@ -175,19 +175,27 @@ jobs:
   - script: |
       set -ex
       # install libyang before install libswsscommon
+      echo "Before installing libnl3, sonic swss common, and sairedis"
+      df -h
+      sudo du -xh --max-depth=1 / | sort -h
       sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i $(find ./download -name libyang_*.deb)
       sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i $(find ./download -name *.deb)
       rm -rf download || true
       cat /etc/apt/sources.list
       dpkg --list |grep libnl
+      echo "After installing libnl3, sonic swss common, and sairedis"
+      df -h
+      sudo du -xh --max-depth=1 / | sort -h
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install libnl3, sonic swss common, and sairedis"
   - script: |
       set -ex
       rm ../*.deb || true
       ./autogen.sh
-      dpkg-buildpackage -us -uc -b -j$(nproc)
+      df -h
+      dpkg-buildpackage -us -uc -b -j$(nproc) || { sudo du -sh /bin /lib /run /var /usr /home; sudo du -sh /var/lib/* /var/log | grep G ; exit 1; }
       mv ../*.deb $(Build.ArtifactStagingDirectory)
+      df -h
     displayName: "Compile sonic swss"
   - publish: $(Build.ArtifactStagingDirectory)
     artifact: ${{ parameters.artifact_name }}

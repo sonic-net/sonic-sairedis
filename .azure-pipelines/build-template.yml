@@ -177,6 +177,7 @@ jobs:
     condition: eq('${{ parameters.arch }}', 'amd64')
   - script: |
       set -ex
+      df -h 
       sudo dpkg -i download/libvppinfra-dev_*_${{ parameters.arch }}.deb
       sudo dpkg -i download/libvppinfra_*_${{ parameters.arch }}.deb
       sudo dpkg -i download/vpp_*_${{ parameters.arch }}.deb
@@ -187,6 +188,7 @@ jobs:
       sudo dpkg -i download/vpp-plugin-devtools_*_${{ parameters.arch }}.deb
       sudo dpkg -i download/vpp-plugin-dpdk_*_${{ parameters.arch }}.deb
       sudo dpkg -i download/python3-vpp-api_*_${{ parameters.arch }}.deb
+      df -h
     workingDirectory: $(Build.ArtifactStagingDirectory)
     displayName: "Install sonic platform-vpp packages"
     condition: eq('${{ parameters.arch }}', 'amd64')
@@ -216,8 +218,10 @@ jobs:
       if [ '${{ parameters.asan }}' == True ]; then
          extraflags='--enable-asan'
       fi
-      DEB_BUILD_OPTIONS=nocheck DEB_CONFIGURE_EXTRA_FLAGS=$extraflags dpkg-buildpackage -us -uc -b -Psyncd,vs,nopython2 -j$(nproc)
+      df -h
+      DEB_BUILD_OPTIONS=nocheck DEB_CONFIGURE_EXTRA_FLAGS=$extraflags dpkg-buildpackage -us -uc -b -Psyncd,vs,nopython2 -j$(nproc) || { sudo du -sh /bin /lib /run /var /usr /home; sudo du -sh /var/lib/* /var/log | grep G ; exit 1; }
       mv ../*.deb .
+      df -h
     displayName: "Compile sonic sairedis with coverage enabled"
   - script: |
       set -ex
