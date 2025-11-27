@@ -191,9 +191,8 @@ SwitchVpp::fillNHGrpMember(nexthop_grp_member_t *nxt_grp_member, sai_object_id_t
     switch (next_hop_type) {
     case SAI_NEXT_HOP_TYPE_IP:
         attr.id = SAI_NEXT_HOP_ATTR_ROUTER_INTERFACE_ID;
-        if (get(SAI_OBJECT_TYPE_NEXT_HOP, next_hop_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
-            nxt_grp_member->rif_oid = attr.value.oid;
-        }
+        CHECK_STATUS_QUIET(nh_obj->get_mandatory_attr(attr));
+        nxt_grp_member->rif_oid = attr.value.oid;
         break;
     case SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP: {
         u_int32_t sw_if_index;
