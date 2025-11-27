@@ -69,6 +69,12 @@ jobs:
   - checkout: self
     clean: true
     submodules: true
+  - script: |
+      set -ex
+      df -h
+      sudo du -xh --max-depth=1 / | sort -h
+    displayName: "Disk usage before downloading libnl"
+    condition: eq('${{ parameters.arch }}', 'amd64')
   - task: DownloadPipelineArtifact@2
     condition: eq('${{ parameters.arch }}', 'amd64')
     inputs:
