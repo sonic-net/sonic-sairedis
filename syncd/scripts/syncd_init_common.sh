@@ -552,7 +552,7 @@ config_syncd_nvidia_bluefield()
         mkdir -p "$SDK_DUMP_PATH"
     fi
 
-    echo 9216 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    echo 11700 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
     mkdir -p /mnt/huge
     mount -t hugetlbfs pagesize=1GB /mnt/huge
 
