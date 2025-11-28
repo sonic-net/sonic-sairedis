@@ -682,19 +682,21 @@ namespace saivs
                     _In_ vpp_tunterm_acl_t *&tunterm_acl);
 
             /**
-             * @brief Fills ACL and tunnel termination ACL rules based on the provided ACEs.
+             * @brief Converts ACE entries into ACL and tunnel termination ACL rules.
              *
              * @param[in] aces Pointer to ACEs.
              * @param[in] ordered_aces Reference to Ordered ACE list.
-             * @param[in] acl Pointer to the allocated VS ACL.
-             * @param[in] tunterm_acl Pointer to the allocated VS tunnel termination ACL.
+             * @param[out] acl_rules Reference to list of converted ACL rules.
+             * @param[out] tunterm_acl_rules Reference to list of converted tunnel termination ACL rules.
              * @return SAI_STATUS_SUCCESS on success, or an appropriate error code otherwise.
+             *
+             * @note If protocol is not set but port or port_range is set, creates 2 rules: one with UDP and one with TCP.
              */
             sai_status_t fill_acl_rules(
                     _In_ acl_tbl_entries_t *aces,
                     _In_ std::list<ordered_ace_list_t> &ordered_aces,
-                    _In_ vpp_acl_t *acl,
-                    _In_ vpp_tunterm_acl_t *tunterm_acl);
+                    _Out_ std::list<vpp_acl_rule_t> &acl_rules,
+                    _Out_ std::list<vpp_tunterm_acl_rule_t> &tunterm_acl_rules);
 
             /**
              * @brief Creates or replaces the provided ACL in VS.

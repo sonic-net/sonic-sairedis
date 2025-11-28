@@ -862,96 +862,142 @@ sai_status_t SwitchVpp::allocate_tunterm_acl(
 sai_status_t SwitchVpp::fill_acl_rules(
     acl_tbl_entries_t *aces,
     std::list<ordered_ace_list_t> &ordered_aces,
-    vpp_acl_t *acl,
-    vpp_tunterm_acl_t *tunterm_acl)
+    std::list<vpp_acl_rule_t> &acl_rules,
+    std::list<vpp_tunterm_acl_rule_t> &tunterm_acl_rules)
 {
     SWSS_LOG_ENTER();
 
-    sai_status_t       status = SAI_STATUS_SUCCESS;
-    acl_tbl_entries_t  *p_ace = NULL;
-    vpp_acl_rule_t     *rule = NULL;
-    vpp_tunterm_acl_rule_t *tunterm_rule = NULL;
-
-    if(acl != NULL) {
-        rule = &acl->rules[0];
-    }
-    if(tunterm_acl != NULL) {
-        tunterm_rule = &tunterm_acl->rules[0];
-    }
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    acl_tbl_entries_t *p_ace = NULL;
 
     for (auto ace: ordered_aces) {
         SWSS_LOG_INFO("Acl entry index %u priority %u", ace.index, ace.priority);
         p_ace = &aces[ace.index];
         const sai_attribute_t *attr;
-        for (uint32_t i = 0; i < p_ace->attrs_count && status == SAI_STATUS_SUCCESS; i++) {
-            attr = &p_ace->attrs[i];
-            auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ACL_ENTRY, attr->id);
 
-            if (meta != NULL) {
-                SWSS_LOG_INFO("Type %s attrib id %s",
-                    sai_serialize_object_type(SAI_OBJECT_TYPE_ACL_ENTRY).c_str(),
-                    meta->attridname);
-            }
-
-            if (ace.is_tunterm) {
-                status = tunterm_acl_rule_field_update((sai_acl_entry_attr_t) attr->id, &attr->value, tunterm_rule);
-            } else if (attr->id == SAI_ACL_ENTRY_ATTR_FIELD_ACL_RANGE_TYPE) {
-                for (uint32_t jdx = 0; jdx < p_ace->range_count; jdx++) {
-                    status = acl_rule_port_range_vpp_acl_set(p_ace->range_type[jdx],
-                                                    &p_ace->range_limit[jdx], rule);
-                }
-            } else {
-                status = acl_rule_field_update((sai_acl_entry_attr_t) attr->id, &attr->value, rule);
-            }
-
-            if (rule && (rule->srcport_or_icmptype_first != 0 || rule->dstport_or_icmpcode_first != 0)) {
-                SWSS_LOG_DEBUG(
-                        "Attribute %d ranges: "
-                        "srcport_or_icmptype = %u - %u, "
-                        "dstport_or_icmpcode = %u - %u",
-                        attr->id,
-                        rule->srcport_or_icmptype_first, rule->srcport_or_icmptype_last,
-                        rule->dstport_or_icmpcode_first, rule->dstport_or_icmpcode_last);
-            }
-
-            if(status != SAI_STATUS_SUCCESS) {
-                SWSS_LOG_ERROR("Failed to fill acl rule, status: %d", status);
-                return SAI_STATUS_FAILURE;
-            }
-        }
         if (ace.is_tunterm) {
-            tunterm_rule++;
+            // Process tunnel termination ACL rule
+            vpp_tunterm_acl_rule_t tunterm_rule = {};
+
+            for (uint32_t i = 0; i < p_ace->attrs_count && status == SAI_STATUS_SUCCESS; i++) {
+                attr = &p_ace->attrs[i];
+                auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ACL_ENTRY, attr->id);
+
+                if (meta != NULL) {
+                    SWSS_LOG_INFO("Type %s attrib id %s",
+                        sai_serialize_object_type(SAI_OBJECT_TYPE_ACL_ENTRY).c_str(),
+                        meta->attridname);
+                }
+
+                status = tunterm_acl_rule_field_update((sai_acl_entry_attr_t) attr->id, &attr->value, &tunterm_rule);
+
+                if (status != SAI_STATUS_SUCCESS) {
+                    SWSS_LOG_ERROR("Failed to fill tunterm acl rule, status: %d", status);
+                    return SAI_STATUS_FAILURE;
+                }
+            }
+            tunterm_acl_rules.push_back(tunterm_rule);
         } else {
-            rule++;
+            // Process regular ACL rule(s)
+            vpp_acl_rule_t rule = {};
+            uint8_t port_proto = 0;  // Track if port-related fields were set
+
+            for (uint32_t i = 0; i < p_ace->attrs_count && status == SAI_STATUS_SUCCESS; i++) {
+                attr = &p_ace->attrs[i];
+                auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_ACL_ENTRY, attr->id);
+
+                if (meta != NULL) {
+                    SWSS_LOG_INFO("Type %s attrib id %s",
+                        sai_serialize_object_type(SAI_OBJECT_TYPE_ACL_ENTRY).c_str(),
+                        meta->attridname);
+                }
+
+                if (attr->id == SAI_ACL_ENTRY_ATTR_FIELD_ACL_RANGE_TYPE) {
+                    for (uint32_t jdx = 0; jdx < p_ace->range_count; jdx++) {
+                        status = acl_rule_port_range_vpp_acl_set(p_ace->range_type[jdx],
+                                                        &p_ace->range_limit[jdx], &rule);
+                        if (status != SAI_STATUS_SUCCESS) {
+                            SWSS_LOG_ERROR("Failed to fill acl rule range, status: %d", status);
+                            return SAI_STATUS_FAILURE;
+                        }
+                        // Mark that port range was set
+                        port_proto = 1;
+                    }
+                } else {
+                    status = acl_rule_field_update((sai_acl_entry_attr_t) attr->id, &attr->value, &rule);
+
+                    if (status != SAI_STATUS_SUCCESS) {
+                        SWSS_LOG_ERROR("Failed to fill acl rule, status: %d", status);
+                        return SAI_STATUS_FAILURE;
+                    }
+
+                    // Check if port fields were set (indicates port-based rule)
+                    if ((attr->id == SAI_ACL_ENTRY_ATTR_FIELD_L4_SRC_PORT ||
+                         attr->id == SAI_ACL_ENTRY_ATTR_FIELD_L4_DST_PORT) &&
+                        attr->value.aclfield.enable) {
+                        port_proto = 1;
+                    }
+                }
+
+                if (rule.srcport_or_icmptype_first != 0 || rule.dstport_or_icmpcode_first != 0) {
+                    SWSS_LOG_DEBUG(
+                            "Attribute %d ranges: "
+                            "srcport_or_icmptype = %u - %u, "
+                            "dstport_or_icmpcode = %u - %u",
+                            attr->id,
+                            rule.srcport_or_icmptype_first, rule.srcport_or_icmptype_last,
+                            rule.dstport_or_icmpcode_first, rule.dstport_or_icmpcode_last);
+                }
+            }
+
+            // If port/port_range is set but protocol is not set, create 2 rules: UDP and TCP
+            if (port_proto && rule.proto == 0) {
+                // Create UDP rule
+                vpp_acl_rule_t udp_rule = rule;
+                udp_rule.proto = IPPROTO_UDP;
+                acl_rules.push_back(udp_rule);
+                SWSS_LOG_INFO("Added UDP rule for port-based ACL entry");
+
+                // Create TCP rule
+                vpp_acl_rule_t tcp_rule = rule;
+                tcp_rule.proto = IPPROTO_TCP;
+                acl_rules.push_back(tcp_rule);
+                SWSS_LOG_INFO("Added TCP rule for port-based ACL entry");
+            } else {
+                // Add the single rule
+                acl_rules.push_back(rule);
+            }
         }
     }
 
-    // Add default permit rules after configured ACEs
-    if (acl != NULL && rule != NULL) {
-        sai_attribute_value_t attr_value;
+    // Add default permit rules
+    vpp_acl_rule_t ipv4_permit_rule = {};
+    vpp_acl_rule_t ipv6_permit_rule = {};
+    sai_attribute_value_t attr_value;
 
-        // Add IPv4 default permit rule
-        attr_value.aclfield.enable = true;
-        attr_value.aclfield.data.s32 = SAI_ACL_IP_TYPE_IPV4ANY;
-        status = acl_rule_field_update(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE, &attr_value, rule);
-        if (status == SAI_STATUS_SUCCESS) {
-            rule->action = VPP_ACL_ACTION_API_PERMIT;
-            rule++;
+    // IPv4 default permit rule
+    attr_value.aclfield.enable = true;
+    attr_value.aclfield.data.s32 = SAI_ACL_IP_TYPE_IPV4ANY;
+    status = acl_rule_field_update(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE, &attr_value, &ipv4_permit_rule);
+    if (status == SAI_STATUS_SUCCESS) {
+        ipv4_permit_rule.action = VPP_ACL_ACTION_API_PERMIT;
+        acl_rules.push_back(ipv4_permit_rule);
+        SWSS_LOG_INFO("Added default IPv4 permit rule");
+    } else {
+        SWSS_LOG_ERROR("Failed to create default IPv4 permit rule, status: %d", status);
+        return SAI_STATUS_FAILURE;
+    }
 
-            // Add IPv6 default permit rule
-            attr_value.aclfield.data.s32 = SAI_ACL_IP_TYPE_IPV6ANY;
-            status = acl_rule_field_update(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE, &attr_value, rule);
-            if (status == SAI_STATUS_SUCCESS) {
-                rule->action = VPP_ACL_ACTION_API_PERMIT;
-            }
-        }
-
-        if (status != SAI_STATUS_SUCCESS) {
-            SWSS_LOG_ERROR("Failed to add default permit rules, status: %d", status);
-            return SAI_STATUS_FAILURE;
-        }
-
-        SWSS_LOG_INFO("Added default permit rules for IPv4 and IPv6");
+    // IPv6 default permit rule
+    attr_value.aclfield.data.s32 = SAI_ACL_IP_TYPE_IPV6ANY;
+    status = acl_rule_field_update(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE, &attr_value, &ipv6_permit_rule);
+    if (status == SAI_STATUS_SUCCESS) {
+        ipv6_permit_rule.action = VPP_ACL_ACTION_API_PERMIT;
+        acl_rules.push_back(ipv6_permit_rule);
+        SWSS_LOG_INFO("Added default IPv6 permit rule");
+    } else {
+        SWSS_LOG_ERROR("Failed to create default IPv6 permit rule, status: %d", status);
+        return SAI_STATUS_FAILURE;
     }
 
     return SAI_STATUS_SUCCESS;
@@ -1180,16 +1226,15 @@ sai_status_t SwitchVpp::AclTblConfig(
     SWSS_LOG_ENTER();
 
     sai_status_t                        status = SAI_STATUS_SUCCESS;
-    size_t                              n_entries = 0;
-    size_t                              n_tunterm_entries = 0;
     size_t                              n_total_entries = 0;
     acl_tbl_entries_t                  *aces = NULL;
     vpp_acl_t                          *acl = NULL;
     vpp_tunterm_acl_t                  *tunterm_acl = NULL;
     char                                aclname[64];
     char                                tunterm_aclname[64];
-    std::map<sai_object_id_t, uint32_t> acl_aces_index_map;
     std::list<ordered_ace_list_t>       ordered_aces = {};
+    std::list<vpp_acl_rule_t>          acl_rules;
+    std::list<vpp_tunterm_acl_rule_t>  tunterm_acl_rules;
 
     #define CHECK_STATUS_ACLTBLCONFIG(status) {                           \
         sai_status_t _status = (status);                                  \
@@ -1202,23 +1247,70 @@ sai_status_t SwitchVpp::AclTblConfig(
     CHECK_STATUS_ACLTBLCONFIG(get_sorted_aces(tbl_oid, n_total_entries, aces,
                                               ordered_aces));
 
-    count_tunterm_acl_rules(aces, ordered_aces, n_entries, n_tunterm_entries);
+    SWSS_LOG_INFO("Total ACL entries: %ld", n_total_entries);
 
-    SWSS_LOG_INFO("Tunterm acl count: %ld, regular acl count: %ld, "
-                    "total: %ld", n_tunterm_entries, n_entries, n_total_entries);
+    // Fill ACL rules - this returns converted rule lists
+    CHECK_STATUS_ACLTBLCONFIG(fill_acl_rules(aces, ordered_aces, acl_rules, tunterm_acl_rules));
 
-    CHECK_STATUS_ACLTBLCONFIG(allocate_acl(n_entries, tbl_oid, aclname, acl));
+    SWSS_LOG_INFO("Generated %ld regular ACL rules and %ld tunterm ACL rules",
+                    acl_rules.size(), tunterm_acl_rules.size());
 
-    CHECK_STATUS_ACLTBLCONFIG(allocate_tunterm_acl(n_tunterm_entries, tbl_oid,
-                                                   tunterm_aclname, tunterm_acl));
+    // Create and populate regular ACL if we have rules
+    if (!acl_rules.empty()) {
+        auto tbl_sid = sai_serialize_object_id(tbl_oid);
 
-    CHECK_STATUS_ACLTBLCONFIG(fill_acl_rules(aces, ordered_aces, acl, tunterm_acl));
+        acl = (vpp_acl_t *) calloc(1, sizeof(vpp_acl_t) + (acl_rules.size() * sizeof(vpp_acl_rule_t)));
+        if (!acl) {
+            SWSS_LOG_ERROR("Failed to allocate memory for acl.");
+            cleanup_acl_tbl_config(aces, ordered_aces, acl, tunterm_acl);
+            return SAI_STATUS_FAILURE;
+        }
 
-    status = acl_add_replace(acl, tbl_oid, aces, ordered_aces);
+        snprintf(aclname, sizeof(aclname), "sonic_acl_%s", tbl_sid.c_str());
+        acl->acl_name = aclname;
+        acl->count = (uint32_t) acl_rules.size();
 
-    if (status == SAI_STATUS_SUCCESS) {
+        // Copy rules into ACL structure
+        vpp_acl_rule_t *rule_ptr = &acl->rules[0];
+        for (const auto &rule : acl_rules) {
+            *rule_ptr++ = rule;
+        }
+
+        SWSS_LOG_INFO("Allocated ACL with %u rules", acl->count);
+    }
+
+    // Create and populate tunnel termination ACL if we have rules
+    if (!tunterm_acl_rules.empty()) {
+        auto tbl_sid = sai_serialize_object_id(tbl_oid);
+
+        tunterm_acl = (vpp_tunterm_acl_t *) calloc(1, sizeof(vpp_tunterm_acl_t) + (tunterm_acl_rules.size() * sizeof(vpp_tunterm_acl_rule_t)));
+        if (!tunterm_acl) {
+            SWSS_LOG_ERROR("Failed to allocate memory for tunterm acl.");
+            cleanup_acl_tbl_config(aces, ordered_aces, acl, tunterm_acl);
+            return SAI_STATUS_FAILURE;
+        }
+
+        snprintf(tunterm_aclname, sizeof(tunterm_aclname), "tunterm_sonic_acl_%s", tbl_sid.c_str());
+        tunterm_acl->acl_name = tunterm_aclname;
+        tunterm_acl->count = (uint32_t) tunterm_acl_rules.size();
+
+        // Copy rules into tunterm ACL structure
+        vpp_tunterm_acl_rule_t *tunterm_rule_ptr = &tunterm_acl->rules[0];
+        for (const auto &rule : tunterm_acl_rules) {
+            *tunterm_rule_ptr++ = rule;
+        }
+
+        SWSS_LOG_INFO("Allocated tunterm ACL with %u rules", tunterm_acl->count);
+    }
+
+    // Apply the ACL configurations
+    if (acl != NULL) {
+        status = acl_add_replace(acl, tbl_oid, aces, ordered_aces);
+    }
+
+    if (status == SAI_STATUS_SUCCESS && tunterm_acl != NULL) {
         status = tunterm_acl_add_replace(tunterm_acl, tbl_oid);
-    } else {
+    } else if (status != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("ACL plugin operation failed, skipping tunterm "
                        "configuration. status %d", status);
     }
