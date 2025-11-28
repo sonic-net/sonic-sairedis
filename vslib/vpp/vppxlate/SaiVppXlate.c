@@ -3622,6 +3622,12 @@ static u8 translate_sr_behavior(u32 behavior)
         // case SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_DX4:
         //     return SR_BEHAVIOR_API_DX4;
         //     break;
+        case SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_UDT6:
+            return SR_BEHAVIOR_API_DT6;
+            break;
+        case SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_UDT4:
+            return SR_BEHAVIOR_API_DT4;
+            break;
         case SAI_MY_SID_ENTRY_ENDPOINT_BEHAVIOR_DT6:
             return SR_BEHAVIOR_API_DT6;
             break;
