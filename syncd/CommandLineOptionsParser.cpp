@@ -19,9 +19,9 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
     auto options = std::make_shared<CommandLineOptions>();
 
 #ifdef SAITHRIFT
-    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lrm:h";
+    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lrm:vh";
 #else
-    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lh";
+    const char* const optstring = "dp:t:g:x:b:B:aw:uSUCsz:lvh";
 #endif // SAITHRIFT
 
     while (true)
@@ -44,6 +44,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
             { "watchdogWarnTimeSpan",    optional_argument, 0, 'w' },
             { "supportingBulkCounters",  required_argument, 0, 'B' },
             { "enableAttrVersionCheck",  no_argument,       0, 'a' },
+            { "isVirtualSwitch",         no_argument,       0, 'v' },
 #ifdef SAITHRIFT
             { "rpcserver",               no_argument,       0, 'r' },
             { "portmap",                 required_argument, 0, 'm' },
@@ -124,6 +125,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
             case 'w':
                 options->m_watchdogWarnTimeSpan = (int64_t)std::stoll(optarg);
+                break;
+
+            case 'v':
+                options->m_isVirtualSwitch = true;
                 break;
 
 #ifdef SAITHRIFT
