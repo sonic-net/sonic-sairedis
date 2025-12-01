@@ -6,6 +6,7 @@
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"
+#include "swss/schema.h"
 
 #include <inttypes.h>
 #include <vector>
@@ -1708,6 +1709,8 @@ public:
 
     typedef CounterIds<sai_port_attr_t> AttrIdsType;
 
+    static const std::unordered_map<sai_port_attr_t, std::string> m_attrAliases;
+
     PortAttrContext(
             _In_ const std::string &name,
             _In_ const std::string &instance,
@@ -1937,8 +1940,9 @@ public:
                 continue;
             }
 
-            // Serialize attributes
             std::vector<swss::FieldValueTuple> values;
+            values.reserve(attrIds.size());
+
             for (size_t i = 0; i != attrIds.size(); i++)
             {
                 auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
@@ -1947,7 +1951,17 @@ public:
                     SWSS_LOG_ERROR("Failed to get metadata for port attr");
                     continue;
                 }
-                values.emplace_back(meta->attridname, sai_serialize_attr_value(*meta, attrs[i]));
+
+                std::string attr_value = sai_serialize_attr_value(*meta, attrs[i]);
+
+                auto it = m_attrAliases.find(attrIds[i]);
+                if (it == m_attrAliases.end())
+                {
+                    SWSS_LOG_ERROR("Unsupported PORT_ATTR: %d", attrIds[i]);
+                    continue;
+                }
+
+                values.emplace_back(it->second, attr_value);
             }
 
             // Store in PORT_ATTR table using VID as key
@@ -1961,6 +1975,12 @@ public:
 private:
     std::string m_dbCounters;
     std::map<sai_object_id_t, std::map<sai_port_attr_t, uint32_t>> m_portLaneCountMap;
+};
+
+const std::unordered_map<sai_port_attr_t, std::string> PortAttrContext::m_attrAliases = {
+    {SAI_PORT_ATTR_RX_SNR, "rx_snr"},
+    {SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK, "pcs_fec_lane_alignment_lock"},
+    {SAI_PORT_ATTR_RX_SIGNAL_DETECT, "phy_rx_signal_detect"}
 };
 
 class DashMeterCounterContext : public BaseCounterContext

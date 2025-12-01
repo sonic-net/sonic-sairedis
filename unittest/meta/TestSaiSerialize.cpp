@@ -137,27 +137,8 @@ TEST(SaiSerialize, sai_serialize_port_snr_list)
 
             auto s = sai_serialize_attr_value(*meta, attr, false);
 
-            std::string expected = "{\"count\":3,\"list\":[{\"lane\":\"0\",\"snr\":\"3712\"},{\"lane\":\"1\",\"snr\":\"3840\"},{\"lane\":\"2\",\"snr\":\"4160\"}]}";
+            std::string expected = "{\"0\":3712,\"1\":3840,\"2\":4160}";
             EXPECT_EQ(s, expected);
-
-            // deserialize and verify data 
-            sai_attribute_t deserialized_attr;
-            memset(&deserialized_attr, 0, sizeof(deserialized_attr));
-            deserialized_attr.id = meta->attrid;
-
-            sai_deserialize_attr_value(s, *meta, deserialized_attr, false);
-
-            // Validate deserialized data matches original
-            EXPECT_EQ(deserialized_attr.value.portsnrlist.count, 3);
-            EXPECT_EQ(deserialized_attr.value.portsnrlist.list[0].lane, 0);
-            EXPECT_EQ(deserialized_attr.value.portsnrlist.list[0].snr, 3712);
-            EXPECT_EQ(deserialized_attr.value.portsnrlist.list[1].lane, 1);
-            EXPECT_EQ(deserialized_attr.value.portsnrlist.list[1].snr, 3840);
-            EXPECT_EQ(deserialized_attr.value.portsnrlist.list[2].lane, 2);
-            EXPECT_EQ(deserialized_attr.value.portsnrlist.list[2].snr, 4160);
-
-            // Clean up deserialized data - tests cleanup in sai_free_list
-            sai_deserialize_free_attribute_value(meta->attrvaluetype, deserialized_attr);
 
         }
     }
@@ -165,7 +146,7 @@ TEST(SaiSerialize, sai_serialize_port_snr_list)
 
 TEST(SaiSerialize, sai_deserialize_port_snr_list)
 {
-    std::string json_str = R"({"count":2,"list":[{"lane":"0","snr":"3712"},{"lane":"1","snr":"4032"}]})";
+    std::string json_str = R"({"0":3712,"1":4032})";
 
     sai_port_snr_list_t snr_list;
     memset(&snr_list, 0, sizeof(snr_list));
@@ -183,10 +164,9 @@ TEST(SaiSerialize, sai_deserialize_port_snr_list)
 
     delete[] snr_list.list;
 
-    // Test null list
-    std::string null_json_str = R"({"count":0,"list":null})";
+    std::string empty_json_str = R"({})";
     memset(&snr_list, 0, sizeof(snr_list));
-    sai_deserialize_port_snr_list(null_json_str.c_str(), &snr_list);
+    sai_deserialize_port_snr_list(empty_json_str, snr_list, false);
     EXPECT_EQ(snr_list.count, 0);
     EXPECT_EQ(snr_list.list, nullptr);
 }

@@ -1604,60 +1604,35 @@ std::string sai_serialize_latch_status(
     return changed + ":" + current_status;
 }
 
-json sai_serialize_port_lane_latch_status_item(
-        _In_ const sai_port_lane_latch_status_t& lane_latch_status)
-{
-    SWSS_LOG_ENTER();
-    json j;
-
-    j["lane"] = lane_latch_status.lane;
-    j["value"] = sai_serialize_latch_status(lane_latch_status.value);
-
-    return j;
-}
-
 std::string sai_serialize_port_lane_latch_status_list(
         _In_ const sai_port_lane_latch_status_list_t& status_list,
         _In_ bool countOnly)
 {
     SWSS_LOG_ENTER();
 
-    json j;
-
-    j["count"] = status_list.count;
+    json j = json::object();
 
     if (status_list.list == NULL || countOnly)
     {
-        j["list"] = nullptr;
-
         return j.dump();
     }
 
-    json arr = json::array();
-
+    // Create dictionary format: {"0": "T*", "1": "F", ...}
+    // T/F = current_status, * = changed indicator
     for (uint32_t i = 0; i < status_list.count; ++i)
     {
-        json item = sai_serialize_port_lane_latch_status_item(status_list.list[i]);
+        std::string lane_key = std::to_string(status_list.list[i].lane);
+        std::string value = status_list.list[i].value.current_status ? "T" : "F";
 
-        arr.push_back(item);
+        if (status_list.list[i].value.changed)
+        {
+            value += "*";
+        }
+
+        j[lane_key] = value;
     }
 
-    j["list"] = arr;
-
     return j.dump();
-}
-
-json sai_serialize_port_snr_values_item(
-        _In_ const sai_port_snr_values_t& snr_values)
-{
-    SWSS_LOG_ENTER();
-
-    json j;
-
-    j["lane"] = sai_serialize_number(snr_values.lane);
-    j["snr"] = sai_serialize_number(snr_values.snr);
-
-    return j;
 }
 
 std::string sai_serialize_port_snr_list(
@@ -1666,27 +1641,19 @@ std::string sai_serialize_port_snr_list(
 {
     SWSS_LOG_ENTER();
 
-    json j;
-
-    j["count"] = snr_list.count;
+    json j = json::object();
 
     if (snr_list.list == NULL || countOnly)
     {
-        j["list"] = nullptr;
-
         return j.dump();
     }
 
-    json arr = json::array();
-
+    // Create dictionary format: {"0": 3712, "1": 3840, ...}
     for (uint32_t i = 0; i < snr_list.count; ++i)
     {
-        json item = sai_serialize_port_snr_values_item(snr_list.list[i]);
-
-        arr.push_back(item);
+        std::string lane_key = std::to_string(snr_list.list[i].lane);
+        j[lane_key] = snr_list.list[i].snr;
     }
-
-    j["list"] = arr;
 
     return j.dump();
 }
@@ -4277,35 +4244,69 @@ void sai_deserialize_port_lane_latch_status_list(
 {
     SWSS_LOG_ENTER();
 
-    json j = json::parse(s);
-
-    status_list.count = j["count"];
-
-    if (countOnly)
+    try
     {
-        return;
+        json j = json::parse(s);
+
+        if (j.empty() || !j.is_object())
+        {
+            status_list.count = 0;
+            status_list.list = NULL;
+            return;
+        }
+
+        status_list.count = static_cast<uint32_t>(j.size());
+
+        if (countOnly)
+        {
+            return;
+        }
+
+        status_list.list = sai_alloc_n_of_ptr_type(status_list.count, status_list.list);
+
+        uint32_t idx = 0;
+        for (auto it = j.begin(); it != j.end(); ++it, ++idx)
+        {
+            if (!it.value().is_string())
+            {
+                SWSS_LOG_ERROR("Invalid latch status value type for lane %s", it.key().c_str());
+                continue;
+            }
+
+            std::string value_str = it.value().get<std::string>();
+
+            if (value_str.empty() || (value_str[0] != 'T' && value_str[0] != 'F'))
+            {
+                SWSS_LOG_ERROR("Invalid latch status value '%s' for lane %s",
+                              value_str.c_str(), it.key().c_str());
+                continue;
+            }
+
+            status_list.list[idx].lane = static_cast<uint32_t>(std::stoul(it.key()));
+
+            if (value_str.back() == '*')
+            {
+                status_list.list[idx].value.changed = true;
+                status_list.list[idx].value.current_status = (value_str[0] == 'T');
+            }
+            else
+            {
+                status_list.list[idx].value.changed = false;
+                status_list.list[idx].value.current_status = (value_str[0] == 'T');
+            }
+        }
     }
-
-    if (j["list"] == nullptr)
+    catch (const json::parse_error& e)
     {
+        SWSS_LOG_ERROR("JSON parse error in sai_deserialize_port_lane_latch_status_list: %s", e.what());
+        status_list.count = 0;
         status_list.list = NULL;
-        return;
     }
-
-    json arr = j["list"];
-
-    if (arr.size() != (size_t)status_list.count)
+    catch (const std::exception& e)
     {
-        SWSS_LOG_THROW("port lane latch status count mismatch %lu vs %u", arr.size(),status_list.count);
-    }
-
-    status_list.list = sai_alloc_n_of_ptr_type(status_list.count, status_list.list);
-
-    for (uint32_t i = 0; i < status_list.count; ++i)
-    {
-        const json &item = arr[i];
-
-        sai_deserialize_port_lane_latch_status(item, status_list.list[i]);
+        SWSS_LOG_ERROR("Error in sai_deserialize_port_lane_latch_status_list: %s", e.what());
+        status_list.count = 0;
+        status_list.list = NULL;
     }
 }
 
@@ -4327,35 +4328,50 @@ void sai_deserialize_port_snr_list(
 {
     SWSS_LOG_ENTER();
 
-    json j = json::parse(s);
-
-    snr_list.count = j["count"];
-
-    if (countOnly)
+    try
     {
-        return;
+        json j = json::parse(s);
+
+        if (j.empty() || !j.is_object())
+        {
+            snr_list.count = 0;
+            snr_list.list = NULL;
+            return;
+        }
+
+        snr_list.count = static_cast<uint32_t>(j.size());
+
+        if (countOnly)
+        {
+            return;
+        }
+
+        snr_list.list = sai_alloc_n_of_ptr_type(snr_list.count, snr_list.list);
+
+        uint32_t idx = 0;
+        for (auto it = j.begin(); it != j.end(); ++it, ++idx)
+        {
+            if (!it.value().is_number_unsigned())
+            {
+                SWSS_LOG_ERROR("Invalid SNR value type for lane %s", it.key().c_str());
+                continue;
+            }
+
+            snr_list.list[idx].lane = static_cast<uint32_t>(std::stoul(it.key()));
+            snr_list.list[idx].snr = it.value().get<sai_uint16_t>();
+        }
     }
-
-    if (j["list"] == nullptr)
+    catch (const json::parse_error& e)
     {
+        SWSS_LOG_ERROR("JSON parse error in sai_deserialize_port_snr_list: %s", e.what());
+        snr_list.count = 0;
         snr_list.list = NULL;
-        return;
     }
-
-    json arr = j["list"];
-
-    if (arr.size() != (size_t)snr_list.count)
+    catch (const std::exception& e)
     {
-        SWSS_LOG_ERROR("port SNR count mismatch %lu vs %u", arr.size(), snr_list.count);
-        return;
-    }
-
-    snr_list.list = sai_alloc_n_of_ptr_type(snr_list.count, snr_list.list);
-
-    for (uint32_t i = 0; i < snr_list.count; ++i)
-    {
-        const json &item = arr[i];
-        sai_deserialize_port_snr_values_item(item, snr_list.list[i]);
+        SWSS_LOG_ERROR("Error in sai_deserialize_port_snr_list: %s", e.what());
+        snr_list.count = 0;
+        snr_list.list = NULL;
     }
 }
 
