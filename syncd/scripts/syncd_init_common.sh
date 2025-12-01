@@ -517,6 +517,7 @@ config_syncd_nvidia_bluefield()
     # Read MAC addresses
     base_mac="$(echo $SYNCD_VARS | jq -r '.mac')"
     hwsku=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["hwsku"]')
+    platform=$(sonic-cfggen -d -v 'DEVICE_METADATA["localhost"]["platform"]')
     single_port=$([[ $hwsku == *"-com-dpu" ]] && echo true || echo false)
 
     eth0_mac=$(cat /sys/class/net/Ethernet0/address)
@@ -552,7 +553,12 @@ config_syncd_nvidia_bluefield()
         mkdir -p "$SDK_DUMP_PATH"
     fi
 
-    echo 11700 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    if [[ $platform == "arm64-nvda_bf-9009d3b400ccea" ]]; then
+        # 8 cores DPU, reduce hugepages to 4096
+        echo 4096 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    else
+        echo 11700 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    fi
     mkdir -p /mnt/huge
     mount -t hugetlbfs pagesize=1GB /mnt/huge
 
