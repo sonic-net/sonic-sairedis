@@ -40,8 +40,6 @@ R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [
         Counter groups those support bulk polling
     -a --enableAttrVersionCheck
         Enable attribute SAI version check when performing SAI discovery
-    -v --isVirtualSwitch
-        Is virtual switch
     -h --help
         Print out this message
 )";
@@ -55,7 +53,7 @@ TEST(CommandLineOptions, getCommandLineString)
     EXPECT_EQ(str, " EnableDiagShell=NO EnableTempView=NO DisableExitSleep=NO EnableUnittests=NO"
             " EnableConsistencyCheck=NO EnableSyncMode=NO RedisCommunicationMode=redis_async"
             " EnableSaiBulkSuport=NO StartType=cold ProfileMapFile= GlobalContext=0 ContextConfig= BreakConfig="
-            " WatchdogWarnTimeSpan=30000000 SupportingBulkCounters= EnableAttrVersionCheck=NO IsVirtualSwitch=YES");
+            " WatchdogWarnTimeSpan=30000000 SupportingBulkCounters= EnableAttrVersionCheck=NO");
 }
 
 TEST(CommandLineOptions, startTypeStringToStartType)

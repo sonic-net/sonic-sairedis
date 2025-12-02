@@ -93,8 +93,6 @@ namespace syncd
 
             int64_t m_watchdogWarnTimeSpan;
 
-            bool m_isVirtualSwitch;
-
 #ifdef SAITHRIFT
             bool m_runRPCServer;
             std::string m_portMapFile;

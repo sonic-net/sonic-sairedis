@@ -36,8 +36,6 @@ CommandLineOptions::CommandLineOptions()
 
     m_watchdogWarnTimeSpan = 30 * 1000000;
 
-    m_isVirtualSwitch = false;
-
 #ifdef SAITHRIFT
 
     m_runRPCServer = false;
@@ -73,7 +71,6 @@ std::string CommandLineOptions::getCommandLineString() const
     ss << " WatchdogWarnTimeSpan=" << m_watchdogWarnTimeSpan;
     ss << " SupportingBulkCounters=" << m_supportingBulkCounterGroups;
     ss << " EnableAttrVersionCheck=" << (m_enableAttrVersionCheck ? "YES" : "NO");
-    ss << " IsVirtualSwitch=" << (m_isVirtualSwitch ? "YES" : "NO");
 
 #ifdef SAITHRIFT
 
