@@ -15,7 +15,7 @@
 #include "VendorSaiOptions.h"
 
 #include "sairediscommon.h"
-
+#include "saivs.h"
 #include "swss/logger.h"
 #include "swss/select.h"
 #include "swss/tokenize.h"
@@ -28,6 +28,7 @@
 #include "meta/PerformanceIntervalTimer.h"
 #include "meta/Globals.h"
 
+#include "vslib/VirtualSwitchSaiInterface.h"
 #include "vslib/saivs.h"
 
 #include "config.h"
@@ -152,12 +153,7 @@ Syncd::Syncd(
                 modifyRedis);
     }
 
-#ifdef SAIVS
-    bool isVirtualSwitch = true;
-#else
-    bool isVirtualSwitch = false;
-#endif
-    
+    bool isVirtualSwitch = typeid(*vendorSai) == typeid(saivs::VirtualSwitchSaiInterface);
     m_client = std::make_shared<RedisClient>(m_dbAsic, m_contextConfig->m_zmqEnable, isVirtualSwitch);
 
     m_processor = std::make_shared<NotificationProcessor>(m_notifications, m_client, std::bind(&Syncd::syncProcessNotification, this, _1));
