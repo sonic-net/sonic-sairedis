@@ -114,9 +114,9 @@ libMdioIpcClient_la_LIBADD = -lswsscommon $(CODE_COVERAGE_LIBS)
 
 syncd_tests_SOURCES = tests.cpp
 syncd_tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-syncd_tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs
+syncd_tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs -Wl,-rpath,$(top_srcdir)/vslib/.libs
 syncd_tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/.libs -lsairedis \
-			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
+			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta $(SAILIB) -lzmq $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 TESTS = syncd_tests
 
