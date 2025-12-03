@@ -1331,49 +1331,53 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForL2mcGroup(
 {
     SWSS_LOG_ENTER();
 
-    std::shared_ptr<SaiObj> matchTmpL2McEntry;
     sai_object_id_t curGroupRid = SAI_NULL_OBJECT_ID;
-    std::string strTmpL2McEntry;
+    std::string  strTmpL2McEntry, strCurL2McEntry;
+
 
     const auto curL2McEntries = m_currentView.getObjectsByObjectType(SAI_OBJECT_TYPE_L2MC_ENTRY);
     const auto tmpL2McEntries = m_temporaryView.getObjectsByObjectType(SAI_OBJECT_TYPE_L2MC_ENTRY);
 
-    for (auto& tmpL2McEntry : tmpL2McEntries)
+    for (const auto& tmpL2McEntry : tmpL2McEntries)
     {
-        auto l2mcgroupIdAttr = tmpL2McEntry->tryGetSaiAttr(SAI_L2MC_ENTRY_ATTR_OUTPUT_GROUP_ID);
-        if (l2mcgroupIdAttr == nullptr)
-            continue;
-
-
-        if (l2mcgroupIdAttr->getOid() == temporaryObj->getVid())
+        auto groupIdAttr = tmpL2McEntry->tryGetSaiAttr(SAI_L2MC_ENTRY_ATTR_OUTPUT_GROUP_ID);
+        if (groupIdAttr != nullptr && groupIdAttr->getOid() == temporaryObj->getVid())
         {
-            matchTmpL2McEntry = tmpL2McEntry;
+            SWSS_LOG_INFO("Found matching L2MC entry in tempview with matching group OID");
+
             sai_object_meta_key_t mk = tmpL2McEntry->m_meta_key;
+            if (!exchangeTemporaryVidToCurrentVid(mk))
+            {
+                return nullptr;
+            }
 
             strTmpL2McEntry = sai_serialize_l2mc_entry(mk.objectkey.key.l2mc_entry);
-            break; 
+            SWSS_LOG_NOTICE("Temp L2MC Entry serialized: %s", strTmpL2McEntry.c_str());
+            break;
         }
     }
 
-    for (auto& curL2McEntry : curL2McEntries)
+
+    for (const auto& curL2McEntry : curL2McEntries)
     {
-        auto l2mcgroupIdAttr = curL2McEntry->tryGetSaiAttr(SAI_L2MC_ENTRY_ATTR_OUTPUT_GROUP_ID);
-        if (l2mcgroupIdAttr == nullptr)
-            continue;
-
-        sai_object_meta_key_t mk = curL2McEntry->m_meta_key;
-        std::string strCurL2McEntry = sai_serialize_l2mc_entry(mk.objectkey.key.l2mc_entry);
-
-        if (strTmpL2McEntry == strCurL2McEntry)
+        auto groupIdAttr = curL2McEntry->tryGetSaiAttr(SAI_L2MC_ENTRY_ATTR_OUTPUT_GROUP_ID);
+        if (groupIdAttr != nullptr)
         {
-            SWSS_LOG_NOTICE("Found the current entry matching temp entry");
+            // Serialize the current L2MC entry
+            sai_object_meta_key_t mk = curL2McEntry->m_meta_key;
+            strCurL2McEntry = sai_serialize_l2mc_entry(mk.objectkey.key.l2mc_entry);
+            SWSS_LOG_NOTICE("current L2MC Entry serialized: %s", strCurL2McEntry.c_str());
 
-            curGroupRid = m_currentView.m_vidToRid.at(l2mcgroupIdAttr->getOid());
-            break; 
+            if (strTmpL2McEntry == strCurL2McEntry)
+            {
+                SWSS_LOG_NOTICE("found current entry matching temp entry");
+                curGroupRid = m_currentView.m_vidToRid.at(groupIdAttr->getOid());
+                break;
+            }
         }
     }
 
-    for (auto c: candidateObjects)
+    for (const auto& c : candidateObjects)
     {
         auto candGroupRid = m_currentView.m_vidToRid.at(c.obj->getVid());
 
@@ -1384,8 +1388,8 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForL2mcGroup(
         //Check that the candidate L2MC group RID matches the retrieved L2MC group RID.
         if (candGroupRid == curGroupRid)
         {
-            SWSS_LOG_INFO("found best L2MC group match for group %s based on current entry match",
-                            temporaryObj->m_str_object_id.c_str());
+            SWSS_LOG_INFO("found best L2MC group match: %s for group %s based on current entry match",
+                            c.obj->m_str_object_id.c_str(), temporaryObj->m_str_object_id.c_str());
             return c.obj;
         }
     }
