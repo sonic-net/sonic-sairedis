@@ -610,6 +610,7 @@ namespace saivs
                 sai_object_id_t ace_oid;
                 uint32_t acl_index;
                 uint32_t ace_index;
+                uint32_t num_rules;
 
             } vpp_ace_cntr_info_t;
 
@@ -899,7 +900,8 @@ namespace saivs
             sai_status_t aclGetVppIndices(
                     _In_ sai_object_id_t ace_oid,
                     _Out_ uint32_t *acl_index,
-                    _Out_ uint32_t *ace_index);
+                    _Out_ uint32_t *ace_index,
+                    _Out_ uint32_t *num_rules);
 
             bool vpp_get_hwif_name (
                     _In_ sai_object_id_t object_id,

@@ -757,7 +757,7 @@ sai_status_t SwitchVpp::get_sorted_aces(
         p_ace->priority = 0;
         acl_priority_attr_get(p_ace->attrs_count, p_ace->attrs, &p_ace->priority);
 
-        ordered_aces.push_back({index, p_ace->priority, entry_id, false});
+        ordered_aces.push_back({index, p_ace->priority, entry_id, false, 0, 0});
         p_ace++;
         index++;
     }
@@ -869,8 +869,10 @@ sai_status_t SwitchVpp::fill_acl_rules(
 
     sai_status_t status = SAI_STATUS_SUCCESS;
     acl_tbl_entries_t *p_ace = NULL;
+    uint32_t acl_rule_index = 0;
+    uint32_t tunterm_rule_index = 0;
 
-    for (auto ace: ordered_aces) {
+    for (auto &ace: ordered_aces) {
         SWSS_LOG_INFO("Acl entry index %u priority %u", ace.index, ace.priority);
         p_ace = &aces[ace.index];
         const sai_attribute_t *attr;
@@ -878,6 +880,9 @@ sai_status_t SwitchVpp::fill_acl_rules(
         if (ace.is_tunterm) {
             // Process tunnel termination ACL rule
             vpp_tunterm_acl_rule_t tunterm_rule = {};
+
+            // Record the base index for this ACE
+            ace.vpp_rule_base_index = tunterm_rule_index;
 
             for (uint32_t i = 0; i < p_ace->attrs_count && status == SAI_STATUS_SUCCESS; i++) {
                 attr = &p_ace->attrs[i];
@@ -897,10 +902,19 @@ sai_status_t SwitchVpp::fill_acl_rules(
                 }
             }
             tunterm_acl_rules.push_back(tunterm_rule);
+            ace.num_rules = 1;
+            tunterm_rule_index++;
+
+            SWSS_LOG_INFO("Tunterm ACE recorded: base_index=%u, num_rules=%u",
+                         ace.vpp_rule_base_index, ace.num_rules);
         } else {
             // Process regular ACL rule(s)
             vpp_acl_rule_t rule = {};
             uint8_t port_proto = 0;  // Track if port-related fields were set
+
+            // Record the base index for this ACE
+            ace.vpp_rule_base_index = acl_rule_index;
+            uint32_t rules_added = 0;
 
             for (uint32_t i = 0; i < p_ace->attrs_count && status == SAI_STATUS_SUCCESS; i++) {
                 attr = &p_ace->attrs[i];
@@ -956,17 +970,26 @@ sai_status_t SwitchVpp::fill_acl_rules(
                 vpp_acl_rule_t udp_rule = rule;
                 udp_rule.proto = IPPROTO_UDP;
                 acl_rules.push_back(udp_rule);
+                rules_added++;
                 SWSS_LOG_INFO("Added UDP rule for port-based ACL entry");
 
                 // Create TCP rule
                 vpp_acl_rule_t tcp_rule = rule;
                 tcp_rule.proto = IPPROTO_TCP;
                 acl_rules.push_back(tcp_rule);
+                rules_added++;
                 SWSS_LOG_INFO("Added TCP rule for port-based ACL entry");
             } else {
                 // Add the single rule
                 acl_rules.push_back(rule);
+                rules_added++;
             }
+
+            ace.num_rules = rules_added;
+            acl_rule_index += rules_added;
+
+            SWSS_LOG_INFO("Regular ACE recorded: base_index=%u, num_rules=%u",
+                         ace.vpp_rule_base_index, ace.num_rules);
         }
     }
 
@@ -982,7 +1005,8 @@ sai_status_t SwitchVpp::fill_acl_rules(
     if (status == SAI_STATUS_SUCCESS) {
         ipv4_permit_rule.action = VPP_ACL_ACTION_API_PERMIT;
         acl_rules.push_back(ipv4_permit_rule);
-        SWSS_LOG_INFO("Added default IPv4 permit rule");
+        SWSS_LOG_INFO("Added default IPv4 permit rule at index %u", acl_rule_index);
+        acl_rule_index++;
     } else {
         SWSS_LOG_ERROR("Failed to create default IPv4 permit rule, status: %d", status);
         return SAI_STATUS_FAILURE;
@@ -994,16 +1018,17 @@ sai_status_t SwitchVpp::fill_acl_rules(
     if (status == SAI_STATUS_SUCCESS) {
         ipv6_permit_rule.action = VPP_ACL_ACTION_API_PERMIT;
         acl_rules.push_back(ipv6_permit_rule);
-        SWSS_LOG_INFO("Added default IPv6 permit rule");
+        SWSS_LOG_INFO("Added default IPv6 permit rule at index %u", acl_rule_index);
     } else {
         SWSS_LOG_ERROR("Failed to create default IPv6 permit rule, status: %d", status);
         return SAI_STATUS_FAILURE;
     }
 
-    return SAI_STATUS_SUCCESS;
-}
+    SWSS_LOG_INFO("fill_acl_rules complete: total %u acl_rules and %u tunterm_rules",
+                 (uint32_t)acl_rules.size(), (uint32_t)tunterm_acl_rules.size());
 
-void SwitchVpp::cleanup_acl_tbl_config(
+    return SAI_STATUS_SUCCESS;
+}void SwitchVpp::cleanup_acl_tbl_config(
     acl_tbl_entries_t *&aces,
     std::list<ordered_ace_list_t> &ordered_aces,
     vpp_acl_t *&acl,
@@ -1037,7 +1062,6 @@ sai_status_t SwitchVpp::acl_add_replace(
     sai_status_t        status = SAI_STATUS_SUCCESS;
     bool                acl_replace;
     uint32_t            acl_swindex;
-    uint32_t            index = 0;
     acl_tbl_entries_t  *p_ace = NULL;
     auto                tbl_sid = sai_serialize_object_id(tbl_oid);
     auto                vpp_idx_it = m_acl_swindex_map.find(tbl_oid);
@@ -1055,7 +1079,6 @@ sai_status_t SwitchVpp::acl_add_replace(
     status = vpp_acl_add_replace(acl, &acl_swindex, acl_replace);
     if (status == SAI_STATUS_SUCCESS) {
         m_acl_swindex_map[tbl_oid] = acl_swindex;
-        index = 0;
         for (auto ace: ordered_aces) {
             p_ace = &aces[ace.index];
             const sai_attribute_t *attr;
@@ -1069,10 +1092,9 @@ sai_status_t SwitchVpp::acl_add_replace(
                         m_ace_cntr_info_map.erase(ace_it);
                     }
                     // For stats we need to find vpp rule index from acl_entry_counter (ace_counter)
-                    m_ace_cntr_info_map[ace_cntr_oid] = { tbl_oid, ace.ace_oid, acl_swindex, index };
+                    m_ace_cntr_info_map[ace_cntr_oid] = { tbl_oid, ace.ace_oid, acl_swindex, ace.vpp_rule_base_index, ace.num_rules};
                 }
             }
-            index++;
         }
     } else {
         SWSS_LOG_ERROR("Vpp acl add replace failed, status: %d", status);
@@ -1322,7 +1344,8 @@ sai_status_t SwitchVpp::AclTblConfig(
 sai_status_t SwitchVpp::aclGetVppIndices(
     _In_ sai_object_id_t ace_cntr_oid,
     _Out_ uint32_t *acl_index,
-    _Out_ uint32_t *ace_index)
+    _Out_ uint32_t *vpp_rule_base_index,
+    _Out_ uint32_t *num_rules)
 {
     SWSS_LOG_ENTER();
 
@@ -1335,10 +1358,11 @@ sai_status_t SwitchVpp::aclGetVppIndices(
     auto & ace_info = vpp_ace_it->second;
 
     *acl_index = ace_info.acl_index;
-    *ace_index = ace_info.ace_index;
+    *vpp_rule_base_index = ace_info.vpp_rule_base_index;
+    *num_rules  = ace_info.num_rules;
 
-    SWSS_LOG_INFO("VS acl index %u ace index %u for acl_counter %s acl_table %s",
-                    *acl_index, *ace_index,
+    SWSS_LOG_INFO("VS acl index %u vpp_rule_base_index %u num vpp rules %u for acl_counter %s acl_table %s",
+                    *acl_index, *vpp_rule_base_index, *num_rules,
                     sai_serialize_object_id(ace_cntr_oid).c_str(),
                     sai_serialize_object_id(ace_info.tbl_oid).c_str());
 
@@ -1968,22 +1992,41 @@ sai_status_t SwitchVpp::getAclEntryStats(
     SWSS_LOG_ENTER();
 
     sai_status_t status = SAI_STATUS_FAILURE;
-    uint32_t acl_index, ace_index;
+    uint32_t acl_index, vpp_rule_base_index, num_rules;
 
-    if (aclGetVppIndices(ace_cntr_oid, &acl_index, &ace_index) == SAI_STATUS_SUCCESS) {
-        vpp_ace_stats_t ace_stats;
+    if (aclGetVppIndices(ace_cntr_oid, &acl_index, &vpp_rule_base_index, &num_rules) == SAI_STATUS_SUCCESS) {
+        uint64_t total_packets = 0;
+        uint64_t total_bytes = 0;
 
-        if (vpp_acl_ace_stats_query(acl_index, ace_index, &ace_stats) == 0) {
+        // Query stats for each VPP rule created for this ACE and sum them
+        for (uint32_t rule_offset = 0; rule_offset < num_rules; rule_offset++) {
+            vpp_ace_stats_t ace_stats;
+            uint32_t rule_index = vpp_rule_base_index + rule_offset;
 
-            for (uint32_t i = 0; i < attr_count; i++) {
-                if (attr_list[i].id == SAI_ACL_COUNTER_ATTR_PACKETS) {
-                    attr_list[i].value.u64 = ace_stats.packets;
-                } else if (attr_list[i].id == SAI_ACL_COUNTER_ATTR_BYTES) {
-                    attr_list[i].value.u64 = ace_stats.bytes;
-                }
+            if (vpp_acl_ace_stats_query(acl_index, rule_index, &ace_stats) == 0) {
+                total_packets += ace_stats.packets;
+                total_bytes += ace_stats.bytes;
+                SWSS_LOG_DEBUG("Rule offset %u (index %u): packets=%lu, bytes=%lu",
+                              rule_offset, rule_index, ace_stats.packets, ace_stats.bytes);
+            } else {
+                SWSS_LOG_WARN("Failed to query stats for rule offset %u (index %u)",
+                             rule_offset, rule_index);
+                // Continue to query remaining rules even if one fails
             }
-            status = SAI_STATUS_SUCCESS;
         }
+
+        // Set the aggregated stats for all attributes
+        for (uint32_t i = 0; i < attr_count; i++) {
+            if (attr_list[i].id == SAI_ACL_COUNTER_ATTR_PACKETS) {
+                attr_list[i].value.u64 = total_packets;
+            } else if (attr_list[i].id == SAI_ACL_COUNTER_ATTR_BYTES) {
+                attr_list[i].value.u64 = total_bytes;
+            }
+        }
+        status = SAI_STATUS_SUCCESS;
+
+        SWSS_LOG_INFO("ACE counter stats aggregated: %u rules, total_packets=%lu, total_bytes=%lu",
+                     num_rules, total_packets, total_bytes);
     }
 
     return status;
