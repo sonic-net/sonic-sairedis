@@ -123,7 +123,12 @@ TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
         for (uint32_t i = 0; i < attr_count; i++) {
             switch (attr_list[i].id) {
                 case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
-                    if (attr_list[i].value.portlanelatchstatuslist.list != nullptr) {
+                    if (attr_list[i].value.portlanelatchstatuslist.list == nullptr) {
+                        // First call: return count needed
+                        attr_list[i].value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    } else {
+                        // Second call: fill actual data
                         uint32_t count = attr_list[i].value.portlanelatchstatuslist.count;
                         for (uint32_t lane = 0; lane < count && lane < MAX_LANES_PER_PORT; lane++) {
                             attr_list[i].value.portlanelatchstatuslist.list[lane].lane = lane;
@@ -134,7 +139,12 @@ TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
                     }
                     break;
                 case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
-                    if (attr_list[i].value.portlanelatchstatuslist.list != nullptr) {
+                    if (attr_list[i].value.portlanelatchstatuslist.list == nullptr) {
+                        // First call: return count needed
+                        attr_list[i].value.portlanelatchstatuslist.count = MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    } else {
+                        // Second call: fill actual data
                         uint32_t count = attr_list[i].value.portlanelatchstatuslist.count;
                         for (uint32_t lane = 0; lane < count && lane < MAX_LANES_PER_PORT; lane++) {
                             attr_list[i].value.portlanelatchstatuslist.list[lane].lane = lane;
@@ -145,7 +155,12 @@ TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
                     }
                     break;
                 case SAI_PORT_ATTR_RX_SNR:
-                    if (attr_list[i].value.portsnrlist.list != nullptr) {
+                    if (attr_list[i].value.portsnrlist.list == nullptr) {
+                        // First call: return count needed
+                        attr_list[i].value.portsnrlist.count = MAX_LANES_PER_PORT;
+                        return SAI_STATUS_BUFFER_OVERFLOW;
+                    } else {
+                        // Second call: fill actual data
                         uint32_t count = attr_list[i].value.portsnrlist.count;
                         for (uint32_t lane = 0; lane < count && lane < MAX_LANES_PER_PORT; lane++) {
                             attr_list[i].value.portsnrlist.list[lane].lane = lane;
@@ -188,51 +203,62 @@ TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
 
     // Validate actual values against mocked data
     std::string rxSignalDetectValue;
-    bool found = countersTable.hget(expectedKey, "SAI_PORT_ATTR_RX_SIGNAL_DETECT", rxSignalDetectValue);
-    EXPECT_TRUE(found) << "SAI_PORT_ATTR_RX_SIGNAL_DETECT not found in COUNTERS_DB";
+    bool found = countersTable.hget(expectedKey, "phy_rx_signal_detect", rxSignalDetectValue);
+    EXPECT_TRUE(found) << "phy_rx_signal_detect not found in COUNTERS_DB";
 
-    EXPECT_TRUE(rxSignalDetectValue.find("lane") != std::string::npos) << "Serialized data missing lane information";
-    EXPECT_TRUE(rxSignalDetectValue.find("count") != std::string::npos) << "Serialized data missing count field";
+    std::cout << "Actual phy_rx_signal_detect value: " << rxSignalDetectValue << std::endl;
 
+    // T/F = current_status (true/false), * = changed indicator
     for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++) {
-        std::ostringstream expected_json;
-        //expected pattern : {"lane":<lane_no>,"value":"<changed>:<current_status>"}
-        expected_json << "{\"lane\":" << lane << ",\"value\":\""
-                     << "true:" << ((lane % 2 == 0) ? "true" : "false")
-                     << "\"}";
-        EXPECT_TRUE(rxSignalDetectValue.find(expected_json.str()) != std::string::npos)
-            << "Lane " << lane << " should have changed=true" 
-            << ", current_status=" << ((lane % 2 == 0) ?"true" : "false");
+        // Mock data: changed=true for all lanes, current_status=true for even lanes
+        std::string expected_value = (lane % 2 == 0) ? "T*" : "F*";
+        std::ostringstream expected_entry;
+        expected_entry << "\"" << lane << "\":\"" << expected_value << "\"";
+
+        EXPECT_TRUE(rxSignalDetectValue.find(expected_entry.str()) != std::string::npos)
+            << "Lane " << lane << " should have value=" << expected_value
+            << " (changed=true, current_status=" << ((lane % 2 == 0) ? "true" : "false") << ")"
+            << "\nActual full value: " << rxSignalDetectValue
+            << "\nLooking for: " << expected_entry.str();
     }
 
     std::string fecAlignmentValue;
-    found = countersTable.hget(expectedKey, "SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK", fecAlignmentValue);
-    EXPECT_TRUE(found) << "SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK not found in COUNTERS_DB";
+    found = countersTable.hget(expectedKey, "pcs_fec_lane_alignment_lock", fecAlignmentValue);
+    EXPECT_TRUE(found) << "pcs_fec_lane_alignment_lock not found in COUNTERS_DB";
 
+    std::cout << "Actual pcs_fec_lane_alignment_lock value: " << fecAlignmentValue << std::endl;
+
+    // Mock data: changed=true for even lanes, changed=false for odd lanes, current_status=false for all
     for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++) {
-        std::ostringstream expected_json;
-        //expected pattern : {"lane":<lane_no>,"value":"<changed>:<current_status>"}
-        expected_json << "{\"lane\":" << lane << ",\"value\":\""
-                     <<((lane % 2 == 0) ? "true" : "false") << ":false"
-                     << "\"}";
-        EXPECT_TRUE(fecAlignmentValue.find(expected_json.str()) != std::string::npos)
-            << "FEC Lane " << lane << " should have changed="<<((lane % 2 == 0) ?"true" : "false") <<" , current_status=false";
+        std::string expected_value = (lane % 2 == 0) ? "F*" : "F";
+        std::ostringstream expected_entry;
+        expected_entry << "\"" << lane << "\":\"" << expected_value << "\"";
+
+        EXPECT_TRUE(fecAlignmentValue.find(expected_entry.str()) != std::string::npos)
+            << "FEC Lane " << lane << " should have value=" << expected_value
+            << " (changed=" << ((lane % 2 == 0) ? "true" : "false") << ", current_status=false)"
+            << "\nActual full value: " << fecAlignmentValue
+            << "\nLooking for: " << expected_entry.str();
     }
 
     std::string rxSnrValue;
-    found = countersTable.hget(expectedKey, "SAI_PORT_ATTR_RX_SNR", rxSnrValue);
-    EXPECT_TRUE(found) << "SAI_PORT_ATTR_RX_SNR not found in COUNTERS_DB";
-    EXPECT_TRUE(rxSnrValue.find("lane") != std::string::npos) << "RX_SNR missing lane information";
-    EXPECT_TRUE(rxSnrValue.find("snr") != std::string::npos) << "RX_SNR missing SNR values";
-    EXPECT_TRUE(rxSnrValue.find("count") != std::string::npos) << "RX_SNR missing count field";
+    found = countersTable.hget(expectedKey, "rx_snr", rxSnrValue);
+    EXPECT_TRUE(found) << "rx_snr not found in COUNTERS_DB";
 
+    std::cout << "Actual rx_snr value: " << rxSnrValue << std::endl;
+
+    // Lane key is string, SNR value is number (no quotes around value)
     // Validate all lanes (0-7) with SNR values: 145, 150, 155, 160, 165, 170, 175, 180
     for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++) {
         uint32_t expected_snr = 145 + (lane * 5);
-        std::ostringstream expected_json;
-        expected_json << "{\"lane\":\"" << lane << "\",\"snr\":\"" << expected_snr << "\"}";
-        EXPECT_TRUE(rxSnrValue.find(expected_json.str()) != std::string::npos)
-            << "Lane " << lane << " SNR should be " << expected_snr;
+        std::ostringstream expected_entry;
+        expected_entry << "\"" << lane << "\":" << expected_snr;
+
+        EXPECT_TRUE(rxSnrValue.find(expected_entry.str()) != std::string::npos)
+            << "Lane " << lane << " SNR should be " << expected_snr
+            << " in format \"" << lane << "\":" << expected_snr
+            << "\nActual full value: " << rxSnrValue
+            << "\nLooking for: " << expected_entry.str();
     }
 
     flexCounter->removeCounter(testPortOid);
