@@ -239,6 +239,10 @@ sai_status_t transfer_attribute(
             RETURN_ON_ERROR(transfer_list(src_attr.value.s32list, dst_attr.value.s32list, countOnly));
             break;
 
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
+            transfer_primitive(src_attr.value.u16range, dst_attr.value.u16range);
+            break;
+
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             transfer_primitive(src_attr.value.u32range, dst_attr.value.u32range);
             break;
@@ -516,6 +520,26 @@ sai_status_t transfer_attribute(
 
         case SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST:
             RETURN_ON_ERROR(transfer_list(src_attr.value.portpam4eyevalues, dst_attr.value.portpam4eyevalues, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.portserdestaps, dst_attr.value.portserdestaps, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.prbs_rx_status_list, dst_attr.value.prbs_rx_status_list, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.prbs_rx_state_list, dst_attr.value.prbs_rx_state_list, countOnly));
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            transfer_primitive(src_attr.value.prbs_ber, dst_attr.value.prbs_ber);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
+            RETURN_ON_ERROR(transfer_list(src_attr.value.prbs_ber_list, dst_attr.value.prbs_ber_list, countOnly));
             break;
 
         default:
@@ -2160,6 +2184,9 @@ std::string sai_serialize_attr_value(
         case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             return sai_serialize_enum_list(attr.value.s32list, meta.enummetadata, countOnly);
 
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
+            return sai_serialize_range(attr.value.u16range);
+
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             return sai_serialize_range(attr.value.u32range);
 
@@ -3200,6 +3227,50 @@ std::string sai_serialize_poe_port_power_consumption(
     j["assigned_class_a"] = sai_serialize_number(value.assigned_class_a, false);
     j["measured_class_b"] = sai_serialize_number(value.measured_class_b, false);
     j["assigned_class_b"] = sai_serialize_number(value.assigned_class_b, false);
+
+    return j.dump();
+}
+
+std::string sai_serialize_switch_macsec_post_status(
+        _In_ const sai_switch_macsec_post_status_t switch_macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(switch_macsec_post_status, &sai_metadata_enum_sai_switch_macsec_post_status_t);
+}
+
+std::string sai_serialize_switch_macsec_post_status_ntf(
+        _In_ sai_object_id_t switch_id,
+        _In_ const sai_switch_macsec_post_status_t switch_macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["switch_id"] = sai_serialize_object_id(switch_id);
+    j["macsec_post_status"] = sai_serialize_switch_macsec_post_status(switch_macsec_post_status);
+
+    return j.dump();
+}
+
+std::string sai_serialize_macsec_post_status(
+        _In_ const sai_macsec_post_status_t macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(macsec_post_status, &sai_metadata_enum_sai_macsec_post_status_t);
+}
+
+std::string sai_serialize_macsec_post_status_ntf(
+        _In_ sai_object_id_t macsec_id,
+        _In_ const sai_macsec_post_status_t macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    json j;
+
+    j["macsec_id"] = sai_serialize_object_id(macsec_id);
+    j["macsec_post_status"] = sai_serialize_macsec_post_status(macsec_post_status);
 
     return j.dump();
 }
@@ -4400,6 +4471,9 @@ void sai_deserialize_attr_value(
 
         case SAI_ATTR_VALUE_TYPE_INT32_LIST:
             return sai_deserialize_enum_list(s, meta.enummetadata, attr.value.s32list, countOnly);
+
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
+            return sai_deserialize_range(s, attr.value.u16range);
 
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             return sai_deserialize_range(s, attr.value.u32range);
@@ -5734,6 +5808,7 @@ void sai_deserialize_free_attribute_value(
             sai_free_list(attr.value.s32list);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             break;
@@ -6341,4 +6416,50 @@ void sai_deserialize_stats_st_capability_list(
         stat_modes_position++;
         stat_polling_interval_position++;
     }
+}
+
+void sai_deserialize_switch_macsec_post_status(
+        _In_ const std::string& s,
+        _Out_ sai_switch_macsec_post_status_t& switch_macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_switch_macsec_post_status_t, (int32_t&)switch_macsec_post_status);
+}
+
+void sai_deserialize_switch_macsec_post_status_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& switch_id,
+        _Out_ sai_switch_macsec_post_status_t& switch_macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["switch_id"], switch_id);
+    sai_deserialize_switch_macsec_post_status(j["macsec_post_status"],
+                                              switch_macsec_post_status);
+}
+
+void sai_deserialize_macsec_post_status(
+        _In_ const std::string& s,
+        _Out_ sai_macsec_post_status_t& macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_macsec_post_status_t, (int32_t&)macsec_post_status);
+}
+
+void sai_deserialize_macsec_post_status_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& macsec_id,
+        _Out_ sai_macsec_post_status_t& macsec_post_status)
+{
+    SWSS_LOG_ENTER();
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["macsec_id"], macsec_id);
+    sai_deserialize_macsec_post_status(j["macsec_post_status"],
+                                       macsec_post_status);
 }
