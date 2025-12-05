@@ -109,6 +109,7 @@ stages:
     parameters:
       arch: amd64
       timeout: 90
+      pool: sonicso1ES-amd64
       sonic_slave: sonic-slave-${{ parameters.debian_version }}
       swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
       sairedis_artifact_name: sonic-sairedis-${{ parameters.debian_version }}
