@@ -7,11 +7,13 @@
 
 #include "FlexCounter.h"
 #include "VidManager.h"
+#include "SaiSwitch.h"
 
 #include "meta/sai_serialize.h"
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"
+#include "swss/schema.h"
 
 using namespace syncd;
 using namespace std;
@@ -20,6 +22,7 @@ using namespace std;
 #define MUTEX_UNLOCK _lock.unlock();
 
 static const std::string COUNTER_TYPE_PORT = "Port Counter";
+static const std::string ATTR_TYPE_PORT_ATTR = "Port Attributes";
 static const std::string COUNTER_TYPE_PORT_DEBUG = "Port Debug Counter";
 static const std::string COUNTER_TYPE_QUEUE = "Queue Counter";
 static const std::string COUNTER_TYPE_PG = "Priority Group Counter";
@@ -67,6 +70,7 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
 
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
+    {{SAI_OBJECT_TYPE_PORT, PORT_ATTR_ID_LIST}, ATTR_TYPE_PORT_ATTR},
     {{SAI_OBJECT_TYPE_PORT, PORT_DEBUG_COUNTER_ID_LIST}, COUNTER_TYPE_PORT_DEBUG},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_COUNTER_ID_LIST}, COUNTER_TYPE_QUEUE},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_ATTR_ID_LIST}, ATTR_TYPE_QUEUE},
@@ -493,6 +497,15 @@ void deserializeAttr(
 {
     SWSS_LOG_ENTER();
     sai_deserialize_acl_counter_attr(name, attr);
+}
+
+template <>
+void deserializeAttr(
+        _In_ const std::string& name,
+        _Out_ sai_port_attr_t &attr)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_port_attr(name, attr);
 }
 
 template <typename StatType>
@@ -1617,7 +1630,14 @@ protected:
     std::map<std::vector<StatType>, std::shared_ptr<BulkContextType>> m_bulkContexts;
 };
 
-template <typename AttrType>
+/**
+ * @brief Generic attribute context supporting both simple and complex attribute types
+ *
+ * @tparam AttrType     SAI attribute enum type (e.g., sai_port_attr_t, sai_queue_attr_t)
+ * @tparam AttrDataType Optional data storage type for attributes requiring memory allocation.
+ *                      Default is NoAttrData for simple attributes not needing special data storage.
+ */
+template <typename AttrType, typename AttrDataType = NoAttrData>
 class AttrContext : public CounterContext<AttrType>
 {
 public:
@@ -1720,6 +1740,288 @@ public:
             countersTable.set(sai_serialize_object_id(vid), values, "");
         }
     }
+};
+
+// Specialized context for PORT_ATTR that writes to dedicated table with port name as key
+class PortAttrContext : public AttrContext<sai_port_attr_t, PortAttributeData>
+{
+public:
+    using Base = AttrContext<sai_port_attr_t, PortAttributeData>;
+
+    typedef CounterIds<sai_port_attr_t> AttrIdsType;
+
+    static const std::unordered_map<sai_port_attr_t, std::string> m_attrAliases;
+
+    PortAttrContext(
+            _In_ const std::string &name,
+            _In_ const std::string &instance,
+            _In_ sai_object_type_t object_type,
+            _In_ sairedis::SaiInterface *vendor_sai,
+            _In_ sai_stats_mode_t &stats_mode,
+            _In_ const std::string &dbCounters):
+        Base(name, instance, object_type, vendor_sai, stats_mode),
+        m_dbCounters(dbCounters)
+    {
+        SWSS_LOG_ENTER();
+    }
+
+    bool initAttrForLaneCountQuery(sai_attribute_t& attr)
+    {
+        switch (attr.id) {
+            case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+            case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                attr.value.portlanelatchstatuslist.count = 0;
+                attr.value.portlanelatchstatuslist.list = nullptr;
+                return true;
+
+            case SAI_PORT_ATTR_RX_SNR:
+                attr.value.portsnrlist.count = 0;
+                attr.value.portsnrlist.list = nullptr;
+                return true;
+
+            default:
+                return false;  // Not a PORT attribute
+        }
+    }
+
+    uint32_t extractLaneCount(const sai_attribute_t& attr)
+    {
+        switch (attr.id) {
+            case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+            case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                return attr.value.portlanelatchstatuslist.count;
+
+            case SAI_PORT_ATTR_RX_SNR:
+                return attr.value.portsnrlist.count;
+
+            default:
+                return 0;
+        }
+    }
+
+    void updatePortLaneCountMap(const std::shared_ptr<AttrIdsType>& attrIdsPtr)
+    {
+        auto counter_ids = attrIdsPtr->counter_ids;
+        auto rid = attrIdsPtr->rid;
+
+        for (size_t i = 0; i < counter_ids.size(); i++)
+        {
+            sai_attribute_t attr;
+            attr.id = static_cast<sai_port_attr_t>(counter_ids[i]);
+
+            if (!initAttrForLaneCountQuery(attr))
+            {
+                SWSS_LOG_DEBUG("PORT_ATTR: initAttrForLaneCountQuery failed for attribute %d", attr.id);
+                continue;
+            }
+
+            // Query SAI for lane count (expecting BUFFER_OVERFLOW)
+            sai_status_t status = Base::m_vendorSai->get(
+                    Base::m_objectType,
+                    rid,
+                    1,
+                    &attr);
+            if (status != SAI_STATUS_BUFFER_OVERFLOW)
+            {
+                SWSS_LOG_ERROR("PORT_ATTR: Failed to get supported lane count for attr_id=%d Rid:0x%" PRIx64 ", status=%d",
+                        attr.id, rid, status);
+                continue;
+            }
+
+            uint32_t laneCount = extractLaneCount(attr);
+            m_portLaneCountMap[rid][static_cast<sai_port_attr_t>(attr.id)] = laneCount;
+            SWSS_LOG_DEBUG("PORT_ATTR: m_portLaneCountMap[rid:0x%" PRIx64 "][%d] = %u", rid, attr.id, laneCount);
+        }
+    }
+
+    void initAttrData(
+        sai_object_id_t rid,
+        sai_attribute_t *attr,
+        PortAttributeData* data)
+    {
+        if (!attr || !data)
+        {
+            SWSS_LOG_ERROR("PORT_ATTR: Invalid input params : attr : %p, data : %p", attr, data);
+            return;
+        }
+
+        auto outer_it = m_portLaneCountMap.find(rid);
+        if (outer_it == m_portLaneCountMap.end())
+        {
+          SWSS_LOG_ERROR("PORT_ATTR: Rid:0x%" PRIx64 " not found in m_portLaneCountMap, attr->id : %d",
+                         rid, attr->id);
+          return;
+        }
+
+        const auto &attrLaneCountMap = outer_it->second;
+        auto inner_it = attrLaneCountMap.find(static_cast<sai_port_attr_t>(attr->id));
+        if (inner_it == attrLaneCountMap.end())
+        {
+          SWSS_LOG_ERROR("PORT_ATTR: Attr Id(%d) not found in m_portLaneCountMap[Rid:0x%" PRIx64 "]",
+                         attr->id, rid);
+          return;
+        }
+
+        auto portLaneCount = inner_it->second;
+        SWSS_LOG_DEBUG("PORT_ATTR: Found m_portLaneCountMap[Rid:0x%" PRIx64 "][attr->id:%d] = %d",
+                     rid, attr->id, portLaneCount);
+
+        switch (attr->id) {
+            case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
+                data->rxSignalDetectData.resize(portLaneCount);
+                attr->value.portlanelatchstatuslist.count = portLaneCount;
+                attr->value.portlanelatchstatuslist.list = data->rxSignalDetectData.data();
+                break;
+
+            case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
+                data->fecAlignmentLockData.resize(portLaneCount);
+                attr->value.portlanelatchstatuslist.count = portLaneCount;
+                attr->value.portlanelatchstatuslist.list = data->fecAlignmentLockData.data();
+                break;
+
+            case SAI_PORT_ATTR_RX_SNR:
+                data->rxSnrData.resize(portLaneCount);
+                attr->value.portsnrlist.count = portLaneCount;
+                attr->value.portsnrlist.list = data->rxSnrData.data();
+                break;
+
+            default:
+                SWSS_LOG_ERROR("PORT_ATTR: initAttrData: Unsupported attr-id : %d", attr->id);
+                break;
+        }
+    }
+
+    void addObject(
+            _In_ sai_object_id_t vid,
+            _In_ sai_object_id_t rid,
+            _In_ const std::vector<std::string> &idStrings,
+            _In_ const std::string &per_object_stats_mode) override
+    {
+        SWSS_LOG_ENTER();
+
+        std::vector<sai_port_attr_t> attrIds;
+
+        for (const auto &str : idStrings)
+        {
+            sai_port_attr_t attr;
+            sai_deserialize_port_attr(str, attr);
+            attrIds.push_back(attr);
+        }
+
+        auto attr_ids = std::make_shared<AttrIdsType>(rid, attrIds);
+        auto it = Base::m_objectIdsMap.find(vid);
+        if (it != Base::m_objectIdsMap.end())
+        {
+            it->second->counter_ids = attrIds;
+        }
+        else
+        {
+            Base::m_objectIdsMap.emplace(vid, attr_ids);
+        }
+        updatePortLaneCountMap(attr_ids);
+    }
+
+    void removeObject(_In_ sai_object_id_t vid) override
+    {
+        SWSS_LOG_ENTER();
+
+        auto it = Base::m_objectIdsMap.find(vid);
+        if (it != Base::m_objectIdsMap.end())
+        {
+            auto lane_it = m_portLaneCountMap.find(it->second->rid);
+            if (lane_it != m_portLaneCountMap.end())
+            {
+                SWSS_LOG_DEBUG("PORT_ATTR: Removing RID 0x%" PRIx64 " from m_portLaneCountMap", it->second->rid);
+                m_portLaneCountMap.erase(lane_it);
+            }
+        }
+
+        // Call base class to remove from m_objectIdsMap
+        Base::removeObject(vid);
+    }
+
+    void collectData(_In_ swss::Table &countersTable) override
+    {
+        SWSS_LOG_ENTER();
+
+        // Create dedicated PORT_ATTR table
+        swss::DBConnector db(m_dbCounters, 0);
+        swss::RedisPipeline pipeline(&db);
+        swss::Table portAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
+
+        for (const auto &kv : Base::m_objectIdsMap)
+        {
+            const auto &vid = kv.first;
+            const auto &rid = kv.second->rid;
+            const auto &attrIds = kv.second->counter_ids;
+
+            std::vector<sai_attribute_t> attrs(attrIds.size());
+            PortAttributeData attrData;
+
+            SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
+                           attrIds.size(), vid, rid);
+
+            for (size_t i = 0; i < attrIds.size(); i++)
+            {
+                attrs[i].id = attrIds[i];
+                initAttrData(rid, &attrs[i], &attrData);
+            }
+
+            // Collect attributes from SAI
+            sai_status_t status = Base::m_vendorSai->get(
+                    Base::m_objectType,
+                    rid,
+                    static_cast<uint32_t>(attrIds.size()),
+                    attrs.data());
+
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to get port attr for VID 0x%" PRIx64 ", RID:0x%" PRIx64 ": %d",
+                        vid, rid, status);
+                continue;
+            }
+
+            std::vector<swss::FieldValueTuple> values;
+            values.reserve(attrIds.size());
+
+            for (size_t i = 0; i != attrIds.size(); i++)
+            {
+                auto meta = sai_metadata_get_attr_metadata(Base::m_objectType, attrs[i].id);
+                if (!meta)
+                {
+                    SWSS_LOG_ERROR("Failed to get metadata for port attr");
+                    continue;
+                }
+
+                std::string attr_value = sai_serialize_attr_value(*meta, attrs[i]);
+
+                auto it = m_attrAliases.find(attrIds[i]);
+                if (it == m_attrAliases.end())
+                {
+                    SWSS_LOG_ERROR("Unsupported PORT_ATTR: %d", attrIds[i]);
+                    continue;
+                }
+
+                values.emplace_back(it->second, attr_value);
+            }
+
+            // Store in PORT_ATTR table using VID as key
+            std::string vid_str = sai_serialize_object_id(vid);
+            portAttrTable.set(vid_str, values, "");
+        }
+
+        portAttrTable.flush();
+    }
+
+private:
+    std::string m_dbCounters;
+    std::map<sai_object_id_t, std::map<sai_port_attr_t, uint32_t>> m_portLaneCountMap;
+};
+
+const std::unordered_map<sai_port_attr_t, std::string> PortAttrContext::m_attrAliases = {
+    {SAI_PORT_ATTR_RX_SNR, "rx_snr"},
+    {SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK, "pcs_fec_lane_alignment_lock"},
+    {SAI_PORT_ATTR_RX_SIGNAL_DETECT, "phy_rx_signal_detect"}
 };
 
 class DashMeterCounterContext : public BaseCounterContext
@@ -2469,6 +2771,10 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     {
         return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters);
     }
+    else if (context_name == ATTR_TYPE_PORT_ATTR)
+    {
+        return std::make_shared<PortAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode, m_dbCounters);
+    }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
         return std::make_shared<AttrContext<sai_queue_attr_t>>(context_name, instance, SAI_OBJECT_TYPE_QUEUE, m_vendorSai.get(), m_statsMode);
@@ -2692,6 +2998,10 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(COUNTER_TYPE_WRED_ECN_PORT))
         {
             getCounterContext(COUNTER_TYPE_WRED_ECN_PORT)->removeObject(vid);
+        }
+        if (hasCounterContext(ATTR_TYPE_PORT_ATTR))
+        {
+            getCounterContext(ATTR_TYPE_PORT_ATTR)->removeObject(vid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_QUEUE)
