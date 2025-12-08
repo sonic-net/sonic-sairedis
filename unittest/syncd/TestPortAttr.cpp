@@ -1,6 +1,6 @@
 /**
  * @file TestPortAttr.cpp
- * @brief Unit tests for PORT_ATTR flex counter functionality
+ * @brief Unit tests for PORT_PHY_ATTR flex counter functionality
  *
  * Tests implementation according to UT Plan:
  * 1. sai_serialize_port_attr() function
@@ -24,7 +24,7 @@ using namespace sairedis;
 using namespace syncd;
 using namespace std;
 
-static const std::string ATTR_TYPE_PORT_ATTR = "Port Physical Link Attributes";
+static const std::string ATTR_TYPE_PORT_PHY_ATTR = "Port Physical Link Attributes";
 
 template <typename T>
 std::string toOid(T value)
@@ -47,7 +47,7 @@ protected:
             return 0x21000000000000;
         };
 
-        flexCounter = std::make_shared<FlexCounter>("TEST_PORT_ATTR", sai, "COUNTERS_DB");
+        flexCounter = std::make_shared<FlexCounter>("TEST_PORT_PHY_ATTR", sai, "COUNTERS_DB");
 
         // Setup test port OID
         testPortOid = 0x1000000000001;
@@ -105,7 +105,7 @@ TEST_F(TestPortAttr, DeserializePortAttr)
  * 2. FlexCounter collects the data via collectData()
  * 3. Verify collected data is properly written to COUNTERS_DB
  *
- * This test validates the complete PORT_ATTR collection workflow
+ * This test validates the complete PORT_PHY_ATTR collection workflow
  * including RX_SIGNAL_DETECT, FEC_ALIGNMENT_LOCK, and RX_SNR attributes.
  */
 TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
@@ -180,7 +180,7 @@ TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
 
     std::string attrIds = "SAI_PORT_ATTR_RX_SIGNAL_DETECT,SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,SAI_PORT_ATTR_RX_SNR";
 
-    portAttrValues.emplace_back(PORT_ATTR_ID_LIST, attrIds);
+    portAttrValues.emplace_back(PORT_PHY_ATTR_ID_LIST, attrIds);
 
     test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
 
