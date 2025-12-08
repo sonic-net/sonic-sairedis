@@ -22,7 +22,7 @@ using namespace std;
 #define MUTEX_UNLOCK _lock.unlock();
 
 static const std::string COUNTER_TYPE_PORT = "Port Counter";
-static const std::string ATTR_TYPE_PORT_ATTR = "Port Attributes";
+static const std::string ATTR_TYPE_PORT_PHY_ATTR = "Port Phy Attributes";
 static const std::string COUNTER_TYPE_PORT_DEBUG = "Port Debug Counter";
 static const std::string COUNTER_TYPE_QUEUE = "Queue Counter";
 static const std::string COUNTER_TYPE_PG = "Priority Group Counter";
@@ -70,7 +70,7 @@ const std::map<std::string, std::string> FlexCounter::m_plugIn2CounterType = {
 
 const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCounter::m_objectTypeField2CounterType = {
     {{SAI_OBJECT_TYPE_PORT, PORT_COUNTER_ID_LIST}, COUNTER_TYPE_PORT},
-    {{SAI_OBJECT_TYPE_PORT, PORT_ATTR_ID_LIST}, ATTR_TYPE_PORT_ATTR},
+    {{SAI_OBJECT_TYPE_PORT, PORT_PHY_ATTR_ID_LIST}, ATTR_TYPE_PORT_PHY_ATTR},
     {{SAI_OBJECT_TYPE_PORT, PORT_DEBUG_COUNTER_ID_LIST}, COUNTER_TYPE_PORT_DEBUG},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_COUNTER_ID_LIST}, COUNTER_TYPE_QUEUE},
     {{SAI_OBJECT_TYPE_QUEUE, QUEUE_ATTR_ID_LIST}, ATTR_TYPE_QUEUE},
@@ -1742,7 +1742,7 @@ public:
     }
 };
 
-// Specialized context for PORT_ATTR that writes to dedicated table with port name as key
+// Specialized context for PORT_PHY_ATTR that writes to dedicated table with port name as key
 class PortAttrContext : public AttrContext<sai_port_attr_t, PortAttributeData>
 {
 public:
@@ -1811,7 +1811,7 @@ public:
 
             if (!initAttrForLaneCountQuery(attr))
             {
-                SWSS_LOG_DEBUG("PORT_ATTR: initAttrForLaneCountQuery failed for attribute %d", attr.id);
+                SWSS_LOG_DEBUG("PORT_PHY_ATTR: initAttrForLaneCountQuery failed for attribute %d", attr.id);
                 continue;
             }
 
@@ -1823,14 +1823,14 @@ public:
                     &attr);
             if (status != SAI_STATUS_BUFFER_OVERFLOW)
             {
-                SWSS_LOG_ERROR("PORT_ATTR: Failed to get supported lane count for attr_id=%d Rid:0x%" PRIx64 ", status=%d",
+                SWSS_LOG_ERROR("PORT_PHY_ATTR: Failed to get supported lane count for attr_id=%d Rid:0x%" PRIx64 ", status=%d",
                         attr.id, rid, status);
                 continue;
             }
 
             uint32_t laneCount = extractLaneCount(attr);
             m_portLaneCountMap[rid][static_cast<sai_port_attr_t>(attr.id)] = laneCount;
-            SWSS_LOG_DEBUG("PORT_ATTR: m_portLaneCountMap[rid:0x%" PRIx64 "][%d] = %u", rid, attr.id, laneCount);
+            SWSS_LOG_DEBUG("PORT_PHY_ATTR: m_portLaneCountMap[rid:0x%" PRIx64 "][%d] = %u", rid, attr.id, laneCount);
         }
     }
 
@@ -1841,14 +1841,14 @@ public:
     {
         if (!attr || !data)
         {
-            SWSS_LOG_ERROR("PORT_ATTR: Invalid input params : attr : %p, data : %p", attr, data);
+            SWSS_LOG_ERROR("PORT_PHY_ATTR: Invalid input params : attr : %p, data : %p", attr, data);
             return;
         }
 
         auto outer_it = m_portLaneCountMap.find(rid);
         if (outer_it == m_portLaneCountMap.end())
         {
-          SWSS_LOG_ERROR("PORT_ATTR: Rid:0x%" PRIx64 " not found in m_portLaneCountMap, attr->id : %d",
+          SWSS_LOG_ERROR("PORT_PHY_ATTR: Rid:0x%" PRIx64 " not found in m_portLaneCountMap, attr->id : %d",
                          rid, attr->id);
           return;
         }
@@ -1857,13 +1857,13 @@ public:
         auto inner_it = attrLaneCountMap.find(static_cast<sai_port_attr_t>(attr->id));
         if (inner_it == attrLaneCountMap.end())
         {
-          SWSS_LOG_ERROR("PORT_ATTR: Attr Id(%d) not found in m_portLaneCountMap[Rid:0x%" PRIx64 "]",
+          SWSS_LOG_ERROR("PORT_PHY_ATTR: Attr Id(%d) not found in m_portLaneCountMap[Rid:0x%" PRIx64 "]",
                          attr->id, rid);
           return;
         }
 
         auto portLaneCount = inner_it->second;
-        SWSS_LOG_DEBUG("PORT_ATTR: Found m_portLaneCountMap[Rid:0x%" PRIx64 "][attr->id:%d] = %d",
+        SWSS_LOG_DEBUG("PORT_PHY_ATTR: Found m_portLaneCountMap[Rid:0x%" PRIx64 "][attr->id:%d] = %d",
                      rid, attr->id, portLaneCount);
 
         switch (attr->id) {
@@ -1886,7 +1886,7 @@ public:
                 break;
 
             default:
-                SWSS_LOG_ERROR("PORT_ATTR: initAttrData: Unsupported attr-id : %d", attr->id);
+                SWSS_LOG_ERROR("PORT_PHY_ATTR: initAttrData: Unsupported attr-id : %d", attr->id);
                 break;
         }
     }
@@ -1931,7 +1931,7 @@ public:
             auto lane_it = m_portLaneCountMap.find(it->second->rid);
             if (lane_it != m_portLaneCountMap.end())
             {
-                SWSS_LOG_DEBUG("PORT_ATTR: Removing RID 0x%" PRIx64 " from m_portLaneCountMap", it->second->rid);
+                SWSS_LOG_DEBUG("PORT_PHY_ATTR: Removing RID 0x%" PRIx64 " from m_portLaneCountMap", it->second->rid);
                 m_portLaneCountMap.erase(lane_it);
             }
         }
@@ -1944,7 +1944,7 @@ public:
     {
         SWSS_LOG_ENTER();
 
-        // Create dedicated PORT_ATTR table
+        // Create dedicated PORT_PHY_ATTR table
         swss::DBConnector db(m_dbCounters, 0);
         swss::RedisPipeline pipeline(&db);
         swss::Table portAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
@@ -1998,14 +1998,14 @@ public:
                 auto it = m_attrAliases.find(attrIds[i]);
                 if (it == m_attrAliases.end())
                 {
-                    SWSS_LOG_ERROR("Unsupported PORT_ATTR: %d", attrIds[i]);
+                    SWSS_LOG_ERROR("Unsupported PORT_PHY_ATTR: %d", attrIds[i]);
                     continue;
                 }
 
                 values.emplace_back(it->second, attr_value);
             }
 
-            // Store in PORT_ATTR table using VID as key
+            // Store in PORT_PHY_ATTR table using VID as key
             std::string vid_str = sai_serialize_object_id(vid);
             portAttrTable.set(vid_str, values, "");
         }
@@ -2771,7 +2771,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     {
         return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters);
     }
-    else if (context_name == ATTR_TYPE_PORT_ATTR)
+    else if (context_name == ATTR_TYPE_PORT_PHY_ATTR)
     {
         return std::make_shared<PortAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode, m_dbCounters);
     }
@@ -2999,9 +2999,9 @@ void FlexCounter::removeCounter(
         {
             getCounterContext(COUNTER_TYPE_WRED_ECN_PORT)->removeObject(vid);
         }
-        if (hasCounterContext(ATTR_TYPE_PORT_ATTR))
+        if (hasCounterContext(ATTR_TYPE_PORT_PHY_ATTR))
         {
-            getCounterContext(ATTR_TYPE_PORT_ATTR)->removeObject(vid);
+            getCounterContext(ATTR_TYPE_PORT_PHY_ATTR)->removeObject(vid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_QUEUE)
