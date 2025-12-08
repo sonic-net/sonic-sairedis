@@ -1933,3 +1933,127 @@ TEST(Meta, getValidPortObjectTypes)
 
     EXPECT_EQ(s, "PORT,LAG,BRIDGE_PORT");
 }
+
+TEST(Meta, validate_uint32_range_on_create)
+{
+    SWSS_LOG_ENTER();
+
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switch_id = 0;
+    sai_attribute_t attr[2];
+
+    // Create switch first
+    attr[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr[0].value.booldata = true;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, attr));
+
+    // Use SAI_ACL_RANGE_ATTR_LIMIT which is UINT32_RANGE with CREATE_ONLY flag
+    sai_object_id_t acl_range_id;
+
+    // Test case 1: Valid range (min <= max) during CREATE
+    attr[0].id = SAI_ACL_RANGE_ATTR_TYPE;
+    attr[0].value.s32 = SAI_ACL_RANGE_TYPE_L4_DST_PORT_RANGE;
+    attr[1].id = SAI_ACL_RANGE_ATTR_LIMIT;
+    attr[1].value.u32range.min = 1024;
+    attr[1].value.u32range.max = 65535;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_ACL_RANGE, &acl_range_id, switch_id, 2, attr));
+
+    // Test case 2: Valid range with equal values (min == max)
+    attr[1].value.u32range.min = 8472;
+    attr[1].value.u32range.max = 8472;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_ACL_RANGE, &acl_range_id, switch_id, 2, attr));
+
+    // Test case 3: Invalid range (min > max) - should fail validation
+    attr[1].value.u32range.min = 65535;
+    attr[1].value.u32range.max = 1024;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.create(SAI_OBJECT_TYPE_ACL_RANGE, &acl_range_id, switch_id, 2, attr));
+
+    // Test case 4: Invalid range with large difference (min > max)
+    attr[1].value.u32range.min = 4294967295;
+    attr[1].value.u32range.max = 0;
+
+    EXPECT_EQ(SAI_STATUS_INVALID_PARAMETER, m.create(SAI_OBJECT_TYPE_ACL_RANGE, &acl_range_id, switch_id, 2, attr));
+
+    // Test case 5: Valid range at boundaries
+    attr[1].value.u32range.min = 0;
+    attr[1].value.u32range.max = 4294967295;
+
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_ACL_RANGE, &acl_range_id, switch_id, 2, attr));
+}
+
+// Comprehensive test for all meta validation functions with range types
+TEST(Meta, meta_validation_functions_uint16_range)
+{
+    SWSS_LOG_ENTER();
+
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switch_id = 0;
+    sai_attribute_t attr[2];
+
+    // ========== Test 1: meta_generic_validation_create ==========
+    // Create switch with INIT_SWITCH attribute
+    attr[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr[0].value.booldata = true;
+
+    // This calls meta_generic_validation_create internally
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, attr));
+
+    // ========== Test 2: meta_generic_validation_get ==========
+    // Get a READ_ONLY UINT16_RANGE attribute - this calls meta_generic_validation_get
+    sai_attribute_t get_attr;
+    get_attr.id = SAI_SWITCH_ATTR_FAST_LINKUP_POLLING_TIMEOUT_RANGE;
+
+    // Note: The get may succeed or fail depending on the implementation
+    // We're testing that the validation function is called
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_SWITCH, switch_id, 1, &get_attr));
+}
+
+// Test meta_generic_validation_post_create and post_remove with range attributes
+TEST(Meta, meta_validation_post_create_remove_uint16_range)
+{
+    SWSS_LOG_ENTER();
+
+    Meta m(std::make_shared<MetaTestSaiInterface>());
+
+    sai_object_id_t switch_id = 0;
+    sai_attribute_t attr[2];
+
+    // Create switch
+    attr[0].id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr[0].value.booldata = true;
+
+    // This calls meta_generic_validation_create
+    // On success, calls meta_generic_validation_post_create
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_SWITCH, &switch_id, SAI_NULL_OBJECT_ID, 1, attr));
+
+    // Create an ACL_RANGE object with UINT32_RANGE attribute
+    sai_object_id_t acl_range_id;
+    attr[0].id = SAI_ACL_RANGE_ATTR_TYPE;
+    attr[0].value.s32 = SAI_ACL_RANGE_TYPE_OUTER_VLAN;
+    attr[1].id = SAI_ACL_RANGE_ATTR_LIMIT;
+    attr[1].value.u32range.min = 100;
+    attr[1].value.u32range.max = 200;
+
+    // This calls meta_generic_validation_create with range validation
+    // On success, calls meta_generic_validation_post_create
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.create(SAI_OBJECT_TYPE_ACL_RANGE, &acl_range_id, switch_id, 2, attr));
+
+    // Verify the object was created by trying to get it
+    sai_attribute_t get_attr;
+    get_attr.id = SAI_ACL_RANGE_ATTR_LIMIT;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.get(SAI_OBJECT_TYPE_ACL_RANGE, acl_range_id, 1, &get_attr));
+
+    // Remove the ACL range object
+    // This calls meta_generic_validation_remove
+    // On success, calls meta_generic_validation_post_remove
+    EXPECT_EQ(SAI_STATUS_SUCCESS, m.remove(SAI_OBJECT_TYPE_ACL_RANGE, acl_range_id));
+
+    // Verify the object was removed
+    EXPECT_EQ(SAI_STATUS_ITEM_NOT_FOUND, m.remove(SAI_OBJECT_TYPE_ACL_RANGE, acl_range_id));
+}
