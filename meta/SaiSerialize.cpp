@@ -4255,7 +4255,7 @@ void sai_deserialize_port_lane_latch_status_list(
             return;
         }
 
-        status_list.count = static_cast<uint32_t>(j.size());
+        status_list.count = j["count"];
 
         if (countOnly)
         {
@@ -4283,17 +4283,8 @@ void sai_deserialize_port_lane_latch_status_list(
             }
 
             status_list.list[idx].lane = static_cast<uint32_t>(std::stoul(it.key()));
-
-            if (value_str.back() == '*')
-            {
-                status_list.list[idx].value.changed = true;
-                status_list.list[idx].value.current_status = (value_str[0] == 'T');
-            }
-            else
-            {
-                status_list.list[idx].value.changed = false;
-                status_list.list[idx].value.current_status = (value_str[0] == 'T');
-            }
+            status_list.list[idx].value.changed = (value_str.back() == '*');
+            status_list.list[idx].value.current_status = (value_str[0] == 'T');
         }
     }
     catch (const json::parse_error& e)
