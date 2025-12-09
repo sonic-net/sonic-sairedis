@@ -1872,6 +1872,14 @@ void Meta::meta_generic_validation_post_remove(
         return;
     }
 
+    // Make sure the object exists before trying to get its attributes
+    if (!m_saiObjectCollection.objectExists(meta_key))
+    {
+        SWSS_LOG_ERROR("FATAL: object %s doesn't exist",
+                sai_serialize_object_meta_key(meta_key).c_str());
+        return;
+    }
+
     // get all attributes that was set
 
     for (auto&it: m_saiObjectCollection.getObject(meta_key)->getAttributes())
