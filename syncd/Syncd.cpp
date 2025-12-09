@@ -5899,8 +5899,11 @@ void Syncd::run()
             {
                 if (inShutdownWaitMode)
                 {
-                    // We're waiting for shutdown but received a command
-                    // Need to respond to avoid deadlock with orchagent
+                // Syncd in shutdown-wait mode must respond to INIT_VIEW with FAILURE to avoid deadlock with OA
+                // This could happen because Orchagent sends INIT_VIEW before registering shutdown callback
+                // Can't reorder due to circular dependency: need switch to register callbacks, but
+                //      need INIT_VIEW before creating switch
+
                     swss::KeyOpFieldsValuesTuple kco;
                     m_selectableChannel->pop(kco, false);
                     
