@@ -715,36 +715,6 @@ namespace saivs
                     _In_ std::list<ordered_ace_list_t> &ordered_aces);
 
             /**
-             * @brief Allocates memory for VS ACL.
-             *
-             * @param[in] n_entries Number of entries in the ACL.
-             * @param[in] tbl_oid Object ID of the table to which the ACL belongs.
-             * @param[out] acl_name Name of the allocated ACL.
-             * @param[out] acl Pointer to the allocated ACL.
-             * @return SAI_STATUS_SUCCESS on success, or an appropriate error code otherwise.
-             */
-            sai_status_t allocate_acl(
-                    _In_ size_t n_entries,
-                    _In_ sai_object_id_t tbl_oid,
-                    _Out_ char (&acl_name)[64],
-                    _Out_ vpp_acl_t *&acl);
-
-            /**
-             * @brief Allocates memory for VS tunnel termination ACL.
-             *
-             * @param[in] n_tunterm_entries Number of tunnel termination entries to allocate.
-             * @param[in] tbl_oid Object ID of the ACL table.
-             * @param[out] acl_name Name of the allocated ACL.
-             * @param[out] tunterm_acl Pointer to the allocated tunnel termination ACL.
-             * @return SAI_STATUS_SUCCESS on success, or an appropriate error code otherwise.
-             */
-            sai_status_t allocate_tunterm_acl(
-                    _In_ size_t n_tunterm_entries,
-                    _In_ sai_object_id_t tbl_oid,
-                    _Out_ char (&acl_name)[64],
-                    _Out_ vpp_tunterm_acl_t *&tunterm_acl);
-
-            /**
              * @brief Counts the total number of ACL rules and tunnel termination ACL rules, and sets is_tunterm in the ordered ACE list.
              *
              * @param[in] aces Pointer to ACEs.

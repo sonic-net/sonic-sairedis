@@ -807,58 +807,6 @@ void SwitchVpp::count_tunterm_acl_rules(
     }
 }
 
-sai_status_t SwitchVpp::allocate_acl(
-    size_t n_entries,
-    sai_object_id_t tbl_oid,
-    char (&acl_name)[64],
-    vpp_acl_t *&acl)
-{
-    SWSS_LOG_ENTER();
-
-    auto tbl_sid = sai_serialize_object_id(tbl_oid);
-
-    if(n_entries == 0) {
-        return SAI_STATUS_SUCCESS;
-    }
-    n_entries += DEFAULT_PERMIT_RULES;
-    acl = (vpp_acl_t *) calloc(1, sizeof(vpp_acl_t) + (n_entries * sizeof(vpp_acl_rule_t)));
-    if (!acl) {
-        SWSS_LOG_ERROR("Failed to allocate memory for acl.");
-        return SAI_STATUS_FAILURE;
-    }
-    snprintf(acl_name, sizeof(acl_name), "sonic_acl_%s", tbl_sid.c_str());
-    acl->acl_name = acl_name;
-    acl->count = (uint32_t) n_entries;
-
-    return SAI_STATUS_SUCCESS;
-}
-
-sai_status_t SwitchVpp::allocate_tunterm_acl(
-    size_t n_tunterm_entries,
-    sai_object_id_t tbl_oid,
-    char (&acl_name)[64],
-    vpp_tunterm_acl_t *&tunterm_acl)
-{
-    SWSS_LOG_ENTER();
-
-    auto tbl_sid = sai_serialize_object_id(tbl_oid);
-
-    if(n_tunterm_entries == 0) {
-        return SAI_STATUS_SUCCESS;
-    }
-
-    tunterm_acl = (vpp_tunterm_acl_t *) calloc(1, sizeof(vpp_tunterm_acl_t) + (n_tunterm_entries * sizeof(vpp_tunterm_acl_rule_t)));
-    if (!tunterm_acl) {
-        SWSS_LOG_ERROR("Failed to allocate memory for tunterm acl.");
-        return SAI_STATUS_FAILURE;
-    }
-    tunterm_acl->count = (uint32_t) n_tunterm_entries;
-    snprintf(acl_name, sizeof(acl_name), "tunterm_sonic_acl_%s", tbl_sid.c_str());
-    tunterm_acl->acl_name = acl_name;
-
-    return SAI_STATUS_SUCCESS;
-}
-
 sai_status_t SwitchVpp::fill_acl_rules(
     acl_tbl_entries_t *aces,
     std::list<ordered_ace_list_t> &ordered_aces,
@@ -1028,7 +976,9 @@ sai_status_t SwitchVpp::fill_acl_rules(
                  (uint32_t)acl_rules.size(), (uint32_t)tunterm_acl_rules.size());
 
     return SAI_STATUS_SUCCESS;
-}void SwitchVpp::cleanup_acl_tbl_config(
+}
+
+void SwitchVpp::cleanup_acl_tbl_config(
     acl_tbl_entries_t *&aces,
     std::list<ordered_ace_list_t> &ordered_aces,
     vpp_acl_t *&acl,

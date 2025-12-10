@@ -1250,7 +1250,7 @@ sai_status_t SwitchVpp::setLag(
 
             attr.id = SAI_LAG_ATTR_EGRESS_ACL;
             if (get(SAI_OBJECT_TYPE_LAG, lagId, 1, &attr) != SAI_STATUS_SUCCESS) {
-                aclBindUnbindPort(lagId, attr.value.oid, true, false);
+                aclBindUnbindPort(lagId, attr.value.oid, false, false);
             }
         } else {
             aclBindUnbindPort(lagId, attr_type->value.oid, false, true);
