@@ -1748,7 +1748,7 @@ int init_vpp_client()
 
     vpp_mutex_lock_init();
 
-    clib_mem_init_thread_safe(0, 128 << 20);
+    clib_mem_init(0, 128 << 20);
     vlib_main_init();
     clib_time_init (&vam->clib_time);
     /* Set up the plugin message ID allocator right now... */
