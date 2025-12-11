@@ -30,6 +30,8 @@ sai_status_t transfer_attributes(
 
 // serialize
 
+std::string sai_serialize_port_attr(_In_ const sai_port_attr_t port_attr);
+
 std::string sai_serialize_fdb_event(
         _In_ sai_fdb_event_t event);
 
@@ -436,6 +438,10 @@ void sai_deserialize_ipmc_entry_type(
         _In_ const std::string& s,
         _Out_ sai_ipmc_entry_type_t& type);
 
+void sai_deserialize_port_attr(
+      _In_ const std::string& s,
+      _Out_ sai_port_attr_t& port_attr);
+
 void sai_deserialize_l2mc_entry_type(
         _In_ const std::string& s,
         _Out_ sai_l2mc_entry_type_t& type);
@@ -737,3 +743,13 @@ void sai_deserialize_stats_st_capability_list(
         _In_ const std::string &stat_enum_str,
         _In_ const std::string &stat_modes_str,
         _In_ const std::string &minimal_polling_interval_str);
+
+// PORT_SNR_LIST serialization functions
+std::string sai_serialize_port_snr_list(
+        _In_ const sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly);
+
+void sai_deserialize_port_snr_list(
+        _In_ const std::string& s,
+        _Out_ sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly);

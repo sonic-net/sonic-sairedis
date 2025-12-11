@@ -2008,6 +2008,11 @@ void Meta::meta_generic_validation_post_remove(
                 // no special action required
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+                // no special action required
+                break;
+
             default:
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
         }
@@ -3758,6 +3763,14 @@ sai_status_t Meta::meta_generic_validation_create(
                 VALIDATION_LIST(md, value.ipprefixlist);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+                VALIDATION_LIST(md, value.portlanelatchstatuslist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+                VALIDATION_LIST(md, value.portsnrlist);
+                break;
+
             default:
 
                 META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -4376,6 +4389,14 @@ sai_status_t Meta::meta_generic_validation_set(
             VALIDATION_LIST(md, value.ipprefixlist);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+            VALIDATION_LIST(md, value.portlanelatchstatuslist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+            VALIDATION_LIST(md, value.portsnrlist);
+            break;
+
         default:
 
             META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -4763,6 +4784,14 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.ipprefixlist);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+                VALIDATION_LIST(md, value.portlanelatchstatuslist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+                VALIDATION_LIST(md, value.portsnrlist);
+                break;
+
             default:
 
                 // acl capability will is more complex since is in/out we need to check stage
@@ -5034,6 +5063,14 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
                 VALIDATION_LIST_GET(md, value.ipprefixlist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+                VALIDATION_LIST_GET(md, value.portlanelatchstatuslist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+                VALIDATION_LIST_GET(md, value.portsnrlist);
                 break;
 
             default:
