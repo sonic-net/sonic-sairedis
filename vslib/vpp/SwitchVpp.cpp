@@ -1234,6 +1234,49 @@ sai_status_t SwitchVpp::setPort(
     return set_internal(SAI_OBJECT_TYPE_PORT, sid, attr);
 }
 
+sai_status_t SwitchVpp::setLag(
+        _In_ sai_object_id_t lagId,
+        _In_ const sai_attribute_t* lagAttr)
+{
+    SWSS_LOG_ENTER();
+
+    auto attr_type = sai_metadata_get_attr_by_id(SAI_LAG_ATTR_INGRESS_ACL, 1, lagAttr);
+
+    if (attr_type != NULL)
+    {
+        if (attr_type->value.oid == SAI_NULL_OBJECT_ID) {
+            sai_attribute_t attr;
+
+            attr.id = SAI_LAG_ATTR_INGRESS_ACL;
+            if (get(SAI_OBJECT_TYPE_LAG, lagId, 1, &attr) != SAI_STATUS_SUCCESS) {
+                aclBindUnbindPort(lagId, attr.value.oid, true, false);
+            }
+        } else {
+            aclBindUnbindPort(lagId, attr_type->value.oid, true, true);
+        }
+    }
+
+    attr_type = sai_metadata_get_attr_by_id(SAI_LAG_ATTR_EGRESS_ACL, 1, lagAttr);
+
+    if (attr_type != NULL)
+    {
+        if (attr_type->value.oid == SAI_NULL_OBJECT_ID) {
+            sai_attribute_t attr;
+
+            attr.id = SAI_LAG_ATTR_EGRESS_ACL;
+            if (get(SAI_OBJECT_TYPE_LAG, lagId, 1, &attr) != SAI_STATUS_SUCCESS) {
+                aclBindUnbindPort(lagId, attr.value.oid, false, false);
+            }
+        } else {
+            aclBindUnbindPort(lagId, attr_type->value.oid, false, true);
+        }
+    }
+
+    auto sid = sai_serialize_object_id(lagId);
+
+    return set_internal(SAI_OBJECT_TYPE_LAG, sid, lagAttr);
+}
+
 sai_status_t SwitchVpp::setAclEntry(
         _In_ sai_object_id_t entry_id,
         _In_ const sai_attribute_t* attr)
@@ -1328,6 +1371,13 @@ sai_status_t SwitchVpp::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setMACsecSA(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_LAG)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setLag(objectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);

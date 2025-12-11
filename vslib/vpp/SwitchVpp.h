@@ -247,6 +247,11 @@ namespace saivs
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
+
+            virtual sai_status_t setLag(
+                    _In_ sai_object_id_t lagId,
+                    _In_ const sai_attribute_t* attr);
+
             sai_status_t vpp_create_lag(
                     _In_ sai_object_id_t lag_id,
                     _In_ uint32_t attr_count,
@@ -604,7 +609,8 @@ namespace saivs
                 sai_object_id_t tbl_oid;
                 sai_object_id_t ace_oid;
                 uint32_t acl_index;
-                uint32_t ace_index;
+                uint32_t vpp_rule_base_index;
+                uint32_t num_rules;
 
             } vpp_ace_cntr_info_t;
 
@@ -677,19 +683,21 @@ namespace saivs
                     _In_ vpp_tunterm_acl_t *&tunterm_acl);
 
             /**
-             * @brief Fills ACL and tunnel termination ACL rules based on the provided ACEs.
+             * @brief Converts ACE entries into ACL and tunnel termination ACL rules.
              *
              * @param[in] aces Pointer to ACEs.
              * @param[in] ordered_aces Reference to Ordered ACE list.
-             * @param[in] acl Pointer to the allocated VS ACL.
-             * @param[in] tunterm_acl Pointer to the allocated VS tunnel termination ACL.
+             * @param[out] acl_rules Reference to list of converted ACL rules.
+             * @param[out] tunterm_acl_rules Reference to list of converted tunnel termination ACL rules.
              * @return SAI_STATUS_SUCCESS on success, or an appropriate error code otherwise.
+             *
+             * @note If protocol is not set but port or port_range is set, creates 2 rules: one with UDP and one with TCP.
              */
             sai_status_t fill_acl_rules(
                     _In_ acl_tbl_entries_t *aces,
                     _In_ std::list<ordered_ace_list_t> &ordered_aces,
-                    _In_ vpp_acl_t *acl,
-                    _In_ vpp_tunterm_acl_t *tunterm_acl);
+                    _Out_ std::list<vpp_acl_rule_t> &acl_rules,
+                    _Out_ std::list<vpp_tunterm_acl_rule_t> &tunterm_acl_rules);
 
             /**
              * @brief Creates or replaces the provided ACL in VS.
@@ -705,36 +713,6 @@ namespace saivs
                     _In_ sai_object_id_t tbl_oid,
                     _In_ acl_tbl_entries_t *aces,
                     _In_ std::list<ordered_ace_list_t> &ordered_aces);
-
-            /**
-             * @brief Allocates memory for VS ACL.
-             *
-             * @param[in] n_entries Number of entries in the ACL.
-             * @param[in] tbl_oid Object ID of the table to which the ACL belongs.
-             * @param[out] acl_name Name of the allocated ACL.
-             * @param[out] acl Pointer to the allocated ACL.
-             * @return SAI_STATUS_SUCCESS on success, or an appropriate error code otherwise.
-             */
-            sai_status_t allocate_acl(
-                    _In_ size_t n_entries,
-                    _In_ sai_object_id_t tbl_oid,
-                    _Out_ char (&acl_name)[64],
-                    _Out_ vpp_acl_t *&acl);
-
-            /**
-             * @brief Allocates memory for VS tunnel termination ACL.
-             *
-             * @param[in] n_tunterm_entries Number of tunnel termination entries to allocate.
-             * @param[in] tbl_oid Object ID of the ACL table.
-             * @param[out] acl_name Name of the allocated ACL.
-             * @param[out] tunterm_acl Pointer to the allocated tunnel termination ACL.
-             * @return SAI_STATUS_SUCCESS on success, or an appropriate error code otherwise.
-             */
-            sai_status_t allocate_tunterm_acl(
-                    _In_ size_t n_tunterm_entries,
-                    _In_ sai_object_id_t tbl_oid,
-                    _Out_ char (&acl_name)[64],
-                    _Out_ vpp_tunterm_acl_t *&tunterm_acl);
 
             /**
              * @brief Counts the total number of ACL rules and tunnel termination ACL rules, and sets is_tunterm in the ordered ACE list.
@@ -892,7 +870,8 @@ namespace saivs
             sai_status_t aclGetVppIndices(
                     _In_ sai_object_id_t ace_oid,
                     _Out_ uint32_t *acl_index,
-                    _Out_ uint32_t *ace_index);
+                    _Out_ uint32_t *vpp_rule_base_index,
+                    _Out_ uint32_t *num_rules);
 
             bool vpp_get_hwif_name (
                     _In_ sai_object_id_t object_id,
