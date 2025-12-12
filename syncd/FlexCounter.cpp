@@ -2031,7 +2031,9 @@ private:
         sai_object_key_t object_key;
         object_key.key.meter_bucket_entry.eni_id = rid;
         object_key.key.meter_bucket_entry.switch_id = m_switchId;
-        for (uint32_t i = 0; i < m_meterBucketsPerEni; ++i) {
+        // Populate object keys for ENI meter classes: 1 - max-capable.
+        // 0 is not a valid meter class since its used to denote traffic that is not metered
+        for (uint32_t i = 1; i <= m_meterBucketsPerEni; ++i) {
             object_key.key.meter_bucket_entry.meter_class = i;
             ctx.object_keys.push_back(object_key);
         }

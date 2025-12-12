@@ -449,3 +449,37 @@ TEST_F(VirtualSwitchSaiInterfaceTest, switchDebugCounterCapabilityGet)
     );
     ASSERT_EQ(expectedDebugCounterTypes, actualDebugCounterTypes);
 }
+
+TEST_F(VirtualSwitchSaiInterfaceTest, objectTypeGetAvailability_MySidEntry)
+{
+    uint64_t count = 0;
+
+    // Test objectTypeGetAvailability for SAI_OBJECT_TYPE_MY_SID_ENTRY
+    sai_status_t status = m_vssai->objectTypeGetAvailability(
+        m_swid,
+        SAI_OBJECT_TYPE_MY_SID_ENTRY,
+        0, // attr_count
+        nullptr, // attr_list
+        &count);
+
+    EXPECT_EQ(status, SAI_STATUS_SUCCESS);
+    // The availability should be returned based on the switch state implementation
+    // For base implementation, it should return 0
+    EXPECT_EQ(count, 0);
+}
+
+TEST_F(VirtualSwitchSaiInterfaceTest, objectTypeGetAvailability_MySidEntry_InvalidSwitch)
+{
+    uint64_t count = 0;
+    sai_object_id_t invalid_switch_id = 0x123456789;
+
+    // Test with invalid switch ID - should return failure
+    sai_status_t status = m_vssai->objectTypeGetAvailability(
+        invalid_switch_id,
+        SAI_OBJECT_TYPE_MY_SID_ENTRY,
+        0,
+        nullptr,
+        &count);
+
+    EXPECT_EQ(status, SAI_STATUS_FAILURE);
+}
