@@ -39,6 +39,21 @@ SwitchVpp::SwitchVpp(
     vpp_dp_initialize();
 }
 
+SwitchVpp::~SwitchVpp()
+{
+    SWSS_LOG_ENTER();
+
+    // Signal the vpp events thread to stop
+    m_run_vpp_events_thread = false;
+
+    // Wait for the thread to finish gracefully
+    if (m_vpp_thread && m_vpp_thread->joinable()) {
+        m_vpp_thread->join();
+    }
+
+    SWSS_LOG_NOTICE("SwitchVpp destructor completed");
+}
+
 sai_status_t SwitchVpp::create_qos_queues_per_port(
         _In_ sai_object_id_t port_id)
 {

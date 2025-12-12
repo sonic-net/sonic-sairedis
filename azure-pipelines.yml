@@ -52,6 +52,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
+      pool: sonicso1ES-amd64
       sonic_slave: sonic-slave-${{ parameters.debian_version }}
       swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
       artifact_name: sonic-sairedis-${{ parameters.debian_version }}
@@ -66,6 +67,7 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
+      pool: sonicso1ES-amd64
       sonic_slave: sonic-slave-${{ parameters.debian_version }}
       swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
       artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
