@@ -629,6 +629,8 @@ config_syncd()
         config_syncd_vpp
     elif [ "$SONIC_ASIC_TYPE" == "marvell-teralynx" ]; then
         config_syncd_marvell_teralynx
+    elif [ "$SONIC_ASIC_TYPE" == "alpinevs" ]; then
+        config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
         config_syncd_soda
     elif [ "$SONIC_ASIC_TYPE" == "nvidia-bluefield" ]; then
