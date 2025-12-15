@@ -5736,7 +5736,7 @@ void Syncd::run()
     syncd_restart_type_t shutdownType = SYNCD_RESTART_TYPE_COLD;
 
     volatile bool runMainLoop = true;
-    
+
     bool inShutdownWaitMode = false;
 
     std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
@@ -5777,7 +5777,7 @@ void Syncd::run()
 
         s->addSelectable(m_restartQuery.get());
         s->addSelectable(m_selectableChannel.get());
-        
+
         inShutdownWaitMode = true;
 
         SWSS_LOG_NOTICE("starting main loop, ONLY restart query");
@@ -5906,12 +5906,12 @@ void Syncd::run()
 
                     swss::KeyOpFieldsValuesTuple kco;
                     m_selectableChannel->pop(kco, false);
-                    
+
                     auto& op = kfvOp(kco);
                     auto& key = kfvKey(kco);
-                    
+
                     SWSS_LOG_WARN("Received command while in shutdown-wait mode Command: op=%s, key=%s", op.c_str(), key.c_str());
-                    
+
                     if (op == REDIS_ASIC_STATE_COMMAND_NOTIFY)
                     {
                         SWSS_LOG_ERROR("Syncd is waiting for shutdown, cannot process %s Sending FAILURE response", key.c_str());
@@ -5942,7 +5942,7 @@ void Syncd::run()
 
             s->addSelectable(m_restartQuery.get());
             s->addSelectable(m_selectableChannel.get());
-            
+
             inShutdownWaitMode = true;
 
             if (m_commandLineOptions->m_disableExitSleep)
