@@ -678,4 +678,40 @@ TEST_F(SyncdTest, BulkRemoveTest)
 
     m_syncd->processEvent(*channel);
 }
+
+TEST_F(SyncdTest, processEventInShutdownWaitMode_NotifyCommand)
+{
+    // Test that NOTIFY commands receive FAILURE response in shutdown-wait mode
+    auto channel = std::make_shared<MockSelectableChannel>();
+
+    EXPECT_CALL(*channel, pop(testing::_, testing::_))
+        .WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+            kfvKey(kco) = SYNCD_INIT_VIEW;
+            kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_NOTIFY;
+        }));
+
+    // Verify that set() is called with FAILURE status response
+    EXPECT_CALL(*channel, set(testing::_, testing::_, REDIS_ASIC_STATE_COMMAND_NOTIFY))
+        .Times(1);
+
+    m_syncd->processEventInShutdownWaitMode(*channel);
+}
+
+TEST_F(SyncdTest, processEventInShutdownWaitMode_NonNotifyCommand)
+{
+    // Test that non-NOTIFY commands are ignored (no response sent) in shutdown-wait mode
+    auto channel = std::make_shared<MockSelectableChannel>();
+
+    EXPECT_CALL(*channel, pop(testing::_, testing::_))
+        .WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+            kfvKey(kco) = "SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000";
+            kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_CREATE;
+        }));
+
+    // Verify that set() is NOT called for non-notify commands
+    EXPECT_CALL(*channel, set(testing::_, testing::_, testing::_))
+        .Times(0);
+
+    m_syncd->processEventInShutdownWaitMode(*channel);
+}
 #endif
