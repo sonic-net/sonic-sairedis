@@ -684,6 +684,10 @@ TEST_F(SyncdTest, processEventInShutdownWaitMode_NotifyCommand)
     // Test that NOTIFY commands receive FAILURE response in shutdown-wait mode
     auto channel = std::make_shared<MockSelectableChannel>();
 
+    // Set up the mock channel as the syncd's selectable channel
+    // so sendNotifyResponse will use it
+    m_syncd->m_selectableChannel = channel;
+
     EXPECT_CALL(*channel, pop(testing::_, testing::_))
         .WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
             kfvKey(kco) = SYNCD_INIT_VIEW;
@@ -691,7 +695,8 @@ TEST_F(SyncdTest, processEventInShutdownWaitMode_NotifyCommand)
         }));
 
     // Verify that set() is called with FAILURE status response
-    EXPECT_CALL(*channel, set(testing::_, testing::_, REDIS_ASIC_STATE_COMMAND_NOTIFY))
+    std::string expectedStatus = sai_serialize_status(SAI_STATUS_FAILURE);
+    EXPECT_CALL(*channel, set(expectedStatus, testing::_, REDIS_ASIC_STATE_COMMAND_NOTIFY))
         .Times(1);
 
     m_syncd->processEventInShutdownWaitMode(*channel);
@@ -701,6 +706,9 @@ TEST_F(SyncdTest, processEventInShutdownWaitMode_NonNotifyCommand)
 {
     // Test that non-NOTIFY commands are ignored (no response sent) in shutdown-wait mode
     auto channel = std::make_shared<MockSelectableChannel>();
+
+    // Set up the mock channel as the syncd's selectable channel
+    m_syncd->m_selectableChannel = channel;
 
     EXPECT_CALL(*channel, pop(testing::_, testing::_))
         .WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
