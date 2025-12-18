@@ -553,6 +553,26 @@ sub test_brcm_acl_limit
     play "acl_limit.rec";
 }
 
+sub test_brcm_buffer_pool_zmq
+{
+    fresh_start("-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "-s", "-g", "0", "-x", "$utils::DIR/ctx_zmq.json");
+
+    # we expect no operations on asic, and all buffer pools will be matched correctly
+
+    play("-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer.rec");
+    play("-p", "$utils::DIR/vsprofile_ctx_zmq.ini", "full_buffer_second.rec",0);
+}
+
+sub test_brcm_buffer_pool_zmq_sync_flag
+{
+    fresh_start("-p", "$utils::DIR/vsprofile.ini", "-g", "0", "-z", "zmq_sync");
+
+    # we expect no operations on asic, and all buffer pools will be matched correctly
+
+    play("-p", "$utils::DIR/vsprofile.ini", "-z", "zmq_sync", "full_buffer.rec");
+    play("-p", "$utils::DIR/vsprofile.ini", "-z", "zmq_sync", "full_buffer_second.rec",0);
+}
+
 sub test_bulk_route
 {
     fresh_start;
@@ -884,6 +904,8 @@ test_no_lag_label;
 test_lag_label;
 test_bulk_set_multiple;
 test_depreacated_enums;
+test_brcm_buffer_pool_zmq_sync_flag;
+test_brcm_buffer_pool_zmq;
 test_brcm_acl_limit;
 test_sync_brcm_warm_boot_port_remove;
 test_brcm_warm_boot_port_remove;
