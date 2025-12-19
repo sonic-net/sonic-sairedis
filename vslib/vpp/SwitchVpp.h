@@ -41,7 +41,7 @@ namespace saivs
                     _In_ std::shared_ptr<SwitchConfig> config,
                     _In_ std::shared_ptr<WarmBootState> warmBootState);
 
-            virtual ~SwitchVpp() = default;
+            virtual ~SwitchVpp();
 
         protected:
 
