@@ -174,6 +174,8 @@ namespace syncd
                     _In_ sai_object_id_t bvId,
                     _In_ sai_fdb_flush_entry_type_t type);
 
+            bool isRedisDisabled() const;
+
         private:
 
             std::map<sai_object_id_t, swss::TableDump> getAsicView(
