@@ -273,6 +273,7 @@ namespace syncd
             // TODO convert to something like nonObjectIdMap
 
             StrObjectIdToSaiObjectHash m_soFdbs;
+            StrObjectIdToSaiObjectHash m_soL2mcs;
             StrObjectIdToSaiObjectHash m_soNeighbors;
             StrObjectIdToSaiObjectHash m_soRoutes;
             StrObjectIdToSaiObjectHash m_soNatEntries;
