@@ -351,6 +351,35 @@ void Syncd::processEvent(
     while (!consumer.empty());
 }
 
+void Syncd::processEventInShutdownWaitMode(
+        _In_ sairedis::SelectableChannel& consumer)
+{
+    SWSS_LOG_ENTER();
+
+    // Syncd in shutdown-wait mode must respond to INIT_VIEW with FAILURE to avoid deadlock with OA
+    // This could happen because Orchagent sends INIT_VIEW before registering shutdown callback
+    // Can't reorder due to circular dependency: need switch to register callbacks, but
+    //      need INIT_VIEW before creating switch
+
+    swss::KeyOpFieldsValuesTuple kco;
+    consumer.pop(kco, false);
+
+    auto& op = kfvOp(kco);
+    auto& key = kfvKey(kco);
+
+    SWSS_LOG_WARN("Received command while in shutdown-wait mode Command: op=%s, key=%s", op.c_str(), key.c_str());
+
+    if (op == REDIS_ASIC_STATE_COMMAND_NOTIFY)
+    {
+        SWSS_LOG_ERROR("Syncd is waiting for shutdown, cannot process %s Sending FAILURE response", key.c_str());
+        sendNotifyResponse(SAI_STATUS_FAILURE);
+    }
+    else
+    {
+        SWSS_LOG_WARN("Ignoring non-notify command in shutdown-wait mode");
+    }
+}
+
 sai_status_t Syncd::processSingleEvent(
         _In_ const swss::KeyOpFieldsValuesTuple &kco)
 {
@@ -5726,6 +5755,8 @@ void Syncd::run()
 
     volatile bool runMainLoop = true;
 
+    bool inShutdownWaitMode = false;
+
     std::shared_ptr<swss::Select> s = std::make_shared<swss::Select>();
 
     try
@@ -5763,6 +5794,9 @@ void Syncd::run()
         s = std::make_shared<swss::Select>();
 
         s->addSelectable(m_restartQuery.get());
+        s->addSelectable(m_selectableChannel.get());
+
+        inShutdownWaitMode = true;
 
         SWSS_LOG_NOTICE("starting main loop, ONLY restart query");
 
@@ -5881,7 +5915,14 @@ void Syncd::run()
             }
             else if (sel == m_selectableChannel.get())
             {
-                processEvent(*m_selectableChannel.get());
+                if (inShutdownWaitMode)
+                {
+                    processEventInShutdownWaitMode(*m_selectableChannel.get());
+                }
+                else
+                {
+                    processEvent(*m_selectableChannel.get());
+                }
             }
             else
             {
@@ -5890,13 +5931,16 @@ void Syncd::run()
         }
         catch(const std::exception &e)
         {
-            SWSS_LOG_ERROR("Runtime error: %s", e.what());
+            SWSS_LOG_ERROR("Runtime error: %s - entering shutdown-wait mode", e.what());
 
             sendShutdownRequestAfterException();
 
             s = std::make_shared<swss::Select>();
 
             s->addSelectable(m_restartQuery.get());
+            s->addSelectable(m_selectableChannel.get());
+
+            inShutdownWaitMode = true;
 
             if (m_commandLineOptions->m_disableExitSleep)
                 runMainLoop = false;
