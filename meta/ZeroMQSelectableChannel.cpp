@@ -6,27 +6,36 @@
 #include <zmq.h>
 #include <unistd.h>
 
-#define ZMQ_RESPONSE_BUFFER_SIZE (64*1024*1024)
-
 //#define ZMQ_POLL_TIMEOUT (2*60*1000)
 #define ZMQ_POLL_TIMEOUT (1000)
 
 using namespace sairedis;
 
 ZeroMQSelectableChannel::ZeroMQSelectableChannel(
-        _In_ const std::string& endpoint):
+        _In_ const std::string& endpoint,
+        _In_ long zmqResponseBufferSize):
     m_endpoint(endpoint),
     m_context(nullptr),
     m_socket(nullptr),
     m_fd(0),
     m_allowZmqPoll(false),
-    m_runThread(true)
+    m_runThread(true),
+    m_zmqResponseBufferSize(zmqResponseBufferSize)
 {
     SWSS_LOG_ENTER();
 
     SWSS_LOG_NOTICE("binding on %s", endpoint.c_str());
 
-    m_buffer.resize(ZMQ_RESPONSE_BUFFER_SIZE);
+    if (m_zmqResponseBufferSize != ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE)
+    {
+        SWSS_LOG_NOTICE("setting zmq response buffer size to %ld bytes", m_zmqResponseBufferSize);
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("using default zmq response buffer size of %ld bytes", ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
+    }
+
+    m_buffer.resize(m_zmqResponseBufferSize);
 
     m_context = zmq_ctx_new();;
 
@@ -230,17 +239,17 @@ uint64_t ZeroMQSelectableChannel::readData()
     // clear selectable event so it could be triggered in next select()
     m_selectableEvent.readData();
 
-    int rc = zmq_recv(m_socket, m_buffer.data(), ZMQ_RESPONSE_BUFFER_SIZE, 0);
+    int rc = zmq_recv(m_socket, m_buffer.data(), m_zmqResponseBufferSize, 0);
 
     if (rc < 0)
     {
         SWSS_LOG_THROW("zmq_recv failed, zmqerrno: %d", zmq_errno());
     }
 
-    if (rc >= ZMQ_RESPONSE_BUFFER_SIZE)
+    if (rc >= m_zmqResponseBufferSize)
     {
         SWSS_LOG_THROW("zmq_recv message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
-                ZMQ_RESPONSE_BUFFER_SIZE,
+                m_zmqResponseBufferSize,
                 rc);
     }
 
