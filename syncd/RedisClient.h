@@ -19,7 +19,9 @@ namespace syncd
         public:
 
             RedisClient(
-                    _In_ std::shared_ptr<swss::DBConnector> dbAsic);
+                    _In_ std::shared_ptr<swss::DBConnector> dbAsic,
+                    _In_ bool zmqEnable,
+                    _In_ bool isVirtualSwitch);
 
             virtual ~RedisClient();
 
@@ -172,6 +174,8 @@ namespace syncd
                     _In_ sai_object_id_t bvId,
                     _In_ sai_fdb_flush_entry_type_t type);
 
+            bool isRedisDisabled() const;
+
         private:
 
             std::map<sai_object_id_t, swss::TableDump> getAsicView(
@@ -194,6 +198,10 @@ namespace syncd
             std::shared_ptr<swss::DBConnector> m_dbAsic;
 
             std::string m_fdbFlushSha;
+
+            bool m_zmqEnable;
+
+            bool m_isVirtualSwitch;
 
     };
 }

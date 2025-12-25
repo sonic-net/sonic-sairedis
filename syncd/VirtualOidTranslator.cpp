@@ -366,6 +366,13 @@ sai_object_id_t VirtualOidTranslator::translateVidToRid(
 
     if (rid == SAI_NULL_OBJECT_ID)
     {
+        if (m_client->isRedisDisabled())
+        {
+            SWSS_LOG_DEBUG("Redis disabled, unable to get RID for VID %s",
+                    sai_serialize_object_id(vid).c_str());
+            return SAI_NULL_OBJECT_ID;
+        }
+
             /*
              * If user created object that is object id, then it should not
              * query attributes of this object in init view mode, because he
