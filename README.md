@@ -1,5 +1,5 @@
 *static analysis:*
-
+##
 [![Total alerts](https://img.shields.io/lgtm/alerts/g/sonic-net/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/sonic-net/sonic-sairedis/alerts/)
 [![Language grade: C/C++](https://img.shields.io/lgtm/grade/cpp/g/sonic-net/sonic-sairedis.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/sonic-net/sonic-sairedis/context:cpp)
 
