@@ -395,13 +395,9 @@ config_syncd_mlnx()
     # Ensure no redundant newlines
     sed -i '/^$/d' /tmp/sai.profile
 
-    # Start phcsync if PTP is disabled
-    # Should be read from config db when PTP feature arrives in SONiC
-    PTP_DISABLED="yes"
-
-    if [[ x"${PTP_DISABLED}" == x"yes" ]]; then
-        supervisorctl start phcsync
-    fi
+    # When PTP feature arrives in SONiC, PTP_DISABLED should be read from config db
+    # and only if true, start phcsync
+    supervisorctl start phcsync
 }
 
 config_syncd_centec()
