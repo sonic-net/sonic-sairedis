@@ -12,24 +12,33 @@
 
 using namespace sairedis;
 
-#define ZMQ_RESPONSE_BUFFER_SIZE (64*1024*1024)
 #define ZMQ_MAX_RETRY 10
 
 ZeroMQChannel::ZeroMQChannel(
         _In_ const std::string& endpoint,
         _In_ const std::string& ntfEndpoint,
-        _In_ Channel::Callback callback):
+        _In_ Channel::Callback callback,
+        _In_ long zmqResponseBufferSize):
     Channel(callback),
     m_endpoint(endpoint),
     m_ntfEndpoint(ntfEndpoint),
     m_context(nullptr),
     m_socket(nullptr),
     m_ntfContext(nullptr),
-    m_ntfSocket(nullptr)
+    m_ntfSocket(nullptr),
+    m_zmqResponseBufferSize(zmqResponseBufferSize)
 {
     SWSS_LOG_ENTER();
+    if (m_zmqResponseBufferSize != ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE)
+    {
+        SWSS_LOG_NOTICE("setting zmq response buffer size to %ld bytes", m_zmqResponseBufferSize);
+    }
+    else
+    {
+        SWSS_LOG_NOTICE("using default zmq response buffer size of %ld bytes", ZMQ_RESPONSE_DEFAULT_BUFFER_SIZE);
+    }
 
-    m_buffer.resize(ZMQ_RESPONSE_BUFFER_SIZE);
+    m_buffer.resize(m_zmqResponseBufferSize);
 
     // configure ZMQ for main communication
 
@@ -129,14 +138,14 @@ void ZeroMQChannel::notificationThreadFunction()
 
     std::vector<uint8_t> buffer;
 
-    buffer.resize(ZMQ_RESPONSE_BUFFER_SIZE);
+    buffer.resize(m_zmqResponseBufferSize);
 
     while (m_runNotificationThread)
     {
         // NOTE: this entire loop internal could be encapsulated into separate class
         // which will inherit from Selectable class, and name this as ntf receiver
 
-        int rc = zmq_recv(m_ntfSocket, buffer.data(), ZMQ_RESPONSE_BUFFER_SIZE, 0);
+        int rc = zmq_recv(m_ntfSocket, buffer.data(), m_zmqResponseBufferSize, 0);
 
         if (!m_runNotificationThread)
             break;
@@ -156,10 +165,10 @@ void ZeroMQChannel::notificationThreadFunction()
             continue;
         }
 
-        if (rc >= ZMQ_RESPONSE_BUFFER_SIZE)
+        if (rc >= m_zmqResponseBufferSize)
         {
             SWSS_LOG_WARN("zmq_recv message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
-                    ZMQ_RESPONSE_BUFFER_SIZE,
+                    m_zmqResponseBufferSize,
                     rc);
 
             continue;
@@ -291,7 +300,7 @@ sai_status_t ZeroMQChannel::wait(
 
     for (int i = 0; true ; ++i)
     {
-        rc = zmq_recv(m_socket, m_buffer.data(), ZMQ_RESPONSE_BUFFER_SIZE, 0);
+        rc = zmq_recv(m_socket, m_buffer.data(), m_zmqResponseBufferSize, 0);
 
         if (rc < 0 && zmq_errno() == EINTR && i < ZMQ_MAX_RETRY)
         {
@@ -301,10 +310,10 @@ sai_status_t ZeroMQChannel::wait(
         {
             SWSS_LOG_THROW("zmq_recv failed, zmqerrno: %d", zmq_errno());
         }
-        if (rc >= ZMQ_RESPONSE_BUFFER_SIZE)
+        if (rc >= m_zmqResponseBufferSize)
         {
             SWSS_LOG_THROW("zmq_recv message was truncated (over %d bytes, received %d), increase buffer size, message DROPPED",
-                    ZMQ_RESPONSE_BUFFER_SIZE,
+                    m_zmqResponseBufferSize,
                     rc);
         }
         break;
