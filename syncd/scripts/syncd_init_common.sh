@@ -395,8 +395,8 @@ config_syncd_mlnx()
     # Ensure no redundant newlines
     sed -i '/^$/d' /tmp/sai.profile
 
-    # When PTP feature arrives in SONiC, PTP_DISABLED should be read from config db
-    # and only if true, start phcsync
+    # As long as sonic does not support PTP which can be enabled/disabled, Nvidia platforms enables
+    # phcsync for all systems. If HW does not support it, it will do nothing.
     supervisorctl start phcsync
 }
 
