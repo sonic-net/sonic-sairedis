@@ -20,12 +20,8 @@ using namespace syncd;
 #define COLDVIDS                    "COLDVIDS"
 
 RedisClient::RedisClient(
-        _In_ std::shared_ptr<swss::DBConnector> dbAsic,
-        _In_ bool zmqEnable,
-        _In_ bool isVirtualSwitch):
-    m_dbAsic(dbAsic),
-    m_zmqEnable(zmqEnable),
-    m_isVirtualSwitch(isVirtualSwitch)
+        _In_ std::shared_ptr<swss::DBConnector> dbAsic):
+    m_dbAsic(dbAsic)
 {
     SWSS_LOG_ENTER();
 
@@ -41,21 +37,10 @@ RedisClient::~RedisClient()
     // empty
 }
 
-bool RedisClient::isRedisDisabled() const
-{
-    SWSS_LOG_ENTER();
-
-    return m_zmqEnable && !m_isVirtualSwitch;
-}
-
 std::string RedisClient::getRedisLanesKey(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return "";
-    }
 
     /*
      * Each switch will have it's own lanes: LANES:oid:0xYYYYYYYY.
@@ -87,10 +72,6 @@ void RedisClient::clearLaneMap(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     auto key = getRedisLanesKey(switchVid);
 
     m_dbAsic->del(key);
@@ -100,10 +81,6 @@ std::unordered_map<sai_uint32_t, sai_object_id_t> RedisClient::getLaneMap(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return {};
-    }
 
     auto key = getRedisLanesKey(switchVid);
 
@@ -137,10 +114,6 @@ void RedisClient::saveLaneMap(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     clearLaneMap(switchVid);
 
     for (auto const &it: map)
@@ -161,10 +134,6 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getObjectMap(
         _In_ const std::string &key) const
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return {};
-    }
 
     auto hash = m_dbAsic->hgetall(key);
 
@@ -193,10 +162,6 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getVidToRidMap
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return {};
-    }
-
     auto map = getObjectMap(VIDTORID);
 
     std::unordered_map<sai_object_id_t, sai_object_id_t> filtered;
@@ -219,10 +184,6 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getRidToVidMap
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return {};
-    }
-
     auto map = getObjectMap(RIDTOVID);
 
     std::unordered_map<sai_object_id_t, sai_object_id_t> filtered;
@@ -244,20 +205,12 @@ std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getVidToRidMap
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return {};
-    }
-
     return getObjectMap(VIDTORID);
 }
 
 std::unordered_map<sai_object_id_t, sai_object_id_t> RedisClient::getRidToVidMap() const
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return {};
-    }
 
     return getObjectMap(RIDTOVID);
 }
@@ -266,10 +219,6 @@ void RedisClient::setDummyAsicStateObject(
         _In_ sai_object_id_t objectVid)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     sai_object_type_t objectType = VidManager::objectTypeQuery(objectVid);
 
@@ -287,10 +236,6 @@ void RedisClient::setDummyAsicStateObjects(
         _In_ const sai_object_id_t* objectVids)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     swss::RedisPipeline pipe(m_dbAsic.get(), count);
 
@@ -316,10 +261,6 @@ std::string RedisClient::getRedisColdVidsKey(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return "";
-    }
 
     /*
      * Each switch will have it's own cold vids: COLDVIDS:oid:0xYYYYYYYY.
@@ -351,10 +292,6 @@ void RedisClient::saveColdBootDiscoveredVids(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     auto key = getRedisColdVidsKey(switchVid);
 
     for (auto vid: coldVids)
@@ -373,10 +310,6 @@ std::string RedisClient::getRedisHiddenKey(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return "";
-    }
 
     /*
      * Each switch will have it's own hidden: HIDDEN:oid:0xYYYYYYYY.
@@ -408,10 +341,6 @@ std::shared_ptr<std::string> RedisClient::getSwitchHiddenAttribute(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return nullptr;
-    }
-
     auto key = getRedisHiddenKey(switchVid);
 
     return m_dbAsic->hget(key, attrIdName);
@@ -424,10 +353,6 @@ void RedisClient::saveSwitchHiddenAttribute(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     auto key = getRedisHiddenKey(switchVid);
 
     std::string strRid = sai_serialize_object_id(objectRid);
@@ -439,10 +364,6 @@ std::set<sai_object_id_t> RedisClient::getColdVids(
         _In_ sai_object_id_t switchVid)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return {};
-    }
 
     auto key = getRedisColdVidsKey(switchVid);
 
@@ -486,10 +407,6 @@ void RedisClient::setPortLanes(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     auto key = getRedisLanesKey(switchVid);
 
     for (uint32_t lane: lanes)
@@ -505,10 +422,6 @@ size_t RedisClient::getAsicObjectsSize(
         _In_ sai_object_id_t switchVid) const
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return 0;
-    }
 
     // NOTE: this goes over all objects, and if we have N switches then it will
     // go N times on every switch and it can be slow, we need to find better
@@ -545,10 +458,6 @@ int RedisClient::removePortFromLanesMap(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return 0;
-    }
-
     // key - lane number, value - port RID
     auto map = getLaneMap(switchVid);
 
@@ -576,10 +485,6 @@ void RedisClient::removeAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     sai_object_type_t ot = VidManager::objectTypeQuery(objectVid);
 
     auto strVid = sai_serialize_object_id(objectVid);
@@ -596,10 +501,6 @@ void RedisClient::removeAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
     m_dbAsic->del(key);
@@ -609,10 +510,6 @@ void RedisClient::removeTempAsicObject(
         _In_ const sai_object_meta_key_t& metaKey)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
@@ -640,10 +537,6 @@ void RedisClient::removeTempAsicObjects(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     std::vector<std::string> prefixKeys;
 
     // we need to rewrite keys to add table prefix
@@ -662,10 +555,6 @@ void RedisClient::setAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
     m_dbAsic->hset(key, attr, value);
@@ -678,10 +567,6 @@ void RedisClient::setTempAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
     m_dbAsic->hset(key, attr, value);
@@ -692,10 +577,6 @@ void RedisClient::createAsicObject(
         _In_ const std::vector<swss::FieldValueTuple>& attrs)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
@@ -717,10 +598,6 @@ void RedisClient::createTempAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     std::string key = (TEMP_PREFIX ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
 
     if (attrs.size() == 0)
@@ -739,10 +616,6 @@ void RedisClient::createAsicObjects(
         _In_ const std::unordered_map<std::string, std::vector<swss::FieldValueTuple>>& multiHash)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> hash;
 
@@ -765,10 +638,6 @@ void RedisClient::createTempAsicObjects(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> hash;
 
     // we need to rewrite hash to add table prefix
@@ -790,10 +659,6 @@ void RedisClient::setVidAndRidMap(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     m_dbAsic->del(VIDTORID);
     m_dbAsic->del(RIDTOVID);
 
@@ -811,20 +676,12 @@ std::vector<std::string> RedisClient::getAsicStateKeys() const
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return {};
-    }
-
     return m_dbAsic->keys(ASIC_STATE_TABLE ":*");
 }
 
 std::vector<std::string> RedisClient::getAsicStateSwitchesKeys() const
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return {};
-    }
 
     return m_dbAsic->keys(ASIC_STATE_TABLE ":SAI_OBJECT_TYPE_SWITCH:*");
 }
@@ -833,10 +690,6 @@ void RedisClient::removeColdVid(
         _In_ sai_object_id_t vid)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     auto strVid = sai_serialize_object_id(vid);
 
@@ -849,10 +702,6 @@ std::unordered_map<std::string, std::string> RedisClient::getAttributesFromAsicK
         _In_ const std::string& key) const
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return {};
-    }
 
     std::unordered_map<std::string, std::string> map;
     m_dbAsic->hgetall(key, std::inserter(map, map.end()));
@@ -874,10 +723,6 @@ void RedisClient::removeVidAndRid(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     auto strVid = sai_serialize_object_id(vid);
     auto strRid = sai_serialize_object_id(rid);
 
@@ -890,10 +735,6 @@ void RedisClient::insertVidAndRid(
         _In_ sai_object_id_t rid)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     auto strVid = sai_serialize_object_id(vid);
     auto strRid = sai_serialize_object_id(rid);
@@ -908,10 +749,6 @@ void RedisClient::insertVidsAndRids(
         _In_ const sai_object_id_t* rids)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     swss::RedisPipeline pipe(m_dbAsic.get(), count * 2);
 
@@ -941,10 +778,6 @@ sai_object_id_t RedisClient::getVidForRid(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return SAI_NULL_OBJECT_ID;
-    }
-
     auto strRid = sai_serialize_object_id(rid);
 
     auto pvid = m_dbAsic->hget(RIDTOVID, strRid);
@@ -970,10 +803,6 @@ void RedisClient::getVidsForRids(
         _Out_ sai_object_id_t* vids)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     swss::RedisCommand hmget;
 
@@ -1028,10 +857,6 @@ sai_object_id_t RedisClient::getRidForVid(
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return SAI_NULL_OBJECT_ID;
-    }
-
     auto strVid = sai_serialize_object_id(vid);
 
     auto prid = m_dbAsic->hget(VIDTORID, strVid);
@@ -1055,10 +880,6 @@ void RedisClient::removeAsicStateTable()
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return;
-    }
-
     const auto &asicStateKeys = m_dbAsic->keys(ASIC_STATE_TABLE ":*");
 
     for (const auto &key: asicStateKeys)
@@ -1070,10 +891,6 @@ void RedisClient::removeAsicStateTable()
 void RedisClient::removeTempAsicStateTable()
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     const auto &tempAsicStateKeys = m_dbAsic->keys(TEMP_PREFIX ASIC_STATE_TABLE ":*");
 
@@ -1087,20 +904,12 @@ std::map<sai_object_id_t, swss::TableDump> RedisClient::getAsicView()
 {
     SWSS_LOG_ENTER();
 
-    if (isRedisDisabled()){
-        return {};
-    }
-
     return getAsicView(ASIC_STATE_TABLE);
 }
 
 std::map<sai_object_id_t, swss::TableDump> RedisClient::getTempAsicView()
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return {};
-    }
 
     return getAsicView(TEMP_PREFIX ASIC_STATE_TABLE);
 }
@@ -1109,10 +918,6 @@ std::map<sai_object_id_t, swss::TableDump> RedisClient::getAsicView(
         _In_ const std::string &tableName)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return {};
-    }
 
     SWSS_LOG_TIMER("get asic view from %s", tableName.c_str());
 
@@ -1154,10 +959,6 @@ void RedisClient::processFlushEvent(
         _In_ sai_fdb_flush_entry_type_t type)
 {
     SWSS_LOG_ENTER();
-
-    if (isRedisDisabled()){
-        return;
-    }
 
     // TODO this must be per switch if we will have multiple switches, needs to be filtered by switch ID also
 

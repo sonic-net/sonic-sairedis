@@ -4,6 +4,7 @@
 #include "VidManager.h"
 #include "GlobalSwitchId.h"
 #include "RedisClient.h"
+#include "DisabledRedisClient.h"
 
 #include "meta/sai_serialize.h"
 #include "swss/logger.h"
@@ -23,7 +24,7 @@ using namespace syncd;
 SaiSwitch::SaiSwitch(
         _In_ sai_object_id_t switch_vid,
         _In_ sai_object_id_t switch_rid,
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<BaseRedisClient> client,
         _In_ std::shared_ptr<VirtualOidTranslator> translator,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ bool warmBoot):
@@ -1152,7 +1153,7 @@ void SaiSwitch::postPortRemove(
 
         if (vid == SAI_NULL_OBJECT_ID)
         {
-            if (m_client->isRedisDisabled())
+            if (dynamic_cast<DisabledRedisClient*>(m_client.get()) != nullptr)
             {
                 SWSS_LOG_DEBUG("Redis disabled, skipping rid %s removal from RIDTOVID",
                         sai_serialize_object_id(rid).c_str());
@@ -1177,7 +1178,7 @@ void SaiSwitch::postPortRemove(
             removed,
             sai_serialize_object_id(portRid).c_str());
 
-    if (removed == 0 && !m_client->isRedisDisabled())
+    if (removed == 0 && dynamic_cast<DisabledRedisClient*>(m_client.get()) == nullptr)
     {
         SWSS_LOG_THROW("NO LANES found in redis lane map for given port RID %s",
                 sai_serialize_object_id(portRid).c_str());

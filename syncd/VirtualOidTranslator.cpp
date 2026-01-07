@@ -1,6 +1,7 @@
 #include "VirtualOidTranslator.h"
 #include "VirtualObjectIdManager.h"
 #include "RedisClient.h"
+#include "DisabledRedisClient.h"
 
 #include "swss/logger.h"
 #include "meta/sai_serialize.h"
@@ -10,7 +11,7 @@
 using namespace syncd;
 
 VirtualOidTranslator::VirtualOidTranslator(
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<BaseRedisClient> client,
         _In_ std::shared_ptr<sairedis::VirtualObjectIdManager> virtualObjectIdManager,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai):
     m_virtualObjectIdManager(virtualObjectIdManager),
@@ -366,7 +367,7 @@ sai_object_id_t VirtualOidTranslator::translateVidToRid(
 
     if (rid == SAI_NULL_OBJECT_ID)
     {
-        if (m_client->isRedisDisabled())
+        if (dynamic_cast<DisabledRedisClient*>(m_client.get()) != nullptr)
         {
             SWSS_LOG_DEBUG("Redis disabled, unable to get RID for VID %s",
                     sai_serialize_object_id(vid).c_str());

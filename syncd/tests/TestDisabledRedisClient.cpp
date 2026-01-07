@@ -3,21 +3,22 @@
 
 #include <swss/dbconnector.h>
 
-#include "RedisClient.h"
+#include "DisabledRedisClient.h"
+#include "BaseRedisClient.h"
 
 using namespace syncd;
 
-class RedisClientDisabledTest : public ::testing::Test
+class DisabledRedisClientTest : public ::testing::Test
 {
 public:
-    RedisClientDisabledTest() = default;
-    virtual ~RedisClientDisabledTest() = default;
+    DisabledRedisClientTest() = default;
+    virtual ~DisabledRedisClientTest() = default;
 
 public:
     virtual void SetUp() override
     {
         m_dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0, true);
-        m_redisClient = std::make_shared<RedisClient>(m_dbAsic, true, false);
+        m_redisClient = std::make_shared<DisabledRedisClient>();
     }
 
     virtual void TearDown() override
@@ -28,57 +29,57 @@ public:
 
 protected:
     std::shared_ptr<swss::DBConnector> m_dbAsic;
-    std::shared_ptr<RedisClient> m_redisClient;
+    std::shared_ptr<BaseRedisClient> m_redisClient;
 };
 
-TEST_F(RedisClientDisabledTest, getLaneMapReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getLaneMapReturnsEmpty)
 {
     sai_object_id_t switchVid = 0x21000000000000;
     auto result = m_redisClient->getLaneMap(switchVid);
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getVidToRidMapWithSwitchVidReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getVidToRidMapWithSwitchVidReturnsEmpty)
 {
     sai_object_id_t switchVid = 0x21000000000000;
     auto result = m_redisClient->getVidToRidMap(switchVid);
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getRidToVidMapWithSwitchVidReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getRidToVidMapWithSwitchVidReturnsEmpty)
 {
     sai_object_id_t switchVid = 0x21000000000000;
     auto result = m_redisClient->getRidToVidMap(switchVid);
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getVidToRidMapReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getVidToRidMapReturnsEmpty)
 {
     auto result = m_redisClient->getVidToRidMap();
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getRidToVidMapReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getRidToVidMapReturnsEmpty)
 {
     auto result = m_redisClient->getRidToVidMap();
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getColdVidsReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getColdVidsReturnsEmpty)
 {
     sai_object_id_t switchVid = 0x21000000000000;
     auto result = m_redisClient->getColdVids(switchVid);
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getAsicObjectsSizeReturnsZero)
+TEST_F(DisabledRedisClientTest, getAsicObjectsSizeReturnsZero)
 {
     sai_object_id_t switchVid = 0x21000000000000;
     auto result = m_redisClient->getAsicObjectsSize(switchVid);
     EXPECT_EQ(result, 0);
 }
 
-TEST_F(RedisClientDisabledTest, removePortFromLanesMapReturnsZero)
+TEST_F(DisabledRedisClientTest, removePortFromLanesMapReturnsZero)
 {
     sai_object_id_t switchVid = 0x21000000000000;
     sai_object_id_t portRid = 0x10000000000001;
@@ -86,58 +87,58 @@ TEST_F(RedisClientDisabledTest, removePortFromLanesMapReturnsZero)
     EXPECT_EQ(result, 0);
 }
 
-TEST_F(RedisClientDisabledTest, getAsicStateKeysReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getAsicStateKeysReturnsEmpty)
 {
     auto result = m_redisClient->getAsicStateKeys();
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getAsicStateSwitchesKeysReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getAsicStateSwitchesKeysReturnsEmpty)
 {
     auto result = m_redisClient->getAsicStateSwitchesKeys();
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getAttributesFromAsicKeyReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getAttributesFromAsicKeyReturnsEmpty)
 {
     auto result = m_redisClient->getAttributesFromAsicKey("somekey");
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getVidForRidReturnsNullObjectId)
+TEST_F(DisabledRedisClientTest, getVidForRidReturnsNullObjectId)
 {
     sai_object_id_t rid = 0x10000000000001;
     auto result = m_redisClient->getVidForRid(rid);
     EXPECT_EQ(result, SAI_NULL_OBJECT_ID);
 }
 
-TEST_F(RedisClientDisabledTest, getRidForVidReturnsNullObjectId)
+TEST_F(DisabledRedisClientTest, getRidForVidReturnsNullObjectId)
 {
     sai_object_id_t vid = 0x21000000000001;
     auto result = m_redisClient->getRidForVid(vid);
     EXPECT_EQ(result, SAI_NULL_OBJECT_ID);
 }
 
-TEST_F(RedisClientDisabledTest, getAsicViewReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getAsicViewReturnsEmpty)
 {
     auto result = m_redisClient->getAsicView();
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getTempAsicViewReturnsEmpty)
+TEST_F(DisabledRedisClientTest, getTempAsicViewReturnsEmpty)
 {
     auto result = m_redisClient->getTempAsicView();
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(RedisClientDisabledTest, getSwitchHiddenAttributeReturnsNullptr)
+TEST_F(DisabledRedisClientTest, getSwitchHiddenAttributeReturnsNullptr)
 {
     sai_object_id_t switchVid = 0x21000000000000;
     auto result = m_redisClient->getSwitchHiddenAttribute(switchVid, "someAttr");
     EXPECT_EQ(result, nullptr);
 }
 
-TEST_F(RedisClientDisabledTest, voidMethodsDoNotThrow)
+TEST_F(DisabledRedisClientTest, voidMethodsDoNotThrow)
 {
     sai_object_id_t switchVid = 0x21000000000000;
     sai_object_id_t vid = 0x21000000000001;
