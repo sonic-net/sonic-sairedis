@@ -154,7 +154,7 @@ Syncd::Syncd(
     }
 
     bool isVirtualSwitch = m_profileMap.find(SAI_KEY_VS_SWITCH_TYPE) != m_profileMap.end();
-    
+
     if (m_contextConfig->m_zmqEnable && !isVirtualSwitch)
     {
         m_client = std::make_shared<DisabledRedisClient>();
