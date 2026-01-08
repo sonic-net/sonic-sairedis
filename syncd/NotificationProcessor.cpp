@@ -1,5 +1,5 @@
 #include "NotificationProcessor.h"
-#include "RedisClient.h"
+#include "BaseRedisClient.h"
 
 #include "sairediscommon.h"
 
@@ -16,7 +16,7 @@ using namespace saimeta;
 
 NotificationProcessor::NotificationProcessor(
         _In_ std::shared_ptr<NotificationProducerBase> producer,
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<BaseRedisClient> client,
         _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer):
     m_synchronizer(synchronizer),
     m_client(client),

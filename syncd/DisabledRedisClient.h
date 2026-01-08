@@ -2,24 +2,15 @@
 
 #include "BaseRedisClient.h"
 
-#include "swss/dbconnector.h"
-
-#include <string>
-#include <unordered_map>
-#include <set>
-#include <memory>
-#include <vector>
-
 namespace syncd
 {
-    class RedisClient: public BaseRedisClient
+    class DisabledRedisClient: public BaseRedisClient
     {
         public:
 
-            RedisClient(
-                    _In_ std::shared_ptr<swss::DBConnector> dbAsic);
+            DisabledRedisClient() = default;
 
-            virtual ~RedisClient();
+            virtual ~DisabledRedisClient() = default;
 
         public:
 
@@ -169,28 +160,6 @@ namespace syncd
                     _In_ sai_object_id_t portVid,
                     _In_ sai_object_id_t bvId,
                     _In_ sai_fdb_flush_entry_type_t type) override;
-
-        private:
-
-            std::map<sai_object_id_t, swss::TableDump> getAsicView(
-                    _In_ const std::string &tableName);
-
-            std::string getRedisLanesKey(
-                    _In_ sai_object_id_t switchVid) const;
-
-            std::string getRedisColdVidsKey(
-                    _In_ sai_object_id_t switchVid) const;
-
-            std::string getRedisHiddenKey(
-                    _In_ sai_object_id_t switchVid) const;
-
-            std::unordered_map<sai_object_id_t, sai_object_id_t> getObjectMap(
-                    _In_ const std::string& key) const;
-
-        private:
-
-            std::shared_ptr<swss::DBConnector> m_dbAsic;
-
-            std::string m_fdbFlushSha;
     };
 }
+
