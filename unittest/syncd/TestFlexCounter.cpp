@@ -3,6 +3,7 @@
 #include "MockableSaiInterface.h"
 #include "MockHelper.h"
 #include "VirtualObjectIdManager.h"
+#include "VidManager.h"
 #include "NumberOidIndexGenerator.h"
 #include <string>
 #include <gtest/gtest.h>
@@ -1931,9 +1932,10 @@ TEST(FlexCounter, addRemoveDashMeterCounter)
     auto counterVerifyFunc = [] (swss::Table &countersTable, sai_object_id_t eni_id, const std::vector<std::string>& counterIdNames, const dash_meter_expected_val_t& expectedValues)
     {
         std::string value;
+        auto switchVid = VidManager::switchIdQuery(eni_id);
         for (uint32_t i = 0; i < (expectedValues.size()/counterIdNames.size()); i++)
         {
-            auto entry_key = sai_meter_bucket_entry_t {.switch_id = 0, .eni_id = eni_id,
+            auto entry_key = sai_meter_bucket_entry_t {.switch_id = switchVid, .eni_id = eni_id,
                                                        .meter_class = (i*100) + 1};
             auto key = sai_serialize_meter_bucket_entry(entry_key);
             for (size_t j = 0; j < 2; ++j) {
