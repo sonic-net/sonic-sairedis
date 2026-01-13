@@ -688,11 +688,22 @@ TEST_F(SyncdTest, processEventInShutdownWaitMode_NotifyCommand)
     // so sendNotifyResponse will use it
     m_syncd->m_selectableChannel = channel;
 
+    int popCallCount = 0;
+    EXPECT_CALL(*channel, empty())
+        .WillRepeatedly([&popCallCount]() {
+            return popCallCount > 0;
+        });
+
     EXPECT_CALL(*channel, pop(testing::_, testing::_))
-        .WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
-            kfvKey(kco) = SYNCD_INIT_VIEW;
-            kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_NOTIFY;
-        }));
+        .WillOnce(testing::DoAll(
+            testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+                kfvKey(kco) = SYNCD_INIT_VIEW;
+                kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_NOTIFY;
+            }),
+            testing::Invoke([&popCallCount](swss::KeyOpFieldsValuesTuple&, bool) {
+                popCallCount++;
+            })
+        ));
 
     // Verify that set() is called with FAILURE status response
     std::string expectedStatus = sai_serialize_status(SAI_STATUS_FAILURE);
@@ -710,11 +721,22 @@ TEST_F(SyncdTest, processEventInShutdownWaitMode_NonNotifyCommand)
     // Set up the mock channel as the syncd's selectable channel
     m_syncd->m_selectableChannel = channel;
 
+    int popCallCount = 0;
+    EXPECT_CALL(*channel, empty())
+        .WillRepeatedly([&popCallCount]() {
+            return popCallCount > 0;
+        });
+
     EXPECT_CALL(*channel, pop(testing::_, testing::_))
-        .WillOnce(testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
-            kfvKey(kco) = "SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000";
-            kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_CREATE;
-        }));
+        .WillOnce(testing::DoAll(
+            testing::Invoke([](swss::KeyOpFieldsValuesTuple& kco, bool initViewMode) {
+                kfvKey(kco) = "SAI_OBJECT_TYPE_SWITCH:oid:0x21000000000000";
+                kfvOp(kco) = REDIS_ASIC_STATE_COMMAND_CREATE;
+            }),
+            testing::Invoke([&popCallCount](swss::KeyOpFieldsValuesTuple&, bool) {
+                popCallCount++;
+            })
+        ));
 
     // Verify that set() is NOT called for non-notify commands
     EXPECT_CALL(*channel, set(testing::_, testing::_, testing::_))
