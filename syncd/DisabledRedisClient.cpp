@@ -273,6 +273,11 @@ void DisabledRedisClient::getVidsForRids(
         _Out_ sai_object_id_t* vids)
 {
     SWSS_LOG_ENTER();
+    
+    for (size_t i = 0; i < count; i++)
+    {
+        vids[i] = SAI_NULL_OBJECT_ID;
+    }
 }
 
 void DisabledRedisClient::removeAsicStateTable()
