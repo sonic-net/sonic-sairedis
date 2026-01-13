@@ -371,24 +371,27 @@ void Syncd::processEventInShutdownWaitMode(
     // This could happen because Orchagent sends INIT_VIEW before registering shutdown callback
     // Can't reorder due to circular dependency: need switch to register callbacks, but
     //      need INIT_VIEW before creating switch
-
-    swss::KeyOpFieldsValuesTuple kco;
-    consumer.pop(kco, false);
-
-    auto& op = kfvOp(kco);
-    auto& key = kfvKey(kco);
-
-    SWSS_LOG_WARN("Received command while in shutdown-wait mode Command: op=%s, key=%s", op.c_str(), key.c_str());
-
-    if (op == REDIS_ASIC_STATE_COMMAND_NOTIFY)
+    do
     {
-        SWSS_LOG_ERROR("Syncd is waiting for shutdown, cannot process %s Sending FAILURE response", key.c_str());
-        sendNotifyResponse(SAI_STATUS_FAILURE);
+        swss::KeyOpFieldsValuesTuple kco;
+        consumer.pop(kco, false);
+
+        auto& op = kfvOp(kco);
+        auto& key = kfvKey(kco);
+
+        SWSS_LOG_WARN("Received command while in shutdown-wait mode: op=%s, key=%s.", op.c_str(), key.c_str());
+
+        if (op == REDIS_ASIC_STATE_COMMAND_NOTIFY)
+        {
+            SWSS_LOG_ERROR("Syncd is waiting for shutdown, cannot process %s: Sending FAILURE response.", key.c_str());
+            sendNotifyResponse(SAI_STATUS_FAILURE);
+        }
+        else
+        {
+            SWSS_LOG_WARN("Ignoring non-notify command in shutdown-wait mode");
+        }
     }
-    else
-    {
-        SWSS_LOG_WARN("Ignoring non-notify command in shutdown-wait mode");
-    }
+    while (!consumer.empty());
 }
 
 sai_status_t Syncd::processSingleEvent(
