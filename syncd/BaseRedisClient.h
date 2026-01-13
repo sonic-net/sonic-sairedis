@@ -23,6 +23,7 @@ namespace syncd
             virtual ~BaseRedisClient() = default;
 
         public:
+            virtual bool isRedisEnabled() const = 0;
 
             virtual void clearLaneMap(
                     _In_ sai_object_id_t switchVid) const = 0;

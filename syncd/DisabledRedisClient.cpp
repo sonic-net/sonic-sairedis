@@ -4,6 +4,13 @@
 
 using namespace syncd;
 
+bool DisabledRedisClient::isRedisEnabled() const
+{
+    SWSS_LOG_ENTER();
+
+    return false;
+}
+
 void DisabledRedisClient::clearLaneMap(
         _In_ sai_object_id_t switchVid) const
 {

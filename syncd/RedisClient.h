@@ -23,6 +23,8 @@ namespace syncd
 
         public:
 
+            virtual bool isRedisEnabled() const override;
+
             virtual void clearLaneMap(
                     _In_ sai_object_id_t switchVid) const override;
 

@@ -367,7 +367,7 @@ sai_object_id_t VirtualOidTranslator::translateVidToRid(
 
     if (rid == SAI_NULL_OBJECT_ID)
     {
-        if (dynamic_cast<DisabledRedisClient*>(m_client.get()) != nullptr)
+        if (!m_client.isRedisEnabled())
         {
             SWSS_LOG_DEBUG("Redis disabled, unable to get RID for VID %s",
                     sai_serialize_object_id(vid).c_str());

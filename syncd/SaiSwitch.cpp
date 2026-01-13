@@ -1153,7 +1153,7 @@ void SaiSwitch::postPortRemove(
 
         if (vid == SAI_NULL_OBJECT_ID)
         {
-            if (dynamic_cast<DisabledRedisClient*>(m_client.get()) != nullptr)
+            if (!m_client.isRedisEnabled())
             {
                 SWSS_LOG_DEBUG("Redis disabled, skipping rid %s removal from RIDTOVID",
                         sai_serialize_object_id(rid).c_str());
@@ -1178,7 +1178,7 @@ void SaiSwitch::postPortRemove(
             removed,
             sai_serialize_object_id(portRid).c_str());
 
-    if (removed == 0 && dynamic_cast<DisabledRedisClient*>(m_client.get()) == nullptr)
+    if (removed == 0 && m_client.isRedisEnabled())
     {
         SWSS_LOG_THROW("NO LANES found in redis lane map for given port RID %s",
                 sai_serialize_object_id(portRid).c_str());
