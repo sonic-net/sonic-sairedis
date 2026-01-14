@@ -17,7 +17,6 @@ public:
 public:
     virtual void SetUp() override
     {
-        m_dbAsic = std::make_shared<swss::DBConnector>("ASIC_DB", 0, true);
         m_redisClient = std::make_shared<DisabledRedisClient>();
     }
 
@@ -31,6 +30,24 @@ protected:
     std::shared_ptr<swss::DBConnector> m_dbAsic;
     std::shared_ptr<BaseRedisClient> m_redisClient;
 };
+
+TEST_F(DisabledRedisClientTest, isRedisEnabledReturnsFalse)
+{
+    auto result = m_redisClient->isRedisEnabled();
+    EXPECT_FALSE(result);
+}
+
+TEST_F(DisabledRedisClientTest, hasNoHiddenKeysDefinedReturnsTrue)
+{
+    auto result = m_redisClient->hasNoHiddenKeysDefined();
+    EXPECT_TRUE(result);
+}
+
+TEST_F(DisabledRedisClientTest, removeAsicObjectsDoesNotThrow)
+{
+    std::vector<std::string> keys = {"key1", "key2"};
+    EXPECT_NO_THROW(m_redisClient->removeAsicObjects(keys));
+}
 
 TEST_F(DisabledRedisClientTest, getLaneMapReturnsEmpty)
 {
@@ -196,6 +213,7 @@ TEST_F(DisabledRedisClientTest, voidMethodsDoNotThrow)
 
     sai_object_id_t outVids[1];
     EXPECT_NO_THROW(m_redisClient->getVidsForRids(1, rids, outVids));
+    EXPECT_EQ(outVids[0], SAI_NULL_OBJECT_ID);
 
     EXPECT_NO_THROW(m_redisClient->removeAsicStateTable());
 
