@@ -24,6 +24,7 @@ libSyncd_a_SOURCES = \
 				CommandLineOptions.cpp \
 				CommandLineOptionsParser.cpp \
 				ComparisonLogic.cpp \
+				DisabledRedisClient.cpp \
 				FlexCounter.cpp \
 				FlexCounterManager.cpp \
 				GlobalSwitchId.cpp \
