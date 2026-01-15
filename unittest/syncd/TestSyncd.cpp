@@ -1,4 +1,5 @@
 #include "Syncd.h"
+#include "RedisClient.h"
 #include "sai_serialize.h"
 #include "RequestShutdown.h"
 #include "vslib/ContextConfigContainer.h"
@@ -235,7 +236,7 @@ void clearDB()
 class MockSaiSwitch : public SaiSwitch {
 public:
     MockSaiSwitch(sai_object_id_t switchVid, sai_object_id_t switchRid,
-                  std::shared_ptr<RedisClient> client,
+                  std::shared_ptr<BaseRedisClient> client,
                   std::shared_ptr<VirtualOidTranslator> translator,
                   std::shared_ptr<MockableSaiInterface> sai, bool warmBoot)
         : SaiSwitch(switchVid, switchRid, client, translator, sai, warmBoot) {}
