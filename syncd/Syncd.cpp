@@ -5,6 +5,7 @@
 #include "ComparisonLogic.h"
 #include "HardReiniter.h"
 #include "RedisClient.h"
+#include "DisabledRedisClient.h"
 #include "RequestShutdown.h"
 #include "WarmRestartTable.h"
 #include "ContextConfigContainer.h"
@@ -40,6 +41,7 @@
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
+#define SYNCD_ZMQ_RESPONSE_BUFFER_SIZE (64*1024*1024)
 
 using namespace syncd;
 using namespace saimeta;
@@ -134,7 +136,7 @@ Syncd::Syncd(
 
         m_enableSyncMode = true;
 
-        m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint);
+        m_selectableChannel = std::make_shared<sairedis::ZeroMQSelectableChannel>(m_contextConfig->m_zmqEndpoint, SYNCD_ZMQ_RESPONSE_BUFFER_SIZE);
     }
     else
     {
@@ -152,7 +154,16 @@ Syncd::Syncd(
                 modifyRedis);
     }
 
-    m_client = std::make_shared<RedisClient>(m_dbAsic);
+    bool isVirtualSwitch = m_profileMap.find(SAI_KEY_VS_SWITCH_TYPE) != m_profileMap.end();
+
+    if (m_contextConfig->m_zmqEnable && !isVirtualSwitch)
+    {
+        m_client = std::make_shared<DisabledRedisClient>();
+    }
+    else
+    {
+        m_client = std::make_shared<RedisClient>(m_dbAsic);
+    }
 
     m_processor = std::make_shared<NotificationProcessor>(m_notifications, m_client, std::bind(&Syncd::syncProcessNotification, this, _1));
     m_handler = std::make_shared<NotificationHandler>(m_processor);
