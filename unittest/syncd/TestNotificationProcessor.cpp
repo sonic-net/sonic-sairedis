@@ -1,4 +1,5 @@
 #include "VirtualOidTranslator.h"
+#include "RedisClient.h"
 #include "RedisNotificationProducer.h"
 #include "NotificationProcessor.h"
 #include "lib/RedisVidIndexGenerator.h"
