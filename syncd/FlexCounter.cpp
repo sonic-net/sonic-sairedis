@@ -7,16 +7,18 @@
 
 #include "FlexCounter.h"
 #include "VidManager.h"
-#include "SaiSwitch.h"
 
+#include <chrono>
+#include <nlohmann/json.hpp>
 #include "meta/sai_serialize.h"
 
 #include "swss/redisapi.h"
 #include "swss/tokenize.h"
-#include "swss/schema.h"
 
 using namespace syncd;
 using namespace std;
+using json = nlohmann::json;
+
 
 #define MUTEX std::unique_lock<std::mutex> _lock(m_mtx);
 #define MUTEX_UNLOCK _lock.unlock();
@@ -1743,16 +1745,16 @@ public:
 };
 
 // Specialized context for PORT_PHY_ATTR that writes to dedicated table with port name as key
-class PortAttrContext : public AttrContext<sai_port_attr_t, PortAttributeData>
+class PortPhyAttrContext : public AttrContext<sai_port_attr_t, PortPhyAttributeData>
 {
 public:
-    using Base = AttrContext<sai_port_attr_t, PortAttributeData>;
+    using Base = AttrContext<sai_port_attr_t, PortPhyAttributeData>;
 
     typedef CounterIds<sai_port_attr_t> AttrIdsType;
 
     static const std::unordered_map<sai_port_attr_t, std::string> m_attrAliases;
 
-    PortAttrContext(
+    PortPhyAttrContext(
             _In_ const std::string &name,
             _In_ const std::string &instance,
             _In_ sai_object_type_t object_type,
@@ -1837,7 +1839,7 @@ public:
     void initAttrData(
         sai_object_id_t rid,
         sai_attribute_t *attr,
-        PortAttributeData* data)
+        PortPhyAttributeData* data)
     {
         if (!attr || !data)
         {
@@ -1936,6 +1938,14 @@ public:
             }
         }
 
+        // Clean up lane metadata for this VID
+        auto metadata_it = m_laneMetadata.find(vid);
+        if (metadata_it != m_laneMetadata.end())
+        {
+            SWSS_LOG_DEBUG("PORT_PHY_ATTR: Removing VID 0x%" PRIx64 " from m_laneMetadata", vid);
+            m_laneMetadata.erase(metadata_it);
+        }
+
         // Call base class to remove from m_objectIdsMap
         Base::removeObject(vid);
     }
@@ -1956,7 +1966,7 @@ public:
             const auto &attrIds = kv.second->counter_ids;
 
             std::vector<sai_attribute_t> attrs(attrIds.size());
-            PortAttributeData attrData;
+            PortPhyAttributeData attrData;
 
             SWSS_LOG_DEBUG("Collecting %zu port attributes for VID 0x%" PRIx64 ", RID:0x%" PRIx64,
                            attrIds.size(), vid, rid);
@@ -1993,8 +2003,6 @@ public:
                     continue;
                 }
 
-                std::string attr_value = sai_serialize_attr_value(*meta, attrs[i]);
-
                 auto it = m_attrAliases.find(attrIds[i]);
                 if (it == m_attrAliases.end())
                 {
@@ -2002,6 +2010,23 @@ public:
                     continue;
                 }
 
+                std::string attr_value;
+
+                // Latch attributes: Track changes, add timestamp/count per lane
+                if (attrIds[i] == SAI_PORT_ATTR_RX_SIGNAL_DETECT ||
+                    attrIds[i] == SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK)
+                {
+                    // Compare current lane values with previous and update metadata
+                    updateLaneMetadata(vid, attrIds[i], attrs[i]);
+
+                    // Serialize with timestamp and count per lane
+                    attr_value = buildLatchStatusWithMetadata(vid, attrIds[i], attrs[i]);
+                }
+                else
+                {
+                    // Standard serialization for SNR and any other attributes
+                    attr_value = sai_serialize_attr_value(*meta, attrs[i]);
+                }
                 values.emplace_back(it->second, attr_value);
             }
 
@@ -2014,11 +2039,127 @@ public:
     }
 
 private:
+    /**
+     * @brief Compare current lane values with previous and update metadata
+     *
+     * Updates timestamp and count when lane latch status changes.
+     * Only applicable for discrete latch attributes (signal detect, FEC lock).
+     *
+     * @param vid Virtual object ID
+     * @param attr_id Attribute ID (must be latch type)
+     * @param attr Current attribute containing lane latch status list
+     */
+    void updateLaneMetadata(
+        _In_ sai_object_id_t vid,
+        _In_ sai_port_attr_t attr_id,
+        _In_ const sai_attribute_t& attr)
+    {
+        SWSS_LOG_ENTER();
+
+        auto& list = attr.value.portlanelatchstatuslist;
+
+        // Get current timestamp in milliseconds since epoch
+        auto current_time = std::chrono::system_clock::now();
+        uint64_t timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            current_time.time_since_epoch()).count();
+
+        for (uint32_t i = 0; i < list.count; ++i)
+        {
+            uint32_t lane = list.list[i].lane;
+            auto& current_latch = list.list[i].value;
+
+            // Get or initialize metadata for this lane
+            auto& metadata = m_laneMetadata[vid][attr_id][lane];
+
+            // Check if latch status changed
+            bool status_changed = (metadata.latch_value.current_status != current_latch.current_status) ||
+                                 (metadata.latch_value.changed != current_latch.changed);
+
+            if (status_changed)
+            {
+                // Value changed - update all fields
+                metadata.latch_value = current_latch;
+                metadata.timestamp_ms = timestamp_ms;
+                metadata.count++;
+
+                SWSS_LOG_DEBUG("PORT_PHY_ATTR: VID 0x%" PRIx64 " attr %d lane %u changed to %s%s, count=%lu",
+                              vid, attr_id, lane,
+                              current_latch.current_status ? "T" : "F",
+                              current_latch.changed ? "*" : "",
+                              metadata.count);
+            }
+            // else: keep existing timestamp/count unchanged
+        }
+    }
+
+    /**
+     * @brief Serialize lane latch status with timestamp and count metadata
+     *
+     * Builds JSON format: {"0":["F*",<timestamp>,<count>], "1":["T*",<timestamp>,<count>], ...}
+     *
+     * @param vid Virtual object ID
+     * @param attr_id Attribute ID
+     * @param attr Current attribute containing lane latch status list
+     * @return JSON string with enhanced format
+     */
+    std::string buildLatchStatusWithMetadata(
+        _In_ sai_object_id_t vid,
+        _In_ sai_port_attr_t attr_id,
+        _In_ const sai_attribute_t& attr)
+    {
+        SWSS_LOG_ENTER();
+
+        json j = json::object();
+
+        auto& list = attr.value.portlanelatchstatuslist;
+
+        for (uint32_t i = 0; i < list.count; ++i)
+        {
+            uint32_t lane = list.list[i].lane;
+            auto& latch_value = list.list[i].value;
+
+            // Serialize to "T*"/"F*"/"T"/"F" (same logic as sai_serialize_port_lane_latch_status_list)
+            std::string status_str = latch_value.current_status ? "T" : "F";
+            if (latch_value.changed)
+            {
+                status_str += "*";
+            }
+
+            // Get metadata for this lane
+            auto& metadata = m_laneMetadata[vid][attr_id][lane];
+
+            // Build JSON array: ["status", timestamp, count]
+            json lane_data = json::array();
+            lane_data.push_back(status_str);
+            lane_data.push_back(metadata.timestamp_ms);
+            lane_data.push_back(metadata.count);
+
+            j[std::to_string(lane)] = lane_data;
+        }
+
+        return j.dump();
+    }
+
+    struct LaneMetadata
+    {
+        sai_latch_status_t latch_value;
+        uint64_t timestamp_ms;
+        uint64_t count;
+
+        LaneMetadata() : timestamp_ms(0), count(0)
+        {
+            latch_value.current_status = false;
+            latch_value.changed = false;
+        }
+    };
+
     std::string m_dbCounters;
     std::map<sai_object_id_t, std::map<sai_port_attr_t, uint32_t>> m_portLaneCountMap;
+    // Map: [VID][attr_id][lane_number] -> metadata
+    std::map<sai_object_id_t, std::map<sai_port_attr_t, std::map<uint32_t, LaneMetadata>>> m_laneMetadata;
 };
 
-const std::unordered_map<sai_port_attr_t, std::string> PortAttrContext::m_attrAliases = {
+const std::unordered_map<sai_port_attr_t, std::string> PortPhyAttrContext::m_attrAliases = {
     {SAI_PORT_ATTR_RX_SNR, "rx_snr"},
     {SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK, "pcs_fec_lane_alignment_lock"},
     {SAI_PORT_ATTR_RX_SIGNAL_DETECT, "phy_rx_signal_detect"}
@@ -2773,7 +2914,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
     }
     else if (context_name == ATTR_TYPE_PORT_PHY_ATTR)
     {
-        return std::make_shared<PortAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode, m_dbCounters);
+        return std::make_shared<PortPhyAttrContext>(context_name, instance, SAI_OBJECT_TYPE_PORT, m_vendorSai.get(), m_statsMode, m_dbCounters);
     }
     else if (context_name == ATTR_TYPE_QUEUE)
     {
