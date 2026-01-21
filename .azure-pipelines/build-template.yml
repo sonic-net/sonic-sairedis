@@ -19,9 +19,6 @@ parameters:
   type: number
   default: 60
 
-- name: sonic_slave
-  type: string
-
 - name: swss_common_artifact_name
   type: string
 
@@ -62,7 +59,7 @@ jobs:
       vmImage: 'ubuntu-22.04'
 
   container:
-    image: sonicdev-microsoft.azurecr.io:443/${{ parameters.sonic_slave }}:$(BUILD_BRANCH)
+    image: sonicdev-microsoft.azurecr.io:443/sonic-slave-${{ parameters.debian_version }}:$(BUILD_BRANCH)-${{ parameters.arch }}
     options:  "--privileged"
 
   steps:
