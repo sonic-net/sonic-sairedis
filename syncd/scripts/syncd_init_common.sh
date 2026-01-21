@@ -35,7 +35,7 @@ mkdir -p /var/log/sai_failure_dump/
 
 # Use bulk APIs in SAI
 # currently disabled since most vendors don't support that yet
-# CMD_ARGS+=" -l"
+CMD_ARGS+=" -l"
 
 # Set zmq mode by default for smartswitch DPU
 # Otherwise, set synchronous mode if it is enabled in CONFIG_DB
