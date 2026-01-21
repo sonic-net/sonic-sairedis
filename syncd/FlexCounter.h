@@ -22,7 +22,7 @@ struct NoAttrData {
 };
 
 // Holds data storage for SAI PORT attribute API calls
-struct PortAttributeData {
+struct PortPhyAttributeData {
     std::vector<sai_port_lane_latch_status_t> rxSignalDetectData;
     std::vector<sai_port_lane_latch_status_t> fecAlignmentLockData;
     std::vector<sai_port_snr_values_t> rxSnrData;
