@@ -3,6 +3,8 @@
 #include "SwitchVpp.h"
 #include "vppxlate/SaiVppXlate.h"
 
+#include <array>
+
 namespace saivs
 {
     class SwitchVpp;
