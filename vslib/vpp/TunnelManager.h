@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include "SwitchVpp.h"
 #include "vppxlate/SaiVppXlate.h"
 
