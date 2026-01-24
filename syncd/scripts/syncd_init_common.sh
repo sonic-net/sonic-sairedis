@@ -107,6 +107,21 @@ function set_start_type()
     fi
 }
 
+function set_watchdog_timeout()
+{
+    # For chassis platforms, use longer watchdog timeouts to avoid false-alarm
+    # "WD exceeded" errors during initialization.
+    if [[ "$CMD_ARGS" =~ "-w " ]]; then
+        return
+    fi
+
+    if [ "$SWITCH_TYPE" == "voq" ] || [ "$SWITCH_TYPE" == "chassis-packet" ] || [ "$SWITCH_TYPE" == "dpu" ]; then
+        CMD_ARGS+=" -w 150000000"
+    elif [ "$SWITCH_TYPE" == "fabric" ]; then
+        CMD_ARGS+=" -w 300000000"
+    fi
+}
+
 config_syncd_pensando()
 {
     CMD_ARGS+=" -l"
@@ -650,6 +665,7 @@ config_syncd()
         exit 1
     fi
 
+    set_watchdog_timeout
     set_start_type
 
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then
