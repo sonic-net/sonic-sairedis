@@ -1728,6 +1728,8 @@ public:
 
     bool initAttrForLaneCountQuery(sai_attribute_t& attr)
     {
+        SWSS_LOG_ENTER();
+
         switch (attr.id) {
             case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
             case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
@@ -1747,6 +1749,8 @@ public:
 
     uint32_t extractLaneCount(const sai_attribute_t& attr)
     {
+        SWSS_LOG_ENTER();
+
         switch (attr.id) {
             case SAI_PORT_ATTR_RX_SIGNAL_DETECT:
             case SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK:
@@ -1762,6 +1766,8 @@ public:
 
     void updatePortLaneCountMap(const std::shared_ptr<AttrIdsType>& attrIdsPtr)
     {
+        SWSS_LOG_ENTER();
+
         auto counter_ids = attrIdsPtr->counter_ids;
         auto rid = attrIdsPtr->rid;
 
@@ -1800,6 +1806,8 @@ public:
         sai_attribute_t *attr,
         PortPhyAttributeData* data)
     {
+        SWSS_LOG_ENTER();
+
         if (!attr || !data)
         {
             SWSS_LOG_ERROR("PORT_PHY_ATTR: Invalid input params : attr : %p, data : %p", attr, data);
@@ -1972,11 +1980,10 @@ public:
                 std::string attr_value;
 
                 // Latch attributes: Track changes, add timestamp/count per lane
-                if (attrIds[i] == SAI_PORT_ATTR_RX_SIGNAL_DETECT ||
-                    attrIds[i] == SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK)
+                if (meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST)
                 {
                     // Compare current lane values with previous and update metadata
-                    updateLaneMetadata(vid, attrIds[i], attrs[i]);
+                    updateLatchedLaneMetadata(vid, attrIds[i], attrs[i]);
 
                     // Serialize with timestamp and count per lane
                     attr_value = buildLatchStatusWithMetadata(vid, attrIds[i], attrs[i]);
@@ -2008,7 +2015,7 @@ private:
      * @param attr_id Attribute ID (must be latch type)
      * @param attr Current attribute containing lane latch status list
      */
-    void updateLaneMetadata(
+    void updateLatchedLaneMetadata(
         _In_ sai_object_id_t vid,
         _In_ sai_port_attr_t attr_id,
         _In_ const sai_attribute_t& attr)

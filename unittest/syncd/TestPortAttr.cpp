@@ -211,12 +211,12 @@ TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
     // T/F = current_status (true/false), * = changed indicator
     for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++) {
         // Mock data: changed=true for all lanes, current_status=true for even lanes
-        std::string expected_value = (lane % 2 == 0) ? "T*" : "F*";
+        std::string expected_status = (lane % 2 == 0) ? "T*" : "F*";
         std::ostringstream expected_entry;
-        expected_entry << "\"" << lane << "\":\"" << expected_value << "\"";
+        expected_entry << "\"" << lane << "\":[\"" << expected_status << "\"";
 
         EXPECT_TRUE(rxSignalDetectValue.find(expected_entry.str()) != std::string::npos)
-            << "Lane " << lane << " should have value=" << expected_value
+            << "Lane " << lane << " should have status=" << expected_status
             << " (changed=true, current_status=" << ((lane % 2 == 0) ? "true" : "false") << ")"
             << "\nActual full value: " << rxSignalDetectValue
             << "\nLooking for: " << expected_entry.str();
@@ -230,12 +230,12 @@ TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
 
     // Mock data: changed=true for even lanes, changed=false for odd lanes, current_status=false for all
     for (uint32_t lane = 0; lane < MAX_LANES_PER_PORT; lane++) {
-        std::string expected_value = (lane % 2 == 0) ? "F*" : "F";
+        std::string expected_status = (lane % 2 == 0) ? "F*" : "F";
         std::ostringstream expected_entry;
-        expected_entry << "\"" << lane << "\":\"" << expected_value << "\"";
+        expected_entry << "\"" << lane << "\":[\"" << expected_status << "\"";
 
         EXPECT_TRUE(fecAlignmentValue.find(expected_entry.str()) != std::string::npos)
-            << "FEC Lane " << lane << " should have value=" << expected_value
+            << "FEC Lane " << lane << " should have status=" << expected_status
             << " (changed=" << ((lane % 2 == 0) ? "true" : "false") << ", current_status=false)"
             << "\nActual full value: " << fecAlignmentValue
             << "\nLooking for: " << expected_entry.str();
