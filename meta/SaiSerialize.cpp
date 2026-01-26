@@ -4326,7 +4326,7 @@ void sai_deserialize_port_lane_latch_status_list(
             return;
         }
 
-        status_list.count = j["count"];
+        status_list.count = static_cast<uint32_t>(j.size());
 
         if (countOnly)
         {
