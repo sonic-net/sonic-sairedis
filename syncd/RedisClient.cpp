@@ -37,6 +37,13 @@ RedisClient::~RedisClient()
     // empty
 }
 
+bool RedisClient::isRedisEnabled() const
+{
+    SWSS_LOG_ENTER();
+
+    return true;
+}
+
 std::string RedisClient::getRedisLanesKey(
         _In_ sai_object_id_t switchVid) const
 {
