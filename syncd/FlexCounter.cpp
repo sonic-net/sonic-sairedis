@@ -1109,11 +1109,19 @@ public:
                 {
                     auto rid = rids[i];
                     auto vid = vids[i];
-                    std::vector<uint64_t> stats(counter_ids.size());
 
-                    if (!collectData(rid, counter_ids, effective_stats_mode, false, stats))
+                    size_t groupIndex = m_objectSupportedCountersGroupMap[vid];
+                    std::vector<StatType> intf_counter_ids(m_supportedCounterGroups[groupIndex].begin(), m_supportedCounterGroups[groupIndex].end());
+                    if (intf_counter_ids.empty())
                     {
-                        SWSS_LOG_INFO("counter read failed on RID 0x%x on intf 0x%x, adding to objectIdsMap regardless", rid, vid);
+                        continue;
+                    }
+                    std::vector<uint64_t> stats(intf_counter_ids.size());
+                    if (!collectData(rid, intf_counter_ids, effective_stats_mode, false, stats))
+                    {
+                        SWSS_LOG_ERROR("%s RID %s VID %s can't provide the statistic",  m_name.c_str(),
+                               sai_serialize_object_id(rid).c_str(), sai_serialize_object_id(vid).c_str());
+                        throw std::runtime_error("Test counter poll failed on populating m_objectIdsMap");
                     }
                     auto it_vid = m_objectIdsMap.find(vid);
                     if (it_vid != m_objectIdsMap.end())
@@ -1122,7 +1130,7 @@ public:
                         m_objectIdsMap.erase(it_vid);
                     }
 
-                    auto counter_data = std::make_shared<CounterIds<StatType>>(rid, counter_ids);
+                    auto counter_data = std::make_shared<CounterIds<StatType>>(rid, intf_counter_ids);
                     m_objectIdsMap.emplace(vid, counter_data);
                     SWSS_LOG_INFO("Fallback to single call for object 0x%" PRIx64, vid);
                 }
