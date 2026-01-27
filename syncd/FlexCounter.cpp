@@ -1924,7 +1924,7 @@ public:
         // Create dedicated PORT_PHY_ATTR table
         swss::DBConnector db(m_dbCounters, 0);
         swss::RedisPipeline pipeline(&db);
-        swss::Table portAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
+        swss::Table portPhyAttrTable(&pipeline, PORT_PHY_ATTR_TABLE, true);
 
         for (const auto &kv : Base::m_objectIdsMap)
         {
@@ -1998,10 +1998,10 @@ public:
 
             // Store in PORT_PHY_ATTR table using VID as key
             std::string vid_str = sai_serialize_object_id(vid);
-            portAttrTable.set(vid_str, values, "");
+            portPhyAttrTable.set(vid_str, values, "");
         }
 
-        portAttrTable.flush();
+        portPhyAttrTable.flush();
     }
 
 private:
