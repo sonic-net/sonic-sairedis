@@ -1,5 +1,5 @@
 /**
- * @file TestPortAttr.cpp
+ * @file TestPortPhyAttr.cpp
  * @brief Unit tests for PORT_PHY_ATTR flex counter functionality
  *
  * Tests implementation according to UT Plan:
@@ -36,7 +36,7 @@ std::string toOid(T value)
 }
 
 
-class TestPortAttr : public ::testing::Test
+class TestPortPhyAttr : public ::testing::Test
 {
 protected:
     void SetUp() override
@@ -66,7 +66,7 @@ protected:
     sai_object_id_t testPortRid;
 };
 
-TEST_F(TestPortAttr, SerializePortAttr)
+TEST_F(TestPortPhyAttr, SerializePortAttr)
 {
     sai_port_attr_t attr = SAI_PORT_ATTR_RX_SIGNAL_DETECT;
     std::string result = sai_serialize_port_attr(attr);
@@ -81,7 +81,7 @@ TEST_F(TestPortAttr, SerializePortAttr)
     EXPECT_EQ(result, "SAI_PORT_ATTR_RX_SNR");
 }
 
-TEST_F(TestPortAttr, DeserializePortAttr)
+TEST_F(TestPortPhyAttr, DeserializePortAttr)
 {
     sai_port_attr_t attr_out;
 
@@ -108,7 +108,7 @@ TEST_F(TestPortAttr, DeserializePortAttr)
  * This test validates the complete PORT_PHY_ATTR collection workflow
  * including RX_SIGNAL_DETECT, FEC_ALIGNMENT_LOCK, and RX_SNR attributes.
  */
-TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
+TEST_F(TestPortPhyAttr, CollectDataAndValidateCountersDB)
 {
     // Setup mock for PORT attributes with realistic data
     sai->mock_get = [](sai_object_type_t object_type,
@@ -176,15 +176,15 @@ TEST_F(TestPortAttr, CollectDataAndValidateCountersDB)
         return SAI_STATUS_SUCCESS;
     };
 
-    vector<swss::FieldValueTuple> portAttrValues;
+    vector<swss::FieldValueTuple> portPhyAttrValues;
 
     std::string attrIds = "SAI_PORT_ATTR_RX_SIGNAL_DETECT,SAI_PORT_ATTR_FEC_ALIGNMENT_LOCK,SAI_PORT_ATTR_RX_SNR";
 
-    portAttrValues.emplace_back(PORT_PHY_ATTR_ID_LIST, attrIds);
+    portPhyAttrValues.emplace_back(PORT_PHY_ATTR_ID_LIST, attrIds);
 
     test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_PORT);
 
-    flexCounter->addCounter(testPortOid, testPortRid, portAttrValues);
+    flexCounter->addCounter(testPortOid, testPortRid, portPhyAttrValues);
 
     vector<swss::FieldValueTuple> pluginValues;
     pluginValues.emplace_back(POLL_INTERVAL_FIELD, "1000");
