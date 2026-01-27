@@ -37,10 +37,22 @@ namespace syncd
 
         void removePlugins() {m_plugins.clear();}
 
+        virtual void addObjectWithCounterGroups(
+                _In_ sai_object_id_t vid,
+                _In_ sai_object_id_t rid,
+                _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
         virtual void addObject(
                 _In_ sai_object_id_t vid,
                 _In_ sai_object_id_t rid,
                 _In_ const std::vector<std::string> &idStrings,
+                _In_ const std::string &per_object_stats_mode) = 0;
+
+        virtual void bulkAddObjectWithCounterGroups(
+                _In_ const std::vector<sai_object_id_t>& vids,
+                _In_ const std::vector<sai_object_id_t>& rids,
+                _In_ const std::vector<std::string>& idStrings,
                 _In_ const std::string &per_object_stats_mode) = 0;
 
         virtual void bulkAddObject(
