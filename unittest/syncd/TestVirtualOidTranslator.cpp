@@ -1,4 +1,5 @@
 #include "VirtualOidTranslator.h"
+#include "RedisClient.h"
 #include "VendorSai.h"
 #include "lib/RedisVidIndexGenerator.h"
 #include "lib/sairediscommon.h"
