@@ -2047,9 +2047,10 @@ public:
 
 private:
     /**
-     * @brief Compare current lane values with previous and update metadata
+     * @brief Update metadata when SAI reports lane latch status change
      *
-     * Updates timestamp and count when lane latch status changes.
+     * Updates timestamp and count when SAI indicates the latch status changed
+     * via the 'changed' flag in sai_latch_status_t.
      * Only applicable for discrete latch attributes (signal detect, FEC lock).
      *
      * @param vid Virtual object ID
@@ -2078,14 +2079,10 @@ private:
             // Get or initialize metadata for this lane
             auto& metadata = m_laneMetadata[vid][attr_id][lane];
 
-            // Check if latch status changed
-            bool status_changed = (metadata.latch_value.current_status != current_latch.current_status) ||
-                                 (metadata.latch_value.changed != current_latch.changed);
-
-            if (status_changed)
+            // Check if SAI reports status changed
+            if (current_latch.changed)
             {
-                // Value changed - update all fields
-                metadata.latch_value = current_latch;
+                // SAI reported change - update timestamp and counter
                 metadata.timestamp_ms = timestamp_ms;
                 metadata.count++;
 
@@ -2149,15 +2146,10 @@ private:
 
     struct LaneMetadata
     {
-        sai_latch_status_t latch_value;
         uint64_t timestamp_ms;
         uint64_t count;
 
-        LaneMetadata() : timestamp_ms(0), count(0)
-        {
-            latch_value.current_status = false;
-            latch_value.changed = false;
-        }
+        LaneMetadata() : timestamp_ms(0), count(0) {}
     };
 
     std::string m_dbCounters;
