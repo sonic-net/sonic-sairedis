@@ -113,7 +113,13 @@ void SaiObj::setAttr(
 {
     SWSS_LOG_ENTER();
 
-    m_attrs[attr->getSaiAttr()->id] = attr;
+    /*
+     * Create a deep copy of the attribute to avoid shared ownership issues.
+     * This prevents double-free crashes during warm restart when multiple
+     * AsicView objects are destroyed simultaneously.
+     */
+    auto attrCopy = std::make_shared<SaiAttr>(*attr);
+    m_attrs[attr->getSaiAttr()->id] = attrCopy;
 }
 
 bool SaiObj::hasAttr(
