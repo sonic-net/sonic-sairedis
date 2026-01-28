@@ -1595,7 +1595,30 @@ bool ComparisonLogic::performObjectSetTransition(
 
                     continue;
                 }
+                if (meta->objecttype == SAI_OBJECT_TYPE_BRIDGE_PORT &&
+                    (meta->attrid == SAI_BRIDGE_PORT_ATTR_BRIDGE_ID ||
+                     meta->attrid == SAI_BRIDGE_PORT_ATTR_PORT_ID ||
+                     meta->attrid == SAI_BRIDGE_PORT_ATTR_TUNNEL_ID ||
+                     meta->attrid == SAI_BRIDGE_PORT_ATTR_RIF_ID))
+                {
+                    /*
+                     * These attributes are skipped during discovery because they are conditional
+                     * and cause issues. If they exist in current view but not in temp view,
+                     * we need to transfer them to temp view to avoid comparison failures.
+                     */
+                    SWSS_LOG_INFO("Transferring bridge port conditional attr %s:%s from current to temp object %s",
+                            meta->attridname,
+                            currentAttr->getStrAttrValue().c_str(),
+                            currentBestMatch->m_str_object_id.c_str());
 
+                    std::shared_ptr<SaiAttr> transferedAttr = std::make_shared<SaiAttr>(
+                            currentAttr->getStrAttrId(),
+                            currentAttr->getStrAttrValue());
+
+                    temporaryObj->setAttr(transferedAttr);
+
+                    continue;
+                }
                 // SAI_QUEUE_ATTR_PARENT_SCHEDULER_NODE
                 // SAI_SCHEDULER_GROUP_ATTR_SCHEDULER_PROFILE_ID*
                 // SAI_SCHEDULER_GROUP_ATTR_PARENT_NODE
