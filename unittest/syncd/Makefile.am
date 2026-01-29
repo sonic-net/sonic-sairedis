@@ -13,6 +13,7 @@ tests_SOURCES = main.cpp \
 				TestCommandLineOptions.cpp \
 				TestConcurrentQueue.cpp \
 				TestFlexCounter.cpp \
+				TestPortPhyAttr.cpp \
 				TestVirtualOidTranslator.cpp \
 				TestNotificationQueue.cpp \
 				TestNotificationProcessor.cpp \
