@@ -99,7 +99,7 @@ sub GetFunctionCamelCaseName
 
 sub GetData
 {
-    $DATA = `cat $optionSaiDir/inc/sai*.h $optionSaiDir/experimental/sai*.h`;
+    $DATA = `cat $optionSaiDir/inc/sai*.h $optionSaiDir/experimental/sai*.h $optionSaiDir/custom/sai*.h`;
 }
 
 sub SanitizeData
