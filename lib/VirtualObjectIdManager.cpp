@@ -8,6 +8,14 @@ extern "C" {
 #include "saimetadata.h"
 }
 
+#ifndef SAI_OBJECT_TYPE_CUSTOM_RANGE_START
+#define SAI_OBJECT_TYPE_CUSTOM_RANGE_START SAI_OBJECT_TYPE_CUSTOM_RANGE_BASE
+#endif
+
+#ifndef SAI_OBJECT_TYPE_CUSTOM_RANGE_END
+#define SAI_OBJECT_TYPE_CUSTOM_RANGE_END SAI_OBJECT_TYPE_CUSTOM_RANGE_BASE
+#endif
+
 #define SAI_OBJECT_ID_BITS_SIZE (8 * sizeof(sai_object_id_t))
 
 static_assert(SAI_OBJECT_ID_BITS_SIZE == 64, "sai_object_id_t must have 64 bits");
@@ -29,7 +37,11 @@ static_assert(sizeof(sai_object_id_t) == sizeof(uint64_t), "SAI object ID size s
 #define SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ( (1ULL << SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE) - 1 )
 #define SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MASK (SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX)
 
-#define SAI_REDIS_OBJECT_INDEX_BITS_SIZE ( 39 )
+#define SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE ( 1 )
+#define SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_MAX ( (1ULL << SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE) - 1 )
+#define SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_MASK (SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_MAX)
+
+#define SAI_REDIS_OBJECT_INDEX_BITS_SIZE ( 38 )
 #define SAI_REDIS_OBJECT_INDEX_MAX ( (1ULL << SAI_REDIS_OBJECT_INDEX_BITS_SIZE) - 1 )
 #define SAI_REDIS_OBJECT_INDEX_MASK (SAI_REDIS_OBJECT_INDEX_MAX)
 
@@ -37,6 +49,7 @@ static_assert(sizeof(sai_object_id_t) == sizeof(uint64_t), "SAI object ID size s
         SAI_REDIS_SWITCH_INDEX_BITS_SIZE +   \
         SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + \
         SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + \
+        SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + \
         SAI_REDIS_OBJECT_TYPE_BITS_SIZE +    \
         SAI_REDIS_OBJECT_INDEX_BITS_SIZE )
 
@@ -49,6 +62,8 @@ static_assert(SAI_REDIS_OBJECT_ID_BITS_SIZE == SAI_OBJECT_ID_BITS_SIZE, "redis o
 static_assert(SAI_OBJECT_TYPE_MAX < 256, "object type must be possible to encode on 1 byte");
 static_assert((SAI_OBJECT_TYPE_EXTENSIONS_RANGE_END - SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START) < 256,
         "extensions object type must be possible to encode on 1 byte");
+static_assert((SAI_OBJECT_TYPE_CUSTOM_RANGE_END - SAI_OBJECT_TYPE_CUSTOM_RANGE_START) < 256,
+        "custom object type must be possible to encode on 1 byte");
 
 /*
  * Current OBJECT ID format:
@@ -57,7 +72,8 @@ static_assert((SAI_OBJECT_TYPE_EXTENSIONS_RANGE_END - SAI_OBJECT_TYPE_EXTENSIONS
  * bits 55..48 - SAI object type
  * bits 47..40 - global context
  * bits 39..39 - object type extensions flag
- * bits 38..0  - object index
+ * bits 38..38 - object type custom flag
+ * bits 37..0  - object index
  *
  * So large number of bits is required, otherwise we would need to have map of
  * OID to some struct that will have all those values.  But having all this
@@ -66,33 +82,41 @@ static_assert((SAI_OBJECT_TYPE_EXTENSIONS_RANGE_END - SAI_OBJECT_TYPE_EXTENSIONS
  * To be backward compatible with previous sairedis, we will still encode base
  * object type on bit's 55..48, and extensions which will now start from range
  * 0x20000000, will be encoded from 0x0, but extensions flag will be set to 1.
+ * Custom types starting from SAI_OBJECT_TYPE_CUSTOM_RANGE_BASE will be encoded
+ * from 0x0, but custom flag will be set to 1.
  *
  * For example SAI_OBJECT_TYPE_VIRTUAL_ROUTER oid will be encoded as 0x0003000000000001,
- * SAI_OBJECT_TYPE_DASH_ACL_GROUP oid will be encoded as 0x0003008000000001.
+ * SAI_OBJECT_TYPE_DASH_ACL_GROUP oid will be encoded as 0x0003008000000001，
+ * SAI_OBJECT_TYPE_CUSTOM_RANGE_BASE + n oid will be encoded as 0x0003004000000001.
  */
 
 #define SAI_REDIS_GET_OBJECT_INDEX(oid) \
     ( ((uint64_t)oid) & ( SAI_REDIS_OBJECT_INDEX_MASK ) )
 
+#define SAI_REDIS_GET_OBJECT_TYPE_CUSTOM_FLAG(oid) \
+    ( (((uint64_t)oid) >> (SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_MAX ) )
+
 #define SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(oid) \
-    ( (((uint64_t)oid) >> (SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ) )
+    ( (((uint64_t)oid) >> (SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_MAX ) )
 
 #define SAI_REDIS_GET_GLOBAL_CONTEXT(oid) \
-    ( (((uint64_t)oid) >> (SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_GLOBAL_CONTEXT_MASK ) )
+    ( (((uint64_t)oid) >> (SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_GLOBAL_CONTEXT_MASK ) )
 
 #define SAI_REDIS_GET_OBJECT_TYPE(oid) \
-    ( (((uint64_t)oid) >> ( SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_OBJECT_TYPE_MASK ) )
+    ( (((uint64_t)oid) >> ( SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_OBJECT_TYPE_MASK ) )
 
 #define SAI_REDIS_GET_SWITCH_INDEX(oid) \
-    ( (((uint64_t)oid) >> ( SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_SWITCH_INDEX_MASK ) )
+    ( (((uint64_t)oid) >> ( SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) ) & ( SAI_REDIS_SWITCH_INDEX_MASK ) )
 
 #define SAI_REDIS_TEST_OID (0x012345e789abcdef)
 
 static_assert(SAI_REDIS_GET_SWITCH_INDEX(SAI_REDIS_TEST_OID) == 0x01, "test switch index");
 static_assert(SAI_REDIS_GET_OBJECT_TYPE(SAI_REDIS_TEST_OID) == 0x23, "test object type");
 static_assert(SAI_REDIS_GET_GLOBAL_CONTEXT(SAI_REDIS_TEST_OID) == 0x45, "test global context");
-static_assert(SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(SAI_REDIS_TEST_OID) == 0x1, "test object type extensions flag");
-static_assert(SAI_REDIS_GET_OBJECT_INDEX(SAI_REDIS_TEST_OID) == 0x6789abcdef, "test object index");
+static_assert(SAI_REDIS_GET_OBJECT_TYPE_CUSTOM_FLAG(SAI_REDIS_TEST_OID) == 0x01, "test custom flag");
+static_assert(SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(SAI_REDIS_TEST_OID) == 0x01, "test extensions flag");
+static_assert(SAI_REDIS_GET_OBJECT_INDEX(SAI_REDIS_TEST_OID) == 0x2789abcdef, "test object index");
+static_assert((SAI_REDIS_SWITCH_INDEX_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE) == 64, "Total bits must sum to 64");
 
 using namespace sairedis;
 
@@ -162,9 +186,22 @@ sai_object_type_t VirtualObjectIdManager::saiObjectTypeQuery(
         return SAI_OBJECT_TYPE_NULL;
     }
 
-    sai_object_type_t objectType = SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId)
-        ? (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
-        : (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId));
+    uint64_t extensionsFlag = SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId);
+    uint64_t customFlag = SAI_REDIS_GET_OBJECT_TYPE_CUSTOM_FLAG(objectId);
+
+    sai_object_type_t objectType;
+    if (customFlag)
+    {
+        objectType = (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_CUSTOM_RANGE_START);
+    }
+    else if (extensionsFlag)
+    {
+        objectType = (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START);
+    }
+    else
+    {
+        objectType = (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId));
+    }
 
     if (sai_metadata_is_object_type_valid(objectType) == false)
     {
@@ -379,18 +416,25 @@ sai_object_id_t VirtualObjectIdManager::constructObjectId(
         SWSS_LOG_THROW("FATAL: invalid object type (0x%x), logic error, this is a bug!", objectType);
     }
 
+    uint64_t customFlag = (uint64_t)objectType >= SAI_OBJECT_TYPE_CUSTOM_RANGE_START && (uint64_t)objectType < SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START;
     uint64_t extensionsFlag = (uint64_t)objectType >= SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START;
 
-    objectType = extensionsFlag
-        ? (sai_object_type_t)(objectType - SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
-        : objectType;
+    if (customFlag)
+    {
+        objectType = (sai_object_type_t)(objectType - SAI_OBJECT_TYPE_CUSTOM_RANGE_START);
+    }
+    else if (extensionsFlag)
+    {
+        objectType = (sai_object_type_t)(objectType - SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START);
+    }
 
     return (sai_object_id_t)(
-            ((uint64_t)switchIndex << (SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
-            ((uint64_t)objectType << (SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
-            ((uint64_t)globalContext << (SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
-            ((uint64_t)extensionsFlag << (SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
-            objectIndex);
+        ((uint64_t)switchIndex << (SAI_REDIS_OBJECT_TYPE_BITS_SIZE + SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+        ((uint64_t)objectType << (SAI_REDIS_GLOBAL_CONTEXT_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+        ((uint64_t)globalContext << (SAI_REDIS_OBJECT_TYPE_EXTENSIONS_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+        ((uint64_t)extensionsFlag << (SAI_REDIS_OBJECT_TYPE_CUSTOM_FLAG_BITS_SIZE + SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+        ((uint64_t)customFlag << (SAI_REDIS_OBJECT_INDEX_BITS_SIZE)) |
+        objectIndex);
 }
 
 sai_object_id_t VirtualObjectIdManager::switchIdQuery(
@@ -434,9 +478,22 @@ sai_object_type_t VirtualObjectIdManager::objectTypeQuery(
         return SAI_OBJECT_TYPE_NULL;
     }
 
-    sai_object_type_t objectType = SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId)
-        ? (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START)
-        : (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId));
+    uint64_t extensionsFlag = SAI_REDIS_GET_OBJECT_TYPE_EXTENSIONS_FLAG(objectId);
+    uint64_t customFlag = SAI_REDIS_GET_OBJECT_TYPE_CUSTOM_FLAG(objectId);
+
+    sai_object_type_t objectType;
+    if (customFlag)
+    {
+        objectType = (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_CUSTOM_RANGE_START);
+    }
+    else if (extensionsFlag)
+    {
+        objectType = (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId) + SAI_OBJECT_TYPE_EXTENSIONS_RANGE_START);
+    }
+    else
+    {
+        objectType = (sai_object_type_t)(SAI_REDIS_GET_OBJECT_TYPE(objectId));
+    }
 
     if (!sai_metadata_is_object_type_valid(objectType))
     {
