@@ -113,7 +113,29 @@ void SaiObj::setAttr(
 {
     SWSS_LOG_ENTER();
 
-    m_attrs[attr->getSaiAttr()->id] = attr;
+    /*
+     * Always create a deep copy of SaiAttr (including its internal
+     * sai_attribute_t value buffers) to prevent double-free crashes
+     * during warm restart / applyView().
+     *
+     * Historically, attributes were propagated between AsicView/SaiObj
+     * instances using shallow copies: either multiple SaiAttr instances
+     * ended up sharing the same underlying attr.value.* buffers, or
+     * multiple std::shared_ptr<SaiAttr> control blocks were created
+     * from the same raw SaiAttr pointer. In both cases, more than one
+     * SaiAttr destructor attempted to free the same SAI value memory,
+     * leading to double-free when temporary views were destroyed
+     * (see bug #24372).
+     *
+     * Note that m_attrs stores std::shared_ptr<SaiAttr>; sharing a single
+     * shared_ptr instance across views would be safe. The issue was the
+     * duplicated ownership of the same underlying SAI buffers, not shared_ptr
+     * itself. By cloning SaiAttr here, each SaiObj has exclusive ownership
+     * of its attribute value buffers, at the cost of higher memory usage.
+     */
+
+    auto attrCopy = std::make_shared<SaiAttr>(*attr);
+    m_attrs[attr->getSaiAttr()->id] = attrCopy;
 }
 
 bool SaiObj::hasAttr(

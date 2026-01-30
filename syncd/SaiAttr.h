@@ -20,15 +20,9 @@ namespace syncd
         private:
 
             /*
-             * Copy constructor and assignment operator are marked as private to
-             * prevent copy of this object, since attribute can contain pointers to
-             * list which can lead to double free when object copy.
-             *
-             * This can be solved by making proper implementations of those
-             * methods, currently this is not required.
+             * Assignment operator is marked as private to prevent assignment.
              */
 
-            SaiAttr(const SaiAttr&) = delete;
             SaiAttr& operator=(const SaiAttr&) = delete;
 
         public:
@@ -42,6 +36,17 @@ namespace syncd
             SaiAttr(
                     _In_ const std::string &str_attr_id,
                     _In_ const std::string &str_attr_value);
+
+            /**
+             * @brief Copy constructor
+             *
+             * Creates a deep copy of SaiAttr object. This is needed to avoid
+             * shared ownership issues that can lead to double-free during
+             * warm restart when multiple AsicView objects are destroyed.
+             *
+             * @param[in] other SaiAttr object to copy from
+             */
+            SaiAttr(const SaiAttr& other);
 
             virtual ~SaiAttr();
 
