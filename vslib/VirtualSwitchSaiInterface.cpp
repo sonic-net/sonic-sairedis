@@ -10,6 +10,7 @@
 #include "meta/Globals.h"
 
 #include "SwitchStateBase.h"
+#include "SwitchPoE.h"
 #include "SwitchBCM81724.h"
 #include "SwitchBCM56850.h"
 #include "SwitchBCM56971B0.h"
@@ -613,6 +614,11 @@ std::shared_ptr<SwitchStateBase> VirtualSwitchSaiInterface::init_switch(
             SWSS_LOG_WARN("vslib not compiled with vpp");
             return nullptr;
 #endif
+
+        case SAI_VS_SWITCH_TYPE_POE:
+
+            m_switchStateMap[switch_id] = std::make_shared<SwitchPoE>(switch_id, m_realObjectIdManager, config, warmBootState);
+            break;
 
         default:
 
