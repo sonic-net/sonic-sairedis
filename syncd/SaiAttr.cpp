@@ -46,6 +46,29 @@ SaiAttr::SaiAttr(
     }
 }
 
+SaiAttr::SaiAttr(const SaiAttr& other):
+    m_str_attr_id(other.m_str_attr_id),
+    m_str_attr_value(other.m_str_attr_value),
+    m_meta(other.m_meta)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * Deep copy implementation: We deserialize from the string value
+     * to allocate new memory for list attributes. This ensures each
+     * SaiAttr object owns its own memory and prevents double-free
+     * issues during destruction.
+     */
+
+    m_attr.id = other.m_attr.id;
+
+    sai_deserialize_attr_value(m_str_attr_value, *m_meta, m_attr, false);
+
+    SWSS_LOG_DEBUG("Created deep copy of SaiAttr: %s = %s",
+            m_str_attr_id.c_str(),
+            m_str_attr_value.c_str());
+}
+
 SaiAttr::~SaiAttr()
 {
     SWSS_LOG_ENTER();
