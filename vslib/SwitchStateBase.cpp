@@ -4277,6 +4277,24 @@ sai_status_t SwitchStateBase::queryBufferProfilePacketAdmissionFailActionCapabil
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryIcmpEchoSessionStatsCountModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 2)
+    {
+        enum_values_capability->count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_STATS_COUNT_MODE_PACKET_AND_BYTE;
+    enum_values_capability->list[1] = SAI_STATS_COUNT_MODE_PACKET;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
                               _In_ sai_object_id_t switch_id,
                               _In_ sai_object_type_t object_type,
@@ -4319,6 +4337,10 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
     else if (object_type == SAI_OBJECT_TYPE_BUFFER_PROFILE && attr_id == SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION)
     {
         return queryBufferProfilePacketAdmissionFailActionCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_ICMP_ECHO_SESSION && attr_id == SAI_ICMP_ECHO_SESSION_ATTR_STATS_COUNT_MODE)
+    {
+        return queryIcmpEchoSessionStatsCountModeCapability(enum_values_capability);
     }
 
     return SAI_STATUS_NOT_SUPPORTED;
