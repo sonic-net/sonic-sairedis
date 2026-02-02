@@ -2556,6 +2556,7 @@ FlexCounter::FlexCounter(
         _In_ const bool noDoubleCheckBulkCapability):
     m_readyToPoll(false),
     m_pollInterval(0),
+    m_secondaryPollFactor(0),
     m_instanceId(instanceId),
     m_vendorSai(vendorSai),
     m_dbCounters(dbCounters),
@@ -2587,6 +2588,20 @@ void FlexCounter::setPollInterval(
         m_cvSleep.notify_all();
 
         SWSS_LOG_INFO("Set POLL INTERVAL %d for FC %s", pollInterval, m_instanceId.c_str());
+    }
+}
+
+void FlexCounter::setSecondaryPollFactor(
+        _In_ uint32_t secondaryPollFactor)
+{
+    SWSS_LOG_ENTER();
+
+    if (m_secondaryPollFactor != secondaryPollFactor)
+    {
+        m_secondaryPollFactor = secondaryPollFactor;
+        m_cvSleep.notify_all();
+
+        SWSS_LOG_INFO("SET SECONDARY POLL INTERVAL %d for FC %s", secondaryPollFactor, m_instanceId.c_str());
     }
 }
 
@@ -2686,6 +2701,10 @@ void FlexCounter::addCounterPlugin(
         if (field == POLL_INTERVAL_FIELD)
         {
             setPollInterval(stoi(value));
+        }
+        if (field == SECONDARY_POLL_FACTOR_FIELD)
+        {
+            setSecondaryPollFactor(stoi(value));
         }
         else if (field == BULK_CHUNK_SIZE_FIELD)
         {
@@ -3016,12 +3035,17 @@ void FlexCounter::runPlugins(
 {
     SWSS_LOG_ENTER();
 
-    const std::vector<std::string> argv =
+    std::vector<std::string> argv =
     {
         std::to_string(counters_db.getDbId()),
         COUNTERS_TABLE,
         std::to_string(m_pollInterval)
     };
+
+    if (m_secondaryPollFactor > 0)
+    {
+        argv.push_back(std::to_string(m_secondaryPollFactor));
+    }
 
     for (const auto &it : m_counterContext)
     {
