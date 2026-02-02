@@ -66,7 +66,6 @@ static void create_route_prefix_entry (
 
 void create_vpp_nexthop_entry (
     nexthop_grp_member_t *nxt_grp_member,
-    const char *hwif_name,
     vpp_nexthop_type_e type,
     vpp_ip_nexthop_t *vpp_nexthop)
 {
@@ -95,7 +94,13 @@ void create_vpp_nexthop_entry (
     }
     }
     vpp_nexthop->type = type;
-    vpp_nexthop->hwif_name = hwif_name;
+
+    if (strlen(nxt_grp_member->if_name) > 0) {
+        vpp_nexthop->hwif_name = nxt_grp_member->if_name;
+    } else {
+        vpp_nexthop->hwif_name = NULL;
+    }
+
     vpp_nexthop->sw_if_index = nxt_grp_member->sw_if_index;
     vpp_nexthop->weight = (uint8_t) nxt_grp_member->weight;
     vpp_nexthop->preference = 0;
@@ -118,7 +123,6 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
     next_hop_oid = attr.value.oid;
 
     sai_route_entry_t route_entry;
-    const char *hwif_name = NULL;
     vpp_nexthop_type_e nexthop_type = VPP_NEXTHOP_NORMAL;
     bool config_ip_route = false;
 
@@ -180,7 +184,7 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
 
         size_t i;
         for (i = 0; i < nxthop_group->nmembers; i++) {
-            create_vpp_nexthop_entry(nxt_grp_member, hwif_name, nexthop_type,  &ip_route->nexthop[i]);
+            create_vpp_nexthop_entry(nxt_grp_member, nexthop_type,  &ip_route->nexthop[i]);
             nxt_grp_member++;
         }
         ip_route->nexthop_cnt = nxthop_group->nmembers;
