@@ -113,7 +113,20 @@ void SaiObj::setAttr(
 {
     SWSS_LOG_ENTER();
 
-    m_attrs[attr->getSaiAttr()->id] = attr;
+    /*
+     * Always create a deep copy to prevent double-free crashes during
+     * warm restart. During applyView(), multiple AsicView objects exist
+     * in a vector, and the same SaiAttr pointer can be stored across
+     * different SaiObj instances in different AsicView objects. When the
+     * vector is destroyed, each AsicView tries to free the same SaiAttr,
+     * causing double-free (see bug #24372).
+     *
+     * Memory trade-off: This uses more memory but guarantees correctness.
+     * Each SaiObj owns independent copies of its attributes.
+     */
+
+    auto attrCopy = std::make_shared<SaiAttr>(*attr);
+    m_attrs[attr->getSaiAttr()->id] = attrCopy;
 }
 
 bool SaiObj::hasAttr(
