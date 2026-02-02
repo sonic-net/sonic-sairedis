@@ -110,9 +110,17 @@ void OidRefCounter::objectReferenceInsert(
 }
 
 void OidRefCounter::objectReferenceRemove(
-        _In_ sai_object_id_t oid)
+        _In_ sai_object_id_t oid,
+        _In_ bool force)
 {
     SWSS_LOG_ENTER();
+
+    if (force)
+    {
+        SWSS_LOG_DEBUG("force removing object oid 0x%" PRIx64 " reference", oid);
+        m_hash.erase(oid);
+        return;
+    }
 
     if (objectReferenceExists(oid))
     {
