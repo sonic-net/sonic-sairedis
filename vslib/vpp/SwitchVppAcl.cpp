@@ -1366,7 +1366,7 @@ sai_status_t SwitchVpp::emptyAclCreate(
     free(acl);
     SWSS_LOG_INFO("Placeholder ACL for table %s created, status %d swindex %u",
                     sid.c_str(), status, acl_swindex);
-    return SAI_STATUS_SUCCESS;
+    return status;
 }
 
 sai_status_t SwitchVpp::aclDefaultCreate()
