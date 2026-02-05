@@ -456,6 +456,24 @@ TEST(FlexCounter, addRemoveCounter)
         counterVerifyFunc,
         false);
 
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET,
+        CP_DATA_CHANNEL_COUNTER_ID_LIST,
+        {"SAI_HA_SET_STAT_CP_DATA_CHANNEL_CONNECT_ATTEMPTED", "SAI_HA_SET_STAT_CP_DATA_CHANNEL_CONNECT_RECEIVED", "SAI_HA_SET_STAT_CP_DATA_CHANNEL_CONNECT_SUCCEEDED", "SAI_HA_SET_STAT_CP_DATA_CHANNEL_CONNECT_FAILED", "SAI_HA_SET_STAT_CP_DATA_CHANNEL_CONNECT_REJECTED", "SAI_HA_SET_STAT_CP_DATA_CHANNEL_TIMEOUT_COUNT"},
+        {"100", "200", "300", "400", "500", "600"},
+        counterVerifyFunc,
+        false);
+
+    testAddRemoveCounter(
+        1,
+        (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET,
+        BULK_SYNC_COUNTER_ID_LIST,
+        {"SAI_HA_SET_STAT_BULK_SYNC_MESSAGE_RECEIVED", "SAI_HA_SET_STAT_BULK_SYNC_MESSAGE_SENT", "SAI_HA_SET_STAT_BULK_SYNC_MESSAGE_SEND_FAILED", "SAI_HA_SET_STAT_BULK_SYNC_FLOW_RECEIVED", "SAI_HA_SET_STAT_BULK_SYNC_FLOW_SENT"},
+        {"100", "200", "300", "400", "500"},
+        counterVerifyFunc,
+        false);
+
     clearCalled = false;
     testAddRemoveCounter(
         1,

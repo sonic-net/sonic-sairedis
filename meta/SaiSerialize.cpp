@@ -1131,6 +1131,14 @@ std::string sai_serialize_eni_stat(
     return sai_serialize_enum(counter, &sai_metadata_enum_sai_eni_stat_t);
 }
 
+std::string sai_serialize_ha_set_stat(
+        _In_ const  sai_ha_set_stat_t counter)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(counter, &sai_metadata_enum_sai_ha_set_stat_t);
+}
+
 std::string sai_serialize_meter_bucket_entry_stat(
         _In_ const sai_meter_bucket_entry_stat_t counter)
 {
