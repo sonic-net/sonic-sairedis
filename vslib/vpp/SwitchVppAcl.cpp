@@ -990,8 +990,10 @@ sai_status_t SwitchVpp::acl_add_replace(
         acl_swindex = 0;
         acl_replace = false;
     } else if (acl == NULL) {
-        status = emptyAclCreate(tbl_oid);
-        return status;
+        // Lazy binding: No rules in table, no need to create/maintain VPP ACL
+        // The table will be unbound from ports when all rules are removed
+        SWSS_LOG_INFO("ACL table %s has no rules, skipping VPP ACL creation", tbl_sid.c_str());
+        return SAI_STATUS_SUCCESS;
     } else {
         acl_swindex = vpp_idx_it->second;
         acl_replace = true;
@@ -1510,7 +1512,62 @@ sai_status_t SwitchVpp::AclAddRemoveCheck(
         return SAI_STATUS_SUCCESS;
     }
 
+    // Lazy binding: If all rules removed and table is bound, unbind it first
+    if (it->second.empty()) {
+        auto hw_ports_it = m_acl_tbl_hw_ports_map.find(tbl_oid);
+        bool is_bound = (hw_ports_it != m_acl_tbl_hw_ports_map.end() && !hw_ports_it->second.empty());
+
+        if (is_bound) {
+            SWSS_LOG_INFO("ACL table %s has no rules, triggering unbind",
+                          sai_serialize_object_id(tbl_oid).c_str());
+
+            // Find which table group(s) contain this table and unbind from their ports
+            for (auto& grp_mbr_pair : m_acl_tbl_grp_mbr_map) {
+                sai_object_id_t tbl_grp_oid = grp_mbr_pair.first;
+                for (auto member_oid : grp_mbr_pair.second) {
+                    sai_attribute_t attr;
+                    attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID;
+                    if (get(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
+                        if (attr.value.oid == tbl_oid) {
+                            // Found the table group containing this table, unbind from its ports
+                            aclBindUnbindPorts(tbl_grp_oid, tbl_oid, false);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     status = AclTblConfig(tbl_oid);
+
+    // Lazy binding: If table has rules but is not yet bound to any ports, bind it now
+    if (status == SAI_STATUS_SUCCESS && !it->second.empty()) {
+        auto hw_ports_it = m_acl_tbl_hw_ports_map.find(tbl_oid);
+        bool is_not_bound = (hw_ports_it == m_acl_tbl_hw_ports_map.end() || hw_ports_it->second.empty());
+
+        if (is_not_bound) {
+            SWSS_LOG_INFO("ACL table %s has rules but not bound, triggering lazy binding",
+                          sai_serialize_object_id(tbl_oid).c_str());
+
+            // Find which table group(s) contain this table and bind to their ports
+            for (auto& grp_mbr_pair : m_acl_tbl_grp_mbr_map) {
+                sai_object_id_t tbl_grp_oid = grp_mbr_pair.first;
+                for (auto member_oid : grp_mbr_pair.second) {
+                    sai_attribute_t attr;
+                    attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID;
+                    if (get(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
+                        if (attr.value.oid == tbl_oid) {
+                            // Found the table group containing this table, bind to its ports
+                            aclBindUnbindPorts(tbl_grp_oid, tbl_oid, true);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     return status;
 }
 
@@ -1876,6 +1933,14 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
         }
         auto tbl_oid = attr.value.oid;
 
+        // Lazy binding: Skip tables that have no rules
+        auto rules_it = m_acl_tbl_rules_map.find(tbl_oid);
+        if (rules_it == m_acl_tbl_rules_map.end() || rules_it->second.empty()) {
+            SWSS_LOG_INFO("Skipping ACL table %s with no rules (lazy binding)",
+                          sai_serialize_object_id(tbl_oid).c_str());
+            continue;
+        }
+
         // Get VPP swindex for the ACL table
         auto vpp_idx_it = m_acl_swindex_map.find(tbl_oid);
         if (vpp_idx_it == m_acl_swindex_map.end()) {
@@ -1922,6 +1987,12 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
 
     // Handle the shared default ACL
     if (is_bind) {
+        // Only bind default ACL if we have ACLs with rules bound
+        if (sorted_members.empty()) {
+            SWSS_LOG_INFO("No ACL tables with rules to bind, skipping default ACL for port %s", hwif_name.c_str());
+            return SAI_STATUS_SUCCESS;
+        }
+
         // Create default ACL if not already created
         CHECK_STATUS(aclDefaultCreate());
 
