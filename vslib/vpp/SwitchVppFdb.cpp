@@ -68,10 +68,21 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
+    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
+    auto meta_type = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_TYPE);
+    auto it_type = br_port_attrs.find(meta_type->attridname);
+    if (it_type != br_port_attrs.end()) {
+        sai_bridge_port_type_t bp_type = (sai_bridge_port_type_t)it_type->second->getAttr()->value.s32;
+        if (bp_type == SAI_BRIDGE_PORT_TYPE_TUNNEL) {
+            SWSS_LOG_NOTICE("Skipping VLAN member VPP ops for tunnel bridge port %s",
+                sai_serialize_object_id(br_port_id).c_str());
+            return SAI_STATUS_SUCCESS;
+        }
+    }
+
     const char *hwifname = nullptr;
     uint32_t lag_swif_idx;
 
-    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
     auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
     auto bp_attr = br_port_attrs[meta->attridname];
     auto port_id = bp_attr->getAttr()->value.oid;

@@ -956,6 +956,17 @@ sai_status_t SwitchVpp::create(
        return createLagMember(object_id, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_TUNNEL)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        
+        CHECK_STATUS(create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list));
+        
+        uint32_t sw_if_index;
+        return m_tunnel_mgr.create_l2_vxlan_tunnel(object_id, sw_if_index);
+    }
+
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 

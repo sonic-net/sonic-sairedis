@@ -412,3 +412,166 @@ TunnelManager::remove_vpp_vxlan_decap(
                         tunnel_data.sw_if_index, tunnel_data.bd_id);
     return SAI_STATUS_SUCCESS;
 }
+
+sai_status_t
+TunnelManager::create_l2_vxlan_tunnel(
+    _In_ sai_object_id_t tunnel_oid,
+    _Out_ uint32_t& sw_if_index)
+{
+    SWSS_LOG_ENTER();
+
+    sw_if_index = ~0;
+
+    // Check if already created
+    auto it = m_l2_tunnel_map.find(tunnel_oid);
+    if (it != m_l2_tunnel_map.end()) {
+        sw_if_index = it->second.sw_if_index;
+        SWSS_LOG_NOTICE("L2 VXLAN tunnel already exists: tunnel=%s sw_if=%u",
+            sai_serialize_object_id(tunnel_oid).c_str(), sw_if_index);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // Get tunnel object
+    auto tunnel_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL,
+        sai_serialize_object_id(tunnel_oid));
+    if (!tunnel_obj) {
+        SWSS_LOG_ERROR("Tunnel %s not found", sai_serialize_object_id(tunnel_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    // Check tunnel type
+    sai_attribute_t attr;
+    attr.id = SAI_TUNNEL_ATTR_TYPE;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Missing SAI_TUNNEL_ATTR_TYPE");
+        return SAI_STATUS_FAILURE;
+    }
+    if (attr.value.s32 != SAI_TUNNEL_TYPE_VXLAN) {
+        SWSS_LOG_NOTICE("Not a VXLAN tunnel (type=%d), skipping", attr.value.s32);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // Get src IP
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_SRC_IP;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Missing ENCAP_SRC_IP");
+        return SAI_STATUS_FAILURE;
+    }
+    sai_ip_address_t src_ip = attr.value.ipaddr;
+
+    // Get dst IP - if missing, this is local VTEP, not P2P tunnel
+    attr.id = SAI_TUNNEL_ATTR_ENCAP_DST_IP;
+    if (tunnel_obj->get_attr(attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_NOTICE("No ENCAP_DST_IP - local VTEP tunnel, skipping VPP creation");
+        return SAI_STATUS_SUCCESS;
+    }
+    sai_ip_address_t dst_ip = attr.value.ipaddr;
+
+    // Find VNI and VLAN from decap mappers
+    uint32_t vni = 0;
+    uint16_t vlan_id = 0;
+
+    auto decap_mappers = tunnel_obj->get_linked_objects(
+        SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_DECAP_MAPPERS);
+    
+    SWSS_LOG_NOTICE("Found %zu decap mappers", decap_mappers.size());
+
+    for (auto mapper : decap_mappers) {
+        attr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+        if (mapper->get_attr(attr) != SAI_STATUS_SUCCESS) continue;
+        SWSS_LOG_NOTICE("Mapper type: %d", attr.value.s32);
+        if (attr.value.s32 != SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID) continue;
+
+        auto entries = mapper->get_child_objs(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+        if (!entries) {
+            SWSS_LOG_NOTICE("No entries in mapper");
+            continue;
+        }
+
+        SWSS_LOG_NOTICE("Mapper has %zu entries", entries->size());
+
+        for (auto& entry_pair : *entries) {
+            auto entry = entry_pair.second;
+
+            // Get VNI
+            attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+            if (entry->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                vni = attr.value.u32;
+                SWSS_LOG_NOTICE("Found VNI=%u", vni);
+            }
+
+            // Get VLAN ID
+            attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VLAN_ID_VALUE;
+            if (entry->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                vlan_id = attr.value.u16;
+                SWSS_LOG_NOTICE("Found VLAN=%u", vlan_id);
+            }
+
+            if (vni != 0 && vlan_id != 0) break;
+        }
+        if (vni != 0 && vlan_id != 0) break;
+    }
+
+    if (vni == 0) {
+        SWSS_LOG_ERROR("No VNI found in tunnel mappers for tunnel %s",
+            sai_serialize_object_id(tunnel_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (vlan_id == 0) {
+        SWSS_LOG_ERROR("No VLAN found in tunnel mappers for tunnel %s",
+            sai_serialize_object_id(tunnel_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
+
+    // Create VPP tunnel
+    vpp_vxlan_tunnel_t req;
+    memset(&req, 0, sizeof(req));
+    req.vni = vni;
+    req.src_port = m_vxlan_port;
+    req.dst_port = m_vxlan_port;
+    req.instance = ~0;
+    req.decap_next_index = ~0;
+    sai_ip_address_t_to_vpp_ip_addr_t(src_ip, req.src_address);
+    sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.dst_address);
+
+    TunnelVPPData tunnel_data;
+    tunnel_data.vni = vni;
+    tunnel_data.src_ip = src_ip;
+    tunnel_data.dst_ip = dst_ip;
+    tunnel_data.vlan_id = vlan_id;  // Store for cleanup
+
+    std::string default_vrf = "default";
+    tunnel_data.ip_vrf = std::make_shared<IpVrfInfo>(SAI_NULL_OBJECT_ID, 0, default_vrf, false);
+
+    if (create_vpp_vxlan_encap(req, tunnel_data) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to create VPP VXLAN tunnel");
+        return SAI_STATUS_FAILURE;
+    }
+
+    // Add tunnel interface to bridge domain (VLAN)
+    if (vlan_id != 0) {
+        int vpp_status = set_sw_interface_l2_bridge_by_index(
+            tunnel_data.sw_if_index, vlan_id, true, VPP_API_PORT_TYPE_NORMAL);
+        if (vpp_status != 0) {
+            SWSS_LOG_ERROR("Failed to add tunnel sw_if %u to BD %u",
+                tunnel_data.sw_if_index, vlan_id);
+            // Cleanup the tunnel
+            remove_vpp_vxlan_encap(req, tunnel_data);
+            return SAI_STATUS_FAILURE;
+        }
+        SWSS_LOG_NOTICE("Added tunnel sw_if %u to BD %u", tunnel_data.sw_if_index, vlan_id);
+    }
+
+    m_l2_tunnel_map[tunnel_oid] = tunnel_data;
+    sw_if_index = tunnel_data.sw_if_index;
+
+    char src_str[INET6_ADDRSTRLEN], dst_str[INET6_ADDRSTRLEN];
+    vpp_ip_addr_t_to_string(&req.src_address, src_str, sizeof(src_str));
+    vpp_ip_addr_t_to_string(&req.dst_address, dst_str, sizeof(dst_str));
+
+    SWSS_LOG_NOTICE("Created L2 VXLAN: tunnel=%s src=%s dst=%s VNI=%u VLAN=%u sw_if=%u",
+        sai_serialize_object_id(tunnel_oid).c_str(), src_str, dst_str, vni, vlan_id, sw_if_index);
+
+    return SAI_STATUS_SUCCESS;
+}
