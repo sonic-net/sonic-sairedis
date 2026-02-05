@@ -17,20 +17,24 @@ namespace saivs
      */
     class TunnelVPPData {
     public:
-        TunnelVPPData() : sw_if_index(0), encap_vrf_id(0), bd_id(0), vni(0), vlan_id(0) {
+        TunnelVPPData() {
             memset(&src_ip, 0, sizeof(src_ip));
             memset(&dst_ip, 0, sizeof(dst_ip));
             memset(&bvi_addr, 0, sizeof(bvi_addr));
         }
-        u_int32_t sw_if_index;
-        u_int32_t encap_vrf_id;
-        u_int32_t bd_id;
-        u_int32_t vni;
-        u_int16_t vlan_id;
+        // Common fields
+        u_int32_t sw_if_index = 0;
+        std::shared_ptr<IpVrfInfo> ip_vrf;
+
+        u_int32_t encap_vrf_id = 0;
+        u_int32_t bd_id = 0;
+        vpp_ip_addr_t bvi_addr;
+
+        // L2 VXLAN fields
+        u_int32_t vni = 0;
+        u_int16_t vlan_id = 0;
         sai_ip_address_t src_ip;
         sai_ip_address_t dst_ip;
-        vpp_ip_addr_t bvi_addr;
-        std::shared_ptr<IpVrfInfo> ip_vrf;
     };
 
     class TunnelManager {
