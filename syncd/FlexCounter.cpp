@@ -36,8 +36,7 @@ static const std::string COUNTER_TYPE_FLOW = "Flow Counter";
 static const std::string COUNTER_TYPE_TUNNEL = "Tunnel Counter";
 static const std::string COUNTER_TYPE_BUFFER_POOL = "Buffer Pool Counter";
 static const std::string COUNTER_TYPE_ENI = "DASH ENI Counter";
-static const std::string COUNTER_TYPE_CP_DATA_CHANNEL = "CP Data Channel Counter";
-static const std::string COUNTER_TYPE_BULK_SYNC = "Bulk Sync Counter";
+static const std::string COUNTER_TYPE_HA_SET = "HA Set Counter";
 static const std::string COUNTER_TYPE_METER_BUCKET = "DASH Meter Bucket Counter";
 static const std::string COUNTER_TYPE_POLICER = "Policer Counter";
 static const std::string COUNTER_TYPE_SRV6 = "SRv6 Counter";
@@ -90,8 +89,7 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{SAI_OBJECT_TYPE_POLICER, POLICER_COUNTER_ID_LIST}, COUNTER_TYPE_POLICER},
     {{SAI_OBJECT_TYPE_TUNNEL, TUNNEL_COUNTER_ID_LIST}, COUNTER_TYPE_TUNNEL},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, ENI_COUNTER_ID_LIST}, COUNTER_TYPE_ENI},
-    {{(sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, CP_DATA_CHANNEL_COUNTER_ID_LIST}, COUNTER_TYPE_CP_DATA_CHANNEL},
-    {{(sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, BULK_SYNC_COUNTER_ID_LIST}, COUNTER_TYPE_BULK_SYNC},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, HA_SET_COUNTER_ID_LIST}, COUNTER_TYPE_HA_SET},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
     {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
     {{SAI_OBJECT_TYPE_SWITCH, SWITCH_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH},
@@ -2911,13 +2909,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->always_check_supported_counters = true;
         return context;
     }
-    else if (context_name == COUNTER_TYPE_CP_DATA_CHANNEL)
-    {
-        auto context = std::make_shared<CounterContext<sai_ha_set_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, m_vendorSai.get(), m_statsMode);
-        context->always_check_supported_counters = true;
-        return context;
-    }
-    else if (context_name == COUNTER_TYPE_BULK_SYNC)
+    else if (context_name == COUNTER_TYPE_HA_SET)
     {
         auto context = std::make_shared<CounterContext<sai_ha_set_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
@@ -3258,13 +3250,9 @@ void FlexCounter::removeCounter(
     }
     else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET)
     {
-        if (hasCounterContext(COUNTER_TYPE_CP_DATA_CHANNEL))
+        if (hasCounterContext(COUNTER_TYPE_HA_SET))
         {
-            getCounterContext(COUNTER_TYPE_CP_DATA_CHANNEL)->removeObject(vid);
-        }
-        if (hasCounterContext(COUNTER_TYPE_BULK_SYNC))
-        {
-            getCounterContext(COUNTER_TYPE_BULK_SYNC)->removeObject(vid);
+            getCounterContext(COUNTER_TYPE_HA_SET)->removeObject(vid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_COUNTER)
