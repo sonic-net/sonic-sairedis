@@ -495,3 +495,8 @@ SNR
 tparam
 ICMP
 UDP
+NIC
+NICs
+oper
+sysfs
+virtio
