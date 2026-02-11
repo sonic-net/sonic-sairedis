@@ -2659,7 +2659,10 @@ sai_status_t SwitchStateBase::refresh_port_oper_speed(
         }
         else if (!vs_get_oper_speed(port_id, attr.value.u32))
         {
-            return SAI_STATUS_FAILURE;
+            // Report 0 when sysfs speed is unavailable/invalid
+            // (e.g. virtio NICs report -1 for speed in sysfs)
+
+            attr.value.u32 = 0;
         }
     }
 
