@@ -106,8 +106,6 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      artifact_name: sonic-swss-common-trixie
-      debian_version: trixie
       swss_common_artifact_name: sonic-swss-common-trixie
       artifact_name: sonic-sairedis-trixie
       syslog_artifact_name: sonic-sairedis-trixie.syslog
