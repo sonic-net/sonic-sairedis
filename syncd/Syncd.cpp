@@ -22,6 +22,7 @@
 #include "swss/tokenize.h"
 #include "swss/notificationproducer.h"
 #include "swss/exec.h"
+#include "swss/warm_restart.h"
 
 #include "meta/sai_serialize.h"
 #include "meta/ZeroMQSelectableChannel.h"
@@ -38,6 +39,7 @@
 
 #include <iterator>
 #include <algorithm>
+#include <cstdio>
 
 #define DEF_SAI_WARM_BOOT_DATA_FILE "/var/warmboot/sai-warmboot.bin"
 #define SAI_FAILURE_DUMP_SCRIPT "/usr/bin/sai_failure_dump.sh"
@@ -209,6 +211,9 @@ Syncd::Syncd(
     m_translator = std::make_shared<VirtualOidTranslator>(m_client, m_virtualObjectIdManager,  vendorSai);
 
     m_processor->m_translator = m_translator; // TODO as param
+
+    m_manager->setVidToRidResolver(
+        [this](sai_object_id_t vid, sai_object_id_t& rid) { return m_translator->tryTranslateVidToRid(vid, rid); });
 
     m_veryFirstRun = isVeryFirstRun();
 
@@ -3235,7 +3240,7 @@ sai_status_t Syncd::processFlexCounterEvent(
         sai_object_id_t vid;
         sai_deserialize_object_id(strVid, vid);
 
-        sai_object_id_t rid;
+        sai_object_id_t rid = SAI_NULL_OBJECT_ID; // Initialize to NULL
 
         if (!m_translator->tryTranslateVidToRid(vid, rid))
         {
@@ -3252,7 +3257,12 @@ sai_status_t Syncd::processFlexCounterEvent(
             effective_op = DEL_COMMAND;
         }
 
-        if (effective_op == SET_COMMAND)
+        if (effective_op == SET_COMMAND && rid == SAI_NULL_OBJECT_ID)
+        {
+            SWSS_LOG_INFO("Skipping counter add for null object in group %s",
+                    groupName.c_str());
+        }
+        else if (effective_op == SET_COMMAND)
         {
             m_manager->addCounter(vid, rid, groupName, values);
             if (fromAsicChannel)

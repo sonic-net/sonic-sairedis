@@ -31,11 +31,24 @@ std::shared_ptr<FlexCounter> FlexCounterManager::getInstance(
     {
         bool supportingBulk = (m_supportingBulkGroups.find(instanceId) != std::string::npos);
         auto counter = std::make_shared<FlexCounter>(instanceId, m_vendorSai, m_dbCounters, supportingBulk);
-
+        if (m_vidToRidResolver)
+        {
+            counter->setVidToRidResolver(m_vidToRidResolver);
+        }
         m_flexCounters[instanceId] = counter;
     }
 
     return m_flexCounters.at(instanceId);
+}
+
+void FlexCounterManager::setVidToRidResolver(
+        _In_ std::function<bool(sai_object_id_t vid, sai_object_id_t& rid)> resolver)
+{
+    m_vidToRidResolver = std::move(resolver);
+    for (auto& it : m_flexCounters)
+    {
+        it.second->setVidToRidResolver(m_vidToRidResolver);
+    }
 }
 
 void FlexCounterManager::removeInstance(
