@@ -98,7 +98,7 @@ jobs:
         docbook-utils \
         aspell-en \
         libhiredis-dev \
-        swig4.0 \
+        swig \
         libzmq3-dev \
         autoconf-archive
 
