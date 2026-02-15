@@ -1,0 +1,102 @@
+# For more infomation, please visit: https://github.com/github/codeql-action
+
+name: "CodeQL"
+
+on:
+  push:
+    branches:
+      - 'master'
+      - '202[0-9][0-9][0-9]'
+  pull_request:
+    branches:
+      - 'master'
+      - '202[0-9][0-9][0-9]'
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'cpp' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    # Initializes the CodeQL tools for scanning.
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2.1.29
+      with:
+        config-file: ./.github/codeql/codeql-config.yml
+        languages: ${{ matrix.language }}
+
+    - name: Install prerequisites
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libxml-simple-perl \
+            aspell \
+            aspell-en \
+            libhiredis-dev \
+            libnl-3-dev \
+            libnl-genl-3-dev \
+            libnl-route-3-dev \
+            libnl-nf-3-dev \
+            libyang-dev \
+            libzmq3-dev \
+            libzmq5 \
+            swig4.0 \
+            libpython3-dev \
+            libgtest-dev \
+            libgmock-dev \
+            libboost-dev \
+            libboost-serialization-dev \
+            dh-exec \
+            doxygen \
+            cdbs \
+            bison \
+            flex \
+            graphviz \
+            autoconf-archive \
+            uuid-dev \
+            libjansson-dev \
+            nlohmann-json3-dev
+
+    - if: matrix.language == 'cpp'
+      name: Build sonic-swss-common
+      run: |
+        cd ..
+        git clone https://github.com/sonic-net/sonic-swss-common
+        pushd sonic-swss-common
+        ./autogen.sh
+        dpkg-buildpackage -rfakeroot -us -uc -b -Pnoyangmod,nopython2 -j$(nproc)
+        popd
+        dpkg-deb -x libswsscommon_${SWSSCOMMON_VER}_amd64.deb $(dirname $GITHUB_WORKSPACE)
+        dpkg-deb -x libswsscommon-dev_${SWSSCOMMON_VER}_amd64.deb $(dirname $GITHUB_WORKSPACE)
+      env:
+        SWSSCOMMON_VER: "1.0.0"
+
+    - if: matrix.language == 'cpp'
+      name: Build repository
+      run: |
+        gcc -v
+        ./autogen.sh
+        DEB_BUILD_OPTIONS=nocheck \
+        SWSS_COMMON_INC="$(dirname $GITHUB_WORKSPACE)/usr/include" \
+        SWSS_COMMON_LIB="$(dirname $GITHUB_WORKSPACE)/usr/lib/x86_64-linux-gnu" \
+        DEB_CFLAGS_SET="-Wno-error" DEB_CXXFLAGS_SET="-Wno-error" \
+        dpkg-buildpackage -us -uc -b -Psyncd,vs,nopython2 -j$(nproc)
+
+    - name: Perform CodeQL analysis
+      uses: github/codeql-action/analyze@v2.1.29
+      with:
+        category: "/language:${{matrix.language}}"

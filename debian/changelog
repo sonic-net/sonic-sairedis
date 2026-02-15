@@ -1,0 +1,11 @@
+sonic (1.0.0) stable; urgency=medium
+
+  * syncd-rpc is added
+
+ -- Pavel Shirshov <pavelsh@microsoft.com>  Wed, 12 Apr 2017 12:00:00 -0800
+
+sonic (1.0.0) stable; urgency=medium
+
+  * Initial release.
+
+ -- Kamil Cudnik <kcudnik@microsoft.com>  Wed, 23 Mar 2016 12:00:00 -0800

@@ -1,0 +1,209 @@
+parameters:
+- name: arch
+  type: string
+  values:
+  - amd64
+  - armhf
+  - arm64
+  default: amd64
+
+- name: pool
+  type: string
+  values:
+  - sonicso1ES-amd64
+  - default
+  default: default
+
+- name: timeout
+  type: number
+  default: 60
+
+- name: debian_version
+  type: string
+
+- name: sairedis_artifact_name
+  type: string
+
+- name: swss_common_artifact_name
+  type: string
+
+- name: artifact_name
+  type: string
+
+- name: syslog_artifact_name
+  type: string
+
+jobs:
+- job:
+  displayName: ${{ parameters.arch }}
+  timeoutInMinutes: ${{ parameters.timeout }}
+
+  pool:
+    ${{ if ne(parameters.pool, 'default') }}:
+      name: ${{ parameters.pool }}
+    ${{ else }}:
+      vmImage: 'ubuntu-22.04'
+
+  container:
+    image: sonicdev-microsoft.azurecr.io:443/sonic-slave-${{ parameters.debian_version }}:$(BUILD_BRANCH)-${{ parameters.arch }}
+
+  steps:
+  - checkout: sonic-swss
+    submodules: true
+    clean: true
+  - script: |
+      set -ex
+      git checkout $(BUILD_BRANCH)
+      git submodule update
+      git status
+    displayName: Set up sonic-swss branch
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libnl-cli*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-3*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-genl*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-route*.deb
+        target/debs/${{ parameters.debian_version }}/libnl-nf*.deb
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libprotobuf*.deb
+        target/debs/${{ parameters.debian_version }}/libprotoc*.deb
+        target/debs/${{ parameters.debian_version }}/protobuf-compiler*.deb
+    displayName: "Download libnl libs"
+  - script: |
+      set -ex
+      sudo dpkg -i $(find ./download -name libnl-*_${{ parameters.arch }}.deb)
+    condition: eq('${{ parameters.arch }}', 'amd64')
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install sonic libnl"
+  - script: |
+      set -ex
+      sudo apt-get update
+      sudo apt-get install -y \
+        libhiredis-dev \
+        libzmq3-dev \
+        swig4.0 \
+        libdbus-1-dev \
+        libteam-dev \
+        rsyslog
+
+      sudo perl -i.bk -ne 'print if not /SONiCFileFormat|ActionFileDefaultTemplate/' /etc/rsyslog.conf
+      sudo sed -ie '/GLOBAL DIRECTIVES/{s/$/\n\$template SONiCFileFormat,"%TIMESTAMP%.%timestamp:::date-subseconds% %HOSTNAME% %syslogseverity-text:::uppercase% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-lst-lf%\\n"\n\$ActionFileDefaultTemplate SONiCFileFormat/}' /etc/rsyslog.conf
+
+      sudo rsyslogd
+
+    displayName: "Install dependencies"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-swss-common
+      artifact: ${{ parameters.swss_common_artifact_name }}
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      allowPartiallySucceededBuilds: true
+      path: $(Build.ArtifactStagingDirectory)/download
+      patterns: |
+        libswsscommon_1.0.0_*.deb
+        libswsscommon-dev_1.0.0*.deb
+    displayName: "Download sonic swss common deb packages"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: ${{ parameters.sairedis_artifact_name }}
+      path: $(Build.ArtifactStagingDirectory)/download
+      patterns: |
+        libsaivs_*.deb
+        libsaivs-dev_*.deb
+        libsairedis_*.deb
+        libsairedis-dev_*.deb
+        libsaimetadata_*.deb
+        libsaimetadata-dev_*.deb
+        syncd-vs_*.deb
+    displayName: "Download pre-stage built ${{ parameters.sairedis_artifact_name }}"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: sonic-net.sonic-dash-api
+      ${{ if eq(parameters.arch, 'amd64') }}:
+        artifact: sonic-dash-api
+      ${{ else }}:
+        artifact: sonic-dash-api.${{ parameters.arch }}
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      patterns: |
+        libdashapi*.deb
+    displayName: "Download dash api test"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: sonic-net.sonic-platform-vpp
+      artifact: vpp
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/main'
+      allowPartiallySucceededBuilds: true
+      path: $(Build.ArtifactStagingDirectory)/download
+    displayName: "Download sonic platform-vpp deb packages"
+    condition: eq('${{ parameters.arch }}', 'amd64')
+  - script: |
+      set -ex
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/libvppinfra-dev_*_${{ parameters.arch }}.deb
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/libvppinfra_*_${{ parameters.arch }}.deb
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/vpp_*_${{ parameters.arch }}.deb
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/vpp-crypto-engines_*_${{ parameters.arch }}.deb
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/vpp-dbg_*_${{ parameters.arch }}.deb
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/vpp-dev_*_${{ parameters.arch }}.deb
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/vpp-plugin-core_*_${{ parameters.arch }}.deb
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/vpp-plugin-devtools_*_${{ parameters.arch }}.deb
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/vpp-plugin-dpdk_*_${{ parameters.arch }}.deb
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i download/python3-vpp-api_*_${{ parameters.arch }}.deb
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install sonic platform-vpp packages"
+    condition: eq('${{ parameters.arch }}', 'amd64')
+  - script: |
+      set -ex
+      # install libyang before install libswsscommon
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i $(find ./download -name libyang_*.deb)
+      sudo env VPP_INSTALL_SKIP_SYSCTL=1 dpkg -i $(find ./download -name *.deb)
+      rm -rf download || true
+      cat /etc/apt/sources.list
+      dpkg --list |grep libnl
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install libnl3, sonic swss common, and sairedis"
+  - script: |
+      set -ex
+      rm ../*.deb || true
+      ./autogen.sh
+      dpkg-buildpackage -us -uc -b -j$(nproc)
+      mv ../*.deb $(Build.ArtifactStagingDirectory)
+    displayName: "Compile sonic swss"
+  - publish: $(Build.ArtifactStagingDirectory)
+    artifact: ${{ parameters.artifact_name }}
+    displayName: "Archive swss debian packages"
+  - script: |
+      pwd
+      sudo chmod a+r /var/log/syslog*
+      tar -czf syslog-swss.tgz /var/log/syslog*
+      ls -al .
+      ls -al /var/log/
+    displayName: "Env info"
+    condition: always()
+  - task: CopyFiles@2
+    displayName: "Copy syslog to staging directory"
+    condition: always()
+    inputs:
+        contents: 'syslog-swss.tgz'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+  - publish: $(Build.ArtifactStagingDirectory)/
+    artifact: ${{ parameters.syslog_artifact_name }}@$(System.JobAttempt)
+    displayName: "Publish syslog artifacts"
+    condition: always()

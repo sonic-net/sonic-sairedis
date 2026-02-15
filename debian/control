@@ -1,0 +1,84 @@
+Source: sonic
+Maintainer: Kamil Cudnik <kcudnik@microsoft.com>
+Section: net
+Priority: optional
+Build-Depends: debhelper (>= 12), autotools-dev, libzmq5-dev
+Standards-Version: 1.0.0
+
+Package: syncd
+Architecture: any
+Build-Profiles: <syncd !vs>
+Depends: ${misc:Pre-Depends}
+Recommends: ${shlibs:Depends}
+Conflicts: syncd-rpc, syncd-vs
+Description: This package contains sync daemon for SONiC project.
+  This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
+
+Package: syncd-rpc
+Architecture: any
+Build-Profiles: <syncd rpc !vs>
+Depends: ${misc:Pre-Depends}
+Recommends: ${shlibs:Depends}
+Conflicts: syncd, syncd-vs
+Description: This package contains sync daemon with rpc for SONiC project.
+  This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
+  This daemon contains saithrift rpc library for remote control of an ASIC.
+
+Package: syncd-vs
+Architecture: any
+Build-Profiles: <syncd !rpc vs>
+Depends: ${misc:Pre-Depends}
+Recommends: ${shlibs:Depends}
+Conflicts: syncd-rpc, syncd
+Description: This package contains sync daemon for SONiC project linked with virtual switch.
+  This sync daemon syncs the ASIC_DB in Redis database and the real ASIC via SAI.
+
+Package: libsairedis
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
+Section: libs
+Description: This package contains SAI-Redis implementation for SONiC project.
+
+Package: libsairedis-dev
+Architecture: any
+Depends: libsairedis (= ${binary:Version}), libzmq5-dev
+Section: libdevel
+Description: This package contains development files for SAI-Redis.
+
+Package: libsaivs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
+Section: libs
+Description: This package contains SAI-VirtualSwitch implementation for SONiC project.
+
+Package: libsaivs-dev
+Architecture: any
+Depends: libsaivs (= ${binary:Version})
+Section: libdevel
+Description: This package contains development files for SAI-VirtualSwitch.
+
+Package: libsaimetadata
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
+Section: libs
+Description: This package contains SAI-Metadata implementation for SONiC project.
+
+Package: libsaimetadata-dev
+Architecture: any
+Depends: libsaimetadata (= ${binary:Version})
+Section: libdevel
+Description: This package contains development files for SAI-Metadata.
+
+Package: python-pysairedis
+Architecture: any
+Build-Profiles: <!nopython2>
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
+Section: libs
+Description: This package contains Switch State Service sairedis Python2 library.
+
+Package: python3-pysairedis
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Pre-Depends}
+Section: libs
+Description: This package contains Switch State Service sairedis Python3 library.
+

@@ -1,0 +1,4 @@
+{
+    "zmq_endpoint": "ipc:///tmp/saiServer",
+    "zmq_ntf_endpoint": "ipc:///tmp/saiServerNtf"
+}

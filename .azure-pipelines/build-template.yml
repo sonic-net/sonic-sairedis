@@ -1,0 +1,282 @@
+parameters:
+- name: arch
+  type: string
+  values:
+  - amd64
+  - armhf
+  - arm64
+
+- name: pool
+  type: string
+  values:
+  - sonicso1ES-amd64
+  - sonicso1ES-arm64
+  - sonicso1ES-armhf
+  - default
+  default: default
+
+- name: timeout
+  type: number
+  default: 60
+
+- name: swss_common_artifact_name
+  type: string
+
+- name: artifact_name
+  type: string
+
+- name: syslog_artifact_name
+  type: string
+
+- name: run_unit_test
+  type: boolean
+  default: false
+
+- name: archive_gcov
+  type: boolean
+  default: false
+
+- name: asan
+  type: boolean
+  default: false
+
+- name: debian_version
+  type: string
+
+jobs:
+- job:
+  displayName: ${{ parameters.arch }}
+  timeoutInMinutes: ${{ parameters.timeout }}
+  variables:
+    DIFF_COVER_CHECK_THRESHOLD: 80
+    ${{ if eq(parameters.run_unit_test, true) }}:
+      DIFF_COVER_ENABLE: 'true'
+
+  pool:
+    ${{ if ne(parameters.pool, 'default') }}:
+      name: ${{ parameters.pool }}
+    ${{ else }}:
+      vmImage: 'ubuntu-22.04'
+
+  container:
+    image: sonicdev-microsoft.azurecr.io:443/sonic-slave-${{ parameters.debian_version }}:$(BUILD_BRANCH)-${{ parameters.arch }}
+    options:  "--privileged"
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: true
+  - task: DownloadPipelineArtifact@2
+    condition: eq('${{ parameters.arch }}', 'amd64')
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib
+      patterns: |
+          target/debs/${{ parameters.debian_version }}/libnl-3*.deb
+          target/debs/${{ parameters.debian_version }}/libnl-genl*.deb
+          target/debs/${{ parameters.debian_version }}/libnl-route*.deb
+          target/debs/${{ parameters.debian_version }}/libnl-nf*.deb
+    displayName: "Download libnl from common_libs"
+  - script: |
+      set -ex
+      sudo dpkg -i $(find ./download -name libnl-*_${{ parameters.arch }}.deb)
+    condition: eq('${{ parameters.arch }}', 'amd64')
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install sonic libnl"
+  - script: |
+      set -ex
+      sudo apt-get update
+      sudo apt-get install -qq -y \
+        libdbus-glib-1-dev \
+        libpcsclite-dev \
+        docbook-to-man \
+        docbook-utils \
+        aspell-en \
+        libhiredis-dev \
+        swig4.0 \
+        libzmq3-dev \
+        autoconf-archive
+
+      sudo apt-get install -y redis-server
+      sudo sed -ri 's/^# unixsocket/unixsocket/' /etc/redis/redis.conf
+      sudo sed -ri 's/^unixsocketperm .../unixsocketperm 777/' /etc/redis/redis.conf
+      sudo sed -ri 's/redis-server.sock/redis.sock/' /etc/redis/redis.conf
+      sudo service redis-server start
+      sudo mkdir -m 755 /var/run/sswsyncd
+
+      sudo apt-get install -y rsyslog
+      sudo rsyslogd
+
+      cat /etc/apt/sources.list
+      dpkg --list | grep libnl
+
+    displayName: "Install dependencies"
+  - script: |
+      set -ex
+      sudo apt-get update
+      sudo apt-get install -qq -y \
+          libnl-3-dev \
+          libnl-genl-3-dev \
+          libnl-route-3-dev \
+          libnl-nf-3-dev \
+          libnl-cli-3-dev
+
+    condition: ne('${{ parameters.arch }}', 'amd64')
+    displayName: "Install libnl for arm dependencies"
+  - task: DownloadPipelineArtifact@2
+    # amd64 artifact name does not has arch suffix
+    condition: eq('${{ parameters.arch }}', 'amd64')
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+    displayName: "Download libyang from amd64 common lib"
+  - task: DownloadPipelineArtifact@2
+    condition: ne('${{ parameters.arch }}', 'amd64')
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib.${{ parameters.arch }}
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+    displayName: "Download libyang from common lib"
+  - script: |
+      set -ex
+      sudo dpkg -i $(find ./download -name *.deb)
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install libyang from common lib"
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: sonic-net.sonic-platform-vpp
+      artifact: vpp
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/main'
+      allowPartiallySucceededBuilds: true
+      path: $(Build.ArtifactStagingDirectory)/download
+    displayName: "Download sonic platform-vpp deb packages"
+    condition: eq('${{ parameters.arch }}', 'amd64')
+  - script: |
+      set -ex
+      sudo dpkg -i download/libvppinfra-dev_*_${{ parameters.arch }}.deb
+      sudo dpkg -i download/libvppinfra_*_${{ parameters.arch }}.deb
+      sudo dpkg -i download/vpp_*_${{ parameters.arch }}.deb
+      sudo dpkg -i download/vpp-crypto-engines_*_${{ parameters.arch }}.deb
+      sudo dpkg -i download/vpp-dbg_*_${{ parameters.arch }}.deb
+      sudo dpkg -i download/vpp-dev_*_${{ parameters.arch }}.deb
+      sudo dpkg -i download/vpp-plugin-core_*_${{ parameters.arch }}.deb
+      sudo dpkg -i download/vpp-plugin-devtools_*_${{ parameters.arch }}.deb
+      sudo dpkg -i download/vpp-plugin-dpdk_*_${{ parameters.arch }}.deb
+      sudo dpkg -i download/python3-vpp-api_*_${{ parameters.arch }}.deb
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install sonic platform-vpp packages"
+    condition: eq('${{ parameters.arch }}', 'amd64')
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-swss-common
+      artifact: ${{ parameters.swss_common_artifact_name }}
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      allowPartiallySucceededBuilds: true
+      path: $(Build.ArtifactStagingDirectory)/download
+    displayName: "Download sonic swss common deb packages"
+  - script: |
+      set -ex
+      sudo dpkg -i download/libswsscommon_1.0.0_${{ parameters.arch }}.deb
+      sudo dpkg -i download/libswsscommon-dev_1.0.0_${{ parameters.arch }}.deb
+      rm -rf download
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+    displayName: "Install sonic swss Common"
+  - script: |
+      set -ex
+      rm ../*.deb || true
+      ./autogen.sh
+      extraflags='--enable-code-coverage'
+      if [ '${{ parameters.asan }}' == True ]; then
+         extraflags='--enable-asan'
+      fi
+      DEB_BUILD_OPTIONS=nocheck DEB_CONFIGURE_EXTRA_FLAGS=$extraflags dpkg-buildpackage -us -uc -b -Psyncd,vs,nopython2 -j$(nproc)
+      mv ../*.deb .
+    displayName: "Compile sonic sairedis with coverage enabled"
+  - script: |
+      set -ex
+      sudo cp azsyslog.conf /etc/rsyslog.conf
+      cat /run/rsyslogd.pid
+      sudo pkill -F /run/rsyslogd.pid
+      # Looks like arm64 (and sometimes amd64) rsyslogd needs some time to exit
+      sleep 2
+      ps -ef
+      sudo rsyslogd
+    displayName: "Update rsyslog.conf"
+  - ${{ if eq(parameters.run_unit_test, true) }}:
+    - script: |
+        set -ex
+        # Add SYS_TIME capability for settimeofday ok in syncd test
+        sudo setcap "cap_sys_time=eip" syncd/.libs/syncd_tests
+        # Add CAP_DAC_OVERRIDE capability for system directory creation in syncd unittest
+        sudo setcap "cap_dac_override,cap_ipc_lock,cap_ipc_owner,cap_sys_time=eip" unittest/syncd/.libs/tests
+        make check
+        gcovr --version
+        find SAI/meta -name "*.gc*" | xargs rm -vf
+        gcov_dirs=$(find . -path "*.libs*gcda" | xargs dirname | sort -u |  cut -c"3-")
+        for dir in ${gcov_dirs}; do
+          source_dir=$(dirname $dir)
+          output_file=$(echo "coverage-$source_dir.json"| tr '/' '-')
+          gcovr --exclude-unreachable-branches --json-pretty -o $output_file --object-directory $source_dir $dir
+        done
+        gcovr -r ./ -e ".*/SAI/.*" -e ".+/json.hpp" -e "swss/.+" -e ".*/.libs/.*" -e ".*/debian/.*" -e "vslib/vpp/.*" --exclude-unreachable-branches --json-pretty -o coverage-all.json
+        gcovr -a "coverage-*.json" -x --xml-pretty -o coverage.xml
+      displayName: "Run sonic sairedis unit tests"
+  - publish: $(System.DefaultWorkingDirectory)/
+    artifact: ${{ parameters.artifact_name }}
+    displayName: "Archive sonic sairedis debian packages"
+  - ${{ if eq(parameters.archive_gcov, true) }}:
+      - script: |
+          set -ex
+          # Install .NET CORE
+          curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          sudo apt-add-repository https://packages.microsoft.com/debian/12/prod
+          sudo apt-get update
+          sudo apt-get install -y dotnet-sdk-8.0
+        displayName: "Install .NET CORE"
+      - task: PublishCodeCoverageResults@1
+        inputs:
+            codeCoverageTool: Cobertura
+            summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage.xml'
+        displayName: 'Publish test coverage'
+  - script: |
+      pwd
+      sudo chmod a+r /var/log/syslog*
+      tar -czf syslog-all.tgz /var/log/syslog*
+      ls -al .
+      ls -al /var/log/
+    displayName: "Env info"
+    condition: always()
+  - task: CopyFiles@2
+    displayName: "Copy syslog to staging directory"
+    condition: always()
+    inputs:
+        contents: 'syslog-all.tgz'
+        targetFolder: $(Build.ArtifactStagingDirectory)
+  - publish: $(Build.ArtifactStagingDirectory)/
+    artifact: ${{ parameters.syslog_artifact_name }}@$(System.JobAttempt)
+    displayName: "Publish syslog artifacts"
+    condition: always()

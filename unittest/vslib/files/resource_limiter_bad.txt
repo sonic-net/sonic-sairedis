@@ -1,0 +1,13 @@
+# cmt
+; cmt
+
+foo
+foo:bar
+foo:bar:car
+foo:bar=6
+foo:bar:car=6
+0:foo=5
+d:foo=6
+d:SAI_OBJECT_TYPE_PORT=6
+0:SAI_OBJECT_TYPE_PORT=zz
+SAI_OBJECT_TYPE_PORT=zz
