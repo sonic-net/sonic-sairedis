@@ -35,7 +35,9 @@ R"(Usage: syncd [-d] [-p profile] [-t type] [-u] [-S] [-U] [-C] [-s] [-z mode] [
     -b --breakConfig
         Comparison logic 'break before make' configuration file
     -w --watchdogWarnTimeSpan
-        Watchdog time span (in microseconds) to watch for execution
+        Watchdog time span (in microseconds) for normal operations
+    -W --watchdogInitTimeSpan
+        Watchdog time span (in microseconds) for init phase (default: same as -w)
     -B --supportingBulkCounters
         Counter groups those support bulk polling
     -a --enableAttrVersionCheck
@@ -53,7 +55,7 @@ TEST(CommandLineOptions, getCommandLineString)
     EXPECT_EQ(str, " EnableDiagShell=NO EnableTempView=NO DisableExitSleep=NO EnableUnittests=NO"
             " EnableConsistencyCheck=NO EnableSyncMode=NO RedisCommunicationMode=redis_async"
             " EnableSaiBulkSuport=NO StartType=cold ProfileMapFile= GlobalContext=0 ContextConfig= BreakConfig="
-            " WatchdogWarnTimeSpan=30000000 SupportingBulkCounters= EnableAttrVersionCheck=NO");
+            " WatchdogWarnTimeSpan=30000000 WatchdogInitTimeSpan=30000000 SupportingBulkCounters= EnableAttrVersionCheck=NO");
 }
 
 TEST(CommandLineOptions, startTypeStringToStartType)
@@ -85,5 +87,20 @@ TEST(CommandLineOptionsParser, parseCommandLine)
 
     auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
     EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 1000);
+    EXPECT_EQ(opt->m_watchdogInitTimeSpan, 1000);
     EXPECT_EQ(opt->m_supportingBulkCounterGroups, "WATERMARK");
+}
+
+TEST(CommandLineOptionsParser, parseCommandLineInitTimeout)
+{
+    char arg1[] = "test";
+    char arg2[] = "-w";
+    char arg3[] = "30000000";
+    char arg4[] = "-W";
+    char arg5[] = "150000000";
+    std::vector<char *> args = {arg1, arg2, arg3, arg4, arg5};
+
+    auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+    EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
+    EXPECT_EQ(opt->m_watchdogInitTimeSpan, 150000000);
 }
