@@ -36,7 +36,7 @@ CommandLineOptions::CommandLineOptions()
 
     m_watchdogWarnTimeSpan = 30 * 1000000;
 
-    m_watchdogInitTimeSpan = 0;
+    m_watchdogInitTimeSpan = 30 * 1000000;
 
 #ifdef SAITHRIFT
 

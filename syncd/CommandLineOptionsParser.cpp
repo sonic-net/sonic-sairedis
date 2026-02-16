@@ -18,6 +18,10 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
     auto options = std::make_shared<CommandLineOptions>();
 
+    optind = 1;
+
+    bool initTimeSpanSeen = false;
+
 #ifdef SAITHRIFT
     const char* const optstring = "dp:t:g:x:b:B:aw:W:uSUCsz:lrm:h";
 #else
@@ -129,6 +133,7 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
 
             case 'W':
                 options->m_watchdogInitTimeSpan = (int64_t)std::stoll(optarg);
+                initTimeSpanSeen = true;
                 break;
 
 #ifdef SAITHRIFT
@@ -163,8 +168,8 @@ std::shared_ptr<CommandLineOptions> CommandLineOptionsParser::parseCommandLine(
         }
     }
 
-    // If init timeout not specified, default to normal timeout
-    if (options->m_watchdogInitTimeSpan == 0)
+    // If -W not specified, default to same as -w
+    if (!initTimeSpanSeen)
     {
         options->m_watchdogInitTimeSpan = options->m_watchdogWarnTimeSpan;
     }

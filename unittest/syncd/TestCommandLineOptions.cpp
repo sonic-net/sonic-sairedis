@@ -104,3 +104,25 @@ TEST(CommandLineOptionsParser, parseCommandLineInitTimeout)
     EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
     EXPECT_EQ(opt->m_watchdogInitTimeSpan, 150000000);
 }
+
+TEST(CommandLineOptionsParser, parseCommandLineNeitherTimeout)
+{
+    char arg1[] = "test";
+    std::vector<char *> args = {arg1};
+
+    auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+    EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
+    EXPECT_EQ(opt->m_watchdogInitTimeSpan, 30000000);
+}
+
+TEST(CommandLineOptionsParser, parseCommandLineOnlyInitTimeout)
+{
+    char arg1[] = "test";
+    char arg2[] = "-W";
+    char arg3[] = "150000000";
+    std::vector<char *> args = {arg1, arg2, arg3};
+
+    auto opt = syncd::CommandLineOptionsParser::parseCommandLine((int)args.size(), args.data());
+    EXPECT_EQ(opt->m_watchdogWarnTimeSpan, 30000000);
+    EXPECT_EQ(opt->m_watchdogInitTimeSpan, 150000000);
+}
