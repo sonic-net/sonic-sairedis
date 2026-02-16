@@ -491,3 +491,8 @@ IPFix
 ipfix
 SNR
 tparam
+NIC
+NICs
+oper
+sysfs
+virtio

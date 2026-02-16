@@ -561,3 +561,206 @@ TEST(SwitchBCM56850, test_port_autoneg_fec_override_support)
     EXPECT_EQ(attr_capability.set_implemented, false);
     EXPECT_EQ(attr_capability.get_implemented, false);
 }
+
+TEST(SwitchBCM56850, test_refresh_port_oper_speed_configured_speed)
+{
+    /*
+     * Test that refresh_port_oper_speed returns the administratively
+     * configured port speed when m_useConfiguredSpeedAsOperSpeed is true,
+     * i.e., it propagates SAI_PORT_ATTR_SPEED to SAI_PORT_ATTR_OPER_SPEED
+     * without consulting sysfs.
+     */
+
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+    sc->m_useConfiguredSpeedAsOperSpeed = true;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    ASSERT_EQ(sw.initialize_default_objects(1, &attr), SAI_STATUS_SUCCESS);
+
+    // Get the port list
+    sai_object_id_t port_list[64];
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = 64;
+    attr.value.objlist.list = port_list;
+
+    ASSERT_EQ(sw.get(SAI_OBJECT_TYPE_SWITCH, "oid:0x2100000000", 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_GT(attr.value.objlist.count, (uint32_t)0);
+
+    auto port_id = port_list[0];
+    auto sport = sai_serialize_object_id(port_id);
+
+    // Set port oper status to UP so refresh_port_oper_speed uses configured speed path
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+    attr.value.s32 = SAI_PORT_OPER_STATUS_UP;
+    ASSERT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, sport, &attr), SAI_STATUS_SUCCESS);
+
+    // Set configured speed to 40000
+    attr.id = SAI_PORT_ATTR_SPEED;
+    attr.value.u32 = 40000;
+    ASSERT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, sport, &attr), SAI_STATUS_SUCCESS);
+
+    // Call refresh_port_oper_speed — with m_useConfiguredSpeedAsOperSpeed=true,
+    // it should use configured speed (40000) instead of querying sysfs
+    ASSERT_EQ(sw.refresh_port_oper_speed(port_id), SAI_STATUS_SUCCESS);
+
+    // Verify oper speed matches configured speed
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+    ASSERT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, sport, 1, &attr), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(attr.value.u32, (uint32_t)40000);
+}
+
+TEST(SwitchBCM56850, test_refresh_port_oper_speed_down_port)
+{
+    /*
+     * Test that refresh_port_oper_speed returns 0 for ports that are
+     * operationally down, regardless of configured speed.
+     */
+
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    ASSERT_EQ(sw.initialize_default_objects(1, &attr), SAI_STATUS_SUCCESS);
+
+    // Get a port
+    sai_object_id_t port_list[64];
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = 64;
+    attr.value.objlist.list = port_list;
+
+    ASSERT_EQ(sw.get(SAI_OBJECT_TYPE_SWITCH, "oid:0x2100000000", 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_GT(attr.value.objlist.count, (uint32_t)0);
+
+    auto port_id = port_list[0];
+    auto sport = sai_serialize_object_id(port_id);
+
+    // Port is down by default — refresh should set oper speed to 0
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+    attr.value.s32 = SAI_PORT_OPER_STATUS_DOWN;
+    ASSERT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, sport, &attr), SAI_STATUS_SUCCESS);
+
+    // Set configured speed to 40000 (should be ignored for down ports)
+    attr.id = SAI_PORT_ATTR_SPEED;
+    attr.value.u32 = 40000;
+    ASSERT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, sport, &attr), SAI_STATUS_SUCCESS);
+
+    ASSERT_EQ(sw.refresh_port_oper_speed(port_id), SAI_STATUS_SUCCESS);
+
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+    ASSERT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, sport, 1, &attr), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(attr.value.u32, (uint32_t)0);
+}
+
+TEST(SwitchBCM56850, test_refresh_port_oper_speed_fallback_no_tap)
+{
+    /*
+     * Test that when m_useConfiguredSpeedAsOperSpeed is false and no TAP
+     * device exists (vs_get_oper_speed fails), refresh_port_oper_speed
+     * falls back to configured speed instead of failing.
+     */
+
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_BCM56850;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+    sc->m_useConfiguredSpeedAsOperSpeed = false;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchBCM56850 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    ASSERT_EQ(sw.initialize_default_objects(1, &attr), SAI_STATUS_SUCCESS);
+
+    // Get a port
+    sai_object_id_t port_list[64];
+
+    attr.id = SAI_SWITCH_ATTR_PORT_LIST;
+    attr.value.objlist.count = 64;
+    attr.value.objlist.list = port_list;
+
+    ASSERT_EQ(sw.get(SAI_OBJECT_TYPE_SWITCH, "oid:0x2100000000", 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_GT(attr.value.objlist.count, (uint32_t)0);
+
+    auto port_id = port_list[0];
+    auto sport = sai_serialize_object_id(port_id);
+
+    // Set port to UP
+    attr.id = SAI_PORT_ATTR_OPER_STATUS;
+    attr.value.s32 = SAI_PORT_OPER_STATUS_UP;
+    ASSERT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, sport, &attr), SAI_STATUS_SUCCESS);
+
+    // Set configured speed
+    attr.id = SAI_PORT_ATTR_SPEED;
+    attr.value.u32 = 100000;
+    ASSERT_EQ(sw.set(SAI_OBJECT_TYPE_PORT, sport, &attr), SAI_STATUS_SUCCESS);
+
+    // Without TAP devices, vs_get_oper_speed will fail (no host interface)
+    // refresh_port_oper_speed should fall back to configured speed
+    ASSERT_EQ(sw.refresh_port_oper_speed(port_id), SAI_STATUS_SUCCESS);
+
+    // Verify oper speed equals configured speed (fallback)
+    attr.id = SAI_PORT_ATTR_OPER_SPEED;
+    ASSERT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, sport, 1, &attr), SAI_STATUS_SUCCESS);
+    EXPECT_EQ(attr.value.u32, (uint32_t)100000);
+}
