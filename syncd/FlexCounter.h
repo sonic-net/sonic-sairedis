@@ -28,6 +28,16 @@ struct PortPhyAttributeData {
     std::vector<sai_port_snr_values_t> rxSnrData;
 };
 
+// Holds data storage for SAI PORT_SERDES attribute API calls
+struct PortPhySerdesAttributeData {
+    // For SAI_PORT_SERDES_ATTR_RX_VGA
+    std::vector<uint32_t> rxVgaData;
+
+    // For SAI_PORT_SERDES_ATTR_TX_FIR_TAPS_LIST
+    std::vector<std::vector<int32_t>> txFirTapsData;
+    std::vector<sai_s32_list_t> txFirTapsList;
+};
+
 namespace syncd
 {
     class BaseCounterContext
