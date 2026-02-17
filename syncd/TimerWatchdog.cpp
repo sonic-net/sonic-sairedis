@@ -117,6 +117,33 @@ void TimerWatchdog::setCallback(
     m_callback = callback;
 }
 
+void TimerWatchdog::setWarnTimespan(
+        _In_ int64_t timespan)
+{
+    SWSS_LOG_ENTER();
+
+    if (timespan <= 0)
+    {
+        SWSS_LOG_WARN("invalid watchdog timeout %ld us, must be positive, ignoring", timespan);
+        return;
+    }
+
+    int64_t oldTimespan = m_warnTimespan;
+
+    m_warnTimespan = timespan;
+
+    SWSS_LOG_NOTICE("watchdog timeout changed from %ld us (%ld ms) to %ld us (%ld ms)",
+                    oldTimespan, oldTimespan / 1000,
+                    timespan, timespan / 1000);
+}
+
+int64_t TimerWatchdog::getWarnTimespan() const
+{
+    SWSS_LOG_ENTER();
+
+    return m_warnTimespan;
+}
+
 void TimerWatchdog::threadFunction()
 {
     SWSS_LOG_ENTER();
