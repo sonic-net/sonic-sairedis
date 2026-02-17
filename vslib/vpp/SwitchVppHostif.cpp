@@ -591,7 +591,8 @@ const char* SwitchVpp::hwif_to_tap_name(
 
     if (it == m_hwif_hostif_map.end())
     {
-        SWSS_LOG_ERROR("failed to find hostif info entry for hwif device: %s", tap_name.c_str());
+        // not all hwif are mapped to hostif, e.g. vxlan tunnel interface, bvi interface.
+        SWSS_LOG_NOTICE("failed to find hostif info entry for hwif device: %s", tap_name.c_str());
 
         return "Unknown";
     }
