@@ -622,6 +622,9 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
 
+            uint32_t m_acl_default_swindex = 0;
+            bool m_acl_default_created = false;
+
         protected: // VPP
 
             sai_status_t createAclEntry(
@@ -804,8 +807,10 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
-            sai_status_t aclDefaultAllowConfigure(
+            sai_status_t emptyAclCreate(
                     _In_ sai_object_id_t tbl_oid);
+
+            sai_status_t aclDefaultCreate();
 
             sai_status_t acl_rule_range_get(
                     _In_ const sai_object_list_t *range_list,

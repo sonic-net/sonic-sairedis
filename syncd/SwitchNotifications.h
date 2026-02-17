@@ -165,6 +165,7 @@ namespace syncd
                             .on_switch_ipsec_post_status = &Slot<context>::onSwitchIpsecPostStatus,
                             .on_ha_set_event = &Slot<context>::onHaSetEvent,
                             .on_ha_scope_event = &Slot<context>::onHaScopeEvent,
+                            .on_flow_bulk_get_session_event = nullptr,
                             }) { }
 
                 virtual ~Slot() {}
