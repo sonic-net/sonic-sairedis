@@ -587,6 +587,11 @@ namespace saivs
                     _In_ const SaiObject* route_obj,
                     _In_ bool is_add);
 
+            sai_status_t IpRoutePathAddRemove(
+                    _In_ const SaiObject* route_obj,
+                    _In_ nexthop_grp_member_t *member,
+                    _In_ bool is_add);
+
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t *attr_list);

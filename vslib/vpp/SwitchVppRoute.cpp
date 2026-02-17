@@ -203,6 +203,55 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
     return ret;
 }
 
+// Add or remove a single path from a multipath route
+// Uses is_multipath=true to tell VPP to add/remove a path rather than replace the entire route
+sai_status_t SwitchVpp::IpRoutePathAddRemove(
+        _In_ const SaiObject* route_obj,
+        _In_ nexthop_grp_member_t *member,
+        _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    std::string serializedObjectId = route_obj->get_id();
+    sai_route_entry_t route_entry;
+    sai_deserialize_route_entry(serializedObjectId, route_entry);
+
+    // Get VRF
+    std::shared_ptr<IpVrfInfo> vrf;
+    uint32_t vrf_id;
+
+    vrf = vpp_get_ip_vrf(route_entry.vr_id);
+    if (vrf == nullptr) {
+        vrf_id = 0;
+    } else {
+        vrf_id = vrf->m_vrf_id;
+    }
+
+    // Allocate route with single nexthop
+    vpp_ip_route_t *ip_route = (vpp_ip_route_t *)
+        calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+    if (!ip_route) {
+        SWSS_LOG_ERROR("Failed to allocate memory for ip_route");
+        return SAI_STATUS_FAILURE;
+    }
+
+    create_route_prefix_entry(&route_entry, ip_route);
+    ip_route->vrf_id = vrf_id;
+    ip_route->is_multipath = true;  // Tell VPP to add/remove a path, not replace the route
+    ip_route->nexthop_cnt = 1;
+
+    create_vpp_nexthop_entry(member, NULL, VPP_NEXTHOP_NORMAL, &ip_route->nexthop[0]);
+
+    int ret = ip_route_add_del(ip_route, is_add);
+
+    SWSS_LOG_NOTICE("%s path in route %s status %d table %u",
+                    (is_add ? "Add" : "Remove"), serializedObjectId.c_str(), ret, vrf_id);
+
+    free(ip_route);
+
+    return (ret == 0) ? SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
+}
+
 sai_status_t SwitchVpp::addIpRoute(
         _In_ const std::string &serializedObjectId,
         _In_ sai_object_id_t switch_id,
