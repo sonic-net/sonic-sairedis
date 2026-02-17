@@ -511,18 +511,20 @@ protected:
     };
     CounterGroupRef makeCounterGroupRef(uint64_t idx, uint64_t size)
     {
+        SWSS_LOG_ENTER();
         CounterGroupRef ctx;
         ctx.idx = idx;
         ctx.size = size;
         return ctx;
-        // return {idx, size};
     }
     std::set<StatType>* getSortedCGRef(CounterGroupRef const& cgr)
     {
+        SWSS_LOG_ENTER();
         return &m_supportedCounterGroups[cgr.idx];
     }
     static bool counterGroupRefDscSorter(CounterGroupRef const& lhs, CounterGroupRef const& rhs)
     {
+        SWSS_LOG_ENTER();
         // Must adhere to strict weak ordering
         if (lhs.idx == rhs.idx)
         {
