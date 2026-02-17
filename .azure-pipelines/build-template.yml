@@ -154,6 +154,7 @@ jobs:
       artifact: common-lib.${{ parameters.arch }}
       patterns: |
         target/debs/${{ parameters.debian_version }}/libyang_*.deb
+  - task: DownloadPipelineArtifact@2
     condition: and(eq('${{ parameters.debian_version }}', 'trixie'), eq('${{ parameters.arch }}', 'amd64'))
     inputs:
       source: specific
