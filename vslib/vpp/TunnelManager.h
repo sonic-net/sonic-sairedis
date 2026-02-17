@@ -127,6 +127,9 @@ namespace saivs
         sai_status_t create_l2_vxlan_tunnel(
             _In_ sai_object_id_t tunnel_oid,
             _Out_ uint32_t& sw_if_index);
+        
+        sai_status_t remove_l2_vxlan_tunnel(
+            _In_ sai_object_id_t tunnel_oid);
 
     private:
         SwitchVpp* m_switch_db;

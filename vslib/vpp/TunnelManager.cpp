@@ -575,3 +575,64 @@ TunnelManager::create_l2_vxlan_tunnel(
 
     return SAI_STATUS_SUCCESS;
 }
+
+sai_status_t
+TunnelManager::remove_l2_vxlan_tunnel(
+    _In_ sai_object_id_t tunnel_oid)
+{
+    SWSS_LOG_ENTER();
+
+    auto it = m_l2_tunnel_map.find(tunnel_oid);
+    if (it == m_l2_tunnel_map.end()) {
+        // Not an L2 tunnel we manage — could be L3 or P2MP, skip silently
+        SWSS_LOG_NOTICE("Tunnel %s not in L2 tunnel map, skipping removal",
+            sai_serialize_object_id(tunnel_oid).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
+    TunnelVPPData& tunnel_data = it->second;
+
+    // Remove tunnel interface from bridge domain
+    if (tunnel_data.vlan_id != 0) {
+        int vpp_status = set_sw_interface_l2_bridge_by_index(
+            tunnel_data.sw_if_index, tunnel_data.vlan_id,
+            false,  // false = remove from BD
+            VPP_API_PORT_TYPE_NORMAL);
+        if (vpp_status != 0) {
+            SWSS_LOG_ERROR("Failed to remove tunnel sw_if %u from BD %u",
+                tunnel_data.sw_if_index, tunnel_data.vlan_id);
+            // Continue with tunnel deletion anyway
+        } else {
+            SWSS_LOG_NOTICE("Removed tunnel sw_if %u from BD %u",
+                tunnel_data.sw_if_index, tunnel_data.vlan_id);
+        }
+    }
+
+    // Delete the VPP VXLAN tunnel interface
+    // Reconstruct the request needed by remove_vpp_vxlan_encap
+    vpp_vxlan_tunnel_t req;
+    memset(&req, 0, sizeof(req));
+    req.vni = tunnel_data.vni;
+    req.src_port = m_vxlan_port;
+    req.dst_port = m_vxlan_port;
+    req.instance = ~0;
+    req.decap_next_index = ~0;
+    sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.src_ip, req.src_address);
+    sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.dst_ip, req.dst_address);
+
+    sai_status_t status = remove_vpp_vxlan_encap(req, tunnel_data);
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to remove VPP VXLAN tunnel for %s",
+            sai_serialize_object_id(tunnel_oid).c_str());
+        // Still remove from map to avoid stale entries
+    }
+
+    SWSS_LOG_NOTICE("Removed L2 VXLAN tunnel %s (sw_if=%u, VNI=%u, VLAN=%u)",
+        sai_serialize_object_id(tunnel_oid).c_str(),
+        tunnel_data.sw_if_index, tunnel_data.vni, tunnel_data.vlan_id);
+
+    // Remove from map
+    m_l2_tunnel_map.erase(it);
+
+    return SAI_STATUS_SUCCESS;
+}
