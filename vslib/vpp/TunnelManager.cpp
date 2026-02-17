@@ -584,7 +584,7 @@ TunnelManager::remove_l2_vxlan_tunnel(
 
     auto it = m_l2_tunnel_map.find(tunnel_oid);
     if (it == m_l2_tunnel_map.end()) {
-        // Not an L2 tunnel we manage — could be L3 or P2MP, skip silently
+        // Not an L2 tunnel we manage, could be L3 or P2MP, skip silently
         SWSS_LOG_NOTICE("Tunnel %s not in L2 tunnel map, skipping removal",
             sai_serialize_object_id(tunnel_oid).c_str());
         return SAI_STATUS_SUCCESS;
