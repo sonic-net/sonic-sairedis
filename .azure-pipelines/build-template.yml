@@ -130,7 +130,7 @@ jobs:
     displayName: "Install libnl for arm dependencies"
   - task: DownloadPipelineArtifact@2
     # amd64 artifact name does not has arch suffix
-    condition: eq('${{ parameters.arch }}', 'amd64')
+    condition: and(ne('${{ parameters.debian_version }}', 'trixie'), eq('${{ parameters.arch }}', 'amd64'))
     inputs:
       source: specific
       project: build
@@ -143,7 +143,7 @@ jobs:
         target/debs/${{ parameters.debian_version }}/libyang_*.deb
     displayName: "Download libyang from amd64 common lib"
   - task: DownloadPipelineArtifact@2
-    condition: ne('${{ parameters.arch }}', 'amd64')
+    condition: and(ne('${{ parameters.debian_version }}', 'trixie'), ne('${{ parameters.arch }}', 'amd64'))
     inputs:
       source: specific
       project: build
@@ -154,6 +154,32 @@ jobs:
       artifact: common-lib.${{ parameters.arch }}
       patterns: |
         target/debs/${{ parameters.debian_version }}/libyang_*.deb
+    condition: and(eq('${{ parameters.debian_version }}', 'trixie'), eq('${{ parameters.arch }}', 'amd64'))
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libpcre3_*.deb
+    displayName: "Download libyang from amd64 common lib"
+  - task: DownloadPipelineArtifact@2
+    condition: and(eq('${{ parameters.debian_version }}', 'trixie'), ne('${{ parameters.arch }}', 'amd64'))
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib.${{ parameters.arch }}
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libpcre3_*.deb
     displayName: "Download libyang from common lib"
   - script: |
       set -ex
