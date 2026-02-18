@@ -593,21 +593,19 @@ TunnelManager::remove_l2_vxlan_tunnel(
     TunnelVPPData& tunnel_data = it->second;
 
     // Remove tunnel interface from bridge domain
-    if (tunnel_data.vlan_id != 0) {
-        int vpp_status = set_sw_interface_l2_bridge_by_index(
-            tunnel_data.sw_if_index, tunnel_data.vlan_id,
-            false,  // false = remove from BD
-            VPP_API_PORT_TYPE_NORMAL);
-        if (vpp_status != 0) {
-            SWSS_LOG_ERROR("Failed to remove tunnel sw_if %u from BD %u",
-                tunnel_data.sw_if_index, tunnel_data.vlan_id);
-            // Continue with tunnel deletion anyway
-        } else {
-            SWSS_LOG_NOTICE("Removed tunnel sw_if %u from BD %u",
-                tunnel_data.sw_if_index, tunnel_data.vlan_id);
-        }
+    int vpp_status = set_sw_interface_l2_bridge_by_index(
+        tunnel_data.sw_if_index, tunnel_data.vlan_id,
+        false,  // false = remove from BD
+        VPP_API_PORT_TYPE_NORMAL);
+    if (vpp_status != 0) {
+        SWSS_LOG_ERROR("Failed to remove tunnel sw_if %u from BD %u",
+            tunnel_data.sw_if_index, tunnel_data.vlan_id);
+        // Continue with tunnel deletion anyway
+    } else {
+        SWSS_LOG_NOTICE("Removed tunnel sw_if %u from BD %u",
+            tunnel_data.sw_if_index, tunnel_data.vlan_id);
     }
-
+    
     // Delete the VPP VXLAN tunnel interface
     // Reconstruct the request needed by remove_vpp_vxlan_encap
     vpp_vxlan_tunnel_t req;
