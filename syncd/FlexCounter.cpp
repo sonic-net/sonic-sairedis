@@ -332,6 +332,14 @@ std::string serializeStat(
     return sai_serialize_meter_bucket_entry_stat(stat);
 }
 
+template <>
+std::string serializeStat(
+        _In_ const sai_ha_set_stat_t stat)
+{
+    SWSS_LOG_ENTER();
+    return sai_serialize_ha_set_stat(stat);
+}
+
 template <typename StatType>
 void deserializeStat(
         _In_ const char* name,
