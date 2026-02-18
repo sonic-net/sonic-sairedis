@@ -458,6 +458,14 @@ void deserializeStat(
     sai_deserialize_meter_bucket_entry_stat(name, stat);
 }
 
+template <>
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_ha_set_stat_t *stat)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_ha_set_stat(name, stat);
+}
 template <typename AttrType>
 void deserializeAttr(
         _In_ const std::string& name,
