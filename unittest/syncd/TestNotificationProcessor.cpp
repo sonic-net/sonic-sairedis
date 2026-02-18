@@ -135,4 +135,12 @@ TEST(NotificationProcessor, NotificationProcessorTest)
     translator->insertRidAndVid(0x5800000000, 0x5800000000);
     notificationProcessor->syncProcessNotification(macsecPostStatusItem);
     translator->eraseRidAndVid(0x5800000000, 0x5800000000);
+
+    // Test FLOW_BULK_GET_SESSION_EVENT notification
+    std::string flowBulkGetSessionEventData = "{\"bulk_session_id\":\"oid:0x123456789abcdef\",\"data\":[{\"event_type\":\"SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED\"}]}";
+    std::vector<swss::FieldValueTuple> flowBulkGetSessionEventEntry;
+    swss::KeyOpFieldsValuesTuple flowBulkGetSessionEventItem(SAI_SWITCH_NOTIFICATION_NAME_FLOW_BULK_GET_SESSION_EVENT, flowBulkGetSessionEventData, flowBulkGetSessionEventEntry);
+    translator->insertRidAndVid(0x123456789abcdef, 0x123456789abcdef);
+    notificationProcessor->syncProcessNotification(flowBulkGetSessionEventItem);
+    translator->eraseRidAndVid(0x123456789abcdef, 0x123456789abcdef);
 }
