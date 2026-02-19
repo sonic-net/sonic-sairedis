@@ -292,6 +292,10 @@ TEST_F(SyncdMlnxTest, portBulkAddRemove)
     flexCounterGroupParam.stats_mode.count = (uint32_t)stats_mode.length();
     flexCounterGroupParam.operation.list = (int8_t*)const_cast<char *>(operation.c_str());;
     flexCounterGroupParam.operation.count = (uint32_t)operation.length();
+    flexCounterGroupParam.bulk_chunk_size.list = nullptr;
+    flexCounterGroupParam.bulk_chunk_size.count = 0;
+    flexCounterGroupParam.bulk_chunk_size_per_prefix.list = nullptr;
+    flexCounterGroupParam.bulk_chunk_size_per_prefix.count = 0;
 
     attr.id = SAI_REDIS_SWITCH_ATTR_FLEX_COUNTER_GROUP;
     attr.value.ptr = (void*)&flexCounterGroupParam;

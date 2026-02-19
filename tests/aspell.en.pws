@@ -21,6 +21,7 @@ CHARDATA
 COLDVIDS
 CONST
 CRM
+CSP
 CreateObject
 DEI
 Decrement
@@ -29,6 +30,7 @@ DPU
 EAPOL
 ECN
 EIO
+ENI
 ETERM
 ecmp
 ECMP
@@ -442,6 +444,7 @@ updatable
 upgradable
 util
 utils
+usleep
 validonly
 versa
 veth
@@ -486,3 +489,5 @@ VxLAN
 IPFIX
 IPFix
 ipfix
+SNR
+tparam

@@ -20,6 +20,8 @@
 
 #include <inttypes.h>
 
+#define SAI_ZMQ_DEFAULT_RESPONSE_BUFFER_SIZE (64*1024*1024)
+
 using namespace sairedis;
 using namespace saimeta;
 using namespace sairediscommon;
@@ -77,13 +79,15 @@ sai_status_t RedisRemoteSaiInterface::apiInitialize(
     m_useTempView = false;
     m_syncMode = false;
     m_redisCommunicationMode = SAI_REDIS_COMMUNICATION_MODE_REDIS_ASYNC;
+    m_zmqResponseBufferSize = SAI_ZMQ_DEFAULT_RESPONSE_BUFFER_SIZE;
 
     if (m_contextConfig->m_zmqEnable)
     {
         m_communicationChannel = std::make_shared<ZeroMQChannel>(
                 m_contextConfig->m_zmqEndpoint,
                 m_contextConfig->m_zmqNtfEndpoint,
-                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3),
+                m_zmqResponseBufferSize);
 
         SWSS_LOG_NOTICE("zmq enabled, forcing sync mode");
 
@@ -420,7 +424,8 @@ sai_status_t RedisRemoteSaiInterface::setRedisExtensionAttribute(
                     m_communicationChannel = std::make_shared<ZeroMQChannel>(
                             m_contextConfig->m_zmqEndpoint,
                             m_contextConfig->m_zmqNtfEndpoint,
-                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3));
+                            std::bind(&RedisRemoteSaiInterface::handleNotification, this, _1, _2, _3),
+                            m_zmqResponseBufferSize);
 
                     m_communicationChannel->setResponseTimeout(m_responseTimeoutMs);
 
@@ -2156,7 +2161,7 @@ bool RedisRemoteSaiInterface::isRedisAttribute(
 {
     SWSS_LOG_ENTER();
 
-    if ((objectType != SAI_OBJECT_TYPE_SWITCH) || (attr == nullptr) || (attr->id < SAI_SWITCH_ATTR_CUSTOM_RANGE_START))
+    if ((objectType != SAI_OBJECT_TYPE_SWITCH) || (attr == nullptr) || (attr->id < SAI_SWITCH_ATTR_CUSTOM_RANGE_START) || (attr->id > SAI_SWITCH_ATTR_EXTENSIONS_RANGE_BASE))
     {
         return false;
     }

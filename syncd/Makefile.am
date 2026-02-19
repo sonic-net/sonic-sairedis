@@ -24,6 +24,7 @@ libSyncd_a_SOURCES = \
 				CommandLineOptions.cpp \
 				CommandLineOptionsParser.cpp \
 				ComparisonLogic.cpp \
+				DisabledRedisClient.cpp \
 				FlexCounter.cpp \
 				FlexCounterManager.cpp \
 				GlobalSwitchId.cpp \
@@ -81,6 +82,11 @@ endif
 
 if SONIC_ASIC_PLATFORM_BROADCOM
 libSyncd_a_CXXFLAGS += -DMDIO_ACCESS_USE_NPU
+endif
+
+if SONIC_ASIC_PLATFORM_CLOUNIX
+syncd_CXXFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
+libSyncd_a_CXXFLAGS += -DSAI_SUPPORT_UNINIT_DATA_PLANE_ON_REMOVAL
 endif
 
 libSyncdRequestShutdown_a_SOURCES = \

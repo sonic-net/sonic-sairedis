@@ -30,6 +30,8 @@ sai_status_t transfer_attributes(
 
 // serialize
 
+std::string sai_serialize_port_attr(_In_ const sai_port_attr_t port_attr);
+
 std::string sai_serialize_fdb_event(
         _In_ sai_fdb_event_t event);
 
@@ -316,6 +318,10 @@ std::string sai_serialize_stats_st_capability_list(
         _In_ const sai_enum_metadata_t *meta,
         _In_ bool countOnly);
 
+std::string sai_serialize_port_snr_list(
+        _In_ const sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -378,6 +384,20 @@ std::string sai_serialize_redis_link_event_damping_algorithm(
 std::string sai_serialize_redis_link_event_damping_aied_config(
          _In_ const sai_redis_link_event_damping_algo_aied_config_t& value);
 
+std::string sai_serialize_switch_macsec_post_status(
+         _In_ const sai_switch_macsec_post_status_t switch_macsec_post_status);
+
+std::string sai_serialize_switch_macsec_post_status_ntf(
+         _In_ sai_object_id_t switch_id,
+         _In_ const sai_switch_macsec_post_status_t switch_macsec_post_status);
+
+std::string sai_serialize_macsec_post_status(
+         _In_ const sai_macsec_post_status_t macsec_post_status);
+
+std::string sai_serialize_macsec_post_status_ntf(
+         _In_ sai_object_id_t macsec_id,
+         _In_ const sai_macsec_post_status_t macsec_post_status);
+
 // deserialize
 
 void sai_deserialize_enum(
@@ -435,6 +455,10 @@ void sai_deserialize_api(
 void sai_deserialize_ipmc_entry_type(
         _In_ const std::string& s,
         _Out_ sai_ipmc_entry_type_t& type);
+
+void sai_deserialize_port_attr(
+      _In_ const std::string& s,
+      _Out_ sai_port_attr_t& port_attr);
 
 void sai_deserialize_l2mc_entry_type(
         _In_ const std::string& s,
@@ -737,3 +761,26 @@ void sai_deserialize_stats_st_capability_list(
         _In_ const std::string &stat_enum_str,
         _In_ const std::string &stat_modes_str,
         _In_ const std::string &minimal_polling_interval_str);
+
+void sai_deserialize_port_snr_list(
+        _In_ const std::string& s,
+        _Out_ sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly);
+
+void sai_deserialize_switch_macsec_post_status(
+        _In_ const std::string& s,
+        _Out_ sai_switch_macsec_post_status_t& switch_macsec_post_status);
+
+void sai_deserialize_switch_macsec_post_status_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& switch_id,
+        _Out_ sai_switch_macsec_post_status_t& switch_macsec_post_status);
+
+void sai_deserialize_macsec_post_status(
+        _In_ const std::string& s,
+        _Out_ sai_macsec_post_status_t& macsec_post_status);
+
+void sai_deserialize_macsec_post_status_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& macsec_id,
+        _Out_ sai_macsec_post_status_t& macsec_post_status);

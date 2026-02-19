@@ -18,6 +18,7 @@ AX_ADD_AM_MACRO_STATIC([])
 AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BAREFOOT,   test x$CONFIGURED_PLATFORM = xbarefoot)
 AM_CONDITIONAL(SONIC_ASIC_PLATFORM_BROADCOM,   test x$CONFIGURED_PLATFORM = xbroadcom)
 AM_CONDITIONAL(SONIC_ASIC_PLATFORM_MELLANOX,   test x$CONFIGURED_PLATFORM = xmellanox)
+AM_CONDITIONAL(SONIC_ASIC_PLATFORM_CLOUNIX,   test x$CONFIGURED_PLATFORM = xclounix)
 
 AM_COND_IF([SONIC_ASIC_PLATFORM_MELLANOX],
            AC_DEFINE([MELLANOX], [1], [Define to 1 on Mellanox Platform]))
@@ -283,8 +284,7 @@ AM_COND_IF([SAIVS],
     AM_COND_IF([SYNCD], [
     SAVED_FLAGS="$CXXFLAGS"
     CXXFLAGS="-Xlinker --no-as-needed -lsai -I$srcdir/SAI/inc -I$srcdir/SAI/experimental -I$srcdir/SAI/meta"
-    AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats sai_tam_telemetry_get_data)
-    AH_TEMPLATE([HAVE_SAI_QUERY_STATS_ST_CAPABILITY], [Force it disabled for SAIs without implementation - REMOVE WHEN NOT NEEDED])
+    AC_CHECK_FUNCS(sai_bulk_object_clear_stats sai_bulk_object_get_stats sai_query_stats_st_capability sai_tam_telemetry_get_data)
     CXXFLAGS="$SAVED_FLAGS"
     ])
 ])

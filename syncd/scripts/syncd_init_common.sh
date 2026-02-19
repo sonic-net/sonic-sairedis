@@ -349,6 +349,18 @@ config_syncd_mlnx()
 
     echo >> /tmp/sai-temp.profile
 
+    DEVICE_TYPE=$(/usr/bin/asic_detect/asic_detect.sh)
+    if [[ $? -eq 0 ]]; then
+        ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
+        ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
+        if [ -f "$ASIC_PROFILE_PATH" ]; then
+            cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
+            echo >> /tmp/sai-temp.profile
+        fi
+    else
+        echo "Warning: ASIC is not detected..."
+    fi
+
     if [[ -f $SAI_COMMON_FILE_PATH ]]; then
         cat $SAI_COMMON_FILE_PATH >> /tmp/sai-temp.profile
     fi
@@ -370,6 +382,10 @@ config_syncd_mlnx()
        echo "SAI_ACL_MULTI_BINDING_ENABLED=1" >> /tmp/sai.profile
     fi
 
+    if [[ $DEV != "" ]]; then
+        echo "SAI_KEY_MULTI_ASIC_DEVICE_ID=$DEV" >> /tmp/sai.profile
+    fi
+
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
     if [ ! -d "$SDK_DUMP_PATH" ]; then
         mkdir -p "$SDK_DUMP_PATH"
@@ -382,6 +398,14 @@ config_syncd_mlnx()
 
     # Ensure no redundant newlines
     sed -i '/^$/d' /tmp/sai.profile
+
+    # As long as sonic does not support PTP which can be enabled/disabled, Nvidia platforms enables
+    # phcsync for all systems. If HW does not support it, it will do nothing.
+    supervisorctl start phcsync
+
+    if [ -f "$HWSKU_DIR/context_config.json" ]; then
+        CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
+    fi
 }
 
 config_syncd_centec()
@@ -509,7 +533,25 @@ config_syncd_nvidia_bluefield()
 
     eth0_mac=$(cat /sys/class/net/Ethernet0/address)
 
-    cp $HWSKU_DIR/sai.profile /tmp/sai.profile
+    cp $HWSKU_DIR/sai.profile /tmp/sai-temp.profile
+
+    echo >> /tmp/sai-temp.profile
+
+    DEVICE_TYPE=$(/usr/bin/asic_detect/asic_detect.sh)
+    if [[ $? -eq 0 ]]; then
+        ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
+        ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
+        if [ -f "$ASIC_PROFILE_PATH" ]; then
+            cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
+            echo >> /tmp/sai-temp.profile
+        fi
+    else
+        echo "Warning: ASIC is not detected..."
+    fi
+
+    # keep only the first occurence of each prefix with '=' sign, and remove the others.
+    awk -F= '!seen[$1]++' /tmp/sai-temp.profile > /tmp/sai.profile
+    rm -f /tmp/sai-temp.profile
 
     # Update sai.profile with MAC_ADDRESS
     echo "DEVICE_MAC_ADDRESS=$base_mac" >> /tmp/sai.profile
@@ -522,7 +564,7 @@ config_syncd_nvidia_bluefield()
         mkdir -p "$SDK_DUMP_PATH"
     fi
 
-    echo 9216 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    echo 11700 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
     mkdir -p /mnt/huge
     mount -t hugetlbfs pagesize=1GB /mnt/huge
 
@@ -567,6 +609,11 @@ config_syncd_xsight()
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
+config_syncd_clounix()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
 config_syncd()
 {
     check_warm_boot
@@ -594,6 +641,8 @@ config_syncd()
         config_syncd_vpp
     elif [ "$SONIC_ASIC_TYPE" == "marvell-teralynx" ]; then
         config_syncd_marvell_teralynx
+    elif [ "$SONIC_ASIC_TYPE" == "alpinevs" ]; then
+        config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
         config_syncd_soda
     elif [ "$SONIC_ASIC_TYPE" == "nvidia-bluefield" ]; then
@@ -602,6 +651,8 @@ config_syncd()
         config_syncd_xsight
     elif [ "$SONIC_ASIC_TYPE" == "pensando" ]; then
 	config_syncd_pensando
+    elif [ "$SONIC_ASIC_TYPE" == "clounix" ]; then
+        config_syncd_clounix
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1

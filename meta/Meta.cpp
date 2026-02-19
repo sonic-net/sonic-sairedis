@@ -18,11 +18,6 @@
 
 #define CHECK_STATUS_SUCCESS(s) { if ((s) != SAI_STATUS_SUCCESS) return (s); }
 
-#define CHECK_STATUS_SUCCESS_MODE(s,m)                                                          \
-{                                                                                               \
-    if ((s) != SAI_STATUS_SUCCESS && m != SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR) return (s);      \
-}                                                                                               \
-
 #define VALIDATION_LIST(md,vlist)                                               \
 {                                                                               \
     auto _status = meta_genetic_validation_list(md,vlist.count,vlist.list);     \
@@ -628,14 +623,14 @@ sai_status_t Meta::bulkCreate(                                                  
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], true);                                                 \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
              };                                                                                                         \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_create(meta_key, ot[idx].switch_id, attr_count[idx], attr_list[idx]);          \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
     }                                                                                                                   \
     auto status = m_implementation->bulkCreate(object_count, ot, attr_count, attr_list, mode, object_statuses);         \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -672,14 +667,14 @@ sai_status_t Meta::bulkRemove(                                                  
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
             };                                                                                                          \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_remove(meta_key);                                                              \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
     }                                                                                                                   \
     auto status = m_implementation->bulkRemove(object_count, ot, mode, object_statuses);                                \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -718,14 +713,14 @@ sai_status_t Meta::bulkSet(                                                     
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
             .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
              };                                                                                                         \
         vmk.push_back(meta_key);                                                                                        \
         status = meta_generic_validation_set(meta_key, &attr_list[idx]);                                                \
-        CHECK_STATUS_SUCCESS_MODE(status, mode);                                                                        \
+        CHECK_STATUS_SUCCESS(status);                                                                                   \
     }                                                                                                                   \
     auto status = m_implementation->bulkSet(object_count, ot, attr_list, mode, object_statuses);                        \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
@@ -938,7 +933,7 @@ sai_status_t Meta::queryAttributeEnumValuesCapability(
 
                 if (!sai_metadata_is_allowed_enum_value(mdp, val))
                 {
-                    SWSS_LOG_ERROR("returned value %d is not allowed on %s", val, mdp->attridname);
+                    SWSS_LOG_WARN("returned value %d is not allowed on %s", val, mdp->attridname);
                 }
             }
         }
@@ -1211,7 +1206,7 @@ sai_status_t Meta::bulkRemove(
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], SAI_NULL_OBJECT_ID, false);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
 
         sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id[idx] } } };
 
@@ -1219,7 +1214,7 @@ sai_status_t Meta::bulkRemove(
 
         status = meta_generic_validation_remove(meta_key);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
     }
 
     auto status = m_implementation->bulkRemove(object_type, object_count, object_id, mode, object_statuses);
@@ -1273,7 +1268,7 @@ sai_status_t Meta::bulkSet(
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], SAI_NULL_OBJECT_ID, false);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
 
         sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id[idx] } } };
 
@@ -1281,7 +1276,7 @@ sai_status_t Meta::bulkSet(
 
         status = meta_generic_validation_set(meta_key, &attr_list[idx]);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
     }
 
     auto status = m_implementation->bulkSet(object_type, object_count, object_id, attr_list, mode, object_statuses);
@@ -1333,7 +1328,7 @@ sai_status_t Meta::bulkGet(
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], SAI_NULL_OBJECT_ID, false);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
 
         sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id[idx] } } };
 
@@ -1341,7 +1336,10 @@ sai_status_t Meta::bulkGet(
 
         status = meta_generic_validation_get(meta_key, attr_count[idx], attr_list[idx]);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        // FIXME: This macro returns on failure.
+        // When mode is SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR we should continue instead of return.
+        // This issue exists for all bulk operations.
+        CHECK_STATUS_SUCCESS(status);
     }
 
     auto status = m_implementation->bulkGet(object_type, object_count, object_id, attr_count, attr_list, mode, object_statuses);
@@ -1416,7 +1414,7 @@ sai_status_t Meta::bulkCreate(
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], switchId, true);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
 
         // this is create, oid's don't exist yet
 
@@ -1426,7 +1424,7 @@ sai_status_t Meta::bulkCreate(
 
         status = meta_generic_validation_create(meta_key, switchId, attr_count[idx], attr_list[idx]);
 
-        CHECK_STATUS_SUCCESS_MODE(status, mode);
+        CHECK_STATUS_SUCCESS(status);
     }
 
     auto status = m_implementation->bulkCreate(object_type, switchId, object_count, attr_count, attr_list, mode, object_id, object_statuses);
@@ -1985,12 +1983,13 @@ void Meta::meta_generic_validation_post_remove(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_UINT16_RANGE_LIST:
-	    case SAI_ATTR_VALUE_TYPE_JSON:
+            case SAI_ATTR_VALUE_TYPE_JSON:
                 // no special action required
                 break;
 
@@ -2007,6 +2006,11 @@ void Meta::meta_generic_validation_post_remove(
                 break;
 
             case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
+                // no special action required
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
                 // no special action required
                 break;
 
@@ -3697,7 +3701,7 @@ sai_status_t Meta::meta_generic_validation_create(
                 }
                 break;
 
-	    case SAI_ATTR_VALUE_TYPE_JSON:
+            case SAI_ATTR_VALUE_TYPE_JSON:
                 VALIDATION_LIST(md, value.json.json);
                 break;
 
@@ -3758,6 +3762,14 @@ sai_status_t Meta::meta_generic_validation_create(
 
             case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
                 VALIDATION_LIST(md, value.ipprefixlist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+                VALIDATION_LIST(md, value.portlanelatchstatuslist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+                VALIDATION_LIST(md, value.portsnrlist);
                 break;
 
             default:
@@ -4378,6 +4390,14 @@ sai_status_t Meta::meta_generic_validation_set(
             VALIDATION_LIST(md, value.ipprefixlist);
             break;
 
+        case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+            VALIDATION_LIST(md, value.portlanelatchstatuslist);
+            break;
+
+        case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+            VALIDATION_LIST(md, value.portsnrlist);
+            break;
+
         default:
 
             META_LOG_THROW(md, "serialization type is not supported yet FIXME");
@@ -4745,6 +4765,7 @@ sai_status_t Meta::meta_generic_validation_get(
                 VALIDATION_LIST(md, value.json.json);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
                 // primitives
@@ -4763,6 +4784,14 @@ sai_status_t Meta::meta_generic_validation_get(
 
             case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
                 VALIDATION_LIST(md, value.ipprefixlist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+                VALIDATION_LIST(md, value.portlanelatchstatuslist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+                VALIDATION_LIST(md, value.portsnrlist);
                 break;
 
             default:
@@ -5009,6 +5038,15 @@ void Meta::meta_generic_validation_post_get(
                 VALIDATION_LIST_GET(md, value.json.json);
                 break;
 
+            case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
+
+                if (value.u16range.min > value.u16range.max)
+                {
+                    META_LOG_ERROR(md, "invalid range %u .. %u", value.u16range.min, value.u16range.max);
+                }
+
+                break;
+
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
 
                 if (value.u32range.min > value.u32range.max)
@@ -5036,6 +5074,14 @@ void Meta::meta_generic_validation_post_get(
 
             case SAI_ATTR_VALUE_TYPE_IP_PREFIX_LIST:
                 VALIDATION_LIST_GET(md, value.ipprefixlist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_LANE_LATCH_STATUS_LIST:
+                VALIDATION_LIST_GET(md, value.portlanelatchstatuslist);
+                break;
+
+            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
+                VALIDATION_LIST_GET(md, value.portsnrlist);
                 break;
 
             default:
@@ -5907,6 +5953,7 @@ void Meta::meta_generic_validation_post_create(
             case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+            case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
             case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
             case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:
@@ -6152,6 +6199,7 @@ void Meta::meta_generic_validation_post_set(
         case SAI_ATTR_VALUE_TYPE_QOS_MAP_LIST:
         case SAI_ATTR_VALUE_TYPE_MAP_LIST:
         case SAI_ATTR_VALUE_TYPE_IP_ADDRESS_LIST:
+        case SAI_ATTR_VALUE_TYPE_UINT16_RANGE:
         case SAI_ATTR_VALUE_TYPE_UINT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_INT32_RANGE:
         case SAI_ATTR_VALUE_TYPE_ACL_RESOURCE_LIST:

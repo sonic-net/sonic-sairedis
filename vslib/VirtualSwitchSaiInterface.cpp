@@ -878,6 +878,18 @@ sai_status_t VirtualSwitchSaiInterface::objectTypeGetAvailability(
         *count = 512;
         return SAI_STATUS_SUCCESS;
     }
+    else if (objectType == SAI_OBJECT_TYPE_MY_SID_ENTRY)
+    {
+        if (m_switchStateMap.find(switchId) == m_switchStateMap.end())
+        {
+            SWSS_LOG_ERROR("failed to find switch %s in switch state map", sai_serialize_object_id(switchId).c_str());
+            return SAI_STATUS_FAILURE;
+        }
+
+        auto ss = m_switchStateMap.at(switchId);
+        *count = ss->getObjectTypeAvailability(objectType);
+        return SAI_STATUS_SUCCESS;
+    }
     else if ((objectType == (sai_object_type_t)SAI_OBJECT_TYPE_VNET) ||
              (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI) ||
              (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_ENI_ETHER_ADDRESS_MAP_ENTRY) ||

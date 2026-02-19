@@ -39,6 +39,21 @@ SwitchVpp::SwitchVpp(
     vpp_dp_initialize();
 }
 
+SwitchVpp::~SwitchVpp()
+{
+    SWSS_LOG_ENTER();
+
+    // Signal the vpp events thread to stop
+    m_run_vpp_events_thread = false;
+
+    // Wait for the thread to finish gracefully
+    if (m_vpp_thread && m_vpp_thread->joinable()) {
+        m_vpp_thread->join();
+    }
+
+    SWSS_LOG_NOTICE("SwitchVpp destructor completed");
+}
+
 sai_status_t SwitchVpp::create_qos_queues_per_port(
         _In_ sai_object_id_t port_id)
 {
@@ -744,6 +759,21 @@ sai_status_t SwitchVpp::queryAttributeCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+uint64_t SwitchVpp::getObjectTypeAvailability(
+        _In_ sai_object_type_t object_type)
+{
+    SWSS_LOG_ENTER();
+
+    if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
+    {
+        // Return available MY_SID entries (max - used)
+        return static_cast<uint64_t>(m_maxMySidEntries - m_srv6_my_sid_count);
+    }
+
+    // Return 0 for unsupported types
+    return 0;
+}
+
 sai_status_t SwitchVpp::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -819,7 +849,13 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
     {
-        return  m_tunnel_mgr_srv6.create_my_sid_entry(serializedObjectId, switch_id, attr_count, attr_list);
+        sai_status_t status = m_tunnel_mgr_srv6.create_my_sid_entry(serializedObjectId, switch_id, attr_count, attr_list);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            m_srv6_my_sid_count++;
+            SWSS_LOG_DEBUG("MY_SID entry created, count: %u", m_srv6_my_sid_count);
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_SRV6_SIDLIST)
@@ -1056,7 +1092,16 @@ sai_status_t SwitchVpp::remove(
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
     {
-        return  m_tunnel_mgr_srv6.remove_my_sid_entry(serializedObjectId);
+        sai_status_t status = m_tunnel_mgr_srv6.remove_my_sid_entry(serializedObjectId);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (m_srv6_my_sid_count > 0)
+            {
+                m_srv6_my_sid_count--;
+            }
+            SWSS_LOG_DEBUG("MY_SID entry removed, count: %u", m_srv6_my_sid_count);
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_SRV6_SIDLIST)
@@ -1189,6 +1234,49 @@ sai_status_t SwitchVpp::setPort(
     return set_internal(SAI_OBJECT_TYPE_PORT, sid, attr);
 }
 
+sai_status_t SwitchVpp::setLag(
+        _In_ sai_object_id_t lagId,
+        _In_ const sai_attribute_t* lagAttr)
+{
+    SWSS_LOG_ENTER();
+
+    auto attr_type = sai_metadata_get_attr_by_id(SAI_LAG_ATTR_INGRESS_ACL, 1, lagAttr);
+
+    if (attr_type != NULL)
+    {
+        if (attr_type->value.oid == SAI_NULL_OBJECT_ID) {
+            sai_attribute_t attr;
+
+            attr.id = SAI_LAG_ATTR_INGRESS_ACL;
+            if (get(SAI_OBJECT_TYPE_LAG, lagId, 1, &attr) != SAI_STATUS_SUCCESS) {
+                aclBindUnbindPort(lagId, attr.value.oid, true, false);
+            }
+        } else {
+            aclBindUnbindPort(lagId, attr_type->value.oid, true, true);
+        }
+    }
+
+    attr_type = sai_metadata_get_attr_by_id(SAI_LAG_ATTR_EGRESS_ACL, 1, lagAttr);
+
+    if (attr_type != NULL)
+    {
+        if (attr_type->value.oid == SAI_NULL_OBJECT_ID) {
+            sai_attribute_t attr;
+
+            attr.id = SAI_LAG_ATTR_EGRESS_ACL;
+            if (get(SAI_OBJECT_TYPE_LAG, lagId, 1, &attr) != SAI_STATUS_SUCCESS) {
+                aclBindUnbindPort(lagId, attr.value.oid, false, false);
+            }
+        } else {
+            aclBindUnbindPort(lagId, attr_type->value.oid, false, true);
+        }
+    }
+
+    auto sid = sai_serialize_object_id(lagId);
+
+    return set_internal(SAI_OBJECT_TYPE_LAG, sid, lagAttr);
+}
+
 sai_status_t SwitchVpp::setAclEntry(
         _In_ sai_object_id_t entry_id,
         _In_ const sai_attribute_t* attr)
@@ -1283,6 +1371,13 @@ sai_status_t SwitchVpp::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setMACsecSA(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_LAG)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setLag(objectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);

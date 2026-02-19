@@ -15,6 +15,19 @@ extern "C" {
 #include <memory>
 #include <type_traits>
 
+// Placeholder type for attributes not requiring data allocation
+// Used as default template parameter for simple attributes
+struct NoAttrData {
+    // Empty struct - minimal footprint, compiler optimizes away
+};
+
+// Holds data storage for SAI PORT attribute API calls
+struct PortPhyAttributeData {
+    std::vector<sai_port_lane_latch_status_t> rxSignalDetectData;
+    std::vector<sai_port_lane_latch_status_t> fecAlignmentLockData;
+    std::vector<sai_port_snr_values_t> rxSnrData;
+};
+
 namespace syncd
 {
     class BaseCounterContext
@@ -86,7 +99,7 @@ namespace syncd
         bool double_confirm_supported_counters = false;
         bool no_double_check_bulk_capability = false;
         bool dont_clear_support_counter  = false;
-        uint32_t default_bulk_chunk_size;
+        uint32_t default_bulk_chunk_size = 0;
     };
     class FlexCounter
     {
