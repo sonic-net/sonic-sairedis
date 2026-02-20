@@ -275,6 +275,19 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
 
     const char *hw_ifname = nullptr;
     auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_oid));
+
+    /* Check bridge port type — skip TUNNEL ports (VxLAN), they don't have
+       SAI_BRIDGE_PORT_ATTR_PORT_ID and would segfault on dereference. */
+    auto bp_type_meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_TYPE);
+    auto bp_type_attr = br_port_attrs[bp_type_meta->attridname];
+
+    if (bp_type_attr && bp_type_attr->getAttr()->value.s32 == SAI_BRIDGE_PORT_TYPE_TUNNEL)
+    {
+        SWSS_LOG_NOTICE("Skipping vlan member remove for TUNNEL bridge port %s",
+                sai_serialize_object_id(br_port_oid).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
     auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
     auto bp_attr = br_port_attrs[meta->attridname];
     auto port_id = bp_attr->getAttr()->value.oid;
