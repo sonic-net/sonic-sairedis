@@ -517,7 +517,45 @@ config_syncd_soda()
 
 config_syncd_marvell_teralynx()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    if [ -f $HWSKU_DIR/common_config_support ]; then
+
+        MRVL_CMN_DIR=/usr/share/sonic/device/x86_64-marvell_common
+        SDK_CONFIG_DIR=/tmp/sdk_config
+        MRVL_MERGE_INFRA_SCRIPT=/usr/local/bin/mrvl_merge_infra_script.sh
+
+        # Cleanup older merged config
+        [ -d "$SDK_CONFIG_DIR" ] && rm -rf "$SDK_CONFIG_DIR/"
+        mkdir $SDK_CONFIG_DIR
+
+        # Prepare new sai.profile which points to merged sdk config
+        cp "$HWSKU_DIR/sai.profile" "$SDK_CONFIG_DIR/sai.profile"
+
+        # Invoke merge infra script
+        bash "${MRVL_MERGE_INFRA_SCRIPT}" "$HWSKU_DIR" "$MRVL_CMN_DIR" "$SDK_CONFIG_DIR"
+
+        # Replace the value in the copied sai.profile to point to the merged config
+        sed -i "s|SAI_INIT_CONFIG_FILE=.*|SAI_INIT_CONFIG_FILE=$SDK_CONFIG_DIR/ivm.sai.config.yaml|" $SDK_CONFIG_DIR/sai.profile
+
+        # copy the final config files to the shared folder for 'show tech'
+
+        [[ -f $SDK_CONFIG_DIR/sai.profile ]] \
+            && { cp -f $SDK_CONFIG_DIR/sai.profile /var/run/syncd/ && echo "Copied sai.profile"; } \
+            || echo "Missing $SDK_CONFIG_DIR/sai.profile"
+
+        if compgen -G "$SDK_CONFIG_DIR/*.yaml" > /dev/null; then
+            cp -f $SDK_CONFIG_DIR/*.yaml /var/run/syncd/
+            echo "Copied YAML files"
+        else
+            echo "No YAML files found in $SDK_CONFIG_DIR/"
+        fi
+
+        [[ -f "$SDK_CONFIG_DIR/sai.profile" ]] \
+            && CMD_ARGS+=" -p $SDK_CONFIG_DIR/sai.profile" \
+            || echo "Missing: $SDK_CONFIG_DIR/sai.profile"
+    else
+        CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    fi
+
     ulimit -s 65536
     export II_ROOT="/var/log/mrvl_teralynx"
     export II_APPEND_LOG=1
