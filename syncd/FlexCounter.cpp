@@ -1125,11 +1125,41 @@ public:
     {
         SWSS_LOG_ENTER();
         sai_stats_mode_t effective_stats_mode = m_groupStatsMode;
-        for (const auto &kv : m_objectIdsMap)
+        for (auto &kv : m_objectIdsMap)
         {
             const auto &vid = kv.first;
-            const auto &rid = kv.second->rid;
+            sai_object_id_t rid = kv.second->rid;
             const auto &statIds = kv.second->counter_ids;
+
+            if (rid == SAI_NULL_OBJECT_ID)
+            {
+                if (m_vidToRidResolver)
+                {
+                    sai_object_id_t resolvedRid = SAI_NULL_OBJECT_ID;
+                    try
+                    {
+                        if (m_vidToRidResolver(vid, resolvedRid) && resolvedRid != SAI_NULL_OBJECT_ID)
+                        {
+                            kv.second->rid = resolvedRid;
+                            rid = resolvedRid;
+                            SWSS_LOG_DEBUG("FlexCounter: resolved VID 0x%" PRIx64 " -> RID 0x%" PRIx64 " (VIDTORID)", vid, rid);
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+                    catch (const std::exception &e)
+                    {
+                        SWSS_LOG_WARN("FlexCounter: failed to resolve VID 0x%" PRIx64 ": %s, skipping", vid, e.what());
+                        continue;
+                    }
+                }
+                else
+                {
+                    continue;
+                }
+            }
 
             // TODO: use if const expression when cpp17 is supported
             if (HasStatsMode<CounterIdsType>::value)
@@ -1706,8 +1736,39 @@ public:
         for (const auto &kv : Base::m_objectIdsMap)
         {
             const auto &vid = kv.first;
-            const auto &rid = kv.second->rid;
+            sai_object_id_t rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
+
+            if (rid == SAI_NULL_OBJECT_ID)
+            {
+                if (Base::m_vidToRidResolver)
+                {
+                    sai_object_id_t resolvedRid = SAI_NULL_OBJECT_ID;
+                    try
+                    {
+                        if (Base::m_vidToRidResolver(vid, resolvedRid) && resolvedRid != SAI_NULL_OBJECT_ID)
+                        {
+                            kv.second->rid = resolvedRid;
+                            rid = resolvedRid;
+                            SWSS_LOG_DEBUG("FlexCounter: resolved VID 0x%" PRIx64 " -> RID 0x%" PRIx64 " (VIDTORID)", vid, rid);
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+                    catch (const std::exception &e)
+                    {
+                        SWSS_LOG_WARN("FlexCounter: failed to resolve VID 0x%" PRIx64 ": %s, skipping", vid, e.what());
+                        continue;
+                    }
+                }
+                else
+                {
+                    // Still no RID in VIDTORID; skip this object this poll (do not call SAI with RID=0)
+                    continue;
+                }
+            }
 
             std::vector<sai_attribute_t> attrs(attrIds.size());
             for (size_t i = 0; i < attrIds.size(); i++)
@@ -1724,8 +1785,8 @@ public:
 
             if (status != SAI_STATUS_SUCCESS)
             {
-                SWSS_LOG_ERROR("Failed to get attr of %s 0x%" PRIx64 ": %d",
-                        sai_serialize_object_type(Base::m_objectType).c_str(), vid, status);
+                SWSS_LOG_ERROR("Failed to get attr of %s VID 0x%" PRIx64 " RID 0x%" PRIx64 ": %s",
+                        sai_serialize_object_type(Base::m_objectType).c_str(), vid, rid, sai_serialize_status(status).c_str());
                 continue;
             }
 
@@ -2611,6 +2672,18 @@ void FlexCounter::setStatus(
     }
 }
 
+void FlexCounter::setVidToRidResolver(
+        _In_ std::function<bool(sai_object_id_t vid, sai_object_id_t& rid)> resolver)
+{
+    MUTEX;
+
+    m_vidToRidResolver = std::move(resolver);
+    for (auto& it : m_counterContext)
+    {
+        it.second->setVidToRidResolver(m_vidToRidResolver);
+    }
+}
+
 void FlexCounter::setStatsMode(
         _In_ const std::string& mode)
 {
@@ -2966,6 +3039,10 @@ std::shared_ptr<BaseCounterContext> FlexCounter::getCounterContext(
 
     auto counterContext = createCounterContext(name, m_instanceId);
 
+    if (m_vidToRidResolver)
+    {
+        counterContext->setVidToRidResolver(m_vidToRidResolver);
+    }
     if (m_noDoubleCheckBulkCapability)
     {
         counterContext->setNoDoubleCheckBulkCapability(true);
@@ -3046,9 +3123,16 @@ void FlexCounter::flexCounterThreadRunFunction()
         {
             auto start = std::chrono::steady_clock::now();
 
-            collectCounters(countersTable);
+            try
+            {
+                collectCounters(countersTable);
 
-            runPlugins(db);
+                runPlugins(db);
+            }
+            catch (const std::exception &e)
+            {
+                SWSS_LOG_ERROR("FlexCounter %s: exception during poll: %s", m_instanceId.c_str(), e.what());
+            }
 
             auto finish = std::chrono::steady_clock::now();
 
