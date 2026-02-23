@@ -512,16 +512,11 @@ TunnelManager::create_l2_vxlan_tunnel(
         if (vni != 0 && vlan_id != 0) break;
     }
 
-    if (vni == 0) {
-        SWSS_LOG_ERROR("No VNI found in tunnel mappers for tunnel %s",
-            sai_serialize_object_id(tunnel_oid).c_str());
-        return SAI_STATUS_FAILURE;
-    }
-
-    if (vlan_id == 0) {
-        SWSS_LOG_ERROR("No VLAN found in tunnel mappers for tunnel %s",
-            sai_serialize_object_id(tunnel_oid).c_str());
-        return SAI_STATUS_FAILURE;
+    if (vni == 0 || vlan_id == 0) {
+        SWSS_LOG_NOTICE("No VNI-to-VLAN mapping found for tunnel %s (vni=%u, vlan=%u). "
+            "Not an L2 VXLAN tunnel, skipping.",
+            sai_serialize_object_id(tunnel_oid).c_str(), vni, vlan_id);
+        return SAI_STATUS_SUCCESS;
     }
 
     // Create VPP tunnel
