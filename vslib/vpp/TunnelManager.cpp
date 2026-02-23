@@ -545,18 +545,16 @@ TunnelManager::create_l2_vxlan_tunnel(
     }
 
     // Add tunnel interface to bridge domain (VLAN)
-    if (vlan_id != 0) {
-        int vpp_status = set_sw_interface_l2_bridge_by_index(
-            tunnel_data.sw_if_index, vlan_id, true, VPP_API_PORT_TYPE_NORMAL);
-        if (vpp_status != 0) {
-            SWSS_LOG_ERROR("Failed to add tunnel sw_if %u to BD %u",
-                tunnel_data.sw_if_index, vlan_id);
-            // Cleanup the tunnel
-            remove_vpp_vxlan_encap(req, tunnel_data);
-            return SAI_STATUS_FAILURE;
-        }
-        SWSS_LOG_NOTICE("Added tunnel sw_if %u to BD %u", tunnel_data.sw_if_index, vlan_id);
+    int vpp_status = set_sw_interface_l2_bridge_by_index(
+        tunnel_data.sw_if_index, vlan_id, true, VPP_API_PORT_TYPE_NORMAL);
+    if (vpp_status != 0) {
+        SWSS_LOG_ERROR("Failed to add tunnel sw_if %u to BD %u",
+            tunnel_data.sw_if_index, vlan_id);
+        // Cleanup the tunnel
+        remove_vpp_vxlan_encap(req, tunnel_data);
+        return SAI_STATUS_FAILURE;
     }
+    SWSS_LOG_NOTICE("Added tunnel sw_if %u to BD %u", tunnel_data.sw_if_index, vlan_id);
 
     m_l2_tunnel_map[tunnel_oid] = tunnel_data;
     sw_if_index = tunnel_data.sw_if_index;
