@@ -144,13 +144,34 @@ namespace saivs
                         _In_ const SaiObject* tunnel_nh_obj,
                         _In_ Action action);
 
+        /**
+         * @brief Create VPP VXLAN tunnel encapsulation.
+         *
+         * @param req VPP VXLAN tunnel request parameters.
+         * @param tunnel_data Output tunnel data with sw_if_index set on success.
+         * @param skip_neighbor When true, skip adding IP neighbor entries.
+         *        Set to true for L2 VXLAN tunnels that don't need L3 neighbor
+         *        entries for inner-ether forwarding.
+         * @return SAI_STATUS_SUCCESS on success, error status on failure.
+         */
         sai_status_t create_vpp_vxlan_encap(
                         _In_  vpp_vxlan_tunnel_t& req,
-                        _Out_ TunnelVPPData& tunnel_data);
+                        _Out_ TunnelVPPData& tunnel_data,
+                        _In_  bool skip_neighbor = false);
 
+        /**
+         * @brief Remove VPP VXLAN tunnel encapsulation.
+         *
+         * @param req VPP VXLAN tunnel request parameters.
+         * @param tunnel_data Tunnel data with sw_if_index of tunnel to remove.
+         * @param skip_neighbor When true, skip removing IP neighbor entries.
+         *        Must match the value used during creation.
+         * @return SAI_STATUS_SUCCESS on success, error status on failure.
+         */
         sai_status_t remove_vpp_vxlan_encap(
                         _In_  vpp_vxlan_tunnel_t& req,
-                        _In_ TunnelVPPData& tunnel_data);
+                        _In_ TunnelVPPData& tunnel_data,
+                        _In_  bool skip_neighbor = false);
 
         sai_status_t create_vpp_vxlan_decap(
                         _Out_ TunnelVPPData& tunnel_data);

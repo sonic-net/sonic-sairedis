@@ -243,7 +243,8 @@ TunnelManager::remove_tunnel_encap_nexthop(
 sai_status_t
 TunnelManager::create_vpp_vxlan_encap(
                     _In_  vpp_vxlan_tunnel_t& req,
-                    _Out_ TunnelVPPData& tunnel_data)
+                    _Out_ TunnelVPPData& tunnel_data,
+                    _In_  bool skip_neighbor)
 {
     SWSS_LOG_ENTER();
 
@@ -265,12 +266,16 @@ TunnelManager::create_vpp_vxlan_encap(
         return SAI_STATUS_FAILURE;
     }
     tunnel_data.sw_if_index = sw_if_index;
-    /* the neighbour is to build inner ether. use no_fib_entry to avoid creating the nh in the fib, which will mess up underlay forwarding*/
-    if (req.dst_address.sa_family == AF_INET6) {
-        ip6_nbr_add_del(NULL, sw_if_index, &req.dst_address.addr.ip6, false, true/*no_fib_entry*/, bvi_mac, 1);
-    } else {
-        ip4_nbr_add_del(NULL, sw_if_index, &req.dst_address.addr.ip4, false, true/*no_fib_entry*/, bvi_mac, 1);
+
+    if (!skip_neighbor) {
+        /* the neighbour is to build inner ether. use no_fib_entry to avoid creating the nh in the fib, which will mess up underlay forwarding*/
+        if (req.dst_address.sa_family == AF_INET6) {
+            ip6_nbr_add_del(NULL, sw_if_index, &req.dst_address.addr.ip6, false, true/*no_fib_entry*/, bvi_mac, 1);
+        } else {
+            ip4_nbr_add_del(NULL, sw_if_index, &req.dst_address.addr.ip4, false, true/*no_fib_entry*/, bvi_mac, 1);
+        }
     }
+
     SWSS_LOG_INFO("successfully created encap for vxlan tunnel %d", sw_if_index);
     return SAI_STATUS_SUCCESS;
 }
@@ -278,7 +283,8 @@ TunnelManager::create_vpp_vxlan_encap(
 sai_status_t
 TunnelManager::remove_vpp_vxlan_encap(
                     _In_  vpp_vxlan_tunnel_t& req,
-                    _In_ TunnelVPPData& tunnel_data)
+                    _In_ TunnelVPPData& tunnel_data,
+                    _In_  bool skip_neighbor)
 {
     SWSS_LOG_ENTER();
 
@@ -289,10 +295,12 @@ TunnelManager::remove_vpp_vxlan_encap(
     auto                        router_mac = get_router_mac();
     auto                        bvi_mac = router_mac.data();
 
-    if (req.dst_address.sa_family == AF_INET6) {
-        ip6_nbr_add_del(NULL, tunnel_data.sw_if_index, &req.dst_address.addr.ip6, false, true/*no_fib_entry*/, bvi_mac, 0);
-    } else {
-        ip4_nbr_add_del(NULL, tunnel_data.sw_if_index, &req.dst_address.addr.ip4, false, true/*no_fib_entry*/, bvi_mac, 0);
+    if (!skip_neighbor) {
+        if (req.dst_address.sa_family == AF_INET6) {
+            ip6_nbr_add_del(NULL, tunnel_data.sw_if_index, &req.dst_address.addr.ip6, false, true/*no_fib_entry*/, bvi_mac, 0);
+        } else {
+            ip4_nbr_add_del(NULL, tunnel_data.sw_if_index, &req.dst_address.addr.ip4, false, true/*no_fib_entry*/, bvi_mac, 0);
+        }
     }
 
     vpp_status = vpp_vxlan_tunnel_add_del(&req, 0, &sw_if_index);
@@ -536,10 +544,12 @@ TunnelManager::create_l2_vxlan_tunnel(
     tunnel_data.dst_ip = dst_ip;
     tunnel_data.vlan_id = vlan_id;  // Store for cleanup
 
-    // L2 VXLAN tunnels do not need VRF binding as they are L2 bridged
+    // L2 VXLAN tunnels do not need VRF association — they operate in L2 bridge mode
     tunnel_data.ip_vrf = nullptr;
 
-    if (create_vpp_vxlan_encap(req, tunnel_data) != SAI_STATUS_SUCCESS) {
+    // skip_neighbor=true: L2 VXLAN performs MAC learning/forwarding at Layer 2,
+    // no need for IP neighbor entries used by L3 routing
+    if (create_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("Failed to create VPP VXLAN tunnel");
         return SAI_STATUS_FAILURE;
     }
@@ -551,7 +561,7 @@ TunnelManager::create_l2_vxlan_tunnel(
         SWSS_LOG_ERROR("Failed to add tunnel sw_if %u to BD %u",
             tunnel_data.sw_if_index, vlan_id);
         // Cleanup the tunnel
-        remove_vpp_vxlan_encap(req, tunnel_data);
+        remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
         return SAI_STATUS_FAILURE;
     }
     SWSS_LOG_NOTICE("Added tunnel sw_if %u to BD %u", tunnel_data.sw_if_index, vlan_id);
@@ -611,7 +621,8 @@ TunnelManager::remove_l2_vxlan_tunnel(
     sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.src_ip, req.src_address);
     sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.dst_ip, req.dst_address);
 
-    sai_status_t status = remove_vpp_vxlan_encap(req, tunnel_data);
+    // skip_neighbor=true: L2 tunnels were created without neighbor entries
+    sai_status_t status = remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
     if (status != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("Failed to remove VPP VXLAN tunnel for %s",
             sai_serialize_object_id(tunnel_oid).c_str());
