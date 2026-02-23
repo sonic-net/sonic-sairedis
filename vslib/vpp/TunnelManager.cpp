@@ -536,8 +536,8 @@ TunnelManager::create_l2_vxlan_tunnel(
     tunnel_data.dst_ip = dst_ip;
     tunnel_data.vlan_id = vlan_id;  // Store for cleanup
 
-    std::string default_vrf = "default";
-    tunnel_data.ip_vrf = std::make_shared<IpVrfInfo>(SAI_NULL_OBJECT_ID, 0, default_vrf, false);
+    // L2 VXLAN tunnels do not need VRF binding as they are L2 bridged
+    tunnel_data.ip_vrf = nullptr;
 
     if (create_vpp_vxlan_encap(req, tunnel_data) != SAI_STATUS_SUCCESS) {
         SWSS_LOG_ERROR("Failed to create VPP VXLAN tunnel");
