@@ -329,6 +329,8 @@ namespace syncd
 
             void transitionToNormalWatchdogTimeout();
 
+            void transitionToInitWatchdogTimeout();
+
             sai_status_t applyView();
 
             void dumpComparisonLogicOutput(

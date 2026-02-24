@@ -65,7 +65,7 @@ Syncd::Syncd(
     m_vendorSai(vendorSai),
     m_veryFirstRun(false),
     m_enableSyncMode(false),
-    m_timerWatchdog(cmd->m_watchdogInitTimeSpan * WD_DELAY_FACTOR)
+    m_timerWatchdog(cmd->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR)
 {
     SWSS_LOG_ENTER();
 
@@ -4551,12 +4551,14 @@ sai_status_t Syncd::processNotifySyncd(
             {
                 // express/fastfast boot configuration end
 
+                transitionToInitWatchdogTimeout();
+
                 status = onApplyViewInFastFastBoot();
+
+                transitionToNormalWatchdogTimeout();
             }
 
             SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", key.c_str());
-
-            transitionToNormalWatchdogTimeout();
         }
         else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC)
         {
@@ -4603,6 +4605,7 @@ sai_status_t Syncd::processNotifySyncd(
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
 
+        transitionToInitWatchdogTimeout();
 
         try
         {
@@ -4621,6 +4624,8 @@ sai_status_t Syncd::processNotifySyncd(
 
             throw;
         }
+
+        transitionToNormalWatchdogTimeout();
 
         sendNotifyResponse(status);
 
@@ -4642,8 +4647,6 @@ sai_status_t Syncd::processNotifySyncd(
             m_translator->clearLocalCache();
 
             m_createdInInitView.clear();
-
-            transitionToNormalWatchdogTimeout();
         }
         else
         {
@@ -4699,11 +4702,26 @@ void Syncd::transitionToNormalWatchdogTimeout()
 
     if (initTimeout != normalTimeout)
     {
-        SWSS_LOG_NOTICE("APPLY_VIEW successful, transitioning watchdog from init timeout "
-                        "(%ld ms) to normal timeout (%ld ms)",
-                        initTimeout / 1000, normalTimeout / 1000);
+        SWSS_LOG_NOTICE("transitioning watchdog to normal timeout (%ld ms)",
+                        normalTimeout / 1000);
 
         m_timerWatchdog.setWarnTimespan(normalTimeout);
+    }
+}
+
+void Syncd::transitionToInitWatchdogTimeout()
+{
+    SWSS_LOG_ENTER();
+
+    int64_t initTimeout = m_commandLineOptions->m_watchdogInitTimeSpan * WD_DELAY_FACTOR;
+    int64_t normalTimeout = m_commandLineOptions->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR;
+
+    if (initTimeout != normalTimeout)
+    {
+        SWSS_LOG_NOTICE("transitioning watchdog to init timeout (%ld ms)",
+                        initTimeout / 1000);
+
+        m_timerWatchdog.setWarnTimespan(initTimeout);
     }
 }
 
