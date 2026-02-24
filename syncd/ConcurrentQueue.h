@@ -37,7 +37,7 @@ namespace syncd
             std::queue<T> m_queue;
             size_t m_queueSizeLimit;
 
-            ConcurrentQueue<T>(const ConcurrentQueue<T>&) = delete;
+            ConcurrentQueue(const ConcurrentQueue<T>&) = delete;
             ConcurrentQueue<T>& operator=(const ConcurrentQueue<T>&) = delete;
     };
 
