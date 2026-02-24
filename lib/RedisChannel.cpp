@@ -6,8 +6,11 @@
 
 #include "swss/logger.h"
 #include "swss/select.h"
+#include "swss/events.h"
 
 using namespace sairedis;
+
+event_handle_t g_events_handle;
 
 RedisChannel::RedisChannel(
         _In_ const std::string& dbAsic,
@@ -32,6 +35,9 @@ RedisChannel::RedisChannel(
     SWSS_LOG_NOTICE("creating notification thread");
 
     m_notificationThread = std::make_shared<std::thread>(&RedisChannel::notificationThreadFunction, this);
+
+    g_events_handle = events_init_publisher("sonic-events-swss");
+
 }
 
 RedisChannel::~RedisChannel()
@@ -48,6 +54,8 @@ RedisChannel::~RedisChannel()
     m_notificationThread->join();
 
     SWSS_LOG_NOTICE("join ntf thread end");
+
+    events_deinit_publisher(g_events_handle);
 }
 
 std::shared_ptr<swss::DBConnector> RedisChannel::getDbConnector() const
@@ -177,6 +185,13 @@ sai_status_t RedisChannel::wait(
         }
 
         SWSS_LOG_ERROR("SELECT operation result: %s on %s", swss::Select::resultToString(result).c_str(), command.c_str());
+
+        m_event_params = {
+            { "operation_result", swss::Select::resultToString(result) },
+            { "command", command }};
+
+        event_publish(g_events_handle, "select-operation-failure", &m_event_params);
+
         break;
     }
 
