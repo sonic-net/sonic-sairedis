@@ -4551,11 +4551,7 @@ sai_status_t Syncd::processNotifySyncd(
             {
                 // express/fastfast boot configuration end
 
-                transitionToInitWatchdogTimeout();
-
                 status = onApplyViewInFastFastBoot();
-
-                transitionToNormalWatchdogTimeout();
             }
 
             SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", key.c_str());
@@ -4564,7 +4560,11 @@ sai_status_t Syncd::processNotifySyncd(
         {
             SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
 
+            transitionToInitWatchdogTimeout();
+
             inspectAsic();
+
+            transitionToNormalWatchdogTimeout();
 
             sendNotifyResponse(SAI_STATUS_SUCCESS);
         }
@@ -4663,7 +4663,11 @@ sai_status_t Syncd::processNotifySyncd(
     {
         SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
 
+        transitionToInitWatchdogTimeout();
+
         inspectAsic();
+
+        transitionToNormalWatchdogTimeout();
 
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
