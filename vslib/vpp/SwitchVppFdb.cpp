@@ -22,6 +22,37 @@ using namespace saivs;
      FLUSH_ALL = 4,          /* Flushing all DYNAMIC FDB_ENTRY on all */
  } fdb_flush_mode;
 
+// utility function to check whether a bridge port is of type TUNNEL
+bool SwitchVpp::is_tunnel_bridge_port(
+        _In_ sai_object_id_t br_port_id)
+{
+    SWSS_LOG_ENTER();
+
+    try
+    {
+        auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT)
+                                         .at(sai_serialize_object_id(br_port_id));
+
+        auto meta = sai_metadata_get_attr_metadata(
+                        SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_TYPE);
+
+        auto it = br_port_attrs.find(meta->attridname);
+
+        if (it != br_port_attrs.end() &&
+            it->second->getAttr()->value.s32 == SAI_BRIDGE_PORT_TYPE_TUNNEL)
+        {
+            return true;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        SWSS_LOG_WARN("is_tunnel_bridge_port: exception for %s: %s",
+                sai_serialize_object_id(br_port_id).c_str(), e.what());
+    }
+
+    return false;
+}
+
 sai_status_t SwitchVpp::createVlanMember(
         _In_ sai_object_id_t object_id,
         _In_ sai_object_id_t switch_id,
@@ -68,21 +99,18 @@ sai_status_t SwitchVpp::vpp_create_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
-    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
-    auto meta_type = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_TYPE);
-    auto it_type = br_port_attrs.find(meta_type->attridname);
-    if (it_type != br_port_attrs.end()) {
-        sai_bridge_port_type_t bp_type = (sai_bridge_port_type_t)it_type->second->getAttr()->value.s32;
-        if (bp_type == SAI_BRIDGE_PORT_TYPE_TUNNEL) {
-            SWSS_LOG_NOTICE("Skipping VLAN member VPP ops for tunnel bridge port %s",
+    // Skip VPP operations for tunnel bridge ports -- they have no physical port
+    if (is_tunnel_bridge_port(br_port_id))
+    {
+        SWSS_LOG_NOTICE("Skipping VLAN member VPP create for tunnel bridge port %s",
                 sai_serialize_object_id(br_port_id).c_str());
-            return SAI_STATUS_SUCCESS;
-        }
+        return SAI_STATUS_SUCCESS;
     }
 
     const char *hwifname = nullptr;
     uint32_t lag_swif_idx;
 
+    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
     auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
     auto bp_attr = br_port_attrs[meta->attridname];
     auto port_id = bp_attr->getAttr()->value.oid;
@@ -273,20 +301,16 @@ sai_status_t SwitchVpp::vpp_remove_vlan_member(
         return SAI_STATUS_FAILURE;
     }
 
-    const char *hw_ifname = nullptr;
-    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_oid));
-
-    /* Check bridge port type — skip TUNNEL ports (VxLAN), they don't have
-       SAI_BRIDGE_PORT_ATTR_PORT_ID and would segfault on dereference. */
-    auto bp_type_meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_TYPE);
-    auto bp_type_attr = br_port_attrs[bp_type_meta->attridname];
-
-    if (bp_type_attr && bp_type_attr->getAttr()->value.s32 == SAI_BRIDGE_PORT_TYPE_TUNNEL)
+    // Skip VPP operations for tunnel bridge ports -- they have no physical port
+    if (is_tunnel_bridge_port(br_port_oid))
     {
         SWSS_LOG_NOTICE("Skipping vlan member remove for TUNNEL bridge port %s",
                 sai_serialize_object_id(br_port_oid).c_str());
         return SAI_STATUS_SUCCESS;
     }
+
+    const char *hw_ifname = nullptr;
+    auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_oid));
 
     auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
     auto bp_attr = br_port_attrs[meta->attridname];
@@ -998,6 +1022,15 @@ sai_status_t SwitchVpp::vpp_fdbentry_add(
         return SAI_STATUS_FAILURE;
     }
 
+    // Skip VPP FDB add for tunnel bridge ports -- L2 VXLAN FDB is handled
+    // separately via the EVPN remote-MAC path, not the per-port FDB path
+    if (is_tunnel_bridge_port(br_port_id))
+    {
+        SWSS_LOG_NOTICE("Skipping FDB add for tunnel bridge port %s",
+                sai_serialize_object_id(br_port_id).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
     auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
     auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
     auto bp_attr = br_port_attrs[meta->attridname];
@@ -1103,6 +1136,14 @@ sai_status_t SwitchVpp::vpp_fdbentry_del(
                 sai_serialize_object_type(obj_type).c_str());
 
         return SAI_STATUS_FAILURE;
+    }
+
+    // Skip VPP FDB delete for tunnel bridge ports
+    if (is_tunnel_bridge_port(br_port_id))
+    {
+        SWSS_LOG_NOTICE("Skipping FDB delete for tunnel bridge port %s",
+                sai_serialize_object_id(br_port_id).c_str());
+        return SAI_STATUS_SUCCESS;
     }
 
     auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
@@ -1225,6 +1266,16 @@ sai_status_t SwitchVpp::vpp_fdbentry_flush(
         case FLUSH_BY_INTERFACE:
         case FLUSH_BY_INTERFACE | FLUSH_ALL:/*flush by interface*/
             {
+                // Tunnel bridge ports have no physical port -- fall back to flush all
+                if (is_tunnel_bridge_port(br_port_id))
+                {
+                    SWSS_LOG_NOTICE("Tunnel bridge port %s: falling back to flush all",
+                            sai_serialize_object_id(br_port_id).c_str());
+                    auto ret = l2fib_flush_all();
+                    SWSS_LOG_NOTICE("Flush ALL (tunnel bridge port fallback) ret_val: %d", ret);
+                    break;
+                }
+
                 auto br_port_attrs = m_objectHash.at(SAI_OBJECT_TYPE_BRIDGE_PORT).at(sai_serialize_object_id(br_port_id));
                 auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_BRIDGE_PORT, SAI_BRIDGE_PORT_ATTR_PORT_ID);
                 auto bp_attr = br_port_attrs[meta->attridname];
