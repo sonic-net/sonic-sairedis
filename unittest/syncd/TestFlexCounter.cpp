@@ -755,7 +755,7 @@ TEST(FlexCounter, queryCounterCapability)
         {
             if (counter_ids[i] == SAI_PORT_STAT_IF_IN_UCAST_PKTS)
             {
-		// Mocking failing poll of the SAI_PORT_STAT_IF_IN_UCAST_PKTS counter
+                // Mocking failing poll of the SAI_PORT_STAT_IF_IN_UCAST_PKTS counter
                 return SAI_STATUS_FAILURE;
             }
             counters[i] = 1000;
