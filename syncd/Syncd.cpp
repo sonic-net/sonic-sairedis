@@ -4701,16 +4701,9 @@ void Syncd::transitionToNormalWatchdogTimeout()
 {
     SWSS_LOG_ENTER();
 
-    int64_t initTimeout = m_commandLineOptions->m_watchdogInitTimeSpan * WD_DELAY_FACTOR;
     int64_t normalTimeout = m_commandLineOptions->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR;
 
-    if (initTimeout != normalTimeout)
-    {
-        SWSS_LOG_NOTICE("transitioning watchdog to normal timeout (%ld ms)",
-                        normalTimeout / 1000);
-
-        m_timerWatchdog.setWarnTimespan(normalTimeout);
-    }
+    m_timerWatchdog.setWarnTimespan(normalTimeout);
 }
 
 void Syncd::transitionToInitWatchdogTimeout()
@@ -4718,15 +4711,8 @@ void Syncd::transitionToInitWatchdogTimeout()
     SWSS_LOG_ENTER();
 
     int64_t initTimeout = m_commandLineOptions->m_watchdogInitTimeSpan * WD_DELAY_FACTOR;
-    int64_t normalTimeout = m_commandLineOptions->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR;
 
-    if (initTimeout != normalTimeout)
-    {
-        SWSS_LOG_NOTICE("transitioning watchdog to init timeout (%ld ms)",
-                        initTimeout / 1000);
-
-        m_timerWatchdog.setWarnTimespan(initTimeout);
-    }
+    m_timerWatchdog.setWarnTimespan(initTimeout);
 }
 
 void Syncd::clearTempView()

@@ -130,6 +130,11 @@ void TimerWatchdog::setWarnTimespan(
 
     int64_t oldTimespan = m_warnTimespan;
 
+    if (oldTimespan == timespan)
+    {
+        return;
+    }
+
     m_warnTimespan = timespan;
 
     SWSS_LOG_NOTICE("watchdog timeout changed from %ld us (%ld ms) to %ld us (%ld ms)",
