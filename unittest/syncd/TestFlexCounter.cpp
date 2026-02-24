@@ -895,9 +895,14 @@ TEST(FlexCounter, queryCounterCapability)
         }
     };
 
-    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+    sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *counter_ids, uint64_t *counters) {
         for (uint32_t i = 0; i < number_of_counters; i++)
         {
+            if (counter_ids[i] == SAI_PORT_STAT_IF_IN_UCAST_PKTS)
+            {
+		// Mocking failing poll of the SAI_PORT_STAT_IF_IN_UCAST_PKTS counter
+                return SAI_STATUS_FAILURE;
+            }
             counters[i] = 1000;
         }
         return SAI_STATUS_SUCCESS;
