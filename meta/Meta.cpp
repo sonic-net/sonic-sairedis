@@ -7233,6 +7233,48 @@ void Meta::meta_sai_on_twamp_session_event(
     }
 }
 
+void Meta::meta_sai_on_flow_bulk_get_session_event(
+        _In_ sai_object_id_t flow_bulk_session_id,
+        _In_ uint32_t count,
+        _In_ const sai_flow_bulk_get_session_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    if (count && data == NULL)
+    {
+        SWSS_LOG_ERROR("sai_flow_bulk_get_session_event_data_t pointer is NULL but count is %u", count);
+        return;
+    }
+
+    if (flow_bulk_session_id != SAI_NULL_OBJECT_ID)
+    {
+        auto ot = objectTypeQuery(flow_bulk_session_id);
+
+        if (ot != (sai_object_type_t)SAI_OBJECT_TYPE_FLOW_ENTRY_BULK_GET_SESSION)
+        {
+            SWSS_LOG_ERROR("flow_bulk_session_id %s has unexpected type: %s",
+                    sai_serialize_object_id(flow_bulk_session_id).c_str(),
+                    sai_serialize_object_type(ot).c_str());
+            return ;
+        }
+
+        if (!m_oids.objectReferenceExists(flow_bulk_session_id))
+        {
+            SWSS_LOG_NOTICE("flow_bulk_session_id new object spotted %s not present in local DB (snoop!)",
+                    sai_serialize_object_id(flow_bulk_session_id).c_str());
+
+            sai_object_meta_key_t key = { .objecttype = ot, .objectkey = { .key = { .object_id = flow_bulk_session_id } } };
+
+            m_oids.objectReferenceInsert(flow_bulk_session_id);
+
+            if (!m_saiObjectCollection.objectExists(key))
+            {
+                m_saiObjectCollection.createObject(key);
+            }
+        }
+    }
+}
+
 void Meta::meta_sai_on_tam_tel_type_config_change(_In_ sai_object_id_t m_tam_id)
 {
     SWSS_LOG_ENTER();

@@ -27,6 +27,7 @@ libSyncd_a_SOURCES = \
 				DisabledRedisClient.cpp \
 				FlexCounter.cpp \
 				FlexCounterManager.cpp \
+				FlowDump.cpp \
 				GlobalSwitchId.cpp \
 				HardReiniter.cpp \
 				MdioIpcServer.cpp \
@@ -71,7 +72,7 @@ endif
 syncd_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 syncd_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS) $(CFLAGS_ASAN)
 syncd_LDADD = libSyncd.a $(top_srcdir)/lib/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
-			  -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq $(CODE_COVERAGE_LIBS) $(EXTRA_LIBSAI_LDFLAGS)
+			  -ldl -lhiredis -lswsscommon $(SAILIB) -lpthread -lzmq -lz $(CODE_COVERAGE_LIBS) $(EXTRA_LIBSAI_LDFLAGS)
 syncd_LDFLAGS = $(LDFLAGS_ASAN) -rdynamic
 
 if SAITHRIFT
@@ -117,7 +118,7 @@ syncd_tests_SOURCES = tests.cpp
 syncd_tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 syncd_tests_LDFLAGS = -Wl,-rpath,$(top_srcdir)/lib/.libs -Wl,-rpath,$(top_srcdir)/meta/.libs
 syncd_tests_LDADD = libSyncd.a -lhiredis -lswsscommon -lpthread -L$(top_srcdir)/lib/.libs -lsairedis \
-			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
+			  -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq -lz $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 TESTS = syncd_tests
 
@@ -128,7 +129,7 @@ syncd_dash_SOURCES = $(syncd_SOURCES)
 syncd_dash_CPPFLAGS = $(syncd_CPPFLAGS)
 syncd_dash_CXXFLAGS = $(syncd_CXXFLAGS)
 syncd_dash_LDADD = libSyncd.a $(top_srcdir)/lib/libSaiRedis.a -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta \
-			  -ldl -lhiredis -lswsscommon -lsai -lprotobuf -lpiprotobuf -lpiprotogrpc -lgrpc++ -lpthread -lzmq $(CODE_COVERAGE_LIBS) $(EXTRA_LIBSAI_LDFLAGS)
+			  -ldl -lhiredis -lswsscommon -lsai -lprotobuf -lpiprotobuf -lpiprotogrpc -lgrpc++ -lpthread -lzmq -lz $(CODE_COVERAGE_LIBS) $(EXTRA_LIBSAI_LDFLAGS)
 syncd_dash_LDFLAGS = $(syncd_LDFLAGS)
 endif
 endif

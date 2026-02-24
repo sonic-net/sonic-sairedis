@@ -39,6 +39,7 @@ libsaimeta_la_SOURCES = \
 				NotificationIcmpEchoSessionStateChange.cpp \
 				NotificationHaSetEvent.cpp \
 				NotificationHaScopeEvent.cpp \
+				NotificationFlowBulkGetSessionEvent.cpp \
 				NotificationTwampSessionEvent.cpp \
 				NotificationPortHostTxReadyEvent.cpp \
 				NotificationTamTelTypeConfigChange.cpp \

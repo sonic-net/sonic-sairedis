@@ -11,6 +11,6 @@ tests_CXXFLAGS = \
 tests_LDADD = \
     $(top_srcdir)/syncd/libSyncd.a $(top_srcdir)/lib/libSaiRedis.a $(top_srcdir)/syncd/libSyncdRequestShutdown.a \
     -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -L$(top_srcdir)/vslib/.libs -lsaivs \
-    -lhiredis -lswsscommon -lpthread -lzmq $(LDADD_GTEST) $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
+    -lhiredis -lswsscommon -lpthread -lzmq -lz $(LDADD_GTEST) $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 TESTS = tests

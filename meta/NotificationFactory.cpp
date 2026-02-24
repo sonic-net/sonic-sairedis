@@ -13,6 +13,7 @@
 #include "NotificationTamTelTypeConfigChange.h"
 #include "NotificationHaSetEvent.h"
 #include "NotificationHaScopeEvent.h"
+#include "NotificationFlowBulkGetSessionEvent.h"
 #include "NotificationSwitchMacsecPostStatus.h"
 #include "NotificationMacsecPostStatus.h"
 #include "sairediscommon.h"
@@ -62,6 +63,9 @@ std::shared_ptr<Notification> NotificationFactory::deserialize(
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT)
         return std::make_shared<NotificationHaScopeEvent>(serializedNotification);
+
+    if (name == SAI_SWITCH_NOTIFICATION_NAME_FLOW_BULK_GET_SESSION_EVENT)
+        return std::make_shared<NotificationFlowBulkGetSessionEvent>(serializedNotification);
 
     if (name == SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT)
         return std::make_shared<NotificationTwampSessionEvent>(serializedNotification);

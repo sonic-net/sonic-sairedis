@@ -93,6 +93,7 @@ SaiPlayer::SaiPlayer(
     m_sn.onBfdSessionStateChange = std::bind(&SaiPlayer::onBfdSessionStateChange, this, _1, _2);
     m_sn.onHaSetEvent = std::bind(&SaiPlayer::onHaSetEvent, this, _1, _2);
     m_sn.onHaScopeEvent = std::bind(&SaiPlayer::onHaScopeEvent, this, _1, _2);
+    m_sn.onFlowBulkGetSessionEvent = std::bind(&SaiPlayer::onFlowBulkGetSessionEvent, this, _1, _2, _3);
     m_sn.onPortHostTxReady = std::bind(&SaiPlayer::onPortHostTxReady, this, _1, _2, _3);
     m_sn.onIcmpEchoSessionStateChange = std::bind(&SaiPlayer::onIcmpEchoSessionStateChange, this, _1, _2);
     m_switchNotifications= m_sn.getSwitchNotifications();
@@ -200,6 +201,16 @@ void SaiPlayer::onHaSetEvent(
 void SaiPlayer::onHaScopeEvent(
         _In_ uint32_t count,
         _In_ const sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    // empty
+}
+
+void SaiPlayer::onFlowBulkGetSessionEvent(
+        _In_ sai_object_id_t flow_bulk_session_id,
+        _In_ uint32_t count,
+        _In_ const sai_flow_bulk_get_session_event_data_t *data)
 {
     SWSS_LOG_ENTER();
 

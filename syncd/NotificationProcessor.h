@@ -4,6 +4,7 @@
 #include "VirtualOidTranslator.h"
 #include "BaseRedisClient.h"
 #include "NotificationProducerBase.h"
+#include "FlowDump.h"
 
 #include "swss/notificationproducer.h"
 
@@ -153,6 +154,10 @@ namespace syncd
             void handle_ha_scope_event(
                     _In_ const std::string &data);
 
+            void handle_flow_bulk_get_session_event(
+                    _In_ const std::string &data,
+                    _In_ FlowDumpDataPtr auxiliary_data = nullptr);
+
             void handle_switch_asic_sdk_health_event(
                     _In_ const std::string &data);
 
@@ -176,6 +181,9 @@ namespace syncd
 
             void processNotification(
                     _In_ const swss::KeyOpFieldsValuesTuple& item);
+
+            void processNotification(
+                    _In_ const NotificationItem& item);
 
         public:
 

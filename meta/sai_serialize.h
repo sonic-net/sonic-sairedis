@@ -356,6 +356,11 @@ std::string sai_serialize_ha_scope_event_ntf(
         _In_ uint32_t count,
         _In_ const sai_ha_scope_event_data_t* ha_scope_event);
 
+std::string sai_serialize_flow_bulk_get_session_event_ntf(
+        _In_ sai_object_id_t flow_bulk_session_id,
+        _In_ uint32_t count,
+        _In_ const sai_flow_bulk_get_session_event_data_t* data);
+
 std::string sai_serialize_port_host_tx_ready_ntf(
         _In_ sai_object_id_t switch_id,
         _In_ sai_object_id_t port_id,
@@ -649,6 +654,12 @@ void sai_deserialize_ha_scope_event_ntf(
         _Out_ uint32_t &count,
         _Out_ sai_ha_scope_event_data_t** ha_scope_event);
 
+void sai_deserialize_flow_bulk_get_session_event_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& flow_bulk_session_id,
+        _Out_ uint32_t& count,
+        _Out_ sai_flow_bulk_get_session_event_data_t** data);
+
 void sai_deserialize_port_host_tx_ready_ntf(
         _In_ const std::string& s,
         _Out_ sai_object_id_t& switch_id,
@@ -711,6 +722,10 @@ void sai_deserialize_ingress_priority_group_attr(
 void sai_deserialize_free_twamp_session_event_ntf(
         _In_ uint32_t count,
         _In_ sai_twamp_session_event_notification_data_t* twamp_session_event);
+
+void sai_deserialize_free_flow_bulk_get_session_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_flow_bulk_get_session_event_data_t* data);
 
 void sai_deserialize_queue_attr(
         _In_ const std::string& s,

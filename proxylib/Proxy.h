@@ -160,6 +160,11 @@ namespace saiproxy
                     _In_ uint32_t count,
                     _In_ const sai_ha_scope_event_data_t *data);
 
+            void onFlowBulkGetSessionEvent(
+                    _In_ sai_object_id_t flow_bulk_session_id,
+                    _In_ uint32_t count,
+                    _In_ const sai_flow_bulk_get_session_event_data_t *data);
+
             void onTwampSessionEvent(
                     _In_ uint32_t count,
                     _In_ const sai_twamp_session_event_notification_data_t *data);

@@ -279,6 +279,11 @@ namespace saiplayer
                     _In_ uint32_t count,
                     _In_ const sai_ha_scope_event_data_t *data);
 
+            void onFlowBulkGetSessionEvent(
+                    _In_ sai_object_id_t flow_bulk_session_id,
+                    _In_ uint32_t count,
+                    _In_ const sai_flow_bulk_get_session_event_data_t *data);
+
             void onPortHostTxReady(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_id_t port_id,
