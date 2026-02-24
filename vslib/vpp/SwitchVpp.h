@@ -296,6 +296,20 @@ namespace saivs
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
+        
+            /**
+             * @brief Check if a bridge port is of type TUNNEL.
+             *
+             * Tunnel bridge ports carry SAI_BRIDGE_PORT_ATTR_TUNNEL_ID instead of
+             * SAI_BRIDGE_PORT_ATTR_PORT_ID.  VPP functions that dereference PORT_ID
+             * must call this first to avoid null-pointer crashes.
+             *
+             * @param[in] br_port_id The bridge port object ID to check.
+             * @return true if the bridge port type is SAI_BRIDGE_PORT_TYPE_TUNNEL.
+             */
+            bool is_tunnel_bridge_port(
+                    _In_ sai_object_id_t br_port_id);
+        
 
             /* BFD Session */
             sai_status_t bfd_session_add(

@@ -17,12 +17,24 @@ namespace saivs
      */
     class TunnelVPPData {
     public:
-        TunnelVPPData() : sw_if_index(0), encap_vrf_id(0) {}
-        u_int32_t sw_if_index;
-        u_int32_t encap_vrf_id;
-        u_int32_t bd_id;
-        vpp_ip_addr_t bvi_addr;
+        TunnelVPPData() {
+            memset(&src_ip, 0, sizeof(src_ip));
+            memset(&dst_ip, 0, sizeof(dst_ip));
+            memset(&bvi_addr, 0, sizeof(bvi_addr));
+        }
+        // Common fields
+        u_int32_t sw_if_index = 0;
         std::shared_ptr<IpVrfInfo> ip_vrf;
+
+        u_int32_t encap_vrf_id = 0;
+        u_int32_t bd_id = 0;
+        vpp_ip_addr_t bvi_addr;
+
+        // L2 VXLAN fields
+        u_int32_t vni = 0;
+        u_int16_t vlan_id = 0;
+        sai_ip_address_t src_ip;
+        sai_ip_address_t dst_ip;
     };
 
     class TunnelManager {
@@ -100,24 +112,66 @@ namespace saivs
          * @brief Set VxLAN port.
          */
         void set_vxlan_port(const sai_attribute_t* attr);
+
+        /**
+         * @brief Create L2 VXLAN tunnel for EVPN.
+         *
+         * This function is called when a SAI P2P tunnel object is created,
+         * typically triggered by EVPN discovering a remote VTEP via BGP IMET routes.
+         *
+         * @param tunnel_oid The SAI tunnel object ID.
+         * @param sw_if_index Output parameter for the VPP interface index.
+         * @return SAI_STATUS_SUCCESS on success or if skipped (P2MP tunnel),
+         *         error status on failure.
+         */
+        sai_status_t create_l2_vxlan_tunnel(
+            _In_ sai_object_id_t tunnel_oid,
+            _Out_ uint32_t& sw_if_index);
+        
+        sai_status_t remove_l2_vxlan_tunnel(
+            _In_ sai_object_id_t tunnel_oid);
+
     private:
         SwitchVpp* m_switch_db;
         std::array<uint8_t, 6> m_router_mac;
         u_int16_t m_vxlan_port;
         //nexthop SAI object ID to sw_if_index map
         std::unordered_map<sai_object_id_t, TunnelVPPData> m_tunnel_encap_nexthop_map;
+        // Map from tunnel SAI OID to VPP tunnel data (L2 VXLAN / EVPN)
+        std::unordered_map<sai_object_id_t, TunnelVPPData> m_l2_tunnel_map;
 
         sai_status_t tunnel_encap_nexthop_action(
                         _In_ const SaiObject* tunnel_nh_obj,
                         _In_ Action action);
 
+        /**
+         * @brief Create VPP VXLAN tunnel encapsulation.
+         *
+         * @param req VPP VXLAN tunnel request parameters.
+         * @param tunnel_data Output tunnel data with sw_if_index set on success.
+         * @param skip_neighbor When true, skip adding IP neighbor entries.
+         *        Set to true for L2 VXLAN tunnels that don't need L3 neighbor
+         *        entries for inner-ether forwarding.
+         * @return SAI_STATUS_SUCCESS on success, error status on failure.
+         */
         sai_status_t create_vpp_vxlan_encap(
                         _In_  vpp_vxlan_tunnel_t& req,
-                        _Out_ TunnelVPPData& tunnel_data);
+                        _Out_ TunnelVPPData& tunnel_data,
+                        _In_  bool skip_neighbor = false);
 
+        /**
+         * @brief Remove VPP VXLAN tunnel encapsulation.
+         *
+         * @param req VPP VXLAN tunnel request parameters.
+         * @param tunnel_data Tunnel data with sw_if_index of tunnel to remove.
+         * @param skip_neighbor When true, skip removing IP neighbor entries.
+         *        Must match the value used during creation.
+         * @return SAI_STATUS_SUCCESS on success, error status on failure.
+         */
         sai_status_t remove_vpp_vxlan_encap(
                         _In_  vpp_vxlan_tunnel_t& req,
-                        _In_ TunnelVPPData& tunnel_data);
+                        _In_ TunnelVPPData& tunnel_data,
+                        _In_  bool skip_neighbor = false);
 
         sai_status_t create_vpp_vxlan_decap(
                         _Out_ TunnelVPPData& tunnel_data);
