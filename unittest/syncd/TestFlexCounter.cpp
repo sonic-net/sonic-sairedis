@@ -2155,3 +2155,377 @@ TEST(FlexCounter, noEniDashMeterCounter)
         counterVerifyFunc,
         false);
 }
+
+TEST(FlexCounter, VidToRidResolver_WhenResolverThrows_SkipsWithoutCrash)
+{
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_ACL_COUNTER);
+    std::vector<sai_object_id_t> vids = generateOids(1, SAI_OBJECT_TYPE_ACL_COUNTER);
+    ASSERT_EQ(vids.size(), 1u);
+    sai_object_id_t vid = vids[0];
+
+    int getCallCount = 0;
+    sai->mock_get = [&getCallCount](sai_object_type_t, sai_object_id_t, uint32_t, sai_attribute_t *) {
+        getCallCount++;
+        return SAI_STATUS_SUCCESS;
+    };
+
+    FlexCounter fc("test_resolver_throws", sai, "COUNTERS_DB");
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    auto resolverThrows = [](sai_object_id_t, sai_object_id_t&) -> bool {
+        throw std::runtime_error("Redis connection lost");
+    };
+    fc.setVidToRidResolver(resolverThrows);
+
+    values.clear();
+    values.emplace_back(ACL_COUNTER_ATTR_ID_LIST, "SAI_ACL_COUNTER_ATTR_PACKETS");
+    fc.addCounter(vid, SAI_NULL_OBJECT_ID, values);
+
+    usleep(1000 * 1050);
+    EXPECT_EQ(getCallCount, 0);
+
+    fc.removeCounter(vid);
+}
+
+TEST(FlexCounter, VidToRidResolver_NoResolverSet_SkipsSaiCall)
+{
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_ACL_COUNTER);
+    std::vector<sai_object_id_t> vids = generateOids(1, SAI_OBJECT_TYPE_ACL_COUNTER);
+    ASSERT_EQ(vids.size(), 1u);
+    sai_object_id_t vid = vids[0];
+
+    int getCallCount = 0;
+    sai->mock_get = [&getCallCount](sai_object_type_t, sai_object_id_t, uint32_t, sai_attribute_t *) {
+        getCallCount++;
+        return SAI_STATUS_SUCCESS;
+    };
+
+    FlexCounter fc("test_no_resolver", sai, "COUNTERS_DB");
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    values.clear();
+    values.emplace_back(ACL_COUNTER_ATTR_ID_LIST, "SAI_ACL_COUNTER_ATTR_PACKETS");
+    fc.addCounter(vid, SAI_NULL_OBJECT_ID, values);
+
+    usleep(1000 * 1050);
+    EXPECT_EQ(getCallCount, 0);
+
+    fc.removeCounter(vid);
+}
+
+TEST(FlexCounter, VidToRidResolver_StatsCounter_WhenRidZero_ResolvesAndPolls)
+{
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_COUNTER);
+    std::vector<sai_object_id_t> vids = generateOids(1, SAI_OBJECT_TYPE_COUNTER);
+    ASSERT_EQ(vids.size(), 1u);
+    sai_object_id_t vid = vids[0];
+    const sai_object_id_t resolvedRid = 0x900000000009999ULL;
+
+    bool pollingPhase = false;
+    sai->mock_getStats = [&pollingPhase, resolvedRid](sai_object_type_t objectType, sai_object_id_t objectId, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+        EXPECT_EQ(objectType, SAI_OBJECT_TYPE_COUNTER);
+        if (pollingPhase)
+        {
+            EXPECT_EQ(objectId, resolvedRid);
+        }
+        for (uint32_t i = 0; i < number_of_counters; i++)
+            counters[i] = (i + 1) * 500;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStatsExt = [&pollingPhase, resolvedRid](sai_object_type_t, sai_object_id_t objectId, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
+        if (pollingPhase)
+        {
+            EXPECT_EQ(objectId, resolvedRid);
+        }
+        for (uint32_t i = 0; i < number_of_counters; i++)
+            counters[i] = (i + 1) * 500;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *, uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    FlexCounter fc("test_stats_resolver", sai, "COUNTERS_DB");
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    values.clear();
+    values.emplace_back(FLOW_COUNTER_ID_LIST, "SAI_COUNTER_STAT_PACKETS,SAI_COUNTER_STAT_BYTES");
+    fc.addCounter(vid, SAI_NULL_OBJECT_ID, values);
+
+    auto resolver = [resolvedRid](sai_object_id_t, sai_object_id_t& rid) {
+        rid = resolvedRid;
+        return true;
+    };
+    fc.setVidToRidResolver(resolver);
+
+    pollingPhase = true;
+    usleep(1000 * 2050);
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table countersTable(&db, COUNTERS_TABLE);
+    std::string value;
+    ASSERT_TRUE(countersTable.hget(toOid(vid), "SAI_COUNTER_STAT_PACKETS", value));
+    EXPECT_EQ(value, "500");
+    ASSERT_TRUE(countersTable.hget(toOid(vid), "SAI_COUNTER_STAT_BYTES", value));
+    EXPECT_EQ(value, "1000");
+
+    fc.removeCounter(vid);
+    countersTable.del(toOid(vid));
+}
+
+TEST(FlexCounter, VidToRidResolver_AttrCounter_WhenRidZero_ResolvesAndPolls)
+{
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_ACL_COUNTER);
+    std::vector<sai_object_id_t> vids = generateOids(1, SAI_OBJECT_TYPE_ACL_COUNTER);
+    ASSERT_EQ(vids.size(), 1u);
+    sai_object_id_t vid = vids[0];
+    const sai_object_id_t resolvedRid = 0x0900000000001234ULL;
+
+    bool pollingPhase = false;
+    sai->mock_get = [&pollingPhase, resolvedRid](sai_object_type_t, sai_object_id_t objectId, uint32_t attr_count, sai_attribute_t *attrs) {
+        if (pollingPhase)
+        {
+            EXPECT_EQ(objectId, resolvedRid);
+        }
+        for (uint32_t i = 0; i < attr_count; i++)
+        {
+            if (attrs[i].id == SAI_ACL_COUNTER_ATTR_PACKETS)
+                attrs[i].value.u64 = 100;
+        }
+        return SAI_STATUS_SUCCESS;
+    };
+
+    FlexCounter fc("test_attr_resolver_ok", sai, "COUNTERS_DB");
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    auto resolver = [resolvedRid](sai_object_id_t, sai_object_id_t& rid) {
+        rid = resolvedRid;
+        return true;
+    };
+    fc.setVidToRidResolver(resolver);
+
+    values.clear();
+    values.emplace_back(ACL_COUNTER_ATTR_ID_LIST, "SAI_ACL_COUNTER_ATTR_PACKETS");
+    fc.addCounter(vid, SAI_NULL_OBJECT_ID, values);
+
+    pollingPhase = true;
+    usleep(1000 * 1050);
+
+    swss::DBConnector db("COUNTERS_DB", 0);
+    swss::Table countersTable(&db, COUNTERS_TABLE);
+    std::string value;
+    ASSERT_TRUE(countersTable.hget(toOid(vid), "SAI_ACL_COUNTER_ATTR_PACKETS", value));
+    EXPECT_EQ(value, "100");
+
+    fc.removeCounter(vid);
+    countersTable.del(toOid(vid));
+}
+
+TEST(FlexCounter, VidToRidResolver_AttrCounter_ResolverFails_SkipsSaiCall)
+{
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_ACL_COUNTER);
+    std::vector<sai_object_id_t> vids = generateOids(1, SAI_OBJECT_TYPE_ACL_COUNTER);
+    ASSERT_EQ(vids.size(), 1u);
+    sai_object_id_t vid = vids[0];
+
+    int getCallCount = 0;
+    sai->mock_get = [&getCallCount](sai_object_type_t, sai_object_id_t, uint32_t, sai_attribute_t *) {
+        getCallCount++;
+        return SAI_STATUS_SUCCESS;
+    };
+
+    FlexCounter fc("test_attr_resolver_fail", sai, "COUNTERS_DB");
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    auto resolverFail = [](sai_object_id_t, sai_object_id_t& rid) {
+        rid = SAI_NULL_OBJECT_ID;
+        return false;
+    };
+    fc.setVidToRidResolver(resolverFail);
+
+    values.clear();
+    values.emplace_back(ACL_COUNTER_ATTR_ID_LIST, "SAI_ACL_COUNTER_ATTR_PACKETS");
+    fc.addCounter(vid, SAI_NULL_OBJECT_ID, values);
+
+    usleep(1000 * 1050);
+    EXPECT_EQ(getCallCount, 0);
+
+    fc.removeCounter(vid);
+}
+
+TEST(FlexCounter, VidToRidResolver_StatsCounter_WhenResolverThrows_SkipsWithoutCrash)
+{
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_COUNTER);
+    std::vector<sai_object_id_t> vids = generateOids(1, SAI_OBJECT_TYPE_COUNTER);
+    ASSERT_EQ(vids.size(), 1u);
+    sai_object_id_t vid = vids[0];
+
+    bool addObjectDone = false;
+    int pollGetStatsCount = 0;
+    sai->mock_getStatsExt = [&addObjectDone, &pollGetStatsCount](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
+        if (addObjectDone)
+            pollGetStatsCount++;
+        for (uint32_t i = 0; i < number_of_counters; i++)
+            counters[i] = 0;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [&addObjectDone, &pollGetStatsCount](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+        if (addObjectDone)
+            pollGetStatsCount++;
+        for (uint32_t i = 0; i < number_of_counters; i++)
+            counters[i] = 0;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *, uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    FlexCounter fc("test_stats_throw", sai, "COUNTERS_DB");
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    auto resolverThrows = [](sai_object_id_t, sai_object_id_t&) -> bool {
+        throw std::runtime_error("Redis connection lost");
+    };
+    fc.setVidToRidResolver(resolverThrows);
+
+    values.clear();
+    values.emplace_back(FLOW_COUNTER_ID_LIST, "SAI_COUNTER_STAT_PACKETS,SAI_COUNTER_STAT_BYTES");
+    fc.addCounter(vid, SAI_NULL_OBJECT_ID, values);
+    addObjectDone = true;
+
+    usleep(1000 * 1050);
+    EXPECT_EQ(pollGetStatsCount, 0);
+
+    fc.removeCounter(vid);
+}
+
+TEST(FlexCounter, VidToRidResolver_StatsCounter_NoResolverSet_SkipsSaiCall)
+{
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_COUNTER);
+    std::vector<sai_object_id_t> vids = generateOids(1, SAI_OBJECT_TYPE_COUNTER);
+    ASSERT_EQ(vids.size(), 1u);
+    sai_object_id_t vid = vids[0];
+
+    bool addObjectDone = false;
+    int pollGetStatsCount = 0;
+    sai->mock_getStatsExt = [&addObjectDone, &pollGetStatsCount](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
+        if (addObjectDone)
+            pollGetStatsCount++;
+        for (uint32_t i = 0; i < number_of_counters; i++)
+            counters[i] = 0;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [&addObjectDone, &pollGetStatsCount](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+        if (addObjectDone)
+            pollGetStatsCount++;
+        for (uint32_t i = 0; i < number_of_counters; i++)
+            counters[i] = 0;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *, uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    FlexCounter fc("test_stats_no_resolver", sai, "COUNTERS_DB");
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    values.clear();
+    values.emplace_back(FLOW_COUNTER_ID_LIST, "SAI_COUNTER_STAT_PACKETS,SAI_COUNTER_STAT_BYTES");
+    fc.addCounter(vid, SAI_NULL_OBJECT_ID, values);
+    addObjectDone = true;
+
+    usleep(1000 * 1050);
+    EXPECT_EQ(pollGetStatsCount, 0);
+
+    fc.removeCounter(vid);
+}
+
+TEST(FlexCounter, VidToRidResolver_StatsCounter_ResolverFails_SkipsSaiCall)
+{
+    test_syncd::mockVidManagerObjectTypeQuery(SAI_OBJECT_TYPE_COUNTER);
+    std::vector<sai_object_id_t> vids = generateOids(1, SAI_OBJECT_TYPE_COUNTER);
+    ASSERT_EQ(vids.size(), 1u);
+    sai_object_id_t vid = vids[0];
+
+    bool addObjectDone = false;
+    int pollGetStatsCount = 0;
+    sai->mock_getStatsExt = [&addObjectDone, &pollGetStatsCount](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, sai_stats_mode_t, uint64_t *counters) {
+        if (addObjectDone)
+            pollGetStatsCount++;
+        for (uint32_t i = 0; i < number_of_counters; i++)
+            counters[i] = 0;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_getStats = [&addObjectDone, &pollGetStatsCount](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *, uint64_t *counters) {
+        if (addObjectDone)
+            pollGetStatsCount++;
+        for (uint32_t i = 0; i < number_of_counters; i++)
+            counters[i] = 0;
+        return SAI_STATUS_SUCCESS;
+    };
+    sai->mock_queryStatsCapability = [](sai_object_id_t, sai_object_type_t, sai_stat_capability_list_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+    sai->mock_bulkGetStats = [](sai_object_id_t, sai_object_type_t, uint32_t, const sai_object_key_t *, uint32_t, const sai_stat_id_t *, sai_stats_mode_t, sai_status_t *, uint64_t *) {
+        return SAI_STATUS_FAILURE;
+    };
+
+    FlexCounter fc("test_stats_resolver_fail", sai, "COUNTERS_DB");
+    std::vector<swss::FieldValueTuple> values;
+    values.emplace_back(POLL_INTERVAL_FIELD, "1000");
+    values.emplace_back(FLEX_COUNTER_STATUS_FIELD, "enable");
+    values.emplace_back(STATS_MODE_FIELD, STATS_MODE_READ);
+    fc.addCounterPlugin(values);
+
+    auto resolverFail = [](sai_object_id_t, sai_object_id_t& rid) {
+        rid = SAI_NULL_OBJECT_ID;
+        return false;
+    };
+    fc.setVidToRidResolver(resolverFail);
+
+    values.clear();
+    values.emplace_back(FLOW_COUNTER_ID_LIST, "SAI_COUNTER_STAT_PACKETS,SAI_COUNTER_STAT_BYTES");
+    fc.addCounter(vid, SAI_NULL_OBJECT_ID, values);
+    addObjectDone = true;
+
+    usleep(1000 * 1050);
+    EXPECT_EQ(pollGetStatsCount, 0);
+
+    fc.removeCounter(vid);
+}
