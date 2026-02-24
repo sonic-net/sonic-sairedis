@@ -602,6 +602,12 @@ public:
             m_supportedCounterGroups.push_back(std::set<StatType>(counter_ids.begin(), counter_ids.end()));
             m_counterGroupsSorted.push_back(makeCounterGroupRef(0, counter_ids.size()));
         }
+        // Replace base counter group if full counter set differs
+        else if (m_supportedCounterGroups[0] != std::set<StatType>(counter_ids.begin(), counter_ids.end()))
+        {
+            m_supportedCounterGroups[0] = std::set<StatType>(counter_ids.begin(), counter_ids.end());
+            m_counterGroupsSorted[0].size = counter_ids.size();
+        }
 
         updateSupportedCounterGroups(rid, vid, counter_ids, effective_stats_mode);
 
@@ -1064,9 +1070,14 @@ public:
         // Create base counter group if not yet instantiated
         if (m_supportedCounterGroups.empty())
         {
-            std::set<StatType> fullCounterSet(allCounterIds.begin(), allCounterIds.end());
-            m_supportedCounterGroups.push_back(fullCounterSet);
+            m_supportedCounterGroups.push_back(std::set<StatType>(allCounterIds.begin(), allCounterIds.end()));
             m_counterGroupsSorted.push_back(makeCounterGroupRef(0, allCounterIds.size()));
+        }
+        // Ensure existing group is the same as new maximum group
+        else if (m_supportedCounterGroups[0] != std::set<StatType>(allCounterIds.begin(), allCounterIds.end()))
+        {
+            m_supportedCounterGroups[0] = std::set<StatType>(allCounterIds.begin(), allCounterIds.end());
+            m_counterGroupsSorted[0].size = allCounterIds.size();
         }
 
         for (size_t i = 0; i < vids.size(); i++)
@@ -1863,80 +1874,77 @@ private:
             _In_ sai_stats_mode_t stats_mode)
     {
         SWSS_LOG_ENTER();
-        if (m_objectSupportedCountersGroupMap.find(vid) == m_objectSupportedCountersGroupMap.end())
+        // Check if a matching counter group already exists
+        for (size_t i = 0; i < m_counterGroupsSorted.size(); i++)
         {
-            // Check if a matching counter group already exists
-            for (size_t i = 0; i < m_counterGroupsSorted.size(); i++)
+            // Try match
+            std::set<StatType>* counterSet = getSortedCGRef(m_counterGroupsSorted[i]);
+            std::vector<uint64_t> values(counterSet->size(), 0);
+            std::vector<StatType> countersToPoll(counterSet->begin(), counterSet->end());
+            if (collectData(rid, countersToPoll, stats_mode, false, values))
             {
-                // Try match
-                std::set<StatType>* counterSet = getSortedCGRef(m_counterGroupsSorted[i]);
-                std::vector<uint64_t> values(counterSet->size(), 0);
-                std::vector<StatType> countersToPoll(counterSet->begin(), counterSet->end());
-                if (collectData(rid, countersToPoll, stats_mode, false, values))
-                {
-                    // Success - Check support for counters not in counter group (extra counters)
-                    std::vector<StatType> extraCounters;
-                    std::set<StatType> newCounters;
+                // Success - Check support for counters not in counter group (extra counters)
+                std::vector<StatType> extraCounters;
+                std::set<StatType> newCounters;
 
-                    // Counter groups is a subset of counter_ids in any situation
-                    std::set_difference(counter_ids.begin(), counter_ids.end(), countersToPoll.begin(), countersToPoll.end(),
-                                        std::inserter(extraCounters, extraCounters.begin()));
-                    for (const StatType &counter : extraCounters)
+                // Counter groups is a subset of counter_ids in any situation
+                std::set_difference(counter_ids.begin(), counter_ids.end(), countersToPoll.begin(), countersToPoll.end(),
+                                    std::inserter(extraCounters, extraCounters.begin()));
+                for (const StatType &counter : extraCounters)
+                {
+                    std::vector<StatType> singleCounter {counter};
+                    std::vector<uint64_t> singleValue(1);
+                    if (collectData(rid, singleCounter, stats_mode, false, singleValue))
                     {
-                        std::vector<StatType> singleCounter {counter};
-                        std::vector<uint64_t> singleValue(1);
-                        if (collectData(rid, singleCounter, stats_mode, false, singleValue))
-                        {
-                            newCounters.insert(counter);
-                        }
-                        else
-                        {
-                            SWSS_LOG_DEBUG("Counter %s not supported with rid %s, vid %s",
-                                           serializeStat(counter).c_str(), sai_serialize_object_id(rid).c_str(),
-                                           sai_serialize_object_id(vid).c_str());
-                        }
-                    }
-                    if (!newCounters.empty())
-                    {
-                        // New counters discovered, create new counter group
-                        newCounters.insert(counterSet->begin(), counterSet->end());
-                        m_objectSupportedCountersGroupMap.emplace(vid, m_supportedCounterGroups.size());
-                        m_supportedCounterGroups.push_back(newCounters);
-                        m_counterGroupsSorted.push_back(makeCounterGroupRef(m_supportedCounterGroups.size()-1, newCounters.size()));
-                        std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(), &counterGroupRefDscSorter);
+                        newCounters.insert(counter);
                     }
                     else
                     {
-                        // Use existing counter group
-                        m_objectSupportedCountersGroupMap.emplace(vid, m_counterGroupsSorted[i].idx);
+                        SWSS_LOG_DEBUG("Counter %s not supported with rid %s, vid %s",
+                                       serializeStat(counter).c_str(), sai_serialize_object_id(rid).c_str(),
+                                       sai_serialize_object_id(vid).c_str());
                     }
-                    return;
                 }
-            }
-
-            // No counter groups matched, check counter support individually
-            std::set<StatType> supportedIds;
-            std::vector<uint64_t> values(1);
-            for (const auto &counter : counter_ids)
-            {
-                std::vector<StatType> tmp_counter_ids {counter};
-                if (collectData(rid, tmp_counter_ids, stats_mode, false, values))
+                if (!newCounters.empty())
                 {
-                    supportedIds.insert(counter);
+                    // New counters discovered, create new counter group
+                    newCounters.insert(counterSet->begin(), counterSet->end());
+                    m_objectSupportedCountersGroupMap.emplace(vid, m_supportedCounterGroups.size());
+                    m_supportedCounterGroups.push_back(newCounters);
+                    m_counterGroupsSorted.push_back(makeCounterGroupRef(m_supportedCounterGroups.size()-1, newCounters.size()));
+                    std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(), &counterGroupRefDscSorter);
                 }
-            }
-
-            if (supportedIds.empty())
-            {
+                else
+                {
+                    // Use existing counter group
+                    m_objectSupportedCountersGroupMap.emplace(vid, m_counterGroupsSorted[i].idx);
+                }
                 return;
             }
-
-            // Make new counter group and assign the index if not assigned
-            m_objectSupportedCountersGroupMap.emplace(vid, m_supportedCounterGroups.size());
-            m_supportedCounterGroups.push_back(supportedIds);
-            m_counterGroupsSorted.push_back(makeCounterGroupRef(m_supportedCounterGroups.size()-1, supportedIds.size()));
-            std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(), &counterGroupRefDscSorter);
         }
+
+        // No counter groups matched, check counter support individually
+        std::set<StatType> supportedIds;
+        std::vector<uint64_t> values(1);
+        for (const auto &counter : counter_ids)
+        {
+            std::vector<StatType> tmp_counter_ids {counter};
+            if (collectData(rid, tmp_counter_ids, stats_mode, false, values))
+            {
+                supportedIds.insert(counter);
+            }
+        }
+
+        if (supportedIds.empty())
+        {
+            return;
+        }
+
+        // Make new counter group and assign the index if not assigned
+        m_objectSupportedCountersGroupMap.emplace(vid, m_supportedCounterGroups.size());
+        m_supportedCounterGroups.push_back(supportedIds);
+        m_counterGroupsSorted.push_back(makeCounterGroupRef(m_supportedCounterGroups.size()-1, supportedIds.size()));
+        std::sort(m_counterGroupsSorted.begin(), m_counterGroupsSorted.end(), &counterGroupRefDscSorter);
     }
 
     void updateSupportedCounters(
