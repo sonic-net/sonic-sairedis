@@ -107,6 +107,32 @@ function set_start_type()
     fi
 }
 
+function set_watchdog_timeout()
+{
+    # For chassis platforms, extend init timeout to avoid false-alarm "WD exceeded" errors.
+    # Multipliers (5x, 10x) match sonic-swss orchagent.
+    if [[ "$CMD_ARGS" =~ "-w " ]]; then
+        return
+    fi
+
+    local NORMAL_TIMEOUT=30000000
+    local INIT_MULTIPLIER=1
+
+    if [ "$SWITCH_TYPE" == "voq" ] || [ "$SWITCH_TYPE" == "chassis-packet" ] || [ "$SWITCH_TYPE" == "dpu" ]; then
+        INIT_MULTIPLIER=5
+    elif [ "$SWITCH_TYPE" == "fabric" ]; then
+        INIT_MULTIPLIER=10
+    fi
+
+    local INIT_TIMEOUT=$((NORMAL_TIMEOUT * INIT_MULTIPLIER))
+
+    CMD_ARGS+=" -w $NORMAL_TIMEOUT"
+
+    if [ "$INIT_MULTIPLIER" -gt 1 ]; then
+        CMD_ARGS+=" -W $INIT_TIMEOUT"
+    fi
+}
+
 config_syncd_pensando()
 {
     CMD_ARGS+=" -l"
@@ -658,6 +684,7 @@ config_syncd()
         exit 1
     fi
 
+    set_watchdog_timeout
     set_start_type
 
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then
