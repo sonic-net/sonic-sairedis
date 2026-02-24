@@ -2,11 +2,16 @@
 
 #include "swss/logger.h"
 #include "meta/sai_serialize.h"
+#include "meta/NotificationTamTelTypeConfigChange.h"
+#include "meta/NotificationSwitchMacsecPostStatus.h"
+#include "meta/NotificationMacsecPostStatus.h"
+#include "EventPayloadNotification.h"
 
 #include <net/if.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <random>
 
 #define SAI_VS_MAX_PORTS 1024
 
@@ -185,6 +190,53 @@ sai_status_t SwitchStateBase::create(
         return createVoqSystemNeighborEntry(serializedObjectId, switch_id, attr_count, attr_list);
     }
 
+    if (object_type == SAI_OBJECT_TYPE_TAM)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createTam(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_TAM_TELEMETRY)
+    {
+        sai_object_id_t object_id;
+        sai_deserialize_object_id(serializedObjectId, object_id);
+        return createTamTelemetry(object_id, switch_id, attr_count, attr_list);
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_MACSEC)
+    {
+        bool enable_post = false;
+        std::string direction = "unknown";
+        for (uint32_t idx = 0; idx < attr_count; ++idx)
+        {
+            sai_attribute_t attr = attr_list[idx];
+            if (attr.id == SAI_MACSEC_ATTR_ENABLE_POST && attr.value.booldata)
+            {
+                enable_post = true;
+            }
+            else if(attr.id == SAI_MACSEC_ATTR_DIRECTION &&
+                    attr.value.s32 == SAI_MACSEC_DIRECTION_EGRESS)
+            {
+                direction = "egress";
+            }
+            else if(attr.id == SAI_MACSEC_ATTR_DIRECTION &&
+                    attr.value.s32 == SAI_MACSEC_DIRECTION_INGRESS)
+            {
+                direction = "ingress";
+            }
+        }
+
+        if (enable_post && direction != "unknown")
+        {
+            sai_object_id_t macsec_id;
+            sai_deserialize_object_id(serializedObjectId, macsec_id);
+            std::string config = (direction == "ingress") ? VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY :
+                VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY;
+            process_fips_post_config(config, macsec_id);
+        }
+    }
+
     return create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
 }
 
@@ -248,6 +300,12 @@ sai_status_t SwitchStateBase::create_internal(
         auto a = std::make_shared<SaiAttrWrap>(object_type, &attr_list[i]);
 
         objectHash[serializedObjectId][a->getAttrMetadata()->attridname] = a;
+    }
+
+    if (object_type == SAI_OBJECT_TYPE_SWITCH)
+    {
+        // Set POST state.
+        CHECK_STATUS(process_fips_post_config(VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY));
     }
 
     return SAI_STATUS_SUCCESS;
@@ -501,6 +559,22 @@ sai_status_t SwitchStateBase::setAclEntry(
     return set_internal(SAI_OBJECT_TYPE_ACL_ENTRY, sid, attr);
 }
 
+sai_status_t SwitchStateBase::setTamTelType(
+    _In_ sai_object_id_t tam_tel_type_id,
+    _In_ const sai_attribute_t *attr)
+{
+    SWSS_LOG_ENTER();
+
+    if (attr->id == SAI_TAM_TEL_TYPE_ATTR_STATE && attr->value.s32 == SAI_TAM_TEL_TYPE_STATE_CREATE_CONFIG)
+    {
+        send_tam_tel_type_config_change(tam_tel_type_id);
+    }
+
+    auto sid = sai_serialize_object_id(tam_tel_type_id);
+
+    return set_internal(SAI_OBJECT_TYPE_TAM_TEL_TYPE, sid, attr);
+}
+
 sai_status_t SwitchStateBase::set(
         _In_ sai_object_type_t objectType,
         _In_ const std::string &serializedObjectId,
@@ -527,6 +601,13 @@ sai_status_t SwitchStateBase::set(
         sai_object_id_t objectId;
         sai_deserialize_object_id(serializedObjectId, objectId);
         return setMACsecSA(objectId, attr);
+    }
+
+    if (objectType == SAI_OBJECT_TYPE_TAM_TEL_TYPE)
+    {
+        sai_object_id_t objectId;
+        sai_deserialize_object_id(serializedObjectId, objectId);
+        return setTamTelType(objectId, attr);
     }
 
     return set_internal(objectType, serializedObjectId, attr);
@@ -592,6 +673,16 @@ sai_status_t SwitchStateBase::get(
         _Out_ sai_attribute_t *attr_list)
 {
     SWSS_LOG_ENTER();
+
+    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    {
+        for (uint32_t idx = 0; idx < attr_count; ++idx)
+        {
+            sai_attr_id_t id = attr_list[idx].id;
+            auto meta = sai_metadata_get_attr_metadata(objectType, id);
+            SWSS_LOG_NOTICE("get switch attr: %s", meta->attridname);
+        }
+    }
 
     const auto &objectHash = m_objectHash.at(objectType);
 
@@ -706,6 +797,14 @@ sai_status_t SwitchStateBase::get(
 
             return status;
         }
+
+        if (objectType == SAI_OBJECT_TYPE_SWITCH &&
+            id == SAI_SWITCH_ATTR_MACSEC_POST_STATUS && attr_list[idx].value.booldata)
+        {
+            // Orchagent is retrieving POST status now. Send switch POST status notification.
+            process_fips_post_config(VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY);
+        }
+
     }
 
     return final_status;
@@ -847,6 +946,60 @@ sai_status_t SwitchStateBase::bulkSet(
     return status;
 }
 
+sai_status_t SwitchStateBase::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t it;
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    if (!object_count || !attr_list || !attr_count || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        if (!attr_list[it] || !attr_count[it])
+        {
+            SWSS_LOG_ERROR("Invalid arguments");
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = get(object_type, serialized_object_ids[it], attr_count[it], attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get attribute for object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
 int SwitchStateBase::get_default_gw_mac_address(
         _Out_ sai_mac_t& mac)
 {
@@ -911,6 +1064,30 @@ sai_status_t SwitchStateBase::set_switch_mac_address()
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
+sai_status_t SwitchStateBase::set_vxlan_default_router_mac()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create switch vxlan default router mac address");
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC;
+
+    // NOTE if there is default vxlan mac present like in case of get_default_gw_mac_address
+    // then that mac should be used
+    {
+        attr.value.mac[0] = 0x12;
+        attr.value.mac[1] = 0x23;
+        attr.value.mac[2] = 0x34;
+        attr.value.mac[3] = 0x45;
+        attr.value.mac[4] = 0x56;
+        attr.value.mac[5] = 0x67;
+    }
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+}
+
 sai_status_t SwitchStateBase::set_switch_supported_object_types()
 {
     SWSS_LOG_ENTER();
@@ -957,6 +1134,26 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
+    attr.id = SAI_SWITCH_ATTR_ICMP_ECHO_SESSION_STATE_CHANGE_NOTIFY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_HA_SET_EVENT_NOTIFY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_HA_SCOPE_EVENT_NOTIFY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
     attr.id = SAI_SWITCH_ATTR_FDB_AGING_TIME;
     attr.value.u32 = 0;
 
@@ -974,6 +1171,24 @@ sai_status_t SwitchStateBase::set_switch_default_attributes()
 
     attr.id = SAI_SWITCH_ATTR_WARM_RECOVER;
     attr.value.booldata = false;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_SUPPORTED_IPV4_BFD_SESSION_OFFLOAD_TYPE;
+    uint32_t list[1] = { SAI_BFD_SESSION_OFFLOAD_TYPE_FULL };
+
+    if(!m_switchConfig->m_bfdOffload) {
+        list[0] = SAI_BFD_SESSION_OFFLOAD_TYPE_NONE;
+    }
+
+    attr.value.u32list.count = 1;
+    attr.value.u32list.list = list;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_SUPPORTED_IPV6_BFD_SESSION_OFFLOAD_TYPE;
+    attr.value.u32list.count = 1;
+    attr.value.u32list.list = list;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
@@ -1053,6 +1268,18 @@ sai_status_t SwitchStateBase::set_static_crm_values()
     CHECK_STATUS(set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE, m_maxAclTables));
 
     return set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP, m_maxAclTableGroups);
+}
+
+sai_status_t SwitchStateBase::set_initial_tam_objects()
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+    attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
+    attr.value.objlist.count = 0;
+    attr.value.objlist.list = nullptr;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchStateBase::set_static_acl_resource_list(
@@ -1233,6 +1460,16 @@ sai_status_t SwitchStateBase::create_ports()
 
         attr.id = SAI_PORT_ATTR_PORT_VLAN_ID;
         attr.value.u32 = DEFAULT_VLAN_NUMBER;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
+        attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
+
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+        attr.id = SAI_PORT_ATTR_AUTO_NEG_MODE;
+        attr.value.booldata = true;
 
         CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
     }
@@ -1563,6 +1800,15 @@ sai_status_t SwitchStateBase::create_qos_queues()
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+sai_status_t SwitchStateBase::set_number_of_queues()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_ERROR("implement in child class");
+
+    return SAI_STATUS_NOT_IMPLEMENTED;
+}
+
 sai_status_t SwitchStateBase::create_scheduler_group_tree(
         _In_ const std::vector<sai_object_id_t>& sgs,
         _In_ sai_object_id_t port_id)
@@ -1598,6 +1844,20 @@ sai_status_t SwitchStateBase::create_scheduler_groups()
     }
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::set_maximum_number_of_traffic_classes()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("set number of traffic classes");
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_TRAFFIC_CLASSES;
+    attr.value.u8 = 16;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchStateBase::set_maximum_number_of_childs_per_scheduler_group()
@@ -1642,6 +1902,107 @@ sai_status_t SwitchStateBase::create_port_serdes_per_port(
     return SAI_STATUS_NOT_IMPLEMENTED;
 }
 
+
+sai_status_t SwitchStateBase::process_fips_post_config(
+        _In_ std::string config, _In_ sai_object_id_t macsec_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::ifstream ifs;
+    ifs.open(VS_SAI_FIPS_POST_CONFIG_FILE);
+    if (!ifs.is_open())
+    {
+        SWSS_LOG_NOTICE("No VS FIPS POST config file found");
+        return SAI_STATUS_SUCCESS;
+    }
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    std::string line;
+    while (std::getline(ifs, line))
+    {
+        // line format: key value
+        std::istringstream iss(line);
+        std::string key;
+        std::string value;
+        iss >> key >> value;
+
+        sai_attribute_t attr;
+
+        if (key != config)
+        {
+            continue;
+        }
+
+        SWSS_LOG_NOTICE("VS FIPS POST config: %s", line.c_str());
+
+        if (config == VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_QUERY)
+        {
+            sai_switch_macsec_post_status_t switch_macsec_post_status;
+            sai_deserialize_switch_macsec_post_status(value, switch_macsec_post_status);
+
+            attr.id = SAI_SWITCH_ATTR_MACSEC_POST_STATUS;
+            attr.value.s32 = switch_macsec_post_status;
+            status = set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                SWSS_LOG_ERROR("Failed to Set SAI_SWITCH_ATTR_MACSEC_POST_STATUS to %s (attr value: %d)",
+                               value.c_str(), attr.value.u8);
+                break;
+            }
+            SWSS_LOG_NOTICE("Set SAI_SWITCH_ATTR_MACSEC_POST_STATUS to %s", value.c_str());
+        }
+        else if (config == VS_SAI_FIPS_SWITCH_MACSEC_POST_STATUS_NOTIFY)
+        {
+            sai_switch_macsec_post_status_t switch_macsec_post_status;
+            sai_deserialize_switch_macsec_post_status(value, switch_macsec_post_status);
+
+            auto str = sai_serialize_switch_macsec_post_status_ntf(m_switch_id, switch_macsec_post_status);
+            auto ntf = std::make_shared<sairedis::NotificationSwitchMacsecPostStatus>(str);
+
+            attr.id = SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY;
+            status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                 SWSS_LOG_ERROR("Unable to get SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY attribute");
+                 break;
+            }
+            sai_switch_notifications_t sn = { };
+            sn.on_switch_macsec_post_status = (sai_switch_macsec_post_status_notification_fn)attr.value.ptr;
+            auto payload = std::make_shared<EventPayloadNotification>(ntf, sn);
+            m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
+            SWSS_LOG_NOTICE("Enqueued switch MACSec POST notification: status %s", value.c_str());
+        }
+        else if (config == VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY ||
+                 config == VS_SAI_FIPS_EGRESS_MACSEC_POST_STATUS_NOTIFY)
+        {
+            sai_macsec_post_status_t macsec_post_status;
+            sai_deserialize_macsec_post_status(value, macsec_post_status);
+
+            auto str = sai_serialize_macsec_post_status_ntf(macsec_id, macsec_post_status);
+            auto ntf = std::make_shared<sairedis::NotificationMacsecPostStatus>(str);
+
+            attr.id = SAI_SWITCH_ATTR_MACSEC_POST_STATUS_NOTIFY;
+            status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                 SWSS_LOG_ERROR("Unable to get SAI_SWITCH_ATTR_MACSEC_POST_STATUS_NOTIFY attribute for %s",
+                                sai_serialize_object_id(m_switch_id).c_str());
+                 break;
+            }
+            sai_switch_notifications_t sn = { };
+            sn.on_macsec_post_status = (sai_macsec_post_status_notification_fn)attr.value.ptr;
+            auto payload = std::make_shared<EventPayloadNotification>(ntf, sn);
+            m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
+            std::string direction = (config == VS_SAI_FIPS_INGRESS_MACSEC_POST_STATUS_NOTIFY) ? "ingress" :
+                "egress";
+            SWSS_LOG_NOTICE("Enqueued %s MACSec POST notification: status %s", direction.c_str(),value.c_str());
+        }
+    }
+
+    ifs.close();
+    return status;
+}
+
 sai_status_t SwitchStateBase::initialize_default_objects(
         _In_ uint32_t attr_count,
         _In_ const sai_attribute_t *attr_list)
@@ -1649,6 +2010,7 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     SWSS_LOG_ENTER();
 
     CHECK_STATUS(set_switch_mac_address());
+    CHECK_STATUS(set_vxlan_default_router_mac());
     CHECK_STATUS(create_cpu_port());
     CHECK_STATUS(create_default_hash());
     CHECK_STATUS(create_default_vlan());
@@ -1666,11 +2028,14 @@ sai_status_t SwitchStateBase::initialize_default_objects(
     CHECK_STATUS(set_acl_capabilities());
     CHECK_STATUS(create_ingress_priority_groups());
     CHECK_STATUS(create_qos_queues());
+    CHECK_STATUS(set_number_of_queues());
+    CHECK_STATUS(set_maximum_number_of_traffic_classes());
     CHECK_STATUS(set_maximum_number_of_childs_per_scheduler_group());
     CHECK_STATUS(set_number_of_ecmp_groups());
     CHECK_STATUS(set_switch_default_attributes());
     CHECK_STATUS(create_scheduler_groups());
     CHECK_STATUS(set_static_crm_values());
+    CHECK_STATUS(set_initial_tam_objects());
 
     // Initialize switch for VOQ attributes
 
@@ -1696,6 +2061,16 @@ sai_status_t SwitchStateBase::create_port_dependencies(
 
     attr.id = SAI_PORT_ATTR_ADMIN_STATE;
     attr.value.booldata = false;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_HOST_TX_READY_STATUS;
+    attr.value.u32 = SAI_PORT_HOST_TX_READY_STATUS_READY;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
+
+    attr.id = SAI_PORT_ATTR_AUTO_NEG_MODE;
+    attr.value.booldata = true;
 
     CHECK_STATUS(set(SAI_OBJECT_TYPE_PORT, port_id, &attr));
 
@@ -1971,6 +2346,19 @@ sai_status_t SwitchStateBase::warm_update_switch()
     if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
     {
         CHECK_STATUS(set_acl_capabilities());
+    }
+
+    attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
+
+    std::vector<sai_object_id_t> objlist;
+    objlist.resize(MAX_OBJLIST_LEN);
+
+    attr.value.objlist.count = MAX_OBJLIST_LEN;
+    attr.value.objlist.list = objlist.data();
+
+    if (get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr) != SAI_STATUS_SUCCESS)
+    {
+        CHECK_STATUS(set_initial_tam_objects());
     }
 
     // check for default supported object types
@@ -2260,7 +2648,12 @@ sai_status_t SwitchStateBase::refresh_port_oper_speed(
     }
     else
     {
-        if (!vs_get_oper_speed(port_id, attr.value.u32))
+        if (m_switchConfig->m_useConfiguredSpeedAsOperSpeed)
+        {
+            attr.id = SAI_PORT_ATTR_SPEED;
+            CHECK_STATUS(get(SAI_OBJECT_TYPE_PORT, port_id, 1, &attr));
+        }
+        else if (!vs_get_oper_speed(port_id, attr.value.u32))
         {
             return SAI_STATUS_FAILURE;
         }
@@ -2362,10 +2755,16 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_NUMBER_OF_ECMP_GROUPS:
                 return SAI_STATUS_SUCCESS;
 
+            case SAI_SWITCH_ATTR_NUMBER_OF_UNICAST_QUEUES:
+            case SAI_SWITCH_ATTR_NUMBER_OF_MULTICAST_QUEUES:
+            case SAI_SWITCH_ATTR_NUMBER_OF_QUEUES:
+                return SAI_STATUS_SUCCESS;
+
             case SAI_SWITCH_ATTR_PORT_NUMBER:
             case SAI_SWITCH_ATTR_PORT_LIST:
                 return refresh_port_list(meta);
 
+            case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_TRAFFIC_CLASSES:
             case SAI_SWITCH_ATTR_QOS_MAX_NUMBER_OF_CHILDS_PER_SCHEDULER_GROUP:
                 return SAI_STATUS_SUCCESS;
 
@@ -2386,6 +2785,10 @@ sai_status_t SwitchStateBase::refresh_read_only(
             case SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY:
                 return SAI_STATUS_SUCCESS;
 
+            case SAI_SWITCH_ATTR_SUPPORTED_IPV4_BFD_SESSION_OFFLOAD_TYPE:
+            case SAI_SWITCH_ATTR_SUPPORTED_IPV6_BFD_SESSION_OFFLOAD_TYPE:
+                return SAI_STATUS_SUCCESS;
+
             case SAI_SWITCH_ATTR_NUMBER_OF_SYSTEM_PORTS:
             case SAI_SWITCH_ATTR_SYSTEM_PORT_LIST:
                 return refresh_system_port_list(meta);
@@ -2395,6 +2798,9 @@ sai_status_t SwitchStateBase::refresh_read_only(
                 return SAI_STATUS_SUCCESS;
 
             case SAI_SWITCH_ATTR_SUPPORTED_OBJECT_TYPE_LIST:
+                return SAI_STATUS_SUCCESS;
+
+            case SAI_SWITCH_ATTR_MACSEC_POST_STATUS:
                 return SAI_STATUS_SUCCESS;
         }
     }
@@ -2420,6 +2826,7 @@ sai_status_t SwitchStateBase::refresh_read_only(
                  */
 
             case SAI_PORT_ATTR_OPER_STATUS:
+            case SAI_PORT_ATTR_HOST_TX_READY_STATUS:
                 return SAI_STATUS_SUCCESS;
 
             case SAI_PORT_ATTR_FABRIC_ATTACHED:
@@ -2499,6 +2906,11 @@ sai_status_t SwitchStateBase::refresh_read_only(
     if (meta->objecttype == SAI_OBJECT_TYPE_ACL_TABLE && meta->attrid == SAI_ACL_TABLE_ATTR_AVAILABLE_ACL_COUNTER)
     {
         return refresh_acl_table_counters(object_id);
+    }
+
+    if (meta->objecttype == SAI_OBJECT_TYPE_TAM_TEL_TYPE && meta->attrid == SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES)
+    {
+        return refresh_tam_tel_ipfix_templates(object_id);
     }
 
     auto mmeta = m_meta.lock();
@@ -3758,13 +4170,13 @@ sai_status_t SwitchStateBase::queryHashNativeHashFieldListCapability(
 {
     SWSS_LOG_ENTER();
 
-    if (enum_values_capability->count < 18)
+    if (enum_values_capability->count < 19)
     {
-        enum_values_capability->count = 18;
+        enum_values_capability->count = 19;
         return SAI_STATUS_BUFFER_OVERFLOW;
     }
 
-    enum_values_capability->count = 18;
+    enum_values_capability->count = 19;
     enum_values_capability->list[0] = SAI_NATIVE_HASH_FIELD_IN_PORT;
     enum_values_capability->list[1] = SAI_NATIVE_HASH_FIELD_DST_MAC;
     enum_values_capability->list[2] = SAI_NATIVE_HASH_FIELD_SRC_MAC;
@@ -3783,6 +4195,7 @@ sai_status_t SwitchStateBase::queryHashNativeHashFieldListCapability(
     enum_values_capability->list[15] = SAI_NATIVE_HASH_FIELD_INNER_SRC_IP;
     enum_values_capability->list[16] = SAI_NATIVE_HASH_FIELD_INNER_L4_DST_PORT;
     enum_values_capability->list[17] = SAI_NATIVE_HASH_FIELD_INNER_L4_SRC_PORT;
+    enum_values_capability->list[18] = SAI_NATIVE_HASH_FIELD_IPV6_FLOW_LABEL;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -3806,6 +4219,60 @@ sai_status_t SwitchStateBase::querySwitchHashAlgorithmCapability(
     enum_values_capability->list[4] = SAI_HASH_ALGORITHM_CRC_32HI;
     enum_values_capability->list[5] = SAI_HASH_ALGORITHM_CRC_CCITT;
     enum_values_capability->list[6] = SAI_HASH_ALGORITHM_CRC_XOR;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::querySwitchPacketTrimmingDscpResolutionModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 2)
+    {
+        enum_values_capability->count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_DSCP_VALUE;
+    enum_values_capability->list[1] = SAI_PACKET_TRIM_DSCP_RESOLUTION_MODE_FROM_TC;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::querySwitchPacketTrimmingQueueResolutionModeCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 2)
+    {
+        enum_values_capability->count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_STATIC;
+    enum_values_capability->list[1] = SAI_PACKET_TRIM_QUEUE_RESOLUTION_MODE_DYNAMIC;
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryBufferProfilePacketAdmissionFailActionCapability(
+                   _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 2)
+    {
+        enum_values_capability->count = 2;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    enum_values_capability->count = 2;
+    enum_values_capability->list[0] = SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP;
+    enum_values_capability->list[1] = SAI_BUFFER_PROFILE_PACKET_ADMISSION_FAIL_ACTION_DROP_AND_TRIM;
 
     return SAI_STATUS_SUCCESS;
 }
@@ -3841,8 +4308,64 @@ sai_status_t SwitchStateBase::queryAttrEnumValuesCapability(
     {
         return querySwitchHashAlgorithmCapability(enum_values_capability);
     }
+    else if (object_type == SAI_OBJECT_TYPE_SWITCH && attr_id == SAI_SWITCH_ATTR_PACKET_TRIM_DSCP_RESOLUTION_MODE)
+    {
+        return querySwitchPacketTrimmingDscpResolutionModeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_SWITCH && attr_id == SAI_SWITCH_ATTR_PACKET_TRIM_QUEUE_RESOLUTION_MODE)
+    {
+        return querySwitchPacketTrimmingQueueResolutionModeCapability(enum_values_capability);
+    }
+    else if (object_type == SAI_OBJECT_TYPE_BUFFER_PROFILE && attr_id == SAI_BUFFER_PROFILE_ATTR_PACKET_ADMISSION_FAIL_ACTION)
+    {
+        return queryBufferProfilePacketAdmissionFailActionCapability(enum_values_capability);
+    }
 
     return SAI_STATUS_NOT_SUPPORTED;
+}
+
+sai_status_t SwitchStateBase::queryMacsecPostCapability(
+                              _In_ sai_object_type_t object_type,
+                              _Out_ sai_attr_capability_t *attr_capability)
+{
+    SWSS_LOG_ENTER();
+
+    attr_capability->create_implemented = false;
+    attr_capability->set_implemented    = false;
+    attr_capability->get_implemented    = false;
+
+    std::ifstream ifs;
+    ifs.open(VS_SAI_FIPS_POST_CONFIG_FILE);
+    if (!ifs.is_open())
+    {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    std::string line;
+    std::string post_capability;
+    while (std::getline(ifs, line))
+    {
+        // line format: key value
+        std::istringstream iss(line);
+        std::string key;
+        std::string value;
+        iss >> key >> value;
+
+        if (key == "macsec-post-capability" )
+        {
+            post_capability = value;
+        }
+    }
+
+    if ((object_type == SAI_OBJECT_TYPE_SWITCH && post_capability == "switch") ||
+        (object_type == SAI_OBJECT_TYPE_MACSEC && post_capability == "macsec"))
+    {
+        SWSS_LOG_NOTICE("MACSEC POST capability: %s", post_capability.c_str());
+        attr_capability->create_implemented = true;
+    }
+
+    ifs.close();
+    return SAI_STATUS_SUCCESS;
 }
 
 sai_status_t SwitchStateBase::queryAttributeCapability(
@@ -3858,9 +4381,421 @@ sai_status_t SwitchStateBase::queryAttributeCapability(
         return queryPortAutonegFecOverrideSupportCapability(attr_capability);
     }
 
+    if ((object_type == SAI_OBJECT_TYPE_SWITCH && attr_id == SAI_SWITCH_ATTR_MACSEC_ENABLE_POST) ||
+        (object_type == SAI_OBJECT_TYPE_MACSEC && attr_id == SAI_MACSEC_ATTR_ENABLE_POST))
+    {
+       return queryMacsecPostCapability(object_type, attr_capability);
+    }
+
     attr_capability->create_implemented = true;
     attr_capability->set_implemented    = true;
     attr_capability->get_implemented    = true;
 
     return SAI_STATUS_SUCCESS;
+}
+
+uint64_t SwitchStateBase::getObjectTypeAvailability(
+                              _In_ sai_object_type_t object_type)
+{
+    SWSS_LOG_ENTER();
+
+    // Default implementation - return 0 for unsupported types
+    SWSS_LOG_WARN("getObjectTypeAvailability not implemented for object type %d", object_type);
+    return 0;
+}
+
+sai_status_t SwitchStateBase::querySwitchStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_switch_stat_t> switchStatList = {
+        SAI_SWITCH_STAT_ECC_DROP,
+        SAI_SWITCH_STAT_PACKET_INTEGRITY_DROP,
+        SAI_SWITCH_STAT_DROPPED_TRIM_PACKETS,
+        SAI_SWITCH_STAT_TX_TRIM_PACKETS
+    };
+
+    if (stats_capability->count < switchStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(switchStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(switchStatList.size());
+
+    for (std::uint32_t i = 0; i < switchStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(switchStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryPortStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_port_stat_t> portStatList = {
+        SAI_PORT_STAT_IF_IN_OCTETS,
+        SAI_PORT_STAT_IF_IN_UCAST_PKTS,
+        SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS,
+        SAI_PORT_STAT_IF_IN_DISCARDS,
+        SAI_PORT_STAT_IF_IN_ERRORS,
+        SAI_PORT_STAT_IF_IN_UNKNOWN_PROTOS,
+        SAI_PORT_STAT_IF_IN_BROADCAST_PKTS,
+        SAI_PORT_STAT_IF_IN_MULTICAST_PKTS,
+        SAI_PORT_STAT_IF_IN_VLAN_DISCARDS,
+        SAI_PORT_STAT_IF_OUT_OCTETS,
+        SAI_PORT_STAT_IF_OUT_UCAST_PKTS,
+        SAI_PORT_STAT_IF_OUT_NON_UCAST_PKTS,
+        SAI_PORT_STAT_IF_OUT_DISCARDS,
+        SAI_PORT_STAT_IF_OUT_ERRORS,
+        SAI_PORT_STAT_IF_OUT_QLEN,
+        SAI_PORT_STAT_IF_OUT_BROADCAST_PKTS,
+        SAI_PORT_STAT_IF_OUT_MULTICAST_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_DROP_EVENTS,
+        SAI_PORT_STAT_ETHER_STATS_MULTICAST_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_BROADCAST_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_UNDERSIZE_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_FRAGMENTS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_64_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_65_TO_127_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_128_TO_255_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_256_TO_511_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_512_TO_1023_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_1024_TO_1518_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_1519_TO_2047_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_2048_TO_4095_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_4096_TO_9216_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS_9217_TO_16383_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_OVERSIZE_PKTS,
+        SAI_PORT_STAT_ETHER_RX_OVERSIZE_PKTS,
+        SAI_PORT_STAT_ETHER_TX_OVERSIZE_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_JABBERS,
+        SAI_PORT_STAT_ETHER_STATS_OCTETS,
+        SAI_PORT_STAT_ETHER_STATS_PKTS,
+        SAI_PORT_STAT_ETHER_STATS_COLLISIONS,
+        SAI_PORT_STAT_ETHER_STATS_CRC_ALIGN_ERRORS,
+        SAI_PORT_STAT_ETHER_STATS_TX_NO_ERRORS,
+        SAI_PORT_STAT_ETHER_STATS_RX_NO_ERRORS,
+        SAI_PORT_STAT_GREEN_WRED_DROPPED_PACKETS,
+        SAI_PORT_STAT_GREEN_WRED_DROPPED_BYTES,
+        SAI_PORT_STAT_YELLOW_WRED_DROPPED_PACKETS,
+        SAI_PORT_STAT_YELLOW_WRED_DROPPED_BYTES,
+        SAI_PORT_STAT_RED_WRED_DROPPED_PACKETS,
+        SAI_PORT_STAT_RED_WRED_DROPPED_BYTES,
+        SAI_PORT_STAT_WRED_DROPPED_PACKETS,
+        SAI_PORT_STAT_WRED_DROPPED_BYTES,
+        SAI_PORT_STAT_ECN_MARKED_PACKETS,
+        SAI_PORT_STAT_PFC_0_RX_PKTS,
+        SAI_PORT_STAT_PFC_0_TX_PKTS,
+        SAI_PORT_STAT_PFC_1_RX_PKTS,
+        SAI_PORT_STAT_PFC_1_TX_PKTS,
+        SAI_PORT_STAT_PFC_2_RX_PKTS,
+        SAI_PORT_STAT_PFC_2_TX_PKTS,
+        SAI_PORT_STAT_PFC_3_RX_PKTS,
+        SAI_PORT_STAT_PFC_3_TX_PKTS,
+        SAI_PORT_STAT_PFC_4_RX_PKTS,
+        SAI_PORT_STAT_PFC_4_TX_PKTS,
+        SAI_PORT_STAT_PFC_5_RX_PKTS,
+        SAI_PORT_STAT_PFC_5_TX_PKTS,
+        SAI_PORT_STAT_PFC_6_RX_PKTS,
+        SAI_PORT_STAT_PFC_6_TX_PKTS,
+        SAI_PORT_STAT_PFC_7_RX_PKTS,
+        SAI_PORT_STAT_PFC_7_TX_PKTS,
+        SAI_PORT_STAT_PFC_0_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_0_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_1_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_1_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_2_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_2_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_3_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_3_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_4_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_4_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_5_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_5_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_6_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_6_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_7_RX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_7_TX_PAUSE_DURATION_US,
+        SAI_PORT_STAT_PFC_0_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_1_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_2_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_3_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_4_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_5_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_6_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_PFC_7_ON2OFF_RX_PKTS,
+        SAI_PORT_STAT_TRIM_PACKETS,
+        SAI_PORT_STAT_DROPPED_TRIM_PACKETS,
+        SAI_PORT_STAT_TX_TRIM_PACKETS
+    };
+
+    if (stats_capability->count < portStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(portStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(portStatList.size());
+
+    for (std::uint32_t i = 0; i < portStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(portStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryQueueStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_queue_stat_t> queueStatList = {
+        SAI_QUEUE_STAT_PACKETS,
+        SAI_QUEUE_STAT_BYTES,
+        SAI_QUEUE_STAT_DROPPED_PACKETS,
+        SAI_QUEUE_STAT_DROPPED_BYTES,
+        SAI_QUEUE_STAT_WRED_DROPPED_PACKETS,
+        SAI_QUEUE_STAT_WRED_DROPPED_BYTES,
+        SAI_QUEUE_STAT_CURR_OCCUPANCY_BYTES,
+        SAI_QUEUE_STAT_SHARED_WATERMARK_BYTES,
+        SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS,
+        SAI_QUEUE_STAT_WRED_ECN_MARKED_BYTES,
+        SAI_QUEUE_STAT_CURR_OCCUPANCY_LEVEL,
+        SAI_QUEUE_STAT_WATERMARK_LEVEL,
+        SAI_QUEUE_STAT_CREDIT_WD_DELETED_PACKETS,
+        SAI_QUEUE_STAT_TRIM_PACKETS,
+        SAI_QUEUE_STAT_DROPPED_TRIM_PACKETS,
+        SAI_QUEUE_STAT_TX_TRIM_PACKETS
+    };
+
+    if (stats_capability->count < queueStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(queueStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(queueStatList.size());
+
+    for (std::uint32_t i = 0; i < queueStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(queueStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryStatsCapability(
+                              _In_ sai_object_id_t switchId,
+                              _In_ sai_object_type_t objectType,
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (objectType == SAI_OBJECT_TYPE_SWITCH)
+    {
+        return querySwitchStatsCapability(stats_capability);
+    }
+    else if (objectType == SAI_OBJECT_TYPE_QUEUE)
+    {
+        return queryQueueStatsCapability(stats_capability);
+    }
+    else if (objectType == SAI_OBJECT_TYPE_PORT)
+    {
+        return queryPortStatsCapability(stats_capability);
+    }
+
+    return SAI_STATUS_NOT_SUPPORTED;
+}
+
+sai_status_t SwitchStateBase::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_st_capability)
+{
+    SWSS_LOG_ENTER();
+
+    sai_stat_capability_list_t stats_capability;
+    std::vector<sai_stat_capability_t> stats_list(stats_st_capability->count);
+    stats_capability.count = stats_st_capability->count;
+    stats_capability.list = stats_list.data();
+
+    sai_status_t status = queryStatsCapability(
+        switchId,
+        objectType,
+        &stats_capability);
+
+    if (status == SAI_STATUS_SUCCESS)
+    {
+        for (uint32_t i = 0; i < stats_capability.count; i++)
+        {
+            stats_st_capability->list[i].capability.stat_enum = stats_capability.list[i].stat_enum;
+            stats_st_capability->list[i].capability.stat_modes = stats_capability.list[i].stat_modes;
+            stats_st_capability->list[i].minimal_polling_interval = static_cast<uint64_t>(1e6 * 100);
+            ; // 100ms
+        }
+    }
+    else
+    {
+        SWSS_LOG_WARN("Failed to query stats capability for object type %s, status: %s",
+            sai_serialize_object_type(objectType).c_str(),
+            sai_serialize_status(status).c_str());
+    }
+
+    return status;
+}
+
+void SwitchStateBase::send_tam_tel_type_config_change(
+    _In_ sai_object_id_t tam_tel_type_id)
+{
+    SWSS_LOG_ENTER();
+
+    auto meta = getMeta();
+
+    if (meta)
+    {
+        meta->meta_sai_on_tam_tel_type_config_change(tam_tel_type_id);
+    }
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY;
+
+    sai_status_t status = get(SAI_OBJECT_TYPE_SWITCH, m_switch_id, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("unable to get SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY attribute for %s",
+                       sai_serialize_object_id(m_switch_id).c_str());
+
+        return;
+    }
+
+    auto str = sai_serialize_object_id(tam_tel_type_id);
+
+    sai_switch_notifications_t sn = {};
+
+    sn.on_tam_tel_type_config_change = (sai_tam_tel_type_config_change_notification_fn)attr.value.ptr;
+
+    SWSS_LOG_INFO("send event SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY %s", str.c_str());
+
+    auto ntf = std::make_shared<sairedis::NotificationTamTelTypeConfigChange>(str);
+
+    auto payload = std::make_shared<EventPayloadNotification>(ntf, sn);
+
+    m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
+}
+
+sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t tam_tel_type_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<uint8_t> ipfix_templates;
+
+    // TODO: This is a placeholder for the actual logic to generate IPFIX templates.
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dist(0, 255);
+    ipfix_templates.resize(64 * 1024);
+
+    for (size_t i = 0; i < ipfix_templates.size(); ++i)
+    {
+        ipfix_templates[i] = static_cast<uint8_t>(dist(gen));
+    }
+
+
+    sai_attribute_t attr;
+    attr.id = SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES;
+    attr.value.u8list.count = static_cast<uint32_t>(ipfix_templates.size());
+    attr.value.u8list.list = ipfix_templates.data();
+    sai_status_t status = set(SAI_OBJECT_TYPE_TAM_TEL_TYPE, tam_tel_type_id, &attr);
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        SWSS_LOG_ERROR("Failed to set IPFIX templates for TAM Tel Type %s, status: %s",
+                       sai_serialize_object_id(tam_tel_type_id).c_str(),
+                       sai_serialize_status(status).c_str());
+    }
+    else
+    {
+        SWSS_LOG_INFO("Successfully set IPFIX templates for TAM Tel Type %s",
+                      sai_serialize_object_id(tam_tel_type_id).c_str());
+    }
+
+    return status;
+}
+
+sai_status_t SwitchStateBase::createTam(
+    sai_object_id_t tam_id,
+    sai_object_id_t switch_id,
+    uint32_t attr_count,
+    const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    bool include_telemetry_object_list = false;
+    std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST)
+        {
+            include_telemetry_object_list = true;
+            break;
+        }
+    }
+    if (!include_telemetry_object_list)
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_ATTR_TELEMETRY_OBJECTS_LIST;
+        attr.value.objlist.count = 0;
+        attr.value.objlist.list = nullptr;
+        attrs.push_back(attr);
+    }
+
+    return create_internal(SAI_OBJECT_TYPE_TAM,
+                           sai_serialize_object_id(tam_id),
+                           switch_id,
+                           static_cast<uint32_t>(attrs.size()),
+                           attrs.data());
+}
+
+sai_status_t SwitchStateBase::createTamTelemetry(
+    sai_object_id_t tam_telemetry_id,
+    sai_object_id_t switch_id,
+    uint32_t attr_count,
+    const sai_attribute_t *attr_list)
+{
+    SWSS_LOG_ENTER();
+
+    bool inlcude_tam_type_list = false;
+    std::vector<sai_attribute_t> attrs(attr_list, attr_list + attr_count);
+    for (uint32_t i = 0; i < attr_count; i++)
+    {
+        if (attr_list[i].id == SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST)
+        {
+            inlcude_tam_type_list = true;
+            break;
+        }
+    }
+    if (!inlcude_tam_type_list)
+    {
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_TELEMETRY_ATTR_TAM_TYPE_LIST;
+        attr.value.objlist.count = 0;
+        attr.value.objlist.list = nullptr;
+        attrs.push_back(attr);
+    }
+
+    return create_internal(SAI_OBJECT_TYPE_TAM_TELEMETRY,
+        sai_serialize_object_id(tam_telemetry_id),
+        switch_id,
+        static_cast<uint32_t>(attrs.size()),
+        attrs.data());
 }

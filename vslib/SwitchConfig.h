@@ -28,6 +28,8 @@ namespace saivs
 
         SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C,
 
+        SAI_VS_SWITCH_TYPE_VPP,
+
     } sai_vs_switch_type_t;
 
     typedef enum _sai_vs_boot_type_t
@@ -64,8 +66,11 @@ namespace saivs
                     _In_ const char* bootTypeStr,
                     _Out_ sai_vs_boot_type_t& bootType);
 
-            static bool parseUseTapDevice(
-                    _In_ const char* useTapDeviceStr);
+            static bool parseBool(
+                    _In_ const char* boolStr);
+
+            static bool parseBfdOffloadSupported(
+                    _In_ const char* bfdOffloadSupportedStr);
 
         public:
 
@@ -80,6 +85,10 @@ namespace saivs
             std::string m_hardwareInfo;
 
             bool m_useTapDevice;
+
+            bool m_bfdOffload;
+
+            bool m_useConfiguredSpeedAsOperSpeed;
 
             std::shared_ptr<LaneMap> m_laneMap;
 

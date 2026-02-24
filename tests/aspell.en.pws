@@ -21,6 +21,7 @@ CHARDATA
 COLDVIDS
 CONST
 CRM
+CSP
 CreateObject
 DEI
 Decrement
@@ -29,11 +30,13 @@ DPU
 EAPOL
 ECN
 EIO
+ENI
 ETERM
 ecmp
 ECMP
 FDB
 FDBs
+FEC
 FIXME
 FlexCounter
 gbsyncd
@@ -429,6 +432,7 @@ TXSC
 typedef
 uint
 uncomment
+unicast
 uninitialize
 unistd
 unittest
@@ -440,6 +444,7 @@ updatable
 upgradable
 util
 utils
+usleep
 validonly
 versa
 veth
@@ -480,3 +485,9 @@ Enqueue
 deque
 apiversion
 vso
+VxLAN
+IPFIX
+IPFix
+ipfix
+SNR
+tparam

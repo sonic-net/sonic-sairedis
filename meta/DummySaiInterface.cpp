@@ -360,6 +360,16 @@ sai_status_t DummySaiInterface::queryStatsCapability(
     return m_status;
 }
 
+sai_status_t DummySaiInterface::queryStatsStCapability(
+    _In_ sai_object_id_t switchId,
+    _In_ sai_object_type_t objectType,
+    _Inout_ sai_stat_st_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    return m_status;
+}
+
 sai_status_t DummySaiInterface::getStatsExt(
         _In_ sai_object_type_t object_type,
         _In_ sai_object_id_t object_id,
@@ -844,6 +854,25 @@ void DummySaiInterface::sendNotification(
             }
             break;
 
+        case SAI_SWITCH_ATTR_ICMP_ECHO_SESSION_STATE_CHANGE_NOTIFY:
+
+            if (sn.on_icmp_echo_session_state_change)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_icmp_echo_session_state_change");
+
+                sai_icmp_echo_session_state_notification_t data;
+
+                data.icmp_echo_session_id = 0x2;
+                data.session_state = SAI_ICMP_ECHO_SESSION_STATE_DOWN;
+
+                sn.on_icmp_echo_session_state_change(1, &data);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_icmp_echo_session_state_change");
+            }
+            break;
+
         case SAI_SWITCH_ATTR_TWAMP_SESSION_EVENT_NOTIFY:
 
             if (sn.on_twamp_session_event)
@@ -865,6 +894,38 @@ void DummySaiInterface::sendNotification(
             else
             {
                 SWSS_LOG_WARN("pointer sn.on_twamp_session_event");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY:
+
+            if (sn.on_tam_tel_type_config_change)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_tam_tel_type_config_change");
+
+                sai_object_id_t oid = 0x1;
+
+                sn.on_tam_tel_type_config_change(oid);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_tam_tel_type_config_change");
+            }
+            break;
+
+        case SAI_SWITCH_ATTR_SWITCH_MACSEC_POST_STATUS_NOTIFY:
+
+            if (sn.on_switch_macsec_post_status)
+            {
+                SWSS_LOG_NOTICE("sending sn.on_switch_macsec_post_status");
+
+                sai_object_id_t oid = 0x1;
+                sai_switch_macsec_post_status_t status = SAI_SWITCH_MACSEC_POST_STATUS_UNKNOWN;
+                sn.on_switch_macsec_post_status(oid, status);
+            }
+            else
+            {
+                SWSS_LOG_WARN("pointer sn.on_switch_macsec_post_status is NULL");
             }
             break;
 

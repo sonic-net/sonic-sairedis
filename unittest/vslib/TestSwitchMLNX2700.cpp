@@ -139,6 +139,33 @@ TEST_F(SwitchMLNX2700Test, portBulkAddRemove)
     }
 }
 
+TEST_F(SwitchMLNX2700Test, switchQueueNumberGet)
+{
+    // Initialize switch state
+    ASSERT_EQ(m_ss->initialize_default_objects(0, nullptr), SAI_STATUS_SUCCESS);
+
+    const sai_uint32_t uqNum = 8;
+    const sai_uint32_t mqNum = 8;
+    const sai_uint32_t qNum = uqNum + mqNum;
+
+    sai_attribute_t attr;
+
+    // Verify unicast queue number
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_UNICAST_QUEUES;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_EQ(attr.value.u32, uqNum);
+
+    // Verify multicast queue number
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_MULTICAST_QUEUES;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_EQ(attr.value.u32, mqNum);
+
+    // Verify total queue number
+    attr.id = SAI_SWITCH_ATTR_NUMBER_OF_QUEUES;
+    ASSERT_EQ(m_ss->get(SAI_OBJECT_TYPE_SWITCH, m_swid, 1, &attr), SAI_STATUS_SUCCESS);
+    ASSERT_EQ(attr.value.u32, qNum);
+}
+
 TEST(SwitchMLNX2700, ctr)
 {
     auto sc = std::make_shared<SwitchConfig>(0, "");
@@ -576,4 +603,64 @@ TEST(SwitchMLNX2700, test_port_autoneg_fec_override_support)
     EXPECT_EQ(attr_capability.create_implemented, true);
     EXPECT_EQ(attr_capability.set_implemented, true);
     EXPECT_EQ(attr_capability.get_implemented, true);
+}
+
+TEST(SwitchMLNX2700, test_stats_query_capability)
+{
+    auto sc = std::make_shared<SwitchConfig>(0, "");
+    auto signal = std::make_shared<Signal>();
+    auto eventQueue = std::make_shared<EventQueue>(signal);
+
+    sc->m_saiSwitchType = SAI_SWITCH_TYPE_NPU;
+    sc->m_switchType = SAI_VS_SWITCH_TYPE_MLNX2700;
+    sc->m_bootType = SAI_VS_BOOT_TYPE_COLD;
+    sc->m_useTapDevice = false;
+    sc->m_laneMap = LaneMap::getDefaultLaneMap(0);
+    sc->m_eventQueue = eventQueue;
+
+    auto scc = std::make_shared<SwitchConfigContainer>();
+
+    scc->insert(sc);
+
+    SwitchMLNX2700 sw(
+            0x2100000000,
+            std::make_shared<RealObjectIdManager>(0, scc),
+            sc);
+
+    std::vector<sai_stat_capability_t> capability_list;
+    sai_stat_capability_list_t stats_capability;
+
+    /* Get queue stats capability */
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
+
+    EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
+                                          SAI_OBJECT_TYPE_QUEUE,
+                                          &stats_capability),
+                                          SAI_STATUS_BUFFER_OVERFLOW);
+
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
+
+    EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
+                                          SAI_OBJECT_TYPE_QUEUE,
+                                          &stats_capability),
+                                          SAI_STATUS_SUCCESS);
+
+    /* Get port stats capability */
+    stats_capability.count = 0;
+    stats_capability.list = nullptr;
+
+    EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
+                                          SAI_OBJECT_TYPE_PORT,
+                                          &stats_capability),
+                                          SAI_STATUS_BUFFER_OVERFLOW);
+
+    capability_list.resize(stats_capability.count);
+    stats_capability.list = capability_list.data();
+
+    EXPECT_EQ(sw.queryStatsCapability(0x2100000000,
+                                          SAI_OBJECT_TYPE_PORT,
+                                          &stats_capability),
+                                          SAI_STATUS_SUCCESS);
 }

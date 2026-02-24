@@ -40,16 +40,18 @@ tests_SOURCES = main.cpp \
 				TestSwitch.cpp \
 				TestSwitchMLNX2700.cpp \
 				TestSwitchNvdaMBF2H536C.cpp \
+				TestSwitchBCM56971B0.cpp \
 				TestSwitchBCM56850.cpp \
 				TestSwitchBCM81724.cpp \
 				TestSwitchStateBaseMACsec.cpp \
 				TestMACsecManager.cpp \
 				TestSwitchStateBase.cpp \
 				TestSai.cpp \
-				TestVirtualSwitchSaiInterface.cpp
+				TestVirtualSwitchSaiInterface.cpp \
+				TestTAM.cpp
 
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) -fno-access-control
 tests_LDADD = $(LDADD_GTEST) $(top_srcdir)/vslib/libSaiVS.a -lhiredis -lswsscommon -lnl-genl-3 -lnl-nf-3 -lnl-route-3 -lnl-3 \
-			  -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS)
+			  -lpthread -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 TESTS = tests

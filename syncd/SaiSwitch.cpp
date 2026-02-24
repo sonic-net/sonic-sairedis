@@ -4,6 +4,7 @@
 #include "VidManager.h"
 #include "GlobalSwitchId.h"
 #include "RedisClient.h"
+#include "DisabledRedisClient.h"
 
 #include "meta/sai_serialize.h"
 #include "swss/logger.h"
@@ -11,8 +12,6 @@
 using namespace syncd;
 
 #define MAX_OBJLIST_LEN 128
-
-#define MAX_LANES_PER_PORT 8
 
 /*
  * NOTE: If real ID will change during hard restarts, then we need to remap all
@@ -23,7 +22,7 @@ using namespace syncd;
 SaiSwitch::SaiSwitch(
         _In_ sai_object_id_t switch_vid,
         _In_ sai_object_id_t switch_rid,
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<BaseRedisClient> client,
         _In_ std::shared_ptr<VirtualOidTranslator> translator,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
         _In_ bool warmBoot):
@@ -72,6 +71,7 @@ SaiSwitch::SaiSwitch(
     if (getSwitchType() == SAI_SWITCH_TYPE_NPU)
     {
         saiGetMacAddress(m_default_mac_address);
+        saiGetVxlanDefaultRouterMacAddress(m_vxlan_default_router_mac_address);
     }
 }
 
@@ -124,12 +124,45 @@ void SaiSwitch::saiGetMacAddress(
     memcpy(mac, attr.value.mac, sizeof(sai_mac_t));
 }
 
+void SaiSwitch::saiGetVxlanDefaultRouterMacAddress(
+        _Out_ sai_mac_t &mac) const
+{
+    SWSS_LOG_ENTER();
+
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC;
+
+    sai_status_t status = m_vendorSai->get(SAI_OBJECT_TYPE_SWITCH, m_switch_rid, 1, &attr);
+
+    if (status != SAI_STATUS_SUCCESS)
+    {
+        // not all devices may support this
+        SWSS_LOG_WARN("failed to obtain SAI_SWITCH_ATTR_VXLAN_DEFAULT_ROUTER_MAC, setting to 00:00:00:00:00:00");
+
+        memset(attr.value.mac, 0, sizeof(sai_mac_t));
+    }
+
+    SWSS_LOG_DEBUG("mac address is: %s",
+            sai_serialize_mac(attr.value.mac).c_str());
+
+    memcpy(mac, attr.value.mac, sizeof(sai_mac_t));
+}
+
 void SaiSwitch::getDefaultMacAddress(
         _Out_ sai_mac_t& mac) const
 {
     SWSS_LOG_ENTER();
 
     memcpy(mac, m_default_mac_address, sizeof(sai_mac_t));
+}
+
+void SaiSwitch::getVxlanDefaultRouterMacAddress(
+        _Out_ sai_mac_t& mac) const
+{
+    SWSS_LOG_ENTER();
+
+    memcpy(mac, m_vxlan_default_router_mac_address, sizeof(sai_mac_t));
 }
 
 sai_switch_type_t SaiSwitch::getSwitchType() const
@@ -335,6 +368,19 @@ void SaiSwitch::redisSetDummyAsicStateForRealObjectId(
     sai_object_id_t vid = m_translator->translateRidToVid(rid, m_switch_vid);
 
     m_client->setDummyAsicStateObject(vid);
+}
+
+void SaiSwitch::redisSetDummyAsicStateForRealObjectIds(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* rids) const
+{
+    SWSS_LOG_ENTER();
+
+    std::vector<sai_object_id_t> vids(count);
+
+    m_translator->translateRidsToVids(m_switch_vid, count, rids, vids.data());
+
+    m_client->setDummyAsicStateObjects(count, vids.data());
 }
 
 std::string SaiSwitch::getHardwareInfo() const
@@ -946,15 +992,17 @@ void SaiSwitch::redisUpdatePortLaneMap(
             sai_serialize_object_id(port_rid).c_str());
 }
 
-void SaiSwitch::onPostPortCreate(
-        _In_ sai_object_id_t port_rid,
-        _In_ sai_object_id_t port_vid)
+void SaiSwitch::onPostPortsCreate(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* port_rids)
 {
     SWSS_LOG_ENTER();
 
-    SaiDiscovery sd(m_vendorSai);
+    SWSS_LOG_TIMER("discovering objects after creating ports");
 
-    auto discovered = sd.discover(port_rid);
+    SaiDiscovery sd(m_vendorSai, SaiDiscovery::Flags::SkipDefaultEmptyAttributes);
+
+    auto discovered = sd.discover(count, port_rids);
 
     auto defaultOidMap = sd.getDefaultOidMap();
 
@@ -968,29 +1016,26 @@ void SaiSwitch::onPostPortCreate(
         }
     }
 
-    SWSS_LOG_NOTICE("discovered %zu new objects (including port) after creating port VID: %s",
-            discovered.size(),
-            sai_serialize_object_id(port_vid).c_str());
+    SWSS_LOG_NOTICE("discovered %zu new objects (including port) after creating %zu ports",
+            discovered.size(), count);
 
     m_discovered_rids.insert(discovered.begin(), discovered.end());
 
-    SWSS_LOG_NOTICE("putting ALL new discovered objects to redis for port %s",
-            sai_serialize_object_id(port_vid).c_str());
+    std::vector<sai_object_id_t> rids{discovered.begin(), discovered.end()};
 
-    for (sai_object_id_t rid: discovered)
+    /*
+     * We also could think of optimizing this since it's one command
+     * per rid in a redis pipeline, and probably this should be ATOMIC.
+     *
+     * NOTE: We are also storing read only object's here, like default
+     * virtual router, CPU, default trap group, etc.
+     */
+    redisSetDummyAsicStateForRealObjectIds(rids.size(), rids.data());
+
+    for (size_t idx = 0; idx < count; idx++)
     {
-        /*
-         * We also could thing of optimizing this since it's one call to redis
-         * per rid, and probably this should be ATOMIC.
-         *
-         * NOTE: We are also storing read only object's here, like default
-         * virtual router, CPU, default trap group, etc.
-         */
-
-        redisSetDummyAsicStateForRealObjectId(rid);
+        redisUpdatePortLaneMap(port_rids[idx]);
     }
-
-    redisUpdatePortLaneMap(port_rid);
 }
 
 bool SaiSwitch::isWarmBoot() const
@@ -1106,6 +1151,12 @@ void SaiSwitch::postPortRemove(
 
         if (vid == SAI_NULL_OBJECT_ID)
         {
+            if (!m_client->isRedisEnabled())
+            {
+                SWSS_LOG_DEBUG("Redis disabled, skipping rid %s removal from RIDTOVID",
+                        sai_serialize_object_id(rid).c_str());
+                continue;
+            }
             SWSS_LOG_THROW("expected rid %s to be present in RIDTOVID",
                     sai_serialize_object_id(rid).c_str());
         }
@@ -1125,7 +1176,7 @@ void SaiSwitch::postPortRemove(
             removed,
             sai_serialize_object_id(portRid).c_str());
 
-    if (removed == 0)
+    if (removed == 0 && m_client->isRedisEnabled())
     {
         SWSS_LOG_THROW("NO LANES found in redis lane map for given port RID %s",
                 sai_serialize_object_id(portRid).c_str());

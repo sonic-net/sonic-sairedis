@@ -77,6 +77,9 @@ namespace syncd
             virtual void getDefaultMacAddress(
                     _Out_ sai_mac_t& mac) const = 0;
 
+            virtual void getVxlanDefaultRouterMacAddress(
+                    _Out_ sai_mac_t& mac) const = 0;
+
             virtual sai_object_id_t getDefaultValueForOidAttr(
                     _In_ sai_object_id_t rid,
                     _In_ sai_attr_id_t attr_id) = 0;
@@ -87,9 +90,9 @@ namespace syncd
 
             virtual std::set<sai_object_id_t> getWarmBootNewDiscoveredVids();
 
-            virtual void onPostPortCreate(
-                    _In_ sai_object_id_t port_rid,
-                    _In_ sai_object_id_t port_vid) = 0;
+            virtual void onPostPortsCreate(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* port_rids) = 0;
 
             virtual void postPortRemove(
                     _In_ sai_object_id_t portRid) = 0;

@@ -56,6 +56,9 @@ namespace saiasiccmp
             virtual void getDefaultMacAddress(
                     _Out_ sai_mac_t& mac) const override;
 
+            virtual void getVxlanDefaultRouterMacAddress(
+                    _Out_ sai_mac_t& mac) const override;
+
             virtual sai_object_id_t getDefaultValueForOidAttr(
                     _In_ sai_object_id_t rid,
                     _In_ sai_attr_id_t attr_id) override;
@@ -64,9 +67,9 @@ namespace saiasiccmp
 
             virtual std::set<sai_object_id_t> getWarmBootDiscoveredVids() const override;
 
-            virtual void onPostPortCreate(
-                    _In_ sai_object_id_t port_rid,
-                    _In_ sai_object_id_t port_vid) override;
+            virtual void onPostPortsCreate(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* port_rids) override;
 
             virtual void postPortRemove(
                     _In_ sai_object_id_t portRid) override;

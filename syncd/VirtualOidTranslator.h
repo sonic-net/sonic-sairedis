@@ -5,7 +5,7 @@ extern "C"{
 }
 
 #include "VirtualObjectIdManager.h"
-#include "RedisClient.h"
+#include "BaseRedisClient.h"
 
 #include "meta/SaiInterface.h"
 
@@ -22,7 +22,7 @@ namespace syncd
         public:
 
             VirtualOidTranslator(
-                    _In_ std::shared_ptr<RedisClient> client,
+                    _In_ std::shared_ptr<BaseRedisClient> client,
                     _In_ std::shared_ptr<sairedis::VirtualObjectIdManager> virtualObjectIdManager,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai);
 
@@ -57,6 +57,16 @@ namespace syncd
                     _Inout_ sai_object_list_t& objectList,
                     _In_ sai_object_id_t switchVid,
                     _In_ bool translateRemoved = false);
+
+            /*
+             * Translate RIDs to VIDs in batch, prefer this method when doing bulk operations,
+             * initial object discovery or when many objects need to be mapped to virtual IDs.
+             */
+            void translateRidsToVids(
+                    _In_ sai_object_id_t switchVid,
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* rids,
+                    _Out_ sai_object_id_t* vids);
 
             /*
              * This method is required to translate RID to VIDs when we are doing
@@ -108,8 +118,13 @@ namespace syncd
                     _In_ sai_object_id_t vid);
 
             void insertRidAndVid(
-                    _In_ sai_object_id_t rid,
-                    _In_ sai_object_id_t vid);
+                    _In_ const sai_object_id_t rid,
+                    _In_ const sai_object_id_t vid);
+
+            void insertRidsAndVids(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* rids,
+                    _In_ const sai_object_id_t* vids);
 
             void clearLocalCache();
 
@@ -127,6 +142,6 @@ namespace syncd
             std::unordered_map<sai_object_id_t, sai_object_id_t> m_vid2rid;
             std::unordered_map<sai_object_id_t, sai_object_id_t> m_removedRid2vid;
 
-            std::shared_ptr<RedisClient> m_client;
+            std::shared_ptr<BaseRedisClient> m_client;
     };
 }

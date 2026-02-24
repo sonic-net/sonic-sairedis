@@ -83,9 +83,32 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
 
+            void onIcmpEchoSessionStateChange(
+                    _In_ uint32_t count,
+                    _In_ const sai_icmp_echo_session_state_notification_t *data);
+
             void onTwampSessionEvent(
                     _In_ uint32_t count,
                     _In_ const sai_twamp_session_event_notification_data_t *data);
+
+            void onTamTelTypeConfigChange(
+                    _In_ sai_object_id_t tam_tel_id);
+
+            void onHaSetEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_set_event_data_t *data);
+
+            void onHaScopeEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_scope_event_data_t *data);
+
+            void onSwitchMacsecPostStatus(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_switch_macsec_post_status_t switch_macsec_post_status);
+
+            void onMacsecPostStatus(
+                    _In_ sai_object_id_t macsec_id,
+                    _In_ sai_macsec_post_status_t macsec_post_status);
 
         private:
 

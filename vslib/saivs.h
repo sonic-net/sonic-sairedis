@@ -57,6 +57,29 @@ extern "C" {
 #define SAI_KEY_VS_HOSTIF_USE_TAP_DEVICE      "SAI_VS_HOSTIF_USE_TAP_DEVICE"
 
 /**
+ * @def SAI_KEY_VS_BFD_OFFLOAD_SUPPORTED
+ *
+ * Bool flag, (true/false). If set to false, then platform will be configured
+ * to return SAI_BFD_SESSION_OFFLOAD_TYPE_NONE for
+ * SAI_SWITCH_ATTR_SUPPORTED_IPV4_BFD_SESSION_OFFLOAD_TYPE and
+ * SAI_SWITCH_ATTR_SUPPORTED_IPV6_BFD_SESSION_OFFLOAD_TYPE calls; otherwise
+ * SAI_BFD_SESSION_OFFLOAD_TYPE_FULL will be set.
+ *
+ * By default this flag is set to true.
+ */
+ #define SAI_KEY_VS_BFD_OFFLOAD_SUPPORTED     "SAI_VS_BFD_OFFLOAD_SUPPORTED"
+
+/**
+ * @def SAI_KEY_VS_USE_CONFIGURED_SPEED_AS_OPER_SPEED
+ *
+ * Bool flag, (true/false). If set to true, SAI_PORT_ATTR_OPER_SPEED returns
+ * the SAI_PORT_ATTR_SPEED instead of querying the speed of veth
+ *
+ * By default this flag is set to false.
+ */
+#define SAI_KEY_VS_USE_CONFIGURED_SPEED_AS_OPER_SPEED "SAI_VS_USE_CONFIGURED_SPEED_AS_OPER_SPEED"
+
+/**
  * @def SAI_KEY_VS_CORE_PORT_INDEX_MAP_FILE
  *
  * For VOQ systems if specified in profile.ini it should point to eth interface to
@@ -92,6 +115,7 @@ extern "C" {
 #define SAI_VALUE_VS_SWITCH_TYPE_MLNX2700          "SAI_VS_SWITCH_TYPE_MLNX2700"
 #define SAI_VALUE_VS_SWITCH_TYPE_NVDA_MBF2H536C    "SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C"
 #define SAI_VALUE_VS_SWITCH_TYPE_DPU_SIMU_2P       "SAI_VS_SWITCH_TYPE_DPU_SIMU_2P"
+#define SAI_VALUE_VS_SWITCH_TYPE_VPP               "SAI_VS_SWITCH_TYPE_VPP"
 
 /*
  * Values for SAI_KEY_BOOT_TYPE (defined in saiswitch.h)

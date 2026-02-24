@@ -2,7 +2,7 @@
 
 #include "NotificationQueue.h"
 #include "VirtualOidTranslator.h"
-#include "RedisClient.h"
+#include "BaseRedisClient.h"
 #include "NotificationProducerBase.h"
 
 #include "swss/notificationproducer.h"
@@ -20,7 +20,7 @@ namespace syncd
 
             NotificationProcessor(
                     _In_ std::shared_ptr<NotificationProducerBase> producer,
-                    _In_ std::shared_ptr<RedisClient> client,
+                    _In_ std::shared_ptr<BaseRedisClient> client,
                     _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer);
 
             virtual ~NotificationProcessor();
@@ -92,6 +92,18 @@ namespace syncd
                     _In_ uint32_t count,
                     _In_ sai_bfd_session_state_notification_t *data);
 
+            void process_on_icmp_echo_session_state_change(
+                    _In_ uint32_t count,
+                    _In_ sai_icmp_echo_session_state_notification_t *data);
+
+            void process_on_ha_set_event(
+                    _In_ uint32_t count,
+                    _In_ sai_ha_set_event_data_t *data);
+
+            void process_on_ha_scope_event(
+                    _In_ uint32_t count,
+                    _In_ sai_ha_scope_event_data_t *data);
+
             void process_on_port_host_tx_ready_change(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_id_t port_id,
@@ -132,6 +144,15 @@ namespace syncd
             void handle_bfd_session_state_change(
                     _In_ const std::string &data);
 
+            void handle_icmp_echo_session_state_change(
+                    _In_ const std::string &data);
+
+            void handle_ha_set_event(
+                    _In_ const std::string &data);
+
+            void handle_ha_scope_event(
+                    _In_ const std::string &data);
+
             void handle_switch_asic_sdk_health_event(
                     _In_ const std::string &data);
 
@@ -143,6 +164,15 @@ namespace syncd
 
             void handle_twamp_session_event(
                     _In_ const std::string &data);
+
+            void handle_tam_tel_type_config_change(
+                    _In_ const std::string &data);
+
+            void handle_switch_macsec_post_status(
+                   _In_ const std::string &data);
+
+            void handle_macsec_post_status(
+                   _In_ const std::string &data);
 
             void processNotification(
                     _In_ const swss::KeyOpFieldsValuesTuple& item);
@@ -173,7 +203,7 @@ namespace syncd
 
             std::function<void(const swss::KeyOpFieldsValuesTuple&)> m_synchronizer;
 
-            std::shared_ptr<RedisClient> m_client;
+            std::shared_ptr<BaseRedisClient> m_client;
 
             std::shared_ptr<NotificationProducerBase> m_notifications;
     };

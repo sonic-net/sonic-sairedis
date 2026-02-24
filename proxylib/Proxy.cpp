@@ -63,8 +63,12 @@ Proxy::Proxy(
     m_swNtf.onSwitchShutdownRequest = std::bind(&Proxy::onSwitchShutdownRequest, this, _1);
     m_swNtf.onSwitchStateChange = std::bind(&Proxy::onSwitchStateChange, this, _1, _2);
     m_swNtf.onBfdSessionStateChange = std::bind(&Proxy::onBfdSessionStateChange, this, _1, _2);
+    m_swNtf.onIcmpEchoSessionStateChange = std::bind(&Proxy::onIcmpEchoSessionStateChange, this, _1, _2);
+    m_swNtf.onHaSetEvent = std::bind(&Proxy::onHaSetEvent, this, _1, _2);
+    m_swNtf.onHaScopeEvent = std::bind(&Proxy::onHaScopeEvent, this, _1, _2);
     m_swNtf.onPortHostTxReady = std::bind(&Proxy::onPortHostTxReady, this, _1, _2, _3);
     m_swNtf.onTwampSessionEvent = std::bind(&Proxy::onTwampSessionEvent, this, _1, _2);
+    m_swNtf.onTamTelTypeConfigChange = std::bind(&Proxy::onTamTelTypeConfigChange, this, _1);
 
     m_sn = m_swNtf.getSwitchNotifications();
 
@@ -1203,6 +1207,38 @@ void Proxy::onBfdSessionStateChange(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
+void Proxy::onIcmpEchoSessionStateChange(
+        _In_ uint32_t count,
+        _In_ const sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_icmp_echo_session_state_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE, s);
+}
+void Proxy::onHaSetEvent(
+        _In_ uint32_t count,
+        _In_ const sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_set_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT, s);
+}
+
+void Proxy::onHaScopeEvent(
+        _In_ uint32_t count,
+        _In_ const sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_ha_scope_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT, s);
+}
+
 void Proxy::onTwampSessionEvent(
         _In_ uint32_t count,
         _In_ const sai_twamp_session_event_notification_data_t *data)
@@ -1212,6 +1248,16 @@ void Proxy::onTwampSessionEvent(
     std::string s = sai_serialize_twamp_session_event_ntf(count, data);
 
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT, s);
+}
+
+void Proxy::onTamTelTypeConfigChange(
+    _In_ sai_object_id_t tam_tel_id)
+{
+    SWSS_LOG_ENTER();
+
+    std::string s = sai_serialize_object_id(tam_tel_id);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, s);
 }
 
 void Proxy::sendNotification(

@@ -102,6 +102,13 @@ namespace saivs
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
+        public: // QUAD meta key
+
+            using SaiInterface::remove;
+            using SaiInterface::get;
+            using SaiInterface::create;
+            using SaiInterface::set;
+
         public: // stats API
 
             virtual sai_status_t getStats(
@@ -115,6 +122,11 @@ namespace saivs
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
                     _Inout_ sai_stat_capability_list_t *stats_capability) override;
+
+            virtual sai_status_t queryStatsStCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_st_capability_list_t *stats_capability) override;
 
             virtual sai_status_t getStatsExt(
                     _In_ sai_object_type_t object_type,
@@ -245,6 +257,15 @@ namespace saivs
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses);
 
+            sai_status_t bulkGet(
+                    _In_ sai_object_id_t switchId,
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const uint32_t *attr_count,
+                    _Inout_ sai_attribute_t **attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
         private: // QUAD pre
 
             sai_status_t preSet(
@@ -267,7 +288,7 @@ namespace saivs
             std::shared_ptr<WarmBootState> extractWarmBootState(
                     _In_ sai_object_id_t switch_id);
 
-            bool validate_switch_warm_boot_atributes(
+            bool validate_switch_warm_boot_attributes(
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list) const;
 

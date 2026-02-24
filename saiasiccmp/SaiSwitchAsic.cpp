@@ -240,6 +240,14 @@ void SaiSwitchAsic::getDefaultMacAddress(
     SWSS_LOG_THROW("not implemented");
 }
 
+void SaiSwitchAsic::getVxlanDefaultRouterMacAddress(
+        _Out_ sai_mac_t& mac) const
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_THROW("not implemented");
+}
+
 sai_object_id_t SaiSwitchAsic::getDefaultValueForOidAttr(
         _In_ sai_object_id_t rid,
         _In_ sai_attr_id_t attr_id)
@@ -270,9 +278,9 @@ std::set<sai_object_id_t> SaiSwitchAsic::getWarmBootDiscoveredVids() const
     return {};
 }
 
-void SaiSwitchAsic::onPostPortCreate(
-        _In_ sai_object_id_t port_rid,
-        _In_ sai_object_id_t port_vid)
+void SaiSwitchAsic::onPostPortsCreate(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* port_rids)
 {
     SWSS_LOG_ENTER();
 

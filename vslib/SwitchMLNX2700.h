@@ -29,6 +29,8 @@ namespace saivs
 
             virtual sai_status_t create_qos_queues() override;
 
+            virtual sai_status_t set_number_of_queues() override;
+
             virtual sai_status_t create_scheduler_group_tree(
                     _In_ const std::vector<sai_object_id_t>& sgs,
                     _In_ sai_object_id_t port_id) override;
@@ -56,5 +58,9 @@ namespace saivs
                                       _Inout_ sai_s32_list_t *enum_values_capability) override;
             virtual sai_status_t queryPortAutonegFecOverrideSupportCapability(
                                       _Out_ sai_attr_capability_t *attr_capability) override;
+
+        protected:
+            constexpr static const uint32_t m_unicastQueueNumber = 8;
+            constexpr static const uint32_t m_multicastQueueNumber = 8;
     };
 }

@@ -108,6 +108,13 @@ namespace sairedis
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
+        public: // QUAD meta key
+
+            using SaiInterface::remove;
+            using SaiInterface::get;
+            using SaiInterface::create;
+            using SaiInterface::set;
+
         public: // stats API
 
             virtual sai_status_t getStats(
@@ -121,6 +128,11 @@ namespace sairedis
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
                     _Inout_ sai_stat_capability_list_t *stats_capability) override;
+
+            virtual sai_status_t queryStatsStCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_st_capability_list_t *stats_capability) override;
 
             virtual sai_status_t getStatsExt(
                     _In_ sai_object_type_t object_type,
@@ -276,6 +288,14 @@ namespace sairedis
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses);
 
+            sai_status_t bulkGet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const uint32_t *attr_count,
+                    _Inout_ sai_attribute_t **attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses);
+
         private: // QUAD API response
 
             /**
@@ -317,6 +337,23 @@ namespace sairedis
                     _In_ uint32_t object_count,
                     _Out_ sai_status_t *object_statuses);
 
+            /**
+             * @brief Wait for bulk GET response.
+             *
+             * Will wait for response from syncd. Method only used for bulk
+             * GET object. If object status is SUCCESS all values will be deserialized
+             * and transferred to user buffers. If object status is BUFFER_OVERFLOW
+             * then all non list values will be transferred, but LIST objects
+             * will only transfer COUNT item of list, without touching user
+             * list at all.
+             */
+            sai_status_t waitForBulkGetResponse(
+                    _In_ sai_object_type_t objectType,
+                    _In_ uint32_t object_count,
+                    _In_ const uint32_t *attr_count,
+                    _Inout_ sai_attribute_t **attr_list,
+                    _Out_ sai_status_t *object_statuses);
+
         private: // stats API response
 
             sai_status_t waitForGetStatsResponse(
@@ -340,7 +377,13 @@ namespace sairedis
             sai_status_t waitForObjectTypeGetAvailabilityResponse(
                     _In_ uint64_t *count);
 
-        private: // notify syncd response
+            sai_status_t waitForQueryStatsCapabilityResponse(
+                    _Inout_ sai_stat_capability_list_t* stats_capability);
+
+            sai_status_t waitForQueryStatsStCapabilityResponse(
+                    _Inout_ sai_stat_st_capability_list_t *stats_capability);
+
+    private: // notify syncd response
 
             sai_status_t waitForNotifySyncdResponse();
 
@@ -423,6 +466,8 @@ namespace sairedis
             std::shared_ptr<Channel> m_communicationChannel;
 
             uint64_t m_responseTimeoutMs;
+
+            size_t m_zmqResponseBufferSize;
 
             std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> m_notificationCallback;
 

@@ -17,7 +17,9 @@ SwitchConfig::SwitchConfig(
     m_bootType(SAI_VS_BOOT_TYPE_COLD),
     m_switchIndex(switchIndex),
     m_hardwareInfo(hwinfo),
-    m_useTapDevice(false)
+    m_useTapDevice(false),
+    m_bfdOffload(true),
+    m_useConfiguredSpeedAsOperSpeed(false)
 {
     SWSS_LOG_ENTER();
 
@@ -90,6 +92,10 @@ bool SwitchConfig::parseSwitchType(
          */
         switchType = SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C;
     }
+    else if (st == SAI_VALUE_VS_SWITCH_TYPE_VPP)
+    {
+        switchType = SAI_VS_SWITCH_TYPE_VPP;
+    }
     else
     {
         std::vector<std::string> vals {
@@ -99,6 +105,7 @@ bool SwitchConfig::parseSwitchType(
                 SAI_VALUE_VS_SWITCH_TYPE_MLNX2700,
                 SAI_VALUE_VS_SWITCH_TYPE_NVDA_MBF2H536C,
                 SAI_VALUE_VS_SWITCH_TYPE_DPU_SIMU_2P
+                SAI_VALUE_VS_SWITCH_TYPE_VPP,
         };
 
         SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s)",
@@ -141,15 +148,28 @@ bool SwitchConfig::parseBootType(
     return true;
 }
 
-bool SwitchConfig::parseUseTapDevice(
-        _In_ const char* useTapDeviceStr)
+bool SwitchConfig::parseBool(
+        _In_ const char* str)
 {
     SWSS_LOG_ENTER();
 
-    if (useTapDeviceStr)
+    if (str)
     {
-        return strcmp(useTapDeviceStr, "true") == 0;
+        return strcmp(str, "true") == 0;
     }
 
     return false;
+}
+
+bool SwitchConfig::parseBfdOffloadSupported(
+    _In_ const char* bfdOffloadSupportedStr)
+{
+    SWSS_LOG_ENTER();
+
+    if (bfdOffloadSupportedStr)
+    {
+        return strcmp(bfdOffloadSupportedStr, "true") == 0;
+    }
+
+    return true;
 }

@@ -1,6 +1,7 @@
 #include "VirtualOidTranslator.h"
 #include "VirtualObjectIdManager.h"
 #include "RedisClient.h"
+#include "DisabledRedisClient.h"
 
 #include "swss/logger.h"
 #include "meta/sai_serialize.h"
@@ -10,7 +11,7 @@
 using namespace syncd;
 
 VirtualOidTranslator::VirtualOidTranslator(
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<BaseRedisClient> client,
         _In_ std::shared_ptr<sairedis::VirtualObjectIdManager> virtualObjectIdManager,
         _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai):
     m_virtualObjectIdManager(virtualObjectIdManager),
@@ -145,6 +146,79 @@ sai_object_id_t VirtualOidTranslator::translateRidToVid(
     m_vid2rid[vid] = rid;
 
     return vid;
+}
+
+void VirtualOidTranslator::translateRidsToVids(
+        _In_ sai_object_id_t switchVid,
+        _In_ size_t count,
+        _In_ const sai_object_id_t* rids,
+        _Out_ sai_object_id_t* vids)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    /*
+     * Fetch VIDs for given RIDs from database.
+     * Unknown RID's will be mapped to SAI_NULL_OBJECT_ID in vids array.
+     */
+    m_client->getVidsForRids(count, rids, vids);
+
+    std::vector<sai_object_id_t> newRids;
+    std::vector<sai_object_id_t> newVids;
+    newRids.reserve(count);
+    newVids.reserve(count);
+
+    /*
+     * Get unknown (new) RIDs into newRids array.
+     */
+    for (size_t idx = 0; idx < count; idx++)
+    {
+        if (vids[idx] == SAI_NULL_OBJECT_ID)
+        {
+            newRids.push_back(rids[idx]);
+            newVids.push_back(SAI_NULL_OBJECT_ID);
+        }
+    }
+
+    const auto newOidsCount = newVids.size();
+
+    std::vector<sai_object_type_t> newObjectTypes(newOidsCount);
+
+    for (size_t idx = 0; idx < newOidsCount; idx++)
+    {
+        newObjectTypes[idx] = m_vendorSai->objectTypeQuery(newRids[idx]);
+    }
+
+    /*
+     * Allocate VIDs for new RIDs.
+     */
+    m_virtualObjectIdManager->allocateNewObjectIds(switchVid, newOidsCount, newObjectTypes.data(), newVids.data());
+
+    /*
+     * Insert VID and RID mappings into local and redis db.
+     */
+    m_client->insertVidsAndRids(newOidsCount, newVids.data(), newRids.data());
+
+    /*
+     * Replace VID's for new RIDs in output vids array and update local cache.
+     * Update each null VID in the output array with the corresponding newly allocated VID,
+     * preserving the same order to maintain correct RID-to-VID mapping.
+     */
+    for (size_t idx = 0, newIdx = 0; idx < count; idx++)
+    {
+        if (vids[idx] == SAI_NULL_OBJECT_ID)
+        {
+            vids[idx] = newVids[newIdx];
+            newIdx++;
+        }
+    }
+
+    for (size_t idx = 0; idx < count; idx++)
+    {
+        m_rid2vid[rids[idx]] = vids[idx];
+        m_vid2rid[vids[idx]] = rids[idx];
+    }
 }
 
 bool VirtualOidTranslator::checkRidExists(
@@ -293,6 +367,13 @@ sai_object_id_t VirtualOidTranslator::translateVidToRid(
 
     if (rid == SAI_NULL_OBJECT_ID)
     {
+        if (!m_client->isRedisEnabled())
+        {
+            SWSS_LOG_DEBUG("Redis disabled, unable to get RID for VID %s",
+                    sai_serialize_object_id(vid).c_str());
+            return SAI_NULL_OBJECT_ID;
+        }
+
             /*
              * If user created object that is object id, then it should not
              * query attributes of this object in init view mode, because he
@@ -541,6 +622,24 @@ void VirtualOidTranslator::insertRidAndVid(
     m_vid2rid[vid] = rid;
 
     m_client->insertVidAndRid(vid, rid);
+}
+
+void VirtualOidTranslator::insertRidsAndVids(
+        _In_ size_t count,
+        _In_ const sai_object_id_t* rids,
+        _In_ const sai_object_id_t* vids)
+{
+    SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    for (size_t idx = 0; idx < count; idx++)
+    {
+        m_rid2vid[rids[idx]] = vids[idx];
+        m_vid2rid[vids[idx]] = rids[idx];
+    }
+
+    m_client->insertVidsAndRids(count, vids, rids);
 }
 
 void VirtualOidTranslator::eraseRidAndVid(

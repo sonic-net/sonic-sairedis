@@ -1,5 +1,5 @@
 #include "NotificationProcessor.h"
-#include "RedisClient.h"
+#include "BaseRedisClient.h"
 
 #include "sairediscommon.h"
 
@@ -16,7 +16,7 @@ using namespace saimeta;
 
 NotificationProcessor::NotificationProcessor(
         _In_ std::shared_ptr<NotificationProducerBase> producer,
-        _In_ std::shared_ptr<RedisClient> client,
+        _In_ std::shared_ptr<BaseRedisClient> client,
         _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer):
     m_synchronizer(synchronizer),
     m_client(client),
@@ -558,6 +558,66 @@ void NotificationProcessor::process_on_bfd_session_state_change(
     sendNotification(SAI_SWITCH_NOTIFICATION_NAME_BFD_SESSION_STATE_CHANGE, s);
 }
 
+void NotificationProcessor::process_on_icmp_echo_session_state_change(
+        _In_ uint32_t count,
+        _In_ sai_icmp_echo_session_state_notification_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("icmp echo session state notification count: %u", count);
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        sai_icmp_echo_session_state_notification_t *icmp_echo_session_state = &data[i];
+
+        /*
+         * We are using switch_rid as null, since ICMP_ECHO should be already
+         * defined inside local db after creation.
+         *
+         * If this will be faster than return from create ICMP_ECHO then we can use
+         * query switch id and extract rid of switch id and then convert it to
+         * switch vid.
+         */
+
+        icmp_echo_session_state->icmp_echo_session_id = m_translator->translateRidToVid(icmp_echo_session_state->icmp_echo_session_id, SAI_NULL_OBJECT_ID, true);
+    }
+
+    std::string s = sai_serialize_icmp_echo_session_state_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE, s);
+}
+
+void NotificationProcessor::process_on_ha_set_event(
+        _In_ uint32_t count,
+        _In_ sai_ha_set_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        data[i].ha_set_id = m_translator->translateRidToVid(data[i].ha_set_id, SAI_NULL_OBJECT_ID);
+    }
+
+    std::string s = sai_serialize_ha_set_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT, s);
+}
+
+void NotificationProcessor::process_on_ha_scope_event(
+        _In_ uint32_t count,
+        _In_ sai_ha_scope_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        data[i].ha_scope_id = m_translator->translateRidToVid(data[i].ha_scope_id, SAI_NULL_OBJECT_ID);
+    }
+
+    std::string s = sai_serialize_ha_scope_event_ntf(count, data);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT, s);
+}
 
 void NotificationProcessor::process_on_switch_asic_sdk_health_event(
         _In_ sai_object_id_t switch_rid,
@@ -725,6 +785,51 @@ void NotificationProcessor::handle_bfd_session_state_change(
     sai_deserialize_free_bfd_session_state_ntf(count, bfdsessionstate);
 }
 
+void NotificationProcessor::handle_icmp_echo_session_state_change(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_icmp_echo_session_state_notification_t *icmp_echo_session_state = NULL;
+
+    sai_deserialize_icmp_echo_session_state_ntf(data, count, &icmp_echo_session_state);
+
+    process_on_icmp_echo_session_state_change(count, icmp_echo_session_state);
+
+    sai_deserialize_free_icmp_echo_session_state_ntf(count, icmp_echo_session_state);
+}
+
+void NotificationProcessor::handle_ha_set_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_ha_set_event_data_t *ha_set_event = NULL;
+
+    sai_deserialize_ha_set_event_ntf(data, count, &ha_set_event);
+
+    process_on_ha_set_event(count, ha_set_event);
+
+    sai_deserialize_free_ha_set_event_ntf(count, ha_set_event);
+}
+
+void NotificationProcessor::handle_ha_scope_event(
+        _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t count;
+    sai_ha_scope_event_data_t *ha_scope_event = NULL;
+
+    sai_deserialize_ha_scope_event_ntf(data, count, &ha_scope_event);
+
+    process_on_ha_scope_event(count, ha_scope_event);
+
+    sai_deserialize_free_ha_scope_event_ntf(count, ha_scope_event);
+}
+
 void NotificationProcessor::handle_switch_asic_sdk_health_event(
         _In_ const std::string &data)
 {
@@ -781,6 +886,73 @@ void NotificationProcessor::handle_twamp_session_event(
     sai_deserialize_free_twamp_session_event_ntf(count, twampsessionevent);
 }
 
+void NotificationProcessor::handle_tam_tel_type_config_change(
+    _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_DEBUG("TAM telemesai_serialize_object_id(tam_type_id)try type config change on TAM id %s", data.c_str());
+
+    sai_object_id_t rid;
+    sai_object_id_t vid;
+    sai_deserialize_object_id(data, rid);
+
+    if (!m_translator->tryTranslateRidToVid(rid, vid))
+    {
+        SWSS_LOG_ERROR("TAM_TEL_TYPE RID %s transalted to null VID!!!", sai_serialize_object_id(rid).c_str());
+        return;
+    }
+
+    std::string vid_data = sai_serialize_object_id(vid);
+
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE, vid_data);
+}
+
+void NotificationProcessor::handle_switch_macsec_post_status(
+    _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t switch_id;
+    sai_switch_macsec_post_status_t switch_macsec_post_status;
+    sai_deserialize_switch_macsec_post_status_ntf(data, switch_id, switch_macsec_post_status);
+
+    sai_object_id_t switch_vid;
+    if (!m_translator->tryTranslateRidToVid(switch_id, switch_vid))
+    {
+        SWSS_LOG_ERROR("Failed to translate switch RID %s to VID", sai_serialize_object_id(switch_id).c_str());
+        return;
+    }
+    std::string s = sai_serialize_switch_macsec_post_status_ntf(switch_vid, switch_macsec_post_status);
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS, s);
+
+    SWSS_LOG_NOTICE("Sent switch MACSec POST status notificaiton: %s",
+                    sai_serialize_switch_macsec_post_status(switch_macsec_post_status));
+}
+
+void NotificationProcessor::handle_macsec_post_status(
+    _In_ const std::string &data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t macsec_id;
+    sai_macsec_post_status_t macsec_post_status;
+    sai_deserialize_macsec_post_status_ntf(data, macsec_id, macsec_post_status);
+
+    sai_object_id_t macsec_vid;
+    if (!m_translator->tryTranslateRidToVid(macsec_id, macsec_vid))
+    {
+        SWSS_LOG_ERROR("Failed to translate MACSec RID %s to VID", sai_serialize_object_id(macsec_id).c_str());
+        return;
+    }
+    std::string s = sai_serialize_macsec_post_status_ntf(macsec_vid, macsec_post_status);
+    sendNotification(SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS, s);
+
+    SWSS_LOG_NOTICE("Sent MACSec POST status notification: macsec oid %s, status %s",
+                    sai_serialize_object_id(macsec_id).c_str(),
+                    sai_serialize_macsec_post_status(macsec_post_status));
+}
+
 void NotificationProcessor::processNotification(
         _In_ const swss::KeyOpFieldsValuesTuple& item)
 {
@@ -833,9 +1005,33 @@ void NotificationProcessor::syncProcessNotification(
     {
         handle_bfd_session_state_change(data);
     }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_ICMP_ECHO_SESSION_STATE_CHANGE)
+    {
+        handle_icmp_echo_session_state_change(data);
+    }
     else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TWAMP_SESSION_EVENT)
     {
         handle_twamp_session_event(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_TAM_TEL_TYPE_CONFIG_CHANGE)
+    {
+        handle_tam_tel_type_config_change(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_SWITCH_MACSEC_POST_STATUS)
+    {
+        handle_switch_macsec_post_status(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_MACSEC_POST_STATUS)
+    {
+        handle_macsec_post_status(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_HA_SET_EVENT)
+    {
+        handle_ha_set_event(data);
+    }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT)
+    {
+        handle_ha_scope_event(data);
     }
     else
     {

@@ -594,9 +594,16 @@ sub test_bulk_fdb
     play "bulk_fdb.rec"
 }
 
-sub test_bulk_object
+sub test_emulated_bulk_object
 {
     fresh_start;
+
+    play "bulk_object.rec"
+}
+
+sub test_bulk_object
+{
+    fresh_start_bulk;
 
     play "bulk_object.rec"
 }
@@ -862,8 +869,24 @@ sub test_neighbor_next_hop
     }
 }
 
+sub test_vxlan_default_router_mac
+{
+    fresh_start;
+
+    play "vxlan_default_router_mac.rec";
+}
+
+sub test_port_bulk_get
+{
+    fresh_start;
+
+    play "port_bulk_get.rec";
+}
+
 # RUN TESTS
 
+test_port_bulk_get
+test_vxlan_default_router_mac;
 test_neighbor_next_hop;
 test_acl_pre_match_999;
 test_relaxed;
@@ -899,6 +922,7 @@ test_empty_lag_buffer_acl;
 test_bulk_route;
 test_bulk_neighbor;
 test_bulk_fdb;
+test_emulated_bulk_object;
 test_bulk_object;
 test_brcm_config_acl;
 test_brcm_warm_wred_queue;

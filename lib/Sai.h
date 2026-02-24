@@ -98,6 +98,13 @@ namespace sairedis
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
+        public: // QUAD meta key
+
+            using SaiInterface::remove;
+            using SaiInterface::get;
+            using SaiInterface::create;
+            using SaiInterface::set;
+
         public: // stats API
 
             virtual sai_status_t getStats(
@@ -111,6 +118,11 @@ namespace sairedis
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_type_t object_type,
                     _Inout_ sai_stat_capability_list_t *stats_capability) override;
+
+            virtual sai_status_t queryStatsStCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_st_capability_list_t *stats_capability) override;
 
             virtual sai_status_t getStatsExt(
                     _In_ sai_object_type_t object_type,

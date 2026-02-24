@@ -71,7 +71,6 @@ TEST(SaiSerialize, sai_serialize_object_meta_key)
 TEST(SaiSerialize, sai_serialize_port_lane_latch_status_list)
 {
     sai_attribute_t attr;
-
     memset(&attr, 0, sizeof(attr));
 
     for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
@@ -91,19 +90,140 @@ TEST(SaiSerialize, sai_serialize_port_lane_latch_status_list)
                 attr.value.aclfield.enable = true;
             }
 
-            sai_port_lane_latch_status_t list[1];
-            list[0].lane = 1;
-            list[0].value.changed=true;
-            list[0].value.current_status=true;
+            sai_port_lane_latch_status_t list[4];
 
-            attr.value.portlanelatchstatuslist.count=1;
+            // Lane 0: changed=true, current_status=true -> "T*"
+            list[0].lane = 0;
+            list[0].value.changed = true;
+            list[0].value.current_status = true;
+
+            // Lane 1: changed=false, current_status=true -> "T"
+            list[1].lane = 1;
+            list[1].value.changed = false;
+            list[1].value.current_status = true;
+
+            // Lane 2: changed=true, current_status=false -> "F*"
+            list[2].lane = 2;
+            list[2].value.changed = true;
+            list[2].value.current_status = false;
+
+            // Lane 3: changed=false, current_status=false -> "F"
+            list[3].lane = 3;
+            list[3].value.changed = false;
+            list[3].value.current_status = false;
+
+            attr.value.portlanelatchstatuslist.count = 4;
             attr.value.portlanelatchstatuslist.list = list;
 
             auto s = sai_serialize_attr_value(*meta, attr, false);
 
+            std::string expected = "{\"0\":\"T*\",\"1\":\"T\",\"2\":\"F*\",\"3\":\"F\"}";
+            EXPECT_EQ(s, expected);
+
             sai_deserialize_attr_value(s, *meta, attr, false);
         }
     }
+}
+
+TEST(SaiSerialize, sai_deserialize_port_lane_latch_status_list)
+{
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_RX_SIGNAL_DETECT);
+    attr.id = SAI_PORT_ATTR_RX_SIGNAL_DETECT;
+
+    std::string json_str = R"({"0":"T*","1":"F","2":"T"})";
+
+    sai_deserialize_attr_value(json_str, *meta, attr, false);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.count, 3);
+    ASSERT_NE(attr.value.portlanelatchstatuslist.list, nullptr);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[0].lane, 0);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[0].value.changed, true);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[0].value.current_status, true);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[1].lane, 1);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[1].value.changed, false);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[1].value.current_status, false);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[2].lane, 2);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[2].value.changed, false);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[2].value.current_status, true);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+
+    std::string empty_json_str = R"({})";
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_RX_SIGNAL_DETECT;
+
+    sai_deserialize_attr_value(empty_json_str, *meta, attr, false);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.count, 0);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list, nullptr);
+}
+
+TEST(SaiSerialize, sai_serialize_port_snr_list)
+{
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
+    {
+        auto meta = sai_metadata_attr_sorted_by_id_name[idx];
+        if(meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST)
+        {
+            attr.id = meta->attrid;
+
+            sai_port_snr_values_t list[3];
+
+            list[0].lane = 0;
+            list[0].snr = 3712;
+
+            list[1].lane = 1;
+            list[1].snr = 3840;
+
+            list[2].lane = 2;
+            list[2].snr = 4160;
+
+            attr.value.portsnrlist.count = 3;
+            attr.value.portsnrlist.list = list;
+
+            auto s = sai_serialize_attr_value(*meta, attr, false);
+
+            std::string expected = "{\"0\":3712,\"1\":3840,\"2\":4160}";
+            EXPECT_EQ(s, expected);
+
+        }
+    }
+}
+
+TEST(SaiSerialize, sai_deserialize_port_snr_list)
+{
+    std::string json_str = R"({"0":3712,"1":4032})";
+
+    sai_port_snr_list_t snr_list;
+    memset(&snr_list, 0, sizeof(snr_list));
+
+    sai_deserialize_port_snr_list(json_str, snr_list, false);
+
+    EXPECT_EQ(snr_list.count, 2);
+    ASSERT_NE(snr_list.list, nullptr);
+
+    EXPECT_EQ(snr_list.list[0].lane, 0);
+    EXPECT_EQ(snr_list.list[0].snr, 3712);
+
+    EXPECT_EQ(snr_list.list[1].lane, 1);
+    EXPECT_EQ(snr_list.list[1].snr, 4032);
+
+    delete[] snr_list.list;
+
+    std::string empty_json_str = R"({})";
+    memset(&snr_list, 0, sizeof(snr_list));
+    sai_deserialize_port_snr_list(empty_json_str, snr_list, false);
+    EXPECT_EQ(snr_list.count, 0);
+    EXPECT_EQ(snr_list.list, nullptr);
 }
 
 TEST(SaiSerialize, sai_serialize_attr_value)
@@ -122,14 +242,19 @@ TEST(SaiSerialize, sai_serialize_attr_value)
             case SAI_ATTR_VALUE_TYPE_TIMESPEC:
             case SAI_ATTR_VALUE_TYPE_PORT_ERR_STATUS_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_EYE_VALUES_LIST:
+            case SAI_ATTR_VALUE_TYPE_PORT_PAM4_EYE_VALUES_LIST:
             case SAI_ATTR_VALUE_TYPE_FABRIC_PORT_REACHABILITY:
             case SAI_ATTR_VALUE_TYPE_PRBS_RX_STATE:
             case SAI_ATTR_VALUE_TYPE_SEGMENT_LIST:
             case SAI_ATTR_VALUE_TYPE_TLV_LIST:
             case SAI_ATTR_VALUE_TYPE_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_FREQUENCY_OFFSET_PPM_LIST:
-            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             case SAI_ATTR_VALUE_TYPE_ACL_CHAIN_LIST:
+            case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATE_LIST:
+            case SAI_ATTR_VALUE_TYPE_PRBS_BIT_ERROR_RATE:
+            case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_BIT_ERROR_RATE_LIST:
                 continue;
 
             default:
@@ -1358,3 +1483,155 @@ TEST(SaiSerialize, sai_serialize_prefix_compression_entry)
 
     sai_deserialize_prefix_compression_entry(s, e);
 }
+
+TEST(SaiSerialize, serialize_stat_capability_list)
+{
+    SWSS_LOG_ENTER();
+
+    extern const sai_enum_metadata_t sai_metadata_enum_sai_stats_mode_t;
+    sai_stat_capability_list_t queue_stats_capability;
+    sai_stat_capability_t stat_initializer;
+    stat_initializer.stat_enum = 0;
+    stat_initializer.stat_modes = 0;
+    std::vector<sai_stat_capability_t> qstat_cap_list(2, stat_initializer);
+    queue_stats_capability.count = 2;
+    queue_stats_capability.list = qstat_cap_list.data();
+    queue_stats_capability.list[0].stat_enum = SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS;
+    queue_stats_capability.list[0].stat_modes = SAI_STATS_MODE_READ;
+    queue_stats_capability.list[1].stat_enum = SAI_QUEUE_STAT_PACKETS;
+    queue_stats_capability.list[1].stat_modes = SAI_STATS_MODE_READ;
+
+    std::string capab_count = sai_serialize_stats_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, true);
+    std::string capab_str = sai_serialize_stats_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, false);
+
+    std::string exp_count_str = "{\"count\":2,\"list\":null}";
+    EXPECT_EQ(capab_count, exp_count_str);
+
+    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"stat_enum\":\"34\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"stat_enum\":\"0\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
+    EXPECT_EQ(capab_str, exp_capab_str);
+
+    std::vector<std::string> vec_stat_enum;
+    std::vector<std::string> vec_stat_modes;
+
+    for (uint32_t it = 0; it < queue_stats_capability.count; it++)
+    {
+        vec_stat_enum.push_back(std::to_string(queue_stats_capability.list[it].stat_enum));
+        vec_stat_modes.push_back(std::to_string(queue_stats_capability.list[it].stat_modes));
+    }
+
+    std::ostringstream join_stat_enum;
+    std::copy(vec_stat_enum.begin(), vec_stat_enum.end(), std::ostream_iterator<std::string>(join_stat_enum, ","));
+    auto strCapEnum = join_stat_enum.str();
+
+    std::ostringstream join_stat_modes;
+    std::copy(vec_stat_modes.begin(), vec_stat_modes.end(), std::ostream_iterator<std::string>(join_stat_modes, ","));
+    auto strCapModes = join_stat_modes.str();
+
+    sai_stat_capability_list_t stats_capability;
+    std::vector<sai_stat_capability_t> stat_cap_list(queue_stats_capability.count, stat_initializer);
+    stats_capability.count = queue_stats_capability.count;
+    stats_capability.list = stat_cap_list.data();
+
+    // deserialize
+    EXPECT_THROW(sai_deserialize_stats_capability_list(NULL, strCapEnum, strCapModes), std::runtime_error);
+
+    sai_deserialize_stats_capability_list(&stats_capability, strCapEnum, strCapModes);
+
+    EXPECT_EQ(stats_capability.count, queue_stats_capability.count);
+    EXPECT_EQ(stats_capability.list[0].stat_modes, SAI_STATS_MODE_READ);
+    EXPECT_EQ(stats_capability.list[1].stat_modes, SAI_STATS_MODE_READ);
+    int is_expected_enum = false;
+
+    if ((stats_capability.list[0].stat_enum == SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS)||(stats_capability.list[1].stat_enum == SAI_QUEUE_STAT_PACKETS))
+    {
+        is_expected_enum = true;
+    }
+    if ((stats_capability.list[1].stat_enum == SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS)||(stats_capability.list[0].stat_enum == SAI_QUEUE_STAT_PACKETS))
+    {
+        is_expected_enum = true;
+    }
+    EXPECT_EQ(is_expected_enum, true);
+}
+
+TEST(SaiSerialize, serialize_stat_st_capability_list)
+{
+    SWSS_LOG_ENTER();
+
+    extern const sai_enum_metadata_t sai_metadata_enum_sai_stats_mode_t;
+    sai_stat_st_capability_list_t queue_stats_capability;
+    sai_stat_st_capability_t stat_initializer;
+    stat_initializer.capability.stat_enum = 0;
+    stat_initializer.capability.stat_modes = 0;
+    stat_initializer.minimal_polling_interval = 0;
+        std::vector<sai_stat_st_capability_t>
+            qstat_cap_list(2, stat_initializer);
+    queue_stats_capability.count = 2;
+    queue_stats_capability.list = qstat_cap_list.data();
+    queue_stats_capability.list[0].capability.stat_enum = SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS;
+    queue_stats_capability.list[0].capability.stat_modes = SAI_STATS_MODE_READ;
+    queue_stats_capability.list[0].minimal_polling_interval = 100;
+    queue_stats_capability.list[1].capability.stat_enum = SAI_QUEUE_STAT_PACKETS;
+    queue_stats_capability.list[1].capability.stat_modes = SAI_STATS_MODE_READ;
+    queue_stats_capability.list[1].minimal_polling_interval = 200;
+
+    std::string capab_count = sai_serialize_stats_st_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, true);
+    std::string capab_str = sai_serialize_stats_st_capability_list(queue_stats_capability, &sai_metadata_enum_sai_stats_mode_t, false);
+
+    std::string exp_count_str = "{\"count\":2,\"list\":null}";
+    EXPECT_EQ(capab_count, exp_count_str);
+
+    std::string exp_capab_str = "{\"count\":2,\"list\":[{\"minimal_polling_interval\":\"100\",\"stat_enum\":\"34\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]},{\"minimal_polling_interval\":\"200\",\"stat_enum\":\"0\",\"stat_modes\":[\"SAI_STATS_MODE_READ\"]}]}";
+    EXPECT_EQ(capab_str, exp_capab_str);
+
+    std::vector<std::string> vec_stat_enum;
+    std::vector<std::string> vec_stat_modes;
+    std::vector<std::string> vec_minimal_polling_intervals;
+
+    for (uint32_t it = 0; it < queue_stats_capability.count; it++)
+    {
+        vec_stat_enum.push_back(std::to_string(queue_stats_capability.list[it].capability.stat_enum));
+        vec_stat_modes.push_back(std::to_string(queue_stats_capability.list[it].capability.stat_modes));
+        vec_minimal_polling_intervals.push_back(std::to_string(queue_stats_capability.list[it].minimal_polling_interval));
+    }
+
+    std::ostringstream join_stat_enum;
+    std::copy(vec_stat_enum.begin(), vec_stat_enum.end(), std::ostream_iterator<std::string>(join_stat_enum, ","));
+    auto strCapEnum = join_stat_enum.str();
+
+    std::ostringstream join_stat_modes;
+    std::copy(vec_stat_modes.begin(), vec_stat_modes.end(), std::ostream_iterator<std::string>(join_stat_modes, ","));
+    auto strCapModes = join_stat_modes.str();
+
+    std::ostringstream join_minimal_polling_intervals;
+    std::copy(vec_minimal_polling_intervals.begin(), vec_minimal_polling_intervals.end(), std::ostream_iterator<std::string>(join_minimal_polling_intervals, ","));
+    auto strCapMinPollInt = join_minimal_polling_intervals.str();
+
+    sai_stat_st_capability_list_t stats_capability;
+    std::vector<sai_stat_st_capability_t> stat_cap_list(queue_stats_capability.count, stat_initializer);
+    stats_capability.count = queue_stats_capability.count;
+    stats_capability.list = stat_cap_list.data();
+
+    // deserialize
+    EXPECT_THROW(sai_deserialize_stats_st_capability_list(NULL, strCapEnum, strCapModes, strCapMinPollInt), std::runtime_error);
+
+    sai_deserialize_stats_st_capability_list(&stats_capability, strCapEnum, strCapModes, strCapMinPollInt);
+
+    EXPECT_EQ(stats_capability.count, queue_stats_capability.count);
+    EXPECT_EQ(stats_capability.list[0].capability.stat_modes, SAI_STATS_MODE_READ);
+    EXPECT_EQ(stats_capability.list[1].capability.stat_modes, SAI_STATS_MODE_READ);
+    int is_expected_enum = false;
+
+    if ((stats_capability.list[0].capability.stat_enum == SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS)||(stats_capability.list[1].capability.stat_enum == SAI_QUEUE_STAT_PACKETS))
+    {
+        is_expected_enum = true;
+    }
+    if ((stats_capability.list[1].capability.stat_enum == SAI_QUEUE_STAT_WRED_ECN_MARKED_PACKETS)||(stats_capability.list[0].capability.stat_enum == SAI_QUEUE_STAT_PACKETS))
+    {
+        is_expected_enum = true;
+    }
+    EXPECT_EQ(is_expected_enum, true);
+
+    EXPECT_EQ(stats_capability.list[0].minimal_polling_interval, 100);
+    EXPECT_EQ(stats_capability.list[1].minimal_polling_interval, 200);
+}
+

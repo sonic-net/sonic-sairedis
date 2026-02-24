@@ -37,7 +37,7 @@ resources:
 parameters:
   - name: debian_version
     type: string
-    default: bullseye
+    default: bookworm
 variables:
   - name: BUILD_BRANCH
     ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
@@ -52,9 +52,9 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      sonic_slave: sonic-slave-${{ parameters.debian_version }}
-      swss_common_artifact_name: sonic-swss-common
-      artifact_name: sonic-sairedis
+      pool: sonicso1ES-amd64
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-sairedis.syslog
       run_unit_test: true
       archive_gcov: true
@@ -66,12 +66,12 @@ stages:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      sonic_slave: sonic-slave-${{ parameters.debian_version }}
-      swss_common_artifact_name: sonic-swss-common
-      artifact_name: sonic-sairedis-asan
+      pool: sonicso1ES-amd64
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-sairedis-asan.syslog
       asan: true
-      run_unit_test: false
+      run_unit_test: true
       archive_gcov: false
       debian_version: ${{ parameters.debian_version }}
 
@@ -83,10 +83,9 @@ stages:
     parameters:
       arch: armhf
       timeout: 180
-      pool: sonicbld-armhf
-      sonic_slave: sonic-slave-${{ parameters.debian_version }}-armhf
-      swss_common_artifact_name: sonic-swss-common.armhf
-      artifact_name: sonic-sairedis.armhf
+      pool: sonicso1ES-armhf
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}.armhf
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}.armhf
       syslog_artifact_name: sonic-sairedis.syslog.armhf
       debian_version: ${{ parameters.debian_version }}
 
@@ -94,48 +93,44 @@ stages:
     parameters:
       arch: arm64
       timeout: 180
-      pool: sonicbld-arm64
-      sonic_slave: sonic-slave-${{ parameters.debian_version }}-arm64
-      swss_common_artifact_name: sonic-swss-common.arm64
-      artifact_name: sonic-sairedis.arm64
+      pool: sonicso1ES-arm64
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}.arm64
+      artifact_name: sonic-sairedis-${{ parameters.debian_version }}.arm64
       syslog_artifact_name: sonic-sairedis.syslog.arm64
       debian_version: ${{ parameters.debian_version }}
 
-- stage: BuildBookworm
+- stage: BuildTrixie
   dependsOn: BuildArm
   condition: succeeded('BuildArm')
   jobs:
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: amd64
-      sonic_slave: sonic-slave-bookworm
-      swss_common_artifact_name: sonic-swss-common-bookworm
-      artifact_name: sonic-sairedis-bookworm
-      syslog_artifact_name: sonic-sairedis-bookworm.syslog
+      swss_common_artifact_name: sonic-swss-common-trixie
+      artifact_name: sonic-sairedis-trixie
+      syslog_artifact_name: sonic-sairedis-trixie.syslog
       run_unit_test: true
-      debian_version: ${{ parameters.debian_version }}
+      debian_version: trixie
 
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: armhf
       timeout: 180
-      pool: sonicbld-armhf
-      sonic_slave: sonic-slave-bookworm-armhf
-      swss_common_artifact_name: sonic-swss-common-bookworm.armhf
-      artifact_name: sonic-sairedis-bookworm.armhf
-      syslog_artifact_name: sonic-sairedis-bookworm.syslog.armhf
-      debian_version: ${{ parameters.debian_version }}
+      pool: sonicso1ES-armhf
+      swss_common_artifact_name: sonic-swss-common-trixie.armhf
+      artifact_name: sonic-sairedis-trixie.armhf
+      syslog_artifact_name: sonic-sairedis-trixie.syslog.armhf
+      debian_version: trixie
 
   - template: .azure-pipelines/build-template.yml
     parameters:
       arch: arm64
       timeout: 180
-      pool: sonicbld-arm64
-      sonic_slave: sonic-slave-bookworm-arm64
-      swss_common_artifact_name: sonic-swss-common-bookworm.arm64
-      artifact_name: sonic-sairedis-bookworm.arm64
-      syslog_artifact_name: sonic-sairedis-bookworm.syslog.arm64
-      debian_version: ${{ parameters.debian_version }}
+      pool: sonicso1ES-arm64
+      swss_common_artifact_name: sonic-swss-common-trixie.arm64
+      artifact_name: sonic-sairedis-trixie.arm64
+      syslog_artifact_name: sonic-sairedis-trixie.syslog.arm64
+      debian_version: trixie
 
 - stage: BuildSwss
   dependsOn: Build
@@ -144,11 +139,12 @@ stages:
   - template: .azure-pipelines/build-swss-template.yml
     parameters:
       arch: amd64
-      sonic_slave: sonic-slave-${{ parameters.debian_version }}
-      swss_common_artifact_name: sonic-swss-common
-      sairedis_artifact_name: sonic-sairedis
+      timeout: 90
+      pool: sonicso1ES-amd64
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      sairedis_artifact_name: sonic-sairedis-${{ parameters.debian_version }}
       syslog_artifact_name: sonic-swss.syslog
-      artifact_name: sonic-swss
+      artifact_name: sonic-swss-${{ parameters.debian_version }}
       debian_version: ${{ parameters.debian_version }}
 
 - stage: BuildDocker
@@ -157,9 +153,9 @@ stages:
   jobs:
   - template: .azure-pipelines/build-docker-sonic-vs-template.yml
     parameters:
-      swss_common_artifact_name: sonic-swss-common
-      sairedis_artifact_name: sonic-sairedis
-      swss_artifact_name: sonic-swss
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      sairedis_artifact_name: sonic-sairedis-${{ parameters.debian_version }}
+      swss_artifact_name: sonic-swss-${{ parameters.debian_version }}
       artifact_name: docker-sonic-vs
 
 - stage: BuildDockerAsan
@@ -170,9 +166,9 @@ stages:
   jobs:
   - template: .azure-pipelines/build-docker-sonic-vs-template.yml
     parameters:
-      swss_common_artifact_name: sonic-swss-common
-      sairedis_artifact_name: sonic-sairedis-asan
-      swss_artifact_name: sonic-swss
+      swss_common_artifact_name: sonic-swss-common-${{ parameters.debian_version }}
+      sairedis_artifact_name: sonic-sairedis-asan-${{ parameters.debian_version }}
+      swss_artifact_name: sonic-swss-${{ parameters.debian_version }}
       artifact_name: docker-sonic-vs-asan
       asan: true
 
@@ -183,6 +179,7 @@ stages:
   - template: .azure-pipelines/test-docker-sonic-vs-template.yml
     parameters:
       log_artifact_name: log
+      debian_version: ${{ parameters.debian_version }}
 
 - stage: TestAsan
   dependsOn: BuildDockerAsan
@@ -193,3 +190,4 @@ stages:
       docker_sonic_vs_name: docker-sonic-vs-asan
       log_artifact_name: log-asan
       asan: true
+      debian_version: ${{ parameters.debian_version }}

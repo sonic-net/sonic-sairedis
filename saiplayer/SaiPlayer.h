@@ -7,6 +7,7 @@
 #include "syncd/ServiceMethodTable.h"
 #include "syncd/SwitchNotifications.h"
 
+#include <fstream>
 #include <memory>
 #include <map>
 
@@ -165,6 +166,24 @@ namespace saiplayer
                     _In_ uint32_t attr_count,
                     _In_ sai_attribute_t *attr_list);
 
+            sai_status_t handle_dash_outbound_port_map_port_range(
+                    _In_ const std::string &str_object_id,
+                    _In_ sai_common_api_t api,
+                    _In_ uint32_t attr_count,
+                    _In_ sai_attribute_t *attr_list);
+
+            sai_status_t handle_dash_global_trusted_vni(
+                    _In_ const std::string &str_object_id,
+                    _In_ sai_common_api_t api,
+                    _In_ uint32_t attr_count,
+                    _In_ sai_attribute_t *attr_list);
+
+            sai_status_t handle_dash_eni_trusted_vni(
+                    _In_ const std::string &str_object_id,
+                    _In_ sai_common_api_t api,
+                    _In_ uint32_t attr_count,
+                    _In_ sai_attribute_t *attr_list);
+
             void match_redis_with_rec(
                     _In_ sai_object_type_t object_type,
                     _In_ uint32_t get_attr_count,
@@ -248,6 +267,18 @@ namespace saiplayer
                     _In_ uint32_t count,
                     _In_ const sai_bfd_session_state_notification_t *data);
 
+            void onIcmpEchoSessionStateChange(
+                    _In_ uint32_t count,
+                    _In_ const sai_icmp_echo_session_state_notification_t *data);
+
+            void onHaSetEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_set_event_data_t *data);
+
+            void onHaScopeEvent(
+                    _In_ uint32_t count,
+                    _In_ const sai_ha_scope_event_data_t *data);
+
             void onPortHostTxReady(
                     _In_ sai_object_id_t switch_id,
                     _In_ sai_object_id_t port_id,
@@ -258,6 +289,8 @@ namespace saiplayer
             std::shared_ptr<sairedis::SaiInterface> m_sai;
 
             std::shared_ptr<CommandLineOptions> m_commandLineOptions;
+
+            std::ifstream m_infile;
 
             std::map<sai_object_id_t,sai_object_id_t> m_local_to_redis;
             std::map<sai_object_id_t,sai_object_id_t> m_redis_to_local;

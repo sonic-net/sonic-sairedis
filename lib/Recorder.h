@@ -247,6 +247,14 @@ namespace sairedis
                     _In_ uint32_t objectCount,
                     _In_ const sai_status_t *objectStatuses);
 
+            void recordBulkGenericGet(
+                    _In_ const std::string& key,
+                    _In_ const std::vector<swss::FieldValueTuple>& arguments);
+
+            void recordBulkGenericGetResponse(
+                    _In_ sai_status_t status,
+                    _In_ const std::vector<swss::FieldValueTuple>& arguments);
+
         public: // SAI query interface API
 
             void recordFlushFdbEntries(
@@ -298,6 +306,26 @@ namespace sairedis
                     _In_ sai_attr_id_t attrId,
                     _In_ const sai_s32_list_t* enumValuesCapability);
 
+            void recordQueryStatsCapability(
+                    _In_ sai_object_id_t switch_id,
+                    _In_ sai_object_type_t object_type,
+                    _Inout_ sai_stat_capability_list_t* stats_capability);
+
+            void recordQueryStatsCapabilityResponse(
+                    _In_ sai_status_t status,
+                    _In_ sai_object_type_t objectType,
+                    _In_ const sai_stat_capability_list_t *stats_capability);
+
+            void recordQueryStatsStCapability(
+                _In_ sai_object_id_t switch_id,
+                _In_ sai_object_type_t object_type,
+                _Inout_ sai_stat_st_capability_list_t *stats_capability);
+
+            void recordQueryStatsStCapabilityResponse(
+                _In_ sai_status_t status,
+                _In_ sai_object_type_t objectType,
+                _In_ const sai_stat_st_capability_list_t *stats_capability);
+
             // TODO move to private
             void recordQueryAttributeCapability(
                     _In_ const std::string& key,
@@ -323,7 +351,23 @@ namespace sairedis
                     _In_ sai_status_t status,
                     _In_ const std::vector<swss::FieldValueTuple>& arguments);
 
-        public: // SAI notifications
+            void recordQueryStatsCapability(
+                    _In_ const std::string& key,
+                    _In_ const std::vector<swss::FieldValueTuple>& arguments);
+
+            void recordQueryStatsCapabilityResponse(
+                    _In_ sai_status_t status,
+                    _In_ const std::string& arguments);
+
+            void recordQueryStatsStCapability(
+                    _In_ const std::string &key,
+                    _In_ const std::vector<swss::FieldValueTuple> &arguments);
+
+            void recordQueryStatsStCapabilityResponse(
+                    _In_ sai_status_t status,
+                    _In_ const std::string &arguments);
+
+    public: // SAI notifications
 
             void recordNotification(
                     _In_ const std::string &name,

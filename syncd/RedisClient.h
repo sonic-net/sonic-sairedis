@@ -1,10 +1,8 @@
 #pragma once
 
-extern "C" {
-#include "saimetadata.h"
-}
+#include "BaseRedisClient.h"
 
-#include "swss/table.h"
+#include "swss/dbconnector.h"
 
 #include <string>
 #include <unordered_map>
@@ -14,7 +12,7 @@ extern "C" {
 
 namespace syncd
 {
-    class RedisClient
+    class RedisClient: public BaseRedisClient
     {
         public:
 
@@ -25,138 +23,154 @@ namespace syncd
 
         public:
 
-            void clearLaneMap(
-                    _In_ sai_object_id_t switchVid) const;
+            virtual bool isRedisEnabled() const override;
 
-            std::unordered_map<sai_uint32_t, sai_object_id_t> getLaneMap(
-                    _In_ sai_object_id_t switchVid) const;
+            virtual void clearLaneMap(
+                    _In_ sai_object_id_t switchVid) const override;
 
-            void saveLaneMap(
+            virtual std::unordered_map<sai_uint32_t, sai_object_id_t> getLaneMap(
+                    _In_ sai_object_id_t switchVid) const override;
+
+            virtual void saveLaneMap(
                     _In_ sai_object_id_t switchVid,
-                    _In_ const std::unordered_map<sai_uint32_t, sai_object_id_t>& map) const;
+                    _In_ const std::unordered_map<sai_uint32_t, sai_object_id_t>& map) const override;
 
-            std::unordered_map<sai_object_id_t, sai_object_id_t> getVidToRidMap(
-                    _In_ sai_object_id_t switchVid) const;
+            virtual std::unordered_map<sai_object_id_t, sai_object_id_t> getVidToRidMap(
+                    _In_ sai_object_id_t switchVid) const override;
 
-            std::unordered_map<sai_object_id_t, sai_object_id_t> getRidToVidMap(
-                    _In_ sai_object_id_t switchVid) const;
+            virtual std::unordered_map<sai_object_id_t, sai_object_id_t> getRidToVidMap(
+                    _In_ sai_object_id_t switchVid) const override;
 
-            std::unordered_map<sai_object_id_t, sai_object_id_t> getVidToRidMap() const;
+            virtual std::unordered_map<sai_object_id_t, sai_object_id_t> getVidToRidMap() const override;
 
-            std::unordered_map<sai_object_id_t, sai_object_id_t> getRidToVidMap() const;
+            virtual std::unordered_map<sai_object_id_t, sai_object_id_t> getRidToVidMap() const override;
 
-            void setDummyAsicStateObject(
-                    _In_ sai_object_id_t objectVid);
+            virtual void setDummyAsicStateObject(
+                    _In_ sai_object_id_t objectVid) override;
 
-            void saveColdBootDiscoveredVids(
+            virtual void setDummyAsicStateObjects(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* objectVids) override;
+
+            virtual void saveColdBootDiscoveredVids(
                     _In_ sai_object_id_t switchVid,
-                    _In_ const std::set<sai_object_id_t>& coldVids);
+                    _In_ const std::set<sai_object_id_t>& coldVids) override;
 
-            std::shared_ptr<std::string> getSwitchHiddenAttribute(
+            virtual std::shared_ptr<std::string> getSwitchHiddenAttribute(
                     _In_ sai_object_id_t switchVid,
-                    _In_ const std::string& attrIdName);
+                    _In_ const std::string& attrIdName) override;
 
-            void saveSwitchHiddenAttribute(
+            virtual void saveSwitchHiddenAttribute(
                     _In_ sai_object_id_t switchVid,
                     _In_ const std::string& attrIdName,
-                    _In_ sai_object_id_t objectRid);
+                    _In_ sai_object_id_t objectRid) override;
 
-            std::set<sai_object_id_t> getColdVids(
-                    _In_ sai_object_id_t switchVid);
+            virtual std::set<sai_object_id_t> getColdVids(
+                    _In_ sai_object_id_t switchVid) override;
 
-            void setPortLanes(
+            virtual void setPortLanes(
                     _In_ sai_object_id_t switchVid,
                     _In_ sai_object_id_t portRid,
-                    _In_ const std::vector<uint32_t>& lanes);
+                    _In_ const std::vector<uint32_t>& lanes) override;
 
-            size_t getAsicObjectsSize(
-                    _In_ sai_object_id_t switchVid) const;
+            virtual size_t getAsicObjectsSize(
+                    _In_ sai_object_id_t switchVid) const override;
 
-            int removePortFromLanesMap(
+            virtual int removePortFromLanesMap(
                     _In_ sai_object_id_t switchVid,
-                    _In_ sai_object_id_t portRid) const;
+                    _In_ sai_object_id_t portRid) const override;
 
-            void removeAsicObject(
-                    _In_ sai_object_id_t objectVid) const;
+            virtual void removeAsicObject(
+                    _In_ sai_object_id_t objectVid) const override;
 
-            void removeAsicObject(
-                    _In_ const sai_object_meta_key_t& metaKey);
+            virtual void removeAsicObject(
+                    _In_ const sai_object_meta_key_t& metaKey) override;
 
-            void removeTempAsicObject(
-                    _In_ const sai_object_meta_key_t& metaKey);
+            virtual void removeTempAsicObject(
+                    _In_ const sai_object_meta_key_t& metaKey) override;
 
-            void removeAsicObjects(
-                    _In_ const std::vector<std::string>& keys);
+            virtual void removeAsicObjects(
+                    _In_ const std::vector<std::string>& keys) override;
 
-            void removeTempAsicObjects(
-                    _In_ const std::vector<std::string>& keys);
+            virtual void removeTempAsicObjects(
+                    _In_ const std::vector<std::string>& keys) override;
 
-            void createAsicObject(
+            virtual void createAsicObject(
                     _In_ const sai_object_meta_key_t& metaKey,
-                    _In_ const std::vector<swss::FieldValueTuple>& attrs);
+                    _In_ const std::vector<swss::FieldValueTuple>& attrs) override;
 
-            void createTempAsicObject(
+            virtual void createTempAsicObject(
                     _In_ const sai_object_meta_key_t& metaKey,
-                    _In_ const std::vector<swss::FieldValueTuple>& attrs);
+                    _In_ const std::vector<swss::FieldValueTuple>& attrs) override;
 
-            void createAsicObjects(
-                    _In_ const std::unordered_map<std::string, std::vector<swss::FieldValueTuple>>& multiHash);
+            virtual void createAsicObjects(
+                    _In_ const std::unordered_map<std::string, std::vector<swss::FieldValueTuple>>& multiHash) override;
 
-            void createTempAsicObjects(
-                    _In_ const std::unordered_map<std::string, std::vector<swss::FieldValueTuple>>& multiHash);
+            virtual void createTempAsicObjects(
+                    _In_ const std::unordered_map<std::string, std::vector<swss::FieldValueTuple>>& multiHash) override;
 
-            void setVidAndRidMap(
-                    _In_ const std::unordered_map<sai_object_id_t, sai_object_id_t>& map);
+            virtual void setVidAndRidMap(
+                    _In_ const std::unordered_map<sai_object_id_t, sai_object_id_t>& map) override;
 
-            std::vector<std::string> getAsicStateKeys() const;
+            virtual std::vector<std::string> getAsicStateKeys() const override;
 
-            std::vector<std::string> getAsicStateSwitchesKeys() const;
+            virtual std::vector<std::string> getAsicStateSwitchesKeys() const override;
 
-            void removeColdVid(
-                    _In_ sai_object_id_t vid);
+            virtual void removeColdVid(
+                    _In_ sai_object_id_t vid) override;
 
-            std::unordered_map<std::string, std::string> getAttributesFromAsicKey(
-                    _In_ const std::string& key) const;
+            virtual std::unordered_map<std::string, std::string> getAttributesFromAsicKey(
+                    _In_ const std::string& key) const override;
 
-            bool hasNoHiddenKeysDefined() const;
+            virtual bool hasNoHiddenKeysDefined() const override;
 
-            void removeVidAndRid(
+            virtual void removeVidAndRid(
                     _In_ sai_object_id_t vid,
-                    _In_ sai_object_id_t rid);
+                    _In_ sai_object_id_t rid) override;
 
-            void insertVidAndRid(
+            virtual void insertVidAndRid(
                     _In_ sai_object_id_t vid,
-                    _In_ sai_object_id_t rid);
+                    _In_ sai_object_id_t rid) override;
 
-            sai_object_id_t getVidForRid(
-                    _In_ sai_object_id_t rid);
+            virtual void insertVidsAndRids(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* vids,
+                    _In_ const sai_object_id_t* rids) override;
 
-            sai_object_id_t getRidForVid(
-                    _In_ sai_object_id_t vid);
+            virtual sai_object_id_t getVidForRid(
+                    _In_ sai_object_id_t rid) override;
 
-            void removeAsicStateTable();
+            virtual sai_object_id_t getRidForVid(
+                    _In_ sai_object_id_t vid) override;
 
-            void removeTempAsicStateTable();
+            virtual void getVidsForRids(
+                    _In_ size_t count,
+                    _In_ const sai_object_id_t* rids,
+                    _Out_ sai_object_id_t* vids) override;
 
-            std::map<sai_object_id_t, swss::TableDump> getAsicView();
+            virtual void removeAsicStateTable() override;
 
-            std::map<sai_object_id_t, swss::TableDump> getTempAsicView();
+            virtual void removeTempAsicStateTable() override;
 
-            void setAsicObject(
+            virtual std::map<sai_object_id_t, swss::TableDump> getAsicView() override;
+
+            virtual std::map<sai_object_id_t, swss::TableDump> getTempAsicView() override;
+
+            virtual void setAsicObject(
                     _In_ const sai_object_meta_key_t& metaKey,
                     _In_ const std::string& attr,
-                    _In_ const std::string& value);
+                    _In_ const std::string& value) override;
 
-            void setTempAsicObject(
+            virtual void setTempAsicObject(
                     _In_ const sai_object_meta_key_t& metaKey,
                     _In_ const std::string& attr,
-                    _In_ const std::string& value);
+                    _In_ const std::string& value) override;
 
-            void processFlushEvent(
+            virtual void processFlushEvent(
                     _In_ sai_object_id_t switchVid,
                     _In_ sai_object_id_t portVid,
                     _In_ sai_object_id_t bvId,
-                    _In_ sai_fdb_flush_entry_type_t type);
+                    _In_ sai_fdb_flush_entry_type_t type) override;
 
         private:
 
@@ -180,6 +194,5 @@ namespace syncd
             std::shared_ptr<swss::DBConnector> m_dbAsic;
 
             std::string m_fdbFlushSha;
-
     };
 }

@@ -68,6 +68,17 @@ namespace sairedis
                     _In_ sai_object_id_t switchId);
 
             /**
+             * @brief Allocate multiple object ids on a given switch.
+             *
+             * Throws when object type is switch.
+             */
+            void allocateNewObjectIds(
+                    _In_ sai_object_id_t switchId,
+                    _In_ size_t count,
+                    _In_ const sai_object_type_t* objectTypes,
+                    _Out_ sai_object_id_t* oids) const;
+
+            /**
              * @brief Allocate new switch object id.
              */
             sai_object_id_t allocateNewSwitchObjectId(

@@ -41,9 +41,13 @@ mkdir -p /var/log/sai_failure_dump/
 # currently disabled since most vendors don't support that yet
 # CMD_ARGS+=" -l"
 
-# Set synchronous mode if it is enabled in CONFIG_DB
+# Set zmq mode by default for smartswitch DPU
+# Otherwise, set synchronous mode if it is enabled in CONFIG_DB
 SYNC_MODE=$(echo $SYNCD_VARS | jq -r '.synchronous_mode')
-if [ "$SYNC_MODE" == "enable" ]; then
+SWITCH_TYPE=$(echo $SYNCD_VARS | jq -r '.switch_type')
+if [ "$SWITCH_TYPE" == "dpu" ]; then
+    CMD_ARGS+=" -z zmq_sync -x /usr/share/sonic/hwsku/context_config.json"
+elif [ "$SYNC_MODE" == "enable" ]; then
     CMD_ARGS+=" -s"
 fi
 
@@ -349,6 +353,18 @@ config_syncd_mlnx()
 
     echo >> /tmp/sai-temp.profile
 
+    DEVICE_TYPE=$(/usr/bin/asic_detect/asic_detect.sh)
+    if [[ $? -eq 0 ]]; then
+        ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
+        ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
+        if [ -f "$ASIC_PROFILE_PATH" ]; then
+            cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
+            echo >> /tmp/sai-temp.profile
+        fi
+    else
+        echo "Warning: ASIC is not detected..."
+    fi
+
     if [[ -f $SAI_COMMON_FILE_PATH ]]; then
         cat $SAI_COMMON_FILE_PATH >> /tmp/sai-temp.profile
     fi
@@ -367,6 +383,11 @@ config_syncd_mlnx()
 
     if [[ "$DUAL_TOR" == "enable" ]]; then
        echo "SAI_ADDITIONAL_MAC_ENABLED=1" >> /tmp/sai.profile
+       echo "SAI_ACL_MULTI_BINDING_ENABLED=1" >> /tmp/sai.profile
+    fi
+
+    if [[ $DEV != "" ]]; then
+        echo "SAI_KEY_MULTI_ASIC_DEVICE_ID=$DEV" >> /tmp/sai.profile
     fi
 
     SDK_DUMP_PATH=`cat /tmp/sai.profile|grep "SAI_DUMP_STORE_PATH"|cut -d = -f2`
@@ -381,6 +402,14 @@ config_syncd_mlnx()
 
     # Ensure no redundant newlines
     sed -i '/^$/d' /tmp/sai.profile
+
+    # As long as sonic does not support PTP which can be enabled/disabled, Nvidia platforms enables
+    # phcsync for all systems. If HW does not support it, it will do nothing.
+    supervisorctl start phcsync
+
+    if [ -f "$HWSKU_DIR/context_config.json" ]; then
+        CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
+    fi
 }
 
 config_syncd_centec()
@@ -403,7 +432,7 @@ config_syncd_cavium()
     done
 }
 
-config_syncd_marvell()
+config_syncd_marvell_prestera()
 {
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 
@@ -456,6 +485,13 @@ config_syncd_nephos()
 
 config_syncd_vs()
 {
+    if [[ $(sonic-db-cli CONFIG_DB hget 'DEVICE_METADATA|localhost' switch_type) == 'dpu' ]]; then
+        if [[ -f /usr/bin/syncd_dash ]]; then
+            CMD_SYNCD=/usr/bin/syncd_dash
+            CMD=$CMD_SYNCD
+        fi
+    fi
+
     CMD_ARGS+=" -l -p $HWSKU_DIR/sai.profile"
 }
 
@@ -471,7 +507,7 @@ vpp_api_check()
 
 config_syncd_vpp()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+    CMD_ARGS+=" -p $HWSKU_DIR/sai_vpp.profile"
     vpp_api_check "/run/vpp/api.sock"
     source /etc/sonic/vpp/syncd_vpp_env
     export NO_LINUX_NL
@@ -501,7 +537,25 @@ config_syncd_nvidia_bluefield()
 
     eth0_mac=$(cat /sys/class/net/Ethernet0/address)
 
-    cp $HWSKU_DIR/sai.profile /tmp/sai.profile
+    cp $HWSKU_DIR/sai.profile /tmp/sai-temp.profile
+
+    echo >> /tmp/sai-temp.profile
+
+    DEVICE_TYPE=$(/usr/bin/asic_detect/asic_detect.sh)
+    if [[ $? -eq 0 ]]; then
+        ASIC_PROFILE_FILE="sai-${DEVICE_TYPE}.profile"
+        ASIC_PROFILE_PATH="/etc/mlnx/${ASIC_PROFILE_FILE}"
+        if [ -f "$ASIC_PROFILE_PATH" ]; then
+            cat "$ASIC_PROFILE_PATH" >> /tmp/sai-temp.profile
+            echo >> /tmp/sai-temp.profile
+        fi
+    else
+        echo "Warning: ASIC is not detected..."
+    fi
+
+    # keep only the first occurence of each prefix with '=' sign, and remove the others.
+    awk -F= '!seen[$1]++' /tmp/sai-temp.profile > /tmp/sai.profile
+    rm -f /tmp/sai-temp.profile
 
     # Update sai.profile with MAC_ADDRESS
     echo "DEVICE_MAC_ADDRESS=$base_mac" >> /tmp/sai.profile
@@ -514,29 +568,11 @@ config_syncd_nvidia_bluefield()
         mkdir -p "$SDK_DUMP_PATH"
     fi
 
-    echo 9216 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
+    echo 11700 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
     mkdir -p /mnt/huge
     mount -t hugetlbfs pagesize=1GB /mnt/huge
 
-    devlink dev eswitch set pci/0000:03:00.0 mode legacy
-    devlink dev eswitch set pci/0000:03:00.0 mode switchdev
-
-    if [[ $hwsku != *"-C1" ]] && [[ $single_port == false ]]; then
-        devlink dev param set pci/0000:03:00.0 name esw_multiport value 1 cmode runtime
-        devlink dev param set pci/0000:03:00.1 name esw_multiport value 1 cmode runtime
-    fi
-
     ethtool -A Ethernet0 rx off tx off
-
-    if [[ $single_port == false ]]; then
-        eth4_mac=$(cat /sys/class/net/Ethernet4/address)
-        echo "PORT_2_MAC_ADDRESS=$eth4_mac" >> /tmp/sai.profile
-
-        devlink dev eswitch set pci/0000:03:00.1 mode legacy
-        devlink dev eswitch set pci/0000:03:00.1 mode switchdev
-
-        ethtool -A Ethernet4 rx off tx off
-    fi
 }
 
 config_syncd_xsight()
@@ -546,18 +582,7 @@ config_syncd_xsight()
     LABEL_REVISION_FILE="/etc/sonic/hw_revision"
     ONIE_MACHINE=`sed -n -e 's/^.*onie_machine=//p' /etc/machine.conf`
 
-    ln -sf /usr/share/sonic/hwsku/xdrv_config.json /etc/xsight/xdrv_config.json
-    ln -sf /usr/share/sonic/hwsku/xlink_cfg.json /etc/xsight/xlink_cfg.json
-    ln -sf /usr/share/sonic/hwsku/lanes_polarity.json /etc/xsight/lanes_polarity.json
-
-    if [ -f  ${LABEL_REVISION_FILE} ]; then
-        LABEL_REVISION=`cat ${LABEL_REVISION_FILE}`
-        if [[ x${LABEL_REVISION} == x"R0B" ]] || [[ x${LABEL_REVISION} == x"R0B2" ]]; then
-            ln -sf /etc/xsight/serdes_config_A0.json /etc/xsight/serdes_config.json
-        else
-            ln -sf /etc/xsight/serdes_config_A1.json /etc/xsight/serdes_config.json
-        fi
-    fi
+    /usr/bin/init_xsai.sh
 
     #export XLOG_DEBUG="XSW SAI SAI-HOST XHAL-TBL XHAL-LKP XHAL-LPM XHAL-TCAM XHAL-DTE XHAL-RNG XHAL-SP XHAL-RPC"
     export XLOG_SYSLOG=ALL
@@ -588,6 +613,11 @@ config_syncd_xsight()
     CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
 }
 
+config_syncd_clounix()
+{
+    CMD_ARGS+=" -p $HWSKU_DIR/sai.profile"
+}
+
 config_syncd()
 {
     check_warm_boot
@@ -603,8 +633,8 @@ config_syncd()
         config_syncd_cavium
     elif [ "$SONIC_ASIC_TYPE" == "centec" ]; then
         config_syncd_centec
-    elif [ "$SONIC_ASIC_TYPE" == "marvell" ]; then
-        config_syncd_marvell
+    elif [ "$SONIC_ASIC_TYPE" == "marvell-prestera" ]; then
+        config_syncd_marvell_prestera
      elif [ "$SONIC_ASIC_TYPE" == "barefoot" ]; then
          config_syncd_barefoot
     elif [ "$SONIC_ASIC_TYPE" == "nephos" ]; then
@@ -615,6 +645,8 @@ config_syncd()
         config_syncd_vpp
     elif [ "$SONIC_ASIC_TYPE" == "marvell-teralynx" ]; then
         config_syncd_marvell_teralynx
+    elif [ "$SONIC_ASIC_TYPE" == "alpinevs" ]; then
+        config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "soda" ]; then
         config_syncd_soda
     elif [ "$SONIC_ASIC_TYPE" == "nvidia-bluefield" ]; then
@@ -623,6 +655,8 @@ config_syncd()
         config_syncd_xsight
     elif [ "$SONIC_ASIC_TYPE" == "pensando" ]; then
 	config_syncd_pensando
+    elif [ "$SONIC_ASIC_TYPE" == "clounix" ]; then
+        config_syncd_clounix
     else
         echo "Unknown ASIC type $SONIC_ASIC_TYPE"
         exit 1
