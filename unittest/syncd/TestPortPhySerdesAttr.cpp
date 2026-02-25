@@ -18,11 +18,13 @@
 #include <string>
 #include <gtest/gtest.h>
 #include <memory>
+#include <nlohmann/json.hpp>
 
 using namespace saimeta;
 using namespace sairedis;
 using namespace syncd;
 using namespace std;
+using json = nlohmann::json;
 
 static const std::string ATTR_TYPE_PORT_PHY_SERDES_ATTR = "Port Serdes Attributes";
 static const uint32_t TEST_LANE_COUNT = 4;
@@ -240,17 +242,45 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
     bool found = portPhyAttrTable.hget(expectedKey, "rx_vga", rxVgaValue);
     EXPECT_TRUE(found) << "rx_vga not found in COUNTERS_DB PORT_PHY_ATTR_TABLE table";
 
-    // Expected format: "4:177,178,179,180" (count:lane_values)
-    EXPECT_TRUE(rxVgaValue.find("4:") != std::string::npos)
-        << "rx_vga should start with lane count '4:'\nActual: " << rxVgaValue;
+    // Parse JSON and validate structure
+    json rxVgaJson;
+    try {
+        rxVgaJson = json::parse(rxVgaValue);
+    } catch (const json::parse_error& e) {
+        FAIL() << "Failed to parse rx_vga as JSON: " << e.what()
+               << "\nValue: " << rxVgaValue;
+    }
 
+    // Verify it's a JSON object
+    EXPECT_TRUE(rxVgaJson.is_object())
+        << "rx_vga should be a JSON object\nActual: " << rxVgaValue;
+
+    // Verify we have exactly TEST_LANE_COUNT lanes
+    EXPECT_EQ(rxVgaJson.size(), TEST_LANE_COUNT)
+        << "rx_vga should have " << TEST_LANE_COUNT << " lanes";
+
+    // Verify lane keys are exactly "0", "1", "2", "3"
     for (uint32_t lane = 0; lane < TEST_LANE_COUNT; lane++) {
-        uint32_t expected_vga = 177 + lane;
-        std::string expected_value = std::to_string(expected_vga);
+        std::string lane_key = std::to_string(lane);
+        EXPECT_TRUE(rxVgaJson.contains(lane_key))
+            << "Missing lane key '" << lane_key << "' in rx_vga JSON";
+    }
 
-        EXPECT_TRUE(rxVgaValue.find(expected_value) != std::string::npos)
+    // Verify each lane's value
+    for (uint32_t lane = 0; lane < TEST_LANE_COUNT; lane++) {
+        std::string lane_key = std::to_string(lane);
+        uint32_t expected_vga = 177 + lane;
+
+        ASSERT_TRUE(rxVgaJson.contains(lane_key))
+            << "Missing lane " << lane << " in rx_vga";
+
+        ASSERT_TRUE(rxVgaJson[lane_key].is_number_integer())
+            << "Lane " << lane << " value should be an integer";
+
+        uint32_t actual_vga = rxVgaJson[lane_key].get<uint32_t>();
+        EXPECT_EQ(actual_vga, expected_vga)
             << "Lane " << lane << " VGA should be " << expected_vga
-            << "\nActual full value: " << rxVgaValue;
+            << " but got " << actual_vga;
     }
 
     // Validate TX_FIR_TAPS_LIST with friendly alias "tx_fir_taps_list"
@@ -258,44 +288,68 @@ TEST_F(TestPortPhySerdesAttr, CollectDataAndValidateCountersDB)
     found = portPhyAttrTable.hget(expectedKey, "tx_fir_taps_list", txFirTapsValue);
     EXPECT_TRUE(found) << "tx_fir_taps_list not found in COUNTERS_DB PORT_SERDES_ATTR table";
 
-    // Expected format: [{tap1:v1,v2,v3,v4},{tap2:v1,v2,v3,v4},...]
-    EXPECT_TRUE(txFirTapsValue.find("[") != std::string::npos &&
-                txFirTapsValue.find("]") != std::string::npos)
-        << "tx_fir_taps_list should be in array format\nActual: " << txFirTapsValue;
+    // Parse JSON and validate structure
+    json txFirTapsJson;
+    try {
+        txFirTapsJson = json::parse(txFirTapsValue);
+    } catch (const json::parse_error& e) {
+        FAIL() << "Failed to parse tx_fir_taps_list as JSON: " << e.what()
+               << "\nValue: " << txFirTapsValue;
+    }
 
-    // Verify tap structure with strict checking
-    for (uint32_t tap_idx = 0; tap_idx < TEST_TAP_COUNT; tap_idx++) {
-        std::ostringstream tap_prefix;
-        tap_prefix << "{tap" << (tap_idx + 1) << ":";
+    // Verify it's a JSON object
+    EXPECT_TRUE(txFirTapsJson.is_object())
+        << "tx_fir_taps_list should be a JSON object\nActual: " << txFirTapsValue;
 
-        // Find the tap section
-        size_t tap_start = txFirTapsValue.find(tap_prefix.str());
-        EXPECT_NE(tap_start, std::string::npos)
-            << "Should contain tap " << tap_idx << " with prefix '" << tap_prefix.str() << "'"
-            << "\nActual: " << txFirTapsValue;
+    // Verify we have exactly TEST_LANE_COUNT lanes
+    EXPECT_EQ(txFirTapsJson.size(), TEST_LANE_COUNT)
+        << "Should have " << TEST_LANE_COUNT << " lanes";
 
-        if (tap_start == std::string::npos) continue;
+    // Verify that lane keys are exactly "0", "1", "2", ... "TEST_LANE_COUNT-1"
+    for (uint32_t lane = 0; lane < TEST_LANE_COUNT; lane++) {
+        std::string lane_key = std::to_string(lane);
+        EXPECT_TRUE(txFirTapsJson.contains(lane_key))
+            << "Missing lane key '" << lane_key << "' in JSON";
+    }
 
-        // Extract content between "tapN:" and "}"
-        size_t content_start = tap_start + tap_prefix.str().length();
-        size_t content_end = txFirTapsValue.find("}", content_start);
-        EXPECT_NE(content_end, std::string::npos)
-            << "Should have closing brace for tap " << tap_idx;
+    // Verify each lane's tap values with sequential tap numbering per lane
+    for (uint32_t lane = 0; lane < TEST_LANE_COUNT; lane++) {
+        std::string lane_key = std::to_string(lane);
 
-        if (content_end == std::string::npos) continue;
+        ASSERT_TRUE(txFirTapsJson.contains(lane_key))
+            << "Missing lane " << lane << " in JSON";
 
-        std::string tap_content = txFirTapsValue.substr(content_start, content_end - content_start);
+        ASSERT_TRUE(txFirTapsJson[lane_key].is_array())
+            << "Lane " << lane << " should be an array";
 
-        // Verify lane values for this specific tap
-        int32_t base_value = -23 + (tap_idx * 10);
-        for (uint32_t lane = 0; lane < TEST_LANE_COUNT; lane++) {
-            int32_t expected_tap_value = base_value + lane;
-            std::string expected_str = std::to_string(expected_tap_value);
+        const json& lane_taps = txFirTapsJson[lane_key];
+        EXPECT_EQ(lane_taps.size(), TEST_TAP_COUNT)
+            << "Lane " << lane << " should have " << TEST_TAP_COUNT << " taps";
 
-            EXPECT_TRUE(tap_content.find(expected_str) != std::string::npos)
-                << "Tap " << tap_idx << " lane " << lane << " should have value " << expected_tap_value
-                << "\nTap content: " << tap_content
-                << "\nFull value: " << txFirTapsValue;
+        // Verify each tap in this lane (with sequential numbering: tap0, tap1, tap2...)
+        for (uint32_t tap_idx = 0; tap_idx < TEST_TAP_COUNT; tap_idx++) {
+            ASSERT_LT(tap_idx, lane_taps.size())
+                << "Lane " << lane << " missing tap at index " << tap_idx;
+
+            const json& tap_obj = lane_taps[tap_idx];
+            ASSERT_TRUE(tap_obj.is_object())
+                << "Lane " << lane << " tap " << tap_idx << " should be an object";
+
+            std::string tap_key = "tap" + std::to_string(tap_idx);
+            ASSERT_TRUE(tap_obj.contains(tap_key))
+                << "Lane " << lane << " tap object at index " << tap_idx
+                << " should have key '" << tap_key << "'";
+
+            // Calculate expected value
+            // tap_idx=0, base=-23: lane0=-23, lane1=-22, lane2=-21, lane3=-20
+            // tap_idx=1, base=-13: lane0=-13, lane1=-12, lane2=-11, lane3=-10
+            int32_t base_value = -23 + (tap_idx * 10);
+            int32_t expected_value = base_value + lane;
+
+            int32_t actual_value = tap_obj[tap_key].get<int32_t>();
+            EXPECT_EQ(actual_value, expected_value)
+                << "Lane " << lane << " " << tap_key << " should be " << expected_value
+                << " but got " << actual_value;
         }
     }
 
