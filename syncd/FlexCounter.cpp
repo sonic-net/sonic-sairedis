@@ -2539,6 +2539,12 @@ public:
 
                 std::string attr_value = sai_serialize_attr_value(*meta, attrs[i]);
 
+                // Special formatting for RX_VGA
+                if (attrs[i].id == SAI_PORT_SERDES_ATTR_RX_VGA)
+                {
+                    attr_value = sai_serialize_uint32_list_to_json_dict(attr_value);
+                }
+
                 // Use hset to set each field individually to avoid race conditions
                 // with PortPhyAttrContext writing to the same table
                 portPhyAttrTable.hset(port_vid_str, it->second, attr_value, "");

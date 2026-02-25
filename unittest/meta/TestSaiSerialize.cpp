@@ -1637,61 +1637,60 @@ TEST(SaiSerialize, serialize_stat_st_capability_list)
 
 TEST(SaiSerialize, sai_serialize_taps_list)
 {
-    sai_attribute_t attr;
-    memset(&attr, 0, sizeof(attr));
+    // Create test data: 3 taps, each with different number of lane values
+    sai_taps_list_t taps_list;
+    sai_s32_list_t taps[3];
 
-    for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
-    {
-        auto meta = sai_metadata_attr_sorted_by_id_name[idx];
-        if(meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_TAPS_LIST)
-        {
-            attr.id = meta->attrid;
+    // Tap 0: 4 lanes with values [10, 20, 30, 40]
+    int32_t tap0_values[] = {10, 20, 30, 40};
+    taps[0].count = 4;
+    taps[0].list = tap0_values;
 
-            // Create test data: 3 taps, each with different number of lane values
-            sai_s32_list_t taps[3];
+    // Tap 1: 2 lanes with values [50, 60]
+    int32_t tap1_values[] = {50, 60};
+    taps[1].count = 2;
+    taps[1].list = tap1_values;
 
-            // Tap 0: 4 lanes with values [10, 20, 30, 40]
-            int32_t tap0_values[] = {10, 20, 30, 40};
-            taps[0].count = 4;
-            taps[0].list = tap0_values;
+    // Tap 2: 4 lanes with values [70, 80, 90, 100]
+    int32_t tap2_values[] = {70, 80, 90, 100};
+    taps[2].count = 4;
+    taps[2].list = tap2_values;
 
-            // Tap 1: 2 lanes with values [50, 60]
-            int32_t tap1_values[] = {50, 60};
-            taps[1].count = 2;
-            taps[1].list = tap1_values;
+    taps_list.count = 3;
+    taps_list.list = taps;
 
-            // Tap 2: 4 lanes with values [70, 80, 90, 100]
-            int32_t tap2_values[] = {70, 80, 90, 100};
-            taps[2].count = 4;
-            taps[2].list = tap2_values;
+    // Test normal serialization
+    auto s = sai_serialize_taps_list(taps_list, false);
 
-            attr.value.portserdestaps.count = 3;
-            attr.value.portserdestaps.list = taps;
+    std::string expected = "{\"0\":[{\"tap0\":10},{\"tap1\":50},{\"tap2\":70}],"
+        "\"1\":[{\"tap0\":20},{\"tap1\":60},{\"tap2\":80}],"
+        "\"2\":[{\"tap0\":30},{\"tap1\":90}],\"3\":[{\"tap0\":40},{\"tap1\":100}]}";
 
-            auto s = sai_serialize_attr_value(*meta, attr, false);
+    EXPECT_EQ(s, expected);
 
-            std::string expected = "[{tap1:10,20,30,40},{tap2:50,60},{tap3:70,80,90,100}]";
-            EXPECT_EQ(s, expected);
+    // Test empty taps list
+    taps_list.count = 0;
+    taps_list.list = NULL;
+    s = sai_serialize_taps_list(taps_list, false);
+    EXPECT_EQ(s, "{}");
 
-            // Test empty taps list
-            attr.value.portserdestaps.count = 0;
-            attr.value.portserdestaps.list = NULL;
-            s = sai_serialize_attr_value(*meta, attr, false);
-            EXPECT_EQ(s, "[]");
-
-            // Test countOnly mode
-            attr.value.portserdestaps.count = 3;
-            attr.value.portserdestaps.list = taps;
-            s = sai_serialize_attr_value(*meta, attr, true);
-            EXPECT_EQ(s, "3");
-        }
-    }
+    // Test countOnly mode
+    taps_list.count = 3;
+    taps_list.list = taps;
+    s = sai_serialize_taps_list(taps_list, true);
+    EXPECT_EQ(s, "3");
 }
 
 TEST(SaiSerialize, sai_deserialize_taps_list)
 {
-    // Test normal case with multiple taps
-    std::string json_str = "[{tap1:10,20,30,40},{tap2:50,60},{tap3:70,80,90,100}]";
+    // Input represents (with sequential tap numbering per lane):
+    // Lane 0: tap0=10, tap1=50, tap2=70 (3 taps)
+    // Lane 1: tap0=20, tap1=60, tap2=80 (3 taps)
+    // Lane 2: tap0=30, tap1=90 (2 taps)
+    // Lane 3: tap0=40, tap1=100 (2 taps)
+    std::string json_str = "{\"0\":[{\"tap0\":10},{\"tap1\":50},{\"tap2\":70}],"
+        "\"1\":[{\"tap0\":20},{\"tap1\":60},{\"tap2\":80}],"
+        "\"2\":[{\"tap0\":30},{\"tap1\":90}],\"3\":[{\"tap0\":40},{\"tap1\":100}]}";
 
     sai_taps_list_t taps_list;
     memset(&taps_list, 0, sizeof(taps_list));
@@ -1701,7 +1700,7 @@ TEST(SaiSerialize, sai_deserialize_taps_list)
     EXPECT_EQ(taps_list.count, 3);
     ASSERT_NE(taps_list.list, nullptr);
 
-    // Verify tap 0: 4 lanes
+    // Verify tap 0 (all lane's tap0 values): 4 lanes [10, 20, 30, 40]
     EXPECT_EQ(taps_list.list[0].count, 4);
     ASSERT_NE(taps_list.list[0].list, nullptr);
     EXPECT_EQ(taps_list.list[0].list[0], 10);
@@ -1709,19 +1708,19 @@ TEST(SaiSerialize, sai_deserialize_taps_list)
     EXPECT_EQ(taps_list.list[0].list[2], 30);
     EXPECT_EQ(taps_list.list[0].list[3], 40);
 
-    // Verify tap 1: 2 lanes
-    EXPECT_EQ(taps_list.list[1].count, 2);
+    // Verify tap 1 (all lane's tap1 values): 4 lanes [50, 60, 90, 100]
+    EXPECT_EQ(taps_list.list[1].count, 4);
     ASSERT_NE(taps_list.list[1].list, nullptr);
     EXPECT_EQ(taps_list.list[1].list[0], 50);
     EXPECT_EQ(taps_list.list[1].list[1], 60);
+    EXPECT_EQ(taps_list.list[1].list[2], 90);
+    EXPECT_EQ(taps_list.list[1].list[3], 100);
 
-    // Verify tap 2: 4 lanes
-    EXPECT_EQ(taps_list.list[2].count, 4);
+    // Verify tap 2 (all lane's tap2 values): 2 lanes [70, 80]
+    EXPECT_EQ(taps_list.list[2].count, 2);
     ASSERT_NE(taps_list.list[2].list, nullptr);
     EXPECT_EQ(taps_list.list[2].list[0], 70);
     EXPECT_EQ(taps_list.list[2].list[1], 80);
-    EXPECT_EQ(taps_list.list[2].list[2], 90);
-    EXPECT_EQ(taps_list.list[2].list[3], 100);
 
     // Clean up
     for (uint32_t i = 0; i < taps_list.count; i++)
@@ -1730,21 +1729,31 @@ TEST(SaiSerialize, sai_deserialize_taps_list)
     }
     delete[] taps_list.list;
 
-    // Test empty list
-    std::string empty_json_str = "[]";
+    // Test empty object
+    std::string empty_json_str = "{}";
     memset(&taps_list, 0, sizeof(taps_list));
     sai_deserialize_taps_list(empty_json_str, taps_list, false);
     EXPECT_EQ(taps_list.count, 0);
     EXPECT_EQ(taps_list.list, nullptr);
 
-    // Test tap with no lane values
-    std::string tap_no_lanes = "[{tap1:}]";
+    // Test single lane.
+    std::string single_lane = "{\"0\":[{\"tap0\":100},{\"tap1\":200},{\"tap2\":300}]}";
     memset(&taps_list, 0, sizeof(taps_list));
-    sai_deserialize_taps_list(tap_no_lanes, taps_list, false);
-    EXPECT_EQ(taps_list.count, 1);
+    sai_deserialize_taps_list(single_lane, taps_list, false);
+    EXPECT_EQ(taps_list.count, 3);
     ASSERT_NE(taps_list.list, nullptr);
-    EXPECT_EQ(taps_list.list[0].count, 0);
-    EXPECT_EQ(taps_list.list[0].list, nullptr);
+    EXPECT_EQ(taps_list.list[0].count, 1);
+    EXPECT_EQ(taps_list.list[0].list[0], 100);
+    EXPECT_EQ(taps_list.list[1].count, 1);
+    EXPECT_EQ(taps_list.list[1].list[0], 200);
+    EXPECT_EQ(taps_list.list[2].count, 1);
+    EXPECT_EQ(taps_list.list[2].list[0], 300);
+
+    // Clean up
+    for (uint32_t i = 0; i < taps_list.count; i++)
+    {
+        delete[] taps_list.list[i].list;
+    }
     delete[] taps_list.list;
 
     // Test countOnly mode

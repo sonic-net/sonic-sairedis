@@ -1459,6 +1459,65 @@ std::string sai_serialize_number_list(
     return sai_serialize_list(list, countOnly, [&](decltype(*list.list)& item) { return sai_serialize_number(item, hex);} );
 }
 
+
+/**
+ *   @brief Converts the seralized uint32 list string to json dict string
+ *
+ *   Parse input "count:v1,v2,v3" and convert to JSON {"0":v1, "1":v2, "2":v3}
+ *
+ *   @param uint32_list_string seralized uint32 list string.
+ *   @return std::string in json dict format.
+ */
+std::string sai_serialize_uint32_list_to_json_dict(
+        _In_ const std::string& uint32_list_string)
+{
+    SWSS_LOG_ENTER();
+
+
+    size_t colon_pos = uint32_list_string.find(':');
+    if (colon_pos == std::string::npos)
+    {
+        SWSS_LOG_ERROR("Invalid uint32 list format: missing colon separator");
+        return "{}";
+    }
+
+    std::string values_str = uint32_list_string.substr(colon_pos + 1);
+
+    if (values_str.empty())
+    {
+        return "{}";
+    }
+
+    json j = json::object();
+
+    std::istringstream iss(values_str);
+    std::string value;
+    uint32_t index = 0;
+
+    while (std::getline(iss, value, ','))
+    {
+        // Trim whitespace
+        value.erase(0, value.find_first_not_of(" \t"));
+        value.erase(value.find_last_not_of(" \t") + 1);
+
+        if (!value.empty())
+        {
+            try
+            {
+                uint32_t val = static_cast<uint32_t>(std::stoul(value));
+                j[std::to_string(index)] = val;
+                index++;
+            }
+            catch (const std::exception& e)
+            {
+                SWSS_LOG_ERROR("Failed to parse value '%s': %s", value.c_str(), e.what());
+            }
+        }
+    }
+
+    return j.dump();
+}
+
 static json sai_serialize_qos_map_params(
         _In_ const sai_qos_map_params_t& params)
 {
@@ -1701,48 +1760,51 @@ std::string sai_serialize_taps_list(
         return sai_serialize_number(port_serdes_taps_list.count);
     }
 
+    json j = json::object();
+
     if (port_serdes_taps_list.list == NULL || port_serdes_taps_list.count == 0)
     {
-        return "[]";
+        return j.dump();
     }
 
-    std::string result = "[";
+    // Create lane-centric format: {"0": [{tap0: val}, {tap1: val}, ...], "1": [...], ...}
+    uint32_t lane_idx = 0;
 
-    for (uint32_t tap_idx = 0; tap_idx < port_serdes_taps_list.count; ++tap_idx)
+    while (true)
     {
-        const sai_s32_list_t& tap_lanes = port_serdes_taps_list.list[tap_idx];
+        json lane_taps_array = json::array();
+        bool found_any_tap = false;
 
-        result += "{";
-
-        // Add tap index with "tap" prefix (tap1, tap2, etc.)
-        result += "tap" + sai_serialize_number(tap_idx + 1) + ":";
-
-        // Only add lane values if count > 0 and list is not null
-        if (tap_lanes.list != NULL && tap_lanes.count > 0)
+        // For this lane, collect all tap values
+        for (uint32_t tap_idx = 0; tap_idx < port_serdes_taps_list.count; ++tap_idx)
         {
-            for (uint32_t lane_idx = 0; lane_idx < tap_lanes.count; ++lane_idx)
-            {
-                result += sai_serialize_number(tap_lanes.list[lane_idx]);
+            const sai_s32_list_t& tap_lanes = port_serdes_taps_list.list[tap_idx];
 
-                if (lane_idx != tap_lanes.count - 1)
-                {
-                    result += ",";
-                }
+            if (tap_lanes.list != NULL && lane_idx < tap_lanes.count)
+            {
+                json tap_obj = json::object();
+                // Use the current position in lane_taps_array for sequential tap numbering
+                std::string tap_key = "tap" + std::to_string(lane_taps_array.size());
+                tap_obj[tap_key] = tap_lanes.list[lane_idx];
+                lane_taps_array.push_back(tap_obj);
+                found_any_tap = true;
             }
         }
-        // If count is 0 or list is NULL, we just have "index:" with no values
 
-        result += "}";
-
-        if (tap_idx != port_serdes_taps_list.count - 1)
+        // If no taps were found for this lane, we're done
+        if (!found_any_tap)
         {
-            result += ",";
+            break;
         }
+
+        // Add this lane's taps to the result
+        std::string lane_key = std::to_string(lane_idx);
+        j[lane_key] = lane_taps_array;
+
+        lane_idx++;
     }
 
-    result += "]";
-
-    return result;
+    return j.dump();
 }
 
 template <typename T>
@@ -4516,49 +4578,88 @@ void sai_deserialize_taps_list(
         return;
     }
 
-    // Handle empty list "[]"
-    if (s == "[]")
+    try
     {
-        port_serdes_taps_list.count = 0;
-        port_serdes_taps_list.list = NULL;
-        return;
-    }
+        json j = json::parse(s);
 
-    // Parse format: [{tap1:v1,v2,...},{tap2:v1,v2,...},...]
-    // Count taps by counting ':' (each tap has exactly one colon)
-    uint32_t tap_count = static_cast<uint32_t>(std::count(s.begin(), s.end(), ':'));
-
-    port_serdes_taps_list.count = tap_count;
-    port_serdes_taps_list.list = sai_alloc_n_of_ptr_type(tap_count, port_serdes_taps_list.list);
-
-    // parse each tap
-    size_t tap_idx = 0;
-    size_t pos = 1;
-
-    while (pos < s.length() - 1 && tap_idx < tap_count)
-    {
-        if (s[pos] == '{')
+        if (j.empty() || !j.is_object())
         {
-            size_t end = s.find('}', pos);
-            size_t colon = s.find(':', pos);
+            port_serdes_taps_list.count = 0;
+            port_serdes_taps_list.list = NULL;
+            return;
+        }
 
-            // Extract lane values after colon
-            std::string vals = s.substr(colon + 1, end - colon - 1);
-            auto tokens = vals.empty() ? std::vector<std::string>() : swss::tokenize(vals, ',');
+        // Get lane count
+        uint32_t lane_count = static_cast<uint32_t>(j.size());
 
-            port_serdes_taps_list.list[tap_idx].count = static_cast<uint32_t>(tokens.size());
-            port_serdes_taps_list.list[tap_idx].list = tokens.empty() ? NULL :
-                sai_alloc_n_of_ptr_type(tokens.size(), port_serdes_taps_list.list[tap_idx].list);
+        // Use a vector to collect all taps dynamically
+        std::vector<std::vector<int32_t>> all_taps;
 
-            for (size_t lane_idx = 0; lane_idx < tokens.size(); lane_idx++)
+        uint32_t tap_idx = 0;
+        while (true)
+        {
+            std::vector<int32_t> tap_vec;
+
+            // Iterate through all lanes to get tap_idx'th tap value
+            for (uint32_t i = 0; i < lane_count; ++i)
             {
-                sai_deserialize_number(tokens[lane_idx], port_serdes_taps_list.list[tap_idx].list[lane_idx]);
+                std::string lane_key = std::to_string(i);
+                std::string tap_key = "tap" + std::to_string(tap_idx);
+
+                if (j.contains(lane_key) && j[lane_key].is_array() && tap_idx < j[lane_key].size())
+                {
+                    const json& tap_obj = j[lane_key][tap_idx];
+
+                    if (tap_obj.is_object() && tap_obj.contains(tap_key))
+                    {
+                        tap_vec.push_back(tap_obj[tap_key].get<int32_t>());
+                    }
+                }
             }
 
+            // If no values were found for this tap, we're done
+            if (tap_vec.empty())
+            {
+                break;
+            }
+
+            // Store this tap's values
+            all_taps.push_back(tap_vec);
             tap_idx++;
-            pos = end + 2;  // Skip },
         }
-        else pos++;
+
+        // Now allocate the final data structure
+        port_serdes_taps_list.count = static_cast<uint32_t>(all_taps.size());
+        if (port_serdes_taps_list.count == 0)
+        {
+            port_serdes_taps_list.list = NULL;
+            return;
+        }
+
+        port_serdes_taps_list.list = sai_alloc_n_of_ptr_type(port_serdes_taps_list.count, port_serdes_taps_list.list);
+
+        for (uint32_t i = 0; i < all_taps.size(); ++i)
+        {
+            port_serdes_taps_list.list[i].count = static_cast<uint32_t>(all_taps[i].size());
+            port_serdes_taps_list.list[i].list = sai_alloc_n_of_ptr_type(all_taps[i].size(), port_serdes_taps_list.list[i].list);
+
+            for (uint32_t lane_val_idx = 0; lane_val_idx < all_taps[i].size(); ++lane_val_idx)
+            {
+                port_serdes_taps_list.list[i].list[lane_val_idx] = all_taps[i][lane_val_idx];
+            }
+        }
+    }
+    catch (const json::parse_error& e)
+    {
+        SWSS_LOG_ERROR("JSON parse error in sai_deserialize_taps_list: %s", e.what());
+        port_serdes_taps_list.count = 0;
+        port_serdes_taps_list.list = NULL;
+    }
+    catch (const std::exception& e)
+    {
+        SWSS_LOG_ERROR("Error in sai_deserialize_taps_list: %s", e.what());
+        port_serdes_taps_list.count = 0;
+        port_serdes_taps_list.list = NULL;
     }
 }
 
