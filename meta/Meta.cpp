@@ -18,6 +18,16 @@
 
 #define CHECK_STATUS_SUCCESS(s) { if ((s) != SAI_STATUS_SUCCESS) return (s); }
 
+#define CHECK_STATUS_SUCCESS_BULK(s,m,os)                                                       \
+{                                                                                               \
+    if (s != SAI_STATUS_SUCCESS) {                                                              \
+        if (m != SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR)                                           \
+            return (s);                                                                         \
+        os = s;                                                                                 \
+        continue;                                                                               \
+    }                                                                                           \
+}                                                                                               \
+
 #define VALIDATION_LIST(md,vlist)                                               \
 {                                                                               \
     auto _status = meta_genetic_validation_list(md,vlist.count,vlist.list);     \
@@ -619,26 +629,38 @@ sai_status_t Meta::bulkCreate(                                                  
         SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);   \
         return SAI_STATUS_INVALID_PARAMETER;                                                                            \
     }                                                                                                                   \
+    std::vector<uint32_t> vi;                                                                                           \
     std::vector<sai_object_meta_key_t> vmk;                                                                             \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], true);                                                 \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);                                                  \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
-            .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
-             };                                                                                                         \
-        vmk.push_back(meta_key);                                                                                        \
+            .objectkey = { .key = { .ot = ot[idx] } } };                                                                \
         status = meta_generic_validation_create(meta_key, ot[idx].switch_id, attr_count[idx], attr_list[idx]);          \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);                                                  \
+        vi.push_back(idx);                                                                                              \
+        vmk.push_back(meta_key);                                                                                        \
     }                                                                                                                   \
-    auto status = m_implementation->bulkCreate(object_count, ot, attr_count, attr_list, mode, object_statuses);         \
-    for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
+    if (vi.empty())                                                                                                     \
+        return SAI_STATUS_FAILURE;                                                                                      \
+    std::vector<sai_ ## ot ## _t> valid_ot(vi.size());                                                                  \
+    std::vector<uint32_t> valid_attr_count(vi.size());                                                                  \
+    std::vector<const sai_attribute_t*> valid_attr_list(vi.size());                                                     \
+    std::vector<sai_status_t> valid_object_statuses(vi.size());                                                         \
+    for (size_t i = 0; i < vi.size(); i++) {                                                                            \
+        valid_ot[i] = ot[vi[i]];                                                                                        \
+        valid_attr_count[i] = attr_count[vi[i]];                                                                        \
+        valid_attr_list[i] = attr_list[vi[i]];                                                                          \
+    }                                                                                                                   \
+    auto status = m_implementation->bulkCreate((uint32_t)vi.size(), valid_ot.data(), valid_attr_count.data(),           \
+        valid_attr_list.data(), mode, valid_object_statuses.data());                                                    \
+    for (size_t i = 0; i < vi.size(); i++)                                                                              \
     {                                                                                                                   \
-        if (object_statuses[idx] == SAI_STATUS_SUCCESS)                                                                 \
-        {                                                                                                               \
-            meta_generic_validation_post_create(vmk[idx], ot[idx].switch_id, attr_count[idx], attr_list[idx]);          \
-        }                                                                                                               \
+        object_statuses[vi[i]] = valid_object_statuses[i];                                                              \
+        if (valid_object_statuses[i] == SAI_STATUS_SUCCESS)                                                             \
+            meta_generic_validation_post_create(vmk[i], ot[vi[i]].switch_id, attr_count[vi[i]], attr_list[vi[i]]);      \
     }                                                                                                                   \
     return status;                                                                                                      \
 }
@@ -663,26 +685,33 @@ sai_status_t Meta::bulkRemove(                                                  
         SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);   \
         return SAI_STATUS_INVALID_PARAMETER;                                                                            \
     }                                                                                                                   \
+    std::vector<uint32_t> vi;                                                                                           \
     std::vector<sai_object_meta_key_t> vmk;                                                                             \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);                                                  \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
-            .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
-            };                                                                                                          \
-        vmk.push_back(meta_key);                                                                                        \
+            .objectkey = { .key = { .ot = ot[idx] } } };                                                                \
         status = meta_generic_validation_remove(meta_key);                                                              \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);                                                  \
+        vi.push_back(idx);                                                                                              \
+        vmk.push_back(meta_key);                                                                                        \
     }                                                                                                                   \
-    auto status = m_implementation->bulkRemove(object_count, ot, mode, object_statuses);                                \
-    for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
+    if (vi.empty())                                                                                                     \
+        return SAI_STATUS_FAILURE;                                                                                      \
+    std::vector<sai_ ## ot ## _t> valid_ot(vi.size());                                                                  \
+    std::vector<sai_status_t> valid_object_statuses(vi.size());                                                         \
+    for (size_t i = 0; i < vi.size(); i++) {                                                                            \
+        valid_ot[i] = ot[vi[i]];                                                                                        \
+    }                                                                                                                   \
+    auto status = m_implementation->bulkRemove((uint32_t)vi.size(), valid_ot.data(), mode, valid_object_statuses.data());\
+    for (size_t i = 0; i < vi.size(); i++)                                                                              \
     {                                                                                                                   \
-        if (object_statuses[idx] == SAI_STATUS_SUCCESS)                                                                 \
-        {                                                                                                               \
-            meta_generic_validation_post_remove(vmk[idx]);                                                              \
-        }                                                                                                               \
+        object_statuses[vi[i]] = valid_object_statuses[i];                                                              \
+        if (valid_object_statuses[i] == SAI_STATUS_SUCCESS)                                                             \
+            meta_generic_validation_post_remove(vmk[i]);                                                                \
     }                                                                                                                   \
     return status;                                                                                                      \
 }
@@ -709,26 +738,36 @@ sai_status_t Meta::bulkSet(                                                     
         SWSS_LOG_ERROR("mode value %d is not in range on %s", mode, sai_metadata_enum_sai_bulk_op_error_mode_t.name);   \
         return SAI_STATUS_INVALID_PARAMETER;                                                                            \
     }                                                                                                                   \
+    std::vector<uint32_t> vi;                                                                                           \
     std::vector<sai_object_meta_key_t> vmk;                                                                             \
     for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
     {                                                                                                                   \
         sai_status_t status = meta_sai_validate_ ##ot (&ot[idx], false);                                                \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);                                                  \
         sai_object_meta_key_t meta_key = {                                                                              \
             .objecttype = (sai_object_type_t)SAI_OBJECT_TYPE_ ## OT,                                                    \
-            .objectkey = { .key = { .ot = ot[idx] } }                                                                   \
-             };                                                                                                         \
-        vmk.push_back(meta_key);                                                                                        \
+            .objectkey = { .key = { .ot = ot[idx] } } };                                                                \
         status = meta_generic_validation_set(meta_key, &attr_list[idx]);                                                \
-        CHECK_STATUS_SUCCESS(status);                                                                                   \
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);                                                  \
+        vi.push_back(idx);                                                                                              \
+        vmk.push_back(meta_key);                                                                                        \
     }                                                                                                                   \
-    auto status = m_implementation->bulkSet(object_count, ot, attr_list, mode, object_statuses);                        \
-    for (uint32_t idx = 0; idx < object_count; idx++)                                                                   \
+    if (vi.empty())                                                                                                     \
+        return SAI_STATUS_FAILURE;                                                                                      \
+    std::vector<sai_ ## ot ## _t> valid_ot(vi.size());                                                                  \
+    std::vector<sai_attribute_t> valid_attr_list(vi.size());                                                            \
+    std::vector<sai_status_t> valid_object_statuses(vi.size());                                                         \
+    for (size_t i = 0; i < vi.size(); i++) {                                                                            \
+        valid_ot[i] = ot[vi[i]];                                                                                        \
+        valid_attr_list[i] = attr_list[vi[i]];                                                                          \
+    }                                                                                                                   \
+    auto status = m_implementation->bulkSet((uint32_t)vi.size(), valid_ot.data(), valid_attr_list.data(),               \
+        mode, valid_object_statuses.data());                                                                            \
+    for (size_t i = 0; i < vi.size(); i++)                                                                              \
     {                                                                                                                   \
-        if (object_statuses[idx] == SAI_STATUS_SUCCESS)                                                                 \
-        {                                                                                                               \
-            meta_generic_validation_post_set(vmk[idx], &attr_list[idx]);                                                \
-        }                                                                                                               \
+        object_statuses[vi[i]] = valid_object_statuses[i];                                                              \
+        if (valid_object_statuses[i] == SAI_STATUS_SUCCESS)                                                             \
+            meta_generic_validation_post_set(vmk[i], &valid_attr_list[i]);                                              \
     }                                                                                                                   \
     return status;                                                                                                      \
 }
@@ -1200,30 +1239,45 @@ sai_status_t Meta::bulkRemove(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    std::vector<uint32_t> vi;
     std::vector<sai_object_meta_key_t> vmk;
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], SAI_NULL_OBJECT_ID, false);
 
-        CHECK_STATUS_SUCCESS(status);
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);
 
         sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id[idx] } } };
 
-        vmk.push_back(meta_key);
-
         status = meta_generic_validation_remove(meta_key);
 
-        CHECK_STATUS_SUCCESS(status);
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);
+
+        vi.push_back(idx);
+        vmk.push_back(meta_key);
     }
 
-    auto status = m_implementation->bulkRemove(object_type, object_count, object_id, mode, object_statuses);
+    if (vi.empty())
+        return SAI_STATUS_FAILURE;
 
-    for (uint32_t idx = 0; idx < object_count; idx++)
+    std::vector<sai_object_id_t> valid_object_id(vi.size());
+    std::vector<sai_status_t> valid_object_statuses(vi.size());
+
+    for (size_t i = 0; i < vi.size(); i++)
     {
-        if (object_statuses[idx] == SAI_STATUS_SUCCESS)
+        valid_object_id[i] = object_id[vi[i]];
+    }
+
+    auto status = m_implementation->bulkRemove(object_type, (uint32_t)vi.size(), valid_object_id.data(), mode, valid_object_statuses.data());
+
+    for (size_t i = 0; i < vi.size(); i++)
+    {
+        object_statuses[vi[i]] = valid_object_statuses[i];
+
+        if (valid_object_statuses[i] == SAI_STATUS_SUCCESS)
         {
-            meta_generic_validation_post_remove(vmk[idx]);
+            meta_generic_validation_post_remove(vmk[i]);
         }
     }
 
@@ -1262,30 +1316,47 @@ sai_status_t Meta::bulkSet(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    std::vector<uint32_t> vi;
     std::vector<sai_object_meta_key_t> vmk;
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], SAI_NULL_OBJECT_ID, false);
 
-        CHECK_STATUS_SUCCESS(status);
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);
 
         sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id[idx] } } };
 
-        vmk.push_back(meta_key);
-
         status = meta_generic_validation_set(meta_key, &attr_list[idx]);
 
-        CHECK_STATUS_SUCCESS(status);
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);
+
+        vi.push_back(idx);
+        vmk.push_back(meta_key);
     }
 
-    auto status = m_implementation->bulkSet(object_type, object_count, object_id, attr_list, mode, object_statuses);
+    if (vi.empty())
+        return SAI_STATUS_FAILURE;
 
-    for (uint32_t idx = 0; idx < object_count; idx++)
+    std::vector<sai_object_id_t> valid_object_id(vi.size());
+    std::vector<sai_attribute_t> valid_attr_list(vi.size());
+    std::vector<sai_status_t> valid_object_statuses(vi.size());
+
+    for (size_t i = 0; i < vi.size(); i++)
     {
-        if (object_statuses[idx] == SAI_STATUS_SUCCESS)
+        valid_object_id[i] = object_id[vi[i]];
+        valid_attr_list[i] = attr_list[vi[i]];
+    }
+
+    auto status = m_implementation->bulkSet(object_type, (uint32_t)vi.size(), valid_object_id.data(), valid_attr_list.data(), mode, valid_object_statuses.data());
+
+    for (size_t i = 0; i < vi.size(); i++)
+    {
+        object_statuses[vi[i]] = valid_object_statuses[i];
+
+        if (valid_object_statuses[i] == SAI_STATUS_SUCCESS)
         {
-            meta_generic_validation_post_set(vmk[idx], &attr_list[idx]);
+            meta_generic_validation_post_set(vmk[i], &valid_attr_list[i]);
         }
     }
 
@@ -1322,34 +1393,50 @@ sai_status_t Meta::bulkGet(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    std::vector<uint32_t> vi;
     std::vector<sai_object_meta_key_t> vmk;
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], SAI_NULL_OBJECT_ID, false);
 
-        CHECK_STATUS_SUCCESS(status);
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);
 
         sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = object_id[idx] } } };
 
-        vmk.push_back(meta_key);
-
         status = meta_generic_validation_get(meta_key, attr_count[idx], attr_list[idx]);
 
-        // FIXME: This macro returns on failure.
-        // When mode is SAI_BULK_OP_ERROR_MODE_IGNORE_ERROR we should continue instead of return.
-        // This issue exists for all bulk operations.
-        CHECK_STATUS_SUCCESS(status);
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);
+
+        vi.push_back(idx);
+        vmk.push_back(meta_key);
     }
 
-    auto status = m_implementation->bulkGet(object_type, object_count, object_id, attr_count, attr_list, mode, object_statuses);
+    if (vi.empty())
+        return SAI_STATUS_FAILURE;
 
-    for (uint32_t idx = 0; idx < object_count; idx++)
+    std::vector<sai_object_id_t> valid_object_id(vi.size());
+    std::vector<uint32_t> valid_attr_count(vi.size());
+    std::vector<sai_attribute_t*> valid_attr_list(vi.size());
+    std::vector<sai_status_t> valid_object_statuses(vi.size());
+
+    for (size_t i = 0; i < vi.size(); i++)
     {
-        if (object_statuses[idx] == SAI_STATUS_SUCCESS)
+        valid_object_id[i] = object_id[vi[i]];
+        valid_attr_count[i] = attr_count[vi[i]];
+        valid_attr_list[i] = attr_list[vi[i]];
+    }
+
+    auto status = m_implementation->bulkGet(object_type, (uint32_t)vi.size(), valid_object_id.data(), valid_attr_count.data(), valid_attr_list.data(), mode, valid_object_statuses.data());
+
+    for (size_t i = 0; i < vi.size(); i++)
+    {
+        object_statuses[vi[i]] = valid_object_statuses[i];
+
+        if (valid_object_statuses[i] == SAI_STATUS_SUCCESS)
         {
-            sai_object_id_t switch_id = switchIdQuery(object_id[idx]);
-            meta_generic_validation_post_get(vmk[idx], switch_id, attr_count[idx], attr_list[idx]);
+            sai_object_id_t switch_id = switchIdQuery(valid_object_id[i]);
+            meta_generic_validation_post_get(vmk[i], switch_id, valid_attr_count[i], valid_attr_list[i]);
         }
     }
 
@@ -1408,34 +1495,53 @@ sai_status_t Meta::bulkCreate(
         return SAI_STATUS_INVALID_PARAMETER;
     }
 
+    std::vector<uint32_t> vi;
     std::vector<sai_object_meta_key_t> vmk;
 
     for (uint32_t idx = 0; idx < object_count; idx++)
     {
         sai_status_t status = meta_sai_validate_oid(object_type, &object_id[idx], switchId, true);
 
-        CHECK_STATUS_SUCCESS(status);
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);
 
         // this is create, oid's don't exist yet
 
         sai_object_meta_key_t meta_key = { .objecttype = object_type, .objectkey = { .key = { .object_id  = SAI_NULL_OBJECT_ID } } };
 
-        vmk.push_back(meta_key);
-
         status = meta_generic_validation_create(meta_key, switchId, attr_count[idx], attr_list[idx]);
 
-        CHECK_STATUS_SUCCESS(status);
+        CHECK_STATUS_SUCCESS_BULK(status, mode, object_statuses[idx]);
+
+        vi.push_back(idx);
+        vmk.push_back(meta_key);
     }
 
-    auto status = m_implementation->bulkCreate(object_type, switchId, object_count, attr_count, attr_list, mode, object_id, object_statuses);
+    if (vi.empty())
+        return SAI_STATUS_FAILURE;
 
-    for (uint32_t idx = 0; idx < object_count; idx++)
+    std::vector<uint32_t> valid_attr_count(vi.size());
+    std::vector<const sai_attribute_t*> valid_attr_list(vi.size());
+    std::vector<sai_object_id_t> valid_object_id(vi.size());
+    std::vector<sai_status_t> valid_object_statuses(vi.size());
+
+    for (size_t i = 0; i < vi.size(); i++)
     {
-        if (object_statuses[idx] == SAI_STATUS_SUCCESS)
-        {
-            vmk[idx].objectkey.key.object_id = object_id[idx]; // assign new created object id
+        valid_attr_count[i] = attr_count[vi[i]];
+        valid_attr_list[i] = attr_list[vi[i]];
+    }
 
-            meta_generic_validation_post_create(vmk[idx], switchId, attr_count[idx], attr_list[idx]);
+    auto status = m_implementation->bulkCreate(object_type, switchId, (uint32_t)vi.size(), valid_attr_count.data(), valid_attr_list.data(), mode, valid_object_id.data(), valid_object_statuses.data());
+
+    for (size_t i = 0; i < vi.size(); i++)
+    {
+        object_statuses[vi[i]] = valid_object_statuses[i];
+        object_id[vi[i]] = valid_object_id[i];
+
+        if (valid_object_statuses[i] == SAI_STATUS_SUCCESS)
+        {
+            vmk[i].objectkey.key.object_id = valid_object_id[i]; // assign new created object id
+
+            meta_generic_validation_post_create(vmk[i], switchId, valid_attr_count[i], valid_attr_list[i]);
         }
     }
 
