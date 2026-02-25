@@ -99,6 +99,39 @@ stages:
       syslog_artifact_name: sonic-sairedis.syslog.arm64
       debian_version: ${{ parameters.debian_version }}
 
+- stage: BuildTrixie
+  dependsOn: BuildArm
+  condition: succeeded('BuildArm')
+  jobs:
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: amd64
+      swss_common_artifact_name: sonic-swss-common-trixie
+      artifact_name: sonic-sairedis-trixie
+      syslog_artifact_name: sonic-sairedis-trixie.syslog
+      run_unit_test: true
+      debian_version: trixie
+
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: armhf
+      timeout: 180
+      pool: sonicso1ES-armhf
+      swss_common_artifact_name: sonic-swss-common-trixie.armhf
+      artifact_name: sonic-sairedis-trixie.armhf
+      syslog_artifact_name: sonic-sairedis-trixie.syslog.armhf
+      debian_version: trixie
+
+  - template: .azure-pipelines/build-template.yml
+    parameters:
+      arch: arm64
+      timeout: 180
+      pool: sonicso1ES-arm64
+      swss_common_artifact_name: sonic-swss-common-trixie.arm64
+      artifact_name: sonic-sairedis-trixie.arm64
+      syslog_artifact_name: sonic-sairedis-trixie.syslog.arm64
+      debian_version: trixie
+
 - stage: BuildSwss
   dependsOn: Build
   condition: succeeded('Build')

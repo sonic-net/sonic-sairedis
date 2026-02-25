@@ -19,6 +19,8 @@
 #include <netinet/in.h>
 
 #include <list>
+#include <vector>
+#include <algorithm>
 
 using namespace saivs;
 
@@ -941,37 +943,6 @@ sai_status_t SwitchVpp::fill_acl_rules(
         }
     }
 
-    // Add default permit rules
-    vpp_acl_rule_t ipv4_permit_rule = {};
-    vpp_acl_rule_t ipv6_permit_rule = {};
-    sai_attribute_value_t attr_value;
-
-    // IPv4 default permit rule
-    attr_value.aclfield.enable = true;
-    attr_value.aclfield.data.s32 = SAI_ACL_IP_TYPE_IPV4ANY;
-    status = acl_rule_field_update(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE, &attr_value, &ipv4_permit_rule);
-    if (status == SAI_STATUS_SUCCESS) {
-        ipv4_permit_rule.action = VPP_ACL_ACTION_API_PERMIT;
-        acl_rules.push_back(ipv4_permit_rule);
-        SWSS_LOG_INFO("Added default IPv4 permit rule at index %u", acl_rule_index);
-        acl_rule_index++;
-    } else {
-        SWSS_LOG_ERROR("Failed to create default IPv4 permit rule, status: %d", status);
-        return SAI_STATUS_FAILURE;
-    }
-
-    // IPv6 default permit rule
-    attr_value.aclfield.data.s32 = SAI_ACL_IP_TYPE_IPV6ANY;
-    status = acl_rule_field_update(SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE, &attr_value, &ipv6_permit_rule);
-    if (status == SAI_STATUS_SUCCESS) {
-        ipv6_permit_rule.action = VPP_ACL_ACTION_API_PERMIT;
-        acl_rules.push_back(ipv6_permit_rule);
-        SWSS_LOG_INFO("Added default IPv6 permit rule at index %u", acl_rule_index);
-    } else {
-        SWSS_LOG_ERROR("Failed to create default IPv6 permit rule, status: %d", status);
-        return SAI_STATUS_FAILURE;
-    }
-
     SWSS_LOG_INFO("fill_acl_rules complete: total %u acl_rules and %u tunterm_rules",
                  (uint32_t)acl_rules.size(), (uint32_t)tunterm_acl_rules.size());
 
@@ -1019,7 +990,7 @@ sai_status_t SwitchVpp::acl_add_replace(
         acl_swindex = 0;
         acl_replace = false;
     } else if (acl == NULL) {
-        status = aclDefaultAllowConfigure(tbl_oid);
+        status = emptyAclCreate(tbl_oid);
         return status;
     } else {
         acl_swindex = vpp_idx_it->second;
@@ -1333,7 +1304,7 @@ sai_status_t SwitchVpp::aclTableCreate(
 
     SWSS_LOG_NOTICE("ACL table %s created", sid.c_str());
 
-    return aclDefaultAllowConfigure(object_id);
+    return emptyAclCreate(object_id);
 }
 
 sai_status_t SwitchVpp::aclTableRemove(
@@ -1350,12 +1321,11 @@ sai_status_t SwitchVpp::aclTableRemove(
     return AclTblRemove(tbl_oid);
 }
 
-sai_status_t SwitchVpp::aclDefaultAllowConfigure (
+sai_status_t SwitchVpp::emptyAclCreate(
     _In_ sai_object_id_t tbl_oid)
 {
     SWSS_LOG_ENTER();
 
-    sai_attribute_t attr[2];
     uint32_t        acl_swindex = 0;
     bool            acl_replace = false;
     auto            vpp_idx_it = m_acl_swindex_map.find(tbl_oid);
@@ -1363,6 +1333,52 @@ sai_status_t SwitchVpp::aclDefaultAllowConfigure (
         acl_swindex = vpp_idx_it->second;
         acl_replace = true;
     }
+
+    vpp_acl_t *acl;
+
+    // Create an ACL with 1 rule matching dest IP 0.0.0.0/32 (will never match real traffic) but vpp doesn't allow 0 rule table
+    acl = (vpp_acl_t *) calloc(1, sizeof(vpp_acl_t) + sizeof(vpp_acl_rule_t));
+    if (!acl) {
+        return SAI_STATUS_FAILURE;
+    }
+    acl->count = 1;
+    char aclname[64];
+
+    auto sid = sai_serialize_object_id(tbl_oid);
+
+    snprintf(aclname, sizeof(aclname), "sonic_acl_%s", sid.c_str());
+    acl->acl_name = aclname;
+
+    // Set up rule to match dest IP 0.0.0.0/32
+    vpp_acl_rule_t *rule = &acl->rules[0];
+    rule->dst_prefix.sa_family = AF_INET;
+    rule->dst_prefix.addr.ip4.sin_addr.s_addr = 0;  // 0.0.0.0
+    rule->dst_prefix_mask.addr.ip4.sin_addr.s_addr = 0xFFFFFFFF;  // 255.255.255.255
+    rule->action = VPP_ACL_ACTION_API_PERMIT;
+
+    sai_status_t status;
+
+    status = vpp_acl_add_replace(acl, &acl_swindex, acl_replace);
+    if (status == SAI_STATUS_SUCCESS && !acl_replace) {
+        m_acl_swindex_map[tbl_oid] = acl_swindex;
+    }
+
+    free(acl);
+    SWSS_LOG_INFO("Placeholder ACL for table %s created, status %d swindex %u",
+                    sid.c_str(), status, acl_swindex);
+    return status;
+}
+
+sai_status_t SwitchVpp::aclDefaultCreate()
+{
+    SWSS_LOG_ENTER();
+
+    // If already created, return success
+    if (m_acl_default_created) {
+        return SAI_STATUS_SUCCESS;
+    }
+
+    sai_attribute_t attr[2];
 
     attr[0].id = SAI_ACL_ENTRY_ATTR_FIELD_ACL_IP_TYPE;
     attr[0].value.aclfield.enable = true;
@@ -1379,11 +1395,9 @@ sai_status_t SwitchVpp::aclDefaultAllowConfigure (
         return SAI_STATUS_FAILURE;
     }
     acl->count = DEFAULT_PERMIT_RULES;
+
     char aclname[64];
-
-    auto sid = sai_serialize_object_id(tbl_oid);
-
-    snprintf(aclname, sizeof(aclname), "sonic_acl_%s", sid.c_str());
+    snprintf(aclname, sizeof(aclname), "sonic_acl_default_permit");
     acl->acl_name = aclname;
 
     vpp_acl_rule_t *rule = &acl->rules[0];
@@ -1398,15 +1412,16 @@ sai_status_t SwitchVpp::aclDefaultAllowConfigure (
 
     sai_status_t status;
 
-    status = vpp_acl_add_replace(acl, &acl_swindex, acl_replace);
-    if (status == SAI_STATUS_SUCCESS && !acl_replace) {
-        m_acl_swindex_map[tbl_oid] = acl_swindex;
+    status = vpp_acl_add_replace(acl, &m_acl_default_swindex, false);
+    if (status == SAI_STATUS_SUCCESS) {
+        m_acl_default_created = true;
+        SWSS_LOG_NOTICE("Shared default permit ACL created with swindex %u", m_acl_default_swindex);
+    } else {
+        SWSS_LOG_ERROR("Failed to create shared default permit ACL");
     }
 
     free(acl);
-    SWSS_LOG_INFO("Default Allow all ACL for table %s added, status %d swindex %u",
-                    sid.c_str(), status, acl_swindex);
-    return SAI_STATUS_SUCCESS;
+    return status;
 }
 
 sai_status_t SwitchVpp::AclTblRemove(
@@ -1584,43 +1599,79 @@ sai_status_t SwitchVpp::addRemoveAclGrpMbr(
 {
     SWSS_LOG_ENTER();
 
-    auto it = m_acl_tbl_grp_mbr_map.find(tbl_grp_oid);
+    // Get the ACL stage (ingress/egress) from the table group
+    sai_attribute_t attr;
+    attr.id = SAI_ACL_TABLE_GROUP_ATTR_ACL_STAGE;
+    if (get(SAI_OBJECT_TYPE_ACL_TABLE_GROUP, tbl_grp_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_INFO("ACL table group %s direction not found",
+                      sai_serialize_object_id(tbl_grp_oid).c_str());
+        return SAI_STATUS_FAILURE;
+    }
 
-    if (it == m_acl_tbl_grp_mbr_map.end()) {
+    bool is_input;
+    switch (attr.value.s32) {
+    case SAI_ACL_STAGE_INGRESS:
+        is_input = true;
+        break;
+    case SAI_ACL_STAGE_EGRESS:
+        is_input = false;
+        break;
+    default:
+        SWSS_LOG_INFO("ACL table group %s unsupported direction %d",
+                      sai_serialize_object_id(tbl_grp_oid).c_str(), attr.value.s32);
+        return SAI_STATUS_FAILURE;
+    }
 
+    // Step 1: Unbind existing ACLs from all ports
+    // Make a copy of ports list since aclBindUnbindPort modifies m_acl_tbl_grp_ports_map
+    std::list<sai_object_id_t> ports_copy;
+    auto ports_it = m_acl_tbl_grp_ports_map.find(tbl_grp_oid);
+    if (ports_it != m_acl_tbl_grp_ports_map.end()) {
+        ports_copy = ports_it->second;
+        for (auto port_oid : ports_copy) {
+            sai_status_t status = aclBindUnbindPort(port_oid, tbl_grp_oid, is_input, false);
+            if (status != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to unbind ACL group %s from port %s",
+                               sai_serialize_object_id(tbl_grp_oid).c_str(),
+                               sai_serialize_object_id(port_oid).c_str());
+                return status;
+            }
+        }
+    }
+
+    // Step 2: Update m_acl_tbl_grp_mbr_map with add or remove group member
+    auto mbr_it = m_acl_tbl_grp_mbr_map.find(tbl_grp_oid);
+
+    if (mbr_it == m_acl_tbl_grp_mbr_map.end()) {
         if (!is_add) {
-            auto sid = sai_serialize_object_id(member_oid);
-            SWSS_LOG_ERROR("ACL group member with id %s not found in tbl %s", sid.c_str(),
+            SWSS_LOG_ERROR("ACL group member %s not found in tbl group %s",
+                           sai_serialize_object_id(member_oid).c_str(),
                            sai_serialize_object_id(tbl_grp_oid).c_str());
             return SAI_STATUS_FAILURE;
         }
 
-        std::list<sai_object_id_t> member_list;
-
-        member_list = { member_oid };
+        std::list<sai_object_id_t> member_list = { member_oid };
         m_acl_tbl_grp_mbr_map[tbl_grp_oid] = member_list;
-
     } else {
-        std::list<sai_object_id_t>& member_list = it->second;
+        std::list<sai_object_id_t>& member_list = mbr_it->second;
 
-        if (!is_add) {
-            member_list.remove(member_oid);
-        } else {
+        if (is_add) {
             member_list.push_back(member_oid);
+        } else {
+            member_list.remove(member_oid);
         }
     }
 
-    sai_attribute_t attr;
-
-    attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID;
-    if (get(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
-        auto sid = sai_serialize_object_id(member_oid);
-
-        SWSS_LOG_INFO("ACL group member %s table id not found", sid.c_str());
-        return SAI_STATUS_SUCCESS;
+    // Step 3: Rebind ACLs to all ports with updated member list
+    for (auto port_oid : ports_copy) {
+        sai_status_t status = aclBindUnbindPort(port_oid, tbl_grp_oid, is_input, true);
+        if (status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to bind ACL group %s to port %s",
+                           sai_serialize_object_id(tbl_grp_oid).c_str(),
+                           sai_serialize_object_id(port_oid).c_str());
+            return status;
+        }
     }
-
-    aclBindUnbindPorts(tbl_grp_oid, attr.value.oid, is_add);
 
     SWSS_LOG_NOTICE("ACL group member %s %s table group %s",
                     sai_serialize_object_id(member_oid).c_str(),
@@ -1795,32 +1846,64 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
         return SAI_STATUS_SUCCESS;
     }
 
+    std::list<sai_object_id_t>& member_list = it->second;
+
+    // If member_list is empty, do nothing
+    if (member_list.empty()) {
+        SWSS_LOG_INFO("ACL tbl group %s has no members", sai_serialize_object_id(tbl_grp_oid).c_str());
+        return SAI_STATUS_SUCCESS;
+    }
+
     std::string hwif_name;
 
     if (!vpp_get_hwif_name(port_oid, 0, hwif_name)) {
         SWSS_LOG_WARN("VS hwif name not found for port %s", sai_serialize_object_id(port_oid).c_str());
         return SAI_STATUS_FAILURE;
     }
-    std::list<sai_object_id_t>& member_list = it->second;
+
+    // Build a vector of (priority, acl_swindex) for sorting
+    std::vector<std::pair<uint32_t, uint32_t>> sorted_members;
 
     for (auto member_oid: member_list) {
         sai_attribute_t attr;
 
+        // Get ACL table OID
         attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_ACL_TABLE_ID;
         if (get(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member_oid, 1, &attr) != SAI_STATUS_SUCCESS) {
-            auto sid = sai_serialize_object_id(member_oid);
-
-            SWSS_LOG_INFO("ACL table oid for acl grp member id %s not found", sid.c_str());
-            continue;
+            SWSS_LOG_INFO("ACL table oid for acl grp member id %s not found",
+                          sai_serialize_object_id(member_oid).c_str());
+            return SAI_STATUS_FAILURE;
         }
         auto tbl_oid = attr.value.oid;
+
+        // Get VPP swindex for the ACL table
         auto vpp_idx_it = m_acl_swindex_map.find(tbl_oid);
         if (vpp_idx_it == m_acl_swindex_map.end()) {
-            auto sid = sai_serialize_object_id(tbl_oid);
-            SWSS_LOG_INFO("VS swindex for ACL table oid %s not found", sid.c_str());
-            continue;
+            SWSS_LOG_INFO("VS swindex for ACL table oid %s not found",
+                          sai_serialize_object_id(tbl_oid).c_str());
+            return SAI_STATUS_FAILURE;
         }
         auto acl_swindex = vpp_idx_it->second;
+
+        // Get member priority
+        attr.id = SAI_ACL_TABLE_GROUP_MEMBER_ATTR_PRIORITY;
+        uint32_t priority = 0;
+        if (get(SAI_OBJECT_TYPE_ACL_TABLE_GROUP_MEMBER, member_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
+            priority = attr.value.u32;
+        }
+
+        sorted_members.push_back({priority, acl_swindex});
+    }
+
+    // Sort by priority in descending order (higher priority first)
+    std::sort(sorted_members.begin(), sorted_members.end(),
+              [](const std::pair<uint32_t, uint32_t>& a, const std::pair<uint32_t, uint32_t>& b) {
+                  return a.first > b.first;
+              });
+
+    // Bind/unbind each ACL in sorted order
+    for (const auto& member : sorted_members) {
+        uint32_t acl_swindex = member.second;
         int ret;
 
         if (is_bind)
@@ -1829,13 +1912,40 @@ sai_status_t SwitchVpp::aclBindUnbindPort(
             ret = vpp_acl_interface_unbind(hwif_name.c_str(), acl_swindex, is_input);
 
         if (ret != 0) {
-            auto sid = sai_serialize_object_id(tbl_oid);
-            SWSS_LOG_ERROR("VS Acl tbl %s (swindex %u) %s failed", sid.c_str(), acl_swindex,
-                           is_bind ? "bind": "unbind");
+            SWSS_LOG_ERROR("VS Acl swindex %u %s failed for port %s", acl_swindex,
+                           is_bind ? "bind" : "unbind", hwif_name.c_str());
             return SAI_STATUS_FAILURE;
         }
-        SWSS_LOG_NOTICE("ACL table %s %s to port %s", sai_serialize_object_id(tbl_oid).c_str(),
-                        is_bind ? "bind": "unbind", hwif_name.c_str());
+        SWSS_LOG_NOTICE("ACL swindex %u %s to port %s (priority %u)", acl_swindex,
+                        is_bind ? "bound" : "unbound", hwif_name.c_str(), member.first);
+    }
+
+    // Handle the shared default ACL
+    if (is_bind) {
+        // Create default ACL if not already created
+        CHECK_STATUS(aclDefaultCreate());
+
+        // Bind default ACL
+        int ret = vpp_acl_interface_bind(hwif_name.c_str(), m_acl_default_swindex, is_input);
+        if (ret != 0) {
+            SWSS_LOG_ERROR("Default ACL swindex %u bind failed for port %s",
+                           m_acl_default_swindex, hwif_name.c_str());
+            return SAI_STATUS_FAILURE;
+        }
+        SWSS_LOG_NOTICE("Default ACL swindex %u bound to port %s",
+                        m_acl_default_swindex, hwif_name.c_str());
+    } else {
+        // Unbind default ACL (if it was created)
+        if (m_acl_default_created) {
+            int ret = vpp_acl_interface_unbind(hwif_name.c_str(), m_acl_default_swindex, is_input);
+            if (ret != 0) {
+                SWSS_LOG_ERROR("Default ACL swindex %u unbind failed for port %s",
+                               m_acl_default_swindex, hwif_name.c_str());
+                return SAI_STATUS_FAILURE;
+            }
+            SWSS_LOG_NOTICE("Default ACL swindex %u unbound from port %s",
+                            m_acl_default_swindex, hwif_name.c_str());
+        }
     }
 
     return SAI_STATUS_SUCCESS;
