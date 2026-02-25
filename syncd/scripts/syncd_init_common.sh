@@ -637,6 +637,8 @@ config_syncd()
         config_syncd_nephos
     elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
         config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "nokia-vs" ]; then
+        config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "vpp" ]; then
         config_syncd_vpp
     elif [ "$SONIC_ASIC_TYPE" == "marvell-teralynx" ]; then
