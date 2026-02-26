@@ -2326,6 +2326,7 @@ public:
         if (m_switchId == 0UL)
         {
             m_switchId = m_vendorSai->switchIdQuery(rid);
+            m_switchVid = VidManager::switchIdQuery(vid);
         }
 
         if (m_meterBucketsPerEni == 0)
@@ -2387,7 +2388,9 @@ public:
         swss::RedisPipeline pipeline(&db);
         swss::Table countersTable(&pipeline, COUNTERS_TABLE, true);
         for (const auto& object_key: it->second.object_keys) {
-           countersTable.del(sai_serialize_meter_bucket_entry(object_key.key.meter_bucket_entry));
+            auto meter_bucket_entry =
+                meterBucketRidToVid(object_key.key.meter_bucket_entry, vid);
+            countersTable.del(sai_serialize_meter_bucket_entry(meter_bucket_entry));
         }
         // remove from flex counter poll
         m_bulkMeterContexts.erase(it);
@@ -2420,7 +2423,10 @@ public:
             idStrings.reserve(m_meterBucketsPerEni);
 
             for (uint32_t i = 0; i < m_meterBucketsPerEni; ++i) {
-                idStrings.push_back(sai_serialize_meter_bucket_entry(ctx.object_keys[i].key.meter_bucket_entry));
+                auto meter_bucket_entry =
+                    meterBucketRidToVid(ctx.object_keys[i].key.meter_bucket_entry,
+                                        ctx.eni_vid);
+                idStrings.push_back(sai_serialize_meter_bucket_entry(meter_bucket_entry));
             }
             std::for_each(m_plugins.begin(),
                           m_plugins.end(),
@@ -2524,7 +2530,10 @@ private:
             {
                 values.emplace_back(serializeStat(ctx.counter_ids[j]), std::to_string(ctx.counters[i * ctx.counter_ids.size() + j]));
             }
-            countersTable.set(sai_serialize_meter_bucket_entry(ctx.object_keys[i].key.meter_bucket_entry), values, "");
+            auto meter_bucket_entry =
+                meterBucketRidToVid(ctx.object_keys[i].key.meter_bucket_entry,
+                                    ctx.eni_vid);
+            countersTable.set(sai_serialize_meter_bucket_entry(meter_bucket_entry), values, "");
             values.clear();
         }
         return true;
@@ -2666,6 +2675,16 @@ private:
         m_bulkMeterContexts.emplace(vid, makeBulkMeterContext(vid, rid));
     }
 
+    sai_meter_bucket_entry_t meterBucketRidToVid(
+        const sai_meter_bucket_entry_t& in_entry, sai_object_id_t eniVid)
+    {
+        SWSS_LOG_ENTER();
+        auto out_entry = in_entry;
+        out_entry.eni_id = eniVid;
+        out_entry.switch_id = m_switchVid;
+        return out_entry;
+    }
+
     std::map<sai_object_id_t, BulkMeterStatsContext> m_bulkMeterContexts;
     std::vector<sai_meter_bucket_entry_stat_t> m_supportedMeterCounters;
     sai_object_type_t m_objectType = (sai_object_type_t) SAI_OBJECT_TYPE_METER_BUCKET_ENTRY;
@@ -2673,6 +2692,7 @@ private:
     sairedis::SaiInterface *m_vendorSai;
     sai_stats_mode_t m_groupStatsMode = SAI_STATS_MODE_READ;
     sai_object_id_t m_switchId = 0UL;
+    sai_object_id_t m_switchVid = 0UL;
     uint32_t m_meterBucketsPerEni = 0;
     bool m_initalized = false;
 };
@@ -3068,6 +3088,7 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = true;
+        context->use_sai_stats_ext = true;
         return context;
     }
 
