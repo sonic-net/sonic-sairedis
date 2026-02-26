@@ -524,7 +524,7 @@ protected:
         size_t idx;
         size_t size;
     };
-    CounterGroupRef makeCounterGroupRef(uint64_t idx, uint64_t size)
+    CounterGroupRef makeCounterGroupRef(size_t idx, size_t size)
     {
         SWSS_LOG_ENTER();
         CounterGroupRef ctx;
