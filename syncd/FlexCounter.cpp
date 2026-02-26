@@ -1622,7 +1622,7 @@ private:
         }
         else
         {
-            // Query suceceeded, intersect with supplied set to no query uninteneded counters
+            // Query succeeded, intersect with supplied set to no query uninteneded counters
             std::set<StatType> originalSet(counter_ids.begin(), counter_ids.end());
             std::set<StatType> intersected;
             std::set_intersection(counter_ids_set.begin(), counter_ids_set.end(),
