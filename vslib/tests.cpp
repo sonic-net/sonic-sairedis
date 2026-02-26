@@ -809,6 +809,47 @@ void test_supported_obj_types()
 
 }
 
+void test_icmp_echo_session_stats_count_mode_capability()
+{
+    SWSS_LOG_ENTER();
+
+    sai_reinit();
+
+    sai_attribute_t attr;
+    sai_object_id_t switch_id;
+
+    attr.id = SAI_SWITCH_ATTR_INIT_SWITCH;
+    attr.value.booldata = true;
+
+    SUCCESS(sai_metadata_sai_switch_api->create_switch(&switch_id, 1, &attr));
+
+    int32_t small_list[1];
+    sai_s32_list_t enum_values_capability;
+    enum_values_capability.count = 1;
+    enum_values_capability.list = small_list;
+
+    ASSERT_TRUE(sai_query_attribute_enum_values_capability(
+            switch_id,
+            SAI_OBJECT_TYPE_ICMP_ECHO_SESSION,
+            SAI_ICMP_ECHO_SESSION_ATTR_STATS_COUNT_MODE,
+            &enum_values_capability) == SAI_STATUS_BUFFER_OVERFLOW);
+    ASSERT_TRUE(enum_values_capability.count == 2);
+
+    int32_t values[2];
+    enum_values_capability.count = 2;
+    enum_values_capability.list = values;
+
+    SUCCESS(sai_query_attribute_enum_values_capability(
+            switch_id,
+            SAI_OBJECT_TYPE_ICMP_ECHO_SESSION,
+            SAI_ICMP_ECHO_SESSION_ATTR_STATS_COUNT_MODE,
+            &enum_values_capability));
+
+    ASSERT_TRUE(enum_values_capability.count == 2);
+    ASSERT_TRUE(enum_values_capability.list[0] == SAI_STATS_COUNT_MODE_PACKET_AND_BYTE);
+    ASSERT_TRUE(enum_values_capability.list[1] == SAI_STATS_COUNT_MODE_PACKET);
+}
+
 int main()
 {
     swss::Logger::getInstance().setMinPrio(swss::Logger::SWSS_DEBUG);
@@ -836,6 +877,8 @@ int main()
     test_supported_obj_types();
 
     test_set_stats_via_redis();
+
+    test_icmp_echo_session_stats_count_mode_capability();
 
     // make proper uninitialize to close unittest thread
     sai_api_uninitialize();
