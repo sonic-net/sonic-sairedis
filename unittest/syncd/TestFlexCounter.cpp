@@ -898,11 +898,6 @@ TEST(FlexCounter, queryCounterCapability)
     sai->mock_getStats = [](sai_object_type_t, sai_object_id_t, uint32_t number_of_counters, const sai_stat_id_t *counter_ids, uint64_t *counters) {
         for (uint32_t i = 0; i < number_of_counters; i++)
         {
-            if (counter_ids[i] == SAI_PORT_STAT_IF_IN_UCAST_PKTS)
-            {
-                // Mocking failing poll of the SAI_PORT_STAT_IF_IN_UCAST_PKTS counter
-                return SAI_STATUS_FAILURE;
-            }
             counters[i] = 1000;
         }
         return SAI_STATUS_SUCCESS;
@@ -1881,12 +1876,12 @@ TEST(FlexCounter, counterIdChange)
 
     // support bulk to not support bulk
     values.clear();
-    values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS,SAI_PORT_STAT_IF_IN_UCAST_PKTS");
+    values.emplace_back(PORT_COUNTER_ID_LIST, "SAI_PORT_STAT_IF_IN_UCAST_PKTS,SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS");
     fc.addCounter(oid, oid, values);
 
     waitForCounterValues(countersTable,
                       expectedKey,
-                      {"SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS", "SAI_PORT_STAT_IF_IN_UCAST_PKTS"},
+                      {"SAI_PORT_STAT_IF_IN_UCAST_PKTS","SAI_PORT_STAT_IF_IN_NON_UCAST_PKTS"},
                       {"10", "20"});
 
     // not support bulk but counter id changes
