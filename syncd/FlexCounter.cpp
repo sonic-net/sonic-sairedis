@@ -1606,7 +1606,7 @@ private:
         }
         else
         {
-            // Query succeeded, intersect with supplied set to no query uninteneded counters
+            // Query succeeded, intersect with supplied set to no query unintended counters
             std::set<StatType> originalSet(counter_ids.begin(), counter_ids.end());
             std::set<StatType> intersected;
             std::set_intersection(counter_ids_set.begin(), counter_ids_set.end(),
@@ -3421,7 +3421,7 @@ void FlexCounter::addCounter(
 
             }
             catch (...) {
-                SWSS_LOG_WARN("Error occured initlizating SAI objects with counter groups, falling back to global counter list implementation");
+                SWSS_LOG_WARN("Error occurred initializing SAI objects with counter groups, falling back to global counter list implementation");
                 getCounterContext(counterGroupRef->second)->addObject(
                         vid,
                         rid,
@@ -3494,7 +3494,7 @@ void FlexCounter::bulkAddCounter(
             }
             catch (...)
             {
-                SWSS_LOG_WARN("Error occured initlizating SAI objects with counter groups, falling back to global counter list implementation");
+                SWSS_LOG_WARN("Error occurred initializing SAI objects with counter groups, falling back to global counter list implementation");
                 getCounterContext(counterGroupRef->second)->bulkAddObject(
                         vids,
                         rids,
@@ -3534,7 +3534,7 @@ void FlexCounter::bulkAddCounter(
         }
         catch (...)
         {
-            SWSS_LOG_WARN("Error occured initlizating SAI objects with counter groups, falling back to global counter list implementation");
+            SWSS_LOG_WARN("Error occurred initializing SAI objects with counter groups, falling back to global counter list implementation");
             getCounterContext(COUNTER_TYPE_BUFFER_POOL)->bulkAddObject(
                     vids,
                     rids,
