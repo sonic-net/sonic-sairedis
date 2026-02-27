@@ -3198,21 +3198,25 @@ sai_status_t Syncd::processFlexCounterEvent(
 
         for (auto &strVid: vidStringVector)
         {
-            sai_object_id_t vid, rid;
+            sai_object_id_t vid, rid = SAI_NULL_OBJECT_ID;
             sai_deserialize_object_id(strVid, vid);
-            vids.emplace_back(vid);
 
-            if (!m_translator->tryTranslateVidToRid(vid, rid))
+            if (!m_translator->tryTranslateVidToRid(vid, rid) || rid == SAI_NULL_OBJECT_ID)
             {
-                SWSS_LOG_ERROR("port VID %s, was not found (probably port was removed/splitted) and will remove from counters now",
+                SWSS_LOG_WARN("port VID %s, RID not available yet, skipping counter add",
                                sai_serialize_object_id(vid).c_str());
+                continue;
             }
 
+            vids.emplace_back(vid);
             rids.emplace_back(rid);
             keys.emplace_back(groupName + ":" + strVid);
         }
 
-        m_manager->bulkAddCounter(vids, rids, groupName, values);
+        if (!vids.empty())
+        {
+            m_manager->bulkAddCounter(vids, rids, groupName, values);
+        }
 
         for (auto &singleKey: keys)
         {
@@ -3235,7 +3239,7 @@ sai_status_t Syncd::processFlexCounterEvent(
         sai_object_id_t vid;
         sai_deserialize_object_id(strVid, vid);
 
-        sai_object_id_t rid;
+        sai_object_id_t rid = SAI_NULL_OBJECT_ID;
 
         if (!m_translator->tryTranslateVidToRid(vid, rid))
         {
@@ -3250,6 +3254,13 @@ sai_status_t Syncd::processFlexCounterEvent(
                               sai_serialize_object_id(vid).c_str());
             }
             effective_op = DEL_COMMAND;
+        }
+
+        if (effective_op == SET_COMMAND && rid == SAI_NULL_OBJECT_ID)
+        {
+            SWSS_LOG_INFO("Skipping counter add for VID %s with null RID in group %s",
+                    sai_serialize_object_id(vid).c_str(), groupName.c_str());
+            continue;
         }
 
         if (effective_op == SET_COMMAND)
