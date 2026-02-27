@@ -60,6 +60,7 @@ Syncd::Syncd(
         _In_ bool isWarmStart):
     m_commandLineOptions(cmd),
     m_isWarmStart(isWarmStart),
+    m_warmBootReconciling(isWarmStart),
     m_firstInitWasPerformed(false),
     m_asicInitViewMode(false), // by default we are in APPLY view mode
     m_vendorSai(vendorSai),
@@ -3155,6 +3156,13 @@ void Syncd::processFlexCounterEvent( // TODO must be moved to go via ASIC channe
     auto& op = kfvOp(kco);
     auto& values = kfvFieldsValues(kco);
 
+    if (m_warmBootReconciling)
+    {
+        SWSS_LOG_INFO("Deferring flex counter event %s:%s during warm boot reconciliation", op.c_str(), key.c_str());
+        m_deferredFlexCounterEvents.emplace_back(key, op, values);
+        return;
+    }
+
     WatchdogScope ws(m_timerWatchdog, op + ":" + key, &kco);
 
     processFlexCounterEvent(key, op, values, false);
@@ -4640,6 +4648,22 @@ sai_status_t Syncd::processNotifySyncd(
             m_translator->clearLocalCache();
 
             m_createdInInitView.clear();
+
+            // Drain deferred flex counter events now that VIDTORID is populated
+            if (m_warmBootReconciling)
+            {
+                m_warmBootReconciling = false;
+
+                SWSS_LOG_NOTICE("Processing %zu deferred flex counter events after warm boot reconciliation",
+                        m_deferredFlexCounterEvents.size());
+
+                for (auto& event : m_deferredFlexCounterEvents)
+                {
+                    processFlexCounterEvent(std::get<0>(event), std::get<1>(event), std::get<2>(event), false);
+                }
+
+                m_deferredFlexCounterEvents.clear();
+            }
         }
         else
         {

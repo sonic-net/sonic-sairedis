@@ -27,6 +27,7 @@
 #include "swss/notificationconsumer.h"
 
 #include <memory>
+#include <tuple>
 
 namespace syncd
 {
@@ -421,6 +422,17 @@ namespace syncd
             std::shared_ptr<CommandLineOptions> m_commandLineOptions;
 
             bool m_isWarmStart;
+
+            /**
+             * @brief Flag indicating warm boot reconciliation is in progress.
+             *
+             * When true, flex counter events are queued instead of processed
+             * immediately, because VIDTORID mapping may not be fully populated
+             * yet. The queue is drained after applyView() completes.
+             */
+            bool m_warmBootReconciling;
+
+            std::vector<std::tuple<std::string, std::string, std::vector<swss::FieldValueTuple>>> m_deferredFlexCounterEvents;
 
             bool m_firstInitWasPerformed;
 
