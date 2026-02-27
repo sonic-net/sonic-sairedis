@@ -32,6 +32,8 @@ sai_status_t transfer_attributes(
 
 std::string sai_serialize_port_attr(_In_ const sai_port_attr_t port_attr);
 
+std::string sai_serialize_port_serdes_attr(_In_ const sai_port_serdes_attr_t port_serdes_attr);
+
 std::string sai_serialize_fdb_event(
         _In_ sai_fdb_event_t event);
 
@@ -266,6 +268,9 @@ std::string sai_serialize_number_list(
         _In_ bool countOnly,
         _In_ bool hex = false);
 
+std::string sai_serialize_uint32_list_to_json_dict(
+        _In_ const std::string& uint32_list_string);
+
 std::string sai_serialize_attr_id(
         _In_ const sai_attr_metadata_t& meta);
 
@@ -320,6 +325,10 @@ std::string sai_serialize_stats_st_capability_list(
 
 std::string sai_serialize_port_snr_list(
         _In_ const sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly);
+
+std::string sai_serialize_taps_list(
+        _In_ const sai_taps_list_t& port_serdes_taps_list,
         _In_ bool countOnly);
 
 // serialize notifications
@@ -459,6 +468,10 @@ void sai_deserialize_ipmc_entry_type(
 void sai_deserialize_port_attr(
       _In_ const std::string& s,
       _Out_ sai_port_attr_t& port_attr);
+
+void sai_deserialize_port_serdes_attr(
+      _In_ const std::string& s,
+      _Out_ sai_port_serdes_attr_t& port_serdes_attr);
 
 void sai_deserialize_l2mc_entry_type(
         _In_ const std::string& s,
@@ -765,6 +778,11 @@ void sai_deserialize_stats_st_capability_list(
 void sai_deserialize_port_snr_list(
         _In_ const std::string& s,
         _Out_ sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly);
+
+void sai_deserialize_taps_list(
+        _In_ const std::string& s,
+        _Out_ sai_taps_list_t& port_serdes_taps_list,
         _In_ bool countOnly);
 
 void sai_deserialize_switch_macsec_post_status(

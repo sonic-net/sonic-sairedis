@@ -14,6 +14,7 @@ tests_SOURCES = main.cpp \
 				TestConcurrentQueue.cpp \
 				TestFlexCounter.cpp \
 				TestPortPhyAttr.cpp \
+				TestPortPhySerdesAttr.cpp \
 				TestVirtualOidTranslator.cpp \
 				TestNotificationQueue.cpp \
 				TestNotificationProcessor.cpp \
