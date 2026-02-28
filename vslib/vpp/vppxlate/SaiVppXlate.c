@@ -1146,6 +1146,16 @@ vl_api_sr_localsid_add_del_reply_t_handler(vl_api_sr_localsid_add_del_reply_t *m
 }
 
 static void
+vl_api_sr_localsid_add_del_v2_reply_t_handler(vl_api_sr_localsid_add_del_v2_reply_t *msg)
+{
+    int retval = (int)ntohl((uint32_t)msg->retval);
+    set_reply_status(retval);
+
+    SAIVPP_DEBUG("sr local sid add/del v2 %s(%d)",
+                  retval ? "failed" : "successful", retval);
+}
+
+static void
 vl_api_sr_policy_add_v2_reply_t_handler(vl_api_sr_policy_add_v2_reply_t *msg)
 {
     int retval = (int)ntohl((uint32_t)msg->retval);
@@ -1380,6 +1390,7 @@ vl_api_acl_interface_add_del_reply_t_handler(vl_api_acl_interface_add_del_reply_
     _(TUNTERM_MSG_ID(TUNTERM_ACL_DEL_REPLY), tunterm_acl_del_reply) \
     _(TUNTERM_MSG_ID(TUNTERM_ACL_ADD_REPLACE_REPLY), tunterm_acl_add_replace_reply) \
     _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_REPLY), sr_localsid_add_del_reply) \
+    _(SR_MSG_ID(SR_LOCALSID_ADD_DEL_V2_REPLY), sr_localsid_add_del_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_ADD_V2_REPLY), sr_policy_add_v2_reply) \
     _(SR_MSG_ID(SR_POLICY_DEL_REPLY), sr_policy_del_reply) \
     _(SR_MSG_ID(SR_STEERING_ADD_DEL_REPLY), sr_steering_add_del_reply) \
@@ -3734,7 +3745,7 @@ int vpp_my_sid_entry_add_del (vpp_my_sid_entry_t *my_sid, bool is_del)
 {
     int                           ret;
     vat_main_t                   *vam = &vat_main;
-    vl_api_sr_localsid_add_del_t *mp;
+    vl_api_sr_localsid_add_del_v2_t *mp;
 
     init_vpp_client();
 
@@ -3742,7 +3753,7 @@ int vpp_my_sid_entry_add_del (vpp_my_sid_entry_t *my_sid, bool is_del)
 
     __plugin_msg_base = sr_msg_id_base;
 
-    M (SR_LOCALSID_ADD_DEL, mp);
+    M (SR_LOCALSID_ADD_DEL_V2, mp);
 
     if (!vpp_to_vl_api_ip6_address(&mp->localsid, &my_sid->localsid)) {
         SAIVPP_ERROR("Unknown protocol in local sid");
@@ -3779,6 +3790,9 @@ int vpp_my_sid_entry_add_del (vpp_my_sid_entry_t *my_sid, bool is_del)
     mp->behavior = behavior;
     mp->vlan_index = htonl(my_sid->vlan_index);
     mp->fib_table = htonl(my_sid->fib_table);
+    mp->locator_block_len = my_sid->locator_block_len;
+    mp->locator_node_len = my_sid->locator_node_len;
+    mp->function_len = my_sid->function_len;
 
     S (mp);
 
