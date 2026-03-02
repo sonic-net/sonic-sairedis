@@ -6,7 +6,7 @@ extern "C" {
 
 #include "meta/SaiInterface.h"
 #include "VirtualOidTranslator.h"
-#include "RedisClient.h"
+#include "BaseRedisClient.h"
 #include "SaiSwitchInterface.h"
 
 #include <set>
@@ -15,6 +15,8 @@ extern "C" {
 #include <vector>
 #include <map>
 #include <memory>
+
+#define MAX_LANES_PER_PORT 8
 
 namespace syncd
 {
@@ -31,7 +33,7 @@ namespace syncd
             SaiSwitch(
                     _In_ sai_object_id_t switch_vid,
                     _In_ sai_object_id_t switch_rid,
-                    _In_ std::shared_ptr<RedisClient> client,
+                    _In_ std::shared_ptr<BaseRedisClient> client,
                     _In_ std::shared_ptr<VirtualOidTranslator> translator,
                     _In_ std::shared_ptr<sairedis::SaiInterface> vendorSai,
                     _In_ bool warmBoot);
@@ -377,6 +379,6 @@ namespace syncd
 
             std::shared_ptr<VirtualOidTranslator> m_translator;
 
-            std::shared_ptr<RedisClient> m_client;
+            std::shared_ptr<BaseRedisClient> m_client;
     };
 }

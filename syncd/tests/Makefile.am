@@ -5,7 +5,7 @@ LDADD_GTEST = -L/usr/src/gtest -lgtest -lgtest_main
 bin_PROGRAMS = tests
 
 tests_SOURCES = \
-    main.cpp TestSyncdBrcm.cpp TestSyncdMlnx.cpp TestSyncdNvdaBf.cpp TestSyncdLib.cpp
+    main.cpp TestSyncdBrcm.cpp TestSyncdMlnx.cpp TestSyncdNvdaBf.cpp TestSyncdLib.cpp TestDisabledRedisClient.cpp
 tests_CXXFLAGS = \
     $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
 tests_LDADD = \

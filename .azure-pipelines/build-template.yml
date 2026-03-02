@@ -19,9 +19,6 @@ parameters:
   type: number
   default: 60
 
-- name: sonic_slave
-  type: string
-
 - name: swss_common_artifact_name
   type: string
 
@@ -62,7 +59,7 @@ jobs:
       vmImage: 'ubuntu-22.04'
 
   container:
-    image: sonicdev-microsoft.azurecr.io:443/${{ parameters.sonic_slave }}:latest
+    image: sonicdev-microsoft.azurecr.io:443/sonic-slave-${{ parameters.debian_version }}:$(BUILD_BRANCH)-${{ parameters.arch }}
     options:  "--privileged"
 
   steps:
@@ -101,7 +98,7 @@ jobs:
         docbook-utils \
         aspell-en \
         libhiredis-dev \
-        swig4.0 \
+        swig \
         libzmq3-dev \
         autoconf-archive
 
@@ -133,7 +130,7 @@ jobs:
     displayName: "Install libnl for arm dependencies"
   - task: DownloadPipelineArtifact@2
     # amd64 artifact name does not has arch suffix
-    condition: eq('${{ parameters.arch }}', 'amd64')
+    condition: and(ne('${{ parameters.debian_version }}', 'trixie'), eq('${{ parameters.arch }}', 'amd64'))
     inputs:
       source: specific
       project: build
@@ -146,7 +143,7 @@ jobs:
         target/debs/${{ parameters.debian_version }}/libyang_*.deb
     displayName: "Download libyang from amd64 common lib"
   - task: DownloadPipelineArtifact@2
-    condition: ne('${{ parameters.arch }}', 'amd64')
+    condition: and(ne('${{ parameters.debian_version }}', 'trixie'), ne('${{ parameters.arch }}', 'amd64'))
     inputs:
       source: specific
       project: build
@@ -157,6 +154,33 @@ jobs:
       artifact: common-lib.${{ parameters.arch }}
       patterns: |
         target/debs/${{ parameters.debian_version }}/libyang_*.deb
+  - task: DownloadPipelineArtifact@2
+    condition: and(eq('${{ parameters.debian_version }}', 'trixie'), eq('${{ parameters.arch }}', 'amd64'))
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libpcre3_*.deb
+    displayName: "Download libyang from amd64 common lib"
+  - task: DownloadPipelineArtifact@2
+    condition: and(eq('${{ parameters.debian_version }}', 'trixie'), ne('${{ parameters.arch }}', 'amd64'))
+    inputs:
+      source: specific
+      project: build
+      pipeline: Azure.sonic-buildimage.common_libs
+      runVersion: 'latestFromBranch'
+      runBranch: 'refs/heads/$(BUILD_BRANCH)'
+      path: $(Build.ArtifactStagingDirectory)/download
+      artifact: common-lib.${{ parameters.arch }}
+      patterns: |
+        target/debs/${{ parameters.debian_version }}/libyang_*.deb
+        target/debs/${{ parameters.debian_version }}/libpcre3_*.deb
     displayName: "Download libyang from common lib"
   - script: |
       set -ex
@@ -238,7 +262,8 @@ jobs:
         sudo setcap "cap_dac_override,cap_ipc_lock,cap_ipc_owner,cap_sys_time=eip" unittest/syncd/.libs/tests
         make check
         gcovr --version
-        find SAI/meta -name "*.gc*" | xargs rm -vf
+        find SAI/meta -name "*.gc*" -print -delete
+        find -name 'libswsscommon_la*.gcda' -print -delete
         gcov_dirs=$(find . -path "*.libs*gcda" | xargs dirname | sort -u |  cut -c"3-")
         for dir in ${gcov_dirs}; do
           source_dir=$(dirname $dir)

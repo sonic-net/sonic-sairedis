@@ -2,7 +2,7 @@
 
 #include "NotificationQueue.h"
 #include "VirtualOidTranslator.h"
-#include "RedisClient.h"
+#include "BaseRedisClient.h"
 #include "NotificationProducerBase.h"
 
 #include "swss/notificationproducer.h"
@@ -20,7 +20,7 @@ namespace syncd
 
             NotificationProcessor(
                     _In_ std::shared_ptr<NotificationProducerBase> producer,
-                    _In_ std::shared_ptr<RedisClient> client,
+                    _In_ std::shared_ptr<BaseRedisClient> client,
                     _In_ std::function<void(const swss::KeyOpFieldsValuesTuple&)> synchronizer);
 
             virtual ~NotificationProcessor();
@@ -203,7 +203,7 @@ namespace syncd
 
             std::function<void(const swss::KeyOpFieldsValuesTuple&)> m_synchronizer;
 
-            std::shared_ptr<RedisClient> m_client;
+            std::shared_ptr<BaseRedisClient> m_client;
 
             std::shared_ptr<NotificationProducerBase> m_notifications;
     };

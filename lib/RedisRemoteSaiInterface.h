@@ -108,6 +108,13 @@ namespace sairedis
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
+        public: // QUAD meta key
+
+            using SaiInterface::remove;
+            using SaiInterface::get;
+            using SaiInterface::create;
+            using SaiInterface::set;
+
         public: // stats API
 
             virtual sai_status_t getStats(
@@ -459,6 +466,8 @@ namespace sairedis
             std::shared_ptr<Channel> m_communicationChannel;
 
             uint64_t m_responseTimeoutMs;
+
+            size_t m_zmqResponseBufferSize;
 
             std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> m_notificationCallback;
 
