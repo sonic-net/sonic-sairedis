@@ -206,6 +206,7 @@ struct BulkStatsContext
     std::vector<uint64_t> counters;
     std::string name;
     uint32_t default_bulk_chunk_size;
+    std::unordered_set<sai_object_id_t> object_vids_set;
 };
 
 // TODO: use if const expression when cpp17 is supported
@@ -765,6 +766,7 @@ public:
                     bulkContext.get()->counter_ids = move(counterPrefix.second);
                     bulkContext.get()->object_statuses.resize(singleBulkContext.get()->object_statuses.size());
                     bulkContext.get()->object_vids = singleBulkContext.get()->object_vids;
+                    bulkContext.get()->object_vids_set = singleBulkContext.get()->object_vids_set;
                     bulkContext.get()->object_keys = singleBulkContext.get()->object_keys;
                     bulkContext.get()->counters.resize(bulkContext.get()->counter_ids.size() * bulkContext.get()->object_vids.size());
 
@@ -1382,7 +1384,15 @@ private:
             _Inout_ BulkContextType &ctx)
     {
         SWSS_LOG_ENTER();
+
+        if (ctx.object_vids_set.find(vid) != ctx.object_vids_set.end())
+        {
+            SWSS_LOG_INFO("VID 0x%" PRIx64 " already exists in bulk context, skipping", vid);
+            return;
+        }
+
         ctx.object_vids.push_back(vid);
+        ctx.object_vids_set.insert(vid);
         sai_object_key_t object_key;
         object_key.key.object_id = rid;
         ctx.object_keys.push_back(object_key);
@@ -1397,13 +1407,25 @@ private:
             _Inout_ BulkContextType &ctx)
     {
         SWSS_LOG_ENTER();
-        ctx.object_vids.insert(ctx.object_vids.end(), vids.begin(), vids.end());
-        transform(rids.begin(), rids.end(), back_inserter(ctx.object_keys), [](sai_object_id_t rid) {
+        // Add objects only if they don't already exist to avoid duplicates
+        for (size_t i = 0; i < vids.size(); i++)
+        {
+            auto vid = vids[i];
+            auto rid = rids[i];
+
+            if (ctx.object_vids_set.find(vid) != ctx.object_vids_set.end())
+            {
+                SWSS_LOG_INFO("VID 0x%" PRIx64 " already exists in bulk context, skipping", vid);
+                continue;
+            }
+
+            ctx.object_vids.push_back(vid);
+            ctx.object_vids_set.insert(vid);
             sai_object_key_t key;
             key.key.object_id = rid;
-            return key;
-        });
-        ctx.object_statuses.insert(ctx.object_statuses.end(), vids.size(), SAI_STATUS_SUCCESS);
+            ctx.object_keys.push_back(key);
+            ctx.object_statuses.push_back(SAI_STATUS_SUCCESS);
+        }
         ctx.counters.resize(counterIds.size() * ctx.object_keys.size());
     }
 
@@ -1424,6 +1446,7 @@ private:
             found = true;
             auto index = std::distance(ctx.object_vids.begin(), vid_iter);
             ctx.object_vids.erase(vid_iter);
+            ctx.object_vids_set.erase(vid);
             if (ctx.object_vids.empty())
             {
                 // It can change the order of the map to erase an element in a loop iterating the map
