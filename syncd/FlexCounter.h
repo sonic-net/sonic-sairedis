@@ -83,6 +83,20 @@ namespace syncd
         }
 
     protected:
+
+        /**
+         * @brief Attempt to resolve a VID to RID when the stored RID is SAI_NULL_OBJECT_ID.
+         *
+         * @param vid        The virtual object id.
+         * @param[in,out] rid On entry the current (possibly null) RID; on success updated to resolved RID.
+         *
+         * @return true if rid is valid and the caller should proceed; false if the
+         *         object should be skipped this poll cycle.
+         */
+        bool resolveRid(
+                _In_ sai_object_id_t vid,
+                _Inout_ sai_object_id_t &rid);
+
         std::string m_name;
         std::string m_instanceId;
         std::set<std::string> m_plugins;

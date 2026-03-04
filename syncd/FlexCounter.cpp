@@ -510,6 +510,41 @@ void deserializeAttr(
     sai_deserialize_port_attr(name, attr);
 }
 
+bool BaseCounterContext::resolveRid(
+        _In_ sai_object_id_t vid,
+        _Inout_ sai_object_id_t &rid)
+{
+    SWSS_LOG_ENTER();
+
+    if (rid != SAI_NULL_OBJECT_ID)
+    {
+        return true;
+    }
+
+    if (!m_vidToRidResolver)
+    {
+        return false;
+    }
+
+    sai_object_id_t resolvedRid = SAI_NULL_OBJECT_ID;
+
+    try
+    {
+        if (m_vidToRidResolver(vid, resolvedRid) && resolvedRid != SAI_NULL_OBJECT_ID)
+        {
+            rid = resolvedRid;
+            SWSS_LOG_DEBUG("FlexCounter: resolved VID 0x%" PRIx64 " -> RID 0x%" PRIx64 " (VIDTORID)", vid, rid);
+            return true;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        SWSS_LOG_WARN("FlexCounter: failed to resolve VID 0x%" PRIx64 ": %s, skipping", vid, e.what());
+    }
+
+    return false;
+}
+
 template <typename StatType>
 class CounterContext : public BaseCounterContext
 {
@@ -1131,35 +1166,12 @@ public:
             sai_object_id_t rid = kv.second->rid;
             const auto &statIds = kv.second->counter_ids;
 
-            if (rid == SAI_NULL_OBJECT_ID)
+            if (!resolveRid(vid, rid))
             {
-                if (m_vidToRidResolver)
-                {
-                    sai_object_id_t resolvedRid = SAI_NULL_OBJECT_ID;
-                    try
-                    {
-                        if (m_vidToRidResolver(vid, resolvedRid) && resolvedRid != SAI_NULL_OBJECT_ID)
-                        {
-                            kv.second->rid = resolvedRid;
-                            rid = resolvedRid;
-                            SWSS_LOG_DEBUG("FlexCounter: resolved VID 0x%" PRIx64 " -> RID 0x%" PRIx64 " (VIDTORID)", vid, rid);
-                        }
-                        else
-                        {
-                            continue;
-                        }
-                    }
-                    catch (const std::exception &e)
-                    {
-                        SWSS_LOG_WARN("FlexCounter: failed to resolve VID 0x%" PRIx64 ": %s, skipping", vid, e.what());
-                        continue;
-                    }
-                }
-                else
-                {
-                    continue;
-                }
+                continue;
             }
+
+            kv.second->rid = rid;
 
             // TODO: use if const expression when cpp17 is supported
             if (HasStatsMode<CounterIdsType>::value)
@@ -1733,42 +1745,18 @@ public:
     {
         SWSS_LOG_ENTER();
 
-        for (const auto &kv : Base::m_objectIdsMap)
+        for (auto &kv : Base::m_objectIdsMap)
         {
             const auto &vid = kv.first;
             sai_object_id_t rid = kv.second->rid;
             const auto &attrIds = kv.second->counter_ids;
 
-            if (rid == SAI_NULL_OBJECT_ID)
+            if (!this->resolveRid(vid, rid))
             {
-                if (Base::m_vidToRidResolver)
-                {
-                    sai_object_id_t resolvedRid = SAI_NULL_OBJECT_ID;
-                    try
-                    {
-                        if (Base::m_vidToRidResolver(vid, resolvedRid) && resolvedRid != SAI_NULL_OBJECT_ID)
-                        {
-                            kv.second->rid = resolvedRid;
-                            rid = resolvedRid;
-                            SWSS_LOG_DEBUG("FlexCounter: resolved VID 0x%" PRIx64 " -> RID 0x%" PRIx64 " (VIDTORID)", vid, rid);
-                        }
-                        else
-                        {
-                            continue;
-                        }
-                    }
-                    catch (const std::exception &e)
-                    {
-                        SWSS_LOG_WARN("FlexCounter: failed to resolve VID 0x%" PRIx64 ": %s, skipping", vid, e.what());
-                        continue;
-                    }
-                }
-                else
-                {
-                    // Still no RID in VIDTORID; skip this object this poll (do not call SAI with RID=0)
-                    continue;
-                }
+                continue;
             }
+
+            kv.second->rid = rid;
 
             std::vector<sai_attribute_t> attrs(attrIds.size());
             for (size_t i = 0; i < attrIds.size(); i++)
