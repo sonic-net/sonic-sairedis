@@ -103,7 +103,7 @@ void create_vpp_nexthop_entry (
 
 sai_status_t SwitchVpp::IpRouteAddRemove(
         _In_ const SaiObject* route_obj,
-            _In_ bool is_add)
+        _In_ bool is_add)
 {
     SWSS_LOG_ENTER();
 
@@ -112,6 +112,20 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
     sai_object_id_t              next_hop_oid;
     sai_attribute_t              attr;
     std::string                  serializedObjectId = route_obj->get_id();
+    int                          packet_action = SAI_PACKET_ACTION_FORWARD;
+
+    attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
+    status = route_obj->get_attr(attr);
+    if (status == SAI_STATUS_SUCCESS) {
+        packet_action = attr.value.s32;
+    }
+
+    // We should program drop routes
+    if (packet_action != SAI_PACKET_ACTION_FORWARD) {
+        SWSS_LOG_NOTICE("Ignoring ip route %s: action is not forward: %d",
+                        serializedObjectId.c_str(), packet_action);
+        return SAI_STATUS_SUCCESS;
+    }
 
     attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
     CHECK_STATUS_QUIET(route_obj->get_mandatory_attr(attr));
