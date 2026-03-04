@@ -1325,6 +1325,18 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForTunnelMap(
     return nullptr;
 }
 
+/**
+ * @brief Find the current best matching candidate for an L2MC (Layer 2 Multicast) group object
+ *
+ * This function matches an L2MC group from the temporary view with entries in the current view
+ * by serializing L2MC entry keys and comparing output group RIDs, then finds the best matching
+ * candidate object from the provided candidate list that aligns with the matched L2MC group RID.
+ *
+ * @param[in] temporaryObj Shared pointer to the temporary view's L2MC group SaiObj (match reference)
+ * @param[in] candidateObjects List of candidate SaiObj compare info to find the best match from
+ * @return Shared pointer to the best matching SaiObj candidate for the L2MC group; nullptr if no match found
+ */
+
 std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForL2mcGroup(
         _In_ const std::shared_ptr<const SaiObj> &temporaryObj,
         _In_ const std::vector<sai_object_compare_info_t> &candidateObjects)
@@ -1352,7 +1364,7 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForL2mcGroup(
             }
 
             strTmpL2McEntry = sai_serialize_l2mc_entry(mk.objectkey.key.l2mc_entry);
-            SWSS_LOG_NOTICE("Temp L2MC Entry serialized: %s", strTmpL2McEntry.c_str());
+            SWSS_LOG_INFO("Temp L2MC Entry serialized: %s", strTmpL2McEntry.c_str());
             break;
         }
     }
@@ -1366,12 +1378,21 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForL2mcGroup(
             // Serialize the current L2MC entry
             sai_object_meta_key_t mk = curL2McEntry->m_meta_key;
             strCurL2McEntry = sai_serialize_l2mc_entry(mk.objectkey.key.l2mc_entry);
-            SWSS_LOG_NOTICE("current L2MC Entry serialized: %s", strCurL2McEntry.c_str());
+            SWSS_LOG_INFO("current L2MC Entry serialized: %s", strCurL2McEntry.c_str());
 
             if (strTmpL2McEntry == strCurL2McEntry)
             {
-                SWSS_LOG_NOTICE("found current entry matching temp entry");
-                curGroupRid = m_currentView.m_vidToRid.at(groupIdAttr->getOid());
+                SWSS_LOG_INFO("found current entry matching temp entry");
+                auto vidToRidIter = m_currentView.m_vidToRid.find(groupIdAttr->getOid());
+                if (vidToRidIter == m_currentView.m_vidToRid.end())
+                {
+                    SWSS_LOG_ERROR("VID %lu not found in current view's VID-to-RID map (L2MC group match failed)",
+                                   groupIdAttr->getOid());
+                    curGroupRid = SAI_NULL_OBJECT_ID; // Reset to invalid
+                    break; // Exit loop - no valid RID for matched entry
+                }
+                // Map the group VID to current view's RID (runtime ID) for candidate matching
+                curGroupRid = vidToRidIter->second;
                 break;
             }
         }
@@ -1379,11 +1400,14 @@ std::shared_ptr<SaiObj> BestCandidateFinder::findCurrentBestMatchForL2mcGroup(
 
     for (const auto& c : candidateObjects)
     {
-        auto candGroupRid = m_currentView.m_vidToRid.at(c.obj->getVid());
-
-        // Skip already processed objects
-        if (c.obj->getObjectStatus() != SAI_OBJECT_STATUS_NOT_PROCESSED)
+        auto candVidToRidIter = m_currentView.m_vidToRid.find(c.obj->getVid());
+        if (candVidToRidIter == m_currentView.m_vidToRid.end())
+        {
+            SWSS_LOG_ERROR("Candidate VID %lu not found in current view's VID-to-RID map - skipping candidate",
+                           c.obj->getVid());
             continue;
+        }
+        auto candGroupRid = candVidToRidIter->second;
 
         //Check that the candidate L2MC group RID matches the retrieved L2MC group RID.
         if (candGroupRid == curGroupRid)
