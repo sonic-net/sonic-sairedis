@@ -3002,6 +3002,9 @@ int SaiPlayer::replay()
                 continue;
             case 'Q':
                 continue; // skip over query responses
+            case 'T':
+                setSyndResponseTimeout(line);
+                continue;
             case '#':
             case 'n':
                 SWSS_LOG_INFO("skipping op %c line %s", op, line.c_str());
@@ -3317,4 +3320,36 @@ int SaiPlayer::run()
     m_sai->apiUninitialize();
 
     return exitcode;
+}
+
+void SaiPlayer::setSyndResponseTimeout(
+        _In_ const std::string& line)
+{
+    SWSS_LOG_ENTER();
+
+    // timestamp|action|Timeout
+    auto fields = swss::tokenize(line, '|');
+
+    if (fields.size() < 3)
+    {
+        SWSS_LOG_THROW("invalid line %s", line.c_str());
+    }
+    auto t_attr = fields.at(2); // SYND_RESNPOSE_TIMEOUT=<value>
+
+    std::string time = swss::tokenize(t_attr, '=').at(1);
+
+    uint64_t mseconds =  std::stoull(time);
+
+    // tell syncd that we are compiling new view
+    sai_attribute_t attr;
+    attr.id = SAI_REDIS_SWITCH_ATTR_SYNC_OPERATION_RESPONSE_TIMEOUT;
+    attr.value.u64 = mseconds;
+
+    /*
+     * NOTE: We don't need actual switch to set those attributes.
+     */
+
+    sai_object_id_t switch_id = SAI_NULL_OBJECT_ID;
+
+    EXIT_ON_ERROR(m_sai->set(SAI_OBJECT_TYPE_SWITCH, switch_id, &attr));
 }
