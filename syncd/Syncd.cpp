@@ -4561,7 +4561,11 @@ sai_status_t Syncd::processNotifySyncd(
         {
             SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
 
+            transitionToInitWatchdogTimeout();
+
             inspectAsic();
+
+            transitionToNormalWatchdogTimeout();
 
             sendNotifyResponse(SAI_STATUS_SUCCESS);
         }
@@ -4602,6 +4606,7 @@ sai_status_t Syncd::processNotifySyncd(
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
 
+        transitionToInitWatchdogTimeout();
 
         try
         {
@@ -4620,6 +4625,8 @@ sai_status_t Syncd::processNotifySyncd(
 
             throw;
         }
+
+        transitionToNormalWatchdogTimeout();
 
         sendNotifyResponse(status);
 
@@ -4657,7 +4664,11 @@ sai_status_t Syncd::processNotifySyncd(
     {
         SWSS_LOG_NOTICE("syncd switched to INSPECT ASIC mode");
 
+        transitionToInitWatchdogTimeout();
+
         inspectAsic();
+
+        transitionToNormalWatchdogTimeout();
 
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
@@ -4685,6 +4696,24 @@ void Syncd::sendNotifyResponse(
     SWSS_LOG_INFO("sending response: %s", strStatus.c_str());
 
     m_selectableChannel->set(strStatus, entry, REDIS_ASIC_STATE_COMMAND_NOTIFY);
+}
+
+void Syncd::transitionToNormalWatchdogTimeout()
+{
+    SWSS_LOG_ENTER();
+
+    int64_t normalTimeout = m_commandLineOptions->m_watchdogWarnTimeSpan * WD_DELAY_FACTOR;
+
+    m_timerWatchdog.setWarnTimespan(normalTimeout);
+}
+
+void Syncd::transitionToInitWatchdogTimeout()
+{
+    SWSS_LOG_ENTER();
+
+    int64_t initTimeout = m_commandLineOptions->m_watchdogInitTimeSpan * WD_DELAY_FACTOR;
+
+    m_timerWatchdog.setWarnTimespan(initTimeout);
 }
 
 void Syncd::clearTempView()
