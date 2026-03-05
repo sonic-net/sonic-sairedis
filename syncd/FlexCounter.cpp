@@ -2189,6 +2189,8 @@ public:
 
     bool getPortRidFromPortSerdesRid(sai_object_id_t port_serdes_rid, sai_object_id_t &port_rid)
     {
+        SWSS_LOG_ENTER();
+
         sai_attribute_t attr;
         attr.id = SAI_PORT_SERDES_ATTR_PORT_ID;
         sai_status_t status = Base::m_vendorSai->get(Base::m_objectType, port_serdes_rid, 1, &attr);
@@ -2206,6 +2208,8 @@ public:
 
     bool getPortVidFromPortSerdesVid(sai_object_id_t port_serdes_vid, sai_object_id_t &port_vid)
     {
+        SWSS_LOG_ENTER();
+
         try
         {
             swss::DBConnector db(m_dbCounters, 0);
@@ -2233,6 +2237,8 @@ public:
 
     void updatePortSerdesIdToPortIdMap(sai_object_id_t port_serdes_rid, sai_object_id_t port_serdes_vid)
     {
+        SWSS_LOG_ENTER();
+
         sai_object_id_t port_rid = SAI_NULL_OBJECT_ID;
         sai_object_id_t port_vid = SAI_NULL_OBJECT_ID;
 
@@ -2252,6 +2258,8 @@ public:
 
     void updatePortSerdesIdToLaneCountMap(sai_object_id_t port_serdes_rid)
     {
+        SWSS_LOG_ENTER();
+
         sai_object_id_t port_rid;
         uint32_t laneCount;
         sai_attribute_t attr;
@@ -2286,6 +2294,8 @@ public:
 
     void updatePortSerdesTapsCountMap(sai_object_id_t port_serdes_rid)
     {
+        SWSS_LOG_ENTER();
+
         std::vector<sai_port_serdes_attr_t> countAttrs = {
             SAI_PORT_SERDES_ATTR_TX_FIR_COUNT
             // enable the below attrs when implemented.
@@ -2325,6 +2335,8 @@ public:
         sai_attribute_t *attr,
         PortPhySerdesAttributeData* data)
     {
+        SWSS_LOG_ENTER();
+
         if (!attr || !data)
         {
             SWSS_LOG_ERROR("PORT_PHY_SERDES_ATTR: Invalid input params : attr : %p, data : %p", attr, data);
