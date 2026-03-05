@@ -5,6 +5,7 @@
 #include "meta/Globals.h"
 #include "meta/SaiInterface.h"
 
+#include <cstdint>
 #include <unistd.h>
 #include <inttypes.h>
 
@@ -269,7 +270,7 @@ std::string Recorder::getTimestamp()
 
     size_t size = strftime(buffer, 32, "%Y-%m-%d.%T.", &now);
 
-    snprintf(&buffer[size], 32, "%06ld", tv.tv_usec);
+    snprintf(&buffer[size], 32, "%06" PRIdMAX, (int64_t) tv.tv_usec);
 
     return std::string(buffer);
 }
