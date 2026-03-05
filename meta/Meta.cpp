@@ -3473,18 +3473,24 @@ sai_status_t Meta::meta_generic_validation_create(
                 {
                     const char* chardata = value.chardata;
 
-                    size_t len = strnlen(chardata, SAI_HOSTIF_NAME_SIZE);
+                    // Check the length of host interface name and genetlink multicast group name.
+                    // Others should be less than the size defined for char data array.
+                    size_t limit_len = attr->id == SAI_HOSTIF_ATTR_NAME ? SAI_HOSTIF_NAME_SIZE :
+                            (attr->id == SAI_HOSTIF_ATTR_GENETLINK_MCGRP_NAME ? SAI_HOSTIF_GENETLINK_MCGRP_NAME_SIZE :
+                            sizeof(((sai_attribute_value_t*)nullptr)->chardata));
 
-                    if (len == SAI_HOSTIF_NAME_SIZE)
+                    size_t len = strnlen(chardata, limit_len);
+
+                    if (len == limit_len)
                     {
-                        META_LOG_ERROR(md, "host interface name is too long");
+                        META_LOG_ERROR(md, "char data is too long");
 
                         return SAI_STATUS_INVALID_PARAMETER;
                     }
 
                     if (len == 0)
                     {
-                        META_LOG_ERROR(md, "host interface name is zero");
+                        META_LOG_ERROR(md, "char data is zero");
 
                         return SAI_STATUS_INVALID_PARAMETER;
                     }
@@ -3495,7 +3501,7 @@ sai_status_t Meta::meta_generic_validation_create(
 
                         if (c < 0x20 || c > 0x7e)
                         {
-                            META_LOG_ERROR(md, "interface name contains invalid character 0x%02x", c);
+                            META_LOG_ERROR(md, "char data contains invalid character 0x%02x", c);
 
                             return SAI_STATUS_INVALID_PARAMETER;
                         }
