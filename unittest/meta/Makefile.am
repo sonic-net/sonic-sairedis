@@ -29,6 +29,7 @@ tests_SOURCES = \
 				TestNotificationIcmpEchoSessionStateChange.cpp \
 				TestNotificationHaScopeEvent.cpp \
 				TestNotificationHaSetEvent.cpp \
+				TestNotificationFlowBulkGetSessionEvent.cpp \
 				TestNotificationTam.cpp \
                                 TestNotificationMacsecPostStatus.cpp \
                                 TestNotificationSwitchMacsecPostStatus.cpp \

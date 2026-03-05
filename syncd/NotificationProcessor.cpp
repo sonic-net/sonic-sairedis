@@ -1,5 +1,6 @@
 #include "NotificationProcessor.h"
 #include "BaseRedisClient.h"
+#include "FlowDump.h"
 
 #include "sairediscommon.h"
 
@@ -830,6 +831,42 @@ void NotificationProcessor::handle_ha_scope_event(
     sai_deserialize_free_ha_scope_event_ntf(count, ha_scope_event);
 }
 
+void NotificationProcessor::handle_flow_bulk_get_session_event(
+        _In_ const std::string &data,
+        _In_ FlowDumpDataPtr auxiliary_data)
+{
+    SWSS_LOG_ENTER();
+
+    sai_object_id_t flow_bulk_session_id;
+    uint32_t count;
+    sai_flow_bulk_get_session_event_data_t* event_data;
+
+    sai_deserialize_flow_bulk_get_session_event_ntf(data, flow_bulk_session_id, count, &event_data);
+
+    sai_object_id_t flow_bulk_session_vid = m_translator->translateRidToVid(flow_bulk_session_id, SAI_NULL_OBJECT_ID);
+
+    // Handle flow dump data first
+    if (auxiliary_data != nullptr && !auxiliary_data->json_lines.empty())
+    {
+        SWSS_LOG_INFO("Dumping %zu flow, session id: %s", auxiliary_data->json_lines.size(), sai_serialize_object_id(flow_bulk_session_vid).c_str());
+        if (!FlowDumpWriter::getInstance().writeFlowDumpData(auxiliary_data, flow_bulk_session_vid))
+        {
+            SWSS_LOG_ERROR("Failed to write flow dump data to file");
+        }
+    }
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        if (event_data[i].event_type == SAI_FLOW_BULK_GET_SESSION_EVENT_FINISHED)
+        {
+            std::string s = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_vid, count, event_data);
+            sendNotification(SAI_SWITCH_NOTIFICATION_NAME_FLOW_BULK_GET_SESSION_EVENT, s);
+        }
+    }
+
+    sai_deserialize_free_flow_bulk_get_session_event_ntf(count, event_data);
+}
+
 void NotificationProcessor::handle_switch_asic_sdk_health_event(
         _In_ const std::string &data)
 {
@@ -961,6 +998,26 @@ void NotificationProcessor::processNotification(
     m_synchronizer(item);
 }
 
+void NotificationProcessor::processNotification(
+        _In_ const NotificationItem& item)
+{
+    SWSS_LOG_ENTER();
+
+    std::string notification = kfvKey(item.notification);
+    std::string data = kfvOp(item.notification);
+
+    // For FLOW_BULK_GET_SESSION_EVENT, pass auxiliary data to handler
+    if (notification == SAI_SWITCH_NOTIFICATION_NAME_FLOW_BULK_GET_SESSION_EVENT)
+    {
+        handle_flow_bulk_get_session_event(data, item.auxiliary_data);
+    }
+    else
+    {
+        // For other notifications, process normally
+        processNotification(item.notification);
+    }
+}
+
 void NotificationProcessor::syncProcessNotification(
         _In_ const swss::KeyOpFieldsValuesTuple& item)
 {
@@ -1033,6 +1090,10 @@ void NotificationProcessor::syncProcessNotification(
     {
         handle_ha_scope_event(data);
     }
+    else if (notification == SAI_SWITCH_NOTIFICATION_NAME_FLOW_BULK_GET_SESSION_EVENT)
+    {
+        handle_flow_bulk_get_session_event(data);
+    }
     else
     {
         SWSS_LOG_ERROR("unknown notification: %s", notification.c_str());
@@ -1056,7 +1117,7 @@ void NotificationProcessor::ntf_process_function()
         // processing each notification is under same mutex as processing main
         // events, counters and reinit
 
-        swss::KeyOpFieldsValuesTuple item;
+        NotificationItem item;
 
         while (m_notificationQueue->tryDequeue(item))
         {
