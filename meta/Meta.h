@@ -266,6 +266,11 @@ namespace saimeta
                     _In_ uint32_t count,
                     _In_ const sai_twamp_session_event_notification_data_t *data);
 
+            void meta_sai_on_flow_bulk_get_session_event(
+                    _In_ sai_object_id_t flow_bulk_session_id,
+                    _In_ uint32_t count,
+                    _In_ const sai_flow_bulk_get_session_event_data_t *data);
+
             void meta_sai_on_tam_tel_type_config_change(_In_ sai_object_id_t m_tam_id);
 
     private: // notifications helpers

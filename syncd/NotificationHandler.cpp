@@ -1,4 +1,5 @@
 #include "NotificationHandler.h"
+#include "FlowDump.h"
 #include "Workaround.h"
 #include "sairediscommon.h"
 
@@ -221,6 +222,36 @@ void NotificationHandler::onHaScopeEvent(
     enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_HA_SCOPE_EVENT, s);
 }
 
+void NotificationHandler::onFlowBulkGetSessionEvent(
+        _In_ sai_object_id_t flow_bulk_session_id,
+        _In_ uint32_t count,
+        _In_ const sai_flow_bulk_get_session_event_data_t *data)
+{
+    SWSS_LOG_ENTER();
+
+    FlowDumpDataPtr flow_dump_data = std::make_shared<FlowDumpData>();
+    std::string s = sai_serialize_flow_bulk_get_session_event_ntf(flow_bulk_session_id, count, data);
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        if (data[i].event_type == SAI_FLOW_BULK_GET_SESSION_EVENT_FLOW_ENTRY)
+        {
+            try
+            {
+                nlohmann::json json_line = FlowDumpSerializer::serializeFlowEntryToJson(data[i]);
+                flow_dump_data->json_lines.push_back(json_line);
+            }
+            catch (const std::exception& e)
+            {
+                SWSS_LOG_WARN("Failed to serialize flow entry at index %u: %s", i, e.what());
+                continue;
+            }
+        }
+    }
+
+    enqueueNotification(SAI_SWITCH_NOTIFICATION_NAME_FLOW_BULK_GET_SESSION_EVENT, s, flow_dump_data);
+}
+
 void NotificationHandler::enqueueNotification(
         _In_ const std::string& op,
         _In_ const std::string& data,
@@ -233,6 +264,23 @@ void NotificationHandler::enqueueNotification(
     swss::KeyOpFieldsValuesTuple item(op, data, entry);
 
     if (m_notificationQueue->enqueue(item))
+    {
+        m_processor->signal();
+    }
+}
+
+void NotificationHandler::enqueueNotification(
+        _In_ const std::string& op,
+        _In_ const std::string& data,
+        _In_ FlowDumpDataPtr auxiliary_data)
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("%s %s", op.c_str(), data.c_str());
+
+    swss::KeyOpFieldsValuesTuple item(op, data, std::vector<swss::FieldValueTuple>());
+
+    if (m_notificationQueue->enqueue(item, auxiliary_data))
     {
         m_processor->signal();
     }
