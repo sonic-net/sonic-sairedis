@@ -394,6 +394,10 @@ config_syncd_mlnx()
 
     # Ensure no redundant newlines
     sed -i '/^$/d' /tmp/sai.profile
+
+    # As long as sonic does not support PTP which can be enabled/disabled, Nvidia platforms enables
+    # phcsync for all systems. If HW does not support it, it will do nothing.
+    supervisorctl start phcsync
 }
 
 config_syncd_centec()
