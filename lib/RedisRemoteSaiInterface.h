@@ -460,6 +460,8 @@ namespace sairedis
 
             uint64_t m_responseTimeoutMs;
 
+            size_t m_zmqResponseBufferSize;
+
             std::function<sai_switch_notifications_t(std::shared_ptr<Notification>)> m_notificationCallback;
 
             std::map<sai_object_id_t, swss::TableDump> m_tableDump;
