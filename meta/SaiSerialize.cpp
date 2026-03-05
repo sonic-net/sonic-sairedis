@@ -1461,11 +1461,11 @@ std::string sai_serialize_number_list(
 
 
 /**
- *   @brief Converts the seralized uint32 list string to json dict string
+ *   @brief Converts the serialized uint32 list string to json dict string
  *
  *   Parse input "count:v1,v2,v3" and convert to JSON {"0":v1, "1":v2, "2":v3}
  *
- *   @param uint32_list_string seralized uint32 list string.
+ *   @param uint32_list_string serialized uint32 list string.
  *   @return std::string in json dict format.
  */
 std::string sai_serialize_uint32_list_to_json_dict(
@@ -1767,41 +1767,40 @@ std::string sai_serialize_taps_list(
         return j.dump();
     }
 
-    // Create lane-centric format: {"0": [{tap0: val}, {tap1: val}, ...], "1": [...], ...}
-    uint32_t lane_idx = 0;
+    // Get the number of lanes from the first tap's inner list
+    // All inner lists should have the same size
+    const sai_s32_list_t& first_tap = port_serdes_taps_list.list[0];
 
-    while (true)
+    if (first_tap.list == NULL || first_tap.count == 0)
+    {
+        return j.dump();
+    }
+
+    uint32_t num_lanes = first_tap.count;
+    uint32_t num_taps = port_serdes_taps_list.count;
+
+    // Create lane-centric format: {"0": [{"tap0": val}, {"tap1": val}, ...], "1": [...], ...}
+    for (uint32_t lane_idx = 0; lane_idx < num_lanes; ++lane_idx)
     {
         json lane_taps_array = json::array();
-        bool found_any_tap = false;
 
         // For this lane, collect all tap values
-        for (uint32_t tap_idx = 0; tap_idx < port_serdes_taps_list.count; ++tap_idx)
+        for (uint32_t tap_idx = 0; tap_idx < num_taps; ++tap_idx)
         {
             const sai_s32_list_t& tap_lanes = port_serdes_taps_list.list[tap_idx];
 
             if (tap_lanes.list != NULL && lane_idx < tap_lanes.count)
             {
                 json tap_obj = json::object();
-                // Use the current position in lane_taps_array for sequential tap numbering
-                std::string tap_key = "tap" + std::to_string(lane_taps_array.size());
+                std::string tap_key = "tap" + std::to_string(tap_idx);
                 tap_obj[tap_key] = tap_lanes.list[lane_idx];
                 lane_taps_array.push_back(tap_obj);
-                found_any_tap = true;
             }
-        }
-
-        // If no taps were found for this lane, we're done
-        if (!found_any_tap)
-        {
-            break;
         }
 
         // Add this lane's taps to the result
         std::string lane_key = std::to_string(lane_idx);
         j[lane_key] = lane_taps_array;
-
-        lane_idx++;
     }
 
     return j.dump();
@@ -4592,19 +4591,36 @@ void sai_deserialize_taps_list(
         // Get lane count
         uint32_t lane_count = static_cast<uint32_t>(j.size());
 
-        // Use a vector to collect all taps dynamically
-        std::vector<std::vector<int32_t>> all_taps;
-
-        uint32_t tap_idx = 0;
-        while (true)
+        // Get tap count from the first lane's array
+        // All lanes should have the same number of taps
+        if (!j.contains("0") || !j["0"].is_array() || j["0"].empty())
         {
-            std::vector<int32_t> tap_vec;
+            port_serdes_taps_list.count = 0;
+            port_serdes_taps_list.list = NULL;
+            return;
+        }
 
-            // Iterate through all lanes to get tap_idx'th tap value
-            for (uint32_t i = 0; i < lane_count; ++i)
+        uint32_t tap_count = static_cast<uint32_t>(j["0"].size());
+
+        // Allocate the structure directly
+        port_serdes_taps_list.count = tap_count;
+        port_serdes_taps_list.list = sai_alloc_n_of_ptr_type(tap_count, port_serdes_taps_list.list);
+
+        // For each tap, allocate its lane list
+        for (uint32_t tap_idx = 0; tap_idx < tap_count; ++tap_idx)
+        {
+            port_serdes_taps_list.list[tap_idx].count = lane_count;
+            port_serdes_taps_list.list[tap_idx].list = sai_alloc_n_of_ptr_type(lane_count, port_serdes_taps_list.list[tap_idx].list);
+        }
+
+        // Now fill in the values
+        for (uint32_t tap_idx = 0; tap_idx < tap_count; ++tap_idx)
+        {
+            std::string tap_key = "tap" + std::to_string(tap_idx);
+
+            for (uint32_t lane_idx = 0; lane_idx < lane_count; ++lane_idx)
             {
-                std::string lane_key = std::to_string(i);
-                std::string tap_key = "tap" + std::to_string(tap_idx);
+                std::string lane_key = std::to_string(lane_idx);
 
                 if (j.contains(lane_key) && j[lane_key].is_array() && tap_idx < j[lane_key].size())
                 {
@@ -4612,40 +4628,9 @@ void sai_deserialize_taps_list(
 
                     if (tap_obj.is_object() && tap_obj.contains(tap_key))
                     {
-                        tap_vec.push_back(tap_obj[tap_key].get<int32_t>());
+                        port_serdes_taps_list.list[tap_idx].list[lane_idx] = tap_obj[tap_key].get<int32_t>();
                     }
                 }
-            }
-
-            // If no values were found for this tap, we're done
-            if (tap_vec.empty())
-            {
-                break;
-            }
-
-            // Store this tap's values
-            all_taps.push_back(tap_vec);
-            tap_idx++;
-        }
-
-        // Now allocate the final data structure
-        port_serdes_taps_list.count = static_cast<uint32_t>(all_taps.size());
-        if (port_serdes_taps_list.count == 0)
-        {
-            port_serdes_taps_list.list = NULL;
-            return;
-        }
-
-        port_serdes_taps_list.list = sai_alloc_n_of_ptr_type(port_serdes_taps_list.count, port_serdes_taps_list.list);
-
-        for (uint32_t i = 0; i < all_taps.size(); ++i)
-        {
-            port_serdes_taps_list.list[i].count = static_cast<uint32_t>(all_taps[i].size());
-            port_serdes_taps_list.list[i].list = sai_alloc_n_of_ptr_type(all_taps[i].size(), port_serdes_taps_list.list[i].list);
-
-            for (uint32_t lane_val_idx = 0; lane_val_idx < all_taps[i].size(); ++lane_val_idx)
-            {
-                port_serdes_taps_list.list[i].list[lane_val_idx] = all_taps[i][lane_val_idx];
             }
         }
     }
