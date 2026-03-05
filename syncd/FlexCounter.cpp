@@ -36,6 +36,7 @@ static const std::string COUNTER_TYPE_FLOW = "Flow Counter";
 static const std::string COUNTER_TYPE_TUNNEL = "Tunnel Counter";
 static const std::string COUNTER_TYPE_BUFFER_POOL = "Buffer Pool Counter";
 static const std::string COUNTER_TYPE_ENI = "DASH ENI Counter";
+static const std::string COUNTER_TYPE_HA_SET = "DASH HA Set Counter";
 static const std::string COUNTER_TYPE_METER_BUCKET = "DASH Meter Bucket Counter";
 static const std::string COUNTER_TYPE_POLICER = "Policer Counter";
 static const std::string COUNTER_TYPE_SRV6 = "SRv6 Counter";
@@ -88,6 +89,7 @@ const std::map<std::tuple<sai_object_type_t, std::string>, std::string> FlexCoun
     {{SAI_OBJECT_TYPE_POLICER, POLICER_COUNTER_ID_LIST}, COUNTER_TYPE_POLICER},
     {{SAI_OBJECT_TYPE_TUNNEL, TUNNEL_COUNTER_ID_LIST}, COUNTER_TYPE_TUNNEL},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, ENI_COUNTER_ID_LIST}, COUNTER_TYPE_ENI},
+    {{(sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, HA_SET_COUNTER_ID_LIST}, COUNTER_TYPE_HA_SET},
     {{(sai_object_type_t)SAI_OBJECT_TYPE_ENI, DASH_METER_COUNTER_ID_LIST}, COUNTER_TYPE_METER_BUCKET},
     {{SAI_OBJECT_TYPE_COUNTER, SRV6_COUNTER_ID_LIST}, COUNTER_TYPE_SRV6},
     {{SAI_OBJECT_TYPE_SWITCH, SWITCH_COUNTER_ID_LIST}, COUNTER_TYPE_SWITCH},
@@ -330,6 +332,14 @@ std::string serializeStat(
     return sai_serialize_meter_bucket_entry_stat(stat);
 }
 
+template <>
+std::string serializeStat(
+        _In_ const sai_ha_set_stat_t stat)
+{
+    SWSS_LOG_ENTER();
+    return sai_serialize_ha_set_stat(stat);
+}
+
 template <typename StatType>
 void deserializeStat(
         _In_ const char* name,
@@ -456,6 +466,14 @@ void deserializeStat(
     sai_deserialize_meter_bucket_entry_stat(name, stat);
 }
 
+template <>
+void deserializeStat(
+        _In_ const char* name,
+        _Out_ sai_ha_set_stat_t *stat)
+{
+    SWSS_LOG_ENTER();
+    sai_deserialize_ha_set_stat(name, stat);
+}
 template <typename AttrType>
 void deserializeAttr(
         _In_ const std::string& name,
@@ -2907,6 +2925,12 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         context->always_check_supported_counters = true;
         return context;
     }
+    else if (context_name == COUNTER_TYPE_HA_SET)
+    {
+        auto context = std::make_shared<CounterContext<sai_ha_set_stat_t>>(context_name, instance, (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET, m_vendorSai.get(), m_statsMode);
+        context->always_check_supported_counters = true;
+        return context;
+    }
     else if (context_name == COUNTER_TYPE_METER_BUCKET)
     {
         return std::make_shared<DashMeterCounterContext>(context_name, instance, m_vendorSai.get(), m_dbCounters);
@@ -3239,6 +3263,13 @@ void FlexCounter::removeCounter(
         if (hasCounterContext(COUNTER_TYPE_METER_BUCKET))
         {
             getCounterContext(COUNTER_TYPE_METER_BUCKET)->removeObject(vid);
+        }
+    }
+    else if (objectType == (sai_object_type_t)SAI_OBJECT_TYPE_HA_SET)
+    {
+        if (hasCounterContext(COUNTER_TYPE_HA_SET))
+        {
+            getCounterContext(COUNTER_TYPE_HA_SET)->removeObject(vid);
         }
     }
     else if (objectType == SAI_OBJECT_TYPE_COUNTER)
