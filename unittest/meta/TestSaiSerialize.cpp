@@ -71,7 +71,6 @@ TEST(SaiSerialize, sai_serialize_object_meta_key)
 TEST(SaiSerialize, sai_serialize_port_lane_latch_status_list)
 {
     sai_attribute_t attr;
-
     memset(&attr, 0, sizeof(attr));
 
     for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
@@ -91,19 +90,140 @@ TEST(SaiSerialize, sai_serialize_port_lane_latch_status_list)
                 attr.value.aclfield.enable = true;
             }
 
-            sai_port_lane_latch_status_t list[1];
-            list[0].lane = 1;
-            list[0].value.changed=true;
-            list[0].value.current_status=true;
+            sai_port_lane_latch_status_t list[4];
 
-            attr.value.portlanelatchstatuslist.count=1;
+            // Lane 0: changed=true, current_status=true -> "T*"
+            list[0].lane = 0;
+            list[0].value.changed = true;
+            list[0].value.current_status = true;
+
+            // Lane 1: changed=false, current_status=true -> "T"
+            list[1].lane = 1;
+            list[1].value.changed = false;
+            list[1].value.current_status = true;
+
+            // Lane 2: changed=true, current_status=false -> "F*"
+            list[2].lane = 2;
+            list[2].value.changed = true;
+            list[2].value.current_status = false;
+
+            // Lane 3: changed=false, current_status=false -> "F"
+            list[3].lane = 3;
+            list[3].value.changed = false;
+            list[3].value.current_status = false;
+
+            attr.value.portlanelatchstatuslist.count = 4;
             attr.value.portlanelatchstatuslist.list = list;
 
             auto s = sai_serialize_attr_value(*meta, attr, false);
 
+            std::string expected = "{\"0\":\"T*\",\"1\":\"T\",\"2\":\"F*\",\"3\":\"F\"}";
+            EXPECT_EQ(s, expected);
+
             sai_deserialize_attr_value(s, *meta, attr, false);
         }
     }
+}
+
+TEST(SaiSerialize, sai_deserialize_port_lane_latch_status_list)
+{
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    auto meta = sai_metadata_get_attr_metadata(SAI_OBJECT_TYPE_PORT,
+                                                SAI_PORT_ATTR_RX_SIGNAL_DETECT);
+    attr.id = SAI_PORT_ATTR_RX_SIGNAL_DETECT;
+
+    std::string json_str = R"({"0":"T*","1":"F","2":"T"})";
+
+    sai_deserialize_attr_value(json_str, *meta, attr, false);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.count, 3);
+    ASSERT_NE(attr.value.portlanelatchstatuslist.list, nullptr);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[0].lane, 0);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[0].value.changed, true);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[0].value.current_status, true);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[1].lane, 1);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[1].value.changed, false);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[1].value.current_status, false);
+
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[2].lane, 2);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[2].value.changed, false);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list[2].value.current_status, true);
+
+    sai_deserialize_free_attribute_value(meta->attrvaluetype, attr);
+
+    std::string empty_json_str = R"({})";
+    memset(&attr, 0, sizeof(attr));
+    attr.id = SAI_PORT_ATTR_RX_SIGNAL_DETECT;
+
+    sai_deserialize_attr_value(empty_json_str, *meta, attr, false);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.count, 0);
+    EXPECT_EQ(attr.value.portlanelatchstatuslist.list, nullptr);
+}
+
+TEST(SaiSerialize, sai_serialize_port_snr_list)
+{
+    sai_attribute_t attr;
+    memset(&attr, 0, sizeof(attr));
+
+    for (size_t idx = 0 ; idx < sai_metadata_attr_sorted_by_id_name_count; ++idx)
+    {
+        auto meta = sai_metadata_attr_sorted_by_id_name[idx];
+        if(meta->attrvaluetype == SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST)
+        {
+            attr.id = meta->attrid;
+
+            sai_port_snr_values_t list[3];
+
+            list[0].lane = 0;
+            list[0].snr = 3712;
+
+            list[1].lane = 1;
+            list[1].snr = 3840;
+
+            list[2].lane = 2;
+            list[2].snr = 4160;
+
+            attr.value.portsnrlist.count = 3;
+            attr.value.portsnrlist.list = list;
+
+            auto s = sai_serialize_attr_value(*meta, attr, false);
+
+            std::string expected = "{\"0\":3712,\"1\":3840,\"2\":4160}";
+            EXPECT_EQ(s, expected);
+
+        }
+    }
+}
+
+TEST(SaiSerialize, sai_deserialize_port_snr_list)
+{
+    std::string json_str = R"({"0":3712,"1":4032})";
+
+    sai_port_snr_list_t snr_list;
+    memset(&snr_list, 0, sizeof(snr_list));
+
+    sai_deserialize_port_snr_list(json_str, snr_list, false);
+
+    EXPECT_EQ(snr_list.count, 2);
+    ASSERT_NE(snr_list.list, nullptr);
+
+    EXPECT_EQ(snr_list.list[0].lane, 0);
+    EXPECT_EQ(snr_list.list[0].snr, 3712);
+
+    EXPECT_EQ(snr_list.list[1].lane, 1);
+    EXPECT_EQ(snr_list.list[1].snr, 4032);
+
+    delete[] snr_list.list;
+
+    std::string empty_json_str = R"({})";
+    memset(&snr_list, 0, sizeof(snr_list));
+    sai_deserialize_port_snr_list(empty_json_str, snr_list, false);
+    EXPECT_EQ(snr_list.count, 0);
+    EXPECT_EQ(snr_list.list, nullptr);
 }
 
 TEST(SaiSerialize, sai_serialize_attr_value)
@@ -129,7 +249,6 @@ TEST(SaiSerialize, sai_serialize_attr_value)
             case SAI_ATTR_VALUE_TYPE_TLV_LIST:
             case SAI_ATTR_VALUE_TYPE_MAP_LIST:
             case SAI_ATTR_VALUE_TYPE_PORT_FREQUENCY_OFFSET_PPM_LIST:
-            case SAI_ATTR_VALUE_TYPE_PORT_SNR_LIST:
             case SAI_ATTR_VALUE_TYPE_ACL_CHAIN_LIST:
             case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
             case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
