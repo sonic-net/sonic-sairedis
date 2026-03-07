@@ -2459,6 +2459,14 @@ std::string sai_serialize_ha_scope_event(
     return sai_serialize_enum(event, &sai_metadata_enum_sai_ha_scope_event_t);
 }
 
+std::string sai_serialize_flow_bulk_get_session_event(
+        _In_ sai_flow_bulk_get_session_event_t event)
+{
+    SWSS_LOG_ENTER();
+
+    return sai_serialize_enum(event, &sai_metadata_enum_sai_flow_bulk_get_session_event_t);
+}
+
 std::string sai_serialize_ha_role(
         _In_ sai_dash_ha_role_t role)
 {
@@ -2746,6 +2754,44 @@ std::string sai_serialize_ha_scope_event_ntf(
 
         j.push_back(item);
     }
+
+    return j.dump();
+}
+
+std::string sai_serialize_flow_bulk_get_session_event_ntf(
+    _In_ sai_object_id_t flow_bulk_session_id,
+    _In_ uint32_t count,
+    _In_ const sai_flow_bulk_get_session_event_data_t* data)
+{
+    SWSS_LOG_ENTER();
+
+    if (data == NULL)
+    {
+        SWSS_LOG_THROW("flow_bulk_get_session_event_data_t pointer is null");
+    }
+
+    /*
+     * NOTE: Only event_type is serialized here. The flow_entry, attr_count, and attr
+     * fields are NOT serialized as they are only populated for Flow Dump
+     * Due to performance reasons, they are not serialized and are not sent to orchagent.
+     */
+
+    json j;
+
+    j["bulk_session_id"] = sai_serialize_object_id(flow_bulk_session_id);
+
+    json arr = json::array();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        json item;
+
+        item["event_type"] = sai_serialize_flow_bulk_get_session_event(data[i].event_type);
+
+        arr.push_back(item);
+    }
+
+    j["data"] = arr;
 
     return j.dump();
 }
@@ -4813,6 +4859,15 @@ void sai_deserialize_ha_scope_event(
     sai_deserialize_enum(s, &sai_metadata_enum_sai_ha_scope_event_t, (int32_t&)event);
 }
 
+void sai_deserialize_flow_bulk_get_session_event(
+        _In_ const std::string& s,
+        _Out_ sai_flow_bulk_get_session_event_t& event)
+{
+    SWSS_LOG_ENTER();
+
+    sai_deserialize_enum(s, &sai_metadata_enum_sai_flow_bulk_get_session_event_t, (int32_t&)event);
+}
+
 void sai_deserialize_ha_role(
         _In_ const std::string& s,
         _Out_ sai_dash_ha_role_t& role)
@@ -5846,6 +5901,42 @@ void sai_deserialize_ha_scope_event_ntf(
     *ha_scope_event = data;
 }
 
+void sai_deserialize_flow_bulk_get_session_event_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& flow_bulk_session_id,
+        _Out_ uint32_t& count,
+        _Out_ sai_flow_bulk_get_session_event_data_t** data)
+{
+    SWSS_LOG_ENTER();
+
+    /*
+     * NOTE: Only event_type is deserialized here. The flow_entry, attr_count, and attr
+     * fields are set to default/null values as they are only populated for Flow Dump
+     * purposes and are not sent to SAIREDIS Client.
+     */
+
+    json j = json::parse(s);
+
+    sai_deserialize_object_id(j["bulk_session_id"], flow_bulk_session_id);
+
+    json arr = j["data"];
+
+    count = (uint32_t)arr.size();
+
+    auto event_data = new sai_flow_bulk_get_session_event_data_t[count];
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        sai_deserialize_flow_bulk_get_session_event(arr[i]["event_type"], event_data[i].event_type);
+
+        memset(&event_data[i].flow_entry, 0, sizeof(event_data[i].flow_entry));
+        event_data[i].attr_count = 0;
+        event_data[i].attr = nullptr;
+    }
+
+    *data = event_data;
+}
+
 void sai_deserialize_twamp_session_event_ntf(
         _In_ const std::string& s,
         _Out_ uint32_t &count,
@@ -6218,6 +6309,20 @@ void sai_deserialize_free_twamp_session_event_ntf(
     SWSS_LOG_ENTER();
 
     delete[] twamp_session_event;
+}
+
+void sai_deserialize_free_flow_bulk_get_session_event_ntf(
+    _In_ uint32_t count,
+    _In_ sai_flow_bulk_get_session_event_data_t* data)
+{
+    SWSS_LOG_ENTER();
+
+    if (data == nullptr)
+    {
+        return;
+    }
+
+    delete[] data;
 }
 
 void sai_deserialize_ingress_priority_group_attr(
