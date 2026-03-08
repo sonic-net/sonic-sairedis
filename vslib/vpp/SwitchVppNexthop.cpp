@@ -295,10 +295,34 @@ SwitchVpp::createNexthopGroupMember(
         return SAI_STATUS_SUCCESS;
     }
 
+    // Get the nexthop OID from the new member
+    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
+    CHECK_STATUS_QUIET(nhg_mbr_obj.get_mandatory_attr(attr));
+    sai_object_id_t next_hop_oid = attr.value.oid;
+
+    // Get weight if available
+    uint32_t weight = 1;
+    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_WEIGHT;
+    if (nhg_mbr_obj.get_attr(attr) == SAI_STATUS_SUCCESS) {
+        weight = attr.value.u32;
+    }
+
+    // Fill the nexthop group member info
+    nexthop_grp_member_t member;
+    status = fillNHGrpMember(&member, next_hop_oid, weight, 0);
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to fill NHG member info for %s", serializedObjectId.c_str());
+        return status;
+    }
+
+    // Add the specific path to each route using this NHG
     for (auto route : *routes) {
-        SWSS_LOG_INFO("NHG member changed. Updating route %s", route.first.c_str());
-        IpRouteAddRemove(route.second.get(), false);
-        IpRouteAddRemove(route.second.get(), true);
+        SWSS_LOG_INFO("NHG member added. Adding path to route %s", route.first.c_str());
+        status = IpRoutePathAddRemove(route.second.get(), &member, true);
+        if (status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to add path to route %s, status %d", route.first.c_str(), status);
+            // Continue with other routes
+        }
     }
     return SAI_STATUS_SUCCESS;
 }
@@ -329,6 +353,26 @@ SwitchVpp::removeNexthopGroupMember(
 
     auto routes = nhg_obj->get_child_objs(SAI_OBJECT_TYPE_ROUTE_ENTRY);
 
+    // Get the nexthop OID from the member being removed (before remove_internal)
+    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_NEXT_HOP_ID;
+    CHECK_STATUS_QUIET(nhg_mbr_obj->get_mandatory_attr(attr));
+    sai_object_id_t next_hop_oid = attr.value.oid;
+
+    // Get weight if available
+    uint32_t weight = 1;
+    attr.id = SAI_NEXT_HOP_GROUP_MEMBER_ATTR_WEIGHT;
+    if (nhg_mbr_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
+        weight = attr.value.u32;
+    }
+
+    // Fill the nexthop group member info before removing from internal DB
+    nexthop_grp_member_t member;
+    status = fillNHGrpMember(&member, next_hop_oid, weight, 0);
+    if (status != SAI_STATUS_SUCCESS) {
+        SWSS_LOG_ERROR("Failed to fill NHG member info for %s", serializedObjectId.c_str());
+        return status;
+    }
+
     //call remove_internal to update the mapping from NHG to NHG_MBRs
     status = remove_internal(SAI_OBJECT_TYPE_NEXT_HOP_GROUP_MEMBER, serializedObjectId);
     if (status != SAI_STATUS_SUCCESS) {
@@ -339,10 +383,15 @@ SwitchVpp::removeNexthopGroupMember(
         return SAI_STATUS_SUCCESS;
     }
 
+    // Remove the specific path from each route using this NHG
+    // VPP will handle the case of removing the last path
     for (auto route : *routes) {
-        SWSS_LOG_INFO("NHG member changed. Updating route %s", route.first.c_str());
-        IpRouteAddRemove(route.second.get(), false);
-        IpRouteAddRemove(route.second.get(), true);
+        SWSS_LOG_INFO("NHG member removed. Removing path from route %s", route.first.c_str());
+        status = IpRoutePathAddRemove(route.second.get(), &member, false);
+        if (status != SAI_STATUS_SUCCESS) {
+            SWSS_LOG_ERROR("Failed to remove path from route %s, status %d", route.first.c_str(), status);
+            // Continue with other routes
+        }
     }
     return SAI_STATUS_SUCCESS;
 }
