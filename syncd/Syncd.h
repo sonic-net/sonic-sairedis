@@ -327,6 +327,10 @@ namespace syncd
 
             sai_status_t onApplyViewInFastFastBoot();
 
+            void transitionToNormalWatchdogTimeout();
+
+            void transitionToInitWatchdogTimeout();
+
             sai_status_t applyView();
 
             void dumpComparisonLogicOutput(
