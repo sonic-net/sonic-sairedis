@@ -22,6 +22,7 @@ VendorSai::VendorSai()
     SWSS_LOG_ENTER();
 
     m_apiInitialized = false;
+    m_switchStatsExtSupported = true;
 
     memset(&m_apis, 0, sizeof(m_apis));
 
@@ -165,6 +166,22 @@ sai_status_t VendorSai::apiInitialize(
         }
     }
 #endif
+
+    // BROADCOM_LEGACY_SAI_COMPAT: Allow platforms to disable sai_get_stats_ext for switch objects
+    // via sai.profile key SAI_STATS_EXT_SWITCH_SUPPORTED=0.
+    // Needed for legacy ASICs (e.g. Tomahawk-1/BCM56960) where sai_get_stats_ext
+    // on SAI_OBJECT_TYPE_SWITCH causes a crash during FlexCounter polling.
+    if (m_service_method_table.profile_get_value != nullptr)
+    {
+        const char *extVal = m_service_method_table.profile_get_value(
+                0, "SAI_STATS_EXT_SWITCH_SUPPORTED");
+        if (extVal != nullptr && std::string(extVal) == "0")
+        {
+            SWSS_LOG_NOTICE("SAI_STATS_EXT_SWITCH_SUPPORTED=0 in sai.profile,"
+                            " disabling sai_get_stats_ext for switch object type");
+            m_switchStatsExtSupported = false;
+        }
+    }
 
     m_apiInitialized = true;
 
@@ -2290,3 +2307,10 @@ sai_log_level_t VendorSai::logGet(
 
     return SAI_LOG_LEVEL_NOTICE;
 }
+
+bool VendorSai::isSwitchStatsExtSupported() const
+{
+    SWSS_LOG_ENTER();
+    return m_switchStatsExtSupported;
+}
+
