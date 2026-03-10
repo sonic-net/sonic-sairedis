@@ -401,7 +401,7 @@ config_syncd_mlnx()
 
     # As long as sonic does not support PTP which can be enabled/disabled, Nvidia platforms enables
     # phcsync for all systems. If HW does not support it, it will do nothing.
-    supervisorctl start phcsync
+    supervisorctl start phcsync-gate
 
     if [ -f "$HWSKU_DIR/context_config.json" ]; then
         CMD_ARGS+=" -x $HWSKU_DIR/context_config.json -g 0"
