@@ -2944,7 +2944,9 @@ std::shared_ptr<BaseCounterContext> FlexCounter::createCounterContext(
         auto context = std::make_shared<CounterContext<sai_switch_stat_t>>(context_name, instance, SAI_OBJECT_TYPE_SWITCH, m_vendorSai.get(), m_statsMode);
         context->always_check_supported_counters = true;
         context->use_sai_stats_capa_query = true;
-        context->use_sai_stats_ext = true;
+        // BROADCOM_LEGACY_SAI_COMPAT: sai_get_stats_ext crashes on some legacy ASICs for switch objects;
+        // platform can set SAI_STATS_EXT_SWITCH_SUPPORTED=0 in sai.profile to disable.
+        context->use_sai_stats_ext = m_vendorSai->isSwitchStatsExtSupported();
         return context;
     }
 

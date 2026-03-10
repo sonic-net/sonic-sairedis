@@ -224,6 +224,8 @@ namespace syncd
             virtual sai_log_level_t logGet(
                     _In_ sai_api_t api) override;
 
+            virtual bool isSwitchStatsExtSupported() const override;
+
         private:
 
             bool m_apiInitialized;
@@ -237,5 +239,7 @@ namespace syncd
             sai_global_apis_t m_globalApis;
 
             std::map<sai_api_t, sai_log_level_t> m_logLevelMap;
+
+            bool m_switchStatsExtSupported;
     };
 }
