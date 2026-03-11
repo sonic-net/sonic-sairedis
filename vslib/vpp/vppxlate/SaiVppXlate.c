@@ -519,7 +519,9 @@ vl_msg_api_set_handlers (int id, const char *name, void *handler, void *cleanup,
     c->fromjson = fromjson;
     c->calc_size = calc_size;
     vl_msg_api_config (c);
-    free(name_copy);
+    /* Do not free name_copy: vl_msg_api_config stores the pointer in
+       m->name and in the msg_id_by_name hash table. Freeing it causes
+       use-after-free when the hash does strcmp on existing keys. */
 }
 
 static bool vl_api_to_vpp_ip_addr(vl_api_address_t *vpp_addr, vpp_ip_addr_t *ipaddr)
