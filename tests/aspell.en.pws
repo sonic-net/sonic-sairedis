@@ -495,3 +495,4 @@ SNR
 tparam
 ICMP
 UDP
+SIGSEGV

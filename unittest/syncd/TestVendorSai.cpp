@@ -1807,3 +1807,33 @@ TEST_F(VendorSaiTest, bulk_eni_trusted_vni_entry)
     EXPECT_EQ(SAI_STATUS_NOT_SUPPORTED,
             m_vsai->bulkSet(0, e, nullptr, SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR, nullptr));
 }
+
+// BROADCOM_LEGACY_SAI_COMPAT tests ------------------------------------------------------------------------------------
+
+static const char* profile_get_value_no_st_capability(
+        _In_ sai_switch_profile_id_t profile_id,
+        _In_ const char* variable)
+{
+    SWSS_LOG_ENTER();
+
+    if (variable == NULL)
+        return NULL;
+
+    if (std::string(variable) == "SAI_STATS_ST_CAPABILITY_SUPPORTED")
+        return "0";
+
+    return nullptr;
+}
+
+static sai_service_method_table_t test_services_no_st_capability = {
+    profile_get_value_no_st_capability,
+    profile_get_next_value
+};
+
+TEST(VendorSai, statsStCapabilityProfileKeyProcessed)
+{
+    // BROADCOM_LEGACY_SAI_COMPAT: SAI_STATS_ST_CAPABILITY_SUPPORTED=0 in sai.profile
+    // should be processed during apiInitialize without breaking initialization
+    VendorSai sai;
+    EXPECT_EQ(SAI_STATUS_SUCCESS, sai.apiInitialize(0, &test_services_no_st_capability));
+}
