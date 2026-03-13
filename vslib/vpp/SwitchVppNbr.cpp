@@ -35,7 +35,8 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
 
     CHECK_STATUS(get(SAI_OBJECT_TYPE_ROUTER_INTERFACE, nbr_entry.rif_id, 1, &attr));
 
-    if (objectTypeQuery(attr.value.oid) != SAI_OBJECT_TYPE_PORT)
+    auto port_obj_type = objectTypeQuery(attr.value.oid);
+    if (port_obj_type != SAI_OBJECT_TYPE_PORT && port_obj_type != SAI_OBJECT_TYPE_LAG)
     {
         return SAI_STATUS_SUCCESS;
     }
@@ -94,26 +95,15 @@ sai_status_t SwitchVpp::addRemoveIpNbr(
         return SAI_STATUS_FAILURE;
     }
 
-    std::string if_name;
-    bool found = getTapNameFromPortId(port_oid, if_name);
+    std::string hwif_name;
+    bool found = vpp_get_hwif_name(port_oid, vlan_id, hwif_name);
     if (found == false)
     {
-        SWSS_LOG_ERROR("host interface for port id %s not found", serializedObjectId.c_str());
+        SWSS_LOG_ERROR("hw interface for port/lag id %s not found", serializedObjectId.c_str());
         return SAI_STATUS_FAILURE;
     }
 
-    const char *hwif_name = tap_to_hwif_name(if_name.c_str());
-    const char *vpp_ifname;
-    char subifname[32];
-
-    if (vlan_id)
-    {
-        snprintf(subifname, sizeof(subifname), "%s.%u", hwif_name, vlan_id);
-
-        vpp_ifname = subifname;
-    } else {
-        vpp_ifname = hwif_name;
-    }
+    const char *vpp_ifname = hwif_name.c_str();
     init_vpp_client();
 
     switch (nbr_entry.ip_address.addr_family) {
