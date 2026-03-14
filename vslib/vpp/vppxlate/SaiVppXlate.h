@@ -145,6 +145,10 @@ extern "C" {
         uint32_t vlan_index;
         uint32_t fib_table;
         vpp_ip_addr_t nh_addr;
+        uint8_t locator_block_len;
+        uint8_t locator_node_len;
+        uint8_t function_len;
+        uint8_t args_len;
     } vpp_my_sid_entry_t;
 
     typedef struct vpp_sid_list_ {
