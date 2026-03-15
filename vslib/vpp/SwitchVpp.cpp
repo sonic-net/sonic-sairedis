@@ -1597,7 +1597,7 @@ sai_status_t SwitchVpp::bulkCreate(
 
     for (it = 0; it < object_count; it++)
     {
-        object_statuses[it] = create_internal(object_type, serialized_object_ids[it], switch_id, attr_count[it], attr_list[it]);
+        object_statuses[it] = create(object_type, serialized_object_ids[it], switch_id, attr_count[it], attr_list[it]);
 
         if (object_statuses[it] != SAI_STATUS_SUCCESS)
         {
@@ -1641,11 +1641,110 @@ sai_status_t SwitchVpp::bulkRemove(
 
     for (it = 0; it < object_count; it++)
     {
-        object_statuses[it] = remove_internal(object_type, serialized_object_ids[it]);
+        object_statuses[it] = remove(object_type, serialized_object_ids[it]);
 
         if (object_statuses[it] != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to remove object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::bulkSet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+
+    if (!object_count || !attr_list || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    uint32_t it;
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = set(object_type, serialized_object_ids[it], &attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set attribute for object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t it;
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    if (!object_count || !attr_list || !attr_count || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        if (!attr_list[it] || !attr_count[it])
+        {
+            SWSS_LOG_ERROR("Invalid arguments");
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = get(object_type, serialized_object_ids[it], attr_count[it], attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get attribute for object with type = %u", object_type);
 
             status = SAI_STATUS_FAILURE;
 
