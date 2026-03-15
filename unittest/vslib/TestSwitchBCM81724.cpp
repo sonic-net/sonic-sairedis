@@ -147,7 +147,10 @@ TEST(SwitchBCM81724, refresh_read_only)
 
     attr.id = SAI_PORT_ATTR_OPER_SPEED;
 
-    EXPECT_NE(sw.get(SAI_OBJECT_TYPE_PORT, strPortId, 1, &attr), SAI_STATUS_SUCCESS);
+    // After clearing hostif_info_map, vs_get_oper_speed() fails (no TAP device),
+    // but refresh_port_oper_speed() now falls back to configured speed instead
+    // of returning SAI_STATUS_FAILURE (see SwitchStateBase.cpp fix for virtio NICs)
+    EXPECT_EQ(sw.get(SAI_OBJECT_TYPE_PORT, strPortId, 1, &attr), SAI_STATUS_SUCCESS);
 
     //std::cout << sw.dump_switch_database_for_warm_restart();
 }
