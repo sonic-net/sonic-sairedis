@@ -32,6 +32,8 @@ sai_status_t transfer_attributes(
 
 std::string sai_serialize_port_attr(_In_ const sai_port_attr_t port_attr);
 
+std::string sai_serialize_port_serdes_attr(_In_ const sai_port_serdes_attr_t port_serdes_attr);
+
 std::string sai_serialize_fdb_event(
         _In_ sai_fdb_event_t event);
 
@@ -144,6 +146,9 @@ std::string sai_serialize_buffer_pool_stat(
 
 std::string sai_serialize_eni_stat(
         _In_ const sai_eni_stat_t counter);
+
+std::string sai_serialize_ha_set_stat(
+        _In_ const sai_ha_set_stat_t counter);
 
 std::string sai_serialize_meter_bucket_entry_stat(
         _In_ const sai_meter_bucket_entry_stat_t counter);
@@ -266,6 +271,9 @@ std::string sai_serialize_number_list(
         _In_ bool countOnly,
         _In_ bool hex = false);
 
+std::string sai_serialize_uint32_list_to_json_dict(
+        _In_ const std::string& uint32_list_string);
+
 std::string sai_serialize_attr_id(
         _In_ const sai_attr_metadata_t& meta);
 
@@ -322,6 +330,10 @@ std::string sai_serialize_port_snr_list(
         _In_ const sai_port_snr_list_t& snr_list,
         _In_ bool countOnly);
 
+std::string sai_serialize_taps_list(
+        _In_ const sai_taps_list_t& port_serdes_taps_list,
+        _In_ bool countOnly);
+
 // serialize notifications
 
 std::string sai_serialize_fdb_event_ntf(
@@ -355,6 +367,11 @@ std::string sai_serialize_ha_set_event_ntf(
 std::string sai_serialize_ha_scope_event_ntf(
         _In_ uint32_t count,
         _In_ const sai_ha_scope_event_data_t* ha_scope_event);
+
+std::string sai_serialize_flow_bulk_get_session_event_ntf(
+        _In_ sai_object_id_t flow_bulk_session_id,
+        _In_ uint32_t count,
+        _In_ const sai_flow_bulk_get_session_event_data_t* data);
 
 std::string sai_serialize_port_host_tx_ready_ntf(
         _In_ sai_object_id_t switch_id,
@@ -459,6 +476,10 @@ void sai_deserialize_ipmc_entry_type(
 void sai_deserialize_port_attr(
       _In_ const std::string& s,
       _Out_ sai_port_attr_t& port_attr);
+
+void sai_deserialize_port_serdes_attr(
+      _In_ const std::string& s,
+      _Out_ sai_port_serdes_attr_t& port_serdes_attr);
 
 void sai_deserialize_l2mc_entry_type(
         _In_ const std::string& s,
@@ -649,6 +670,12 @@ void sai_deserialize_ha_scope_event_ntf(
         _Out_ uint32_t &count,
         _Out_ sai_ha_scope_event_data_t** ha_scope_event);
 
+void sai_deserialize_flow_bulk_get_session_event_ntf(
+        _In_ const std::string& s,
+        _Out_ sai_object_id_t& flow_bulk_session_id,
+        _Out_ uint32_t& count,
+        _Out_ sai_flow_bulk_get_session_event_data_t** data);
+
 void sai_deserialize_port_host_tx_ready_ntf(
         _In_ const std::string& s,
         _Out_ sai_object_id_t& switch_id,
@@ -712,6 +739,10 @@ void sai_deserialize_free_twamp_session_event_ntf(
         _In_ uint32_t count,
         _In_ sai_twamp_session_event_notification_data_t* twamp_session_event);
 
+void sai_deserialize_free_flow_bulk_get_session_event_ntf(
+        _In_ uint32_t count,
+        _In_ sai_flow_bulk_get_session_event_data_t* data);
+
 void sai_deserialize_queue_attr(
         _In_ const std::string& s,
         _Out_ sai_queue_attr_t& attr);
@@ -765,6 +796,11 @@ void sai_deserialize_stats_st_capability_list(
 void sai_deserialize_port_snr_list(
         _In_ const std::string& s,
         _Out_ sai_port_snr_list_t& snr_list,
+        _In_ bool countOnly);
+
+void sai_deserialize_taps_list(
+        _In_ const std::string& s,
+        _Out_ sai_taps_list_t& port_serdes_taps_list,
         _In_ bool countOnly);
 
 void sai_deserialize_switch_macsec_post_status(

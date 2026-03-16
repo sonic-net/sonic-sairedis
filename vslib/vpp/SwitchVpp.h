@@ -73,6 +73,10 @@ namespace saivs
             virtual sai_status_t create_port_serdes_per_port(
                     _In_ sai_object_id_t port_id) override;
 
+            virtual sai_status_t refresh_read_only(
+                    _In_ const sai_attr_metadata_t *meta,
+                    _In_ sai_object_id_t object_id) override;
+
         private: // from vpp VirtualSwitchSaiInterface
 
             void setPortStats(
@@ -599,6 +603,11 @@ namespace saivs
 
             sai_status_t IpRouteAddRemove(
                     _In_ const SaiObject* route_obj,
+                    _In_ bool is_add);
+
+            sai_status_t IpRoutePathAddRemove(
+                    _In_ const SaiObject* route_obj,
+                    _In_ nexthop_grp_member_t *member,
                     _In_ bool is_add);
 
             sai_status_t updateIpRoute(
