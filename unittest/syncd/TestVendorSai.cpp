@@ -1810,6 +1810,26 @@ TEST_F(VendorSaiTest, bulk_eni_trusted_vni_entry)
 
 // BROADCOM_LEGACY_SAI_COMPAT tests ------------------------------------------------------------------------------------
 
+static const char* profile_get_value_no_switch_stats_ext(
+        _In_ sai_switch_profile_id_t profile_id,
+        _In_ const char* variable)
+{
+    SWSS_LOG_ENTER();
+
+    if (variable == NULL)
+        return NULL;
+
+    if (std::string(variable) == "SAI_STATS_EXT_SWITCH_SUPPORTED")
+        return "0";
+
+    return nullptr;
+}
+
+static sai_service_method_table_t test_services_no_switch_stats_ext = {
+    profile_get_value_no_switch_stats_ext,
+    profile_get_next_value
+};
+
 static const char* profile_get_value_no_st_capability(
         _In_ sai_switch_profile_id_t profile_id,
         _In_ const char* variable)
@@ -1829,6 +1849,24 @@ static sai_service_method_table_t test_services_no_st_capability = {
     profile_get_value_no_st_capability,
     profile_get_next_value
 };
+
+TEST(VendorSai, isSwitchStatsExtSupportedDefault)
+{
+    // BROADCOM_LEGACY_SAI_COMPAT: isSwitchStatsExtSupported() defaults to true when
+    // SAI_STATS_EXT_SWITCH_SUPPORTED key is absent from sai.profile
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services);
+    EXPECT_TRUE(sai.isSwitchStatsExtSupported());
+}
+
+TEST(VendorSai, isSwitchStatsExtDisabledViaProfile)
+{
+    // BROADCOM_LEGACY_SAI_COMPAT: SAI_STATS_EXT_SWITCH_SUPPORTED=0 in sai.profile
+    // disables sai_get_stats_ext for switch objects (needed for TH1/BCM56960 legacy)
+    VendorSai sai;
+    sai.apiInitialize(0, &test_services_no_switch_stats_ext);
+    EXPECT_FALSE(sai.isSwitchStatsExtSupported());
+}
 
 TEST(VendorSai, statsStCapabilityProfileKeyProcessed)
 {
