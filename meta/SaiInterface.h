@@ -352,6 +352,13 @@ namespace sairedis
             virtual sai_log_level_t logGet(
                     _In_ sai_api_t api);
 
+        public: // non SAI API
+
+            // BROADCOM_LEGACY_SAI_COMPAT: Platforms that crash when sai_get_stats_ext is called on
+            // switch objects (e.g. Tomahawk-1/BCM56960 legacy) can set
+            // SAI_STATS_EXT_SWITCH_SUPPORTED=0 in sai.profile to disable it.
+            virtual bool isSwitchStatsExtSupported() const { return true; }
+
         public: // non SAI API - options helper
 
             std::shared_ptr<SaiOptions> getOptions(
