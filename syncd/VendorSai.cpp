@@ -163,6 +163,26 @@ sai_status_t VendorSai::apiInitialize(
         }
     }
 
+#ifdef HAVE_SAI_QUERY_STATS_ST_CAPABILITY
+    // BROADCOM_LEGACY_SAI_COMPAT: Allow platforms to disable sai_query_stats_st_capability at runtime
+    // via sai.profile key SAI_STATS_ST_CAPABILITY_SUPPORTED=0.
+    // Needed for legacy ASICs (e.g. Tomahawk-1/BCM56960) where the SAI function
+    // pointer is non-null but the internal ST platform driver is uninitialized,
+    // causing a SIGSEGV in brcm_sai_st_pd_ctr_cap_list_get.
+    if (m_globalApis.query_stats_st_capability != nullptr &&
+        m_service_method_table.profile_get_value != nullptr)
+    {
+        const char *stCapVal = m_service_method_table.profile_get_value(
+                0, "SAI_STATS_ST_CAPABILITY_SUPPORTED");
+        if (stCapVal != nullptr && std::string(stCapVal) == "0")
+        {
+            SWSS_LOG_NOTICE("SAI_STATS_ST_CAPABILITY_SUPPORTED=0 in sai.profile,"
+                            " disabling query_stats_st_capability for this platform");
+            m_globalApis.query_stats_st_capability = nullptr;
+        }
+    }
+#endif
+
     m_apiInitialized = true;
 
     return status;
