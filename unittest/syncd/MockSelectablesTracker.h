@@ -21,5 +21,11 @@ namespace syncd
 
                MOCK_METHOD1(removeSelectableFromTracker,
                               bool(swss::Selectable *selectable));
+
+               MOCK_CONST_METHOD1(selectableIsTracked,
+                              bool(swss::Selectable *selectable));
+
+               MOCK_CONST_METHOD1(getEventHandlerForSelectable,
+                              std::shared_ptr<SelectableEventHandler>(swss::Selectable *selectable));
      };
 }  // namespace syncd

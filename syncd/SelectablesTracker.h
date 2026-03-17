@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
 #include "SelectableEventHandler.h"
@@ -39,16 +40,18 @@ namespace syncd
 
             // Checks if Selectable is present in the tracker map.
             virtual bool selectableIsTracked(
-                    _In_ swss::Selectable *selectable);
+                    _In_ swss::Selectable *selectable) const;
 
             // Gets the EventHandler for a Selectable.
             virtual std::shared_ptr<SelectableEventHandler> getEventHandlerForSelectable(
-                    _In_ swss::Selectable *selectable);
+                    _In_ swss::Selectable *selectable) const;
 
         private:
 
             using SelectableFdToEventHandlerMap =
                     std::unordered_map<int, std::shared_ptr<SelectableEventHandler>>;
+
+            mutable std::mutex m_mutex;
 
             SelectableFdToEventHandlerMap m_selectableFdToEventHandlerMap;
     };

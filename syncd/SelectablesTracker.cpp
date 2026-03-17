@@ -10,6 +10,8 @@ bool SelectablesTracker::addSelectableToTracker(
 {
     SWSS_LOG_ENTER();
 
+    std::lock_guard<std::mutex> lock(m_mutex);
+
     if (selectable == nullptr)
     {
         SWSS_LOG_ERROR("Invalid Selectable:Selectable is NULL.");
@@ -45,6 +47,8 @@ bool SelectablesTracker::removeSelectableFromTracker(
 {
     SWSS_LOG_ENTER();
 
+    std::lock_guard<std::mutex> lock(m_mutex);
+
     if (selectable == nullptr)
     {
         SWSS_LOG_ERROR("Invalid Selectable:Selectable is NULL.");
@@ -67,9 +71,11 @@ bool SelectablesTracker::removeSelectableFromTracker(
 }
 
 bool SelectablesTracker::selectableIsTracked(
-        _In_ swss::Selectable *selectable)
+        _In_ swss::Selectable *selectable) const
 {
     SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     if ((selectable == nullptr) ||
         (m_selectableFdToEventHandlerMap.count(selectable->getFd()) == 0))
@@ -81,9 +87,11 @@ bool SelectablesTracker::selectableIsTracked(
 }
 
 std::shared_ptr<SelectableEventHandler> SelectablesTracker::getEventHandlerForSelectable(
-        _In_ swss::Selectable *selectable)
+        _In_ swss::Selectable *selectable) const
 {
     SWSS_LOG_ENTER();
+
+    std::lock_guard<std::mutex> lock(m_mutex);
 
     if (selectable == nullptr)
     {
