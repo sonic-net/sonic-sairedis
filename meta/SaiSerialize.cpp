@@ -70,6 +70,29 @@ void sai_free_list(
     element.list = NULL;
 }
 
+static void sai_free_taps_list(
+        _In_ sai_taps_list_t &taps_list)
+{
+    SWSS_LOG_ENTER();
+
+    if (taps_list.list != NULL)
+    {
+        // Free each inner list first
+        for (uint32_t i = 0; i < taps_list.count; ++i)
+        {
+            if (taps_list.list[i].list != NULL)
+            {
+                delete[] taps_list.list[i].list;
+                taps_list.list[i].list = NULL;
+            }
+        }
+
+        // Then free the outer list
+        delete[] taps_list.list;
+        taps_list.list = NULL;
+    }
+}
+
 template<typename T>
 static void transfer_primitive(
         _In_ const T &src_element,
@@ -123,6 +146,56 @@ static sai_status_t transfer_list(
 
     // input buffer is too small to get all list elements, so return count only
     transfer_primitive(src_element.count, dst_element.count);
+
+    return SAI_STATUS_BUFFER_OVERFLOW;
+}
+
+static sai_status_t transfer_taps_list(
+        _In_ const sai_taps_list_t &src_taps_list,
+        _In_ sai_taps_list_t &dst_taps_list,
+        _In_ bool countOnly)
+{
+    SWSS_LOG_ENTER();
+
+    if (countOnly || dst_taps_list.count == 0)
+    {
+        transfer_primitive(src_taps_list.count, dst_taps_list.count);
+        return SAI_STATUS_SUCCESS;
+    }
+
+    if (dst_taps_list.list == NULL)
+    {
+        SWSS_LOG_ERROR("destination taps list is null, unable to transfer elements");
+        return SAI_STATUS_FAILURE;
+    }
+
+    if (dst_taps_list.count >= src_taps_list.count)
+    {
+        if (src_taps_list.list == NULL && src_taps_list.count > 0)
+        {
+            SWSS_LOG_THROW("source taps list is NULL when count is %u, wrong db insert?", src_taps_list.count);
+        }
+
+        transfer_primitive(src_taps_list.count, dst_taps_list.count);
+
+        // Deep copy each tap's inner list using transfer_list
+        for (uint32_t i = 0; i < src_taps_list.count; i++)
+        {
+            const sai_s32_list_t &src_inner = src_taps_list.list[i];
+            sai_s32_list_t &dst_inner = dst_taps_list.list[i];
+
+            sai_status_t status = transfer_list(src_inner, dst_inner, false);
+            if (status != SAI_STATUS_SUCCESS)
+            {
+                return status;
+            }
+        }
+
+        return SAI_STATUS_SUCCESS;
+    }
+
+    // Input buffer is too small to get all list elements, so return count only
+    transfer_primitive(src_taps_list.count, dst_taps_list.count);
 
     return SAI_STATUS_BUFFER_OVERFLOW;
 }
@@ -524,7 +597,7 @@ sai_status_t transfer_attribute(
             break;
 
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
-            RETURN_ON_ERROR(transfer_list(src_attr.value.portserdestaps, dst_attr.value.portserdestaps, countOnly));
+            RETURN_ON_ERROR(transfer_taps_list(src_attr.value.portserdestaps, dst_attr.value.portserdestaps, countOnly));
             break;
 
         case SAI_ATTR_VALUE_TYPE_PRBS_PER_LANE_RX_STATUS_LIST:
@@ -1796,14 +1869,17 @@ std::string sai_serialize_taps_list(
         for (uint32_t tap_idx = 0; tap_idx < num_taps; ++tap_idx)
         {
             const sai_s32_list_t& tap_lanes = port_serdes_taps_list.list[tap_idx];
+            json tap_obj = json::object();
 
+            // Always emit tap object to maintain positional indexing for deserializer
             if (tap_lanes.list != NULL && lane_idx < tap_lanes.count)
             {
-                json tap_obj = json::object();
                 std::string tap_key = "tap" + std::to_string(tap_idx);
                 tap_obj[tap_key] = tap_lanes.list[lane_idx];
-                lane_taps_array.push_back(tap_obj);
             }
+            // else: push empty object {} as placeholder
+
+            lane_taps_array.push_back(tap_obj);
         }
 
         // Add this lane's taps to the result
@@ -4631,14 +4707,16 @@ void sai_deserialize_taps_list(
         return;
     }
 
+    // Initialize to safe state for cleanup on error
+    port_serdes_taps_list.count = 0;
+    port_serdes_taps_list.list = NULL;
+
     try
     {
         json j = json::parse(s);
 
         if (j.empty() || !j.is_object())
         {
-            port_serdes_taps_list.count = 0;
-            port_serdes_taps_list.list = NULL;
             return;
         }
 
@@ -4649,8 +4727,6 @@ void sai_deserialize_taps_list(
         // All lanes should have the same number of taps
         if (!j.contains("0") || !j["0"].is_array() || j["0"].empty())
         {
-            port_serdes_taps_list.count = 0;
-            port_serdes_taps_list.list = NULL;
             return;
         }
 
@@ -4659,6 +4735,13 @@ void sai_deserialize_taps_list(
         // Allocate the structure directly
         port_serdes_taps_list.count = tap_count;
         port_serdes_taps_list.list = sai_alloc_n_of_ptr_type(tap_count, port_serdes_taps_list.list);
+
+        // Initialize all inner list pointers to nullptr for safe cleanup on error
+        for (uint32_t tap_idx = 0; tap_idx < tap_count; ++tap_idx)
+        {
+            port_serdes_taps_list.list[tap_idx].count = 0;
+            port_serdes_taps_list.list[tap_idx].list = NULL;
+        }
 
         // For each tap, allocate its lane list
         for (uint32_t tap_idx = 0; tap_idx < tap_count; ++tap_idx)
@@ -4676,30 +4759,61 @@ void sai_deserialize_taps_list(
             {
                 std::string lane_key = std::to_string(lane_idx);
 
-                if (j.contains(lane_key) && j[lane_key].is_array() && tap_idx < j[lane_key].size())
+                // Validate lane key exists and is an array
+                if (!j.at(lane_key).is_array())
                 {
-                    const json& tap_obj = j[lane_key][tap_idx];
-
-                    if (tap_obj.is_object() && tap_obj.contains(tap_key))
-                    {
-                        port_serdes_taps_list.list[tap_idx].list[lane_idx] = tap_obj[tap_key].get<int32_t>();
-                    }
+                    SWSS_LOG_THROW("Lane %s is not an array in taps_list", lane_key.c_str());
                 }
+
+                if (tap_idx >= j.at(lane_key).size())
+                {
+                    SWSS_LOG_THROW("Tap index %u out of bounds for lane %s", tap_idx, lane_key.c_str());
+                }
+
+                const json& tap_obj = j.at(lane_key)[tap_idx];
+
+                // Validate tap object and key exist
+                if (!tap_obj.is_object())
+                {
+                    SWSS_LOG_THROW("Tap at index %u for lane %s is not an object", tap_idx, lane_key.c_str());
+                }
+
+                if (!tap_obj.contains(tap_key))
+                {
+                    SWSS_LOG_THROW("Missing tap key '%s' at index %u for lane %s", tap_key.c_str(), tap_idx, lane_key.c_str());
+                }
+
+                port_serdes_taps_list.list[tap_idx].list[lane_idx] = tap_obj[tap_key].get<int32_t>();
             }
         }
+
+        // Success - return without cleanup
+        return;
     }
     catch (const json::parse_error& e)
     {
         SWSS_LOG_ERROR("JSON parse error in sai_deserialize_taps_list: %s", e.what());
-        port_serdes_taps_list.count = 0;
-        port_serdes_taps_list.list = NULL;
     }
     catch (const std::exception& e)
     {
         SWSS_LOG_ERROR("Error in sai_deserialize_taps_list: %s", e.what());
-        port_serdes_taps_list.count = 0;
-        port_serdes_taps_list.list = NULL;
     }
+
+    // Cleanup allocated memory on error (only reached if exception was thrown)
+    if (port_serdes_taps_list.list != NULL)
+    {
+        for (uint32_t i = 0; i < port_serdes_taps_list.count; ++i)
+        {
+            if (port_serdes_taps_list.list[i].list != NULL)
+            {
+                delete[] port_serdes_taps_list.list[i].list;
+            }
+        }
+        delete[] port_serdes_taps_list.list;
+    }
+
+    port_serdes_taps_list.count = 0;
+    port_serdes_taps_list.list = NULL;
 }
 
 static void sai_deserialize_system_port_cfg_list_item(
@@ -6295,7 +6409,7 @@ void sai_deserialize_free_attribute_value(
             break;
 
         case SAI_ATTR_VALUE_TYPE_TAPS_LIST:
-            sai_free_list(attr.value.portserdestaps);
+            sai_free_taps_list(attr.value.portserdestaps);
             break;
 
             /* ACL FIELD DATA */
