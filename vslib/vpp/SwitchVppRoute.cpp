@@ -281,14 +281,21 @@ sai_status_t SwitchVpp::addIpRoute(
 
     SaiCachedObject ip_route_obj(this, SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr_count, attr_list);
 
-    /* Check if route has a NEXT_HOP_ID attribute (could be NH or NHG) */
+    /* Check if route has a NEXT_HOP_ID pointing to a real nexthop (NH or NHG).
+     * Routes pointing to PORT or ROUTER_INTERFACE (e.g. Loopback0 IP2ME routes)
+     * still need the loopback check. */
     {
         sai_attribute_t nh_attr;
         nh_attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
         if (ip_route_obj.get_attr(nh_attr) == SAI_STATUS_SUCCESS &&
             nh_attr.value.oid != SAI_NULL_OBJECT_ID)
         {
-            hasNexthopAttr = true;
+            auto oid_type = RealObjectIdManager::objectTypeQuery(nh_attr.value.oid);
+            if (oid_type == SAI_OBJECT_TYPE_NEXT_HOP ||
+                oid_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
+            {
+                hasNexthopAttr = true;
+            }
         }
     }
 
@@ -375,7 +382,12 @@ sai_status_t SwitchVpp::removeIpRoute(
         if (route_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
             attr.value.oid != SAI_NULL_OBJECT_ID)
         {
-            hasNexthopAttr = true;
+            auto oid_type = RealObjectIdManager::objectTypeQuery(attr.value.oid);
+            if (oid_type == SAI_OBJECT_TYPE_NEXT_HOP ||
+                oid_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
+            {
+                hasNexthopAttr = true;
+            }
         }
     }
 
