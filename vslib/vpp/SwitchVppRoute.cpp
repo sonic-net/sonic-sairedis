@@ -277,8 +277,28 @@ sai_status_t SwitchVpp::addIpRoute(
     bool isLoopback = false;
     bool isTunnelNh = false;
     bool isSRv6Nh = false;
+    bool hasNexthopAttr = false;
 
     SaiCachedObject ip_route_obj(this, SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr_count, attr_list);
+
+    /* Check if route has a NEXT_HOP_ID pointing to a real nexthop (NH or NHG).
+     * Routes pointing to PORT or ROUTER_INTERFACE (e.g. Loopback0 IP2ME routes)
+     * still need the loopback check. */
+    {
+        sai_attribute_t nh_attr;
+        nh_attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+        if (ip_route_obj.get_attr(nh_attr) == SAI_STATUS_SUCCESS &&
+            nh_attr.value.oid != SAI_NULL_OBJECT_ID)
+        {
+            auto oid_type = RealObjectIdManager::objectTypeQuery(nh_attr.value.oid);
+            if (oid_type == SAI_OBJECT_TYPE_NEXT_HOP ||
+                oid_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
+            {
+                hasNexthopAttr = true;
+            }
+        }
+    }
+
     auto nh_obj = ip_route_obj.get_linked_object(SAI_OBJECT_TYPE_NEXT_HOP, SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
     if (nh_obj != nullptr) {
         sai_attribute_t attr;
@@ -291,7 +311,14 @@ sai_status_t SwitchVpp::addIpRoute(
     if (isTunnelNh) {
         IpRouteAddRemove(&ip_route_obj, true);
     } else {
-        process_interface_loopback(serializedObjectId, isLoopback, true);
+        /*
+         * Loopback check: only when there is no nexthop attribute.
+         * Routes with a valid NEXT_HOP_ID (NH or NHG) are never loopback.
+         * process_interface_loopback forks 4 shell processes per call (~4ms).
+         */
+        if (!hasNexthopAttr) {
+            process_interface_loopback(serializedObjectId, isLoopback, true);
+        }
         if (isLoopback == false && is_ip_nbr_active() == true)
         {
             if (isSRv6Nh) {
@@ -340,12 +367,35 @@ sai_status_t SwitchVpp::removeIpRoute(
 
     bool isLoopback = false;
     bool isSRv6Nh = false;
+    bool hasNexthopAttr = false;
     sai_attribute_t attr;
     sai_object_id_t nh_oid;
-    process_interface_loopback(serializedObjectId, isLoopback, false);
+
+    /*
+     * Check if the route has a nexthop before the loopback check.
+     * Routes with a valid NEXT_HOP_ID (NH or NHG) are never loopback.
+     * process_interface_loopback forks 4 shell processes per call (~4ms).
+     */
+    auto route_obj = get_sai_object(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId);
+    if (route_obj) {
+        attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+        if (route_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
+            attr.value.oid != SAI_NULL_OBJECT_ID)
+        {
+            auto oid_type = RealObjectIdManager::objectTypeQuery(attr.value.oid);
+            if (oid_type == SAI_OBJECT_TYPE_NEXT_HOP ||
+                oid_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
+            {
+                hasNexthopAttr = true;
+            }
+        }
+    }
+
+    if (!hasNexthopAttr) {
+        process_interface_loopback(serializedObjectId, isLoopback, false);
+    }
 
     if (isLoopback == false && is_ip_nbr_active() == true) {
-        auto route_obj = get_sai_object(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId);
 	    if (route_obj) {
             attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
             if(route_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
