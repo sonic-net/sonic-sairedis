@@ -20,6 +20,7 @@ tests_SOURCES = \
 				TestNotificationFactory.cpp \
 				TestNotificationFdbEvent.cpp \
 				TestNotificationNatEvent.cpp \
+				TestNotificationPortHostTxReadyEvent.cpp \
 				TestNotificationPortStateChange.cpp \
 				TestNotificationQueuePfcDeadlock.cpp \
 				TestNotificationSwitchShutdownRequest.cpp \
