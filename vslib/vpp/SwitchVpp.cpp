@@ -1877,6 +1877,7 @@ sai_status_t SwitchVpp::initialize_default_objects(
     CHECK_STATUS(create_default_stp_instance());
     CHECK_STATUS(create_default_1q_bridge());
     CHECK_STATUS(create_default_trap_group());
+    CHECK_STATUS(create_default_hash());
     CHECK_STATUS(create_ports());
     CHECK_STATUS(create_port_serdes());
     CHECK_STATUS(set_port_list());
@@ -1898,6 +1899,49 @@ sai_status_t SwitchVpp::initialize_default_objects(
     CHECK_STATUS(initialize_voq_switch_objects(attr_count, attr_list));
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::create_default_hash()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create default hash for VPP");
+
+    // VPP supports L3/L4 hash fields
+    std::vector<sai_native_hash_field_t> hfList = {
+        SAI_NATIVE_HASH_FIELD_IP_PROTOCOL,
+        SAI_NATIVE_HASH_FIELD_DST_IP,
+        SAI_NATIVE_HASH_FIELD_SRC_IP,
+        SAI_NATIVE_HASH_FIELD_L4_DST_PORT,
+        SAI_NATIVE_HASH_FIELD_L4_SRC_PORT
+    };
+
+    // create and populate default ecmp hash object
+    sai_attribute_t attr;
+    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    attr.value.s32list.list = reinterpret_cast<sai_int32_t*>(hfList.data());
+    attr.value.s32list.count = static_cast<sai_uint32_t>(hfList.size());
+
+    CHECK_STATUS(create(SAI_OBJECT_TYPE_HASH, &m_ecmp_hash_id, m_switch_id, 1, &attr));
+
+    // set default ecmp hash on switch
+    attr.id = SAI_SWITCH_ATTR_ECMP_HASH;
+    attr.value.oid = m_ecmp_hash_id;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // create and populate default lag hash object
+    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    attr.value.s32list.list = reinterpret_cast<sai_int32_t*>(hfList.data());
+    attr.value.s32list.count = static_cast<sai_uint32_t>(hfList.size());
+
+    CHECK_STATUS(create(SAI_OBJECT_TYPE_HASH, &m_lag_hash_id, m_switch_id, 1, &attr));
+
+    // set default lag hash on switch
+    attr.id = SAI_SWITCH_ATTR_LAG_HASH;
+    attr.value.oid = m_lag_hash_id;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchVpp::queryHashNativeHashFieldListCapability(
