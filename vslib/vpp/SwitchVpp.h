@@ -963,6 +963,22 @@ namespace saivs
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
+            // CRM resource limits (configurable via profile map from -p argument)
+            uint32_t m_vppMaxIPv4RouteEntries = m_maxIPv4RouteEntries;
+            uint32_t m_vppMaxIPv6RouteEntries = m_maxIPv6RouteEntries;
+            uint32_t m_vppMaxFdbEntries = m_maxFdbEntries;
+
+            // CRM resource tracking counters
+            uint32_t m_ipv4_route_count = 0;
+            uint32_t m_ipv6_route_count = 0;
+            uint32_t m_fdb_entry_count = 0;
+
+            bool isIPv4Route(const std::string &serializedObjectId);
+
+            void loadCrmProfileValues();
+
+            virtual sai_status_t set_static_crm_values() override;
+
             // SRv6 object tracking for CRM
             constexpr static const int m_maxMySidEntries = 1000;
             uint32_t m_srv6_my_sid_count = 0;

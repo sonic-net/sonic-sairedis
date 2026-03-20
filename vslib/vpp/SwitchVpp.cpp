@@ -9,6 +9,7 @@
 #include "SwitchVppUtils.h"
 
 #include <vector>
+#include <string>
 
 using namespace saivs;
 
@@ -848,7 +849,21 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_ROUTE_ENTRY)
     {
-        return addIpRoute(serializedObjectId, switch_id, attr_count, attr_list);
+        sai_status_t status = addIpRoute(serializedObjectId, switch_id, attr_count, attr_list);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (isIPv4Route(serializedObjectId))
+            {
+                m_ipv4_route_count++;
+                SWSS_LOG_DEBUG("CRM: IPv4 route created, count: %u", m_ipv4_route_count);
+            }
+            else
+            {
+                m_ipv6_route_count++;
+                SWSS_LOG_DEBUG("CRM: IPv6 route created, count: %u", m_ipv6_route_count);
+            }
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
@@ -939,7 +954,13 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
     {
-        return FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
+        sai_status_t status = FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            m_fdb_entry_count++;
+            SWSS_LOG_DEBUG("CRM: FDB entry created, count: %u", m_fdb_entry_count);
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_BFD_SESSION)
@@ -1110,7 +1131,22 @@ sai_status_t SwitchVpp::remove(
 
     if (object_type == SAI_OBJECT_TYPE_ROUTE_ENTRY)
     {
-        return removeIpRoute(serializedObjectId);
+        bool wasIPv4 = isIPv4Route(serializedObjectId);
+        sai_status_t status = removeIpRoute(serializedObjectId);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (wasIPv4)
+            {
+                if (m_ipv4_route_count > 0) m_ipv4_route_count--;
+                SWSS_LOG_DEBUG("CRM: IPv4 route removed, count: %u", m_ipv4_route_count);
+            }
+            else
+            {
+                if (m_ipv6_route_count > 0) m_ipv6_route_count--;
+                SWSS_LOG_DEBUG("CRM: IPv6 route removed, count: %u", m_ipv6_route_count);
+            }
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
@@ -1206,7 +1242,13 @@ sai_status_t SwitchVpp::remove(
     }
     else if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
     {
-        return FdbEntrydel(serializedObjectId);
+        sai_status_t status = FdbEntrydel(serializedObjectId);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (m_fdb_entry_count > 0) m_fdb_entry_count--;
+            SWSS_LOG_DEBUG("CRM: FDB entry removed, count: %u", m_fdb_entry_count);
+        }
+        return status;
     }
     else if (object_type == SAI_OBJECT_TYPE_BFD_SESSION)
     {
@@ -1982,6 +2024,97 @@ sai_status_t SwitchVpp::querySwitchHashAlgorithmCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+bool SwitchVpp::isIPv4Route(
+        const std::string &serializedObjectId)
+{
+    sai_route_entry_t route_entry;
+    sai_deserialize_route_entry(serializedObjectId, route_entry);
+    return route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4;
+}
+
+void SwitchVpp::loadCrmProfileValues()
+{
+    SWSS_LOG_ENTER();
+
+    const auto &profileMap = m_switchConfig->m_profileMap;
+
+    if (profileMap.empty())
+    {
+        SWSS_LOG_NOTICE("CRM: profile map is empty, using defaults (IPv4=%u, IPv6=%u, FDB=%u)",
+            m_vppMaxIPv4RouteEntries, m_vppMaxIPv6RouteEntries, m_vppMaxFdbEntries);
+        return;
+    }
+
+    auto it = profileMap.find("SAI_VPP_MAX_IPV4_ROUTE_ENTRIES");
+    if (it != profileMap.end())
+    {
+        m_vppMaxIPv4RouteEntries = (uint32_t)std::stoul(it->second);
+    }
+
+    it = profileMap.find("SAI_VPP_MAX_IPV6_ROUTE_ENTRIES");
+    if (it != profileMap.end())
+    {
+        m_vppMaxIPv6RouteEntries = (uint32_t)std::stoul(it->second);
+    }
+
+    it = profileMap.find("SAI_VPP_MAX_FDB_ENTRIES");
+    if (it != profileMap.end())
+    {
+        m_vppMaxFdbEntries = (uint32_t)std::stoul(it->second);
+    }
+
+    SWSS_LOG_NOTICE("CRM: profile loaded (IPv4=%u, IPv6=%u, FDB=%u)",
+        m_vppMaxIPv4RouteEntries, m_vppMaxIPv6RouteEntries, m_vppMaxFdbEntries);
+}
+
+sai_status_t SwitchVpp::set_static_crm_values()
+{
+    SWSS_LOG_ENTER();
+
+    // Load configurable CRM limits from sai_vpp.profile
+    loadCrmProfileValues();
+
+    // Override the base class static values with our configurable ones
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV4_ROUTE_ENTRY;
+    attr.value.u32 = m_vppMaxIPv4RouteEntries;
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV6_ROUTE_ENTRY;
+    attr.value.u32 = m_vppMaxIPv6RouteEntries;
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY;
+    attr.value.u32 = m_vppMaxFdbEntries;
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // For remaining resources (nexthop, neighbor, nhg, etc.), use base class defaults
+    std::map<sai_switch_attr_t, int> remaining_resources = {
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEXTHOP_ENTRY, m_maxIPv4NextHopEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEXTHOP_ENTRY, m_maxIPv6NextHopEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEIGHBOR_ENTRY, m_maxIPv4NeighborEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEIGHBOR_ENTRY, m_maxIPv6NeighborEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_MEMBER_ENTRY, m_maxNextHopGroupMemberEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_ENTRY, m_maxNextHopGroupEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY, m_maxSNATEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY, m_maxDNATEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPMC_ENTRY, m_maxIPMCEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY, m_maxDoubleNATEntries }
+    };
+
+    for (auto const &resource: remaining_resources)
+    {
+        attr.id = resource.first;
+        attr.value.u32 = resource.second;
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+    }
+
+    CHECK_STATUS(set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE, m_maxAclTables));
+
+    return set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP, m_maxAclTableGroups);
+}
+
 sai_status_t SwitchVpp::refresh_read_only(
         _In_ const sai_attr_metadata_t *meta,
         _In_ sai_object_id_t object_id)
@@ -1997,6 +2130,34 @@ sai_status_t SwitchVpp::refresh_read_only(
                 // VPP stores BFD session state in m_objectHash and will update it
                 // when BFD state changed. So we don't need to refresh.
                 return SAI_STATUS_SUCCESS;
+
+            default:
+                break;
+        }
+    }
+
+    // Dynamic CRM resource availability: return max - used
+    if (meta->objecttype == SAI_OBJECT_TYPE_SWITCH)
+    {
+        sai_attribute_t attr;
+        attr.id = meta->attrid;
+
+        switch (meta->attrid)
+        {
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV4_ROUTE_ENTRY:
+                attr.value.u32 = (m_vppMaxIPv4RouteEntries > m_ipv4_route_count)
+                    ? (m_vppMaxIPv4RouteEntries - m_ipv4_route_count) : 0;
+                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV6_ROUTE_ENTRY:
+                attr.value.u32 = (m_vppMaxIPv6RouteEntries > m_ipv6_route_count)
+                    ? (m_vppMaxIPv6RouteEntries - m_ipv6_route_count) : 0;
+                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+
+            case SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY:
+                attr.value.u32 = (m_vppMaxFdbEntries > m_fdb_entry_count)
+                    ? (m_vppMaxFdbEntries - m_fdb_entry_count) : 0;
+                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 
             default:
                 break;

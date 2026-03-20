@@ -5,6 +5,7 @@
 #include "ResourceLimiter.h"
 #include "CorePortIndexMap.h"
 
+#include <map>
 #include <string>
 #include <memory>
 
@@ -101,5 +102,7 @@ namespace saivs
             std::shared_ptr<ResourceLimiter> m_resourceLimiter;
 
             std::shared_ptr<CorePortIndexMap> m_corePortIndexMap;
+
+            std::map<std::string, std::string> m_profileMap;
     };
 }
