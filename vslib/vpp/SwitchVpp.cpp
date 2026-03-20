@@ -1987,19 +1987,17 @@ sai_status_t SwitchVpp::queryNextHopGroupTypeCapability(
 {
     SWSS_LOG_ENTER();
 
-    if (enum_values_capability->count < 2)
+    if (enum_values_capability->count < 1)
     {
-        enum_values_capability->count = 2;
+        enum_values_capability->count = 1;
         return SAI_STATUS_BUFFER_OVERFLOW;
     }
 
-    // VPP does not support ordered ECMP — it rebuilds the entire
-    // load-balance DPO on any path change, so bucket-to-nexthop
-    // assignment is not preserved.  Only report unordered ECMP
-    // and protection group types.
-    enum_values_capability->count = 2;
+    // VPP only supports unordered ECMP. It does not support ordered ECMP
+    // (bucket-to-nexthop assignment is not preserved) or protection groups
+    // (IpRouteNexthopGroupEntry rejects non-ECMP types).
+    enum_values_capability->count = 1;
     enum_values_capability->list[0] = SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP;
-    enum_values_capability->list[1] = SAI_NEXT_HOP_GROUP_TYPE_PROTECTION;
 
     return SAI_STATUS_SUCCESS;
 }
