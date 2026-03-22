@@ -28,6 +28,12 @@
 
 #include <memory>
 
+// FRIEND_TEST is defined by gtest when building tests; provide a no-op
+// fallback so production builds are unaffected.
+#ifndef FRIEND_TEST
+#define FRIEND_TEST(test_case_name, test_name)
+#endif
+
 namespace syncd
 {
     class Syncd
@@ -113,6 +119,24 @@ namespace syncd
             sai_status_t setUninitDataPlaneOnRemovalOnAllSwitches();
 
         private:
+
+            // Grant unit-test access to private saiLoglevelNotify (issue #170).
+            // Each FRIEND_TEST expands to: friend class <Suite>_<Test>_Test;
+            // Tests call saiLoglevelNotify directly in the TEST_F/TEST_P body
+            // (not via a fixture helper) so that friendship applies correctly.
+            FRIEND_TEST(SaiLoglevelNotifyTest, SwssShortName_INFO_CallsLogSetWithInfoLevel);
+            FRIEND_TEST(SaiLoglevelNotifyTest, SwssShortName_NOTICE_CallsLogSetWithNoticeLevel);
+            FRIEND_TEST(SaiLoglevelNotifyTest, SwssShortName_DEBUG_CallsLogSetWithDebugLevel);
+            FRIEND_TEST(SaiLoglevelNotifyTest, SwssShortName_WARN_CallsLogSetWithWarnLevel);
+            FRIEND_TEST(SaiLoglevelNotifyTest, SwssShortName_ERROR_CallsLogSetWithErrorLevel);
+            FRIEND_TEST(SaiLoglevelNotifyTest, SaiFullName_SAI_LOG_LEVEL_INFO_StillWorks);
+            FRIEND_TEST(SaiLoglevelNotifyTest, SaiFullName_SAI_LOG_LEVEL_NOTICE_StillWorks);
+            FRIEND_TEST(SaiLoglevelNotifyTest, UnknownLogLevel_DoesNotCrash_LogSetNotCalled);
+            FRIEND_TEST(SaiLoglevelNotifyTest, LogSetFailure_IsHandledGracefully);
+            FRIEND_TEST(SaiLoglevelNotifyTest, Regression_Issue170_NeighborInfoDoesNotError);
+            FRIEND_TEST(SaiLoglevelNotifyTest, Regression_Issue170_NextHopInfoDoesNotError);
+            // Parameterized suite: TEST_P body class is <Suite>_<Test>_Test
+            FRIEND_TEST(SaiLoglevelMappingTest, AllMappingsAreCorrect);
 
             void loadProfileMap();
 
