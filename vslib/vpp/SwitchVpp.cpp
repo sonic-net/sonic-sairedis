@@ -1982,6 +1982,26 @@ sai_status_t SwitchVpp::querySwitchHashAlgorithmCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchVpp::queryNextHopGroupTypeCapability(
+    _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 1)
+    {
+        enum_values_capability->count = 1;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    // VPP only supports unordered ECMP. It does not support ordered ECMP
+    // (bucket-to-nexthop assignment is not preserved) or protection groups
+    // (IpRouteNexthopGroupEntry rejects non-ECMP types).
+    enum_values_capability->count = 1;
+    enum_values_capability->list[0] = SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::refresh_read_only(
         _In_ const sai_attr_metadata_t *meta,
         _In_ sai_object_id_t object_id)

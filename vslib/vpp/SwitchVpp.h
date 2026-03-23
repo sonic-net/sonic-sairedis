@@ -974,6 +974,9 @@ namespace saivs
             TunnelManagerSRv6 m_tunnel_mgr_srv6;
 
         protected: // switch capability related
+            virtual sai_status_t queryNextHopGroupTypeCapability(
+                _Inout_ sai_s32_list_t *enum_values_capability) override;
+
             virtual sai_status_t queryHashNativeHashFieldListCapability(
                 _Inout_ sai_s32_list_t *enum_values_capability) override;
 
