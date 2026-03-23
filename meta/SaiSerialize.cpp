@@ -4800,20 +4800,8 @@ void sai_deserialize_taps_list(
     }
 
     // Cleanup allocated memory on error (only reached if exception was thrown)
-    if (port_serdes_taps_list.list != NULL)
-    {
-        for (uint32_t i = 0; i < port_serdes_taps_list.count; ++i)
-        {
-            if (port_serdes_taps_list.list[i].list != NULL)
-            {
-                delete[] port_serdes_taps_list.list[i].list;
-            }
-        }
-        delete[] port_serdes_taps_list.list;
-    }
-
+    sai_free_taps_list(port_serdes_taps_list);
     port_serdes_taps_list.count = 0;
-    port_serdes_taps_list.list = NULL;
 }
 
 static void sai_deserialize_system_port_cfg_list_item(
