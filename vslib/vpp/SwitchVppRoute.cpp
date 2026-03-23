@@ -304,13 +304,20 @@ sai_status_t SwitchVpp::addIpRoute(
         }
     }
 
-    auto nh_obj = ip_route_obj.get_linked_object(SAI_OBJECT_TYPE_NEXT_HOP, SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
-    if (nh_obj != nullptr) {
-        sai_attribute_t attr;
-        attr.id = SAI_NEXT_HOP_ATTR_TYPE;
-        CHECK_STATUS_W_MSG(nh_obj->get_attr(attr), "Missing SAI_NEXT_HOP_ATTR_TYPE in tunnel obj");
-        isTunnelNh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP);
-        isSRv6Nh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_SRV6_SIDLIST);
+    // Only check nexthop type if it's actually a NEXT_HOP (not NEXT_HOP_GROUP)
+    sai_attribute_t nh_id_attr;
+    nh_id_attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+    if (ip_route_obj.get_attr(nh_id_attr) == SAI_STATUS_SUCCESS &&
+        SAI_OBJECT_TYPE_NEXT_HOP == RealObjectIdManager::objectTypeQuery(nh_id_attr.value.oid))
+    {
+        auto nh_obj = ip_route_obj.get_linked_object(SAI_OBJECT_TYPE_NEXT_HOP, SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
+        if (nh_obj != nullptr) {
+            sai_attribute_t attr;
+            attr.id = SAI_NEXT_HOP_ATTR_TYPE;
+            CHECK_STATUS_W_MSG(nh_obj->get_attr(attr), "Missing SAI_NEXT_HOP_ATTR_TYPE in tunnel obj");
+            isTunnelNh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_TUNNEL_ENCAP);
+            isSRv6Nh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_SRV6_SIDLIST);
+        }
     }
 
     if (isTunnelNh) {
@@ -405,9 +412,12 @@ sai_status_t SwitchVpp::removeIpRoute(
             attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
             if(route_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {
                 nh_oid = attr.value.oid;
-                attr.id = SAI_NEXT_HOP_ATTR_TYPE;
-                if(get(SAI_OBJECT_TYPE_NEXT_HOP, nh_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
-                    isSRv6Nh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_SRV6_SIDLIST);
+                // Only check nexthop type if it's actually a NEXT_HOP (not NEXT_HOP_GROUP)
+                if (SAI_OBJECT_TYPE_NEXT_HOP == RealObjectIdManager::objectTypeQuery(nh_oid)) {
+                    attr.id = SAI_NEXT_HOP_ATTR_TYPE;
+                    if(get(SAI_OBJECT_TYPE_NEXT_HOP, nh_oid, 1, &attr) == SAI_STATUS_SUCCESS) {
+                        isSRv6Nh = (attr.value.s32 == SAI_NEXT_HOP_TYPE_SRV6_SIDLIST);
+                    }
                 }
             }
 
