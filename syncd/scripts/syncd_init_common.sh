@@ -504,6 +504,10 @@ vpp_api_check()
 config_syncd_vpp()
 {
     CMD_ARGS+=" -l -p $HWSKU_DIR/sai_vpp.profile"
+    # VPP processes bulk route entries synchronously (one VPP API call per route).
+    # A bulkset of ~1000 routes can take ~50 seconds, exceeding the default 30s
+    # watchdog. Increase to 60s to avoid false watchdog ERR logs.
+    CMD_ARGS+=" -w 60000000"
     vpp_api_check "/run/vpp/api.sock"
     source /etc/sonic/vpp/syncd_vpp_env
     export NO_LINUX_NL
