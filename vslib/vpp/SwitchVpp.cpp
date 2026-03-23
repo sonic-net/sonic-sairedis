@@ -2027,6 +2027,8 @@ sai_status_t SwitchVpp::querySwitchHashAlgorithmCapability(
 bool SwitchVpp::isIPv4Route(
         const std::string &serializedObjectId)
 {
+    SWSS_LOG_ENTER();
+
     sai_route_entry_t route_entry;
     sai_deserialize_route_entry(serializedObjectId, route_entry);
     return route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4;
