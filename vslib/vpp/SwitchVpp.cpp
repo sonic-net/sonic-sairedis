@@ -6,6 +6,10 @@
 
 #include "vppxlate/SaiIntfStats.h"
 
+#include "SwitchVppUtils.h"
+
+#include <vector>
+
 using namespace saivs;
 
 // TODO init vpp
@@ -1038,7 +1042,26 @@ sai_status_t SwitchVpp::createPort(
 
     auto sid = sai_serialize_object_id(object_id);
 
-    CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id, attr_count, attr_list));
+    const sai_attribute_value_t     *oper_status;
+    uint32_t                        attr_index;
+    sai_status_t status = find_attrib_in_list(attr_count, attr_list,
+                            SAI_PORT_ATTR_OPER_STATUS, &oper_status, &attr_index);
+
+    if (status == SAI_STATUS_ITEM_NOT_FOUND) {
+        // SAI_PORT_ATTR_OPER_STATUS not found, create a copy of attr_list and add it
+        std::vector<sai_attribute_t> modified_attr_list(attr_list, attr_list + attr_count);
+
+        // Add the missing SAI_PORT_ATTR_OPER_STATUS attribute
+        sai_attribute_t oper_status_attr;
+        oper_status_attr.id = SAI_PORT_ATTR_OPER_STATUS;
+        oper_status_attr.value.s32 = SAI_PORT_OPER_STATUS_UNKNOWN;
+        modified_attr_list.push_back(oper_status_attr);
+
+        CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id,
+                                   static_cast<uint32_t>(modified_attr_list.size()), modified_attr_list.data()));
+    } else {
+        CHECK_STATUS(create_internal(SAI_OBJECT_TYPE_PORT, sid, switch_id, attr_count, attr_list));
+    }
 
     return create_port_dependencies(object_id);
 }
@@ -1436,7 +1459,7 @@ sai_status_t SwitchVpp::get(
 
     if (it == objectHash.end())
     {
-        SWSS_LOG_ERROR("not found %s:%s",
+        SWSS_LOG_INFO("not found %s:%s",
                 sai_serialize_object_type(objectType).c_str(),
                 serializedObjectId.c_str());
 
@@ -1574,7 +1597,7 @@ sai_status_t SwitchVpp::bulkCreate(
 
     for (it = 0; it < object_count; it++)
     {
-        object_statuses[it] = create_internal(object_type, serialized_object_ids[it], switch_id, attr_count[it], attr_list[it]);
+        object_statuses[it] = create(object_type, serialized_object_ids[it], switch_id, attr_count[it], attr_list[it]);
 
         if (object_statuses[it] != SAI_STATUS_SUCCESS)
         {
@@ -1618,11 +1641,110 @@ sai_status_t SwitchVpp::bulkRemove(
 
     for (it = 0; it < object_count; it++)
     {
-        object_statuses[it] = remove_internal(object_type, serialized_object_ids[it]);
+        object_statuses[it] = remove(object_type, serialized_object_ids[it]);
 
         if (object_statuses[it] != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to remove object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::bulkSet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+
+    if (!object_count || !attr_list || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    uint32_t it;
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = set(object_type, serialized_object_ids[it], &attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set attribute for object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t it;
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    if (!object_count || !attr_list || !attr_count || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        if (!attr_list[it] || !attr_count[it])
+        {
+            SWSS_LOG_ERROR("Invalid arguments");
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = get(object_type, serialized_object_ids[it], attr_count[it], attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get attribute for object with type = %u", object_type);
 
             status = SAI_STATUS_FAILURE;
 
@@ -1755,6 +1877,7 @@ sai_status_t SwitchVpp::initialize_default_objects(
     CHECK_STATUS(create_default_stp_instance());
     CHECK_STATUS(create_default_1q_bridge());
     CHECK_STATUS(create_default_trap_group());
+    CHECK_STATUS(create_default_hash());
     CHECK_STATUS(create_ports());
     CHECK_STATUS(create_port_serdes());
     CHECK_STATUS(set_port_list());
@@ -1776,6 +1899,49 @@ sai_status_t SwitchVpp::initialize_default_objects(
     CHECK_STATUS(initialize_voq_switch_objects(attr_count, attr_list));
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::create_default_hash()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create default hash for VPP");
+
+    // VPP supports L3/L4 hash fields
+    std::vector<sai_native_hash_field_t> hfList = {
+        SAI_NATIVE_HASH_FIELD_IP_PROTOCOL,
+        SAI_NATIVE_HASH_FIELD_DST_IP,
+        SAI_NATIVE_HASH_FIELD_SRC_IP,
+        SAI_NATIVE_HASH_FIELD_L4_DST_PORT,
+        SAI_NATIVE_HASH_FIELD_L4_SRC_PORT
+    };
+
+    // create and populate default ecmp hash object
+    sai_attribute_t attr;
+    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    attr.value.s32list.list = reinterpret_cast<sai_int32_t*>(hfList.data());
+    attr.value.s32list.count = static_cast<sai_uint32_t>(hfList.size());
+
+    CHECK_STATUS(create(SAI_OBJECT_TYPE_HASH, &m_ecmp_hash_id, m_switch_id, 1, &attr));
+
+    // set default ecmp hash on switch
+    attr.id = SAI_SWITCH_ATTR_ECMP_HASH;
+    attr.value.oid = m_ecmp_hash_id;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // create and populate default lag hash object
+    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    attr.value.s32list.list = reinterpret_cast<sai_int32_t*>(hfList.data());
+    attr.value.s32list.count = static_cast<sai_uint32_t>(hfList.size());
+
+    CHECK_STATUS(create(SAI_OBJECT_TYPE_HASH, &m_lag_hash_id, m_switch_id, 1, &attr));
+
+    // set default lag hash on switch
+    attr.id = SAI_SWITCH_ATTR_LAG_HASH;
+    attr.value.oid = m_lag_hash_id;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchVpp::queryHashNativeHashFieldListCapability(
@@ -1814,4 +1980,29 @@ sai_status_t SwitchVpp::querySwitchHashAlgorithmCapability(
     enum_values_capability->list[0] = SAI_HASH_ALGORITHM_CRC;
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::refresh_read_only(
+        _In_ const sai_attr_metadata_t *meta,
+        _In_ sai_object_id_t object_id)
+{
+    SWSS_LOG_ENTER();
+
+    // Handle VPP-specific refresh read-only logic first
+    if (meta->objecttype == SAI_OBJECT_TYPE_BFD_SESSION)
+    {
+        switch (meta->attrid)
+        {
+            case SAI_BFD_SESSION_ATTR_STATE:
+                // VPP stores BFD session state in m_objectHash and will update it
+                // when BFD state changed. So we don't need to refresh.
+                return SAI_STATUS_SUCCESS;
+
+            default:
+                break;
+        }
+    }
+
+    // For all other cases, delegate to the base class implementation
+    return SwitchStateBase::refresh_read_only(meta, object_id);
 }

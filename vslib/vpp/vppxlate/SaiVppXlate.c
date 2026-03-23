@@ -1790,6 +1790,8 @@ int init_vpp_client()
         vpp_lcp_ethertype_enable(0x8809);
         /* Enable LLDP in linux-cp */
         vpp_lcp_ethertype_enable(0x88cc);
+        /* Enable ARP pass through in linux-cp */
+        vpp_lcp_ethertype_enable(0x0806);
 
         /*
          * SONiC periodically polls the port status so currently there is no need for

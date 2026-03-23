@@ -225,6 +225,7 @@ HSV
 htonl
 http
 https
+hset
 hw
 hwinfo
 ICV
@@ -315,6 +316,7 @@ params
 performTransition
 pfc
 PHY
+phy
 plaintext
 pn
 PN
@@ -444,6 +446,7 @@ updatable
 upgradable
 util
 utils
+usleep
 validonly
 versa
 veth
@@ -490,3 +493,6 @@ IPFix
 ipfix
 SNR
 tparam
+ICMP
+UDP
+SIGSEGV

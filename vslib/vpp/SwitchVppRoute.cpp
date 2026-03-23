@@ -103,7 +103,7 @@ void create_vpp_nexthop_entry (
 
 sai_status_t SwitchVpp::IpRouteAddRemove(
         _In_ const SaiObject* route_obj,
-            _In_ bool is_add)
+        _In_ bool is_add)
 {
     SWSS_LOG_ENTER();
 
@@ -112,6 +112,20 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
     sai_object_id_t              next_hop_oid;
     sai_attribute_t              attr;
     std::string                  serializedObjectId = route_obj->get_id();
+    int                          packet_action = SAI_PACKET_ACTION_FORWARD;
+
+    attr.id = SAI_ROUTE_ENTRY_ATTR_PACKET_ACTION;
+    status = route_obj->get_attr(attr);
+    if (status == SAI_STATUS_SUCCESS) {
+        packet_action = attr.value.s32;
+    }
+
+    // We should program drop routes
+    if (packet_action != SAI_PACKET_ACTION_FORWARD) {
+        SWSS_LOG_NOTICE("Ignoring ip route %s: action is not forward: %d",
+                        serializedObjectId.c_str(), packet_action);
+        return SAI_STATUS_SUCCESS;
+    }
 
     attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
     CHECK_STATUS_QUIET(route_obj->get_mandatory_attr(attr));
@@ -203,6 +217,55 @@ sai_status_t SwitchVpp::IpRouteAddRemove(
     return ret;
 }
 
+// Add or remove a single path from a multipath route
+// Uses is_multipath=true to tell VPP to add/remove a path rather than replace the entire route
+sai_status_t SwitchVpp::IpRoutePathAddRemove(
+        _In_ const SaiObject* route_obj,
+        _In_ nexthop_grp_member_t *member,
+        _In_ bool is_add)
+{
+    SWSS_LOG_ENTER();
+
+    std::string serializedObjectId = route_obj->get_id();
+    sai_route_entry_t route_entry;
+    sai_deserialize_route_entry(serializedObjectId, route_entry);
+
+    // Get VRF
+    std::shared_ptr<IpVrfInfo> vrf;
+    uint32_t vrf_id;
+
+    vrf = vpp_get_ip_vrf(route_entry.vr_id);
+    if (vrf == nullptr) {
+        vrf_id = 0;
+    } else {
+        vrf_id = vrf->m_vrf_id;
+    }
+
+    // Allocate route with single nexthop
+    vpp_ip_route_t *ip_route = (vpp_ip_route_t *)
+        calloc(1, sizeof(vpp_ip_route_t) + sizeof(vpp_ip_nexthop_t));
+    if (!ip_route) {
+        SWSS_LOG_ERROR("Failed to allocate memory for ip_route");
+        return SAI_STATUS_FAILURE;
+    }
+
+    create_route_prefix_entry(&route_entry, ip_route);
+    ip_route->vrf_id = vrf_id;
+    ip_route->is_multipath = true;  // Tell VPP to add/remove a path, not replace the route
+    ip_route->nexthop_cnt = 1;
+
+    create_vpp_nexthop_entry(member, NULL, VPP_NEXTHOP_NORMAL, &ip_route->nexthop[0]);
+
+    int ret = ip_route_add_del(ip_route, is_add);
+
+    SWSS_LOG_NOTICE("%s path in route %s status %d table %u",
+                    (is_add ? "Add" : "Remove"), serializedObjectId.c_str(), ret, vrf_id);
+
+    free(ip_route);
+
+    return (ret == 0) ? SAI_STATUS_SUCCESS : SAI_STATUS_FAILURE;
+}
+
 sai_status_t SwitchVpp::addIpRoute(
         _In_ const std::string &serializedObjectId,
         _In_ sai_object_id_t switch_id,
@@ -214,8 +277,28 @@ sai_status_t SwitchVpp::addIpRoute(
     bool isLoopback = false;
     bool isTunnelNh = false;
     bool isSRv6Nh = false;
+    bool hasNexthopAttr = false;
 
     SaiCachedObject ip_route_obj(this, SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId, attr_count, attr_list);
+
+    /* Check if route has a NEXT_HOP_ID pointing to a real nexthop (NH or NHG).
+     * Routes pointing to PORT or ROUTER_INTERFACE (e.g. Loopback0 IP2ME routes)
+     * still need the loopback check. */
+    {
+        sai_attribute_t nh_attr;
+        nh_attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+        if (ip_route_obj.get_attr(nh_attr) == SAI_STATUS_SUCCESS &&
+            nh_attr.value.oid != SAI_NULL_OBJECT_ID)
+        {
+            auto oid_type = RealObjectIdManager::objectTypeQuery(nh_attr.value.oid);
+            if (oid_type == SAI_OBJECT_TYPE_NEXT_HOP ||
+                oid_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
+            {
+                hasNexthopAttr = true;
+            }
+        }
+    }
+
     auto nh_obj = ip_route_obj.get_linked_object(SAI_OBJECT_TYPE_NEXT_HOP, SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID);
     if (nh_obj != nullptr) {
         sai_attribute_t attr;
@@ -228,7 +311,14 @@ sai_status_t SwitchVpp::addIpRoute(
     if (isTunnelNh) {
         IpRouteAddRemove(&ip_route_obj, true);
     } else {
-        process_interface_loopback(serializedObjectId, isLoopback, true);
+        /*
+         * Loopback check: only when there is no nexthop attribute.
+         * Routes with a valid NEXT_HOP_ID (NH or NHG) are never loopback.
+         * process_interface_loopback forks 4 shell processes per call (~4ms).
+         */
+        if (!hasNexthopAttr) {
+            process_interface_loopback(serializedObjectId, isLoopback, true);
+        }
         if (isLoopback == false && is_ip_nbr_active() == true)
         {
             if (isSRv6Nh) {
@@ -277,12 +367,35 @@ sai_status_t SwitchVpp::removeIpRoute(
 
     bool isLoopback = false;
     bool isSRv6Nh = false;
+    bool hasNexthopAttr = false;
     sai_attribute_t attr;
     sai_object_id_t nh_oid;
-    process_interface_loopback(serializedObjectId, isLoopback, false);
+
+    /*
+     * Check if the route has a nexthop before the loopback check.
+     * Routes with a valid NEXT_HOP_ID (NH or NHG) are never loopback.
+     * process_interface_loopback forks 4 shell processes per call (~4ms).
+     */
+    auto route_obj = get_sai_object(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId);
+    if (route_obj) {
+        attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
+        if (route_obj->get_attr(attr) == SAI_STATUS_SUCCESS &&
+            attr.value.oid != SAI_NULL_OBJECT_ID)
+        {
+            auto oid_type = RealObjectIdManager::objectTypeQuery(attr.value.oid);
+            if (oid_type == SAI_OBJECT_TYPE_NEXT_HOP ||
+                oid_type == SAI_OBJECT_TYPE_NEXT_HOP_GROUP)
+            {
+                hasNexthopAttr = true;
+            }
+        }
+    }
+
+    if (!hasNexthopAttr) {
+        process_interface_loopback(serializedObjectId, isLoopback, false);
+    }
 
     if (isLoopback == false && is_ip_nbr_active() == true) {
-        auto route_obj = get_sai_object(SAI_OBJECT_TYPE_ROUTE_ENTRY, serializedObjectId);
 	    if (route_obj) {
             attr.id = SAI_ROUTE_ENTRY_ATTR_NEXT_HOP_ID;
             if(route_obj->get_attr(attr) == SAI_STATUS_SUCCESS) {

@@ -98,6 +98,7 @@ PyObject *py_convert_sai_bfd_session_state_notification_t_to_PyObject(const sai_
 PyObject *py_convert_sai_icmp_echo_session_state_notification_t_to_PyObject(const sai_icmp_echo_session_state_notification_t*ntf);
 PyObject *py_convert_sai_ha_set_event_data_t_to_PyObject(const sai_ha_set_event_data_t*ntf);
 PyObject *py_convert_sai_ha_scope_event_data_t_to_PyObject(const sai_ha_scope_event_data_t*ntf);
+PyObject *py_convert_sai_flow_bulk_get_session_event_data_t_to_PyObject(const sai_flow_bulk_get_session_event_data_t*ntf);
 PyObject *py_convert_sai_port_oper_status_notification_t_to_PyObject(const sai_port_oper_status_notification_t*ntf);
 PyObject *py_convert_sai_queue_deadlock_notification_data_t_to_PyObject(const sai_queue_deadlock_notification_data_t*ntf);
 
@@ -110,6 +111,7 @@ static PyObject * py_bfd_session_state_change_notification = NULL;
 static PyObject * py_icmp_echo_session_state_change_notification = NULL;
 static PyObject * py_ha_set_event_notification = NULL;
 static PyObject * py_ha_scope_event_notification = NULL;
+static PyObject * py_flow_bulk_get_session_event_notification = NULL;
 static PyObject * py_tam_tel_type_config_change_notification = NULL;
 
 void call_python(PyObject* callObject, PyObject* arglist)
@@ -257,6 +259,22 @@ static void sai_ha_scope_event_notification(
     Py_DECREF(arglist);
 }
 
+static void sai_flow_bulk_get_session_event_notification(
+        _In_ sai_object_id_t flow_bulk_session_id,
+        _In_ uint32_t count,
+        _In_ const sai_flow_bulk_get_session_event_data_t *data)
+{
+    PyObject* obj = py_convert_sai_flow_bulk_get_session_event_data_t_to_PyObject(data);
+
+    PyObject* arglist = Py_BuildValue("(lIO)", flow_bulk_session_id, count, obj);
+
+    call_python(py_flow_bulk_get_session_event_notification, arglist);
+
+    Py_DECREF(obj);
+
+    Py_DECREF(arglist);
+}
+
 static void sai_tam_tel_type_config_change_notification(
     _In_ sai_object_id_t tam_tel_type_id)
 {
@@ -324,6 +342,11 @@ sai_pointer_t sai_get_notification_pointer(
             Py_XDECREF(py_ha_scope_event_notification);
             py_ha_scope_event_notification = callback;
             return (void*)&sai_ha_scope_event_notification;
+
+        case SAI_SWITCH_ATTR_FLOW_BULK_GET_SESSION_EVENT_NOTIFY:
+            Py_XDECREF(py_flow_bulk_get_session_event_notification);
+            py_flow_bulk_get_session_event_notification = callback;
+            return (void*)&sai_flow_bulk_get_session_event_notification;
 
         case SAI_SWITCH_ATTR_TAM_TEL_TYPE_CONFIG_CHANGE_NOTIFY:
             Py_XDECREF(py_tam_tel_type_config_change_notification);

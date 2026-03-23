@@ -6,6 +6,7 @@ extern "C" {
 }
 
 #include "swss/table.h"
+#include "FlowDump.h"
 
 #include <queue>
 #include <mutex>
@@ -31,6 +32,25 @@ extern "C" {
 
 namespace syncd
 {
+    /**
+     * @brief Structure to hold notification data with optional auxiliary data for Flow Dump
+     */
+    struct NotificationItem
+    {
+        swss::KeyOpFieldsValuesTuple notification;
+        FlowDumpDataPtr auxiliary_data;  // Optional auxiliary data (e.g., flow dump JSON lines)
+
+        NotificationItem() = default;
+
+        NotificationItem(
+                _In_ const swss::KeyOpFieldsValuesTuple& ntf,
+                _In_ FlowDumpDataPtr aux = nullptr) :
+            notification(ntf),
+            auxiliary_data(aux)
+        {
+        }
+    };
+
     class NotificationQueue
     {
         public:
@@ -46,8 +66,15 @@ namespace syncd
             bool enqueue(
                     _In_ const swss::KeyOpFieldsValuesTuple& msg);
 
+            bool enqueue(
+                    _In_ const swss::KeyOpFieldsValuesTuple& msg,
+                    _In_ FlowDumpDataPtr auxiliary_data);
+
             bool tryDequeue(
                     _Out_ swss::KeyOpFieldsValuesTuple& msg);
+
+            bool tryDequeue(
+                    _Out_ NotificationItem& item);
 
             size_t getQueueSize();
 
@@ -55,7 +82,7 @@ namespace syncd
 
             std::mutex m_mutex;
 
-            std::shared_ptr<std::queue<swss::KeyOpFieldsValuesTuple>> m_queue;
+            std::shared_ptr<std::queue<NotificationItem>> m_queue;
 
             size_t m_queueSizeLimit;
 

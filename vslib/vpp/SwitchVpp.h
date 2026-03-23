@@ -53,6 +53,8 @@ namespace saivs
 
             virtual sai_status_t create_qos_queues() override;
 
+            virtual sai_status_t create_default_hash() override;
+
             virtual sai_status_t create_scheduler_group_tree(
                     _In_ const std::vector<sai_object_id_t>& sgs,
                     _In_ sai_object_id_t port_id) override;
@@ -72,6 +74,10 @@ namespace saivs
 
             virtual sai_status_t create_port_serdes_per_port(
                     _In_ sai_object_id_t port_id) override;
+
+            virtual sai_status_t refresh_read_only(
+                    _In_ const sai_attr_metadata_t *meta,
+                    _In_ sai_object_id_t object_id) override;
 
         private: // from vpp VirtualSwitchSaiInterface
 
@@ -175,6 +181,21 @@ namespace saivs
             virtual sai_status_t bulkRemove(
                     _In_ sai_object_type_t object_type,
                     _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses) override;
+
+            virtual sai_status_t bulkSet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const sai_attribute_t *attr_list,
+                    _In_ sai_bulk_op_error_mode_t mode,
+                    _Out_ sai_status_t *object_statuses) override;
+
+            virtual sai_status_t bulkGet(
+                    _In_ sai_object_type_t object_type,
+                    _In_ const std::vector<std::string> &serialized_object_ids,
+                    _In_ const uint32_t *attr_count,
+                    _Inout_ sai_attribute_t **attr_list,
                     _In_ sai_bulk_op_error_mode_t mode,
                     _Out_ sai_status_t *object_statuses) override;
 
@@ -587,6 +608,11 @@ namespace saivs
                     _In_ const SaiObject* route_obj,
                     _In_ bool is_add);
 
+            sai_status_t IpRoutePathAddRemove(
+                    _In_ const SaiObject* route_obj,
+                    _In_ nexthop_grp_member_t *member,
+                    _In_ bool is_add);
+
             sai_status_t updateIpRoute(
                     _In_ const std::string &serializedObjectId,
                     _In_ const sai_attribute_t *attr_list);
@@ -621,6 +647,9 @@ namespace saivs
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_mbr_map;
             std::map<sai_object_id_t, std::list<sai_object_id_t>> m_acl_tbl_grp_ports_map;
             std::map<sai_object_id_t, vpp_ace_cntr_info_t> m_ace_cntr_info_map;
+
+            uint32_t m_acl_default_swindex = 0;
+            bool m_acl_default_created = false;
 
         protected: // VPP
 
@@ -804,8 +833,10 @@ namespace saivs
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
 
-            sai_status_t aclDefaultAllowConfigure(
+            sai_status_t emptyAclCreate(
                     _In_ sai_object_id_t tbl_oid);
+
+            sai_status_t aclDefaultCreate();
 
             sai_status_t acl_rule_range_get(
                     _In_ const sai_object_list_t *range_list,
