@@ -4534,6 +4534,13 @@ sai_status_t Syncd::processNotifySyncd(
             // we need to clear current temp view to make space for new one
 
             clearTempView();
+
+            /*
+            * Transition to longer watchdog timeout in INIT_VIEW on Chassis Switch
+            * Wait for create:SAI_OBJECT_TYPE_SWITCH
+            * Then transition back in APPLY_VIEW
+            */
+            transitionToInitWatchdogTimeout();
         }
         else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW)
         {
@@ -4556,6 +4563,8 @@ sai_status_t Syncd::processNotifySyncd(
             }
 
             SWSS_LOG_NOTICE("setting very first run to FALSE, op = %s", key.c_str());
+
+            transitionToNormalWatchdogTimeout();
         }
         else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_INSPECT_ASIC)
         {
@@ -4596,6 +4605,13 @@ sai_status_t Syncd::processNotifySyncd(
 
         SWSS_LOG_WARN("syncd switched to INIT VIEW mode, all op will be saved to TEMP view");
 
+        /*
+        * Transition to longer watchdog timeout in INIT_VIEW on Chassis Switch
+        * Wait for create:SAI_OBJECT_TYPE_SWITCH
+        * Then transition back in APPLY_VIEW
+        */
+        transitionToInitWatchdogTimeout();
+
         sendNotifyResponse(SAI_STATUS_SUCCESS);
     }
     else if (redisNotifySyncd == SAI_REDIS_NOTIFY_SYNCD_APPLY_VIEW)
@@ -4605,8 +4621,6 @@ sai_status_t Syncd::processNotifySyncd(
         // NOTE: Currently as WARN to be easier to spot, later should be NOTICE.
 
         SWSS_LOG_WARN("syncd received APPLY VIEW, will translate");
-
-        transitionToInitWatchdogTimeout();
 
         try
         {
