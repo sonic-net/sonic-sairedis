@@ -25,9 +25,11 @@ DEI
 DPU
 Decrement
 Destructor
+DomainID
 EAPOL
 ECMP
 ECN
+EF
 EIO
 ENI
 ETERM
@@ -38,9 +40,12 @@ FEC
 FIXME
 FlexCounter
 GCM
+GPL
 GRE
 GUID
+HLD
 HSV
+IANA
 ICMP
 ICV
 IFF
@@ -65,6 +70,7 @@ Mellanox
 NHG
 NPU
 NVIDIA
+Netlink
 Nvidia
 OA
 OIDs
@@ -74,6 +80,7 @@ PHY
 PN
 PORTs
 QUEUEs
+RAII
 REQ
 RID
 RIDTOVID
@@ -94,8 +101,10 @@ SHA
 SIGSEGV
 SNR
 SONiC
+SPDX
 SRC
 SSCI
+STEL
 STP
 SaiAttr
 SaiObj
@@ -109,6 +118,7 @@ TWAMP
 TXSC
 TestCase
 UDP
+Userspace
 VID
 VIDCOUNTER
 VIDTORID
@@ -144,14 +154,19 @@ bool
 booldata
 brcm
 broadcom
+buf
 bv
 candidateObjects
+chardev
 childs
 config
+configurable
 const
 consts
+copyable
 countOnly
 counterName
+countersyncd
 cout
 cpp
 cpu
@@ -179,6 +194,7 @@ ecn
 eg
 encap
 encodingsa
+endian
 endif
 endl
 enum
@@ -196,6 +212,8 @@ filename
 gSwitchId
 gbsyncd
 genetlink
+genl
+genlmsg
 getInstance
 getQueueSize
 getSwitchId
@@ -231,7 +249,9 @@ iproute
 isobjectid
 isoidattribute
 json
+kbuild
 kco
+ko
 lck
 lgtm
 libnl
@@ -257,6 +277,7 @@ namespace
 namespaces
 netdev
 nhgm
+nla
 nlog
 ntf
 nullptr
@@ -264,6 +285,7 @@ objectHash
 objectid
 objectkey
 objecttype
+observationTimeNanoseconds
 oid
 oids
 ok

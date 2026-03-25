@@ -57,6 +57,7 @@ struct GenlConnection
      */
     int connect()
     {
+        SWSS_LOG_ENTER();
         sock = nl_socket_alloc();
         if (!sock)
         {
@@ -96,6 +97,7 @@ struct GenlConnection
      */
     int sendIpfix(const uint8_t *data, size_t data_len)
     {
+        SWSS_LOG_ENTER();
         struct nl_msg *msg = nlmsg_alloc();
         if (!msg)
         {
@@ -144,6 +146,7 @@ struct GenlConnection
  */
 static void put_u16_be(std::vector<uint8_t> &buf, size_t offset, uint16_t val)
 {
+    // SWSS_LOG_ENTER() omitted - hot-path helper
     assert(offset + 2 <= buf.size());
     buf[offset]     = static_cast<uint8_t>((val >> 8) & 0xFF);
     buf[offset + 1] = static_cast<uint8_t>(val & 0xFF);
@@ -151,6 +154,7 @@ static void put_u16_be(std::vector<uint8_t> &buf, size_t offset, uint16_t val)
 
 static void put_u32_be(std::vector<uint8_t> &buf, size_t offset, uint32_t val)
 {
+    // SWSS_LOG_ENTER() omitted - hot-path helper
     assert(offset + 4 <= buf.size());
     buf[offset]     = static_cast<uint8_t>((val >> 24) & 0xFF);
     buf[offset + 1] = static_cast<uint8_t>((val >> 16) & 0xFF);
@@ -160,6 +164,7 @@ static void put_u32_be(std::vector<uint8_t> &buf, size_t offset, uint32_t val)
 
 static void put_u64_be(std::vector<uint8_t> &buf, size_t offset, uint64_t val)
 {
+    // SWSS_LOG_ENTER() omitted - hot-path helper
     assert(offset + 8 <= buf.size());
     for (int i = 7; i >= 0; --i)
     {
@@ -184,6 +189,7 @@ static std::vector<uint8_t> build_ipfix_data_message(
     uint64_t timestamp_ns,
     const std::vector<uint64_t> &counter_values)
 {
+    // SWSS_LOG_ENTER() omitted - called from hot-path worker thread
     size_t num_counters = counter_values.size();
     // Data set: set_header(4) + timestamp(8) + counters(8*N)
     size_t data_set_len = 4 + 8 + num_counters * 8;

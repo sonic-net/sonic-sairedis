@@ -28,11 +28,13 @@ using namespace std;
 
 static uint16_t read_u16_be(const uint8_t *buf)
 {
+    // SWSS_LOG_ENTER() omitted - static helper
     return static_cast<uint16_t>((buf[0] << 8) | buf[1]);
 }
 
 static uint32_t read_u32_be(const uint8_t *buf)
 {
+    // SWSS_LOG_ENTER() omitted - static helper
     return (static_cast<uint32_t>(buf[0]) << 24) |
            (static_cast<uint32_t>(buf[1]) << 16) |
            (static_cast<uint32_t>(buf[2]) << 8) |

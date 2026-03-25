@@ -4853,6 +4853,7 @@ void SwitchStateBase::send_tam_tel_type_config_change(
  */
 static void write_u16_be(std::vector<uint8_t> &buf, uint16_t val)
 {
+    // SWSS_LOG_ENTER() omitted - hot-path helper
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
     buf.push_back(static_cast<uint8_t>(val & 0xFF));
 }
@@ -4862,6 +4863,7 @@ static void write_u16_be(std::vector<uint8_t> &buf, uint16_t val)
  */
 static void write_u32_be(std::vector<uint8_t> &buf, uint32_t val)
 {
+    // SWSS_LOG_ENTER() omitted - hot-path helper
     buf.push_back(static_cast<uint8_t>((val >> 24) & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 16) & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
