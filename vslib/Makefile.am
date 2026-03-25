@@ -110,7 +110,7 @@ libSaiVS_a_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVER
 
 libsaivs_la_CPPFLAGS = $(CODE_COVERAGE_CPPFLAGS)
 libsaivs_la_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON) $(CODE_COVERAGE_CXXFLAGS)
-libsaivs_la_LIBADD = -lhiredis -lswsscommon libSaiVS.a $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
+libsaivs_la_LIBADD = -lhiredis -lswsscommon -lnl-genl-3 -lnl-3 libSaiVS.a $(CODE_COVERAGE_LIBS) $(VPP_LIBS)
 
 bin_PROGRAMS = tests
 
