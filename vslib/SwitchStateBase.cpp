@@ -4949,7 +4949,13 @@ sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t ta
         info.label = 0;
         if (label_it != attrs.end())
         {
-            info.label = static_cast<uint16_t>(label_it->second->getAttr()->value.u64);
+            uint64_t raw_label = label_it->second->getAttr()->value.u64;
+            if (raw_label > 0x7FFF)
+            {
+                SWSS_LOG_WARN("TAM counter subscription label %lu exceeds 15-bit IPFIX element ID range (max 0x7FFF), truncating",
+                              static_cast<unsigned long>(raw_label));
+            }
+            info.label = static_cast<uint16_t>(raw_label & 0x7FFF);
         }
 
         // Get STAT_ID
