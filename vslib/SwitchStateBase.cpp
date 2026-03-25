@@ -4761,7 +4761,28 @@ sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t ta
 
     std::vector<CounterSubInfo> subscriptions;
 
-    auto &counter_sub_objs = m_objectHash.at(SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION);
+    auto it = m_objectHash.find(SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION);
+    if (it == m_objectHash.end() || it->second.empty())
+    {
+        SWSS_LOG_INFO("No TAM counter subscriptions found, generating empty IPFIX template");
+
+        // Generate a minimal empty template (header only, 0 enterprise fields)
+        std::vector<uint8_t> ipfix_templates;
+        write_u16_be(ipfix_templates, 2);    // Set ID = 2
+        write_u16_be(ipfix_templates, 12);   // Set Length = 12 (header + template header + 1 field)
+        write_u16_be(ipfix_templates, 256);  // Template ID
+        write_u16_be(ipfix_templates, 1);    // Number of Fields = 1
+        write_u16_be(ipfix_templates, 325);  // observationTimeNanoseconds
+        write_u16_be(ipfix_templates, 8);    // 8 bytes
+
+        sai_attribute_t attr;
+        attr.id = SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES;
+        attr.value.u8list.count = static_cast<uint32_t>(ipfix_templates.size());
+        attr.value.u8list.list = ipfix_templates.data();
+        return set(SAI_OBJECT_TYPE_TAM_TEL_TYPE, tam_tel_type_id, &attr);
+    }
+
+    auto &counter_sub_objs = it->second;
 
     for (auto &kv : counter_sub_objs)
     {
@@ -4776,8 +4797,7 @@ sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t ta
         if (tel_type_it == attrs.end())
             continue;
 
-        sai_object_id_t ref_tel_type;
-        sai_deserialize_object_id(tel_type_it->second->getAttr()->value.oid, ref_tel_type);
+        sai_object_id_t ref_tel_type = tel_type_it->second->getAttr()->value.oid;
 
         if (ref_tel_type != tam_tel_type_id)
             continue;
