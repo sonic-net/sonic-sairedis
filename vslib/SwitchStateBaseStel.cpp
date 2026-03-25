@@ -42,35 +42,37 @@ using namespace saivs;
  */
 static int resolve_genl_family(int sock, const char *family_name)
 {
-    /* Build CTRL_CMD_GETFAMILY request */
-    struct {
-        struct nlmsghdr  nlh;
-        struct genlmsghdr genl;
-        struct nlattr    nla;
-        char             name[GENL_NAMSIZ];
-    } __attribute__((packed)) req;
-
-    memset(&req, 0, sizeof(req));
+    /* Build CTRL_CMD_GETFAMILY request using dynamic buffer for proper alignment */
     size_t name_len = strlen(family_name) + 1;
+    size_t nla_padded = NLA_ALIGN(name_len);
+    size_t msg_len = NLMSG_HDRLEN + GENL_HDRLEN + NLA_HDRLEN + nla_padded;
 
-    req.nlh.nlmsg_len   = NLMSG_LENGTH(GENL_HDRLEN + NLA_HDRLEN + NLA_ALIGN(name_len));
-    req.nlh.nlmsg_type  = GENL_ID_CTRL;
-    req.nlh.nlmsg_flags = NLM_F_REQUEST;
-    req.nlh.nlmsg_seq   = 1;
-    req.nlh.nlmsg_pid   = 0;
+    std::vector<uint8_t> req_buf(msg_len, 0);
 
-    req.genl.cmd     = CTRL_CMD_GETFAMILY;
-    req.genl.version = 1;
+    /* nlmsghdr at offset 0 */
+    auto *nlh = reinterpret_cast<struct nlmsghdr *>(req_buf.data());
+    nlh->nlmsg_len   = msg_len;
+    nlh->nlmsg_type  = GENL_ID_CTRL;
+    nlh->nlmsg_flags = NLM_F_REQUEST;
+    nlh->nlmsg_seq   = 1;
+    nlh->nlmsg_pid   = 0;
 
-    req.nla.nla_len  = NLA_HDRLEN + name_len;
-    req.nla.nla_type = CTRL_ATTR_FAMILY_NAME;
-    memcpy(req.name, family_name, name_len);
+    /* genlmsghdr at offset NLMSG_HDRLEN (16) */
+    auto *genl = reinterpret_cast<struct genlmsghdr *>(req_buf.data() + NLMSG_HDRLEN);
+    genl->cmd     = CTRL_CMD_GETFAMILY;
+    genl->version = 1;
+
+    /* nlattr at offset NLMSG_HDRLEN + GENL_HDRLEN (20) */
+    auto *nla = reinterpret_cast<struct nlattr *>(req_buf.data() + NLMSG_HDRLEN + GENL_HDRLEN);
+    nla->nla_len  = NLA_HDRLEN + name_len;
+    nla->nla_type = CTRL_ATTR_FAMILY_NAME;
+    memcpy(req_buf.data() + NLMSG_HDRLEN + GENL_HDRLEN + NLA_HDRLEN, family_name, name_len);
 
     struct sockaddr_nl addr;
     memset(&addr, 0, sizeof(addr));
     addr.nl_family = AF_NETLINK;
 
-    if (sendto(sock, &req, req.nlh.nlmsg_len, 0,
+    if (sendto(sock, req_buf.data(), msg_len, 0,
                (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
         SWSS_LOG_ERROR("Failed to send CTRL_CMD_GETFAMILY: %s", strerror(errno));

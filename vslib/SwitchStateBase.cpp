@@ -64,6 +64,8 @@ SwitchStateBase::~SwitchStateBase()
 {
     SWSS_LOG_ENTER();
 
+    stopStelStream();
+
     m_macsecManager.cleanup_macsec_device();
 }
 
