@@ -565,9 +565,61 @@ sai_status_t SwitchStateBase::setTamTelType(
 {
     SWSS_LOG_ENTER();
 
-    if (attr->id == SAI_TAM_TEL_TYPE_ATTR_STATE && attr->value.s32 == SAI_TAM_TEL_TYPE_STATE_CREATE_CONFIG)
+    if (attr->id == SAI_TAM_TEL_TYPE_ATTR_STATE)
     {
-        send_tam_tel_type_config_change(tam_tel_type_id);
+        switch (attr->value.s32)
+        {
+            case SAI_TAM_TEL_TYPE_STATE_CREATE_CONFIG:
+                send_tam_tel_type_config_change(tam_tel_type_id);
+                break;
+
+            case SAI_TAM_TEL_TYPE_STATE_START_STREAM:
+            {
+                // Count counter subscriptions for this tel_type to determine num_counters
+                size_t num_counters = 0;
+                auto it = m_objectHash.find(SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION);
+                if (it != m_objectHash.end())
+                {
+                    for (auto &kv : it->second)
+                    {
+                        auto tel_it = kv.second.find(sai_serialize_attr_id(
+                            *sai_metadata_get_attr_metadata(
+                                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_TEL_TYPE)));
+
+                        if (tel_it != kv.second.end() &&
+                            tel_it->second->getAttr()->value.oid == tam_tel_type_id)
+                        {
+                            num_counters++;
+                        }
+                    }
+                }
+
+                // Default poll interval: 100ms (100000 us)
+                // In real HW this comes from TAM report config; for vslib use a reasonable default
+                uint32_t poll_interval_us = 100000;
+                uint16_t template_id = 256;
+
+                SWSS_LOG_NOTICE("Starting STEL stream for tel_type %s: %zu counters, %u us interval",
+                                sai_serialize_object_id(tam_tel_type_id).c_str(),
+                                num_counters, poll_interval_us);
+
+                if (num_counters > 0)
+                {
+                    startStelStream(poll_interval_us, template_id, num_counters);
+                }
+                break;
+            }
+
+            case SAI_TAM_TEL_TYPE_STATE_STOP_STREAM:
+                SWSS_LOG_NOTICE("Stopping STEL stream for tel_type %s",
+                                sai_serialize_object_id(tam_tel_type_id).c_str());
+                stopStelStream();
+                break;
+
+            default:
+                break;
+        }
     }
 
     auto sid = sai_serialize_object_id(tam_tel_type_id);
