@@ -12,6 +12,9 @@
 #include <set>
 #include <unordered_set>
 #include <vector>
+#include <thread>
+#include <memory>
+#include <atomic>
 
 #define SAI_VS_FDB_INFO "SAI_VS_FDB_INFO"
 
@@ -804,5 +807,25 @@ namespace saivs
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
             std::shared_ptr<RealObjectIdManager> m_realObjectIdManager;
+
+        protected: // Stream telemetry (STEL)
+
+            sai_status_t startStelStream(
+                    _In_ uint32_t poll_interval_us,
+                    _In_ uint16_t template_id,
+                    _In_ size_t num_counters);
+
+            sai_status_t stopStelStream();
+
+        private: // STEL internals
+
+            void stelWorkerThread(
+                    _In_ uint32_t poll_interval_us,
+                    _In_ uint16_t template_id,
+                    _In_ size_t num_counters);
+
+            std::atomic<bool> m_stelRunning{false};
+
+            std::shared_ptr<std::thread> m_stelThread;
     };
 }

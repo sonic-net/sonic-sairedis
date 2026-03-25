@@ -66,6 +66,7 @@ libSaiVS_a_SOURCES = \
 					  SwitchStateBaseFdb.cpp \
 					  SwitchStateBaseHostif.cpp \
 					  SwitchStateBaseMACsec.cpp \
+					  SwitchStateBaseStel.cpp \
 					  SwitchState.cpp \
 					  TrafficFilterPipes.cpp \
 					  TrafficForwarder.cpp \
