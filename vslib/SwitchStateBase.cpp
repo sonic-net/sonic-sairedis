@@ -1103,6 +1103,8 @@ sai_status_t SwitchStateBase::set_switch_supported_object_types()
         SAI_OBJECT_TYPE_TAM_REPORT,
         SAI_OBJECT_TYPE_TAM_TRANSPORT,
         SAI_OBJECT_TYPE_TAM_TELEMETRY,
+        SAI_OBJECT_TYPE_TAM_TEL_TYPE,
+        SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
         SAI_OBJECT_TYPE_TAM_EVENT_THRESHOLD
     };
 
@@ -1282,6 +1284,18 @@ sai_status_t SwitchStateBase::set_initial_tam_objects()
     attr.id = SAI_SWITCH_ATTR_TAM_OBJECT_ID;
     attr.value.objlist.count = 0;
     attr.value.objlist.list = nullptr;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // Initialize TAM stream telemetry chunk size (default 65535 per SAI spec)
+    attr.id = SAI_SWITCH_ATTR_TAM_ST_REPORT_CHUNK_SIZE;
+    attr.value.u32 = 65535;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // Initialize TAM stream telemetry chunk count (default 0 = vendor determined)
+    attr.id = SAI_SWITCH_ATTR_TAM_ST_CHUNK_COUNT;
+    attr.value.u32 = 0;
 
     return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
@@ -4698,23 +4712,159 @@ void SwitchStateBase::send_tam_tel_type_config_change(
     m_switchConfig->m_eventQueue->enqueue(std::make_shared<Event>(EVENT_TYPE_NOTIFICATION, payload));
 }
 
+/**
+ * @brief Helper to write a 16-bit value in network byte order (big-endian).
+ */
+static void write_u16_be(std::vector<uint8_t> &buf, uint16_t val)
+{
+    buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
+    buf.push_back(static_cast<uint8_t>(val & 0xFF));
+}
+
+/**
+ * @brief Helper to write a 32-bit value in network byte order (big-endian).
+ */
+static void write_u32_be(std::vector<uint8_t> &buf, uint32_t val)
+{
+    buf.push_back(static_cast<uint8_t>((val >> 24) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((val >> 16) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
+    buf.push_back(static_cast<uint8_t>(val & 0xFF));
+}
+
 sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t tam_tel_type_id)
 {
     SWSS_LOG_ENTER();
 
-    std::vector<uint8_t> ipfix_templates;
+    /*
+     * Generate a real IPFIX template based on the counter subscriptions
+     * that reference this TAM telemetry type.
+     *
+     * IPFIX Template format (per HLD 7.2.2):
+     *   Set ID (2B) = 2
+     *   Set Length (2B) = 12 + num_stats * 8
+     *   Template ID (2B) > 256
+     *   Number of Fields (2B) = 1 + num_stats
+     *   Field 0: observationTimeNanoseconds (Element ID=325, Length=8)
+     *   Field 1..N: Enterprise fields with:
+     *     Element ID = label | 0x8000 (enterprise bit set)
+     *     Field Length = 8
+     *     Enterprise Number = (stat_id << 16) | object_type (with EF flags)
+     */
 
-    // TODO: This is a placeholder for the actual logic to generate IPFIX templates.
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<uint16_t> dist(0, 255);
-    ipfix_templates.resize(64 * 1024);
+    // Collect all TAM_COUNTER_SUBSCRIPTION objects that reference this tel_type
+    struct CounterSubInfo {
+        uint16_t label;       // object index / element ID
+        uint32_t stat_id;     // SAI stat enum value
+        sai_object_type_t object_type; // type of the subscribed object
+    };
 
-    for (size_t i = 0; i < ipfix_templates.size(); ++i)
+    std::vector<CounterSubInfo> subscriptions;
+
+    auto &counter_sub_objs = m_objectHash.at(SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION);
+
+    for (auto &kv : counter_sub_objs)
     {
-        ipfix_templates[i] = static_cast<uint8_t>(dist(gen));
+        auto &attrs = kv.second;
+
+        // Check if this subscription references our tam_tel_type
+        auto tel_type_it = attrs.find(sai_serialize_attr_id(
+            *sai_metadata_get_attr_metadata(
+                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_TEL_TYPE)));
+
+        if (tel_type_it == attrs.end())
+            continue;
+
+        sai_object_id_t ref_tel_type;
+        sai_deserialize_object_id(tel_type_it->second->getAttr()->value.oid, ref_tel_type);
+
+        if (ref_tel_type != tam_tel_type_id)
+            continue;
+
+        CounterSubInfo info;
+
+        // Get LABEL (element ID / object index)
+        auto label_it = attrs.find(sai_serialize_attr_id(
+            *sai_metadata_get_attr_metadata(
+                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_LABEL)));
+
+        info.label = 0;
+        if (label_it != attrs.end())
+        {
+            info.label = static_cast<uint16_t>(label_it->second->getAttr()->value.u64);
+        }
+
+        // Get STAT_ID
+        auto stat_it = attrs.find(sai_serialize_attr_id(
+            *sai_metadata_get_attr_metadata(
+                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_STAT_ID)));
+
+        info.stat_id = 0;
+        if (stat_it != attrs.end())
+        {
+            info.stat_id = stat_it->second->getAttr()->value.u32;
+        }
+
+        // Get OBJECT_ID and determine its object type
+        auto obj_it = attrs.find(sai_serialize_attr_id(
+            *sai_metadata_get_attr_metadata(
+                SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION,
+                SAI_TAM_COUNTER_SUBSCRIPTION_ATTR_OBJECT_ID)));
+
+        info.object_type = SAI_OBJECT_TYPE_NULL;
+        if (obj_it != attrs.end())
+        {
+            sai_object_id_t subscribed_obj = obj_it->second->getAttr()->value.oid;
+            info.object_type = objectTypeQuery(subscribed_obj);
+        }
+
+        subscriptions.push_back(info);
     }
 
+    SWSS_LOG_INFO("Generating IPFIX template for TAM Tel Type %s with %zu counter subscriptions",
+                  sai_serialize_object_id(tam_tel_type_id).c_str(),
+                  subscriptions.size());
+
+    // Build the IPFIX template binary
+    std::vector<uint8_t> ipfix_templates;
+
+    uint16_t num_fields = static_cast<uint16_t>(1 + subscriptions.size()); // 1 for observationTimeNanoseconds
+    uint16_t set_length = static_cast<uint16_t>(12 + subscriptions.size() * 8); // header(4) + templatehdr(4) + timestamp_field(4) + N * (field(4) + enterprise(4))
+    uint16_t template_id = 256; // Template ID > 256 as per spec
+
+    // Set ID = 2 (template set)
+    write_u16_be(ipfix_templates, 2);
+    // Set Length
+    write_u16_be(ipfix_templates, set_length);
+    // Template ID
+    write_u16_be(ipfix_templates, template_id);
+    // Number of Fields
+    write_u16_be(ipfix_templates, num_fields);
+
+    // Field 0: observationTimeNanoseconds (IANA Element ID = 325, 8 bytes)
+    write_u16_be(ipfix_templates, 325);
+    write_u16_be(ipfix_templates, 8);
+
+    // Fields 1..N: Enterprise fields for each counter subscription
+    for (auto &sub : subscriptions)
+    {
+        // Element ID with enterprise bit (bit 15) set: label | 0x8000
+        uint16_t element_id = sub.label | 0x8000;
+        write_u16_be(ipfix_templates, element_id);
+
+        // Field Length = 8 bytes (64-bit counter)
+        write_u16_be(ipfix_templates, 8);
+
+        // Enterprise Number encoding per HLD:
+        // (stat_id << 16) | object_type
+        // With EF (extension flag) in bit 15 of each half if SAI extension type/stat
+        uint32_t obj_type_val = static_cast<uint32_t>(sub.object_type);
+        uint32_t enterprise_number = (sub.stat_id << 16) | (obj_type_val & 0xFFFF);
+        write_u32_be(ipfix_templates, enterprise_number);
+    }
 
     sai_attribute_t attr;
     attr.id = SAI_TAM_TEL_TYPE_ATTR_IPFIX_TEMPLATES;
@@ -4729,7 +4879,8 @@ sai_status_t SwitchStateBase::refresh_tam_tel_ipfix_templates(sai_object_id_t ta
     }
     else
     {
-        SWSS_LOG_INFO("Successfully set IPFIX templates for TAM Tel Type %s",
+        SWSS_LOG_INFO("Successfully set IPFIX templates (%zu bytes) for TAM Tel Type %s",
+                      ipfix_templates.size(),
                       sai_serialize_object_id(tam_tel_type_id).c_str());
     }
 
