@@ -1,3 +1,4 @@
+#include "swss/logger.h"
 /**
  * @file TestTAMIpfixTemplate.cpp
  * @brief Unit tests for IPFIX template generation in refresh_tam_tel_ipfix_templates()
@@ -45,6 +46,7 @@ class TAMIpfixTemplateTest : public ::testing::Test
 protected:
     void SetUp() override
     {
+        SWSS_LOG_ENTER();
         m_signal = std::make_shared<Signal>();
         m_eventQueue = std::make_shared<EventQueue>(m_signal);
         m_sc = std::make_shared<SwitchConfig>(0, "");
@@ -93,6 +95,7 @@ protected:
      */
     std::vector<uint8_t> getIpfixTemplates()
     {
+        SWSS_LOG_ENTER();
         sai_attribute_t attr;
 
         // Trigger template generation by setting state
@@ -125,6 +128,8 @@ protected:
         uint32_t stat_id,
         sai_object_id_t subscribed_object_id)
     {
+        SWSS_LOG_ENTER();
+
         sai_object_id_t cs_id = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION, m_switch_id);
         string cs_id_str = sai_serialize_object_id(cs_id);
 
@@ -164,6 +169,7 @@ protected:
     void validateTemplateHeader(const std::vector<uint8_t> &tmpl,
                                 uint16_t expected_num_fields)
     {
+        SWSS_LOG_ENTER();
         // Minimum size: 4 (set header) + 4 (template header) + 4 (timestamp field) = 12
         ASSERT_GE(tmpl.size(), 12u);
 
