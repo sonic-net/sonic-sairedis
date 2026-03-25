@@ -969,6 +969,10 @@ namespace saivs
             uint32_t m_vppMaxFdbEntries = m_maxFdbEntries;
             uint32_t m_vppMaxIPv4NeighborEntries = m_maxIPv4NeighborEntries;
             uint32_t m_vppMaxIPv6NeighborEntries = m_maxIPv6NeighborEntries;
+            uint32_t m_vppMaxIPv4NextHopEntries = m_maxIPv4NextHopEntries;
+            uint32_t m_vppMaxIPv6NextHopEntries = m_maxIPv6NextHopEntries;
+            uint32_t m_vppMaxNextHopGroupEntries = m_maxNextHopGroupEntries;
+            uint32_t m_vppMaxNextHopGroupMemberEntries = m_maxNextHopGroupMemberEntries;
 
             // CRM resource tracking counters
             uint32_t m_ipv4_route_count = 0;
@@ -976,6 +980,10 @@ namespace saivs
             uint32_t m_fdb_entry_count = 0;
             uint32_t m_ipv4_neighbor_count = 0;
             uint32_t m_ipv6_neighbor_count = 0;
+            uint32_t m_ipv4_nexthop_count = 0;
+            uint32_t m_ipv6_nexthop_count = 0;
+            uint32_t m_nexthop_group_count = 0;
+            uint32_t m_nexthop_group_member_count = 0;
 
             bool isIPv4Route(const std::string &serializedObjectId);
             bool isIPv4Neighbor(const std::string &serializedObjectId);
