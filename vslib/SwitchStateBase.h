@@ -800,6 +800,12 @@ namespace saivs
             virtual sai_status_t queryQueueStatsCapability(
                                       _Inout_ sai_stat_capability_list_t *stats_capability);
 
+            virtual sai_status_t queryBufferPoolStatsCapability(
+                                      _Inout_ sai_stat_capability_list_t *stats_capability);
+
+            virtual sai_status_t queryIngressPriorityGroupStatsCapability(
+                                      _Inout_ sai_stat_capability_list_t *stats_capability);
+
         public: // TODO private
 
             std::set<FdbInfo> m_fdb_info_set;

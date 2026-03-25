@@ -4665,6 +4665,80 @@ sai_status_t SwitchStateBase::queryQueueStatsCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+sai_status_t SwitchStateBase::queryBufferPoolStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_buffer_pool_stat_t> bufferPoolStatList = {
+        SAI_BUFFER_POOL_STAT_CURR_OCCUPANCY_BYTES,
+        SAI_BUFFER_POOL_STAT_WATERMARK_BYTES,
+        SAI_BUFFER_POOL_STAT_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_GREEN_WRED_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_GREEN_WRED_DROPPED_BYTES,
+        SAI_BUFFER_POOL_STAT_YELLOW_WRED_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_YELLOW_WRED_DROPPED_BYTES,
+        SAI_BUFFER_POOL_STAT_RED_WRED_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_RED_WRED_DROPPED_BYTES,
+        SAI_BUFFER_POOL_STAT_WRED_DROPPED_PACKETS,
+        SAI_BUFFER_POOL_STAT_WRED_DROPPED_BYTES,
+        SAI_BUFFER_POOL_STAT_WRED_ECN_MARKED_PACKETS,
+        SAI_BUFFER_POOL_STAT_WRED_ECN_MARKED_BYTES,
+        SAI_BUFFER_POOL_STAT_CURR_OCCUPANCY_CELLS,
+        SAI_BUFFER_POOL_STAT_WATERMARK_CELLS
+    };
+
+    if (stats_capability->count < bufferPoolStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(bufferPoolStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(bufferPoolStatList.size());
+
+    for (std::uint32_t i = 0; i < bufferPoolStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(bufferPoolStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchStateBase::queryIngressPriorityGroupStatsCapability(
+                              _Inout_ sai_stat_capability_list_t *stats_capability)
+{
+    SWSS_LOG_ENTER();
+
+    static std::vector<sai_ingress_priority_group_stat_t> pgStatList = {
+        SAI_INGRESS_PRIORITY_GROUP_STAT_PACKETS,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_CURR_OCCUPANCY_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_WATERMARK_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_SHARED_CURR_OCCUPANCY_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_SHARED_WATERMARK_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_XOFF_ROOM_CURR_OCCUPANCY_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_XOFF_ROOM_WATERMARK_BYTES,
+        SAI_INGRESS_PRIORITY_GROUP_STAT_DROPPED_PACKETS
+    };
+
+    if (stats_capability->count < pgStatList.size())
+    {
+        stats_capability->count = static_cast<uint32_t>(pgStatList.size());
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    stats_capability->count = static_cast<uint32_t>(pgStatList.size());
+
+    for (std::uint32_t i = 0; i < pgStatList.size(); i++)
+    {
+        stats_capability->list[i].stat_modes = SAI_STATS_MODE_READ_AND_CLEAR | SAI_STATS_MODE_READ;
+        stats_capability->list[i].stat_enum = static_cast<sai_stat_id_t>(pgStatList.at(i));
+    }
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchStateBase::queryStatsCapability(
                               _In_ sai_object_id_t switchId,
                               _In_ sai_object_type_t objectType,
@@ -4683,6 +4757,14 @@ sai_status_t SwitchStateBase::queryStatsCapability(
     else if (objectType == SAI_OBJECT_TYPE_PORT)
     {
         return queryPortStatsCapability(stats_capability);
+    }
+    else if (objectType == SAI_OBJECT_TYPE_BUFFER_POOL)
+    {
+        return queryBufferPoolStatsCapability(stats_capability);
+    }
+    else if (objectType == SAI_OBJECT_TYPE_INGRESS_PRIORITY_GROUP)
+    {
+        return queryIngressPriorityGroupStatsCapability(stats_capability);
     }
 
     return SAI_STATUS_NOT_SUPPORTED;
