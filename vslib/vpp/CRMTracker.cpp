@@ -70,6 +70,8 @@ std::vector<CRMInitValue> CRMTracker::getInitialValues() const
 
 bool CRMTracker::handles(sai_switch_attr_t attr_id) const
 {
+    SWSS_LOG_ENTER();
+
     switch (attr_id)
     {
         case SAI_SWITCH_ATTR_AVAILABLE_IPV4_ROUTE_ENTRY:
@@ -138,6 +140,8 @@ uint32_t CRMTracker::getAvailable(sai_switch_attr_t attr_id) const
 
 void CRMTracker::onRouteCreated(bool ipv4)
 {
+    SWSS_LOG_ENTER();
+
     if (ipv4)
     {
         m_ipv4RouteCount++;
@@ -152,6 +156,8 @@ void CRMTracker::onRouteCreated(bool ipv4)
 
 void CRMTracker::onRouteRemoved(bool ipv4)
 {
+    SWSS_LOG_ENTER();
+
     if (ipv4)
     {
         if (m_ipv4RouteCount > 0) m_ipv4RouteCount--;
@@ -168,12 +174,16 @@ void CRMTracker::onRouteRemoved(bool ipv4)
 
 void CRMTracker::onFdbCreated()
 {
+    SWSS_LOG_ENTER();
+
     m_fdbCount++;
     SWSS_LOG_DEBUG("CRM: FDB entry created, count: %u", m_fdbCount);
 }
 
 void CRMTracker::onFdbRemoved()
 {
+    SWSS_LOG_ENTER();
+
     if (m_fdbCount > 0) m_fdbCount--;
     SWSS_LOG_DEBUG("CRM: FDB entry removed, count: %u", m_fdbCount);
 }
@@ -182,6 +192,8 @@ void CRMTracker::onFdbRemoved()
 
 void CRMTracker::onNeighborCreated(bool ipv4)
 {
+    SWSS_LOG_ENTER();
+
     if (ipv4)
     {
         m_ipv4NeighborCount++;
@@ -196,6 +208,8 @@ void CRMTracker::onNeighborCreated(bool ipv4)
 
 void CRMTracker::onNeighborRemoved(bool ipv4)
 {
+    SWSS_LOG_ENTER();
+
     if (ipv4)
     {
         if (m_ipv4NeighborCount > 0) m_ipv4NeighborCount--;
@@ -212,6 +226,8 @@ void CRMTracker::onNeighborRemoved(bool ipv4)
 
 void CRMTracker::onNexthopCreated(bool ipv4)
 {
+    SWSS_LOG_ENTER();
+
     if (ipv4)
     {
         m_ipv4NexthopCount++;
@@ -226,6 +242,8 @@ void CRMTracker::onNexthopCreated(bool ipv4)
 
 void CRMTracker::onNexthopRemoved(bool ipv4)
 {
+    SWSS_LOG_ENTER();
+
     if (ipv4)
     {
         if (m_ipv4NexthopCount > 0) m_ipv4NexthopCount--;
@@ -242,12 +260,16 @@ void CRMTracker::onNexthopRemoved(bool ipv4)
 
 void CRMTracker::onNhgCreated()
 {
+    SWSS_LOG_ENTER();
+
     m_nhgCount++;
     SWSS_LOG_DEBUG("CRM: NHG created, count: %u", m_nhgCount);
 }
 
 void CRMTracker::onNhgRemoved()
 {
+    SWSS_LOG_ENTER();
+
     if (m_nhgCount > 0) m_nhgCount--;
     SWSS_LOG_DEBUG("CRM: NHG removed, count: %u", m_nhgCount);
 }
@@ -256,12 +278,16 @@ void CRMTracker::onNhgRemoved()
 
 void CRMTracker::onNhgMemberCreated()
 {
+    SWSS_LOG_ENTER();
+
     m_nhgMemberCount++;
     SWSS_LOG_DEBUG("CRM: NHG member created, count: %u", m_nhgMemberCount);
 }
 
 void CRMTracker::onNhgMemberRemoved()
 {
+    SWSS_LOG_ENTER();
+
     if (m_nhgMemberCount > 0) m_nhgMemberCount--;
     SWSS_LOG_DEBUG("CRM: NHG member removed, count: %u", m_nhgMemberCount);
 }
