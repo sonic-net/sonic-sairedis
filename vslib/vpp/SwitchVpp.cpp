@@ -852,16 +852,7 @@ sai_status_t SwitchVpp::create(
         sai_status_t status = addIpRoute(serializedObjectId, switch_id, attr_count, attr_list);
         if (status == SAI_STATUS_SUCCESS)
         {
-            if (isIPv4Route(serializedObjectId))
-            {
-                m_ipv4_route_count++;
-                SWSS_LOG_DEBUG("CRM: IPv4 route created, count: %u", m_ipv4_route_count);
-            }
-            else
-            {
-                m_ipv6_route_count++;
-                SWSS_LOG_DEBUG("CRM: IPv6 route created, count: %u", m_ipv6_route_count);
-            }
+            m_crmTracker.onRouteCreated(isIPv4Route(serializedObjectId));
         }
         return status;
     }
@@ -896,16 +887,7 @@ sai_status_t SwitchVpp::create(
                     break;
                 }
             }
-            if (ipv4)
-            {
-                m_ipv4_nexthop_count++;
-                SWSS_LOG_DEBUG("CRM: IPv4 nexthop created, count: %u", m_ipv4_nexthop_count);
-            }
-            else
-            {
-                m_ipv6_nexthop_count++;
-                SWSS_LOG_DEBUG("CRM: IPv6 nexthop created, count: %u", m_ipv6_nexthop_count);
-            }
+            m_crmTracker.onNexthopCreated(ipv4);
         }
         return status;
     }
@@ -915,8 +897,7 @@ sai_status_t SwitchVpp::create(
         sai_status_t status = createNexthopGroupMember(serializedObjectId, switch_id, attr_count, attr_list);
         if (status == SAI_STATUS_SUCCESS)
         {
-            m_nexthop_group_member_count++;
-            SWSS_LOG_DEBUG("CRM: NHG member created, count: %u", m_nexthop_group_member_count);
+            m_crmTracker.onNhgMemberCreated();
         }
         return status;
     }
@@ -926,16 +907,7 @@ sai_status_t SwitchVpp::create(
         sai_status_t status = addIpNbr(serializedObjectId, switch_id, attr_count, attr_list);
         if (status == SAI_STATUS_SUCCESS)
         {
-            if (isIPv4Neighbor(serializedObjectId))
-            {
-                m_ipv4_neighbor_count++;
-                SWSS_LOG_DEBUG("CRM: IPv4 neighbor created, count: %u", m_ipv4_neighbor_count);
-            }
-            else
-            {
-                m_ipv6_neighbor_count++;
-                SWSS_LOG_DEBUG("CRM: IPv6 neighbor created, count: %u", m_ipv6_neighbor_count);
-            }
+            m_crmTracker.onNeighborCreated(isIPv4Neighbor(serializedObjectId));
         }
         return status;
     }
@@ -1000,8 +972,7 @@ sai_status_t SwitchVpp::create(
         sai_status_t status = FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
         if (status == SAI_STATUS_SUCCESS)
         {
-            m_fdb_entry_count++;
-            SWSS_LOG_DEBUG("CRM: FDB entry created, count: %u", m_fdb_entry_count);
+            m_crmTracker.onFdbCreated();
         }
         return status;
     }
@@ -1029,8 +1000,7 @@ sai_status_t SwitchVpp::create(
         sai_status_t status = create_internal(object_type, serializedObjectId, switch_id, attr_count, attr_list);
         if (status == SAI_STATUS_SUCCESS)
         {
-            m_nexthop_group_count++;
-            SWSS_LOG_DEBUG("CRM: NHG created, count: %u", m_nexthop_group_count);
+            m_crmTracker.onNhgCreated();
         }
         return status;
     }
@@ -1189,16 +1159,7 @@ sai_status_t SwitchVpp::remove(
         sai_status_t status = removeIpRoute(serializedObjectId);
         if (status == SAI_STATUS_SUCCESS)
         {
-            if (wasIPv4)
-            {
-                if (m_ipv4_route_count > 0) m_ipv4_route_count--;
-                SWSS_LOG_DEBUG("CRM: IPv4 route removed, count: %u", m_ipv4_route_count);
-            }
-            else
-            {
-                if (m_ipv6_route_count > 0) m_ipv6_route_count--;
-                SWSS_LOG_DEBUG("CRM: IPv6 route removed, count: %u", m_ipv6_route_count);
-            }
+            m_crmTracker.onRouteRemoved(wasIPv4);
         }
         return status;
     }
@@ -1239,16 +1200,7 @@ sai_status_t SwitchVpp::remove(
         sai_status_t status = removeNexthop(serializedObjectId);
         if (status == SAI_STATUS_SUCCESS)
         {
-            if (ipv4)
-            {
-                if (m_ipv4_nexthop_count > 0) m_ipv4_nexthop_count--;
-                SWSS_LOG_DEBUG("CRM: IPv4 nexthop removed, count: %u", m_ipv4_nexthop_count);
-            }
-            else
-            {
-                if (m_ipv6_nexthop_count > 0) m_ipv6_nexthop_count--;
-                SWSS_LOG_DEBUG("CRM: IPv6 nexthop removed, count: %u", m_ipv6_nexthop_count);
-            }
+            m_crmTracker.onNexthopRemoved(ipv4);
         }
         return status;
     }
@@ -1258,8 +1210,7 @@ sai_status_t SwitchVpp::remove(
         sai_status_t status = removeNexthopGroupMember(serializedObjectId);
         if (status == SAI_STATUS_SUCCESS)
         {
-            if (m_nexthop_group_member_count > 0) m_nexthop_group_member_count--;
-            SWSS_LOG_DEBUG("CRM: NHG member removed, count: %u", m_nexthop_group_member_count);
+            m_crmTracker.onNhgMemberRemoved();
         }
         return status;
     }
@@ -1270,16 +1221,7 @@ sai_status_t SwitchVpp::remove(
         sai_status_t status = removeIpNbr(serializedObjectId);
         if (status == SAI_STATUS_SUCCESS)
         {
-            if (ipv4)
-            {
-                if (m_ipv4_neighbor_count > 0) m_ipv4_neighbor_count--;
-                SWSS_LOG_DEBUG("CRM: IPv4 neighbor removed, count: %u", m_ipv4_neighbor_count);
-            }
-            else
-            {
-                if (m_ipv6_neighbor_count > 0) m_ipv6_neighbor_count--;
-                SWSS_LOG_DEBUG("CRM: IPv6 neighbor removed, count: %u", m_ipv6_neighbor_count);
-            }
+            m_crmTracker.onNeighborRemoved(ipv4);
         }
         return status;
     }
@@ -1346,8 +1288,7 @@ sai_status_t SwitchVpp::remove(
         sai_status_t status = FdbEntrydel(serializedObjectId);
         if (status == SAI_STATUS_SUCCESS)
         {
-            if (m_fdb_entry_count > 0) m_fdb_entry_count--;
-            SWSS_LOG_DEBUG("CRM: FDB entry removed, count: %u", m_fdb_entry_count);
+            m_crmTracker.onFdbRemoved();
         }
         return status;
     }
@@ -1361,8 +1302,7 @@ sai_status_t SwitchVpp::remove(
         sai_status_t status = remove_internal(object_type, serializedObjectId);
         if (status == SAI_STATUS_SUCCESS)
         {
-            if (m_nexthop_group_count > 0) m_nexthop_group_count--;
-            SWSS_LOG_DEBUG("CRM: NHG removed, count: %u", m_nexthop_group_count);
+            m_crmTracker.onNhgRemoved();
         }
         return status;
     }
@@ -2146,139 +2086,27 @@ bool SwitchVpp::isIPv4Route(
     return route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4;
 }
 
-void SwitchVpp::loadCrmProfileValues()
+bool SwitchVpp::isIPv4Neighbor(
+        const std::string &serializedObjectId)
 {
     SWSS_LOG_ENTER();
 
-    const auto &profileMap = m_switchConfig->m_profileMap;
-
-    if (profileMap.empty())
-    {
-        SWSS_LOG_NOTICE("CRM: profile map is empty, using defaults (IPv4=%u, IPv6=%u, FDB=%u)",
-            m_vppMaxIPv4RouteEntries, m_vppMaxIPv6RouteEntries, m_vppMaxFdbEntries);
-        return;
-    }
-
-    auto it = profileMap.find("SAI_VPP_MAX_IPV4_ROUTE_ENTRIES");
-    if (it != profileMap.end())
-    {
-        m_vppMaxIPv4RouteEntries = (uint32_t)std::stoul(it->second);
-    }
-
-    it = profileMap.find("SAI_VPP_MAX_IPV6_ROUTE_ENTRIES");
-    if (it != profileMap.end())
-    {
-        m_vppMaxIPv6RouteEntries = (uint32_t)std::stoul(it->second);
-    }
-
-    it = profileMap.find("SAI_VPP_MAX_FDB_ENTRIES");
-    if (it != profileMap.end())
-    {
-        m_vppMaxFdbEntries = (uint32_t)std::stoul(it->second);
-    }
-
-    it = profileMap.find("SAI_VPP_MAX_IPV4_NEIGHBOR_ENTRIES");
-    if (it != profileMap.end())
-    {
-        m_vppMaxIPv4NeighborEntries = (uint32_t)std::stoul(it->second);
-    }
-
-    it = profileMap.find("SAI_VPP_MAX_IPV6_NEIGHBOR_ENTRIES");
-    if (it != profileMap.end())
-    {
-        m_vppMaxIPv6NeighborEntries = (uint32_t)std::stoul(it->second);
-    }
-
-    it = profileMap.find("SAI_VPP_MAX_IPV4_NEXTHOP_ENTRIES");
-    if (it != profileMap.end())
-    {
-        m_vppMaxIPv4NextHopEntries = (uint32_t)std::stoul(it->second);
-    }
-
-    it = profileMap.find("SAI_VPP_MAX_IPV6_NEXTHOP_ENTRIES");
-    if (it != profileMap.end())
-    {
-        m_vppMaxIPv6NextHopEntries = (uint32_t)std::stoul(it->second);
-    }
-
-    it = profileMap.find("SAI_VPP_MAX_NEXTHOP_GROUP_ENTRIES");
-    if (it != profileMap.end())
-    {
-        m_vppMaxNextHopGroupEntries = (uint32_t)std::stoul(it->second);
-    }
-
-    it = profileMap.find("SAI_VPP_MAX_NEXTHOP_GROUP_MEMBER_ENTRIES");
-    if (it != profileMap.end())
-    {
-        m_vppMaxNextHopGroupMemberEntries = (uint32_t)std::stoul(it->second);
-    }
-
-    SWSS_LOG_NOTICE("CRM: profile loaded (IPv4Route=%u, IPv6Route=%u, FDB=%u, "
-        "IPv4Nbr=%u, IPv6Nbr=%u, IPv4NH=%u, IPv6NH=%u, NHG=%u, NHGMbr=%u)",
-        m_vppMaxIPv4RouteEntries, m_vppMaxIPv6RouteEntries, m_vppMaxFdbEntries,
-        m_vppMaxIPv4NeighborEntries, m_vppMaxIPv6NeighborEntries,
-        m_vppMaxIPv4NextHopEntries, m_vppMaxIPv6NextHopEntries,
-        m_vppMaxNextHopGroupEntries, m_vppMaxNextHopGroupMemberEntries);
+    sai_neighbor_entry_t neighbor_entry;
+    sai_deserialize_neighbor_entry(serializedObjectId, neighbor_entry);
+    return neighbor_entry.ip_address.addr_family == SAI_IP_ADDR_FAMILY_IPV4;
 }
 
 sai_status_t SwitchVpp::set_static_crm_values()
 {
     SWSS_LOG_ENTER();
 
-    // Load configurable CRM limits from sai_vpp.profile
-    loadCrmProfileValues();
+    m_crmTracker.loadProfileValues(m_switchConfig->m_profileMap);
 
-    // Override the base class static values with our configurable ones
     sai_attribute_t attr;
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV4_ROUTE_ENTRY;
-    attr.value.u32 = m_vppMaxIPv4RouteEntries;
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV6_ROUTE_ENTRY;
-    attr.value.u32 = m_vppMaxIPv6RouteEntries;
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY;
-    attr.value.u32 = m_vppMaxFdbEntries;
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEIGHBOR_ENTRY;
-    attr.value.u32 = m_vppMaxIPv4NeighborEntries;
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEIGHBOR_ENTRY;
-    attr.value.u32 = m_vppMaxIPv6NeighborEntries;
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEXTHOP_ENTRY;
-    attr.value.u32 = m_vppMaxIPv4NextHopEntries;
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEXTHOP_ENTRY;
-    attr.value.u32 = m_vppMaxIPv6NextHopEntries;
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_ENTRY;
-    attr.value.u32 = m_vppMaxNextHopGroupEntries;
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    attr.id = SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_MEMBER_ENTRY;
-    attr.value.u32 = m_vppMaxNextHopGroupMemberEntries;
-    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
-
-    // For remaining resources, use base class defaults
-    std::map<sai_switch_attr_t, int> remaining_resources = {
-        { SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY, m_maxSNATEntries },
-        { SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY, m_maxDNATEntries },
-        { SAI_SWITCH_ATTR_AVAILABLE_IPMC_ENTRY, m_maxIPMCEntries },
-        { SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY, m_maxDoubleNATEntries }
-    };
-
-    for (auto const &resource: remaining_resources)
+    for (const auto& v : m_crmTracker.getInitialValues())
     {
-        attr.id = resource.first;
-        attr.value.u32 = resource.second;
+        attr.id = v.attr_id;
+        attr.value.u32 = v.value;
         CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
     }
 
@@ -2329,61 +2157,13 @@ sai_status_t SwitchVpp::refresh_read_only(
     }
 
     // Dynamic CRM resource availability: return max - used
-    if (meta->objecttype == SAI_OBJECT_TYPE_SWITCH)
+    if (meta->objecttype == SAI_OBJECT_TYPE_SWITCH &&
+        m_crmTracker.handles((sai_switch_attr_t)meta->attrid))
     {
         sai_attribute_t attr;
         attr.id = meta->attrid;
-
-        switch (meta->attrid)
-        {
-            case SAI_SWITCH_ATTR_AVAILABLE_IPV4_ROUTE_ENTRY:
-                attr.value.u32 = (m_vppMaxIPv4RouteEntries > m_ipv4_route_count)
-                    ? (m_vppMaxIPv4RouteEntries - m_ipv4_route_count) : 0;
-                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-
-            case SAI_SWITCH_ATTR_AVAILABLE_IPV6_ROUTE_ENTRY:
-                attr.value.u32 = (m_vppMaxIPv6RouteEntries > m_ipv6_route_count)
-                    ? (m_vppMaxIPv6RouteEntries - m_ipv6_route_count) : 0;
-                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-
-            case SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY:
-                attr.value.u32 = (m_vppMaxFdbEntries > m_fdb_entry_count)
-                    ? (m_vppMaxFdbEntries - m_fdb_entry_count) : 0;
-                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-
-            case SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEIGHBOR_ENTRY:
-                attr.value.u32 = (m_vppMaxIPv4NeighborEntries > m_ipv4_neighbor_count)
-                    ? (m_vppMaxIPv4NeighborEntries - m_ipv4_neighbor_count) : 0;
-                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-
-            case SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEIGHBOR_ENTRY:
-                attr.value.u32 = (m_vppMaxIPv6NeighborEntries > m_ipv6_neighbor_count)
-                    ? (m_vppMaxIPv6NeighborEntries - m_ipv6_neighbor_count) : 0;
-                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-
-            case SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEXTHOP_ENTRY:
-                attr.value.u32 = (m_vppMaxIPv4NextHopEntries > m_ipv4_nexthop_count)
-                    ? (m_vppMaxIPv4NextHopEntries - m_ipv4_nexthop_count) : 0;
-                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-
-            case SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEXTHOP_ENTRY:
-                attr.value.u32 = (m_vppMaxIPv6NextHopEntries > m_ipv6_nexthop_count)
-                    ? (m_vppMaxIPv6NextHopEntries - m_ipv6_nexthop_count) : 0;
-                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-
-            case SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_ENTRY:
-                attr.value.u32 = (m_vppMaxNextHopGroupEntries > m_nexthop_group_count)
-                    ? (m_vppMaxNextHopGroupEntries - m_nexthop_group_count) : 0;
-                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-
-            case SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_MEMBER_ENTRY:
-                attr.value.u32 = (m_vppMaxNextHopGroupMemberEntries > m_nexthop_group_member_count)
-                    ? (m_vppMaxNextHopGroupMemberEntries - m_nexthop_group_member_count) : 0;
-                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
-
-            default:
-                break;
-        }
+        attr.value.u32 = m_crmTracker.getAvailable((sai_switch_attr_t)meta->attrid);
+        return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
     }
 
     // For all other cases, delegate to the base class implementation

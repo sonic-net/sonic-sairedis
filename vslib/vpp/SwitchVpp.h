@@ -8,6 +8,7 @@
 #include "TunnelManager.h"
 #include "SwitchVppNexthop.h"
 #include "SwitchVppAcl.h"
+#include "CRMTracker.h"
 
 #include "vppxlate/SaiVppXlate.h"
 
@@ -963,32 +964,10 @@ namespace saivs
 
             std::map<std::string, std::shared_ptr<HostInterfaceInfo>> m_hostif_info_map;
 
-            // CRM resource limits (configurable via profile map from -p argument)
-            uint32_t m_vppMaxIPv4RouteEntries = m_maxIPv4RouteEntries;
-            uint32_t m_vppMaxIPv6RouteEntries = m_maxIPv6RouteEntries;
-            uint32_t m_vppMaxFdbEntries = m_maxFdbEntries;
-            uint32_t m_vppMaxIPv4NeighborEntries = m_maxIPv4NeighborEntries;
-            uint32_t m_vppMaxIPv6NeighborEntries = m_maxIPv6NeighborEntries;
-            uint32_t m_vppMaxIPv4NextHopEntries = m_maxIPv4NextHopEntries;
-            uint32_t m_vppMaxIPv6NextHopEntries = m_maxIPv6NextHopEntries;
-            uint32_t m_vppMaxNextHopGroupEntries = m_maxNextHopGroupEntries;
-            uint32_t m_vppMaxNextHopGroupMemberEntries = m_maxNextHopGroupMemberEntries;
-
-            // CRM resource tracking counters
-            uint32_t m_ipv4_route_count = 0;
-            uint32_t m_ipv6_route_count = 0;
-            uint32_t m_fdb_entry_count = 0;
-            uint32_t m_ipv4_neighbor_count = 0;
-            uint32_t m_ipv6_neighbor_count = 0;
-            uint32_t m_ipv4_nexthop_count = 0;
-            uint32_t m_ipv6_nexthop_count = 0;
-            uint32_t m_nexthop_group_count = 0;
-            uint32_t m_nexthop_group_member_count = 0;
+            CRMTracker m_crmTracker;
 
             bool isIPv4Route(const std::string &serializedObjectId);
             bool isIPv4Neighbor(const std::string &serializedObjectId);
-
-            void loadCrmProfileValues();
 
             virtual sai_status_t set_static_crm_values() override;
 
