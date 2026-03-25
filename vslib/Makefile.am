@@ -116,6 +116,6 @@ bin_PROGRAMS = tests
 
 tests_SOURCES = tests.cpp
 tests_CXXFLAGS = $(DBGFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS_COMMON)
-tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq $(VPP_LIBS)
+tests_LDADD = -lhiredis -lswsscommon -lpthread libsaivs.la -L$(top_srcdir)/meta/.libs -lsaimetadata -lsaimeta -lzmq -lnl-genl-3 -lnl-3 $(VPP_LIBS)
 
 TESTS = tests

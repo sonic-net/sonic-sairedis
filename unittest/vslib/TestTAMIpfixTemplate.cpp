@@ -52,9 +52,10 @@ protected:
         m_scc = std::make_shared<SwitchConfigContainer>();
         m_switch_id = 0x2100000000;
 
+        m_ridmgr = std::make_shared<RealObjectIdManager>(0, m_scc);
         m_ss = std::make_shared<SwitchStateBase>(
             m_switch_id,
-            std::make_shared<RealObjectIdManager>(0, m_scc),
+            m_ridmgr,
             m_sc);
 
         // Create switch
@@ -70,17 +71,17 @@ protected:
                                static_cast<uint32_t>(attrs.size()), attrs.data()));
 
         // Create TAM hierarchy: TAM -> TAM_TELEMETRY -> TAM_TEL_TYPE
-        m_tam_id = 0x3c000000000001;
+        m_tam_id = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM, m_switch_id);
         ASSERT_EQ(SAI_STATUS_SUCCESS,
                   m_ss->create(SAI_OBJECT_TYPE_TAM,
                                sai_serialize_object_id(m_tam_id), m_switch_id, 0, nullptr));
 
-        m_tam_tel_id = 0x4b000000000002;
+        m_tam_tel_id = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM_TELEMETRY, m_switch_id);
         ASSERT_EQ(SAI_STATUS_SUCCESS,
                   m_ss->create(SAI_OBJECT_TYPE_TAM_TELEMETRY,
                                sai_serialize_object_id(m_tam_tel_id), m_switch_id, 0, nullptr));
 
-        m_tam_tel_type_id = 0x4b000000000001;
+        m_tam_tel_type_id = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM_TEL_TYPE, m_switch_id);
         ASSERT_EQ(SAI_STATUS_SUCCESS,
                   m_ss->create(SAI_OBJECT_TYPE_TAM_TEL_TYPE,
                                sai_serialize_object_id(m_tam_tel_type_id), m_switch_id, 0, nullptr));
@@ -124,8 +125,7 @@ protected:
         uint32_t stat_id,
         sai_object_id_t subscribed_object_id)
     {
-        static uint64_t counter_sub_idx = 1;
-        sai_object_id_t cs_id = 0x5a000000000000 | counter_sub_idx++;
+        sai_object_id_t cs_id = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM_COUNTER_SUBSCRIPTION, m_switch_id);
         string cs_id_str = sai_serialize_object_id(cs_id);
 
         vector<sai_attribute_t> attrs;
@@ -191,6 +191,7 @@ protected:
     std::shared_ptr<EventQueue> m_eventQueue;
     std::shared_ptr<SwitchConfig> m_sc;
     std::shared_ptr<SwitchConfigContainer> m_scc;
+    std::shared_ptr<RealObjectIdManager> m_ridmgr;
     std::shared_ptr<SwitchStateBase> m_ss;
 
     sai_object_id_t m_switch_id;
@@ -217,9 +218,9 @@ TEST_F(TAMIpfixTemplateTest, EmptySubscription_GeneratesMinimalTemplate)
 TEST_F(TAMIpfixTemplateTest, SingleSubscription_CorrectBinaryFormat)
 {
     // Create a port object to subscribe to
-    sai_object_id_t port_id = 0x1000000000001; // PORT type OID
+    sai_object_id_t port_id = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM, m_switch_id);
     ASSERT_EQ(SAI_STATUS_SUCCESS,
-              m_ss->create(SAI_OBJECT_TYPE_PORT,
+              m_ss->create(SAI_OBJECT_TYPE_TAM,
                            sai_serialize_object_id(port_id), m_switch_id, 0, nullptr));
 
     uint64_t label = 1;
@@ -245,7 +246,7 @@ TEST_F(TAMIpfixTemplateTest, SingleSubscription_CorrectBinaryFormat)
 
     // Enterprise Number = (stat_id << 16) | object_type
     uint32_t enterprise_num = read_u32_be(field + 4);
-    uint32_t expected_obj_type = static_cast<uint32_t>(SAI_OBJECT_TYPE_PORT);
+    uint32_t expected_obj_type = static_cast<uint32_t>(SAI_OBJECT_TYPE_TAM);
     uint32_t expected_enterprise = (stat_id << 16) | (expected_obj_type & 0xFFFF);
     EXPECT_EQ(enterprise_num, expected_enterprise);
 }
@@ -254,9 +255,9 @@ TEST_F(TAMIpfixTemplateTest, SingleSubscription_CorrectBinaryFormat)
 
 TEST_F(TAMIpfixTemplateTest, MultipleSubscriptions_CorrectFieldCountAndEncoding)
 {
-    sai_object_id_t port_id = 0x1000000000001;
+    sai_object_id_t port_id = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM, m_switch_id);
     ASSERT_EQ(SAI_STATUS_SUCCESS,
-              m_ss->create(SAI_OBJECT_TYPE_PORT,
+              m_ss->create(SAI_OBJECT_TYPE_TAM,
                            sai_serialize_object_id(port_id), m_switch_id, 0, nullptr));
 
     // Create 3 counter subscriptions with different labels and stat IDs
@@ -308,13 +309,13 @@ TEST_F(TAMIpfixTemplateTest, MultipleSubscriptions_CorrectFieldCountAndEncoding)
 
 TEST_F(TAMIpfixTemplateTest, UnmatchedSubscription_Filtered)
 {
-    sai_object_id_t port_id = 0x1000000000001;
+    sai_object_id_t port_id = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM, m_switch_id);
     ASSERT_EQ(SAI_STATUS_SUCCESS,
-              m_ss->create(SAI_OBJECT_TYPE_PORT,
+              m_ss->create(SAI_OBJECT_TYPE_TAM,
                            sai_serialize_object_id(port_id), m_switch_id, 0, nullptr));
 
     // Create a second tel_type that we'll reference from one subscription
-    sai_object_id_t other_tel_type_id = 0x4b000000000099;
+    sai_object_id_t other_tel_type_id = m_ridmgr->allocateNewObjectId(SAI_OBJECT_TYPE_TAM_TEL_TYPE, m_switch_id);
     ASSERT_EQ(SAI_STATUS_SUCCESS,
               m_ss->create(SAI_OBJECT_TYPE_TAM_TEL_TYPE,
                            sai_serialize_object_id(other_tel_type_id), m_switch_id, 0, nullptr));

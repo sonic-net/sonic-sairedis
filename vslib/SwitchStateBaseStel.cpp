@@ -111,7 +111,7 @@ struct GenlConnection
             return -1;
         }
 
-        int ret = nla_put(msg, SONIC_STEL_ATTR_IPFIX_DATA, data_len, data);
+        int ret = nla_put(msg, SONIC_STEL_ATTR_IPFIX_DATA, static_cast<int>(data_len), data);
         if (ret < 0)
         {
             SWSS_LOG_ERROR("nla_put() failed: %s", nl_geterror(ret));
