@@ -11,7 +11,7 @@
 #include <thread>
 #include <cassert>
 
-#include "kernel/sonic_stel_uapi.h"
+#include "sonic_stel_uapi.h"
 
 using namespace saivs;
 
