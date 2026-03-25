@@ -967,13 +967,18 @@ namespace saivs
             uint32_t m_vppMaxIPv4RouteEntries = m_maxIPv4RouteEntries;
             uint32_t m_vppMaxIPv6RouteEntries = m_maxIPv6RouteEntries;
             uint32_t m_vppMaxFdbEntries = m_maxFdbEntries;
+            uint32_t m_vppMaxIPv4NeighborEntries = m_maxIPv4NeighborEntries;
+            uint32_t m_vppMaxIPv6NeighborEntries = m_maxIPv6NeighborEntries;
 
             // CRM resource tracking counters
             uint32_t m_ipv4_route_count = 0;
             uint32_t m_ipv6_route_count = 0;
             uint32_t m_fdb_entry_count = 0;
+            uint32_t m_ipv4_neighbor_count = 0;
+            uint32_t m_ipv6_neighbor_count = 0;
 
             bool isIPv4Route(const std::string &serializedObjectId);
+            bool isIPv4Neighbor(const std::string &serializedObjectId);
 
             void loadCrmProfileValues();
 

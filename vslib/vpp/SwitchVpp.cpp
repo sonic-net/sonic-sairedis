@@ -894,7 +894,21 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY)
     {
-        return addIpNbr(serializedObjectId, switch_id, attr_count, attr_list);
+        sai_status_t status = addIpNbr(serializedObjectId, switch_id, attr_count, attr_list);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (isIPv4Neighbor(serializedObjectId))
+            {
+                m_ipv4_neighbor_count++;
+                SWSS_LOG_DEBUG("CRM: IPv4 neighbor created, count: %u", m_ipv4_neighbor_count);
+            }
+            else
+            {
+                m_ipv6_neighbor_count++;
+                SWSS_LOG_DEBUG("CRM: IPv6 neighbor created, count: %u", m_ipv6_neighbor_count);
+            }
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_ACL_ENTRY)
@@ -1180,7 +1194,22 @@ sai_status_t SwitchVpp::remove(
 
     if (object_type == SAI_OBJECT_TYPE_NEIGHBOR_ENTRY)
     {
-        return removeIpNbr(serializedObjectId);
+        bool ipv4 = isIPv4Neighbor(serializedObjectId);
+        sai_status_t status = removeIpNbr(serializedObjectId);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (ipv4)
+            {
+                if (m_ipv4_neighbor_count > 0) m_ipv4_neighbor_count--;
+                SWSS_LOG_DEBUG("CRM: IPv4 neighbor removed, count: %u", m_ipv4_neighbor_count);
+            }
+            else
+            {
+                if (m_ipv6_neighbor_count > 0) m_ipv6_neighbor_count--;
+                SWSS_LOG_DEBUG("CRM: IPv6 neighbor removed, count: %u", m_ipv6_neighbor_count);
+            }
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_ACL_ENTRY)
@@ -2065,8 +2094,21 @@ void SwitchVpp::loadCrmProfileValues()
         m_vppMaxFdbEntries = (uint32_t)std::stoul(it->second);
     }
 
-    SWSS_LOG_NOTICE("CRM: profile loaded (IPv4=%u, IPv6=%u, FDB=%u)",
-        m_vppMaxIPv4RouteEntries, m_vppMaxIPv6RouteEntries, m_vppMaxFdbEntries);
+    it = profileMap.find("SAI_VPP_MAX_IPV4_NEIGHBOR_ENTRIES");
+    if (it != profileMap.end())
+    {
+        m_vppMaxIPv4NeighborEntries = (uint32_t)std::stoul(it->second);
+    }
+
+    it = profileMap.find("SAI_VPP_MAX_IPV6_NEIGHBOR_ENTRIES");
+    if (it != profileMap.end())
+    {
+        m_vppMaxIPv6NeighborEntries = (uint32_t)std::stoul(it->second);
+    }
+
+    SWSS_LOG_NOTICE("CRM: profile loaded (IPv4Route=%u, IPv6Route=%u, FDB=%u, IPv4Nbr=%u, IPv6Nbr=%u)",
+        m_vppMaxIPv4RouteEntries, m_vppMaxIPv6RouteEntries, m_vppMaxFdbEntries,
+        m_vppMaxIPv4NeighborEntries, m_vppMaxIPv6NeighborEntries);
 }
 
 sai_status_t SwitchVpp::set_static_crm_values()
@@ -2091,12 +2133,18 @@ sai_status_t SwitchVpp::set_static_crm_values()
     attr.value.u32 = m_vppMaxFdbEntries;
     CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
 
-    // For remaining resources (nexthop, neighbor, nhg, etc.), use base class defaults
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEIGHBOR_ENTRY;
+    attr.value.u32 = m_vppMaxIPv4NeighborEntries;
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEIGHBOR_ENTRY;
+    attr.value.u32 = m_vppMaxIPv6NeighborEntries;
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // For remaining resources (nexthop, nhg, etc.), use base class defaults
     std::map<sai_switch_attr_t, int> remaining_resources = {
         { SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEXTHOP_ENTRY, m_maxIPv4NextHopEntries },
         { SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEXTHOP_ENTRY, m_maxIPv6NextHopEntries },
-        { SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEIGHBOR_ENTRY, m_maxIPv4NeighborEntries },
-        { SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEIGHBOR_ENTRY, m_maxIPv6NeighborEntries },
         { SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_MEMBER_ENTRY, m_maxNextHopGroupMemberEntries },
         { SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_ENTRY, m_maxNextHopGroupEntries },
         { SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY, m_maxSNATEntries },
@@ -2179,6 +2227,16 @@ sai_status_t SwitchVpp::refresh_read_only(
             case SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY:
                 attr.value.u32 = (m_vppMaxFdbEntries > m_fdb_entry_count)
                     ? (m_vppMaxFdbEntries - m_fdb_entry_count) : 0;
+                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEIGHBOR_ENTRY:
+                attr.value.u32 = (m_vppMaxIPv4NeighborEntries > m_ipv4_neighbor_count)
+                    ? (m_vppMaxIPv4NeighborEntries - m_ipv4_neighbor_count) : 0;
+                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEIGHBOR_ENTRY:
+                attr.value.u32 = (m_vppMaxIPv6NeighborEntries > m_ipv6_neighbor_count)
+                    ? (m_vppMaxIPv6NeighborEntries - m_ipv6_neighbor_count) : 0;
                 return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 
             default:
