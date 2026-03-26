@@ -6,6 +6,7 @@
 #include "VidManager.h"
 #include "NumberOidIndexGenerator.h"
 #include <string>
+#include <atomic>
 #include <chrono>
 #include <gtest/gtest.h>
 
@@ -233,7 +234,8 @@ void testAddRemoveCounter(
         bool bulkChunkSizeAfterPort = true,
         const std::string pluginName = "",
         bool immediatelyRemoveBulkChunkSizePerCounter = false,
-        bool forceSingleCreate = false)
+        bool forceSingleCreate = false,
+        std::function<void()> onChunkConfigApplied = nullptr)
 {
     SWSS_LOG_ENTER();
 
@@ -295,6 +297,10 @@ void testAddRemoveCounter(
             bulkChunkSizeValues.clear();
             bulkChunkSizeValues.emplace_back(BULK_CHUNK_SIZE_PER_PREFIX_FIELD, "");
             fc.addCounterPlugin(bulkChunkSizeValues);
+        }
+        if (onChunkConfigApplied)
+        {
+            onChunkConfigApplied();
         }
     }
 
@@ -1374,6 +1380,15 @@ TEST(FlexCounter, bulkCounter)
 TEST(FlexCounter, bulkChunksize)
 {
     /*
+     * Atomic flag to synchronize the test thread and the FlexCounter worker
+     * thread. Under AddressSanitizer the worker may poll before the test
+     * finishes setting up chunk-size configuration. The mock treats any
+     * post-init poll that arrives before this flag is set as an extra
+     * initialization call (no chunk-size assertions).
+     */
+    std::atomic<bool> chunkConfigReady{false};
+
+    /*
      * Test logic
      * 1. Generate counter values and store them whenever the bulk get stat is called after initialization
      * 2. Convert stored counter values to string when the verify function is called
@@ -1549,6 +1564,33 @@ TEST(FlexCounter, bulkChunksize)
             return SAI_STATUS_SUCCESS;
         }
 
+        /*
+         * Guard against race: the FlexCounter worker thread may poll after
+         * initialCheckCount is consumed but before chunk-size configuration
+         * has been applied by the test thread. This is especially likely
+         * under AddressSanitizer where the test thread runs 2-5x slower.
+         * Treat such calls as extra initialization — populate counters
+         * without asserting chunk sizes.
+         */
+        if (!chunkConfigReady.load(std::memory_order_acquire))
+        {
+            for (uint32_t i = 0; i < object_count; i++)
+            {
+                object_status[i] = SAI_STATUS_SUCCESS;
+                auto &counterMap = counterValuesMap[object_keys[i].key.object_id];
+                for (uint32_t j = 0; j < number_of_counters; j++)
+                {
+                    const auto &searchRef = counterMap.find(counter_ids[j]);
+                    if (searchRef == counterMap.end())
+                    {
+                        counterMap[counter_ids[j]] = ++counterSeed;
+                    }
+                    counters[i * number_of_counters + j] = counterMap[counter_ids[j]];
+                }
+            }
+            return SAI_STATUS_SUCCESS;
+        }
+
         EXPECT_TRUE(!forceSingleCall);
 
         for (uint32_t i = 0; i < object_count; i++)
@@ -1620,7 +1662,12 @@ TEST(FlexCounter, bulkChunksize)
         allObjectIds.erase(key);
     };
 
+    auto setChunkReady = [&]() {
+        chunkConfigReady.store(true, std::memory_order_release);
+    };
+
     // create ports first and then set bulk chunk size + per counter bulk chunk size
+    chunkConfigReady = false;
     initialCheckCount = 6;
     testAddRemoveCounter(
         6,
@@ -1633,10 +1680,17 @@ TEST(FlexCounter, bulkChunksize)
         STATS_MODE_READ,
         false,
         "3",
-        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true,
+        "",
+        false,
+        false,
+        setChunkReady);
     EXPECT_TRUE(allObjectIds.empty());
 
     // set bulk chunk size + per counter bulk chunk size first and then create ports
+    // bulkChunkSizeAfterPort=false: config applied before ports, no race
+    chunkConfigReady = true;
     initialCheckCount = 6;
     testAddRemoveCounter(
         6,
@@ -1659,6 +1713,7 @@ TEST(FlexCounter, bulkChunksize)
     // Remove per counter bulk chunk size after initializing it
     // This is to cover the scenario of removing per counter bulk chunk size filed
     // All counters share a unified bulk chunk size
+    chunkConfigReady = false;
     unifiedBulkChunkSize = 3;
     initialCheckCount = 6;
     testAddRemoveCounter(
@@ -1675,11 +1730,14 @@ TEST(FlexCounter, bulkChunksize)
         "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
         true,
         "",
-        true);
+        true,
+        false,
+        setChunkReady);
     EXPECT_TRUE(allObjectIds.empty());
     unifiedBulkChunkSize = 0;
 
     // add ports counters in bulk mode first and then set bulk chunk size + per counter bulk chunk size
+    chunkConfigReady = false;
     initialCheckCount = 3;
     testAddRemoveCounter(
         6,
@@ -1692,10 +1750,17 @@ TEST(FlexCounter, bulkChunksize)
         STATS_MODE_READ,
         true,
         "3",
-        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2");
+        "SAI_PORT_STAT_IF_OUT_QLEN:0;SAI_PORT_STAT_IF_IN_FEC:2",
+        true,
+        "",
+        false,
+        false,
+        setChunkReady);
     EXPECT_TRUE(allObjectIds.empty());
 
     // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode
+    // bulkChunkSizeAfterPort=false: config applied before ports, no race
+    chunkConfigReady = true;
     initialCheckCount = 3;
     testAddRemoveCounter(
         6,
@@ -1715,6 +1780,7 @@ TEST(FlexCounter, bulkChunksize)
 
     // add ports counters in bulk mode with some bulk-unsupported counters first and then set bulk chunk size + per counter bulk chunk size
     // all counters will be polled using single call in runtime
+    chunkConfigReady = true;
     forceSingleCall = true;
     initialCheckCount = 1; // check bulk for all counter IDs altogether
     initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
@@ -1737,6 +1803,7 @@ TEST(FlexCounter, bulkChunksize)
     EXPECT_TRUE(allObjectIds.empty());
     forceSingleCall = false;
 
+    chunkConfigReady = true;
     forceSingleCall = true;
     noBulkCapabilityOnly = true;
     initialCheckCount = 0; // check bulk for all counter IDs altogether
@@ -1765,6 +1832,8 @@ TEST(FlexCounter, bulkChunksize)
     // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode with some bulk-unsupported counters
     // All bulk-unsupported counters are polled using single call and all the rest counters are polled using bulk call
     // For each OID, it will be in both m_bulkContexts and m_objectIdsMap
+    // bulkChunkSizeAfterPort=false: config applied before ports, no race
+    chunkConfigReady = true;
     initialCheckCount = 3; // check bulk for 3 prefixes
     initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
     testAddRemoveCounter(
@@ -1786,6 +1855,8 @@ TEST(FlexCounter, bulkChunksize)
     // set bulk chunk size + per counter bulk chunk size first and then add ports counters in bulk mode with some bulk-unsupported counters
     // All bulk-unsupported counters are polled using single call and all the rest counters are polled using bulk call
     // For each OID, it will be in both m_bulkContexts and m_objectIdsMap
+    // bulkChunkSizeAfterPort=false: config applied before ports, no race
+    chunkConfigReady = true;
     initialCheckCount = 3; // check bulk for 3 prefixes
     initialCheckCount += 6; // for bulk unsupported counter prefix, check bulk again for each objects
     partialSupportingBulkObjectFactor = 2;
