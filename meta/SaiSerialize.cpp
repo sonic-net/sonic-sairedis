@@ -854,6 +854,81 @@ std::string sai_serialize_enum(
     return sai_serialize_number(value);
 }
 
+std::string sai_serialize_flags(
+        _In_ const int32_t value,
+        _In_ const sai_enum_metadata_t* meta)
+{
+    SWSS_LOG_ENTER();
+
+    if (meta == NULL)
+    {
+        return sai_serialize_number(value);
+    }
+
+    if (!meta->containsflags || meta->flagstype != SAI_ENUM_FLAGS_TYPE_STRICT)
+    {
+        return sai_serialize_enum(value, meta);
+    }
+
+    uint32_t flags = static_cast<uint32_t>(value);
+    std::string s;
+    const size_t n = meta->valuescount;
+    if (n != 0)
+    {
+        // The current strict flags longer enum is 50 characters, so setting to 64
+        s.reserve(std::min(n * size_t(64), size_t(2048)));
+
+        if ( !value)
+        {
+           s += meta->valuesnames[0];
+           return s;
+        }
+    }
+
+    bool first = true;
+    for (size_t i = 0; i < n; ++i)
+    {
+        const int32_t v = meta->values[i];
+        if (v == 0)
+        {
+            continue;
+        }
+
+        const uint32_t bit = static_cast<uint32_t>(v);
+        if ((flags & bit) != 0)
+        {
+            if (!first)
+            {
+                s.push_back('|');
+            }
+            first = false;
+            s += meta->valuesnames[i];
+            flags &= ~bit;
+        }
+    }
+
+    if (flags != 0)
+    {
+        SWSS_LOG_WARN("enum %s strict flags value 0x%x has unknown bits 0x%x",
+                meta->name,
+                static_cast<unsigned int>(static_cast<uint32_t>(value)),
+                flags);
+        if (!first)
+        {
+            s.push_back('|');
+        }
+        s += sai_serialize_number(flags, true);
+        return s;
+    }
+
+    if (first)
+    {
+        return sai_serialize_number(value);
+    }
+
+    return s;
+}
+
 std::string sai_serialize_number(
         _In_ const uint32_t number,
         _In_ bool hex)
@@ -2578,7 +2653,7 @@ std::string sai_serialize_port_error_status(
 {
     SWSS_LOG_ENTER();
 
-    return sai_serialize_enum(status, &sai_metadata_enum_sai_port_error_status_t);
+    return sai_serialize_flags(status, &sai_metadata_enum_sai_port_error_status_t);
 }
 
 std::string sai_serialize_port_host_tx_ready(
@@ -3733,6 +3808,60 @@ void sai_deserialize_enum(
     SWSS_LOG_WARN("enum %s not found in enum %s", s.c_str(), meta->name);
 
     sai_deserialize_number(s, value);
+}
+
+void sai_deserialize_flags(
+        _In_ const std::string& s,
+        _In_ const sai_enum_metadata_t* meta,
+        _Out_ int32_t& value)
+{
+    SWSS_LOG_ENTER();
+
+    if (meta == NULL)
+    {
+        sai_deserialize_number(s, value);
+        return;
+    }
+
+    if (!meta->containsflags || meta->flagstype != SAI_ENUM_FLAGS_TYPE_STRICT)
+    {
+        sai_deserialize_enum(s, meta, value);
+        return;
+    }
+
+    if (s.empty())
+    {
+        SWSS_LOG_THROW("empty strict flags string");
+    }
+
+    const auto tokens = swss::tokenize(s, '|');
+    uint32_t acc = 0;
+
+    for (const auto& tok : tokens)
+    {
+        if (tok.empty())
+        {
+            SWSS_LOG_THROW("empty strict flags token in %s", s.c_str());
+        }
+
+        /*This matches how sai_serialize_flags appends raw leftover bits
+          when some bitmask bits are not represented by any known enum name
+        */
+        if (tok.size() >= 2 && tok[0] == '0' && (tok[1] == 'x' || tok[1] == 'X'))
+        {
+            uint32_t bits = 0;
+            sai_deserialize_number(tok, bits, true);
+            acc |= bits;
+        }
+        else
+        {
+            int32_t v = 0;
+            sai_deserialize_enum(tok, meta, v);
+            acc |= static_cast<uint32_t>(v);
+        }
+    }
+
+    value = static_cast<int32_t>(acc);
 }
 
 void sai_deserialize_mac(
@@ -5164,7 +5293,7 @@ void sai_deserialize_port_error_status(
 {
     SWSS_LOG_ENTER();
 
-    sai_deserialize_enum(s, &sai_metadata_enum_sai_port_error_status_t, (int32_t&)status);
+    sai_deserialize_flags(s, &sai_metadata_enum_sai_port_error_status_t, (int32_t&)status);
 }
 
 void sai_deserialize_port_host_tx_ready_status(
