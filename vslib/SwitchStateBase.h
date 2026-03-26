@@ -819,7 +819,8 @@ namespace saivs
             sai_status_t startStelStream(
                     _In_ uint32_t poll_interval_us,
                     _In_ uint16_t template_id,
-                    _In_ size_t num_counters);
+                    _In_ size_t num_counters,
+                    _In_ const std::vector<uint8_t> &ipfix_template);
 
             sai_status_t stopStelStream();
 
@@ -828,7 +829,8 @@ namespace saivs
             void stelWorkerThread(
                     _In_ uint32_t poll_interval_us,
                     _In_ uint16_t template_id,
-                    _In_ size_t num_counters);
+                    _In_ size_t num_counters,
+                    _In_ std::vector<uint8_t> ipfix_template);
 
             std::atomic<bool> m_stelRunning{false};
 
