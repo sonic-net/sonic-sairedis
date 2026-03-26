@@ -223,45 +223,12 @@ static std::vector<uint8_t> build_ipfix_data_message(
     return msg;
 }
 
-/**
- * @brief Build a complete IPFIX message wrapping a template set.
- *
- * The template binary from refresh_tam_tel_ipfix_templates() is already
- * a valid Template Set (Set ID=2). We wrap it in an IPFIX Message Header.
- */
-static std::vector<uint8_t> build_ipfix_template_message(
-    uint32_t seq_num,
-    const std::vector<uint8_t> &template_set)
-{
-    // SWSS_LOG_ENTER() omitted - called from worker thread
-    size_t msg_len = 16 + template_set.size();
-    std::vector<uint8_t> msg(msg_len, 0);
-    size_t off = 0;
-
-    auto now = std::chrono::system_clock::now().time_since_epoch();
-    auto now_s = static_cast<uint32_t>(
-        std::chrono::duration_cast<std::chrono::seconds>(now).count());
-
-    /* IPFIX Header */
-    put_u16_be(msg, off, 0x000a);      off += 2;  // Version
-    put_u16_be(msg, off, static_cast<uint16_t>(msg_len)); off += 2;
-    put_u32_be(msg, off, now_s);       off += 4;  // Export Timestamp
-    put_u32_be(msg, off, seq_num);     off += 4;  // Sequence Number
-    put_u32_be(msg, off, 0);           off += 4;  // Observation Domain ID
-
-    /* Template Set (already includes Set ID=2, Set Length, etc.) */
-    std::memcpy(msg.data() + off, template_set.data(), template_set.size());
-
-    return msg;
-}
-
 /* ────── Stream telemetry thread ────── */
 
 void SwitchStateBase::stelWorkerThread(
     _In_ uint32_t poll_interval_us,
     _In_ uint16_t template_id,
-    _In_ size_t num_counters,
-    _In_ std::vector<uint8_t> ipfix_template)
+    _In_ size_t num_counters)
 {
     SWSS_LOG_ENTER();
 
@@ -280,29 +247,8 @@ void SwitchStateBase::stelWorkerThread(
     uint32_t seq_num = 0;
     std::vector<uint64_t> counters(num_counters, 0);
 
-    /* Per RFC 7011, send Template Record before any Data Records.
-     * Also re-send periodically (every ~30 seconds). */
-    const uint32_t template_resend_interval = 30000000 / poll_interval_us; // ticks per 30s
-    uint32_t ticks_since_template = template_resend_interval; // force send on first iteration
-
     while (m_stelRunning)
     {
-        /* Send template periodically */
-        if (!ipfix_template.empty() && ticks_since_template >= template_resend_interval)
-        {
-            auto tmpl_msg = build_ipfix_template_message(seq_num, ipfix_template);
-            if (conn.sendIpfix(tmpl_msg.data(), tmpl_msg.size()) < 0)
-            {
-                SWSS_LOG_WARN("Failed to send IPFIX template (seq=%u)", seq_num);
-            }
-            else
-            {
-                SWSS_LOG_INFO("Sent IPFIX template (%zu bytes, seq=%u)", tmpl_msg.size(), seq_num);
-            }
-            seq_num++;
-            ticks_since_template = 0;
-        }
-
         /* Use system_clock for wall-clock time (IPFIX observationTimeNanoseconds) */
         auto now = std::chrono::system_clock::now().time_since_epoch();
         uint64_t timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now).count();
@@ -321,7 +267,6 @@ void SwitchStateBase::stelWorkerThread(
         }
 
         seq_num++;
-        ticks_since_template++;
         std::this_thread::sleep_for(std::chrono::microseconds(poll_interval_us));
     }
 
@@ -331,8 +276,7 @@ void SwitchStateBase::stelWorkerThread(
 sai_status_t SwitchStateBase::startStelStream(
     _In_ uint32_t poll_interval_us,
     _In_ uint16_t template_id,
-    _In_ size_t num_counters,
-    _In_ const std::vector<uint8_t> &ipfix_template)
+    _In_ size_t num_counters)
 {
     SWSS_LOG_ENTER();
 
@@ -345,7 +289,7 @@ sai_status_t SwitchStateBase::startStelStream(
     m_stelRunning = true;
     m_stelThread = std::make_shared<std::thread>(
         &SwitchStateBase::stelWorkerThread, this,
-        poll_interval_us, template_id, num_counters, ipfix_template);
+        poll_interval_us, template_id, num_counters);
 
     SWSS_LOG_NOTICE("STEL stream started");
     return SAI_STATUS_SUCCESS;
