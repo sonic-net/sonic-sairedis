@@ -332,7 +332,6 @@ namespace saivs
             bool is_tunnel_bridge_port(
                     _In_ sai_object_id_t br_port_id);
 
-
             /* BFD Session */
             sai_status_t bfd_session_add(
                     _In_ const std::string &serializedObjectId,

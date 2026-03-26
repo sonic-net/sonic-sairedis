@@ -430,15 +430,6 @@ TunnelManager::create_l2_vxlan_tunnel(
 
     sw_if_index = ~0;
 
-    // Check if already created
-    auto it = m_l2_tunnel_map.find(tunnel_oid);
-    if (it != m_l2_tunnel_map.end()) {
-        sw_if_index = it->second.sw_if_index;
-        SWSS_LOG_NOTICE("L2 VXLAN tunnel already exists: tunnel=%s sw_if=%u",
-            sai_serialize_object_id(tunnel_oid).c_str(), sw_if_index);
-        return SAI_STATUS_SUCCESS;
-    }
-
     // Get tunnel object
     auto tunnel_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL,
         sai_serialize_object_id(tunnel_oid));
@@ -475,9 +466,7 @@ TunnelManager::create_l2_vxlan_tunnel(
     }
     sai_ip_address_t dst_ip = attr.value.ipaddr;
 
-    // Find VNI and VLAN from decap mappers
-    uint32_t vni = 0;
-    uint16_t vlan_id = 0;
+    // Find VNI and VLAN from decap mappers — create a VPP tunnel for each entry (L3-style loop)
 
     auto decap_mappers = tunnel_obj->get_linked_objects(
         SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_DECAP_MAPPERS);
@@ -500,6 +489,8 @@ TunnelManager::create_l2_vxlan_tunnel(
 
         for (auto& entry_pair : *entries) {
             auto entry = entry_pair.second;
+            uint32_t vni = 0;
+            uint16_t vlan_id = 0;
 
             // Get VNI
             attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
@@ -515,66 +506,72 @@ TunnelManager::create_l2_vxlan_tunnel(
                 SWSS_LOG_NOTICE("Found VLAN=%u", vlan_id);
             }
 
-            if (vni != 0 && vlan_id != 0) break;
+            if (vni == 0 || vlan_id == 0) continue;
+
+            // Skip if this VNI already has a tunnel
+            if (m_l2_tunnel_map.find(vni) != m_l2_tunnel_map.end()) {
+                SWSS_LOG_NOTICE("VNI %u already has a tunnel, skipping", vni);
+                if (sw_if_index == (uint32_t)~0) {
+                    sw_if_index = m_l2_tunnel_map[vni].sw_if_index;
+                }
+                continue;
+            }
+
+            // Create VPP tunnel for this VNI (same pattern as L3 tunnel_encap_nexthop_action)
+            vpp_vxlan_tunnel_t req;
+            TunnelVPPData tunnel_data;
+
+            memset(&req, 0, sizeof(req));
+            req.vni = vni;
+            req.src_port = m_vxlan_port;
+            req.dst_port = m_vxlan_port;
+            req.instance = ~0;
+            req.decap_next_index = ~0;
+            sai_ip_address_t_to_vpp_ip_addr_t(src_ip, req.src_address);
+            sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.dst_address);
+
+            tunnel_data.vni = vni;
+            tunnel_data.src_ip = src_ip;
+            tunnel_data.dst_ip = dst_ip;
+            tunnel_data.vlan_id = vlan_id;
+            tunnel_data.ip_vrf = nullptr;
+
+            if (create_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) != SAI_STATUS_SUCCESS) {
+                SWSS_LOG_ERROR("Failed to create VPP VXLAN tunnel for VNI=%u", vni);
+                return SAI_STATUS_FAILURE;
+            }
+
+            // Add tunnel interface to bridge domain (VLAN)
+            int vpp_status = set_sw_interface_l2_bridge_by_index(
+                tunnel_data.sw_if_index, vlan_id, true, VPP_API_PORT_TYPE_NORMAL);
+            if (vpp_status != 0) {
+                SWSS_LOG_ERROR("Failed to add tunnel sw_if %u to BD %u",
+                    tunnel_data.sw_if_index, vlan_id);
+                remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
+                return SAI_STATUS_FAILURE;
+            }
+
+            m_l2_tunnel_map[vni] = tunnel_data;
+
+            if (sw_if_index == (uint32_t)~0) {
+                sw_if_index = tunnel_data.sw_if_index;
+            }
+
+            char src_str[INET6_ADDRSTRLEN], dst_str[INET6_ADDRSTRLEN];
+            vpp_ip_addr_t_to_string(&req.src_address, src_str, sizeof(src_str));
+            vpp_ip_addr_t_to_string(&req.dst_address, dst_str, sizeof(dst_str));
+
+            SWSS_LOG_NOTICE("Created L2 VXLAN: tunnel=%s src=%s dst=%s VNI=%u VLAN=%u sw_if=%u",
+                sai_serialize_object_id(tunnel_oid).c_str(), src_str, dst_str,
+                vni, vlan_id, tunnel_data.sw_if_index);
         }
-        if (vni != 0 && vlan_id != 0) break;
     }
 
-    if (vni == 0 || vlan_id == 0) {
-        SWSS_LOG_NOTICE("No VNI-to-VLAN mapping found for tunnel %s (vni=%u, vlan=%u). "
+    if (sw_if_index == (uint32_t)~0) {
+        SWSS_LOG_NOTICE("No VNI-to-VLAN mappings found for tunnel %s. "
             "Not an L2 VXLAN tunnel, skipping.",
-            sai_serialize_object_id(tunnel_oid).c_str(), vni, vlan_id);
-        return SAI_STATUS_SUCCESS;
+            sai_serialize_object_id(tunnel_oid).c_str());
     }
-
-    // Create VPP tunnel
-    vpp_vxlan_tunnel_t req;
-    memset(&req, 0, sizeof(req));
-    req.vni = vni;
-    req.src_port = m_vxlan_port;
-    req.dst_port = m_vxlan_port;
-    req.instance = ~0;
-    req.decap_next_index = ~0;
-    sai_ip_address_t_to_vpp_ip_addr_t(src_ip, req.src_address);
-    sai_ip_address_t_to_vpp_ip_addr_t(dst_ip, req.dst_address);
-
-    TunnelVPPData tunnel_data;
-    tunnel_data.vni = vni;
-    tunnel_data.src_ip = src_ip;
-    tunnel_data.dst_ip = dst_ip;
-    tunnel_data.vlan_id = vlan_id;  // Store for cleanup
-
-    // L2 VXLAN tunnels do not need VRF association — they operate in L2 bridge mode
-    tunnel_data.ip_vrf = nullptr;
-
-    // skip_neighbor=true: L2 VXLAN performs MAC learning/forwarding at Layer 2,
-    // no need for IP neighbor entries used by L3 routing
-    if (create_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true) != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("Failed to create VPP VXLAN tunnel");
-        return SAI_STATUS_FAILURE;
-    }
-
-    // Add tunnel interface to bridge domain (VLAN)
-    int vpp_status = set_sw_interface_l2_bridge_by_index(
-        tunnel_data.sw_if_index, vlan_id, true, VPP_API_PORT_TYPE_NORMAL);
-    if (vpp_status != 0) {
-        SWSS_LOG_ERROR("Failed to add tunnel sw_if %u to BD %u",
-            tunnel_data.sw_if_index, vlan_id);
-        // Cleanup the tunnel
-        remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
-        return SAI_STATUS_FAILURE;
-    }
-    SWSS_LOG_NOTICE("Added tunnel sw_if %u to BD %u", tunnel_data.sw_if_index, vlan_id);
-
-    m_l2_tunnel_map[tunnel_oid] = tunnel_data;
-    sw_if_index = tunnel_data.sw_if_index;
-
-    char src_str[INET6_ADDRSTRLEN], dst_str[INET6_ADDRSTRLEN];
-    vpp_ip_addr_t_to_string(&req.src_address, src_str, sizeof(src_str));
-    vpp_ip_addr_t_to_string(&req.dst_address, dst_str, sizeof(dst_str));
-
-    SWSS_LOG_NOTICE("Created L2 VXLAN: tunnel=%s src=%s dst=%s VNI=%u VLAN=%u sw_if=%u",
-        sai_serialize_object_id(tunnel_oid).c_str(), src_str, dst_str, vni, vlan_id, sw_if_index);
 
     return SAI_STATUS_SUCCESS;
 }
@@ -585,56 +582,73 @@ TunnelManager::remove_l2_vxlan_tunnel(
 {
     SWSS_LOG_ENTER();
 
-    auto it = m_l2_tunnel_map.find(tunnel_oid);
-    if (it == m_l2_tunnel_map.end()) {
-        // Not an L2 tunnel we manage, could be L3 or P2MP, skip silently
-        SWSS_LOG_NOTICE("Tunnel %s not in L2 tunnel map, skipping removal",
+    // Walk the same mapper entries as create to find which VNIs to remove
+    auto tunnel_obj = m_switch_db->get_sai_object(SAI_OBJECT_TYPE_TUNNEL,
+        sai_serialize_object_id(tunnel_oid));
+    if (!tunnel_obj) {
+        SWSS_LOG_NOTICE("Tunnel %s not found, skipping removal",
             sai_serialize_object_id(tunnel_oid).c_str());
         return SAI_STATUS_SUCCESS;
     }
 
-    TunnelVPPData& tunnel_data = it->second;
+    sai_attribute_t attr;
+    auto decap_mappers = tunnel_obj->get_linked_objects(
+        SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_DECAP_MAPPERS);
 
-    // Remove tunnel interface from bridge domain
-    int vpp_status = set_sw_interface_l2_bridge_by_index(
-        tunnel_data.sw_if_index, tunnel_data.vlan_id,
-        false,  // false = remove from BD
-        VPP_API_PORT_TYPE_NORMAL);
-    if (vpp_status != 0) {
-        SWSS_LOG_ERROR("Failed to remove tunnel sw_if %u from BD %u",
-            tunnel_data.sw_if_index, tunnel_data.vlan_id);
-        // Continue with tunnel deletion anyway
-    } else {
-        SWSS_LOG_NOTICE("Removed tunnel sw_if %u from BD %u",
-            tunnel_data.sw_if_index, tunnel_data.vlan_id);
+    for (auto mapper : decap_mappers) {
+        attr.id = SAI_TUNNEL_MAP_ATTR_TYPE;
+        if (mapper->get_attr(attr) != SAI_STATUS_SUCCESS) continue;
+        if (attr.value.s32 != SAI_TUNNEL_MAP_TYPE_VNI_TO_VLAN_ID) continue;
+
+        auto entries = mapper->get_child_objs(SAI_OBJECT_TYPE_TUNNEL_MAP_ENTRY);
+        if (!entries) continue;
+
+        for (auto& entry_pair : *entries) {
+            auto entry = entry_pair.second;
+            uint32_t vni = 0;
+
+            attr.id = SAI_TUNNEL_MAP_ENTRY_ATTR_VNI_ID_KEY;
+            if (entry->get_attr(attr) == SAI_STATUS_SUCCESS) {
+                vni = attr.value.u32;
+            }
+            if (vni == 0) continue;
+
+            auto it = m_l2_tunnel_map.find(vni);
+            if (it == m_l2_tunnel_map.end()) continue;
+
+            TunnelVPPData& tunnel_data = it->second;
+
+            // Remove from bridge domain
+            int vpp_status = set_sw_interface_l2_bridge_by_index(
+                tunnel_data.sw_if_index, tunnel_data.vlan_id,
+                false, VPP_API_PORT_TYPE_NORMAL);
+            if (vpp_status != 0) {
+                SWSS_LOG_ERROR("Failed to remove tunnel sw_if %u from BD %u",
+                    tunnel_data.sw_if_index, tunnel_data.vlan_id);
+            } else {
+                SWSS_LOG_NOTICE("Removed tunnel sw_if %u from BD %u",
+                    tunnel_data.sw_if_index, tunnel_data.vlan_id);
+            }
+
+            // Delete VPP VXLAN tunnel
+            vpp_vxlan_tunnel_t req;
+            memset(&req, 0, sizeof(req));
+            req.vni = tunnel_data.vni;
+            req.src_port = m_vxlan_port;
+            req.dst_port = m_vxlan_port;
+            req.instance = ~0;
+            req.decap_next_index = ~0;
+            sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.src_ip, req.src_address);
+            sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.dst_ip, req.dst_address);
+
+            remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
+
+            SWSS_LOG_NOTICE("Removed L2 VXLAN tunnel VNI=%u (sw_if=%u, VLAN=%u)",
+                tunnel_data.vni, tunnel_data.sw_if_index, tunnel_data.vlan_id);
+
+            m_l2_tunnel_map.erase(it);
+        }
     }
-
-    // Delete the VPP VXLAN tunnel interface
-    // Reconstruct the request needed by remove_vpp_vxlan_encap
-    vpp_vxlan_tunnel_t req;
-    memset(&req, 0, sizeof(req));
-    req.vni = tunnel_data.vni;
-    req.src_port = m_vxlan_port;
-    req.dst_port = m_vxlan_port;
-    req.instance = ~0;
-    req.decap_next_index = ~0;
-    sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.src_ip, req.src_address);
-    sai_ip_address_t_to_vpp_ip_addr_t(tunnel_data.dst_ip, req.dst_address);
-
-    // skip_neighbor=true: L2 tunnels were created without neighbor entries
-    sai_status_t status = remove_vpp_vxlan_encap(req, tunnel_data, /*skip_neighbor=*/true);
-    if (status != SAI_STATUS_SUCCESS) {
-        SWSS_LOG_ERROR("Failed to remove VPP VXLAN tunnel for %s",
-            sai_serialize_object_id(tunnel_oid).c_str());
-        // Still remove from map to avoid stale entries
-    }
-
-    SWSS_LOG_NOTICE("Removed L2 VXLAN tunnel %s (sw_if=%u, VNI=%u, VLAN=%u)",
-        sai_serialize_object_id(tunnel_oid).c_str(),
-        tunnel_data.sw_if_index, tunnel_data.vni, tunnel_data.vlan_id);
-
-    // Remove from map
-    m_l2_tunnel_map.erase(it);
 
     return SAI_STATUS_SUCCESS;
 }

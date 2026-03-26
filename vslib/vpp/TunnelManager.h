@@ -138,8 +138,8 @@ namespace saivs
         u_int16_t m_vxlan_port;
         //nexthop SAI object ID to sw_if_index map
         std::unordered_map<sai_object_id_t, TunnelVPPData> m_tunnel_encap_nexthop_map;
-        // Map from tunnel SAI OID to VPP tunnel data (L2 VXLAN / EVPN)
-        std::unordered_map<sai_object_id_t, TunnelVPPData> m_l2_tunnel_map;
+        // Map from VNI to VPP tunnel data (L2 VXLAN / EVPN)
+        std::unordered_map<uint32_t, TunnelVPPData> m_l2_tunnel_map;
 
         sai_status_t tunnel_encap_nexthop_action(
                         _In_ const SaiObject* tunnel_nh_obj,
