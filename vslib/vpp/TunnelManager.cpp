@@ -481,7 +481,7 @@ TunnelManager::create_l2_vxlan_tunnel(
 
     auto decap_mappers = tunnel_obj->get_linked_objects(
         SAI_OBJECT_TYPE_TUNNEL_MAP, SAI_TUNNEL_ATTR_DECAP_MAPPERS);
-    
+
     SWSS_LOG_NOTICE("Found %zu decap mappers", decap_mappers.size());
 
     for (auto mapper : decap_mappers) {
@@ -608,7 +608,7 @@ TunnelManager::remove_l2_vxlan_tunnel(
         SWSS_LOG_NOTICE("Removed tunnel sw_if %u from BD %u",
             tunnel_data.sw_if_index, tunnel_data.vlan_id);
     }
-    
+
     // Delete the VPP VXLAN tunnel interface
     // Reconstruct the request needed by remove_vpp_vxlan_encap
     vpp_vxlan_tunnel_t req;

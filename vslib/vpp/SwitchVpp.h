@@ -317,7 +317,7 @@ namespace saivs
                     _In_ sai_object_id_t switch_id,
                     _In_ uint32_t attr_count,
                     _In_ const sai_attribute_t *attr_list);
-        
+
             /**
              * @brief Check if a bridge port is of type TUNNEL.
              *
@@ -330,7 +330,7 @@ namespace saivs
              */
             bool is_tunnel_bridge_port(
                     _In_ sai_object_id_t br_port_id);
-        
+
 
             /* BFD Session */
             sai_status_t bfd_session_add(

@@ -18,6 +18,7 @@ namespace saivs
     class TunnelVPPData {
     public:
         TunnelVPPData() {
+            SWSS_LOG_ENTER();
             memset(&src_ip, 0, sizeof(src_ip));
             memset(&dst_ip, 0, sizeof(dst_ip));
             memset(&bvi_addr, 0, sizeof(bvi_addr));
@@ -127,7 +128,7 @@ namespace saivs
         sai_status_t create_l2_vxlan_tunnel(
             _In_ sai_object_id_t tunnel_oid,
             _Out_ uint32_t& sw_if_index);
-        
+
         sai_status_t remove_l2_vxlan_tunnel(
             _In_ sai_object_id_t tunnel_oid);
 
