@@ -33,8 +33,6 @@ RedisClient::RedisClient(
 RedisClient::~RedisClient()
 {
     SWSS_LOG_ENTER();
-
-    // empty
 }
 
 bool RedisClient::isRedisEnabled() const
@@ -508,9 +506,9 @@ void RedisClient::removeAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
-
-    m_dbAsic->del(key);
+    std::string key = sai_serialize_object_meta_key(metaKey);
+    std::string fullKey = (ASIC_STATE_TABLE ":") + key;
+    m_dbAsic->del(fullKey);
 }
 
 void RedisClient::removeTempAsicObject(
@@ -533,7 +531,7 @@ void RedisClient::removeAsicObjects(
     // we need to rewrite keys to add table prefix
     for (const auto& key: keys)
     {
-         prefixKeys.push_back((ASIC_STATE_TABLE ":") + key);
+            prefixKeys.push_back((ASIC_STATE_TABLE ":") + key);
     }
 
     m_dbAsic->del(prefixKeys);
@@ -562,9 +560,9 @@ void RedisClient::setAsicObject(
 {
     SWSS_LOG_ENTER();
 
-    std::string key = (ASIC_STATE_TABLE ":") + sai_serialize_object_meta_key(metaKey);
-
-    m_dbAsic->hset(key, attr, value);
+    std::string key = sai_serialize_object_meta_key(metaKey);
+    std::string fullKey = (ASIC_STATE_TABLE ":") + key;
+    m_dbAsic->hset(fullKey, attr, value);
 }
 
 void RedisClient::setTempAsicObject(
