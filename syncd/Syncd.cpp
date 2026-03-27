@@ -6,6 +6,7 @@
 #include "HardReiniter.h"
 #include "RedisClient.h"
 #include "DisabledRedisClient.h"
+#include "ZmqRedisClient.h"
 #include "RequestShutdown.h"
 #include "WarmRestartTable.h"
 #include "ContextConfigContainer.h"
@@ -199,10 +200,19 @@ Syncd::Syncd(
 
     bool isDpuSwitch = switchType == "dpu";
 
-    if (zmqActive && isDpuSwitch && !isVirtualSwitch)
+    if (zmqActive && !isVirtualSwitch)
     {
-        // For DPU switches, disable Redis writes to maintain backwards compatibility with PR #1694
-        m_client = std::make_shared<DisabledRedisClient>();
+        if (isDpuSwitch)
+        {
+            // For DPU switches, disable Redis writes to maintain backwards compatibility with PR #1694
+            m_client = std::make_shared<DisabledRedisClient>();
+        }
+        else
+        {
+            // For NPU switches with ZMQ enabled, use async Redis writes to persist ASIC state
+            // without blocking the ZMQ data path
+            m_client = std::make_shared<syncd::ZmqRedisClient>(m_dbAsic);
+        }
     }
     else
     {
