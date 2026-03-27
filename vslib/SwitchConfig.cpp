@@ -96,6 +96,10 @@ bool SwitchConfig::parseSwitchType(
     {
         switchType = SAI_VS_SWITCH_TYPE_VPP;
     }
+    else if (st == SAI_VALUE_VS_SWITCH_TYPE_NOKIA_VS)
+    {
+        switchType = SAI_VS_SWITCH_TYPE_NOKIA_VS;
+    }
     else
     {
         std::vector<std::string> vals {
@@ -104,8 +108,9 @@ bool SwitchConfig::parseSwitchType(
                 SAI_VALUE_VS_SWITCH_TYPE_BCM56971B0,
                 SAI_VALUE_VS_SWITCH_TYPE_MLNX2700,
                 SAI_VALUE_VS_SWITCH_TYPE_NVDA_MBF2H536C,
-                SAI_VALUE_VS_SWITCH_TYPE_DPU_SIMU_2P
+                SAI_VALUE_VS_SWITCH_TYPE_DPU_SIMU_2P,
                 SAI_VALUE_VS_SWITCH_TYPE_VPP,
+                SAI_VALUE_VS_SWITCH_TYPE_NOKIA_VS,
         };
 
         SWSS_LOG_ERROR("unknown switch type: '%s', expected (%s)",

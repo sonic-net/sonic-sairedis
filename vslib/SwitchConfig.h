@@ -5,6 +5,7 @@
 #include "ResourceLimiter.h"
 #include "CorePortIndexMap.h"
 
+#include <map>
 #include <string>
 #include <memory>
 
@@ -29,6 +30,8 @@ namespace saivs
         SAI_VS_SWITCH_TYPE_NVDA_MBF2H536C,
 
         SAI_VS_SWITCH_TYPE_VPP,
+
+        SAI_VS_SWITCH_TYPE_NOKIA_VS,
 
     } sai_vs_switch_type_t;
 
@@ -99,5 +102,7 @@ namespace saivs
             std::shared_ptr<ResourceLimiter> m_resourceLimiter;
 
             std::shared_ptr<CorePortIndexMap> m_corePortIndexMap;
+
+            std::map<std::string, std::string> m_profileMap;
     };
 }

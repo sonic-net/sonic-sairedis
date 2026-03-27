@@ -9,6 +9,7 @@
 #include "SwitchVppUtils.h"
 
 #include <vector>
+#include <string>
 
 using namespace saivs;
 
@@ -848,7 +849,21 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_ROUTE_ENTRY)
     {
-        return addIpRoute(serializedObjectId, switch_id, attr_count, attr_list);
+        sai_status_t status = addIpRoute(serializedObjectId, switch_id, attr_count, attr_list);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (isIPv4Route(serializedObjectId))
+            {
+                m_ipv4_route_count++;
+                SWSS_LOG_DEBUG("CRM: IPv4 route created, count: %u", m_ipv4_route_count);
+            }
+            else
+            {
+                m_ipv6_route_count++;
+                SWSS_LOG_DEBUG("CRM: IPv6 route created, count: %u", m_ipv6_route_count);
+            }
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
@@ -939,7 +954,13 @@ sai_status_t SwitchVpp::create(
 
     if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
     {
-        return FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
+        sai_status_t status = FdbEntryadd(serializedObjectId, switch_id, attr_count, attr_list);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            m_fdb_entry_count++;
+            SWSS_LOG_DEBUG("CRM: FDB entry created, count: %u", m_fdb_entry_count);
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_BFD_SESSION)
@@ -1124,7 +1145,22 @@ sai_status_t SwitchVpp::remove(
 
     if (object_type == SAI_OBJECT_TYPE_ROUTE_ENTRY)
     {
-        return removeIpRoute(serializedObjectId);
+        bool wasIPv4 = isIPv4Route(serializedObjectId);
+        sai_status_t status = removeIpRoute(serializedObjectId);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (wasIPv4)
+            {
+                if (m_ipv4_route_count > 0) m_ipv4_route_count--;
+                SWSS_LOG_DEBUG("CRM: IPv4 route removed, count: %u", m_ipv4_route_count);
+            }
+            else
+            {
+                if (m_ipv6_route_count > 0) m_ipv6_route_count--;
+                SWSS_LOG_DEBUG("CRM: IPv6 route removed, count: %u", m_ipv6_route_count);
+            }
+        }
+        return status;
     }
 
     if (object_type == SAI_OBJECT_TYPE_MY_SID_ENTRY)
@@ -1220,7 +1256,13 @@ sai_status_t SwitchVpp::remove(
     }
     else if (object_type == SAI_OBJECT_TYPE_FDB_ENTRY)
     {
-        return FdbEntrydel(serializedObjectId);
+        sai_status_t status = FdbEntrydel(serializedObjectId);
+        if (status == SAI_STATUS_SUCCESS)
+        {
+            if (m_fdb_entry_count > 0) m_fdb_entry_count--;
+            SWSS_LOG_DEBUG("CRM: FDB entry removed, count: %u", m_fdb_entry_count);
+        }
+        return status;
     }
     else if (object_type == SAI_OBJECT_TYPE_BFD_SESSION)
     {
@@ -1625,7 +1667,7 @@ sai_status_t SwitchVpp::bulkCreate(
 
     for (it = 0; it < object_count; it++)
     {
-        object_statuses[it] = create_internal(object_type, serialized_object_ids[it], switch_id, attr_count[it], attr_list[it]);
+        object_statuses[it] = create(object_type, serialized_object_ids[it], switch_id, attr_count[it], attr_list[it]);
 
         if (object_statuses[it] != SAI_STATUS_SUCCESS)
         {
@@ -1669,11 +1711,110 @@ sai_status_t SwitchVpp::bulkRemove(
 
     for (it = 0; it < object_count; it++)
     {
-        object_statuses[it] = remove_internal(object_type, serialized_object_ids[it]);
+        object_statuses[it] = remove(object_type, serialized_object_ids[it]);
 
         if (object_statuses[it] != SAI_STATUS_SUCCESS)
         {
             SWSS_LOG_ERROR("Failed to remove object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::bulkSet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const sai_attribute_t *attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+
+    if (!object_count || !attr_list || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    uint32_t it;
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = set(object_type, serialized_object_ids[it], &attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to set attribute for object with type = %u", object_type);
+
+            status = SAI_STATUS_FAILURE;
+
+            if (mode == SAI_BULK_OP_ERROR_MODE_STOP_ON_ERROR)
+            {
+                break;
+            }
+        }
+    }
+
+    while (++it < object_count)
+    {
+        object_statuses[it] = SAI_STATUS_NOT_EXECUTED;
+    }
+
+    return status;
+}
+
+sai_status_t SwitchVpp::bulkGet(
+        _In_ sai_object_type_t object_type,
+        _In_ const std::vector<std::string> &serialized_object_ids,
+        _In_ const uint32_t *attr_count,
+        _Inout_ sai_attribute_t **attr_list,
+        _In_ sai_bulk_op_error_mode_t mode,
+        _Out_ sai_status_t *object_statuses)
+{
+    SWSS_LOG_ENTER();
+
+    uint32_t it;
+    uint32_t object_count = (uint32_t) serialized_object_ids.size();
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    if (!object_count || !attr_list || !attr_count || !object_statuses)
+    {
+        SWSS_LOG_ERROR("Invalid arguments");
+        return SAI_STATUS_FAILURE;
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        if (!attr_list[it] || !attr_count[it])
+        {
+            SWSS_LOG_ERROR("Invalid arguments");
+            return SAI_STATUS_FAILURE;
+        }
+    }
+
+    for (it = 0; it < object_count; it++)
+    {
+        object_statuses[it] = get(object_type, serialized_object_ids[it], attr_count[it], attr_list[it]);
+
+        if (object_statuses[it] != SAI_STATUS_SUCCESS)
+        {
+            SWSS_LOG_ERROR("Failed to get attribute for object with type = %u", object_type);
 
             status = SAI_STATUS_FAILURE;
 
@@ -1806,6 +1947,7 @@ sai_status_t SwitchVpp::initialize_default_objects(
     CHECK_STATUS(create_default_stp_instance());
     CHECK_STATUS(create_default_1q_bridge());
     CHECK_STATUS(create_default_trap_group());
+    CHECK_STATUS(create_default_hash());
     CHECK_STATUS(create_ports());
     CHECK_STATUS(create_port_serdes());
     CHECK_STATUS(set_port_list());
@@ -1827,6 +1969,49 @@ sai_status_t SwitchVpp::initialize_default_objects(
     CHECK_STATUS(initialize_voq_switch_objects(attr_count, attr_list));
 
     return SAI_STATUS_SUCCESS;
+}
+
+sai_status_t SwitchVpp::create_default_hash()
+{
+    SWSS_LOG_ENTER();
+
+    SWSS_LOG_INFO("create default hash for VPP");
+
+    // VPP supports L3/L4 hash fields
+    std::vector<sai_native_hash_field_t> hfList = {
+        SAI_NATIVE_HASH_FIELD_IP_PROTOCOL,
+        SAI_NATIVE_HASH_FIELD_DST_IP,
+        SAI_NATIVE_HASH_FIELD_SRC_IP,
+        SAI_NATIVE_HASH_FIELD_L4_DST_PORT,
+        SAI_NATIVE_HASH_FIELD_L4_SRC_PORT
+    };
+
+    // create and populate default ecmp hash object
+    sai_attribute_t attr;
+    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    attr.value.s32list.list = reinterpret_cast<sai_int32_t*>(hfList.data());
+    attr.value.s32list.count = static_cast<sai_uint32_t>(hfList.size());
+
+    CHECK_STATUS(create(SAI_OBJECT_TYPE_HASH, &m_ecmp_hash_id, m_switch_id, 1, &attr));
+
+    // set default ecmp hash on switch
+    attr.id = SAI_SWITCH_ATTR_ECMP_HASH;
+    attr.value.oid = m_ecmp_hash_id;
+
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // create and populate default lag hash object
+    attr.id = SAI_HASH_ATTR_NATIVE_HASH_FIELD_LIST;
+    attr.value.s32list.list = reinterpret_cast<sai_int32_t*>(hfList.data());
+    attr.value.s32list.count = static_cast<sai_uint32_t>(hfList.size());
+
+    CHECK_STATUS(create(SAI_OBJECT_TYPE_HASH, &m_lag_hash_id, m_switch_id, 1, &attr));
+
+    // set default lag hash on switch
+    attr.id = SAI_SWITCH_ATTR_LAG_HASH;
+    attr.value.oid = m_lag_hash_id;
+
+    return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 }
 
 sai_status_t SwitchVpp::queryHashNativeHashFieldListCapability(
@@ -1867,6 +2052,119 @@ sai_status_t SwitchVpp::querySwitchHashAlgorithmCapability(
     return SAI_STATUS_SUCCESS;
 }
 
+bool SwitchVpp::isIPv4Route(
+        const std::string &serializedObjectId)
+{
+    SWSS_LOG_ENTER();
+
+    sai_route_entry_t route_entry;
+    sai_deserialize_route_entry(serializedObjectId, route_entry);
+    return route_entry.destination.addr_family == SAI_IP_ADDR_FAMILY_IPV4;
+}
+
+void SwitchVpp::loadCrmProfileValues()
+{
+    SWSS_LOG_ENTER();
+
+    const auto &profileMap = m_switchConfig->m_profileMap;
+
+    if (profileMap.empty())
+    {
+        SWSS_LOG_NOTICE("CRM: profile map is empty, using defaults (IPv4=%u, IPv6=%u, FDB=%u)",
+            m_vppMaxIPv4RouteEntries, m_vppMaxIPv6RouteEntries, m_vppMaxFdbEntries);
+        return;
+    }
+
+    auto it = profileMap.find("SAI_VPP_MAX_IPV4_ROUTE_ENTRIES");
+    if (it != profileMap.end())
+    {
+        m_vppMaxIPv4RouteEntries = (uint32_t)std::stoul(it->second);
+    }
+
+    it = profileMap.find("SAI_VPP_MAX_IPV6_ROUTE_ENTRIES");
+    if (it != profileMap.end())
+    {
+        m_vppMaxIPv6RouteEntries = (uint32_t)std::stoul(it->second);
+    }
+
+    it = profileMap.find("SAI_VPP_MAX_FDB_ENTRIES");
+    if (it != profileMap.end())
+    {
+        m_vppMaxFdbEntries = (uint32_t)std::stoul(it->second);
+    }
+
+    SWSS_LOG_NOTICE("CRM: profile loaded (IPv4=%u, IPv6=%u, FDB=%u)",
+        m_vppMaxIPv4RouteEntries, m_vppMaxIPv6RouteEntries, m_vppMaxFdbEntries);
+}
+
+sai_status_t SwitchVpp::set_static_crm_values()
+{
+    SWSS_LOG_ENTER();
+
+    // Load configurable CRM limits from sai_vpp.profile
+    loadCrmProfileValues();
+
+    // Override the base class static values with our configurable ones
+    sai_attribute_t attr;
+
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV4_ROUTE_ENTRY;
+    attr.value.u32 = m_vppMaxIPv4RouteEntries;
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_IPV6_ROUTE_ENTRY;
+    attr.value.u32 = m_vppMaxIPv6RouteEntries;
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    attr.id = SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY;
+    attr.value.u32 = m_vppMaxFdbEntries;
+    CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+
+    // For remaining resources (nexthop, neighbor, nhg, etc.), use base class defaults
+    std::map<sai_switch_attr_t, int> remaining_resources = {
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEXTHOP_ENTRY, m_maxIPv4NextHopEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEXTHOP_ENTRY, m_maxIPv6NextHopEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV4_NEIGHBOR_ENTRY, m_maxIPv4NeighborEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPV6_NEIGHBOR_ENTRY, m_maxIPv6NeighborEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_MEMBER_ENTRY, m_maxNextHopGroupMemberEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_NEXT_HOP_GROUP_ENTRY, m_maxNextHopGroupEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_SNAT_ENTRY, m_maxSNATEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_DNAT_ENTRY, m_maxDNATEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_IPMC_ENTRY, m_maxIPMCEntries },
+        { SAI_SWITCH_ATTR_AVAILABLE_DOUBLE_NAT_ENTRY, m_maxDoubleNATEntries }
+    };
+
+    for (auto const &resource: remaining_resources)
+    {
+        attr.id = resource.first;
+        attr.value.u32 = resource.second;
+        CHECK_STATUS(set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr));
+    }
+
+    CHECK_STATUS(set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE, m_maxAclTables));
+
+    return set_static_acl_resource_list(SAI_SWITCH_ATTR_AVAILABLE_ACL_TABLE_GROUP, m_maxAclTableGroups);
+}
+
+sai_status_t SwitchVpp::queryNextHopGroupTypeCapability(
+    _Inout_ sai_s32_list_t *enum_values_capability)
+{
+    SWSS_LOG_ENTER();
+
+    if (enum_values_capability->count < 1)
+    {
+        enum_values_capability->count = 1;
+        return SAI_STATUS_BUFFER_OVERFLOW;
+    }
+
+    // VPP only supports unordered ECMP. It does not support ordered ECMP
+    // (bucket-to-nexthop assignment is not preserved) or protection groups
+    // (IpRouteNexthopGroupEntry rejects non-ECMP types).
+    enum_values_capability->count = 1;
+    enum_values_capability->list[0] = SAI_NEXT_HOP_GROUP_TYPE_DYNAMIC_UNORDERED_ECMP;
+
+    return SAI_STATUS_SUCCESS;
+}
+
 sai_status_t SwitchVpp::refresh_read_only(
         _In_ const sai_attr_metadata_t *meta,
         _In_ sai_object_id_t object_id)
@@ -1882,6 +2180,34 @@ sai_status_t SwitchVpp::refresh_read_only(
                 // VPP stores BFD session state in m_objectHash and will update it
                 // when BFD state changed. So we don't need to refresh.
                 return SAI_STATUS_SUCCESS;
+
+            default:
+                break;
+        }
+    }
+
+    // Dynamic CRM resource availability: return max - used
+    if (meta->objecttype == SAI_OBJECT_TYPE_SWITCH)
+    {
+        sai_attribute_t attr;
+        attr.id = meta->attrid;
+
+        switch (meta->attrid)
+        {
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV4_ROUTE_ENTRY:
+                attr.value.u32 = (m_vppMaxIPv4RouteEntries > m_ipv4_route_count)
+                    ? (m_vppMaxIPv4RouteEntries - m_ipv4_route_count) : 0;
+                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+
+            case SAI_SWITCH_ATTR_AVAILABLE_IPV6_ROUTE_ENTRY:
+                attr.value.u32 = (m_vppMaxIPv6RouteEntries > m_ipv6_route_count)
+                    ? (m_vppMaxIPv6RouteEntries - m_ipv6_route_count) : 0;
+                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
+
+            case SAI_SWITCH_ATTR_AVAILABLE_FDB_ENTRY:
+                attr.value.u32 = (m_vppMaxFdbEntries > m_fdb_entry_count)
+                    ? (m_vppMaxFdbEntries - m_fdb_entry_count) : 0;
+                return set(SAI_OBJECT_TYPE_SWITCH, m_switch_id, &attr);
 
             default:
                 break;

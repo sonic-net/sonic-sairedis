@@ -107,6 +107,32 @@ function set_start_type()
     fi
 }
 
+function set_watchdog_timeout()
+{
+    # For chassis platforms, extend init timeout to avoid false-alarm "WD exceeded" errors.
+    # Multipliers (5x, 10x) match sonic-swss orchagent.
+    if [[ "$CMD_ARGS" =~ "-w " ]]; then
+        return
+    fi
+
+    local NORMAL_TIMEOUT=30000000
+    local INIT_MULTIPLIER=1
+
+    if [ "$SWITCH_TYPE" == "voq" ] || [ "$SWITCH_TYPE" == "chassis-packet" ] || [ "$SWITCH_TYPE" == "dpu" ]; then
+        INIT_MULTIPLIER=5
+    elif [ "$SWITCH_TYPE" == "fabric" ]; then
+        INIT_MULTIPLIER=10
+    fi
+
+    local INIT_TIMEOUT=$((NORMAL_TIMEOUT * INIT_MULTIPLIER))
+
+    CMD_ARGS+=" -w $NORMAL_TIMEOUT"
+
+    if [ "$INIT_MULTIPLIER" -gt 1 ]; then
+        CMD_ARGS+=" -W $INIT_TIMEOUT"
+    fi
+}
+
 config_syncd_pensando()
 {
     CMD_ARGS+=" -l"
@@ -503,7 +529,7 @@ vpp_api_check()
 
 config_syncd_vpp()
 {
-    CMD_ARGS+=" -p $HWSKU_DIR/sai_vpp.profile"
+    CMD_ARGS+=" -l -p $HWSKU_DIR/sai_vpp.profile"
     vpp_api_check "/run/vpp/api.sock"
     source /etc/sonic/vpp/syncd_vpp_env
     export NO_LINUX_NL
@@ -637,6 +663,8 @@ config_syncd()
         config_syncd_nephos
     elif [ "$SONIC_ASIC_TYPE" == "vs" ]; then
         config_syncd_vs
+    elif [ "$SONIC_ASIC_TYPE" == "nokia-vs" ]; then
+        config_syncd_vs
     elif [ "$SONIC_ASIC_TYPE" == "vpp" ]; then
         config_syncd_vpp
     elif [ "$SONIC_ASIC_TYPE" == "marvell-teralynx" ]; then
@@ -658,6 +686,7 @@ config_syncd()
         exit 1
     fi
 
+    set_watchdog_timeout
     set_start_type
 
     if [ ${ENABLE_SAITHRIFT} == 1 ]; then
